@@ -1,0 +1,85 @@
+name: Package
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Build frontend
+        run: pnpm run build
+        working-directory: frontend
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: backend/internal/web/dist/
+          retention-days: 1
+
+  package:
+    needs: [build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: frontend-dist
+          path: backend/internal/web/dist/
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify Go version
+        run: |
+          go version | grep -q 'go1.26.3'
+
+      - name: GoReleaser snapshot build
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: build --snapshot --clean
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-dist
+          path: dist/**
+          retention-days: 7

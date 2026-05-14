@@ -267,6 +267,18 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	return token, user, nil
 }
 
+// ValidateAffiliateCode validates a registration affiliate code.
+func (s *AuthService) ValidateAffiliateCode(ctx context.Context, code string) error {
+	if s == nil || s.affiliateService == nil {
+		return ErrAffiliateCodeInvalid
+	}
+	_, err := s.affiliateService.ValidateAffiliateCode(ctx, code)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // SendVerifyCodeResult 发送验证码返回结果
 type SendVerifyCodeResult struct {
 	Countdown int `json:"countdown"` // 倒计时秒数
