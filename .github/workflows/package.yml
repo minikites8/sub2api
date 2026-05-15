@@ -71,11 +71,21 @@ jobs:
         run: |
           go version | grep -q 'go1.26.3'
 
+      - name: Set lowercase owner for GoReleaser templates
+        id: lowercase
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: GoReleaser snapshot build
         uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: build --snapshot --clean
+        env:
+          GITHUB_REPO_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO_OWNER_LOWER: ${{ steps.lowercase.outputs.owner }}
+          GITHUB_REPO_NAME: sub2api
+          DOCKERHUB_USERNAME: skip
+          TAG_MESSAGE: snapshot package build
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v7
