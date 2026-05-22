@@ -451,6 +451,10 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 		return nil, nil, err
 	}
 
+	if err := r.hydrateKiroCacheEmulationFieldsForGroups(ctx, outGroups); err != nil {
+		return nil, nil, err
+	}
+
 	return outGroups, paginationResultFromTotal(int64(total), params), nil
 }
 
