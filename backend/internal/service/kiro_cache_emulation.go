@@ -561,19 +561,19 @@ func writeCanonicalJSON(buf *bytes.Buffer, v any) error {
 				return err
 			}
 		}
-		buf.WriteByte('}')
+		_ = buf.WriteByte('}')
 		return nil
 	case []any:
-		buf.WriteByte('[')
+		_ = buf.WriteByte('[')
 		for i, child := range x {
 			if i > 0 {
-				buf.WriteByte(',')
+				_ = buf.WriteByte(',')
 			}
 			if err := writeCanonicalJSON(buf, child); err != nil {
 				return err
 			}
 		}
-		buf.WriteByte(']')
+		_ = buf.WriteByte(']')
 		return nil
 	default:
 		b, err := json.Marshal(v)
