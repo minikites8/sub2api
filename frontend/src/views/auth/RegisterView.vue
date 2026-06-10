@@ -637,6 +637,8 @@ function handlePromoCodeInput(): void {
   }, 500)
 }
 
+void handlePromoCodeInput
+
 async function validatePromoCodeDebounced(code: string): Promise<void> {
   if (!code.trim()) return
 
