@@ -53,6 +53,13 @@ func sleepKiroRetry(ctx context.Context, attempt int) error {
 	return kiroRetrySleep(ctx, kiroRetryBackoffDelay(attempt))
 }
 
+func kiroTransientRetryAttempts(account *Account) int {
+	if account == nil {
+		return defaultKiroTransientRetryCount
+	}
+	return account.GetKiroTransientRetryCount()
+}
+
 func resolveKiroUpstreamModel(mappedModel string) string {
 	upstreamModel := kiropkg.MapModel(mappedModel)
 	if strings.TrimSpace(upstreamModel) == "" {
@@ -365,7 +372,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 	proxyURL := kiroProxyURL(account)
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
 	accountKey := buildKiroAccountKey(account)
-	maxRetries := 2
+	maxRetries := kiroTransientRetryAttempts(account)
 
 	for idx, endpoint := range endpoints {
 		for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -386,6 +393,13 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 			}
 
 			if resp.StatusCode == http.StatusTooManyRequests {
+				if attempt < maxRetries {
+					_ = resp.Body.Close()
+					if sleepErr := sleepKiroRetry(ctx, attempt); sleepErr != nil {
+						return nil, requestCtx, sleepErr
+					}
+					continue
+				}
 				cooldown, err := s.markKiro429(ctx, accountKey)
 				if err != nil {
 					_ = resp.Body.Close()
@@ -676,7 +690,7 @@ func (s *GatewayService) handleKiroHTTPError(ctx context.Context, resp *http.Res
 		}
 	}
 
-	if resp.StatusCode == http.StatusPaymentRequired || s.shouldFailoverUpstreamError(resp.StatusCode) {
+	if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusRequestTimeout || s.shouldFailoverUpstreamError(resp.StatusCode) {
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
 			AccountID:          account.ID,

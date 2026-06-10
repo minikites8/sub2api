@@ -989,6 +989,26 @@
         </div>
       </div>
 
+      <div v-if="form.platform === 'kiro' && accountCategory === 'oauth-based'" class="space-y-2">
+        <label class="input-label">{{ t('admin.accounts.kiroTransientRetryCount') }}</label>
+        <input
+          v-model.number="kiroTransientRetryCount"
+          type="number"
+          min="0"
+          :max="MAX_KIRO_TRANSIENT_RETRY_COUNT"
+          step="1"
+          class="input"
+        />
+        <p class="input-hint">
+          {{
+            t('admin.accounts.kiroTransientRetryCountHint', {
+              default: DEFAULT_KIRO_TRANSIENT_RETRY_COUNT,
+              max: MAX_KIRO_TRANSIENT_RETRY_COUNT
+            })
+          }}
+        </p>
+      </div>
+
       <div v-if="form.platform === 'kiro' && accountCategory === 'apikey'" class="space-y-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
@@ -3877,9 +3897,12 @@ const allowedModels = ref<string[]>([])
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
+const DEFAULT_KIRO_TRANSIENT_RETRY_COUNT = 2
+const MAX_KIRO_TRANSIENT_RETRY_COUNT = 10
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
+const kiroTransientRetryCount = ref(DEFAULT_KIRO_TRANSIENT_RETRY_COUNT)
 
 function parsePoolModeRetryStatusCodes(input: string): number[] {
   if (!input || !input.trim()) return []
@@ -3896,6 +3919,20 @@ function parsePoolModeRetryStatusCodes(input: string): number[] {
     out.push(n)
   }
   return out.sort((a, b) => a - b)
+}
+
+const normalizeKiroTransientRetryCount = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_KIRO_TRANSIENT_RETRY_COUNT
+  }
+  const normalized = Math.trunc(value)
+  if (normalized < 0) {
+    return 0
+  }
+  if (normalized > MAX_KIRO_TRANSIENT_RETRY_COUNT) {
+    return MAX_KIRO_TRANSIENT_RETRY_COUNT
+  }
+  return normalized
 }
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
@@ -4817,6 +4854,7 @@ const resetForm = () => {
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
+  kiroTransientRetryCount.value = DEFAULT_KIRO_TRANSIENT_RETRY_COUNT
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
@@ -5939,6 +5977,7 @@ const handleAntigravityExchange = async (authCode: string) => {
 
 const buildKiroCredentials = (tokenInfo: Parameters<typeof kiroOAuth.buildCredentials>[0]) => {
   const credentials = kiroOAuth.buildCredentials(tokenInfo)
+  credentials.kiro_transient_retry_count = normalizeKiroTransientRetryCount(kiroTransientRetryCount.value)
   const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
   if (modelMapping) {
     credentials.model_mapping = modelMapping

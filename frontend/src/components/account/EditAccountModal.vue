@@ -525,6 +525,26 @@
         </div>
 
         <template v-else-if="account.platform === 'kiro'">
+          <div class="mb-4 space-y-2">
+            <label class="input-label">{{ t('admin.accounts.kiroTransientRetryCount') }}</label>
+            <input
+              v-model.number="kiroTransientRetryCount"
+              type="number"
+              min="0"
+              :max="MAX_KIRO_TRANSIENT_RETRY_COUNT"
+              step="1"
+              class="input"
+            />
+            <p class="input-hint">
+              {{
+                t('admin.accounts.kiroTransientRetryCountHint', {
+                  default: DEFAULT_KIRO_TRANSIENT_RETRY_COUNT,
+                  max: MAX_KIRO_TRANSIENT_RETRY_COUNT
+                })
+              }}
+            </p>
+          </div>
+
           <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
             <p class="text-xs text-purple-700 dark:text-purple-400">
               {{ t('admin.accounts.mapRequestModels') }}
@@ -2686,9 +2706,12 @@ const allowedModels = ref<string[]>([])
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
+const DEFAULT_KIRO_TRANSIENT_RETRY_COUNT = 2
+const MAX_KIRO_TRANSIENT_RETRY_COUNT = 10
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
+const kiroTransientRetryCount = ref(DEFAULT_KIRO_TRANSIENT_RETRY_COUNT)
 
 function parsePoolModeRetryStatusCodes(input: string): number[] {
   if (!input || !input.trim()) return []
@@ -2720,6 +2743,20 @@ function formatPoolModeRetryStatusCodes(value: unknown): string {
     out.push(n)
   }
   return out.sort((a, b) => a - b).join(', ')
+}
+
+const normalizeKiroTransientRetryCount = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_KIRO_TRANSIENT_RETRY_COUNT
+  }
+  const normalized = Math.trunc(value)
+  if (normalized < 0) {
+    return 0
+  }
+  if (normalized > MAX_KIRO_TRANSIENT_RETRY_COUNT) {
+    return MAX_KIRO_TRANSIENT_RETRY_COUNT
+  }
+  return normalized
 }
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
@@ -3439,6 +3476,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for OpenAI/Kiro OAuth accounts
     if (newAccount.platform === 'kiro' && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
+      kiroTransientRetryCount.value = normalizeKiroTransientRetryCount(
+        Number(oauthCredentials.kiro_transient_retry_count ?? DEFAULT_KIRO_TRANSIENT_RETRY_COUNT)
+      )
       const existingMappings = oauthCredentials.model_mapping as Record<string, string> | undefined
       if (existingMappings && typeof existingMappings === 'object' && Object.keys(existingMappings).length > 0) {
         applyKiroModelMappings(Object.entries(existingMappings))
@@ -3456,6 +3496,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     poolModeEnabled.value = false
     poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
     poolModeRetryStatusCodesInput.value = ''
+    kiroTransientRetryCount.value = DEFAULT_KIRO_TRANSIENT_RETRY_COUNT
     customErrorCodesEnabled.value = false
     selectedErrorCodes.value = []
   }
@@ -4187,6 +4228,10 @@ const handleSubmit = async () => {
       // For oauth/setup-token types, only update intercept_warmup_requests if changed
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
+
+      if (props.account.platform === 'kiro' && props.account.type === 'oauth') {
+        newCredentials.kiro_transient_retry_count = normalizeKiroTransientRetryCount(kiroTransientRetryCount.value)
+      }
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       if (!applyTempUnschedConfig(newCredentials)) {

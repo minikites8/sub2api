@@ -3468,6 +3468,9 @@ export default {
         baseUrlHint: 'Enter the Base URL of the Kiro-compatible upstream',
         apiKeyHint: 'API Key for that Kiro upstream',
       },
+      kiroTransientRetryCount: 'Transient Retry Count',
+      kiroTransientRetryCountHint:
+        'Retries Kiro OAuth transient upstream errors (429/408/5xx) on the same account. Use 0 to disable. Default {default}, maximum {max}.',
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:

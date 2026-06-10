@@ -386,8 +386,9 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 	accountKey := buildKiroAccountKey(account)
 	proxyURL := kiroProxyURL(account)
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
+	maxRetries := kiroTransientRetryAttempts(account)
 
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if err := s.checkAndWaitKiroCooldown(ctx, accountKey); err != nil {
 			if failoverErr := asKiroCooldownFailoverError(err); failoverErr != nil {
 				return nil, currentToken, failoverErr
@@ -440,13 +441,20 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
+			if attempt < maxRetries {
+				_ = resp.Body.Close()
+				if sleepErr := sleepKiroRetry(ctx, attempt); sleepErr != nil {
+					return nil, currentToken, sleepErr
+				}
+				continue
+			}
 			if _, err := s.markKiro429(ctx, accountKey); err != nil {
 				_ = resp.Body.Close()
 				return nil, currentToken, err
 			}
 		}
 		if resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode >= 500 {
-			if attempt < 2 {
+			if attempt < maxRetries {
 				_ = resp.Body.Close()
 				if sleepErr := sleepKiroRetry(ctx, attempt); sleepErr != nil {
 					return nil, currentToken, sleepErr

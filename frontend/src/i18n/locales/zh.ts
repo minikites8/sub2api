@@ -3624,6 +3624,9 @@ export default {
         baseUrlHint: '请输入 Kiro 兼容上游的 Base URL',
         apiKeyHint: '用于该 Kiro 上游的 API Key',
       },
+      kiroTransientRetryCount: '瞬态错误自动重试次数',
+      kiroTransientRetryCountHint:
+        '对 Kiro OAuth 账号的上游瞬态错误（429/408/5xx）在同账号内自动重试。0 表示关闭；默认 {default}，最大 {max}。',
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
         apiKeyPassthroughDesc:

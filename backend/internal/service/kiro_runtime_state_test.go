@@ -24,6 +24,7 @@ type stubKiroCooldownStore struct {
 	successErr   error
 	mark429TTL   time.Duration
 	mark429Err   error
+	mark429Calls int
 	suspendedTTL time.Duration
 	suspendedErr error
 	state        *kirocooldown.State
@@ -85,6 +86,7 @@ func (s *stubKiroCooldownStore) MarkSuccess(context.Context, string) error {
 }
 
 func (s *stubKiroCooldownStore) Mark429(context.Context, string) (time.Duration, error) {
+	s.mark429Calls++
 	return s.mark429TTL, s.mark429Err
 }
 
@@ -580,4 +582,135 @@ func TestGatewayServiceIsAccountSchedulableForSelectionSkipsActiveKiroCooldown(t
 		Schedulable: true,
 	}
 	require.False(t, svc.isAccountSchedulableForSelection(account))
+}
+
+func TestExecuteKiroUpstreamRetries429BeforeCooldown(t *testing.T) {
+	account := &Account{
+		ID:          52,
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"kiro_transient_retry_count": 1,
+		},
+	}
+	store := &stubKiroCooldownStore{}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusTooManyRequests, `{"message":"slow down"}`),
+			newJSONResponse(http.StatusOK, `event: message_start
+data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`),
+		},
+	}
+	svc := &GatewayService{
+		httpUpstream:        upstream,
+		kiroCooldownStore:   store,
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	payload, err := createTestPayload("claude-sonnet-4-6")
+	require.NoError(t, err)
+	payloadBytes, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	resp, _, err := svc.executeKiroUpstream(context.Background(), account, payloadBytes, "claude-sonnet-4-6", "claude-sonnet-4-6", "test-token", nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, 0, store.mark429Calls)
+}
+
+func TestExecuteKiroUpstreamRetries408BeforeFailover(t *testing.T) {
+	account := &Account{
+		ID:          53,
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"kiro_transient_retry_count": 1,
+		},
+	}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusRequestTimeout, `{"message":"timeout"}`),
+			newJSONResponse(http.StatusUnauthorized, `{"type":"error","error":{"message":"invalid bearer token"}}`),
+		},
+	}
+	svc := &GatewayService{
+		httpUpstream:        upstream,
+		kiroCooldownStore:   &stubKiroCooldownStore{},
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	payload, err := createTestPayload("claude-sonnet-4-6")
+	require.NoError(t, err)
+	payloadBytes, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	resp, _, err := svc.executeKiroUpstream(context.Background(), account, payloadBytes, "claude-sonnet-4-6", "claude-sonnet-4-6", "test-token", nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.Len(t, upstream.requests, 2)
+}
+
+func TestExecuteKiroUpstreamRetries5xxBeforeFailover(t *testing.T) {
+	account := &Account{
+		ID:          54,
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"kiro_transient_retry_count": 1,
+		},
+	}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusServiceUnavailable, `{"message":"busy"}`),
+			newJSONResponse(http.StatusOK, `event: message_start
+data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`),
+		},
+	}
+	svc := &GatewayService{
+		httpUpstream:        upstream,
+		kiroCooldownStore:   &stubKiroCooldownStore{},
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	payload, err := createTestPayload("claude-sonnet-4-6")
+	require.NoError(t, err)
+	payloadBytes, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	resp, _, err := svc.executeKiroUpstream(context.Background(), account, payloadBytes, "claude-sonnet-4-6", "claude-sonnet-4-6", "test-token", nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Len(t, upstream.requests, 2)
 }

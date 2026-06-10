@@ -884,6 +884,8 @@ func (a *Account) IsPoolMode() bool {
 const (
 	defaultPoolModeRetryCount = 3
 	maxPoolModeRetryCount     = 10
+	defaultKiroTransientRetryCount = 2
+	maxKiroTransientRetryCount     = 10
 )
 
 // GetPoolModeRetryCount 返回池模式同账号重试次数。
@@ -924,6 +926,48 @@ func parsePoolModeRetryCount(value any) int {
 		}
 	}
 	return defaultPoolModeRetryCount
+}
+
+// GetKiroTransientRetryCount returns the same-account retry count for Kiro OAuth
+// transient upstream errors (429/408/5xx). Missing or invalid values fall back
+// to the runtime default of 2. Negative values are treated as 0 and values above
+// the cap are clamped.
+func (a *Account) GetKiroTransientRetryCount() int {
+	if a == nil || a.Platform != PlatformKiro || a.Type != AccountTypeOAuth || a.Credentials == nil {
+		return defaultKiroTransientRetryCount
+	}
+	raw, ok := a.Credentials["kiro_transient_retry_count"]
+	if !ok || raw == nil {
+		return defaultKiroTransientRetryCount
+	}
+	count := parseKiroTransientRetryCount(raw)
+	if count < 0 {
+		return 0
+	}
+	if count > maxKiroTransientRetryCount {
+		return maxKiroTransientRetryCount
+	}
+	return count
+}
+
+func parseKiroTransientRetryCount(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i)
+		}
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return i
+		}
+	}
+	return defaultKiroTransientRetryCount
 }
 
 // defaultPoolModeRetryableStatusCodes 池模式下默认触发同账号重试的状态码。

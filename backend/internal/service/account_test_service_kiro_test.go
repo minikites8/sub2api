@@ -93,6 +93,114 @@ func TestAccountTestService_Kiro429DoesNotFallbackToCodeWhispererEndpoint(t *tes
 	require.Contains(t, err.Error(), "API returned 429")
 }
 
+func TestAccountTestService_KiroTransientRetryCountRetries429(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	account := &Account{
+		ID:          22,
+		Name:        "kiro-retry-429",
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":                "kiro-access-token",
+			"profile_arn":                 "arn:aws:codewhisperer:us-east-1:123456789012:profile/RETRY429",
+			"kiro_transient_retry_count":  1,
+		},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{22: account}}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusTooManyRequests, `{"message":"slow down"}`),
+			newJSONResponse(http.StatusUnauthorized, `{"type":"error","error":{"message":"invalid bearer token"}}`),
+		},
+	}
+	svc := &AccountTestService{
+		accountRepo:         repo,
+		kiroTokenProvider:   NewKiroTokenProvider(nil, nil, nil),
+		httpUpstream:        upstream,
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "claude-sonnet-4-6", "", AccountTestModeDefault)
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 2)
+	require.Contains(t, err.Error(), "API returned 401")
+}
+
+func TestAccountTestService_KiroTransientRetryCountRetries408(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	account := &Account{
+		ID:          23,
+		Name:        "kiro-retry-408",
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":               "kiro-access-token",
+			"profile_arn":                "arn:aws:codewhisperer:us-east-1:123456789012:profile/RETRY408",
+			"kiro_transient_retry_count": 1,
+		},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{23: account}}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusRequestTimeout, `{"message":"timeout"}`),
+			newJSONResponse(http.StatusUnauthorized, `{"type":"error","error":{"message":"invalid bearer token"}}`),
+		},
+	}
+	svc := &AccountTestService{
+		accountRepo:         repo,
+		kiroTokenProvider:   NewKiroTokenProvider(nil, nil, nil),
+		httpUpstream:        upstream,
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "claude-sonnet-4-6", "", AccountTestModeDefault)
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 2)
+	require.Contains(t, err.Error(), "API returned 401")
+}
+
+func TestAccountTestService_KiroTransientRetryCountRetries5xx(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	account := &Account{
+		ID:          24,
+		Name:        "kiro-retry-503",
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":               "kiro-access-token",
+			"profile_arn":                "arn:aws:codewhisperer:us-east-1:123456789012:profile/RETRY503",
+			"kiro_transient_retry_count": 1,
+		},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{24: account}}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusServiceUnavailable, `{"message":"busy"}`),
+			newJSONResponse(http.StatusUnauthorized, `{"type":"error","error":{"message":"invalid bearer token"}}`),
+		},
+	}
+	svc := &AccountTestService{
+		accountRepo:         repo,
+		kiroTokenProvider:   NewKiroTokenProvider(nil, nil, nil),
+		httpUpstream:        upstream,
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "claude-sonnet-4-6", "", AccountTestModeDefault)
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 2)
+	require.Contains(t, err.Error(), "API returned 401")
+}
+
 func TestAccountTestService_KiroIDCWithoutProfileArnOmitsProfileArnAndUsesDefaultRuntimeRegion(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()

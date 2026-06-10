@@ -481,7 +481,7 @@ func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, accoun
 	proxyURL := kiroProxyURL(account)
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
 	accountKey := buildKiroAccountKey(account)
-	maxRetries := 2
+	maxRetries := kiroTransientRetryAttempts(account)
 	for idx, endpoint := range endpoints {
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			req, err := newKiroJSONRequest(ctx, endpoint.URL, payload, currentToken, accountKey, buildKiroMachineID(account), endpoint.AmzTarget, account)
@@ -494,7 +494,14 @@ func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, accoun
 				return nil, err
 			}
 
-			if resp.StatusCode == http.StatusTooManyRequests || (resp.StatusCode >= 500 && resp.StatusCode < 600) {
+			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusRequestTimeout || (resp.StatusCode >= 500 && resp.StatusCode < 600) {
+				if attempt < maxRetries {
+					_ = resp.Body.Close()
+					if sleepErr := sleepKiroRetry(ctx, attempt); sleepErr != nil {
+						return nil, sleepErr
+					}
+					continue
+				}
 				if idx+1 < len(endpoints) {
 					_ = resp.Body.Close()
 					break
