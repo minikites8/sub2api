@@ -432,11 +432,25 @@
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                :available-quota-text="buildAvailableQuotaText(option as unknown as GroupOption)"
                 :description="(option as unknown as GroupOption).description"
                 :selected="selected"
               />
             </template>
           </Select>
+          <div
+            v-if="selectedGroupOption"
+            class="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-200"
+          >
+            <span class="font-medium">{{ t('keys.currentBalance') }}:</span>
+            <span class="ml-1">{{ formatCurrency(userBalance) }}</span>
+            <span class="mx-2 text-emerald-300 dark:text-emerald-700">/</span>
+            <span class="font-medium">{{ t('keys.effectiveRate') }}:</span>
+            <span class="ml-1">{{ formatMultiplier(selectedGroupEffectiveRate || 0) }}x</span>
+            <span class="mx-2 text-emerald-300 dark:text-emerald-700">/</span>
+            <span class="font-medium">{{ t('keys.groupAvailableQuotaLabel') }}:</span>
+            <span class="ml-1">{{ selectedGroupAvailableQuota }}</span>
+          </div>
         </div>
 
         <!-- Custom Key Section (only for create) -->
@@ -1027,6 +1041,7 @@
               :subscription-type="option.subscriptionType"
               :rate-multiplier="option.rate"
               :user-rate-multiplier="option.userRate"
+              :available-quota-text="buildAvailableQuotaText(option)"
               :description="option.description"
               :selected="
                 selectedKeyForGroup?.group_id === option.value ||
@@ -1048,6 +1063,7 @@
 	import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
+	import { useAuthStore } from '@/stores/auth'
 	import { useOnboardingStore } from '@/stores/onboarding'
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -1071,7 +1087,9 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
-import { formatDateTime } from '@/utils/format'
+import { formatCurrency, formatDateTime } from '@/utils/format'
+import { formatMultiplier } from '@/utils/formatters'
+import { getReverseAvailableQuota } from '@/utils/groupQuota'
 import { maskApiKey } from '@/utils/maskApiKey'
 import {
   buildCcSwitchImportDeeplink,
@@ -1096,6 +1114,7 @@ interface GroupOption {
 }
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
@@ -1159,6 +1178,28 @@ const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
+
+const userBalance = computed(() => authStore.user?.balance ?? 0)
+
+const getEffectiveGroupRate = (group: Pick<GroupOption, 'value' | 'rate' | 'userRate'> | null | undefined): number | null => {
+  if (!group) return null
+  return group.userRate ?? group.rate ?? null
+}
+
+const formatReverseAvailableQuota = (rate: number | null): string => {
+  const availableQuota = getReverseAvailableQuota(userBalance.value, rate)
+  if (availableQuota === null) return '--'
+  if (!Number.isFinite(availableQuota)) return t('common.unlimited')
+  return formatCurrency(availableQuota)
+}
+
+const buildAvailableQuotaText = (group: Pick<GroupOption, 'value' | 'rate' | 'userRate'> | null | undefined): string | null => {
+  const effectiveRate = getEffectiveGroupRate(group)
+  if (effectiveRate === null) return null
+  return t('keys.groupAvailableQuota', {
+    amount: formatReverseAvailableQuota(effectiveRate)
+  })
+}
 
 const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
   if (el instanceof HTMLElement) {
@@ -1253,6 +1294,15 @@ const groupOptions = computed(() =>
     platform: group.platform
   }))
 )
+
+const selectedGroupOption = computed(() => {
+  if (formData.value.group_id === null) return null
+  return groupOptions.value.find((option) => option.value === formData.value.group_id) ?? null
+})
+
+const selectedGroupEffectiveRate = computed(() => getEffectiveGroupRate(selectedGroupOption.value))
+
+const selectedGroupAvailableQuota = computed(() => formatReverseAvailableQuota(selectedGroupEffectiveRate.value))
 
 // Group dropdown search
 const groupSearchQuery = ref('')

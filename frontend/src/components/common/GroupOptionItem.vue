@@ -23,21 +23,29 @@
     </div>
 
     <!-- Right: rate pill + checkmark (vertically centered to first row) -->
-    <div class="flex shrink-0 items-center gap-2 pt-0.5">
-      <!-- Rate pill (platform color) -->
-      <span v-if="rateMultiplier !== undefined" :class="['inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', ratePillClass]">
-        <template v-if="hasCustomRate">
-          <span class="mr-1 line-through opacity-50">{{ rateMultiplier }}x</span>
-          <span class="font-bold">{{ userRateMultiplier }}x</span>
-        </template>
-        <template v-else>
-          {{ rateMultiplier }}x 倍率
-        </template>
-      </span>
+    <div class="flex shrink-0 items-start gap-2 pt-0.5">
+      <div class="flex flex-col items-end gap-1">
+        <!-- Rate pill (platform color) -->
+        <span v-if="rateMultiplier !== undefined" :class="['inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', ratePillClass]">
+          <template v-if="hasCustomRate">
+            <span class="mr-1 line-through opacity-50">{{ rateMultiplier }}x</span>
+            <span class="font-bold">{{ userRateMultiplier }}x</span>
+          </template>
+          <template v-else>
+            {{ rateMultiplier }}x 倍率
+          </template>
+        </span>
+        <span
+          v-if="availableQuotaText"
+          class="text-xs font-medium text-emerald-600 dark:text-emerald-400"
+        >
+          {{ availableQuotaText }}
+        </span>
+      </div>
       <!-- Checkmark -->
       <svg
         v-if="showCheckmark && selected"
-        class="h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"
+        class="mt-1 h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -63,13 +71,15 @@ interface Props {
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
+  availableQuotaText?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   selected: false,
   showCheckmark: true,
-  userRateMultiplier: null
+  userRateMultiplier: null,
+  availableQuotaText: null
 })
 
 // Whether user has a custom rate different from default
