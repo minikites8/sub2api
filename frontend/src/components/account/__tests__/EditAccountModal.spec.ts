@@ -167,6 +167,33 @@ function buildVertexAccount() {
   } as any
 }
 
+function buildKiroOAuthAccount() {
+  return {
+    id: 3,
+    name: 'Kiro OAuth',
+    notes: '',
+    platform: 'kiro',
+    type: 'oauth',
+    credentials: {
+      access_token: 'kiro-token',
+      profile_arn: 'arn:aws:codewhisperer:us-east-1:123456789012:profile/KIRO',
+      kiro_transient_retry_count: 5,
+      model_mapping: {
+        'claude-sonnet-4-6': 'claude-sonnet-4-6'
+      }
+    },
+    extra: {},
+    proxy_id: null,
+    concurrency: 1,
+    priority: 1,
+    rate_multiplier: 1,
+    status: 'active',
+    group_ids: [],
+    expires_at: null,
+    auto_pause_on_expired: false
+  } as any
+}
+
 function mountModal(account = buildAccount()) {
   return mount(EditAccountModal, {
     props: {
@@ -578,5 +605,33 @@ describe('EditAccountModal', () => {
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).not.toHaveBeenCalled()
+  })
+
+  it('rehydrates saved Kiro transient retry count when reopened', async () => {
+    const account = buildKiroOAuthAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    const retryInput = wrapper.get<HTMLInputElement>('input[type="number"].input')
+    expect(retryInput.element.value).toBe('5')
+
+    await retryInput.setValue('7')
+    expect(retryInput.element.value).toBe('7')
+
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+
+    const reopenedRetryInput = wrapper.get<HTMLInputElement>('input[type="number"].input')
+    expect(reopenedRetryInput.element.value).toBe('5')
+
+    await reopenedRetryInput.setValue('6')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.kiro_transient_retry_count).toBe(6)
   })
 })

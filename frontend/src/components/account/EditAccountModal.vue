@@ -3496,7 +3496,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     poolModeEnabled.value = false
     poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
     poolModeRetryStatusCodesInput.value = ''
-    kiroTransientRetryCount.value = DEFAULT_KIRO_TRANSIENT_RETRY_COUNT
+    if (newAccount.platform !== 'kiro') {
+      kiroTransientRetryCount.value = DEFAULT_KIRO_TRANSIENT_RETRY_COUNT
+    }
     customErrorCodesEnabled.value = false
     selectedErrorCodes.value = []
   }
