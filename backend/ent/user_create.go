@@ -82,6 +82,20 @@ func (_c *UserCreate) SetEmail(v string) *UserCreate {
 	return _c
 }
 
+// SetSignupIP sets the "signup_ip" field.
+func (_c *UserCreate) SetSignupIP(v string) *UserCreate {
+	_c.mutation.SetSignupIP(v)
+	return _c
+}
+
+// SetNillableSignupIP sets the "signup_ip" field if the given value is not nil.
+func (_c *UserCreate) SetNillableSignupIP(v *string) *UserCreate {
+	if v != nil {
+		_c.SetSignupIP(*v)
+	}
+	return _c
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (_c *UserCreate) SetPasswordHash(v string) *UserCreate {
 	_c.mutation.SetPasswordHash(v)
@@ -767,6 +781,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldEmail, field.TypeString, value)
 		_node.Email = value
 	}
+	if value, ok := _c.mutation.SignupIP(); ok {
+		_spec.SetField(user.FieldSignupIP, field.TypeString, value)
+		_node.SignupIP = &value
+	}
 	if value, ok := _c.mutation.PasswordHash(); ok {
 		_spec.SetField(user.FieldPasswordHash, field.TypeString, value)
 		_node.PasswordHash = value
@@ -1299,6 +1317,18 @@ func (u *UserUpsert) SetSignupSource(v string) *UserUpsert {
 	return u
 }
 
+// SetSignupIP sets the "signup_ip" field.
+func (u *UserUpsert) SetSignupIP(v string) *UserUpsert {
+	u.Set(user.FieldSignupIP, v)
+	return u
+}
+
+// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
+func (u *UserUpsert) UpdateSignupIP() *UserUpsert {
+	u.SetExcluded(user.FieldSignupIP)
+	return u
+}
+
 // UpdateSignupSource sets the "signup_source" field to the value that was provided on create.
 func (u *UserUpsert) UpdateSignupSource() *UserUpsert {
 	u.SetExcluded(user.FieldSignupSource)
@@ -1703,6 +1733,20 @@ func (u *UserUpsertOne) ClearTotpEnabledAt() *UserUpsertOne {
 func (u *UserUpsertOne) SetSignupSource(v string) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.SetSignupSource(v)
+	})
+}
+
+// SetSignupIP sets the "signup_ip" field.
+func (u *UserUpsertOne) SetSignupIP(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSignupIP(v)
+	})
+}
+
+// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateSignupIP() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSignupIP()
 	})
 }
 
@@ -2299,6 +2343,20 @@ func (u *UserUpsertBulk) ClearTotpEnabledAt() *UserUpsertBulk {
 func (u *UserUpsertBulk) SetSignupSource(v string) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.SetSignupSource(v)
+	})
+}
+
+// SetSignupIP sets the "signup_ip" field.
+func (u *UserUpsertBulk) SetSignupIP(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSignupIP(v)
+	})
+}
+
+// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateSignupIP() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSignupIP()
 	})
 }
 

@@ -38736,6 +38736,7 @@ type UserMutation struct {
 	updated_at                    *time.Time
 	deleted_at                    *time.Time
 	email                         *string
+	signup_ip                     *string
 	password_hash                 *string
 	role                          *string
 	balance                       *float64
@@ -39058,6 +39059,53 @@ func (m *UserMutation) OldEmail(ctx context.Context) (v string, err error) {
 // ResetEmail resets all changes to the "email" field.
 func (m *UserMutation) ResetEmail() {
 	m.email = nil
+}
+
+// SetSignupIP sets the "signup_ip" field.
+func (m *UserMutation) SetSignupIP(s string) {
+	m.signup_ip = &s
+}
+
+// SignupIP returns the value of the "signup_ip" field in the mutation.
+func (m *UserMutation) SignupIP() (r string, exists bool) {
+	v := m.signup_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSignupIP returns the old "signup_ip" field's value of the User entity.
+func (m *UserMutation) OldSignupIP(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSignupIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSignupIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSignupIP: %w", err)
+	}
+	return oldValue.SignupIP, nil
+}
+
+// ClearSignupIP clears the value of the "signup_ip" field.
+func (m *UserMutation) ClearSignupIP() {
+	m.signup_ip = nil
+	m.clearedFields[user.FieldSignupIP] = struct{}{}
+}
+
+// SignupIPCleared returns if the "signup_ip" field was cleared in this mutation.
+func (m *UserMutation) SignupIPCleared() bool {
+	_, ok := m.clearedFields[user.FieldSignupIP]
+	return ok
+}
+
+// ResetSignupIP resets all changes to the "signup_ip" field.
+func (m *UserMutation) ResetSignupIP() {
+	m.signup_ip = nil
+	delete(m.clearedFields, user.FieldSignupIP)
 }
 
 // SetPasswordHash sets the "password_hash" field.
@@ -40659,6 +40707,9 @@ func (m *UserMutation) Fields() []string {
 	if m.email != nil {
 		fields = append(fields, user.FieldEmail)
 	}
+	if m.signup_ip != nil {
+		fields = append(fields, user.FieldSignupIP)
+	}
 	if m.password_hash != nil {
 		fields = append(fields, user.FieldPasswordHash)
 	}
@@ -40732,6 +40783,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.DeletedAt()
 	case user.FieldEmail:
 		return m.Email()
+	case user.FieldSignupIP:
+		return m.SignupIP()
 	case user.FieldPasswordHash:
 		return m.PasswordHash()
 	case user.FieldRole:
@@ -40787,6 +40840,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldDeletedAt(ctx)
 	case user.FieldEmail:
 		return m.OldEmail(ctx)
+	case user.FieldSignupIP:
+		return m.OldSignupIP(ctx)
 	case user.FieldPasswordHash:
 		return m.OldPasswordHash(ctx)
 	case user.FieldRole:
@@ -40861,6 +40916,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEmail(v)
+		return nil
+	case user.FieldSignupIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSignupIP(v)
 		return nil
 	case user.FieldPasswordHash:
 		v, ok := value.(string)
@@ -41157,6 +41219,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldEmail:
 		m.ResetEmail()
+		return nil
+	case user.FieldSignupIP:
+		m.ResetSignupIP()
 		return nil
 	case user.FieldPasswordHash:
 		m.ResetPasswordHash()

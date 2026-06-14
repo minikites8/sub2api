@@ -1481,6 +1481,7 @@ var (
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "email", Type: field.TypeString, Size: 255},
+		{Name: "signup_ip", Type: field.TypeString, Nullable: true, Size: 45},
 		{Name: "password_hash", Type: field.TypeString, Size: 255},
 		{Name: "role", Type: field.TypeString, Size: 20, Default: "user"},
 		{Name: "balance", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
@@ -1516,6 +1517,11 @@ var (
 				Name:    "user_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{UsersColumns[3]},
+			},
+			{
+				Name:    "idx_users_signup_ip_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsersColumns[5], UsersColumns[1]},
 			},
 		},
 	}

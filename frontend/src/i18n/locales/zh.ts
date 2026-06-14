@@ -1868,6 +1868,7 @@ export default {
         usageAntigravity: '用量 (Antigravity)',
         concurrency: '并发数',
         status: '状态',
+        signupIp: '注册IP',
         lastActive: '最后活跃时间',
         lastUsed: '最后使用时间',
         created: '创建时间',

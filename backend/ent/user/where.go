@@ -75,6 +75,11 @@ func Email(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldEmail, v))
 }
 
+// SignupIP applies equality check predicate on the "signup_ip" field. It's identical to SignupIPEQ.
+func SignupIP(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSignupIP, v))
+}
+
 // PasswordHash applies equality check predicate on the "password_hash" field. It's identical to PasswordHashEQ.
 func PasswordHash(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldPasswordHash, v))
@@ -363,6 +368,71 @@ func EmailEqualFold(v string) predicate.User {
 // EmailContainsFold applies the ContainsFold predicate on the "email" field.
 func EmailContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldEmail, v))
+}
+
+// SignupIPEQ applies the EQ predicate on the "signup_ip" field.
+func SignupIPEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSignupIP, v))
+}
+
+// SignupIPNEQ applies the NEQ predicate on the "signup_ip" field.
+func SignupIPNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldSignupIP, v))
+}
+
+// SignupIPIn applies the In predicate on the "signup_ip" field.
+func SignupIPIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldSignupIP, vs...))
+}
+
+// SignupIPNotIn applies the NotIn predicate on the "signup_ip" field.
+func SignupIPNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldSignupIP, vs...))
+}
+
+// SignupIPGT applies the GT predicate on the "signup_ip" field.
+func SignupIPGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldSignupIP, v))
+}
+
+// SignupIPGTE applies the GTE predicate on the "signup_ip" field.
+func SignupIPGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldSignupIP, v))
+}
+
+// SignupIPLT applies the LT predicate on the "signup_ip" field.
+func SignupIPLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldSignupIP, v))
+}
+
+// SignupIPLTE applies the LTE predicate on the "signup_ip" field.
+func SignupIPLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldSignupIP, v))
+}
+
+// SignupIPContains applies the Contains predicate on the "signup_ip" field.
+func SignupIPContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldSignupIP, v))
+}
+
+// SignupIPHasPrefix applies the HasPrefix predicate on the "signup_ip" field.
+func SignupIPHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldSignupIP, v))
+}
+
+// SignupIPHasSuffix applies the HasSuffix predicate on the "signup_ip" field.
+func SignupIPHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldSignupIP, v))
+}
+
+// SignupIPEqualFold applies the EqualFold predicate on the "signup_ip" field.
+func SignupIPEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldSignupIP, v))
+}
+
+// SignupIPContainsFold applies the ContainsFold predicate on the "signup_ip" field.
+func SignupIPContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldSignupIP, v))
 }
 
 // PasswordHashEQ applies the EQ predicate on the "password_hash" field.

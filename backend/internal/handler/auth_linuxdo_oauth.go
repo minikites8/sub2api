@@ -19,6 +19,7 @@ import (
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -329,7 +330,7 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 			return
 		}
-		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "", "", "linuxdo")
+		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(service.WithSignupIP(c.Request.Context(), ip.GetClientIP(c)), email, username, "", "", "linuxdo")
 		if err == nil {
 			if err := applyPendingOAuthBinding(
 				c.Request.Context(),
@@ -561,7 +562,7 @@ func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode, "linuxdo")
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(service.WithSignupIP(c.Request.Context(), ip.GetClientIP(c)), email, username, req.InvitationCode, req.AffCode, "linuxdo")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

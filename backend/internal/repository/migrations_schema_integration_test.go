@@ -121,6 +121,7 @@ func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) 
 
 	requireColumn(t, tx, "auth_identity_migration_reports", "report_type", "character varying", 80, false)
 	requireColumn(t, tx, "users", "signup_source", "character varying", 20, false)
+	requireColumn(t, tx, "users", "signup_ip", "character varying", 45, true)
 	requireColumnDefaultContains(t, tx, "users", "signup_source", "email")
 	requireConstraintDefinitionContains(
 		t,
@@ -140,6 +141,7 @@ func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) 
 	requireForeignKeyOnDelete(t, tx, "identity_adoption_decisions", "pending_auth_session_id", "pending_auth_sessions", "CASCADE")
 	requireForeignKeyOnDelete(t, tx, "identity_adoption_decisions", "identity_id", "auth_identities", "SET NULL")
 
+	requireIndex(t, tx, "users", "idx_users_signup_ip_created_at")
 	requireIndex(t, tx, "payment_orders", "paymentorder_out_trade_no")
 	requirePartialUniqueIndexDefinition(t, tx, "payment_orders", "paymentorder_out_trade_no", "out_trade_no", "WHERE")
 	requireIndexAbsent(t, tx, "payment_orders", "paymentorder_out_trade_no_unique")

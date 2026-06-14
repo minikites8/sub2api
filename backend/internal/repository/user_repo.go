@@ -84,6 +84,7 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 
 	created, err := txClient.User.Create().
 		SetEmail(userIn.Email).
+		SetNillableSignupIP(userIn.SignupIP).
 		SetUsername(userIn.Username).
 		SetNotes(userIn.Notes).
 		SetPasswordHash(userIn.PasswordHash).
@@ -227,6 +228,7 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 
 	updateOp := txClient.User.UpdateOneID(userIn.ID).
 		SetEmail(userIn.Email).
+		SetNillableSignupIP(userIn.SignupIP).
 		SetUsername(userIn.Username).
 		SetNotes(userIn.Notes).
 		SetPasswordHash(userIn.PasswordHash).
@@ -978,6 +980,7 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 		return
 	}
 	dst.ID = src.ID
+	dst.SignupIP = src.SignupIP
 	dst.SignupSource = src.SignupSource
 	dst.LastLoginAt = src.LastLoginAt
 	dst.LastActiveAt = src.LastActiveAt

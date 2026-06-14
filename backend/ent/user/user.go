@@ -23,6 +23,8 @@ const (
 	FieldDeletedAt = "deleted_at"
 	// FieldEmail holds the string denoting the email field in the database.
 	FieldEmail = "email"
+	// FieldSignupIP holds the string denoting the signup_ip field in the database.
+	FieldSignupIP = "signup_ip"
 	// FieldPasswordHash holds the string denoting the password_hash field in the database.
 	FieldPasswordHash = "password_hash"
 	// FieldRole holds the string denoting the role field in the database.
@@ -196,6 +198,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldDeletedAt,
 	FieldEmail,
+	FieldSignupIP,
 	FieldPasswordHash,
 	FieldRole,
 	FieldBalance,
@@ -313,6 +316,11 @@ func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByEmail orders the results by the email field.
 func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEmail, opts...).ToFunc()
+}
+
+// BySignupIP orders the results by the signup_ip field.
+func BySignupIP(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSignupIP, opts...).ToFunc()
 }
 
 // ByPasswordHash orders the results by the password_hash field.

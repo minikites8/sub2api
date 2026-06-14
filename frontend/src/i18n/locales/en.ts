@@ -1847,6 +1847,7 @@ export default {
         usageAntigravity: 'Usage (Antigravity)',
         concurrency: 'Concurrency',
         status: 'Status',
+        signupIp: 'Signup IP',
         lastActive: 'Last Active',
         lastUsed: 'Last Used',
         created: 'Created',

@@ -151,6 +151,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 
 	user := &User{
 		Email:        email,
+		SignupIP:     signupIPFromContext(ctx),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
@@ -165,6 +166,10 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		}
 		slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
+	}
+	s.applySignupIPRiskControl(ctx, user)
+	if !user.IsActive() {
+		return nil, user, ErrUserNotActive
 	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
@@ -232,6 +237,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	}
 	user := &User{
 		Email:        email,
+		SignupIP:     signupIPFromContext(ctx),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
@@ -246,6 +252,10 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 			return nil, nil, ErrEmailExists
 		}
 		return nil, nil, ErrServiceUnavailable
+	}
+	s.applySignupIPRiskControl(ctx, user)
+	if !user.IsActive() {
+		return nil, user, ErrUserNotActive
 	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")

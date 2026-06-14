@@ -1702,7 +1702,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	}
 
 	tokenPair, user, err := h.authService.RegisterOAuthEmailAccount(
-		c.Request.Context(),
+		service.WithSignupIP(c.Request.Context(), ip.GetClientIP(c)),
 		email,
 		req.Password,
 		strings.TrimSpace(req.VerifyCode),

@@ -80,6 +80,26 @@ func (_u *UserUpdate) SetNillableEmail(v *string) *UserUpdate {
 	return _u
 }
 
+// SetSignupIP sets the "signup_ip" field.
+func (_u *UserUpdate) SetSignupIP(v string) *UserUpdate {
+	_u.mutation.SetSignupIP(v)
+	return _u
+}
+
+// SetNillableSignupIP sets the "signup_ip" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableSignupIP(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetSignupIP(*v)
+	}
+	return _u
+}
+
+// ClearSignupIP clears the value of the "signup_ip" field.
+func (_u *UserUpdate) ClearSignupIP() *UserUpdate {
+	_u.mutation.ClearSignupIP()
+	return _u
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (_u *UserUpdate) SetPasswordHash(v string) *UserUpdate {
 	_u.mutation.SetPasswordHash(v)
@@ -985,6 +1005,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Email(); ok {
 		_spec.SetField(user.FieldEmail, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.SignupIP(); ok {
+		_spec.SetField(user.FieldSignupIP, field.TypeString, value)
+	}
+	if _u.mutation.SignupIPCleared() {
+		_spec.ClearField(user.FieldSignupIP, field.TypeString)
+	}
 	if value, ok := _u.mutation.PasswordHash(); ok {
 		_spec.SetField(user.FieldPasswordHash, field.TypeString, value)
 	}
@@ -1726,6 +1752,26 @@ func (_u *UserUpdateOne) SetNillableEmail(v *string) *UserUpdateOne {
 	if v != nil {
 		_u.SetEmail(*v)
 	}
+	return _u
+}
+
+// SetSignupIP sets the "signup_ip" field.
+func (_u *UserUpdateOne) SetSignupIP(v string) *UserUpdateOne {
+	_u.mutation.SetSignupIP(v)
+	return _u
+}
+
+// SetNillableSignupIP sets the "signup_ip" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableSignupIP(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetSignupIP(*v)
+	}
+	return _u
+}
+
+// ClearSignupIP clears the value of the "signup_ip" field.
+func (_u *UserUpdateOne) ClearSignupIP() *UserUpdateOne {
+	_u.mutation.ClearSignupIP()
 	return _u
 }
 
@@ -2663,6 +2709,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.Email(); ok {
 		_spec.SetField(user.FieldEmail, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SignupIP(); ok {
+		_spec.SetField(user.FieldSignupIP, field.TypeString, value)
+	}
+	if _u.mutation.SignupIPCleared() {
+		_spec.ClearField(user.FieldSignupIP, field.TypeString)
 	}
 	if value, ok := _u.mutation.PasswordHash(); ok {
 		_spec.SetField(user.FieldPasswordHash, field.TypeString, value)

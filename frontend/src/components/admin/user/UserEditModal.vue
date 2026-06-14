@@ -30,6 +30,12 @@
         <input v-model="form.username" type="text" class="input" />
       </div>
       <div>
+        <label class="input-label">{{ t('admin.users.columns.signupIp') }}</label>
+        <div class="input flex items-center font-mono text-sm text-gray-500 dark:text-dark-300">
+          {{ user.signup_ip || '-' }}
+        </div>
+      </div>
+      <div>
         <label class="input-label">{{ t('admin.users.notes') }}</label>
         <textarea v-model="form.notes" rows="3" class="input"></textarea>
       </div>

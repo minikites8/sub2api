@@ -168,6 +168,7 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 	}
 	user := &User{
 		Email:        email,
+		SignupIP:     signupIPFromContext(ctx),
 		Username:     strings.TrimSpace(username),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
@@ -186,6 +187,10 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 			return existing, nil
 		}
 		return nil, ErrServiceUnavailable
+	}
+	s.applySignupIPRiskControl(ctx, user)
+	if !user.IsActive() {
+		return user, ErrUserNotActive
 	}
 	s.postAuthUserBootstrap(ctx, user, providerType, false)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")

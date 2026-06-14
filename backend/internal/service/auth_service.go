@@ -15,6 +15,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -50,6 +51,15 @@ const maxTokenLength = 8192
 
 // refreshTokenPrefix is the prefix for refresh tokens to distinguish them from access tokens.
 const refreshTokenPrefix = "rt_"
+
+const (
+	signupIPDisableThreshold = 3
+	signupIPWindow           = 24 * time.Hour
+)
+
+type authContextKey string
+
+const authContextKeySignupIP authContextKey = "auth_signup_ip"
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
@@ -119,6 +129,25 @@ func NewAuthService(
 		defaultSubAssigner:    defaultSubAssigner,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 	}
+}
+
+func WithSignupIP(ctx context.Context, signupIP string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	signupIP = strings.TrimSpace(signupIP)
+	if signupIP == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, authContextKeySignupIP, signupIP)
+}
+
+func signupIPFromContext(ctx context.Context) *string {
+	if ctx == nil {
+		return nil
+	}
+	raw, _ := ctx.Value(authContextKeySignupIP).(string)
+	return optionalTrimmedStringPtr(raw)
 }
 
 func (s *AuthService) EntClient() *dbent.Client {
@@ -212,6 +241,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 创建用户
 	user := &User{
 		Email:        email,
+		SignupIP:     signupIPFromContext(ctx),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
@@ -227,6 +257,10 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		}
 		logger.LegacyPrintf("service.auth", "[Auth] Database error creating user: %v", err)
 		return "", nil, ErrServiceUnavailable
+	}
+	s.applySignupIPRiskControl(ctx, user)
+	if !user.IsActive() {
+		return "", user, ErrUserNotActive
 	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
@@ -527,6 +561,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 
 			newUser := &User{
 				Email:        email,
+				SignupIP:     signupIPFromContext(ctx),
 				Username:     username,
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
@@ -551,6 +586,10 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				}
 			} else {
 				user = newUser
+				s.applySignupIPRiskControl(ctx, user)
+				if !user.IsActive() {
+					return "", user, ErrUserNotActive
+				}
 				s.postAuthUserBootstrap(ctx, user, signupSource, false)
 				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 				// snapshot user × platform quota（fail-open）
@@ -664,6 +703,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 
 			newUser := &User{
 				Email:        email,
+				SignupIP:     signupIPFromContext(ctx),
 				Username:     username,
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
@@ -695,6 +735,14 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 						return nil, nil, ErrServiceUnavailable
 					}
 				} else {
+					s.applySignupIPRiskControl(txCtx, newUser)
+					if !newUser.IsActive() {
+						if err := tx.Commit(); err != nil {
+							logger.LegacyPrintf("service.auth", "[Auth] Failed to commit oauth registration transaction after signup IP disable: %v", err)
+							return nil, nil, ErrServiceUnavailable
+						}
+						return nil, newUser, ErrUserNotActive
+					}
 					if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, newUser.ID); err != nil {
 						return nil, nil, ErrInvitationCodeInvalid
 					}
@@ -723,6 +771,10 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					}
 				} else {
 					user = newUser
+					s.applySignupIPRiskControl(ctx, user)
+					if !user.IsActive() {
+						return nil, user, ErrUserNotActive
+					}
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
@@ -1096,6 +1148,50 @@ func buildEmailSuffixNotAllowedError(whitelist []string) error {
 	})
 }
 
+func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) {
+	if s == nil || s.entClient == nil || user == nil || user.ID <= 0 || user.SignupIP == nil {
+		return
+	}
+	signupIP := strings.TrimSpace(*user.SignupIP)
+	if signupIP == "" {
+		return
+	}
+
+	client := s.entClient
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		client = tx.Client()
+	}
+
+	windowStart := time.Now().Add(-signupIPWindow)
+	users, err := client.User.Query().
+		Where(
+			dbuser.SignupIPEQ(signupIP),
+			dbuser.CreatedAtGTE(windowStart),
+		).
+		Order(dbent.Asc(dbuser.FieldCreatedAt), dbent.Asc(dbuser.FieldID)).
+		All(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control query failed: user=%d ip=%s err=%v", user.ID, signupIP, err)
+		return
+	}
+	if len(users) < signupIPDisableThreshold {
+		return
+	}
+
+	for idx, item := range users {
+		if idx == 0 || item.Status == StatusDisabled {
+			continue
+		}
+		if _, err := client.User.UpdateOneID(item.ID).SetStatus(StatusDisabled).Save(ctx); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control disable failed: user=%d ip=%s err=%v", item.ID, signupIP, err)
+			continue
+		}
+		if item.ID == user.ID {
+			user.Status = StatusDisabled
+		}
+	}
+}
+
 // ValidateToken 验证JWT token并返回用户声明
 func (s *AuthService) ValidateToken(tokenString string) (*JWTClaims, error) {
 	// 先做长度校验，尽早拒绝异常超长 token，降低 DoS 风险。
@@ -1160,6 +1256,9 @@ func isReservedEmail(email string) bool {
 // GenerateToken 生成JWT access token
 // 使用新的access_token_expire_minutes配置项（如果配置了），否则回退到expire_hour
 func (s *AuthService) GenerateToken(user *User) (string, error) {
+	if user == nil || !user.IsActive() {
+		return "", ErrUserNotActive
+	}
 	now := time.Now()
 	var expiresAt time.Time
 	if s.cfg.JWT.AccessTokenExpireMinutes > 0 {
@@ -1417,6 +1516,9 @@ type TokenPairWithUser struct {
 // GenerateTokenPair 生成Access Token和Refresh Token对
 // familyID: 可选的Token家族ID，用于Token轮转时保持家族关系
 func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyID string) (*TokenPair, error) {
+	if user == nil || !user.IsActive() {
+		return nil, ErrUserNotActive
+	}
 	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, errors.New("refresh token cache not configured")

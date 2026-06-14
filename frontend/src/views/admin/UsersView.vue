@@ -571,6 +571,12 @@
             </span>
           </template>
 
+          <template #cell-signup_ip="{ value }">
+            <span class="font-mono text-xs text-gray-500 dark:text-dark-400">
+              {{ value || '-' }}
+            </span>
+          </template>
+
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <!-- Edit Button -->
@@ -841,6 +847,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
+  { key: 'signup_ip', label: t('admin.users.columns.signupIp'), sortable: false },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },
   { key: 'created_at', label: t('admin.users.columns.created'), sortable: true },

@@ -15,6 +15,7 @@ func UserFromServiceShallow(u *service.User) *User {
 	return &User{
 		ID:                         u.ID,
 		Email:                      u.Email,
+		SignupIP:                   u.SignupIP,
 		Username:                   u.Username,
 		Role:                       u.Role,
 		Balance:                    u.Balance,

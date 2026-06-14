@@ -40,6 +40,10 @@ func (User) Fields() []ent.Field {
 		field.String("email").
 			MaxLen(255).
 			NotEmpty(),
+		field.String("signup_ip").
+			MaxLen(45).
+			Optional().
+			Nillable(),
 		field.String("password_hash").
 			MaxLen(255).
 			NotEmpty(),
@@ -139,6 +143,7 @@ func (User) Indexes() []ent.Index {
 	return []ent.Index{
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
+		index.Fields("signup_ip", "created_at"),
 		index.Fields("deleted_at"),
 	}
 }

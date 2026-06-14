@@ -94,6 +94,7 @@ export interface User {
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
   subscriptions?: UserSubscription[] // User's active subscriptions
+  signup_ip?: string | null
   last_active_at?: string | null
   created_at: string
   updated_at: string

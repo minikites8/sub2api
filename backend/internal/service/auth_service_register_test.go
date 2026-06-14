@@ -315,6 +315,23 @@ func TestAuthService_Register_DoesNotSnapshotOnDisabled(t *testing.T) {
 	require.Empty(t, quotaRepo.bulkInsertCalls, "registration rejected before user creation must not snapshot")
 }
 
+func TestAuthService_Register_PersistsSignupIPFromContext(t *testing.T) {
+	repo := &userRepoStub{nextID: 78}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+
+	ctx := WithSignupIP(context.Background(), " 1.2.3.4 ")
+	_, user, err := service.Register(ctx, "signup-ip@test.com", "password")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Len(t, repo.created, 1)
+	require.NotNil(t, repo.created[0].SignupIP)
+	require.Equal(t, "1.2.3.4", *repo.created[0].SignupIP)
+	require.NotNil(t, user.SignupIP)
+	require.Equal(t, "1.2.3.4", *user.SignupIP)
+}
+
 func TestAuthService_Register_EmailVerifyEnabledButServiceNotConfigured(t *testing.T) {
 	repo := &userRepoStub{}
 	// 邮件验证开启但 emailCache 为 nil（emailService 未配置）

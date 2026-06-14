@@ -75,7 +75,11 @@ func TestAuthIdentityFoundationSchemas(t *testing.T) {
 	requireHasUniqueIndex(t, adoptionDecision, "pending_auth_session_id")
 
 	userSchema := requireSchema(t, schemas, "User")
-	requireSchemaFields(t, userSchema, "signup_source", "last_login_at", "last_active_at")
+	requireSchemaFields(t, userSchema, "signup_ip", "signup_source", "last_login_at", "last_active_at")
+	signupIP := requireSchemaField(t, userSchema, "signup_ip")
+	require.Equal(t, field.TypeString, signupIP.Info.Type)
+	require.True(t, signupIP.Optional)
+	require.True(t, signupIP.Nillable)
 	signupSource := requireSchemaField(t, userSchema, "signup_source")
 	require.Equal(t, field.TypeString, signupSource.Info.Type)
 	require.True(t, signupSource.Default)
