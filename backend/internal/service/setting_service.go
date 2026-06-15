@@ -1192,6 +1192,12 @@ type PublicSettingsInjectionPayload struct {
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
 }
 
+const (
+	defaultSignupIPRiskControlThreshold    = 3
+	defaultSignupIPDisablePreviousAccounts = true
+	defaultSignupIPKeepPreviousAccounts    = 1
+)
+
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
 // This implements the web.PublicSettingsProvider interface.
 func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any, error) {
@@ -1677,6 +1683,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
 	updates[SettingKeyFrontendURL] = settings.FrontendURL
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
+	if settings.SignupIPRiskControlThreshold < 1 {
+		settings.SignupIPRiskControlThreshold = 1
+	}
+	if settings.SignupIPKeepPreviousAccounts < 0 {
+		settings.SignupIPKeepPreviousAccounts = 0
+	}
+	updates[SettingKeySignupIPRiskControlThreshold] = strconv.Itoa(settings.SignupIPRiskControlThreshold)
+	updates[SettingKeySignupIPDisablePreviousAccounts] = strconv.FormatBool(settings.SignupIPDisablePreviousAccounts)
+	updates[SettingKeySignupIPKeepPreviousAccounts] = strconv.Itoa(settings.SignupIPKeepPreviousAccounts)
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
 	settings.LoginAgreementMode = normalizeLoginAgreementMode(settings.LoginAgreementMode)
 	settings.LoginAgreementUpdatedAt = strings.TrimSpace(settings.LoginAgreementUpdatedAt)
@@ -2195,6 +2210,30 @@ func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
 		return false
 	}
 	return value == "true"
+}
+
+func (s *SettingService) GetSignupIPRiskControlThreshold(ctx context.Context) int {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySignupIPRiskControlThreshold)
+	if err != nil {
+		return defaultSignupIPRiskControlThreshold
+	}
+	return parseSignupIPRiskControlThreshold(value)
+}
+
+func (s *SettingService) GetSignupIPDisablePreviousAccounts(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySignupIPDisablePreviousAccounts)
+	if err != nil {
+		return defaultSignupIPDisablePreviousAccounts
+	}
+	return parseSignupIPDisablePreviousAccounts(value)
+}
+
+func (s *SettingService) GetSignupIPKeepPreviousAccounts(ctx context.Context) int {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySignupIPKeepPreviousAccounts)
+	if err != nil {
+		return defaultSignupIPKeepPreviousAccounts
+	}
+	return parseSignupIPKeepPreviousAccounts(value)
 }
 
 // IsBackendModeEnabled checks if backend mode is enabled
@@ -2744,6 +2783,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoEmailPath:              "",
 		SettingKeyOIDCConnectUserInfoIDPath:                 "",
 		SettingKeyOIDCConnectUserInfoUsernamePath:           "",
+		SettingKeySignupIPRiskControlThreshold:              strconv.Itoa(defaultSignupIPRiskControlThreshold),
+		SettingKeySignupIPDisablePreviousAccounts:           strconv.FormatBool(defaultSignupIPDisablePreviousAccounts),
+		SettingKeySignupIPKeepPreviousAccounts:              strconv.Itoa(defaultSignupIPKeepPreviousAccounts),
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
@@ -2834,8 +2876,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingPaymentVisibleMethodAlipayEnabled:     "false",
 		SettingPaymentVisibleMethodWxpayEnabled:      "false",
 		openAIAdvancedSchedulerSettingKey:            "false",
-
-		SettingKeyAllowUserViewErrorRequests: "false",
+		SettingKeyAllowUserViewErrorRequests:         "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -2863,6 +2904,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PasswordResetEnabled:             emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
 		FrontendURL:                      settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
+		SignupIPDisablePreviousAccounts:  parseSignupIPDisablePreviousAccounts(settings[SettingKeySignupIPDisablePreviousAccounts]),
+		SignupIPKeepPreviousAccounts:     parseSignupIPKeepPreviousAccounts(settings[SettingKeySignupIPKeepPreviousAccounts]),
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
 		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true",
 		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
@@ -2913,6 +2956,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if rpm, err := strconv.Atoi(settings[SettingKeyDefaultUserRPMLimit]); err == nil && rpm >= 0 {
 		result.DefaultUserRPMLimit = rpm
 	}
+	result.SignupIPRiskControlThreshold = parseSignupIPRiskControlThreshold(settings[SettingKeySignupIPRiskControlThreshold])
 
 	// 解析浮点数类型
 	if balance, err := strconv.ParseFloat(settings[SettingKeyDefaultBalance], 64); err == nil {
@@ -3396,6 +3440,30 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
 	return result
+}
+
+func parseSignupIPRiskControlThreshold(raw string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value < 1 {
+		return defaultSignupIPRiskControlThreshold
+	}
+	return value
+}
+
+func parseSignupIPDisablePreviousAccounts(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return defaultSignupIPDisablePreviousAccounts
+	}
+	return trimmed == "true"
+}
+
+func parseSignupIPKeepPreviousAccounts(raw string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value < 0 {
+		return defaultSignupIPKeepPreviousAccounts
+	}
+	return value
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

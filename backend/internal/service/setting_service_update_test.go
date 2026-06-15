@@ -304,6 +304,31 @@ func TestSettingService_UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig(
 	require.True(t, cfg.TrustForwardedIPForAPIKeyACL())
 }
 
+func TestSettingService_UpdateSettings_SignupIPRiskControl(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		SignupIPRiskControlThreshold:    5,
+		SignupIPDisablePreviousAccounts: false,
+		SignupIPKeepPreviousAccounts:    2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "5", repo.updates[SettingKeySignupIPRiskControlThreshold])
+	require.Equal(t, "false", repo.updates[SettingKeySignupIPDisablePreviousAccounts])
+	require.Equal(t, "2", repo.updates[SettingKeySignupIPKeepPreviousAccounts])
+}
+
+func TestSettingService_ParseSettings_SignupIPRiskControlDefaults(t *testing.T) {
+	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
+
+	got := svc.parseSettings(map[string]string{})
+
+	require.Equal(t, defaultSignupIPRiskControlThreshold, got.SignupIPRiskControlThreshold)
+	require.Equal(t, defaultSignupIPDisablePreviousAccounts, got.SignupIPDisablePreviousAccounts)
+	require.Equal(t, defaultSignupIPKeepPreviousAccounts, got.SignupIPKeepPreviousAccounts)
+}
+
 func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfigWhenMissing(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Security.TrustForwardedIPForAPIKeyACL = true

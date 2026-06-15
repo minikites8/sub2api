@@ -53,8 +53,7 @@ const maxTokenLength = 8192
 const refreshTokenPrefix = "rt_"
 
 const (
-	signupIPDisableThreshold = 3
-	signupIPWindow           = 24 * time.Hour
+	signupIPWindow = 24 * time.Hour
 )
 
 type authContextKey string
@@ -1174,12 +1173,35 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 		logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control query failed: user=%d ip=%s err=%v", user.ID, signupIP, err)
 		return
 	}
-	if len(users) < signupIPDisableThreshold {
+	threshold := defaultSignupIPRiskControlThreshold
+	disablePreviousAccounts := defaultSignupIPDisablePreviousAccounts
+	keepPreviousAccounts := defaultSignupIPKeepPreviousAccounts
+	if s.settingService != nil {
+		threshold = s.settingService.GetSignupIPRiskControlThreshold(ctx)
+		disablePreviousAccounts = s.settingService.GetSignupIPDisablePreviousAccounts(ctx)
+		keepPreviousAccounts = s.settingService.GetSignupIPKeepPreviousAccounts(ctx)
+	}
+	if len(users) < threshold {
 		return
+	}
+	if keepPreviousAccounts < 0 {
+		keepPreviousAccounts = 0
+	}
+
+	currentUserIndex := -1
+	for idx, item := range users {
+		if item.ID == user.ID {
+			currentUserIndex = idx
+			break
+		}
 	}
 
 	for idx, item := range users {
-		if idx == 0 || item.Status == StatusDisabled {
+		shouldDisable := item.ID == user.ID
+		if disablePreviousAccounts && idx != currentUserIndex && idx >= keepPreviousAccounts {
+			shouldDisable = true
+		}
+		if !shouldDisable || item.Status == StatusDisabled {
 			continue
 		}
 		if _, err := client.User.UpdateOneID(item.ID).SetStatus(StatusDisabled).Save(ctx); err != nil {

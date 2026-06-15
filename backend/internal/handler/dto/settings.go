@@ -34,6 +34,9 @@ type SystemSettings struct {
 	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
 	FrontendURL                      string                   `json:"frontend_url"`
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
+	SignupIPRiskControlThreshold     int                      `json:"signup_ip_risk_control_threshold"`
+	SignupIPDisablePreviousAccounts  bool                     `json:"signup_ip_disable_previous_accounts"`
+	SignupIPKeepPreviousAccounts     int                      `json:"signup_ip_keep_previous_accounts"`
 	TotpEnabled                      bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`

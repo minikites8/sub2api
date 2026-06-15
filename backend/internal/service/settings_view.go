@@ -19,6 +19,9 @@ type SystemSettings struct {
 	PasswordResetEnabled             bool
 	FrontendURL                      string
 	InvitationCodeEnabled            bool
+	SignupIPRiskControlThreshold     int
+	SignupIPDisablePreviousAccounts  bool
+	SignupIPKeepPreviousAccounts     int
 	TotpEnabled                      bool // TOTP 双因素认证
 	LoginAgreementEnabled            bool
 	LoginAgreementMode               string

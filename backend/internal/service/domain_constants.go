@@ -131,6 +131,9 @@ const (
 	SettingKeyPasswordResetEnabled             = "password_reset_enabled"              // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                      = "frontend_url"                        // 前端基础URL，用于生成邮件中的重置密码链接
 	SettingKeyInvitationCodeEnabled            = "invitation_code_enabled"             // 是否启用邀请码注册
+	SettingKeySignupIPRiskControlThreshold     = "signup_ip_risk_control_threshold"    // 同一IP 24小时内触发封禁的注册次数阈值
+	SettingKeySignupIPDisablePreviousAccounts  = "signup_ip_disable_previous_accounts" // 触发时是否同时封禁更早的同IP账号
+	SettingKeySignupIPKeepPreviousAccounts     = "signup_ip_keep_previous_accounts"    // 触发时保留的最早同IP旧账号数量
 	SettingKeyAffiliateEnabled                 = "affiliate_enabled"                   // 邀请返利功能总开关
 	SettingKeyAffiliateRebateRate              = "affiliate_rebate_rate"               // 邀请返利比例（百分比，0-100）
 	SettingKeyAffiliateRebateFreezeHours       = "affiliate_rebate_freeze_hours"       // 返利冻结期（小时，0=不冻结）

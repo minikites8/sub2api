@@ -1484,6 +1484,59 @@
                 </div>
                 <Toggle v-model="form.invitation_code_enabled" />
               </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.registration.signupIPRiskControlThreshold") }}
+                </label>
+                <input
+                  v-model.number="form.signup_ip_risk_control_threshold"
+                  type="number"
+                  min="1"
+                  class="input w-32"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.registration.signupIPRiskControlThresholdHint") }}
+                </p>
+              </div>
+
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.registration.signupIPDisablePreviousAccounts")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.registration.signupIPDisablePreviousAccountsHint")
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.signup_ip_disable_previous_accounts" />
+              </div>
+
+              <div
+                v-if="form.signup_ip_disable_previous_accounts"
+                class="border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.registration.signupIPKeepPreviousAccounts") }}
+                </label>
+                <input
+                  v-model.number="form.signup_ip_keep_previous_accounts"
+                  type="number"
+                  min="0"
+                  class="input w-32"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.registration.signupIPKeepPreviousAccountsHint") }}
+                </p>
+              </div>
               <!-- Password Reset - Only show when email verification is enabled -->
               <div
                 v-if="form.email_verify_enabled"
@@ -7038,6 +7091,9 @@ const form = reactive<SettingsForm>({
   promo_code_enabled: true,
   invitation_code_enabled: false,
   password_reset_enabled: false,
+  signup_ip_risk_control_threshold: 3,
+  signup_ip_disable_previous_accounts: true,
+  signup_ip_keep_previous_accounts: 1,
   totp_enabled: false,
   totp_encryption_key_configured: false,
   login_agreement_enabled: false,
@@ -8189,6 +8245,12 @@ async function saveSettings() {
         ),
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
+      signup_ip_risk_control_threshold:
+        Math.max(1, Math.floor(Number(form.signup_ip_risk_control_threshold) || 1)),
+      signup_ip_disable_previous_accounts:
+        form.signup_ip_disable_previous_accounts,
+      signup_ip_keep_previous_accounts:
+        Math.max(0, Math.floor(Number(form.signup_ip_keep_previous_accounts) || 0)),
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
       login_agreement_enabled: form.login_agreement_enabled,
