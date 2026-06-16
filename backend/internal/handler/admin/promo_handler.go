@@ -23,7 +23,7 @@ func NewPromoHandler(promoService *service.PromoService) *PromoHandler {
 
 type CreatePromoCodeRequest struct {
 	Code                         string   `json:"code"`
-	BonusAmount                  float64  `json:"bonus_amount" binding:"required,min=0"`
+	BonusAmount                  *float64 `json:"bonus_amount" binding:"required,min=0"`
 	FirstRechargeBonusAmount     *float64 `json:"first_recharge_bonus_amount" binding:"omitempty,min=0"`
 	FirstRechargeDiscountPercent *float64 `json:"first_recharge_discount_percent" binding:"omitempty,min=0.01,max=100"`
 	FirstRechargeDiscountTimes   *int     `json:"first_recharge_discount_times" binding:"omitempty,min=0"`
@@ -99,7 +99,7 @@ func (h *PromoHandler) Create(c *gin.Context) {
 
 	input := &service.CreatePromoCodeInput{
 		Code:                         req.Code,
-		BonusAmount:                  req.BonusAmount,
+		BonusAmount:                  *req.BonusAmount,
 		FirstRechargeBonusAmount:     req.FirstRechargeBonusAmount,
 		FirstRechargeDiscountPercent: req.FirstRechargeDiscountPercent,
 		FirstRechargeDiscountTimes:   req.FirstRechargeDiscountTimes,

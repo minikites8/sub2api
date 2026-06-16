@@ -441,7 +441,11 @@ const combinedCodeSuccessMessage = computed(() => {
   if (combinedCodeType.value === 'affiliate') {
     return t('auth.affCodeValid')
   }
-  return t('auth.promoCodeValid', { amount: combinedCodeValidation.bonusAmount?.toFixed(2) })
+  const bonusAmount = combinedCodeValidation.bonusAmount || 0
+  if (bonusAmount <= 0) {
+    return t('auth.promoCodeValidNoBonus')
+  }
+  return t('auth.promoCodeValid', { amount: bonusAmount.toFixed(2) })
 })
 
 const showOAuthLogin = computed(
@@ -787,23 +791,12 @@ async function validateCombinedCodeDebounced(code: string): Promise<void> {
   combinedCodeValidating.value = true
 
   try {
-    if (affiliateEnabled.value) {
-      const affResult = await validateAffCode(trimmedCode)
-      if (affResult.valid) {
-        combinedCodeValidation.valid = true
-        combinedCodeValidation.invalid = false
-        combinedCodeValidation.bonusAmount = null
-        combinedCodeValidation.message = ''
-        combinedCodeType.value = 'affiliate'
-        formData.aff_code = trimmedCode
-        formData.promo_code = ''
-        return
-      }
-    }
-
     if (promoCodeEnabled.value) {
-      const promoResult = await validatePromoCode(trimmedCode)
-      if (promoResult.valid) {
+      const promoResult = await validatePromoCode(trimmedCode).catch((error) => {
+        console.error('Failed to validate promo code:', error)
+        return null
+      })
+      if (promoResult?.valid) {
         combinedCodeValidation.valid = true
         combinedCodeValidation.invalid = false
         combinedCodeValidation.bonusAmount = promoResult.bonus_amount || 0
@@ -813,6 +806,23 @@ async function validateCombinedCodeDebounced(code: string): Promise<void> {
         if (manualAffiliateOverride.value) {
           formData.aff_code = ''
         }
+        return
+      }
+    }
+
+    if (affiliateEnabled.value) {
+      const affResult = await validateAffCode(trimmedCode).catch((error) => {
+        console.error('Failed to validate affiliate code:', error)
+        return null
+      })
+      if (affResult?.valid) {
+        combinedCodeValidation.valid = true
+        combinedCodeValidation.invalid = false
+        combinedCodeValidation.bonusAmount = null
+        combinedCodeValidation.message = ''
+        combinedCodeType.value = 'affiliate'
+        formData.aff_code = trimmedCode
+        formData.promo_code = ''
         return
       }
     }

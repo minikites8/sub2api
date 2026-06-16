@@ -151,9 +151,11 @@ func (s *PromoService) ApplyPromoCode(ctx context.Context, userID int64, code st
 		return ErrPromoCodeAlreadyUsed
 	}
 
-	// 增加用户余额
-	if err := s.userRepo.UpdateBalance(txCtx, userID, promoCode.BonusAmount); err != nil {
-		return fmt.Errorf("update user balance: %w", err)
+	// 增加用户余额；0 元注册赠送的优惠码仍会创建使用记录，用于后续充值优惠绑定。
+	if promoCode.BonusAmount != 0 {
+		if err := s.userRepo.UpdateBalance(txCtx, userID, promoCode.BonusAmount); err != nil {
+			return fmt.Errorf("update user balance: %w", err)
+		}
 	}
 
 	// 创建使用记录
