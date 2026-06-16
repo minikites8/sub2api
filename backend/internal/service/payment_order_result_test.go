@@ -219,6 +219,48 @@ func TestMaybeBuildWeChatOAuthRequiredResponse(t *testing.T) {
 	}
 }
 
+func TestMaybeBuildWeChatOAuthRequiredResponseIncludesFirstRechargePromo(t *testing.T) {
+	t.Setenv("PAYMENT_RESUME_SIGNING_KEY", "0123456789abcdef0123456789abcdef")
+
+	svc := newWeChatPaymentOAuthTestService(map[string]string{
+		SettingKeyWeChatConnectEnabled:             "true",
+		SettingKeyWeChatConnectAppID:               "wx123456",
+		SettingKeyWeChatConnectAppSecret:           "wechat-secret",
+		SettingKeyWeChatConnectMode:                "mp",
+		SettingKeyWeChatConnectScopes:              "snsapi_base",
+		SettingKeyWeChatConnectRedirectURL:         "https://api.example.com/api/v1/auth/oauth/wechat/callback",
+		SettingKeyWeChatConnectFrontendRedirectURL: "/auth/wechat/callback",
+	})
+
+	resp, err := svc.maybeBuildWeChatOAuthRequiredResponseForSelection(context.Background(), CreateOrderRequest{
+		Amount:          100,
+		PaymentType:     payment.TypeWxpay,
+		IsWeChatBrowser: true,
+		OrderType:       payment.OrderTypeBalance,
+	}, 110, 80, 0, nil, firstRechargeAmountPlan{
+		PromoCodeID:      9,
+		PromoCode:        "PARTNER8",
+		BaseCreditAmount: 100,
+		BonusAmount:      10,
+		DiscountPercent:  80,
+		DiscountSet:      true,
+		CreditAmount:     110,
+		PaymentAmount:    80,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected oauth-required response, got nil")
+	}
+	if resp.FirstRechargeBonusAmount != 10 {
+		t.Fatalf("bonus = %v, want 10", resp.FirstRechargeBonusAmount)
+	}
+	if resp.FirstRechargeDiscountPercent != 80 {
+		t.Fatalf("discount = %v, want 80", resp.FirstRechargeDiscountPercent)
+	}
+}
+
 func TestMaybeBuildWeChatOAuthRequiredResponseRequiresMPConfigInWeChat(t *testing.T) {
 	t.Parallel()
 
@@ -339,7 +381,7 @@ func TestMaybeBuildWeChatOAuthRequiredResponseForSelectionSkipsEasyPayProvider(t
 		OrderType:       payment.OrderTypeBalance,
 	}, 12.5, 12.88, 0.03, &payment.InstanceSelection{
 		ProviderKey: payment.TypeEasyPay,
-	})
+	}, firstRechargeAmountPlan{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

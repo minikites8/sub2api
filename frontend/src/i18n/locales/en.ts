@@ -4586,6 +4586,7 @@ export default {
       columns: {
         code: 'Code',
         bonusAmount: 'Bonus Amount',
+        firstRechargePromo: 'First Recharge',
         maxUses: 'Max Uses',
         usedCount: 'Used',
         usage: 'Usage',
@@ -4599,6 +4600,14 @@ export default {
       autoGenerate: 'auto-generate if empty',
       codePlaceholder: 'Enter promo code or leave empty',
       bonusAmount: 'Bonus Amount ($)',
+      firstRechargeBonusAmount: 'First Recharge Bonus',
+      firstRechargeBonusPlaceholder: 'e.g. 10',
+      firstRechargeDiscountRate: 'First Recharge Discount',
+      firstRechargeDiscountPlaceholder: 'e.g. 8',
+      firstRechargeBonusDisplay: '+${amount}',
+      firstRechargeDiscountDisplay: '{rate}x',
+      discountUnit: 'x',
+      noFirstRechargePromo: 'none',
       maxUses: 'Max Uses',
       zeroUnlimited: '0 = unlimited',
       expiresAt: 'Expires At',
@@ -4630,7 +4639,9 @@ export default {
       failedToCreate: 'Failed to create promo code',
       failedToUpdate: 'Failed to update promo code',
       failedToDelete: 'Failed to delete promo code',
-      failedToLoadUsages: 'Failed to load usage records'
+      failedToLoadUsages: 'Failed to load usage records',
+      errorBadFirstRechargeBonus: 'Please enter a non-negative first recharge bonus',
+      errorBadFirstRechargeDiscount: 'Please enter a first recharge discount between 0.01 and 10'
     },
 
     // Usage Records
@@ -5524,8 +5535,9 @@ export default {
             empty: 'No users with custom affiliate settings yet',
             customBadge: 'custom',
             useGlobal: 'use global',
+            none: 'none',
             resetTitle: 'Reset Custom Settings',
-            resetMessage: 'Reset all custom settings for {email}?\n• The exclusive rebate rate will be cleared (fall back to the global rate)\n• The invite code will be regenerated as a new system code (previously shared links will stop working)',
+            resetMessage: 'Reset all custom settings for {email}?\n- The exclusive rebate rate will be cleared\n- The invite code will be regenerated as a new system code',
             totalLabel: '{total} total',
             col: {
               email: 'Email',
@@ -5548,7 +5560,7 @@ export default {
             ratePlaceholder: 'e.g. 30',
             rateHint: '0-100. Leave empty (in edit mode) to clear and fall back to the global rate.',
             errorBadRate: 'Please enter a number between 0 and 100',
-            errorEmpty: 'Fill at least one: custom invite code or exclusive rebate rate',
+            errorEmpty: 'Fill at least one custom setting',
           },
           batchModal: {
             title: 'Batch Set Rate ({count} users selected)',

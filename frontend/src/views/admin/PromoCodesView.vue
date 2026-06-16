@@ -80,6 +80,13 @@
             </span>
           </template>
 
+          <template #cell-first_recharge_promo="{ row }">
+            <span v-if="formatFirstRechargePromo(row)" class="text-sm text-gray-700 dark:text-gray-300">
+              {{ formatFirstRechargePromo(row) }}
+            </span>
+            <span v-else class="text-sm text-gray-400">{{ t('admin.promo.noFirstRechargePromo') }}</span>
+          </template>
+
           <template #cell-usage="{ row }">
             <span class="text-sm text-gray-600 dark:text-gray-300">
               {{ row.used_count }} / {{ row.max_uses === 0 ? '∞' : row.max_uses }}
@@ -187,6 +194,40 @@
             class="input"
           />
         </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="input-label">
+              {{ t('admin.promo.firstRechargeBonusAmount') }}
+              <span class="ml-1 text-xs font-normal text-gray-400">({{ t('common.optional') }})</span>
+            </label>
+            <input
+              v-model.number="createForm.first_recharge_bonus_amount"
+              type="number"
+              step="0.01"
+              min="0"
+              class="input"
+              :placeholder="t('admin.promo.firstRechargeBonusPlaceholder')"
+            />
+          </div>
+          <div>
+            <label class="input-label">
+              {{ t('admin.promo.firstRechargeDiscountRate') }}
+              <span class="ml-1 text-xs font-normal text-gray-400">({{ t('common.optional') }})</span>
+            </label>
+            <div class="relative">
+              <input
+                v-model.number="createForm.first_recharge_discount_rate"
+                type="number"
+                step="0.01"
+                min="0.01"
+                max="10"
+                class="input pr-8"
+                :placeholder="t('admin.promo.firstRechargeDiscountPlaceholder')"
+              />
+              <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{{ t('admin.promo.discountUnit') }}</span>
+            </div>
+          </div>
+        </div>
         <div>
           <label class="input-label">
             {{ t('admin.promo.maxUses') }}
@@ -261,6 +302,40 @@
             required
             class="input"
           />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="input-label">
+              {{ t('admin.promo.firstRechargeBonusAmount') }}
+              <span class="ml-1 text-xs font-normal text-gray-400">({{ t('common.optional') }})</span>
+            </label>
+            <input
+              v-model.number="editForm.first_recharge_bonus_amount"
+              type="number"
+              step="0.01"
+              min="0"
+              class="input"
+              :placeholder="t('admin.promo.firstRechargeBonusPlaceholder')"
+            />
+          </div>
+          <div>
+            <label class="input-label">
+              {{ t('admin.promo.firstRechargeDiscountRate') }}
+              <span class="ml-1 text-xs font-normal text-gray-400">({{ t('common.optional') }})</span>
+            </label>
+            <div class="relative">
+              <input
+                v-model.number="editForm.first_recharge_discount_rate"
+                type="number"
+                step="0.01"
+                min="0.01"
+                max="10"
+                class="input pr-8"
+                :placeholder="t('admin.promo.firstRechargeDiscountPlaceholder')"
+              />
+              <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{{ t('admin.promo.discountUnit') }}</span>
+            </div>
+          </div>
         </div>
         <div>
           <label class="input-label">
@@ -393,7 +468,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
-import type { PromoCode, PromoCodeUsage } from '@/types'
+import type { CreatePromoCodeRequest, PromoCode, PromoCodeUsage, UpdatePromoCodeRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -451,6 +526,8 @@ const usagesTotal = ref(0)
 const createForm = reactive({
   code: '',
   bonus_amount: 1,
+  first_recharge_bonus_amount: '' as string | number,
+  first_recharge_discount_rate: '' as string | number,
   max_uses: 0,
   expires_at_str: '',
   notes: ''
@@ -459,6 +536,8 @@ const createForm = reactive({
 const editForm = reactive({
   code: '',
   bonus_amount: 0,
+  first_recharge_bonus_amount: '' as string | number,
+  first_recharge_discount_rate: '' as string | number,
   max_uses: 0,
   status: 'active' as 'active' | 'disabled',
   expires_at_str: '',
@@ -480,6 +559,7 @@ const statusOptions = computed(() => [
 const columns = computed<Column[]>(() => [
   { key: 'code', label: t('admin.promo.columns.code') },
   { key: 'bonus_amount', label: t('admin.promo.columns.bonusAmount'), sortable: true },
+  { key: 'first_recharge_promo', label: t('admin.promo.columns.firstRechargePromo') },
   { key: 'usage', label: t('admin.promo.columns.usage') },
   { key: 'status', label: t('admin.promo.columns.status'), sortable: true },
   { key: 'expires_at', label: t('admin.promo.columns.expiresAt'), sortable: true },
@@ -506,6 +586,83 @@ const getStatusLabel = (status: string, row: PromoCode) => {
     return t('admin.promo.statusMaxUsed')
   }
   return status === 'active' ? t('admin.promo.statusActive') : t('admin.promo.statusDisabled')
+}
+
+const parseOptionalNumber = (
+  raw: unknown,
+  min: number,
+  max: number,
+  messageKey: string
+): number | null | undefined => {
+  const s = String(raw ?? '').trim()
+  if (s === '') return null
+  const parsed = Number(s)
+  if (Number.isNaN(parsed) || parsed < min || parsed > max) {
+    appStore.showError(t(messageKey))
+    return undefined
+  }
+  return parsed
+}
+
+const formatDiscountRate = (percent: number): string =>
+  Number(percent / 10).toFixed(2).replace(/\.?0+$/, '')
+
+const formatFirstRechargePromo = (code: PromoCode): string => {
+  const parts: string[] = []
+  const bonus = Number(code.first_recharge_bonus_amount || 0)
+  const discount = Number(code.first_recharge_discount_percent || 0)
+  if (bonus > 0) {
+    parts.push(t('admin.promo.firstRechargeBonusDisplay', { amount: bonus.toFixed(2) }))
+  }
+  if (discount > 0) {
+    parts.push(t('admin.promo.firstRechargeDiscountDisplay', { rate: formatDiscountRate(discount) }))
+  }
+  return parts.join(' / ')
+}
+
+const applyFirstRechargePromoPayload = (
+  payload: {
+    first_recharge_bonus_amount?: number | null
+    first_recharge_discount_percent?: number | null
+    clear_first_recharge_bonus?: boolean
+    clear_first_recharge_discount?: boolean
+  },
+  form: {
+    first_recharge_bonus_amount: string | number
+    first_recharge_discount_rate: string | number
+  },
+  existing?: PromoCode | null
+): boolean => {
+  const bonus = parseOptionalNumber(
+    form.first_recharge_bonus_amount,
+    0,
+    Number.MAX_SAFE_INTEGER,
+    'admin.promo.errorBadFirstRechargeBonus'
+  )
+  if (bonus === undefined) return false
+  if (bonus === null) {
+    if (existing?.first_recharge_bonus_amount != null) {
+      payload.clear_first_recharge_bonus = true
+    }
+  } else {
+    payload.first_recharge_bonus_amount = bonus
+  }
+
+  const discountRate = parseOptionalNumber(
+    form.first_recharge_discount_rate,
+    0.01,
+    10,
+    'admin.promo.errorBadFirstRechargeDiscount'
+  )
+  if (discountRate === undefined) return false
+  if (discountRate === null) {
+    if (existing?.first_recharge_discount_percent != null) {
+      payload.clear_first_recharge_discount = true
+    }
+  } else {
+    payload.first_recharge_discount_percent = Number((discountRate * 10).toFixed(2))
+  }
+  return true
 }
 
 // API calls
@@ -595,13 +752,15 @@ const copyToClipboard = async (text: string) => {
 const handleCreate = async () => {
   creating.value = true
   try {
-    await adminAPI.promo.create({
+    const payload: CreatePromoCodeRequest = {
       code: createForm.code || undefined,
       bonus_amount: createForm.bonus_amount,
       max_uses: createForm.max_uses,
       expires_at: createForm.expires_at_str ? Math.floor(new Date(createForm.expires_at_str).getTime() / 1000) : undefined,
       notes: createForm.notes || undefined
-    })
+    }
+    if (!applyFirstRechargePromoPayload(payload, createForm)) return
+    await adminAPI.promo.create(payload)
     appStore.showSuccess(t('admin.promo.codeCreated'))
     showCreateDialog.value = false
     resetCreateForm()
@@ -616,6 +775,8 @@ const handleCreate = async () => {
 const resetCreateForm = () => {
   createForm.code = ''
   createForm.bonus_amount = 1
+  createForm.first_recharge_bonus_amount = ''
+  createForm.first_recharge_discount_rate = ''
   createForm.max_uses = 0
   createForm.expires_at_str = ''
   createForm.notes = ''
@@ -626,6 +787,10 @@ const handleEdit = (code: PromoCode) => {
   editingCode.value = code
   editForm.code = code.code
   editForm.bonus_amount = code.bonus_amount
+  editForm.first_recharge_bonus_amount =
+    code.first_recharge_bonus_amount != null ? String(code.first_recharge_bonus_amount) : ''
+  editForm.first_recharge_discount_rate =
+    code.first_recharge_discount_percent != null ? formatDiscountRate(code.first_recharge_discount_percent) : ''
   editForm.max_uses = code.max_uses
   editForm.status = code.status
   editForm.expires_at_str = code.expires_at ? new Date(code.expires_at).toISOString().slice(0, 16) : ''
@@ -643,14 +808,16 @@ const handleUpdate = async () => {
 
   updating.value = true
   try {
-    await adminAPI.promo.update(editingCode.value.id, {
+    const payload: UpdatePromoCodeRequest = {
       code: editForm.code,
       bonus_amount: editForm.bonus_amount,
       max_uses: editForm.max_uses,
       status: editForm.status,
       expires_at: editForm.expires_at_str ? Math.floor(new Date(editForm.expires_at_str).getTime() / 1000) : 0,
       notes: editForm.notes
-    })
+    }
+    if (!applyFirstRechargePromoPayload(payload, editForm, editingCode.value)) return
+    await adminAPI.promo.update(editingCode.value.id, payload)
     appStore.showSuccess(t('admin.promo.codeUpdated'))
     closeEditDialog()
     loadCodes()

@@ -1,27 +1,24 @@
 package service
 
-import (
-	"time"
-)
+import "time"
 
-// PromoCode 注册优惠码
 type PromoCode struct {
-	ID          int64
-	Code        string
-	BonusAmount float64
-	MaxUses     int
-	UsedCount   int
-	Status      string
-	ExpiresAt   *time.Time
-	Notes       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                           int64
+	Code                         string
+	BonusAmount                  float64
+	FirstRechargeBonusAmount     *float64
+	FirstRechargeDiscountPercent *float64
+	MaxUses                      int
+	UsedCount                    int
+	Status                       string
+	ExpiresAt                    *time.Time
+	Notes                        string
+	CreatedAt                    time.Time
+	UpdatedAt                    time.Time
 
-	// 关联
 	UsageRecords []PromoCodeUsage
 }
 
-// PromoCodeUsage 优惠码使用记录
 type PromoCodeUsage struct {
 	ID          int64
 	PromoCodeID int64
@@ -29,12 +26,10 @@ type PromoCodeUsage struct {
 	BonusAmount float64
 	UsedAt      time.Time
 
-	// 关联
 	PromoCode *PromoCode
 	User      *User
 }
 
-// CanUse 检查优惠码是否可用
 func (p *PromoCode) CanUse() bool {
 	if p.Status != PromoCodeStatusActive {
 		return false
@@ -48,26 +43,30 @@ func (p *PromoCode) CanUse() bool {
 	return true
 }
 
-// IsExpired 检查是否已过期
 func (p *PromoCode) IsExpired() bool {
 	return p.ExpiresAt != nil && time.Now().After(*p.ExpiresAt)
 }
 
-// CreatePromoCodeInput 创建优惠码输入
 type CreatePromoCodeInput struct {
-	Code        string
-	BonusAmount float64
-	MaxUses     int
-	ExpiresAt   *time.Time
-	Notes       string
+	Code                         string
+	BonusAmount                  float64
+	FirstRechargeBonusAmount     *float64
+	FirstRechargeDiscountPercent *float64
+	MaxUses                      int
+	ExpiresAt                    *time.Time
+	Notes                        string
 }
 
-// UpdatePromoCodeInput 更新优惠码输入
 type UpdatePromoCodeInput struct {
-	Code        *string
-	BonusAmount *float64
-	MaxUses     *int
-	Status      *string
-	ExpiresAt   *time.Time
-	Notes       *string
+	Code                         *string
+	BonusAmount                  *float64
+	FirstRechargeBonusAmount     *float64
+	ClearFirstRechargeBonus      bool
+	FirstRechargeDiscountPercent *float64
+	ClearFirstRechargeDiscount   bool
+	MaxUses                      *int
+	Status                       *string
+	ExpiresAt                    *time.Time
+	ClearExpiresAt               bool
+	Notes                        *string
 }

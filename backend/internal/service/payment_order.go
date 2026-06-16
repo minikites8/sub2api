@@ -13,6 +13,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -53,11 +54,19 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	}
 	orderAmount := req.Amount
 	limitAmount := req.Amount
+	var firstRechargePlan firstRechargeAmountPlan
 	if plan != nil {
 		orderAmount = plan.Price
 		limitAmount = plan.Price
 	} else if req.OrderType == payment.OrderTypeBalance {
-		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
+		baseCreditAmount := calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
+		firstRechargePromo, err := s.resolveFirstRechargePromo(ctx, req.UserID)
+		if err != nil {
+			return nil, err
+		}
+		firstRechargePlan = buildFirstRechargeAmountPlan(req.Amount, baseCreditAmount, firstRechargePromo)
+		orderAmount = firstRechargePlan.CreditAmount
+		limitAmount = firstRechargePlan.PaymentAmount
 	}
 	feeRate := cfg.RechargeFeeRate
 	methodCurrency := payment.DefaultPaymentCurrency
@@ -91,14 +100,14 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err := validateSelectedCreateOrderAmountCurrency(payAmountStr, sel); err != nil {
 		return nil, err
 	}
-	oauthResp, err := s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, limitAmount, payAmount, feeRate, sel)
+	oauthResp, err := s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, limitAmount, payAmount, feeRate, sel, firstRechargePlan)
 	if err != nil {
 		return nil, err
 	}
 	if oauthResp != nil {
 		return oauthResp, nil
 	}
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel, firstRechargePlan)
 	if err != nil {
 		return nil, err
 	}
@@ -147,13 +156,16 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection, firstRechargePlan firstRechargeAmountPlan) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := s.checkPendingLimit(ctx, tx, req.UserID, cfg.MaxPendingOrders); err != nil {
+		return nil, err
+	}
+	if err := s.checkFirstRechargePromoOrderLimit(ctx, tx, req.UserID, firstRechargePlan); err != nil {
 		return nil, err
 	}
 	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
@@ -168,7 +180,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err != nil {
 		return nil, err
 	}
-	providerSnapshot := buildPaymentOrderProviderSnapshot(sel, req)
+	providerSnapshot := appendFirstRechargePromoSnapshot(buildPaymentOrderProviderSnapshot(sel, req), firstRechargePlan)
 	selectedInstanceID := ""
 	selectedProviderKey := ""
 	if sel != nil {
@@ -248,6 +260,40 @@ func (s *PaymentService) checkPendingLimit(ctx context.Context, tx *dbent.Tx, us
 	if c >= max {
 		return infraerrors.TooManyRequests("TOO_MANY_PENDING", "too_many_pending").
 			WithMetadata(map[string]string{"max": strconv.Itoa(max)})
+	}
+	return nil
+}
+
+func (s *PaymentService) checkFirstRechargePromoOrderLimit(ctx context.Context, tx *dbent.Tx, userID int64, plan firstRechargeAmountPlan) error {
+	if !plan.active() {
+		return nil
+	}
+	userQuery := tx.User.Query().Where(dbuser.IDEQ(userID))
+	if paymentTxSupportsForUpdate(tx) {
+		userQuery = userQuery.ForUpdate()
+	}
+	currentUser, err := userQuery.Only(ctx)
+	if err != nil {
+		return fmt.Errorf("get user for first recharge promo order: %w", err)
+	}
+	if currentUser.TotalRecharged > 0 {
+		return infraerrors.Conflict("FIRST_RECHARGE_ALREADY_USED", "first recharge promotion has already been used")
+	}
+	orders, err := tx.PaymentOrder.Query().
+		Where(
+			paymentorder.UserIDEQ(userID),
+			paymentorder.OrderTypeEQ(payment.OrderTypeBalance),
+			paymentorder.StatusEQ(OrderStatusPending),
+			paymentorder.ProviderSnapshotNotNil(),
+		).
+		All(ctx)
+	if err != nil {
+		return fmt.Errorf("query pending first recharge promo orders: %w", err)
+	}
+	for _, order := range orders {
+		if _, ok := firstRechargePromoPlanForOrder(order); ok {
+			return infraerrors.Conflict("FIRST_RECHARGE_ORDER_PENDING", "first recharge promotion order is pending")
+		}
 	}
 	return nil
 }
@@ -538,20 +584,20 @@ func applyPaymentProductNameAffix(productName string, cfg *PaymentConfig) string
 }
 
 func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64) (*CreateOrderResponse, error) {
-	return s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, amount, payAmount, feeRate, nil)
+	return s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, amount, payAmount, feeRate, nil, firstRechargeAmountPlan{})
 }
 
-func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponseForSelection(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64, sel *payment.InstanceSelection) (*CreateOrderResponse, error) {
+func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponseForSelection(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64, sel *payment.InstanceSelection, firstRechargePlan firstRechargeAmountPlan) (*CreateOrderResponse, error) {
 	if sel != nil && sel.ProviderKey != "" && sel.ProviderKey != payment.TypeWxpay {
 		return nil, nil
 	}
 	if strings.TrimSpace(req.OpenID) != "" || !req.IsWeChatBrowser || payment.GetBasePaymentType(req.PaymentType) != payment.TypeWxpay {
 		return nil, nil
 	}
-	return s.buildWeChatOAuthRequiredResponse(ctx, req, amount, payAmount, feeRate)
+	return s.buildWeChatOAuthRequiredResponse(ctx, req, amount, payAmount, feeRate, firstRechargePlan)
 }
 
-func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64) (*CreateOrderResponse, error) {
+func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64, firstRechargePlan firstRechargeAmountPlan) (*CreateOrderResponse, error) {
 	appID, _, err := s.getWeChatPaymentOAuthCredential(ctx)
 	if err != nil {
 		return nil, err
@@ -565,7 +611,7 @@ func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, r
 		return nil, err
 	}
 
-	return &CreateOrderResponse{
+	resp := &CreateOrderResponse{
 		Amount:      amount,
 		PayAmount:   payAmount,
 		FeeRate:     feeRate,
@@ -577,7 +623,12 @@ func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, r
 			Scope:        "snsapi_base",
 			RedirectURL:  "/auth/wechat/payment/callback",
 		},
-	}, nil
+	}
+	if firstRechargePlan.active() {
+		resp.FirstRechargeBonusAmount = firstRechargePlan.BonusAmount
+		resp.FirstRechargeDiscountPercent = firstRechargePlan.DiscountPercent
+	}
+	return resp, nil
 }
 
 func (s *PaymentService) validateSelectedCreateOrderInstance(ctx context.Context, req CreateOrderRequest, sel *payment.InstanceSelection) error {
@@ -677,7 +728,11 @@ func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err 
 }
 
 func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest, payAmount float64, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
-	return &CreateOrderResponse{
+	paymentMode := ""
+	if sel != nil {
+		paymentMode = sel.PaymentMode
+	}
+	resp := &CreateOrderResponse{
 		OrderID:      order.ID,
 		Amount:       order.Amount,
 		PayAmount:    payAmount,
@@ -697,8 +752,15 @@ func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest,
 		JSAPI:        pr.JSAPI,
 		JSAPIPayload: pr.JSAPI,
 		ExpiresAt:    order.ExpiresAt,
-		PaymentMode:  sel.PaymentMode,
+		PaymentMode:  paymentMode,
 	}
+	if req.OrderType == payment.OrderTypeBalance {
+		if promoPlan, ok := firstRechargeAmountPlanFromSnapshot(order.ProviderSnapshot); ok {
+			resp.FirstRechargeDiscountPercent = promoPlan.DiscountPercent
+			resp.FirstRechargeBonusAmount = promoPlan.BonusAmount
+		}
+	}
+	return resp
 }
 
 func buildWeChatPaymentOAuthStartURL(req CreateOrderRequest, scope string) (string, error) {

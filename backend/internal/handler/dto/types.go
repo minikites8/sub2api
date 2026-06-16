@@ -623,16 +623,18 @@ type BulkAssignResult struct {
 
 // PromoCode 注册优惠码
 type PromoCode struct {
-	ID          int64      `json:"id"`
-	Code        string     `json:"code"`
-	BonusAmount float64    `json:"bonus_amount"`
-	MaxUses     int        `json:"max_uses"`
-	UsedCount   int        `json:"used_count"`
-	Status      string     `json:"status"`
-	ExpiresAt   *time.Time `json:"expires_at"`
-	Notes       string     `json:"notes"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID                           int64      `json:"id"`
+	Code                         string     `json:"code"`
+	BonusAmount                  float64    `json:"bonus_amount"`
+	FirstRechargeBonusAmount     *float64   `json:"first_recharge_bonus_amount,omitempty"`
+	FirstRechargeDiscountPercent *float64   `json:"first_recharge_discount_percent,omitempty"`
+	MaxUses                      int        `json:"max_uses"`
+	UsedCount                    int        `json:"used_count"`
+	Status                       string     `json:"status"`
+	ExpiresAt                    *time.Time `json:"expires_at"`
+	Notes                        string     `json:"notes"`
+	CreatedAt                    time.Time  `json:"created_at"`
+	UpdatedAt                    time.Time  `json:"updated_at"`
 }
 
 // PromoCodeUsage 优惠码使用记录

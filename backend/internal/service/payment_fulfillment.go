@@ -271,9 +271,33 @@ func resolveRedeemAction(existing *RedeemCode, lookupErr error) redeemAction {
 }
 
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) error {
+	creditAmount := o.Amount
+	promoResult, err := s.tryApplyFirstRechargePromoBalance(ctx, o)
+	if err != nil {
+		return err
+	}
+	if promoResult == firstRechargePromoBalanceApplied {
+		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
+			return err
+		}
+		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+	}
+	if promoResult == firstRechargePromoBalanceStale {
+		if fallbackAmount, ok := firstRechargePromoFallbackCreditAmount(o); ok {
+			creditAmount = fallbackAmount
+		}
+	}
+
 	// Idempotency: check if redeem code already exists (from a previous partial run)
 	existing, lookupErr := s.redeemService.GetByCode(ctx, o.RechargeCode)
 	action := resolveRedeemAction(existing, lookupErr)
+	if existing != nil && promoResult == firstRechargePromoBalanceStale && !existing.IsUsed() && math.Abs(existing.Value-creditAmount) > 0.00000001 {
+		updated := *existing
+		updated.Value = creditAmount
+		if err := s.redeemService.redeemRepo.Update(ctx, &updated); err != nil {
+			return fmt.Errorf("update stale first recharge promo redeem code: %w", err)
+		}
+	}
 
 	switch action {
 	case redeemActionSkipCompleted:
@@ -283,12 +307,23 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		// Code already created and redeemed — just mark completed
 		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 	case redeemActionCreate:
-		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
+		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: creditAmount, Status: StatusUnused}
 		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
 			return fmt.Errorf("create redeem code: %w", err)
 		}
 	case redeemActionRedeem:
 		// Code exists but unused — skip creation, proceed to redeem
+	}
+	if promoResult == firstRechargePromoBalanceStale {
+		if _, err := s.entClient.PaymentOrder.UpdateOneID(o.ID).SetAmount(creditAmount).Save(ctx); err != nil {
+			return fmt.Errorf("update stale first recharge promo order amount: %w", err)
+		}
+		o.Amount = creditAmount
+		s.writeAuditLog(ctx, o.ID, paymentFirstRechargePromoSkippedAction, "system", map[string]any{
+			"creditedAmount": creditAmount,
+			"reason":         "first recharge already consumed",
+			"rechargeCode":   o.RechargeCode,
+		})
 	}
 	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
@@ -297,6 +332,33 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		return err
 	}
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+}
+
+func (s *PaymentService) tryApplyFirstRechargePromoBalance(ctx context.Context, o *dbent.PaymentOrder) (firstRechargePromoBalanceResult, error) {
+	if s == nil || o == nil {
+		return firstRechargePromoBalanceNone, nil
+	}
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return firstRechargePromoBalanceNone, fmt.Errorf("begin first recharge promo tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	result, err := s.applyFirstRechargePromoBalance(txCtx, tx, o)
+	if err != nil {
+		return firstRechargePromoBalanceNone, err
+	}
+	if result != firstRechargePromoBalanceApplied {
+		return result, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return firstRechargePromoBalanceNone, fmt.Errorf("commit first recharge promo tx: %w", err)
+	}
+	if s.redeemService != nil {
+		s.redeemService.invalidateRedeemCaches(ctx, o.UserID, &RedeemCode{Type: RedeemTypeBalance})
+	}
+	return firstRechargePromoBalanceApplied, nil
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {
@@ -452,7 +514,8 @@ func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action 
 }
 
 func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *dbent.PaymentOrder) error {
-	if o == nil || o.OrderType != payment.OrderTypeBalance || o.Amount <= 0 {
+	baseAmount := affiliateRebateBaseAmountForOrder(o)
+	if o == nil || o.OrderType != payment.OrderTypeBalance || baseAmount <= 0 {
 		return nil
 	}
 	if s.affiliateService == nil {
@@ -469,7 +532,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	defer func() { _ = tx.Rollback() }()
 
 	txCtx := dbent.NewTxContext(ctx, tx)
-	claimed, err := s.tryClaimAffiliateRebateAudit(txCtx, tx.Client(), o.ID, o.Amount)
+	claimed, err := s.tryClaimAffiliateRebateAudit(txCtx, tx.Client(), o.ID, baseAmount)
 	if err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 			"error": err.Error(),
@@ -481,7 +544,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	}
 
 	sourceOrderID := o.ID
-	rebateAmount, err := s.affiliateService.AccrueInviteRebateForOrder(txCtx, o.UserID, o.Amount, &sourceOrderID)
+	rebateAmount, err := s.affiliateService.AccrueInviteRebateForOrder(txCtx, o.UserID, baseAmount, &sourceOrderID)
 	if err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 			"error": err.Error(),
@@ -491,7 +554,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 
 	if rebateAmount <= 0 {
 		if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_SKIPPED", map[string]any{
-			"baseAmount": o.Amount,
+			"baseAmount": baseAmount,
 			"reason":     "no inviter bound or rebate amount <= 0",
 		}); err != nil {
 			s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
@@ -509,7 +572,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	}
 
 	if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_APPLIED", map[string]any{
-		"baseAmount":   o.Amount,
+		"baseAmount":   baseAmount,
 		"rebateAmount": rebateAmount,
 	}); err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{

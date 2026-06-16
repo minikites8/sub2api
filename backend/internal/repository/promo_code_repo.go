@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -10,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -19,6 +22,104 @@ type promoCodeRepository struct {
 
 func NewPromoCodeRepository(client *dbent.Client) service.PromoCodeRepository {
 	return &promoCodeRepository{client: client}
+}
+
+func (r *promoCodeRepository) placeholder(n int) string {
+	if r.client != nil && r.client.Driver() != nil && r.client.Driver().Dialect() == dialect.Postgres {
+		return fmt.Sprintf("$%d", n)
+	}
+	return "?"
+}
+
+func scanPromoCode(rows interface {
+	Scan(dest ...any) error
+}) (*service.PromoCode, error) {
+	var out service.PromoCode
+	var expiresAt sql.NullTime
+	var notes sql.NullString
+	var firstRechargeBonus sql.NullFloat64
+	var firstRechargeDiscount sql.NullFloat64
+	if err := rows.Scan(
+		&out.ID,
+		&out.Code,
+		&out.BonusAmount,
+		&firstRechargeBonus,
+		&firstRechargeDiscount,
+		&out.MaxUses,
+		&out.UsedCount,
+		&out.Status,
+		&expiresAt,
+		&notes,
+		&out.CreatedAt,
+		&out.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if firstRechargeBonus.Valid {
+		v := firstRechargeBonus.Float64
+		out.FirstRechargeBonusAmount = &v
+	}
+	if firstRechargeDiscount.Valid {
+		v := firstRechargeDiscount.Float64
+		out.FirstRechargeDiscountPercent = &v
+	}
+	if expiresAt.Valid {
+		out.ExpiresAt = &expiresAt.Time
+	}
+	if notes.Valid {
+		out.Notes = notes.String
+	}
+	return &out, nil
+}
+
+func (r *promoCodeRepository) hydratePromoCodeFirstRechargeFields(ctx context.Context, codes []service.PromoCode) error {
+	if len(codes) == 0 {
+		return nil
+	}
+	client := clientFromContext(ctx, r.client)
+	for i := range codes {
+		query := fmt.Sprintf(`
+SELECT first_recharge_bonus_amount, first_recharge_discount_percent
+FROM promo_codes
+WHERE id = %s`, r.placeholder(1))
+		rows, err := client.QueryContext(ctx, query, codes[i].ID)
+		if err != nil {
+			return err
+		}
+		var bonus sql.NullFloat64
+		var discount sql.NullFloat64
+		if rows.Next() {
+			if err := rows.Scan(&bonus, &discount); err != nil {
+				_ = rows.Close()
+				return err
+			}
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		_ = rows.Close()
+		if bonus.Valid {
+			v := bonus.Float64
+			codes[i].FirstRechargeBonusAmount = &v
+		}
+		if discount.Valid {
+			v := discount.Float64
+			codes[i].FirstRechargeDiscountPercent = &v
+		}
+	}
+	return nil
+}
+
+func (r *promoCodeRepository) savePromoCodeFirstRechargeFields(ctx context.Context, code *service.PromoCode) error {
+	client := clientFromContext(ctx, r.client)
+	query := fmt.Sprintf(`
+UPDATE promo_codes
+SET first_recharge_bonus_amount = %s,
+    first_recharge_discount_percent = %s
+WHERE id = %s`, r.placeholder(1), r.placeholder(2), r.placeholder(3))
+	_, err := client.ExecContext(ctx, query, nullableFloatArg(code.FirstRechargeBonusAmount), nullableFloatArg(code.FirstRechargeDiscountPercent), code.ID)
+	return err
 }
 
 func (r *promoCodeRepository) Create(ctx context.Context, code *service.PromoCode) error {
@@ -43,6 +144,9 @@ func (r *promoCodeRepository) Create(ctx context.Context, code *service.PromoCod
 	code.ID = created.ID
 	code.CreatedAt = created.CreatedAt
 	code.UpdatedAt = created.UpdatedAt
+	if err := r.savePromoCodeFirstRechargeFields(ctx, code); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -56,7 +160,15 @@ func (r *promoCodeRepository) GetByID(ctx context.Context, id int64) (*service.P
 		}
 		return nil, err
 	}
-	return promoCodeEntityToService(m), nil
+	out := promoCodeEntityToService(m)
+	if out == nil {
+		return nil, nil
+	}
+	full, err := r.getByIDRaw(ctx, out.ID)
+	if err != nil {
+		return nil, err
+	}
+	return full, nil
 }
 
 func (r *promoCodeRepository) GetByCode(ctx context.Context, code string) (*service.PromoCode, error) {
@@ -69,7 +181,7 @@ func (r *promoCodeRepository) GetByCode(ctx context.Context, code string) (*serv
 		}
 		return nil, err
 	}
-	return promoCodeEntityToService(m), nil
+	return r.getByIDRaw(ctx, m.ID)
 }
 
 func (r *promoCodeRepository) GetByCodeForUpdate(ctx context.Context, code string) (*service.PromoCode, error) {
@@ -84,7 +196,7 @@ func (r *promoCodeRepository) GetByCodeForUpdate(ctx context.Context, code strin
 		}
 		return nil, err
 	}
-	return promoCodeEntityToService(m), nil
+	return r.getByIDRaw(ctx, m.ID)
 }
 
 func (r *promoCodeRepository) Update(ctx context.Context, code *service.PromoCode) error {
@@ -112,7 +224,7 @@ func (r *promoCodeRepository) Update(ctx context.Context, code *service.PromoCod
 	}
 
 	code.UpdatedAt = updated.UpdatedAt
-	return nil
+	return r.savePromoCodeFirstRechargeFields(ctx, code)
 }
 
 func (r *promoCodeRepository) Delete(ctx context.Context, id int64) error {
@@ -153,8 +265,46 @@ func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagina
 	}
 
 	outCodes := promoCodeEntitiesToService(codes)
+	if err := r.hydratePromoCodeFirstRechargeFields(ctx, outCodes); err != nil {
+		return nil, nil, err
+	}
 
 	return outCodes, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *promoCodeRepository) getByIDRaw(ctx context.Context, id int64) (*service.PromoCode, error) {
+	client := clientFromContext(ctx, r.client)
+	query := fmt.Sprintf(`
+SELECT id,
+       code,
+       bonus_amount,
+       first_recharge_bonus_amount,
+       first_recharge_discount_percent,
+       max_uses,
+       used_count,
+       status,
+       expires_at,
+       notes,
+       created_at,
+       updated_at
+FROM promo_codes
+WHERE id = %s`, r.placeholder(1))
+	rows, err := client.QueryContext(ctx, query, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, service.ErrPromoCodeNotFound
+	}
+	out, err := scanPromoCode(rows)
+	if err != nil {
+		return nil, err
+	}
+	return out, rows.Err()
 }
 
 func promoCodeListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
@@ -215,6 +365,46 @@ func (r *promoCodeRepository) GetUsageByPromoCodeAndUser(ctx context.Context, pr
 	return promoCodeUsageEntityToService(m), nil
 }
 
+func (r *promoCodeRepository) GetFirstRechargePromoByUser(ctx context.Context, userID int64) (*service.PromoCode, error) {
+	client := clientFromContext(ctx, r.client)
+	query := fmt.Sprintf(`
+SELECT pc.id,
+       pc.code,
+       pc.bonus_amount,
+       pc.first_recharge_bonus_amount,
+       pc.first_recharge_discount_percent,
+       pc.max_uses,
+       pc.used_count,
+       pc.status,
+       pc.expires_at,
+       pc.notes,
+       pc.created_at,
+       pc.updated_at
+FROM promo_code_usages pcu
+JOIN promo_codes pc ON pc.id = pcu.promo_code_id
+WHERE pcu.user_id = %s
+  AND (pc.first_recharge_bonus_amount IS NOT NULL
+       OR pc.first_recharge_discount_percent IS NOT NULL)
+ORDER BY pcu.used_at ASC, pcu.id ASC
+LIMIT 1`, r.placeholder(1))
+	rows, err := client.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	out, err := scanPromoCode(rows)
+	if err != nil {
+		return nil, err
+	}
+	return out, rows.Err()
+}
+
 func (r *promoCodeRepository) ListUsagesByPromoCode(ctx context.Context, promoCodeID int64, params pagination.PaginationParams) ([]service.PromoCodeUsage, *pagination.PaginationResult, error) {
 	q := r.client.PromoCodeUsage.Query().
 		Where(promocodeusage.PromoCodeIDEQ(promoCodeID))
@@ -265,6 +455,13 @@ func promoCodeEntityToService(m *dbent.PromoCode) *service.PromoCode {
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 	}
+}
+
+func nullableFloatArg(v *float64) any {
+	if v == nil {
+		return nil
+	}
+	return *v
 }
 
 func promoCodeEntitiesToService(models []*dbent.PromoCode) []service.PromoCode {

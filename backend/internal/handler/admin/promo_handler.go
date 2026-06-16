@@ -13,39 +13,37 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// PromoHandler handles admin promo code management
 type PromoHandler struct {
 	promoService *service.PromoService
 }
 
-// NewPromoHandler creates a new admin promo handler
 func NewPromoHandler(promoService *service.PromoService) *PromoHandler {
-	return &PromoHandler{
-		promoService: promoService,
-	}
+	return &PromoHandler{promoService: promoService}
 }
 
-// CreatePromoCodeRequest represents create promo code request
 type CreatePromoCodeRequest struct {
-	Code        string  `json:"code"`                                  // 可选，为空则自动生成
-	BonusAmount float64 `json:"bonus_amount" binding:"required,min=0"` // 赠送余额
-	MaxUses     int     `json:"max_uses" binding:"min=0"`              // 最大使用次数，0=无限
-	ExpiresAt   *int64  `json:"expires_at"`                            // 过期时间戳（秒）
-	Notes       string  `json:"notes"`                                 // 备注
+	Code                         string   `json:"code"`
+	BonusAmount                  float64  `json:"bonus_amount" binding:"required,min=0"`
+	FirstRechargeBonusAmount     *float64 `json:"first_recharge_bonus_amount" binding:"omitempty,min=0"`
+	FirstRechargeDiscountPercent *float64 `json:"first_recharge_discount_percent" binding:"omitempty,min=0.01,max=100"`
+	MaxUses                      int      `json:"max_uses" binding:"min=0"`
+	ExpiresAt                    *int64   `json:"expires_at"`
+	Notes                        string   `json:"notes"`
 }
 
-// UpdatePromoCodeRequest represents update promo code request
 type UpdatePromoCodeRequest struct {
-	Code        *string  `json:"code"`
-	BonusAmount *float64 `json:"bonus_amount" binding:"omitempty,min=0"`
-	MaxUses     *int     `json:"max_uses" binding:"omitempty,min=0"`
-	Status      *string  `json:"status" binding:"omitempty,oneof=active disabled"`
-	ExpiresAt   *int64   `json:"expires_at"`
-	Notes       *string  `json:"notes"`
+	Code                         *string  `json:"code"`
+	BonusAmount                  *float64 `json:"bonus_amount" binding:"omitempty,min=0"`
+	FirstRechargeBonusAmount     *float64 `json:"first_recharge_bonus_amount" binding:"omitempty,min=0"`
+	FirstRechargeDiscountPercent *float64 `json:"first_recharge_discount_percent" binding:"omitempty,min=0.01,max=100"`
+	ClearFirstRechargeBonus      bool     `json:"clear_first_recharge_bonus"`
+	ClearFirstRechargeDiscount   bool     `json:"clear_first_recharge_discount"`
+	MaxUses                      *int     `json:"max_uses" binding:"omitempty,min=0"`
+	Status                       *string  `json:"status" binding:"omitempty,oneof=active disabled"`
+	ExpiresAt                    *int64   `json:"expires_at"`
+	Notes                        *string  `json:"notes"`
 }
 
-// List handles listing all promo codes with pagination
-// GET /api/v1/admin/promo-codes
 func (h *PromoHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 	status := c.Query("status")
@@ -74,8 +72,6 @@ func (h *PromoHandler) List(c *gin.Context) {
 	response.Paginated(c, out, paginationResult.Total, page, pageSize)
 }
 
-// GetByID handles getting a promo code by ID
-// GET /api/v1/admin/promo-codes/:id
 func (h *PromoHandler) GetByID(c *gin.Context) {
 	codeID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -92,8 +88,6 @@ func (h *PromoHandler) GetByID(c *gin.Context) {
 	response.Success(c, dto.PromoCodeFromService(code))
 }
 
-// Create handles creating a new promo code
-// POST /api/v1/admin/promo-codes
 func (h *PromoHandler) Create(c *gin.Context) {
 	var req CreatePromoCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -102,12 +96,13 @@ func (h *PromoHandler) Create(c *gin.Context) {
 	}
 
 	input := &service.CreatePromoCodeInput{
-		Code:        req.Code,
-		BonusAmount: req.BonusAmount,
-		MaxUses:     req.MaxUses,
-		Notes:       req.Notes,
+		Code:                         req.Code,
+		BonusAmount:                  req.BonusAmount,
+		FirstRechargeBonusAmount:     req.FirstRechargeBonusAmount,
+		FirstRechargeDiscountPercent: req.FirstRechargeDiscountPercent,
+		MaxUses:                      req.MaxUses,
+		Notes:                        req.Notes,
 	}
-
 	if req.ExpiresAt != nil {
 		t := time.Unix(*req.ExpiresAt, 0)
 		input.ExpiresAt = &t
@@ -122,8 +117,6 @@ func (h *PromoHandler) Create(c *gin.Context) {
 	response.Success(c, dto.PromoCodeFromService(code))
 }
 
-// Update handles updating a promo code
-// PUT /api/v1/admin/promo-codes/:id
 func (h *PromoHandler) Update(c *gin.Context) {
 	codeID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -138,17 +131,19 @@ func (h *PromoHandler) Update(c *gin.Context) {
 	}
 
 	input := &service.UpdatePromoCodeInput{
-		Code:        req.Code,
-		BonusAmount: req.BonusAmount,
-		MaxUses:     req.MaxUses,
-		Status:      req.Status,
-		Notes:       req.Notes,
+		Code:                         req.Code,
+		BonusAmount:                  req.BonusAmount,
+		FirstRechargeBonusAmount:     req.FirstRechargeBonusAmount,
+		ClearFirstRechargeBonus:      req.ClearFirstRechargeBonus,
+		FirstRechargeDiscountPercent: req.FirstRechargeDiscountPercent,
+		ClearFirstRechargeDiscount:   req.ClearFirstRechargeDiscount,
+		MaxUses:                      req.MaxUses,
+		Status:                       req.Status,
+		Notes:                        req.Notes,
 	}
-
 	if req.ExpiresAt != nil {
 		if *req.ExpiresAt == 0 {
-			// 0 表示清除过期时间
-			input.ExpiresAt = nil
+			input.ClearExpiresAt = true
 		} else {
 			t := time.Unix(*req.ExpiresAt, 0)
 			input.ExpiresAt = &t
@@ -164,8 +159,6 @@ func (h *PromoHandler) Update(c *gin.Context) {
 	response.Success(c, dto.PromoCodeFromService(code))
 }
 
-// Delete handles deleting a promo code
-// DELETE /api/v1/admin/promo-codes/:id
 func (h *PromoHandler) Delete(c *gin.Context) {
 	codeID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -173,8 +166,7 @@ func (h *PromoHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = h.promoService.Delete(c.Request.Context(), codeID)
-	if err != nil {
+	if err := h.promoService.Delete(c.Request.Context(), codeID); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -182,8 +174,6 @@ func (h *PromoHandler) Delete(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Promo code deleted successfully"})
 }
 
-// GetUsages handles getting usage records for a promo code
-// GET /api/v1/admin/promo-codes/:id/usages
 func (h *PromoHandler) GetUsages(c *gin.Context) {
 	codeID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

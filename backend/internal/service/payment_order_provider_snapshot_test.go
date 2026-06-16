@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,6 +98,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 				"secretKey": "do-not-copy",
 			},
 		},
+		firstRechargeAmountPlan{},
 	)
 	require.NoError(t, err)
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), valueOrEmpty(order.ProviderInstanceID))
@@ -109,6 +111,157 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 	require.NotContains(t, order.ProviderSnapshot, "secretKey")
 	require.NotContains(t, order.ProviderSnapshot, "supported_types")
 	require.NotContains(t, order.ProviderSnapshot, "instance_name")
+}
+
+func TestCreateOrderInTx_WritesFirstRechargePromoSnapshot(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("first-recharge-snapshot@example.com").
+		SetPasswordHash("hash").
+		SetUsername("first-recharge-snapshot-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+	order, err := svc.createOrderInTx(
+		ctx,
+		CreateOrderRequest{
+			UserID:      user.ID,
+			PaymentType: payment.TypeAlipay,
+			OrderType:   payment.OrderTypeBalance,
+			ClientIP:    "127.0.0.1",
+			SrcHost:     "app.example.com",
+		},
+		&User{
+			ID:       user.ID,
+			Email:    user.Email,
+			Username: user.Username,
+		},
+		nil,
+		&PaymentConfig{
+			MaxPendingOrders: 3,
+			OrderTimeoutMin:  30,
+		},
+		110,
+		80,
+		0,
+		80,
+		&payment.InstanceSelection{
+			ProviderKey: payment.TypeAlipay,
+			PaymentMode: "redirect",
+		},
+		firstRechargeAmountPlan{
+			PromoCodeID:      9,
+			PromoCode:        "PARTNER8",
+			BaseCreditAmount: 100,
+			BonusAmount:      10,
+			DiscountPercent:  80,
+			DiscountSet:      true,
+			CreditAmount:     110,
+			PaymentAmount:    80,
+		},
+	)
+	require.NoError(t, err)
+
+	plan, ok := firstRechargeAmountPlanFromSnapshot(order.ProviderSnapshot)
+	require.True(t, ok)
+	require.Equal(t, int64(9), plan.PromoCodeID)
+	require.Equal(t, "PARTNER8", plan.PromoCode)
+	require.Equal(t, 100.0, plan.BaseCreditAmount)
+	require.Equal(t, 10.0, plan.BonusAmount)
+	require.Equal(t, 80.0, plan.DiscountPercent)
+	require.Equal(t, 110.0, plan.CreditAmount)
+	require.Equal(t, 80.0, plan.PaymentAmount)
+	require.Equal(t, 100.0, affiliateRebateBaseAmountForOrder(order))
+}
+
+func TestCreateOrderInTx_BlocksSecondPendingFirstRechargePromoOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("first-recharge-pending@example.com").
+		SetPasswordHash("hash").
+		SetUsername("first-recharge-pending-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	promoPlan := firstRechargeAmountPlan{
+		PromoCodeID:      9,
+		PromoCode:        "PARTNER8",
+		BaseCreditAmount: 100,
+		BonusAmount:      10,
+		DiscountPercent:  80,
+		DiscountSet:      true,
+		CreditAmount:     110,
+		PaymentAmount:    80,
+	}
+	svc := &PaymentService{entClient: client}
+	_, err = svc.createOrderInTx(
+		ctx,
+		CreateOrderRequest{
+			UserID:      user.ID,
+			PaymentType: payment.TypeAlipay,
+			OrderType:   payment.OrderTypeBalance,
+			ClientIP:    "127.0.0.1",
+			SrcHost:     "app.example.com",
+		},
+		&User{
+			ID:       user.ID,
+			Email:    user.Email,
+			Username: user.Username,
+		},
+		nil,
+		&PaymentConfig{
+			MaxPendingOrders: 3,
+			OrderTimeoutMin:  30,
+		},
+		110,
+		80,
+		0,
+		80,
+		&payment.InstanceSelection{
+			ProviderKey: payment.TypeAlipay,
+			PaymentMode: "redirect",
+		},
+		promoPlan,
+	)
+	require.NoError(t, err)
+
+	_, err = svc.createOrderInTx(
+		ctx,
+		CreateOrderRequest{
+			UserID:      user.ID,
+			PaymentType: payment.TypeAlipay,
+			OrderType:   payment.OrderTypeBalance,
+			ClientIP:    "127.0.0.1",
+			SrcHost:     "app.example.com",
+		},
+		&User{
+			ID:       user.ID,
+			Email:    user.Email,
+			Username: user.Username,
+		},
+		nil,
+		&PaymentConfig{
+			MaxPendingOrders: 3,
+			OrderTimeoutMin:  30,
+		},
+		110,
+		80,
+		0,
+		80,
+		&payment.InstanceSelection{
+			ProviderKey: payment.TypeAlipay,
+			PaymentMode: "redirect",
+		},
+		promoPlan,
+	)
+	require.Error(t, err)
+	require.True(t, infraerrors.IsConflict(err))
+	require.Equal(t, "FIRST_RECHARGE_ORDER_PENDING", infraerrors.Reason(err))
 }
 
 func TestBuildPaymentOrderProviderSnapshot_UsesWxpayJSAPIAppIDForOpenIDOrders(t *testing.T) {

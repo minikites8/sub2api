@@ -197,6 +197,8 @@ export interface CreateOrderResult {
   payment_env?: string
   pay_amount: number
   fee_rate: number
+  first_recharge_bonus_amount?: number
+  first_recharge_discount_percent?: number
   expires_at: string
   result_type?: CreateOrderResultType
   payment_type?: string

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -21,6 +22,17 @@ var (
 	ErrPromoCodeAlreadyUsed = infraerrors.Conflict("PROMO_CODE_ALREADY_USED", "you have already used this promo code")
 	ErrPromoCodeInvalid     = infraerrors.BadRequest("PROMO_CODE_INVALID", "invalid promo code")
 )
+
+func validatePromoFirstRechargeValue(value *float64, min, max float64, code, message string) error {
+	if value == nil {
+		return nil
+	}
+	v := *value
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < min || v > max {
+		return infraerrors.BadRequest(code, message)
+	}
+	return nil
+}
 
 // PromoService 优惠码服务
 type PromoService struct {
@@ -189,15 +201,23 @@ func (s *PromoService) Create(ctx context.Context, input *CreatePromoCodeInput) 
 			return nil, err
 		}
 	}
+	if err := validatePromoFirstRechargeValue(input.FirstRechargeBonusAmount, 0, math.MaxFloat64, "INVALID_FIRST_RECHARGE_BONUS", "first recharge bonus amount must be non-negative"); err != nil {
+		return nil, err
+	}
+	if err := validatePromoFirstRechargeValue(input.FirstRechargeDiscountPercent, 0.01, 100, "INVALID_FIRST_RECHARGE_DISCOUNT", "first recharge payment percentage must be between 0.01 and 100"); err != nil {
+		return nil, err
+	}
 
 	promoCode := &PromoCode{
-		Code:        strings.ToUpper(code),
-		BonusAmount: input.BonusAmount,
-		MaxUses:     input.MaxUses,
-		UsedCount:   0,
-		Status:      PromoCodeStatusActive,
-		ExpiresAt:   input.ExpiresAt,
-		Notes:       input.Notes,
+		Code:                         strings.ToUpper(code),
+		BonusAmount:                  input.BonusAmount,
+		FirstRechargeBonusAmount:     input.FirstRechargeBonusAmount,
+		FirstRechargeDiscountPercent: input.FirstRechargeDiscountPercent,
+		MaxUses:                      input.MaxUses,
+		UsedCount:                    0,
+		Status:                       PromoCodeStatusActive,
+		ExpiresAt:                    input.ExpiresAt,
+		Notes:                        input.Notes,
 	}
 
 	if err := s.promoRepo.Create(ctx, promoCode); err != nil {
@@ -229,13 +249,31 @@ func (s *PromoService) Update(ctx context.Context, id int64, input *UpdatePromoC
 	if input.BonusAmount != nil {
 		promoCode.BonusAmount = *input.BonusAmount
 	}
+	if err := validatePromoFirstRechargeValue(input.FirstRechargeBonusAmount, 0, math.MaxFloat64, "INVALID_FIRST_RECHARGE_BONUS", "first recharge bonus amount must be non-negative"); err != nil {
+		return nil, err
+	}
+	if err := validatePromoFirstRechargeValue(input.FirstRechargeDiscountPercent, 0.01, 100, "INVALID_FIRST_RECHARGE_DISCOUNT", "first recharge payment percentage must be between 0.01 and 100"); err != nil {
+		return nil, err
+	}
+	if input.ClearFirstRechargeBonus {
+		promoCode.FirstRechargeBonusAmount = nil
+	} else if input.FirstRechargeBonusAmount != nil {
+		promoCode.FirstRechargeBonusAmount = input.FirstRechargeBonusAmount
+	}
+	if input.ClearFirstRechargeDiscount {
+		promoCode.FirstRechargeDiscountPercent = nil
+	} else if input.FirstRechargeDiscountPercent != nil {
+		promoCode.FirstRechargeDiscountPercent = input.FirstRechargeDiscountPercent
+	}
 	if input.MaxUses != nil {
 		promoCode.MaxUses = *input.MaxUses
 	}
 	if input.Status != nil {
 		promoCode.Status = *input.Status
 	}
-	if input.ExpiresAt != nil {
+	if input.ClearExpiresAt {
+		promoCode.ExpiresAt = nil
+	} else if input.ExpiresAt != nil {
 		promoCode.ExpiresAt = input.ExpiresAt
 	}
 	if input.Notes != nil {

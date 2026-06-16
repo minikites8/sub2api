@@ -1155,7 +1155,7 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 		if err != nil {
 			return nil, 0, 0, err
 		}
-		totalRecharged, err := s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
+		totalRecharged, err := s.userTotalRecharged(ctx, userID)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -1171,8 +1171,7 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 		return nil, 0, 0, err
 	}
 	total := result.Total
-	// Aggregate total recharged amount (only once, regardless of type filter)
-	totalRecharged, err := s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
+	totalRecharged, err := s.userTotalRecharged(ctx, userID)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -1195,11 +1194,28 @@ func (s *adminServiceImpl) getAllUserBalanceHistory(ctx context.Context, userID 
 	}
 	codes := mergeBalanceHistoryCodes(redeemCodes, affiliateCodes, params)
 
-	totalRecharged, err := s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
+	totalRecharged, err := s.userTotalRecharged(ctx, userID)
 	if err != nil {
 		return nil, 0, 0, err
 	}
 	return codes, redeemTotal + affiliateTotal, totalRecharged, nil
+}
+
+func (s *adminServiceImpl) userTotalRecharged(ctx context.Context, userID int64) (float64, error) {
+	if s == nil {
+		return 0, nil
+	}
+	if s.userRepo != nil {
+		user, err := s.userRepo.GetByID(ctx, userID)
+		if err != nil {
+			return 0, err
+		}
+		return user.TotalRecharged, nil
+	}
+	if s.redeemCodeRepo == nil {
+		return 0, nil
+	}
+	return s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
 }
 
 func (s *adminServiceImpl) listRedeemBalanceHistoryForMerge(ctx context.Context, userID int64, needed int) ([]RedeemCode, int64, error) {

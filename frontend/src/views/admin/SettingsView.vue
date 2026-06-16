@@ -9628,8 +9628,7 @@ const affiliateModalCanSubmit = computed(() => {
   const codeFilled = affiliateModal.code.trim() !== "";
   const rateFilled = String(affiliateModal.rate ?? "").trim() !== "";
   if (codeFilled || rateFilled) return true;
-  // Edit mode + empty rate input is a meaningful "clear" only if the user
-  // currently has an exclusive rate to clear.
+  // Edit mode + empty rate input is a meaningful clear for an existing value.
   return (
     affiliateModal.mode === "edit" &&
     affiliateModal.editingEntry?.aff_rebate_rate_percent != null
@@ -9679,8 +9678,8 @@ async function submitAffiliateModal() {
 }
 
 // askResetAffiliateUser prompts via the project ConfirmDialog, then on confirm
-// calls the backend "reset all" endpoint that clears both the exclusive rate
-// AND regenerates the invite code as a system random one.
+// calls the backend reset endpoint that clears the exclusive rate and
+// regenerates the invite code as a system random one.
 function askResetAffiliateUser(entry: AffiliateAdminEntry) {
   openAffiliateConfirm(
     t("admin.settings.features.affiliate.customUsers.resetTitle"),

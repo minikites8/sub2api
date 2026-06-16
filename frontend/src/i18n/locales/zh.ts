@@ -4738,6 +4738,7 @@ export default {
       columns: {
         code: '优惠码',
         bonusAmount: '赠送金额',
+        firstRechargePromo: '首充优惠',
         maxUses: '最大使用次数',
         usedCount: '已使用',
         usage: '使用量',
@@ -4751,6 +4752,14 @@ export default {
       autoGenerate: '留空自动生成',
       codePlaceholder: '输入优惠码或留空',
       bonusAmount: '赠送金额 ($)',
+      firstRechargeBonusAmount: '首充赠送额度',
+      firstRechargeBonusPlaceholder: '例如 10',
+      firstRechargeDiscountRate: '首充支付折扣',
+      firstRechargeDiscountPlaceholder: '例如 8',
+      firstRechargeBonusDisplay: '赠 ${amount}',
+      firstRechargeDiscountDisplay: '{rate} 折',
+      discountUnit: '折',
+      noFirstRechargePromo: '无',
       maxUses: '最大使用次数',
       zeroUnlimited: '0 = 无限制',
       expiresAt: '过期时间',
@@ -4782,7 +4791,9 @@ export default {
       failedToCreate: '创建优惠码失败',
       failedToUpdate: '更新优惠码失败',
       failedToDelete: '删除优惠码失败',
-      failedToLoadUsages: '加载使用记录失败'
+      failedToLoadUsages: '加载使用记录失败',
+      errorBadFirstRechargeBonus: '请输入非负首充赠送额度',
+      errorBadFirstRechargeDiscount: '请输入 0.01-10 之间的首充折扣'
     },
 
     // Usage Records
@@ -5683,8 +5694,9 @@ export default {
             empty: '暂无专属配置用户',
             customBadge: '自定义',
             useGlobal: '沿用全局',
+            none: '无',
             resetTitle: '重置该用户的专属配置',
-            resetMessage: '确认将 {email} 的专属配置全部重置为默认？\n• 专属返利比例将清除（沿用全局）\n• 邀请码将重新生成为系统随机码（已分发的旧邀请链接将失效）',
+            resetMessage: '确认将 {email} 的专属配置全部重置为默认？\n- 专属返利比例将清除\n- 邀请码将重新生成为系统随机码',
             totalLabel: '共 {total} 条',
             col: {
               email: '邮箱',
@@ -5707,7 +5719,7 @@ export default {
             ratePlaceholder: '例如 30',
             rateHint: '0-100%；留空（编辑模式下）表示清除专属比例并沿用全局。',
             errorBadRate: '请输入 0-100 之间的比例',
-            errorEmpty: '至少填写一项：专属邀请码或专属返利比例',
+            errorEmpty: '至少填写一项专属配置',
           },
           batchModal: {
             title: '批量设置专属比例（已选 {count} 个用户）',
