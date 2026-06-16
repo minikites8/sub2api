@@ -41,16 +41,6 @@ func (PromoCode) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0).
 			Comment("赠送余额金额"),
-		field.Float("first_recharge_bonus_amount").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
-			Comment("首充赠送余额金额"),
-		field.Float("first_recharge_discount_percent").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(5,2)"}).
-			Comment("首充支付百分比"),
 		field.Int("max_uses").
 			Default(0).
 			Comment("最大使用次数，0表示无限制"),
