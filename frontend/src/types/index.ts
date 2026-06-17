@@ -63,6 +63,18 @@ export interface UserProfileSourceContext {
   provider_label?: string | null
 }
 
+export interface UserPromoCodeUsage {
+  code: string
+  bonus_amount: number
+  used_at: string
+}
+
+export interface UserProfileAffiliateSummary {
+  aff_code: string
+  inviter_id?: number | null
+  inviter_aff_code?: string | null
+}
+
 export interface User {
   id: number
   username: string
@@ -80,6 +92,8 @@ export interface User {
   }
   auth_bindings?: Partial<Record<UserAuthProvider, boolean | UserAuthBindingStatus>>
   identity_bindings?: Partial<Record<UserAuthProvider, boolean | UserAuthBindingStatus>>
+  used_promo_codes?: UserPromoCodeUsage[]
+  affiliate?: UserProfileAffiliateSummary | null
   email_bound?: boolean
   linuxdo_bound?: boolean
   oidc_bound?: boolean

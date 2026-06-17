@@ -24,6 +24,7 @@ type AuthHandler struct {
 	userService          *service.UserService
 	settingSvc           *service.SettingService
 	promoService         *service.PromoService
+	affiliateService     *service.AffiliateService
 	redeemService        *service.RedeemService
 	totpService          *service.TotpService
 	userAttributeService *service.UserAttributeService
@@ -33,13 +34,14 @@ type AuthHandler struct {
 }
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService, userAttributeService *service.UserAttributeService) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, affiliateService *service.AffiliateService, redeemService *service.RedeemService, totpService *service.TotpService, userAttributeService *service.UserAttributeService) *AuthHandler {
 	return &AuthHandler{
 		cfg:                  cfg,
 		authService:          authService,
 		userService:          userService,
 		settingSvc:           settingService,
 		promoService:         promoService,
+		affiliateService:     affiliateService,
 		redeemService:        redeemService,
 		totpService:          totpService,
 		userAttributeService: userAttributeService,
@@ -415,12 +417,6 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		return
 	}
 
-	identities, err := h.userService.GetProfileIdentitySummaries(c.Request.Context(), subject.UserID, user)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
 	type UserResponse struct {
 		userProfileResponse
 		RunMode string `json:"run_mode"`
@@ -431,8 +427,18 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		runMode = h.cfg.RunMode
 	}
 
+	profileResp, err := (&UserHandler{
+		userService:      h.userService,
+		affiliateService: h.affiliateService,
+		promoService:     h.promoService,
+	}).buildUserProfileResponse(c.Request.Context(), subject.UserID, user)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	response.Success(c, UserResponse{
-		userProfileResponse: userProfileResponseFromService(user, identities),
+		userProfileResponse: profileResp,
 		RunMode:             runMode,
 	})
 }

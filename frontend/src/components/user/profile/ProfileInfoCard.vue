@@ -153,6 +153,84 @@
 
       <div data-testid="profile-side-column" class="space-y-6">
         <section
+          data-testid="profile-referral-codes-panel"
+          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+        >
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ t('profile.referralCodesTitle') }}
+          </h3>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {{ t('profile.referralCodesDescription') }}
+          </p>
+
+          <div class="mt-5 space-y-4">
+            <div class="rounded-2xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
+                  {{ t('profile.myAffiliateCode') }}
+                </span>
+                <span
+                  v-if="affiliateCode"
+                  class="rounded-full bg-primary-50 px-3 py-1 font-mono text-sm font-semibold text-primary-700 ring-1 ring-primary-100 dark:bg-primary-950/40 dark:text-primary-200 dark:ring-primary-900/50"
+                >
+                  {{ affiliateCode }}
+                </span>
+                <span v-else class="text-sm text-gray-400 dark:text-gray-500">
+                  {{ t('common.none') }}
+                </span>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{
+                  inviterBound
+                    ? t('profile.affiliateInviterBound')
+                    : t('profile.affiliateInviterEmpty')
+                }}
+              </p>
+              <div
+                v-if="inviterAffiliateCode"
+                class="mt-3 flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-gray-100 dark:bg-dark-800/70 dark:ring-dark-700"
+              >
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('profile.usedAffiliateCode') }}
+                </span>
+                <span class="font-mono font-semibold text-gray-800 dark:text-gray-100">
+                  {{ inviterAffiliateCode }}
+                </span>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
+                  {{ t('profile.usedPromoCodes') }}
+                </span>
+                <span class="text-xs text-gray-400 dark:text-gray-500">
+                  {{ usedPromoCodes.length }}
+                </span>
+              </div>
+
+              <div v-if="usedPromoCodes.length" class="space-y-2">
+                <div
+                  v-for="usage in usedPromoCodes"
+                  :key="`${usage.code}-${usage.used_at}`"
+                  class="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-gray-100 dark:bg-dark-800/70 dark:ring-dark-700"
+                >
+                  <span class="font-mono font-semibold text-gray-800 dark:text-gray-100">
+                    {{ usage.code }}
+                  </span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatPromoUsageLabel(usage) }}
+                  </span>
+                </div>
+              </div>
+              <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+                {{ t('profile.noUsedPromoCodes') }}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section
           v-if="sourceHints.length"
           class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
         >
@@ -186,7 +264,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
-import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext } from '@/types'
+import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext, UserPromoCodeUsage } from '@/types'
 
 const props = withDefaults(defineProps<{
   user: User | null
@@ -245,6 +323,10 @@ const primaryEmailDisplay = computed(() => {
   return email
 })
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
+const usedPromoCodes = computed(() => props.user?.used_promo_codes ?? [])
+const affiliateCode = computed(() => props.user?.affiliate?.aff_code?.trim() || '')
+const inviterAffiliateCode = computed(() => props.user?.affiliate?.inviter_aff_code?.trim() || '')
+const inviterBound = computed(() => Boolean(props.user?.affiliate?.inviter_id))
 const memberSinceLabel = computed(() => {
   const raw = props.user?.created_at?.trim()
   if (!raw) {
@@ -274,6 +356,27 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
 
 function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`
+}
+
+function formatPromoUsageLabel(usage: UserPromoCodeUsage): string {
+  const bonus = Number(usage.bonus_amount || 0)
+  if (bonus > 0) {
+    return t('profile.promoBonusAmount', { amount: formatCurrency(bonus) })
+  }
+
+  const rawDate = usage.used_at?.trim()
+  if (!rawDate) {
+    return t('profile.promoUsed')
+  }
+  const date = new Date(rawDate)
+  if (Number.isNaN(date.getTime())) {
+    return t('profile.promoUsed')
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  }).format(date)
 }
 
 function normalizeProvider(value: string): UserAuthProvider | null {

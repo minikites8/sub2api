@@ -8,15 +8,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/require"
 )
 
 type userHandlerRepoStub struct {
@@ -151,7 +153,7 @@ func TestUserHandlerUpdateProfileReturnsAvatarURL(t *testing.T) {
 			Status:   service.StatusActive,
 		},
 	}
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil, nil)
 
 	body := []byte(`{"avatar_url":"https://cdn.example.com/avatar.png"}`)
 	recorder := httptest.NewRecorder()
@@ -209,7 +211,7 @@ func TestUserHandlerGetProfileReturnsIdentitySummaries(t *testing.T) {
 			},
 		},
 	}
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -265,6 +267,80 @@ func TestUserHandlerGetProfileReturnsIdentitySummaries(t *testing.T) {
 	require.Contains(t, resp.Data.Identities.WeChat.BindStartPath, "/api/v1/auth/oauth/wechat/bind/start")
 }
 
+func TestUserHandlerGetProfileReturnsPromoAndAffiliateCodes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:       11,
+			Email:    "codes@example.com",
+			Username: "codes-user",
+			Role:     service.RoleUser,
+			Status:   service.StatusActive,
+		},
+	}
+	promoRepo := &profilePromoRepoStub{
+		usages: []service.PromoCodeUsage{
+			{
+				PromoCodeID: 9,
+				UserID:      11,
+				BonusAmount: 5,
+				UsedAt:      time.Date(2026, 6, 17, 8, 0, 0, 0, time.UTC),
+				PromoCode:   &service.PromoCode{ID: 9, Code: "PARTNER50"},
+			},
+		},
+	}
+	affiliateRepo := newProfileAffiliateRepoStub("AFF123", int64Ptr(88))
+	affiliateRepo.inviterSummary = &service.AffiliateSummary{
+		UserID:  88,
+		AffCode: "INVITER88",
+	}
+	handler := NewUserHandler(
+		service.NewUserService(repo, nil, nil, nil),
+		nil,
+		nil,
+		nil,
+		service.NewAffiliateService(affiliateRepo, nil, nil, nil),
+		service.NewPromoService(promoRepo, nil, nil, nil, nil),
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/user/profile", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 11})
+
+	handler.GetProfile(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			UsedPromoCodes []struct {
+				Code        string    `json:"code"`
+				BonusAmount float64   `json:"bonus_amount"`
+				UsedAt      time.Time `json:"used_at"`
+			} `json:"used_promo_codes"`
+			Affiliate struct {
+				AffCode        string  `json:"aff_code"`
+				InviterID      *int64  `json:"inviter_id"`
+				InviterAffCode *string `json:"inviter_aff_code"`
+			} `json:"affiliate"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Len(t, resp.Data.UsedPromoCodes, 1)
+	require.Equal(t, "PARTNER50", resp.Data.UsedPromoCodes[0].Code)
+	require.Equal(t, 5.0, resp.Data.UsedPromoCodes[0].BonusAmount)
+	require.Equal(t, "AFF123", resp.Data.Affiliate.AffCode)
+	require.NotNil(t, resp.Data.Affiliate.InviterID)
+	require.Equal(t, int64(88), *resp.Data.Affiliate.InviterID)
+	require.NotNil(t, resp.Data.Affiliate.InviterAffCode)
+	require.Equal(t, "INVITER88", *resp.Data.Affiliate.InviterAffCode)
+}
+
 func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -292,7 +368,7 @@ func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
 			},
 		},
 	}
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -371,7 +447,7 @@ func TestUserHandlerGetProfileDoesNotInferEditedProfileSourcesWithoutMatchingIde
 			},
 		},
 	}
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -521,7 +597,7 @@ func TestUserHandlerBindEmailIdentityReturnsProfileResponse(t *testing.T) {
 	}
 	emailService := service.NewEmailService(nil, emailCache)
 	authService := service.NewAuthService(nil, repo, nil, nil, cfg, nil, emailService, nil, nil, nil, nil, nil, nil)
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil, nil, nil, nil)
 
 	body := []byte(`{"email":"new@example.com","verify_code":"123456","password":"new-password"}`)
 	recorder := httptest.NewRecorder()
@@ -575,7 +651,7 @@ func TestUserHandlerUnbindIdentityReturnsUpdatedProfile(t *testing.T) {
 			},
 		},
 	}
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -635,7 +711,7 @@ func TestUserHandlerUnbindIdentityRevokesAllUserSessionsWhenAuthServiceConfigure
 		},
 	}
 	authService := service.NewAuthService(nil, repo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -678,7 +754,7 @@ func TestUserHandlerUnbindIdentityDoesNotRevokeSessionsWhenNothingWasUnbound(t *
 		},
 	}
 	authService := service.NewAuthService(nil, repo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -722,7 +798,7 @@ func TestUserHandlerBindEmailIdentityRejectsWrongCurrentPasswordForBoundEmail(t 
 	}
 	emailService := service.NewEmailService(nil, emailCache)
 	authService := service.NewAuthService(nil, repo, nil, nil, cfg, nil, emailService, nil, nil, nil, nil, nil, nil)
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil, nil, nil, nil)
 
 	body := []byte(`{"email":"new@example.com","verify_code":"123456","password":"wrong-password"}`)
 	recorder := httptest.NewRecorder()
@@ -759,7 +835,7 @@ func TestUserHandlerStartIdentityBindingReturnsAuthorizeURL(t *testing.T) {
 			Status:   service.StatusActive,
 		},
 	}
-	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil, nil)
 
 	body := []byte(`{"provider":"wechat","redirect_to":"/settings/profile"}`)
 	recorder := httptest.NewRecorder()
@@ -789,4 +865,54 @@ func TestUserHandlerStartIdentityBindingReturnsAuthorizeURL(t *testing.T) {
 	require.Contains(t, resp.Data.AuthorizeURL, "/api/v1/auth/oauth/wechat/bind/start")
 	require.Contains(t, resp.Data.AuthorizeURL, "intent=bind_current_user")
 	require.Contains(t, resp.Data.AuthorizeURL, "redirect=%2Fsettings%2Fprofile")
+}
+
+type profilePromoRepoStub struct {
+	service.PromoCodeRepository
+	usages []service.PromoCodeUsage
+}
+
+func (s *profilePromoRepoStub) ListUsagesByUser(_ context.Context, userID int64) ([]service.PromoCodeUsage, error) {
+	out := make([]service.PromoCodeUsage, 0, len(s.usages))
+	for i := range s.usages {
+		if s.usages[i].UserID == userID {
+			out = append(out, s.usages[i])
+		}
+	}
+	return out, nil
+}
+
+type profileAffiliateRepoStub struct {
+	service.AffiliateRepository
+	summary        *service.AffiliateSummary
+	inviterSummary *service.AffiliateSummary
+}
+
+func newProfileAffiliateRepoStub(code string, inviterID *int64) *profileAffiliateRepoStub {
+	return &profileAffiliateRepoStub{
+		summary: &service.AffiliateSummary{
+			UserID:    11,
+			AffCode:   strings.ToUpper(strings.TrimSpace(code)),
+			InviterID: inviterID,
+		},
+	}
+}
+
+func (s *profileAffiliateRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*service.AffiliateSummary, error) {
+	if s.inviterSummary != nil && s.inviterSummary.UserID == userID {
+		return s.inviterSummary, nil
+	}
+	return s.summary, nil
+}
+
+func (s *profileAffiliateRepoStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
+	return 0, nil
+}
+
+func (s *profileAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]service.AffiliateInvitee, error) {
+	return nil, nil
+}
+
+func int64Ptr(v int64) *int64 {
+	return &v
 }

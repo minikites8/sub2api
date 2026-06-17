@@ -84,6 +84,7 @@ type AffiliateDetail struct {
 	UserID          int64   `json:"user_id"`
 	AffCode         string  `json:"aff_code"`
 	InviterID       *int64  `json:"inviter_id,omitempty"`
+	InviterAffCode  *string `json:"inviter_aff_code,omitempty"`
 	AffCount        int     `json:"aff_count"`
 	AffQuota        float64 `json:"aff_quota"`
 	AffFrozenQuota  float64 `json:"aff_frozen_quota"`
@@ -282,10 +283,22 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 	if err != nil {
 		return nil, err
 	}
+	var inviterAffCode *string
+	if summary.InviterID != nil {
+		inviterSummary, err := s.repo.EnsureUserAffiliate(ctx, *summary.InviterID)
+		if err != nil {
+			return nil, err
+		}
+		code := strings.TrimSpace(inviterSummary.AffCode)
+		if code != "" {
+			inviterAffCode = &code
+		}
+	}
 	return &AffiliateDetail{
 		UserID:                     summary.UserID,
 		AffCode:                    summary.AffCode,
 		InviterID:                  summary.InviterID,
+		InviterAffCode:             inviterAffCode,
 		AffCount:                   summary.AffCount,
 		AffQuota:                   summary.AffQuota,
 		AffFrozenQuota:             summary.AffFrozenQuota,

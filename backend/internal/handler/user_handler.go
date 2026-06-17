@@ -21,6 +21,7 @@ type UserHandler struct {
 	emailService          *service.EmailService
 	emailCache            service.EmailCache
 	affiliateService      *service.AffiliateService
+	promoService          *service.PromoService
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository
 }
 
@@ -31,6 +32,7 @@ func NewUserHandler(
 	emailService *service.EmailService,
 	emailCache service.EmailCache,
 	affiliateService *service.AffiliateService,
+	promoService *service.PromoService,
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository,
 ) *UserHandler {
 	return &UserHandler{
@@ -39,6 +41,7 @@ func NewUserHandler(
 		emailService:          emailService,
 		emailCache:            emailCache,
 		affiliateService:      affiliateService,
+		promoService:          promoService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 	}
 }
@@ -99,11 +102,25 @@ type userProfileResponse struct {
 	OIDCBound         bool                                   `json:"oidc_bound"`
 	WeChatBound       bool                                   `json:"wechat_bound"`
 	DingTalkBound     bool                                   `json:"dingtalk_bound"`
+	UsedPromoCodes    []userProfilePromoCodeUsage            `json:"used_promo_codes"`
+	Affiliate         *userProfileAffiliateSummary           `json:"affiliate,omitempty"`
 }
 
 type userProfileSourceContext struct {
 	Provider string `json:"provider,omitempty"`
 	Source   string `json:"source,omitempty"`
+}
+
+type userProfilePromoCodeUsage struct {
+	Code        string    `json:"code"`
+	BonusAmount float64   `json:"bonus_amount"`
+	UsedAt      time.Time `json:"used_at"`
+}
+
+type userProfileAffiliateSummary struct {
+	AffCode        string  `json:"aff_code"`
+	InviterID      *int64  `json:"inviter_id,omitempty"`
+	InviterAffCode *string `json:"inviter_aff_code,omitempty"`
 }
 
 // GetProfile handles getting user profile
@@ -535,7 +552,26 @@ func (h *UserHandler) buildUserProfileResponse(ctx context.Context, userID int64
 	if err != nil {
 		return userProfileResponse{}, err
 	}
-	return userProfileResponseFromService(user, identities), nil
+	resp := userProfileResponseFromService(user, identities)
+	if h.promoService != nil {
+		usages, err := h.promoService.ListUserPromoUsages(ctx, userID)
+		if err != nil {
+			return userProfileResponse{}, err
+		}
+		resp.UsedPromoCodes = userProfilePromoUsagesFromService(usages)
+	}
+	if h.affiliateService != nil {
+		detail, err := h.affiliateService.GetAffiliateDetail(ctx, userID)
+		if err != nil {
+			return userProfileResponse{}, err
+		}
+		resp.Affiliate = &userProfileAffiliateSummary{
+			AffCode:        detail.AffCode,
+			InviterID:      detail.InviterID,
+			InviterAffCode: detail.InviterAffCode,
+		}
+	}
+	return resp, nil
 }
 
 func userProfileResponseFromService(user *service.User, identities service.UserIdentitySummarySet) userProfileResponse {
@@ -562,6 +598,25 @@ func userProfileResponseFromService(user *service.User, identities service.UserI
 		WeChatBound:       identities.WeChat.Bound,
 		DingTalkBound:     identities.DingTalk.Bound,
 	}
+}
+
+func userProfilePromoUsagesFromService(usages []service.PromoCodeUsage) []userProfilePromoCodeUsage {
+	out := make([]userProfilePromoCodeUsage, 0, len(usages))
+	for i := range usages {
+		code := ""
+		if usages[i].PromoCode != nil {
+			code = strings.TrimSpace(usages[i].PromoCode.Code)
+		}
+		if code == "" {
+			continue
+		}
+		out = append(out, userProfilePromoCodeUsage{
+			Code:        code,
+			BonusAmount: usages[i].BonusAmount,
+			UsedAt:      usages[i].UsedAt,
+		})
+	}
+	return out
 }
 
 func userProfileBindingMap(identities service.UserIdentitySummarySet) map[string]service.UserIdentitySummary {

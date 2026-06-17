@@ -223,6 +223,19 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		return "", nil, ErrEmailExists
 	}
 
+	if strings.TrimSpace(promoCode) != "" {
+		if s.promoService == nil {
+			return "", nil, ErrServiceUnavailable
+		}
+		if s.settingService != nil && !s.settingService.IsPromoCodeEnabled(ctx) {
+			return "", nil, ErrPromoCodeDisabled
+		}
+		if _, err := s.promoService.ValidatePromoCode(ctx, promoCode); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Invalid promo code during registration: %v", err)
+			return "", nil, err
+		}
+	}
+
 	// 密码哈希
 	hashedPassword, err := s.HashPassword(password)
 	if err != nil {
@@ -249,17 +262,18 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		Status:       StatusActive,
 	}
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
-		// 优先检查邮箱冲突错误（竞态条件下可能发生）
-		if errors.Is(err, ErrEmailExists) {
-			return "", nil, ErrEmailExists
-		}
-		logger.LegacyPrintf("service.auth", "[Auth] Database error creating user: %v", err)
-		return "", nil, ErrServiceUnavailable
+	promoCode = strings.TrimSpace(promoCode)
+	if err := s.createUserWithRegistrationPromo(ctx, user, promoCode); err != nil {
+		return "", nil, err
 	}
 	s.applySignupIPRiskControl(ctx, user)
 	if !user.IsActive() {
 		return "", user, ErrUserNotActive
+	}
+	if promoCode != "" {
+		if updatedUser, err := s.userRepo.GetByID(ctx, user.ID); err == nil {
+			user = updatedUser
+		}
 	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
@@ -284,18 +298,6 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
 		}
 	}
-	// 应用优惠码（如果提供且功能已启用）
-	if promoCode != "" && s.promoService != nil && s.settingService != nil && s.settingService.IsPromoCodeEnabled(ctx) {
-		if err := s.promoService.ApplyPromoCode(ctx, user.ID, promoCode); err != nil {
-			// 优惠码应用失败不影响注册，只记录日志
-			logger.LegacyPrintf("service.auth", "[Auth] Failed to apply promo code for user %d: %v", user.ID, err)
-		} else {
-			// 重新获取用户信息以获取更新后的余额
-			if updatedUser, err := s.userRepo.GetByID(ctx, user.ID); err == nil {
-				user = updatedUser
-			}
-		}
-	}
 
 	// 生成token
 	token, err := s.GenerateToken(user)
@@ -304,6 +306,49 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	return token, user, nil
+}
+
+func (s *AuthService) createUserWithRegistrationPromo(ctx context.Context, user *User, promoCode string) error {
+	promoCode = strings.TrimSpace(promoCode)
+	if promoCode == "" {
+		return s.createRegistrationUser(ctx, user)
+	}
+	if s.entClient == nil {
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Ent client not configured for promo registration")
+		return ErrServiceUnavailable
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to begin promo registration transaction: %v", err)
+		return ErrServiceUnavailable
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	if err := s.createRegistrationUser(txCtx, user); err != nil {
+		return err
+	}
+	if err := s.promoService.ApplyPromoCode(txCtx, user.ID, promoCode); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to commit promo registration transaction: %v", err)
+		return ErrServiceUnavailable
+	}
+
+	return nil
+}
+
+func (s *AuthService) createRegistrationUser(ctx context.Context, user *User) error {
+	if err := s.userRepo.Create(ctx, user); err != nil {
+		if errors.Is(err, ErrEmailExists) {
+			return ErrEmailExists
+		}
+		logger.LegacyPrintf("service.auth", "[Auth] Database error creating user: %v", err)
+		return ErrServiceUnavailable
+	}
+	return nil
 }
 
 // SendVerifyCodeResult 发送验证码返回结果

@@ -47,24 +47,26 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
 	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
-	tx, err := r.client.Tx(ctx)
-	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-		return err
-	}
-
 	var txClient *dbent.Client
 	txCtx := ctx
-	if err == nil {
-		defer func() { _ = tx.Rollback() }()
+	tx := dbent.TxFromContext(ctx)
+	if tx != nil {
 		txClient = tx.Client()
-		txCtx = dbent.NewTxContext(ctx, tx)
 	} else {
-		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
-		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-			txClient = existingTx.Client()
-		} else {
-			txClient = r.client
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
 		}
+		if errors.Is(err, dbent.ErrTxStarted) {
+			txClient = r.client
+		} else {
+			txClient = tx.Client()
+			txCtx = dbent.NewTxContext(ctx, tx)
+		}
+	}
+	if tx != nil && dbent.TxFromContext(ctx) == nil {
+		defer func() { _ = tx.Rollback() }()
 	}
 
 	releaseEmailLock, err := lockRepositoryScopedKeys(
@@ -108,7 +110,7 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		return err
 	}
 
-	if tx != nil {
+	if tx != nil && dbent.TxFromContext(ctx) == nil {
 		if err := tx.Commit(); err != nil {
 			return err
 		}

@@ -123,6 +123,10 @@ func (s *promoCodeRepoStub) GetFirstRechargePromoByUser(context.Context, int64) 
 	panic("unexpected GetFirstRechargePromoByUser call")
 }
 
+func (s *promoCodeRepoStub) ListUsagesByUser(context.Context, int64) ([]PromoCodeUsage, error) {
+	panic("unexpected ListUsagesByUser call")
+}
+
 func (s *promoCodeRepoStub) ListUsagesByPromoCode(context.Context, int64, pagination.PaginationParams) ([]PromoCodeUsage, *pagination.PaginationResult, error) {
 	panic("unexpected ListUsagesByPromoCode call")
 }

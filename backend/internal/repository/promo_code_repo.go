@@ -365,7 +365,8 @@ func (r *promoCodeRepository) CreateUsage(ctx context.Context, usage *service.Pr
 }
 
 func (r *promoCodeRepository) GetUsageByPromoCodeAndUser(ctx context.Context, promoCodeID, userID int64) (*service.PromoCodeUsage, error) {
-	m, err := r.client.PromoCodeUsage.Query().
+	client := clientFromContext(ctx, r.client)
+	m, err := client.PromoCodeUsage.Query().
 		Where(
 			promocodeusage.PromoCodeIDEQ(promoCodeID),
 			promocodeusage.UserIDEQ(userID),
@@ -419,6 +420,19 @@ LIMIT 1`, r.placeholder(1))
 		return nil, err
 	}
 	return out, rows.Err()
+}
+
+func (r *promoCodeRepository) ListUsagesByUser(ctx context.Context, userID int64) ([]service.PromoCodeUsage, error) {
+	client := clientFromContext(ctx, r.client)
+	usages, err := client.PromoCodeUsage.Query().
+		Where(promocodeusage.UserIDEQ(userID)).
+		WithPromoCode().
+		Order(dbent.Desc(promocodeusage.FieldUsedAt), dbent.Desc(promocodeusage.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return promoCodeUsageEntitiesToService(usages), nil
 }
 
 func (r *promoCodeRepository) ListUsagesByPromoCode(ctx context.Context, promoCodeID int64, params pagination.PaginationParams) ([]service.PromoCodeUsage, *pagination.PaginationResult, error) {
@@ -503,6 +517,9 @@ func promoCodeUsageEntityToService(m *dbent.PromoCodeUsage) *service.PromoCodeUs
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
+	}
+	if m.Edges.PromoCode != nil {
+		out.PromoCode = promoCodeEntityToService(m.Edges.PromoCode)
 	}
 	return out
 }

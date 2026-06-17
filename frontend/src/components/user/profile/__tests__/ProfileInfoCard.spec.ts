@@ -43,6 +43,17 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.authBindings.source.username') {
           return `Username synced from ${params?.providerName || 'provider'}`
         }
+        if (key === 'profile.referralCodesTitle') return 'Promo & Affiliate Codes'
+        if (key === 'profile.referralCodesDescription') return 'Review account promo and affiliate info'
+        if (key === 'profile.myAffiliateCode') return 'My Affiliate Code'
+        if (key === 'profile.affiliateInviterBound') return 'Affiliate inviter bound'
+        if (key === 'profile.affiliateInviterEmpty') return 'No affiliate inviter bound'
+        if (key === 'profile.usedAffiliateCode') return 'Used Affiliate Code'
+        if (key === 'profile.usedPromoCodes') return 'Used Promo Codes'
+        if (key === 'profile.noUsedPromoCodes') return 'No platform promo codes used yet'
+        if (key === 'profile.promoBonusAmount') return `Bonus ${params?.amount || ''}`.trim()
+        if (key === 'profile.promoUsed') return 'Used'
+        if (key === 'common.none') return 'None'
         return key
       }
     })
@@ -193,5 +204,39 @@ describe('ProfileInfoCard', () => {
     expect(wrapper.get('[data-testid="profile-side-column"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="profile-basics-panel"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="profile-auth-bindings-panel"]').exists()).toBe(true)
+  })
+
+  it('renders used promo codes and affiliate code information', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({
+          affiliate: {
+            aff_code: 'AFF123',
+            inviter_id: 99,
+            inviter_aff_code: 'INVITER99'
+          },
+          used_promo_codes: [
+            {
+              code: 'PARTNER50',
+              bonus_amount: 5,
+              used_at: '2026-06-17T08:00:00Z'
+            }
+          ]
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    const panel = wrapper.get('[data-testid="profile-referral-codes-panel"]')
+    expect(panel.text()).toContain('AFF123')
+    expect(panel.text()).toContain('Affiliate inviter bound')
+    expect(panel.text()).toContain('Used Affiliate Code')
+    expect(panel.text()).toContain('INVITER99')
+    expect(panel.text()).toContain('PARTNER50')
+    expect(panel.text()).toContain('Bonus $5.00')
   })
 })
