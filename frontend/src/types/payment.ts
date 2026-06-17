@@ -57,6 +57,16 @@ export interface MethodLimitsResponse {
   global_max: number  // widest max across all methods; 0 = no maximum
 }
 
+export interface FirstRechargePromoPreview {
+  promo_code: string
+  bonus_amount?: number
+  discount_percent?: number
+  discount_times: number
+  discount_used: number
+  discount_remaining: number
+  discount_set: boolean
+}
+
 /** Response from /payment/checkout-info API — single call for the payment page */
 export interface CheckoutInfoResponse {
   methods: Record<string, MethodLimit>
@@ -71,6 +81,7 @@ export interface CheckoutInfoResponse {
   stripe_publishable_key: string
   /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
   alipay_force_qrcode?: boolean
+  first_recharge_promo?: FirstRechargePromoPreview
 }
 
 // ==================== Orders ====================

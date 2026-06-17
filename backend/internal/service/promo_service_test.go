@@ -64,10 +64,11 @@ func TestApplyPromoCode_ZeroBonusCreatesUsageWithoutBalanceUpdate(t *testing.T) 
 }
 
 type promoCodeRepoStub struct {
-	promo          *PromoCode
-	existingUsage  *PromoCodeUsage
-	createdUsage   *PromoCodeUsage
-	incrementedIDs []int64
+	promo              *PromoCode
+	firstRechargePromo *PromoCode
+	existingUsage      *PromoCodeUsage
+	createdUsage       *PromoCodeUsage
+	incrementedIDs     []int64
 }
 
 func (s *promoCodeRepoStub) Create(context.Context, *PromoCode) error {
@@ -120,7 +121,7 @@ func (s *promoCodeRepoStub) GetUsageByPromoCodeAndUser(context.Context, int64, i
 }
 
 func (s *promoCodeRepoStub) GetFirstRechargePromoByUser(context.Context, int64) (*PromoCode, error) {
-	panic("unexpected GetFirstRechargePromoByUser call")
+	return s.firstRechargePromo, nil
 }
 
 func (s *promoCodeRepoStub) ListUsagesByUser(context.Context, int64) ([]PromoCodeUsage, error) {

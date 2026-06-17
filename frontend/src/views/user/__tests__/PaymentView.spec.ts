@@ -140,6 +140,24 @@ function checkoutInfoWithPlansFixture() {
   }
 }
 
+function checkoutInfoWithRechargePromoFixture() {
+  return {
+    data: {
+      ...checkoutInfoFixture().data,
+      recharge_fee_rate: 2,
+      first_recharge_promo: {
+        promo_code: 'PARTNER80',
+        bonus_amount: 10,
+        discount_percent: 80,
+        discount_times: 3,
+        discount_used: 1,
+        discount_remaining: 2,
+        discount_set: true,
+      },
+    },
+  }
+}
+
 function jsapiOrderFixture(resumeToken: string) {
   return {
     order_id: 123,
@@ -414,5 +432,34 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(showWarning).toHaveBeenCalledWith('payment.errors.mobilePaymentFallbackToQr')
     expect(showError).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('weixin://wxpay/bizpayurl?pr=fallback-native')
+  })
+
+  it('shows recharge promo discount and final payment amount before creating an order', async () => {
+    routeState.query = {}
+    getCheckoutInfo.mockResolvedValue(checkoutInfoWithRechargePromoFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    wrapper.findComponent({ name: 'AmountInput' }).vm.$emit('update:modelValue', 100)
+    await flushPromises()
+
+    const html = wrapper.html()
+    expect(html).toContain('PARTNER80')
+    expect(html).toContain('¥80.00')
+    expect(html).toContain('¥1.60')
+    expect(html).toContain('¥81.60')
+    expect(html).toContain('$110.00')
   })
 })

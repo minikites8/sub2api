@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,4 +63,35 @@ func TestFirstRechargeAmountPlanFromSnapshot_UsesDiscountSetFlag(t *testing.T) {
 	require.Equal(t, 10.0, plan.BonusAmount)
 	require.Equal(t, 3, plan.DiscountTimes)
 	require.Equal(t, 100.0, plan.PaymentAmount)
+}
+
+func TestGetFirstRechargePromoPreview_ReturnsAvailablePromo(t *testing.T) {
+	ctx := context.Background()
+	bonus := 10.0
+	discountPercent := 80.0
+	promoRepo := &promoCodeRepoStub{
+		firstRechargePromo: &PromoCode{
+			ID:                           9,
+			Code:                         "PARTNER80",
+			FirstRechargeBonusAmount:     &bonus,
+			FirstRechargeDiscountPercent: &discountPercent,
+			FirstRechargeDiscountTimes:   3,
+			Status:                       PromoCodeStatusActive,
+		},
+	}
+	svc := NewPaymentService(newOrderNotFoundTestClient(t), nil, nil, nil, nil, nil, &userRepoStub{
+		user: &User{ID: 42, Status: StatusActive},
+	}, nil, nil, promoRepo)
+
+	preview, err := svc.GetFirstRechargePromoPreview(ctx, 42)
+
+	require.NoError(t, err)
+	require.NotNil(t, preview)
+	require.Equal(t, "PARTNER80", preview.PromoCode)
+	require.Equal(t, 10.0, preview.BonusAmount)
+	require.Equal(t, 80.0, preview.DiscountPercent)
+	require.Equal(t, 3, preview.DiscountTimes)
+	require.Equal(t, 0, preview.DiscountUsed)
+	require.Equal(t, 3, preview.DiscountRemaining)
+	require.True(t, preview.DiscountSet)
 }

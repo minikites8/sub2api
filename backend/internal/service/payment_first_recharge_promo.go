@@ -31,7 +31,18 @@ type firstRechargePromo struct {
 	BonusAmount     float64
 	DiscountPercent float64
 	DiscountTimes   int
+	DiscountUsed    int
 	DiscountSet     bool
+}
+
+type FirstRechargePromoPreview struct {
+	PromoCode         string  `json:"promo_code"`
+	BonusAmount       float64 `json:"bonus_amount,omitempty"`
+	DiscountPercent   float64 `json:"discount_percent,omitempty"`
+	DiscountTimes     int     `json:"discount_times"`
+	DiscountUsed      int     `json:"discount_used"`
+	DiscountRemaining int     `json:"discount_remaining"`
+	DiscountSet       bool    `json:"discount_set"`
 }
 
 type firstRechargeAmountPlan struct {
@@ -48,6 +59,32 @@ type firstRechargeAmountPlan struct {
 
 func (p firstRechargePromo) active() bool {
 	return p.BonusAmount > 0 || (p.DiscountSet && p.DiscountPercent < 100)
+}
+
+func (s *PaymentService) GetFirstRechargePromoPreview(ctx context.Context, userID int64) (*FirstRechargePromoPreview, error) {
+	promo, err := s.resolveFirstRechargePromo(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if promo == nil {
+		return nil, nil
+	}
+	remaining := 0
+	if promo.DiscountSet && promo.DiscountTimes > 0 {
+		remaining = promo.DiscountTimes - promo.DiscountUsed
+		if remaining < 0 {
+			remaining = 0
+		}
+	}
+	return &FirstRechargePromoPreview{
+		PromoCode:         promo.PromoCode,
+		BonusAmount:       promo.BonusAmount,
+		DiscountPercent:   promo.DiscountPercent,
+		DiscountTimes:     promo.DiscountTimes,
+		DiscountUsed:      promo.DiscountUsed,
+		DiscountRemaining: remaining,
+		DiscountSet:       promo.DiscountSet,
+	}, nil
 }
 
 func (s *PaymentService) resolveFirstRechargePromo(ctx context.Context, userID int64) (*firstRechargePromo, error) {
@@ -87,6 +124,7 @@ func (s *PaymentService) resolveFirstRechargePromo(ctx context.Context, userID i
 		if discountTimes == 0 || discountUsed < discountTimes {
 			promo.DiscountPercent = clampFirstRechargeDiscount(*promoCode.FirstRechargeDiscountPercent)
 			promo.DiscountTimes = discountTimes
+			promo.DiscountUsed = discountUsed
 			promo.DiscountSet = true
 		}
 	}

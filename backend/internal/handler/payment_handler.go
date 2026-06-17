@@ -97,6 +97,10 @@ func (h *PaymentHandler) GetChannels(c *gin.Context) {
 // GET /api/v1/payment/checkout-info
 func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	ctx := c.Request.Context()
+	subject, ok := requireAuth(c)
+	if !ok {
+		return
+	}
 
 	// Fetch limits (methods + global range)
 	limitsResp, err := h.configService.GetAvailableMethodLimits(ctx)
@@ -130,6 +134,15 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		})
 	}
 
+	var firstRechargePromo *service.FirstRechargePromoPreview
+	if h.paymentService != nil {
+		firstRechargePromo, err = h.paymentService.GetFirstRechargePromoPreview(ctx, subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+
 	response.Success(c, checkoutInfoResponse{
 		Methods:                   limitsResp.Methods,
 		GlobalMin:                 limitsResp.GlobalMin,
@@ -142,21 +155,23 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		HelpImageURL:              cfg.HelpImageURL,
 		StripePublishableKey:      cfg.StripePublishableKey,
 		AlipayForceQRCode:         cfg.AlipayForceQRCode,
+		FirstRechargePromo:        firstRechargePromo,
 	})
 }
 
 type checkoutInfoResponse struct {
-	Methods                   map[string]service.MethodLimits `json:"methods"`
-	GlobalMin                 float64                         `json:"global_min"`
-	GlobalMax                 float64                         `json:"global_max"`
-	Plans                     []checkoutPlan                  `json:"plans"`
-	BalanceDisabled           bool                            `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64                         `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
-	HelpText                  string                          `json:"help_text"`
-	HelpImageURL              string                          `json:"help_image_url"`
-	StripePublishableKey      string                          `json:"stripe_publishable_key"`
-	AlipayForceQRCode         bool                            `json:"alipay_force_qrcode"`
+	Methods                   map[string]service.MethodLimits    `json:"methods"`
+	GlobalMin                 float64                            `json:"global_min"`
+	GlobalMax                 float64                            `json:"global_max"`
+	Plans                     []checkoutPlan                     `json:"plans"`
+	BalanceDisabled           bool                               `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64                            `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           float64                            `json:"recharge_fee_rate"`
+	HelpText                  string                             `json:"help_text"`
+	HelpImageURL              string                             `json:"help_image_url"`
+	StripePublishableKey      string                             `json:"stripe_publishable_key"`
+	AlipayForceQRCode         bool                               `json:"alipay_force_qrcode"`
+	FirstRechargePromo        *service.FirstRechargePromoPreview `json:"first_recharge_promo,omitempty"`
 }
 
 type checkoutPlan struct {
