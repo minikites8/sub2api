@@ -543,8 +543,11 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+  kiro_auto_sticky_enabled: boolean
+  kiro_sticky_session_ttl_seconds: number
   kiro_cache_emulation_enabled: boolean
   kiro_cache_emulation_ratio: number
+  kiro_endpoint_mode?: string
   created_at: string
   updated_at: string
 }
@@ -667,8 +670,11 @@ export interface CreateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  kiro_auto_sticky_enabled?: boolean
+  kiro_sticky_session_ttl_seconds?: number
   kiro_cache_emulation_enabled?: boolean
   kiro_cache_emulation_ratio?: number
+  kiro_endpoint_mode?: string
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -704,8 +710,11 @@ export interface UpdateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  kiro_auto_sticky_enabled?: boolean
+  kiro_sticky_session_ttl_seconds?: number
   kiro_cache_emulation_enabled?: boolean
   kiro_cache_emulation_ratio?: number
+  kiro_endpoint_mode?: string
   copy_accounts_from_group_ids?: number[]
 }
 
@@ -854,6 +863,7 @@ export interface Account {
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
+    kiro_credit_unit_price_usd?: number
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null
@@ -954,6 +964,7 @@ export interface WindowStats {
   cost: number // Account cost (account multiplier)
   standard_cost?: number
   user_cost?: number
+  kiro_credits?: number
 }
 
 export interface UsageProgress {

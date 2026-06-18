@@ -1009,6 +1009,20 @@
         </p>
       </div>
 
+      <div v-if="form.platform === 'kiro' && accountCategory === 'oauth-based'" class="space-y-2">
+        <label class="input-label">{{ t('admin.accounts.kiroCreditUnitPriceUsd') }}</label>
+        <input
+          v-model.number="kiroCreditUnitPriceUsd"
+          type="number"
+          min="0"
+          step="0.001"
+          class="input"
+          placeholder="0"
+          data-testid="kiro-credit-unit-price-usd"
+        />
+        <p class="input-hint">{{ t('admin.accounts.kiroCreditUnitPriceUsdHint') }}</p>
+      </div>
+
       <div v-if="form.platform === 'kiro' && accountCategory === 'apikey'" class="space-y-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
@@ -3141,7 +3155,7 @@
             <Select v-model="openAICompactMode" :options="openAICompactModeOptions" />
           </div>
         </div>
-        <div class="space-y-3 border-y border-gray-200 py-5 dark:border-dark-600">
+        <div class="space-y-3 border-t border-gray-200 pt-5 dark:border-dark-600">
           <div>
             <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
             <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
@@ -3980,6 +3994,7 @@ const kiroIDCRegion = ref('us-east-1')
 const kiroTokenJson = ref('')
 const kiroDeviceRegistrationJson = ref('')
 const kiroModelMappings = ref<ModelMapping[]>([])
+const kiroCreditUnitPriceUsd = ref(0)
 const kiroPresetMappings = computed(() => getPresetMappingsByPlatform('kiro'))
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
@@ -4867,6 +4882,7 @@ const resetForm = () => {
   kiroIDCRegion.value = 'us-east-1'
   kiroTokenJson.value = ''
   kiroDeviceRegistrationJson.value = ''
+  kiroCreditUnitPriceUsd.value = 0
   fetchKiroDefaultMappings().then(mappings => {
     kiroModelMappings.value = [...mappings]
   })
@@ -5474,6 +5490,12 @@ const createAccountAndFinish = async (
     } else {
       delete credentials.compact_model_mapping
     }
+  }
+  if (platform === 'kiro' && type === 'oauth') {
+    const kiroExtra: Record<string, unknown> = { ...(finalExtra || {}) }
+    const unitPrice = Number(kiroCreditUnitPriceUsd.value ?? 0)
+    kiroExtra.kiro_credit_unit_price_usd = Number.isFinite(unitPrice) ? unitPrice : 0
+    finalExtra = kiroExtra
   }
   await doCreateAccount({
     name: form.name,

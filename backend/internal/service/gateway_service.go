@@ -551,6 +551,7 @@ type ClaudeUsage struct {
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	KiroCredits              float64
 }
 
 // ForwardResult 转发结果
@@ -752,7 +753,14 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		return ""
 	}
 
-	// 1. 最高优先级：从 metadata.user_id 提取 session_xxx
+	// 0. 最高优先级：客户端通过 HTTP 请求头显式传递的 Session ID。
+	//    由 Handler 从 X-Session-ID / Anthropic-Session-Id 等 header 写入 ExplicitSessionID。
+	//    混入 APIKeyID 隔离不同用户使用相同 session id（如都用 "default"）的情况。
+	if hash, ok := s.hashStickySessionHint(parsed, parsed.ExplicitSessionID, "explicit_session_header"); ok {
+		return hash
+	}
+
+	// 1. 从 metadata.user_id 提取 session_xxx（Claude Code 等客户端的标准会话标识）
 	if parsed.MetadataUserID != "" {
 		uid := ParseMetadataUserID(parsed.MetadataUserID)
 		if uid != nil && uid.SessionID != "" {
@@ -770,6 +778,12 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		)
 	}
 
+	// 1.5. 从请求体提取客户端已经提供的稳定会话标识。
+	// 支持 prompt_cache_key/conversation_id/thread_id/session_id 及 metadata 下同名字段。
+	if hash, ok := s.hashStickySessionHint(parsed, parsed.BodySessionID, "body_session_id"); ok {
+		return hash
+	}
+
 	// 2. 提取带 cache_control: {type: "ephemeral"} 的内容
 	cacheableContent := s.extractCacheableContent(parsed)
 	if cacheableContent != "" {
@@ -779,6 +793,46 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 			"hash", hash,
 		)
 		return hash
+	}
+
+	// 2.5. Kiro 分组专用：使用对话生命周期内稳定的内容做 hash
+	//
+	// 背景：Kiro 采用 stateless replay 架构，每次请求都生成新的 conversationId，
+	// 无法依赖 conversationId 做粘性。同时 Claude Code / cursor 等客户端通常
+	// 不传 metadata.user_id，也不使用 cache_control: ephemeral。
+	//
+	// 解法：优先用 system prompt；如果客户端没有传 system prompt，则退到第一条 user
+	// 消息。它们在同一对话后续轮次中通常保持不变，而完整 messages 会每轮追加导致 hash
+	// 变化。混入 APIKeyID 后，可以让同一个 API Key 下的同一对话固定路由到同一账号。
+	if isKiroGroup(parsed.Group) {
+		if !parsed.Group.EffectiveKiroAutoStickyEnabled() {
+			slog.Info("sticky.hash_source",
+				"source", "kiro_auto_sticky_disabled",
+			)
+			return ""
+		}
+		stableSeed := extractTextFromSystemRaw(parsed.SystemRaw())
+		source := "kiro_system_prompt"
+		if stableSeed == "" {
+			stableSeed = extractFirstUserMessageTextFromRaw(parsed.MessagesRaw())
+			source = "kiro_first_user_message"
+		}
+		if stableSeed != "" {
+			var sb strings.Builder
+			if parsed.SessionContext != nil {
+				_, _ = sb.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
+				_, _ = sb.WriteString("|")
+			}
+			_, _ = sb.WriteString(stableSeed)
+			hash := s.hashContent(sb.String())
+			slog.Info("sticky.hash_source",
+				"source", source,
+				"hash", hash,
+				"seed_len", len(stableSeed),
+			)
+			return hash
+		}
+		return ""
 	}
 
 	// 3. 最后 fallback: 使用 session上下文 + system + 所有消息的完整摘要串
@@ -813,12 +867,68 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 	return ""
 }
 
+func (s *GatewayService) hashStickySessionHint(parsed *ParsedRequest, sessionID, source string) (string, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", false
+	}
+
+	var sb strings.Builder
+	if parsed != nil && parsed.SessionContext != nil {
+		_, _ = sb.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
+		_, _ = sb.WriteString("|")
+	}
+	_, _ = sb.WriteString(sessionID)
+	hash := s.hashContent(sb.String())
+	slog.Info("sticky.hash_source",
+		"source", source,
+		"hash", hash,
+	)
+	return hash, true
+}
+
+// isKiroGroup 判断请求所属分组是否为 Kiro 平台分组。
+func isKiroGroup(group *Group) bool {
+	return group != nil && group.Platform == PlatformKiro
+}
+
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	return s.BindStickySessionWithTTL(ctx, groupID, sessionHash, accountID, stickySessionTTL)
+}
+
+func (s *GatewayService) BindStickySessionForGroup(ctx context.Context, groupID *int64, sessionHash string, accountID int64, group *Group) error {
+	return s.BindStickySessionWithTTL(ctx, groupID, sessionHash, accountID, stickySessionTTLForGroup(group))
+}
+
+func (s *GatewayService) BindStickySessionWithTTL(ctx context.Context, groupID *int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
+	if ttl <= 0 {
+		ttl = stickySessionTTL
+	}
+	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, ttl)
+}
+
+func stickySessionTTLForGroup(group *Group) time.Duration {
+	if group != nil && group.Platform == PlatformKiro {
+		return group.EffectiveKiroStickySessionTTL()
+	}
+	return stickySessionTTL
+}
+
+func (s *GatewayService) stickySessionTTLForGroupID(ctx context.Context, groupID *int64) time.Duration {
+	resolvedGroupID := derefGroupID(groupID)
+	if group := s.groupFromContext(ctx, resolvedGroupID); group != nil {
+		return stickySessionTTLForGroup(group)
+	}
+	if groupID != nil && s.groupRepo != nil {
+		if group, err := s.groupRepo.GetByIDLite(ctx, *groupID); err == nil {
+			return stickySessionTTLForGroup(group)
+		}
+	}
+	return stickySessionTTL
 }
 
 // GetCachedSessionAccountID retrieves the account ID bound to a sticky session.
@@ -956,6 +1066,41 @@ func appendMessageTextsFromRaw(builder *strings.Builder, raw []byte) {
 		}
 		return true
 	})
+}
+
+func extractFirstUserMessageTextFromRaw(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	messages := parseRawJSONView(raw)
+	if !messages.IsArray() {
+		return ""
+	}
+	var firstText string
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		role := strings.ToLower(strings.TrimSpace(msg.Get("role").String()))
+		if role != "" && role != "user" {
+			return true
+		}
+		if content := msg.Get("content"); content.Exists() {
+			firstText = extractTextFromContentRaw(content)
+		}
+		if firstText == "" {
+			parts := msg.Get("parts")
+			if parts.IsArray() {
+				var builder strings.Builder
+				parts.ForEach(func(_, part gjson.Result) bool {
+					if text := part.Get("text").String(); text != "" {
+						_, _ = builder.WriteString(text)
+					}
+					return true
+				})
+				firstText = builder.String()
+			}
+		}
+		return strings.TrimSpace(firstText) == ""
+	})
+	return strings.TrimSpace(firstText)
 }
 
 func appendResponsesSessionAnchorFromRaw(builder *strings.Builder, raw []byte) {
@@ -2011,7 +2156,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							continue
 						}
 						if sessionHash != "" && s.cache != nil {
-							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
+							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, s.stickySessionTTLForGroupID(ctx, groupID))
 						}
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
@@ -2102,7 +2247,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 								"result", "slot_acquired",
 							)
 							if s.cache != nil {
-								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, s.stickySessionTTLForGroupID(ctx, groupID))
 							}
 							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 						}
@@ -2261,7 +2406,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 				} else {
 					if sessionHash != "" && s.cache != nil {
-						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
+						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, s.stickySessionTTLForGroupID(ctx, groupID))
 					}
 					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
@@ -2309,7 +2454,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 				continue
 			}
 			if sessionHash != "" && s.cache != nil {
-				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
+				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, s.stickySessionTTLForGroupID(ctx, groupID))
 			}
 			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
 			if err != nil {
@@ -3443,7 +3588,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 		if selected != nil {
 			if sessionHash != "" && s.cache != nil {
-				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, s.stickySessionTTLForGroupID(ctx, groupID)); err != nil {
 					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 				}
 			}
@@ -3569,7 +3714,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, s.stickySessionTTLForGroupID(ctx, groupID)); err != nil {
 			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 		}
 	}
@@ -3707,7 +3852,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 		if selected != nil {
 			if sessionHash != "" && s.cache != nil {
-				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, s.stickySessionTTLForGroupID(ctx, groupID)); err != nil {
 					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 				}
 			}
@@ -3830,7 +3975,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, s.stickySessionTTLForGroupID(ctx, groupID)); err != nil {
 			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 		}
 	}
@@ -6127,6 +6272,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 
 			if !clientDisconnected {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
+				restored = stripSub2apiInternalUsageFields(restored)
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
@@ -6189,6 +6335,21 @@ func extractAnthropicSSEDataLine(line string) (string, bool) {
 	return line[start:], true
 }
 
+func stripSub2apiInternalUsageFields(line string) string {
+	if !strings.Contains(line, "_sub2api_kiro_credits") {
+		return line
+	}
+	data, ok := extractAnthropicSSEDataLine(line)
+	if !ok {
+		return line
+	}
+	cleaned, err := sjson.Delete(data, "usage._sub2api_kiro_credits")
+	if err != nil {
+		return line
+	}
+	return line[:len(line)-len(data)] + cleaned
+}
+
 func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	if usage == nil || data == "" || data == "[DONE]" {
 		return
@@ -6234,6 +6395,9 @@ func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsag
 			}
 			if cc1h.Exists() && cc1h.Int() > 0 {
 				usage.CacheCreation1hTokens = int(cc1h.Int())
+			}
+			if v := deltaUsage.Get("_sub2api_kiro_credits"); v.Exists() && v.Float() > 0 {
+				usage.KiroCredits = v.Float()
 			}
 		}
 	}
@@ -8372,6 +8536,14 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		usagePatch := s.extractSSEUsagePatch(event)
+		if eventType == "message_delta" {
+			if u, ok := event["usage"].(map[string]any); ok {
+				if _, exists := u["_sub2api_kiro_credits"]; exists {
+					delete(u, "_sub2api_kiro_credits")
+					eventChanged = true
+				}
+			}
+		}
 		if anthropicStreamEventIsTerminal(eventName, dataLine) {
 			sawTerminalEvent = true
 		}
@@ -8563,6 +8735,8 @@ type sseUsagePatch struct {
 	hasCacheCreation5m       bool
 	cacheCreation1hTokens    int
 	hasCacheCreation1h       bool
+	kiroCredits              float64
+	hasKiroCredits           bool
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -8637,6 +8811,10 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 				patch.hasCacheCreation1h = true
 			}
 		}
+		if v, ok := parseSSEUsageFloat(usageObj["_sub2api_kiro_credits"]); ok && v > 0 {
+			patch.kiroCredits = v
+			patch.hasKiroCredits = true
+		}
 		return patch
 	}
 
@@ -8666,6 +8844,33 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
 	}
+	if patch.hasKiroCredits {
+		usage.KiroCredits = patch.kiroCredits
+	}
+}
+
+func parseSSEUsageFloat(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f, true
+		}
+	case string:
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
 }
 
 func parseSSEUsageInt(value any) (int, bool) {
@@ -9883,6 +10088,10 @@ func (s *GatewayService) buildRecordUsageLog(
 		usageLog.CacheReadCost = cost.CacheReadCost
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
+	}
+	if result.Usage.KiroCredits > 0 {
+		kiroCredits := result.Usage.KiroCredits
+		usageLog.KiroCredits = &kiroCredits
 	}
 
 	return usageLog

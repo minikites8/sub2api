@@ -276,6 +276,8 @@
           <template #cell-today_stats="{ row }">
             <AccountTodayStatsCell
               :stats="todayStatsByAccountId[String(row.id)] ?? null"
+              :platform="row.platform"
+              :kiro-credit-unit-price-usd="getKiroCreditUnitPriceUsd(row)"
               :loading="todayStatsLoading"
               :error="todayStatsError"
             />
@@ -596,7 +598,8 @@ const buildDefaultTodayStats = (): WindowStats => ({
   tokens: 0,
   cost: 0,
   standard_cost: 0,
-  user_cost: 0
+  user_cost: 0,
+  kiro_credits: 0
 })
 
 const refreshTodayStatsBatch = async () => {
@@ -939,6 +942,13 @@ const handleKiroUsageMeta = (account: Account, meta: { plan_type?: string; kiro_
     ...(meta.plan_type ? { plan_type: meta.plan_type } : {}),
     kiro_overages_enabled: meta.kiro_overages_enabled
   }
+}
+
+const getKiroCreditUnitPriceUsd = (account: Account): number => {
+  if (account.platform !== 'kiro') return 0
+  const raw = account.extra?.kiro_credit_unit_price_usd
+  const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : 0
+  return Number.isFinite(value) && value > 0 ? value : 0
 }
 
 const syncAccountRefs = (nextAccount: Account) => {
