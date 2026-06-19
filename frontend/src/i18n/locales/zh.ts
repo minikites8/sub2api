@@ -700,7 +700,23 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值'
+    addBalanceWithCode: '使用兑换码充值',
+    dailyCheckin: {
+      action: '每日签到',
+      checking: '签到中...',
+      checked: '已签到',
+      exhausted: '今日已发完',
+      hint: '随机获得 {min} - {max} 额度',
+      checkedHint: '今日已获得 {amount}',
+      exhaustedHint: '今日签到额度已发完',
+      success: '签到成功，获得 {amount}',
+      failed: '签到失败，请稍后重试',
+      errors: {
+        DAILY_CHECKIN_DISABLED: '每日签到未启用',
+        DAILY_CHECKIN_ALREADY: '今天已经签到过了',
+        DAILY_CHECKIN_EXHAUSTED: '今日签到额度已发完'
+      }
+    }
   },
 
   // Groups (shared)

@@ -167,6 +167,27 @@ export interface AffiliateTransferResponse {
   balance: number
 }
 
+export interface DailyCheckinStatus {
+  enabled: boolean
+  checked_in_today: boolean
+  today_reward: number
+  today_total_granted: number
+  daily_total_limit: number
+  min_reward: number
+  max_reward: number
+  checkin_date: string
+  last_checkin_at?: string | null
+  last_reward?: number
+  next_available_at: string
+  remaining_today: number
+  exhausted_today: boolean
+}
+
+export interface DailyCheckinResult extends DailyCheckinStatus {
+  reward: number
+  balance: number
+}
+
 export interface SendVerifyCodeRequest {
   email: string
   turnstile_token?: string

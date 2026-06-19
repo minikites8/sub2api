@@ -101,6 +101,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 func ProvideHandlers(
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
+	dailyCheckinHandler *DailyCheckinHandler,
 	apiKeyHandler *APIKeyHandler,
 	usageHandler *UsageHandler,
 	redeemHandler *RedeemHandler,
@@ -121,6 +122,7 @@ func ProvideHandlers(
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,
+		DailyCheckin:     dailyCheckinHandler,
 		APIKey:           apiKeyHandler,
 		Usage:            usageHandler,
 		Redeem:           redeemHandler,
@@ -143,6 +145,7 @@ var ProviderSet = wire.NewSet(
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
+	NewDailyCheckinHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewRedeemHandler,

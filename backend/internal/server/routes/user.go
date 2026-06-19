@@ -27,6 +27,8 @@ func RegisterUserRoutes(
 			user.PUT("", h.User.UpdateProfile)
 			user.GET("/aff", h.User.GetAffiliate)
 			user.POST("/aff/transfer", h.User.TransferAffiliateQuota)
+			user.GET("/daily-checkin", h.DailyCheckin.GetStatus)
+			user.POST("/daily-checkin", h.DailyCheckin.Claim)
 			user.POST("/account-bindings/email/send-code", h.User.SendEmailBindingCode)
 			user.POST("/account-bindings/email", h.User.BindEmailIdentity)
 			user.DELETE("/account-bindings/:provider", h.User.UnbindIdentity)

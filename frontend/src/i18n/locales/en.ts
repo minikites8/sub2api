@@ -701,7 +701,23 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code'
+    addBalanceWithCode: 'Add balance with a code',
+    dailyCheckin: {
+      action: 'Daily Check-in',
+      checking: 'Checking in...',
+      checked: 'Checked in',
+      exhausted: 'Pool empty',
+      hint: 'Get a random {min} - {max} balance reward',
+      checkedHint: 'Received {amount} today',
+      exhaustedHint: 'Today\'s check-in pool is empty',
+      success: 'Check-in complete. You received {amount}',
+      failed: 'Check-in failed. Please try again later.',
+      errors: {
+        DAILY_CHECKIN_DISABLED: 'Daily check-in is not enabled',
+        DAILY_CHECKIN_ALREADY: 'You have already checked in today',
+        DAILY_CHECKIN_EXHAUSTED: 'Today\'s check-in pool is empty'
+      }
+    }
   },
 
   // Groups (shared)
