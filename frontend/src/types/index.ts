@@ -1871,6 +1871,14 @@ export interface PromoCode {
   notes: string | null
   created_at: string
   updated_at: string
+  recharge_stats?: PromoCodeRechargeStats | null
+}
+
+export interface PromoCodeRechargeStats {
+  order_count: number
+  recharged_user_count: number
+  total_pay_amount: number
+  total_recharge_amount: number
 }
 
 export interface PromoCodeUsage {

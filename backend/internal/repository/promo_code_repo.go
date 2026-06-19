@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -457,6 +459,92 @@ func (r *promoCodeRepository) ListUsagesByPromoCode(ctx context.Context, promoCo
 	outUsages := promoCodeUsageEntitiesToService(usages)
 
 	return outUsages, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *promoCodeRepository) ListRechargeStatsByPromoCodeIDs(ctx context.Context, promoCodeIDs []int64) (map[int64]service.PromoCodeRechargeStats, error) {
+	out := make(map[int64]service.PromoCodeRechargeStats, len(promoCodeIDs))
+	if len(promoCodeIDs) == 0 {
+		return out, nil
+	}
+
+	seen := make(map[int64]struct{}, len(promoCodeIDs))
+	ids := make([]int64, 0, len(promoCodeIDs))
+	for _, id := range promoCodeIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+		out[id] = service.PromoCodeRechargeStats{}
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	args := make([]any, 0, len(ids)+4)
+	orderTypePlaceholder := r.placeholder(len(args) + 1)
+	args = append(args, payment.OrderTypeBalance)
+	statusPlaceholders := make([]string, 0, 3)
+	for _, status := range []string{service.OrderStatusPaid, service.OrderStatusRecharging, service.OrderStatusCompleted} {
+		args = append(args, status)
+		statusPlaceholders = append(statusPlaceholders, r.placeholder(len(args)))
+	}
+	idPlaceholders := make([]string, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+		idPlaceholders = append(idPlaceholders, r.placeholder(len(args)))
+	}
+
+	client := clientFromContext(ctx, r.client)
+	promoCodeIDExpr := "CAST(json_extract(provider_snapshot, '$.first_recharge_promo.promo_code_id') AS INTEGER)"
+	if r.client != nil && r.client.Driver() != nil && r.client.Driver().Dialect() == dialect.Postgres {
+		promoCodeIDExpr = "NULLIF(provider_snapshot->'first_recharge_promo'->>'promo_code_id', '')::bigint"
+	}
+	query := fmt.Sprintf(`
+SELECT %s AS promo_code_id,
+       COUNT(id) AS order_count,
+       COUNT(DISTINCT user_id) AS recharged_user_count,
+       COALESCE(SUM(pay_amount), 0) AS total_pay_amount,
+       COALESCE(SUM(amount), 0) AS total_recharge_amount
+FROM payment_orders
+WHERE order_type = %s
+  AND status IN (%s)
+  AND provider_snapshot IS NOT NULL
+  AND %s IN (%s)
+GROUP BY %s`,
+		promoCodeIDExpr,
+		orderTypePlaceholder,
+		strings.Join(statusPlaceholders, ", "),
+		promoCodeIDExpr,
+		strings.Join(idPlaceholders, ", "),
+		promoCodeIDExpr,
+	)
+	rows, err := client.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var promoCodeID int64
+		var stat service.PromoCodeRechargeStats
+		if err := rows.Scan(
+			&promoCodeID,
+			&stat.OrderCount,
+			&stat.RechargedUserCount,
+			&stat.TotalPayAmount,
+			&stat.TotalRechargeAmount,
+		); err != nil {
+			return nil, err
+		}
+		stat.TotalPayAmount = math.Round(stat.TotalPayAmount*100) / 100
+		stat.TotalRechargeAmount = math.Round(stat.TotalRechargeAmount*100) / 100
+		out[promoCodeID] = stat
+	}
+	return out, rows.Err()
 }
 
 func (r *promoCodeRepository) IncrementUsedCount(ctx context.Context, id int64) error {

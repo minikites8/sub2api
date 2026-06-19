@@ -377,13 +377,22 @@ func (s *PaymentService) applyFirstRechargePromoBalance(ctx context.Context, tx 
 	}
 
 	baseAmount := plan.normalCreditAmount(o.Amount)
-	creditAmount := o.Amount
+	creditAmount := plan.CreditAmount
+	if creditAmount <= 0 {
+		creditAmount = o.Amount
+	}
 	_, err = tx.User.UpdateOneID(o.UserID).
 		AddBalance(creditAmount).
 		AddTotalRecharged(baseAmount).
 		Save(ctx)
 	if err != nil {
 		return firstRechargePromoBalanceNone, fmt.Errorf("credit first recharge promo balance: %w", err)
+	}
+	if math.Abs(o.Amount-creditAmount) > 0.00000001 {
+		if _, err := tx.PaymentOrder.UpdateOneID(o.ID).SetAmount(creditAmount).Save(ctx); err != nil {
+			return firstRechargePromoBalanceNone, fmt.Errorf("sync first recharge promo order amount: %w", err)
+		}
+		o.Amount = creditAmount
 	}
 
 	if err := s.writeAuditLogWithClient(ctx, tx.Client(), o.ID, paymentFirstRechargePromoAction, "system", map[string]any{

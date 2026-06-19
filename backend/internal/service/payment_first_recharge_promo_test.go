@@ -5,7 +5,9 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
 
@@ -94,4 +96,62 @@ func TestGetFirstRechargePromoPreview_ReturnsAvailablePromo(t *testing.T) {
 	require.Equal(t, 0, preview.DiscountUsed)
 	require.Equal(t, 3, preview.DiscountRemaining)
 	require.True(t, preview.DiscountSet)
+}
+
+func TestApplyFirstRechargePromoBalanceUsesSnapshotCreditAmount(t *testing.T) {
+	ctx := context.Background()
+	client := newOrderNotFoundTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("first-recharge-credit@example.com").
+		SetPasswordHash("hash").
+		SetUsername("first-recharge-credit-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("FIRST-RECHARGE-CREDIT").
+		SetOutTradeNo("sub2_first_recharge_credit").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-first-recharge-credit").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusRecharging).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderSnapshot(map[string]any{
+			"first_recharge_promo": map[string]any{
+				"promo_code_id":    9,
+				"promo_code":       "WELCOME10",
+				"base_amount":      100,
+				"bonus_amount":     10,
+				"discount_percent": 0,
+				"discount_times":   1,
+				"discount_set":     false,
+				"credited_amount":  110,
+				"payment_amount":   100,
+			},
+		}).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+	result, err := svc.tryApplyFirstRechargePromoBalance(ctx, order)
+	require.NoError(t, err)
+	require.Equal(t, firstRechargePromoBalanceApplied, result)
+
+	reloadedUser, err := client.User.Get(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, 110.0, reloadedUser.Balance)
+	require.Equal(t, 100.0, reloadedUser.TotalRecharged)
+
+	reloadedOrder, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, 110.0, reloadedOrder.Amount)
 }

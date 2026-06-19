@@ -626,19 +626,20 @@ type BulkAssignResult struct {
 
 // PromoCode 注册优惠码
 type PromoCode struct {
-	ID                           int64      `json:"id"`
-	Code                         string     `json:"code"`
-	BonusAmount                  float64    `json:"bonus_amount"`
-	FirstRechargeBonusAmount     *float64   `json:"first_recharge_bonus_amount,omitempty"`
-	FirstRechargeDiscountPercent *float64   `json:"first_recharge_discount_percent,omitempty"`
-	FirstRechargeDiscountTimes   int        `json:"first_recharge_discount_times"`
-	MaxUses                      int        `json:"max_uses"`
-	UsedCount                    int        `json:"used_count"`
-	Status                       string     `json:"status"`
-	ExpiresAt                    *time.Time `json:"expires_at"`
-	Notes                        string     `json:"notes"`
-	CreatedAt                    time.Time  `json:"created_at"`
-	UpdatedAt                    time.Time  `json:"updated_at"`
+	ID                           int64                   `json:"id"`
+	Code                         string                  `json:"code"`
+	BonusAmount                  float64                 `json:"bonus_amount"`
+	FirstRechargeBonusAmount     *float64                `json:"first_recharge_bonus_amount,omitempty"`
+	FirstRechargeDiscountPercent *float64                `json:"first_recharge_discount_percent,omitempty"`
+	FirstRechargeDiscountTimes   int                     `json:"first_recharge_discount_times"`
+	MaxUses                      int                     `json:"max_uses"`
+	UsedCount                    int                     `json:"used_count"`
+	Status                       string                  `json:"status"`
+	ExpiresAt                    *time.Time              `json:"expires_at"`
+	Notes                        string                  `json:"notes"`
+	CreatedAt                    time.Time               `json:"created_at"`
+	UpdatedAt                    time.Time               `json:"updated_at"`
+	RechargeStats                *PromoCodeRechargeStats `json:"recharge_stats,omitempty"`
 }
 
 // PromoCodeUsage 优惠码使用记录
@@ -650,4 +651,11 @@ type PromoCodeUsage struct {
 	UsedAt      time.Time `json:"used_at"`
 
 	User *User `json:"user,omitempty"`
+}
+
+type PromoCodeRechargeStats struct {
+	OrderCount          int     `json:"order_count"`
+	RechargedUserCount  int     `json:"recharged_user_count"`
+	TotalPayAmount      float64 `json:"total_pay_amount"`
+	TotalRechargeAmount float64 `json:"total_recharge_amount"`
 }

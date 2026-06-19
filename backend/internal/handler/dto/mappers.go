@@ -795,7 +795,7 @@ func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 	if pc == nil {
 		return nil
 	}
-	return &PromoCode{
+	out := &PromoCode{
 		ID:                           pc.ID,
 		Code:                         pc.Code,
 		BonusAmount:                  pc.BonusAmount,
@@ -810,6 +810,15 @@ func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 		CreatedAt:                    pc.CreatedAt,
 		UpdatedAt:                    pc.UpdatedAt,
 	}
+	if pc.RechargeStats != nil {
+		out.RechargeStats = &PromoCodeRechargeStats{
+			OrderCount:          pc.RechargeStats.OrderCount,
+			RechargedUserCount:  pc.RechargeStats.RechargedUserCount,
+			TotalPayAmount:      pc.RechargeStats.TotalPayAmount,
+			TotalRechargeAmount: pc.RechargeStats.TotalRechargeAmount,
+		}
+	}
+	return out
 }
 
 func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {

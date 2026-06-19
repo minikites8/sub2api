@@ -63,6 +63,37 @@ func TestApplyPromoCode_ZeroBonusCreatesUsageWithoutBalanceUpdate(t *testing.T) 
 	require.Equal(t, 1, promoRepo.promo.UsedCount)
 }
 
+func TestApplyPromoCode_BonusDoesNotCountAsRecharge(t *testing.T) {
+	ctx := context.Background()
+	client := newOrderNotFoundTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("promo-bonus@example.com").
+		SetPasswordHash("hash").
+		SetUsername("promo-bonus-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	promoRepo := &promoCodeRepoStub{
+		promo: &PromoCode{
+			ID:          9,
+			Code:        "WELCOME10",
+			BonusAmount: 10,
+			Status:      PromoCodeStatusActive,
+		},
+	}
+	svc := NewPromoService(promoRepo, &userRepoStub{}, nil, client, nil)
+
+	err = svc.ApplyPromoCode(ctx, user.ID, "WELCOME10")
+	require.NoError(t, err)
+
+	reloaded, err := client.User.Get(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, 10.0, reloaded.Balance)
+	require.Zero(t, reloaded.TotalRecharged)
+	require.Equal(t, []int64{9}, promoRepo.incrementedIDs)
+}
+
 type promoCodeRepoStub struct {
 	promo              *PromoCode
 	firstRechargePromo *PromoCode
@@ -130,6 +161,10 @@ func (s *promoCodeRepoStub) ListUsagesByUser(context.Context, int64) ([]PromoCod
 
 func (s *promoCodeRepoStub) ListUsagesByPromoCode(context.Context, int64, pagination.PaginationParams) ([]PromoCodeUsage, *pagination.PaginationResult, error) {
 	panic("unexpected ListUsagesByPromoCode call")
+}
+
+func (s *promoCodeRepoStub) ListRechargeStatsByPromoCodeIDs(context.Context, []int64) (map[int64]PromoCodeRechargeStats, error) {
+	panic("unexpected ListRechargeStatsByPromoCodeIDs call")
 }
 
 func (s *promoCodeRepoStub) IncrementUsedCount(_ context.Context, id int64) error {

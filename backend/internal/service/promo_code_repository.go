@@ -26,6 +26,7 @@ type PromoCodeRepository interface {
 	GetFirstRechargePromoByUser(ctx context.Context, userID int64) (*PromoCode, error)
 	ListUsagesByUser(ctx context.Context, userID int64) ([]PromoCodeUsage, error)
 	ListUsagesByPromoCode(ctx context.Context, promoCodeID int64, params pagination.PaginationParams) ([]PromoCodeUsage, *pagination.PaginationResult, error)
+	ListRechargeStatsByPromoCodeIDs(ctx context.Context, promoCodeIDs []int64) (map[int64]PromoCodeRechargeStats, error)
 
 	// 计数操作
 	IncrementUsedCount(ctx context.Context, id int64) error

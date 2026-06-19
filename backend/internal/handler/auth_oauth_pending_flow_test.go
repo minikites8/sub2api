@@ -2541,8 +2541,20 @@ func (r *oauthPendingFlowPromoRepoStub) GetUsageByPromoCodeAndUser(context.Conte
 	return nil, nil
 }
 
+func (r *oauthPendingFlowPromoRepoStub) GetFirstRechargePromoByUser(context.Context, int64) (*service.PromoCode, error) {
+	return nil, nil
+}
+
+func (r *oauthPendingFlowPromoRepoStub) ListUsagesByUser(context.Context, int64) ([]service.PromoCodeUsage, error) {
+	panic("unexpected ListUsagesByUser call")
+}
+
 func (r *oauthPendingFlowPromoRepoStub) ListUsagesByPromoCode(context.Context, int64, pagination.PaginationParams) ([]service.PromoCodeUsage, *pagination.PaginationResult, error) {
 	panic("unexpected ListUsagesByPromoCode call")
+}
+
+func (r *oauthPendingFlowPromoRepoStub) ListRechargeStatsByPromoCodeIDs(context.Context, []int64) (map[int64]service.PromoCodeRechargeStats, error) {
+	panic("unexpected ListRechargeStatsByPromoCodeIDs call")
 }
 
 func (r *oauthPendingFlowPromoRepoStub) IncrementUsedCount(context.Context, int64) error {

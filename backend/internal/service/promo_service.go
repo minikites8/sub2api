@@ -160,7 +160,7 @@ func (s *PromoService) applyPromoCodeInTx(ctx context.Context, userID int64, cod
 
 	// 增加用户余额；0 元注册赠送的优惠码仍会创建使用记录，用于后续充值优惠绑定。
 	if promoCode.BonusAmount != 0 {
-		if err := s.userRepo.UpdateBalance(ctx, userID, promoCode.BonusAmount); err != nil {
+		if err := s.grantPromoBonusBalance(ctx, userID, promoCode.BonusAmount); err != nil {
 			return fmt.Errorf("update user balance: %w", err)
 		}
 	}
@@ -203,6 +203,21 @@ func (s *PromoService) applyPromoCodeInTx(ctx context.Context, userID int64, cod
 	}
 
 	return nil
+}
+
+func (s *PromoService) grantPromoBonusBalance(ctx context.Context, userID int64, amount float64) error {
+	if amount == 0 {
+		return nil
+	}
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		_, err := tx.User.UpdateOneID(userID).AddBalance(amount).Save(ctx)
+		return err
+	}
+	if s == nil || s.entClient == nil {
+		return fmt.Errorf("promo bonus balance client not configured")
+	}
+	_, err := s.entClient.User.UpdateOneID(userID).AddBalance(amount).Save(ctx)
+	return err
 }
 
 func (s *PromoService) invalidatePromoCaches(ctx context.Context, userID int64, bonusAmount float64) {
@@ -266,6 +281,9 @@ func (s *PromoService) Create(ctx context.Context, input *CreatePromoCodeInput) 
 func (s *PromoService) GetByID(ctx context.Context, id int64) (*PromoCode, error) {
 	code, err := s.promoRepo.GetByID(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.attachRechargeStat(ctx, code); err != nil {
 		return nil, err
 	}
 	return code, nil
@@ -338,7 +356,14 @@ func (s *PromoService) Delete(ctx context.Context, id int64) error {
 
 // List 获取优惠码列表
 func (s *PromoService) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]PromoCode, *pagination.PaginationResult, error) {
-	return s.promoRepo.ListWithFilters(ctx, params, status, search)
+	codes, result, err := s.promoRepo.ListWithFilters(ctx, params, status, search)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.attachRechargeStats(ctx, codes); err != nil {
+		return nil, nil, err
+	}
+	return codes, result, nil
 }
 
 // ListUsages 获取使用记录
@@ -358,4 +383,41 @@ func (s *PromoService) ListUserPromoUsages(ctx context.Context, userID int64) ([
 		return []PromoCodeUsage{}, nil
 	}
 	return usages, nil
+}
+
+func (s *PromoService) attachRechargeStats(ctx context.Context, codes []PromoCode) error {
+	if s == nil || s.promoRepo == nil || len(codes) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(codes))
+	for i := range codes {
+		if codes[i].ID > 0 {
+			ids = append(ids, codes[i].ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	stats, err := s.promoRepo.ListRechargeStatsByPromoCodeIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range codes {
+		stat := stats[codes[i].ID]
+		codes[i].RechargeStats = &stat
+	}
+	return nil
+}
+
+func (s *PromoService) attachRechargeStat(ctx context.Context, code *PromoCode) error {
+	if s == nil || s.promoRepo == nil || code == nil || code.ID <= 0 {
+		return nil
+	}
+	stats, err := s.promoRepo.ListRechargeStatsByPromoCodeIDs(ctx, []int64{code.ID})
+	if err != nil {
+		return err
+	}
+	stat := stats[code.ID]
+	code.RechargeStats = &stat
+	return nil
 }

@@ -93,6 +93,24 @@
             </span>
           </template>
 
+          <template #cell-recharge_stats="{ row }">
+            <div v-if="hasRechargeStats(row)" class="space-y-1 text-sm">
+              <div class="font-medium text-gray-900 dark:text-gray-100">
+                {{ t('admin.promo.rechargeStatsOrders', { count: row.recharge_stats?.order_count || 0 }) }}
+                <span class="text-xs font-normal text-gray-500 dark:text-gray-400">
+                  · {{ t('admin.promo.rechargeStatsUsers', { count: row.recharge_stats?.recharged_user_count || 0 }) }}
+                </span>
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.promo.rechargeStatsPay', { amount: formatMoney(row.recharge_stats?.total_pay_amount || 0) }) }}
+                · {{ t('admin.promo.rechargeStatsCredit', { amount: formatMoney(row.recharge_stats?.total_recharge_amount || 0) }) }}
+              </div>
+            </div>
+            <span v-else class="text-sm text-gray-400">
+              {{ t('admin.promo.noRechargeStats') }}
+            </span>
+          </template>
+
           <template #cell-status="{ value, row }">
             <span
               :class="[
@@ -491,7 +509,7 @@ import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { adminAPI } from '@/api/admin'
-import { formatDateTime } from '@/utils/format'
+import { formatCurrency, formatDateTime } from '@/utils/format'
 import type { CreatePromoCodeRequest, PromoCode, PromoCodeUsage, UpdatePromoCodeRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -587,6 +605,7 @@ const columns = computed<Column[]>(() => [
   { key: 'bonus_amount', label: t('admin.promo.columns.bonusAmount'), sortable: true },
   { key: 'first_recharge_promo', label: t('admin.promo.columns.firstRechargePromo') },
   { key: 'usage', label: t('admin.promo.columns.usage') },
+  { key: 'recharge_stats', label: t('admin.promo.columns.rechargeStats') },
   { key: 'status', label: t('admin.promo.columns.status'), sortable: true },
   { key: 'expires_at', label: t('admin.promo.columns.expiresAt'), sortable: true },
   { key: 'created_at', label: t('admin.promo.columns.createdAt'), sortable: true },
@@ -649,6 +668,13 @@ const formatFirstRechargePromo = (code: PromoCode): string => {
     parts.push(t('admin.promo.firstRechargeDiscountDisplay', { rate: formatDiscountRate(discount), times: timesLabel }))
   }
   return parts.join(' / ')
+}
+
+const formatMoney = (value: number): string => formatCurrency(value)
+
+const hasRechargeStats = (code: PromoCode): boolean => {
+  const stats = code.recharge_stats
+  return !!stats && stats.order_count > 0
 }
 
 const applyFirstRechargePromoPayload = (

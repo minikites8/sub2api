@@ -17,7 +17,8 @@ type PromoCode struct {
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
 
-	UsageRecords []PromoCodeUsage
+	UsageRecords  []PromoCodeUsage
+	RechargeStats *PromoCodeRechargeStats
 }
 
 type PromoCodeUsage struct {
@@ -29,6 +30,13 @@ type PromoCodeUsage struct {
 
 	PromoCode *PromoCode
 	User      *User
+}
+
+type PromoCodeRechargeStats struct {
+	OrderCount          int
+	RechargedUserCount  int
+	TotalPayAmount      float64
+	TotalRechargeAmount float64
 }
 
 func (p *PromoCode) CanUse() bool {
