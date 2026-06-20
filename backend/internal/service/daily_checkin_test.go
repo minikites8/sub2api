@@ -57,6 +57,10 @@ func (r *fakeDailyCheckinRepo) Claim(_ context.Context, input DailyCheckinClaimI
 	}, nil
 }
 
+func (r *fakeDailyCheckinRepo) ListAdminRecords(context.Context, DailyCheckinAdminListFilter) ([]DailyCheckinAdminRecord, int64, error) {
+	return nil, 0, nil
+}
+
 func TestDailyCheckinGetStatusDisabledWhenConfigNotClaimable(t *testing.T) {
 	repo := &fakeDailyCheckinRepo{}
 	svc := NewDailyCheckinService(repo, &config.Config{

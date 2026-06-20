@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -50,6 +51,26 @@ type DailyCheckinRecord struct {
 	CreatedAt time.Time
 }
 
+type DailyCheckinAdminRecord struct {
+	UserID      int64     `json:"user_id"`
+	Email       string    `json:"email"`
+	Username    string    `json:"username"`
+	CheckinDate string    `json:"checkin_date"`
+	Reward      float64   `json:"reward"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type DailyCheckinAdminListFilter struct {
+	Search    string
+	UserID    int64
+	StartDate string
+	EndDate   string
+	Page      int
+	PageSize  int
+	SortBy    string
+	SortOrder string
+}
+
 type DailyCheckinClaimInput struct {
 	UserID          int64
 	Date            string
@@ -70,6 +91,7 @@ type DailyCheckinRepository interface {
 	GetUserLatestCheckin(ctx context.Context, userID int64) (*DailyCheckinRecord, error)
 	SumRewardsByDate(ctx context.Context, date string) (float64, error)
 	Claim(ctx context.Context, input DailyCheckinClaimInput) (*DailyCheckinClaimResult, error)
+	ListAdminRecords(ctx context.Context, filter DailyCheckinAdminListFilter) ([]DailyCheckinAdminRecord, int64, error)
 }
 
 type DailyCheckinService struct {
@@ -184,6 +206,33 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 		Reward:             roundCheckinReward(claimed.Record.Reward),
 		Balance:            roundCheckinReward(claimed.Balance),
 	}, nil
+}
+
+func (s *DailyCheckinService) AdminListRecords(ctx context.Context, filter DailyCheckinAdminListFilter) ([]DailyCheckinAdminRecord, int64, error) {
+	if s == nil || s.repo == nil {
+		return nil, 0, fmt.Errorf("daily check-in service is not configured")
+	}
+	filter.Search = strings.TrimSpace(filter.Search)
+	filter.StartDate = strings.TrimSpace(filter.StartDate)
+	filter.EndDate = strings.TrimSpace(filter.EndDate)
+	filter.SortBy = strings.TrimSpace(filter.SortBy)
+	if filter.SortBy == "" {
+		filter.SortBy = "created_at"
+	}
+	filter.SortOrder = strings.ToLower(strings.TrimSpace(filter.SortOrder))
+	if filter.SortOrder != "asc" {
+		filter.SortOrder = "desc"
+	}
+	if filter.Page <= 0 {
+		filter.Page = 1
+	}
+	if filter.PageSize <= 0 {
+		filter.PageSize = 20
+	}
+	if filter.PageSize > 1000 {
+		filter.PageSize = 1000
+	}
+	return s.repo.ListAdminRecords(ctx, filter)
 }
 
 func (s *DailyCheckinService) settings() config.DailyCheckinConfig {

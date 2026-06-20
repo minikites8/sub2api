@@ -378,6 +378,7 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
+    dailyCheckins: 'Daily Check-ins',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -1846,6 +1847,23 @@ export default {
         rebatedInviteeCount: 'Rebated Invitees',
         availableQuota: 'Available Quota',
         historyQuota: 'Historical Rebate'
+      }
+    },
+
+    dailyCheckins: {
+      title: 'Daily Check-in Records',
+      description: 'View daily check-in rewards granted to each user',
+      searchPlaceholder: 'Email, username, or user ID',
+      startDate: 'Start date',
+      endDate: 'End date',
+      columns: {
+        user: 'User',
+        checkinDate: 'Check-in Date',
+        reward: 'Reward',
+        createdAt: 'Claimed At'
+      },
+      errors: {
+        loadFailed: 'Failed to load daily check-in records'
       }
     },
 

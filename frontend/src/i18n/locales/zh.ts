@@ -378,6 +378,7 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
+    dailyCheckins: '签到记录',
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
@@ -1867,6 +1868,23 @@ export default {
         rebatedInviteeCount: '已产生返利人数',
         availableQuota: '可提余额',
         historyQuota: '历史返利'
+      }
+    },
+
+    dailyCheckins: {
+      title: '签到记录',
+      description: '查看每个用户每日签到获得的额度',
+      searchPlaceholder: '邮箱、用户名或用户 ID',
+      startDate: '开始日期',
+      endDate: '结束日期',
+      columns: {
+        user: '用户',
+        checkinDate: '签到日期',
+        reward: '获得额度',
+        createdAt: '领取时间'
+      },
+      errors: {
+        loadFailed: '加载签到记录失败'
       }
     },
 
