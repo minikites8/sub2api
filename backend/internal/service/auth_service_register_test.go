@@ -228,6 +228,14 @@ func newAuthService(repo *userRepoStub, settings map[string]string, emailCache E
 
 	var settingService *SettingService
 	if settings != nil {
+		copied := make(map[string]string, len(settings)+1)
+		for key, value := range settings {
+			copied[key] = value
+		}
+		if _, ok := copied[SettingKeyRegistrationEmailSuffixWhitelist]; !ok {
+			copied[SettingKeyRegistrationEmailSuffixWhitelist] = "[]"
+		}
+		settings = copied
 		settingService = NewSettingService(&settingRepoStub{values: settings}, cfg)
 	}
 
@@ -430,6 +438,46 @@ func TestAuthService_Register_EmailSuffixAllowed(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Equal(t, int64(8), user.ID)
+}
+
+func TestAuthService_Register_EmailSuffixWhitelistMissingFailsClosed(t *testing.T) {
+	repo := &userRepoStub{nextID: 8}
+	cfg := &config.Config{
+		JWT:     config.JWTConfig{Secret: "test-secret", ExpireHour: 1},
+		Default: config.DefaultConfig{UserBalance: 3.5, UserConcurrency: 2},
+	}
+	settingService := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}}, cfg)
+	service := NewAuthService(nil, repo, nil, nil, cfg, settingService, nil, nil, nil, nil, nil, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "user@example.com", "password")
+	require.ErrorIs(t, err, ErrEmailPolicyUnavailable)
+	require.Empty(t, repo.created)
+}
+
+func TestAuthService_Register_EmailSuffixWhitelistMalformedFailsClosed(t *testing.T) {
+	repo := &userRepoStub{nextID: 8}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: "@example.com,@company.com",
+	}, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "user@example.com", "password")
+	require.ErrorIs(t, err, ErrEmailPolicyUnavailable)
+	require.Empty(t, repo.created)
+}
+
+func TestAuthService_Register_EmailSuffixWhitelistEmptyStringFailsClosed(t *testing.T) {
+	repo := &userRepoStub{nextID: 8}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: "",
+	}, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "user@example.com", "password")
+	require.ErrorIs(t, err, ErrEmailPolicyUnavailable)
+	require.Empty(t, repo.created)
 }
 
 func TestAuthService_SendVerifyCode_EmailSuffixNotAllowed(t *testing.T) {
@@ -730,6 +778,19 @@ func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesLinuxDoAuthSourceDefa
 	require.Len(t, assigner.calls, 1)
 	require.Equal(t, int64(22), assigner.calls[0].GroupID)
 	require.Equal(t, 14, assigner.calls[0].ValidityDays)
+}
+
+func TestAuthService_LoginOrRegisterOAuthWithTokenPair_EmailSuffixNotAllowed(t *testing.T) {
+	repo := &userRepoStub{nextID: 61}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+	}, nil, nil)
+	service.refreshTokenCache = &refreshTokenCacheStub{}
+
+	_, _, err := service.LoginOrRegisterOAuthWithTokenPair(context.Background(), "linuxdo-123@linuxdo-connect.invalid", "linuxdo_user", "", "", "linuxdo")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+	require.Empty(t, repo.created)
 }
 
 func TestAuthService_LoginOrRegisterOAuthWithTokenPair_ExistingUserDoesNotGrantAgain(t *testing.T) {

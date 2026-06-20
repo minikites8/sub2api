@@ -28,6 +28,28 @@ func TestParseRegistrationEmailSuffixWhitelist(t *testing.T) {
 	require.Equal(t, []string{"@example.com", "@foo.bar", "*.edu.cn"}, got)
 }
 
+func TestParseRegistrationEmailSuffixWhitelistStrict(t *testing.T) {
+	got, err := ParseRegistrationEmailSuffixWhitelistStrict(`["example.com","@foo.bar","*.EDU.CN"]`)
+	require.NoError(t, err)
+	require.Equal(t, []string{"@example.com", "@foo.bar", "*.edu.cn"}, got)
+
+	got, err = ParseRegistrationEmailSuffixWhitelistStrict(`[]`)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	_, err = ParseRegistrationEmailSuffixWhitelistStrict(``)
+	require.Error(t, err)
+
+	_, err = ParseRegistrationEmailSuffixWhitelistStrict(`@example.com,@foo.bar`)
+	require.Error(t, err)
+
+	_, err = ParseRegistrationEmailSuffixWhitelistStrict(`["@invalid_domain"]`)
+	require.Error(t, err)
+
+	_, err = ParseRegistrationEmailSuffixWhitelistStrict(`[""]`)
+	require.Error(t, err)
+}
+
 func TestIsRegistrationEmailSuffixAllowed(t *testing.T) {
 	require.True(t, IsRegistrationEmailSuffixAllowed("user@example.com", []string{"@example.com"}))
 	require.False(t, IsRegistrationEmailSuffixAllowed("user@sub.example.com", []string{"@example.com"}))

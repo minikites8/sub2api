@@ -127,6 +127,17 @@ func newOAuthEmailFlowAuthService(
 		},
 	}
 
+	if settings != nil {
+		copied := make(map[string]string, len(settings)+1)
+		for key, value := range settings {
+			copied[key] = value
+		}
+		if _, ok := copied[SettingKeyRegistrationEmailSuffixWhitelist]; !ok {
+			copied[SettingKeyRegistrationEmailSuffixWhitelist] = "[]"
+		}
+		settings = copied
+	}
+
 	settingService := NewSettingService(&settingRepoStub{values: settings}, cfg)
 	emailService := NewEmailService(&settingRepoStub{values: settings}, emailCache)
 
@@ -145,6 +156,24 @@ func newOAuthEmailFlowAuthService(
 		nil,
 		quotaRepo, // 替换原来的 nil
 	)
+}
+
+func TestSendPendingOAuthVerifyCode_EmailSuffixNotAllowed(t *testing.T) {
+	authService := newOAuthEmailFlowAuthService(
+		&userRepoStub{},
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		},
+		&emailCacheStub{},
+		nil,
+	)
+
+	result, err := authService.SendPendingOAuthVerifyCode(context.Background(), "user@aniimate.net")
+
+	require.Nil(t, result)
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
 }
 
 func TestRegisterOAuthEmailAccountRollsBackCreatedUserWhenTokenPairGenerationFails(t *testing.T) {
@@ -197,6 +226,44 @@ func TestRegisterOAuthEmailAccountRollsBackCreatedUserWhenTokenPairGenerationFai
 	require.Len(t, userRepo.created, 1)
 	require.Empty(t, redeemRepo.useCalls)
 	require.Empty(t, redeemRepo.updateCalls)
+}
+
+func TestRegisterOAuthEmailAccount_EmailSuffixNotAllowed(t *testing.T) {
+	userRepo := &userRepoStub{nextID: 42}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:              "true",
+			SettingKeyEmailVerifyEnabled:               "true",
+			SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		},
+		emailCache,
+		nil,
+	)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"user@bltiwd.com",
+		"secret-123",
+		"246810",
+		"",
+		"oidc",
+	)
+
+	require.Nil(t, tokenPair)
+	require.Nil(t, user)
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+	require.Empty(t, userRepo.created)
 }
 
 func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *testing.T) {

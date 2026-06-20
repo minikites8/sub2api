@@ -42,6 +42,9 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	if s == nil || s.emailService == nil {
 		return nil, ErrServiceUnavailable
 	}
+	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+		return nil, err
+	}
 
 	siteName := "Sub2API"
 	if s.settingService != nil {

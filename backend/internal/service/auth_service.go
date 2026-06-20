@@ -39,6 +39,7 @@ var (
 	ErrRefreshTokenReused      = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
 	ErrEmailVerifyRequired     = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
 	ErrEmailSuffixNotAllowed   = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
+	ErrEmailPolicyUnavailable  = infraerrors.ServiceUnavailable("REGISTRATION_EMAIL_POLICY_UNAVAILABLE", "registration email policy is unavailable")
 	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
 	ErrInvitationCodeRequired  = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
@@ -585,6 +586,9 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 			if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 				return "", nil, ErrRegDisabled
 			}
+			if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+				return "", nil, err
+			}
 
 			randomPassword, err := randomHexString(32)
 			if err != nil {
@@ -718,6 +722,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			// OAuth 首次登录视为注册
 			if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 				return nil, nil, ErrRegDisabled
+			}
+			if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+				return nil, nil, err
 			}
 
 			// 检查是否需要邀请码
@@ -1207,9 +1214,12 @@ func inferLegacySignupSource(email string) string {
 
 func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email string) error {
 	if s.settingService == nil {
-		return nil
+		return ErrEmailPolicyUnavailable
 	}
-	whitelist := s.settingService.GetRegistrationEmailSuffixWhitelist(ctx)
+	whitelist, err := s.settingService.GetRegistrationEmailSuffixWhitelistStrict(ctx)
+	if err != nil {
+		return ErrEmailPolicyUnavailable.WithCause(err)
+	}
 	if !IsRegistrationEmailSuffixAllowed(email, whitelist) {
 		return buildEmailSuffixNotAllowedError(whitelist)
 	}

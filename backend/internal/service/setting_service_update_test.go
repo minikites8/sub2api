@@ -230,6 +230,32 @@ func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Invalid(
 	require.Equal(t, "INVALID_REGISTRATION_EMAIL_SUFFIX_WHITELIST", infraerrors.Reason(err))
 }
 
+func TestSettingService_GetRegistrationEmailSuffixWhitelistStrict(t *testing.T) {
+	svc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyRegistrationEmailSuffixWhitelist: `["example.com","*.EDU.CN"]`,
+	}}, &config.Config{})
+
+	got, err := svc.GetRegistrationEmailSuffixWhitelistStrict(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"@example.com", "*.edu.cn"}, got)
+}
+
+func TestSettingService_GetRegistrationEmailSuffixWhitelistStrict_Missing(t *testing.T) {
+	svc := NewSettingService(&settingRepoStub{values: map[string]string{}}, &config.Config{})
+
+	_, err := svc.GetRegistrationEmailSuffixWhitelistStrict(context.Background())
+	require.ErrorIs(t, err, ErrSettingNotFound)
+}
+
+func TestSettingService_GetRegistrationEmailSuffixWhitelistStrict_Malformed(t *testing.T) {
+	svc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyRegistrationEmailSuffixWhitelist: "@example.com,@foo.bar",
+	}}, &config.Config{})
+
+	_, err := svc.GetRegistrationEmailSuffixWhitelistStrict(context.Background())
+	require.Error(t, err)
+}
+
 func TestParseDefaultSubscriptions_NormalizesValues(t *testing.T) {
 	got := parseDefaultSubscriptions(`[{"group_id":11,"validity_days":30},{"group_id":11,"validity_days":60},{"group_id":0,"validity_days":10},{"group_id":12,"validity_days":99999}]`)
 	require.Equal(t, []DefaultSubscriptionSetting{

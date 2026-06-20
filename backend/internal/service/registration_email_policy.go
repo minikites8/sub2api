@@ -66,6 +66,28 @@ func ParseRegistrationEmailSuffixWhitelist(raw string) []string {
 	return normalized
 }
 
+// ParseRegistrationEmailSuffixWhitelistStrict parses persisted JSON into normalized suffixes.
+// Only explicit JSON arrays are accepted so registration enforcement can fail
+// closed when the persisted policy is missing or malformed.
+func ParseRegistrationEmailSuffixWhitelistStrict(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("registration email suffix whitelist is empty")
+	}
+	var items []string
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil, fmt.Errorf("parse registration email suffix whitelist: %w", err)
+	}
+	normalized, err := normalizeRegistrationEmailSuffixWhitelist(items, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(normalized) == 0 {
+		return []string{}, nil
+	}
+	return normalized, nil
+}
+
 func normalizeRegistrationEmailSuffixWhitelist(raw []string, strict bool) ([]string, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -82,6 +104,9 @@ func normalizeRegistrationEmailSuffixWhitelist(raw []string, strict bool) ([]str
 			continue
 		}
 		if normalized == "" {
+			if strict {
+				return nil, fmt.Errorf("invalid email suffix: %q", item)
+			}
 			continue
 		}
 		if _, ok := seen[normalized]; ok {
