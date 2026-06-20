@@ -619,6 +619,98 @@ func TestValidateDashboardCacheConfigDisabled(t *testing.T) {
 	}
 }
 
+func TestValidateDailyCheckinConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     DailyCheckinConfig
+		wantErr string
+	}{
+		{
+			name: "disabled allows zero values",
+			cfg: DailyCheckinConfig{
+				Enabled:         false,
+				DailyTotalLimit: 0,
+				MinReward:       0,
+				MaxReward:       0,
+			},
+		},
+		{
+			name: "enabled valid",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 100,
+				MinReward:       0.1,
+				MaxReward:       1,
+			},
+		},
+		{
+			name: "enabled requires positive daily total limit",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 0,
+				MinReward:       0,
+				MaxReward:       1,
+			},
+			wantErr: "daily_checkin.daily_total_limit must be positive",
+		},
+		{
+			name: "enabled requires positive max reward",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 100,
+				MinReward:       0,
+				MaxReward:       0,
+			},
+			wantErr: "daily_checkin.max_reward must be positive",
+		},
+		{
+			name: "max reward cannot be below min reward",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 100,
+				MinReward:       2,
+				MaxReward:       1,
+			},
+			wantErr: "daily_checkin.max_reward must be greater than or equal to min_reward",
+		},
+		{
+			name: "min reward cannot exceed daily total limit",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 1,
+				MinReward:       2,
+				MaxReward:       2,
+			},
+			wantErr: "daily_checkin.min_reward must be less than or equal to daily_total_limit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error: %v", err)
+			}
+			cfg.DailyCheckin = tt.cfg
+
+			err = cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestLoadDefaultDashboardAggregationConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

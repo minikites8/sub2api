@@ -88,10 +88,11 @@ func NewDailyCheckinService(repo DailyCheckinRepository, cfg *config.Config, bil
 
 func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*DailyCheckinStatus, error) {
 	settings := s.settings()
+	claimable := dailyCheckinClaimable(settings)
 	today, nextAvailableAt := s.todayWindow()
 
 	status := &DailyCheckinStatus{
-		Enabled:         settings.Enabled,
+		Enabled:         claimable,
 		DailyTotalLimit: settings.DailyTotalLimit,
 		MinReward:       settings.MinReward,
 		MaxReward:       settings.MaxReward,
@@ -128,7 +129,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 
 func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCheckinResult, error) {
 	settings := s.settings()
-	if !settings.Enabled || settings.DailyTotalLimit <= 0 || settings.MaxReward <= 0 {
+	if !dailyCheckinClaimable(settings) {
 		return nil, ErrDailyCheckinDisabled
 	}
 	if userID <= 0 {
@@ -164,7 +165,7 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 	s.invalidateBalanceCache(userID)
 
 	status := DailyCheckinStatus{
-		Enabled:           settings.Enabled,
+		Enabled:           dailyCheckinClaimable(settings),
 		CheckedInToday:    true,
 		TodayReward:       roundCheckinReward(claimed.Record.Reward),
 		TodayTotalGranted: roundCheckinReward(claimed.TodayTotalGranted),
@@ -206,6 +207,13 @@ func (s *DailyCheckinService) settings() config.DailyCheckinConfig {
 	settings.MinReward = roundCheckinReward(settings.MinReward)
 	settings.MaxReward = roundCheckinReward(settings.MaxReward)
 	return settings
+}
+
+func dailyCheckinClaimable(settings config.DailyCheckinConfig) bool {
+	return settings.Enabled &&
+		settings.DailyTotalLimit > 0 &&
+		settings.MaxReward > 0 &&
+		settings.MinReward <= settings.DailyTotalLimit
 }
 
 func (s *DailyCheckinService) todayWindow() (string, time.Time) {

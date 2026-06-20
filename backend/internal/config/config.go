@@ -2069,8 +2069,14 @@ func (c *Config) Validate() error {
 	if c.DailyCheckin.MaxReward < c.DailyCheckin.MinReward {
 		return fmt.Errorf("daily_checkin.max_reward must be greater than or equal to min_reward")
 	}
-	if c.DailyCheckin.Enabled && c.DailyCheckin.DailyTotalLimit > 0 && c.DailyCheckin.MaxReward <= 0 {
+	if c.DailyCheckin.Enabled && c.DailyCheckin.DailyTotalLimit <= 0 {
+		return fmt.Errorf("daily_checkin.daily_total_limit must be positive when daily check-in is enabled")
+	}
+	if c.DailyCheckin.Enabled && c.DailyCheckin.MaxReward <= 0 {
 		return fmt.Errorf("daily_checkin.max_reward must be positive when daily check-in is enabled")
+	}
+	if c.DailyCheckin.Enabled && c.DailyCheckin.MinReward > c.DailyCheckin.DailyTotalLimit {
+		return fmt.Errorf("daily_checkin.min_reward must be less than or equal to daily_total_limit when daily check-in is enabled")
 	}
 
 	// Gemini OAuth 配置校验：client_id 与 client_secret 必须同时设置或同时留空。

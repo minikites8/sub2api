@@ -136,7 +136,6 @@ WHERE checkin_date = $1`, input.Date, reward); err != nil {
 	if err := tx.QueryRowContext(ctx, `
 UPDATE users
 SET balance = balance + $2,
-    total_recharged = total_recharged + $2,
     updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING balance::double precision`, input.UserID, reward).Scan(&balance); err != nil {
