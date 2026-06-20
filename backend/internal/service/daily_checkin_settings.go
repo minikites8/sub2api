@@ -120,24 +120,29 @@ func validateDailyCheckinSettings(input DailyCheckinSettings) (DailyCheckinSetti
 	if !isFiniteNonNegativeFloat(input.MaxReward) {
 		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "max_reward must be a finite non-negative number")
 	}
-	if input.MaxReward < input.MinReward {
-		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "max_reward must be greater than or equal to min_reward")
-	}
-	if input.Enabled && input.DailyTotalLimit <= 0 {
-		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "daily_total_limit must be positive when daily check-in is enabled")
-	}
-	if input.Enabled && input.MaxReward <= 0 {
-		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "max_reward must be positive when daily check-in is enabled")
-	}
-	if input.Enabled && input.MinReward > input.DailyTotalLimit {
-		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "min_reward must be less than or equal to daily_total_limit when daily check-in is enabled")
-	}
-	return DailyCheckinSettings{
+
+	settings := DailyCheckinSettings{
 		Enabled:         input.Enabled,
 		DailyTotalLimit: roundCheckinReward(input.DailyTotalLimit),
 		MinReward:       roundCheckinReward(input.MinReward),
 		MaxReward:       roundCheckinReward(input.MaxReward),
-	}, nil
+	}
+	if settings.MaxReward < settings.MinReward {
+		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "max_reward must be greater than or equal to min_reward")
+	}
+	if settings.Enabled && settings.DailyTotalLimit <= 0 {
+		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "daily_total_limit must be positive when daily check-in is enabled")
+	}
+	if settings.Enabled && settings.MaxReward <= 0 {
+		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "max_reward must be positive when daily check-in is enabled")
+	}
+	if settings.Enabled && settings.MinReward <= 0 {
+		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "min_reward must be positive when daily check-in is enabled")
+	}
+	if settings.Enabled && settings.MinReward > settings.DailyTotalLimit {
+		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "min_reward must be less than or equal to daily_total_limit when daily check-in is enabled")
+	}
+	return settings, nil
 }
 
 func parseDailyCheckinSettingFloat(values map[string]string, key string) (float64, bool) {

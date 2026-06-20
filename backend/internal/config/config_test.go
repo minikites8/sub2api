@@ -664,6 +664,36 @@ func TestValidateDailyCheckinConfig(t *testing.T) {
 			wantErr: "daily_checkin.max_reward must be positive",
 		},
 		{
+			name: "enabled requires positive min reward",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 100,
+				MinReward:       0,
+				MaxReward:       1,
+			},
+			wantErr: "daily_checkin.min_reward must be positive",
+		},
+		{
+			name: "enabled requires min reward that rounds positive",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 100,
+				MinReward:       0.000000001,
+				MaxReward:       1,
+			},
+			wantErr: "daily_checkin.min_reward must be positive",
+		},
+		{
+			name: "enabled requires daily total limit that rounds positive",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 0.000000001,
+				MinReward:       0.00000001,
+				MaxReward:       0.00000001,
+			},
+			wantErr: "daily_checkin.daily_total_limit must be positive",
+		},
+		{
 			name: "max reward cannot be below min reward",
 			cfg: DailyCheckinConfig{
 				Enabled:         true,

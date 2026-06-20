@@ -2066,16 +2066,22 @@ func (c *Config) Validate() error {
 	if !isFiniteNonNegative(c.DailyCheckin.MaxReward) {
 		return fmt.Errorf("daily_checkin.max_reward must be a finite non-negative number")
 	}
-	if c.DailyCheckin.MaxReward < c.DailyCheckin.MinReward {
+	dailyCheckinDailyTotalLimit := roundDailyCheckinAmount(c.DailyCheckin.DailyTotalLimit)
+	dailyCheckinMinReward := roundDailyCheckinAmount(c.DailyCheckin.MinReward)
+	dailyCheckinMaxReward := roundDailyCheckinAmount(c.DailyCheckin.MaxReward)
+	if dailyCheckinMaxReward < dailyCheckinMinReward {
 		return fmt.Errorf("daily_checkin.max_reward must be greater than or equal to min_reward")
 	}
-	if c.DailyCheckin.Enabled && c.DailyCheckin.DailyTotalLimit <= 0 {
+	if c.DailyCheckin.Enabled && dailyCheckinDailyTotalLimit <= 0 {
 		return fmt.Errorf("daily_checkin.daily_total_limit must be positive when daily check-in is enabled")
 	}
-	if c.DailyCheckin.Enabled && c.DailyCheckin.MaxReward <= 0 {
+	if c.DailyCheckin.Enabled && dailyCheckinMaxReward <= 0 {
 		return fmt.Errorf("daily_checkin.max_reward must be positive when daily check-in is enabled")
 	}
-	if c.DailyCheckin.Enabled && c.DailyCheckin.MinReward > c.DailyCheckin.DailyTotalLimit {
+	if c.DailyCheckin.Enabled && dailyCheckinMinReward <= 0 {
+		return fmt.Errorf("daily_checkin.min_reward must be positive when daily check-in is enabled")
+	}
+	if c.DailyCheckin.Enabled && dailyCheckinMinReward > dailyCheckinDailyTotalLimit {
 		return fmt.Errorf("daily_checkin.min_reward must be less than or equal to daily_total_limit when daily check-in is enabled")
 	}
 
@@ -2896,6 +2902,13 @@ func isWeakJWTSecret(secret string) bool {
 
 func isFiniteNonNegative(value float64) bool {
 	return value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func roundDailyCheckinAmount(value float64) float64 {
+	if !isFiniteNonNegative(value) {
+		return 0
+	}
+	return math.Round(value*1e8) / 1e8
 }
 
 func generateJWTSecret(byteLength int) (string, error) {

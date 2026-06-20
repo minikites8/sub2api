@@ -281,3 +281,60 @@ func TestSettingServiceUpdateDailyCheckinSettingsRejectsInvalidEnabledConfig(t *
 	require.Equal(t, "DAILY_CHECKIN_SETTINGS_INVALID", infraerrors.Reason(err))
 	require.Nil(t, repo.updates)
 }
+
+func TestSettingServiceUpdateDailyCheckinSettingsRejectsRoundedZeroEnabledConfig(t *testing.T) {
+	tests := []struct {
+		name  string
+		input DailyCheckinSettings
+	}{
+		{
+			name: "daily total limit rounds to zero",
+			input: DailyCheckinSettings{
+				Enabled:         true,
+				DailyTotalLimit: 0.000000001,
+				MinReward:       0.00000001,
+				MaxReward:       0.00000001,
+			},
+		},
+		{
+			name: "min reward is zero",
+			input: DailyCheckinSettings{
+				Enabled:         true,
+				DailyTotalLimit: 1,
+				MinReward:       0,
+				MaxReward:       0.00000001,
+			},
+		},
+		{
+			name: "min reward rounds to zero",
+			input: DailyCheckinSettings{
+				Enabled:         true,
+				DailyTotalLimit: 1,
+				MinReward:       0.000000001,
+				MaxReward:       0.1,
+			},
+		},
+		{
+			name: "max reward rounds to zero",
+			input: DailyCheckinSettings{
+				Enabled:         true,
+				DailyTotalLimit: 1,
+				MinReward:       0,
+				MaxReward:       0.000000001,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &fakeDailyCheckinSettingRepo{values: map[string]string{}}
+			svc := NewSettingService(repo, &config.Config{})
+
+			_, err := svc.UpdateDailyCheckinSettings(context.Background(), tt.input)
+
+			require.Error(t, err)
+			require.Equal(t, "DAILY_CHECKIN_SETTINGS_INVALID", infraerrors.Reason(err))
+			require.Nil(t, repo.updates)
+		})
+	}
+}
