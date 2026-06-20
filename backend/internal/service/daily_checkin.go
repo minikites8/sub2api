@@ -98,6 +98,7 @@ type DailyCheckinService struct {
 	repo                DailyCheckinRepository
 	cfg                 *config.Config
 	billingCacheService *BillingCacheService
+	settingService      *SettingService
 }
 
 func NewDailyCheckinService(repo DailyCheckinRepository, cfg *config.Config, billingCacheService *BillingCacheService) *DailyCheckinService {
@@ -108,8 +109,20 @@ func NewDailyCheckinService(repo DailyCheckinRepository, cfg *config.Config, bil
 	}
 }
 
+func (s *DailyCheckinService) SetSettingService(settingService *SettingService) {
+	if s != nil {
+		s.settingService = settingService
+	}
+}
+
+func ProvideDailyCheckinService(repo DailyCheckinRepository, cfg *config.Config, billingCacheService *BillingCacheService, settingService *SettingService) *DailyCheckinService {
+	svc := NewDailyCheckinService(repo, cfg, billingCacheService)
+	svc.SetSettingService(settingService)
+	return svc
+}
+
 func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*DailyCheckinStatus, error) {
-	settings := s.settings()
+	settings := s.settings(ctx)
 	claimable := dailyCheckinClaimable(settings)
 	today, nextAvailableAt := s.todayWindow()
 
@@ -150,7 +163,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 }
 
 func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCheckinResult, error) {
-	settings := s.settings()
+	settings := s.settings(ctx)
 	if !dailyCheckinClaimable(settings) {
 		return nil, ErrDailyCheckinDisabled
 	}
@@ -235,11 +248,17 @@ func (s *DailyCheckinService) AdminListRecords(ctx context.Context, filter Daily
 	return s.repo.ListAdminRecords(ctx, filter)
 }
 
-func (s *DailyCheckinService) settings() config.DailyCheckinConfig {
+func (s *DailyCheckinService) settings(ctx context.Context) config.DailyCheckinConfig {
+	if s != nil && s.settingService != nil {
+		return normalizeDailyCheckinConfig(s.settingService.ResolveDailyCheckinConfig(ctx))
+	}
 	if s == nil || s.cfg == nil {
 		return config.DailyCheckinConfig{}
 	}
-	settings := s.cfg.DailyCheckin
+	return normalizeDailyCheckinConfig(s.cfg.DailyCheckin)
+}
+
+func normalizeDailyCheckinConfig(settings config.DailyCheckinConfig) config.DailyCheckinConfig {
 	if !isFiniteNonNegativeFloat(settings.DailyTotalLimit) {
 		settings.DailyTotalLimit = 0
 	}

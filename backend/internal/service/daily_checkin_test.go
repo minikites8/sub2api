@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,6 +22,50 @@ type fakeDailyCheckinRepo struct {
 	claimInputs   []DailyCheckinClaimInput
 	sumCallCount  int
 	userCallCount int
+}
+
+type fakeDailyCheckinSettingRepo struct {
+	values  map[string]string
+	updates map[string]string
+}
+
+func (r *fakeDailyCheckinSettingRepo) Get(context.Context, string) (*Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (r *fakeDailyCheckinSettingRepo) GetValue(context.Context, string) (string, error) {
+	panic("unexpected GetValue call")
+}
+
+func (r *fakeDailyCheckinSettingRepo) Set(context.Context, string, string) error {
+	panic("unexpected Set call")
+}
+
+func (r *fakeDailyCheckinSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	result := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			result[key] = value
+		}
+	}
+	return result, nil
+}
+
+func (r *fakeDailyCheckinSettingRepo) SetMultiple(_ context.Context, settings map[string]string) error {
+	r.updates = make(map[string]string, len(settings))
+	for key, value := range settings {
+		r.updates[key] = value
+		r.values[key] = value
+	}
+	return nil
+}
+
+func (r *fakeDailyCheckinSettingRepo) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (r *fakeDailyCheckinSettingRepo) Delete(context.Context, string) error {
+	panic("unexpected Delete call")
 }
 
 func (r *fakeDailyCheckinRepo) GetUserCheckin(context.Context, int64, string) (*DailyCheckinRecord, error) {
@@ -179,4 +224,60 @@ func TestDailyCheckinClaimWrapsUnexpectedRepositoryError(t *testing.T) {
 	result, err := svc.Claim(context.Background(), 1)
 	require.Nil(t, result)
 	require.ErrorIs(t, err, repoErr)
+}
+
+func TestDailyCheckinServiceUsesRuntimeSettingsOverConfig(t *testing.T) {
+	repo := &fakeDailyCheckinRepo{total: 0.2}
+	settingRepo := &fakeDailyCheckinSettingRepo{values: map[string]string{
+		SettingKeyDailyCheckinEnabled:         "true",
+		SettingKeyDailyCheckinDailyTotalLimit: "1",
+		SettingKeyDailyCheckinMinReward:       "0.1",
+		SettingKeyDailyCheckinMaxReward:       "0.2",
+	}}
+	settingService := NewSettingService(settingRepo, &config.Config{
+		DailyCheckin: config.DailyCheckinConfig{Enabled: false},
+	})
+	svc := ProvideDailyCheckinService(repo, &config.Config{
+		DailyCheckin: config.DailyCheckinConfig{Enabled: false},
+	}, nil, settingService)
+
+	result, err := svc.Claim(context.Background(), 7)
+	require.NoError(t, err)
+	require.True(t, result.Enabled)
+	require.Len(t, repo.claimInputs, 1)
+	require.Equal(t, 1.0, repo.claimInputs[0].DailyTotalLimit)
+	require.Equal(t, 0.1, repo.claimInputs[0].MinReward)
+}
+
+func TestSettingServiceUpdateDailyCheckinSettingsPersistsKeys(t *testing.T) {
+	repo := &fakeDailyCheckinSettingRepo{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.UpdateDailyCheckinSettings(context.Background(), DailyCheckinSettings{
+		Enabled:         true,
+		DailyTotalLimit: 1.234567891,
+		MinReward:       0.1,
+		MaxReward:       0.2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1.23456789, settings.DailyTotalLimit)
+	require.Equal(t, "true", repo.updates[SettingKeyDailyCheckinEnabled])
+	require.Equal(t, "1.23456789", repo.updates[SettingKeyDailyCheckinDailyTotalLimit])
+	require.Equal(t, "0.10000000", repo.updates[SettingKeyDailyCheckinMinReward])
+	require.Equal(t, "0.20000000", repo.updates[SettingKeyDailyCheckinMaxReward])
+}
+
+func TestSettingServiceUpdateDailyCheckinSettingsRejectsInvalidEnabledConfig(t *testing.T) {
+	repo := &fakeDailyCheckinSettingRepo{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	_, err := svc.UpdateDailyCheckinSettings(context.Background(), DailyCheckinSettings{
+		Enabled:         true,
+		DailyTotalLimit: 0,
+		MinReward:       0.1,
+		MaxReward:       0.2,
+	})
+	require.Error(t, err)
+	require.Equal(t, "DAILY_CHECKIN_SETTINGS_INVALID", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
 }

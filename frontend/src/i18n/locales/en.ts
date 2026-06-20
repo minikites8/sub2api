@@ -378,7 +378,7 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
-    dailyCheckins: 'Daily Check-ins',
+    dailyCheckins: 'Check-in Details',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -1851,7 +1851,7 @@ export default {
     },
 
     dailyCheckins: {
-      title: 'Daily Check-in Records',
+      title: 'Check-in Details',
       description: 'View daily check-in rewards granted to each user',
       searchPlaceholder: 'Email, username, or user ID',
       startDate: 'Start date',
@@ -1861,11 +1861,24 @@ export default {
         checkinDate: 'Check-in Date',
         reward: 'Reward',
         createdAt: 'Claimed At'
+        },
+        settings: {
+          button: 'Check-in Settings',
+          title: 'Check-in Settings',
+          enabled: 'Enable daily check-in',
+          enabledHint: 'Admin only. When disabled, users cannot claim daily check-in rewards.',
+          minReward: 'Minimum reward',
+          maxReward: 'Maximum reward',
+          dailyTotalLimit: 'Daily total payout limit',
+          saved: 'Daily check-in settings saved'
+        },
+        errors: {
+          loadFailed: 'Failed to load check-in details',
+          settingsLoadFailed: 'Failed to load check-in settings',
+          settingsSaveFailed: 'Failed to save check-in settings',
+          DAILY_CHECKIN_SETTINGS_INVALID: 'Invalid check-in settings. Please check reward limits.'
+        }
       },
-      errors: {
-        loadFailed: 'Failed to load daily check-in records'
-      }
-    },
 
     // Users
     users: {

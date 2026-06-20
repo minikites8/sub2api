@@ -26,6 +26,13 @@ export interface ListDailyCheckinRecordsParams {
   sort_order?: 'asc' | 'desc'
 }
 
+export interface DailyCheckinSettings {
+  enabled: boolean
+  daily_total_limit: number
+  min_reward: number
+  max_reward: number
+}
+
 export async function listRecords(
   params: ListDailyCheckinRecordsParams = {},
 ): Promise<PaginatedResponse<DailyCheckinRecord>> {
@@ -47,8 +54,20 @@ export async function listRecords(
   return data
 }
 
+export async function getSettings(): Promise<DailyCheckinSettings> {
+  const { data } = await apiClient.get<DailyCheckinSettings>('/admin/daily-checkins/settings')
+  return data
+}
+
+export async function updateSettings(settings: DailyCheckinSettings): Promise<DailyCheckinSettings> {
+  const { data } = await apiClient.put<DailyCheckinSettings>('/admin/daily-checkins/settings', settings)
+  return data
+}
+
 export const dailyCheckinsAPI = {
   listRecords,
+  getSettings,
+  updateSettings,
 }
 
 export default dailyCheckinsAPI

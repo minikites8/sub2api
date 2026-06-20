@@ -378,7 +378,7 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
-    dailyCheckins: '签到记录',
+    dailyCheckins: '签到详情',
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
@@ -1872,7 +1872,7 @@ export default {
     },
 
     dailyCheckins: {
-      title: '签到记录',
+      title: '签到详情',
       description: '查看每个用户每日签到获得的额度',
       searchPlaceholder: '邮箱、用户名或用户 ID',
       startDate: '开始日期',
@@ -1882,11 +1882,24 @@ export default {
         checkinDate: '签到日期',
         reward: '获得额度',
         createdAt: '领取时间'
+        },
+        settings: {
+          button: '签到设置',
+          title: '签到设置',
+          enabled: '开启每日签到',
+          enabledHint: '仅管理员可修改；关闭后用户端签到按钮不可领取。',
+          minReward: '最小签到获取额度',
+          maxReward: '最大签到获取额度',
+          dailyTotalLimit: '每日总派发额度',
+          saved: '签到设置已保存'
+        },
+        errors: {
+          loadFailed: '加载签到详情失败',
+          settingsLoadFailed: '加载签到设置失败',
+          settingsSaveFailed: '保存签到设置失败',
+          DAILY_CHECKIN_SETTINGS_INVALID: '签到设置不合法，请检查额度范围'
+        }
       },
-      errors: {
-        loadFailed: '加载签到记录失败'
-      }
-    },
 
     // Users Management
     users: {

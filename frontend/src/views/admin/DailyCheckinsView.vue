@@ -1,6 +1,15 @@
 <template>
   <AppLayout>
     <TablePageLayout>
+      <template #actions>
+        <div class="flex justify-end">
+          <button type="button" class="btn btn-primary inline-flex items-center gap-2" @click="openSettingsDialog">
+            <Icon name="cog" size="sm" />
+            <span>{{ t('admin.dailyCheckins.settings.button') }}</span>
+          </button>
+        </div>
+      </template>
+
       <template #filters>
         <div class="flex flex-wrap items-center gap-3">
           <div class="relative w-full md:w-80">
@@ -75,6 +84,78 @@
         />
       </template>
     </TablePageLayout>
+
+    <BaseDialog
+      :show="settingsDialogOpen"
+      :title="t('admin.dailyCheckins.settings.title')"
+      width="normal"
+      @close="closeSettingsDialog"
+    >
+      <div v-if="settingsLoading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+        {{ t('common.loading') }}
+      </div>
+      <form v-else id="daily-checkin-settings-form" class="space-y-5" @submit.prevent="saveSettings">
+        <label class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
+          <span>
+            <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dailyCheckins.settings.enabled') }}</span>
+            <span class="mt-1 block text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.enabledHint') }}</span>
+          </span>
+          <input
+            v-model="settingsForm.enabled"
+            type="checkbox"
+            class="mt-0.5 h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </label>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="space-y-1.5">
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.minReward') }}</span>
+            <input
+              v-model.number="settingsForm.min_reward"
+              type="number"
+              min="0"
+              step="0.00000001"
+              class="input"
+            />
+          </label>
+          <label class="space-y-1.5">
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.maxReward') }}</span>
+            <input
+              v-model.number="settingsForm.max_reward"
+              type="number"
+              min="0"
+              step="0.00000001"
+              class="input"
+            />
+          </label>
+        </div>
+
+        <label class="block space-y-1.5">
+          <span class="text-sm font-medium text-gray-700 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.dailyTotalLimit') }}</span>
+          <input
+            v-model.number="settingsForm.daily_total_limit"
+            type="number"
+            min="0"
+            step="0.00000001"
+            class="input"
+          />
+        </label>
+      </form>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-secondary" @click="closeSettingsDialog">{{ t('common.cancel') }}</button>
+          <button
+            type="submit"
+            form="daily-checkin-settings-form"
+            class="btn btn-primary"
+            :disabled="settingsSaving || settingsLoading"
+          >
+            {{ settingsSaving ? t('common.saving') : t('common.save') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -85,10 +166,11 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { Column } from '@/components/common/types'
 import { useAppStore } from '@/stores/app'
-import dailyCheckinsAPI, { type DailyCheckinRecord, type ListDailyCheckinRecordsParams } from '@/api/admin/dailyCheckins'
+import dailyCheckinsAPI, { type DailyCheckinRecord, type DailyCheckinSettings, type ListDailyCheckinRecordsParams } from '@/api/admin/dailyCheckins'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDisplayDateTime } from '@/utils/format'
 
@@ -98,6 +180,15 @@ const loading = ref(false)
 const records = ref<DailyCheckinRecord[]>([])
 const filters = reactive({ search: '', start_date: '', end_date: '' })
 const pagination = reactive({ page: 1, page_size: 20, total: 0 })
+const settingsDialogOpen = ref(false)
+const settingsLoading = ref(false)
+const settingsSaving = ref(false)
+const settingsForm = reactive<DailyCheckinSettings>({
+  enabled: false,
+  daily_total_limit: 0,
+  min_reward: 0,
+  max_reward: 0,
+})
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const columns = computed<Column[]>(() => [
@@ -177,6 +268,52 @@ function handleSort(key: string, order: 'asc' | 'desc') {
   sortState.sort_order = order
   pagination.page = 1
   void loadRecords()
+}
+
+async function openSettingsDialog() {
+  settingsDialogOpen.value = true
+  await loadSettings()
+}
+
+function closeSettingsDialog() {
+  if (settingsSaving.value) return
+  settingsDialogOpen.value = false
+}
+
+async function loadSettings() {
+  settingsLoading.value = true
+  try {
+    assignSettings(await dailyCheckinsAPI.getSettings())
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.dailyCheckins.errors', t('admin.dailyCheckins.errors.settingsLoadFailed')))
+  } finally {
+    settingsLoading.value = false
+  }
+}
+
+async function saveSettings() {
+  settingsSaving.value = true
+  try {
+    assignSettings(await dailyCheckinsAPI.updateSettings({
+      enabled: settingsForm.enabled,
+      daily_total_limit: Number(settingsForm.daily_total_limit) || 0,
+      min_reward: Number(settingsForm.min_reward) || 0,
+      max_reward: Number(settingsForm.max_reward) || 0,
+    }))
+    appStore.showSuccess(t('admin.dailyCheckins.settings.saved'))
+    settingsDialogOpen.value = false
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.dailyCheckins.errors', t('admin.dailyCheckins.errors.settingsSaveFailed')))
+  } finally {
+    settingsSaving.value = false
+  }
+}
+
+function assignSettings(settings: DailyCheckinSettings) {
+  settingsForm.enabled = !!settings.enabled
+  settingsForm.daily_total_limit = Number(settings.daily_total_limit) || 0
+  settingsForm.min_reward = Number(settings.min_reward) || 0
+  settingsForm.max_reward = Number(settings.max_reward) || 0
 }
 
 function formatReward(value: number | null | undefined): string {

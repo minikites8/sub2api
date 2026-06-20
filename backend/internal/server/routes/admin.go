@@ -584,6 +584,8 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerDailyCheckinRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	checkins := admin.Group("/daily-checkins")
 	{
+		checkins.GET("/settings", h.Admin.DailyCheckin.GetSettings)
+		checkins.PUT("/settings", h.Admin.DailyCheckin.UpdateSettings)
 		checkins.GET("", h.Admin.DailyCheckin.List)
 	}
 }
