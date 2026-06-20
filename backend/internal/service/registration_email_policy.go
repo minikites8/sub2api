@@ -74,6 +74,9 @@ func ParseRegistrationEmailSuffixWhitelistStrict(raw string) ([]string, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("registration email suffix whitelist is empty")
 	}
+	if !strings.HasPrefix(raw, "[") {
+		return nil, fmt.Errorf("registration email suffix whitelist must be a JSON array")
+	}
 	var items []string
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return nil, fmt.Errorf("parse registration email suffix whitelist: %w", err)

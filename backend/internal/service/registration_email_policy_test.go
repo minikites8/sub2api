@@ -43,6 +43,12 @@ func TestParseRegistrationEmailSuffixWhitelistStrict(t *testing.T) {
 	_, err = ParseRegistrationEmailSuffixWhitelistStrict(`@example.com,@foo.bar`)
 	require.Error(t, err)
 
+	_, err = ParseRegistrationEmailSuffixWhitelistStrict(`null`)
+	require.Error(t, err)
+
+	_, err = ParseRegistrationEmailSuffixWhitelistStrict(`{"suffixes":["@example.com"]}`)
+	require.Error(t, err)
+
 	_, err = ParseRegistrationEmailSuffixWhitelistStrict(`["@invalid_domain"]`)
 	require.Error(t, err)
 
