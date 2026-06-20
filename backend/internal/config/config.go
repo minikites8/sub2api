@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"os"
 	"strings"
@@ -85,6 +86,7 @@ type Config struct {
 	SubscriptionMaintenance SubscriptionMaintenanceConfig `mapstructure:"subscription_maintenance"`
 	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
 	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
+	DailyCheckin            DailyCheckinConfig            `mapstructure:"daily_checkin"`
 	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
@@ -1301,6 +1303,18 @@ type DashboardCacheConfig struct {
 	StatsRefreshTimeoutSeconds int `mapstructure:"stats_refresh_timeout_seconds"`
 }
 
+// DailyCheckinConfig 每日签到奖励配置。
+type DailyCheckinConfig struct {
+	// Enabled: 是否启用签到功能
+	Enabled bool `mapstructure:"enabled"`
+	// DailyTotalLimit: 全站每日发放总额度上限（USD）
+	DailyTotalLimit float64 `mapstructure:"daily_total_limit"`
+	// MinReward: 单人单次签到随机奖励最小值（USD）
+	MinReward float64 `mapstructure:"min_reward"`
+	// MaxReward: 单人单次签到随机奖励最大值（USD）
+	MaxReward float64 `mapstructure:"max_reward"`
+}
+
 // DashboardAggregationConfig 仪表盘预聚合配置
 type DashboardAggregationConfig struct {
 	// Enabled: 是否启用预聚合作业
@@ -1782,6 +1796,12 @@ func setDefaults() {
 	viper.SetDefault("dashboard_cache.stats_ttl_seconds", 30)
 	viper.SetDefault("dashboard_cache.stats_refresh_timeout_seconds", 30)
 
+	// Daily check-in rewards
+	viper.SetDefault("daily_checkin.enabled", false)
+	viper.SetDefault("daily_checkin.daily_total_limit", 0)
+	viper.SetDefault("daily_checkin.min_reward", 0)
+	viper.SetDefault("daily_checkin.max_reward", 0)
+
 	// Dashboard aggregation
 	viper.SetDefault("dashboard_aggregation.enabled", true)
 	viper.SetDefault("dashboard_aggregation.interval_seconds", 60)
@@ -2036,6 +2056,27 @@ func (c *Config) Validate() error {
 	}
 	if c.SubscriptionMaintenance.QueueSize < 0 {
 		return fmt.Errorf("subscription_maintenance.queue_size must be non-negative")
+	}
+	if !isFiniteNonNegative(c.DailyCheckin.DailyTotalLimit) {
+		return fmt.Errorf("daily_checkin.daily_total_limit must be a finite non-negative number")
+	}
+	if !isFiniteNonNegative(c.DailyCheckin.MinReward) {
+		return fmt.Errorf("daily_checkin.min_reward must be a finite non-negative number")
+	}
+	if !isFiniteNonNegative(c.DailyCheckin.MaxReward) {
+		return fmt.Errorf("daily_checkin.max_reward must be a finite non-negative number")
+	}
+	if c.DailyCheckin.MaxReward < c.DailyCheckin.MinReward {
+		return fmt.Errorf("daily_checkin.max_reward must be greater than or equal to min_reward")
+	}
+	if c.DailyCheckin.Enabled && c.DailyCheckin.DailyTotalLimit <= 0 {
+		return fmt.Errorf("daily_checkin.daily_total_limit must be positive when daily check-in is enabled")
+	}
+	if c.DailyCheckin.Enabled && c.DailyCheckin.MaxReward <= 0 {
+		return fmt.Errorf("daily_checkin.max_reward must be positive when daily check-in is enabled")
+	}
+	if c.DailyCheckin.Enabled && c.DailyCheckin.MinReward > c.DailyCheckin.DailyTotalLimit {
+		return fmt.Errorf("daily_checkin.min_reward must be less than or equal to daily_total_limit when daily check-in is enabled")
 	}
 
 	// Gemini OAuth 配置校验：client_id 与 client_secret 必须同时设置或同时留空。
@@ -2851,6 +2892,10 @@ func isWeakJWTSecret(secret string) bool {
 	}
 	_, exists := weak[lower]
 	return exists
+}
+
+func isFiniteNonNegative(value float64) bool {
+	return value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 func generateJWTSecret(byteLength int) (string, error) {

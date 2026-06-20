@@ -52,6 +52,14 @@ services:
       - SUB2API_KIRO_CONVERSATION_ID_MODE=${SUB2API_KIRO_CONVERSATION_ID_MODE:-stable}
 
       # =======================================================================
+      # Daily Check-in Configuration
+      # =======================================================================
+      - DAILY_CHECKIN_ENABLED=${DAILY_CHECKIN_ENABLED:-false}
+      - DAILY_CHECKIN_DAILY_TOTAL_LIMIT=${DAILY_CHECKIN_DAILY_TOTAL_LIMIT:-0}
+      - DAILY_CHECKIN_MIN_REWARD=${DAILY_CHECKIN_MIN_REWARD:-0}
+      - DAILY_CHECKIN_MAX_REWARD=${DAILY_CHECKIN_MAX_REWARD:-0}
+
+      # =======================================================================
       # Database Configuration (PostgreSQL)
       # =======================================================================
       - DATABASE_HOST=postgres

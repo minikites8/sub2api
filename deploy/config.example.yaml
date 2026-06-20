@@ -688,6 +688,24 @@ dashboard_cache:
   stats_refresh_timeout_seconds: 30
 
 # =============================================================================
+# Daily Check-in Configuration
+# 每日签到配置
+# =============================================================================
+daily_checkin:
+  # Enable the dashboard daily check-in button
+  # 是否启用用户仪表盘每日签到按钮
+  enabled: false
+  # Site-wide total balance granted by check-ins per local day (USD)
+  # 全站每日通过签到发放的总额度上限（USD）
+  daily_total_limit: 100
+  # Minimum balance a user can receive per check-in (USD)
+  # 单人单次签到随机获得额度最小值（USD）
+  min_reward: 0.1
+  # Maximum balance a user can receive per check-in (USD)
+  # 单人单次签到随机获得额度最大值（USD）
+  max_reward: 1
+
+# =============================================================================
 # Dashboard Aggregation Configuration
 # 仪表盘预聚合配置（重启生效）
 # =============================================================================

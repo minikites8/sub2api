@@ -16,6 +16,8 @@ import type {
   UserAuthProvider,
   UserAffiliateDetail,
   AffiliateTransferResponse,
+  DailyCheckinResult,
+  DailyCheckinStatus,
   PlatformQuotasResponse,
 } from '@/types'
 
@@ -186,6 +188,16 @@ export async function transferAffiliateQuota(): Promise<AffiliateTransferRespons
   return data
 }
 
+export async function getDailyCheckinStatus(): Promise<DailyCheckinStatus> {
+  const { data } = await apiClient.get<DailyCheckinStatus>('/user/daily-checkin')
+  return data
+}
+
+export async function claimDailyCheckin(): Promise<DailyCheckinResult> {
+  const { data } = await apiClient.post<DailyCheckinResult>('/user/daily-checkin')
+  return data
+}
+
 /**
  * 获取当前用户的平台限额 + 用量。
  */
@@ -209,6 +221,8 @@ export const userAPI = {
   startOAuthBinding,
   getAffiliateDetail,
   transferAffiliateQuota,
+  getDailyCheckinStatus,
+  claimDailyCheckin,
   getMyPlatformQuotas,
 }
 
