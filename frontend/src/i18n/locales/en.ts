@@ -1874,6 +1874,7 @@ export default {
         usageOpenAI: 'Usage (OpenAI)',
         usageGemini: 'Usage (Gemini)',
         usageAntigravity: 'Usage (Antigravity)',
+        usageKiro: 'Usage (Kiro)',
         concurrency: 'Concurrency',
         status: 'Status',
         lastActive: 'Last Active',
