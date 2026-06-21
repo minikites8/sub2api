@@ -140,6 +140,18 @@
             class="input"
           />
         </label>
+
+        <label class="block space-y-1.5">
+          <span class="text-sm font-medium text-gray-700 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.minRechargeAmount') }}</span>
+          <input
+            v-model.number="settingsForm.min_recharge_amount"
+            type="number"
+            min="0"
+            step="0.00000001"
+            class="input"
+          />
+          <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.minRechargeAmountHint') }}</span>
+        </label>
       </form>
 
       <template #footer>
@@ -188,6 +200,7 @@ const settingsForm = reactive<DailyCheckinSettings>({
   daily_total_limit: 0,
   min_reward: 0,
   max_reward: 0,
+  min_recharge_amount: 0,
 })
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -299,6 +312,7 @@ async function saveSettings() {
       daily_total_limit: Number(settingsForm.daily_total_limit) || 0,
       min_reward: Number(settingsForm.min_reward) || 0,
       max_reward: Number(settingsForm.max_reward) || 0,
+      min_recharge_amount: Number(settingsForm.min_recharge_amount) || 0,
     }))
     appStore.showSuccess(t('admin.dailyCheckins.settings.saved'))
     settingsDialogOpen.value = false
@@ -314,6 +328,7 @@ function assignSettings(settings: DailyCheckinSettings) {
   settingsForm.daily_total_limit = Number(settings.daily_total_limit) || 0
   settingsForm.min_reward = Number(settings.min_reward) || 0
   settingsForm.max_reward = Number(settings.max_reward) || 0
+  settingsForm.min_recharge_amount = Number(settings.min_recharge_amount) || 0
 }
 
 function formatReward(value: number | null | undefined): string {

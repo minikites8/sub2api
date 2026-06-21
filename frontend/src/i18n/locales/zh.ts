@@ -710,12 +710,14 @@ export default {
       hint: '随机获得 {min} - {max} 额度',
       checkedHint: '今日已获得 {amount}',
       exhaustedHint: '今日签到额度已发完',
+      rechargeRequiredHint: '累计充值满 {amount} 可签到，当前 {current}',
       success: '签到成功，获得 {amount}',
       failed: '签到失败，请稍后重试',
       errors: {
         DAILY_CHECKIN_DISABLED: '每日签到未启用',
         DAILY_CHECKIN_ALREADY: '今天已经签到过了',
-        DAILY_CHECKIN_EXHAUSTED: '今日签到额度已发完'
+        DAILY_CHECKIN_EXHAUSTED: '今日签到额度已发完',
+        DAILY_CHECKIN_RECHARGE_REQUIRED: '累计充值金额未达到签到要求'
       }
     }
   },
@@ -1891,6 +1893,8 @@ export default {
           minReward: '最小签到获取额度',
           maxReward: '最大签到获取额度',
           dailyTotalLimit: '每日总派发额度',
+          minRechargeAmount: '最低累计充值金额',
+          minRechargeAmountHint: '填 0 表示所有用户都可签到。',
           saved: '签到设置已保存'
         },
         errors: {

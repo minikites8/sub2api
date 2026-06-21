@@ -11,10 +11,11 @@ import (
 )
 
 type DailyCheckinSettings struct {
-	Enabled         bool    `json:"enabled"`
-	DailyTotalLimit float64 `json:"daily_total_limit"`
-	MinReward       float64 `json:"min_reward"`
-	MaxReward       float64 `json:"max_reward"`
+	Enabled           bool    `json:"enabled"`
+	DailyTotalLimit   float64 `json:"daily_total_limit"`
+	MinReward         float64 `json:"min_reward"`
+	MaxReward         float64 `json:"max_reward"`
+	MinRechargeAmount float64 `json:"min_recharge_amount"`
 }
 
 var dailyCheckinSettingKeys = []string{
@@ -22,6 +23,7 @@ var dailyCheckinSettingKeys = []string{
 	SettingKeyDailyCheckinDailyTotalLimit,
 	SettingKeyDailyCheckinMinReward,
 	SettingKeyDailyCheckinMaxReward,
+	SettingKeyDailyCheckinMinRechargeAmount,
 }
 
 func (s *SettingService) GetDailyCheckinSettings(ctx context.Context) (DailyCheckinSettings, error) {
@@ -48,6 +50,9 @@ func (s *SettingService) GetDailyCheckinSettings(ctx context.Context) (DailyChec
 	if value, ok := parseDailyCheckinSettingFloat(values, SettingKeyDailyCheckinMaxReward); ok {
 		result.MaxReward = value
 	}
+	if value, ok := parseDailyCheckinSettingFloat(values, SettingKeyDailyCheckinMinRechargeAmount); ok {
+		result.MinRechargeAmount = value
+	}
 
 	return dailyCheckinSettingsFromConfig(dailyCheckinConfigFromSettings(result)), nil
 }
@@ -70,10 +75,11 @@ func (s *SettingService) UpdateDailyCheckinSettings(ctx context.Context, input D
 	}
 
 	updates := map[string]string{
-		SettingKeyDailyCheckinEnabled:         strconv.FormatBool(settings.Enabled),
-		SettingKeyDailyCheckinDailyTotalLimit: strconv.FormatFloat(settings.DailyTotalLimit, 'f', 8, 64),
-		SettingKeyDailyCheckinMinReward:       strconv.FormatFloat(settings.MinReward, 'f', 8, 64),
-		SettingKeyDailyCheckinMaxReward:       strconv.FormatFloat(settings.MaxReward, 'f', 8, 64),
+		SettingKeyDailyCheckinEnabled:           strconv.FormatBool(settings.Enabled),
+		SettingKeyDailyCheckinDailyTotalLimit:   strconv.FormatFloat(settings.DailyTotalLimit, 'f', 8, 64),
+		SettingKeyDailyCheckinMinReward:         strconv.FormatFloat(settings.MinReward, 'f', 8, 64),
+		SettingKeyDailyCheckinMaxReward:         strconv.FormatFloat(settings.MaxReward, 'f', 8, 64),
+		SettingKeyDailyCheckinMinRechargeAmount: strconv.FormatFloat(settings.MinRechargeAmount, 'f', 8, 64),
 	}
 	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
 		return DailyCheckinSettings{}, fmt.Errorf("update daily check-in settings: %w", err)
@@ -94,19 +100,21 @@ func (s *SettingService) defaultDailyCheckinSettings() DailyCheckinSettings {
 func dailyCheckinSettingsFromConfig(cfg config.DailyCheckinConfig) DailyCheckinSettings {
 	cfg = normalizeDailyCheckinConfig(cfg)
 	return DailyCheckinSettings{
-		Enabled:         cfg.Enabled,
-		DailyTotalLimit: cfg.DailyTotalLimit,
-		MinReward:       cfg.MinReward,
-		MaxReward:       cfg.MaxReward,
+		Enabled:           cfg.Enabled,
+		DailyTotalLimit:   cfg.DailyTotalLimit,
+		MinReward:         cfg.MinReward,
+		MaxReward:         cfg.MaxReward,
+		MinRechargeAmount: cfg.MinRechargeAmount,
 	}
 }
 
 func dailyCheckinConfigFromSettings(settings DailyCheckinSettings) config.DailyCheckinConfig {
 	return normalizeDailyCheckinConfig(config.DailyCheckinConfig{
-		Enabled:         settings.Enabled,
-		DailyTotalLimit: settings.DailyTotalLimit,
-		MinReward:       settings.MinReward,
-		MaxReward:       settings.MaxReward,
+		Enabled:           settings.Enabled,
+		DailyTotalLimit:   settings.DailyTotalLimit,
+		MinReward:         settings.MinReward,
+		MaxReward:         settings.MaxReward,
+		MinRechargeAmount: settings.MinRechargeAmount,
 	})
 }
 
@@ -120,12 +128,16 @@ func validateDailyCheckinSettings(input DailyCheckinSettings) (DailyCheckinSetti
 	if !isFiniteNonNegativeFloat(input.MaxReward) {
 		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "max_reward must be a finite non-negative number")
 	}
+	if !isFiniteNonNegativeFloat(input.MinRechargeAmount) {
+		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "min_recharge_amount must be a finite non-negative number")
+	}
 
 	settings := DailyCheckinSettings{
-		Enabled:         input.Enabled,
-		DailyTotalLimit: roundCheckinReward(input.DailyTotalLimit),
-		MinReward:       roundCheckinReward(input.MinReward),
-		MaxReward:       roundCheckinReward(input.MaxReward),
+		Enabled:           input.Enabled,
+		DailyTotalLimit:   roundCheckinReward(input.DailyTotalLimit),
+		MinReward:         roundCheckinReward(input.MinReward),
+		MaxReward:         roundCheckinReward(input.MaxReward),
+		MinRechargeAmount: roundCheckinReward(input.MinRechargeAmount),
 	}
 	if settings.MaxReward < settings.MinReward {
 		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "max_reward must be greater than or equal to min_reward")

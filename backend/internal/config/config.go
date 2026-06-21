@@ -1313,6 +1313,8 @@ type DailyCheckinConfig struct {
 	MinReward float64 `mapstructure:"min_reward"`
 	// MaxReward: 单人单次签到随机奖励最大值（USD）
 	MaxReward float64 `mapstructure:"max_reward"`
+	// MinRechargeAmount: 使用签到功能所需累计充值金额（USD），0 表示不限制
+	MinRechargeAmount float64 `mapstructure:"min_recharge_amount"`
 }
 
 // DashboardAggregationConfig 仪表盘预聚合配置
@@ -1801,6 +1803,7 @@ func setDefaults() {
 	viper.SetDefault("daily_checkin.daily_total_limit", 0)
 	viper.SetDefault("daily_checkin.min_reward", 0)
 	viper.SetDefault("daily_checkin.max_reward", 0)
+	viper.SetDefault("daily_checkin.min_recharge_amount", 0)
 
 	// Dashboard aggregation
 	viper.SetDefault("dashboard_aggregation.enabled", true)
@@ -2065,6 +2068,9 @@ func (c *Config) Validate() error {
 	}
 	if !isFiniteNonNegative(c.DailyCheckin.MaxReward) {
 		return fmt.Errorf("daily_checkin.max_reward must be a finite non-negative number")
+	}
+	if !isFiniteNonNegative(c.DailyCheckin.MinRechargeAmount) {
+		return fmt.Errorf("daily_checkin.min_recharge_amount must be a finite non-negative number")
 	}
 	dailyCheckinDailyTotalLimit := roundDailyCheckinAmount(c.DailyCheckin.DailyTotalLimit)
 	dailyCheckinMinReward := roundDailyCheckinAmount(c.DailyCheckin.MinReward)

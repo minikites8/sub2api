@@ -637,10 +637,21 @@ func TestValidateDailyCheckinConfig(t *testing.T) {
 		{
 			name: "enabled valid",
 			cfg: DailyCheckinConfig{
-				Enabled:         true,
-				DailyTotalLimit: 100,
-				MinReward:       0.1,
-				MaxReward:       1,
+				Enabled:           true,
+				DailyTotalLimit:   100,
+				MinReward:         0.1,
+				MaxReward:         1,
+				MinRechargeAmount: 10,
+			},
+		},
+		{
+			name: "enabled allows zero min recharge amount",
+			cfg: DailyCheckinConfig{
+				Enabled:           true,
+				DailyTotalLimit:   100,
+				MinReward:         0.1,
+				MaxReward:         1,
+				MinRechargeAmount: 0,
 			},
 		},
 		{
@@ -712,6 +723,17 @@ func TestValidateDailyCheckinConfig(t *testing.T) {
 				MaxReward:       2,
 			},
 			wantErr: "daily_checkin.min_reward must be less than or equal to daily_total_limit",
+		},
+		{
+			name: "min recharge amount cannot be negative",
+			cfg: DailyCheckinConfig{
+				Enabled:           true,
+				DailyTotalLimit:   100,
+				MinReward:         0.1,
+				MaxReward:         1,
+				MinRechargeAmount: -1,
+			},
+			wantErr: "daily_checkin.min_recharge_amount must be a finite non-negative number",
 		},
 	}
 
