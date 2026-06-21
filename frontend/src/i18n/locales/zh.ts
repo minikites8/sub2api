@@ -709,7 +709,7 @@ export default {
       checked: '已签到',
       exhausted: '今日已发完',
       ready: '可签到',
-      hint: '随机获得 {min} - {max} 额度',
+      hint: '试试看今天的手气吧',
       checkedHint: '今日已获得 {amount}',
       exhaustedHint: '今日签到额度已发完',
       rewardRange: '奖励范围',

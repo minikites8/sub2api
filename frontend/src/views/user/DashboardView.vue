@@ -32,52 +32,8 @@
             </div>
           </div>
 
-          <div class="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
-            <div class="space-y-4">
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/50">
-                  <p class="text-xs font-medium text-gray-500 dark:text-dark-400">
-                    {{ t('dashboard.dailyCheckin.rewardRange') }}
-                  </p>
-                  <p class="mt-1 font-mono text-lg font-semibold text-gray-900 dark:text-white">
-                    {{ formatCurrency(dailyCheckinStatus.min_reward) }} - {{ formatCurrency(dailyCheckinStatus.max_reward) }}
-                  </p>
-                </div>
-                <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/50">
-                  <p class="text-xs font-medium text-gray-500 dark:text-dark-400">
-                    {{ t('dashboard.dailyCheckin.remainingToday') }}
-                  </p>
-                  <p class="mt-1 font-mono text-lg font-semibold text-emerald-600 dark:text-emerald-300">
-                    {{ formatCurrency(dailyCheckinStatus.remaining_today) }}
-                  </p>
-                </div>
-                <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/50">
-                  <p class="text-xs font-medium text-gray-500 dark:text-dark-400">
-                    {{ t('dashboard.dailyCheckin.rechargedTotal') }}
-                  </p>
-                  <p class="mt-1 font-mono text-lg font-semibold text-gray-900 dark:text-white">
-                    {{ formatCurrency(dailyCheckinStatus.total_recharged) }}
-                  </p>
-                </div>
-              </div>
-
-              <div class="space-y-2">
-                <div class="flex items-center justify-between text-xs text-gray-500 dark:text-dark-400">
-                  <span>{{ t('dashboard.dailyCheckin.poolProgress') }}</span>
-                  <span class="font-mono">
-                    {{ formatCurrency(dailyCheckinStatus.today_total_granted) }} / {{ formatCurrency(dailyCheckinStatus.daily_total_limit) }}
-                  </span>
-                </div>
-                <div class="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
-                  <div
-                    class="h-full rounded-full bg-amber-500 transition-all duration-300"
-                    :style="{ width: `${dailyCheckinProgress}%` }"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <div class="p-5">
+            <div class="max-w-xl rounded-lg border border-gray-200 p-4 dark:border-dark-700">
               <template v-if="dailyCheckinStatus.checked_in_today">
                 <div class="flex items-start gap-3">
                   <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
@@ -252,11 +208,6 @@ const dailyCheckinAvailable = computed(() => {
 })
 const dailyCheckinDisabled = computed(() => {
   return dailyCheckinLoading.value || publicSettingsLoading.value || !dailyCheckinAvailable.value || !turnstileReady.value || !turnstileToken.value
-})
-const dailyCheckinProgress = computed(() => {
-  const status = dailyCheckinStatus.value
-  if (!status?.daily_total_limit) return 0
-  return Math.max(0, Math.min(100, (status.today_total_granted / status.daily_total_limit) * 100))
 })
 const dailyCheckinTitle = computed(() => {
   const status = dailyCheckinStatus.value
