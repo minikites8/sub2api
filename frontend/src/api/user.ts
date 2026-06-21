@@ -16,6 +16,7 @@ import type {
   UserAuthProvider,
   UserAffiliateDetail,
   AffiliateTransferResponse,
+  DailyCheckinClaimRequest,
   DailyCheckinResult,
   DailyCheckinStatus,
   PlatformQuotasResponse,
@@ -193,8 +194,8 @@ export async function getDailyCheckinStatus(): Promise<DailyCheckinStatus> {
   return data
 }
 
-export async function claimDailyCheckin(): Promise<DailyCheckinResult> {
-  const { data } = await apiClient.post<DailyCheckinResult>('/user/daily-checkin')
+export async function claimDailyCheckin(payload: DailyCheckinClaimRequest = {}): Promise<DailyCheckinResult> {
+  const { data } = await apiClient.post<DailyCheckinResult>('/user/daily-checkin', payload)
   return data
 }
 

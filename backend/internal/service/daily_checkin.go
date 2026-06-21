@@ -397,7 +397,10 @@ func applyDailyCheckinRemaining(status *DailyCheckinStatus) {
 		remaining = 0
 	}
 	status.RemainingToday = roundCheckinReward(remaining)
-	status.ExhaustedToday = status.Enabled && status.DailyTotalLimit > 0 && status.RemainingToday <= 0
+	minReward := roundCheckinReward(status.MinReward)
+	status.ExhaustedToday = status.Enabled &&
+		status.DailyTotalLimit > 0 &&
+		(status.RemainingToday <= 0 || (minReward > 0 && status.RemainingToday < minReward))
 }
 
 func roundCheckinReward(value float64) float64 {
