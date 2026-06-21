@@ -3,37 +3,46 @@
     <div class="space-y-6">
       <div v-if="loading" class="flex items-center justify-center py-12"><LoadingSpinner /></div>
       <template v-else-if="stats">
-        <section
-          v-if="dailyCheckinStatus?.enabled"
-          class="card overflow-hidden"
+        <div v-if="dailyCheckinStatus?.enabled" class="flex justify-end">
+          <button
+            type="button"
+            class="btn btn-primary inline-flex min-w-[8rem] items-center justify-center gap-2"
+            :disabled="dailyCheckinLoading"
+            :title="dailyCheckinTitle"
+            @click="openDailyCheckinDialog"
+          >
+            <Icon :name="dailyCheckinEntryIcon" size="sm" :stroke-width="2" />
+            <span>{{ dailyCheckinEntryText }}</span>
+          </button>
+        </div>
+
+        <BaseDialog
+          :show="showDailyCheckinDialog"
+          :title="t('dashboard.dailyCheckin.title')"
+          width="narrow"
+          :close-on-click-outside="true"
+          @close="closeDailyCheckinDialog"
         >
-          <div class="border-b border-gray-100 px-5 py-4 dark:border-dark-700">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div class="flex items-center gap-3">
+          <div v-if="dailyCheckinStatus" class="space-y-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start gap-3">
                 <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
                   <Icon name="gift" size="lg" :stroke-width="2" />
                 </div>
-                <div>
-                  <h2 class="text-base font-semibold text-gray-900 dark:text-white">
-                    {{ t('dashboard.dailyCheckin.title') }}
-                  </h2>
-                  <p class="mt-0.5 text-sm text-gray-500 dark:text-dark-400">
-                    {{ dailyCheckinTitle }}
-                  </p>
-                </div>
+                <p class="mt-0.5 text-sm text-gray-500 dark:text-dark-400">
+                  {{ dailyCheckinTitle }}
+                </p>
               </div>
               <span
-                class="inline-flex w-fit items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium"
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium"
                 :class="dailyCheckinStatusClass"
               >
                 <Icon :name="dailyCheckinStatusIcon" size="xs" :stroke-width="2" />
                 {{ dailyCheckinStatusText }}
               </span>
             </div>
-          </div>
 
-          <div class="p-5">
-            <div class="max-w-xl rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
               <template v-if="dailyCheckinStatus.checked_in_today">
                 <div class="flex items-start gap-3">
                   <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
@@ -140,7 +149,7 @@
               </template>
             </div>
           </div>
-        </section>
+        </BaseDialog>
 
         <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" :platform-quotas="platformQuotas" />
         <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
@@ -167,6 +176,7 @@ import UserDashboardCharts from '@/components/user/dashboard/UserDashboardCharts
 import UserDashboardRecentUsage from '@/components/user/dashboard/UserDashboardRecentUsage.vue'
 import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { UsageLog, TrendDataPoint, ModelStat, PlatformQuotaItem, DailyCheckinStatus } from '@/types'
 import { getMyPlatformQuotas, getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
@@ -189,6 +199,7 @@ const recentUsage = ref<UsageLog[]>([])
 const platformQuotas = ref<PlatformQuotaItem[] | null>(null)
 const dailyCheckinStatus = ref<DailyCheckinStatus | null>(null)
 const dailyCheckinLoading = ref(false)
+const showDailyCheckinDialog = ref(false)
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref('')
 const turnstileError = ref('')
@@ -238,6 +249,22 @@ const dailyCheckinStatusClass = computed(() => {
   if (status?.exhausted_today) return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-200'
   if (status && !status.recharge_eligible) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
   return 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
+})
+const dailyCheckinEntryIcon = computed(() => {
+  const status = dailyCheckinStatus.value
+  if (dailyCheckinLoading.value) return 'refresh'
+  if (status?.checked_in_today) return 'checkCircle'
+  if (status?.exhausted_today) return 'exclamationCircle'
+  if (status && !status.recharge_eligible) return 'creditCard'
+  return 'gift'
+})
+const dailyCheckinEntryText = computed(() => {
+  const status = dailyCheckinStatus.value
+  if (dailyCheckinLoading.value) return t('dashboard.dailyCheckin.checking')
+  if (status?.checked_in_today) return t('dashboard.dailyCheckin.checked')
+  if (status?.exhausted_today) return t('dashboard.dailyCheckin.exhausted')
+  if (status && !status.recharge_eligible) return t('dashboard.dailyCheckin.rechargeRequired')
+  return t('dashboard.dailyCheckin.action')
 })
 const dailyCheckinButtonIcon = computed(() => {
   if (dailyCheckinLoading.value) return 'refresh'
@@ -334,6 +361,16 @@ const resetTurnstile = () => {
   turnstileToken.value = ''
 }
 
+const openDailyCheckinDialog = () => {
+  showDailyCheckinDialog.value = true
+}
+
+const closeDailyCheckinDialog = () => {
+  showDailyCheckinDialog.value = false
+  resetTurnstile()
+  turnstileError.value = ''
+}
+
 const onTurnstileVerify = (token: string) => {
   turnstileToken.value = token
   turnstileError.value = ''
@@ -350,6 +387,7 @@ const onTurnstileError = () => {
 }
 
 const goRecharge = () => {
+  closeDailyCheckinDialog()
   router.push('/purchase')
 }
 
