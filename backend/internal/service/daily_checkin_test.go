@@ -280,6 +280,23 @@ func TestDailyCheckinStatusIncludesRechargeEligibility(t *testing.T) {
 	require.False(t, status.RechargeEligible)
 }
 
+func TestDailyCheckinStatusMarksExhaustedWhenRemainingBelowMinimum(t *testing.T) {
+	repo := &fakeDailyCheckinRepo{total: 0.95}
+	svc := NewDailyCheckinService(repo, &fakeDailyCheckinUserRepo{}, &config.Config{
+		DailyCheckin: config.DailyCheckinConfig{
+			Enabled:         true,
+			DailyTotalLimit: 1,
+			MinReward:       0.1,
+			MaxReward:       0.2,
+		},
+	}, nil)
+
+	status, err := svc.GetStatus(context.Background(), 42)
+	require.NoError(t, err)
+	require.Equal(t, 0.05, status.RemainingToday)
+	require.True(t, status.ExhaustedToday)
+}
+
 func TestDailyCheckinClaimWrapsUnexpectedRepositoryError(t *testing.T) {
 	repoErr := errors.New("repository unavailable")
 	repo := &fakeDailyCheckinRepo{claimErr: repoErr}
