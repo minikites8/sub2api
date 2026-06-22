@@ -177,13 +177,13 @@
 
   .btn-primary {
     border: 1px solid transparent;
-    background: var(--md-brand);
-    color: var(--md-on-brand);
+    background: var(--md-primary);
+    color: var(--md-on-primary);
     box-shadow: none;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--md-brand) 88%, black);
+    background: color-mix(in srgb, var(--md-primary) 88%, var(--md-surface));
   }
 
   .btn-secondary {
