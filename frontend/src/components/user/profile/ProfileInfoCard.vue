@@ -2,12 +2,12 @@
   <div class="space-y-6">
     <section
       data-testid="profile-overview-hero"
-      class="card overflow-hidden border border-primary-100/80 bg-gradient-to-br from-primary-50 via-white to-amber-50/70 dark:border-primary-900/40 dark:from-primary-950/40 dark:via-dark-900 dark:to-dark-950"
+      class="profile-overview-surface"
     >
-      <div class="px-6 py-6 md:px-8">
+      <div class="px-5 py-5 md:px-6">
         <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div
-            class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-primary-500 to-primary-600 text-2xl font-bold text-white shadow-lg shadow-primary-500/20"
+            class="profile-avatar-surface flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden text-2xl font-semibold"
           >
             <img
               v-if="avatarUrl"
@@ -49,7 +49,7 @@
                   <span
                     v-for="hint in sourceHints"
                     :key="hint.key"
-                    class="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 ring-1 ring-primary-100 dark:bg-dark-900/70 dark:ring-primary-900/40"
+                    class="profile-source-chip"
                   >
                     <Icon name="link" size="sm" />
                     {{ hint.text }}
@@ -61,9 +61,9 @@
             <div class="grid gap-3 sm:grid-cols-3">
               <div
                 data-testid="profile-overview-metric-balance"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
+                class="profile-metric"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('profile.accountBalance') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -72,9 +72,9 @@
               </div>
               <div
                 data-testid="profile-overview-metric-concurrency"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
+                class="profile-metric"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('profile.concurrencyLimit') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -83,9 +83,9 @@
               </div>
               <div
                 data-testid="profile-overview-metric-member-since"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
+                class="profile-metric"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('profile.memberSince') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -98,11 +98,11 @@
       </div>
     </section>
 
-    <div class="space-y-6">
+    <div class="profile-content-grid">
       <div data-testid="profile-main-column" class="space-y-6">
         <section
           data-testid="profile-basics-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          class="profile-section"
         >
           <div class="mb-5 flex items-start justify-between gap-4">
             <div>
@@ -115,15 +115,15 @@
             </div>
           </div>
 
-          <div class="grid gap-6 sm:grid-cols-1 md:grid-cols-2">
-            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+          <div class="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+            <div class="profile-subsection">
               <ProfileAvatarCard
                 :user="user"
                 embedded
               />
             </div>
 
-            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+            <div class="profile-subsection">
               <ProfileEditForm
                 :initial-username="user?.username || ''"
                 embedded
@@ -134,7 +134,7 @@
 
         <section
           data-testid="profile-auth-bindings-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          class="profile-section"
         >
           <ProfileIdentityBindingsSection
             :user="user"
@@ -154,7 +154,7 @@
       <div data-testid="profile-side-column" class="space-y-6">
         <section
           data-testid="profile-referral-codes-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          class="profile-section"
         >
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('profile.referralCodesTitle') }}
@@ -164,14 +164,14 @@
           </p>
 
           <div class="mt-5 space-y-4">
-            <div class="rounded-2xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+            <div class="profile-subsection">
               <div class="flex items-center justify-between gap-3">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
                   {{ t('profile.myAffiliateCode') }}
                 </span>
                 <span
                   v-if="affiliateCode"
-                  class="rounded-full bg-primary-50 px-3 py-1 font-mono text-sm font-semibold text-primary-700 ring-1 ring-primary-100 dark:bg-primary-950/40 dark:text-primary-200 dark:ring-primary-900/50"
+                  class="profile-code-chip"
                 >
                   {{ affiliateCode }}
                 </span>
@@ -188,7 +188,7 @@
               </p>
               <div
                 v-if="inviterAffiliateCode"
-                class="mt-3 flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-gray-100 dark:bg-dark-800/70 dark:ring-dark-700"
+                class="profile-list-row mt-3 text-sm"
               >
                 <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('profile.usedAffiliateCode') }}
@@ -199,7 +199,7 @@
               </div>
             </div>
 
-            <div class="rounded-2xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+            <div class="profile-subsection">
               <div class="mb-3 flex items-center justify-between gap-3">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
                   {{ t('profile.usedPromoCodes') }}
@@ -213,7 +213,7 @@
                 <div
                   v-for="usage in usedPromoCodes"
                   :key="`${usage.code}-${usage.used_at}`"
-                  class="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-gray-100 dark:bg-dark-800/70 dark:ring-dark-700"
+                  class="profile-list-row"
                 >
                   <span class="font-mono font-semibold text-gray-800 dark:text-gray-100">
                     {{ usage.code }}
@@ -232,7 +232,7 @@
 
         <section
           v-if="sourceHints.length"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          class="profile-section"
         >
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('profile.linkedProfileSources') }}
@@ -245,7 +245,7 @@
             <div
               v-for="hint in sourceHints"
               :key="hint.key"
-              class="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-300"
+              class="profile-list-row profile-list-row-left items-start text-sm text-gray-600 dark:text-gray-300"
             >
               <Icon name="link" size="sm" class="mt-0.5 text-gray-400 dark:text-gray-500" />
               <span>{{ hint.text }}</span>
@@ -482,3 +482,89 @@ const sourceHints = computed(() => {
   return hints
 })
 </script>
+
+<style scoped>
+.profile-overview-surface,
+.profile-section {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  box-shadow: none;
+}
+
+.profile-overview-surface {
+  overflow: hidden;
+}
+
+.profile-section {
+  padding: 20px;
+}
+
+.profile-avatar-surface {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  background: var(--md-surface-container);
+  color: var(--md-on-surface);
+  box-shadow: none;
+}
+
+.profile-source-chip,
+.profile-code-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 999px;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
+  padding: 0.25rem 0.75rem;
+}
+
+.profile-code-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--md-on-surface);
+}
+
+.profile-metric,
+.profile-subsection,
+.profile-list-row {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px;
+  background: var(--md-surface-container-low);
+  box-shadow: none;
+}
+
+.profile-metric {
+  padding: 0.875rem 1rem;
+}
+
+.profile-subsection {
+  padding: 1rem;
+}
+
+.profile-list-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.profile-content-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.profile-list-row-left {
+  justify-content: flex-start;
+}
+
+@media (min-width: 1024px) {
+  .profile-content-grid {
+    grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
+    align-items: start;
+  }
+}
+</style>
