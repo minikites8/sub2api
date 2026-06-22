@@ -31,6 +31,7 @@ export interface DailyCheckinSettings {
   daily_total_limit: number
   min_reward: number
   max_reward: number
+  min_recharge_amount: number
 }
 
 export async function listRecords(

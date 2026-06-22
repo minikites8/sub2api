@@ -704,19 +704,39 @@ export default {
     redeemCode: 'Redeem Code',
     addBalanceWithCode: 'Add balance with a code',
     dailyCheckin: {
+      title: 'Daily Check-in',
       action: 'Daily Check-in',
       checking: 'Checking in...',
       checked: 'Checked in',
       exhausted: 'Pool empty',
+      ready: 'Ready',
       hint: 'Get a random {min} - {max} balance reward',
       checkedHint: 'Received {amount} today',
       exhaustedHint: 'Today\'s check-in pool is empty',
+      rewardRange: 'Reward range',
+      remainingToday: 'Remaining today',
+      rechargedTotal: 'Total recharged',
+      poolProgress: 'Today\'s pool progress',
+      rechargeRequired: 'Recharge required',
+      rechargeRequiredHint: 'Recharge at least {amount} to check in. Current total: {current}',
+      goRecharge: 'Recharge now',
+      verifyTitle: 'Complete verification',
+      verifyHint: 'Pass the verification to claim today\'s check-in reward.',
+      loadingVerification: 'Loading verification settings...',
+      verificationRequired: 'Verification required',
+      verificationUnavailable: 'Cloudflare Turnstile is not configured. Contact an administrator.',
+      completeVerification: 'Complete the human verification first',
+      turnstileExpired: 'Verification expired, please try again',
+      turnstileFailed: 'Verification failed, please try again',
       success: 'Check-in complete. You received {amount}',
       failed: 'Check-in failed. Please try again later.',
       errors: {
         DAILY_CHECKIN_DISABLED: 'Daily check-in is not enabled',
         DAILY_CHECKIN_ALREADY: 'You have already checked in today',
-        DAILY_CHECKIN_EXHAUSTED: 'Today\'s check-in pool is empty'
+        DAILY_CHECKIN_EXHAUSTED: 'Today\'s check-in pool is empty',
+        DAILY_CHECKIN_RECHARGE_REQUIRED: 'Your cumulative recharge has not reached the check-in requirement',
+        TURNSTILE_VERIFICATION_FAILED: 'Verification failed, please try again',
+        TURNSTILE_NOT_CONFIGURED: 'Cloudflare Turnstile is not configured'
       }
     }
   },
@@ -1870,6 +1890,8 @@ export default {
           minReward: 'Minimum reward',
           maxReward: 'Maximum reward',
           dailyTotalLimit: 'Daily total payout limit',
+          minRechargeAmount: 'Minimum cumulative recharge',
+          minRechargeAmountHint: 'Set 0 to allow all users to check in.',
           saved: 'Daily check-in settings saved'
         },
         errors: {

@@ -2955,6 +2955,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDailyCheckinDailyTotalLimit:               strconv.FormatFloat(s.defaultDailyCheckinSettings().DailyTotalLimit, 'f', 8, 64),
 		SettingKeyDailyCheckinMinReward:                     strconv.FormatFloat(s.defaultDailyCheckinSettings().MinReward, 'f', 8, 64),
 		SettingKeyDailyCheckinMaxReward:                     strconv.FormatFloat(s.defaultDailyCheckinSettings().MaxReward, 'f', 8, 64),
+		SettingKeyDailyCheckinMinRechargeAmount:             strconv.FormatFloat(s.defaultDailyCheckinSettings().MinRechargeAmount, 'f', 8, 64),
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",

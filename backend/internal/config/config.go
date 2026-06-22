@@ -30,7 +30,7 @@ const (
 
 // DefaultCSPPolicy is the default Content-Security-Policy with nonce support
 // __CSP_NONCE__ will be replaced with actual nonce at request time by the SecurityHeaders middleware
-const DefaultCSPPolicy = "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+const DefaultCSPPolicy = "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com https://*.googlesyndication.com https://*.googleadservices.com https://*.doubleclick.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.adtrafficquality.google; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // UMQ（用户消息队列）模式常量
 const (
@@ -1313,6 +1313,8 @@ type DailyCheckinConfig struct {
 	MinReward float64 `mapstructure:"min_reward"`
 	// MaxReward: 单人单次签到随机奖励最大值（USD）
 	MaxReward float64 `mapstructure:"max_reward"`
+	// MinRechargeAmount: 使用签到功能所需累计充值金额（USD），0 表示不限制
+	MinRechargeAmount float64 `mapstructure:"min_recharge_amount"`
 }
 
 // DashboardAggregationConfig 仪表盘预聚合配置
@@ -1801,6 +1803,7 @@ func setDefaults() {
 	viper.SetDefault("daily_checkin.daily_total_limit", 0)
 	viper.SetDefault("daily_checkin.min_reward", 0)
 	viper.SetDefault("daily_checkin.max_reward", 0)
+	viper.SetDefault("daily_checkin.min_recharge_amount", 0)
 
 	// Dashboard aggregation
 	viper.SetDefault("dashboard_aggregation.enabled", true)
@@ -2065,6 +2068,9 @@ func (c *Config) Validate() error {
 	}
 	if !isFiniteNonNegative(c.DailyCheckin.MaxReward) {
 		return fmt.Errorf("daily_checkin.max_reward must be a finite non-negative number")
+	}
+	if !isFiniteNonNegative(c.DailyCheckin.MinRechargeAmount) {
+		return fmt.Errorf("daily_checkin.min_recharge_amount must be a finite non-negative number")
 	}
 	dailyCheckinDailyTotalLimit := roundDailyCheckinAmount(c.DailyCheckin.DailyTotalLimit)
 	dailyCheckinMinReward := roundDailyCheckinAmount(c.DailyCheckin.MinReward)

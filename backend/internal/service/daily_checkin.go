@@ -20,6 +20,10 @@ var (
 		"DAILY_CHECKIN_EXHAUSTED",
 		"daily check-in reward pool has been exhausted",
 	)
+	ErrDailyCheckinRechargeRequired = infraerrors.Forbidden(
+		"DAILY_CHECKIN_RECHARGE_REQUIRED",
+		"minimum recharge amount is required for daily check-in",
+	)
 )
 
 type DailyCheckinStatus struct {
@@ -30,6 +34,9 @@ type DailyCheckinStatus struct {
 	DailyTotalLimit   float64    `json:"daily_total_limit"`
 	MinReward         float64    `json:"min_reward"`
 	MaxReward         float64    `json:"max_reward"`
+	MinRechargeAmount float64    `json:"min_recharge_amount"`
+	TotalRecharged    float64    `json:"total_recharged"`
+	RechargeEligible  bool       `json:"recharge_eligible"`
 	CheckinDate       string     `json:"checkin_date"`
 	LastCheckinAt     *time.Time `json:"last_checkin_at,omitempty"`
 	LastReward        float64    `json:"last_reward,omitempty"`
@@ -94,16 +101,22 @@ type DailyCheckinRepository interface {
 	ListAdminRecords(ctx context.Context, filter DailyCheckinAdminListFilter) ([]DailyCheckinAdminRecord, int64, error)
 }
 
+type DailyCheckinUserRepository interface {
+	GetByID(ctx context.Context, id int64) (*User, error)
+}
+
 type DailyCheckinService struct {
 	repo                DailyCheckinRepository
+	userRepo            DailyCheckinUserRepository
 	cfg                 *config.Config
 	billingCacheService *BillingCacheService
 	settingService      *SettingService
 }
 
-func NewDailyCheckinService(repo DailyCheckinRepository, cfg *config.Config, billingCacheService *BillingCacheService) *DailyCheckinService {
+func NewDailyCheckinService(repo DailyCheckinRepository, userRepo DailyCheckinUserRepository, cfg *config.Config, billingCacheService *BillingCacheService) *DailyCheckinService {
 	return &DailyCheckinService{
 		repo:                repo,
+		userRepo:            userRepo,
 		cfg:                 cfg,
 		billingCacheService: billingCacheService,
 	}
@@ -115,8 +128,8 @@ func (s *DailyCheckinService) SetSettingService(settingService *SettingService) 
 	}
 }
 
-func ProvideDailyCheckinService(repo DailyCheckinRepository, cfg *config.Config, billingCacheService *BillingCacheService, settingService *SettingService) *DailyCheckinService {
-	svc := NewDailyCheckinService(repo, cfg, billingCacheService)
+func ProvideDailyCheckinService(repo DailyCheckinRepository, userRepo DailyCheckinUserRepository, cfg *config.Config, billingCacheService *BillingCacheService, settingService *SettingService) *DailyCheckinService {
+	svc := NewDailyCheckinService(repo, userRepo, cfg, billingCacheService)
 	svc.SetSettingService(settingService)
 	return svc
 }
@@ -127,17 +140,27 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 	today, nextAvailableAt := s.todayWindow()
 
 	status := &DailyCheckinStatus{
-		Enabled:         claimable,
-		DailyTotalLimit: settings.DailyTotalLimit,
-		MinReward:       settings.MinReward,
-		MaxReward:       settings.MaxReward,
-		CheckinDate:     today,
-		NextAvailableAt: nextAvailableAt,
+		Enabled:           claimable,
+		DailyTotalLimit:   settings.DailyTotalLimit,
+		MinReward:         settings.MinReward,
+		MaxReward:         settings.MaxReward,
+		MinRechargeAmount: settings.MinRechargeAmount,
+		RechargeEligible:  true,
+		CheckinDate:       today,
+		NextAvailableAt:   nextAvailableAt,
 	}
 
 	if s == nil || s.repo == nil || userID <= 0 {
+		status.RechargeEligible = dailyCheckinRechargeEligible(status.TotalRecharged, settings.MinRechargeAmount)
 		return status, nil
 	}
+
+	totalRecharged, err := s.userTotalRecharged(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get daily check-in recharge total: %w", err)
+	}
+	status.TotalRecharged = totalRecharged
+	status.RechargeEligible = dailyCheckinRechargeEligible(totalRecharged, settings.MinRechargeAmount)
 
 	if record, err := s.repo.GetUserCheckin(ctx, userID, today); err != nil {
 		return nil, fmt.Errorf("get daily check-in status: %w", err)
@@ -169,6 +192,13 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 	}
 	if userID <= 0 {
 		return nil, ErrUserNotFound
+	}
+	totalRecharged, err := s.userTotalRecharged(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get daily check-in recharge total: %w", err)
+	}
+	if !dailyCheckinRechargeEligible(totalRecharged, settings.MinRechargeAmount) {
+		return nil, ErrDailyCheckinRechargeRequired
 	}
 
 	today, nextAvailableAt := s.todayWindow()
@@ -207,6 +237,9 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 		DailyTotalLimit:   settings.DailyTotalLimit,
 		MinReward:         settings.MinReward,
 		MaxReward:         settings.MaxReward,
+		MinRechargeAmount: settings.MinRechargeAmount,
+		TotalRecharged:    totalRecharged,
+		RechargeEligible:  true,
 		CheckinDate:       today,
 		LastCheckinAt:     &claimed.Record.CreatedAt,
 		LastReward:        roundCheckinReward(claimed.Record.Reward),
@@ -268,12 +301,16 @@ func normalizeDailyCheckinConfig(settings config.DailyCheckinConfig) config.Dail
 	if !isFiniteNonNegativeFloat(settings.MaxReward) {
 		settings.MaxReward = 0
 	}
+	if !isFiniteNonNegativeFloat(settings.MinRechargeAmount) {
+		settings.MinRechargeAmount = 0
+	}
 	if settings.MaxReward < settings.MinReward {
 		settings.MaxReward = settings.MinReward
 	}
 	settings.DailyTotalLimit = roundCheckinReward(settings.DailyTotalLimit)
 	settings.MinReward = roundCheckinReward(settings.MinReward)
 	settings.MaxReward = roundCheckinReward(settings.MaxReward)
+	settings.MinRechargeAmount = roundCheckinReward(settings.MinRechargeAmount)
 	return settings
 }
 
@@ -305,6 +342,25 @@ func (s *DailyCheckinService) invalidateBalanceCache(userID int64) {
 	if err := s.billingCacheService.InvalidateUserBalance(ctx, userID); err != nil {
 		logger.LegacyPrintf("service.daily_checkin", "failed to invalidate billing cache for user %d: %v", userID, err)
 	}
+}
+
+func (s *DailyCheckinService) userTotalRecharged(ctx context.Context, userID int64) (float64, error) {
+	if s == nil || s.userRepo == nil {
+		return 0, nil
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	return roundCheckinReward(user.TotalRecharged), nil
+}
+
+func dailyCheckinRechargeEligible(totalRecharged, minRechargeAmount float64) bool {
+	minRechargeAmount = roundCheckinReward(minRechargeAmount)
+	if minRechargeAmount <= 0 {
+		return true
+	}
+	return roundCheckinReward(totalRecharged) >= minRechargeAmount
 }
 
 func randomDailyCheckinReward(minReward, maxReward, remaining float64) float64 {
@@ -341,7 +397,10 @@ func applyDailyCheckinRemaining(status *DailyCheckinStatus) {
 		remaining = 0
 	}
 	status.RemainingToday = roundCheckinReward(remaining)
-	status.ExhaustedToday = status.Enabled && status.DailyTotalLimit > 0 && status.RemainingToday <= 0
+	minReward := roundCheckinReward(status.MinReward)
+	status.ExhaustedToday = status.Enabled &&
+		status.DailyTotalLimit > 0 &&
+		(status.RemainingToday <= 0 || (minReward > 0 && status.RemainingToday < minReward))
 }
 
 func roundCheckinReward(value float64) float64 {

@@ -703,19 +703,39 @@ export default {
     redeemCode: '兑换码',
     addBalanceWithCode: '使用兑换码充值',
     dailyCheckin: {
+      title: '每日签到',
       action: '每日签到',
       checking: '签到中...',
       checked: '已签到',
       exhausted: '今日已发完',
-      hint: '随机获得 {min} - {max} 额度',
+      ready: '可签到',
+      hint: '试试看今天的手气吧',
       checkedHint: '今日已获得 {amount}',
       exhaustedHint: '今日签到额度已发完',
+      rewardRange: '奖励范围',
+      remainingToday: '今日剩余',
+      rechargedTotal: '累计充值',
+      poolProgress: '今日发放进度',
+      rechargeRequired: '需要充值',
+      rechargeRequiredHint: '累计充值满 {amount} 可签到，当前 {current}',
+      goRecharge: '去充值',
+      verifyTitle: '完成人机验证',
+      verifyHint: '验证通过后即可领取今日签到奖励。',
+      loadingVerification: '正在加载验证配置...',
+      verificationRequired: '需要验证',
+      verificationUnavailable: 'Cloudflare Turnstile 尚未配置，请联系管理员',
+      completeVerification: '请先完成人机验证',
+      turnstileExpired: '验证已过期，请重试',
+      turnstileFailed: '验证失败，请重试',
       success: '签到成功，获得 {amount}',
       failed: '签到失败，请稍后重试',
       errors: {
         DAILY_CHECKIN_DISABLED: '每日签到未启用',
         DAILY_CHECKIN_ALREADY: '今天已经签到过了',
-        DAILY_CHECKIN_EXHAUSTED: '今日签到额度已发完'
+        DAILY_CHECKIN_EXHAUSTED: '今日签到额度已发完',
+        DAILY_CHECKIN_RECHARGE_REQUIRED: '累计充值金额未达到签到要求',
+        TURNSTILE_VERIFICATION_FAILED: '人机验证失败，请重试',
+        TURNSTILE_NOT_CONFIGURED: 'Cloudflare Turnstile 尚未配置'
       }
     }
   },
@@ -1891,6 +1911,8 @@ export default {
           minReward: '最小签到获取额度',
           maxReward: '最大签到获取额度',
           dailyTotalLimit: '每日总派发额度',
+          minRechargeAmount: '最低累计充值金额',
+          minRechargeAmountHint: '填 0 表示所有用户都可签到。',
           saved: '签到设置已保存'
         },
         errors: {
