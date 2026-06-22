@@ -120,7 +120,7 @@
               </span>
               <div class="min-w-0 flex-1">
                 <p>{{ route.name }}</p>
-                <span>{{ route.detail }}</span>
+                <span class="md3-route-detail">{{ route.detail }}</span>
               </div>
               <strong>{{ route.value }}</strong>
             </div>
@@ -736,7 +736,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.md3-route-row span {
+.md3-route-detail {
   display: block;
   overflow: hidden;
   font-size: 0.75rem;
