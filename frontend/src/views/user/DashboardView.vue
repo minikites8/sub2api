@@ -75,7 +75,7 @@
                 </div>
               </template>
 
-              <template v-else-if="!dailyCheckinStatus.recharge_eligible">
+              <template v-else-if="!dailyCheckinRechargeEligible">
                 <div class="space-y-4">
                   <div class="flex items-start gap-3">
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
@@ -116,6 +116,11 @@
                       </p>
                     </div>
                   </div>
+
+                  <GoogleAdSenseAd
+                    client="ca-pub-1423021104870807"
+                    ad-slot="5962250608"
+                  />
 
                   <div v-if="publicSettingsLoading" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-dark-400">
                     {{ t('dashboard.dailyCheckin.loadingVerification') }}
@@ -176,11 +181,13 @@ import UserDashboardCharts from '@/components/user/dashboard/UserDashboardCharts
 import UserDashboardRecentUsage from '@/components/user/dashboard/UserDashboardRecentUsage.vue'
 import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import GoogleAdSenseAd from '@/components/ads/GoogleAdSenseAd.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { UsageLog, TrendDataPoint, ModelStat, PlatformQuotaItem, DailyCheckinStatus } from '@/types'
 import { getMyPlatformQuotas, getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
 import { extractI18nErrorMessage } from '@/utils/apiError'
+import { isDailyCheckinRechargeEligible } from '@/utils/dailyCheckin'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -215,7 +222,11 @@ const turnstileSiteKey = computed(() => appStore.cachedPublicSettings?.turnstile
 const turnstileReady = computed(() => Boolean(appStore.cachedPublicSettings?.turnstile_enabled && turnstileSiteKey.value))
 const dailyCheckinAvailable = computed(() => {
   const status = dailyCheckinStatus.value
-  return Boolean(status?.enabled && status.recharge_eligible && !status.checked_in_today && !status.exhausted_today)
+  return Boolean(status?.enabled && dailyCheckinRechargeEligible.value && !status.checked_in_today && !status.exhausted_today)
+})
+const dailyCheckinRechargeEligible = computed(() => {
+  const status = dailyCheckinStatus.value
+  return status ? isDailyCheckinRechargeEligible(status) : false
 })
 const dailyCheckinDisabled = computed(() => {
   return dailyCheckinLoading.value || publicSettingsLoading.value || !dailyCheckinAvailable.value || !turnstileReady.value || !turnstileToken.value
@@ -225,7 +236,7 @@ const dailyCheckinTitle = computed(() => {
   if (!status) return ''
   if (status.checked_in_today) return t('dashboard.dailyCheckin.checkedHint', { amount: formatCurrency(status.today_reward) })
   if (status.exhausted_today) return t('dashboard.dailyCheckin.exhaustedHint')
-  if (!status.recharge_eligible) return t('dashboard.dailyCheckin.rechargeRequiredHint', { amount: formatCurrency(status.min_recharge_amount), current: formatCurrency(status.total_recharged) })
+  if (!dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequiredHint', { amount: formatCurrency(status.min_recharge_amount), current: formatCurrency(status.total_recharged) })
   return t('dashboard.dailyCheckin.hint', { min: formatCurrency(status.min_reward), max: formatCurrency(status.max_reward) })
 })
 const dailyCheckinStatusText = computed(() => {
@@ -233,21 +244,21 @@ const dailyCheckinStatusText = computed(() => {
   if (!status) return ''
   if (status.checked_in_today) return t('dashboard.dailyCheckin.checked')
   if (status.exhausted_today) return t('dashboard.dailyCheckin.exhausted')
-  if (!status.recharge_eligible) return t('dashboard.dailyCheckin.rechargeRequired')
+  if (!dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequired')
   return t('dashboard.dailyCheckin.ready')
 })
 const dailyCheckinStatusIcon = computed(() => {
   const status = dailyCheckinStatus.value
   if (status?.checked_in_today) return 'checkCircle'
   if (status?.exhausted_today) return 'exclamationCircle'
-  if (status && !status.recharge_eligible) return 'creditCard'
+  if (status && !dailyCheckinRechargeEligible.value) return 'creditCard'
   return 'shield'
 })
 const dailyCheckinStatusClass = computed(() => {
   const status = dailyCheckinStatus.value
   if (status?.checked_in_today) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
   if (status?.exhausted_today) return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-200'
-  if (status && !status.recharge_eligible) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
+  if (status && !dailyCheckinRechargeEligible.value) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
   return 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
 })
 const dailyCheckinEntryIcon = computed(() => {
@@ -255,7 +266,7 @@ const dailyCheckinEntryIcon = computed(() => {
   if (dailyCheckinLoading.value) return 'refresh'
   if (status?.checked_in_today) return 'checkCircle'
   if (status?.exhausted_today) return 'exclamationCircle'
-  if (status && !status.recharge_eligible) return 'creditCard'
+  if (status && !dailyCheckinRechargeEligible.value) return 'creditCard'
   return 'gift'
 })
 const dailyCheckinEntryText = computed(() => {
@@ -263,7 +274,7 @@ const dailyCheckinEntryText = computed(() => {
   if (dailyCheckinLoading.value) return t('dashboard.dailyCheckin.checking')
   if (status?.checked_in_today) return t('dashboard.dailyCheckin.checked')
   if (status?.exhausted_today) return t('dashboard.dailyCheckin.exhausted')
-  if (status && !status.recharge_eligible) return t('dashboard.dailyCheckin.rechargeRequired')
+  if (status && !dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequired')
   return t('dashboard.dailyCheckin.action')
 })
 const dailyCheckinButtonIcon = computed(() => {
@@ -393,7 +404,7 @@ const goRecharge = () => {
 
 const handleDailyCheckin = async () => {
   if (!dailyCheckinAvailable.value) {
-    if (dailyCheckinStatus.value && !dailyCheckinStatus.value.recharge_eligible) {
+    if (dailyCheckinStatus.value && !dailyCheckinRechargeEligible.value) {
       goRecharge()
     }
     return
