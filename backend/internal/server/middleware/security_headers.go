@@ -28,6 +28,14 @@ const (
 	AirwallexDemoStaticDomain = "https://static-demo.airwallex.com"
 	// AirwallexDemoCheckoutDomain 是 Airwallex 沙箱环境收银台元素和 iframe 域名。
 	AirwallexDemoCheckoutDomain = "https://checkout-demo.airwallex.com"
+	// GoogleAdSenseDomain is the domain for Google AdSense scripts and iframes.
+	GoogleAdSenseDomain = "https://*.googlesyndication.com"
+	// GoogleAdServicesDomain is the domain for Google ad service scripts.
+	GoogleAdServicesDomain = "https://*.googleadservices.com"
+	// GoogleDoubleClickDomain is the domain for Google ad iframes and scripts.
+	GoogleDoubleClickDomain = "https://*.doubleclick.net"
+	// GoogleDomain is the domain for Google ad verification frames.
+	GoogleDomain = "https://*.google.com"
 )
 
 var requiredCSPDirectiveValues = []struct {
@@ -47,6 +55,12 @@ var requiredCSPDirectiveValues = []struct {
 	{"style-src", AirwallexDemoStaticDomain},
 	{"style-src", AirwallexDemoCheckoutDomain},
 	{"frame-src", AirwallexDemoCheckoutDomain},
+	{"script-src", GoogleAdSenseDomain},
+	{"script-src", GoogleAdServicesDomain},
+	{"script-src", GoogleDoubleClickDomain},
+	{"frame-src", GoogleAdSenseDomain},
+	{"frame-src", GoogleDoubleClickDomain},
+	{"frame-src", GoogleDomain},
 }
 
 // GenerateNonce generates a cryptographically secure random nonce.
