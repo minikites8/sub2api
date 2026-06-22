@@ -52,10 +52,48 @@ onUnmounted(() => {
 
 .layout-section-fixed {
   @apply flex-shrink-0;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
+  padding: 12px;
+  box-shadow: none;
 }
 
 .layout-section-scrollable {
   @apply flex-1 min-h-0 flex flex-col;
+}
+
+.layout-section-fixed :deep([class*="bg-primary-"]),
+.layout-section-fixed :deep([class*="bg-blue-"]),
+.layout-section-fixed :deep([class*="bg-sky-"]),
+.layout-section-fixed :deep([class*="bg-cyan-"]) {
+  background-color: var(--md-surface-container) !important;
+}
+
+.layout-section-fixed :deep([class*="text-primary-"]),
+.layout-section-fixed :deep([class*="text-blue-"]),
+.layout-section-fixed :deep([class*="text-sky-"]),
+.layout-section-fixed :deep([class*="text-cyan-"]) {
+  color: var(--md-on-surface) !important;
+}
+
+.layout-section-fixed :deep([class*="border-primary-"]),
+.layout-section-fixed :deep([class*="border-blue-"]),
+.layout-section-fixed :deep([class*="border-sky-"]),
+.layout-section-fixed :deep([class*="border-cyan-"]) {
+  border-color: var(--md-outline-variant) !important;
+}
+
+.layout-section-fixed :deep([class*="ring-primary-"]),
+.layout-section-fixed :deep([class*="ring-blue-"]),
+.layout-section-fixed :deep([class*="ring-sky-"]),
+.layout-section-fixed :deep([class*="ring-cyan-"]) {
+  --tw-ring-color: var(--md-state-focus) !important;
+}
+
+.layout-section-fixed :deep(.card) {
+  background: var(--md-surface);
 }
 
 /* 表格滚动容器 - 增强版表体滚动方案 */
@@ -125,6 +163,11 @@ onUnmounted(() => {
 /* 移动端：恢复正常滚动 */
 .table-page-layout.mobile-mode .table-scroll-container {
   @apply h-auto overflow-visible border-none shadow-none bg-transparent;
+}
+
+.table-page-layout.mobile-mode .layout-section-fixed {
+  border-radius: 10px;
+  padding: 10px;
 }
 
 .table-page-layout.mobile-mode .layout-section-scrollable {
