@@ -1,66 +1,81 @@
 <template>
-  <div class="space-y-6">
-    <!-- Date Range Filter -->
-    <div class="card p-4">
-      <div class="flex flex-wrap items-center gap-4">
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.timeRange') }}:</span>
-          <DateRangePicker :start-date="startDate" :end-date="endDate" @update:startDate="$emit('update:startDate', $event)" @update:endDate="$emit('update:endDate', $event)" @change="$emit('dateRangeChange', $event)" />
-        </div>
-        <button @click="$emit('refresh')" :disabled="loading" class="btn btn-secondary">
-          {{ t('common.refresh') }}
-        </button>
-        <div class="ml-auto flex items-center gap-2">
-          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.granularity') }}:</span>
-          <div class="w-28">
-            <Select :model-value="granularity" :options="[{value:'day', label:t('dashboard.day')}, {value:'hour', label:t('dashboard.hour')}]" @update:model-value="$emit('update:granularity', $event)" @change="$emit('granularityChange')" />
-          </div>
-        </div>
+  <section class="md3-charts-shell">
+    <div class="md3-chart-toolbar">
+      <div class="md3-toolbar-group md3-toolbar-date">
+        <span>{{ t('dashboard.timeRange') }}</span>
+        <DateRangePicker
+          :start-date="startDate"
+          :end-date="endDate"
+          @update:startDate="$emit('update:startDate', $event)"
+          @update:endDate="$emit('update:endDate', $event)"
+          @change="$emit('dateRangeChange', $event)"
+        />
+      </div>
+
+      <button type="button" class="md3-refresh-button" :disabled="loading" @click="$emit('refresh')">
+        <Icon name="refresh" size="sm" />
+        <span>{{ t('common.refresh') }}</span>
+      </button>
+
+      <div class="md3-toolbar-group md3-toolbar-granularity">
+        <span>{{ t('dashboard.granularity') }}</span>
+        <Select
+          :model-value="granularity"
+          :options="granularityOptions"
+          size="sm"
+          @update:model-value="$emit('update:granularity', $event)"
+          @change="$emit('granularityChange')"
+        />
       </div>
     </div>
 
-    <!-- Charts Grid -->
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <!-- Model Distribution Chart -->
-      <div class="card relative overflow-hidden p-4">
-        <div v-if="loading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm dark:bg-dark-800/50">
+    <div class="md3-chart-grid">
+      <article class="md3-model-card">
+        <div v-if="loading" class="md3-card-loading">
           <LoadingSpinner size="md" />
         </div>
-        <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">{{ t('dashboard.modelDistribution') }}</h3>
-        <div class="flex items-center gap-6">
-          <div class="h-48 w-48">
+        <header class="md3-card-header">
+          <h2>{{ t('dashboard.modelDistribution') }}</h2>
+        </header>
+
+        <div class="md3-model-content">
+          <div class="md3-doughnut-frame">
             <Doughnut v-if="modelData" :data="modelData" :options="doughnutOptions" />
-            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ t('dashboard.noDataAvailable') }}</div>
+            <div v-else class="md3-empty-chart">{{ t('dashboard.noDataAvailable') }}</div>
           </div>
-          <div class="max-h-48 flex-1 overflow-y-auto">
-            <table class="w-full text-xs">
+
+          <div class="md3-model-table-wrap">
+            <table class="md3-model-table">
               <thead>
-                <tr class="text-gray-500 dark:text-gray-400">
-                  <th class="pb-2 text-left">{{ t('dashboard.model') }}</th>
-                  <th class="pb-2 text-right">{{ t('dashboard.requests') }}</th>
-                  <th class="pb-2 text-right">{{ t('dashboard.tokens') }}</th>
-                  <th class="pb-2 text-right">{{ t('dashboard.actual') }}</th>
-                  <th class="pb-2 text-right">{{ t('dashboard.standard') }}</th>
+                <tr>
+                  <th>{{ t('dashboard.model') }}</th>
+                  <th>{{ t('dashboard.requests') }}</th>
+                  <th>{{ t('dashboard.tokens') }}</th>
+                  <th>{{ t('dashboard.actual') }}</th>
+                  <th>{{ t('dashboard.standard') }}</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="model in models" :key="model.model" class="border-t border-gray-100 dark:border-gray-700">
-                  <td class="max-w-[100px] truncate py-1.5 font-medium text-gray-900 dark:text-white" :title="model.model">{{ model.model }}</td>
-                  <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">{{ formatNumber(model.requests) }}</td>
-                  <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">{{ formatTokens(model.total_tokens) }}</td>
-                  <td class="py-1.5 text-right text-green-600 dark:text-green-400">${{ formatCost(model.actual_cost) }}</td>
-                  <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">${{ formatCost(model.cost) }}</td>
+                <tr v-for="model in models" :key="model.model">
+                  <td :title="model.model">
+                    <span>{{ model.model }}</span>
+                  </td>
+                  <td>{{ formatNumber(model.requests) }}</td>
+                  <td>{{ formatTokens(model.total_tokens) }}</td>
+                  <td class="md3-actual-cost">${{ formatCost(model.actual_cost) }}</td>
+                  <td class="md3-standard-cost">${{ formatCost(model.cost) }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
-      </div>
+      </article>
 
-      <!-- Token Usage Trend Chart -->
-      <TokenUsageTrend :trend-data="trend" :loading="loading" />
+      <div class="md3-trend-card">
+        <TokenUsageTrend :trend-data="trend" :loading="loading" />
+      </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -71,6 +86,7 @@ import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import { Doughnut } from 'vue-chartjs'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import Icon from '@/components/icons/Icon.vue'
 import type { TrendDataPoint, ModelStat } from '@/types'
 import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
@@ -80,11 +96,17 @@ const props = defineProps<{ loading: boolean, startDate: string, endDate: string
 defineEmits(['update:startDate', 'update:endDate', 'update:granularity', 'dateRangeChange', 'granularityChange', 'refresh'])
 const { t } = useI18n()
 
+const granularityOptions = computed(() => [
+  { value: 'day', label: t('dashboard.day') },
+  { value: 'hour', label: t('dashboard.hour') }
+])
+
 const modelData = computed(() => !props.models?.length ? null : {
   labels: props.models.map((m: ModelStat) => m.model),
   datasets: [{
     data: props.models.map((m: ModelStat) => m.total_tokens),
-    backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
+    backgroundColor: ['#0f766e', '#2563eb', '#d97706', '#dc2626', '#7c3aed', '#db2777', '#0891b2', '#65a30d'],
+    borderWidth: 0
   }]
 })
 
@@ -101,3 +123,318 @@ const doughnutOptions = {
   }
 }
 </script>
+
+<style scoped>
+.md3-charts-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.md3-chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 8px;
+  background: rgb(255 255 255);
+  padding: 12px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+:global(.dark) .md3-chart-toolbar {
+  border-color: rgb(51 65 85 / 0.78);
+  background: rgb(30 41 59 / 0.56);
+  box-shadow: none;
+}
+
+.md3-toolbar-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.md3-toolbar-group > span {
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.md3-toolbar-date {
+  flex: 1 1 320px;
+}
+
+.md3-toolbar-granularity {
+  margin-left: auto;
+}
+
+.md3-toolbar-granularity :deep(.relative) {
+  width: 118px;
+}
+
+.md3-refresh-button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgb(204 251 241);
+  border-radius: 8px;
+  background: rgb(240 253 250);
+  padding: 0 12px;
+  color: rgb(15 118 110);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.md3-refresh-button:hover:not(:disabled) {
+  border-color: rgb(153 246 228);
+  background: rgb(204 251 241);
+}
+
+.md3-refresh-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+:global(.dark) .md3-toolbar-group > span {
+  color: rgb(148 163 184);
+}
+
+:global(.dark) .md3-refresh-button {
+  border-color: rgb(20 184 166 / 0.22);
+  background: rgb(20 184 166 / 0.14);
+  color: rgb(153 246 228);
+}
+
+:global(.dark) .md3-refresh-button:hover:not(:disabled) {
+  background: rgb(20 184 166 / 0.22);
+}
+
+.md3-chart-toolbar :deep(.date-picker-trigger),
+.md3-chart-toolbar :deep(.select-trigger) {
+  min-height: 34px;
+  border-radius: 8px;
+  background: rgb(248 250 252);
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+  box-shadow: none;
+}
+
+:global(.dark) .md3-chart-toolbar :deep(.date-picker-trigger),
+:global(.dark) .md3-chart-toolbar :deep(.select-trigger) {
+  background: rgb(15 23 42 / 0.34);
+}
+
+.md3-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 16px;
+}
+
+.md3-model-card,
+.md3-trend-card :deep(.card) {
+  border: 1px solid rgb(226 232 240);
+  border-radius: 8px;
+  background: rgb(255 255 255);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.md3-model-card {
+  position: relative;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.md3-trend-card :deep(.card) {
+  height: 100%;
+}
+
+:global(.dark) .md3-model-card,
+:global(.dark) .md3-trend-card :deep(.card) {
+  border-color: rgb(51 65 85 / 0.78);
+  background: rgb(30 41 59 / 0.56);
+  box-shadow: none;
+}
+
+.md3-card-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(255 255 255 / 0.7);
+}
+
+:global(.dark) .md3-card-loading {
+  background: rgb(15 23 42 / 0.62);
+}
+
+.md3-card-header {
+  margin-bottom: 14px;
+}
+
+.md3-card-header h2 {
+  margin: 0;
+  color: rgb(15 23 42);
+  font-size: 0.9375rem;
+  font-weight: 760;
+}
+
+:global(.dark) .md3-card-header h2 {
+  color: rgb(248 250 252);
+}
+
+.md3-model-content {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.md3-doughnut-frame {
+  width: 184px;
+  height: 184px;
+}
+
+.md3-empty-chart {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgb(203 213 225);
+  border-radius: 8px;
+  color: rgb(100 116 139);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+:global(.dark) .md3-empty-chart {
+  border-color: rgb(71 85 105);
+  color: rgb(148 163 184);
+}
+
+.md3-model-table-wrap {
+  max-height: 210px;
+  min-width: 0;
+  overflow: auto;
+}
+
+.md3-model-table {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.md3-model-table th {
+  padding: 0 0 8px 10px;
+  color: rgb(100 116 139);
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.md3-model-table th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.md3-model-table td {
+  border-top: 1px solid rgb(226 232 240);
+  padding: 8px 0 8px 10px;
+  color: rgb(71 85 105);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.md3-model-table td:first-child {
+  max-width: 160px;
+  padding-left: 0;
+  color: rgb(15 23 42);
+  font-weight: 700;
+  text-align: left;
+}
+
+.md3-model-table td:first-child span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md3-model-table .md3-actual-cost {
+  color: rgb(5 150 105);
+  font-weight: 800;
+}
+
+.md3-model-table .md3-standard-cost {
+  color: rgb(148 163 184);
+}
+
+:global(.dark) .md3-model-table th {
+  color: rgb(148 163 184);
+}
+
+:global(.dark) .md3-model-table td {
+  border-color: rgb(51 65 85 / 0.78);
+  color: rgb(203 213 225);
+}
+
+:global(.dark) .md3-model-table td:first-child {
+  color: rgb(248 250 252);
+}
+
+:global(.dark) .md3-model-table .md3-actual-cost {
+  color: rgb(110 231 183);
+}
+
+:global(.dark) .md3-model-table .md3-standard-cost {
+  color: rgb(100 116 139);
+}
+
+@media (max-width: 1180px) {
+  .md3-chart-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .md3-chart-toolbar {
+    align-items: stretch;
+  }
+
+  .md3-toolbar-group {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .md3-toolbar-date,
+  .md3-toolbar-granularity {
+    flex: 1 1 auto;
+    margin-left: 0;
+  }
+
+  .md3-toolbar-date :deep(.relative),
+  .md3-toolbar-date :deep(.date-picker-trigger),
+  .md3-toolbar-granularity :deep(.relative),
+  .md3-refresh-button {
+    width: 100%;
+  }
+
+  .md3-model-content {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+
+  .md3-model-table-wrap {
+    width: 100%;
+  }
+}
+</style>

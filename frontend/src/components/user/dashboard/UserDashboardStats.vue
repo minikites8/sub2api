@@ -1,225 +1,193 @@
 <template>
-  <!-- Row 1: Core Stats -->
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-    <!-- Balance -->
-    <div v-if="!isSimple" class="card p-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
-          <svg class="h-5 w-5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <section class="md3-stats-shell">
+    <div class="md3-stat-grid">
+      <article v-if="!isSimple" class="md3-stat-card">
+        <span class="md3-stat-icon md3-stat-icon-balance">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
           </svg>
+        </span>
+        <div class="md3-stat-copy">
+          <span class="md3-stat-label">{{ t('dashboard.balance') }}</span>
+          <strong class="md3-stat-value md3-stat-value-balance">${{ formatBalance(balance) }}</strong>
+          <span class="md3-stat-meta">{{ t('common.available') }}</span>
         </div>
-        <div>
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.balance') }}</p>
-          <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">${{ formatBalance(balance) }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.available') }}</p>
-        </div>
-      </div>
-    </div>
+      </article>
 
-    <!-- API Keys -->
-    <div class="card p-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-          <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
+      <article class="md3-stat-card">
+        <span class="md3-stat-icon md3-stat-icon-key">
+          <Icon name="key" size="md" :stroke-width="2" />
+        </span>
+        <div class="md3-stat-copy">
+          <span class="md3-stat-label">{{ t('dashboard.apiKeys') }}</span>
+          <strong class="md3-stat-value">{{ stats?.total_api_keys || 0 }}</strong>
+          <span class="md3-stat-meta md3-stat-meta-success">{{ stats?.active_api_keys || 0 }} {{ t('common.active') }}</span>
         </div>
-        <div>
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.apiKeys') }}</p>
-          <p class="text-xl font-bold text-gray-900 dark:text-white">{{ stats?.total_api_keys || 0 }}</p>
-          <p class="text-xs text-green-600 dark:text-green-400">{{ stats?.active_api_keys || 0 }} {{ t('common.active') }}</p>
-        </div>
-      </div>
-    </div>
+      </article>
 
-    <!-- Today Requests -->
-    <div class="card p-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-          <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
+      <article class="md3-stat-card">
+        <span class="md3-stat-icon md3-stat-icon-requests">
+          <Icon name="chart" size="md" :stroke-width="2" />
+        </span>
+        <div class="md3-stat-copy">
+          <span class="md3-stat-label">{{ t('dashboard.todayRequests') }}</span>
+          <strong class="md3-stat-value">{{ formatNumber(stats?.today_requests || 0) }}</strong>
+          <span class="md3-stat-meta">{{ t('common.total') }}: {{ formatNumber(stats?.total_requests || 0) }}</span>
         </div>
-        <div>
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayRequests') }}</p>
-          <p class="text-xl font-bold text-gray-900 dark:text-white">{{ stats?.today_requests || 0 }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.total') }}: {{ formatNumber(stats?.total_requests || 0) }}</p>
-        </div>
-      </div>
-    </div>
+      </article>
 
-    <!-- Today Cost -->
-    <div class="card p-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-          <Icon name="dollar" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
-        </div>
-        <div>
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayCost') }}</p>
-          <p class="text-xl font-bold text-gray-900 dark:text-white">
-            <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">${{ formatCost(stats?.today_actual_cost || 0) }}</span>
-            <span class="text-sm font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / ${{ formatCost(stats?.today_cost || 0) }}</span>
-          </p>
-          <p class="text-xs">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('common.total') }}: </span>
-            <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">${{ formatCost(stats?.total_actual_cost || 0) }}</span>
-            <span class="text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / ${{ formatCost(stats?.total_cost || 0) }}</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Row 2: Token Stats -->
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-    <!-- Today Tokens -->
-    <div class="card p-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-          <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
-        </div>
-        <div>
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayTokens') }}</p>
-          <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatTokens(stats?.today_tokens || 0) }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.input') }}: {{ formatTokens(stats?.today_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatTokens(stats?.today_output_tokens || 0) }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Total Tokens -->
-    <div class="card p-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <Icon name="database" size="md" class="text-indigo-600 dark:text-indigo-400" :stroke-width="2" />
-        </div>
-        <div>
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.totalTokens') }}</p>
-          <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatTokens(stats?.total_tokens || 0) }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.input') }}: {{ formatTokens(stats?.total_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatTokens(stats?.total_output_tokens || 0) }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Performance (RPM/TPM) -->
-    <div class="card p-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-          <Icon name="bolt" size="md" class="text-violet-600 dark:text-violet-400" :stroke-width="2" />
-        </div>
-        <div class="flex-1">
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.performance') }}</p>
-          <div class="flex items-baseline gap-2">
-            <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatTokens(stats?.rpm || 0) }}</p>
-            <span class="text-xs text-gray-500 dark:text-gray-400">RPM</span>
-          </div>
-          <div class="flex items-baseline gap-2">
-            <p class="text-sm font-semibold text-violet-600 dark:text-violet-400">{{ formatTokens(stats?.tpm || 0) }}</p>
-            <span class="text-xs text-gray-500 dark:text-gray-400">TPM</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Avg Response Time -->
-    <div class="card p-4">
-      <div class="flex items-center gap-3">
-        <div class="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
-          <Icon name="clock" size="md" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
-        </div>
-        <div>
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.avgResponse') }}</p>
-          <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatDuration(stats?.average_duration_ms || 0) }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.averageTime') }}</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Row 3: Per-platform breakdown -->
-  <div v-if="!isSimple && platformCards.length > 0" class="card p-4">
-    <div class="mb-3 flex items-center justify-between">
-      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('dashboard.platformBreakdown') }}</h3>
-      <span class="text-xs text-gray-500 dark:text-gray-400">
-        {{ t('dashboard.platformCount', { count: sortedPlatforms.length }) }}
-      </span>
-    </div>
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <div
-        v-for="item in platformCards"
-        :key="item.platform"
-        :class="[
-          'rounded-lg border p-3',
-          item.isOther
-            ? 'border-dashed border-gray-300 bg-gray-50 dark:border-dark-500 dark:bg-dark-700/30'
-            : 'border-gray-200 dark:border-dark-600'
-        ]"
-      >
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-semibold text-gray-900 dark:text-white">
-            {{ item.isOther ? t('dashboard.platformOther') : platformLabel(item.platform) }}
-          </span>
-          <span class="font-mono text-sm text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">
-            ${{ formatCost(item.total_actual_cost) }}
+      <article class="md3-stat-card">
+        <span class="md3-stat-icon md3-stat-icon-cost">
+          <Icon name="dollar" size="md" :stroke-width="2" />
+        </span>
+        <div class="md3-stat-copy">
+          <span class="md3-stat-label">{{ t('dashboard.todayCost') }}</span>
+          <strong class="md3-stat-value">
+            <span class="md3-cost-actual" :title="t('dashboard.actual')">${{ formatCost(stats?.today_actual_cost || 0) }}</span>
+            <span class="md3-cost-standard" :title="t('dashboard.standard')"> / ${{ formatCost(stats?.today_cost || 0) }}</span>
+          </strong>
+          <span class="md3-stat-meta">
+            {{ t('common.total') }}:
+            <span class="md3-cost-actual" :title="t('dashboard.actual')">${{ formatCost(stats?.total_actual_cost || 0) }}</span>
+            <span class="md3-cost-standard" :title="t('dashboard.standard')"> / ${{ formatCost(stats?.total_cost || 0) }}</span>
           </span>
         </div>
-        <div class="mt-2 space-y-1 text-xs">
-          <div class="flex items-center justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('dashboard.todayCost') }}</span>
-            <span class="font-mono text-gray-900 dark:text-white">${{ formatCost(item.today_actual_cost) }}</span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('dashboard.requests') }}</span>
-            <span class="font-mono text-gray-700 dark:text-gray-300">
-              {{ item.total_requests > 0 ? formatNumber(item.total_requests) : '-' }}
-            </span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('dashboard.tokens') }}</span>
-            <span class="font-mono text-gray-700 dark:text-gray-300">
-              {{ item.total_tokens > 0 ? formatTokens(item.total_tokens) : '-' }}
-            </span>
-          </div>
-        </div>
+      </article>
+    </div>
 
-        <!-- Quota 区：仅当 quota 配置存在、非 __other__ 且至少有一个窗口配了 limit 时显示 -->
-        <div v-if="hasAnyLimit(item.quota) && !item.isOther" class="mt-3 space-y-1.5 border-t border-gray-200 pt-2 dark:border-dark-700">
-          <p class="text-[10px] uppercase tracking-wide text-gray-400">
-            {{ t('dashboard.platformQuota.title') }}
-          </p>
-          <template v-for="w in (['daily', 'weekly', 'monthly'] as const)" :key="w">
-            <div v-if="quotaVal(item.quota, `${w}_limit_usd`) != null" class="space-y-0.5">
-              <!-- limit=0：完全禁用 -->
-              <template v-if="(quotaVal(item.quota, `${w}_limit_usd`) as number) === 0">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-gray-600 dark:text-gray-300">{{ t(`dashboard.platformQuota.${w}`) }}</span>
-                  <span class="font-mono text-red-500">{{ t('dashboard.platformQuota.disabled') }}</span>
-                </div>
-                <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
-                  <div class="h-full w-full rounded-full bg-red-500" />
-                </div>
-              </template>
-              <!-- limit>0：正常用量进度条 -->
-              <template v-else>
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-gray-600 dark:text-gray-300">{{ t(`dashboard.platformQuota.${w}`) }}</span>
-                  <span class="font-mono text-gray-700 dark:text-gray-200">
-                    ${{ formatUsd((quotaVal(item.quota, `${w}_usage_usd`) as number) ?? 0) }} / ${{ formatUsd(quotaVal(item.quota, `${w}_limit_usd`) as number) }}
-                  </span>
-                </div>
-                <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
-                  <div
-                    class="h-full rounded-full transition-all"
-                    :class="quotaBarClass(calcPercent((quotaVal(item.quota, `${w}_usage_usd`) as number) ?? 0, quotaVal(item.quota, `${w}_limit_usd`) as number))"
-                    :style="{ width: calcPercent((quotaVal(item.quota, `${w}_usage_usd`) as number) ?? 0, quotaVal(item.quota, `${w}_limit_usd`) as number) + '%' }"
-                  />
-                </div>
-                <p v-if="quotaVal(item.quota, `${w}_window_resets_at`)" class="text-[10px] text-gray-400">
-                  {{ t('dashboard.platformQuota.resetsAt', { time: formatResetTime(quotaVal(item.quota, `${w}_window_resets_at`) as string) }) }}
-                </p>
-              </template>
+    <div class="md3-stat-grid md3-stat-grid-secondary">
+      <article class="md3-stat-card">
+        <span class="md3-stat-icon md3-stat-icon-tokens">
+          <Icon name="cube" size="md" :stroke-width="2" />
+        </span>
+        <div class="md3-stat-copy">
+          <span class="md3-stat-label">{{ t('dashboard.todayTokens') }}</span>
+          <strong class="md3-stat-value">{{ formatTokens(stats?.today_tokens || 0) }}</strong>
+          <span class="md3-stat-meta">
+            {{ t('dashboard.input') }}: {{ formatTokens(stats?.today_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatTokens(stats?.today_output_tokens || 0) }}
+          </span>
+        </div>
+      </article>
+
+      <article class="md3-stat-card">
+        <span class="md3-stat-icon md3-stat-icon-database">
+          <Icon name="database" size="md" :stroke-width="2" />
+        </span>
+        <div class="md3-stat-copy">
+          <span class="md3-stat-label">{{ t('dashboard.totalTokens') }}</span>
+          <strong class="md3-stat-value">{{ formatTokens(stats?.total_tokens || 0) }}</strong>
+          <span class="md3-stat-meta">
+            {{ t('dashboard.input') }}: {{ formatTokens(stats?.total_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatTokens(stats?.total_output_tokens || 0) }}
+          </span>
+        </div>
+      </article>
+
+      <article class="md3-stat-card">
+        <span class="md3-stat-icon md3-stat-icon-performance">
+          <Icon name="bolt" size="md" :stroke-width="2" />
+        </span>
+        <div class="md3-stat-copy">
+          <span class="md3-stat-label">{{ t('dashboard.performance') }}</span>
+          <strong class="md3-stat-value md3-inline-metric">
+            {{ formatTokens(stats?.rpm || 0) }}
+            <span>RPM</span>
+          </strong>
+          <span class="md3-stat-meta md3-stat-meta-accent">{{ formatTokens(stats?.tpm || 0) }} TPM</span>
+        </div>
+      </article>
+
+      <article class="md3-stat-card">
+        <span class="md3-stat-icon md3-stat-icon-latency">
+          <Icon name="clock" size="md" :stroke-width="2" />
+        </span>
+        <div class="md3-stat-copy">
+          <span class="md3-stat-label">{{ t('dashboard.avgResponse') }}</span>
+          <strong class="md3-stat-value">{{ formatDuration(stats?.average_duration_ms || 0) }}</strong>
+          <span class="md3-stat-meta">{{ t('dashboard.averageTime') }}</span>
+        </div>
+      </article>
+    </div>
+
+    <section v-if="!isSimple && platformCards.length > 0" class="md3-platform-panel">
+      <header class="md3-section-header">
+        <div>
+          <h2>{{ t('dashboard.platformBreakdown') }}</h2>
+          <p>{{ t('dashboard.platformCount', { count: sortedPlatforms.length }) }}</p>
+        </div>
+      </header>
+
+      <div class="md3-platform-grid">
+        <article
+          v-for="item in platformCards"
+          :key="item.platform"
+          class="md3-platform-card"
+          :class="{ 'md3-platform-card-other': item.isOther }"
+        >
+          <div class="md3-platform-card-header">
+            <span class="md3-platform-name">
+              {{ item.isOther ? t('dashboard.platformOther') : platformLabel(item.platform) }}
+            </span>
+            <strong class="md3-platform-total" :title="t('dashboard.actual')">
+              ${{ formatCost(item.total_actual_cost) }}
+            </strong>
+          </div>
+
+          <div class="md3-kv-list">
+            <div>
+              <span>{{ t('dashboard.todayCost') }}</span>
+              <strong>${{ formatCost(item.today_actual_cost) }}</strong>
             </div>
-          </template>
-        </div>
+            <div>
+              <span>{{ t('dashboard.requests') }}</span>
+              <strong>{{ item.total_requests > 0 ? formatNumber(item.total_requests) : '-' }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.tokens') }}</span>
+              <strong>{{ item.total_tokens > 0 ? formatTokens(item.total_tokens) : '-' }}</strong>
+            </div>
+          </div>
+
+          <!-- Quota 区：仅当 quota 配置存在、非 __other__ 且至少有一个窗口配了 limit 时显示 -->
+          <div v-if="hasAnyLimit(item.quota) && !item.isOther" class="md3-quota-block">
+            <p>{{ t('dashboard.platformQuota.title') }}</p>
+            <template v-for="w in (['daily', 'weekly', 'monthly'] as const)" :key="w">
+              <div v-if="quotaVal(item.quota, `${w}_limit_usd`) != null" class="md3-quota-window">
+                <!-- limit=0：完全禁用 -->
+                <template v-if="(quotaVal(item.quota, `${w}_limit_usd`) as number) === 0">
+                  <div class="md3-quota-row">
+                    <span>{{ t(`dashboard.platformQuota.${w}`) }}</span>
+                    <strong class="md3-quota-disabled">{{ t('dashboard.platformQuota.disabled') }}</strong>
+                  </div>
+                  <div class="md3-quota-track">
+                    <div class="md3-quota-fill md3-quota-fill-disabled" />
+                  </div>
+                </template>
+                <!-- limit>0：正常用量进度条 -->
+                <template v-else>
+                  <div class="md3-quota-row">
+                    <span>{{ t(`dashboard.platformQuota.${w}`) }}</span>
+                    <strong>
+                      ${{ formatUsd((quotaVal(item.quota, `${w}_usage_usd`) as number) ?? 0) }} / ${{ formatUsd(quotaVal(item.quota, `${w}_limit_usd`) as number) }}
+                    </strong>
+                  </div>
+                  <div class="md3-quota-track">
+                    <div
+                      class="md3-quota-fill"
+                      :class="quotaBarClass(calcPercent((quotaVal(item.quota, `${w}_usage_usd`) as number) ?? 0, quotaVal(item.quota, `${w}_limit_usd`) as number))"
+                      :style="{ width: calcPercent((quotaVal(item.quota, `${w}_usage_usd`) as number) ?? 0, quotaVal(item.quota, `${w}_limit_usd`) as number) + '%' }"
+                    />
+                  </div>
+                  <p v-if="quotaVal(item.quota, `${w}_window_resets_at`)" class="md3-quota-reset">
+                    {{ t('dashboard.platformQuota.resetsAt', { time: formatResetTime(quotaVal(item.quota, `${w}_window_resets_at`) as string) }) }}
+                  </p>
+                </template>
+              </div>
+            </template>
+          </div>
+        </article>
       </div>
-    </div>
-  </div>
+    </section>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -390,3 +358,434 @@ const formatTokens = (t: number) => {
 }
 const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms.toFixed(0)}ms`
 </script>
+
+<style scoped>
+.md3-stats-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.md3-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.md3-stat-card,
+.md3-platform-panel {
+  border: 1px solid rgb(226 232 240);
+  border-radius: 8px;
+  background: rgb(255 255 255);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+:global(.dark) .md3-stat-card,
+:global(.dark) .md3-platform-panel {
+  border-color: rgb(51 65 85 / 0.78);
+  background: rgb(30 41 59 / 0.56);
+  box-shadow: none;
+}
+
+.md3-stat-card {
+  display: flex;
+  min-width: 0;
+  min-height: 116px;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+}
+
+.md3-stat-icon {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.md3-stat-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.md3-stat-icon-balance {
+  background: rgb(209 250 229);
+  color: rgb(4 120 87);
+}
+
+.md3-stat-icon-key {
+  background: rgb(219 234 254);
+  color: rgb(29 78 216);
+}
+
+.md3-stat-icon-requests {
+  background: rgb(204 251 241);
+  color: rgb(15 118 110);
+}
+
+.md3-stat-icon-cost {
+  background: rgb(237 233 254);
+  color: rgb(109 40 217);
+}
+
+.md3-stat-icon-tokens {
+  background: rgb(254 243 199);
+  color: rgb(180 83 9);
+}
+
+.md3-stat-icon-database {
+  background: rgb(224 231 255);
+  color: rgb(67 56 202);
+}
+
+.md3-stat-icon-performance {
+  background: rgb(224 242 254);
+  color: rgb(3 105 161);
+}
+
+.md3-stat-icon-latency {
+  background: rgb(255 228 230);
+  color: rgb(190 18 60);
+}
+
+:global(.dark) .md3-stat-icon-balance {
+  background: rgb(6 95 70 / 0.28);
+  color: rgb(110 231 183);
+}
+
+:global(.dark) .md3-stat-icon-key {
+  background: rgb(37 99 235 / 0.22);
+  color: rgb(147 197 253);
+}
+
+:global(.dark) .md3-stat-icon-requests {
+  background: rgb(20 184 166 / 0.18);
+  color: rgb(94 234 212);
+}
+
+:global(.dark) .md3-stat-icon-cost {
+  background: rgb(124 58 237 / 0.22);
+  color: rgb(196 181 253);
+}
+
+:global(.dark) .md3-stat-icon-tokens {
+  background: rgb(217 119 6 / 0.22);
+  color: rgb(252 211 77);
+}
+
+:global(.dark) .md3-stat-icon-database {
+  background: rgb(79 70 229 / 0.24);
+  color: rgb(165 180 252);
+}
+
+:global(.dark) .md3-stat-icon-performance {
+  background: rgb(14 116 144 / 0.24);
+  color: rgb(103 232 249);
+}
+
+:global(.dark) .md3-stat-icon-latency {
+  background: rgb(190 18 60 / 0.22);
+  color: rgb(253 164 175);
+}
+
+.md3-stat-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.md3-stat-label {
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.md3-stat-value {
+  min-width: 0;
+  color: rgb(15 23 42);
+  font-size: 1.25rem;
+  line-height: 1.25;
+  font-weight: 760;
+  word-break: break-word;
+}
+
+.md3-stat-value-balance,
+.md3-cost-actual {
+  color: rgb(13 148 136);
+}
+
+.md3-cost-standard {
+  color: rgb(148 163 184);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.md3-stat-meta {
+  min-width: 0;
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.md3-stat-meta-success {
+  color: rgb(5 150 105);
+  font-weight: 700;
+}
+
+.md3-stat-meta-accent {
+  color: rgb(3 105 161);
+  font-weight: 700;
+}
+
+.md3-inline-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.md3-inline-metric span {
+  color: rgb(100 116 139);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+:global(.dark) .md3-stat-label,
+:global(.dark) .md3-stat-meta,
+:global(.dark) .md3-inline-metric span {
+  color: rgb(148 163 184);
+}
+
+:global(.dark) .md3-stat-value {
+  color: rgb(248 250 252);
+}
+
+:global(.dark) .md3-stat-value-balance,
+:global(.dark) .md3-cost-actual {
+  color: rgb(94 234 212);
+}
+
+:global(.dark) .md3-cost-standard {
+  color: rgb(100 116 139);
+}
+
+:global(.dark) .md3-stat-meta-success {
+  color: rgb(110 231 183);
+}
+
+:global(.dark) .md3-stat-meta-accent {
+  color: rgb(103 232 249);
+}
+
+.md3-platform-panel {
+  padding: 18px;
+}
+
+.md3-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.md3-section-header h2 {
+  margin: 0;
+  color: rgb(15 23 42);
+  font-size: 0.9375rem;
+  font-weight: 760;
+}
+
+.md3-section-header p {
+  margin: 4px 0 0;
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+}
+
+:global(.dark) .md3-section-header h2 {
+  color: rgb(248 250 252);
+}
+
+:global(.dark) .md3-section-header p {
+  color: rgb(148 163 184);
+}
+
+.md3-platform-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.md3-platform-card {
+  min-width: 0;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 8px;
+  background: rgb(248 250 252);
+  padding: 14px;
+}
+
+.md3-platform-card-other {
+  border-style: dashed;
+  background: rgb(241 245 249);
+}
+
+:global(.dark) .md3-platform-card {
+  border-color: rgb(51 65 85 / 0.82);
+  background: rgb(15 23 42 / 0.34);
+}
+
+:global(.dark) .md3-platform-card-other {
+  background: rgb(15 23 42 / 0.5);
+}
+
+.md3-platform-card-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.md3-platform-name {
+  min-width: 0;
+  color: rgb(15 23 42);
+  font-size: 0.875rem;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.md3-platform-total {
+  color: rgb(109 40 217);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+:global(.dark) .md3-platform-name {
+  color: rgb(248 250 252);
+}
+
+:global(.dark) .md3-platform-total {
+  color: rgb(196 181 253);
+}
+
+.md3-kv-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.md3-kv-list div,
+.md3-quota-row {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+}
+
+.md3-kv-list strong,
+.md3-quota-row strong {
+  color: rgb(30 41 59);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+:global(.dark) .md3-kv-list div,
+:global(.dark) .md3-quota-row {
+  color: rgb(148 163 184);
+}
+
+:global(.dark) .md3-kv-list strong,
+:global(.dark) .md3-quota-row strong {
+  color: rgb(226 232 240);
+}
+
+.md3-quota-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(226 232 240);
+}
+
+:global(.dark) .md3-quota-block {
+  border-color: rgb(51 65 85 / 0.82);
+}
+
+.md3-quota-block > p {
+  margin: 0;
+  color: rgb(100 116 139);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.md3-quota-window {
+  display: grid;
+  gap: 5px;
+}
+
+.md3-quota-disabled {
+  color: rgb(220 38 38) !important;
+}
+
+.md3-quota-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(226 232 240);
+}
+
+:global(.dark) .md3-quota-track {
+  background: rgb(51 65 85);
+}
+
+.md3-quota-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+
+.md3-quota-fill.bg-red-500,
+.md3-quota-fill-disabled {
+  background: rgb(239 68 68);
+}
+
+.md3-quota-fill.bg-amber-500 {
+  background: rgb(245 158 11);
+}
+
+.md3-quota-fill.bg-green-500 {
+  background: rgb(16 185 129);
+}
+
+.md3-quota-reset {
+  margin: 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+@media (max-width: 1200px) {
+  .md3-stat-grid,
+  .md3-platform-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .md3-stat-grid,
+  .md3-platform-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .md3-stat-card {
+    min-height: auto;
+  }
+}
+</style>
