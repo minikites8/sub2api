@@ -1110,6 +1110,11 @@ export async function listErrorLogs(params: OpsErrorListQueryParams): Promise<Op
   return data
 }
 
+export async function clearErrorLogs(params: OpsErrorListQueryParams): Promise<{ deleted_rows: number }> {
+  const { data } = await apiClient.delete<{ deleted_rows: number }>('/admin/ops/errors', { params })
+  return data
+}
+
 export async function getErrorLogDetail(id: number): Promise<OpsErrorDetail> {
   const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/errors/${id}`)
   return data
@@ -1313,6 +1318,7 @@ export const opsAPI = {
 
   // Legacy unified endpoints
   listErrorLogs,
+  clearErrorLogs,
   getErrorLogDetail,
   updateErrorResolved,
 

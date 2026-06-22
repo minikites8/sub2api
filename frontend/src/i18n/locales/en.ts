@@ -4760,6 +4760,9 @@ export default {
         submitSuccess: 'Cleanup task created',
         submitFailed: 'Failed to create cleanup task',
         loadFailed: 'Failed to load cleanup tasks',
+        errorConfirm: 'Clear error request logs in the current filter range? This action cannot be undone.',
+        errorSubmitSuccess: 'Cleared {count} error request logs',
+        errorSubmitFailed: 'Failed to clear error request logs',
         status: {
           pending: 'Pending',
           running: 'Running',
