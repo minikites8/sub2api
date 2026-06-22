@@ -379,8 +379,8 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
-:global(.dark) .md3-stat-card,
-:global(.dark) .md3-platform-panel {
+.dark .md3-stat-card,
+.dark .md3-platform-panel {
   border-color: rgb(51 65 85 / 0.78);
   background: rgb(30 41 59 / 0.56);
   box-shadow: none;
@@ -450,42 +450,42 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   color: rgb(190 18 60);
 }
 
-:global(.dark) .md3-stat-icon-balance {
+.dark .md3-stat-icon-balance {
   background: rgb(6 95 70 / 0.28);
   color: rgb(110 231 183);
 }
 
-:global(.dark) .md3-stat-icon-key {
+.dark .md3-stat-icon-key {
   background: rgb(37 99 235 / 0.22);
   color: rgb(147 197 253);
 }
 
-:global(.dark) .md3-stat-icon-requests {
+.dark .md3-stat-icon-requests {
   background: rgb(20 184 166 / 0.18);
   color: rgb(94 234 212);
 }
 
-:global(.dark) .md3-stat-icon-cost {
+.dark .md3-stat-icon-cost {
   background: rgb(124 58 237 / 0.22);
   color: rgb(196 181 253);
 }
 
-:global(.dark) .md3-stat-icon-tokens {
+.dark .md3-stat-icon-tokens {
   background: rgb(217 119 6 / 0.22);
   color: rgb(252 211 77);
 }
 
-:global(.dark) .md3-stat-icon-database {
+.dark .md3-stat-icon-database {
   background: rgb(79 70 229 / 0.24);
   color: rgb(165 180 252);
 }
 
-:global(.dark) .md3-stat-icon-performance {
+.dark .md3-stat-icon-performance {
   background: rgb(14 116 144 / 0.24);
   color: rgb(103 232 249);
 }
 
-:global(.dark) .md3-stat-icon-latency {
+.dark .md3-stat-icon-latency {
   background: rgb(190 18 60 / 0.22);
   color: rgb(253 164 175);
 }
@@ -551,30 +551,30 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   font-weight: 700;
 }
 
-:global(.dark) .md3-stat-label,
-:global(.dark) .md3-stat-meta,
-:global(.dark) .md3-inline-metric span {
+.dark .md3-stat-label,
+.dark .md3-stat-meta,
+.dark .md3-inline-metric span {
   color: rgb(148 163 184);
 }
 
-:global(.dark) .md3-stat-value {
+.dark .md3-stat-value {
   color: rgb(248 250 252);
 }
 
-:global(.dark) .md3-stat-value-balance,
-:global(.dark) .md3-cost-actual {
+.dark .md3-stat-value-balance,
+.dark .md3-cost-actual {
   color: rgb(94 234 212);
 }
 
-:global(.dark) .md3-cost-standard {
+.dark .md3-cost-standard {
   color: rgb(100 116 139);
 }
 
-:global(.dark) .md3-stat-meta-success {
+.dark .md3-stat-meta-success {
   color: rgb(110 231 183);
 }
 
-:global(.dark) .md3-stat-meta-accent {
+.dark .md3-stat-meta-accent {
   color: rgb(103 232 249);
 }
 
@@ -603,11 +603,11 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   font-size: 0.75rem;
 }
 
-:global(.dark) .md3-section-header h2 {
+.dark .md3-section-header h2 {
   color: rgb(248 250 252);
 }
 
-:global(.dark) .md3-section-header p {
+.dark .md3-section-header p {
   color: rgb(148 163 184);
 }
 
@@ -630,12 +630,12 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   background: rgb(241 245 249);
 }
 
-:global(.dark) .md3-platform-card {
+.dark .md3-platform-card {
   border-color: rgb(51 65 85 / 0.82);
   background: rgb(15 23 42 / 0.34);
 }
 
-:global(.dark) .md3-platform-card-other {
+.dark .md3-platform-card-other {
   background: rgb(15 23 42 / 0.5);
 }
 
@@ -662,11 +662,11 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   white-space: nowrap;
 }
 
-:global(.dark) .md3-platform-name {
+.dark .md3-platform-name {
   color: rgb(248 250 252);
 }
 
-:global(.dark) .md3-platform-total {
+.dark .md3-platform-total {
   color: rgb(196 181 253);
 }
 
@@ -696,13 +696,13 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   overflow-wrap: anywhere;
 }
 
-:global(.dark) .md3-kv-list div,
-:global(.dark) .md3-quota-row {
+.dark .md3-kv-list div,
+.dark .md3-quota-row {
   color: rgb(148 163 184);
 }
 
-:global(.dark) .md3-kv-list strong,
-:global(.dark) .md3-quota-row strong {
+.dark .md3-kv-list strong,
+.dark .md3-quota-row strong {
   color: rgb(226 232 240);
 }
 
@@ -714,7 +714,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   border-top: 1px solid rgb(226 232 240);
 }
 
-:global(.dark) .md3-quota-block {
+.dark .md3-quota-block {
   border-color: rgb(51 65 85 / 0.82);
 }
 
@@ -742,7 +742,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   background: rgb(226 232 240);
 }
 
-:global(.dark) .md3-quota-track {
+.dark .md3-quota-track {
   background: rgb(51 65 85);
 }
 

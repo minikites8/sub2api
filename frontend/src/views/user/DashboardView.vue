@@ -226,7 +226,7 @@ onMounted(() => {
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
-:global(.dark) .md3-dashboard-header {
+.dark .md3-dashboard-header {
   border-color: rgb(51 65 85 / 0.8);
   background: rgb(30 41 59 / 0.58);
   box-shadow: none;
@@ -240,7 +240,7 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
-:global(.dark) .md3-dashboard-kicker {
+.dark .md3-dashboard-kicker {
   color: rgb(94 234 212);
 }
 
@@ -252,7 +252,7 @@ onMounted(() => {
   font-weight: 750;
 }
 
-:global(.dark) .md3-dashboard-header h1 {
+.dark .md3-dashboard-header h1 {
   color: rgb(248 250 252);
 }
 
@@ -264,7 +264,7 @@ onMounted(() => {
   line-height: 1.6;
 }
 
-:global(.dark) .md3-dashboard-header p:not(.md3-dashboard-kicker) {
+.dark .md3-dashboard-header p:not(.md3-dashboard-kicker) {
   color: rgb(148 163 184);
 }
 
@@ -317,23 +317,23 @@ onMounted(() => {
   opacity: 0.56;
 }
 
-:global(.dark) .md3-tonal-button {
+.dark .md3-tonal-button {
   border-color: rgb(20 184 166 / 0.22);
   background: rgb(20 184 166 / 0.14);
   color: rgb(153 246 228);
 }
 
-:global(.dark) .md3-tonal-button:hover:not(:disabled) {
+.dark .md3-tonal-button:hover:not(:disabled) {
   background: rgb(20 184 166 / 0.22);
 }
 
-:global(.dark) .md3-filled-button {
+.dark .md3-filled-button {
   border-color: rgb(45 212 191);
   background: rgb(45 212 191);
   color: rgb(4 47 46);
 }
 
-:global(.dark) .md3-filled-button:hover:not(:disabled) {
+.dark .md3-filled-button:hover:not(:disabled) {
   border-color: rgb(94 234 212);
   background: rgb(94 234 212);
 }
@@ -348,7 +348,7 @@ onMounted(() => {
   background: rgb(255 255 255);
 }
 
-:global(.dark) .md3-dashboard-loading {
+.dark .md3-dashboard-loading {
   border-color: rgb(51 65 85 / 0.8);
   background: rgb(30 41 59 / 0.58);
 }

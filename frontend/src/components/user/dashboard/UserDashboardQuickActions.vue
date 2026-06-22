@@ -68,7 +68,7 @@ const actions = computed(() => [
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
-:global(.dark) .md3-actions-panel {
+.dark .md3-actions-panel {
   border-color: rgb(51 65 85 / 0.78);
   background: rgb(30 41 59 / 0.56);
   box-shadow: none;
@@ -79,7 +79,7 @@ const actions = computed(() => [
   border-bottom: 1px solid rgb(226 232 240);
 }
 
-:global(.dark) .md3-actions-header {
+.dark .md3-actions-header {
   border-color: rgb(51 65 85 / 0.78);
 }
 
@@ -90,7 +90,7 @@ const actions = computed(() => [
   font-weight: 760;
 }
 
-:global(.dark) .md3-actions-header h2 {
+.dark .md3-actions-header h2 {
   color: rgb(248 250 252);
 }
 
@@ -119,11 +119,11 @@ const actions = computed(() => [
   background: rgb(240 253 250);
 }
 
-:global(.dark) .md3-action-row {
+.dark .md3-action-row {
   background: rgb(15 23 42 / 0.34);
 }
 
-:global(.dark) .md3-action-row:hover {
+.dark .md3-action-row:hover {
   border-color: rgb(20 184 166 / 0.24);
   background: rgb(20 184 166 / 0.12);
 }
@@ -153,17 +153,17 @@ const actions = computed(() => [
   color: rgb(180 83 9);
 }
 
-:global(.dark) .md3-action-icon-key {
+.dark .md3-action-icon-key {
   background: rgb(20 184 166 / 0.18);
   color: rgb(94 234 212);
 }
 
-:global(.dark) .md3-action-icon-usage {
+.dark .md3-action-icon-usage {
   background: rgb(6 95 70 / 0.26);
   color: rgb(110 231 183);
 }
 
-:global(.dark) .md3-action-icon-redeem {
+.dark .md3-action-icon-redeem {
   background: rgb(217 119 6 / 0.22);
   color: rgb(252 211 77);
 }
@@ -203,15 +203,15 @@ const actions = computed(() => [
   color: rgb(15 118 110);
 }
 
-:global(.dark) .md3-action-copy strong {
+.dark .md3-action-copy strong {
   color: rgb(248 250 252);
 }
 
-:global(.dark) .md3-action-copy span {
+.dark .md3-action-copy span {
   color: rgb(148 163 184);
 }
 
-:global(.dark) .md3-action-row:hover .md3-action-chevron {
+.dark .md3-action-row:hover .md3-action-chevron {
   color: rgb(94 234 212);
 }
 </style>

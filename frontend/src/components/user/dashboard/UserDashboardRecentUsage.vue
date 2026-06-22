@@ -67,7 +67,7 @@ const formatCost = (c: number) => c.toFixed(4)
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
-:global(.dark) .md3-usage-panel {
+.dark .md3-usage-panel {
   border-color: rgb(51 65 85 / 0.78);
   background: rgb(30 41 59 / 0.56);
   box-shadow: none;
@@ -82,7 +82,7 @@ const formatCost = (c: number) => c.toFixed(4)
   border-bottom: 1px solid rgb(226 232 240);
 }
 
-:global(.dark) .md3-panel-header {
+.dark .md3-panel-header {
   border-color: rgb(51 65 85 / 0.78);
 }
 
@@ -116,19 +116,19 @@ const formatCost = (c: number) => c.toFixed(4)
   background: rgb(240 253 250);
 }
 
-:global(.dark) .md3-panel-header h2 {
+.dark .md3-panel-header h2 {
   color: rgb(248 250 252);
 }
 
-:global(.dark) .md3-panel-header p {
+.dark .md3-panel-header p {
   color: rgb(148 163 184);
 }
 
-:global(.dark) .md3-header-link {
+.dark .md3-header-link {
   color: rgb(94 234 212);
 }
 
-:global(.dark) .md3-header-link:hover {
+.dark .md3-header-link:hover {
   background: rgb(20 184 166 / 0.14);
 }
 
@@ -171,11 +171,11 @@ const formatCost = (c: number) => c.toFixed(4)
   background: rgb(240 253 250);
 }
 
-:global(.dark) .md3-usage-row {
+.dark .md3-usage-row {
   background: rgb(15 23 42 / 0.34);
 }
 
-:global(.dark) .md3-usage-row:hover {
+.dark .md3-usage-row:hover {
   border-color: rgb(20 184 166 / 0.24);
   background: rgb(20 184 166 / 0.12);
 }
@@ -199,7 +199,7 @@ const formatCost = (c: number) => c.toFixed(4)
   color: rgb(15 118 110);
 }
 
-:global(.dark) .md3-usage-icon {
+.dark .md3-usage-icon {
   background: rgb(20 184 166 / 0.18);
   color: rgb(94 234 212);
 }
@@ -249,21 +249,21 @@ const formatCost = (c: number) => c.toFixed(4)
   font-weight: 600;
 }
 
-:global(.dark) .md3-usage-copy strong,
-:global(.dark) .md3-usage-metrics strong {
+.dark .md3-usage-copy strong,
+.dark .md3-usage-metrics strong {
   color: rgb(248 250 252);
 }
 
-:global(.dark) .md3-usage-copy span,
-:global(.dark) .md3-usage-metrics span {
+.dark .md3-usage-copy span,
+.dark .md3-usage-metrics span {
   color: rgb(148 163 184);
 }
 
-:global(.dark) .md3-actual-cost {
+.dark .md3-actual-cost {
   color: rgb(110 231 183);
 }
 
-:global(.dark) .md3-standard-cost {
+.dark .md3-standard-cost {
   color: rgb(100 116 139);
 }
 

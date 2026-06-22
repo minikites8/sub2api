@@ -142,7 +142,7 @@ const doughnutOptions = {
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
-:global(.dark) .md3-chart-toolbar {
+.dark .md3-chart-toolbar {
   border-color: rgb(51 65 85 / 0.78);
   background: rgb(30 41 59 / 0.56);
   box-shadow: none;
@@ -200,17 +200,17 @@ const doughnutOptions = {
   opacity: 0.56;
 }
 
-:global(.dark) .md3-toolbar-group > span {
+.dark .md3-toolbar-group > span {
   color: rgb(148 163 184);
 }
 
-:global(.dark) .md3-refresh-button {
+.dark .md3-refresh-button {
   border-color: rgb(20 184 166 / 0.22);
   background: rgb(20 184 166 / 0.14);
   color: rgb(153 246 228);
 }
 
-:global(.dark) .md3-refresh-button:hover:not(:disabled) {
+.dark .md3-refresh-button:hover:not(:disabled) {
   background: rgb(20 184 166 / 0.22);
 }
 
@@ -224,8 +224,8 @@ const doughnutOptions = {
   box-shadow: none;
 }
 
-:global(.dark) .md3-chart-toolbar :deep(.date-picker-trigger),
-:global(.dark) .md3-chart-toolbar :deep(.select-trigger) {
+.dark .md3-chart-toolbar :deep(.date-picker-trigger),
+.dark .md3-chart-toolbar :deep(.select-trigger) {
   background: rgb(15 23 42 / 0.34);
 }
 
@@ -253,8 +253,8 @@ const doughnutOptions = {
   height: 100%;
 }
 
-:global(.dark) .md3-model-card,
-:global(.dark) .md3-trend-card :deep(.card) {
+.dark .md3-model-card,
+.dark .md3-trend-card :deep(.card) {
   border-color: rgb(51 65 85 / 0.78);
   background: rgb(30 41 59 / 0.56);
   box-shadow: none;
@@ -270,7 +270,7 @@ const doughnutOptions = {
   background: rgb(255 255 255 / 0.7);
 }
 
-:global(.dark) .md3-card-loading {
+.dark .md3-card-loading {
   background: rgb(15 23 42 / 0.62);
 }
 
@@ -285,7 +285,7 @@ const doughnutOptions = {
   font-weight: 760;
 }
 
-:global(.dark) .md3-card-header h2 {
+.dark .md3-card-header h2 {
   color: rgb(248 250 252);
 }
 
@@ -313,7 +313,7 @@ const doughnutOptions = {
   text-align: center;
 }
 
-:global(.dark) .md3-empty-chart {
+.dark .md3-empty-chart {
   border-color: rgb(71 85 105);
   color: rgb(148 163 184);
 }
@@ -377,24 +377,24 @@ const doughnutOptions = {
   color: rgb(148 163 184);
 }
 
-:global(.dark) .md3-model-table th {
+.dark .md3-model-table th {
   color: rgb(148 163 184);
 }
 
-:global(.dark) .md3-model-table td {
+.dark .md3-model-table td {
   border-color: rgb(51 65 85 / 0.78);
   color: rgb(203 213 225);
 }
 
-:global(.dark) .md3-model-table td:first-child {
+.dark .md3-model-table td:first-child {
   color: rgb(248 250 252);
 }
 
-:global(.dark) .md3-model-table .md3-actual-cost {
+.dark .md3-model-table .md3-actual-cost {
   color: rgb(110 231 183);
 }
 
-:global(.dark) .md3-model-table .md3-standard-cost {
+.dark .md3-model-table .md3-standard-cost {
   color: rgb(100 116 139);
 }
 
