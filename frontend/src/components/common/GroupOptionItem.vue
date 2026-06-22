@@ -45,7 +45,7 @@
       <!-- Checkmark -->
       <svg
         v-if="showCheckmark && selected"
-        class="mt-1 h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"
+        class="mt-1 h-4 w-4 shrink-0 text-gray-900 dark:text-white"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
