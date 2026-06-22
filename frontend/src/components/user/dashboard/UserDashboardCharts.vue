@@ -105,7 +105,7 @@ const modelData = computed(() => !props.models?.length ? null : {
   labels: props.models.map((m: ModelStat) => m.model),
   datasets: [{
     data: props.models.map((m: ModelStat) => m.total_tokens),
-    backgroundColor: ['#0f766e', '#2563eb', '#d97706', '#dc2626', '#7c3aed', '#db2777', '#0891b2', '#65a30d'],
+    backgroundColor: ['#3c4043', '#5f6368', '#80868b', '#9aa0a6', '#bdc1c6', '#a8a29e', '#78716c', '#57534e'],
     borderWidth: 0
   }]
 })
@@ -367,7 +367,7 @@ const doughnutOptions = {
 }
 
 .md3-model-table .md3-actual-cost {
-  color: rgb(5 150 105);
+  color: var(--md-on-surface);
   font-weight: 800;
 }
 
@@ -389,7 +389,7 @@ const doughnutOptions = {
 }
 
 .dark .md3-model-table .md3-actual-cost {
-  color: rgb(110 231 183);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-model-table .md3-standard-cost {

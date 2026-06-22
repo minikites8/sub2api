@@ -659,20 +659,20 @@ function handle2FACancel(): void {
 
 <style scoped>
 .md3-login {
-  --md-primary: #006a60;
+  --md-primary: #202124;
   --md-on-primary: #ffffff;
-  --md-primary-container: #9cf2e4;
-  --md-on-primary-container: #00201c;
-  --md-secondary-container: #e8def8;
-  --md-on-secondary-container: #1d192b;
-  --md-surface: #fffbff;
-  --md-surface-container-low: #f7f2fa;
-  --md-surface-container: #f3edf7;
-  --md-surface-container-high: #ece6f0;
-  --md-on-surface: #1d1b20;
-  --md-on-surface-variant: #49454f;
-  --md-outline: #79747e;
-  --md-outline-variant: #cac4d0;
+  --md-primary-container: #e8eaed;
+  --md-on-primary-container: #202124;
+  --md-secondary-container: #f1f3f4;
+  --md-on-secondary-container: #3c4043;
+  --md-surface: #ffffff;
+  --md-surface-container-low: #f8fafd;
+  --md-surface-container: #f1f3f4;
+  --md-surface-container-high: #e8eaed;
+  --md-on-surface: #202124;
+  --md-on-surface-variant: #5f6368;
+  --md-outline: #9aa0a6;
+  --md-outline-variant: #dadce0;
   --md-error: #ba1a1a;
   --md-error-container: #ffdad6;
   --md-on-error-container: #410002;
@@ -683,20 +683,20 @@ function handle2FACancel(): void {
 }
 
 .md3-login-dark {
-  --md-primary: #80d5c8;
-  --md-on-primary: #003731;
-  --md-primary-container: #005048;
-  --md-on-primary-container: #9cf2e4;
-  --md-secondary-container: #4a4458;
-  --md-on-secondary-container: #e8def8;
-  --md-surface: #141218;
-  --md-surface-container-low: #1d1b20;
-  --md-surface-container: #211f26;
-  --md-surface-container-high: #2b2930;
-  --md-on-surface: #e6e0e9;
-  --md-on-surface-variant: #cac4d0;
-  --md-outline: #938f99;
-  --md-outline-variant: #49454f;
+  --md-primary: #f1f3f4;
+  --md-on-primary: #202124;
+  --md-primary-container: #3f3f3f;
+  --md-on-primary-container: #f1f3f4;
+  --md-secondary-container: #383838;
+  --md-on-secondary-container: #f1f3f4;
+  --md-surface: #1f1f1f;
+  --md-surface-container-low: #2a2a2a;
+  --md-surface-container: #303030;
+  --md-surface-container-high: #3f3f3f;
+  --md-on-surface: #f1f3f4;
+  --md-on-surface-variant: #c7c7c7;
+  --md-outline: #8e8e8e;
+  --md-outline-variant: #4d4d4d;
   --md-error: #ffb4ab;
   --md-error-container: #93000a;
   --md-on-error-container: #ffdad6;

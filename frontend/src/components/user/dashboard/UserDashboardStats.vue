@@ -316,7 +316,7 @@ function calcPercent(usage: number, limit: number): number {
 function quotaBarClass(p: number): string {
   if (p >= 95) return 'bg-red-500'
   if (p >= 75) return 'bg-amber-500'
-  return 'bg-green-500'
+  return 'md3-quota-fill-ok'
 }
 
 // 与 formatBalance 一致使用 Intl.NumberFormat 做半偶舍入，避免 toFixed 在不同 JS 引擎
@@ -410,84 +410,28 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   height: 20px;
 }
 
-.md3-stat-icon-balance {
-  background: rgb(209 250 229);
-  color: rgb(4 120 87);
-}
-
-.md3-stat-icon-key {
-  background: rgb(219 234 254);
-  color: rgb(29 78 216);
-}
-
-.md3-stat-icon-requests {
-  background: rgb(204 251 241);
-  color: rgb(15 118 110);
-}
-
-.md3-stat-icon-cost {
-  background: rgb(237 233 254);
-  color: rgb(109 40 217);
-}
-
-.md3-stat-icon-tokens {
-  background: rgb(254 243 199);
-  color: rgb(180 83 9);
-}
-
-.md3-stat-icon-database {
-  background: rgb(224 231 255);
-  color: rgb(67 56 202);
-}
-
-.md3-stat-icon-performance {
-  background: rgb(224 242 254);
-  color: rgb(3 105 161);
-}
-
+.md3-stat-icon-balance,
+.md3-stat-icon-key,
+.md3-stat-icon-requests,
+.md3-stat-icon-cost,
+.md3-stat-icon-tokens,
+.md3-stat-icon-database,
+.md3-stat-icon-performance,
 .md3-stat-icon-latency {
-  background: rgb(255 228 230);
-  color: rgb(190 18 60);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
 }
 
-.dark .md3-stat-icon-balance {
-  background: rgb(6 95 70 / 0.28);
-  color: rgb(110 231 183);
-}
-
-.dark .md3-stat-icon-key {
-  background: rgb(37 99 235 / 0.22);
-  color: rgb(147 197 253);
-}
-
-.dark .md3-stat-icon-requests {
-  background: rgb(20 184 166 / 0.18);
-  color: rgb(94 234 212);
-}
-
-.dark .md3-stat-icon-cost {
-  background: rgb(124 58 237 / 0.22);
-  color: rgb(196 181 253);
-}
-
-.dark .md3-stat-icon-tokens {
-  background: rgb(217 119 6 / 0.22);
-  color: rgb(252 211 77);
-}
-
-.dark .md3-stat-icon-database {
-  background: rgb(79 70 229 / 0.24);
-  color: rgb(165 180 252);
-}
-
-.dark .md3-stat-icon-performance {
-  background: rgb(14 116 144 / 0.24);
-  color: rgb(103 232 249);
-}
-
+.dark .md3-stat-icon-balance,
+.dark .md3-stat-icon-key,
+.dark .md3-stat-icon-requests,
+.dark .md3-stat-icon-cost,
+.dark .md3-stat-icon-tokens,
+.dark .md3-stat-icon-database,
+.dark .md3-stat-icon-performance,
 .dark .md3-stat-icon-latency {
-  background: rgb(190 18 60 / 0.22);
-  color: rgb(253 164 175);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
 }
 
 .md3-stat-copy {
@@ -513,7 +457,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 
 .md3-stat-value-balance,
 .md3-cost-actual {
-  color: rgb(13 148 136);
+  color: var(--md-on-surface);
 }
 
 .md3-cost-standard {
@@ -530,12 +474,12 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .md3-stat-meta-success {
-  color: rgb(5 150 105);
+  color: var(--md-on-surface);
   font-weight: 700;
 }
 
 .md3-stat-meta-accent {
-  color: rgb(3 105 161);
+  color: var(--md-on-surface);
   font-weight: 700;
 }
 
@@ -563,7 +507,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 
 .dark .md3-stat-value-balance,
 .dark .md3-cost-actual {
-  color: rgb(94 234 212);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-cost-standard {
@@ -571,11 +515,11 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .dark .md3-stat-meta-success {
-  color: rgb(110 231 183);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-stat-meta-accent {
-  color: rgb(103 232 249);
+  color: var(--md-on-surface);
 }
 
 .md3-platform-panel {
@@ -656,7 +600,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .md3-platform-total {
-  color: rgb(109 40 217);
+  color: var(--md-on-surface);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.875rem;
   white-space: nowrap;
@@ -667,7 +611,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .dark .md3-platform-total {
-  color: rgb(196 181 253);
+  color: var(--md-on-surface);
 }
 
 .md3-kv-list {
@@ -761,8 +705,8 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   background: rgb(245 158 11);
 }
 
-.md3-quota-fill.bg-green-500 {
-  background: rgb(16 185 129);
+.md3-quota-fill-ok {
+  background: var(--md-on-surface-variant);
 }
 
 .md3-quota-reset {

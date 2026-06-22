@@ -5,19 +5,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 主色调 - MD3 tonal teal，降低大面积荧光感
+        // 主色调 - Google/YouTube neutral gray，避免大面积品牌绿
         primary: {
-          50: '#f2fbf8',
-          100: '#d7f3ed',
-          200: '#b8e6dc',
-          300: '#8bd2c6',
-          400: '#5fb9ad',
-          500: '#3b9f94',
-          600: '#087b70',
-          700: '#006a60',
-          800: '#00534c',
-          900: '#003f39',
-          950: '#002521'
+          50: '#f8fafd',
+          100: '#f1f3f4',
+          200: '#e8eaed',
+          300: '#dadce0',
+          400: '#bdc1c6',
+          500: '#5f6368',
+          600: '#3c4043',
+          700: '#202124',
+          800: '#171717',
+          900: '#111111',
+          950: '#0b0b0b'
         },
         // 辅助色 - 深蓝灰
         accent: {
@@ -75,7 +75,7 @@ export default {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(0deg, #006a60 0%, #006a60 100%)',
+        'gradient-primary': 'linear-gradient(0deg, #202124 0%, #202124 100%)',
         'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
         'gradient-glass':
           'linear-gradient(0deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.92) 100%)',

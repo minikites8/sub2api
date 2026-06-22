@@ -138,34 +138,18 @@ const actions = computed(() => [
   border-radius: 8px;
 }
 
-.md3-action-icon-key {
-  background: rgb(204 251 241);
-  color: rgb(15 118 110);
-}
-
-.md3-action-icon-usage {
-  background: rgb(209 250 229);
-  color: rgb(4 120 87);
-}
-
+.md3-action-icon-key,
+.md3-action-icon-usage,
 .md3-action-icon-redeem {
-  background: rgb(254 243 199);
-  color: rgb(180 83 9);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
 }
 
-.dark .md3-action-icon-key {
-  background: rgb(20 184 166 / 0.18);
-  color: rgb(94 234 212);
-}
-
-.dark .md3-action-icon-usage {
-  background: rgb(6 95 70 / 0.26);
-  color: rgb(110 231 183);
-}
-
+.dark .md3-action-icon-key,
+.dark .md3-action-icon-usage,
 .dark .md3-action-icon-redeem {
-  background: rgb(217 119 6 / 0.22);
-  color: rgb(252 211 77);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
 }
 
 .md3-action-copy {

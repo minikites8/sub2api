@@ -195,13 +195,13 @@ const formatCost = (c: number) => c.toFixed(4)
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  background: rgb(204 251 241);
-  color: rgb(15 118 110);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-usage-icon {
-  background: rgb(20 184 166 / 0.18);
-  color: rgb(94 234 212);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
 }
 
 .md3-usage-copy {
@@ -241,7 +241,7 @@ const formatCost = (c: number) => c.toFixed(4)
 }
 
 .md3-actual-cost {
-  color: rgb(5 150 105);
+  color: var(--md-on-surface);
 }
 
 .md3-standard-cost {
@@ -260,7 +260,7 @@ const formatCost = (c: number) => c.toFixed(4)
 }
 
 .dark .md3-actual-cost {
-  color: rgb(110 231 183);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-standard-cost {
