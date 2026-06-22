@@ -36,6 +36,8 @@ const (
 	GoogleDoubleClickDomain = "https://*.doubleclick.net"
 	// GoogleDomain is the domain for Google ad verification frames.
 	GoogleDomain = "https://*.google.com"
+	// GoogleAdTrafficQualityDomain is the domain for Google ad quality verification frames.
+	GoogleAdTrafficQualityDomain = "https://*.adtrafficquality.google"
 )
 
 var requiredCSPDirectiveValues = []struct {
@@ -61,6 +63,7 @@ var requiredCSPDirectiveValues = []struct {
 	{"frame-src", GoogleAdSenseDomain},
 	{"frame-src", GoogleDoubleClickDomain},
 	{"frame-src", GoogleDomain},
+	{"frame-src", GoogleAdTrafficQualityDomain},
 }
 
 // GenerateNonce generates a cryptographically secure random nonce.

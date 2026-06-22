@@ -368,12 +368,13 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Contains(t, enhanced, GoogleAdServicesDomain)
 		assert.Contains(t, enhanced, GoogleDoubleClickDomain)
 		assert.Contains(t, enhanced, GoogleDomain)
+		assert.Contains(t, enhanced, GoogleAdTrafficQualityDomain)
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", GoogleAdSenseDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", GoogleAdSenseDomain))
 	})
 
 	t.Run("does_not_duplicate_adsense_domains", func(t *testing.T) {
-		policy := "default-src 'self'; script-src 'self' https://*.googlesyndication.com https://*.googleadservices.com https://*.doubleclick.net; frame-src https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com"
+		policy := "default-src 'self'; script-src 'self' https://*.googlesyndication.com https://*.googleadservices.com https://*.doubleclick.net; frame-src https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.adtrafficquality.google"
 		enhanced := enhanceCSPPolicy(policy)
 
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", GoogleAdSenseDomain))
@@ -382,6 +383,7 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", GoogleAdSenseDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", GoogleDoubleClickDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", GoogleDomain))
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", GoogleAdTrafficQualityDomain))
 	})
 }
 
