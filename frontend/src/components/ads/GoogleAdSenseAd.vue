@@ -40,6 +40,8 @@ const props = withDefaults(
 
 const adRef = ref<HTMLElement | null>(null)
 
+const getCSPNonce = () => document.querySelector<HTMLScriptElement>('script[nonce]')?.nonce || ''
+
 const loadAdSenseScript = () => {
   if (document.getElementById(ADSENSE_SCRIPT_ID)) {
     return
@@ -48,6 +50,10 @@ const loadAdSenseScript = () => {
   const script = document.createElement('script')
   script.id = ADSENSE_SCRIPT_ID
   script.async = true
+  const nonce = getCSPNonce()
+  if (nonce) {
+    script.nonce = nonce
+  }
   script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(props.client)}`
   script.crossOrigin = 'anonymous'
   document.head.appendChild(script)
