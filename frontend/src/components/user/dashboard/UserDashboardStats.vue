@@ -374,7 +374,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 .md3-stat-card,
 .md3-platform-panel {
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface);
   box-shadow: var(--md-elevation-1);
 }
@@ -389,10 +389,10 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 .md3-stat-card {
   display: flex;
   min-width: 0;
-  min-height: 116px;
+  min-height: 112px;
   align-items: flex-start;
   gap: 14px;
-  padding: 16px;
+  padding: 18px;
 }
 
 .md3-stat-icon {
@@ -402,7 +402,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .md3-stat-icon svg {
@@ -419,7 +419,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 .md3-stat-icon-performance,
 .md3-stat-icon-latency {
   background: var(--md-surface-container-high);
-  color: var(--md-on-surface-variant);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-stat-icon-balance,
@@ -431,7 +431,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 .dark .md3-stat-icon-performance,
 .dark .md3-stat-icon-latency {
   background: var(--md-surface-container-high);
-  color: var(--md-on-surface-variant);
+  color: var(--md-on-surface);
 }
 
 .md3-stat-copy {
@@ -443,15 +443,15 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 .md3-stat-label {
   color: var(--md-on-surface-variant);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .md3-stat-value {
   min-width: 0;
   color: var(--md-on-surface);
-  font-size: 1.25rem;
+  font-size: 1.375rem;
   line-height: 1.25;
-  font-weight: 760;
+  font-weight: 800;
   word-break: break-word;
 }
 
@@ -564,7 +564,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 .md3-platform-card {
   min-width: 0;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface-container-low);
   padding: 14px;
 }

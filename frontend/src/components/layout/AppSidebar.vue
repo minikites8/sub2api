@@ -9,7 +9,7 @@
     <!-- Logo/Brand -->
     <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
       <!-- Custom Logo or Default Logo -->
-      <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg">
+      <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl">
         <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
       </div>
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
@@ -54,7 +54,7 @@
                 </span>
               </button>
               <!-- Children -->
-              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-700">
                 <router-link
                   v-for="child in item.children"
                   :key="child.path"
@@ -898,6 +898,10 @@ onMounted(() => {
   flex: 0 0 2.25rem;
   min-width: 2.25rem;
   border: 1px solid var(--md-outline-variant);
+  background: var(--md-surface-container-low);
+}
+
+.dark .sidebar-logo {
   background: var(--md-surface-container);
 }
 

@@ -1,7 +1,7 @@
 <template>
   <div v-if="!isDesktopViewport" class="space-y-3">
     <template v-if="loading">
-      <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+      <div v-for="i in 5" :key="i" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
         <div class="space-y-3">
           <div v-for="column in dataColumns" :key="column.key" class="flex justify-between">
             <div class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
@@ -15,7 +15,7 @@
     </template>
 
     <template v-else-if="!data || data.length === 0">
-      <div class="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
+      <div class="rounded-xl border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
         <slot name="empty">
           <div class="flex flex-col items-center">
             <Icon
@@ -35,7 +35,7 @@
       <div
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
-        class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
+        class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
       >
         <div class="space-y-3">
           <div
@@ -70,7 +70,7 @@
     }"
   >
     <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
-      <thead class="table-header bg-gray-50 dark:bg-dark-800">
+      <thead class="table-header bg-gray-50 dark:bg-dark-900">
         <tr>
           <th
             v-for="(column, index) in columns"
@@ -79,7 +79,7 @@
             :class="[
               'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
               getAdaptivePaddingClass(),
-              { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable },
+              { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-800': column.sortable },
               getStickyColumnClass(column, index),
               column.class
             ]"
@@ -748,11 +748,11 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 200;
-  background-color: rgb(249 250 251);
+  background: var(--md-surface-container-low);
 }
 
 .dark .table-wrapper .table-header {
-  background-color: rgb(31 41 55);
+  background: var(--md-surface);
 }
 
 /* 表体保持在表头下方 */
@@ -766,11 +766,11 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 210; /* 必须高于所有表体内容 */
-  background-color: rgb(249 250 251);
+  background: var(--md-surface-container-low);
 }
 
 .dark .sticky-header-cell {
-  background-color: rgb(31 41 55);
+  background: var(--md-surface);
 }
 
 /* Sticky 列基础样式 */
@@ -806,20 +806,20 @@ defineExpose({
 
 /* 表体 sticky 列背景 */
 tbody .sticky-col {
-  background-color: white;
+  background: var(--md-surface);
 }
 
 .dark tbody .sticky-col {
-  background-color: rgb(17 24 39);
+  background: var(--md-surface);
 }
 
 /* hover 状态保持 */
 tbody tr:hover .sticky-col {
-  background-color: rgb(249 250 251);
+  background: var(--md-surface-container-low);
 }
 
 .dark tbody tr:hover .sticky-col {
-  background-color: rgb(31 41 55);
+  background: var(--md-surface-container-low);
 }
 
 /* 阴影只在可滚动时显示 */

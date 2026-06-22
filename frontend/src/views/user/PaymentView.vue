@@ -35,7 +35,7 @@
             <div class="card p-5">
               <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
-              <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
+              <p class="mt-0.5 text-sm font-medium text-gray-600 dark:text-gray-300">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
             </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
@@ -63,10 +63,10 @@
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
                   <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(validAmount) }}</span>
                 </div>
-                <div v-if="availableRechargePromo" class="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+                <div v-if="availableRechargePromo" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <span class="font-medium">{{ t('payment.rechargePromo.available') }}</span>
-                    <span class="rounded bg-white/70 px-2 py-0.5 font-mono text-[11px] text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200">{{ availableRechargePromo.promo_code }}</span>
+                    <span class="rounded bg-white px-2 py-0.5 font-mono text-[11px] text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ availableRechargePromo.promo_code }}</span>
                   </div>
                   <p v-if="rechargeDiscountActive" class="mt-1">
                     {{ t('payment.rechargePromo.discountPreview', { discount: formatDiscountRate(rechargeDiscountPercent) }) }}
@@ -79,7 +79,7 @@
                 </div>
                 <div v-if="rechargeDiscountActive" class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.rechargePromo.discountDeduction') }}</span>
-                  <span class="font-medium text-emerald-600 dark:text-emerald-400">-{{ formatSelectedPaymentAmount(rechargeDiscountAmount) }}</span>
+                  <span class="font-medium text-gray-900 dark:text-white">-{{ formatSelectedPaymentAmount(rechargeDiscountAmount) }}</span>
                 </div>
                 <div v-if="rechargeDiscountActive" class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.rechargePromo.discountedPaymentAmount') }}</span>

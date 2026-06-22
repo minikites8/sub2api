@@ -62,14 +62,14 @@
         <!-- Total Cost -->
         <div class="card p-4">
           <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-              <Icon name="dollar" size="md" class="text-green-600 dark:text-green-400" />
+            <div class="rounded-lg bg-gray-100 p-2 dark:bg-dark-700">
+              <Icon name="dollar" size="md" class="text-gray-600 dark:text-gray-300" />
             </div>
             <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('usage.totalCost') }}
               </p>
-              <p class="text-xl font-bold text-green-600 dark:text-green-400">
+              <p class="text-xl font-bold text-gray-900 dark:text-white">
                 ${{ (usageStats?.total_actual_cost || 0).toFixed(4) }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -84,8 +84,8 @@
         <!-- Average Duration -->
         <div class="card p-4">
           <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-              <Icon name="clock" size="md" class="text-purple-600 dark:text-purple-400" />
+            <div class="rounded-lg bg-gray-100 p-2 dark:bg-dark-700">
+              <Icon name="clock" size="md" class="text-gray-600 dark:text-gray-300" />
             </div>
             <div>
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -253,7 +253,7 @@
                 <div class="flex items-center gap-2">
                   <!-- Input -->
                   <div class="inline-flex items-center gap-1">
-                    <Icon name="arrowDown" size="sm" class="text-emerald-500" />
+                    <Icon name="arrowDown" size="sm" class="text-gray-500" />
                     <span class="font-medium text-gray-900 dark:text-white">{{
                       (row.input_tokens ?? 0).toLocaleString()
                     }}</span>
@@ -316,7 +316,7 @@
 
           <template #cell-cost="{ row }">
             <div class="flex items-center gap-1.5 text-sm">
-              <span class="font-medium text-green-600 dark:text-green-400">
+              <span class="font-medium text-gray-900 dark:text-white">
                 ${{ (row.actual_cost ?? 0).toFixed(6) }}
               </span>
               <!-- Cost Detail Tooltip -->
@@ -592,7 +592,7 @@
           </div>
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
             <span class="text-gray-400">{{ t('usage.billed') }}</span>
-            <span class="font-semibold text-green-400"
+            <span class="font-semibold text-white"
               >${{ tooltipData?.actual_cost.toFixed(6) }}</span
             >
           </div>

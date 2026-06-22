@@ -63,7 +63,7 @@ const actions = computed(() => [
 .md3-actions-panel {
   overflow: hidden;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface);
   box-shadow: var(--md-elevation-1);
 }
@@ -107,7 +107,7 @@ const actions = computed(() => [
   align-items: center;
   gap: 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface-container-low);
   padding: 12px;
   text-align: left;
@@ -135,7 +135,7 @@ const actions = computed(() => [
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .md3-action-icon-key,

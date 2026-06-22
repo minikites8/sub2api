@@ -5,19 +5,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 主色调 - Google/YouTube neutral gray，避免大面积品牌绿
+        // 主色调 - YouTube Studio neutral gray，红色只由少量品牌/主操作 token 使用
         primary: {
-          50: '#f8fafd',
-          100: '#f1f3f4',
-          200: '#e8eaed',
-          300: '#dadce0',
-          400: '#bdc1c6',
-          500: '#5f6368',
-          600: '#3c4043',
-          700: '#202124',
-          800: '#171717',
-          900: '#111111',
-          950: '#0b0b0b'
+          50: '#f8f8f8',
+          100: '#f2f2f2',
+          200: '#e5e5e5',
+          300: '#d9d9d9',
+          400: '#aaaaaa',
+          500: '#717171',
+          600: '#606060',
+          700: '#3f3f3f',
+          800: '#272727',
+          900: '#181818',
+          950: '#0f0f0f'
         },
         // 辅助色 - 深蓝灰
         accent: {
@@ -33,19 +33,19 @@ export default {
           900: '#0f172a',
           950: '#020617'
         },
-        // 深色模式背景
+        // 深色模式背景 - YouTube Studio surfaces
         dark: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
-          600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#020617'
+          50: '#f1f1f1',
+          100: '#e5e5e5',
+          200: '#cccccc',
+          300: '#aaaaaa',
+          400: '#909090',
+          500: '#717171',
+          600: '#606060',
+          700: '#3f3f3f',
+          800: '#272727',
+          900: '#181818',
+          950: '#0f0f0f'
         }
       },
       fontFamily: {
@@ -75,12 +75,12 @@ export default {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(0deg, #202124 0%, #202124 100%)',
-        'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+        'gradient-primary': 'linear-gradient(0deg, #0f0f0f 0%, #0f0f0f 100%)',
+        'gradient-dark': 'linear-gradient(0deg, #0f0f0f 0%, #0f0f0f 100%)',
         'gradient-glass':
           'linear-gradient(0deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.92) 100%)',
         'mesh-gradient':
-          'linear-gradient(180deg, rgba(247, 248, 248, 1) 0%, rgba(247, 248, 248, 1) 100%)'
+          'linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 1) 100%)'
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',

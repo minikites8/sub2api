@@ -327,13 +327,13 @@ onUnmounted(() => {
   @apply transition-colors duration-150;
   @apply cursor-pointer;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface);
+  border-radius: 999px;
+  background: var(--md-surface-container-low);
   color: var(--md-on-surface);
 }
 
 .date-picker-trigger-open {
-  border-color: var(--md-primary);
+  border-color: var(--md-outline);
   box-shadow: 0 0 0 2px var(--md-state-focus);
 }
 
@@ -354,7 +354,7 @@ onUnmounted(() => {
   @apply overflow-hidden;
   @apply min-w-[320px];
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface);
   box-shadow: var(--md-elevation-2);
 }
@@ -427,10 +427,15 @@ onUnmounted(() => {
 }
 
 .date-picker-apply {
-  @apply rounded-lg px-4 py-1.5 text-sm font-medium;
-  @apply bg-primary-600 text-white;
-  @apply hover:bg-primary-700;
+  @apply px-4 py-1.5 text-sm font-medium;
   @apply transition-colors duration-150;
+  border-radius: 999px;
+  background: var(--md-brand);
+  color: var(--md-on-brand);
+}
+
+.date-picker-apply:hover {
+  background: color-mix(in srgb, var(--md-brand) 88%, black);
 }
 
 /* Dropdown animation */

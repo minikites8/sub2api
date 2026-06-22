@@ -105,7 +105,7 @@ const modelData = computed(() => !props.models?.length ? null : {
   labels: props.models.map((m: ModelStat) => m.model),
   datasets: [{
     data: props.models.map((m: ModelStat) => m.total_tokens),
-    backgroundColor: ['#3c4043', '#5f6368', '#80868b', '#9aa0a6', '#bdc1c6', '#a8a29e', '#78716c', '#57534e'],
+    backgroundColor: ['#f1f1f1', '#aaaaaa', '#717171', '#3f3f3f', '#272727', '#606060', '#909090', '#cccccc'],
     borderWidth: 0
   }]
 })
@@ -136,7 +136,7 @@ const doughnutOptions = {
   align-items: center;
   gap: 12px;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface);
   padding: 12px;
   box-shadow: var(--md-elevation-1);
@@ -181,7 +181,7 @@ const doughnutOptions = {
   justify-content: center;
   gap: 8px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--md-primary-container);
   padding: 0 12px;
   color: var(--md-on-primary-container);
@@ -191,7 +191,7 @@ const doughnutOptions = {
 }
 
 .md3-refresh-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
+  background: var(--md-surface-container-high);
 }
 
 .md3-refresh-button:disabled {
@@ -209,14 +209,14 @@ const doughnutOptions = {
 }
 
 .dark .md3-refresh-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
+  background: var(--md-surface-container-high);
 }
 
 .md3-chart-toolbar :deep(.date-picker-trigger),
 .md3-chart-toolbar :deep(.select-trigger) {
   min-height: 34px;
-  border-radius: 8px;
-  background: var(--md-surface-container-low);
+  border-radius: 999px;
+  background: var(--md-surface-container);
   padding-top: 0.375rem;
   padding-bottom: 0.375rem;
   box-shadow: none;
@@ -236,7 +236,7 @@ const doughnutOptions = {
 .md3-model-card,
 .md3-trend-card :deep(.card) {
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface);
   box-shadow: var(--md-elevation-1);
 }
@@ -305,7 +305,7 @@ const doughnutOptions = {
   align-items: center;
   justify-content: center;
   border: 1px dashed var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   color: var(--md-on-surface-variant);
   font-size: 0.8125rem;
   text-align: center;

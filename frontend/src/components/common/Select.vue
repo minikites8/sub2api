@@ -463,14 +463,14 @@ onUnmounted(() => {
   @apply transition-colors duration-150;
   @apply cursor-pointer;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface);
+  border-radius: 999px;
+  background: var(--md-surface-container-low);
   color: var(--md-on-surface);
   box-shadow: none;
 }
 
 .select-trigger-open {
-  border-color: var(--md-primary);
+  border-color: var(--md-outline);
   box-shadow: 0 0 0 2px var(--md-state-focus);
 }
 
@@ -509,7 +509,7 @@ onUnmounted(() => {
   @apply w-max min-w-[200px];
   @apply overflow-hidden;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface);
   box-shadow: var(--md-elevation-2);
   pointer-events: auto !important;

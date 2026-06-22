@@ -5,54 +5,60 @@
 @layer base {
   :root {
     color-scheme: light;
-    --md-app-bg: #f7f8fa;
+    --md-app-bg: #ffffff;
     --md-surface: #ffffff;
-    --md-surface-container-low: #f4f4f5;
-    --md-surface-container: #eceef1;
-    --md-surface-container-high: #e3e5e8;
-    --md-on-surface: #202124;
-    --md-on-surface-variant: #5f6368;
-    --md-outline: #9aa0a6;
-    --md-outline-variant: #dadce0;
-    --md-primary: #202124;
+    --md-surface-container-low: #f8f8f8;
+    --md-surface-container: #f2f2f2;
+    --md-surface-container-high: #e5e5e5;
+    --md-on-surface: #0f0f0f;
+    --md-on-surface-variant: #606060;
+    --md-outline: #909090;
+    --md-outline-variant: #e5e5e5;
+    --md-primary: #0f0f0f;
     --md-on-primary: #ffffff;
-    --md-primary-container: #e8eaed;
-    --md-on-primary-container: #202124;
+    --md-primary-container: #f2f2f2;
+    --md-on-primary-container: #0f0f0f;
+    --md-brand: #ff0033;
+    --md-on-brand: #ffffff;
+    --md-info: #065fd4;
     --md-error: #ba1a1a;
     --md-on-error: #ffffff;
     --md-error-container: #ffdad6;
-    --md-success: #3c4043;
+    --md-success: #606060;
     --md-warning: #7d5700;
-    --md-state-hover: rgb(32 33 36 / 0.06);
-    --md-state-focus: rgb(32 33 36 / 0.12);
+    --md-state-hover: rgb(15 15 15 / 0.06);
+    --md-state-focus: rgb(15 15 15 / 0.12);
     --md-elevation-1: 0 1px 2px rgb(0 0 0 / 0.08);
     --md-elevation-2: 0 2px 6px rgb(0 0 0 / 0.1);
   }
 
   .dark {
     color-scheme: dark;
-    --md-app-bg: #1f1f1f;
-    --md-surface: #2a2a2a;
-    --md-surface-container-low: #303030;
-    --md-surface-container: #383838;
-    --md-surface-container-high: #424242;
-    --md-on-surface: #f1f3f4;
-    --md-on-surface-variant: #c7c7c7;
-    --md-outline: #8e8e8e;
-    --md-outline-variant: #4d4d4d;
-    --md-primary: #f1f3f4;
-    --md-on-primary: #202124;
-    --md-primary-container: #3f3f3f;
-    --md-on-primary-container: #f1f3f4;
+    --md-app-bg: #0f0f0f;
+    --md-surface: #0f0f0f;
+    --md-surface-container-low: #181818;
+    --md-surface-container: #272727;
+    --md-surface-container-high: #3f3f3f;
+    --md-on-surface: #f1f1f1;
+    --md-on-surface-variant: #aaaaaa;
+    --md-outline: #717171;
+    --md-outline-variant: #3f3f3f;
+    --md-primary: #f1f1f1;
+    --md-on-primary: #0f0f0f;
+    --md-primary-container: #272727;
+    --md-on-primary-container: #f1f1f1;
+    --md-brand: #ff0033;
+    --md-on-brand: #ffffff;
+    --md-info: #3ea6ff;
     --md-error: #ffb4ab;
     --md-on-error: #690005;
     --md-error-container: #93000a;
-    --md-success: #c7c7c7;
+    --md-success: #aaaaaa;
     --md-warning: #ebc16c;
     --md-state-hover: rgb(255 255 255 / 0.08);
     --md-state-focus: rgb(255 255 255 / 0.14);
-    --md-elevation-1: 0 1px 2px rgb(0 0 0 / 0.24);
-    --md-elevation-2: 0 2px 8px rgb(0 0 0 / 0.28);
+    --md-elevation-1: none;
+    --md-elevation-2: 0 4px 12px rgb(0 0 0 / 0.32);
   }
 
   * {
@@ -129,10 +135,10 @@
   }
 
   .app-header {
-    border-bottom: 1px solid var(--md-outline-variant);
-    background: var(--md-surface);
+    border-bottom: 1px solid transparent;
+    background: var(--md-app-bg);
     color: var(--md-on-surface);
-    box-shadow: var(--md-elevation-1);
+    box-shadow: none;
   }
 
   .auth-surface {
@@ -161,7 +167,7 @@
     @apply transition-colors duration-150 ease-out;
     @apply disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50;
     min-height: 2.5rem;
-    border-radius: 8px;
+    border-radius: 999px;
     outline: none;
   }
 
@@ -171,13 +177,13 @@
 
   .btn-primary {
     border: 1px solid transparent;
-    background: var(--md-primary);
-    color: var(--md-on-primary);
+    background: var(--md-brand);
+    color: var(--md-on-brand);
     box-shadow: none;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--md-primary) 92%, black);
+    background: color-mix(in srgb, var(--md-brand) 88%, black);
   }
 
   .btn-secondary {
@@ -188,7 +194,7 @@
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
+    background: var(--md-surface-container-high);
   }
 
   .btn-ghost {
@@ -332,8 +338,8 @@
     @apply transition-colors duration-150;
     @apply disabled:cursor-not-allowed;
     border: 1px solid var(--md-outline-variant);
-    border-radius: 8px;
-    background: var(--md-surface);
+    border-radius: 12px;
+    background: var(--md-surface-container-low);
     color: var(--md-on-surface);
   }
 
@@ -385,7 +391,7 @@
 
   .glass-card {
     border: 1px solid var(--md-outline-variant);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--md-surface);
     box-shadow: var(--md-elevation-1);
     transition:
@@ -396,7 +402,7 @@
   /* ============ 卡片样式 ============ */
   .card {
     border: 1px solid var(--md-outline-variant);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--md-surface);
     color: var(--md-on-surface);
     box-shadow: var(--md-elevation-1);
@@ -412,7 +418,7 @@
 
   .card-glass {
     border: 1px solid var(--md-outline-variant);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--md-surface);
     box-shadow: var(--md-elevation-1);
   }
@@ -441,7 +447,7 @@
     @apply h-12 w-12;
     @apply flex items-center justify-center;
     @apply text-xl;
-    border-radius: 8px;
+    border-radius: 12px;
   }
 
   .stat-icon-primary {
@@ -488,7 +494,7 @@
   .table-container {
     @apply overflow-x-auto;
     border: 1px solid var(--md-outline-variant);
-    border-radius: 8px;
+    border-radius: 12px;
   }
 
   .table {
@@ -524,7 +530,7 @@
   .badge {
     @apply inline-flex items-center gap-1;
     @apply px-2.5 py-0.5 text-xs font-medium;
-    border-radius: 8px;
+    border-radius: 999px;
   }
 
   .badge-primary {
@@ -551,7 +557,8 @@
   }
 
   .badge-purple {
-    @apply bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400;
+    background: var(--md-surface-container);
+    color: var(--md-on-surface-variant);
   }
 
   /* ============ 下拉菜单 ============ */
@@ -560,7 +567,7 @@
     @apply py-1;
     @apply origin-top-right animate-scale-in;
     border: 1px solid var(--md-outline-variant);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--md-surface);
     box-shadow: var(--md-elevation-2);
   }
@@ -588,7 +595,7 @@
     @apply max-h-[95vh] sm:max-h-[90vh];
     @apply flex flex-col;
     border: 1px solid var(--md-outline-variant);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--md-surface);
     box-shadow: var(--md-elevation-2);
   }
@@ -684,7 +691,7 @@
     @apply flex w-full flex-col;
     @apply max-h-[90vh];
     border: 1px solid var(--md-outline-variant);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--md-surface);
     box-shadow: var(--md-elevation-2);
   }
@@ -713,7 +720,7 @@
     @apply border-l-4;
     @apply p-4;
     @apply animate-slide-in-right;
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--md-surface);
     box-shadow: var(--md-elevation-2);
   }
@@ -740,8 +747,8 @@
     @apply w-64;
     @apply flex flex-col;
     @apply transition-transform duration-300;
-    border-right: 1px solid var(--md-outline-variant);
-    background: var(--md-surface);
+    border-right: 1px solid transparent;
+    background: var(--md-app-bg);
     color: var(--md-on-surface);
     transition-property: width, transform;
   }
@@ -749,7 +756,7 @@
   .sidebar-header {
     @apply h-16 px-6;
     @apply flex items-center gap-3;
-    border-bottom: 1px solid var(--md-outline-variant);
+    border-bottom: 1px solid transparent;
     transition:
       padding 0.2s ease,
       gap 0.2s ease;
@@ -765,7 +772,7 @@
     @apply text-sm font-medium;
     @apply transition-colors duration-150;
     color: var(--md-on-surface-variant);
-    border-radius: 8px;
+    border-radius: 10px;
     padding-left: 1.0625rem;
     padding-right: 0.875rem;
   }
@@ -776,14 +783,14 @@
   }
 
   .sidebar-link-active {
-    background: var(--md-primary-container);
-    color: var(--md-on-primary-container);
-    box-shadow: inset 3px 0 0 var(--md-primary);
+    background: var(--md-surface-container);
+    color: var(--md-on-surface);
+    box-shadow: none;
   }
 
   .sidebar-link-active:hover {
-    background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
-    color: var(--md-on-primary-container);
+    background: var(--md-surface-container-high);
+    color: var(--md-on-surface);
   }
 
   .sidebar-section {
@@ -848,14 +855,14 @@
   /* ============ 标签页 ============ */
   .tabs {
     @apply flex gap-1 p-1;
-    border-radius: 8px;
+    border-radius: 999px;
     background: var(--md-surface-container-low);
   }
 
   .tab {
     @apply px-4 py-2 text-sm font-medium;
     @apply transition-colors duration-150;
-    border-radius: 8px;
+    border-radius: 999px;
     color: var(--md-on-surface-variant);
   }
 

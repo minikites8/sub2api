@@ -62,7 +62,7 @@ const formatCost = (c: number) => c.toFixed(4)
 .md3-usage-panel {
   overflow: hidden;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface);
   box-shadow: var(--md-elevation-1);
 }
@@ -160,7 +160,7 @@ const formatCost = (c: number) => c.toFixed(4)
   justify-content: space-between;
   gap: 16px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface-container-low);
   padding: 12px;
   transition: background-color 160ms ease, border-color 160ms ease;
@@ -194,7 +194,7 @@ const formatCost = (c: number) => c.toFixed(4)
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface-container-high);
   color: var(--md-on-surface-variant);
 }

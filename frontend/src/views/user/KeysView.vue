@@ -68,7 +68,7 @@
                 class="rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
                 :class="
                   copiedKeyId === row.id
-                    ? 'text-green-500'
+                    ? 'text-gray-900 dark:text-white'
                     : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
                 "
                 :title="copiedKeyId === row.id ? t('keys.copied') : t('keys.copyToClipboard')"
@@ -197,7 +197,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_5h >= row.rate_limit_5h ? 'bg-red-500' :
                       row.usage_5h >= row.rate_limit_5h * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((row.usage_5h / row.rate_limit_5h) * 100, 100) + '%' }"
                   />
@@ -225,7 +225,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_1d >= row.rate_limit_1d ? 'bg-red-500' :
                       row.usage_1d >= row.rate_limit_1d * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((row.usage_1d / row.rate_limit_1d) * 100, 100) + '%' }"
                   />
@@ -253,7 +253,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_7d >= row.rate_limit_7d ? 'bg-red-500' :
                       row.usage_7d >= row.rate_limit_7d * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((row.usage_7d / row.rate_limit_7d) * 100, 100) + '%' }"
                   />
@@ -314,7 +314,7 @@
               <!-- Use Key Button -->
               <button
                 @click="openUseKeyModal(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
               >
                 <Icon name="terminal" size="sm" />
                 <span class="text-xs">{{ t('keys.useKey') }}</span>
@@ -335,7 +335,7 @@
                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
                   row.status === 'active'
                     ? 'text-gray-500 hover:bg-yellow-50 hover:text-yellow-600 dark:hover:bg-yellow-900/20 dark:hover:text-yellow-400'
-                    : 'text-gray-500 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white'
                 ]"
               >
                 <Icon v-if="row.status === 'active'" name="ban" size="sm" />
@@ -440,14 +440,14 @@
           </Select>
           <div
             v-if="selectedGroupOption"
-            class="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-200"
+            class="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300"
           >
             <span class="font-medium">{{ t('keys.currentBalance') }}:</span>
             <span class="ml-1">{{ formatCurrency(userBalance) }}</span>
-            <span class="mx-2 text-emerald-300 dark:text-emerald-700">/</span>
+            <span class="mx-2 text-gray-300 dark:text-gray-600">/</span>
             <span class="font-medium">{{ t('keys.effectiveRate') }}:</span>
             <span class="ml-1">{{ formatMultiplier(selectedGroupEffectiveRate || 0) }}x</span>
-            <span class="mx-2 text-emerald-300 dark:text-emerald-700">/</span>
+            <span class="mx-2 text-gray-300 dark:text-gray-600">/</span>
             <span class="font-medium">{{ t('keys.groupAvailableQuotaLabel') }}:</span>
             <span class="ml-1">{{ selectedGroupAvailableQuota }}</span>
           </div>
@@ -668,7 +668,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_5h >= selectedKey.rate_limit_5h ? 'bg-red-500' :
                       selectedKey.usage_5h >= selectedKey.rate_limit_5h * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_5h / selectedKey.rate_limit_5h) * 100, 100) + '%' }"
                   />
@@ -714,7 +714,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_1d >= selectedKey.rate_limit_1d ? 'bg-red-500' :
                       selectedKey.usage_1d >= selectedKey.rate_limit_1d * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_1d / selectedKey.rate_limit_1d) * 100, 100) + '%' }"
                   />
@@ -760,7 +760,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_7d >= selectedKey.rate_limit_7d ? 'bg-red-500' :
                       selectedKey.usage_7d >= selectedKey.rate_limit_7d * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_7d / selectedKey.rate_limit_7d) * 100, 100) + '%' }"
                   />

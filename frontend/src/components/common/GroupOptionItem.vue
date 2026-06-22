@@ -37,7 +37,7 @@
         </span>
         <span
           v-if="availableQuotaText"
-          class="text-xs font-medium text-emerald-600 dark:text-emerald-400"
+          class="text-xs font-medium text-gray-600 dark:text-gray-300"
         >
           {{ availableQuotaText }}
         </span>
@@ -96,15 +96,15 @@ const hasCustomRate = computed(() => {
 const ratePillClass = computed(() => {
   switch (props.platform) {
     case 'anthropic':
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
     case 'openai':
-      return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
     case 'gemini':
-      return 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
+      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
     case 'kiro':
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
     default: // antigravity and others
-      return 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400'
+      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
   }
 })
 </script>

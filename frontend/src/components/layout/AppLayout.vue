@@ -12,7 +12,7 @@
       <AppHeader />
 
       <!-- Main Content -->
-      <main class="app-main p-4 md:p-6 lg:p-8">
+      <main class="app-main px-4 py-5 md:px-6 md:py-6 lg:px-8">
         <slot />
       </main>
     </div>

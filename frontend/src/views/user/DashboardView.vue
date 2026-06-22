@@ -211,7 +211,7 @@ onMounted(() => {
 <style scoped>
 .md3-dashboard {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 
 .md3-dashboard-header {
@@ -219,22 +219,21 @@ onMounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  padding: 20px;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
+  padding: 16px 8px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .dark .md3-dashboard-header {
-  border-color: var(--md-outline-variant);
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
+  background: transparent;
+  box-shadow: none;
 }
 
 .md3-dashboard-kicker {
   margin: 0 0 6px;
-  color: var(--md-primary);
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -247,9 +246,9 @@ onMounted(() => {
 .md3-dashboard-header h1 {
   margin: 0;
   color: var(--md-on-surface);
-  font-size: 1.875rem;
+  font-size: 2rem;
   line-height: 1.2;
-  font-weight: 750;
+  font-weight: 800;
 }
 
 .dark .md3-dashboard-header h1 {
@@ -260,7 +259,7 @@ onMounted(() => {
   margin: 8px 0 0;
   max-width: 42rem;
   color: var(--md-on-surface-variant);
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   line-height: 1.6;
 }
 
@@ -282,7 +281,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 8px;
+  border-radius: 999px;
   padding: 0 16px;
   font-size: 0.875rem;
   font-weight: 700;
@@ -296,17 +295,17 @@ onMounted(() => {
 }
 
 .md3-tonal-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
+  background: var(--md-surface-container-high);
 }
 
 .md3-filled-button {
   border: 1px solid transparent;
-  background: var(--md-primary);
-  color: var(--md-on-primary);
+  background: var(--md-brand);
+  color: var(--md-on-brand);
 }
 
 .md3-filled-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-primary) 92%, black);
+  background: color-mix(in srgb, var(--md-brand) 88%, black);
 }
 
 .md3-tonal-button:disabled,
@@ -321,16 +320,16 @@ onMounted(() => {
 }
 
 .dark .md3-tonal-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
+  background: var(--md-surface-container-high);
 }
 
 .dark .md3-filled-button {
-  background: var(--md-primary);
-  color: var(--md-on-primary);
+  background: var(--md-brand);
+  color: var(--md-on-brand);
 }
 
 .dark .md3-filled-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-primary) 92%, white);
+  background: color-mix(in srgb, var(--md-brand) 88%, black);
 }
 
 .md3-dashboard-loading {

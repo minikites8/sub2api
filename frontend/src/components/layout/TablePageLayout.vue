@@ -46,8 +46,8 @@ onUnmounted(() => {
 <style scoped>
 /* 桌面端：Flexbox 布局 */
 .table-page-layout {
-  @apply flex flex-col gap-6;
-  height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
+  @apply flex flex-col gap-5;
+  height: calc(100vh - 56px - 3rem);
 }
 
 .layout-section-fixed {
@@ -62,7 +62,7 @@ onUnmounted(() => {
 .table-scroll-container {
   @apply flex h-full flex-col overflow-hidden;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--md-surface);
   box-shadow: var(--md-elevation-1);
 }
