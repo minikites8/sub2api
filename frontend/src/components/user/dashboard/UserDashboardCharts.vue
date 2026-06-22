@@ -135,17 +135,17 @@ const doughnutOptions = {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  border: 1px solid rgb(226 232 240);
+  border: 1px solid var(--md-outline-variant);
   border-radius: 8px;
-  background: rgb(255 255 255);
+  background: var(--md-surface);
   padding: 12px;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  box-shadow: var(--md-elevation-1);
 }
 
 .dark .md3-chart-toolbar {
-  border-color: rgb(51 65 85 / 0.78);
-  background: rgb(30 41 59 / 0.56);
-  box-shadow: none;
+  border-color: var(--md-outline-variant);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .md3-toolbar-group {
@@ -156,7 +156,7 @@ const doughnutOptions = {
 }
 
 .md3-toolbar-group > span {
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
   font-weight: 800;
   white-space: nowrap;
@@ -180,19 +180,18 @@ const doughnutOptions = {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid rgb(204 251 241);
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: rgb(240 253 250);
+  background: var(--md-primary-container);
   padding: 0 12px;
-  color: rgb(15 118 110);
+  color: var(--md-on-primary-container);
   font-size: 0.8125rem;
   font-weight: 800;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 
 .md3-refresh-button:hover:not(:disabled) {
-  border-color: rgb(153 246 228);
-  background: rgb(204 251 241);
+  background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
 }
 
 .md3-refresh-button:disabled {
@@ -201,24 +200,23 @@ const doughnutOptions = {
 }
 
 .dark .md3-toolbar-group > span {
-  color: rgb(148 163 184);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-refresh-button {
-  border-color: rgb(20 184 166 / 0.22);
-  background: rgb(20 184 166 / 0.14);
-  color: rgb(153 246 228);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
 }
 
 .dark .md3-refresh-button:hover:not(:disabled) {
-  background: rgb(20 184 166 / 0.22);
+  background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
 }
 
 .md3-chart-toolbar :deep(.date-picker-trigger),
 .md3-chart-toolbar :deep(.select-trigger) {
   min-height: 34px;
   border-radius: 8px;
-  background: rgb(248 250 252);
+  background: var(--md-surface-container-low);
   padding-top: 0.375rem;
   padding-bottom: 0.375rem;
   box-shadow: none;
@@ -226,7 +224,7 @@ const doughnutOptions = {
 
 .dark .md3-chart-toolbar :deep(.date-picker-trigger),
 .dark .md3-chart-toolbar :deep(.select-trigger) {
-  background: rgb(15 23 42 / 0.34);
+  background: var(--md-surface-container-low);
 }
 
 .md3-chart-grid {
@@ -237,10 +235,10 @@ const doughnutOptions = {
 
 .md3-model-card,
 .md3-trend-card :deep(.card) {
-  border: 1px solid rgb(226 232 240);
+  border: 1px solid var(--md-outline-variant);
   border-radius: 8px;
-  background: rgb(255 255 255);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .md3-model-card {
@@ -255,9 +253,9 @@ const doughnutOptions = {
 
 .dark .md3-model-card,
 .dark .md3-trend-card :deep(.card) {
-  border-color: rgb(51 65 85 / 0.78);
-  background: rgb(30 41 59 / 0.56);
-  box-shadow: none;
+  border-color: var(--md-outline-variant);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .md3-card-loading {
@@ -267,11 +265,11 @@ const doughnutOptions = {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgb(255 255 255 / 0.7);
+  background: color-mix(in srgb, var(--md-surface) 84%, transparent);
 }
 
 .dark .md3-card-loading {
-  background: rgb(15 23 42 / 0.62);
+  background: color-mix(in srgb, var(--md-surface) 84%, transparent);
 }
 
 .md3-card-header {
@@ -280,13 +278,13 @@ const doughnutOptions = {
 
 .md3-card-header h2 {
   margin: 0;
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-size: 0.9375rem;
   font-weight: 760;
 }
 
 .dark .md3-card-header h2 {
-  color: rgb(248 250 252);
+  color: var(--md-on-surface);
 }
 
 .md3-model-content {
@@ -306,16 +304,16 @@ const doughnutOptions = {
   height: 100%;
   align-items: center;
   justify-content: center;
-  border: 1px dashed rgb(203 213 225);
+  border: 1px dashed var(--md-outline-variant);
   border-radius: 8px;
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.8125rem;
   text-align: center;
 }
 
 .dark .md3-empty-chart {
-  border-color: rgb(71 85 105);
-  color: rgb(148 163 184);
+  border-color: var(--md-outline-variant);
+  color: var(--md-on-surface-variant);
 }
 
 .md3-model-table-wrap {
@@ -333,7 +331,7 @@ const doughnutOptions = {
 
 .md3-model-table th {
   padding: 0 0 8px 10px;
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-weight: 800;
   text-align: right;
   white-space: nowrap;
@@ -345,9 +343,9 @@ const doughnutOptions = {
 }
 
 .md3-model-table td {
-  border-top: 1px solid rgb(226 232 240);
+  border-top: 1px solid var(--md-outline-variant);
   padding: 8px 0 8px 10px;
-  color: rgb(71 85 105);
+  color: var(--md-on-surface-variant);
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
@@ -356,7 +354,7 @@ const doughnutOptions = {
 .md3-model-table td:first-child {
   max-width: 160px;
   padding-left: 0;
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-weight: 700;
   text-align: left;
 }
@@ -374,20 +372,20 @@ const doughnutOptions = {
 }
 
 .md3-model-table .md3-standard-cost {
-  color: rgb(148 163 184);
+  color: color-mix(in srgb, var(--md-on-surface-variant) 70%, transparent);
 }
 
 .dark .md3-model-table th {
-  color: rgb(148 163 184);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-model-table td {
-  border-color: rgb(51 65 85 / 0.78);
-  color: rgb(203 213 225);
+  border-color: var(--md-outline-variant);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-model-table td:first-child {
-  color: rgb(248 250 252);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-model-table .md3-actual-cost {
@@ -395,7 +393,7 @@ const doughnutOptions = {
 }
 
 .dark .md3-model-table .md3-standard-cost {
-  color: rgb(100 116 139);
+  color: color-mix(in srgb, var(--md-on-surface-variant) 64%, transparent);
 }
 
 @media (max-width: 1180px) {

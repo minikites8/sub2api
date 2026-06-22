@@ -61,16 +61,16 @@ const formatCost = (c: number) => c.toFixed(4)
 <style scoped>
 .md3-usage-panel {
   overflow: hidden;
-  border: 1px solid rgb(226 232 240);
+  border: 1px solid var(--md-outline-variant);
   border-radius: 8px;
-  background: rgb(255 255 255);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .dark .md3-usage-panel {
-  border-color: rgb(51 65 85 / 0.78);
-  background: rgb(30 41 59 / 0.56);
-  box-shadow: none;
+  border-color: var(--md-outline-variant);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .md3-panel-header {
@@ -79,23 +79,23 @@ const formatCost = (c: number) => c.toFixed(4)
   justify-content: space-between;
   gap: 16px;
   padding: 16px 18px;
-  border-bottom: 1px solid rgb(226 232 240);
+  border-bottom: 1px solid var(--md-outline-variant);
 }
 
 .dark .md3-panel-header {
-  border-color: rgb(51 65 85 / 0.78);
+  border-color: var(--md-outline-variant);
 }
 
 .md3-panel-header h2 {
   margin: 0;
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-size: 0.9375rem;
   font-weight: 760;
 }
 
 .md3-panel-header p {
   margin: 4px 0 0;
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
 }
 
@@ -106,30 +106,30 @@ const formatCost = (c: number) => c.toFixed(4)
   gap: 6px;
   border-radius: 8px;
   padding: 6px 8px;
-  color: rgb(15 118 110);
+  color: var(--md-primary);
   font-size: 0.8125rem;
   font-weight: 800;
   transition: background-color 160ms ease;
 }
 
 .md3-header-link:hover {
-  background: rgb(240 253 250);
+  background: var(--md-state-hover);
 }
 
 .dark .md3-panel-header h2 {
-  color: rgb(248 250 252);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-panel-header p {
-  color: rgb(148 163 184);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-header-link {
-  color: rgb(94 234 212);
+  color: var(--md-primary);
 }
 
 .dark .md3-header-link:hover {
-  background: rgb(20 184 166 / 0.14);
+  background: var(--md-state-hover);
 }
 
 .md3-panel-body {
@@ -161,23 +161,23 @@ const formatCost = (c: number) => c.toFixed(4)
   gap: 16px;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: rgb(248 250 252);
+  background: var(--md-surface-container-low);
   padding: 12px;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 
 .md3-usage-row:hover {
-  border-color: rgb(204 251 241);
-  background: rgb(240 253 250);
+  border-color: var(--md-outline-variant);
+  background: var(--md-state-hover);
 }
 
 .dark .md3-usage-row {
-  background: rgb(15 23 42 / 0.34);
+  background: var(--md-surface-container-low);
 }
 
 .dark .md3-usage-row:hover {
-  border-color: rgb(20 184 166 / 0.24);
-  background: rgb(20 184 166 / 0.12);
+  border-color: var(--md-outline-variant);
+  background: var(--md-state-hover);
 }
 
 .md3-usage-main {
@@ -213,7 +213,7 @@ const formatCost = (c: number) => c.toFixed(4)
 .md3-usage-copy strong {
   min-width: 0;
   overflow: hidden;
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-size: 0.875rem;
   font-weight: 760;
   text-overflow: ellipsis;
@@ -222,7 +222,7 @@ const formatCost = (c: number) => c.toFixed(4)
 
 .md3-usage-copy span,
 .md3-usage-metrics span {
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
 }
 
@@ -234,7 +234,7 @@ const formatCost = (c: number) => c.toFixed(4)
 }
 
 .md3-usage-metrics strong {
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
@@ -245,18 +245,18 @@ const formatCost = (c: number) => c.toFixed(4)
 }
 
 .md3-standard-cost {
-  color: rgb(148 163 184);
+  color: color-mix(in srgb, var(--md-on-surface-variant) 70%, transparent);
   font-weight: 600;
 }
 
 .dark .md3-usage-copy strong,
 .dark .md3-usage-metrics strong {
-  color: rgb(248 250 252);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-usage-copy span,
 .dark .md3-usage-metrics span {
-  color: rgb(148 163 184);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-actual-cost {
@@ -264,7 +264,7 @@ const formatCost = (c: number) => c.toFixed(4)
 }
 
 .dark .md3-standard-cost {
-  color: rgb(100 116 139);
+  color: color-mix(in srgb, var(--md-on-surface-variant) 64%, transparent);
 }
 
 @media (max-width: 640px) {

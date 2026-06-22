@@ -220,52 +220,52 @@ onMounted(() => {
   justify-content: space-between;
   gap: 20px;
   padding: 20px;
-  border: 1px solid rgb(226 232 240);
+  border: 1px solid var(--md-outline-variant);
   border-radius: 8px;
-  background: rgb(255 255 255);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .dark .md3-dashboard-header {
-  border-color: rgb(51 65 85 / 0.8);
-  background: rgb(30 41 59 / 0.58);
-  box-shadow: none;
+  border-color: var(--md-outline-variant);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .md3-dashboard-kicker {
   margin: 0 0 6px;
-  color: rgb(15 118 110);
+  color: var(--md-primary);
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .dark .md3-dashboard-kicker {
-  color: rgb(94 234 212);
+  color: var(--md-primary);
 }
 
 .md3-dashboard-header h1 {
   margin: 0;
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-size: 1.875rem;
   line-height: 1.2;
   font-weight: 750;
 }
 
 .dark .md3-dashboard-header h1 {
-  color: rgb(248 250 252);
+  color: var(--md-on-surface);
 }
 
 .md3-dashboard-header p:not(.md3-dashboard-kicker) {
   margin: 8px 0 0;
   max-width: 42rem;
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.9375rem;
   line-height: 1.6;
 }
 
 .dark .md3-dashboard-header p:not(.md3-dashboard-kicker) {
-  color: rgb(148 163 184);
+  color: var(--md-on-surface-variant);
 }
 
 .md3-dashboard-actions {
@@ -290,25 +290,23 @@ onMounted(() => {
 }
 
 .md3-tonal-button {
-  border: 1px solid rgb(204 251 241);
-  background: rgb(240 253 250);
-  color: rgb(15 118 110);
+  border: 1px solid transparent;
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
 }
 
 .md3-tonal-button:hover:not(:disabled) {
-  border-color: rgb(153 246 228);
-  background: rgb(204 251 241);
+  background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
 }
 
 .md3-filled-button {
-  border: 1px solid rgb(13 148 136);
-  background: rgb(13 148 136);
-  color: rgb(255 255 255);
+  border: 1px solid transparent;
+  background: var(--md-primary);
+  color: var(--md-on-primary);
 }
 
 .md3-filled-button:hover:not(:disabled) {
-  border-color: rgb(15 118 110);
-  background: rgb(15 118 110);
+  background: color-mix(in srgb, var(--md-primary) 92%, black);
 }
 
 .md3-tonal-button:disabled,
@@ -318,24 +316,21 @@ onMounted(() => {
 }
 
 .dark .md3-tonal-button {
-  border-color: rgb(20 184 166 / 0.22);
-  background: rgb(20 184 166 / 0.14);
-  color: rgb(153 246 228);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
 }
 
 .dark .md3-tonal-button:hover:not(:disabled) {
-  background: rgb(20 184 166 / 0.22);
+  background: color-mix(in srgb, var(--md-primary-container) 88%, var(--md-primary));
 }
 
 .dark .md3-filled-button {
-  border-color: rgb(45 212 191);
-  background: rgb(45 212 191);
-  color: rgb(4 47 46);
+  background: var(--md-primary);
+  color: var(--md-on-primary);
 }
 
 .dark .md3-filled-button:hover:not(:disabled) {
-  border-color: rgb(94 234 212);
-  background: rgb(94 234 212);
+  background: color-mix(in srgb, var(--md-primary) 92%, white);
 }
 
 .md3-dashboard-loading {
@@ -343,14 +338,15 @@ onMounted(() => {
   min-height: 280px;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgb(226 232 240);
+  border: 1px solid var(--md-outline-variant);
   border-radius: 8px;
-  background: rgb(255 255 255);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .dark .md3-dashboard-loading {
-  border-color: rgb(51 65 85 / 0.8);
-  background: rgb(30 41 59 / 0.58);
+  border-color: var(--md-outline-variant);
+  background: var(--md-surface);
 }
 
 .md3-dashboard-main-grid {

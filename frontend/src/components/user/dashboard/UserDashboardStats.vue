@@ -373,17 +373,17 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 
 .md3-stat-card,
 .md3-platform-panel {
-  border: 1px solid rgb(226 232 240);
+  border: 1px solid var(--md-outline-variant);
   border-radius: 8px;
-  background: rgb(255 255 255);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .dark .md3-stat-card,
 .dark .md3-platform-panel {
-  border-color: rgb(51 65 85 / 0.78);
-  background: rgb(30 41 59 / 0.56);
-  box-shadow: none;
+  border-color: var(--md-outline-variant);
+  background: var(--md-surface);
+  box-shadow: var(--md-elevation-1);
 }
 
 .md3-stat-card {
@@ -497,14 +497,14 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .md3-stat-label {
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
   font-weight: 700;
 }
 
 .md3-stat-value {
   min-width: 0;
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-size: 1.25rem;
   line-height: 1.25;
   font-weight: 760;
@@ -517,14 +517,14 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .md3-cost-standard {
-  color: rgb(148 163 184);
+  color: color-mix(in srgb, var(--md-on-surface-variant) 70%, transparent);
   font-size: 0.875rem;
   font-weight: 600;
 }
 
 .md3-stat-meta {
   min-width: 0;
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
   line-height: 1.45;
 }
@@ -546,7 +546,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .md3-inline-metric span {
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.6875rem;
   font-weight: 700;
 }
@@ -554,11 +554,11 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 .dark .md3-stat-label,
 .dark .md3-stat-meta,
 .dark .md3-inline-metric span {
-  color: rgb(148 163 184);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-stat-value {
-  color: rgb(248 250 252);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-stat-value-balance,
@@ -567,7 +567,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .dark .md3-cost-standard {
-  color: rgb(100 116 139);
+  color: color-mix(in srgb, var(--md-on-surface-variant) 64%, transparent);
 }
 
 .dark .md3-stat-meta-success {
@@ -592,23 +592,23 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 
 .md3-section-header h2 {
   margin: 0;
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-size: 0.9375rem;
   font-weight: 760;
 }
 
 .md3-section-header p {
   margin: 4px 0 0;
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
 }
 
 .dark .md3-section-header h2 {
-  color: rgb(248 250 252);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-section-header p {
-  color: rgb(148 163 184);
+  color: var(--md-on-surface-variant);
 }
 
 .md3-platform-grid {
@@ -619,24 +619,24 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 
 .md3-platform-card {
   min-width: 0;
-  border: 1px solid rgb(226 232 240);
+  border: 1px solid var(--md-outline-variant);
   border-radius: 8px;
-  background: rgb(248 250 252);
+  background: var(--md-surface-container-low);
   padding: 14px;
 }
 
 .md3-platform-card-other {
   border-style: dashed;
-  background: rgb(241 245 249);
+  background: var(--md-surface-container);
 }
 
 .dark .md3-platform-card {
-  border-color: rgb(51 65 85 / 0.82);
-  background: rgb(15 23 42 / 0.34);
+  border-color: var(--md-outline-variant);
+  background: var(--md-surface-container-low);
 }
 
 .dark .md3-platform-card-other {
-  background: rgb(15 23 42 / 0.5);
+  background: var(--md-surface-container);
 }
 
 .md3-platform-card-header {
@@ -649,7 +649,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 
 .md3-platform-name {
   min-width: 0;
-  color: rgb(15 23 42);
+  color: var(--md-on-surface);
   font-size: 0.875rem;
   font-weight: 760;
   overflow-wrap: anywhere;
@@ -663,7 +663,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .dark .md3-platform-name {
-  color: rgb(248 250 252);
+  color: var(--md-on-surface);
 }
 
 .dark .md3-platform-total {
@@ -683,13 +683,13 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
 }
 
 .md3-kv-list strong,
 .md3-quota-row strong {
-  color: rgb(30 41 59);
+  color: var(--md-on-surface);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-weight: 700;
   text-align: right;
@@ -698,12 +698,12 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 
 .dark .md3-kv-list div,
 .dark .md3-quota-row {
-  color: rgb(148 163 184);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-kv-list strong,
 .dark .md3-quota-row strong {
-  color: rgb(226 232 240);
+  color: var(--md-on-surface);
 }
 
 .md3-quota-block {
@@ -711,16 +711,16 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   gap: 8px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgb(226 232 240);
+  border-top: 1px solid var(--md-outline-variant);
 }
 
 .dark .md3-quota-block {
-  border-color: rgb(51 65 85 / 0.82);
+  border-color: var(--md-outline-variant);
 }
 
 .md3-quota-block > p {
   margin: 0;
-  color: rgb(100 116 139);
+  color: var(--md-on-surface-variant);
   font-size: 0.6875rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -739,11 +739,11 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgb(226 232 240);
+  background: var(--md-surface-container-high);
 }
 
 .dark .md3-quota-track {
-  background: rgb(51 65 85);
+  background: var(--md-surface-container-high);
 }
 
 .md3-quota-fill {
@@ -767,7 +767,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 
 .md3-quota-reset {
   margin: 0;
-  color: rgb(148 163 184);
+  color: color-mix(in srgb, var(--md-on-surface-variant) 70%, transparent);
   font-size: 0.6875rem;
 }
 
