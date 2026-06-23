@@ -21,7 +21,26 @@
               class="w-40"
               :options="statusFilterOptions"
               @update:model-value="onStatusFilterChange"
-            />
+            >
+              <template #selected="{ option }">
+                <span
+                  v-if="isKeyStatusValue(statusOptionValue(option))"
+                  :class="['badge', keyStatusBadgeClass(statusOptionValue(option))]"
+                >
+                  {{ statusOptionLabel(option) }}
+                </span>
+                <span v-else>{{ statusOptionLabel(option) || t('keys.allStatus') }}</span>
+              </template>
+              <template #option="{ option }">
+                <span
+                  v-if="isKeyStatusValue(statusOptionValue(option))"
+                  :class="['badge', keyStatusBadgeClass(statusOptionValue(option))]"
+                >
+                  {{ statusOptionLabel(option) }}
+                </span>
+                <span v-else>{{ statusOptionLabel(option) }}</span>
+              </template>
+            </Select>
           </div>
           <EndpointPopover
             v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
@@ -68,7 +87,7 @@
                 class="rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
                 :class="
                   copiedKeyId === row.id
-                    ? 'text-green-500'
+                    ? 'text-gray-900 dark:text-white'
                     : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
                 "
                 :title="copiedKeyId === row.id ? t('keys.copied') : t('keys.copyToClipboard')"
@@ -91,7 +110,7 @@
                 v-if="row.ip_whitelist?.length > 0 || row.ip_blacklist?.length > 0"
                 name="shield"
                 size="sm"
-                class="text-blue-500"
+                class="text-gray-500 dark:text-gray-400"
                 :title="t('keys.ipRestrictionEnabled')"
               />
             </div>
@@ -197,7 +216,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_5h >= row.rate_limit_5h ? 'bg-red-500' :
                       row.usage_5h >= row.rate_limit_5h * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((row.usage_5h / row.rate_limit_5h) * 100, 100) + '%' }"
                   />
@@ -225,7 +244,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_1d >= row.rate_limit_1d ? 'bg-red-500' :
                       row.usage_1d >= row.rate_limit_1d * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((row.usage_1d / row.rate_limit_1d) * 100, 100) + '%' }"
                   />
@@ -253,7 +272,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_7d >= row.rate_limit_7d ? 'bg-red-500' :
                       row.usage_7d >= row.rate_limit_7d * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((row.usage_7d / row.rate_limit_7d) * 100, 100) + '%' }"
                   />
@@ -266,7 +285,7 @@
               <button
                 v-if="row.usage_5h > 0 || row.usage_1d > 0 || row.usage_7d > 0"
                 @click.stop="confirmResetRateLimitFromTable(row)"
-                class="mt-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                class="mt-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
                 :title="t('keys.resetRateLimitUsage')"
               >
                 <Icon name="refresh" size="xs" />
@@ -289,10 +308,7 @@
           <template #cell-status="{ value }">
             <span :class="[
               'badge',
-              value === 'active' ? 'badge-success' :
-              value === 'quota_exhausted' ? 'badge-warning' :
-              value === 'expired' ? 'badge-danger' :
-              'badge-gray'
+              keyStatusBadgeClass(value)
             ]">
               {{ t('keys.status.' + value) }}
             </span>
@@ -314,7 +330,7 @@
               <!-- Use Key Button -->
               <button
                 @click="openUseKeyModal(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
               >
                 <Icon name="terminal" size="sm" />
                 <span class="text-xs">{{ t('keys.useKey') }}</span>
@@ -323,7 +339,7 @@
               <button
                 v-if="!publicSettings?.hide_ccs_import_button"
                 @click="importToCcswitch(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
               >
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
@@ -332,10 +348,10 @@
               <button
                 @click="toggleKeyStatus(row)"
                 :class="[
-                  'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
+                  'flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors',
                   row.status === 'active'
-                    ? 'text-gray-500 hover:bg-yellow-50 hover:text-yellow-600 dark:hover:bg-yellow-900/20 dark:hover:text-yellow-400'
-                    : 'text-gray-500 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
+                    ? 'hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-900/20 dark:hover:text-amber-300'
+                    : 'hover:bg-green-50 hover:text-green-700 dark:hover:bg-green-900/20 dark:hover:text-green-300'
                 ]"
               >
                 <Icon v-if="row.status === 'active'" name="ban" size="sm" />
@@ -345,7 +361,7 @@
               <!-- Edit Button -->
               <button
                 @click="editKey(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
               >
                 <Icon name="edit" size="sm" />
                 <span class="text-xs">{{ t('common.edit') }}</span>
@@ -440,14 +456,14 @@
           </Select>
           <div
             v-if="selectedGroupOption"
-            class="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-200"
+            class="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300"
           >
             <span class="font-medium">{{ t('keys.currentBalance') }}:</span>
             <span class="ml-1">{{ formatCurrency(userBalance) }}</span>
-            <span class="mx-2 text-emerald-300 dark:text-emerald-700">/</span>
+            <span class="mx-2 text-gray-300 dark:text-gray-600">/</span>
             <span class="font-medium">{{ t('keys.effectiveRate') }}:</span>
             <span class="ml-1">{{ formatMultiplier(selectedGroupEffectiveRate || 0) }}x</span>
-            <span class="mx-2 text-emerald-300 dark:text-emerald-700">/</span>
+            <span class="mx-2 text-gray-300 dark:text-gray-600">/</span>
             <span class="font-medium">{{ t('keys.groupAvailableQuotaLabel') }}:</span>
             <span class="ml-1">{{ selectedGroupAvailableQuota }}</span>
           </div>
@@ -492,7 +508,25 @@
             v-model="formData.status"
             :options="statusOptions"
             :placeholder="t('keys.selectStatus')"
-          />
+          >
+            <template #selected="{ option }">
+              <span
+                v-if="isKeyStatusValue(statusOptionValue(option))"
+                :class="['badge', keyStatusBadgeClass(statusOptionValue(option))]"
+              >
+                {{ statusOptionLabel(option) }}
+              </span>
+              <span v-else class="text-gray-400">{{ t('keys.selectStatus') }}</span>
+            </template>
+            <template #option="{ option }">
+              <span
+                v-if="isKeyStatusValue(statusOptionValue(option))"
+                :class="['badge', keyStatusBadgeClass(statusOptionValue(option))]"
+              >
+                {{ statusOptionLabel(option) }}
+              </span>
+            </template>
+          </Select>
         </div>
 
         <!-- IP Restriction Section -->
@@ -668,7 +702,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_5h >= selectedKey.rate_limit_5h ? 'bg-red-500' :
                       selectedKey.usage_5h >= selectedKey.rate_limit_5h * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_5h / selectedKey.rate_limit_5h) * 100, 100) + '%' }"
                   />
@@ -714,7 +748,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_1d >= selectedKey.rate_limit_1d ? 'bg-red-500' :
                       selectedKey.usage_1d >= selectedKey.rate_limit_1d * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_1d / selectedKey.rate_limit_1d) * 100, 100) + '%' }"
                   />
@@ -760,7 +794,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_7d >= selectedKey.rate_limit_7d ? 'bg-red-500' :
                       selectedKey.usage_7d >= selectedKey.rate_limit_7d * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-gray-500'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_7d / selectedKey.rate_limit_7d) * 100, 100) + '%' }"
                   />
@@ -813,7 +847,7 @@
                 :class="[
                   'rounded-lg px-3 py-1.5 text-sm transition-colors',
                   formData.expiration_preset === days
-                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    ? 'bg-gray-900 text-white dark:bg-white dark:text-dark-950'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600'
                 ]"
               >
@@ -825,7 +859,7 @@
                 :class="[
                   'rounded-lg px-3 py-1.5 text-sm transition-colors',
                   formData.expiration_preset === 'custom'
-                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    ? 'bg-gray-900 text-white dark:bg-white dark:text-dark-950'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600'
                 ]"
               >
@@ -958,7 +992,7 @@
 	        <div class="grid grid-cols-2 gap-3">
 	          <button
 	            @click="handleCcsClientSelect('claude')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+	            class="ccs-client-option flex flex-col items-center gap-2 rounded-xl p-4 transition-colors"
 	          >
 	            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
 	            <span class="font-medium text-gray-900 dark:text-white">{{
@@ -970,7 +1004,7 @@
 	          </button>
 	          <button
 	            @click="handleCcsClientSelect('gemini')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+	            class="ccs-client-option flex flex-col items-center gap-2 rounded-xl p-4 transition-colors"
 	          >
 	            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
 	            <span class="font-medium text-gray-900 dark:text-white">{{
@@ -996,7 +1030,7 @@
       <div
         v-if="groupSelectorKeyId !== null && dropdownPosition"
         ref="dropdownRef"
-        class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-max min-w-[380px] overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+        class="group-selector-dropdown animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-max min-w-[380px] overflow-hidden rounded-xl duration-200"
         style="pointer-events: auto !important;"
         :style="{
           top: dropdownPosition.top !== undefined ? dropdownPosition.top + 'px' : undefined,
@@ -1005,7 +1039,7 @@
         }"
       >
         <!-- Search box -->
-        <div class="border-b border-gray-100 p-2 dark:border-dark-700">
+        <div class="group-selector-search border-b p-2">
           <div class="relative">
             <svg class="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1013,7 +1047,7 @@
             <input
               v-model="groupSearchQuery"
               type="text"
-              class="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-primary-300 focus:ring-1 focus:ring-primary-300 dark:border-dark-600 dark:bg-dark-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-primary-600 dark:focus:ring-primary-600"
+              class="group-selector-input w-full rounded-lg py-1.5 pl-8 pr-3 text-sm outline-none"
               :placeholder="t('keys.searchGroup')"
               @click.stop
             />
@@ -1027,11 +1061,11 @@
             @click="changeGroup(selectedKeyForGroup!, option.value)"
             :class="[
               'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
-              'border-b border-gray-100 last:border-0 dark:border-dark-700',
+              'group-selector-option border-b last:border-0',
               selectedKeyForGroup?.group_id === option.value ||
               (!selectedKeyForGroup?.group_id && option.value === null)
-                ? 'bg-primary-50 dark:bg-primary-900/20'
-                : 'hover:bg-gray-100 dark:hover:bg-dark-700'
+                ? 'group-selector-option-selected'
+                : ''
             ]"
             :title="option.description || undefined"
           >
@@ -1266,6 +1300,37 @@ const statusFilterOptions = computed(() => [
   { value: 'quota_exhausted', label: t('keys.status.quota_exhausted') },
   { value: 'expired', label: t('keys.status.expired') }
 ])
+
+const isKeyStatusValue = (value: string) => {
+  return value === 'active' || value === 'inactive' || value === 'quota_exhausted' || value === 'expired'
+}
+
+const keyStatusBadgeClass = (status: unknown) => {
+  switch (status) {
+    case 'active':
+      return 'key-status-active'
+    case 'inactive':
+      return 'key-status-inactive'
+    case 'quota_exhausted':
+      return 'badge-warning'
+    case 'expired':
+      return 'badge-danger'
+    default:
+      return 'badge-gray'
+  }
+}
+
+const statusOptionValue = (option: unknown) => {
+  if (!option || typeof option !== 'object') return ''
+  const value = (option as { value?: unknown }).value
+  return typeof value === 'string' ? value : ''
+}
+
+const statusOptionLabel = (option: unknown) => {
+  if (!option || typeof option !== 'object') return ''
+  const label = (option as { label?: unknown }).label
+  return typeof label === 'string' ? label : ''
+}
 
 const onFilterChange = () => {
   pagination.value.page = 1
@@ -1838,3 +1903,76 @@ onUnmounted(() => {
   if (resetTimer) clearInterval(resetTimer)
 })
 </script>
+
+<style scoped>
+.group-selector-dropdown {
+  border: 1px solid var(--md-outline-variant);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  box-shadow: var(--md-elevation-2);
+}
+
+.group-selector-search,
+.group-selector-option {
+  border-color: var(--md-outline-variant);
+}
+
+.group-selector-input {
+  border: 1px solid var(--md-outline-variant);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
+}
+
+.group-selector-input::placeholder {
+  color: var(--md-on-surface-variant);
+}
+
+.group-selector-input:focus {
+  border-color: var(--md-outline);
+  box-shadow: 0 0 0 2px var(--md-state-focus);
+}
+
+.group-selector-option {
+  color: var(--md-on-surface);
+}
+
+.group-selector-option:hover,
+.group-selector-option-selected {
+  background: var(--md-surface-container-low);
+}
+
+.ccs-client-option {
+  border: 1px solid var(--md-outline-variant);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+
+.ccs-client-option:hover {
+  border-color: var(--md-outline);
+  background: var(--md-surface-container-low);
+}
+
+.key-status-active {
+  border: 1px solid rgb(187 247 208);
+  background: rgb(220 252 231);
+  color: rgb(22 101 52);
+}
+
+.dark .key-status-active {
+  border-color: rgb(22 101 52 / 0.55);
+  background: rgb(20 83 45 / 0.35);
+  color: rgb(134 239 172);
+}
+
+.key-status-inactive {
+  border: 1px solid rgb(254 215 170);
+  background: rgb(255 237 213);
+  color: rgb(154 52 18);
+}
+
+.dark .key-status-inactive {
+  border-color: rgb(154 52 18 / 0.55);
+  background: rgb(124 45 18 / 0.32);
+  color: rgb(253 186 116);
+}
+</style>

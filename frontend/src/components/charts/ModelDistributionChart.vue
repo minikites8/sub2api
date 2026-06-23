@@ -140,14 +140,14 @@
                 <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
                   {{ formatTokens(model.total_tokens) }}
                 </td>
-                <td class="py-1.5 text-right text-green-600 dark:text-green-400">
-                  ${{ formatCost(model.actual_cost) }}
+                <td class="py-1.5 text-right font-medium text-gray-900 dark:text-white">
+                  ${{ formatCost(modelActualCost(model)) }}
                 </td>
                 <td class="py-1.5 text-right text-orange-500 dark:text-orange-400">
-                  ${{ formatCost(model.account_cost) }}
+                  ${{ formatCost(modelAccountCost(model)) }}
                 </td>
                 <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
-                  ${{ formatCost(model.cost) }}
+                  ${{ formatCost(modelStandardCost(model)) }}
                 </td>
               </tr>
               <tr v-if="expandedKey === `model-${model.model}`">
@@ -222,7 +222,7 @@
               <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
                 {{ formatTokens(item.tokens) }}
               </td>
-              <td class="py-1.5 text-right text-green-600 dark:text-green-400">
+              <td class="py-1.5 text-right font-medium text-gray-900 dark:text-white">
                 ${{ formatCost(item.actual_cost) }}
               </td>
             </tr>
@@ -331,19 +331,28 @@ const enableRankingView = computed(() => props.enableRankingView)
 const activeView = ref<'model_distribution' | 'spending_ranking'>('model_distribution')
 
 const chartColors = [
-  '#3b82f6',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#8b5cf6',
-  '#ec4899',
-  '#14b8a6',
-  '#f97316',
-  '#6366f1',
-  '#84cc16',
-  '#06b6d4',
-  '#a855f7'
+  '#3c4043',
+  '#5f6368',
+  '#80868b',
+  '#9aa0a6',
+  '#bdc1c6',
+  '#a8a29e',
+  '#78716c',
+  '#57534e',
+  '#71717a',
+  '#52525b',
+  '#6b7280',
+  '#4b5563'
 ]
+
+const numericValue = (value: number | null | undefined, fallback = 0): number => {
+  return Number.isFinite(value) ? Number(value) : fallback
+}
+
+const modelActualCost = (model: ModelStat): number => numericValue(model.actual_cost)
+const modelAccountCost = (model: ModelStat): number => numericValue(model.account_cost, modelActualCost(model))
+const modelStandardCost = (model: ModelStat): number => numericValue(model.cost)
+const modelTotalTokens = (model: ModelStat): number => numericValue(model.total_tokens)
 
 const displayModelStats = computed(() => {
   const sourceStats = props.source === 'upstream'
@@ -354,7 +363,9 @@ const displayModelStats = computed(() => {
   if (!sourceStats?.length) return []
 
   const metricKey = props.metric === 'actual_cost' ? 'actual_cost' : 'total_tokens'
-  return [...sourceStats].sort((a, b) => b[metricKey] - a[metricKey])
+  return [...sourceStats].sort((a, b) =>
+    numericValue(b[metricKey]) - numericValue(a[metricKey])
+  )
 })
 
 const chartData = computed(() => {
@@ -364,7 +375,7 @@ const chartData = computed(() => {
     labels: displayModelStats.value.map((m) => m.model),
     datasets: [
       {
-        data: displayModelStats.value.map((m) => props.metric === 'actual_cost' ? m.actual_cost : m.total_tokens),
+        data: displayModelStats.value.map((m) => props.metric === 'actual_cost' ? modelActualCost(m) : modelTotalTokens(m)),
         backgroundColor: chartColors.slice(0, displayModelStats.value.length),
         borderWidth: 0
       }
@@ -495,7 +506,8 @@ const getRankingRowLabel = (item: RankingDisplayItem): string => {
   return getRankingUserLabel(item)
 }
 
-const formatCost = (value: number): string => {
+const formatCost = (value: number | null | undefined): string => {
+  value = numericValue(value)
   if (value >= 1000) {
     return (value / 1000).toFixed(2) + 'K'
   } else if (value >= 1) {

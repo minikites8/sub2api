@@ -128,34 +128,34 @@ const planLabel = computed(() => {
 
 const platformClass = computed(() => {
   if (props.platform === 'anthropic') {
-    return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+    return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
   }
   if (props.platform === 'openai') {
-    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+    return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
   }
   if (props.platform === 'antigravity') {
-    return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+    return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
   }
   if (props.platform === 'kiro') {
-    return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+    return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
   }
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+  return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
 })
 
 const typeClass = computed(() => {
   if (props.platform === 'anthropic') {
-    return 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+    return 'bg-gray-50 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
   }
   if (props.platform === 'openai') {
-    return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+    return 'bg-gray-50 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
   }
   if (props.platform === 'antigravity') {
-    return 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
+    return 'bg-gray-50 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
   }
   if (props.platform === 'kiro') {
-    return 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+    return 'bg-gray-50 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
   }
-  return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+  return 'bg-gray-50 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
 })
 
 const planBadgeClass = computed(() => {
@@ -201,14 +201,14 @@ const privacyBadge = computed(() => {
   switch (props.privacyMode) {
     // OpenAI states
     case 'training_off':
-      return { label: 'Private', icon: shieldCheck, title: t('admin.accounts.privacyTrainingOff'), class: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' }
+      return { label: 'Private', icon: shieldCheck, title: t('admin.accounts.privacyTrainingOff'), class: 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300' }
     case 'training_set_cf_blocked':
       return { label: 'CF', icon: shieldX, title: t('admin.accounts.privacyCfBlocked'), class: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' }
     case 'training_set_failed':
       return { label: 'Fail', icon: shieldX, title: t('admin.accounts.privacyFailed'), class: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' }
     // Antigravity states
     case 'privacy_set':
-      return { label: 'Private', icon: shieldCheck, title: t('admin.accounts.privacyAntigravitySet'), class: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' }
+      return { label: 'Private', icon: shieldCheck, title: t('admin.accounts.privacyAntigravitySet'), class: 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300' }
     case 'privacy_set_failed':
       return { label: 'Fail', icon: shieldX, title: t('admin.accounts.privacyAntigravityFailed'), class: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' }
     default:

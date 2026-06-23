@@ -37,7 +37,7 @@
         </span>
         <span
           v-if="availableQuotaText"
-          class="text-xs font-medium text-emerald-600 dark:text-emerald-400"
+          class="text-xs font-medium text-gray-600 dark:text-gray-300"
         >
           {{ availableQuotaText }}
         </span>
@@ -45,7 +45,7 @@
       <!-- Checkmark -->
       <svg
         v-if="showCheckmark && selected"
-        class="mt-1 h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"
+        class="mt-1 h-4 w-4 shrink-0 text-gray-900 dark:text-white"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -61,6 +61,7 @@
 import { computed } from 'vue'
 import GroupBadge from './GroupBadge.vue'
 import type { SubscriptionType, GroupPlatform } from '@/types'
+import { platformRatePillClass } from '@/utils/platformColors'
 
 interface Props {
   name: string
@@ -94,18 +95,7 @@ const hasCustomRate = computed(() => {
 
 // Rate pill color matches platform badge color
 const ratePillClass = computed(() => {
-  switch (props.platform) {
-    case 'anthropic':
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-    case 'openai':
-      return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-    case 'gemini':
-      return 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
-    case 'kiro':
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-    default: // antigravity and others
-      return 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400'
-  }
+  return platformRatePillClass(props.platform)
 })
 </script>
 

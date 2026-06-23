@@ -1,6 +1,6 @@
 <template>
-  <header class="glass sticky top-0 z-30 border-b border-gray-200/50 dark:border-dark-700/50">
-    <div class="flex h-16 items-center justify-between px-4 md:px-6">
+  <header class="app-header sticky top-0 z-30">
+    <div class="flex h-14 items-center justify-between gap-4 px-4 md:px-6">
       <!-- Left: Mobile Menu Toggle + Page Title -->
       <div class="flex items-center gap-4">
         <button
@@ -11,18 +11,18 @@
           <Icon name="menu" size="md" />
         </button>
 
-        <div class="hidden lg:block">
-          <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
+        <div v-if="!hideDesktopTitle" class="hidden lg:block">
+          <h1 class="text-base font-semibold text-gray-900 dark:text-white">
             {{ pageTitle }}
           </h1>
-          <p v-if="pageDescription" class="text-xs text-gray-500 dark:text-dark-400">
+          <p v-if="pageDescription" class="text-xs text-gray-500 dark:text-dark-300">
             {{ pageDescription }}
           </p>
         </div>
       </div>
 
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
-      <div class="flex items-center gap-3">
+      <div class="flex min-w-0 items-center gap-2">
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
@@ -32,7 +32,7 @@
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          class="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
@@ -47,10 +47,10 @@
         <!-- Balance Display -->
         <div
           v-if="user"
-          class="hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20 sm:flex"
+          class="hidden items-center gap-2 rounded-full border border-gray-200 bg-gray-100 px-3 py-1.5 dark:border-dark-700 dark:bg-dark-800 sm:flex"
         >
           <svg
-            class="h-4 w-4 text-primary-600 dark:text-primary-400"
+            class="h-4 w-4 text-gray-600 dark:text-dark-300"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -62,7 +62,7 @@
               d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
             />
           </svg>
-          <span class="text-sm font-semibold text-primary-700 dark:text-primary-300">
+          <span class="text-sm font-semibold text-gray-900 dark:text-white">
             ${{ user.balance?.toFixed(2) || '0.00' }}
           </span>
         </div>
@@ -71,10 +71,10 @@
         <div v-if="user" class="relative" ref="dropdownRef">
           <button
             @click="toggleDropdown"
-            class="flex items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
+            class="flex items-center gap-2 rounded-full p-1 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
             aria-label="User Menu"
           >
-            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-sm font-medium text-white shadow-sm">
+            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gray-900 text-sm font-semibold text-white dark:bg-dark-700">
               <img
                 v-if="avatarUrl"
                 :src="avatarUrl"
@@ -87,7 +87,7 @@
               <div class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ displayName }}
               </div>
-              <div class="text-xs capitalize text-gray-500 dark:text-dark-400">
+              <div class="text-xs capitalize text-gray-500 dark:text-dark-300">
                 {{ user.role }}
               </div>
             </div>
@@ -102,7 +102,7 @@
                 <div class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ displayName }}
                 </div>
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
+                <div class="text-xs text-gray-500 dark:text-dark-300">{{ user.email }}</div>
               </div>
 
               <!-- Balance (mobile only) -->
@@ -237,6 +237,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl)
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+const hideDesktopTitle = computed(() => route.name === 'Dashboard')
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {

@@ -3,7 +3,7 @@
     <div class="flex min-h-full items-center justify-center p-4">
       <div class="fixed inset-0 bg-black/50 transition-opacity" @click="$emit('close')"></div>
 
-      <div class="relative w-full max-w-md transform rounded-xl bg-white p-6 shadow-xl transition-all dark:bg-dark-800">
+      <div class="profile-totp-dialog relative w-full max-w-md transform p-6 transition-all">
         <!-- Header -->
         <div class="mb-6 text-center">
           <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
@@ -18,7 +18,7 @@
         <div v-if="step === 0" class="space-y-6">
           <!-- Loading verification method -->
           <div v-if="methodLoading" class="flex items-center justify-center py-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+            <div class="profile-loading-spinner"></div>
           </div>
 
           <template v-else>
@@ -82,7 +82,7 @@
           <!-- QR Code and Secret -->
           <template v-if="setupData">
             <div class="flex justify-center">
-              <div class="rounded-lg border border-gray-200 p-4 bg-white dark:border-dark-600 dark:bg-white">
+              <div class="profile-qr-surface">
                 <img :src="qrCodeDataUrl" alt="QR Code" class="h-48 w-48" />
               </div>
             </div>
@@ -139,7 +139,7 @@
                   maxlength="1"
                   inputmode="numeric"
                   pattern="[0-9]"
-                  class="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold focus:border-primary-500 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
+                  class="profile-code-input"
                   @input="handleCodeInput($event, index)"
                   @keydown="handleKeydown($event, index)"
                   @paste="handlePaste"
@@ -401,3 +401,53 @@ onUnmounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.profile-totp-dialog {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  box-shadow: var(--md-elevation-2);
+}
+
+.profile-loading-spinner {
+  height: 32px;
+  width: 32px;
+  border: 2px solid var(--md-outline-variant);
+  border-top-color: var(--md-on-surface);
+  border-radius: 999px;
+  animation: profile-spin 0.8s linear infinite;
+}
+
+.profile-qr-surface {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 1rem;
+}
+
+.profile-code-input {
+  height: 48px;
+  width: 40px;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
+  text-align: center;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.profile-code-input:focus {
+  border-color: var(--md-outline);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--md-state-focus);
+}
+
+@keyframes profile-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

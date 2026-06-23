@@ -39,8 +39,8 @@
       </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-auto">
-      <table class="min-w-full text-sm">
+    <div class="error-table-scroll min-h-0 flex-1 overflow-auto">
+      <table class="error-requests-table min-w-full text-sm">
         <thead>
           <tr>
             <th class="px-4 py-2 text-left">{{ t('usage.errors.model') }}</th>
@@ -57,7 +57,7 @@
           <tr
             v-for="(row, i) in rows"
             :key="i"
-            class="border-t border-gray-100 dark:border-dark-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-800"
+            class="error-table-row cursor-pointer"
             @click="openDetail(row.id)"
           >
             <td class="px-4 py-2">{{ row.model || '-' }}</td>
@@ -171,3 +171,41 @@ function statusClass(code: number) {
   return 'badge-gray'
 }
 </script>
+
+<style scoped>
+.error-table-scroll {
+  background: var(--md-surface);
+}
+
+.error-requests-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+
+.error-requests-table thead {
+  background: var(--md-surface-container-low);
+}
+
+.error-requests-table th {
+  border-bottom: 1px solid var(--md-outline-variant);
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+}
+
+.error-requests-table tbody,
+.error-requests-table tbody tr,
+.error-requests-table tbody td {
+  background: var(--md-surface);
+  transition: background-color 0.15s ease;
+}
+
+.error-requests-table tbody tr:not(:last-child) td {
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+
+.error-table-row:hover td {
+  background: var(--md-surface-container-low);
+}
+</style>

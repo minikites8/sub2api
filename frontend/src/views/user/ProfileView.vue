@@ -2,7 +2,7 @@
   <AppLayout>
     <div
       data-testid="profile-shell"
-      class="mx-auto max-w-[950px] space-y-6"
+      class="profile-page-shell mx-auto max-w-[1120px] space-y-5 px-1 pb-8 sm:px-2"
     >
       <ProfileInfoCard
         :user="user"
@@ -17,17 +17,17 @@
 
       <div
         v-if="contactInfo"
-        class="card border-primary-200 bg-primary-50 p-6 dark:bg-primary-900/20"
+        class="profile-support-card"
       >
         <div class="flex items-center gap-4">
-          <div class="rounded-xl bg-primary-100 p-3 text-primary-600">
+          <div class="profile-support-icon">
             <Icon name="chat" size="lg" />
           </div>
           <div>
-            <h3 class="font-semibold text-primary-800 dark:text-primary-200">
+            <h3 class="font-semibold text-gray-900 dark:text-white">
               {{ t('common.contactSupport') }}
             </h3>
-            <p class="text-sm font-medium">{{ contactInfo }}</p>
+            <p class="text-sm text-gray-600 dark:text-gray-300">{{ contactInfo }}</p>
           </div>
         </div>
       </div>
@@ -109,3 +109,29 @@ onMounted(async () => {
   await Promise.all([profileRefresh, settingsLoad])
 })
 </script>
+
+<style scoped>
+.profile-page-shell {
+  color: var(--md-on-surface);
+}
+
+.profile-support-card {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  background: var(--md-surface);
+  padding: 20px;
+  box-shadow: none;
+}
+
+.profile-support-icon {
+  display: flex;
+  height: 44px;
+  width: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--md-surface-container);
+  color: var(--md-on-surface-variant);
+}
+</style>

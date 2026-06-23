@@ -207,15 +207,15 @@
       <template #pagination>
         <div
           v-if="selectedCount > 0"
-          class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20"
+          class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-100 p-3 dark:bg-dark-800"
         >
-          <span class="text-sm font-medium text-primary-900 dark:text-primary-100">
+          <span class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t('admin.redeem.selectedCount', { count: selectedCount }) }}
           </span>
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+              class="text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
               @click="clearSelectedCodes"
             >
               {{ t('admin.redeem.clearSelection') }}
@@ -306,8 +306,8 @@
               />
             </div>
             <!-- 邀请码类型：显示提示信息 -->
-            <div v-if="generateForm.type === 'invitation'" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
-              <p class="text-sm text-blue-700 dark:text-blue-300">
+            <div v-if="generateForm.type === 'invitation'" class="rounded-lg bg-gray-100 p-3 dark:bg-dark-700">
+              <p class="text-sm text-gray-700 dark:text-gray-300">
                 {{ t('admin.redeem.invitationHint') }}
               </p>
             </div>
@@ -367,7 +367,7 @@
                   :class="[
                     'rounded-lg border px-3 py-2 text-sm transition-colors',
                     generateForm.expiry_option === option.value
-                      ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-300'
+                      ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-dark-950'
                       : 'border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700'
                   ]"
                 >

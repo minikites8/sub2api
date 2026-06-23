@@ -3,101 +3,60 @@
     <TablePageLayout>
       <template #actions>
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <!-- Total Requests -->
-          <div class="card p-4">
-          <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-              <Icon name="document" size="md" class="text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {{ t('usage.totalRequests') }}
-              </p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">
-                {{ usageStats?.total_requests?.toLocaleString() || '0' }}
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('usage.inSelectedRange') }}
-              </p>
-            </div>
+          <div class="usage-summary-card">
+            <p class="usage-summary-label">
+              {{ t('usage.totalRequests') }}
+            </p>
+            <p class="usage-summary-value">
+              {{ usageStats?.total_requests?.toLocaleString() || '0' }}
+            </p>
+            <p class="usage-summary-meta">
+              {{ t('usage.inSelectedRange') }}
+            </p>
           </div>
-        </div>
 
-        <!-- Total Tokens -->
-        <div class="card p-4">
-          <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-              <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {{ t('usage.totalTokens') }}
-              </p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">
-                {{ formatTokens(usageStats?.total_tokens || 0) }}
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                <span>{{ t('usage.in') }} {{ formatTokens(usageStats?.total_input_tokens || 0) }}</span>
-                <span> · </span>
-                <span>{{ t('usage.out') }} {{ formatTokens(usageStats?.total_output_tokens || 0) }}</span>
-                <span> · </span>
-                <span class="text-sky-600 dark:text-sky-400">{{ t('usage.cacheHit') }} {{ formatTokens(usageStats?.total_cache_read_tokens || 0) }}</span>
-                <span> · </span>
-                <span class="text-amber-600 dark:text-amber-400">{{ t('usage.cacheCreate') }} {{ formatTokens(usageStats?.total_cache_creation_tokens || 0) }}</span>
-              </p>
-              <p class="text-xs text-gray-400 dark:text-gray-500">
-                {{ t('usage.cacheHitRate') }}:
-                <template v-if="cacheStats.totalInput > 0">
-                  <span class="text-sky-600 dark:text-sky-400">{{ formatTokens(cacheStats.cacheRead) }}</span>
-                  <span class="text-gray-400">/</span>
-                  <span class="text-gray-600 dark:text-gray-300">{{ formatTokens(cacheStats.totalInput) }}</span>
-                  <span class="ml-1">{{ cacheStats.ratePercent }}</span>
-                </template>
-                <template v-else>-</template>
-              </p>
-            </div>
+          <div class="usage-summary-card">
+            <p class="usage-summary-label">
+              {{ t('usage.totalTokens') }}
+            </p>
+            <p class="usage-summary-value">
+              {{ formatTokens(usageStats?.total_tokens || 0) }}
+            </p>
+            <p class="usage-summary-meta">
+              <span class="usage-token-input">{{ t('usage.in') }} {{ formatTokens(usageStats?.total_input_tokens || 0) }}</span>
+              <span> · </span>
+              <span class="usage-token-output">{{ t('usage.out') }} {{ formatTokens(usageStats?.total_output_tokens || 0) }}</span>
+            </p>
+            <p class="usage-summary-submeta">
+              {{ t('usage.cacheHitRate') }}:
+              <template v-if="cacheStats.totalInput > 0">
+                <span>{{ cacheStats.ratePercent }}</span>
+              </template>
+              <template v-else>-</template>
+            </p>
           </div>
-        </div>
 
-        <!-- Total Cost -->
-        <div class="card p-4">
-          <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-              <Icon name="dollar" size="md" class="text-green-600 dark:text-green-400" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {{ t('usage.totalCost') }}
-              </p>
-              <p class="text-xl font-bold text-green-600 dark:text-green-400">
-                ${{ (usageStats?.total_actual_cost || 0).toFixed(4) }}
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('usage.actualCost') }} /
-                <span class="line-through">${{ (usageStats?.total_cost || 0).toFixed(4) }}</span>
-                {{ t('usage.standardCost') }}
-              </p>
-            </div>
+          <div class="usage-summary-card">
+            <p class="usage-summary-label">
+              {{ t('usage.totalCost') }}
+            </p>
+            <p class="usage-summary-value">
+              ${{ (usageStats?.total_actual_cost || 0).toFixed(4) }}
+            </p>
+            <p class="usage-summary-meta">
+              {{ t('usage.standardCost') }} <span class="line-through">${{ (usageStats?.total_cost || 0).toFixed(4) }}</span>
+            </p>
           </div>
-        </div>
 
-        <!-- Average Duration -->
-        <div class="card p-4">
-          <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-              <Icon name="clock" size="md" class="text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {{ t('usage.avgDuration') }}
-              </p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">
-                {{ formatDuration(usageStats?.average_duration_ms || 0) }}
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('usage.perRequest') }}</p>
-            </div>
+          <div class="usage-summary-card">
+            <p class="usage-summary-label">
+              {{ t('usage.avgDuration') }}
+            </p>
+            <p class="usage-summary-value">
+              {{ formatDuration(usageStats?.average_duration_ms || 0) }}
+            </p>
+            <p class="usage-summary-meta">{{ t('usage.perRequest') }}</p>
           </div>
-        </div>
         </div>
       </template>
 
@@ -253,15 +212,15 @@
                 <div class="flex items-center gap-2">
                   <!-- Input -->
                   <div class="inline-flex items-center gap-1">
-                    <Icon name="arrowDown" size="sm" class="text-emerald-500" />
-                    <span class="font-medium text-gray-900 dark:text-white">{{
+                    <Icon name="arrowDown" size="sm" class="usage-token-input" />
+                    <span class="font-medium usage-token-input">{{
                       (row.input_tokens ?? 0).toLocaleString()
                     }}</span>
                   </div>
                   <!-- Output -->
                   <div class="inline-flex items-center gap-1">
-                    <Icon name="arrowUp" size="sm" class="text-violet-500" />
-                    <span class="font-medium text-gray-900 dark:text-white">{{
+                    <Icon name="arrowUp" size="sm" class="usage-token-output" />
+                    <span class="font-medium usage-token-output">{{
                       (row.output_tokens ?? 0).toLocaleString()
                     }}</span>
                   </div>
@@ -273,15 +232,15 @@
                 >
                   <!-- Cache Read -->
                   <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
-                    <Icon name="inbox" size="sm" class="text-sky-500" />
-                    <span class="font-medium text-sky-600 dark:text-sky-400">{{
+                    <Icon name="inbox" size="sm" class="usage-token-cache-read" />
+                    <span class="font-medium usage-token-cache-read">{{
                       formatCacheTokens(row.cache_read_tokens)
                     }}</span>
                   </div>
                   <!-- Cache Write -->
                   <div v-if="row.cache_creation_tokens > 0" class="inline-flex items-center gap-1">
-                    <Icon name="edit" size="sm" class="text-amber-500" />
-                    <span class="font-medium text-amber-600 dark:text-amber-400">{{
+                    <Icon name="edit" size="sm" class="usage-token-cache-create" />
+                    <span class="font-medium usage-token-cache-create">{{
                       formatCacheTokens(row.cache_creation_tokens)
                     }}</span>
                     <span v-if="row.cache_creation_1h_tokens > 0" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-orange-100 text-orange-600 ring-1 ring-inset ring-orange-200 dark:bg-orange-500/20 dark:text-orange-400 dark:ring-orange-500/30">1h</span>
@@ -302,12 +261,12 @@
                 @mouseleave="hideTokenTooltip"
               >
                 <div
-                  class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50"
+                  class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-gray-200 dark:bg-dark-700 dark:group-hover:bg-dark-600"
                 >
                   <Icon
                     name="infoCircle"
                     size="xs"
-                    class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400"
+                    class="text-gray-400 group-hover:text-gray-700 dark:text-gray-500 dark:group-hover:text-gray-200"
                   />
                 </div>
               </div>
@@ -316,7 +275,7 @@
 
           <template #cell-cost="{ row }">
             <div class="flex items-center gap-1.5 text-sm">
-              <span class="font-medium text-green-600 dark:text-green-400">
+              <span class="font-medium text-gray-900 dark:text-white">
                 ${{ (row.actual_cost ?? 0).toFixed(6) }}
               </span>
               <!-- Cost Detail Tooltip -->
@@ -326,12 +285,12 @@
                 @mouseleave="hideTooltip"
               >
                 <div
-                  class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50"
+                  class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-gray-200 dark:bg-dark-700 dark:group-hover:bg-dark-600"
                 >
                   <Icon
                     name="infoCircle"
                     size="xs"
-                    class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400"
+                    class="text-gray-400 group-hover:text-gray-700 dark:text-gray-500 dark:group-hover:text-gray-200"
                   />
                 </div>
               </div>
@@ -472,7 +431,7 @@
           <!-- Total -->
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
             <span class="text-gray-400">{{ t('usage.totalTokens') }}</span>
-            <span class="font-semibold text-blue-400">{{ ((tokenTooltipData?.input_tokens || 0) + (tokenTooltipData?.output_tokens || 0) + (tokenTooltipData?.cache_creation_tokens || 0) + (tokenTooltipData?.cache_read_tokens || 0)).toLocaleString() }}</span>
+            <span class="font-semibold text-white">{{ ((tokenTooltipData?.input_tokens || 0) + (tokenTooltipData?.output_tokens || 0) + (tokenTooltipData?.cache_creation_tokens || 0) + (tokenTooltipData?.cache_read_tokens || 0)).toLocaleString() }}</span>
           </div>
         </div>
         <!-- Tooltip Arrow (left side) -->
@@ -513,10 +472,10 @@
               <span class="font-medium text-pink-300">${{ tooltipData.image_output_cost.toFixed(6) }}</span>
             </div>
             <!-- Token billing: show unit prices per 1M tokens -->
-            <template v-if="!tooltipData?.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN">
+            <template v-if="getDisplayBillingMode(tooltipData) === BILLING_MODE_TOKEN">
               <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
-                <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+                <span class="font-medium text-gray-100">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
               </div>
               <div v-if="tooltipData && tooltipData.output_cost > 0 && textOutputTokens(tooltipData) > 0" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span>
@@ -555,7 +514,7 @@
               </div>
               <div class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.imageUnitPrice') }}</span>
-                <span class="font-medium text-sky-300">${{ imageUnitPrice(tooltipData).toFixed(6) }}</span>
+                <span class="font-medium text-gray-100">${{ imageUnitPrice(tooltipData).toFixed(6) }}</span>
               </div>
               <div class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.imageTotalPrice') }}</span>
@@ -564,7 +523,7 @@
             </template>
             <div v-else class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('usage.unitPrice') }}</span>
-              <span class="font-medium text-sky-300">${{ tooltipData?.total_cost?.toFixed(6) || '0.000000' }}</span>
+              <span class="font-medium text-gray-100">${{ tooltipData?.total_cost?.toFixed(6) || '0.000000' }}</span>
             </div>
             <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') }}</span>
@@ -578,11 +537,11 @@
           <!-- Rate and Summary -->
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.serviceTier') }}</span>
-            <span class="font-semibold text-cyan-300">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) }}</span>
+            <span class="font-semibold text-gray-100">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) }}</span>
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
-            <span class="font-semibold text-blue-400"
+            <span class="font-semibold text-gray-100"
               >{{ formatMultiplier(tooltipData?.rate_multiplier || 1) }}x</span
             >
           </div>
@@ -592,7 +551,7 @@
           </div>
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
             <span class="text-gray-400">{{ t('usage.billed') }}</span>
-            <span class="font-semibold text-green-400"
+            <span class="font-semibold text-white"
               >${{ tooltipData?.actual_cost.toFixed(6) }}</span
             >
           </div>
@@ -784,7 +743,7 @@ const getRequestTypeBadgeClass = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
   if (requestType === 'cyber') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
   if (requestType === 'ws_v2') return 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200'
-  if (requestType === 'stream') return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+  if (requestType === 'stream') return 'bg-gray-100 text-gray-800 dark:bg-dark-700 dark:text-gray-200'
   if (requestType === 'sync') return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
   return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
 }
@@ -1121,3 +1080,62 @@ onMounted(() => {
   loadUsageStats()
 })
 </script>
+
+<style scoped>
+.usage-summary-card {
+  display: grid;
+  min-width: 0;
+  min-height: 116px;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  background: var(--md-surface);
+  padding: 1rem;
+  box-shadow: var(--md-elevation-1);
+}
+
+.usage-summary-label {
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 450;
+  line-height: 1.35;
+}
+
+.usage-summary-value {
+  align-self: center;
+  color: var(--md-on-surface);
+  font-size: 1.625rem;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: 0;
+  word-break: break-word;
+}
+
+.usage-summary-meta,
+.usage-summary-submeta {
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.usage-summary-submeta {
+  color: color-mix(in srgb, var(--md-on-surface-variant) 78%, transparent);
+}
+
+.usage-token-input {
+  color: var(--md-token-input);
+}
+
+.usage-token-output {
+  color: var(--md-token-output);
+}
+
+.usage-token-cache-read {
+  color: var(--md-token-cache-read);
+}
+
+.usage-token-cache-create {
+  color: var(--md-token-cache-create);
+}
+</style>

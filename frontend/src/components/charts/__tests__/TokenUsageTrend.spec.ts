@@ -21,12 +21,12 @@ vi.mock('vue-i18n', async () => {
 vi.mock('vue-chartjs', () => ({
   Line: {
     props: ['data', 'options'],
-    template: '<div class="chart-data">{{ JSON.stringify(data) }}</div>',
+    template: '<div><div class="chart-data">{{ JSON.stringify(data) }}</div><div class="chart-options">{{ JSON.stringify(options) }}</div></div>',
   },
 }))
 
 describe('TokenUsageTrend', () => {
-  it('calculates cache hit rate against all prompt tokens', () => {
+  it('calculates cache hit rate while hiding the percent axis', () => {
     const wrapper = mount(TokenUsageTrend, {
       props: {
         trendData: [
@@ -53,8 +53,11 @@ describe('TokenUsageTrend', () => {
     const hitRateDataset = chartData.datasets.find(
       (ds: any) => ds.label === 'Cache Hit Rate'
     )
-    // Hit rate = 1500 / (500 + 1500 + 0) * 100 = 75%
+    const chartOptions = JSON.parse(wrapper.find('.chart-options').text())
     expect(hitRateDataset.data[0]).toBe(75)
+    expect(hitRateDataset.yAxisID).toBe('yPercent')
+    expect(hitRateDataset.borderDash).toEqual([4, 4])
+    expect(chartOptions.scales.yPercent.display).toBe(false)
   })
 
   it('returns 0 hit rate when all prompt tokens are zero', () => {
@@ -114,7 +117,6 @@ describe('TokenUsageTrend', () => {
     const hitRateDataset = chartData.datasets.find(
       (ds: any) => ds.label === 'Cache Hit Rate'
     )
-    // Hit rate = 500 / (200 + 500 + 300) * 100 = 50%
     expect(hitRateDataset.data[0]).toBe(50)
   })
 })

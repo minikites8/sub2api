@@ -9,22 +9,40 @@ export type Platform = 'anthropic' | 'openai' | 'antigravity' | 'gemini' | 'kiro
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
 const BADGE: Record<Platform, string> = {
-  anthropic: 'bg-orange-500/10 text-orange-600 border-orange-500/30 dark:text-orange-400',
-  openai: 'bg-green-500/10 text-green-600 border-green-500/30 dark:text-green-400',
-  antigravity: 'bg-purple-500/10 text-purple-600 border-purple-500/30 dark:text-purple-400',
-  gemini: 'bg-blue-500/10 text-blue-600 border-blue-500/30 dark:text-blue-400',
-  kiro: 'bg-orange-500/10 text-orange-600 border-orange-500/30 dark:text-orange-400',
+  anthropic: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/40',
+  openai: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/40',
+  antigravity: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/40',
+  gemini: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/40',
+  kiro: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/40',
 }
-const BADGE_DEFAULT = 'bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400'
+const BADGE_DEFAULT = 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-dark-800 dark:text-gray-300 dark:border-dark-700'
 
 // ── Light badge (softer bg, no border) ──────────────────────────────
 const BADGE_LIGHT: Record<Platform, string> = {
-  anthropic: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300',
-  openai: 'bg-green-500/10 text-green-600 dark:bg-green-500/10 dark:text-green-300',
-  antigravity: 'bg-purple-500/10 text-purple-600 dark:bg-purple-500/10 dark:text-purple-300',
-  gemini: 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300',
-  kiro: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300',
+  anthropic: 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300',
+  openai: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300',
+  antigravity: 'bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300',
+  gemini: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300',
+  kiro: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300',
 }
+
+const GROUP_BADGE: Record<Platform, string> = {
+  anthropic: 'bg-orange-50 text-orange-700 ring-1 ring-orange-100 dark:bg-orange-950/30 dark:text-orange-300 dark:ring-orange-900/40',
+  openai: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-900/40',
+  antigravity: 'bg-violet-50 text-violet-700 ring-1 ring-violet-100 dark:bg-violet-950/30 dark:text-violet-300 dark:ring-violet-900/40',
+  gemini: 'bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-900/40',
+  kiro: 'bg-amber-50 text-amber-700 ring-1 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-900/40',
+}
+const GROUP_BADGE_DEFAULT = 'bg-gray-50 text-gray-700 ring-1 ring-gray-100 dark:bg-dark-800 dark:text-gray-300 dark:ring-dark-700'
+
+const GROUP_BADGE_SUBSCRIPTION: Record<Platform, string> = {
+  anthropic: 'bg-orange-100 text-orange-800 ring-1 ring-orange-200 dark:bg-orange-950/40 dark:text-orange-200 dark:ring-orange-900/50',
+  openai: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-900/50',
+  antigravity: 'bg-violet-100 text-violet-800 ring-1 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-200 dark:ring-violet-900/50',
+  gemini: 'bg-blue-100 text-blue-800 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-900/50',
+  kiro: 'bg-amber-100 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900/50',
+}
+const GROUP_BADGE_SUBSCRIPTION_DEFAULT = 'bg-gray-100 text-gray-700 ring-1 ring-gray-200 dark:bg-dark-700 dark:text-gray-200 dark:ring-dark-600'
 
 // ── Border ──────────────────────────────────────────────────────────
 const BORDER: Record<Platform, string> = {
@@ -127,6 +145,17 @@ export function platformBadgeClass(p: string): string {
 
 export function platformBadgeLightClass(p: string): string {
   return isPlatform(p) ? BADGE_LIGHT[p] : BADGE_DEFAULT
+}
+
+export function platformGroupBadgeClass(p: string, subscription = false): string {
+  if (!isPlatform(p)) {
+    return subscription ? GROUP_BADGE_SUBSCRIPTION_DEFAULT : GROUP_BADGE_DEFAULT
+  }
+  return subscription ? GROUP_BADGE_SUBSCRIPTION[p] : GROUP_BADGE[p]
+}
+
+export function platformRatePillClass(p: string): string {
+  return isPlatform(p) ? GROUP_BADGE[p] : GROUP_BADGE_DEFAULT
 }
 
 export function platformBorderClass(p: string): string {
