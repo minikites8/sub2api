@@ -240,7 +240,7 @@ const submitJump = () => {
 
 <style scoped>
 .pagination-surface {
-  border-top: 1px solid var(--md-outline-variant);
+  border-top: 0;
   background: transparent;
   color: var(--md-on-surface);
 }

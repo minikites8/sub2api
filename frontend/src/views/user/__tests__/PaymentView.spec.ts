@@ -18,6 +18,7 @@ const showError = vi.hoisted(() => vi.fn())
 const showInfo = vi.hoisted(() => vi.fn())
 const showWarning = vi.hoisted(() => vi.fn())
 const getCheckoutInfo = vi.hoisted(() => vi.fn())
+const getMyOrders = vi.hoisted(() => vi.fn())
 const bridgeInvoke = vi.hoisted(() => vi.fn())
 
 vi.mock('vue-router', async () => {
@@ -77,6 +78,7 @@ vi.mock('@/stores', () => ({
 vi.mock('@/api/payment', () => ({
   paymentAPI: {
     getCheckoutInfo,
+    getMyOrders,
   },
 }))
 
@@ -215,6 +217,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     showInfo.mockReset()
     showWarning.mockReset()
     getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture())
+    getMyOrders.mockReset().mockResolvedValue({ data: { items: [] } })
     bridgeInvoke.mockReset()
     window.localStorage.clear()
     ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = {
@@ -452,7 +455,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     await flushPromises()
     await flushPromises()
 
-    wrapper.findComponent({ name: 'AmountInput' }).vm.$emit('update:modelValue', 100)
+    await wrapper.get('input[inputmode="decimal"]').setValue('100')
     await flushPromises()
 
     const html = wrapper.html()

@@ -74,13 +74,13 @@
                   {{ formatTokens(group.total_tokens) }}
                 </td>
                 <td class="py-1.5 text-right font-medium text-gray-900 dark:text-white">
-                  ${{ formatCost(group.actual_cost) }}
+                  ${{ formatCost(groupActualCost(group)) }}
                 </td>
                 <td class="py-1.5 text-right text-orange-500 dark:text-orange-400">
-                  ${{ formatCost(group.account_cost) }}
+                  ${{ formatCost(groupAccountCost(group)) }}
                 </td>
                 <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
-                  ${{ formatCost(group.cost) }}
+                  ${{ formatCost(groupStandardCost(group)) }}
                 </td>
               </tr>
               <!-- User breakdown sub-rows -->
@@ -181,11 +181,22 @@ const chartColors = [
   '#52525b'
 ]
 
+const numericValue = (value: number | null | undefined, fallback = 0): number => {
+  return Number.isFinite(value) ? Number(value) : fallback
+}
+
+const groupActualCost = (group: GroupStat): number => numericValue(group.actual_cost)
+const groupAccountCost = (group: GroupStat): number => numericValue(group.account_cost, groupActualCost(group))
+const groupStandardCost = (group: GroupStat): number => numericValue(group.cost)
+const groupTotalTokens = (group: GroupStat): number => numericValue(group.total_tokens)
+
 const displayGroupStats = computed(() => {
   if (!props.groupStats?.length) return []
 
   const metricKey = props.metric === 'actual_cost' ? 'actual_cost' : 'total_tokens'
-  return [...props.groupStats].sort((a, b) => b[metricKey] - a[metricKey])
+  return [...props.groupStats].sort((a, b) =>
+    numericValue(b[metricKey]) - numericValue(a[metricKey])
+  )
 })
 
 const chartData = computed(() => {
@@ -195,7 +206,7 @@ const chartData = computed(() => {
     labels: displayGroupStats.value.map((g) => g.group_name || String(g.group_id)),
     datasets: [
       {
-        data: displayGroupStats.value.map((g) => props.metric === 'actual_cost' ? g.actual_cost : g.total_tokens),
+        data: displayGroupStats.value.map((g) => props.metric === 'actual_cost' ? groupActualCost(g) : groupTotalTokens(g)),
         backgroundColor: chartColors.slice(0, displayGroupStats.value.length),
         borderWidth: 0
       }
@@ -241,7 +252,8 @@ const formatNumber = (value: number): string => {
   return value.toLocaleString()
 }
 
-const formatCost = (value: number): string => {
+const formatCost = (value: number | null | undefined): string => {
+  value = numericValue(value)
   if (value >= 1000) {
     return (value / 1000).toFixed(2) + 'K'
   } else if (value >= 1) {

@@ -667,12 +667,6 @@ const globalMinAmount = computed(() => {
   if (limits.some(limit => limit.single_min <= 0)) return 0
   return Math.min(...limits.map(limit => limit.single_min))
 })
-const globalMaxAmount = computed(() => {
-  const limits = Object.values(visibleMethods.value)
-  if (limits.length === 0) return 0
-  if (limits.some(limit => limit.single_max <= 0)) return 0
-  return Math.max(...limits.map(limit => limit.single_max))
-})
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
