@@ -28,6 +28,7 @@ var (
 
 type DailyCheckinStatus struct {
 	Enabled           bool       `json:"enabled"`
+	AdsEnabled        bool       `json:"ads_enabled"`
 	CheckedInToday    bool       `json:"checked_in_today"`
 	TodayReward       float64    `json:"today_reward"`
 	TodayTotalGranted float64    `json:"today_total_granted"`
@@ -141,6 +142,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 
 	status := &DailyCheckinStatus{
 		Enabled:           claimable,
+		AdsEnabled:        settings.AdsEnabled,
 		DailyTotalLimit:   settings.DailyTotalLimit,
 		MinReward:         settings.MinReward,
 		MaxReward:         settings.MaxReward,
@@ -231,6 +233,7 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 
 	status := DailyCheckinStatus{
 		Enabled:           dailyCheckinClaimable(settings),
+		AdsEnabled:        settings.AdsEnabled,
 		CheckedInToday:    true,
 		TodayReward:       roundCheckinReward(claimed.Record.Reward),
 		TodayTotalGranted: roundCheckinReward(claimed.TodayTotalGranted),
@@ -279,6 +282,31 @@ func (s *DailyCheckinService) AdminListRecords(ctx context.Context, filter Daily
 		filter.PageSize = 1000
 	}
 	return s.repo.ListAdminRecords(ctx, filter)
+}
+
+func (s *DailyCheckinService) EnrichAdminSettingsSummary(ctx context.Context, settings DailyCheckinSettings) (DailyCheckinSettings, error) {
+	if s == nil {
+		return settings, nil
+	}
+	today, _ := s.todayWindow()
+	settings.CheckinDate = today
+	if s.repo != nil {
+		total, err := s.repo.SumRewardsByDate(ctx, today)
+		if err != nil {
+			return settings, fmt.Errorf("sum daily check-in rewards: %w", err)
+		}
+		settings.TodayTotalGranted = roundCheckinReward(total)
+	}
+	status := DailyCheckinStatus{
+		Enabled:           dailyCheckinClaimable(dailyCheckinConfigFromSettings(settings)),
+		TodayTotalGranted: settings.TodayTotalGranted,
+		DailyTotalLimit:   settings.DailyTotalLimit,
+		MinReward:         settings.MinReward,
+	}
+	applyDailyCheckinRemaining(&status)
+	settings.RemainingToday = status.RemainingToday
+	settings.ExhaustedToday = status.ExhaustedToday
+	return settings, nil
 }
 
 func (s *DailyCheckinService) settings(ctx context.Context) config.DailyCheckinConfig {

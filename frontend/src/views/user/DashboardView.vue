@@ -23,25 +23,15 @@
           :close-on-click-outside="true"
           @close="closeDailyCheckinDialog"
         >
-          <div v-if="dailyCheckinStatus" class="space-y-4">
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex items-start gap-3">
-                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
-                  <Icon name="gift" size="lg" :stroke-width="2" />
-                </div>
-                <p class="mt-0.5 text-sm text-gray-500 dark:text-dark-400">
-                  {{ dailyCheckinTitle }}
-                </p>
-              </div>
-              <span
-                class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium"
-                :class="dailyCheckinStatusClass"
-              >
-                <Icon :name="dailyCheckinStatusIcon" size="xs" :stroke-width="2" />
-                {{ dailyCheckinStatusText }}
+          <template #title>
+            <span class="inline-flex items-center gap-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
+                <Icon name="gift" size="md" :stroke-width="2" />
               </span>
-            </div>
-
+              <span>{{ t('dashboard.dailyCheckin.title') }}</span>
+            </span>
+          </template>
+          <div v-if="dailyCheckinStatus">
             <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
               <template v-if="dailyCheckinStatus.checked_in_today">
                 <div class="flex items-start gap-3">
@@ -118,6 +108,7 @@
                   </div>
 
                   <GoogleAdSenseAd
+                    v-if="dailyCheckinStatus.ads_enabled"
                     client="ca-pub-1423021104870807"
                     ad-slot="5962250608"
                   />
@@ -239,34 +230,11 @@ const dailyCheckinTitle = computed(() => {
   if (!dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequiredHint', { amount: formatCurrency(status.min_recharge_amount), current: formatCurrency(status.total_recharged) })
   return t('dashboard.dailyCheckin.hint', { min: formatCurrency(status.min_reward), max: formatCurrency(status.max_reward) })
 })
-const dailyCheckinStatusText = computed(() => {
-  const status = dailyCheckinStatus.value
-  if (!status) return ''
-  if (status.checked_in_today) return t('dashboard.dailyCheckin.checked')
-  if (status.exhausted_today) return t('dashboard.dailyCheckin.exhausted')
-  if (!dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequired')
-  return t('dashboard.dailyCheckin.ready')
-})
-const dailyCheckinStatusIcon = computed(() => {
-  const status = dailyCheckinStatus.value
-  if (status?.checked_in_today) return 'checkCircle'
-  if (status?.exhausted_today) return 'exclamationCircle'
-  if (status && !dailyCheckinRechargeEligible.value) return 'creditCard'
-  return 'shield'
-})
-const dailyCheckinStatusClass = computed(() => {
-  const status = dailyCheckinStatus.value
-  if (status?.checked_in_today) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
-  if (status?.exhausted_today) return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-200'
-  if (status && !dailyCheckinRechargeEligible.value) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
-  return 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
-})
 const dailyCheckinEntryIcon = computed(() => {
   const status = dailyCheckinStatus.value
   if (dailyCheckinLoading.value) return 'refresh'
   if (status?.checked_in_today) return 'checkCircle'
   if (status?.exhausted_today) return 'exclamationCircle'
-  if (status && !dailyCheckinRechargeEligible.value) return 'creditCard'
   return 'gift'
 })
 const dailyCheckinEntryText = computed(() => {
@@ -274,7 +242,6 @@ const dailyCheckinEntryText = computed(() => {
   if (dailyCheckinLoading.value) return t('dashboard.dailyCheckin.checking')
   if (status?.checked_in_today) return t('dashboard.dailyCheckin.checked')
   if (status?.exhausted_today) return t('dashboard.dailyCheckin.exhausted')
-  if (status && !dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequired')
   return t('dashboard.dailyCheckin.action')
 })
 const dailyCheckinButtonIcon = computed(() => {

@@ -12,14 +12,20 @@ import (
 
 type DailyCheckinSettings struct {
 	Enabled           bool    `json:"enabled"`
+	AdsEnabled        bool    `json:"ads_enabled"`
 	DailyTotalLimit   float64 `json:"daily_total_limit"`
 	MinReward         float64 `json:"min_reward"`
 	MaxReward         float64 `json:"max_reward"`
 	MinRechargeAmount float64 `json:"min_recharge_amount"`
+	TodayTotalGranted float64 `json:"today_total_granted"`
+	RemainingToday    float64 `json:"remaining_today"`
+	ExhaustedToday    bool    `json:"exhausted_today"`
+	CheckinDate       string  `json:"checkin_date"`
 }
 
 var dailyCheckinSettingKeys = []string{
 	SettingKeyDailyCheckinEnabled,
+	SettingKeyDailyCheckinAdsEnabled,
 	SettingKeyDailyCheckinDailyTotalLimit,
 	SettingKeyDailyCheckinMinReward,
 	SettingKeyDailyCheckinMaxReward,
@@ -39,6 +45,11 @@ func (s *SettingService) GetDailyCheckinSettings(ctx context.Context) (DailyChec
 	if raw, ok := values[SettingKeyDailyCheckinEnabled]; ok {
 		if parsed, parseErr := strconv.ParseBool(strings.TrimSpace(raw)); parseErr == nil {
 			result.Enabled = parsed
+		}
+	}
+	if raw, ok := values[SettingKeyDailyCheckinAdsEnabled]; ok {
+		if parsed, parseErr := strconv.ParseBool(strings.TrimSpace(raw)); parseErr == nil {
+			result.AdsEnabled = parsed
 		}
 	}
 	if value, ok := parseDailyCheckinSettingFloat(values, SettingKeyDailyCheckinDailyTotalLimit); ok {
@@ -76,6 +87,7 @@ func (s *SettingService) UpdateDailyCheckinSettings(ctx context.Context, input D
 
 	updates := map[string]string{
 		SettingKeyDailyCheckinEnabled:           strconv.FormatBool(settings.Enabled),
+		SettingKeyDailyCheckinAdsEnabled:        strconv.FormatBool(settings.AdsEnabled),
 		SettingKeyDailyCheckinDailyTotalLimit:   strconv.FormatFloat(settings.DailyTotalLimit, 'f', 8, 64),
 		SettingKeyDailyCheckinMinReward:         strconv.FormatFloat(settings.MinReward, 'f', 8, 64),
 		SettingKeyDailyCheckinMaxReward:         strconv.FormatFloat(settings.MaxReward, 'f', 8, 64),
@@ -101,6 +113,7 @@ func dailyCheckinSettingsFromConfig(cfg config.DailyCheckinConfig) DailyCheckinS
 	cfg = normalizeDailyCheckinConfig(cfg)
 	return DailyCheckinSettings{
 		Enabled:           cfg.Enabled,
+		AdsEnabled:        cfg.AdsEnabled,
 		DailyTotalLimit:   cfg.DailyTotalLimit,
 		MinReward:         cfg.MinReward,
 		MaxReward:         cfg.MaxReward,
@@ -111,6 +124,7 @@ func dailyCheckinSettingsFromConfig(cfg config.DailyCheckinConfig) DailyCheckinS
 func dailyCheckinConfigFromSettings(settings DailyCheckinSettings) config.DailyCheckinConfig {
 	return normalizeDailyCheckinConfig(config.DailyCheckinConfig{
 		Enabled:           settings.Enabled,
+		AdsEnabled:        settings.AdsEnabled,
 		DailyTotalLimit:   settings.DailyTotalLimit,
 		MinReward:         settings.MinReward,
 		MaxReward:         settings.MaxReward,
@@ -134,6 +148,7 @@ func validateDailyCheckinSettings(input DailyCheckinSettings) (DailyCheckinSetti
 
 	settings := DailyCheckinSettings{
 		Enabled:           input.Enabled,
+		AdsEnabled:        input.AdsEnabled,
 		DailyTotalLimit:   roundCheckinReward(input.DailyTotalLimit),
 		MinReward:         roundCheckinReward(input.MinReward),
 		MaxReward:         roundCheckinReward(input.MaxReward),

@@ -68,6 +68,11 @@ func (h *DailyCheckinHandler) GetSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	settings, err = h.dailyCheckinService.EnrichAdminSettingsSummary(c.Request.Context(), settings)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	response.Success(c, settings)
 }
 
@@ -80,6 +85,11 @@ func (h *DailyCheckinHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	settings, err := h.settingService.UpdateDailyCheckinSettings(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	settings, err = h.dailyCheckinService.EnrichAdminSettingsSummary(c.Request.Context(), settings)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

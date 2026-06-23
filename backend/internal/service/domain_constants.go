@@ -143,6 +143,7 @@ const (
 	SettingKeyAffiliateRebateDurationDays         = "affiliate_rebate_duration_days"            // 返利有效期（天，0=永久）
 	SettingKeyAffiliateRebatePerInviteeCap        = "affiliate_rebate_per_invitee_cap"          // 单人返利上限（0=无上限）
 	SettingKeyDailyCheckinEnabled                 = "daily_checkin_enabled"                     // 每日签到总开关
+	SettingKeyDailyCheckinAdsEnabled              = "daily_checkin_ads_enabled"                 // 每日签到广告开关
 	SettingKeyDailyCheckinDailyTotalLimit         = "daily_checkin_daily_total_limit"           // 全站每日签到发放总额度上限
 	SettingKeyDailyCheckinMinReward               = "daily_checkin_min_reward"                  // 单人签到随机奖励最小值
 	SettingKeyDailyCheckinMaxReward               = "daily_checkin_max_reward"                  // 单人签到随机奖励最大值

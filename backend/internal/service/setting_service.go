@@ -2952,6 +2952,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
 		SettingKeyDailyCheckinEnabled:                       strconv.FormatBool(s.defaultDailyCheckinSettings().Enabled),
+		SettingKeyDailyCheckinAdsEnabled:                    strconv.FormatBool(s.defaultDailyCheckinSettings().AdsEnabled),
 		SettingKeyDailyCheckinDailyTotalLimit:               strconv.FormatFloat(s.defaultDailyCheckinSettings().DailyTotalLimit, 'f', 8, 64),
 		SettingKeyDailyCheckinMinReward:                     strconv.FormatFloat(s.defaultDailyCheckinSettings().MinReward, 'f', 8, 64),
 		SettingKeyDailyCheckinMaxReward:                     strconv.FormatFloat(s.defaultDailyCheckinSettings().MaxReward, 'f', 8, 64),

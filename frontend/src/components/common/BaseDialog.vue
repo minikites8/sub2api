@@ -15,7 +15,7 @@
           <!-- Header -->
           <div class="modal-header">
             <h3 :id="dialogId" class="modal-title">
-              {{ title }}
+              <slot name="title">{{ title }}</slot>
             </h3>
             <button
               v-if="showCloseButton"

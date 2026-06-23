@@ -1307,6 +1307,8 @@ type DashboardCacheConfig struct {
 type DailyCheckinConfig struct {
 	// Enabled: 是否启用签到功能
 	Enabled bool `mapstructure:"enabled"`
+	// AdsEnabled: 是否在签到验证区域展示广告
+	AdsEnabled bool `mapstructure:"ads_enabled"`
 	// DailyTotalLimit: 全站每日发放总额度上限（USD）
 	DailyTotalLimit float64 `mapstructure:"daily_total_limit"`
 	// MinReward: 单人单次签到随机奖励最小值（USD）
@@ -1800,6 +1802,7 @@ func setDefaults() {
 
 	// Daily check-in rewards
 	viper.SetDefault("daily_checkin.enabled", false)
+	viper.SetDefault("daily_checkin.ads_enabled", true)
 	viper.SetDefault("daily_checkin.daily_total_limit", 0)
 	viper.SetDefault("daily_checkin.min_reward", 0)
 	viper.SetDefault("daily_checkin.max_reward", 0)

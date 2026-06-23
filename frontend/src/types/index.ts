@@ -169,6 +169,7 @@ export interface AffiliateTransferResponse {
 
 export interface DailyCheckinStatus {
   enabled: boolean
+  ads_enabled: boolean
   checked_in_today: boolean
   today_reward: number
   today_total_granted: number
