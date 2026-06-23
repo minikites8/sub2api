@@ -21,7 +21,26 @@
               class="w-40"
               :options="statusFilterOptions"
               @update:model-value="onStatusFilterChange"
-            />
+            >
+              <template #selected="{ option }">
+                <span
+                  v-if="isKeyStatusValue(statusOptionValue(option))"
+                  :class="['badge', keyStatusBadgeClass(statusOptionValue(option))]"
+                >
+                  {{ statusOptionLabel(option) }}
+                </span>
+                <span v-else>{{ statusOptionLabel(option) || t('keys.allStatus') }}</span>
+              </template>
+              <template #option="{ option }">
+                <span
+                  v-if="isKeyStatusValue(statusOptionValue(option))"
+                  :class="['badge', keyStatusBadgeClass(statusOptionValue(option))]"
+                >
+                  {{ statusOptionLabel(option) }}
+                </span>
+                <span v-else>{{ statusOptionLabel(option) }}</span>
+              </template>
+            </Select>
           </div>
           <EndpointPopover
             v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
@@ -289,10 +308,7 @@
           <template #cell-status="{ value }">
             <span :class="[
               'badge',
-              value === 'active' ? 'badge-success' :
-              value === 'quota_exhausted' ? 'badge-warning' :
-              value === 'expired' ? 'badge-danger' :
-              'badge-gray'
+              keyStatusBadgeClass(value)
             ]">
               {{ t('keys.status.' + value) }}
             </span>
@@ -334,8 +350,8 @@
                 :class="[
                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
                   row.status === 'active'
-                    ? 'text-gray-500 hover:bg-yellow-50 hover:text-yellow-600 dark:hover:bg-yellow-900/20 dark:hover:text-yellow-400'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white'
+                    ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-200'
+                    : 'text-green-700 hover:bg-green-50 hover:text-green-800 dark:text-green-300 dark:hover:bg-green-900/20 dark:hover:text-green-200'
                 ]"
               >
                 <Icon v-if="row.status === 'active'" name="ban" size="sm" />
@@ -492,7 +508,25 @@
             v-model="formData.status"
             :options="statusOptions"
             :placeholder="t('keys.selectStatus')"
-          />
+          >
+            <template #selected="{ option }">
+              <span
+                v-if="isKeyStatusValue(statusOptionValue(option))"
+                :class="['badge', keyStatusBadgeClass(statusOptionValue(option))]"
+              >
+                {{ statusOptionLabel(option) }}
+              </span>
+              <span v-else class="text-gray-400">{{ t('keys.selectStatus') }}</span>
+            </template>
+            <template #option="{ option }">
+              <span
+                v-if="isKeyStatusValue(statusOptionValue(option))"
+                :class="['badge', keyStatusBadgeClass(statusOptionValue(option))]"
+              >
+                {{ statusOptionLabel(option) }}
+              </span>
+            </template>
+          </Select>
         </div>
 
         <!-- IP Restriction Section -->
@@ -1267,6 +1301,37 @@ const statusFilterOptions = computed(() => [
   { value: 'expired', label: t('keys.status.expired') }
 ])
 
+const isKeyStatusValue = (value: string) => {
+  return value === 'active' || value === 'inactive' || value === 'quota_exhausted' || value === 'expired'
+}
+
+const keyStatusBadgeClass = (status: unknown) => {
+  switch (status) {
+    case 'active':
+      return 'key-status-active'
+    case 'inactive':
+      return 'key-status-inactive'
+    case 'quota_exhausted':
+      return 'badge-warning'
+    case 'expired':
+      return 'badge-danger'
+    default:
+      return 'badge-gray'
+  }
+}
+
+const statusOptionValue = (option: unknown) => {
+  if (!option || typeof option !== 'object') return ''
+  const value = (option as { value?: unknown }).value
+  return typeof value === 'string' ? value : ''
+}
+
+const statusOptionLabel = (option: unknown) => {
+  if (!option || typeof option !== 'object') return ''
+  const label = (option as { label?: unknown }).label
+  return typeof label === 'string' ? label : ''
+}
+
 const onFilterChange = () => {
   pagination.value.page = 1
   loadApiKeys()
@@ -1885,5 +1950,29 @@ onUnmounted(() => {
 .ccs-client-option:hover {
   border-color: var(--md-outline);
   background: var(--md-surface-container-low);
+}
+
+.key-status-active {
+  border: 1px solid rgb(187 247 208);
+  background: rgb(220 252 231);
+  color: rgb(22 101 52);
+}
+
+.dark .key-status-active {
+  border-color: rgb(22 101 52 / 0.55);
+  background: rgb(20 83 45 / 0.35);
+  color: rgb(134 239 172);
+}
+
+.key-status-inactive {
+  border: 1px solid rgb(254 215 170);
+  background: rgb(255 237 213);
+  color: rgb(154 52 18);
+}
+
+.dark .key-status-inactive {
+  border-color: rgb(154 52 18 / 0.55);
+  background: rgb(124 45 18 / 0.32);
+  color: rgb(253 186 116);
 }
 </style>

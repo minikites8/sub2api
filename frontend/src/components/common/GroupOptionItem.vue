@@ -61,6 +61,7 @@
 import { computed } from 'vue'
 import GroupBadge from './GroupBadge.vue'
 import type { SubscriptionType, GroupPlatform } from '@/types'
+import { platformRatePillClass } from '@/utils/platformColors'
 
 interface Props {
   name: string
@@ -94,18 +95,7 @@ const hasCustomRate = computed(() => {
 
 // Rate pill color matches platform badge color
 const ratePillClass = computed(() => {
-  switch (props.platform) {
-    case 'anthropic':
-      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
-    case 'openai':
-      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
-    case 'gemini':
-      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
-    case 'kiro':
-      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
-    default: // antigravity and others
-      return 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
-  }
+  return platformRatePillClass(props.platform)
 })
 </script>
 

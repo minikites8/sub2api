@@ -30,147 +30,152 @@
             <span>{{ dailyCheckinEntryText }}</span>
           </button>
         </div>
+      </header>
 
-        <BaseDialog
-          :show="showDailyCheckinDialog"
-          :title="t('dashboard.dailyCheckin.title')"
-          width="narrow"
-          :close-on-click-outside="true"
-          @close="closeDailyCheckinDialog"
-        >
-          <div v-if="dailyCheckinStatus" class="space-y-4">
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex items-start gap-3">
-                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
-                  <Icon name="gift" size="lg" :stroke-width="2" />
-                </div>
-                <p class="mt-0.5 text-sm text-gray-500 dark:text-dark-400">
-                  {{ dailyCheckinTitle }}
-                </p>
+      <BaseDialog
+        :show="showDailyCheckinDialog"
+        :title="t('dashboard.dailyCheckin.title')"
+        width="narrow"
+        :close-on-click-outside="true"
+        @close="closeDailyCheckinDialog"
+      >
+        <div v-if="dailyCheckinStatus" class="space-y-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start gap-3">
+              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
+                <Icon name="gift" size="lg" :stroke-width="2" />
               </div>
-              <span
-                class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium"
-                :class="dailyCheckinStatusClass"
-              >
-                <Icon :name="dailyCheckinStatusIcon" size="xs" :stroke-width="2" />
-                {{ dailyCheckinStatusText }}
-              </span>
+              <p class="mt-0.5 text-sm text-gray-500 dark:text-dark-400">
+                {{ dailyCheckinTitle }}
+              </p>
             </div>
-
-            <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
-              <template v-if="dailyCheckinStatus.checked_in_today">
-                <div class="flex items-start gap-3">
-                  <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                    <Icon name="checkCircle" size="md" :stroke-width="2" />
-                  </div>
-                  <div>
-                    <p class="text-sm font-semibold text-gray-900 dark:text-white">
-                      {{ t('dashboard.dailyCheckin.checked') }}
-                    </p>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-                      {{ t('dashboard.dailyCheckin.checkedHint', { amount: formatCurrency(dailyCheckinStatus.today_reward) }) }}
-                    </p>
-                  </div>
-                </div>
-              </template>
-
-              <template v-else-if="dailyCheckinStatus.exhausted_today">
-                <div class="flex items-start gap-3">
-                  <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300">
-                    <Icon name="exclamationCircle" size="md" :stroke-width="2" />
-                  </div>
-                  <div>
-                    <p class="text-sm font-semibold text-gray-900 dark:text-white">
-                      {{ t('dashboard.dailyCheckin.exhausted') }}
-                    </p>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-                      {{ t('dashboard.dailyCheckin.exhaustedHint') }}
-                    </p>
-                  </div>
-                </div>
-              </template>
-
-              <template v-else-if="!dailyCheckinRechargeEligible">
-                <div class="space-y-4">
-                  <div class="flex items-start gap-3">
-                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
-                      <Icon name="creditCard" size="md" :stroke-width="2" />
-                    </div>
-                    <div>
-                      <p class="text-sm font-semibold text-gray-900 dark:text-white">
-                        {{ t('dashboard.dailyCheckin.rechargeRequired') }}
-                      </p>
-                      <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-                        {{ t('dashboard.dailyCheckin.rechargeRequiredHint', { amount: formatCurrency(dailyCheckinStatus.min_recharge_amount), current: formatCurrency(dailyCheckinStatus.total_recharged) }) }}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    class="btn btn-primary inline-flex w-full items-center justify-center gap-2"
-                    @click="goRecharge"
-                  >
-                    <Icon name="creditCard" size="sm" :stroke-width="2" />
-                    <span>{{ t('dashboard.dailyCheckin.goRecharge') }}</span>
-                  </button>
-                </div>
-              </template>
-
-              <template v-else>
-                <div class="space-y-3">
-                  <div class="flex items-start gap-3">
-                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300">
-                      <Icon name="shield" size="md" :stroke-width="2" />
-                    </div>
-                    <div>
-                      <p class="text-sm font-semibold text-gray-900 dark:text-white">
-                        {{ t('dashboard.dailyCheckin.verifyTitle') }}
-                      </p>
-                      <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-                        {{ t('dashboard.dailyCheckin.verifyHint') }}
-                      </p>
-                    </div>
-                  </div>
-
-                  <GoogleAdSenseAd
-                    client="ca-pub-1423021104870807"
-                    ad-slot="5962250608"
-                  />
-
-                  <div v-if="publicSettingsLoading" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-dark-400">
-                    {{ t('dashboard.dailyCheckin.loadingVerification') }}
-                  </div>
-                  <TurnstileWidget
-                    v-else-if="turnstileReady"
-                    ref="turnstileRef"
-                    :site-key="turnstileSiteKey"
-                    @verify="onTurnstileVerify"
-                    @expire="onTurnstileExpire"
-                    @error="onTurnstileError"
-                  />
-                  <div v-else class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
-                    {{ t('dashboard.dailyCheckin.verificationUnavailable') }}
-                  </div>
-
-                  <p v-if="turnstileError" class="text-sm text-rose-600 dark:text-rose-300">
-                    {{ turnstileError }}
-                  </p>
-
-                  <button
-                    type="button"
-                    class="btn btn-primary inline-flex w-full items-center justify-center gap-2"
-                    :disabled="dailyCheckinDisabled"
-                    @click="handleDailyCheckin"
-                  >
-                    <Icon :name="dailyCheckinButtonIcon" size="sm" :stroke-width="2" />
-                    <span>{{ dailyCheckinButtonText }}</span>
-                  </button>
-                </div>
-              </template>
-            </div>
+            <span
+              class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium"
+              :class="dailyCheckinStatusClass"
+            >
+              <Icon :name="dailyCheckinStatusIcon" size="xs" :stroke-width="2" />
+              {{ dailyCheckinStatusText }}
+            </span>
           </div>
-        </BaseDialog>
 
+          <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+            <template v-if="dailyCheckinStatus.checked_in_today">
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+                  <Icon name="checkCircle" size="md" :stroke-width="2" />
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ t('dashboard.dailyCheckin.checked') }}
+                  </p>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+                    {{ t('dashboard.dailyCheckin.checkedHint', { amount: formatCurrency(dailyCheckinStatus.today_reward) }) }}
+                  </p>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="dailyCheckinStatus.exhausted_today">
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300">
+                  <Icon name="exclamationCircle" size="md" :stroke-width="2" />
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ t('dashboard.dailyCheckin.exhausted') }}
+                  </p>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+                    {{ t('dashboard.dailyCheckin.exhaustedHint') }}
+                  </p>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="!dailyCheckinRechargeEligible">
+              <div class="space-y-4">
+                <div class="flex items-start gap-3">
+                  <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                    <Icon name="creditCard" size="md" :stroke-width="2" />
+                  </div>
+                  <div>
+                    <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                      {{ t('dashboard.dailyCheckin.rechargeRequired') }}
+                    </p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+                      {{ t('dashboard.dailyCheckin.rechargeRequiredHint', { amount: formatCurrency(dailyCheckinStatus.min_recharge_amount), current: formatCurrency(dailyCheckinStatus.total_recharged) }) }}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-primary inline-flex w-full items-center justify-center gap-2"
+                  @click="goRecharge"
+                >
+                  <Icon name="creditCard" size="sm" :stroke-width="2" />
+                  <span>{{ t('dashboard.dailyCheckin.goRecharge') }}</span>
+                </button>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="space-y-3">
+                <div class="flex items-start gap-3">
+                  <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300">
+                    <Icon name="shield" size="md" :stroke-width="2" />
+                  </div>
+                  <div>
+                    <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                      {{ t('dashboard.dailyCheckin.verifyTitle') }}
+                    </p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+                      {{ t('dashboard.dailyCheckin.verifyHint') }}
+                    </p>
+                  </div>
+                </div>
+
+                <GoogleAdSenseAd
+                  client="ca-pub-1423021104870807"
+                  ad-slot="5962250608"
+                />
+
+                <div v-if="publicSettingsLoading" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-dark-400">
+                  {{ t('dashboard.dailyCheckin.loadingVerification') }}
+                </div>
+                <TurnstileWidget
+                  v-else-if="turnstileReady"
+                  ref="turnstileRef"
+                  :site-key="turnstileSiteKey"
+                  @verify="onTurnstileVerify"
+                  @expire="onTurnstileExpire"
+                  @error="onTurnstileError"
+                />
+                <div v-else class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+                  {{ t('dashboard.dailyCheckin.verificationUnavailable') }}
+                </div>
+
+                <p v-if="turnstileError" class="text-sm text-rose-600 dark:text-rose-300">
+                  {{ turnstileError }}
+                </p>
+
+                <button
+                  type="button"
+                  class="btn btn-primary inline-flex w-full items-center justify-center gap-2"
+                  :disabled="dailyCheckinDisabled"
+                  @click="handleDailyCheckin"
+                >
+                  <Icon :name="dailyCheckinButtonIcon" size="sm" :stroke-width="2" />
+                  <span>{{ dailyCheckinButtonText }}</span>
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </BaseDialog>
+
+      <div v-if="loading" class="md3-dashboard-loading">
+        <LoadingSpinner />
+      </div>
+      <template v-else-if="stats">
         <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" :platform-quotas="platformQuotas" />
         <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -246,6 +251,7 @@ const dailyCheckinRechargeEligible = computed(() => {
 const dailyCheckinDisabled = computed(() => {
   return dailyCheckinLoading.value || publicSettingsLoading.value || !dailyCheckinAvailable.value || !turnstileReady.value || !turnstileToken.value
 })
+const dashboardBusy = computed(() => loading.value || loadingUsage.value || loadingCharts.value || dailyCheckinLoading.value)
 const dailyCheckinTitle = computed(() => {
   const status = dailyCheckinStatus.value
   if (!status) return ''

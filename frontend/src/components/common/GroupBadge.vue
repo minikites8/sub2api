@@ -28,6 +28,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SubscriptionType, GroupPlatform } from '@/types'
 import PlatformIcon from './PlatformIcon.vue'
+import { platformGroupBadgeClass } from '@/utils/platformColors'
 
 interface Props {
   name: string
@@ -120,22 +121,6 @@ const labelClass = computed(() => {
 
 // Badge color based on platform and subscription type
 const badgeClass = computed(() => {
-  if (props.platform === 'anthropic' || props.platform === 'kiro') {
-    return isSubscription.value
-      ? 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
-      : 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
-  } else if (props.platform === 'openai') {
-    return isSubscription.value
-      ? 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
-      : 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
-  }
-  if (props.platform === 'gemini') {
-    return isSubscription.value
-      ? 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
-      : 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
-  }
-  return isSubscription.value
-    ? 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
-    : 'bg-gray-50 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
+  return platformGroupBadgeClass(props.platform || '', isSubscription.value)
 })
 </script>
