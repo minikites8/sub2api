@@ -160,10 +160,6 @@
                       :selected="selectedMethod"
                       @select="selectedMethod = $event"
                     />
-                    <div class="auto-topup-copy">
-                      <h3>{{ t('payment.autoTopUp') }}</h3>
-                      <p>{{ t('payment.autoTopUpHint') }}</p>
-                    </div>
                   </div>
                 </article>
               </section>
@@ -697,10 +693,41 @@ function formatBalanceAmount(value: number): string {
   return `$${(Number.isFinite(value) ? value : 0).toFixed(2)}`
 }
 
+function formatAmountPlaceholderValue(value: number): string {
+  const amountText = Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(2).replace(/\.?0+$/, '')
+
+  switch (selectedCurrency.value) {
+    case 'CNY':
+    case 'JPY':
+      return `${amountText}¥`
+    case 'USD':
+      return `$${amountText}`
+    case 'HKD':
+      return `HK$${amountText}`
+    default:
+      return `${amountText} ${selectedCurrency.value}`
+  }
+}
+
 const amountPlaceholder = computed(() => {
-  if (globalMinAmount.value > 0 && globalMaxAmount.value > 0) return `${globalMinAmount.value} - ${globalMaxAmount.value}`
-  if (globalMinAmount.value > 0) return `${globalMinAmount.value}+`
-  if (globalMaxAmount.value > 0) return `<= ${globalMaxAmount.value}`
+  if (globalMinAmount.value > 0 && globalMaxAmount.value > 0) {
+    return t('payment.amountRangePlaceholder', {
+      min: formatAmountPlaceholderValue(globalMinAmount.value),
+      max: formatAmountPlaceholderValue(globalMaxAmount.value)
+    })
+  }
+  if (globalMinAmount.value > 0) {
+    return t('payment.amountFromPlaceholder', {
+      amount: formatAmountPlaceholderValue(globalMinAmount.value)
+    })
+  }
+  if (globalMaxAmount.value > 0) {
+    return t('payment.amountToPlaceholder', {
+      amount: formatAmountPlaceholderValue(globalMaxAmount.value)
+    })
+  }
   return '10'
 })
 
@@ -1650,25 +1677,6 @@ onMounted(async () => {
   background: var(--md-surface-container-high);
   color: var(--md-on-surface);
   box-shadow: inset 0 0 0 1px var(--md-outline);
-}
-
-.auto-topup-copy {
-  border-top: 1px solid var(--md-outline-variant);
-  padding-top: 8px;
-}
-
-.auto-topup-copy h3 {
-  margin: 0 0 8px;
-  color: var(--md-on-surface);
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.auto-topup-copy p {
-  margin: 0;
-  color: var(--md-on-surface-variant);
-  font-size: 0.875rem;
-  line-height: 1.6;
 }
 
 .recent-transactions {
