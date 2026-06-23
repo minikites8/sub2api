@@ -350,8 +350,8 @@
                 :class="[
                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
                   row.status === 'active'
-                    ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-200'
-                    : 'text-green-700 hover:bg-green-50 hover:text-green-800 dark:text-green-300 dark:hover:bg-green-900/20 dark:hover:text-green-200'
+                    ? 'text-gray-500 hover:bg-amber-50 hover:text-amber-700 dark:text-dark-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-300'
+                    : 'text-gray-500 hover:bg-green-50 hover:text-green-700 dark:text-dark-400 dark:hover:bg-green-900/20 dark:hover:text-green-300'
                 ]"
               >
                 <Icon v-if="row.status === 'active'" name="ban" size="sm" />
