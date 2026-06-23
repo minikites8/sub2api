@@ -68,6 +68,9 @@
                 <article class="purchase-panel buy-credits-panel">
                   <header class="purchase-panel-header">
                     <h2>{{ t('payment.buyCredits') }}</h2>
+                    <span v-if="minimumAmountLabel" class="credits-minimum-badge">
+                      {{ minimumAmountLabel }}
+                    </span>
                   </header>
 
                   <div class="purchase-panel-body">
@@ -77,7 +80,7 @@
                         type="text"
                         inputmode="decimal"
                         :value="amountInputText"
-                        :placeholder="amountPlaceholder"
+                        :placeholder="t('payment.enterAmount')"
                         @input="handleAmountInput"
                       />
                     </label>
@@ -693,7 +696,7 @@ function formatBalanceAmount(value: number): string {
   return `$${(Number.isFinite(value) ? value : 0).toFixed(2)}`
 }
 
-function formatAmountPlaceholderValue(value: number): string {
+function formatCompactPaymentAmount(value: number): string {
   const amountText = Number.isInteger(value)
     ? String(value)
     : value.toFixed(2).replace(/\.?0+$/, '')
@@ -711,24 +714,11 @@ function formatAmountPlaceholderValue(value: number): string {
   }
 }
 
-const amountPlaceholder = computed(() => {
-  if (globalMinAmount.value > 0 && globalMaxAmount.value > 0) {
-    return t('payment.amountRangePlaceholder', {
-      min: formatAmountPlaceholderValue(globalMinAmount.value),
-      max: formatAmountPlaceholderValue(globalMaxAmount.value)
-    })
-  }
-  if (globalMinAmount.value > 0) {
-    return t('payment.amountFromPlaceholder', {
-      amount: formatAmountPlaceholderValue(globalMinAmount.value)
-    })
-  }
-  if (globalMaxAmount.value > 0) {
-    return t('payment.amountToPlaceholder', {
-      amount: formatAmountPlaceholderValue(globalMaxAmount.value)
-    })
-  }
-  return '10'
+const minimumAmountLabel = computed(() => {
+  if (globalMinAmount.value <= 0) return ''
+  return t('payment.minimumAmount', {
+    amount: formatCompactPaymentAmount(globalMinAmount.value)
+  })
 })
 
 const AMOUNT_PATTERN = /^\d*(\.\d{0,2})?$/
@@ -1486,6 +1476,18 @@ onMounted(async () => {
   color: var(--md-on-surface);
   font-size: 1.0625rem;
   font-weight: 700;
+}
+
+.credits-minimum-badge {
+  flex: 0 0 auto;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 999px;
+  background: var(--md-surface-container);
+  padding: 6px 10px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1;
 }
 
 .purchase-panel-body {

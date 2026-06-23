@@ -7295,9 +7295,7 @@ export default {
   payment: {
     title: '充值/订阅',
     amountLabel: '充值金额',
-    amountFromPlaceholder: '{amount}起',
-    amountToPlaceholder: '最高 {amount}',
-    amountRangePlaceholder: '{min} - {max}',
+    minimumAmount: '最低充值金额 {amount}',
     paymentAmount: '支付金额',
     creditedBalance: '到账余额',
     quickAmounts: '快捷金额',

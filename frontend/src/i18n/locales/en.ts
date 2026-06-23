@@ -7116,9 +7116,7 @@ export default {
   payment: {
     title: 'Recharge / Subscription',
     amountLabel: 'Amount',
-    amountFromPlaceholder: 'From {amount}',
-    amountToPlaceholder: 'Up to {amount}',
-    amountRangePlaceholder: '{min} - {max}',
+    minimumAmount: 'Minimum {amount}',
     paymentAmount: 'Payment Amount',
     creditedBalance: 'Credited Balance',
     quickAmounts: 'Quick Amounts',
