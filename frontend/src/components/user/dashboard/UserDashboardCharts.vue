@@ -66,9 +66,12 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="model in models" :key="model.model">
+                <tr v-for="(model, index) in models" :key="model.model">
                   <td :title="model.model">
-                    <span>{{ model.model }}</span>
+                    <span class="md3-model-name">
+                      <i :style="{ backgroundColor: modelPalette[index % modelPalette.length] }"></i>
+                      <span>{{ model.model }}</span>
+                    </span>
                   </td>
                   <td>{{ formatNumber(model.requests) }}</td>
                   <td>{{ formatTokens(model.total_tokens) }}</td>
@@ -110,12 +113,27 @@ const granularityOptions = computed(() => [
   { value: 'hour', label: t('dashboard.hour') }
 ])
 
+const modelPalette = [
+  '#0b57d0',
+  '#006a6a',
+  '#6750a4',
+  '#8c6d1f',
+  '#ba1a1a',
+  '#146c2e',
+  '#b06000',
+  '#3f484a'
+]
+
+const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
+
 const modelData = computed(() => !props.models?.length ? null : {
   labels: props.models.map((m: ModelStat) => m.model),
   datasets: [{
     data: props.models.map((m: ModelStat) => m.total_tokens),
-    backgroundColor: ['#f1f1f1', '#aaaaaa', '#717171', '#3f3f3f', '#272727', '#606060', '#909090', '#cccccc'],
-    borderWidth: 0
+    backgroundColor: props.models.map((_, index) => modelPalette[index % modelPalette.length]),
+    borderColor: isDarkMode.value ? '#131314' : '#ffffff',
+    borderWidth: 2,
+    hoverBorderWidth: 2
   }]
 })
 
@@ -365,8 +383,22 @@ const doughnutOptions = {
   text-align: left;
 }
 
-.md3-model-table td:first-child span {
-  display: block;
+.md3-model-table td:first-child > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.md3-model-name i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.md3-model-name span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

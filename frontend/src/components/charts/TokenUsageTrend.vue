@@ -66,11 +66,11 @@ const isDarkMode = computed(() => {
 const chartColors = computed(() => ({
   text: isDarkMode.value ? '#f1f3f4' : '#3c4043',
   grid: isDarkMode.value ? '#4d4d4d' : '#e8eaed',
-  input: isDarkMode.value ? '#e8eaed' : '#3c4043',
-  output: isDarkMode.value ? '#bdc1c6' : '#5f6368',
-  cacheCreation: isDarkMode.value ? '#9aa0a6' : '#80868b',
-  cacheRead: isDarkMode.value ? '#8e8e8e' : '#9aa0a6',
-  cacheHitRate: isDarkMode.value ? '#d6d3d1' : '#78716c'
+  input: isDarkMode.value ? '#a8c7fa' : '#0b57d0',
+  output: isDarkMode.value ? '#7ddbd3' : '#006a6a',
+  cacheCreation: isDarkMode.value ? '#f7d070' : '#8c6d1f',
+  cacheRead: isDarkMode.value ? '#d0bcff' : '#6750a4',
+  cacheHitRate: isDarkMode.value ? '#ffb4ab' : '#ba1a1a'
 }))
 
 const chartData = computed(() => {
@@ -83,32 +83,52 @@ const chartData = computed(() => {
         label: 'Input',
         data: props.trendData.map((d) => d.input_tokens),
         borderColor: chartColors.value.input,
-        backgroundColor: `${chartColors.value.input}20`,
+        backgroundColor: `${chartColors.value.input}1f`,
         fill: true,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: chartColors.value.input,
+        pointBorderColor: chartColors.value.input,
         tension: 0.3
       },
       {
         label: 'Output',
         data: props.trendData.map((d) => d.output_tokens),
         borderColor: chartColors.value.output,
-        backgroundColor: `${chartColors.value.output}20`,
+        backgroundColor: `${chartColors.value.output}1f`,
         fill: true,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: chartColors.value.output,
+        pointBorderColor: chartColors.value.output,
         tension: 0.3
       },
       {
         label: 'Cache Creation',
         data: props.trendData.map((d) => d.cache_creation_tokens),
         borderColor: chartColors.value.cacheCreation,
-        backgroundColor: `${chartColors.value.cacheCreation}20`,
+        backgroundColor: `${chartColors.value.cacheCreation}18`,
         fill: true,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: chartColors.value.cacheCreation,
+        pointBorderColor: chartColors.value.cacheCreation,
         tension: 0.3
       },
       {
         label: 'Cache Read',
         data: props.trendData.map((d) => d.cache_read_tokens),
         borderColor: chartColors.value.cacheRead,
-        backgroundColor: `${chartColors.value.cacheRead}20`,
+        backgroundColor: `${chartColors.value.cacheRead}18`,
         fill: true,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: chartColors.value.cacheRead,
+        pointBorderColor: chartColors.value.cacheRead,
         tension: 0.3
       },
       {
@@ -118,9 +138,14 @@ const chartData = computed(() => {
           return totalPromptTokens > 0 ? (d.cache_read_tokens / totalPromptTokens) * 100 : 0
         }),
         borderColor: chartColors.value.cacheHitRate,
-        backgroundColor: `${chartColors.value.cacheHitRate}20`,
-        borderDash: [5, 5],
+        backgroundColor: `${chartColors.value.cacheHitRate}18`,
+        borderDash: [4, 4],
         fill: false,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: chartColors.value.cacheHitRate,
+        pointBorderColor: chartColors.value.cacheHitRate,
         tension: 0.3,
         yAxisID: 'yPercent'
       }
