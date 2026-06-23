@@ -1204,6 +1204,7 @@ export default {
   redeem: {
     title: 'Redeem Code',
     description: 'Enter your redeem code to add balance or increase concurrency',
+    accountLine: 'Personal Account: {account}',
     currentBalance: 'Current Balance',
     concurrency: 'Concurrency',
     requests: 'requests',
@@ -1223,6 +1224,7 @@ export default {
     codeRule2: 'Codes may add balance, increase concurrency, or grant trial access',
     codeRule3: 'Contact support if you have issues redeeming a code',
     codeRule4: 'Balance and concurrency updates are immediate',
+    contact: 'Contact',
     recentActivity: 'Recent Activity',
     historyWillAppear: 'Your redemption history will appear here',
     balanceAddedRedeem: 'Balance Added (Redeem)',

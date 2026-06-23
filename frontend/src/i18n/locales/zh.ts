@@ -1208,6 +1208,7 @@ export default {
   redeem: {
     title: '兑换码',
     description: '输入兑换码以充值余额或增加并发数',
+    accountLine: '个人账户：{account}',
     currentBalance: '当前余额',
     concurrency: '并发数',
     requests: '请求',
@@ -1227,6 +1228,7 @@ export default {
     codeRule2: '兑换码可以增加余额、并发数或试用权限',
     codeRule3: '如有兑换问题，请联系客服',
     codeRule4: '余额和并发数即时更新',
+    contact: '联系方式',
     recentActivity: '最近活动',
     historyWillAppear: '您的兑换历史将显示在这里',
     balanceAddedRedeem: '余额充值（兑换）',
