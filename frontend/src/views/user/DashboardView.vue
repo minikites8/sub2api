@@ -178,9 +178,9 @@
       <template v-else-if="stats">
         <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" :platform-quotas="platformQuotas" />
         <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
-        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div class="lg:col-span-2"><UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" /></div>
-          <div class="lg:col-span-1"><UserDashboardQuickActions /></div>
+        <div class="md3-dashboard-main-grid">
+          <UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" />
+          <UserDashboardQuickActions />
         </div>
       </template>
     </section>
@@ -464,15 +464,15 @@ onMounted(() => {
 <style scoped>
 .md3-dashboard {
   display: grid;
-  gap: 20px;
+  gap: 16px;
 }
 
 .md3-dashboard-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
-  padding: 16px 8px 4px;
+  gap: 16px;
+  padding: 4px 0 2px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -485,23 +485,23 @@ onMounted(() => {
 }
 
 .md3-dashboard-kicker {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   color: var(--md-on-surface-variant);
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.6875rem;
+  font-weight: 650;
   text-transform: uppercase;
 }
 
 .dark .md3-dashboard-kicker {
-  color: var(--md-primary);
+  color: var(--md-on-surface-variant);
 }
 
 .md3-dashboard-header h1 {
   margin: 0;
   color: var(--md-on-surface);
-  font-size: 2rem;
+  font-size: 1.5rem;
   line-height: 1.2;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .dark .md3-dashboard-header h1 {
@@ -509,11 +509,11 @@ onMounted(() => {
 }
 
 .md3-dashboard-header p:not(.md3-dashboard-kicker) {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   max-width: 42rem;
   color: var(--md-on-surface-variant);
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .dark .md3-dashboard-header p:not(.md3-dashboard-kicker) {
@@ -603,8 +603,8 @@ onMounted(() => {
 
 .md3-dashboard-main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 0.85fr);
-  gap: 20px;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 0.75fr);
+  gap: 16px;
   align-items: start;
 }
 

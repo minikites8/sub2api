@@ -387,22 +387,16 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .md3-stat-card {
-  display: flex;
+  display: grid;
   min-width: 0;
-  min-height: 112px;
-  align-items: flex-start;
-  gap: 14px;
+  min-height: 132px;
+  align-content: space-between;
+  gap: 18px;
   padding: 18px;
 }
 
 .md3-stat-icon {
-  display: inline-flex;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
+  display: none;
 }
 
 .md3-stat-icon svg {
@@ -437,21 +431,23 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 .md3-stat-copy {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 10px;
 }
 
 .md3-stat-label {
   color: var(--md-on-surface-variant);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .md3-stat-value {
   min-width: 0;
   color: var(--md-on-surface);
-  font-size: 1.375rem;
-  line-height: 1.25;
-  font-weight: 800;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  font-weight: 650;
+  letter-spacing: 0;
   word-break: break-word;
 }
 
@@ -474,13 +470,13 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .md3-stat-meta-success {
-  color: var(--md-on-surface);
-  font-weight: 700;
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
 }
 
 .md3-stat-meta-accent {
-  color: var(--md-on-surface);
-  font-weight: 700;
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
 }
 
 .md3-inline-metric {
@@ -523,7 +519,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
 }
 
 .md3-platform-panel {
-  padding: 18px;
+  padding: 16px;
 }
 
 .md3-section-header {
@@ -538,7 +534,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   margin: 0;
   color: var(--md-on-surface);
   font-size: 0.9375rem;
-  font-weight: 760;
+  font-weight: 650;
 }
 
 .md3-section-header p {
@@ -565,18 +561,18 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   min-width: 0;
   border: 1px solid var(--md-outline-variant);
   border-radius: 12px;
-  background: var(--md-surface-container-low);
+  background: var(--md-surface);
   padding: 14px;
 }
 
 .md3-platform-card-other {
   border-style: dashed;
-  background: var(--md-surface-container);
+  background: var(--md-surface-container-low);
 }
 
 .dark .md3-platform-card {
   border-color: var(--md-outline-variant);
-  background: var(--md-surface-container-low);
+  background: var(--md-surface);
 }
 
 .dark .md3-platform-card-other {
@@ -595,7 +591,7 @@ const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s`
   min-width: 0;
   color: var(--md-on-surface);
   font-size: 0.875rem;
-  font-weight: 760;
+  font-weight: 650;
   overflow-wrap: anywhere;
 }
 

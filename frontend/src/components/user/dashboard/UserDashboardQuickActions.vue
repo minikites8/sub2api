@@ -75,7 +75,7 @@ const actions = computed(() => [
 }
 
 .md3-actions-header {
-  padding: 16px 18px;
+  padding: 16px 18px 12px;
   border-bottom: 1px solid var(--md-outline-variant);
 }
 
@@ -87,7 +87,7 @@ const actions = computed(() => [
   margin: 0;
   color: var(--md-on-surface);
   font-size: 0.9375rem;
-  font-weight: 760;
+  font-weight: 650;
 }
 
 .dark .md3-actions-header h2 {
@@ -96,8 +96,8 @@ const actions = computed(() => [
 
 .md3-actions-list {
   display: grid;
-  gap: 8px;
-  padding: 12px;
+  gap: 0;
+  padding: 6px 12px 12px;
 }
 
 .md3-action-row {
@@ -106,36 +106,40 @@ const actions = computed(() => [
   min-width: 0;
   align-items: center;
   gap: 12px;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  background: var(--md-surface-container-low);
-  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--md-outline-variant);
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 2px;
   text-align: left;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 
+.md3-action-row:last-child {
+  border-bottom: 0;
+}
+
 .md3-action-row:hover {
-  border-color: var(--md-outline-variant);
-  background: var(--md-state-hover);
+  background: transparent;
 }
 
 .dark .md3-action-row {
-  background: var(--md-surface-container-low);
+  border-color: var(--md-outline-variant);
+  background: transparent;
 }
 
 .dark .md3-action-row:hover {
-  border-color: var(--md-outline-variant);
-  background: var(--md-state-hover);
+  background: transparent;
 }
 
 .md3-action-icon {
   display: inline-flex;
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .md3-action-icon-key,
@@ -163,7 +167,7 @@ const actions = computed(() => [
   overflow: hidden;
   color: var(--md-on-surface);
   font-size: 0.875rem;
-  font-weight: 760;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

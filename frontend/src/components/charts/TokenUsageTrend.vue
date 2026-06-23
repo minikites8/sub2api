@@ -1,17 +1,17 @@
 <template>
-  <div class="card p-4">
-    <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
+  <div :class="embedded ? 'token-trend-embedded' : 'card p-4'">
+    <h3 v-if="!embedded" class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
       {{ t('admin.dashboard.tokenUsageTrend') }}
     </h3>
-    <div v-if="loading" class="flex h-48 items-center justify-center">
+    <div v-if="loading" :class="['flex items-center justify-center', embedded ? 'h-60' : 'h-48']">
       <LoadingSpinner />
     </div>
-    <div v-else-if="trendData.length > 0 && chartData" class="h-48">
+    <div v-else-if="trendData.length > 0 && chartData" :class="embedded ? 'h-60' : 'h-48'">
       <Line :data="chartData" :options="lineOptions" />
     </div>
     <div
       v-else
-      class="flex h-48 items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+      :class="['flex items-center justify-center text-sm text-gray-500 dark:text-gray-400', embedded ? 'h-60' : 'h-48']"
     >
       {{ t('admin.dashboard.noDataAvailable') }}
     </div>
@@ -49,10 +49,15 @@ ChartJS.register(
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   trendData: TrendDataPoint[]
   loading?: boolean
-}>()
+  embedded?: boolean
+}>(), {
+  embedded: false
+})
+
+const embedded = computed(() => props.embedded)
 
 const isDarkMode = computed(() => {
   return document.documentElement.classList.contains('dark')
@@ -226,3 +231,9 @@ const formatCost = (value: number): string => {
   return value.toFixed(4)
 }
 </script>
+
+<style scoped>
+.token-trend-embedded {
+  min-width: 0;
+}
+</style>

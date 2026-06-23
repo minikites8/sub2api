@@ -1,41 +1,51 @@
 <template>
   <section class="md3-charts-shell">
-    <div class="md3-chart-toolbar">
-      <div class="md3-toolbar-group md3-toolbar-date">
-        <span>{{ t('dashboard.timeRange') }}</span>
-        <DateRangePicker
-          :start-date="startDate"
-          :end-date="endDate"
-          @update:startDate="$emit('update:startDate', $event)"
-          @update:endDate="$emit('update:endDate', $event)"
-          @change="$emit('dateRangeChange', $event)"
-        />
-      </div>
+    <article class="md3-trend-card">
+      <header class="md3-card-header md3-chart-header">
+        <div>
+          <h2>{{ t('dashboard.tokenUsageTrend') }}</h2>
+          <p>{{ t('dashboard.timeRange') }}</p>
+        </div>
+        <div class="md3-chart-controls">
+          <DateRangePicker
+            :start-date="startDate"
+            :end-date="endDate"
+            @update:startDate="$emit('update:startDate', $event)"
+            @update:endDate="$emit('update:endDate', $event)"
+            @change="$emit('dateRangeChange', $event)"
+          />
+          <Select
+            :model-value="granularity"
+            :options="granularityOptions"
+            size="sm"
+            @update:model-value="$emit('update:granularity', $event)"
+            @change="$emit('granularityChange')"
+          />
+          <button
+            type="button"
+            class="md3-refresh-button"
+            :disabled="loading"
+            :title="t('common.refresh')"
+            :aria-label="t('common.refresh')"
+            @click="$emit('refresh')"
+          >
+            <Icon name="refresh" size="sm" />
+          </button>
+        </div>
+      </header>
+      <TokenUsageTrend :trend-data="trend" :loading="loading" embedded />
+    </article>
 
-      <button type="button" class="md3-refresh-button" :disabled="loading" @click="$emit('refresh')">
-        <Icon name="refresh" size="sm" />
-        <span>{{ t('common.refresh') }}</span>
-      </button>
-
-      <div class="md3-toolbar-group md3-toolbar-granularity">
-        <span>{{ t('dashboard.granularity') }}</span>
-        <Select
-          :model-value="granularity"
-          :options="granularityOptions"
-          size="sm"
-          @update:model-value="$emit('update:granularity', $event)"
-          @change="$emit('granularityChange')"
-        />
-      </div>
-    </div>
-
-    <div class="md3-chart-grid">
-      <article class="md3-model-card">
+    <article class="md3-model-card">
+      <div class="md3-model-card-inner">
         <div v-if="loading" class="md3-card-loading">
           <LoadingSpinner size="md" />
         </div>
         <header class="md3-card-header">
-          <h2>{{ t('dashboard.modelDistribution') }}</h2>
+          <div>
+            <h2>{{ t('dashboard.modelDistribution') }}</h2>
+            <p>{{ t('dashboard.requests') }} / {{ t('dashboard.tokens') }}</p>
+          </div>
         </header>
 
         <div class="md3-model-content">
@@ -69,12 +79,8 @@
             </table>
           </div>
         </div>
-      </article>
-
-      <div class="md3-trend-card">
-        <TokenUsageTrend :trend-data="trend" :loading="loading" />
       </div>
-    </div>
+    </article>
   </section>
 </template>
 
@@ -128,70 +134,84 @@ const doughnutOptions = {
 .md3-charts-shell {
   display: grid;
   gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.md3-chart-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
+.md3-trend-card,
+.md3-model-card-inner {
   border: 1px solid var(--md-outline-variant);
   border-radius: 12px;
   background: var(--md-surface);
-  padding: 12px;
   box-shadow: var(--md-elevation-1);
 }
 
-.dark .md3-chart-toolbar {
+.md3-trend-card {
+  display: grid;
+  min-width: 0;
+  grid-column: 1 / -1;
+  gap: 8px;
+  padding: 16px;
+}
+
+.md3-model-card {
+  min-width: 0;
+  grid-column: 1 / -1;
+}
+
+.md3-model-card-inner {
+  position: relative;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.dark .md3-trend-card,
+.dark .md3-model-card-inner {
   border-color: var(--md-outline-variant);
   background: var(--md-surface);
   box-shadow: var(--md-elevation-1);
 }
 
-.md3-toolbar-group {
+.md3-chart-header {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.md3-chart-controls {
+  display: flex;
+  flex: 1 1 420px;
   min-width: 0;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
-.md3-toolbar-group > span {
-  color: var(--md-on-surface-variant);
-  font-size: 0.75rem;
-  font-weight: 800;
-  white-space: nowrap;
+.md3-chart-controls :deep(.relative) {
+  min-width: 118px;
 }
 
-.md3-toolbar-date {
-  flex: 1 1 320px;
-}
-
-.md3-toolbar-granularity {
-  margin-left: auto;
-}
-
-.md3-toolbar-granularity :deep(.relative) {
+.md3-chart-controls :deep(.select-trigger) {
   width: 118px;
 }
 
 .md3-refresh-button {
   display: inline-flex;
-  min-height: 34px;
+  width: 34px;
+  height: 34px;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: var(--md-primary-container);
-  padding: 0 12px;
-  color: var(--md-on-primary-container);
-  font-size: 0.8125rem;
-  font-weight: 800;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 8px;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 
 .md3-refresh-button:hover:not(:disabled) {
-  background: var(--md-surface-container-high);
+  background: var(--md-state-hover);
+  color: var(--md-on-surface);
 }
 
 .md3-refresh-button:disabled {
@@ -199,63 +219,30 @@ const doughnutOptions = {
   opacity: 0.56;
 }
 
-.dark .md3-toolbar-group > span {
+.dark .md3-refresh-button {
+  border-color: var(--md-outline-variant);
+  background: var(--md-surface-container-low);
   color: var(--md-on-surface-variant);
 }
 
-.dark .md3-refresh-button {
-  background: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-}
-
 .dark .md3-refresh-button:hover:not(:disabled) {
-  background: var(--md-surface-container-high);
+  background: var(--md-state-hover);
+  color: var(--md-on-surface);
 }
 
-.md3-chart-toolbar :deep(.date-picker-trigger),
-.md3-chart-toolbar :deep(.select-trigger) {
+.md3-chart-controls :deep(.date-picker-trigger),
+.md3-chart-controls :deep(.select-trigger) {
   min-height: 34px;
-  border-radius: 999px;
-  background: var(--md-surface-container);
+  border-radius: 8px;
+  background: var(--md-surface-container-low);
   padding-top: 0.375rem;
   padding-bottom: 0.375rem;
   box-shadow: none;
 }
 
-.dark .md3-chart-toolbar :deep(.date-picker-trigger),
-.dark .md3-chart-toolbar :deep(.select-trigger) {
+.dark .md3-chart-controls :deep(.date-picker-trigger),
+.dark .md3-chart-controls :deep(.select-trigger) {
   background: var(--md-surface-container-low);
-}
-
-.md3-chart-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: 16px;
-}
-
-.md3-model-card,
-.md3-trend-card :deep(.card) {
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 12px;
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
-}
-
-.md3-model-card {
-  position: relative;
-  overflow: hidden;
-  padding: 16px;
-}
-
-.md3-trend-card :deep(.card) {
-  height: 100%;
-}
-
-.dark .md3-model-card,
-.dark .md3-trend-card :deep(.card) {
-  border-color: var(--md-outline-variant);
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
 }
 
 .md3-card-loading {
@@ -273,18 +260,28 @@ const doughnutOptions = {
 }
 
 .md3-card-header {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .md3-card-header h2 {
   margin: 0;
   color: var(--md-on-surface);
   font-size: 0.9375rem;
-  font-weight: 760;
+  font-weight: 650;
+}
+
+.md3-card-header p {
+  margin: 4px 0 0;
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
 }
 
 .dark .md3-card-header h2 {
   color: var(--md-on-surface);
+}
+
+.dark .md3-card-header p {
+  color: var(--md-on-surface-variant);
 }
 
 .md3-model-content {
@@ -397,31 +394,21 @@ const doughnutOptions = {
 }
 
 @media (max-width: 1180px) {
-  .md3-chart-grid {
+  .md3-charts-shell {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 720px) {
-  .md3-chart-toolbar {
-    align-items: stretch;
-  }
-
-  .md3-toolbar-group {
+  .md3-chart-controls {
     width: 100%;
-    align-items: flex-start;
+    align-items: stretch;
     flex-direction: column;
   }
 
-  .md3-toolbar-date,
-  .md3-toolbar-granularity {
-    flex: 1 1 auto;
-    margin-left: 0;
-  }
-
-  .md3-toolbar-date :deep(.relative),
-  .md3-toolbar-date :deep(.date-picker-trigger),
-  .md3-toolbar-granularity :deep(.relative),
+  .md3-chart-controls :deep(.relative),
+  .md3-chart-controls :deep(.date-picker-trigger),
+  .md3-chart-controls :deep(.select-trigger),
   .md3-refresh-button {
     width: 100%;
   }

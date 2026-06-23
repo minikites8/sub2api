@@ -78,7 +78,7 @@ const formatCost = (c: number) => c.toFixed(4)
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 18px;
+  padding: 16px 18px 12px;
   border-bottom: 1px solid var(--md-outline-variant);
 }
 
@@ -90,7 +90,7 @@ const formatCost = (c: number) => c.toFixed(4)
   margin: 0;
   color: var(--md-on-surface);
   font-size: 0.9375rem;
-  font-weight: 760;
+  font-weight: 650;
 }
 
 .md3-panel-header p {
@@ -105,10 +105,10 @@ const formatCost = (c: number) => c.toFixed(4)
   align-items: center;
   gap: 6px;
   border-radius: 8px;
-  padding: 6px 8px;
-  color: var(--md-primary);
+  padding: 5px 7px;
+  color: var(--md-on-surface-variant);
   font-size: 0.8125rem;
-  font-weight: 800;
+  font-weight: 600;
   transition: background-color 160ms ease;
 }
 
@@ -125,7 +125,7 @@ const formatCost = (c: number) => c.toFixed(4)
 }
 
 .dark .md3-header-link {
-  color: var(--md-primary);
+  color: var(--md-on-surface-variant);
 }
 
 .dark .md3-header-link:hover {
@@ -133,7 +133,7 @@ const formatCost = (c: number) => c.toFixed(4)
 }
 
 .md3-panel-body {
-  padding: 12px;
+  padding: 6px 12px 12px;
 }
 
 .md3-loading-state,
@@ -150,7 +150,7 @@ const formatCost = (c: number) => c.toFixed(4)
 
 .md3-usage-list {
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .md3-usage-row {
@@ -159,25 +159,29 @@ const formatCost = (c: number) => c.toFixed(4)
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  background: var(--md-surface-container-low);
-  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--md-outline-variant);
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 2px;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 
+.md3-usage-row:last-child {
+  border-bottom: 0;
+}
+
 .md3-usage-row:hover {
-  border-color: var(--md-outline-variant);
-  background: var(--md-state-hover);
+  background: transparent;
 }
 
 .dark .md3-usage-row {
-  background: var(--md-surface-container-low);
+  border-color: var(--md-outline-variant);
+  background: transparent;
 }
 
 .dark .md3-usage-row:hover {
-  border-color: var(--md-outline-variant);
-  background: var(--md-state-hover);
+  background: transparent;
 }
 
 .md3-usage-main {
@@ -189,18 +193,18 @@ const formatCost = (c: number) => c.toFixed(4)
 
 .md3-usage-icon {
   display: inline-flex;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: var(--md-surface-container-high);
+  border-radius: 8px;
+  background: var(--md-surface-container-low);
   color: var(--md-on-surface-variant);
 }
 
 .dark .md3-usage-icon {
-  background: var(--md-surface-container-high);
+  background: var(--md-surface-container-low);
   color: var(--md-on-surface-variant);
 }
 
@@ -215,7 +219,7 @@ const formatCost = (c: number) => c.toFixed(4)
   overflow: hidden;
   color: var(--md-on-surface);
   font-size: 0.875rem;
-  font-weight: 760;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
