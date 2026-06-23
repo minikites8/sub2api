@@ -178,10 +178,6 @@
       <template v-else-if="stats">
         <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" />
         <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
-        <div class="md3-dashboard-main-grid">
-          <UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" />
-          <UserDashboardQuickActions />
-        </div>
       </template>
     </section>
   </AppLayout>
@@ -198,13 +194,11 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserDashboardStats from '@/components/user/dashboard/UserDashboardStats.vue'
 import UserDashboardCharts from '@/components/user/dashboard/UserDashboardCharts.vue'
-import UserDashboardRecentUsage from '@/components/user/dashboard/UserDashboardRecentUsage.vue'
-import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import GoogleAdSenseAd from '@/components/ads/GoogleAdSenseAd.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { UsageLog, TrendDataPoint, ModelStat, DailyCheckinStatus } from '@/types'
+import type { TrendDataPoint, ModelStat, DailyCheckinStatus } from '@/types'
 import { getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isDailyCheckinRechargeEligible } from '@/utils/dailyCheckin'
@@ -217,12 +211,10 @@ const user = computed(() => authStore.user)
 
 const stats = ref<UserStatsType | null>(null)
 const loading = ref(false)
-const loadingUsage = ref(false)
 const loadingCharts = ref(false)
 const publicSettingsLoading = ref(false)
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
-const recentUsage = ref<UsageLog[]>([])
 const dailyCheckinStatus = ref<DailyCheckinStatus | null>(null)
 const dailyCheckinLoading = ref(false)
 const showDailyCheckinDialog = ref(false)
@@ -250,7 +242,7 @@ const dailyCheckinRechargeEligible = computed(() => {
 const dailyCheckinDisabled = computed(() => {
   return dailyCheckinLoading.value || publicSettingsLoading.value || !dailyCheckinAvailable.value || !turnstileReady.value || !turnstileToken.value
 })
-const dashboardBusy = computed(() => loading.value || loadingUsage.value || loadingCharts.value || dailyCheckinLoading.value)
+const dashboardBusy = computed(() => loading.value || loadingCharts.value || dailyCheckinLoading.value)
 const dailyCheckinTitle = computed(() => {
   const status = dailyCheckinStatus.value
   if (!status) return ''
@@ -338,18 +330,6 @@ const loadCharts = async () => {
   }
 }
 
-const loadRecent = async () => {
-  loadingUsage.value = true
-  try {
-    const res = await usageAPI.getByDateRange(startDate.value, endDate.value)
-    recentUsage.value = res.items.slice(0, 5)
-  } catch (error) {
-    console.error('Failed to load recent usage:', error)
-  } finally {
-    loadingUsage.value = false
-  }
-}
-
 const loadDailyCheckin = async () => {
   try {
     dailyCheckinStatus.value = await getDailyCheckinStatus()
@@ -371,7 +351,6 @@ const loadPublicSettings = async () => {
 const refreshAll = () => {
   loadStats()
   loadCharts()
-  loadRecent()
   loadDailyCheckin()
   loadPublicSettings()
 }
@@ -587,19 +566,6 @@ onMounted(() => {
 .dark .md3-dashboard-loading {
   border-color: var(--md-outline-variant);
   background: var(--md-surface);
-}
-
-.md3-dashboard-main-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 0.75fr);
-  gap: 16px;
-  align-items: start;
-}
-
-@media (max-width: 1024px) {
-  .md3-dashboard-main-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 768px) {

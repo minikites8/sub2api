@@ -81,6 +81,8 @@
         </div>
       </div>
     </article>
+
+    <UserDashboardQuickActions class="md3-quick-actions-card" />
   </section>
 </template>
 
@@ -93,6 +95,7 @@ import Select from '@/components/common/Select.vue'
 import { Doughnut } from 'vue-chartjs'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import Icon from '@/components/icons/Icon.vue'
+import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
 import type { TrendDataPoint, ModelStat } from '@/types'
 import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
@@ -155,7 +158,13 @@ const doughnutOptions = {
 
 .md3-model-card {
   min-width: 0;
-  grid-column: 1 / -1;
+  grid-column: span 3;
+}
+
+.md3-quick-actions-card {
+  min-width: 0;
+  grid-column: span 1;
+  align-self: stretch;
 }
 
 .md3-model-card-inner {
@@ -396,6 +405,11 @@ const doughnutOptions = {
 @media (max-width: 1180px) {
   .md3-charts-shell {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .md3-model-card,
+  .md3-quick-actions-card {
+    grid-column: 1 / -1;
   }
 }
 
