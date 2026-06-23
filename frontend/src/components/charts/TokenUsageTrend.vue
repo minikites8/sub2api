@@ -171,7 +171,9 @@ const lineOptions = computed(() => ({
       labels: {
         color: chartColors.value.text,
         usePointStyle: true,
-        pointStyle: 'circle',
+        pointStyle: 'line',
+        boxWidth: 28,
+        boxHeight: 8,
         padding: 15,
         font: {
           size: 11
@@ -225,6 +227,7 @@ const lineOptions = computed(() => ({
       position: 'right' as const,
       min: 0,
       max: 100,
+      display: false,
       grid: {
         drawOnChartArea: false
       },

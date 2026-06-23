@@ -11,7 +11,7 @@
           <Icon name="menu" size="md" />
         </button>
 
-        <div class="hidden lg:block">
+        <div v-if="!hideDesktopTitle" class="hidden lg:block">
           <h1 class="text-base font-semibold text-gray-900 dark:text-white">
             {{ pageTitle }}
           </h1>
@@ -237,6 +237,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl)
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+const hideDesktopTitle = computed(() => route.name === 'Dashboard')
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {
