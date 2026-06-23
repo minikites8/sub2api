@@ -3,101 +3,60 @@
     <TablePageLayout>
       <template #actions>
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <!-- Total Requests -->
-          <div class="usage-summary-card usage-summary-card-requests">
-          <div class="flex items-center gap-3">
-            <div class="usage-summary-icon">
-              <Icon name="document" size="md" class="usage-summary-icon-svg" />
-            </div>
-            <div>
-              <p class="usage-summary-label">
-                {{ t('usage.totalRequests') }}
-              </p>
-              <p class="usage-summary-value">
-                {{ usageStats?.total_requests?.toLocaleString() || '0' }}
-              </p>
-              <p class="usage-summary-meta">
-                {{ t('usage.inSelectedRange') }}
-              </p>
-            </div>
+          <div class="usage-summary-card">
+            <p class="usage-summary-label">
+              {{ t('usage.totalRequests') }}
+            </p>
+            <p class="usage-summary-value">
+              {{ usageStats?.total_requests?.toLocaleString() || '0' }}
+            </p>
+            <p class="usage-summary-meta">
+              {{ t('usage.inSelectedRange') }}
+            </p>
           </div>
-        </div>
 
-        <!-- Total Tokens -->
-        <div class="usage-summary-card usage-summary-card-tokens">
-          <div class="flex items-center gap-3">
-            <div class="usage-summary-icon">
-              <Icon name="cube" size="md" class="usage-summary-icon-svg" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <p class="usage-summary-label">
-                {{ t('usage.totalTokens') }}
-              </p>
-              <p class="usage-summary-value">
-                {{ formatTokens(usageStats?.total_tokens || 0) }}
-              </p>
-              <p class="usage-summary-meta">
-                <span class="usage-token-input">{{ t('usage.in') }} {{ formatTokens(usageStats?.total_input_tokens || 0) }}</span>
-                <span> · </span>
-                <span class="usage-token-output">{{ t('usage.out') }} {{ formatTokens(usageStats?.total_output_tokens || 0) }}</span>
-                <span> · </span>
-                <span class="usage-token-cache-read">{{ t('usage.cacheHit') }} {{ formatTokens(usageStats?.total_cache_read_tokens || 0) }}</span>
-                <span> · </span>
-                <span class="usage-token-cache-create">{{ t('usage.cacheCreate') }} {{ formatTokens(usageStats?.total_cache_creation_tokens || 0) }}</span>
-              </p>
-              <p class="usage-summary-submeta">
-                {{ t('usage.cacheHitRate') }}:
-                <template v-if="cacheStats.totalInput > 0">
-                  <span>{{ formatTokens(cacheStats.cacheRead) }}</span>
-                  <span>/</span>
-                  <span>{{ formatTokens(cacheStats.totalInput) }}</span>
-                  <span class="ml-1">{{ cacheStats.ratePercent }}</span>
-                </template>
-                <template v-else>-</template>
-              </p>
-            </div>
+          <div class="usage-summary-card">
+            <p class="usage-summary-label">
+              {{ t('usage.totalTokens') }}
+            </p>
+            <p class="usage-summary-value">
+              {{ formatTokens(usageStats?.total_tokens || 0) }}
+            </p>
+            <p class="usage-summary-meta">
+              <span class="usage-token-input">{{ t('usage.in') }} {{ formatTokens(usageStats?.total_input_tokens || 0) }}</span>
+              <span> · </span>
+              <span class="usage-token-output">{{ t('usage.out') }} {{ formatTokens(usageStats?.total_output_tokens || 0) }}</span>
+            </p>
+            <p class="usage-summary-submeta">
+              {{ t('usage.cacheHitRate') }}:
+              <template v-if="cacheStats.totalInput > 0">
+                <span>{{ cacheStats.ratePercent }}</span>
+              </template>
+              <template v-else>-</template>
+            </p>
           </div>
-        </div>
 
-        <!-- Total Cost -->
-        <div class="usage-summary-card usage-summary-card-cost">
-          <div class="flex items-center gap-3">
-            <div class="usage-summary-icon">
-              <Icon name="dollar" size="md" class="usage-summary-icon-svg" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <p class="usage-summary-label">
-                {{ t('usage.totalCost') }}
-              </p>
-              <p class="usage-summary-value">
-                ${{ (usageStats?.total_actual_cost || 0).toFixed(4) }}
-              </p>
-              <p class="usage-summary-meta">
-                {{ t('usage.actualCost') }} /
-                <span class="line-through">${{ (usageStats?.total_cost || 0).toFixed(4) }}</span>
-                {{ t('usage.standardCost') }}
-              </p>
-            </div>
+          <div class="usage-summary-card">
+            <p class="usage-summary-label">
+              {{ t('usage.totalCost') }}
+            </p>
+            <p class="usage-summary-value">
+              ${{ (usageStats?.total_actual_cost || 0).toFixed(4) }}
+            </p>
+            <p class="usage-summary-meta">
+              {{ t('usage.standardCost') }} <span class="line-through">${{ (usageStats?.total_cost || 0).toFixed(4) }}</span>
+            </p>
           </div>
-        </div>
 
-        <!-- Average Duration -->
-        <div class="usage-summary-card usage-summary-card-duration">
-          <div class="flex items-center gap-3">
-            <div class="usage-summary-icon">
-              <Icon name="clock" size="md" class="usage-summary-icon-svg" />
-            </div>
-            <div>
-              <p class="usage-summary-label">
-                {{ t('usage.avgDuration') }}
-              </p>
-              <p class="usage-summary-value">
-                {{ formatDuration(usageStats?.average_duration_ms || 0) }}
-              </p>
-              <p class="usage-summary-meta">{{ t('usage.perRequest') }}</p>
-            </div>
+          <div class="usage-summary-card">
+            <p class="usage-summary-label">
+              {{ t('usage.avgDuration') }}
+            </p>
+            <p class="usage-summary-value">
+              {{ formatDuration(usageStats?.average_duration_ms || 0) }}
+            </p>
+            <p class="usage-summary-meta">{{ t('usage.perRequest') }}</p>
           </div>
-        </div>
         </div>
       </template>
 
@@ -273,15 +232,15 @@
                 >
                   <!-- Cache Read -->
                   <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
-                    <Icon name="inbox" size="sm" class="text-gray-500" />
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{
+                    <Icon name="inbox" size="sm" class="usage-token-cache-read" />
+                    <span class="font-medium usage-token-cache-read">{{
                       formatCacheTokens(row.cache_read_tokens)
                     }}</span>
                   </div>
                   <!-- Cache Write -->
                   <div v-if="row.cache_creation_tokens > 0" class="inline-flex items-center gap-1">
-                    <Icon name="edit" size="sm" class="text-amber-500" />
-                    <span class="font-medium text-amber-600 dark:text-amber-400">{{
+                    <Icon name="edit" size="sm" class="usage-token-cache-create" />
+                    <span class="font-medium usage-token-cache-create">{{
                       formatCacheTokens(row.cache_creation_tokens)
                     }}</span>
                     <span v-if="row.cache_creation_1h_tokens > 0" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-orange-100 text-orange-600 ring-1 ring-inset ring-orange-200 dark:bg-orange-500/20 dark:text-orange-400 dark:ring-orange-500/30">1h</span>
@@ -1124,8 +1083,11 @@ onMounted(() => {
 
 <style scoped>
 .usage-summary-card {
-  position: relative;
-  overflow: hidden;
+  display: grid;
+  min-width: 0;
+  min-height: 116px;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
   border: 1px solid var(--md-outline-variant);
   border-radius: 12px;
   background: var(--md-surface);
@@ -1133,50 +1095,21 @@ onMounted(() => {
   box-shadow: var(--md-elevation-1);
 }
 
-.usage-summary-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--usage-summary-accent);
-}
-
-.usage-summary-card-requests,
-.usage-summary-card-tokens,
-.usage-summary-card-cost,
-.usage-summary-card-duration {
-  --usage-summary-accent: var(--md-outline);
-  --usage-summary-container: var(--md-surface-container-low);
-}
-
-.usage-summary-icon {
-  display: inline-flex;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: var(--usage-summary-container);
-  color: var(--usage-summary-accent);
-}
-
-.usage-summary-icon-svg {
-  color: currentColor;
-}
-
 .usage-summary-label {
   color: var(--md-on-surface-variant);
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 450;
   line-height: 1.35;
 }
 
 .usage-summary-value {
+  align-self: center;
   color: var(--md-on-surface);
-  font-size: 1.25rem;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 1.625rem;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: 0;
+  word-break: break-word;
 }
 
 .usage-summary-meta,
@@ -1191,34 +1124,18 @@ onMounted(() => {
 }
 
 .usage-token-input {
-  color: #0b57d0;
+  color: var(--md-token-input);
 }
 
 .usage-token-output {
-  color: #006a6a;
+  color: var(--md-token-output);
 }
 
 .usage-token-cache-read {
-  color: #6750a4;
+  color: var(--md-token-cache-read);
 }
 
 .usage-token-cache-create {
-  color: #8c6d1f;
-}
-
-.dark .usage-token-input {
-  color: #a8c7fa;
-}
-
-.dark .usage-token-output {
-  color: #7ddbd3;
-}
-
-.dark .usage-token-cache-read {
-  color: #d0bcff;
-}
-
-.dark .usage-token-cache-create {
-  color: #f7d070;
+  color: var(--md-token-cache-create);
 }
 </style>

@@ -99,6 +99,7 @@ import { Doughnut } from 'vue-chartjs'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
+import { useThemeRevision } from '@/composables/useThemeRevision'
 import type { TrendDataPoint, ModelStat } from '@/types'
 import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
@@ -107,31 +108,37 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcEleme
 const props = defineProps<{ loading: boolean, startDate: string, endDate: string, granularity: string, trend: TrendDataPoint[], models: ModelStat[] }>()
 defineEmits(['update:startDate', 'update:endDate', 'update:granularity', 'dateRangeChange', 'granularityChange', 'refresh'])
 const { t } = useI18n()
+const themeRevision = useThemeRevision()
 
 const granularityOptions = computed(() => [
   { value: 'day', label: t('dashboard.day') },
   { value: 'hour', label: t('dashboard.hour') }
 ])
 
-const modelPalette = [
-  '#0b57d0',
-  '#006a6a',
-  '#6750a4',
-  '#8c6d1f',
-  '#ba1a1a',
-  '#146c2e',
-  '#b06000',
-  '#3f484a'
-]
+const cssVar = (name: string) => {
+  void themeRevision.value
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
 
-const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
+const modelPalette = computed(() => {
+  return [
+    cssVar('--md-chart-1'),
+    cssVar('--md-chart-2'),
+    cssVar('--md-chart-3'),
+    cssVar('--md-chart-4'),
+    cssVar('--md-chart-5'),
+    cssVar('--md-chart-6'),
+    cssVar('--md-chart-7'),
+    cssVar('--md-chart-8')
+  ]
+})
 
 const modelData = computed(() => !props.models?.length ? null : {
   labels: props.models.map((m: ModelStat) => m.model),
   datasets: [{
     data: props.models.map((m: ModelStat) => m.total_tokens),
-    backgroundColor: props.models.map((_, index) => modelPalette[index % modelPalette.length]),
-    borderColor: isDarkMode.value ? '#131314' : '#ffffff',
+    backgroundColor: props.models.map((_, index) => modelPalette.value[index % modelPalette.value.length]),
+    borderColor: cssVar('--md-surface'),
     borderWidth: 2,
     hoverBorderWidth: 2
   }]

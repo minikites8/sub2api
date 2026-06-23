@@ -34,6 +34,7 @@ import {
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import { useThemeRevision } from '@/composables/useThemeRevision'
 import type { TrendDataPoint } from '@/types'
 
 ChartJS.register(
@@ -58,20 +59,24 @@ const props = withDefaults(defineProps<{
 })
 
 const embedded = computed(() => props.embedded)
+const themeRevision = useThemeRevision()
 
-const isDarkMode = computed(() => {
-  return document.documentElement.classList.contains('dark')
+const cssVar = (name: string) => {
+  void themeRevision.value
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
+
+const chartColors = computed(() => {
+  return {
+    text: cssVar('--md-on-surface-variant'),
+    grid: cssVar('--md-outline-variant'),
+    input: cssVar('--md-chart-1'),
+    output: cssVar('--md-chart-2'),
+    cacheCreation: cssVar('--md-chart-4'),
+    cacheRead: cssVar('--md-chart-3'),
+    cacheHitRate: cssVar('--md-chart-5')
+  }
 })
-
-const chartColors = computed(() => ({
-  text: isDarkMode.value ? '#f1f3f4' : '#3c4043',
-  grid: isDarkMode.value ? '#4d4d4d' : '#e8eaed',
-  input: isDarkMode.value ? '#a8c7fa' : '#0b57d0',
-  output: isDarkMode.value ? '#7ddbd3' : '#006a6a',
-  cacheCreation: isDarkMode.value ? '#f7d070' : '#8c6d1f',
-  cacheRead: isDarkMode.value ? '#d0bcff' : '#6750a4',
-  cacheHitRate: isDarkMode.value ? '#ffb4ab' : '#ba1a1a'
-}))
 
 const chartData = computed(() => {
   if (!props.trendData?.length) return null
