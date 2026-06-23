@@ -26,8 +26,13 @@
       <!-- Admin View: Admin menu first, then personal menu -->
       <template v-if="isAdmin">
         <!-- Admin Section -->
-        <div class="sidebar-section">
-          <template v-for="item in adminNavItems" :key="item.path">
+        <div v-for="group in adminNavGroups" :key="group.title" class="sidebar-section">
+          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+            <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
+              {{ group.title }}
+            </span>
+          </div>
+          <template v-for="item in group.items" :key="item.path">
             <!-- Collapsible group (has children) -->
             <template v-if="item.children?.length">
               <button
@@ -94,35 +99,42 @@
         </div>
 
         <!-- Personal Section for Admin (hidden in simple mode) -->
-        <div v-if="!authStore.isSimpleMode" class="sidebar-section">
-          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
-            <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
-              {{ t('nav.myAccount') }}
-            </span>
-          </div>
+        <template v-if="!authStore.isSimpleMode">
+          <div v-for="group in personalNavGroups" :key="`personal-${group.title}`" class="sidebar-section">
+            <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+              <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
+                {{ group.title }}
+              </span>
+            </div>
 
-          <router-link
-            v-for="item in personalNavItems"
-            :key="item.path"
-            :to="item.path"
-            class="sidebar-link mb-1"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
-            :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
-          >
-            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
-            <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
-          </router-link>
-        </div>
+            <router-link
+              v-for="item in group.items"
+              :key="item.path"
+              :to="item.path"
+              class="sidebar-link mb-1"
+              :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+              :title="sidebarCollapsed ? item.label : undefined"
+              :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+              @click="handleMenuItemClick(item.path)"
+            >
+              <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
+              <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            </router-link>
+          </div>
+        </template>
       </template>
 
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
-        <div class="sidebar-section">
+        <div v-for="group in userNavGroups" :key="group.title" class="sidebar-section">
+          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+            <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
+              {{ group.title }}
+            </span>
+          </div>
           <router-link
-            v-for="item in userNavItems"
+            v-for="item in group.items"
             :key="item.path"
             :to="item.path"
             class="sidebar-link mb-1"
@@ -209,6 +221,11 @@ interface NavItem {
   featureFlag?: () => boolean | undefined
 }
 
+interface NavGroup {
+  title: string
+  items: NavItem[]
+}
+
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
 // 使用 `!== false` 宽容语义：undefined（设置未加载）或 true 都视为显示。
 function applyFeatureFlags(items: NavItem[]): NavItem[] {
@@ -224,7 +241,7 @@ function applyFeatureFlags(items: NavItem[]): NavItem[] {
   return out
 }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -694,10 +711,60 @@ function finalizeNav(items: NavItem[]): NavItem[] {
 // User navigation items (for regular users)
 const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(true)))
 
+const isZhLocale = computed(() => locale.value.toLowerCase().startsWith('zh'))
+
+function groupTitle(zh: string, en: string): string {
+  return isZhLocale.value ? zh : en
+}
+
+function compactGroups(groups: NavGroup[]): NavGroup[] {
+  return groups.filter(group => group.items.length > 0)
+}
+
+function pickItems(items: NavItem[], paths: string[]): NavItem[] {
+  const pathSet = new Set(paths)
+  return items.filter(item => pathSet.has(item.path))
+}
+
+function pickCustomItems(items: NavItem[]): NavItem[] {
+  return items.filter(item => item.path.startsWith('/custom/'))
+}
+
+function buildSelfNavGroups(items: NavItem[], options: { includeOverview: boolean, titlePrefix?: string } = { includeOverview: true }): NavGroup[] {
+  const prefix = options.titlePrefix ? `${options.titlePrefix} · ` : ''
+  return compactGroups([
+    {
+      title: `${prefix}${groupTitle('概览', 'Overview')}`,
+      items: options.includeOverview ? pickItems(items, ['/dashboard']) : []
+    },
+    {
+      title: `${prefix}${groupTitle('API 与用量', 'API & Usage')}`,
+      items: pickItems(items, ['/keys', '/usage', '/available-channels', '/monitor'])
+    },
+    {
+      title: `${prefix}${groupTitle('订阅与余额', 'Billing')}`,
+      items: pickItems(items, ['/subscriptions', '/purchase', '/orders', '/redeem'])
+    },
+    {
+      title: `${prefix}${groupTitle('账户', 'Account')}`,
+      items: [
+        ...pickItems(items, ['/affiliate', '/profile']),
+        ...pickCustomItems(items),
+      ]
+    }
+  ])
+}
+
+const userNavGroups = computed((): NavGroup[] => buildSelfNavGroups(userNavItems.value))
+
 // Personal navigation items (for admin's "My Account" section, without Dashboard).
 // Admins access 可用渠道 from this section just like regular users — there is no
 // separate admin entry, since the page is purely a user-facing view.
 const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
+const personalNavGroups = computed((): NavGroup[] => buildSelfNavGroups(personalNavItems.value, {
+  includeOverview: false,
+  titlePrefix: groupTitle('我的', 'My')
+}))
 
 // Custom menu items filtered by visibility
 const customMenuItemsForUser = computed(() => {
@@ -786,6 +853,39 @@ const adminNavItems = computed((): NavItem[] => {
     visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
   }
   return visible
+})
+
+const adminNavGroups = computed((): NavGroup[] => {
+  const items = adminNavItems.value
+  return compactGroups([
+    {
+      title: groupTitle('概览', 'Overview'),
+      items: pickItems(items, ['/admin/dashboard', '/admin/ops'])
+    },
+    {
+      title: groupTitle('用户与权限', 'Users & Access'),
+      items: pickItems(items, ['/admin/users', '/admin/groups', '/admin/subscriptions'])
+    },
+    {
+      title: groupTitle('渠道与资源', 'Channels & Resources'),
+      items: pickItems(items, ['/admin/channels', '/admin/accounts', '/admin/proxies', '/admin/risk-control'])
+    },
+    {
+      title: groupTitle('运营', 'Operations'),
+      items: pickItems(items, ['/admin/announcements', '/admin/usage', '/admin/daily-checkins'])
+    },
+    {
+      title: groupTitle('商业', 'Commerce'),
+      items: pickItems(items, ['/admin/redeem', '/admin/promo-codes', '/admin/affiliates', '/admin/orders'])
+    },
+    {
+      title: groupTitle('系统', 'System'),
+      items: [
+        ...pickItems(items, ['/keys', '/admin/settings']),
+        ...pickCustomItems(items),
+      ]
+    }
+  ])
 })
 
 function toggleSidebar() {
@@ -941,6 +1041,14 @@ onMounted(() => {
   gap: 0;
   padding-left: 0.875rem;
   padding-right: 0.875rem;
+}
+
+.sidebar-section {
+  margin-bottom: 1rem;
+}
+
+.sidebar-section:last-child {
+  margin-bottom: 0;
 }
 
 .sidebar-section-title {
