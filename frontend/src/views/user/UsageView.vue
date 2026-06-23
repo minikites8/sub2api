@@ -4,19 +4,19 @@
       <template #actions>
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total Requests -->
-          <div class="card p-4">
+          <div class="usage-summary-card usage-summary-card-requests">
           <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-gray-100 p-2 dark:bg-dark-700">
-              <Icon name="document" size="md" class="text-gray-600 dark:text-gray-300" />
+            <div class="usage-summary-icon">
+              <Icon name="document" size="md" class="usage-summary-icon-svg" />
             </div>
             <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              <p class="usage-summary-label">
                 {{ t('usage.totalRequests') }}
               </p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">
+              <p class="usage-summary-value">
                 {{ usageStats?.total_requests?.toLocaleString() || '0' }}
               </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
+              <p class="usage-summary-meta">
                 {{ t('usage.inSelectedRange') }}
               </p>
             </div>
@@ -24,33 +24,33 @@
         </div>
 
         <!-- Total Tokens -->
-        <div class="card p-4">
+        <div class="usage-summary-card usage-summary-card-tokens">
           <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-              <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" />
+            <div class="usage-summary-icon">
+              <Icon name="cube" size="md" class="usage-summary-icon-svg" />
             </div>
             <div class="min-w-0 flex-1">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              <p class="usage-summary-label">
                 {{ t('usage.totalTokens') }}
               </p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">
+              <p class="usage-summary-value">
                 {{ formatTokens(usageStats?.total_tokens || 0) }}
               </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                <span>{{ t('usage.in') }} {{ formatTokens(usageStats?.total_input_tokens || 0) }}</span>
+              <p class="usage-summary-meta">
+                <span class="usage-token-input">{{ t('usage.in') }} {{ formatTokens(usageStats?.total_input_tokens || 0) }}</span>
                 <span> · </span>
-                <span>{{ t('usage.out') }} {{ formatTokens(usageStats?.total_output_tokens || 0) }}</span>
+                <span class="usage-token-output">{{ t('usage.out') }} {{ formatTokens(usageStats?.total_output_tokens || 0) }}</span>
                 <span> · </span>
-                <span class="text-gray-600 dark:text-gray-300">{{ t('usage.cacheHit') }} {{ formatTokens(usageStats?.total_cache_read_tokens || 0) }}</span>
+                <span class="usage-token-cache-read">{{ t('usage.cacheHit') }} {{ formatTokens(usageStats?.total_cache_read_tokens || 0) }}</span>
                 <span> · </span>
-                <span class="text-amber-600 dark:text-amber-400">{{ t('usage.cacheCreate') }} {{ formatTokens(usageStats?.total_cache_creation_tokens || 0) }}</span>
+                <span class="usage-token-cache-create">{{ t('usage.cacheCreate') }} {{ formatTokens(usageStats?.total_cache_creation_tokens || 0) }}</span>
               </p>
-              <p class="text-xs text-gray-400 dark:text-gray-500">
+              <p class="usage-summary-submeta">
                 {{ t('usage.cacheHitRate') }}:
                 <template v-if="cacheStats.totalInput > 0">
-                  <span class="text-gray-600 dark:text-gray-300">{{ formatTokens(cacheStats.cacheRead) }}</span>
-                  <span class="text-gray-400">/</span>
-                  <span class="text-gray-600 dark:text-gray-300">{{ formatTokens(cacheStats.totalInput) }}</span>
+                  <span>{{ formatTokens(cacheStats.cacheRead) }}</span>
+                  <span>/</span>
+                  <span>{{ formatTokens(cacheStats.totalInput) }}</span>
                   <span class="ml-1">{{ cacheStats.ratePercent }}</span>
                 </template>
                 <template v-else>-</template>
@@ -60,19 +60,19 @@
         </div>
 
         <!-- Total Cost -->
-        <div class="card p-4">
+        <div class="usage-summary-card usage-summary-card-cost">
           <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-gray-100 p-2 dark:bg-dark-700">
-              <Icon name="dollar" size="md" class="text-gray-600 dark:text-gray-300" />
+            <div class="usage-summary-icon">
+              <Icon name="dollar" size="md" class="usage-summary-icon-svg" />
             </div>
             <div class="min-w-0 flex-1">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              <p class="usage-summary-label">
                 {{ t('usage.totalCost') }}
               </p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">
+              <p class="usage-summary-value">
                 ${{ (usageStats?.total_actual_cost || 0).toFixed(4) }}
               </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
+              <p class="usage-summary-meta">
                 {{ t('usage.actualCost') }} /
                 <span class="line-through">${{ (usageStats?.total_cost || 0).toFixed(4) }}</span>
                 {{ t('usage.standardCost') }}
@@ -82,19 +82,19 @@
         </div>
 
         <!-- Average Duration -->
-        <div class="card p-4">
+        <div class="usage-summary-card usage-summary-card-duration">
           <div class="flex items-center gap-3">
-            <div class="rounded-lg bg-gray-100 p-2 dark:bg-dark-700">
-              <Icon name="clock" size="md" class="text-gray-600 dark:text-gray-300" />
+            <div class="usage-summary-icon">
+              <Icon name="clock" size="md" class="usage-summary-icon-svg" />
             </div>
             <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              <p class="usage-summary-label">
                 {{ t('usage.avgDuration') }}
               </p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">
+              <p class="usage-summary-value">
                 {{ formatDuration(usageStats?.average_duration_ms || 0) }}
               </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('usage.perRequest') }}</p>
+              <p class="usage-summary-meta">{{ t('usage.perRequest') }}</p>
             </div>
           </div>
         </div>
@@ -253,15 +253,15 @@
                 <div class="flex items-center gap-2">
                   <!-- Input -->
                   <div class="inline-flex items-center gap-1">
-                    <Icon name="arrowDown" size="sm" class="text-gray-500" />
-                    <span class="font-medium text-gray-900 dark:text-white">{{
+                    <Icon name="arrowDown" size="sm" class="usage-token-input" />
+                    <span class="font-medium usage-token-input">{{
                       (row.input_tokens ?? 0).toLocaleString()
                     }}</span>
                   </div>
                   <!-- Output -->
                   <div class="inline-flex items-center gap-1">
-                    <Icon name="arrowUp" size="sm" class="text-violet-500" />
-                    <span class="font-medium text-gray-900 dark:text-white">{{
+                    <Icon name="arrowUp" size="sm" class="usage-token-output" />
+                    <span class="font-medium usage-token-output">{{
                       (row.output_tokens ?? 0).toLocaleString()
                     }}</span>
                   </div>
@@ -1121,3 +1121,104 @@ onMounted(() => {
   loadUsageStats()
 })
 </script>
+
+<style scoped>
+.usage-summary-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  background: var(--md-surface);
+  padding: 1rem;
+  box-shadow: var(--md-elevation-1);
+}
+
+.usage-summary-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--usage-summary-accent);
+}
+
+.usage-summary-card-requests,
+.usage-summary-card-tokens,
+.usage-summary-card-cost,
+.usage-summary-card-duration {
+  --usage-summary-accent: var(--md-outline);
+  --usage-summary-container: var(--md-surface-container-low);
+}
+
+.usage-summary-icon {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--usage-summary-container);
+  color: var(--usage-summary-accent);
+}
+
+.usage-summary-icon-svg {
+  color: currentColor;
+}
+
+.usage-summary-label {
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.usage-summary-value {
+  color: var(--md-on-surface);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.usage-summary-meta,
+.usage-summary-submeta {
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.usage-summary-submeta {
+  color: color-mix(in srgb, var(--md-on-surface-variant) 78%, transparent);
+}
+
+.usage-token-input {
+  color: #0b57d0;
+}
+
+.usage-token-output {
+  color: #006a6a;
+}
+
+.usage-token-cache-read {
+  color: #6750a4;
+}
+
+.usage-token-cache-create {
+  color: #8c6d1f;
+}
+
+.dark .usage-token-input {
+  color: #a8c7fa;
+}
+
+.dark .usage-token-output {
+  color: #7ddbd3;
+}
+
+.dark .usage-token-cache-read {
+  color: #d0bcff;
+}
+
+.dark .usage-token-cache-create {
+  color: #f7d070;
+}
+</style>
