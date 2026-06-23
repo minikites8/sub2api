@@ -20,6 +20,7 @@
           </button>
           <button
             v-if="dailyCheckinStatus?.enabled"
+            data-testid="daily-checkin-entry"
             type="button"
             class="btn btn-primary inline-flex min-w-[8rem] items-center justify-center gap-2"
             :disabled="dailyCheckinLoading"
@@ -39,25 +40,15 @@
         :close-on-click-outside="true"
         @close="closeDailyCheckinDialog"
       >
-        <div v-if="dailyCheckinStatus" class="space-y-4">
-          <div class="flex items-start justify-between gap-3">
-            <div class="flex items-start gap-3">
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
-                <Icon name="gift" size="lg" :stroke-width="2" />
-              </div>
-              <p class="mt-0.5 text-sm text-gray-500 dark:text-dark-400">
-                {{ dailyCheckinTitle }}
-              </p>
-            </div>
-            <span
-              class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium"
-              :class="dailyCheckinStatusClass"
-            >
-              <Icon :name="dailyCheckinStatusIcon" size="xs" :stroke-width="2" />
-              {{ dailyCheckinStatusText }}
+        <template #title>
+          <span class="inline-flex items-center gap-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
+              <Icon name="gift" size="md" :stroke-width="2" />
             </span>
-          </div>
-
+            <span>{{ t('dashboard.dailyCheckin.title') }}</span>
+          </span>
+        </template>
+        <div v-if="dailyCheckinStatus">
           <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
             <template v-if="dailyCheckinStatus.checked_in_today">
               <div class="flex items-start gap-3">

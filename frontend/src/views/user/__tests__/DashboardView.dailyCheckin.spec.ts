@@ -208,7 +208,7 @@ describe('DashboardView daily check-in UI', () => {
 
   it('keeps the entry button as daily check-in when recharge is required', async () => {
     const wrapper = await mountDashboard(statusFixture())
-    const entryButton = wrapper.get('button')
+    const entryButton = wrapper.get('[data-testid="daily-checkin-entry"]')
 
     expect(entryButton.text()).toContain('每日签到')
     expect(entryButton.text()).not.toContain('需要充值')
@@ -219,7 +219,7 @@ describe('DashboardView daily check-in UI', () => {
   it('renders the gift icon beside the dialog title and shows the recharge hint once', async () => {
     const wrapper = await mountDashboard(statusFixture())
 
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
     await flushPromises()
 
     const title = wrapper.get('.dialog-title')
@@ -239,7 +239,7 @@ describe('DashboardView daily check-in UI', () => {
     })
     const enabledWrapper = await mountDashboard(readyStatus)
 
-    await enabledWrapper.get('button').trigger('click')
+    await enabledWrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
     await flushPromises()
 
     expect(enabledWrapper.find('[data-testid="adsense-ad"]').exists()).toBe(true)
@@ -249,7 +249,7 @@ describe('DashboardView daily check-in UI', () => {
       ads_enabled: false
     })
 
-    await disabledWrapper.get('button').trigger('click')
+    await disabledWrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
     await flushPromises()
 
     expect(disabledWrapper.find('[data-testid="adsense-ad"]').exists()).toBe(false)
