@@ -176,7 +176,7 @@
         <LoadingSpinner />
       </div>
       <template v-else-if="stats">
-        <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" :platform-quotas="platformQuotas" />
+        <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" />
         <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
         <div class="md3-dashboard-main-grid">
           <UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" />
@@ -204,8 +204,8 @@ import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import GoogleAdSenseAd from '@/components/ads/GoogleAdSenseAd.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { UsageLog, TrendDataPoint, ModelStat, PlatformQuotaItem, DailyCheckinStatus } from '@/types'
-import { getMyPlatformQuotas, getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
+import type { UsageLog, TrendDataPoint, ModelStat, DailyCheckinStatus } from '@/types'
+import { getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isDailyCheckinRechargeEligible } from '@/utils/dailyCheckin'
 
@@ -223,7 +223,6 @@ const publicSettingsLoading = ref(false)
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
 const recentUsage = ref<UsageLog[]>([])
-const platformQuotas = ref<PlatformQuotaItem[] | null>(null)
 const dailyCheckinStatus = ref<DailyCheckinStatus | null>(null)
 const dailyCheckinLoading = ref(false)
 const showDailyCheckinDialog = ref(false)
@@ -351,16 +350,6 @@ const loadRecent = async () => {
   }
 }
 
-const loadPlatformQuotas = async () => {
-  try {
-    const data = await getMyPlatformQuotas()
-    platformQuotas.value = data.platform_quotas ?? []
-  } catch (error) {
-    console.warn('Failed to load platform quotas:', error)
-    platformQuotas.value = []
-  }
-}
-
 const loadDailyCheckin = async () => {
   try {
     dailyCheckinStatus.value = await getDailyCheckinStatus()
@@ -383,7 +372,6 @@ const refreshAll = () => {
   loadStats()
   loadCharts()
   loadRecent()
-  loadPlatformQuotas()
   loadDailyCheckin()
   loadPublicSettings()
 }
