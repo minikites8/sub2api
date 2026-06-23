@@ -1889,12 +1889,20 @@ export default {
           title: 'Check-in Settings',
           enabled: 'Enable daily check-in',
           enabledHint: 'Admin only. When disabled, users cannot claim daily check-in rewards.',
+          adsEnabled: 'Show check-in ads',
+          adsEnabledHint: 'When enabled, ads appear in the user check-in verification area.',
           minReward: 'Minimum reward',
           maxReward: 'Maximum reward',
           dailyTotalLimit: 'Daily total payout limit',
           minRechargeAmount: 'Minimum cumulative recharge',
           minRechargeAmountHint: 'Set 0 to allow all users to check in.',
           saved: 'Daily check-in settings saved'
+        },
+        progress: {
+          title: 'Today Issued Quota',
+          used: 'Issued {used} / {limit}',
+          remaining: 'Remaining {amount}',
+          date: 'Date {date}'
         },
         errors: {
           loadFailed: 'Failed to load check-in details',

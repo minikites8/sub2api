@@ -28,6 +28,20 @@ export interface ListDailyCheckinRecordsParams {
 
 export interface DailyCheckinSettings {
   enabled: boolean
+  ads_enabled: boolean
+  daily_total_limit: number
+  min_reward: number
+  max_reward: number
+  min_recharge_amount: number
+  today_total_granted: number
+  remaining_today: number
+  exhausted_today: boolean
+  checkin_date: string
+}
+
+export interface UpdateDailyCheckinSettingsRequest {
+  enabled: boolean
+  ads_enabled: boolean
   daily_total_limit: number
   min_reward: number
   max_reward: number
@@ -60,7 +74,7 @@ export async function getSettings(): Promise<DailyCheckinSettings> {
   return data
 }
 
-export async function updateSettings(settings: DailyCheckinSettings): Promise<DailyCheckinSettings> {
+export async function updateSettings(settings: UpdateDailyCheckinSettingsRequest): Promise<DailyCheckinSettings> {
   const { data } = await apiClient.put<DailyCheckinSettings>('/admin/daily-checkins/settings', settings)
   return data
 }

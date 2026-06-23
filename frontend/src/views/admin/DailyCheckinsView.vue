@@ -11,34 +11,63 @@
       </template>
 
       <template #filters>
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="relative w-full md:w-80">
-            <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              v-model="filters.search"
-              type="text"
-              class="input pl-10"
-              :placeholder="t('admin.dailyCheckins.searchPlaceholder')"
-              @input="debounceLoad"
+        <div class="space-y-4">
+          <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.dailyCheckins.progress.title') }}
+                </p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('admin.dailyCheckins.progress.date', { date: settingsSummary?.checkin_date || '-' }) }}
+                </p>
+              </div>
+              <div class="text-left sm:text-right">
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.dailyCheckins.progress.used', { used: formatReward(progressUsed), limit: formatReward(progressLimit) }) }}
+                </p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('admin.dailyCheckins.progress.remaining', { amount: formatReward(progressRemaining) }) }}
+                </p>
+              </div>
+            </div>
+            <progress
+              class="mt-4 h-2 w-full overflow-hidden rounded-full [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-primary-600 [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-gray-100 [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary-600 dark:[&::-webkit-progress-bar]:bg-dark-700"
+              max="100"
+              :value="dailyProgressPercent"
+              :aria-label="t('admin.dailyCheckins.progress.title')"
             />
           </div>
-          <input
-            v-model="filters.start_date"
-            type="date"
-            class="input w-full sm:w-44"
-            :title="t('admin.dailyCheckins.startDate')"
-            @change="reloadFromFirstPage"
-          />
-          <input
-            v-model="filters.end_date"
-            type="date"
-            class="input w-full sm:w-44"
-            :title="t('admin.dailyCheckins.endDate')"
-            @change="reloadFromFirstPage"
-          />
-          <button class="btn btn-secondary px-2 md:px-3" :disabled="loading" :title="t('common.refresh')" @click="loadRecords">
-            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-          </button>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="relative w-full md:w-80">
+              <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                v-model="filters.search"
+                type="text"
+                class="input pl-10"
+                :placeholder="t('admin.dailyCheckins.searchPlaceholder')"
+                @input="debounceLoad"
+              />
+            </div>
+            <input
+              v-model="filters.start_date"
+              type="date"
+              class="input w-full sm:w-44"
+              :title="t('admin.dailyCheckins.startDate')"
+              @change="reloadFromFirstPage"
+            />
+            <input
+              v-model="filters.end_date"
+              type="date"
+              class="input w-full sm:w-44"
+              :title="t('admin.dailyCheckins.endDate')"
+              @change="reloadFromFirstPage"
+            />
+            <button class="btn btn-secondary px-2 md:px-3" :disabled="loading" :title="t('common.refresh')" @click="refreshPage">
+              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+            </button>
+          </div>
         </div>
       </template>
 
@@ -102,6 +131,18 @@
           </span>
           <input
             v-model="settingsForm.enabled"
+            type="checkbox"
+            class="mt-0.5 h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </label>
+
+        <label class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
+          <span>
+            <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dailyCheckins.settings.adsEnabled') }}</span>
+            <span class="mt-1 block text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.adsEnabledHint') }}</span>
+          </span>
+          <input
+            v-model="settingsForm.ads_enabled"
             type="checkbox"
             class="mt-0.5 h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
@@ -195,12 +236,18 @@ const pagination = reactive({ page: 1, page_size: 20, total: 0 })
 const settingsDialogOpen = ref(false)
 const settingsLoading = ref(false)
 const settingsSaving = ref(false)
+const settingsSummary = ref<DailyCheckinSettings | null>(null)
 const settingsForm = reactive<DailyCheckinSettings>({
   enabled: false,
+  ads_enabled: true,
   daily_total_limit: 0,
   min_reward: 0,
   max_reward: 0,
   min_recharge_amount: 0,
+  today_total_granted: 0,
+  remaining_today: 0,
+  exhausted_today: false,
+  checkin_date: '',
 })
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -212,6 +259,14 @@ const columns = computed<Column[]>(() => [
 ])
 
 const sortState = reactive(loadInitialSortState())
+
+const progressUsed = computed(() => Number(settingsSummary.value?.today_total_granted) || 0)
+const progressLimit = computed(() => Number(settingsSummary.value?.daily_total_limit) || 0)
+const progressRemaining = computed(() => Number(settingsSummary.value?.remaining_today) || 0)
+const dailyProgressPercent = computed(() => {
+  if (progressLimit.value <= 0) return 0
+  return Math.min(100, Math.max(0, (progressUsed.value / progressLimit.value) * 100))
+})
 
 function loadInitialSortState(): { sort_by: string; sort_order: 'asc' | 'desc' } {
   const fallback = { sort_by: 'created_at', sort_order: 'desc' as const }
@@ -265,6 +320,10 @@ function reloadFromFirstPage() {
   void loadRecords()
 }
 
+function refreshPage() {
+  void Promise.all([loadRecords(), loadSettingsSummary()])
+}
+
 function handlePageChange(page: number) {
   pagination.page = page
   void loadRecords()
@@ -304,11 +363,20 @@ async function loadSettings() {
   }
 }
 
+async function loadSettingsSummary() {
+  try {
+    assignSettings(await dailyCheckinsAPI.getSettings())
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.dailyCheckins.errors', t('admin.dailyCheckins.errors.settingsLoadFailed')))
+  }
+}
+
 async function saveSettings() {
   settingsSaving.value = true
   try {
     assignSettings(await dailyCheckinsAPI.updateSettings({
       enabled: settingsForm.enabled,
+      ads_enabled: settingsForm.ads_enabled,
       daily_total_limit: Number(settingsForm.daily_total_limit) || 0,
       min_reward: Number(settingsForm.min_reward) || 0,
       max_reward: Number(settingsForm.max_reward) || 0,
@@ -324,11 +392,17 @@ async function saveSettings() {
 }
 
 function assignSettings(settings: DailyCheckinSettings) {
+  settingsSummary.value = { ...settings }
   settingsForm.enabled = !!settings.enabled
+  settingsForm.ads_enabled = settings.ads_enabled !== false
   settingsForm.daily_total_limit = Number(settings.daily_total_limit) || 0
   settingsForm.min_reward = Number(settings.min_reward) || 0
   settingsForm.max_reward = Number(settings.max_reward) || 0
   settingsForm.min_recharge_amount = Number(settings.min_recharge_amount) || 0
+  settingsForm.today_total_granted = Number(settings.today_total_granted) || 0
+  settingsForm.remaining_today = Number(settings.remaining_today) || 0
+  settingsForm.exhausted_today = !!settings.exhausted_today
+  settingsForm.checkin_date = settings.checkin_date || ''
 }
 
 function formatReward(value: number | null | undefined): string {
@@ -346,5 +420,6 @@ function recordKey(row: DailyCheckinRecord): string {
 
 onMounted(() => {
   void loadRecords()
+  void loadSettingsSummary()
 })
 </script>

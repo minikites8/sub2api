@@ -1910,12 +1910,20 @@ export default {
           title: '签到设置',
           enabled: '开启每日签到',
           enabledHint: '仅管理员可修改；关闭后用户端签到按钮不可领取。',
+          adsEnabled: '显示签到广告',
+          adsEnabledHint: '开启后用户签到验证区域会展示广告。',
           minReward: '最小签到获取额度',
           maxReward: '最大签到获取额度',
           dailyTotalLimit: '每日总派发额度',
           minRechargeAmount: '最低累计充值金额',
           minRechargeAmountHint: '填 0 表示所有用户都可签到。',
           saved: '签到设置已保存'
+        },
+        progress: {
+          title: '今日已发额度',
+          used: '已发 {used} / {limit}',
+          remaining: '剩余 {amount}',
+          date: '统计日期 {date}'
         },
         errors: {
           loadFailed: '加载签到详情失败',

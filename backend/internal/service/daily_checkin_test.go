@@ -345,6 +345,7 @@ func TestSettingServiceUpdateDailyCheckinSettingsPersistsKeys(t *testing.T) {
 
 	settings, err := svc.UpdateDailyCheckinSettings(context.Background(), DailyCheckinSettings{
 		Enabled:           true,
+		AdsEnabled:        false,
 		DailyTotalLimit:   1.234567891,
 		MinReward:         0.1,
 		MaxReward:         0.2,
@@ -354,6 +355,7 @@ func TestSettingServiceUpdateDailyCheckinSettingsPersistsKeys(t *testing.T) {
 	require.Equal(t, 1.23456789, settings.DailyTotalLimit)
 	require.Equal(t, 3.45678912, settings.MinRechargeAmount)
 	require.Equal(t, "true", repo.updates[SettingKeyDailyCheckinEnabled])
+	require.Equal(t, "false", repo.updates[SettingKeyDailyCheckinAdsEnabled])
 	require.Equal(t, "1.23456789", repo.updates[SettingKeyDailyCheckinDailyTotalLimit])
 	require.Equal(t, "0.10000000", repo.updates[SettingKeyDailyCheckinMinReward])
 	require.Equal(t, "0.20000000", repo.updates[SettingKeyDailyCheckinMaxReward])

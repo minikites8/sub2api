@@ -133,10 +133,11 @@
                   </div>
                 </div>
 
-                <GoogleAdSenseAd
-                  client="ca-pub-1423021104870807"
-                  ad-slot="5962250608"
-                />
+                  <GoogleAdSenseAd
+                    v-if="dailyCheckinStatus.ads_enabled"
+                    client="ca-pub-1423021104870807"
+                    ad-slot="5962250608"
+                  />
 
                 <div v-if="publicSettingsLoading" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-dark-400">
                   {{ t('dashboard.dailyCheckin.loadingVerification') }}
@@ -251,34 +252,11 @@ const dailyCheckinTitle = computed(() => {
   if (!dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequiredHint', { amount: formatCurrency(status.min_recharge_amount), current: formatCurrency(status.total_recharged) })
   return t('dashboard.dailyCheckin.hint', { min: formatCurrency(status.min_reward), max: formatCurrency(status.max_reward) })
 })
-const dailyCheckinStatusText = computed(() => {
-  const status = dailyCheckinStatus.value
-  if (!status) return ''
-  if (status.checked_in_today) return t('dashboard.dailyCheckin.checked')
-  if (status.exhausted_today) return t('dashboard.dailyCheckin.exhausted')
-  if (!dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequired')
-  return t('dashboard.dailyCheckin.ready')
-})
-const dailyCheckinStatusIcon = computed(() => {
-  const status = dailyCheckinStatus.value
-  if (status?.checked_in_today) return 'checkCircle'
-  if (status?.exhausted_today) return 'exclamationCircle'
-  if (status && !dailyCheckinRechargeEligible.value) return 'creditCard'
-  return 'shield'
-})
-const dailyCheckinStatusClass = computed(() => {
-  const status = dailyCheckinStatus.value
-  if (status?.checked_in_today) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
-  if (status?.exhausted_today) return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-200'
-  if (status && !dailyCheckinRechargeEligible.value) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
-  return 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
-})
 const dailyCheckinEntryIcon = computed(() => {
   const status = dailyCheckinStatus.value
   if (dailyCheckinLoading.value) return 'refresh'
   if (status?.checked_in_today) return 'checkCircle'
   if (status?.exhausted_today) return 'exclamationCircle'
-  if (status && !dailyCheckinRechargeEligible.value) return 'creditCard'
   return 'gift'
 })
 const dailyCheckinEntryText = computed(() => {
@@ -286,7 +264,6 @@ const dailyCheckinEntryText = computed(() => {
   if (dailyCheckinLoading.value) return t('dashboard.dailyCheckin.checking')
   if (status?.checked_in_today) return t('dashboard.dailyCheckin.checked')
   if (status?.exhausted_today) return t('dashboard.dailyCheckin.exhausted')
-  if (status && !dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequired')
   return t('dashboard.dailyCheckin.action')
 })
 const dailyCheckinButtonIcon = computed(() => {
