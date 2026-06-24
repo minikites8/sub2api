@@ -103,7 +103,7 @@
           <div class="md3-request-block">
             <div class="flex items-center gap-2">
               <span class="md3-method">POST</span>
-              <span class="truncate text-sm">claude-sonnet / gpt-4o / gemini</span>
+              <span class="truncate text-sm">claude-opus / gpt-5.5 / gemini</span>
             </div>
             <div class="mt-4 grid gap-3 sm:grid-cols-3">
               <div v-for="metric in heroMetrics" :key="metric.label" class="md3-metric">
