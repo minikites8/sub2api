@@ -1536,6 +1536,12 @@ export default {
       spendShort: 'Spend',
       requestsShort: 'Req',
       tokensShort: 'Tok',
+      channelTokenCapacity: 'Channel Token Capacity',
+      openAIAvailableOauthAccounts: 'Available OpenAI OAuth GPT accounts: {count}',
+      knownQuotaAccounts: 'Estimated quota accounts: {count}',
+      used: 'Used',
+      capacity: 'Capacity',
+      remaining: 'Remaining',
       failedToLoad: 'Failed to load dashboard statistics'
     },
 

@@ -129,11 +129,27 @@ export interface DashboardSnapshotV2Params extends TrendParams {
   include_model_stats?: boolean
   include_group_stats?: boolean
   include_users_trend?: boolean
+  include_channel_token_capacity?: boolean
   users_trend_limit?: number
 }
 
 export interface DashboardSnapshotV2Stats extends DashboardStats {
   uptime: number
+}
+
+export interface ChannelTokenCapacityWindow {
+  used_tokens: number
+  total_tokens: number
+  remaining_tokens: number
+  used_percent: number
+  known_accounts: number
+}
+
+export interface ChannelTokenCapacityStat {
+  platform: string
+  available_accounts: number
+  five_hour: ChannelTokenCapacityWindow
+  seven_day: ChannelTokenCapacityWindow
 }
 
 export interface DashboardSnapshotV2Response {
@@ -146,6 +162,7 @@ export interface DashboardSnapshotV2Response {
   models?: ModelStat[]
   groups?: GroupStat[]
   users_trend?: UserUsageTrendPoint[]
+  channel_token_capacity?: ChannelTokenCapacityStat
 }
 
 /**

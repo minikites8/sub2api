@@ -41,6 +41,7 @@ type dashboardStatsCacheEntry struct {
 // DashboardService 提供管理员仪表盘统计服务。
 type DashboardService struct {
 	usageRepo      UsageLogRepository
+	accountRepo    AccountRepository
 	aggRepo        DashboardAggregationRepository
 	cache          DashboardStatsCache
 	cacheFreshTTL  time.Duration
@@ -53,7 +54,7 @@ type DashboardService struct {
 	aggUsageDays   int
 }
 
-func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregationRepository, cache DashboardStatsCache, cfg *config.Config) *DashboardService {
+func NewDashboardService(usageRepo UsageLogRepository, accountRepo AccountRepository, aggRepo DashboardAggregationRepository, cache DashboardStatsCache, cfg *config.Config) *DashboardService {
 	freshTTL := defaultDashboardStatsFreshTTL
 	cacheTTL := defaultDashboardStatsCacheTTL
 	refreshTimeout := defaultDashboardStatsRefreshTimeout
@@ -90,6 +91,7 @@ func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregat
 	}
 	return &DashboardService{
 		usageRepo:      usageRepo,
+		accountRepo:    accountRepo,
 		aggRepo:        aggRepo,
 		cache:          cache,
 		cacheFreshTTL:  freshTTL,
@@ -176,6 +178,84 @@ func (s *DashboardService) GetGroupUsageSummary(ctx context.Context, todayStart 
 		return nil, fmt.Errorf("get group usage summary: %w", err)
 	}
 	return results, nil
+}
+
+type ChannelTokenCapacityWindow struct {
+	UsedTokens      int64   `json:"used_tokens"`
+	TotalTokens     int64   `json:"total_tokens"`
+	RemainingTokens int64   `json:"remaining_tokens"`
+	UsedPercent     float64 `json:"used_percent"`
+	KnownAccounts   int64   `json:"known_accounts"`
+}
+
+type ChannelTokenCapacityStat struct {
+	Platform          string                     `json:"platform"`
+	AvailableAccounts int64                      `json:"available_accounts"`
+	FiveHour          ChannelTokenCapacityWindow `json:"five_hour"`
+	SevenDay          ChannelTokenCapacityWindow `json:"seven_day"`
+}
+
+func (s *DashboardService) GetOpenAIChannelTokenCapacity(ctx context.Context) (*ChannelTokenCapacityStat, error) {
+	stat := &ChannelTokenCapacityStat{Platform: PlatformOpenAI}
+	if s == nil || s.accountRepo == nil || s.usageRepo == nil {
+		return stat, nil
+	}
+
+	accounts, err := s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
+	if err != nil {
+		return nil, fmt.Errorf("list openai schedulable accounts: %w", err)
+	}
+
+	now := time.Now().UTC()
+	for _, account := range accounts {
+		if !account.IsOpenAIOAuth() {
+			continue
+		}
+		stat.AvailableAccounts++
+		s.addOpenAIChannelCapacityWindow(ctx, &stat.FiveHour, &account, "5h", 5*time.Hour, now)
+		s.addOpenAIChannelCapacityWindow(ctx, &stat.SevenDay, &account, "7d", 7*24*time.Hour, now)
+	}
+	finalizeChannelCapacityWindow(&stat.FiveHour)
+	finalizeChannelCapacityWindow(&stat.SevenDay)
+	return stat, nil
+}
+
+func (s *DashboardService) addOpenAIChannelCapacityWindow(ctx context.Context, total *ChannelTokenCapacityWindow, account *Account, window string, fallbackWindow time.Duration, now time.Time) {
+	if total == nil || account == nil {
+		return
+	}
+
+	progress := buildCodexUsageProgressFromExtra(account.Extra, window, now)
+	start := codexWindowStatsStart(progress, fallbackWindow, now)
+	stats, err := s.usageRepo.GetAccountWindowStats(ctx, account.ID, start)
+	if err != nil || stats == nil {
+		return
+	}
+
+	used := stats.Tokens
+	total.UsedTokens += used
+	if progress == nil || progress.Utilization <= 0 || used <= 0 {
+		return
+	}
+
+	estimatedTotal := int64(float64(used) * 100 / progress.Utilization)
+	if estimatedTotal < used {
+		estimatedTotal = used
+	}
+	total.TotalTokens += estimatedTotal
+	total.KnownAccounts++
+}
+
+func finalizeChannelCapacityWindow(window *ChannelTokenCapacityWindow) {
+	if window == nil {
+		return
+	}
+	if window.TotalTokens > window.UsedTokens {
+		window.RemainingTokens = window.TotalTokens - window.UsedTokens
+	}
+	if window.TotalTokens > 0 {
+		window.UsedPercent = float64(window.UsedTokens) * 100 / float64(window.TotalTokens)
+	}
 }
 
 func (s *DashboardService) getCachedDashboardStats(ctx context.Context) (*usagestats.DashboardStats, bool, error) {

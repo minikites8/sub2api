@@ -29,11 +29,12 @@ type dashboardSnapshotV2Response struct {
 	EndDate     string `json:"end_date"`
 	Granularity string `json:"granularity"`
 
-	Stats      *dashboardSnapshotV2Stats        `json:"stats,omitempty"`
-	Trend      []usagestats.TrendDataPoint      `json:"trend,omitempty"`
-	Models     []usagestats.ModelStat           `json:"models,omitempty"`
-	Groups     []usagestats.GroupStat           `json:"groups,omitempty"`
-	UsersTrend []usagestats.UserUsageTrendPoint `json:"users_trend,omitempty"`
+	Stats                *dashboardSnapshotV2Stats         `json:"stats,omitempty"`
+	Trend                []usagestats.TrendDataPoint       `json:"trend,omitempty"`
+	Models               []usagestats.ModelStat            `json:"models,omitempty"`
+	Groups               []usagestats.GroupStat            `json:"groups,omitempty"`
+	UsersTrend           []usagestats.UserUsageTrendPoint  `json:"users_trend,omitempty"`
+	ChannelTokenCapacity *service.ChannelTokenCapacityStat `json:"channel_token_capacity,omitempty"`
 }
 
 type dashboardSnapshotV2Filters struct {
@@ -48,23 +49,24 @@ type dashboardSnapshotV2Filters struct {
 }
 
 type dashboardSnapshotV2CacheKey struct {
-	StartTime         string `json:"start_time"`
-	EndTime           string `json:"end_time"`
-	Granularity       string `json:"granularity"`
-	UserID            int64  `json:"user_id"`
-	APIKeyID          int64  `json:"api_key_id"`
-	AccountID         int64  `json:"account_id"`
-	GroupID           int64  `json:"group_id"`
-	Model             string `json:"model"`
-	RequestType       *int16 `json:"request_type"`
-	Stream            *bool  `json:"stream"`
-	BillingType       *int8  `json:"billing_type"`
-	IncludeStats      bool   `json:"include_stats"`
-	IncludeTrend      bool   `json:"include_trend"`
-	IncludeModels     bool   `json:"include_models"`
-	IncludeGroups     bool   `json:"include_groups"`
-	IncludeUsersTrend bool   `json:"include_users_trend"`
-	UsersTrendLimit   int    `json:"users_trend_limit"`
+	StartTime                   string `json:"start_time"`
+	EndTime                     string `json:"end_time"`
+	Granularity                 string `json:"granularity"`
+	UserID                      int64  `json:"user_id"`
+	APIKeyID                    int64  `json:"api_key_id"`
+	AccountID                   int64  `json:"account_id"`
+	GroupID                     int64  `json:"group_id"`
+	Model                       string `json:"model"`
+	RequestType                 *int16 `json:"request_type"`
+	Stream                      *bool  `json:"stream"`
+	BillingType                 *int8  `json:"billing_type"`
+	IncludeStats                bool   `json:"include_stats"`
+	IncludeTrend                bool   `json:"include_trend"`
+	IncludeModels               bool   `json:"include_models"`
+	IncludeGroups               bool   `json:"include_groups"`
+	IncludeUsersTrend           bool   `json:"include_users_trend"`
+	IncludeChannelTokenCapacity bool   `json:"include_channel_token_capacity"`
+	UsersTrendLimit             int    `json:"users_trend_limit"`
 }
 
 func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
@@ -79,6 +81,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	includeModels := parseBoolQueryWithDefault(c.Query("include_model_stats"), true)
 	includeGroups := parseBoolQueryWithDefault(c.Query("include_group_stats"), false)
 	includeUsersTrend := parseBoolQueryWithDefault(c.Query("include_users_trend"), false)
+	includeChannelTokenCapacity := parseBoolQueryWithDefault(c.Query("include_channel_token_capacity"), includeStats)
 	usersTrendLimit := 12
 	if raw := strings.TrimSpace(c.Query("users_trend_limit")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 50 {
@@ -93,23 +96,24 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	}
 
 	keyRaw, _ := json.Marshal(dashboardSnapshotV2CacheKey{
-		StartTime:         startTime.UTC().Format(time.RFC3339),
-		EndTime:           endTime.UTC().Format(time.RFC3339),
-		Granularity:       granularity,
-		UserID:            filters.UserID,
-		APIKeyID:          filters.APIKeyID,
-		AccountID:         filters.AccountID,
-		GroupID:           filters.GroupID,
-		Model:             filters.Model,
-		RequestType:       filters.RequestType,
-		Stream:            filters.Stream,
-		BillingType:       filters.BillingType,
-		IncludeStats:      includeStats,
-		IncludeTrend:      includeTrend,
-		IncludeModels:     includeModels,
-		IncludeGroups:     includeGroups,
-		IncludeUsersTrend: includeUsersTrend,
-		UsersTrendLimit:   usersTrendLimit,
+		StartTime:                   startTime.UTC().Format(time.RFC3339),
+		EndTime:                     endTime.UTC().Format(time.RFC3339),
+		Granularity:                 granularity,
+		UserID:                      filters.UserID,
+		APIKeyID:                    filters.APIKeyID,
+		AccountID:                   filters.AccountID,
+		GroupID:                     filters.GroupID,
+		Model:                       filters.Model,
+		RequestType:                 filters.RequestType,
+		Stream:                      filters.Stream,
+		BillingType:                 filters.BillingType,
+		IncludeStats:                includeStats,
+		IncludeTrend:                includeTrend,
+		IncludeModels:               includeModels,
+		IncludeGroups:               includeGroups,
+		IncludeUsersTrend:           includeUsersTrend,
+		IncludeChannelTokenCapacity: includeChannelTokenCapacity,
+		UsersTrendLimit:             usersTrendLimit,
 	})
 	cacheKey := string(keyRaw)
 
@@ -125,6 +129,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 			includeModels,
 			includeGroups,
 			includeUsersTrend,
+			includeChannelTokenCapacity,
 			usersTrendLimit,
 		)
 	})
@@ -149,7 +154,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 	startTime, endTime time.Time,
 	granularity string,
 	filters *dashboardSnapshotV2Filters,
-	includeStats, includeTrend, includeModels, includeGroups, includeUsersTrend bool,
+	includeStats, includeTrend, includeModels, includeGroups, includeUsersTrend, includeChannelTokenCapacity bool,
 	usersTrendLimit int,
 ) (*dashboardSnapshotV2Response, error) {
 	resp := &dashboardSnapshotV2Response{
@@ -236,6 +241,14 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			return nil, errors.New("failed to get user usage trend")
 		}
 		resp.UsersTrend = usersTrend
+	}
+
+	if includeChannelTokenCapacity {
+		capacity, err := h.dashboardService.GetOpenAIChannelTokenCapacity(ctx)
+		if err != nil {
+			return nil, errors.New("failed to get channel token capacity")
+		}
+		resp.ChannelTokenCapacity = capacity
 	}
 
 	return resp, nil

@@ -16,15 +16,17 @@ import (
 
 type usageRepoStub struct {
 	UsageLogRepository
-	stats      *usagestats.DashboardStats
-	rangeStats *usagestats.DashboardStats
-	err        error
-	rangeErr   error
-	calls      int32
-	rangeCalls int32
-	rangeStart time.Time
-	rangeEnd   time.Time
-	onCall     chan struct{}
+	stats              *usagestats.DashboardStats
+	rangeStats         *usagestats.DashboardStats
+	accountWindowStats map[int64]*usagestats.AccountStats
+	err                error
+	rangeErr           error
+	calls              int32
+	rangeCalls         int32
+	accountWindowCalls int32
+	rangeStart         time.Time
+	rangeEnd           time.Time
+	onCall             chan struct{}
 }
 
 func (s *usageRepoStub) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
@@ -52,6 +54,32 @@ func (s *usageRepoStub) GetDashboardStatsWithRange(ctx context.Context, start, e
 		return s.rangeStats, nil
 	}
 	return s.stats, nil
+}
+
+func (s *usageRepoStub) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
+	atomic.AddInt32(&s.accountWindowCalls, 1)
+	if s.accountWindowStats == nil {
+		return &usagestats.AccountStats{}, nil
+	}
+	if stats, ok := s.accountWindowStats[accountID]; ok {
+		return stats, nil
+	}
+	return &usagestats.AccountStats{}, nil
+}
+
+type dashboardAccountRepoStub struct {
+	AccountRepository
+	accounts []Account
+	err      error
+	calls    int32
+}
+
+func (s *dashboardAccountRepoStub) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	atomic.AddInt32(&s.calls, 1)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.accounts, nil
 }
 
 type dashboardCacheStub struct {
@@ -172,7 +200,7 @@ func TestDashboardService_CacheHitFresh(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, nil, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -201,7 +229,7 @@ func TestDashboardService_CacheMiss_StoresCache(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, nil, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -233,7 +261,7 @@ func TestDashboardService_CacheDisabled_SkipsCache(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, nil, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -273,7 +301,7 @@ func TestDashboardService_CacheHitStale_TriggersAsyncRefresh(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, nil, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -304,7 +332,7 @@ func TestDashboardService_CacheParseError_EvictsAndRefetches(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, nil, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -327,7 +355,7 @@ func TestDashboardService_CacheParseError_RepoFailure(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, nil, aggRepo, cache, cfg)
 
 	_, err := svc.GetDashboardStats(context.Background())
 	require.Error(t, err)
@@ -339,7 +367,7 @@ func TestDashboardService_StatsUpdatedAtEpochWhenMissing(t *testing.T) {
 	repo := &usageRepoStub{stats: stats}
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()}
 	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: false}}
-	svc := NewDashboardService(repo, aggRepo, nil, cfg)
+	svc := NewDashboardService(repo, nil, aggRepo, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -360,7 +388,7 @@ func TestDashboardService_StatsStaleFalseWhenFresh(t *testing.T) {
 			LookbackSeconds: 120,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, nil, cfg)
+	svc := NewDashboardService(repo, nil, aggRepo, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -383,7 +411,7 @@ func TestDashboardService_AggDisabled_UsesUsageLogsFallback(t *testing.T) {
 			},
 		},
 	}
-	svc := NewDashboardService(repo, nil, nil, cfg)
+	svc := NewDashboardService(repo, nil, nil, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -392,4 +420,66 @@ func TestDashboardService_AggDisabled_UsesUsageLogsFallback(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&repo.rangeCalls))
 	require.False(t, repo.rangeEnd.IsZero())
 	require.Equal(t, truncateToDayUTC(repo.rangeEnd.AddDate(0, 0, -7)), repo.rangeStart)
+}
+
+func TestDashboardService_OpenAIChannelTokenCapacity(t *testing.T) {
+	resetAt := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+	accountRepo := &dashboardAccountRepoStub{
+		accounts: []Account{
+			{
+				ID:       1,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra: map[string]any{
+					"codex_5h_used_percent": 50.0,
+					"codex_5h_reset_at":     resetAt,
+					"codex_7d_used_percent": 25.0,
+					"codex_7d_reset_at":     resetAt,
+				},
+			},
+			{
+				ID:       2,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra: map[string]any{
+					"codex_5h_used_percent": 20.0,
+					"codex_5h_reset_at":     resetAt,
+					"codex_7d_used_percent": 50.0,
+					"codex_7d_reset_at":     resetAt,
+				},
+			},
+			{
+				ID:       3,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+			},
+		},
+	}
+	usageRepo := &usageRepoStub{
+		accountWindowStats: map[int64]*usagestats.AccountStats{
+			1: {Tokens: 100},
+			2: {Tokens: 200},
+			3: {Tokens: 999},
+		},
+	}
+	svc := NewDashboardService(usageRepo, accountRepo, nil, nil, nil)
+
+	got, err := svc.GetOpenAIChannelTokenCapacity(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, PlatformOpenAI, got.Platform)
+	require.Equal(t, int64(2), got.AvailableAccounts)
+	require.Equal(t, int32(1), atomic.LoadInt32(&accountRepo.calls))
+	require.Equal(t, int32(4), atomic.LoadInt32(&usageRepo.accountWindowCalls))
+
+	require.Equal(t, int64(300), got.FiveHour.UsedTokens)
+	require.Equal(t, int64(1200), got.FiveHour.TotalTokens)
+	require.Equal(t, int64(900), got.FiveHour.RemainingTokens)
+	require.Equal(t, int64(2), got.FiveHour.KnownAccounts)
+	require.InDelta(t, 25.0, got.FiveHour.UsedPercent, 0.01)
+
+	require.Equal(t, int64(300), got.SevenDay.UsedTokens)
+	require.Equal(t, int64(800), got.SevenDay.TotalTokens)
+	require.Equal(t, int64(500), got.SevenDay.RemainingTokens)
+	require.Equal(t, int64(2), got.SevenDay.KnownAccounts)
+	require.InDelta(t, 37.5, got.SevenDay.UsedPercent, 0.01)
 }

@@ -1557,6 +1557,12 @@ export default {
       configureAiAccounts: '配置 AI 平台账号',
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
+      channelTokenCapacity: '渠道 Token 容量',
+      openAIAvailableOauthAccounts: '当前可用 OpenAI OAuth GPT 账号：{count}',
+      knownQuotaAccounts: '已估算额度账号：{count}',
+      used: '已用',
+      capacity: '存量',
+      remaining: '剩余',
       failedToLoad: '加载仪表盘数据失败'
     },
 

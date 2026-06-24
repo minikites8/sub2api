@@ -216,6 +216,78 @@
           </div>
         </div>
 
+        <!-- Channel Token Capacity -->
+        <div v-if="channelTokenCapacity" class="card p-4">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.dashboard.channelTokenCapacity') }}
+              </h2>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{
+                  t('admin.dashboard.openAIAvailableOauthAccounts', {
+                    count: channelTokenCapacity.available_accounts
+                  })
+                }}
+              </p>
+            </div>
+            <span
+              class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+            >
+              OpenAI
+            </span>
+          </div>
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div
+              v-for="item in channelCapacityWindows"
+              :key="item.label"
+              class="rounded-lg border border-gray-100 p-4 dark:border-dark-700"
+            >
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ item.label }}</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t('admin.dashboard.knownQuotaAccounts', {
+                        count: item.window.known_accounts
+                      })
+                    }}
+                  </p>
+                </div>
+                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  {{ formatPercent(item.window.used_percent) }}
+                </span>
+              </div>
+              <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                <div
+                  class="h-full rounded-full bg-emerald-500 transition-all"
+                  :style="{ width: `${Math.min(item.window.used_percent || 0, 100)}%` }"
+                />
+              </div>
+              <div class="mt-3 grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p class="text-gray-500 dark:text-gray-400">{{ t('admin.dashboard.used') }}</p>
+                  <p class="font-semibold text-gray-900 dark:text-white">
+                    {{ formatTokens(item.window.used_tokens) }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-gray-500 dark:text-gray-400">{{ t('admin.dashboard.capacity') }}</p>
+                  <p class="font-semibold text-gray-900 dark:text-white">
+                    {{ formatCapacityTokens(item.window.total_tokens) }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-gray-500 dark:text-gray-400">{{ t('admin.dashboard.remaining') }}</p>
+                  <p class="font-semibold text-gray-900 dark:text-white">
+                    {{ formatCapacityTokens(item.window.remaining_tokens) }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Charts Section -->
         <div class="space-y-6">
           <!-- Date Range Filter -->
@@ -300,6 +372,7 @@ import { useAppStore } from '@/stores/app'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
+import type { ChannelTokenCapacityStat } from '@/api/admin/dashboard'
 import type {
   DashboardStats,
   TrendDataPoint,
@@ -341,6 +414,7 @@ ChartJS.register(
 const appStore = useAppStore()
 const router = useRouter()
 const stats = ref<DashboardStats | null>(null)
+const channelTokenCapacity = ref<ChannelTokenCapacityStat | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
 const userTrendLoading = ref(false)
@@ -359,6 +433,14 @@ let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
+
+const channelCapacityWindows = computed(() => {
+  if (!channelTokenCapacity.value) return []
+  return [
+    { label: '5h', window: channelTokenCapacity.value.five_hour },
+    { label: '7d', window: channelTokenCapacity.value.seven_day }
+  ]
+})
 
 // Helper function to format date in local timezone
 const formatLocalDate = (date: Date): string => {
@@ -549,6 +631,16 @@ const formatCost = (value: number | null | undefined): string => {
   return value.toFixed(4)
 }
 
+const formatCapacityTokens = (value: number | undefined): string => {
+  if (!value) return '-'
+  return formatTokens(value)
+}
+
+const formatPercent = (value: number | undefined): string => {
+  if (!Number.isFinite(value)) return '0%'
+  return `${Number(value).toFixed(1)}%`
+}
+
 const formatDuration = (ms: number): string => {
   if (ms >= 1000) {
     return `${(ms / 1000).toFixed(2)}s`
@@ -604,11 +696,13 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
       include_trend: true,
       include_model_stats: true,
       include_group_stats: false,
-      include_users_trend: false
+      include_users_trend: false,
+      include_channel_token_capacity: includeStats
     })
     if (currentSeq !== chartLoadSeq) return
     if (includeStats && response.stats) {
       stats.value = response.stats
+      channelTokenCapacity.value = response.channel_token_capacity || null
     }
     trendData.value = response.trend || []
     modelStats.value = response.models || []
