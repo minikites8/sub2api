@@ -391,13 +391,13 @@ const statusClass = computed(() => {
     return 'badge-warning'
   }
   if (props.account.status !== 'active') {
-    return props.account.status === 'error' ? 'badge-danger' : 'badge-gray'
+    return props.account.status === 'error' ? 'badge-danger' : 'badge-warning'
   }
   if (isQuotaExceeded.value) {
     return 'badge-warning'
   }
   if (!props.account.schedulable) {
-    return 'badge-gray'
+    return 'badge-warning'
   }
   return 'badge-success'
 })

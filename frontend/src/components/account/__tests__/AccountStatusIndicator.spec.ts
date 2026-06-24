@@ -58,6 +58,39 @@ function makeAccount(overrides: Partial<Account>): Account {
 }
 
 describe('AccountStatusIndicator', () => {
+  it('uses distinct badge colors for active and paused accounts', () => {
+    const activeWrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          status: 'active',
+          schedulable: true
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+    const pausedWrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          status: 'active',
+          schedulable: false
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(activeWrapper.get('.badge').classes()).toContain('badge-success')
+    expect(pausedWrapper.get('.badge').classes()).toContain('badge-warning')
+    expect(pausedWrapper.get('.badge').classes()).not.toContain('badge-gray')
+  })
+
   it('模型限流 + overages 启用 + 无 AICredits key → 显示 ⚡ (credits_active)', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

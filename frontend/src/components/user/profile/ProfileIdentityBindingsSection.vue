@@ -417,60 +417,41 @@ function isProviderEnabledForBinding(provider: BindableProvider): boolean {
   return resolvedWeChatBinding.value.mode !== null
 }
 
-const providerItems = computed(() => [
-  {
-    provider: 'email' as const,
-    label: t('profile.authBindings.providers.email'),
-    bound: getBindingStatus('email'),
-    canBind: false,
-    canUnbind: false,
-    details: getBindingDetails('email'),
-  },
-  {
-    provider: 'linuxdo' as const,
-    label: t('profile.authBindings.providers.linuxdo'),
-    bound: getBindingStatus('linuxdo'),
-    canBind:
-      !getBindingStatus('linuxdo') &&
-      isProviderEnabledForBinding('linuxdo') &&
-      (getBindingDetails('linuxdo')?.can_bind ?? true),
-    canUnbind: Boolean(getBindingStatus('linuxdo') && getBindingDetails('linuxdo')?.can_unbind),
-    details: getBindingDetails('linuxdo'),
-  },
-  {
-    provider: 'dingtalk' as const,
-    label: t('profile.authBindings.providers.dingtalk'),
-    bound: getBindingStatus('dingtalk'),
-    canBind:
-      !getBindingStatus('dingtalk') &&
-      isProviderEnabledForBinding('dingtalk') &&
-      (getBindingDetails('dingtalk')?.can_bind ?? true),
-    canUnbind: Boolean(getBindingStatus('dingtalk') && getBindingDetails('dingtalk')?.can_unbind),
-    details: getBindingDetails('dingtalk'),
-  },
-  {
-    provider: 'oidc' as const,
-    label: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName }),
-    bound: getBindingStatus('oidc'),
-    canBind:
-      !getBindingStatus('oidc') &&
-      isProviderEnabledForBinding('oidc') &&
-      (getBindingDetails('oidc')?.can_bind ?? true),
-    canUnbind: Boolean(getBindingStatus('oidc') && getBindingDetails('oidc')?.can_unbind),
-    details: getBindingDetails('oidc'),
-  },
-  {
-    provider: 'wechat' as const,
-    label: t('profile.authBindings.providers.wechat'),
-    bound: getBindingStatus('wechat'),
-    canBind:
-      !getBindingStatus('wechat') &&
-      isProviderEnabledForBinding('wechat') &&
-      (getBindingDetails('wechat')?.can_bind ?? true),
-    canUnbind: Boolean(getBindingStatus('wechat') && getBindingDetails('wechat')?.can_unbind),
-    details: getBindingDetails('wechat'),
-  },
-])
+const providerItems = computed(() => {
+  const createThirdPartyItem = (provider: BindableProvider, label: string) => {
+    const bound = getBindingStatus(provider)
+    const details = getBindingDetails(provider)
+    const enabled = isProviderEnabledForBinding(provider)
+
+    return {
+      provider,
+      label,
+      bound,
+      enabled,
+      canBind: !bound && enabled && (details?.can_bind ?? true),
+      canUnbind: Boolean(bound && details?.can_unbind),
+      details,
+    }
+  }
+
+  const items = [
+    {
+      provider: 'email' as const,
+      label: t('profile.authBindings.providers.email'),
+      bound: getBindingStatus('email'),
+      enabled: true,
+      canBind: false,
+      canUnbind: false,
+      details: getBindingDetails('email'),
+    },
+    createThirdPartyItem('linuxdo', t('profile.authBindings.providers.linuxdo')),
+    createThirdPartyItem('dingtalk', t('profile.authBindings.providers.dingtalk')),
+    createThirdPartyItem('oidc', t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName })),
+    createThirdPartyItem('wechat', t('profile.authBindings.providers.wechat')),
+  ]
+
+  return items.filter((item) => item.provider === 'email' || item.bound || item.enabled)
+})
 
 function providerInitial(provider: UserAuthProvider): string {
   if (provider === 'linuxdo') {
