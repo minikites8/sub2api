@@ -29,7 +29,7 @@ func normalizeOAuthSignupSource(signupSource string) string {
 // SendPendingOAuthVerifyCode sends a local verification code for pending OAuth
 // account-creation flows without relying on the public registration gate.
 func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email string, locale ...string) (*SendVerifyCodeResult, error) {
-	email = strings.TrimSpace(strings.ToLower(email))
+	email = normalizeRegistrationEmailAddress(email)
 	if email == "" {
 		return nil, ErrEmailVerifyRequired
 	}
@@ -82,7 +82,7 @@ func (s *AuthService) validateOAuthRegistrationInvitation(ctx context.Context, i
 // third-party signup and binding flows. This is intentionally independent from
 // the global registration email verification toggle.
 func (s *AuthService) VerifyOAuthEmailCode(ctx context.Context, email, verifyCode string) error {
-	email = strings.TrimSpace(strings.ToLower(email))
+	email = normalizeRegistrationEmailAddress(email)
 	verifyCode = strings.TrimSpace(verifyCode)
 
 	if email == "" {
@@ -114,7 +114,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, ErrRegDisabled
 	}
 
-	email = strings.TrimSpace(strings.ToLower(email))
+	email = normalizeRegistrationEmailAddress(email)
 	if isReservedEmail(email) {
 		return nil, nil, ErrEmailReserved
 	}
@@ -196,7 +196,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		return nil, nil, ErrRegDisabled
 	}
 
-	email = strings.TrimSpace(strings.ToLower(email))
+	email = normalizeRegistrationEmailAddress(email)
 	if email == "" || len(email) > 255 {
 		return nil, nil, ErrEmailVerifyRequired
 	}

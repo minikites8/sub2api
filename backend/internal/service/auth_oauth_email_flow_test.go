@@ -237,6 +237,48 @@ func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *tes
 	require.Equal(t, "oidc", userRepo.created[0].SignupSource)
 }
 
+func TestRegisterOAuthEmailAccountNormalizesEmailAlias(t *testing.T) {
+	userRepo := &userRepoStub{nextID: 44}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled: "true",
+			SettingKeyEmailVerifyEnabled:  "true",
+		},
+		emailCache,
+		nil,
+	)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		" Alice.Smith+trial@Example.com ",
+		"secret-123",
+		"246810",
+		"",
+		"oidc",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.Equal(t, "alicesmith@example.com", user.Email)
+	require.Equal(t, []string{"alicesmith@example.com"}, emailCache.gets)
+	require.Equal(t, []string{"alicesmith@example.com"}, emailCache.deletes)
+	require.Equal(t, []string{"alicesmith@example.com"}, userRepo.existsEmails)
+	require.Len(t, userRepo.created, 1)
+	require.Equal(t, "alicesmith@example.com", userRepo.created[0].Email)
+}
+
 func TestRegisterOAuthEmailAccountKeepsGitHubAndGoogleSignupSource(t *testing.T) {
 	tests := []struct {
 		name         string

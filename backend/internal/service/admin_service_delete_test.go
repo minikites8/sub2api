@@ -23,6 +23,7 @@ type userRepoStub struct {
 	created       []*User
 	updated       []*User
 	deletedIDs    []int64
+	existsEmails  []string
 	usersByEmail  map[string]*User
 	getByEmailErr error
 }
@@ -135,6 +136,7 @@ func (s *userRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, 
 func (s *userRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 
 func (s *userRepoStub) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	s.existsEmails = append(s.existsEmails, email)
 	if s.existsErr != nil {
 		return false, s.existsErr
 	}

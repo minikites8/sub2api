@@ -62,8 +62,11 @@ func (s *settingRepoStub) Delete(ctx context.Context, key string) error {
 }
 
 type emailCacheStub struct {
-	data *VerificationCodeData
-	err  error
+	data    *VerificationCodeData
+	err     error
+	gets    []string
+	sets    []string
+	deletes []string
 }
 
 type defaultSubscriptionAssignerStub struct {
@@ -160,6 +163,7 @@ func (s *refreshTokenCacheStub) IsTokenInFamily(context.Context, string, string)
 }
 
 func (s *emailCacheStub) GetVerificationCode(ctx context.Context, email string) (*VerificationCodeData, error) {
+	s.gets = append(s.gets, email)
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -167,10 +171,13 @@ func (s *emailCacheStub) GetVerificationCode(ctx context.Context, email string) 
 }
 
 func (s *emailCacheStub) SetVerificationCode(ctx context.Context, email string, data *VerificationCodeData, ttl time.Duration) error {
+	s.sets = append(s.sets, email)
+	s.data = data
 	return nil
 }
 
 func (s *emailCacheStub) DeleteVerificationCode(ctx context.Context, email string) error {
+	s.deletes = append(s.deletes, email)
 	return nil
 }
 
@@ -487,6 +494,55 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.Equal(t, 2, user.Concurrency)
 	require.Len(t, repo.created, 1)
 	require.True(t, user.CheckPassword("password"))
+}
+
+func TestAuthService_Register_NormalizesEmailAlias(t *testing.T) {
+	repo := &userRepoStub{nextID: 6}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+
+	_, user, err := service.Register(context.Background(), " Alice.Smith+trial@Example.com ", "password")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, "alicesmith@example.com", user.Email)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, "alicesmith@example.com", repo.created[0].Email)
+	require.Equal(t, []string{"alicesmith@example.com"}, repo.existsEmails)
+}
+
+func TestAuthService_Register_VerifiesCodeWithNormalizedEmailAlias(t *testing.T) {
+	repo := &userRepoStub{nextID: 7}
+	cache := &emailCacheStub{
+		data: &VerificationCodeData{Code: "123456", Attempts: 0, ExpiresAt: time.Now().Add(time.Minute)},
+	}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+		SettingKeyEmailVerifyEnabled:  "true",
+	}, cache, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), " Alice.Smith+trial@Example.com ", "password", "123456", "", "", "")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, "alicesmith@example.com", user.Email)
+	require.Equal(t, []string{"alicesmith@example.com"}, cache.gets)
+	require.Equal(t, []string{"alicesmith@example.com"}, cache.deletes)
+}
+
+func TestAuthService_SendVerifyCodeAsync_UsesNormalizedEmailAlias(t *testing.T) {
+	repo := &userRepoStub{}
+	queueService := &EmailQueueService{taskChan: make(chan EmailTask, 1)}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+	service.emailQueueService = queueService
+
+	result, err := service.SendVerifyCodeAsync(context.Background(), " Alice.Smith+trial@Example.com ")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, []string{"alicesmith@example.com"}, repo.existsEmails)
+	task := <-queueService.taskChan
+	require.Equal(t, "alicesmith@example.com", task.Email)
 }
 
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {

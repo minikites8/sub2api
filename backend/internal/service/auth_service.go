@@ -149,6 +149,19 @@ func signupIPFromContext(ctx context.Context) *string {
 	return optionalTrimmedStringPtr(raw)
 }
 
+func normalizeRegistrationEmailAddress(email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	local, domain, ok := strings.Cut(email, "@")
+	if !ok {
+		return email
+	}
+	if beforePlus, _, hasPlus := strings.Cut(local, "+"); hasPlus {
+		local = beforePlus
+	}
+	local = strings.ReplaceAll(local, ".", "")
+	return local + "@" + domain
+}
+
 func (s *AuthService) EntClient() *dbent.Client {
 	if s == nil {
 		return nil
@@ -167,6 +180,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
 	}
+	email = normalizeRegistrationEmailAddress(email)
 
 	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
 	if isReservedEmail(email) {
@@ -374,6 +388,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return ErrRegDisabled
 	}
+	email = normalizeRegistrationEmailAddress(email)
 
 	if isReservedEmail(email) {
 		return ErrEmailReserved
@@ -415,6 +430,7 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		logger.LegacyPrintf("service.auth", "%s", "[Auth] Registration is disabled")
 		return nil, ErrRegDisabled
 	}
+	email = normalizeRegistrationEmailAddress(email)
 
 	if isReservedEmail(email) {
 		return nil, ErrEmailReserved
