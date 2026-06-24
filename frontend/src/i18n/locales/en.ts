@@ -3073,7 +3073,7 @@ export default {
       dataExported: 'Data exported successfully',
       dataExportFailed: 'Failed to export data',
       dataImportTitle: 'Import Data',
-      dataImportHint: 'Upload a sub2api data export JSON file, or a kiro-account-manager account JSON file, to import accounts and proxies in bulk.',
+      dataImportHint: 'Upload a sub2api data export JSON file to import accounts and proxies in bulk.',
       dataImportWarning: 'Import will create new accounts/proxies and the file may contain sensitive credentials. Groups must be bound manually; ensure existing data does not conflict.',
       dataImportFile: 'Data file',
       dataImportButton: 'Start Import',
