@@ -628,4 +628,29 @@ describe('ProfileIdentityBindingsSection', () => {
     expect(wrapper.find('[data-testid="profile-binding-linuxdo-action"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="profile-binding-oidc-action"]').exists()).toBe(false)
   })
+
+  it('hides disabled unbound third-party providers but keeps existing bindings visible', () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      },
+      props: {
+        user: createUser({
+          auth_bindings: {
+            email: { bound: true },
+            linuxdo: { bound: false, can_bind: true },
+            oidc: { bound: true, can_unbind: true },
+            wechat: { bound: false, can_bind: true },
+          },
+        }),
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: false,
+      },
+    })
+
+    expect(wrapper.find('[data-testid="profile-binding-linuxdo-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="profile-binding-wechat-status"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="profile-binding-oidc-status"]').text()).toBe('Bound')
+  })
 })
