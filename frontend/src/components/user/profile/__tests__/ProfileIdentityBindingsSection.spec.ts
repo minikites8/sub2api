@@ -629,6 +629,28 @@ describe('ProfileIdentityBindingsSection', () => {
     expect(wrapper.find('[data-testid="profile-binding-oidc-action"]').exists()).toBe(false)
   })
 
+  it('hides enabled-looking unbound providers when the profile summary marks binding unavailable', () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      },
+      props: {
+        user: createUser({
+          auth_bindings: {
+            linuxdo: { bound: false, can_bind: false },
+            oidc: { bound: false, can_bind: true },
+          },
+        }),
+        linuxdoEnabled: true,
+        oidcEnabled: true,
+        wechatEnabled: false,
+      },
+    })
+
+    expect(wrapper.find('[data-testid="profile-binding-linuxdo-status"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="profile-binding-oidc-status"]').text()).toBe('Not bound')
+  })
+
   it('hides disabled unbound third-party providers but keeps existing bindings visible', () => {
     const wrapper = mount(ProfileIdentityBindingsSection, {
       global: {

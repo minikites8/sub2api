@@ -82,7 +82,7 @@ onMounted(async () => {
     console.error('Failed to refresh profile:', error)
   })
 
-  const settingsLoad = appStore.fetchPublicSettings()
+  const settingsLoad = appStore.fetchPublicSettings(true)
     .then((settings) => {
       if (!settings) {
         return

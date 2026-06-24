@@ -211,7 +211,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { useAppStore, useAuthStore } from '@/stores'
 import type { User, UserAuthBindingStatus, UserAuthProvider } from '@/types'
 
-type BindableProvider = Exclude<UserAuthProvider, 'email'>
+type BindableProvider = 'linuxdo' | 'dingtalk' | 'oidc' | 'wechat'
 
 const props = withDefaults(
   defineProps<{
@@ -422,15 +422,17 @@ const providerItems = computed(() => {
     const bound = getBindingStatus(provider)
     const details = getBindingDetails(provider)
     const enabled = isProviderEnabledForBinding(provider)
+    const canShowUnbound = enabled && details?.can_bind !== false
 
     return {
       provider,
       label,
       bound,
       enabled,
-      canBind: !bound && enabled && (details?.can_bind ?? true),
+      canBind: !bound && canShowUnbound,
       canUnbind: Boolean(bound && details?.can_unbind),
       details,
+      canShowUnbound,
     }
   }
 
@@ -443,6 +445,7 @@ const providerItems = computed(() => {
       canBind: false,
       canUnbind: false,
       details: getBindingDetails('email'),
+      canShowUnbound: true,
     },
     createThirdPartyItem('linuxdo', t('profile.authBindings.providers.linuxdo')),
     createThirdPartyItem('dingtalk', t('profile.authBindings.providers.dingtalk')),
@@ -450,7 +453,7 @@ const providerItems = computed(() => {
     createThirdPartyItem('wechat', t('profile.authBindings.providers.wechat')),
   ]
 
-  return items.filter((item) => item.provider === 'email' || item.bound || item.enabled)
+  return items.filter((item) => item.provider === 'email' || item.bound || item.canShowUnbound)
 })
 
 function providerInitial(provider: UserAuthProvider): string {
@@ -472,6 +475,10 @@ function providerInitial(provider: UserAuthProvider): string {
 function providerIconClass(provider: UserAuthProvider): string {
   void provider
   return 'profile-provider-icon'
+}
+
+function isSupportedBindingProvider(provider: UserAuthProvider): provider is BindableProvider {
+  return provider === 'linuxdo' || provider === 'dingtalk' || provider === 'oidc' || provider === 'wechat'
 }
 
 function providerSummary(provider: UserAuthProvider): string {
@@ -523,7 +530,7 @@ function toggleEmailForm(): void {
 }
 
 function startBinding(provider: UserAuthProvider): void {
-  if (provider === 'email') {
+  if (!isSupportedBindingProvider(provider)) {
     return
   }
   startOAuthBinding(provider, {
@@ -551,7 +558,7 @@ async function handleUnbind(provider: BindableProvider, providerLabel: string): 
 }
 
 function handleUnbindForItem(provider: UserAuthProvider, providerLabel: string): void {
-  if (provider === 'email') {
+  if (!isSupportedBindingProvider(provider)) {
     return
   }
   void handleUnbind(provider, providerLabel)
