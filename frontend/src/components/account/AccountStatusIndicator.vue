@@ -22,13 +22,13 @@
       <button
         v-if="isTempUnschedulable"
         type="button"
-        :class="['badge text-xs', statusClass, 'cursor-pointer']"
+        :class="['badge account-status-badge text-xs', statusClass, 'cursor-pointer']"
         :title="t('admin.accounts.status.viewTempUnschedDetails')"
         @click="handleTempUnschedClick"
       >
         {{ statusText }}
       </button>
-      <span v-else :class="['badge text-xs', statusClass]">
+      <span v-else :class="['badge account-status-badge text-xs', statusClass]">
         {{ statusText }}
       </span>
     </template>
@@ -388,18 +388,18 @@ const statusClass = computed(() => {
     return 'badge-danger'
   }
   if (isTempUnschedulable.value) {
-    return 'badge-warning'
+    return 'account-status-paused'
   }
   if (props.account.status !== 'active') {
-    return props.account.status === 'error' ? 'badge-danger' : 'badge-warning'
+    return props.account.status === 'error' ? 'badge-danger' : 'account-status-paused'
   }
   if (isQuotaExceeded.value) {
     return 'badge-warning'
   }
   if (!props.account.schedulable) {
-    return 'badge-warning'
+    return 'account-status-paused'
   }
-  return 'badge-success'
+  return 'account-status-active'
 })
 
 // Computed: status text
@@ -430,3 +430,33 @@ const handleTempUnschedClick = () => {
   emit('show-temp-unsched', props.account)
 }
 </script>
+
+<style scoped>
+.account-status-badge {
+  border: 1px solid transparent;
+}
+
+.account-status-active {
+  border-color: #bbd7c0;
+  background: #e4f3e7;
+  color: #1f6b35;
+}
+
+.account-status-paused {
+  border-color: #e7cf91;
+  background: #f8edca;
+  color: #7c5800;
+}
+
+:global(.dark) .account-status-active {
+  border-color: rgba(129, 199, 132, 0.32);
+  background: rgba(37, 103, 60, 0.32);
+  color: #b8e6bf;
+}
+
+:global(.dark) .account-status-paused {
+  border-color: rgba(231, 190, 86, 0.35);
+  background: rgba(125, 87, 0, 0.34);
+  color: #f3d27b;
+}
+</style>

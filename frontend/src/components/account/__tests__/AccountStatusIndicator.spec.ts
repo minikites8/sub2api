@@ -86,8 +86,8 @@ describe('AccountStatusIndicator', () => {
       }
     })
 
-    expect(activeWrapper.get('.badge').classes()).toContain('badge-success')
-    expect(pausedWrapper.get('.badge').classes()).toContain('badge-warning')
+    expect(activeWrapper.get('.badge').classes()).toContain('account-status-active')
+    expect(pausedWrapper.get('.badge').classes()).toContain('account-status-paused')
     expect(pausedWrapper.get('.badge').classes()).not.toContain('badge-gray')
   })
 
