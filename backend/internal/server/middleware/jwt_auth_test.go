@@ -268,7 +268,9 @@ func TestJWTAuth_UserInactive(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
-	token, err := authSvc.GenerateToken(user)
+	tokenUser := *user
+	tokenUser.Status = service.StatusActive
+	token, err := authSvc.GenerateToken(&tokenUser)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()

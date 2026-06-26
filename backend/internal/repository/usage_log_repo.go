@@ -1464,7 +1464,7 @@ func (r *usageLogRepository) ListDistinctUsersByIPAndUserAgentSince(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]service.UsageLogUserFirstSeen, 0, 8)
 	for rows.Next() {

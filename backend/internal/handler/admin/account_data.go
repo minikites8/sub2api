@@ -861,7 +861,7 @@ func validateDataAccount(item DataAccount) error {
 		strings.EqualFold(dataImportMapString(item.Credentials, "auth_method"), "idc") &&
 		(dataImportMapString(item.Credentials, "client_id") == "" ||
 			dataImportMapString(item.Credentials, "client_secret") == "") {
-		return errors.New("Kiro IdC 导入需要 clientId 和 clientSecret")
+		return errors.New("kiro IdC 导入需要 clientId 和 clientSecret")
 	}
 	switch item.Type {
 	case service.AccountTypeOAuth, service.AccountTypeSetupToken, service.AccountTypeAPIKey, service.AccountTypeUpstream:
@@ -892,12 +892,12 @@ func refreshKiroAccountManagerCredentials(ctx context.Context, item *DataAccount
 	}
 	credentials := item.Credentials
 	if credentials == nil {
-		return errors.New("Kiro credentials is required")
+		return errors.New("kiro credentials is required")
 	}
 
 	refreshToken := dataImportMapString(credentials, "refresh_token")
 	if refreshToken == "" {
-		return errors.New("Kiro 导入需要可验证的 refreshToken")
+		return errors.New("kiro 导入需要可验证的 refreshToken")
 	}
 
 	authMethod := strings.ToLower(strings.TrimSpace(dataImportMapString(credentials, "auth_method")))
@@ -908,14 +908,14 @@ func refreshKiroAccountManagerCredentials(ctx context.Context, item *DataAccount
 		clientID := dataImportMapString(credentials, "client_id")
 		clientSecret := dataImportMapString(credentials, "client_secret")
 		if clientID == "" || clientSecret == "" {
-			return errors.New("Kiro IdC 导入需要 clientId 和 clientSecret")
+			return errors.New("kiro IdC 导入需要 clientId 和 clientSecret")
 		}
 		token, err = refreshKiroIDCTokenForDataImport(ctx, "", clientID, clientSecret, refreshToken, dataImportMapString(credentials, "region"), dataImportMapString(credentials, "start_url"))
 	default:
 		token, err = refreshKiroSocialTokenForDataImport(ctx, "", refreshToken, dataImportMapString(credentials, "provider"))
 	}
 	if err != nil {
-		return fmt.Errorf("Kiro refreshToken 验证失败: %w", err)
+		return fmt.Errorf("kiro refreshToken 验证失败: %w", err)
 	}
 	mergeKiroTokenData(credentials, token)
 	return nil

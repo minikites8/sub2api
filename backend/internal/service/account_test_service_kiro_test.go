@@ -72,10 +72,11 @@ func TestAccountTestService_Kiro429DoesNotFallbackToCodeWhispererEndpoint(t *tes
 		Type:        AccountTypeOAuth,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"access_token": "kiro-access-token",
-			"api_region":   "us-west-2",
-			"region":       "us-west-2",
-			"profile_arn":  "arn:aws:codewhisperer:us-west-2:123456789012:profile/TESTFALLBACK",
+			"access_token":               "kiro-access-token",
+			"api_region":                 "us-west-2",
+			"region":                     "us-west-2",
+			"profile_arn":                "arn:aws:codewhisperer:us-west-2:123456789012:profile/TESTFALLBACK",
+			"kiro_transient_retry_count": 0,
 		},
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{2: account}}
@@ -111,9 +112,9 @@ func TestAccountTestService_KiroTransientRetryCountRetries429(t *testing.T) {
 		Type:        AccountTypeOAuth,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"access_token":                "kiro-access-token",
-			"profile_arn":                 "arn:aws:codewhisperer:us-east-1:123456789012:profile/RETRY429",
-			"kiro_transient_retry_count":  1,
+			"access_token":               "kiro-access-token",
+			"profile_arn":                "arn:aws:codewhisperer:us-east-1:123456789012:profile/RETRY429",
+			"kiro_transient_retry_count": 1,
 		},
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{22: account}}

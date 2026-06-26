@@ -201,7 +201,7 @@ LIMIT $%d OFFSET $%d`, whereSQL, sortExpr, sortOrder, limitParam, offsetParam)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list daily check-in records: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	records := make([]service.DailyCheckinAdminRecord, 0, filter.PageSize)
 	for rows.Next() {

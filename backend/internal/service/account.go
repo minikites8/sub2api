@@ -883,8 +883,8 @@ func (a *Account) IsPoolMode() bool {
 }
 
 const (
-	defaultPoolModeRetryCount = 3
-	maxPoolModeRetryCount     = 10
+	defaultPoolModeRetryCount      = 3
+	maxPoolModeRetryCount          = 10
 	defaultKiroTransientRetryCount = 2
 	maxKiroTransientRetryCount     = 10
 )
