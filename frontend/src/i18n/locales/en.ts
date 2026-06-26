@@ -3073,7 +3073,7 @@ export default {
       dataExported: 'Data exported successfully',
       dataExportFailed: 'Failed to export data',
       dataImportTitle: 'Import Data',
-      dataImportHint: 'Upload a sub2api data export JSON file, or a kiro-account-manager account JSON file, to import accounts and proxies in bulk.',
+      dataImportHint: 'Upload a sub2api data export JSON file to import accounts and proxies in bulk.',
       dataImportWarning: 'Import will create new accounts/proxies and the file may contain sensitive credentials. Groups must be bound manually; ensure existing data does not conflict.',
       dataImportFile: 'Data file',
       dataImportButton: 'Start Import',
@@ -4760,6 +4760,9 @@ export default {
         submitSuccess: 'Cleanup task created',
         submitFailed: 'Failed to create cleanup task',
         loadFailed: 'Failed to load cleanup tasks',
+        errorConfirm: 'Clear error request logs in the current filter range? This action cannot be undone.',
+        errorSubmitSuccess: 'Cleared {count} error request logs',
+        errorSubmitFailed: 'Failed to clear error request logs',
         status: {
           pending: 'Pending',
           running: 'Running',

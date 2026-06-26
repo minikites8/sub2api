@@ -3149,7 +3149,7 @@ export default {
       dataExported: '数据导出成功',
       dataExportFailed: '数据导出失败',
       dataImportTitle: '导入数据',
-      dataImportHint: '上传 sub2api 导出的 JSON 文件，或 kiro-account-manager 导出的账号 JSON 文件，以批量导入账号与代理。',
+      dataImportHint: '上传 sub2api 导出的 JSON 文件，以批量导入账号与代理。',
       dataImportWarning: '导入将创建新账号与代理，文件可能包含敏感凭据；分组需手工绑定，请确认已有数据不会冲突。',
       dataImportFile: '数据文件',
       dataImportButton: '开始导入',
@@ -4912,6 +4912,9 @@ export default {
         submitSuccess: '清理任务已创建',
         submitFailed: '创建清理任务失败',
         loadFailed: '加载清理任务失败',
+        errorConfirm: '确定要清理当前筛选范围内的错误请求日志吗？该操作不可恢复。',
+        errorSubmitSuccess: '已清理 {count} 条错误请求日志',
+        errorSubmitFailed: '清理错误请求日志失败',
         status: {
           pending: '待执行',
           running: '执行中',
