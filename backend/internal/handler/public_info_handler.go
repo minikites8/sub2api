@@ -110,6 +110,9 @@ func (h *PublicInfoHandler) loadPublicGroupRates(ctx context.Context) ([]publicG
 	out := make([]publicGroupRate, 0, len(groups))
 	for i := range groups {
 		g := groups[i]
+		if !isPubliclyAvailableGroup(&g) {
+			continue
+		}
 		out = append(out, publicGroupRate{
 			ID:                   g.ID,
 			Name:                 g.Name,
@@ -120,6 +123,16 @@ func (h *PublicInfoHandler) loadPublicGroupRates(ctx context.Context) ([]publicG
 		})
 	}
 	return out, nil
+}
+
+func isPubliclyAvailableGroup(g *service.Group) bool {
+	if g == nil || !g.IsActive() {
+		return false
+	}
+	if g.IsExclusive || g.IsSubscriptionType() {
+		return false
+	}
+	return g.ActiveAccountCount > 0
 }
 
 func (h *PublicInfoHandler) loadPublicModelAvailability(ctx context.Context) ([]publicMonitorAvailability, error) {
