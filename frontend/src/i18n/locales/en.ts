@@ -93,12 +93,11 @@ export default {
       title: 'Supported AI Models',
       description: 'One API, Multiple Choices',
       supported: 'Supported',
-      soon: 'Soon',
       claude: 'Claude',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
       kiro: 'Kiro',
-      more: 'More'
+      grok: 'Grok'
     },
     // CTA section
     cta: {
@@ -1882,6 +1881,7 @@ export default {
         usageGemini: 'Usage (Gemini)',
         usageAntigravity: 'Usage (Antigravity)',
         usageKiro: 'Usage (Kiro)',
+        usageGrok: 'Usage (Grok)',
         concurrency: 'Concurrency',
         status: 'Status',
         lastActive: 'Last Active',
@@ -3529,7 +3529,6 @@ export default {
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       kiro: {
-        baseUrlHint: 'Leave empty to connect directly to AWS (q.{region}.amazonaws.com). Region is controlled by the api_region credential, default us-east-1',
         apiKeyHint: 'Kiro API Key (starts with ksk_), used as the Bearer token for direct AWS access',
         relayBaseUrlHint: 'External Anthropic-compatible upstream URL (e.g. https://your-relay.example.com); requests go to {base_url}/v1/messages',
         relayApiKeyHint: 'API Key for that external upstream (sent via the x-api-key header)',
