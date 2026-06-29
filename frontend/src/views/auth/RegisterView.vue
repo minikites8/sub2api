@@ -134,51 +134,101 @@
           </transition>
         </div>
 
-        <!-- Promo / Affiliate Code Input (Optional) -->
-        <div v-if="promoCodeEnabled || affiliateEnabled">
-          <label for="promo_or_aff_code" class="input-label">
-            {{ t('auth.promoOrAffCodeLabel') }}
+        <!-- Promo Code Input (Optional) -->
+        <div v-if="promoCodeEnabled">
+          <label for="promo_code" class="input-label">
+            {{ t('auth.promoCodeLabel') }}
             <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
               <Icon
-                :name="combinedCodeType === 'affiliate' ? 'users' : 'gift'"
+                name="gift"
                 size="md"
-                :class="combinedCodeValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'"
+                :class="promoValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'"
               />
             </div>
             <input
-              id="promo_or_aff_code"
-              v-model="formData.promo_or_aff_code"
+              id="promo_code"
+              v-model="formData.promo_code"
               type="text"
               :disabled="registrationActionDisabled"
               class="input pl-11 pr-10"
               :class="{
-                'border-green-500 focus:border-green-500 focus:ring-green-500': combinedCodeValidation.valid,
-                'border-red-500 focus:border-red-500 focus:ring-red-500': combinedCodeValidation.invalid
+                'border-green-500 focus:border-green-500 focus:ring-green-500': promoValidation.valid,
+                'border-red-500 focus:border-red-500 focus:ring-red-500': promoValidation.invalid
               }"
-              :placeholder="t('auth.promoOrAffCodePlaceholder')"
-              @input="handleCombinedCodeInput"
+              :placeholder="t('auth.promoCodePlaceholder')"
+              @input="handlePromoCodeInput"
             />
-            <div v-if="combinedCodeValidating" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+            <div v-if="promoValidating" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
               <svg class="h-4 w-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
             </div>
-            <div v-else-if="combinedCodeValidation.valid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+            <div v-else-if="promoValidation.valid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
               <Icon name="checkCircle" size="md" class="text-green-500" />
             </div>
-            <div v-else-if="combinedCodeValidation.invalid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+            <div v-else-if="promoValidation.invalid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
               <Icon name="exclamationCircle" size="md" class="text-red-500" />
             </div>
           </div>
           <transition name="fade">
-            <div v-if="combinedCodeValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
-              <Icon :name="combinedCodeType === 'affiliate' ? 'users' : 'gift'" size="sm" class="text-green-600 dark:text-green-400" />
+            <div v-if="promoValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
+              <Icon name="gift" size="sm" class="text-green-600 dark:text-green-400" />
               <span class="text-sm text-green-700 dark:text-green-400">
-                {{ combinedCodeSuccessMessage }}
+                {{ promoCodeSuccessMessage }}
+              </span>
+            </div>
+          </transition>
+        </div>
+
+        <!-- Affiliate Code Input (Optional) -->
+        <div v-if="affiliateEnabled">
+          <label for="aff_code" class="input-label">
+            {{ t('auth.affCodeLabel') }}
+            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon
+                name="users"
+                size="md"
+                :class="affValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'"
+              />
+            </div>
+            <input
+              id="aff_code"
+              v-model="formData.aff_code"
+              type="text"
+              :disabled="registrationActionDisabled"
+              class="input pl-11 pr-10"
+              :class="{
+                'border-green-500 focus:border-green-500 focus:ring-green-500': affValidation.valid,
+                'border-red-500 focus:border-red-500 focus:ring-red-500': affValidation.invalid
+              }"
+              :placeholder="t('auth.affCodePlaceholder')"
+              @input="handleAffCodeInput"
+            />
+            <div v-if="affValidating" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+              <svg class="h-4 w-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <div v-else-if="affValidation.valid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+              <Icon name="checkCircle" size="md" class="text-green-500" />
+            </div>
+            <div v-else-if="affValidation.invalid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+              <Icon name="exclamationCircle" size="md" class="text-red-500" />
+            </div>
+          </div>
+          <transition name="fade">
+            <div v-if="affValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
+              <Icon name="users" size="sm" class="text-green-600 dark:text-green-400" />
+              <span class="text-sm text-green-700 dark:text-green-400">
+                {{ t('auth.affCodeValid') }}
               </span>
             </div>
           </transition>
@@ -377,19 +427,7 @@ const showAgreementModal = ref<boolean>(false)
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref<string>('')
 
-// Promo / affiliate code validation
-const combinedCodeValidating = ref<boolean>(false)
-const combinedCodeType = ref<'promo' | 'affiliate' | null>(null)
-const manualAffiliateOverride = ref<boolean>(false)
-const combinedCodeValidation = reactive({
-  valid: false,
-  invalid: false,
-  bonusAmount: null as number | null,
-  message: ''
-})
-let combinedCodeValidateTimeout: ReturnType<typeof setTimeout> | null = null
-
-// Legacy promo validation state, kept for shared helper code paths
+// Promo code validation
 const promoValidating = ref<boolean>(false)
 const promoValidation = reactive({
   valid: false,
@@ -398,6 +436,15 @@ const promoValidation = reactive({
   message: ''
 })
 let promoValidateTimeout: ReturnType<typeof setTimeout> | null = null
+
+// Affiliate code validation
+const affValidating = ref<boolean>(false)
+const affValidation = reactive({
+  valid: false,
+  invalid: false,
+  message: ''
+})
+let affValidateTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Invitation code validation
 const invitationValidating = ref<boolean>(false)
@@ -411,7 +458,6 @@ let invitationValidateTimeout: ReturnType<typeof setTimeout> | null = null
 const formData = reactive({
   email: '',
   password: '',
-  promo_or_aff_code: '',
   promo_code: '',
   invitation_code: '',
   aff_code: ''
@@ -429,19 +475,17 @@ const validationToastMessage = computed(() =>
   errors.password ||
   (invitationValidation.invalid ? invitationValidation.message : '') ||
   errors.invitation_code ||
-  (combinedCodeValidation.invalid ? combinedCodeValidation.message : '') ||
+  (promoValidation.invalid ? promoValidation.message : '') ||
+  (affValidation.invalid ? affValidation.message : '') ||
   errors.turnstile ||
   ''
 )
 
-const combinedCodeSuccessMessage = computed(() => {
-  if (!combinedCodeValidation.valid) {
+const promoCodeSuccessMessage = computed(() => {
+  if (!promoValidation.valid) {
     return ''
   }
-  if (combinedCodeType.value === 'affiliate') {
-    return t('auth.affCodeValid')
-  }
-  const bonusAmount = combinedCodeValidation.bonusAmount || 0
+  const bonusAmount = promoValidation.bonusAmount || 0
   if (bonusAmount <= 0) {
     return t('auth.promoCodeValidNoBonus')
   }
@@ -479,16 +523,24 @@ function syncAffiliateReferralCode(): string {
   return code
 }
 
-function setCombinedCodeFromAffiliate(code: string): void {
-  formData.promo_or_aff_code = code
+function routeStringParam(value: unknown): string {
+  const raw = Array.isArray(value) ? value[0] : value
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
+function markAffCodeValid(code: string): void {
   formData.aff_code = code
-  formData.promo_code = ''
-  manualAffiliateOverride.value = false
-  combinedCodeType.value = 'affiliate'
-  combinedCodeValidation.valid = true
-  combinedCodeValidation.invalid = false
-  combinedCodeValidation.bonusAmount = null
-  combinedCodeValidation.message = ''
+  affValidation.valid = true
+  affValidation.invalid = false
+  affValidation.message = ''
+}
+
+function markPromoCodeValid(code: string, bonusAmount: number | null = null): void {
+  formData.promo_code = code
+  promoValidation.valid = true
+  promoValidation.invalid = false
+  promoValidation.bonusAmount = bonusAmount
+  promoValidation.message = ''
 }
 
 // ==================== Lifecycle ====================
@@ -518,12 +570,13 @@ onMounted(async () => {
     applyLoginAgreementSettings(settings)
 
     const affCode = syncAffiliateReferralCode()
-    const promoParam = route.query.promo as string
+    const promoParam = routeStringParam(route.query.promo)
     if (affCode && affiliateEnabled.value) {
-      setCombinedCodeFromAffiliate(affCode)
-    } else if (promoCodeEnabled.value && promoParam) {
-      formData.promo_or_aff_code = promoParam
-      await validateCombinedCodeDebounced(promoParam)
+      markAffCodeValid(affCode)
+    }
+    if (promoCodeEnabled.value && promoParam) {
+      formData.promo_code = promoParam
+      await validatePromoCodeDebounced(promoParam)
     }
   } catch (error) {
     console.error('Failed to load public settings:', error)
@@ -539,14 +592,17 @@ watch(
   () => {
     const code = syncAffiliateReferralCode()
     if (code && affiliateEnabled.value) {
-      setCombinedCodeFromAffiliate(code)
+      markAffCodeValid(code)
     }
   }
 )
 
 onUnmounted(() => {
-  if (combinedCodeValidateTimeout) {
-    clearTimeout(combinedCodeValidateTimeout)
+  if (promoValidateTimeout) {
+    clearTimeout(promoValidateTimeout)
+  }
+  if (affValidateTimeout) {
+    clearTimeout(affValidateTimeout)
   }
   if (invitationValidateTimeout) {
     clearTimeout(invitationValidateTimeout)
@@ -620,20 +676,19 @@ function rejectLoginAgreement(): void {
 function handlePromoCodeInput(): void {
   const code = formData.promo_code.trim()
 
-  // Clear previous validation
   promoValidation.valid = false
   promoValidation.invalid = false
   promoValidation.bonusAmount = null
   promoValidation.message = ''
 
+  if (promoValidateTimeout) {
+    clearTimeout(promoValidateTimeout)
+    promoValidateTimeout = null
+  }
+
   if (!code) {
     promoValidating.value = false
     return
-  }
-
-  // Debounce validation
-  if (promoValidateTimeout) {
-    clearTimeout(promoValidateTimeout)
   }
 
   promoValidateTimeout = setTimeout(() => {
@@ -644,18 +699,20 @@ function handlePromoCodeInput(): void {
 void handlePromoCodeInput
 
 async function validatePromoCodeDebounced(code: string): Promise<void> {
-  if (!code.trim()) return
+  const trimmedCode = code.trim()
+  if (!trimmedCode) return
 
   promoValidating.value = true
 
   try {
-    const result = await validatePromoCode(code)
+    const result = await validatePromoCode(trimmedCode)
+
+    if (formData.promo_code.trim() !== trimmedCode) {
+      return
+    }
 
     if (result.valid) {
-      promoValidation.valid = true
-      promoValidation.invalid = false
-      promoValidation.bonusAmount = result.bonus_amount || 0
-      promoValidation.message = ''
+      markPromoCodeValid(trimmedCode, result.bonus_amount || 0)
     } else {
       promoValidation.valid = false
       promoValidation.invalid = true
@@ -665,11 +722,16 @@ async function validatePromoCodeDebounced(code: string): Promise<void> {
     }
   } catch (error) {
     console.error('Failed to validate promo code:', error)
+    if (formData.promo_code.trim() !== trimmedCode) {
+      return
+    }
     promoValidation.valid = false
     promoValidation.invalid = true
     promoValidation.message = t('auth.promoCodeInvalid')
   } finally {
-    promoValidating.value = false
+    if (formData.promo_code.trim() === trimmedCode) {
+      promoValidating.value = false
+    }
   }
 }
 
@@ -687,6 +749,65 @@ function getPromoErrorMessage(errorCode?: string): string {
       return t('auth.promoCodeAlreadyUsed')
     default:
       return t('auth.promoCodeInvalid')
+  }
+}
+
+// ==================== Affiliate Code Validation ====================
+
+function handleAffCodeInput(): void {
+  const code = formData.aff_code.trim()
+
+  affValidation.valid = false
+  affValidation.invalid = false
+  affValidation.message = ''
+
+  if (affValidateTimeout) {
+    clearTimeout(affValidateTimeout)
+    affValidateTimeout = null
+  }
+
+  if (!code) {
+    affValidating.value = false
+    return
+  }
+
+  affValidateTimeout = setTimeout(() => {
+    validateAffCodeDebounced(code)
+  }, 500)
+}
+
+async function validateAffCodeDebounced(code: string): Promise<void> {
+  const trimmedCode = code.trim()
+  if (!trimmedCode) return
+
+  affValidating.value = true
+
+  try {
+    const result = await validateAffCode(trimmedCode)
+
+    if (formData.aff_code.trim() !== trimmedCode) {
+      return
+    }
+
+    if (result.valid) {
+      markAffCodeValid(trimmedCode)
+    } else {
+      affValidation.valid = false
+      affValidation.invalid = true
+      affValidation.message = t('auth.affCodeInvalid')
+    }
+  } catch (error) {
+    console.error('Failed to validate affiliate code:', error)
+    if (formData.aff_code.trim() !== trimmedCode) {
+      return
+    }
+    affValidation.valid = false
+    affValidation.invalid = true
+    affValidation.message = t('auth.affCodeInvalid')
+  } finally {
+    if (formData.aff_code.trim() === trimmedCode) {
+      affValidating.value = false
+    }
   }
 }
 
@@ -751,104 +872,6 @@ function getInvitationErrorMessage(errorCode?: string): string {
       return t('auth.invitationCodeInvalid')
     default:
       return t('auth.invitationCodeInvalid')
-  }
-}
-
-// ==================== Promo / Affiliate Code Validation ====================
-
-function handleCombinedCodeInput(): void {
-  const code = formData.promo_or_aff_code.trim()
-  manualAffiliateOverride.value = true
-
-  combinedCodeValidation.valid = false
-  combinedCodeValidation.invalid = false
-  combinedCodeValidation.bonusAmount = null
-  combinedCodeValidation.message = ''
-  combinedCodeType.value = null
-  formData.promo_code = ''
-  if (manualAffiliateOverride.value) {
-    formData.aff_code = ''
-  }
-
-  if (!code) {
-    combinedCodeValidating.value = false
-    return
-  }
-
-  if (combinedCodeValidateTimeout) {
-    clearTimeout(combinedCodeValidateTimeout)
-  }
-
-  combinedCodeValidateTimeout = setTimeout(() => {
-    void validateCombinedCodeDebounced(code)
-  }, 500)
-}
-
-async function validateCombinedCodeDebounced(code: string): Promise<void> {
-  const trimmedCode = code.trim()
-  if (!trimmedCode) return
-
-  combinedCodeValidating.value = true
-
-  try {
-    if (promoCodeEnabled.value) {
-      const promoResult = await validatePromoCode(trimmedCode).catch((error) => {
-        console.error('Failed to validate promo code:', error)
-        return null
-      })
-      if (promoResult?.valid) {
-        combinedCodeValidation.valid = true
-        combinedCodeValidation.invalid = false
-        combinedCodeValidation.bonusAmount = promoResult.bonus_amount || 0
-        combinedCodeValidation.message = ''
-        combinedCodeType.value = 'promo'
-        formData.promo_code = trimmedCode
-        if (manualAffiliateOverride.value) {
-          formData.aff_code = ''
-        }
-        return
-      }
-    }
-
-    if (affiliateEnabled.value) {
-      const affResult = await validateAffCode(trimmedCode).catch((error) => {
-        console.error('Failed to validate affiliate code:', error)
-        return null
-      })
-      if (affResult?.valid) {
-        combinedCodeValidation.valid = true
-        combinedCodeValidation.invalid = false
-        combinedCodeValidation.bonusAmount = null
-        combinedCodeValidation.message = ''
-        combinedCodeType.value = 'affiliate'
-        formData.aff_code = trimmedCode
-        formData.promo_code = ''
-        return
-      }
-    }
-
-    combinedCodeValidation.valid = false
-    combinedCodeValidation.invalid = true
-    combinedCodeValidation.bonusAmount = null
-    combinedCodeValidation.message = t('auth.promoOrAffCodeInvalid')
-    combinedCodeType.value = null
-    formData.promo_code = ''
-    if (manualAffiliateOverride.value) {
-      formData.aff_code = ''
-    }
-  } catch (error) {
-    console.error('Failed to validate promo/affiliate code:', error)
-    combinedCodeValidation.valid = false
-    combinedCodeValidation.invalid = true
-    combinedCodeValidation.bonusAmount = null
-    combinedCodeValidation.message = t('auth.promoOrAffCodeInvalid')
-    combinedCodeType.value = null
-    formData.promo_code = ''
-    if (manualAffiliateOverride.value) {
-      formData.aff_code = ''
-    }
-  } finally {
-    combinedCodeValidating.value = false
   }
 }
 
@@ -960,15 +983,38 @@ async function handleRegister(): Promise<void> {
     return
   }
 
-  // Check combined promo / affiliate code validation status
-  if (formData.promo_or_aff_code.trim()) {
-    if (combinedCodeValidating.value) {
-      errorMessage.value = t('auth.promoOrAffCodeValidating')
+  const currentPromoCode = formData.promo_code.trim()
+  const currentAffCode = formData.aff_code.trim()
+
+  // Check promo code validation status
+  if (currentPromoCode) {
+    if (promoValidating.value) {
+      errorMessage.value = t('auth.promoCodeValidating')
       return
     }
-    if (!combinedCodeValidation.valid) {
-      errorMessage.value = t('auth.promoOrAffCodeInvalidCannotRegister')
+    if (!promoValidation.valid) {
+      errorMessage.value = t('auth.promoCodeValidating')
+      await validatePromoCodeDebounced(currentPromoCode)
+      if (!promoValidation.valid) {
+        errorMessage.value = t('auth.promoCodeInvalidCannotRegister')
+        return
+      }
+    }
+  }
+
+  // Check affiliate code validation status
+  if (currentAffCode && affiliateEnabled.value) {
+    if (affValidating.value) {
+      errorMessage.value = t('auth.affCodeValidating')
       return
+    }
+    if (!affValidation.valid) {
+      errorMessage.value = t('auth.affCodeValidating')
+      await validateAffCodeDebounced(currentAffCode)
+      if (!affValidation.valid) {
+        errorMessage.value = t('auth.affCodeInvalidCannotRegister')
+        return
+      }
     }
   }
 
@@ -999,8 +1045,8 @@ async function handleRegister(): Promise<void> {
   isLoading.value = true
 
   try {
-    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
-    const promoCode = combinedCodeType.value === 'promo' ? formData.promo_code.trim() : ''
+    const affCode = currentAffCode || loadAffiliateReferralCode()
+    const promoCode = currentPromoCode
     if (affCode) {
       formData.aff_code = affCode
     }
