@@ -1126,6 +1126,60 @@ export default {
     }
   },
 
+  siteInfo: {
+    title: '站点信息',
+    kicker: '公开服务概览',
+    description: '查看当前公开分组倍率、充值倍率、模型可用性和近期状态记录。',
+    loading: '正在加载站点信息...',
+    loadError: '加载站点信息失败',
+    generatedAtEmpty: '暂未生成数据',
+    metrics: {
+      groups: '公开分组',
+      publicGroups: '可直接使用的标准分组',
+      monitors: '监控渠道',
+      monitorGroups: '公开展示的渠道状态',
+      models: '正常模型',
+      operationalModels: '当前模型状态',
+      availability: '7 天可用率',
+      availabilityCaption: '所有公开模型平均值'
+    },
+    groups: {
+      title: '分组倍率',
+      description: '公开可用分组的默认计费倍率。',
+      empty: '暂无公开分组',
+      columns: {
+        name: '分组',
+        platform: '平台',
+        rate: '倍率',
+        imageRate: '生图倍率'
+      }
+    },
+    recharge: {
+      title: '充值信息',
+      description: '余额充值状态与当前换算倍率。',
+      payment: '支付',
+      balance: '余额充值',
+      multiplier: '充值倍率',
+      enabled: '已启用',
+      disabled: '已关闭',
+      open: '开放',
+      closed: '关闭'
+    },
+    availability: {
+      title: '模型可用情况',
+      description: '按渠道展示模型状态、可用率和最近时间线。',
+      empty: '暂无可展示的模型可用情况',
+      modelCount: '{n} 个模型',
+      columns: {
+        model: '模型',
+        status: '状态',
+        availability7d: '7 天',
+        availability15d: '15 天',
+        availability30d: '30 天'
+      }
+    }
+  },
+
   // Available Channels (user-facing)
   availableChannels: {
     title: '可用渠道',

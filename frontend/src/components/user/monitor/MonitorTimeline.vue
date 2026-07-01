@@ -4,7 +4,7 @@
       class="flex justify-between text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2"
     >
       <span>{{ t('monitorCommon.history60pts', { n: length }) }}</span>
-      <span class="tabular-nums">{{ t('monitorCommon.nextUpdateIn', { n: countdownSeconds }) }}</span>
+      <span v-if="showCountdown" class="tabular-nums">{{ t('monitorCommon.nextUpdateIn', { n: countdownSeconds }) }}</span>
     </div>
 
     <div
@@ -44,10 +44,12 @@ const props = withDefaults(defineProps<{
   countdownSeconds: number
   length?: number
   maintenance?: boolean
+  showCountdown?: boolean
 }>(), {
   buckets: () => [],
   length: 60,
   maintenance: false,
+  showCountdown: true,
 })
 
 const { t } = useI18n()

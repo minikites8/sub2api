@@ -1122,6 +1122,60 @@ export default {
     }
   },
 
+  siteInfo: {
+    title: 'Site Info',
+    kicker: 'Public Service Overview',
+    description: 'View public group multipliers, recharge ratio, model availability, and recent status history.',
+    loading: 'Loading site information...',
+    loadError: 'Failed to load site information',
+    generatedAtEmpty: 'No data generated yet',
+    metrics: {
+      groups: 'Public Groups',
+      publicGroups: 'Standard groups ready to use',
+      monitors: 'Monitored Channels',
+      monitorGroups: 'Public channel status',
+      models: 'Operational Models',
+      operationalModels: 'Current model status',
+      availability: '7d Availability',
+      availabilityCaption: 'Average across public models'
+    },
+    groups: {
+      title: 'Group Multipliers',
+      description: 'Default billing multipliers for public groups.',
+      empty: 'No public groups available',
+      columns: {
+        name: 'Group',
+        platform: 'Platform',
+        rate: 'Rate',
+        imageRate: 'Image Rate'
+      }
+    },
+    recharge: {
+      title: 'Recharge Info',
+      description: 'Balance recharge status and current conversion multiplier.',
+      payment: 'Payment',
+      balance: 'Balance Recharge',
+      multiplier: 'Recharge Multiplier',
+      enabled: 'Enabled',
+      disabled: 'Closed',
+      open: 'Open',
+      closed: 'Closed'
+    },
+    availability: {
+      title: 'Model Availability',
+      description: 'Model status, availability windows, and recent timeline by channel.',
+      empty: 'No model availability to show',
+      modelCount: '{n} models',
+      columns: {
+        model: 'Model',
+        status: 'Status',
+        availability7d: '7 days',
+        availability15d: '15 days',
+        availability30d: '30 days'
+      }
+    }
+  },
+
   // Available Channels (user-facing)
   availableChannels: {
     title: 'Available Channels',

@@ -167,6 +167,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/site-info',
+    name: 'SiteInfo',
+    component: () => import('@/views/public/SiteInfoView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Site Info',
+      titleKey: 'siteInfo.title'
+    }
+  },
+  {
     path: '/legal/:documentId',
     name: 'LegalDocument',
     component: () => import('@/views/public/LegalDocumentView.vue'),
