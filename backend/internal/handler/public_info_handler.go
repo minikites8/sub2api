@@ -49,11 +49,12 @@ type publicGroupRate struct {
 }
 
 type publicMonitorAvailability struct {
-	ID        int64                     `json:"id"`
-	Name      string                    `json:"name"`
-	Provider  string                    `json:"provider"`
-	GroupName string                    `json:"group_name"`
-	Models    []publicModelAvailability `json:"models"`
+	ID        int64                        `json:"id"`
+	Name      string                       `json:"name"`
+	Provider  string                       `json:"provider"`
+	GroupName string                       `json:"group_name"`
+	Models    []publicModelAvailability    `json:"models"`
+	Timeline  []publicMonitorTimelinePoint `json:"timeline"`
 }
 
 type publicModelAvailability struct {
@@ -62,6 +63,13 @@ type publicModelAvailability struct {
 	Availability7d  float64 `json:"availability_7d"`
 	Availability15d float64 `json:"availability_15d"`
 	Availability30d float64 `json:"availability_30d"`
+}
+
+type publicMonitorTimelinePoint struct {
+	Status        string `json:"status"`
+	LatencyMs     *int   `json:"latency_ms"`
+	PingLatencyMs *int   `json:"ping_latency_ms"`
+	CheckedAt     string `json:"checked_at"`
 }
 
 type publicRechargeInfo struct {
@@ -168,9 +176,23 @@ func (h *PublicInfoHandler) loadPublicModelAvailability(ctx context.Context) ([]
 			Provider:  detail.Provider,
 			GroupName: detail.GroupName,
 			Models:    models,
+			Timeline:  publicTimelineFromUserView(view.Timeline),
 		})
 	}
 	return out, nil
+}
+
+func publicTimelineFromUserView(points []service.UserMonitorTimelinePoint) []publicMonitorTimelinePoint {
+	timeline := make([]publicMonitorTimelinePoint, 0, len(points))
+	for _, point := range points {
+		timeline = append(timeline, publicMonitorTimelinePoint{
+			Status:        point.Status,
+			LatencyMs:     point.LatencyMs,
+			PingLatencyMs: point.PingLatencyMs,
+			CheckedAt:     point.CheckedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return timeline
 }
 
 func (h *PublicInfoHandler) loadPublicRechargeInfo(ctx context.Context) (publicRechargeInfo, error) {
