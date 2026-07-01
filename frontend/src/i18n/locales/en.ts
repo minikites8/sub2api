@@ -1125,7 +1125,7 @@ export default {
   siteInfo: {
     title: 'Site Info',
     kicker: 'Public Service Overview',
-    description: 'View public group multipliers, recharge ratio, model availability, and recent status history.',
+    description: 'View public group multipliers, savings against official pricing, model availability, and recent status history.',
     loading: 'Loading site information...',
     loadError: 'Failed to load site information',
     generatedAtEmpty: 'No data generated yet',
@@ -1143,23 +1143,14 @@ export default {
       title: 'Group Multipliers',
       description: 'Default billing multipliers for public groups.',
       empty: 'No public groups available',
+      savingsValue: 'Save {percent}',
       columns: {
         name: 'Group',
         platform: 'Platform',
         rate: 'Rate',
-        imageRate: 'Image Rate'
+        imageRate: 'Image Rate',
+        officialSavings: 'Vs Official'
       }
-    },
-    recharge: {
-      title: 'Recharge Info',
-      description: 'Balance recharge status and current conversion multiplier.',
-      payment: 'Payment',
-      balance: 'Balance Recharge',
-      multiplier: 'Recharge Multiplier',
-      enabled: 'Enabled',
-      disabled: 'Closed',
-      open: 'Open',
-      closed: 'Closed'
     },
     availability: {
       title: 'Model Availability',

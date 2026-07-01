@@ -1129,7 +1129,7 @@ export default {
   siteInfo: {
     title: '站点信息',
     kicker: '公开服务概览',
-    description: '查看当前公开分组倍率、充值倍率、模型可用性和近期状态记录。',
+    description: '查看当前公开分组倍率、相对官方价格节省比例、模型可用性和近期状态记录。',
     loading: '正在加载站点信息...',
     loadError: '加载站点信息失败',
     generatedAtEmpty: '暂未生成数据',
@@ -1147,23 +1147,14 @@ export default {
       title: '分组倍率',
       description: '公开可用分组的默认计费倍率。',
       empty: '暂无公开分组',
+      savingsValue: '节省 {percent}',
       columns: {
         name: '分组',
         platform: '平台',
         rate: '倍率',
-        imageRate: '生图倍率'
+        imageRate: '生图倍率',
+        officialSavings: '相比官方'
       }
-    },
-    recharge: {
-      title: '充值信息',
-      description: '余额充值状态与当前换算倍率。',
-      payment: '支付',
-      balance: '余额充值',
-      multiplier: '充值倍率',
-      enabled: '已启用',
-      disabled: '已关闭',
-      open: '开放',
-      closed: '关闭'
     },
     availability: {
       title: '模型可用情况',

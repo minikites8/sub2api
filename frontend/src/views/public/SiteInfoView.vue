@@ -48,15 +48,21 @@
           </p>
         </div>
 
-        <button
-          type="button"
-          class="site-info-tonal-button"
-          :disabled="loading"
-          @click="loadSiteInfo"
-        >
-          <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-          <span>{{ t('common.refresh') }}</span>
-        </button>
+        <div class="flex flex-col items-start gap-2 md:items-end">
+          <button
+            type="button"
+            class="site-info-tonal-button"
+            :disabled="loading"
+            @click="loadSiteInfo"
+          >
+            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+            <span>{{ t('common.refresh') }}</span>
+          </button>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-[var(--site-info-on-surface-variant)]">
+            <Icon name="clock" size="sm" />
+            <span>{{ generatedAtLabel }}</span>
+          </div>
+        </div>
       </section>
 
       <div
@@ -83,7 +89,7 @@
         </div>
       </section>
 
-      <section class="mt-8 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
+      <section class="mt-8">
         <div class="site-info-panel">
           <div class="site-info-panel-heading">
             <div>
@@ -107,6 +113,7 @@
                   <th>{{ t('siteInfo.groups.columns.platform') }}</th>
                   <th>{{ t('siteInfo.groups.columns.rate') }}</th>
                   <th>{{ t('siteInfo.groups.columns.imageRate') }}</th>
+                  <th>{{ t('siteInfo.groups.columns.officialSavings') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -124,39 +131,12 @@
                     </span>
                     <span v-else class="text-[var(--site-info-on-surface-variant)]">-</span>
                   </td>
+                  <td class="font-mono font-semibold tabular-nums text-emerald-600 dark:text-emerald-300">
+                    {{ formatOfficialSavings(group.rate_multiplier) }}
+                  </td>
                 </tr>
               </tbody>
             </table>
-          </div>
-        </div>
-
-        <div class="site-info-panel">
-          <div class="site-info-panel-heading">
-            <div>
-              <h2>{{ t('siteInfo.recharge.title') }}</h2>
-              <p>{{ t('siteInfo.recharge.description') }}</p>
-            </div>
-            <span class="site-info-count-chip">{{ rechargeStatusLabel }}</span>
-          </div>
-
-          <div class="mt-4 grid gap-3 sm:grid-cols-3">
-            <div class="site-info-recharge-cell">
-              <span>{{ t('siteInfo.recharge.payment') }}</span>
-              <strong>{{ data?.recharge.payment_enabled ? t('siteInfo.recharge.enabled') : t('siteInfo.recharge.disabled') }}</strong>
-            </div>
-            <div class="site-info-recharge-cell">
-              <span>{{ t('siteInfo.recharge.balance') }}</span>
-              <strong>{{ data?.recharge.balance_disabled ? t('siteInfo.recharge.closed') : t('siteInfo.recharge.open') }}</strong>
-            </div>
-            <div class="site-info-recharge-cell">
-              <span>{{ t('siteInfo.recharge.multiplier') }}</span>
-              <strong>{{ formatMultiplier(data?.recharge.balance_recharge_multiplier ?? 1) }}</strong>
-            </div>
-          </div>
-
-          <div class="mt-5 flex flex-wrap items-center gap-2 text-xs text-[var(--site-info-on-surface-variant)]">
-            <Icon name="clock" size="sm" />
-            <span>{{ generatedAtLabel }}</span>
           </div>
         </div>
       </section>
@@ -177,7 +157,11 @@
           {{ t('siteInfo.availability.empty') }}
         </div>
         <div v-else class="grid gap-4 lg:grid-cols-2">
-          <article v-for="monitor in monitors" :key="monitor.id" class="site-info-monitor-card">
+          <article
+            v-for="monitor in monitors"
+            :key="`${monitor.provider}-${monitor.name}-${monitor.group_name}`"
+            class="site-info-monitor-card"
+          >
             <div class="flex items-start gap-3">
               <span
                 class="grid h-10 w-10 flex-shrink-0 place-items-center rounded-lg ring-1 ring-black/5 dark:ring-white/10"
@@ -248,7 +232,13 @@ import Icon from '@/components/icons/Icon.vue'
 import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
 import MonitorTimeline from '@/components/user/monitor/MonitorTimeline.vue'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { getPublicSiteInfo, type PublicSiteInfo } from '@/api/publicSiteInfo'
+import {
+  getPublicSiteInfo,
+  type PublicSiteInfo,
+  type PublicSiteModelAvailability,
+  type PublicSiteMonitorAvailability,
+  type PublicSiteMonitorTimelinePoint,
+} from '@/api/publicSiteInfo'
 import {
   providerGradient,
   useChannelMonitorFormat,
@@ -279,7 +269,7 @@ const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appS
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const dashboardPath = computed(() => (authStore.isAdmin ? '/admin/dashboard' : '/dashboard'))
 const groups = computed(() => data.value?.groups ?? [])
-const monitors = computed(() => data.value?.model_availability ?? [])
+const monitors = computed(() => mergeMonitorAvailability(data.value?.model_availability ?? []))
 const allModels = computed(() => monitors.value.flatMap((monitor) => monitor.models))
 
 const operationalModelCount = computed(() =>
@@ -290,12 +280,6 @@ const averageAvailability7d = computed(() => {
   const values = allModels.value.map((model) => model.availability_7d).filter((value) => Number.isFinite(value))
   if (values.length === 0) return null
   return values.reduce((sum, value) => sum + value, 0) / values.length
-})
-
-const rechargeStatusLabel = computed(() => {
-  if (!data.value) return '-'
-  if (data.value.recharge.payment_enabled) return t('siteInfo.recharge.enabled')
-  return t('siteInfo.recharge.disabled')
 })
 
 const generatedAtLabel = computed(() => {
@@ -350,6 +334,109 @@ function providerTintClass(provider: string): string {
 function formatMultiplier(value: number): string {
   if (!Number.isFinite(value)) return '-'
   return `${Number(value).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}x`
+}
+
+function formatOfficialSavings(value: number): string {
+  if (!Number.isFinite(value)) return '-'
+  const savingsPct = (1 - value / 7) * 100
+  const percent = `${savingsPct.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}%`
+  return t('siteInfo.groups.savingsValue', { percent })
+}
+
+function mergeMonitorAvailability(monitors: PublicSiteMonitorAvailability[]): PublicSiteMonitorAvailability[] {
+  const grouped = new Map<string, {
+    id: number
+    name: string
+    provider: PublicSiteMonitorAvailability['provider']
+    groupNames: Set<string>
+    models: Map<string, PublicSiteModelAvailability>
+    timeline: PublicSiteMonitorTimelinePoint[]
+  }>()
+
+  for (const monitor of monitors) {
+    const key = `${String(monitor.provider).toLowerCase()}::${monitor.name.trim().toLowerCase()}`
+    let item = grouped.get(key)
+    if (!item) {
+      item = {
+        id: monitor.id,
+        name: monitor.name,
+        provider: monitor.provider,
+        groupNames: new Set<string>(),
+        models: new Map<string, PublicSiteModelAvailability>(),
+        timeline: [],
+      }
+      grouped.set(key, item)
+    }
+
+    if (monitor.group_name) {
+      item.groupNames.add(monitor.group_name)
+    }
+
+    for (const model of monitor.models) {
+      const existing = item.models.get(model.model)
+      item.models.set(model.model, existing ? mergeModelAvailability(existing, model) : { ...model })
+    }
+
+    item.timeline.push(...(monitor.timeline ?? []))
+  }
+
+  return Array.from(grouped.values())
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      provider: item.provider,
+      group_name: Array.from(item.groupNames).sort((a, b) => a.localeCompare(b)).join(' / '),
+      models: Array.from(item.models.values()).sort((a, b) => a.model.localeCompare(b.model)),
+      timeline: mergeTimeline(item.timeline),
+    }))
+    .sort((a, b) => `${a.provider}-${a.name}`.localeCompare(`${b.provider}-${b.name}`))
+}
+
+function mergeModelAvailability(
+  a: PublicSiteModelAvailability,
+  b: PublicSiteModelAvailability,
+): PublicSiteModelAvailability {
+  return {
+    model: a.model,
+    latest_status: statusRank(b.latest_status) > statusRank(a.latest_status) ? b.latest_status : a.latest_status,
+    availability_7d: Math.min(a.availability_7d, b.availability_7d),
+    availability_15d: Math.min(a.availability_15d, b.availability_15d),
+    availability_30d: Math.min(a.availability_30d, b.availability_30d),
+  }
+}
+
+function statusRank(status: string): number {
+  switch (status) {
+    case 'operational':
+      return 0
+    case 'degraded':
+      return 1
+    case 'failed':
+      return 2
+    case 'error':
+      return 3
+    default:
+      return 4
+  }
+}
+
+function mergeTimeline(points: PublicSiteMonitorTimelinePoint[]): PublicSiteMonitorTimelinePoint[] {
+  const seen = new Set<string>()
+  const merged: PublicSiteMonitorTimelinePoint[] = []
+  for (const point of points) {
+    const key = `${point.checked_at}:${point.status}:${point.latency_ms ?? ''}:${point.ping_latency_ms ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(point)
+  }
+  return merged
+    .sort((a, b) => parseCheckedAt(b.checked_at) - parseCheckedAt(a.checked_at))
+    .slice(0, 60)
+}
+
+function parseCheckedAt(value: string): number {
+  const ts = Date.parse(value)
+  return Number.isNaN(ts) ? 0 : ts
 }
 
 function resolveThemePreference(): boolean {
@@ -651,29 +738,6 @@ onBeforeUnmount(() => {
 
 .site-info-table tr:last-child td {
   border-bottom: 0;
-}
-
-.site-info-recharge-cell {
-  display: flex;
-  min-height: 88px;
-  flex-direction: column;
-  justify-content: space-between;
-  border: 1px solid var(--site-info-outline-variant);
-  border-radius: 8px;
-  background: var(--site-info-surface);
-  padding: 14px;
-}
-
-.site-info-recharge-cell span {
-  color: var(--site-info-on-surface-variant);
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.site-info-recharge-cell strong {
-  color: var(--site-info-on-surface);
-  font-size: 1.125rem;
 }
 
 @media (max-width: 640px) {
