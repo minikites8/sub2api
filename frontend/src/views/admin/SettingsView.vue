@@ -5585,6 +5585,56 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.publicTransit.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.publicTransit.description') }}
+            </p>
+            <p v-if="form.public_transit_enabled && form.public_transit_page_enabled" class="mt-1.5 text-xs">
+              <router-link
+                to="/public/transit"
+                class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+              >
+                {{ t('admin.settings.features.publicTransit.configureLink') }}
+                <span aria-hidden="true">→</span>
+              </router-link>
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.publicTransit.apiEnabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.publicTransit.apiEnabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.public_transit_enabled" />
+            </div>
+            <div
+              class="flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700"
+              :class="{ 'opacity-60': !form.public_transit_enabled }"
+            >
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.publicTransit.pageEnabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.publicTransit.pageEnabledHint') }}
+                </p>
+              </div>
+              <Toggle
+                v-model="form.public_transit_page_enabled"
+                :disabled="!form.public_transit_enabled"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.riskControl.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -7982,6 +8032,9 @@ const form = reactive<SettingsForm>({
   channel_monitor_default_interval_seconds: 60,
   // Available Channels feature switch
   available_channels_enabled: false,
+  // Public Transit API is enabled by default; the visual page is opt-in.
+  public_transit_enabled: true,
+  public_transit_page_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
   // Allow user view error requests
@@ -9168,6 +9221,10 @@ async function saveSettings() {
         Number(form.channel_monitor_default_interval_seconds) || 60,
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      // Public Transit feature switch
+      public_transit_enabled: form.public_transit_enabled,
+      public_transit_page_enabled:
+        form.public_transit_enabled && form.public_transit_page_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
@@ -10448,6 +10505,15 @@ watch(
   (enabled, prev) => {
     if (enabled && !prev) {
       loadAffiliateUsers();
+    }
+  },
+);
+
+watch(
+  () => form.public_transit_enabled,
+  (enabled) => {
+    if (!enabled && form.public_transit_page_enabled) {
+      form.public_transit_page_enabled = false;
     }
   },
 );

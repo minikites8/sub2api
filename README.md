@@ -1,5 +1,10 @@
 # Sub2API
 
+> Public transit snapshot distribution: this branch adds a machine-readable
+> public pricing, group, cache, and availability export for Sub2API stations.
+> See [README_PUBLIC_TRANSIT_CN.md](README_PUBLIC_TRANSIT_CN.md) for the
+> station-owner integration guide.
+
 <div align="center">
 
 [![Go](https://img.shields.io/badge/Go-1.25.7-00ADD8.svg)](https://golang.org/)

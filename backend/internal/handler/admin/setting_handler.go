@@ -307,6 +307,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
+		PublicTransitEnabled:     settings.PublicTransitEnabled,
+		PublicTransitPageEnabled: settings.PublicTransitPageEnabled,
+
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
@@ -659,6 +662,10 @@ type UpdateSettingsRequest struct {
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+
+	// Public Transit feature switch (public ai-transit snapshot)
+	PublicTransitEnabled     *bool `json:"public_transit_enabled"`
+	PublicTransitPageEnabled *bool `json:"public_transit_page_enabled"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -1827,6 +1834,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		PublicTransitEnabled: func() bool {
+			if req.PublicTransitEnabled != nil {
+				return *req.PublicTransitEnabled
+			}
+			return previousSettings.PublicTransitEnabled
+		}(),
+		PublicTransitPageEnabled: func() bool {
+			if req.PublicTransitPageEnabled != nil {
+				return *req.PublicTransitPageEnabled
+			}
+			return previousSettings.PublicTransitPageEnabled
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -2178,6 +2197,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+
+		PublicTransitEnabled:     updatedSettings.PublicTransitEnabled,
+		PublicTransitPageEnabled: updatedSettings.PublicTransitPageEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
@@ -2685,6 +2707,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
+	}
+	if before.PublicTransitEnabled != after.PublicTransitEnabled {
+		changed = append(changed, "public_transit_enabled")
+	}
+	if before.PublicTransitPageEnabled != after.PublicTransitPageEnabled {
+		changed = append(changed, "public_transit_page_enabled")
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")

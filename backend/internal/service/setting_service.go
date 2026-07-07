@@ -833,6 +833,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyPublicTransitEnabled,
+		SettingKeyPublicTransitPageEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
@@ -944,6 +946,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
+
+		PublicTransitEnabled:     !isFalseSettingValue(settings[SettingKeyPublicTransitEnabled]),
+		PublicTransitPageEnabled: publicTransitPageEnabledFromSettings(settings),
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
@@ -1261,6 +1266,8 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
+	PublicTransitEnabled                 bool `json:"public_transit_enabled"`
+	PublicTransitPageEnabled             bool `json:"public_transit_page_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
@@ -1333,6 +1340,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
+		PublicTransitEnabled:                 settings.PublicTransitEnabled,
+		PublicTransitPageEnabled:             settings.PublicTransitPageEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
@@ -1989,6 +1998,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
+
+	// Public transit feature switch
+	updates[SettingKeyPublicTransitEnabled] = strconv.FormatBool(settings.PublicTransitEnabled)
+	updates[SettingKeyPublicTransitPageEnabled] = strconv.FormatBool(settings.PublicTransitEnabled && settings.PublicTransitPageEnabled)
 
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
@@ -3020,6 +3033,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
 
+		// Public transit API snapshot is public by default for machine ingestion.
+		SettingKeyPublicTransitEnabled: "true",
+		// Public visual page remains opt-in for new installs.
+		SettingKeyPublicTransitPageEnabled: "false",
+
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
@@ -3538,6 +3556,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
 
+	// Public transit API defaults to enabled; the visual page is a separate
+	// opt-in switch, with legacy fallback for pre-split deployments.
+	result.PublicTransitEnabled = !isFalseSettingValue(settings[SettingKeyPublicTransitEnabled])
+	result.PublicTransitPageEnabled = publicTransitPageEnabledFromSettings(settings)
+
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
 
@@ -3698,6 +3721,20 @@ func isFalseSettingValue(value string) bool {
 	default:
 		return false
 	}
+}
+
+func publicTransitPageEnabledFromSettings(settings map[string]string) bool {
+	if settings == nil {
+		return false
+	}
+	if isFalseSettingValue(settings[SettingKeyPublicTransitEnabled]) {
+		return false
+	}
+	value, exists := settings[SettingKeyPublicTransitPageEnabled]
+	if exists {
+		return value == "true"
+	}
+	return settings[SettingKeyPublicTransitEnabled] == "true"
 }
 
 func normalizeVisibleMethodSettingSource(method, source string, enabled bool) (string, error) {

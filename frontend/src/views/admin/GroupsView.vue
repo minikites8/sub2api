@@ -273,6 +273,42 @@
                   }}</span
                 >
               </div>
+              <div class="text-gray-500 dark:text-gray-400">
+                <span class="text-gray-400 dark:text-gray-500">{{
+                  t("admin.groups.cacheHitRate")
+                }}</span>
+                <span class="ml-1 inline-flex flex-wrap gap-x-1.5 gap-y-0.5 font-medium text-gray-700 dark:text-gray-300">
+                  <span>{{ t("admin.groups.last24h") }} {{ formatPercent(usageMap.get(row.id)?.last_24h_cache_hit_rate ?? 0) }}</span>
+                  <span>/</span>
+                  <span>{{ t("admin.groups.last7d") }} {{ formatPercent(usageMap.get(row.id)?.last_7d_cache_hit_rate ?? 0) }}</span>
+                  <span>/</span>
+                  <span>{{ t("admin.groups.usageTotal") }} {{ formatPercent(usageMap.get(row.id)?.total_cache_hit_rate ?? 0) }}</span>
+                </span>
+              </div>
+              <div class="text-gray-500 dark:text-gray-400">
+                <span class="text-gray-400 dark:text-gray-500">{{
+                  t("admin.groups.cacheHit")
+                }}</span>
+                <span class="ml-1 inline-flex flex-wrap gap-x-1.5 gap-y-0.5 font-medium text-gray-700 dark:text-gray-300">
+                  <span>{{ t("admin.groups.last24h") }} {{ formatTokenCompact(usageMap.get(row.id)?.last_24h_cache_read_tokens ?? 0) }}</span>
+                  <span>/</span>
+                  <span>{{ t("admin.groups.last7d") }} {{ formatTokenCompact(usageMap.get(row.id)?.last_7d_cache_read_tokens ?? 0) }}</span>
+                  <span>/</span>
+                  <span>{{ t("admin.groups.usageTotal") }} {{ formatTokenCompact(usageMap.get(row.id)?.total_cache_read_tokens ?? 0) }}</span>
+                </span>
+              </div>
+              <div class="text-gray-500 dark:text-gray-400">
+                <span class="text-gray-400 dark:text-gray-500">{{
+                  t("admin.groups.cacheCreate")
+                }}</span>
+                <span class="ml-1 inline-flex flex-wrap gap-x-1.5 gap-y-0.5 font-medium text-gray-700 dark:text-gray-300">
+                  <span>{{ t("admin.groups.last24h") }} {{ formatTokenCompact(usageMap.get(row.id)?.last_24h_cache_creation_tokens ?? 0) }}</span>
+                  <span>/</span>
+                  <span>{{ t("admin.groups.last7d") }} {{ formatTokenCompact(usageMap.get(row.id)?.last_7d_cache_creation_tokens ?? 0) }}</span>
+                  <span>/</span>
+                  <span>{{ t("admin.groups.usageTotal") }} {{ formatTokenCompact(usageMap.get(row.id)?.total_cache_creation_tokens ?? 0) }}</span>
+                </span>
+              </div>
             </div>
           </template>
 
@@ -3172,6 +3208,7 @@ import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
+import type { GroupUsageSummary } from "@/api/admin/groups";
 import {
   createDefaultMessagesDispatchFormState,
   messagesDispatchConfigToFormState,
@@ -3389,9 +3426,7 @@ const copyAccountsEditSelectOptions = computed(() =>
 
 const groups = ref<AdminGroup[]>([]);
 const loading = ref(false);
-const usageMap = ref<Map<number, { today_cost: number; total_cost: number }>>(
-  new Map(),
-);
+const usageMap = ref<Map<number, GroupUsageSummary>>(new Map());
 const usageLoading = ref(false);
 const capacityMap = ref<
   Map<
@@ -3960,17 +3995,23 @@ const formatCost = (cost: number): string => {
   return cost.toFixed(2);
 };
 
+const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
+
+const formatTokenCompact = (value: number): string => {
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(value);
+};
+
 const loadUsageSummary = async () => {
   usageLoading.value = true;
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const data = await adminAPI.groups.getUsageSummary(tz);
-    const map = new Map<number, { today_cost: number; total_cost: number }>();
+    const map = new Map<number, GroupUsageSummary>();
     for (const item of data) {
-      map.set(item.group_id, {
-        today_cost: item.today_cost,
-        total_cost: item.total_cost,
-      });
+      map.set(item.group_id, item);
     }
     usageMap.value = map;
   } catch (error) {

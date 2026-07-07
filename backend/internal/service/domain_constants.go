@@ -377,6 +377,16 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyPublicTransitEnabled is a DB-backed soft switch for the public
+	// ai-transit.v1 API snapshot. Defaults to true so crawlers can ingest public
+	// pricing data without requiring station owners to enable a separate UI.
+	SettingKeyPublicTransitEnabled = "public_transit_enabled"
+
+	// SettingKeyPublicTransitPageEnabled controls the optional visual public
+	// /public/transit page. Defaults to false for new installs; legacy installs
+	// without this key fall back to the API switch to avoid breaking published pages.
+	SettingKeyPublicTransitPageEnabled = "public_transit_page_enabled"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

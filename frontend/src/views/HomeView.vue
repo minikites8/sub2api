@@ -24,6 +24,14 @@
             <LocaleSwitcher />
           </div>
 
+          <router-link
+            v-if="publicTransitEnabled"
+            to="/public/transit"
+            class="md3-transit-link"
+          >
+            {{ t('publicTransit.nav') }}
+          </router-link>
+
           <a
             v-if="docUrl"
             :href="docUrl"
@@ -74,6 +82,14 @@
             <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="md3-hero-action">
               <span>{{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}</span>
               <Icon name="arrowRight" size="md" />
+            </router-link>
+            <router-link
+              v-if="publicTransitEnabled"
+              to="/public/transit"
+              class="md3-hero-secondary"
+            >
+              <Icon name="server" size="md" />
+              <span>{{ t('publicTransit.nav') }}</span>
             </router-link>
             <a
               v-if="docUrl"
@@ -238,6 +254,10 @@ const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appS
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+const publicTransitEnabled = computed(() =>
+  appStore.cachedPublicSettings?.public_transit_enabled === true &&
+  appStore.cachedPublicSettings?.public_transit_page_enabled === true
+)
 
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
@@ -482,6 +502,32 @@ onBeforeUnmount(() => {
 .md3-icon-button:hover {
   background: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
   color: var(--md-on-surface);
+}
+
+.md3-transit-link {
+  display: none;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 20px;
+  background: var(--md-surface-container-low);
+  padding: 0 14px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.md3-transit-link:hover {
+  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
+  color: var(--md-on-surface);
+}
+
+@media (min-width: 640px) {
+  .md3-transit-link {
+    display: inline-flex;
+  }
 }
 
 .md3-locale :deep(button) {

@@ -30,7 +30,7 @@
  *     that ship enabled by default (Channel Monitor, Payment).
  *   - **`opt-in`**  (default disabled) — menu hidden when settings unloaded,
  *     visible only when the backend explicitly sends `true`. Use for features
- *     that ship disabled (Available Channels).
+ *     that ship disabled (Available Channels, Public Transit).
  *
  * For `opt-in` flags to render immediately on refresh, the backend **must**
  * inject the field through `PublicSettingsInjectionPayload`. A drift test in
@@ -103,6 +103,11 @@ export const FeatureFlags = {
     key: 'available_channels_enabled',
     mode: 'opt-in',
     label: 'Available Channels',
+  }),
+  publicTransit: defineFlag({
+    key: 'public_transit_page_enabled',
+    mode: 'opt-in',
+    label: 'Public Transit Page',
   }),
   payment: defineFlag({
     key: 'payment_enabled',
