@@ -350,6 +350,7 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 		nil,
 		nil,
 		nil,
+		nil,
 		settingService,
 		authCache,
 		nil, // userPlatformQuotaRepo

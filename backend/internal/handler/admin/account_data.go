@@ -13,6 +13,7 @@ import (
 	"log/slog"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -24,6 +25,8 @@ const (
 	legacyDataType = "sub2api-bundle"
 	dataVersion    = 1
 	dataPageCap    = 1000
+
+	dataImportSourceKiroAccountManager = "kiro-account-manager"
 )
 
 type DataPayload struct {
@@ -769,9 +772,9 @@ func refreshKiroAccountManagerCredentials(ctx context.Context, item *DataAccount
 		if clientID == "" || clientSecret == "" {
 			return errors.New("kiro IdC 导入需要 clientId 和 clientSecret")
 		}
-		token, err = refreshKiroIDCTokenForDataImport(ctx, "", clientID, clientSecret, refreshToken, dataImportMapString(credentials, "region"), dataImportMapString(credentials, "start_url"))
+		token, err = kiropkg.RefreshIDCToken(ctx, "", clientID, clientSecret, refreshToken, dataImportMapString(credentials, "region"), dataImportMapString(credentials, "start_url"), dataImportMapString(credentials, "provider"))
 	default:
-		token, err = refreshKiroSocialTokenForDataImport(ctx, "", refreshToken, dataImportMapString(credentials, "provider"))
+		token, err = kiropkg.RefreshSocialToken(ctx, "", refreshToken, dataImportMapString(credentials, "provider"))
 	}
 	if err != nil {
 		return fmt.Errorf("kiro refreshToken 验证失败: %w", err)
@@ -796,6 +799,29 @@ func mergeKiroTokenData(credentials map[string]any, token *kiropkg.TokenData) {
 	setDataImportString(credentials, "email", token.Email)
 	setDataImportString(credentials, "start_url", token.StartURL)
 	setDataImportString(credentials, "region", token.Region)
+}
+
+func dataImportMapString(values map[string]any, key string) string {
+	if values == nil {
+		return ""
+	}
+	switch value := values[key].(type) {
+	case string:
+		return strings.TrimSpace(value)
+	case fmt.Stringer:
+		return strings.TrimSpace(value.String())
+	case json.Number:
+		return strings.TrimSpace(value.String())
+	default:
+		return ""
+	}
+}
+
+func setDataImportString(values map[string]any, key, value string) {
+	if values == nil || strings.TrimSpace(value) == "" {
+		return
+	}
+	values[key] = value
 }
 
 func defaultProxyName(name string) string {

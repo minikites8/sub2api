@@ -376,7 +376,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 	endpoints := buildKiroEndpoints(account, mode)
 	proxyURL := kiroProxyURL(account)
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
-	accountKey := buildKiroAccountKey(account)
+	accountKey = buildKiroAccountKey(account)
 	maxRetries := kiroTransientRetryAttempts(account)
 
 	for idx, endpoint := range endpoints {
