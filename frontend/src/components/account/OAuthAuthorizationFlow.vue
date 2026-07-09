@@ -9,6 +9,36 @@
       <div class="flex-1">
         <h4 class="mb-3 font-semibold text-blue-900 dark:text-blue-200">{{ oauthTitle }}</h4>
 
+        <!-- External IdP 两阶段进度指示 -->
+        <div v-if="isExternalIdpFlow" class="mb-4">
+          <div class="flex items-center gap-2">
+            <span
+              :class="[
+                'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                !isExtIdpIdpStage
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+              ]"
+            >
+              {{ t('admin.accounts.oauth.kiro.extIdpStagePortal') }}
+            </span>
+            <Icon name="arrowRight" size="xs" class="text-gray-400" />
+            <span
+              :class="[
+                'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                isExtIdpIdpStage
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-gray-100 text-gray-400 dark:bg-dark-600 dark:text-gray-500'
+              ]"
+            >
+              {{ t('admin.accounts.oauth.kiro.extIdpStageIdp') }}
+            </span>
+          </div>
+          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.oauth.kiro.extIdpStageHint') }}
+          </p>
+        </div>
+
         <!-- Auth Method Selection -->
         <div v-if="showMethodSelection" class="mb-4">
           <label class="mb-2 block text-sm font-medium text-blue-800 dark:text-blue-300">
@@ -56,7 +86,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.mobileRefreshTokenAuth', '手动输入 Mobile RT')
+                t('admin.accounts.oauth.openai.mobileRefreshTokenAuth')
               }}</span>
             </label>
             <label v-if="showSessionTokenOption" class="flex cursor-pointer items-center gap-2">
@@ -78,7 +108,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.accessTokenAuth', '手动输入 AT')
+                t('admin.accounts.oauth.openai.accessTokenAuth')
               }}</span>
             </label>
             <label v-if="showCodexSessionImportOption" class="flex cursor-pointer items-center gap-2">
@@ -90,6 +120,17 @@
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
                 t('admin.accounts.oauth.openai.codexSessionAuth')
+              }}</span>
+            </label>
+            <label v-if="showCodexPatOption" class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="inputMethod"
+                type="radio"
+                value="codex_pat"
+                class="text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm text-blue-900 dark:text-blue-200">{{
+                t('admin.accounts.oauth.openai.codexPatAuth')
               }}</span>
             </label>
           </div>
@@ -179,7 +220,7 @@
           </div>
         </div>
 
-        <!-- Codex JSON / AT 批量输入 -->
+        <!-- Codex OAuth/session JSON batch import -->
         <div v-if="inputMethod === 'codex_session'" class="space-y-4">
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
@@ -253,6 +294,79 @@
                 loading
                   ? t('admin.accounts.oauth.openai.validating')
                   : t('admin.accounts.oauth.openai.codexSessionImportAndCreate')
+              }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Codex Personal Access Token -->
+        <div v-if="inputMethod === 'codex_pat'" class="space-y-4">
+          <div
+            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
+          >
+            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
+              {{ t('admin.accounts.oauth.openai.codexPatDesc') }}
+            </p>
+
+            <div class="mb-4">
+              <label
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+              >
+                <Icon name="key" size="sm" class="text-blue-500" />
+                {{ t('admin.accounts.oauth.openai.codexPatInputLabel') }}
+              </label>
+              <textarea
+                v-model="codexPATInput"
+                rows="3"
+                class="input w-full resize-y font-mono text-sm"
+                :placeholder="t('admin.accounts.oauth.openai.codexPatPlaceholder')"
+                spellcheck="false"
+              ></textarea>
+              <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                {{ t('admin.accounts.oauth.openai.codexPatHint') }}
+              </p>
+            </div>
+
+            <div
+              v-if="error"
+              class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
+            >
+              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">
+                {{ error }}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-primary w-full"
+              :disabled="loading || !codexPATInput.trim()"
+              @click="handleImportCodexPAT"
+            >
+              <svg
+                v-if="loading"
+                class="-ml-1 mr-2 h-4 w-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <Icon v-else name="sparkles" size="sm" class="mr-2" />
+              {{
+                loading
+                  ? t('admin.accounts.oauth.openai.validating')
+                  : t('admin.accounts.oauth.openai.codexPatImportAndCreate')
               }}
             </button>
           </div>
@@ -466,6 +580,15 @@
                   {{ loading ? t('admin.accounts.oauth.generating') : oauthGenerateAuthUrl }}
                 </button>
                 <div v-else class="space-y-3">
+                  <div
+                    v-if="isExternalIdpFlow && isExtIdpIdpStage"
+                    class="flex items-start gap-2 rounded border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-700 dark:bg-emerald-900/30"
+                  >
+                    <Icon name="arrowRight" size="xs" class="mt-0.5 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <p class="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                      {{ t('admin.accounts.oauth.kiro.extIdpNewUrlBadge') }}
+                    </p>
+                  </div>
                   <div class="flex items-center gap-2">
                     <input
                       :value="authUrl"
@@ -527,14 +650,14 @@
               </div>
               <div class="flex-1">
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
-                  {{ oauthStep2OpenUrl }}
+                  {{ isExternalIdpFlow ? extIdpStep2Title : oauthStep2OpenUrl }}
                 </p>
                 <p class="text-sm text-blue-700 dark:text-blue-300">
-                  {{ oauthOpenUrlDesc }}
+                  {{ isExternalIdpFlow ? extIdpOpenDesc : oauthOpenUrlDesc }}
                 </p>
-                <!-- OpenAI Important Notice -->
+                <!-- Local callback notice -->
                 <div
-                  v-if="isOpenAI"
+                  v-if="showLocalCallbackNotice"
                   class="mt-2 rounded border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/30"
                 >
                   <p
@@ -568,11 +691,11 @@
               </div>
               <div class="flex-1">
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
-                  {{ oauthStep3EnterCode }}
+                  {{ isExternalIdpFlow ? extIdpStep3Title : oauthStep3EnterCode }}
                 </p>
                 <p
                   class="mb-3 text-sm text-blue-700 dark:text-blue-300"
-                  v-text="oauthAuthCodeDesc"
+                  v-text="isExternalIdpFlow ? extIdpAuthCodeDesc : oauthAuthCodeDesc"
                 ></p>
                 <div>
                   <label class="input-label">
@@ -583,11 +706,11 @@
                     v-model="authCodeInput"
                     rows="3"
                     class="input w-full resize-none font-mono text-sm"
-                    :placeholder="oauthAuthCodePlaceholder"
+                    :placeholder="isExternalIdpFlow ? extIdpAuthCodePlaceholder : oauthAuthCodePlaceholder"
                   ></textarea>
                   <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                     <Icon name="infoCircle" size="xs" class="mr-1 inline" />
-                    {{ oauthAuthCodeHint }}
+                    {{ isExternalIdpFlow ? extIdpAuthCodeHint : oauthAuthCodeHint }}
                   </p>
 
                   <!-- Gemini-specific state parameter warning -->
@@ -652,8 +775,11 @@ interface Props {
   showSessionTokenOption?: boolean
   showAccessTokenOption?: boolean
   showCodexSessionImportOption?: boolean
+  showCodexPatOption?: boolean
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
+  isKiroExternalIdp?: boolean // Kiro External IdP(Entra ID)两阶段登录，切换分步引导 UI
+  externalIdpStage?: 'portal' | 'idp' // External IdP 当前阶段：portal=企业邮箱识别，idp=M365 授权
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -671,8 +797,11 @@ const props = withDefaults(defineProps<Props>(), {
   showSessionTokenOption: false,
   showAccessTokenOption: false,
   showCodexSessionImportOption: false,
+  showCodexPatOption: false,
   platform: 'anthropic',
-  showProjectId: true
+  showProjectId: true,
+  isKiroExternalIdp: false,
+  externalIdpStage: 'portal'
 })
 
 const emit = defineEmits<{
@@ -684,12 +813,13 @@ const emit = defineEmits<{
   'validate-session-token': [sessionToken: string]
   'import-access-token': [accessToken: string]
   'import-codex-session': [content: string]
+  'import-codex-pat': [accessToken: string]
   'update:inputMethod': [method: AuthInputMethod]
 }>()
 
 const { t } = useI18n()
 
-const isOpenAI = computed(() => props.platform === 'openai')
+const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok')
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {
@@ -697,6 +827,7 @@ const getOAuthKey = (key: string) => {
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
   if (props.platform === 'kiro') return `admin.accounts.oauth.kiro.${key}`
+  if (props.platform === 'grok') return `admin.accounts.oauth.grok.${key}`
   return `admin.accounts.oauth.${key}`
 }
 
@@ -715,8 +846,23 @@ const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
 const oauthImportantNotice = computed(() => {
   if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
   if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
+  if (props.platform === 'grok') return t('admin.accounts.oauth.grok.importantNotice')
   return ''
 })
+
+// External IdP(Kiro Entra ID)两阶段专属文案：按 portal/idp 阶段切换 step2/step3 说明与占位符。
+const isExternalIdpFlow = computed(() => props.isKiroExternalIdp === true)
+const isExtIdpIdpStage = computed(() => props.externalIdpStage === 'idp')
+const extIdpKey = (portalKey: string, idpKey: string) =>
+  t(getOAuthKey(isExtIdpIdpStage.value ? idpKey : portalKey))
+const extIdpStep2Title = computed(() => extIdpKey('extIdpStep2Portal', 'extIdpStep2Idp'))
+const extIdpOpenDesc = computed(() => extIdpKey('extIdpOpenDescPortal', 'extIdpOpenDescIdp'))
+const extIdpStep3Title = computed(() => extIdpKey('extIdpStep3Portal', 'extIdpStep3Idp'))
+const extIdpAuthCodeDesc = computed(() => extIdpKey('extIdpAuthCodeDescPortal', 'extIdpAuthCodeDescIdp'))
+const extIdpAuthCodePlaceholder = computed(() =>
+  extIdpKey('extIdpAuthCodePlaceholderPortal', 'extIdpAuthCodePlaceholderIdp')
+)
+const extIdpAuthCodeHint = computed(() => extIdpKey('extIdpAuthCodeHintPortal', 'extIdpAuthCodeHintIdp'))
 
 // Local state
 const inputMethod = ref<AuthInputMethod>(props.showCookieOption ? 'manual' : 'manual')
@@ -725,6 +871,7 @@ const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
 const sessionTokenInput = ref('')
 const codexSessionInput = ref('')
+const codexPATInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
 const oauthCallbackPath = ref('')
@@ -732,7 +879,7 @@ const oauthLoginOption = ref('')
 const projectId = ref('')
 
 // Computed: show method selection when either cookie or refresh token option is enabled
-const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption || props.showCodexSessionImportOption)
+const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption || props.showCodexSessionImportOption || props.showCodexPatOption)
 
 // Clipboard
 const { copied, copyToClipboard } = useClipboard()
@@ -768,24 +915,24 @@ watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 })
 
-// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Kiro)
+// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Kiro/Grok)
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'kiro') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'kiro' && props.platform !== 'grok') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
-  if (trimmed.includes('?') && trimmed.includes('code=')) {
+  if (trimmed.includes('code=')) {
     try {
       // Try to parse as URL
-      const url = new URL(trimmed)
+      const url = trimmed.includes('?') ? new URL(trimmed) : new URL(`http://localhost/callback?${trimmed.replace(/^\?/, '')}`)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
       if (props.platform === 'kiro') {
         oauthCallbackPath.value = url.pathname || ''
         oauthLoginOption.value = url.searchParams.get('login_option') || ''
       }
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'kiro') && stateParam) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'kiro' || props.platform === 'grok') && stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -802,7 +949,7 @@ watch(authCodeInput, (newVal) => {
         const loginOptionMatch = trimmed.match(/[?&]login_option=([^&]+)/)
         oauthLoginOption.value = loginOptionMatch?.[1] || oauthLoginOption.value
       }
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'kiro') && stateMatch && stateMatch[1]) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'kiro' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {
@@ -811,6 +958,17 @@ watch(authCodeInput, (newVal) => {
     }
   }
 })
+
+// External IdP：从阶段1(portal)切到阶段2(idp)时，自动清空输入框，
+// 避免残留的门户 descriptor 被误当作第二阶段 code 重复提交。
+watch(
+  () => props.externalIdpStage,
+  (stage, prev) => {
+    if (props.isKiroExternalIdp && stage === 'idp' && prev === 'portal') {
+      authCodeInput.value = ''
+    }
+  }
+)
 
 // Methods
 const handleGenerateUrl = () => {
@@ -850,6 +1008,12 @@ const handleImportCodexSession = () => {
   }
 }
 
+const handleImportCodexPAT = () => {
+  if (codexPATInput.value.trim()) {
+    emit('import-codex-pat', codexPATInput.value.trim())
+  }
+}
+
 // Expose methods and state
 defineExpose({
   authCode: authCodeInput,
@@ -861,6 +1025,7 @@ defineExpose({
   refreshToken: refreshTokenInput,
   sessionToken: sessionTokenInput,
   codexSession: codexSessionInput,
+  codexPAT: codexPATInput,
   inputMethod,
   reset: () => {
     authCodeInput.value = ''
@@ -872,6 +1037,7 @@ defineExpose({
     refreshTokenInput.value = ''
     sessionTokenInput.value = ''
     codexSessionInput.value = ''
+    codexPATInput.value = ''
     inputMethod.value = 'manual'
     showHelpDialog.value = false
   }

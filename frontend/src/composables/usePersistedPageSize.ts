@@ -8,7 +8,10 @@ const STORAGE_KEY = 'table-page-size'
 
 export function getPersistedPageSize(fallback = getConfiguredTableDefaultPageSize()): number {
   const configuredDefault = getConfiguredTableDefaultPageSize()
-  if (configuredDefault !== DEFAULT_TABLE_PAGE_SIZE) {
+  if (
+    configuredDefault !== DEFAULT_TABLE_PAGE_SIZE ||
+    (typeof window !== 'undefined' && window.__APP_CONFIG__?.table_default_page_size !== undefined)
+  ) {
     return normalizeTablePageSize(configuredDefault)
   }
 

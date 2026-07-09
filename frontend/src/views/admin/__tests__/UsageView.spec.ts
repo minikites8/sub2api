@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import UsageView from '../UsageView.vue'
 
-const { list, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs } = vi.hoisted(() => {
+const { list, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, clearErrorLogs } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -17,6 +17,7 @@ const { list, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs } =
     getById: vi.fn(),
     getModelStats: vi.fn(),
     listErrorLogs: vi.fn(),
+    clearErrorLogs: vi.fn(),
   }
 })
 
@@ -58,6 +59,7 @@ vi.mock('@/api/admin/usage', () => ({
 
 vi.mock('@/api/admin/ops', () => ({
   listErrorLogs,
+  clearErrorLogs,
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -90,7 +92,10 @@ vi.mock('vue-router', () => ({
 }))
 
 const AppLayoutStub = { template: '<div><slot /></div>' }
-const UsageFiltersStub = { template: '<div><slot name="after-reset" /></div>' }
+const UsageFiltersStub = {
+  emits: ['cleanup'],
+  template: '<div><slot name="after-reset" /><button data-test="cleanup" @click="$emit(\'cleanup\')">cleanup</button></div>',
+}
 const UsageTableStub = {
   emits: ['userClick'],
   template: '<div data-test="usage-table"><button class="user-click" @click="$emit(\'userClick\', 2)">user</button></div>',
@@ -181,6 +186,36 @@ describe('admin UsageView distribution metric toggles', () => {
     resolveSecond({ models: [{ model: 'B', total_tokens: 20 }] })
     await flushPromises()
     expect((wrapper.vm as any).requestedModelStats).toEqual([{ model: 'B', total_tokens: 20 }])
+  })
+
+  it('passes requested model options to cleanup dialog', async () => {
+    getModelStats.mockResolvedValueOnce({
+      models: [
+        { model: 'claude-opus-4-8', total_tokens: 10 },
+        { model: 'gpt-5.4', total_tokens: 20 },
+      ],
+    })
+
+    const UsageCleanupDialogStub = {
+      props: ['modelOptions'],
+      template: '<div data-test="cleanup-model-options">{{ modelOptions.join(",") }}</div>',
+    }
+
+    const wrapper = mount(UsageView, {
+      global: { stubs: {
+        AppLayout: AppLayoutStub, UsageStatsCards: true, UsageFilters: UsageFiltersStub,
+        UsageTable: true, UsageExportProgress: true, UsageCleanupDialog: UsageCleanupDialogStub,
+        UserBalanceHistoryModal: true, AuditLogModal: true, Pagination: true, Select: true,
+        DateRangePicker: true, Icon: true, TokenUsageTrend: true,
+        ModelDistributionChart: ModelDistributionChartStub, GroupDistributionChart: GroupDistributionChartStub,
+        EndpointDistributionChart: true,
+      } },
+    })
+
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="cleanup-model-options"]').text()).toBe('claude-opus-4-8,gpt-5.4')
   })
 
   it('keeps model and group metric toggles independent without refetching chart data', async () => {
@@ -303,6 +338,7 @@ describe('admin UsageView errors tab filter forwarding', () => {
     getSnapshotV2.mockReset()
     getModelStats.mockReset()
     listErrorLogs.mockReset()
+    clearErrorLogs.mockReset()
 
     list.mockResolvedValue({ items: [], total: 0, pages: 0 })
     getStats.mockResolvedValue({
@@ -312,9 +348,11 @@ describe('admin UsageView errors tab filter forwarding', () => {
     getSnapshotV2.mockResolvedValue({ trend: [], models: [], groups: [] })
     getModelStats.mockResolvedValue({ models: [] })
     listErrorLogs.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    clearErrorLogs.mockResolvedValue({ deleted_rows: 0 })
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.useRealTimers()
   })
 
@@ -350,5 +388,61 @@ describe('admin UsageView errors tab filter forwarding', () => {
       account_id: 7,
       group_id: 3,
     }))
+  })
+
+  it('clears error request logs from the errors tab using ops filters', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => {
+      throw new Error('native confirm should not be used')
+    })
+    const ConfirmDialogStub = {
+      props: ['show', 'title', 'message'],
+      emits: ['confirm', 'cancel'],
+      template: `
+        <div v-if="show" data-test="error-cleanup-confirm">
+          <span class="title">{{ title }}</span>
+          <span class="message">{{ message }}</span>
+          <button data-test="confirm-error-cleanup" @click="$emit('confirm')">confirm</button>
+          <button data-test="cancel-error-cleanup" @click="$emit('cancel')">cancel</button>
+        </div>
+      `,
+    }
+    const wrapper = mount(UsageView, {
+      global: { stubs: {
+        AppLayout: AppLayoutStub, UsageStatsCards: true, UsageFilters: UsageFiltersStub,
+        UsageTable: true, UsageExportProgress: true, UsageCleanupDialog: true,
+        UserBalanceHistoryModal: true, AuditLogModal: true, Pagination: true, Select: true,
+        DateRangePicker: true, Icon: true, TokenUsageTrend: true,
+        ModelDistributionChart: true, GroupDistributionChart: true, EndpointDistributionChart: true,
+        OpsErrorLogTable: true, OpsErrorDetailModal: true, ConfirmDialog: ConfirmDialogStub,
+      } },
+    })
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    const vm = wrapper.vm as any
+    vm.filters.model = 'gpt-5.3-codex'
+    vm.filters.account_id = 7
+    vm.filters.group_id = 3
+
+    await wrapper.findAll('button.tab')[1].trigger('click')
+    await flushPromises()
+
+    await wrapper.find('[data-test="cleanup"]').trigger('click')
+    await flushPromises()
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(clearErrorLogs).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="error-cleanup-confirm"]').exists()).toBe(true)
+
+    await wrapper.find('[data-test="confirm-error-cleanup"]').trigger('click')
+    await flushPromises()
+
+    expect(clearErrorLogs).toHaveBeenCalledWith(expect.objectContaining({
+      view: 'all',
+      model: 'gpt-5.3-codex',
+      account_id: 7,
+      group_id: 3,
+    }))
+    expect(listErrorLogs).toHaveBeenCalledTimes(2)
   })
 })

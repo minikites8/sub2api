@@ -73,6 +73,13 @@ func NewOpsHandler(opsService *service.OpsService) *OpsHandler {
 }
 
 // GetErrorLogs lists ops error logs.
+// applyOpsErrorSortParams reads sort_by/sort_order query params into the filter.
+// Column whitelist and order normalization live in the repository; unknown
+// values degrade to the default (created_at DESC), mirroring the usage list.
+func applyOpsErrorSortParams(c *gin.Context, filter *service.OpsErrorLogFilter) {
+	filter.SetSort(c.Query("sort_by"), c.Query("sort_order"))
+}
+
 // GET /api/v1/admin/ops/errors
 func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 	if h.opsService == nil {
@@ -114,10 +121,17 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 	// buildOpsErrorLogsWhere 以 COALESCE(requested_model, model) 比对。
 	filter.Model = strings.TrimSpace(c.Query("model"))
 
-	// Force request errors: client-visible status >= 400.
-	// buildOpsErrorLogsWhere already applies this for non-upstream phase.
-	if strings.EqualFold(strings.TrimSpace(filter.Phase), "upstream") {
-		filter.Phase = ""
+	// 请求错误语义:client-visible status>=400 守卫恒生效（未设
+	// IncludeRecoveredUpstream 时 phase=upstream 不再绕过守卫），故
+	// phase=upstream 作为普通过滤条件保留——此前这里清空该值，导致
+	// 错误类型下拉选「上游」等于不过滤。
+
+	// 分类(用户侧粗分类码)→ phase/type ANY 条件,与用户端 /usage/errors 同一映射;
+	// 未知分类返回空切片 = 不过滤。与 phase 参数可同时设置(AND 语义)。
+	if cat := strings.TrimSpace(c.Query("category")); cat != "" {
+		phases, types := service.CategoryToFilter(cat)
+		filter.ErrorPhasesAny = phases
+		filter.ErrorTypesAny = types
 	}
 
 	if platform := strings.TrimSpace(c.Query("platform")); platform != "" {
@@ -187,12 +201,83 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		filter.StatusCodes = out
 	}
 
+	applyOpsErrorSortParams(c, filter)
+
 	result, err := h.opsService.GetErrorLogs(c.Request.Context(), filter)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
+}
+
+// DeleteErrorLogs deletes ops error logs matched by admin filters.
+// DELETE /api/v1/admin/ops/errors
+func (h *OpsHandler) DeleteErrorLogs(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if strings.TrimSpace(c.Query("start_time")) == "" || strings.TrimSpace(c.Query("end_time")) == "" {
+		response.BadRequest(c, "start_time and end_time are required")
+		return
+	}
+
+	startTime, endTime, err := parseOpsTimeRange(c, "1h")
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	filter := &service.OpsErrorLogFilter{
+		StartTime: &startTime,
+		EndTime:   &endTime,
+		View:      parseOpsViewParam(c),
+		Model:     strings.TrimSpace(c.Query("model")),
+	}
+	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid group_id")
+			return
+		}
+		filter.GroupID = &id
+	}
+	if v := strings.TrimSpace(c.Query("account_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid account_id")
+			return
+		}
+		filter.AccountID = &id
+	}
+	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filter.UserID = &id
+	}
+	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+		}
+		filter.APIKeyID = &id
+	}
+
+	deleted, err := h.opsService.DeleteErrorLogs(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted_rows": deleted})
 }
 
 // ListRequestErrors lists client-visible request errors.
@@ -234,10 +319,17 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 	// buildOpsErrorLogsWhere 以 COALESCE(requested_model, model) 比对。
 	filter.Model = strings.TrimSpace(c.Query("model"))
 
-	// Force request errors: client-visible status >= 400.
-	// buildOpsErrorLogsWhere already applies this for non-upstream phase.
-	if strings.EqualFold(strings.TrimSpace(filter.Phase), "upstream") {
-		filter.Phase = ""
+	// 请求错误语义:client-visible status>=400 守卫恒生效（未设
+	// IncludeRecoveredUpstream 时 phase=upstream 不再绕过守卫），故
+	// phase=upstream 作为普通过滤条件保留——此前这里清空该值，导致
+	// 错误类型下拉选「上游」等于不过滤。
+
+	// 分类(用户侧粗分类码)→ phase/type ANY 条件,与用户端 /usage/errors 同一映射;
+	// 未知分类返回空切片 = 不过滤。与 phase 参数可同时设置(AND 语义)。
+	if cat := strings.TrimSpace(c.Query("category")); cat != "" {
+		phases, types := service.CategoryToFilter(cat)
+		filter.ErrorPhasesAny = phases
+		filter.ErrorTypesAny = types
 	}
 
 	if platform := strings.TrimSpace(c.Query("platform")); platform != "" {
@@ -290,6 +382,8 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 		}
 		filter.StatusCodes = out
 	}
+
+	applyOpsErrorSortParams(c, filter)
 
 	result, err := h.opsService.GetErrorLogs(c.Request.Context(), filter)
 	if err != nil {
@@ -362,6 +456,8 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 	}
 	filter.View = "all"
 	filter.Phase = "upstream"
+	// 上游错误列表需含 status<400 的 recovered 行,显式豁免客户端可见守卫。
+	filter.IncludeRecoveredUpstream = true
 	filter.Owner = "provider"
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
@@ -376,6 +472,8 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 	} else {
 		filter.ClientRequestID = clientRequestID
 	}
+
+	applyOpsErrorSortParams(c, filter)
 
 	result, err := h.opsService.GetErrorLogs(c.Request.Context(), filter)
 	if err != nil {
@@ -442,6 +540,8 @@ func (h *OpsHandler) ListUpstreamErrors(c *gin.Context) {
 
 	filter.View = parseOpsViewParam(c)
 	filter.Phase = "upstream"
+	// 上游错误列表需含 status<400 的 recovered 行,显式豁免客户端可见守卫。
+	filter.IncludeRecoveredUpstream = true
 	filter.Owner = "provider"
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
@@ -496,6 +596,8 @@ func (h *OpsHandler) ListUpstreamErrors(c *gin.Context) {
 		}
 		filter.StatusCodes = out
 	}
+
+	applyOpsErrorSortParams(c, filter)
 
 	result, err := h.opsService.GetErrorLogs(c.Request.Context(), filter)
 	if err != nil {

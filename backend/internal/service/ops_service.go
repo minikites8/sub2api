@@ -341,6 +341,27 @@ func (s *OpsService) GetErrorLogs(ctx context.Context, filter *OpsErrorLogFilter
 	return result, nil
 }
 
+func (s *OpsService) DeleteErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (int64, error) {
+	if err := s.RequireMonitoringEnabled(ctx); err != nil {
+		return 0, err
+	}
+	if filter == nil || filter.StartTime == nil || filter.StartTime.IsZero() || filter.EndTime == nil || filter.EndTime.IsZero() {
+		return 0, infraerrors.BadRequest("INVALID_TIME_RANGE", "start_time and end_time are required")
+	}
+	if !filter.EndTime.After(*filter.StartTime) {
+		return 0, infraerrors.BadRequest("INVALID_TIME_RANGE", "end_time must be after start_time")
+	}
+	if s.opsRepo == nil {
+		return 0, nil
+	}
+	deleted, err := s.opsRepo.DeleteErrorLogs(ctx, filter)
+	if err != nil {
+		log.Printf("[Ops] DeleteErrorLogs failed: %v", err)
+		return 0, err
+	}
+	return deleted, nil
+}
+
 // ListUserErrorRequests 返回某个用户自己的错误请求（精简脱敏）。
 // 强制：仅当前用户、View=all（含业务限流/余额类）、排除 count_tokens 噪声。
 func (s *OpsService) ListUserErrorRequests(ctx context.Context, userID int64, filter *OpsErrorLogFilter) (*UserErrorRequestList, error) {
@@ -362,10 +383,12 @@ func (s *OpsService) ListUserErrorRequests(ctx context.Context, userID int64, fi
 	filter.UserQuery = ""
 	filter.Owner = ""
 	filter.Source = ""
-	// 清空 Phase 是防御:Phase 是单值特殊字段,仅当其 == "upstream" 时 buildOpsErrorLogsWhere 才跳过 status>=400 子句。
-	// 用户端一律改走 category→ErrorPhasesAny/ErrorTypesAny(纯 ANY 过滤,不影响 status>=400 子句),
-	// 因此 recovered upstream(error_phase='upstream' 但 status<400,最终成功返回)记录对用户不可见——符合预期。
+	// 清空 Phase 是防御:用户端一律改走 category→ErrorPhasesAny/ErrorTypesAny
+	//（纯 ANY 过滤,不影响 status>=400 子句）。守卫豁免现在还需要
+	// IncludeRecoveredUpstream(用户端永不设置),recovered upstream
+	//（error_phase='upstream' 但 status<400,最终成功返回）记录对用户不可见——符合预期。
 	filter.Phase = ""
+	filter.IncludeRecoveredUpstream = false
 
 	list, err := s.opsRepo.ListErrorLogs(ctx, filter)
 	if err != nil {
