@@ -31,6 +31,8 @@ const (
 	FieldRole = "role"
 	// FieldBalance holds the string denoting the balance field in the database.
 	FieldBalance = "balance"
+	// FieldFrozenBalance holds the string denoting the frozen_balance field in the database.
+	FieldFrozenBalance = "frozen_balance"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -202,6 +204,7 @@ var Columns = []string{
 	FieldPasswordHash,
 	FieldRole,
 	FieldBalance,
+	FieldFrozenBalance,
 	FieldConcurrency,
 	FieldStatus,
 	FieldUsername,
@@ -252,6 +255,8 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// EmailValidator is a validator for the "email" field. It is called by the builders before save.
 	EmailValidator func(string) error
+	// SignupIPValidator is a validator for the "signup_ip" field. It is called by the builders before save.
+	SignupIPValidator func(string) error
 	// PasswordHashValidator is a validator for the "password_hash" field. It is called by the builders before save.
 	PasswordHashValidator func(string) error
 	// DefaultRole holds the default value on creation for the "role" field.
@@ -260,6 +265,8 @@ var (
 	RoleValidator func(string) error
 	// DefaultBalance holds the default value on creation for the "balance" field.
 	DefaultBalance float64
+	// DefaultFrozenBalance holds the default value on creation for the "frozen_balance" field.
+	DefaultFrozenBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -336,6 +343,11 @@ func ByRole(opts ...sql.OrderTermOption) OrderOption {
 // ByBalance orders the results by the balance field.
 func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalance, opts...).ToFunc()
+}
+
+// ByFrozenBalance orders the results by the frozen_balance field.
+func ByFrozenBalance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFrozenBalance, opts...).ToFunc()
 }
 
 // ByConcurrency orders the results by the concurrency field.

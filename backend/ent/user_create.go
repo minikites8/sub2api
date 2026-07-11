@@ -130,6 +130,20 @@ func (_c *UserCreate) SetNillableBalance(v *float64) *UserCreate {
 	return _c
 }
 
+// SetFrozenBalance sets the "frozen_balance" field.
+func (_c *UserCreate) SetFrozenBalance(v float64) *UserCreate {
+	_c.mutation.SetFrozenBalance(v)
+	return _c
+}
+
+// SetNillableFrozenBalance sets the "frozen_balance" field if the given value is not nil.
+func (_c *UserCreate) SetNillableFrozenBalance(v *float64) *UserCreate {
+	if v != nil {
+		_c.SetFrozenBalance(*v)
+	}
+	return _c
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_c *UserCreate) SetConcurrency(v int) *UserCreate {
 	_c.mutation.SetConcurrency(v)
@@ -608,6 +622,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultBalance
 		_c.mutation.SetBalance(v)
 	}
+	if _, ok := _c.mutation.FrozenBalance(); !ok {
+		v := user.DefaultFrozenBalance
+		_c.mutation.SetFrozenBalance(v)
+	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		v := user.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
@@ -671,6 +689,11 @@ func (_c *UserCreate) check() error {
 			return &ValidationError{Name: "email", err: fmt.Errorf(`ent: validator failed for field "User.email": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.SignupIP(); ok {
+		if err := user.SignupIPValidator(v); err != nil {
+			return &ValidationError{Name: "signup_ip", err: fmt.Errorf(`ent: validator failed for field "User.signup_ip": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.PasswordHash(); !ok {
 		return &ValidationError{Name: "password_hash", err: errors.New(`ent: missing required field "User.password_hash"`)}
 	}
@@ -689,6 +712,9 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.Balance(); !ok {
 		return &ValidationError{Name: "balance", err: errors.New(`ent: missing required field "User.balance"`)}
+	}
+	if _, ok := _c.mutation.FrozenBalance(); !ok {
+		return &ValidationError{Name: "frozen_balance", err: errors.New(`ent: missing required field "User.frozen_balance"`)}
 	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "User.concurrency"`)}
@@ -796,6 +822,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 		_node.Balance = value
+	}
+	if value, ok := _c.mutation.FrozenBalance(); ok {
+		_spec.SetField(user.FieldFrozenBalance, field.TypeFloat64, value)
+		_node.FrozenBalance = value
 	}
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
@@ -1167,6 +1197,24 @@ func (u *UserUpsert) UpdateEmail() *UserUpsert {
 	return u
 }
 
+// SetSignupIP sets the "signup_ip" field.
+func (u *UserUpsert) SetSignupIP(v string) *UserUpsert {
+	u.Set(user.FieldSignupIP, v)
+	return u
+}
+
+// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
+func (u *UserUpsert) UpdateSignupIP() *UserUpsert {
+	u.SetExcluded(user.FieldSignupIP)
+	return u
+}
+
+// ClearSignupIP clears the value of the "signup_ip" field.
+func (u *UserUpsert) ClearSignupIP() *UserUpsert {
+	u.SetNull(user.FieldSignupIP)
+	return u
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (u *UserUpsert) SetPasswordHash(v string) *UserUpsert {
 	u.Set(user.FieldPasswordHash, v)
@@ -1206,6 +1254,24 @@ func (u *UserUpsert) UpdateBalance() *UserUpsert {
 // AddBalance adds v to the "balance" field.
 func (u *UserUpsert) AddBalance(v float64) *UserUpsert {
 	u.Add(user.FieldBalance, v)
+	return u
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *UserUpsert) SetFrozenBalance(v float64) *UserUpsert {
+	u.Set(user.FieldFrozenBalance, v)
+	return u
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *UserUpsert) UpdateFrozenBalance() *UserUpsert {
+	u.SetExcluded(user.FieldFrozenBalance)
+	return u
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *UserUpsert) AddFrozenBalance(v float64) *UserUpsert {
+	u.Add(user.FieldFrozenBalance, v)
 	return u
 }
 
@@ -1314,18 +1380,6 @@ func (u *UserUpsert) ClearTotpEnabledAt() *UserUpsert {
 // SetSignupSource sets the "signup_source" field.
 func (u *UserUpsert) SetSignupSource(v string) *UserUpsert {
 	u.Set(user.FieldSignupSource, v)
-	return u
-}
-
-// SetSignupIP sets the "signup_ip" field.
-func (u *UserUpsert) SetSignupIP(v string) *UserUpsert {
-	u.Set(user.FieldSignupIP, v)
-	return u
-}
-
-// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
-func (u *UserUpsert) UpdateSignupIP() *UserUpsert {
-	u.SetExcluded(user.FieldSignupIP)
 	return u
 }
 
@@ -1561,6 +1615,27 @@ func (u *UserUpsertOne) UpdateEmail() *UserUpsertOne {
 	})
 }
 
+// SetSignupIP sets the "signup_ip" field.
+func (u *UserUpsertOne) SetSignupIP(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSignupIP(v)
+	})
+}
+
+// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateSignupIP() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSignupIP()
+	})
+}
+
+// ClearSignupIP clears the value of the "signup_ip" field.
+func (u *UserUpsertOne) ClearSignupIP() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearSignupIP()
+	})
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (u *UserUpsertOne) SetPasswordHash(v string) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
@@ -1607,6 +1682,27 @@ func (u *UserUpsertOne) AddBalance(v float64) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateBalance() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateBalance()
+	})
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *UserUpsertOne) SetFrozenBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetFrozenBalance(v)
+	})
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *UserUpsertOne) AddFrozenBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddFrozenBalance(v)
+	})
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateFrozenBalance() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateFrozenBalance()
 	})
 }
 
@@ -1733,20 +1829,6 @@ func (u *UserUpsertOne) ClearTotpEnabledAt() *UserUpsertOne {
 func (u *UserUpsertOne) SetSignupSource(v string) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.SetSignupSource(v)
-	})
-}
-
-// SetSignupIP sets the "signup_ip" field.
-func (u *UserUpsertOne) SetSignupIP(v string) *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.SetSignupIP(v)
-	})
-}
-
-// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
-func (u *UserUpsertOne) UpdateSignupIP() *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateSignupIP()
 	})
 }
 
@@ -2171,6 +2253,27 @@ func (u *UserUpsertBulk) UpdateEmail() *UserUpsertBulk {
 	})
 }
 
+// SetSignupIP sets the "signup_ip" field.
+func (u *UserUpsertBulk) SetSignupIP(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSignupIP(v)
+	})
+}
+
+// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateSignupIP() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSignupIP()
+	})
+}
+
+// ClearSignupIP clears the value of the "signup_ip" field.
+func (u *UserUpsertBulk) ClearSignupIP() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearSignupIP()
+	})
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (u *UserUpsertBulk) SetPasswordHash(v string) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
@@ -2217,6 +2320,27 @@ func (u *UserUpsertBulk) AddBalance(v float64) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateBalance() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateBalance()
+	})
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *UserUpsertBulk) SetFrozenBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetFrozenBalance(v)
+	})
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *UserUpsertBulk) AddFrozenBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddFrozenBalance(v)
+	})
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateFrozenBalance() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateFrozenBalance()
 	})
 }
 
@@ -2343,20 +2467,6 @@ func (u *UserUpsertBulk) ClearTotpEnabledAt() *UserUpsertBulk {
 func (u *UserUpsertBulk) SetSignupSource(v string) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.SetSignupSource(v)
-	})
-}
-
-// SetSignupIP sets the "signup_ip" field.
-func (u *UserUpsertBulk) SetSignupIP(v string) *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.SetSignupIP(v)
-	})
-}
-
-// UpdateSignupIP sets the "signup_ip" field to the value that was provided on create.
-func (u *UserUpsertBulk) UpdateSignupIP() *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateSignupIP()
 	})
 }
 

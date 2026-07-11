@@ -79,10 +79,7 @@
                 class="input h-9 w-full min-w-0"
                 :placeholder="t('publicTransit.searchPlaceholder')"
               />
-              <select v-model="platformFilter" class="input h-9 w-full min-w-0 pr-8">
-                <option value="">{{ t('publicTransit.allPlatforms') }}</option>
-                <option v-for="platform in platforms" :key="platform" :value="platform">{{ platform }}</option>
-              </select>
+              <Select v-model="platformFilter" :options="platformOptions" class="w-full" />
             </div>
           </div>
           <div class="overflow-x-auto">
@@ -336,6 +333,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import Skeleton from '@/components/common/Skeleton.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import { useClipboard } from '@/composables/useClipboard'
@@ -372,6 +370,10 @@ const modelCount = computed(() => {
   return (snapshot.value?.groups || []).reduce((total, group) => total + (group.models?.length || 0), 0)
 })
 const platforms = computed(() => Array.from(new Set((snapshot.value?.groups || []).map((group) => group.platform))).sort())
+const platformOptions = computed<SelectOption[]>(() => [
+  { value: '', label: t('publicTransit.allPlatforms') },
+  ...platforms.value.map((platform) => ({ value: platform, label: platform })),
+])
 const monitorByGroup = computed(() => {
   const out = new Map<string, PublicTransitMonitor>()
   for (const item of snapshot.value?.monitoring || []) {

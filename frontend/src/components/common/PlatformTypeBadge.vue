@@ -138,7 +138,7 @@ const platformClass = computed(() => {
     return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
   }
   if (props.platform === 'kiro') {
-    return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
+    return 'bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-200'
   }
   if (props.platform === 'grok') {
     return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
@@ -157,7 +157,7 @@ const typeClass = computed(() => {
     return 'bg-gray-50 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
   }
   if (props.platform === 'kiro') {
-    return 'bg-gray-50 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
+    return 'bg-violet-50 text-violet-600 dark:bg-violet-950/30 dark:text-violet-300'
   }
   if (props.platform === 'grok') {
     return 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'

@@ -26,13 +26,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 
 const router = useRouter()
 const { t } = useI18n()
+const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 
 const actions = computed(() => [
   {
@@ -49,6 +51,15 @@ const actions = computed(() => [
     title: t('dashboard.viewUsage'),
     description: t('dashboard.checkDetailedLogs')
   },
+  ...(canUseBatchImage.value
+    ? [{
+        to: '/batch-image',
+        icon: 'sparkles' as const,
+        iconClass: 'md3-action-icon-batch',
+        title: t('dashboard.batchImageAgent'),
+        description: t('dashboard.batchImageAgentDesc')
+      }]
+    : []),
   {
     to: '/redeem',
     icon: 'gift' as const,
@@ -57,6 +68,10 @@ const actions = computed(() => [
     description: t('dashboard.addBalanceWithCode')
   }
 ])
+
+onMounted(() => {
+  void refreshBatchImageAccess()
+})
 </script>
 
 <style scoped>
@@ -144,6 +159,7 @@ const actions = computed(() => [
 
 .md3-action-icon-key,
 .md3-action-icon-usage,
+.md3-action-icon-batch,
 .md3-action-icon-redeem {
   background: var(--md-surface-container-high);
   color: var(--md-on-surface-variant);
@@ -151,6 +167,7 @@ const actions = computed(() => [
 
 .dark .md3-action-icon-key,
 .dark .md3-action-icon-usage,
+.dark .md3-action-icon-batch,
 .dark .md3-action-icon-redeem {
   background: var(--md-surface-container-high);
   color: var(--md-on-surface-variant);
