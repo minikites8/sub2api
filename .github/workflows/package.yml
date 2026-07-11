@@ -70,7 +70,11 @@ jobs:
 
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.4'
+          expected_version="go$(awk '$1 == "go" { print $2; exit }' backend/go.mod)"
+          actual_version="$(go env GOVERSION)"
+          echo "Expected Go version: ${expected_version}"
+          echo "Actual Go version: ${actual_version}"
+          test "${actual_version}" = "${expected_version}"
 
       - name: Set lowercase owner for GoReleaser templates
         id: lowercase
