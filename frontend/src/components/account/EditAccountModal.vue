@@ -4253,15 +4253,7 @@ const handleSubmit = async () => {
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
 
     if (props.account.platform === 'openai') {
-      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
-        (props.account.extra as Record<string, unknown>) || {}
-      const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (preferUsage.value) {
-        newExtra.prefer_usage = true
-      } else {
-        delete newExtra.prefer_usage
-      }
-      updatePayload.extra = newExtra
+      updatePayload.prefer_usage = preferUsage.value
     }
 
     // For apikey type, handle credentials update

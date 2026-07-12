@@ -65,3 +65,14 @@ func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
 	require.Nil(t, got.Credentials)
 	require.Nil(t, got.CredentialsStatus)
 }
+
+func TestAccountFromServiceShallow_ExposesPreferUsage(t *testing.T) {
+	got := AccountFromServiceShallow(&service.Account{
+		ID:       1,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Extra:    map[string]any{"prefer_usage": true},
+	})
+
+	require.True(t, got.PreferUsage)
+}

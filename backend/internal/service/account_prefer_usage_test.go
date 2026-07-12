@@ -1,6 +1,10 @@
 package service
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestAccountIsPreferUsageEnabled(t *testing.T) {
 	tests := []struct {
@@ -22,4 +26,19 @@ func TestAccountIsPreferUsageEnabled(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWithPreferUsage(t *testing.T) {
+	previous := map[string]any{"existing_setting": "kept"}
+	enabled := true
+	updated := withPreferUsage(previous, &enabled)
+
+	require.Equal(t, "kept", updated["existing_setting"])
+	require.Equal(t, true, updated["prefer_usage"])
+	require.NotContains(t, previous, "prefer_usage")
+
+	disabled := false
+	updated = withPreferUsage(updated, &disabled)
+	require.Equal(t, false, updated["prefer_usage"])
+	require.Equal(t, updated, withPreferUsage(updated, nil))
 }

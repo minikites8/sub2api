@@ -1280,6 +1280,18 @@ func (a *Account) IsPreferUsageEnabled() bool {
 	return enabled
 }
 
+func withPreferUsage(extra map[string]any, preferUsage *bool) map[string]any {
+	if preferUsage == nil {
+		return extra
+	}
+	updated := make(map[string]any, len(extra)+1)
+	for key, value := range extra {
+		updated[key] = value
+	}
+	updated["prefer_usage"] = *preferUsage
+	return updated
+}
+
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
 	if !a.IsOpenAIOAuth() {
 		return false
