@@ -251,6 +251,7 @@ export interface PublicSettings {
   site_subtitle: string
   api_base_url: string
   contact_info: string
+  enterprise_billing_contact_qr: string
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
@@ -954,6 +955,7 @@ export interface Account {
   } | null
   scheduler_scores?: AccountSchedulerGroupScore[] | null
   priority: number
+  prefer_usage?: boolean
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   status: 'active' | 'inactive' | 'error'
   error_message: string | null

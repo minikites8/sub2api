@@ -459,6 +459,8 @@ export default {
         contactInfo: 'Contact Info',
         contactInfoPlaceholder: 'e.g., QQ: 123456789',
         contactInfoHint: 'Customer support contact info, displayed on redeem page, profile, etc.',
+        enterpriseBillingContactQr: 'Enterprise billing contact QR code',
+        enterpriseBillingContactQrHint: 'Displayed when users select Contact support on the top-up page.',
         docUrl: 'Documentation URL',
         docUrlPlaceholder: 'https://docs.example.com',
         docUrlHint: 'Link to your documentation site. Leave empty to hide the documentation link.',

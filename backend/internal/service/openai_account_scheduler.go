@@ -1141,6 +1141,38 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 	}
 
+	// A manually preferred account pool is consumed first. It remains subject
+	// to the same capability, health, load, and concurrency checks as every
+	// other candidate; an unavailable preferred pool falls through to the
+	// regular pool immediately.
+	preferredAccounts, regularAccounts := partitionOpenAIPreferUsageAccounts(filtered)
+	if len(preferredAccounts) > 0 {
+		preferredAttempt := s.trySelectByLoadBalancePool(ctx, req, preferredAccounts, loadMap)
+		if preferredAttempt.err != nil && (!preferredAttempt.noCompactCandidates || len(regularAccounts) == 0) {
+			return nil, preferredAttempt.candidateCount, preferredAttempt.topK, preferredAttempt.loadSkew, preferredAttempt.err
+		}
+		if preferredAttempt.result != nil {
+			return preferredAttempt.result, preferredAttempt.candidateCount, preferredAttempt.topK, preferredAttempt.loadSkew, nil
+		}
+
+		if len(regularAccounts) > 0 {
+			regularAttempt := s.trySelectByLoadBalancePool(ctx, req, regularAccounts, loadMap)
+			if regularAttempt.err != nil && !regularAttempt.noCompactCandidates {
+				return nil, regularAttempt.candidateCount, regularAttempt.topK, regularAttempt.loadSkew, regularAttempt.err
+			}
+			if regularAttempt.result != nil {
+				return regularAttempt.result, regularAttempt.candidateCount, regularAttempt.topK, regularAttempt.loadSkew, nil
+			}
+			if regularAttempt.err == nil {
+				if result, candidateCount, topK, loadSkew, err := s.finishLoadBalanceSelectionFallback(ctx, req, regularAttempt); err == nil && result != nil {
+					return result, candidateCount, topK, loadSkew, nil
+				}
+			}
+		}
+
+		return s.finishLoadBalanceSelectionFallback(ctx, req, preferredAttempt)
+	}
+
 	if req.SubscriptionPriority {
 		subscriptionAccounts, regularAccounts := partitionOpenAIChatGPTSubscriptionAccounts(filtered)
 		if len(subscriptionAccounts) > 0 {
@@ -1202,6 +1234,19 @@ func partitionOpenAIChatGPTSubscriptionAccounts(accounts []*Account) ([]*Account
 		regularAccounts = append(regularAccounts, account)
 	}
 	return subscriptionAccounts, regularAccounts
+}
+
+func partitionOpenAIPreferUsageAccounts(accounts []*Account) ([]*Account, []*Account) {
+	preferredAccounts := make([]*Account, 0, len(accounts))
+	regularAccounts := make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account != nil && account.IsPreferUsageEnabled() {
+			preferredAccounts = append(preferredAccounts, account)
+			continue
+		}
+		regularAccounts = append(regularAccounts, account)
+	}
+	return preferredAccounts, regularAccounts
 }
 
 func (s *defaultOpenAIAccountScheduler) trySelectByLoadBalancePool(

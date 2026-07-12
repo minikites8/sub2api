@@ -299,6 +299,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.ContactInfo != after.ContactInfo {
 		changed = append(changed, "contact_info")
 	}
+	if before.EnterpriseBillingContactQR != after.EnterpriseBillingContactQR {
+		changed = append(changed, "enterprise_billing_contact_qr")
+	}
 	if before.DocURL != after.DocURL {
 		changed = append(changed, "doc_url")
 	}

@@ -30,6 +30,7 @@ export const useAppStore = defineStore('app', () => {
   const siteLogo = ref<string>('')
   const siteVersion = ref<string>('')
   const contactInfo = ref<string>('')
+  const enterpriseBillingContactQr = ref<string>('')
   const apiBaseUrl = ref<string>('')
   const docUrl = ref<string>('')
   const cachedPublicSettings = ref<PublicSettings | null>(null)
@@ -298,6 +299,7 @@ export const useAppStore = defineStore('app', () => {
     siteLogo.value = config.site_logo || ''
     siteVersion.value = config.version || ''
     contactInfo.value = config.contact_info || ''
+    enterpriseBillingContactQr.value = config.enterprise_billing_contact_qr || ''
     apiBaseUrl.value = config.api_base_url || ''
     docUrl.value = config.doc_url || ''
     publicSettingsLoaded.value = true
@@ -340,6 +342,7 @@ export const useAppStore = defineStore('app', () => {
         site_subtitle: '',
         api_base_url: apiBaseUrl.value,
         contact_info: contactInfo.value,
+        enterprise_billing_contact_qr: enterpriseBillingContactQr.value,
         doc_url: docUrl.value,
         home_content: '',
         hide_ccs_import_button: false,
@@ -441,6 +444,7 @@ export const useAppStore = defineStore('app', () => {
     siteLogo,
     siteVersion,
     contactInfo,
+    enterpriseBillingContactQr,
     apiBaseUrl,
     docUrl,
     cachedPublicSettings,

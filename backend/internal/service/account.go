@@ -1269,6 +1269,17 @@ func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
 }
 
+// IsPreferUsageEnabled reports whether an OpenAI account should receive new
+// schedulable traffic before the regular account pool. The scheduler still
+// applies compatibility, health, and capacity checks within that pool.
+func (a *Account) IsPreferUsageEnabled() bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	enabled, _ := a.Extra["prefer_usage"].(bool)
+	return enabled
+}
+
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
 	if !a.IsOpenAIOAuth() {
 		return false

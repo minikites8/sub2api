@@ -452,6 +452,8 @@ export default {
         contactInfo: '客服联系方式',
         contactInfoPlaceholder: '例如：QQ: 123456789',
         contactInfoHint: '填写客服联系方式，将展示在兑换页面、个人资料等位置',
+        enterpriseBillingContactQr: '企业微信客服二维码',
+        enterpriseBillingContactQrHint: '上传后，充值页面的“联系客服”会展示该二维码。',
         docUrl: '文档链接',
         docUrlHint: '文档网站的链接。留空则隐藏文档链接。',
         docUrlPlaceholder: 'https://docs.example.com',
