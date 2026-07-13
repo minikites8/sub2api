@@ -4063,8 +4063,6 @@ export default {
       loadFactorHint: 'Higher load factor increases scheduling frequency',
       priority: 'Priority',
       priorityHint: 'Lower value accounts are used first',
-      preferUsage: 'Prefer Usage',
-      preferUsageHint: 'Schedules new sessions to this OpenAI account first to consume its subscription allowance',
       billingRateMultiplier: 'Billing Rate Multiplier',
       billingRateMultiplierHint: '0 = free, affects account billing only',
       kiroCreditUnitPriceUsd: 'Credit Unit Price',

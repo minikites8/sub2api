@@ -348,7 +348,6 @@ type UpdateAccountInput struct {
 	Type                  string // Account type: oauth, setup-token, apikey
 	Credentials           map[string]any
 	Extra                 map[string]any
-	PreferUsage           *bool
 	ProxyID               *int64
 	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
 	Priority              *int     // 使用指针区分"未提供"和"设置为0"

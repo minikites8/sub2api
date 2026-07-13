@@ -1623,26 +1623,6 @@
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
       </div>
-      <div
-        v-if="account?.platform === 'openai'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
-        <label class="flex cursor-pointer items-start gap-3">
-          <input
-            v-model="preferUsage"
-            type="checkbox"
-            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-          <span>
-            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t('admin.accounts.preferUsage') }}
-            </span>
-            <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.preferUsageHint') }}
-            </span>
-          </span>
-        </label>
-      </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
@@ -2931,7 +2911,6 @@ const fillHeaderOverrideTemplate = () => {
 }
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
-const preferUsage = ref(false)
 const autoPause5hThreshold = ref<number | null>(null)
 const autoPause7dThreshold = ref<number | null>(null)
 const autoPause5hDisabled = ref(false)
@@ -3445,7 +3424,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
   const extra = newAccount.extra as Record<string, unknown> | undefined
-  preferUsage.value = newAccount.prefer_usage === true || extra?.prefer_usage === true
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
   const kiroCreditUnitPrice = extra?.kiro_credit_unit_price_usd
@@ -4251,10 +4229,6 @@ const handleSubmit = async () => {
       updatePayload.load_factor = 0
     }
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
-
-    if (props.account.platform === 'openai') {
-      updatePayload.prefer_usage = preferUsage.value
-    }
 
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {

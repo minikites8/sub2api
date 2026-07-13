@@ -4244,8 +4244,6 @@ export default {
       loadFactorHint: '提高负载因子可以提高对账号的调度频率',
       priority: '优先级',
       priorityHint: '优先级越小的账号优先使用',
-      preferUsage: '优先使用',
-      preferUsageHint: '新会话优先调度到此 OpenAI 账号，用于优先消耗其订阅额度',
       billingRateMultiplier: '账号计费倍率',
       billingRateMultiplierHint: '0 表示不计费，仅影响账号计费',
       kiroCreditUnitPriceUsd: '每积分单价',
