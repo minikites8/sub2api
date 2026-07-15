@@ -1388,6 +1388,16 @@ type DailyCheckinConfig struct {
 	MaxReward float64 `mapstructure:"max_reward"`
 	// MinRechargeAmount: 使用签到功能所需累计充值金额（USD），0 表示不限制
 	MinRechargeAmount float64 `mapstructure:"min_recharge_amount"`
+	// RewardTiers: 按区间比例随机发放奖励
+	RewardTiers []DailyCheckinRewardTier `mapstructure:"reward_tiers"`
+}
+
+// DailyCheckinRewardTier describes a weighted reward interval.
+type DailyCheckinRewardTier struct {
+	// UpperRatio: 当前区间上限，取值 0~1。上一档上限作为当前区间下限。
+	UpperRatio float64 `json:"upper_ratio" mapstructure:"upper_ratio" yaml:"upper_ratio"`
+	// Weight: 当前区间权重。保存时会归一化为 0~1。
+	Weight float64 `json:"weight" mapstructure:"weight" yaml:"weight"`
 }
 
 // DashboardAggregationConfig 仪表盘预聚合配置
@@ -1926,6 +1936,7 @@ func setDefaults() {
 	viper.SetDefault("daily_checkin.min_reward", 0)
 	viper.SetDefault("daily_checkin.max_reward", 0)
 	viper.SetDefault("daily_checkin.min_recharge_amount", 0)
+	viper.SetDefault("daily_checkin.reward_tiers", DefaultDailyCheckinRewardTiers())
 
 	// Dashboard aggregation
 	viper.SetDefault("dashboard_aggregation.enabled", true)
@@ -2220,6 +2231,9 @@ func (c *Config) Validate() error {
 	}
 	if c.DailyCheckin.Enabled && dailyCheckinMinReward > dailyCheckinDailyTotalLimit {
 		return fmt.Errorf("daily_checkin.min_reward must be less than or equal to daily_total_limit when daily check-in is enabled")
+	}
+	if _, err := NormalizeDailyCheckinRewardTiers(c.DailyCheckin.RewardTiers); err != nil {
+		return fmt.Errorf("daily_checkin.%w", err)
 	}
 
 	// Gemini OAuth 配置校验：client_id 与 client_secret 必须同时设置或同时留空。
@@ -3108,6 +3122,80 @@ func roundDailyCheckinAmount(value float64) float64 {
 		return 0
 	}
 	return math.Round(value*1e8) / 1e8
+}
+
+// DefaultDailyCheckinRewardTiers returns the default weighted reward intervals.
+func DefaultDailyCheckinRewardTiers() []DailyCheckinRewardTier {
+	return []DailyCheckinRewardTier{
+		{UpperRatio: 0.10, Weight: 0.50},
+		{UpperRatio: 0.35, Weight: 0.30},
+		{UpperRatio: 0.75, Weight: 0.15},
+		{UpperRatio: 1.00, Weight: 0.05},
+	}
+}
+
+// NormalizeDailyCheckinRewardTiers validates and normalizes reward tiers.
+func NormalizeDailyCheckinRewardTiers(tiers []DailyCheckinRewardTier) ([]DailyCheckinRewardTier, error) {
+	if len(tiers) == 0 {
+		return DefaultDailyCheckinRewardTiers(), nil
+	}
+	if len(tiers) > 20 {
+		return nil, fmt.Errorf("reward_tiers must contain at most 20 tiers")
+	}
+
+	ratioScale := 1.0
+	for _, tier := range tiers {
+		if tier.UpperRatio > 1 {
+			ratioScale = 100
+			break
+		}
+	}
+
+	normalized := make([]DailyCheckinRewardTier, 0, len(tiers))
+	previousUpper := 0.0
+	totalWeight := 0.0
+	for i, tier := range tiers {
+		upperRatio := tier.UpperRatio / ratioScale
+		if !isFiniteNonNegative(upperRatio) || upperRatio <= 0 || upperRatio > 1 {
+			return nil, fmt.Errorf("reward_tiers[%d].upper_ratio must be greater than 0 and less than or equal to 1", i)
+		}
+		upperRatio = roundDailyCheckinAmount(upperRatio)
+		if upperRatio <= previousUpper {
+			return nil, fmt.Errorf("reward_tiers[%d].upper_ratio must be greater than previous tier upper_ratio", i)
+		}
+		if !isFiniteNonNegative(tier.Weight) || tier.Weight <= 0 {
+			return nil, fmt.Errorf("reward_tiers[%d].weight must be positive", i)
+		}
+		normalized = append(normalized, DailyCheckinRewardTier{
+			UpperRatio: upperRatio,
+			Weight:     tier.Weight,
+		})
+		previousUpper = upperRatio
+		totalWeight += tier.Weight
+	}
+
+	lastIndex := len(normalized) - 1
+	if math.Abs(normalized[lastIndex].UpperRatio-1) > 1e-8 {
+		return nil, fmt.Errorf("reward_tiers last upper_ratio must be 1")
+	}
+	normalized[lastIndex].UpperRatio = 1
+	if !isFiniteNonNegative(totalWeight) || totalWeight <= 0 {
+		return nil, fmt.Errorf("reward_tiers total weight must be positive")
+	}
+
+	weightSum := 0.0
+	for i := range normalized {
+		if i == lastIndex {
+			normalized[i].Weight = roundDailyCheckinAmount(math.Max(1-weightSum, 0))
+			break
+		}
+		normalized[i].Weight = roundDailyCheckinAmount(normalized[i].Weight / totalWeight)
+		weightSum += normalized[i].Weight
+	}
+	if normalized[lastIndex].Weight <= 0 {
+		return nil, fmt.Errorf("reward_tiers normalized last weight must be positive")
+	}
+	return normalized, nil
 }
 
 func generateJWTSecret(byteLength int) (string, error) {

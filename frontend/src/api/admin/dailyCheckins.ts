@@ -33,10 +33,16 @@ export interface DailyCheckinSettings {
   min_reward: number
   max_reward: number
   min_recharge_amount: number
+  reward_tiers: DailyCheckinRewardTier[]
   today_total_granted: number
   remaining_today: number
   exhausted_today: boolean
   checkin_date: string
+}
+
+export interface DailyCheckinRewardTier {
+  upper_ratio: number
+  weight: number
 }
 
 export interface UpdateDailyCheckinSettingsRequest {
@@ -46,6 +52,7 @@ export interface UpdateDailyCheckinSettingsRequest {
   min_reward: number
   max_reward: number
   min_recharge_amount: number
+  reward_tiers: DailyCheckinRewardTier[]
 }
 
 export async function listRecords(

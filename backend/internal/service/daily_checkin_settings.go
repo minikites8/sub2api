@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,16 +12,17 @@ import (
 )
 
 type DailyCheckinSettings struct {
-	Enabled           bool    `json:"enabled"`
-	AdsEnabled        bool    `json:"ads_enabled"`
-	DailyTotalLimit   float64 `json:"daily_total_limit"`
-	MinReward         float64 `json:"min_reward"`
-	MaxReward         float64 `json:"max_reward"`
-	MinRechargeAmount float64 `json:"min_recharge_amount"`
-	TodayTotalGranted float64 `json:"today_total_granted"`
-	RemainingToday    float64 `json:"remaining_today"`
-	ExhaustedToday    bool    `json:"exhausted_today"`
-	CheckinDate       string  `json:"checkin_date"`
+	Enabled           bool                            `json:"enabled"`
+	AdsEnabled        bool                            `json:"ads_enabled"`
+	DailyTotalLimit   float64                         `json:"daily_total_limit"`
+	MinReward         float64                         `json:"min_reward"`
+	MaxReward         float64                         `json:"max_reward"`
+	MinRechargeAmount float64                         `json:"min_recharge_amount"`
+	RewardTiers       []config.DailyCheckinRewardTier `json:"reward_tiers"`
+	TodayTotalGranted float64                         `json:"today_total_granted"`
+	RemainingToday    float64                         `json:"remaining_today"`
+	ExhaustedToday    bool                            `json:"exhausted_today"`
+	CheckinDate       string                          `json:"checkin_date"`
 }
 
 var dailyCheckinSettingKeys = []string{
@@ -30,6 +32,7 @@ var dailyCheckinSettingKeys = []string{
 	SettingKeyDailyCheckinMinReward,
 	SettingKeyDailyCheckinMaxReward,
 	SettingKeyDailyCheckinMinRechargeAmount,
+	SettingKeyDailyCheckinRewardTiers,
 }
 
 func (s *SettingService) GetDailyCheckinSettings(ctx context.Context) (DailyCheckinSettings, error) {
@@ -64,6 +67,11 @@ func (s *SettingService) GetDailyCheckinSettings(ctx context.Context) (DailyChec
 	if value, ok := parseDailyCheckinSettingFloat(values, SettingKeyDailyCheckinMinRechargeAmount); ok {
 		result.MinRechargeAmount = value
 	}
+	if raw, ok := values[SettingKeyDailyCheckinRewardTiers]; ok {
+		if tiers, parseErr := parseDailyCheckinRewardTiersSetting(raw); parseErr == nil {
+			result.RewardTiers = tiers
+		}
+	}
 
 	return dailyCheckinSettingsFromConfig(dailyCheckinConfigFromSettings(result)), nil
 }
@@ -92,6 +100,7 @@ func (s *SettingService) UpdateDailyCheckinSettings(ctx context.Context, input D
 		SettingKeyDailyCheckinMinReward:         strconv.FormatFloat(settings.MinReward, 'f', 8, 64),
 		SettingKeyDailyCheckinMaxReward:         strconv.FormatFloat(settings.MaxReward, 'f', 8, 64),
 		SettingKeyDailyCheckinMinRechargeAmount: strconv.FormatFloat(settings.MinRechargeAmount, 'f', 8, 64),
+		SettingKeyDailyCheckinRewardTiers:       formatDailyCheckinRewardTiersSetting(settings.RewardTiers),
 	}
 	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
 		return DailyCheckinSettings{}, fmt.Errorf("update daily check-in settings: %w", err)
@@ -118,6 +127,7 @@ func dailyCheckinSettingsFromConfig(cfg config.DailyCheckinConfig) DailyCheckinS
 		MinReward:         cfg.MinReward,
 		MaxReward:         cfg.MaxReward,
 		MinRechargeAmount: cfg.MinRechargeAmount,
+		RewardTiers:       cloneDailyCheckinRewardTiers(cfg.RewardTiers),
 	}
 }
 
@@ -129,6 +139,7 @@ func dailyCheckinConfigFromSettings(settings DailyCheckinSettings) config.DailyC
 		MinReward:         settings.MinReward,
 		MaxReward:         settings.MaxReward,
 		MinRechargeAmount: settings.MinRechargeAmount,
+		RewardTiers:       cloneDailyCheckinRewardTiers(settings.RewardTiers),
 	})
 }
 
@@ -154,6 +165,11 @@ func validateDailyCheckinSettings(input DailyCheckinSettings) (DailyCheckinSetti
 		MaxReward:         roundCheckinReward(input.MaxReward),
 		MinRechargeAmount: roundCheckinReward(input.MinRechargeAmount),
 	}
+	rewardTiers, err := config.NormalizeDailyCheckinRewardTiers(input.RewardTiers)
+	if err != nil {
+		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", err.Error())
+	}
+	settings.RewardTiers = rewardTiers
 	if settings.MaxReward < settings.MinReward {
 		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "max_reward must be greater than or equal to min_reward")
 	}
@@ -182,4 +198,34 @@ func parseDailyCheckinSettingFloat(values map[string]string, key string) (float6
 		return 0, false
 	}
 	return roundCheckinReward(value), true
+}
+
+func parseDailyCheckinRewardTiersSetting(raw string) ([]config.DailyCheckinRewardTier, error) {
+	var tiers []config.DailyCheckinRewardTier
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &tiers); err != nil {
+		return nil, err
+	}
+	return config.NormalizeDailyCheckinRewardTiers(tiers)
+}
+
+func formatDailyCheckinRewardTiersSetting(tiers []config.DailyCheckinRewardTier) string {
+	normalized, err := config.NormalizeDailyCheckinRewardTiers(tiers)
+	if err != nil {
+		normalized = config.DefaultDailyCheckinRewardTiers()
+	}
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return "[]"
+	}
+	return string(raw)
+}
+
+func cloneDailyCheckinRewardTiers(tiers []config.DailyCheckinRewardTier) []config.DailyCheckinRewardTier {
+	normalized, err := config.NormalizeDailyCheckinRewardTiers(tiers)
+	if err != nil {
+		normalized = config.DefaultDailyCheckinRewardTiers()
+	}
+	cloned := make([]config.DailyCheckinRewardTier, len(normalized))
+	copy(cloned, normalized)
+	return cloned
 }

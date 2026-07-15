@@ -173,18 +173,10 @@ export interface DailyCheckinStatus {
   ads_enabled: boolean
   checked_in_today: boolean
   today_reward: number
-  today_total_granted: number
-  daily_total_limit: number
-  min_reward: number
-  max_reward: number
-  min_recharge_amount: number
-  total_recharged: number
   recharge_eligible: boolean
   checkin_date: string
   last_checkin_at?: string | null
-  last_reward?: number
   next_available_at: string
-  remaining_today: number
   exhausted_today: boolean
 }
 

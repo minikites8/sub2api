@@ -152,6 +152,7 @@ const (
 	SettingKeyDailyCheckinMinReward               = "daily_checkin_min_reward"                  // 单人签到随机奖励最小值
 	SettingKeyDailyCheckinMaxReward               = "daily_checkin_max_reward"                  // 单人签到随机奖励最大值
 	SettingKeyDailyCheckinMinRechargeAmount       = "daily_checkin_min_recharge_amount"         // 使用签到功能所需累计充值金额
+	SettingKeyDailyCheckinRewardTiers             = "daily_checkin_reward_tiers"                // 每日签到奖励分档配置
 	SettingKeyRiskControlEnabled                  = "risk_control_enabled"                      // 是否启用风控中心入口与审计链路
 	SettingKeyContentModerationConfig             = "content_moderation_config"                 // 内容审计配置（JSON）
 	SettingKeyCyberSessionBlockEnabled            = "cyber_session_block_enabled"               // cyber 命中后会话级自动屏蔽总开关(默认关)

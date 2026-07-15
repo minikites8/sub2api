@@ -37,11 +37,11 @@ vi.mock('vue-i18n', async () => {
     'dashboard.dailyCheckin.checked': '已签到',
     'dashboard.dailyCheckin.exhausted': '今日已发完',
     'dashboard.dailyCheckin.ready': '可签到',
-    'dashboard.dailyCheckin.hint': '随机奖励 {min} - {max}',
+    'dashboard.dailyCheckin.hint': '试试看今天的手气吧',
     'dashboard.dailyCheckin.checkedHint': '今日已获得 {amount}',
     'dashboard.dailyCheckin.exhaustedHint': '今日签到额度已发完',
     'dashboard.dailyCheckin.rechargeRequired': '需要充值',
-    'dashboard.dailyCheckin.rechargeRequiredHint': '累计充值满 {amount} 可签到，当前 {current}',
+    'dashboard.dailyCheckin.rechargeRequiredHint': '达到累计充值要求后即可签到',
     'dashboard.dailyCheckin.goRecharge': '去充值'
   }
 
@@ -131,17 +131,10 @@ function statusFixture(overrides: Partial<DailyCheckinStatus> = {}): DailyChecki
     ads_enabled: true,
     checked_in_today: false,
     today_reward: 0,
-    today_total_granted: 0,
-    daily_total_limit: 100,
-    min_reward: 1,
-    max_reward: 5,
-    min_recharge_amount: 1,
-    total_recharged: 0,
     recharge_eligible: false,
     checkin_date: '2026-06-22',
     last_checkin_at: null,
     next_available_at: '2026-06-23T00:00:00Z',
-    remaining_today: 100,
     exhausted_today: false,
     ...overrides
   }
@@ -226,16 +219,14 @@ describe('DashboardView daily check-in UI', () => {
     expect(title.text()).toContain('每日签到')
     expect(title.find('[data-icon="gift"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('需要充值')
-    expect(wrapper.text()).toContain('累计充值满 $1.00 可签到，当前 $0.00')
+    expect(wrapper.text()).toContain('达到累计充值要求后即可签到')
     expect(wrapper.findAll('[data-icon="creditCard"]')).toHaveLength(2)
-    expect(wrapper.text().match(/累计充值满 \$1\.00 可签到，当前 \$0\.00/g)).toHaveLength(1)
+    expect(wrapper.text().match(/达到累计充值要求后即可签到/g)).toHaveLength(1)
   })
 
   it('shows the ad only when the daily check-in ad switch is enabled', async () => {
     const readyStatus = statusFixture({
-      min_recharge_amount: 0,
-      recharge_eligible: true,
-      total_recharged: 0
+      recharge_eligible: true
     })
     const enabledWrapper = await mountDashboard(readyStatus)
 

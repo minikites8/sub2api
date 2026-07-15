@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"io"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -19,6 +20,24 @@ type DailyCheckinHandler struct {
 
 type DailyCheckinClaimRequest struct {
 	TurnstileToken string `json:"turnstile_token"`
+}
+
+type DailyCheckinPublicStatus struct {
+	Enabled          bool       `json:"enabled"`
+	AdsEnabled       bool       `json:"ads_enabled"`
+	CheckedInToday   bool       `json:"checked_in_today"`
+	TodayReward      float64    `json:"today_reward"`
+	RechargeEligible bool       `json:"recharge_eligible"`
+	CheckinDate      string     `json:"checkin_date"`
+	LastCheckinAt    *time.Time `json:"last_checkin_at,omitempty"`
+	NextAvailableAt  time.Time  `json:"next_available_at"`
+	ExhaustedToday   bool       `json:"exhausted_today"`
+}
+
+type DailyCheckinPublicResult struct {
+	DailyCheckinPublicStatus
+	Reward  float64 `json:"reward"`
+	Balance float64 `json:"balance"`
 }
 
 func NewDailyCheckinHandler(service *service.DailyCheckinService, turnstileService *service.TurnstileService) *DailyCheckinHandler {
@@ -43,7 +62,7 @@ func (h *DailyCheckinHandler) GetStatus(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, status)
+	response.Success(c, toDailyCheckinPublicStatus(status))
 }
 
 // Claim grants the current user's daily check-in reward.
@@ -100,5 +119,33 @@ func (h *DailyCheckinHandler) Claim(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, result)
+	response.Success(c, toDailyCheckinPublicResult(result))
+}
+
+func toDailyCheckinPublicStatus(status *service.DailyCheckinStatus) DailyCheckinPublicStatus {
+	if status == nil {
+		return DailyCheckinPublicStatus{}
+	}
+	return DailyCheckinPublicStatus{
+		Enabled:          status.Enabled,
+		AdsEnabled:       status.AdsEnabled,
+		CheckedInToday:   status.CheckedInToday,
+		TodayReward:      status.TodayReward,
+		RechargeEligible: status.RechargeEligible,
+		CheckinDate:      status.CheckinDate,
+		LastCheckinAt:    status.LastCheckinAt,
+		NextAvailableAt:  status.NextAvailableAt,
+		ExhaustedToday:   status.ExhaustedToday,
+	}
+}
+
+func toDailyCheckinPublicResult(result *service.DailyCheckinResult) DailyCheckinPublicResult {
+	if result == nil {
+		return DailyCheckinPublicResult{}
+	}
+	return DailyCheckinPublicResult{
+		DailyCheckinPublicStatus: toDailyCheckinPublicStatus(&result.DailyCheckinStatus),
+		Reward:                   result.Reward,
+		Balance:                  result.Balance,
+	}
 }

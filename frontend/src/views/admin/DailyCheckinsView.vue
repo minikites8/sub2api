@@ -193,6 +193,57 @@
           />
           <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.minRechargeAmountHint') }}</span>
         </label>
+
+        <div class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dailyCheckins.settings.rewardTiers') }}</p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.rewardTiersHint') }}</p>
+            </div>
+            <p class="text-xs font-medium text-gray-500 dark:text-dark-400">
+              {{ t('admin.dailyCheckins.settings.weightTotal', { amount: formatPercent(rewardTierWeightTotal) }) }}
+            </p>
+          </div>
+
+          <div class="space-y-3">
+            <div
+              v-for="(tier, index) in rewardTierForm"
+              :key="index"
+              class="grid gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900/40 sm:grid-cols-[minmax(0,1fr)_8rem_8rem]"
+            >
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.dailyCheckins.settings.tierLabel', { index: index + 1 }) }}
+                </p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('admin.dailyCheckins.settings.tierRange', { start: formatPercent(tierLowerPercent(index)), end: formatPercent(tier.upper_ratio_percent) }) }}
+                </p>
+              </div>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.upperRatio') }}</span>
+                <input
+                  v-model.number="tier.upper_ratio_percent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.000001"
+                  class="input"
+                  :disabled="index === rewardTierForm.length - 1"
+                />
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.weight') }}</span>
+                <input
+                  v-model.number="tier.weight_percent"
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                  class="input"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
       </form>
 
       <template #footer>
@@ -223,7 +274,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { Column } from '@/components/common/types'
 import { useAppStore } from '@/stores/app'
-import dailyCheckinsAPI, { type DailyCheckinRecord, type DailyCheckinSettings, type ListDailyCheckinRecordsParams } from '@/api/admin/dailyCheckins'
+import dailyCheckinsAPI, { type DailyCheckinRecord, type DailyCheckinRewardTier, type DailyCheckinSettings, type ListDailyCheckinRecordsParams } from '@/api/admin/dailyCheckins'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDisplayDateTime } from '@/utils/format'
 
@@ -237,6 +288,11 @@ const settingsDialogOpen = ref(false)
 const settingsLoading = ref(false)
 const settingsSaving = ref(false)
 const settingsSummary = ref<DailyCheckinSettings | null>(null)
+interface DailyCheckinRewardTierForm {
+  upper_ratio_percent: number
+  weight_percent: number
+}
+
 const settingsForm = reactive<DailyCheckinSettings>({
   enabled: false,
   ads_enabled: true,
@@ -244,11 +300,13 @@ const settingsForm = reactive<DailyCheckinSettings>({
   min_reward: 0,
   max_reward: 0,
   min_recharge_amount: 0,
+  reward_tiers: [],
   today_total_granted: 0,
   remaining_today: 0,
   exhausted_today: false,
   checkin_date: '',
 })
+const rewardTierForm = ref<DailyCheckinRewardTierForm[]>([])
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const columns = computed<Column[]>(() => [
@@ -266,6 +324,9 @@ const progressRemaining = computed(() => Number(settingsSummary.value?.remaining
 const dailyProgressPercent = computed(() => {
   if (progressLimit.value <= 0) return 0
   return Math.min(100, Math.max(0, (progressUsed.value / progressLimit.value) * 100))
+})
+const rewardTierWeightTotal = computed(() => {
+  return rewardTierForm.value.reduce((sum, tier) => sum + (Number(tier.weight_percent) || 0), 0)
 })
 
 function loadInitialSortState(): { sort_by: string; sort_order: 'asc' | 'desc' } {
@@ -381,6 +442,7 @@ async function saveSettings() {
       min_reward: Number(settingsForm.min_reward) || 0,
       max_reward: Number(settingsForm.max_reward) || 0,
       min_recharge_amount: Number(settingsForm.min_recharge_amount) || 0,
+      reward_tiers: buildRewardTiersPayload(),
     }))
     appStore.showSuccess(t('admin.dailyCheckins.settings.saved'))
     settingsDialogOpen.value = false
@@ -399,10 +461,15 @@ function assignSettings(settings: DailyCheckinSettings) {
   settingsForm.min_reward = Number(settings.min_reward) || 0
   settingsForm.max_reward = Number(settings.max_reward) || 0
   settingsForm.min_recharge_amount = Number(settings.min_recharge_amount) || 0
+  settingsForm.reward_tiers = normalizeRewardTiers(settings.reward_tiers)
   settingsForm.today_total_granted = Number(settings.today_total_granted) || 0
   settingsForm.remaining_today = Number(settings.remaining_today) || 0
   settingsForm.exhausted_today = !!settings.exhausted_today
   settingsForm.checkin_date = settings.checkin_date || ''
+  rewardTierForm.value = settingsForm.reward_tiers.map((tier) => ({
+    upper_ratio_percent: ratioToPercent(tier.upper_ratio),
+    weight_percent: ratioToPercent(tier.weight),
+  }))
 }
 
 function formatReward(value: number | null | undefined): string {
@@ -412,6 +479,46 @@ function formatReward(value: number | null | undefined): string {
 
 function formatDateTime(value: string | null | undefined): string {
   return value ? formatDisplayDateTime(value) : '-'
+}
+
+const defaultRewardTiers: DailyCheckinRewardTier[] = [
+  { upper_ratio: 0.1, weight: 0.5 },
+  { upper_ratio: 0.35, weight: 0.3 },
+  { upper_ratio: 0.75, weight: 0.15 },
+  { upper_ratio: 1, weight: 0.05 },
+]
+
+function normalizeRewardTiers(tiers: DailyCheckinRewardTier[] | null | undefined): DailyCheckinRewardTier[] {
+  const source = tiers && tiers.length > 0 ? tiers : defaultRewardTiers
+  return source.map((tier, index) => ({
+    upper_ratio: index === source.length - 1 ? 1 : Number(tier.upper_ratio) || 0,
+    weight: Number(tier.weight) || 0,
+  }))
+}
+
+function ratioToPercent(value: number): number {
+  return Math.round((Number(value) || 0) * 10000000000) / 100000000
+}
+
+function percentToRatio(value: number): number {
+  return Math.round((Number(value) || 0) * 1000000) / 100000000
+}
+
+function formatPercent(value: number): string {
+  const rounded = Number(value || 0).toFixed(6).replace(/0+$/, '').replace(/\.$/, '')
+  return `${rounded || '0'}%`
+}
+
+function tierLowerPercent(index: number): number {
+  if (index <= 0) return 0
+  return Number(rewardTierForm.value[index - 1]?.upper_ratio_percent) || 0
+}
+
+function buildRewardTiersPayload(): DailyCheckinRewardTier[] {
+  return rewardTierForm.value.map((tier, index) => ({
+    upper_ratio: index === rewardTierForm.value.length - 1 ? 1 : percentToRatio(tier.upper_ratio_percent),
+    weight: percentToRatio(tier.weight_percent),
+  }))
 }
 
 function recordKey(row: DailyCheckinRecord): string {

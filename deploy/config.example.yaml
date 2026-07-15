@@ -721,6 +721,17 @@ daily_checkin:
   # Minimum cumulative recharge amount required to use daily check-in (USD). 0 means unrestricted.
   # 使用每日签到所需累计充值金额（USD），0 表示不限制。
   min_recharge_amount: 0
+  # Weighted reward tiers. upper_ratio is the upper bound within [min_reward, max_reward].
+  # 奖励分档。upper_ratio 表示 [min_reward, max_reward] 内的区间上限。
+  reward_tiers:
+    - upper_ratio: 0.10
+      weight: 0.50
+    - upper_ratio: 0.35
+      weight: 0.30
+    - upper_ratio: 0.75
+      weight: 0.15
+    - upper_ratio: 1.00
+      weight: 0.05
 
 # =============================================================================
 # Dashboard Aggregation Configuration

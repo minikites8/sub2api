@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -683,6 +684,21 @@ func TestValidateDailyCheckinConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "enabled accepts percentage reward tiers",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 100,
+				MinReward:       0.1,
+				MaxReward:       1,
+				RewardTiers: []DailyCheckinRewardTier{
+					{UpperRatio: 10, Weight: 50},
+					{UpperRatio: 35, Weight: 30},
+					{UpperRatio: 75, Weight: 15},
+					{UpperRatio: 100, Weight: 5},
+				},
+			},
+		},
+		{
 			name: "enabled requires positive daily total limit",
 			cfg: DailyCheckinConfig{
 				Enabled:         true,
@@ -763,6 +779,20 @@ func TestValidateDailyCheckinConfig(t *testing.T) {
 			},
 			wantErr: "daily_checkin.min_recharge_amount must be a finite non-negative number",
 		},
+		{
+			name: "reward tiers must end at full range",
+			cfg: DailyCheckinConfig{
+				Enabled:         true,
+				DailyTotalLimit: 100,
+				MinReward:       0.1,
+				MaxReward:       1,
+				RewardTiers: []DailyCheckinRewardTier{
+					{UpperRatio: 0.1, Weight: 0.5},
+					{UpperRatio: 0.9, Weight: 0.5},
+				},
+			},
+			wantErr: "daily_checkin.reward_tiers last upper_ratio must be 1",
+		},
 	}
 
 	for _, tt := range tests {
@@ -788,6 +818,36 @@ func TestValidateDailyCheckinConfig(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestNormalizeDailyCheckinRewardTiers(t *testing.T) {
+	tiers, err := NormalizeDailyCheckinRewardTiers([]DailyCheckinRewardTier{
+		{UpperRatio: 10, Weight: 50},
+		{UpperRatio: 35, Weight: 30},
+		{UpperRatio: 75, Weight: 15},
+		{UpperRatio: 100, Weight: 5},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeDailyCheckinRewardTiers() error: %v", err)
+	}
+	wantUpper := []float64{0.1, 0.35, 0.75, 1}
+	wantWeight := []float64{0.5, 0.3, 0.15, 0.05}
+	for i := range tiers {
+		if math.Abs(tiers[i].UpperRatio-wantUpper[i]) > 1e-8 {
+			t.Fatalf("tiers[%d].UpperRatio = %v, want %v", i, tiers[i].UpperRatio, wantUpper[i])
+		}
+		if math.Abs(tiers[i].Weight-wantWeight[i]) > 1e-8 {
+			t.Fatalf("tiers[%d].Weight = %v, want %v", i, tiers[i].Weight, wantWeight[i])
+		}
+	}
+
+	defaults, err := NormalizeDailyCheckinRewardTiers(nil)
+	if err != nil {
+		t.Fatalf("NormalizeDailyCheckinRewardTiers(nil) error: %v", err)
+	}
+	if len(defaults) != 4 {
+		t.Fatalf("default tier count = %d, want 4", len(defaults))
 	}
 }
 

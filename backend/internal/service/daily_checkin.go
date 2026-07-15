@@ -213,7 +213,7 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 		return nil, ErrDailyCheckinExhausted
 	}
 
-	reward := randomDailyCheckinReward(settings.MinReward, settings.MaxReward, remaining)
+	reward := randomDailyCheckinReward(settings.MinReward, settings.MaxReward, remaining, settings.RewardTiers)
 	if reward <= 0 {
 		return nil, ErrDailyCheckinExhausted
 	}
@@ -339,6 +339,11 @@ func normalizeDailyCheckinConfig(settings config.DailyCheckinConfig) config.Dail
 	settings.MinReward = roundCheckinReward(settings.MinReward)
 	settings.MaxReward = roundCheckinReward(settings.MaxReward)
 	settings.MinRechargeAmount = roundCheckinReward(settings.MinRechargeAmount)
+	if rewardTiers, err := config.NormalizeDailyCheckinRewardTiers(settings.RewardTiers); err == nil {
+		settings.RewardTiers = rewardTiers
+	} else {
+		settings.RewardTiers = config.DefaultDailyCheckinRewardTiers()
+	}
 	return settings
 }
 
@@ -391,7 +396,7 @@ func dailyCheckinRechargeEligible(totalRecharged, minRechargeAmount float64) boo
 	return roundCheckinReward(totalRecharged) >= minRechargeAmount
 }
 
-func randomDailyCheckinReward(minReward, maxReward, remaining float64) float64 {
+func randomDailyCheckinReward(minReward, maxReward, remaining float64, rewardTiers []config.DailyCheckinRewardTier) float64 {
 	minReward = math.Max(roundCheckinReward(minReward), 0)
 	maxReward = math.Max(roundCheckinReward(maxReward), minReward)
 	remaining = roundCheckinReward(remaining)
@@ -413,7 +418,29 @@ func randomDailyCheckinReward(minReward, maxReward, remaining float64) float64 {
 	if maxReward == minReward {
 		return roundCheckinReward(maxReward)
 	}
-	return roundCheckinReward(minReward + rand.Float64()*(maxReward-minReward))
+
+	tiers, err := config.NormalizeDailyCheckinRewardTiers(rewardTiers)
+	if err != nil {
+		tiers = config.DefaultDailyCheckinRewardTiers()
+	}
+
+	span := maxReward - minReward
+	lowerRatio := 0.0
+	upperRatio := 1.0
+	cumulativeWeight := 0.0
+	roll := rand.Float64()
+	for _, tier := range tiers {
+		cumulativeWeight += tier.Weight
+		if roll <= cumulativeWeight {
+			upperRatio = tier.UpperRatio
+			break
+		}
+		lowerRatio = tier.UpperRatio
+	}
+
+	lower := minReward + span*lowerRatio
+	upper := minReward + span*upperRatio
+	return roundCheckinReward(lower + rand.Float64()*(upper-lower))
 }
 
 func applyDailyCheckinRemaining(status *DailyCheckinStatus) {

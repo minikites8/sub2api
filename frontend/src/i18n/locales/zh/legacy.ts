@@ -801,7 +801,7 @@ export default {
       rechargedTotal: '累计充值',
       poolProgress: '今日发放进度',
       rechargeRequired: '需要充值',
-      rechargeRequiredHint: '累计充值满 {amount} 可签到，当前 {current}',
+      rechargeRequiredHint: '达到累计充值要求后即可签到',
       goRecharge: '去充值',
       verifyTitle: '完成人机验证',
       verifyHint: '验证通过后即可领取今日签到奖励。',
@@ -2074,6 +2074,13 @@ export default {
           dailyTotalLimit: '每日总派发额度',
           minRechargeAmount: '最低累计充值金额',
           minRechargeAmountHint: '填 0 表示所有用户都可签到。',
+          rewardTiers: '奖励分档',
+          rewardTiersHint: '按区间上限和概率分配随机奖励。',
+          weightTotal: '概率合计 {amount}',
+          tierLabel: '档位 {index}',
+          tierRange: '{start} - {end}',
+          upperRatio: '区间上限',
+          weight: '概率',
           saved: '签到设置已保存'
         },
         progress: {
