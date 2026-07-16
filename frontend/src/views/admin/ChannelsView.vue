@@ -869,6 +869,7 @@ function createTokenPricingEntry(models: string[], defaults: Partial<PricingForm
     cache_write_price: defaults.cache_write_price ?? null,
     cache_read_price: defaults.cache_read_price ?? null,
     image_output_price: defaults.image_output_price ?? null,
+    priority_multiplier: defaults.priority_multiplier ?? null,
     per_request_price: null,
     intervals: []
   }
@@ -1018,6 +1019,7 @@ function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
     cache_write_price: null,
     cache_read_price: null,
     image_output_price: null,
+    priority_multiplier: null,
     per_request_price: null,
     intervals: []
   })
@@ -1133,6 +1135,7 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             cache_write_price: mTokToPerToken(p.cache_write_price),
             cache_read_price: mTokToPerToken(p.cache_read_price),
             image_output_price: mTokToPerToken(p.image_output_price),
+            priority_multiplier: p.priority_multiplier != null && p.priority_multiplier !== '' ? Number(p.priority_multiplier) : null,
             per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
             intervals: formIntervalsToAPI(p.intervals || [])
           }))
@@ -1173,6 +1176,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         cache_write_price: mTokToPerToken(entry.cache_write_price),
         cache_read_price: mTokToPerToken(entry.cache_read_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
+        priority_multiplier: entry.priority_multiplier != null && entry.priority_multiplier !== '' ? Number(entry.priority_multiplier) : null,
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
         intervals: formIntervalsToAPI(entry.intervals || [])
       })
@@ -1261,6 +1265,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
         cache_write_price: perTokenToMTok(p.cache_write_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
         image_output_price: perTokenToMTok(p.image_output_price),
+        priority_multiplier: p.priority_multiplier,
         per_request_price: p.per_request_price,
         intervals: apiIntervalsToForm(p.intervals || [])
       } as PricingFormEntry))
@@ -1449,6 +1454,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
         cache_write_price: perTokenToMTok(p.cache_write_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
         image_output_price: perTokenToMTok(p.image_output_price),
+        priority_multiplier: p.priority_multiplier,
         per_request_price: p.per_request_price,
         intervals: apiIntervalsToForm(p.intervals || [])
       } as PricingFormEntry))

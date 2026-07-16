@@ -118,6 +118,7 @@ export default {
         cacheReadPriceShort: 'Cache R',
         imageTokenPrice: 'Image Output',
         imageOutputPrice: 'Image Output Price',
+        priorityMultiplier: 'Priority Mult.',
         pricePlaceholder: 'Default',
         intervals: 'Context Intervals (optional)',
         minTokens: 'Min',

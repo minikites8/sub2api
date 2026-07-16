@@ -118,6 +118,7 @@ export default {
         cacheReadPriceShort: '缓存读',
         imageTokenPrice: '图片输出',
         imageOutputPrice: '图片输出价格',
+        priorityMultiplier: 'Priority倍率',
         pricePlaceholder: '默认',
         intervals: '上下文区间定价（可选）',
         minTokens: '最小',

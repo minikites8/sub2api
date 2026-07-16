@@ -161,6 +161,9 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 			resolved.BasePricing.ImageOutputPricePerToken = 0
 		}
 		resolved.BasePricing.ImageOutputPriceExplicit = true
+		if chPricing.PriorityMultiplier != nil {
+			resolved.BasePricing.PriorityMultiplier = normalizeChannelPriorityMultiplier(chPricing.PriorityMultiplier)
+		}
 		return
 	}
 
@@ -199,6 +202,9 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		resolved.BasePricing.ImageOutputPricePerToken = 0
 	}
 	resolved.BasePricing.ImageOutputPriceExplicit = true
+	if chPricing.PriorityMultiplier != nil {
+		resolved.BasePricing.PriorityMultiplier = normalizeChannelPriorityMultiplier(chPricing.PriorityMultiplier)
+	}
 }
 
 // applyRequestTierOverrides 应用按次/图片模式的渠道覆盖
@@ -268,8 +274,22 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool, ch
 		if chPricing.ImageOutputPrice != nil {
 			pricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
 		}
+		if chPricing.PriorityMultiplier != nil {
+			pricing.PriorityMultiplier = normalizeChannelPriorityMultiplier(chPricing.PriorityMultiplier)
+		}
 	}
 	return pricing
+}
+
+func normalizeChannelPriorityMultiplier(multiplier *float64) *float64 {
+	if multiplier == nil {
+		return nil
+	}
+	value := *multiplier
+	if value < 0 {
+		value = 0
+	}
+	return &value
 }
 
 // GetRequestTierPrice 根据层级标签获取按次价格

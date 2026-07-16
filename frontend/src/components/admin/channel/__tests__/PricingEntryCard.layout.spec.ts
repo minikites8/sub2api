@@ -30,6 +30,7 @@ function baseEntry(): PricingFormEntry {
     cache_read_price: null,
     image_output_price: null,
     per_request_price: null,
+    priority_multiplier: null,
     intervals: [
       {
         min_tokens: 0,
