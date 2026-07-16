@@ -126,7 +126,7 @@ describe('admin UsageTable tooltip', () => {
       actual_cost: 0.092883,
       total_cost: 0.092883,
       account_rate_multiplier: 1,
-      rate_multiplier: 1,
+      rate_multiplier: 0.1,
       service_tier: 'priority',
       input_cost: 0.020285,
       output_cost: 0.00303,
@@ -158,9 +158,9 @@ describe('admin UsageTable tooltip', () => {
 
     const text = wrapper.text()
     expect(text).toContain('Service tier')
-    expect(text).toContain('Fast')
+    expect(text).toContain('Fast 2x')
     expect(text).toContain('Rate')
-    expect(text).toContain('1.00x')
+    expect(text).toContain('0.20x')
     expect(text).toContain('Account rate')
     expect(text).toContain('User billed')
     expect(text).toContain('Account billed')

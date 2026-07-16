@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatUsageServiceTier, getUsageServiceTierLabel, normalizeUsageServiceTier } from '@/utils/usageServiceTier'
+import {
+  formatUsageServiceTier,
+  formatUsageServiceTierMultiplier,
+  getUsageServiceTierLabel,
+  getUsageServiceTierLabelWithMultiplier,
+  getUsageServiceTierMultiplier,
+  normalizeUsageServiceTier,
+} from '@/utils/usageServiceTier'
 
 describe('usageServiceTier utils', () => {
   it('normalizes fast/default aliases', () => {
@@ -35,5 +42,27 @@ describe('usageServiceTier utils', () => {
     expect(getUsageServiceTierLabel('flex', translate)).toBe('Flex')
     expect(getUsageServiceTierLabel(undefined, translate)).toBe('Standard')
     expect(getUsageServiceTierLabel('custom-tier', translate)).toBe('custom-tier')
+  })
+
+  it('maps tiers to billing multipliers', () => {
+    expect(getUsageServiceTierMultiplier('fast')).toBe(2)
+    expect(getUsageServiceTierMultiplier('priority')).toBe(2)
+    expect(getUsageServiceTierMultiplier('flex')).toBe(0.5)
+    expect(getUsageServiceTierMultiplier('standard')).toBe(1)
+    expect(getUsageServiceTierMultiplier('custom-tier')).toBeNull()
+  })
+
+  it('formats labels with multipliers', () => {
+    const translate = (key: string) => ({
+      'usage.serviceTierPriority': 'Fast',
+      'usage.serviceTierFlex': 'Flex',
+      'usage.serviceTierStandard': 'Standard',
+    })[key] ?? key
+
+    expect(formatUsageServiceTierMultiplier(2)).toBe('2x')
+    expect(formatUsageServiceTierMultiplier(0.5)).toBe('0.5x')
+    expect(getUsageServiceTierLabelWithMultiplier('fast', translate)).toBe('Fast 2x')
+    expect(getUsageServiceTierLabelWithMultiplier(undefined, translate)).toBe('Standard 1x')
+    expect(getUsageServiceTierLabelWithMultiplier('custom-tier', translate)).toBe('custom-tier')
   })
 })
