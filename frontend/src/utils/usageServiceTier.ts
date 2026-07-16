@@ -23,25 +23,3 @@ export function getUsageServiceTierLabel(
   if (tier === 'standard') return translate('usage.serviceTierStandard')
   return tier
 }
-
-export function getUsageServiceTierMultiplier(serviceTier?: string | null): number | null {
-  const tier = formatUsageServiceTier(serviceTier)
-  if (tier === 'priority') return 2
-  if (tier === 'flex') return 0.5
-  if (tier === 'standard') return 1
-  return null
-}
-
-export function formatUsageServiceTierMultiplier(multiplier: number): string {
-  return `${Number.isInteger(multiplier) ? multiplier.toFixed(0) : String(multiplier)}x`
-}
-
-export function getUsageServiceTierLabelWithMultiplier(
-  serviceTier: string | null | undefined,
-  translate: (key: string) => string,
-): string {
-  const label = getUsageServiceTierLabel(serviceTier, translate)
-  const multiplier = getUsageServiceTierMultiplier(serviceTier)
-  if (multiplier == null) return label
-  return `${label} ${formatUsageServiceTierMultiplier(multiplier)}`
-}
