@@ -4,6 +4,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -112,6 +113,21 @@ func TestClassifyNoAccountError_ModelNotSupported_Returns404(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, fd.calls[0].Platform)
 	require.NotNil(t, fd.calls[0].GroupID)
 	require.Equal(t, int64(42), *fd.calls[0].GroupID)
+}
+
+func TestClassifyNoAccountError_ChannelPricingRestriction_ReturnsChannelMessage(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}}
+	apiKey := &service.APIKey{GroupID: ptrInt64(42)}
+	err := errors.Join(service.ErrChannelPricingModelRestricted, service.ErrNoAvailableAccounts)
+
+	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "gpt-5.5", "gpt-5.5", service.PlatformOpenAI, err)
+
+	require.Equal(t, http.StatusNotFound, cls.Status)
+	require.Equal(t, "model_not_found", cls.ErrType)
+	require.Equal(t, "该渠道不支持此模型，请使用其他模型", cls.Message)
+	require.True(t, cls.ModelNotFound)
+	require.Empty(t, fd.calls)
 }
 
 func TestClassifyNoAccountError_HasModelSupport_KeepsRoutingMessageGenerationToCaller(t *testing.T) {

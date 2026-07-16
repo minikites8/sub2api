@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -31,6 +32,8 @@ type noAccountErrorClassification struct {
 	Message       string
 	ModelNotFound bool // true when this is a 404 model_not_found classification
 }
+
+const channelPricingModelRestrictedMessage = "该渠道不支持此模型，请使用其他模型"
 
 // classifyNoAccountError decides between 404 model_not_found and 503
 // api_error for "no available accounts" failures.
@@ -62,11 +65,21 @@ func classifyNoAccountError(
 	routingModel string,
 	displayModel string,
 	platform string,
+	causes ...error,
 ) noAccountErrorClassification {
 	fallback := noAccountErrorClassification{
 		Status:  http.StatusServiceUnavailable,
 		ErrType: "api_error",
 		Message: "Service temporarily unavailable",
+	}
+
+	if hasChannelPricingModelRestriction(causes) {
+		return noAccountErrorClassification{
+			Status:        http.StatusNotFound,
+			ErrType:       "model_not_found",
+			Message:       channelPricingModelRestrictedMessage,
+			ModelNotFound: true,
+		}
 	}
 
 	routingModel = strings.TrimSpace(routingModel)
@@ -90,6 +103,15 @@ func classifyNoAccountError(
 	return fallback
 }
 
+func hasChannelPricingModelRestriction(causes []error) bool {
+	for _, cause := range causes {
+		if errors.Is(cause, service.ErrChannelPricingModelRestricted) {
+			return true
+		}
+	}
+	return false
+}
+
 // classifyNoAccountErrorFromGin is a thin wrapper that forwards the gin
 // context's underlying request context. Most call sites already have a
 // *gin.Context handy, so this keeps the call sites uncluttered.
@@ -100,10 +122,11 @@ func classifyNoAccountErrorFromGin(
 	routingModel string,
 	displayModel string,
 	platform string,
+	causes ...error,
 ) noAccountErrorClassification {
 	ctx := context.Background()
 	if c != nil && c.Request != nil {
 		ctx = c.Request.Context()
 	}
-	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform, causes...)
 }

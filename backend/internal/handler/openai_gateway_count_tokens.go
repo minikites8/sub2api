@@ -116,7 +116,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	if err != nil {
 		reqLog.Warn("openai_count_tokens.account_select_failed", zap.Error(err))
-		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel, service.PlatformOpenAI)
+		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel, service.PlatformOpenAI, err)
 		if !cls.ModelNotFound {
 			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 		}

@@ -405,6 +405,17 @@ var (
 // ErrNoAvailableAccounts 表示没有可用的账号
 var ErrNoAvailableAccounts = errors.New("no available accounts")
 
+// ErrChannelPricingModelRestricted 表示渠道限制模型且请求模型未命中渠道定价。
+var ErrChannelPricingModelRestricted = errors.New("channel pricing restriction")
+
+func channelPricingRestrictionError(requestedModel string) error {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return fmt.Errorf("%w: %w", ErrChannelPricingModelRestricted, ErrNoAvailableAccounts)
+	}
+	return fmt.Errorf("%w: %w supporting model: %s", ErrChannelPricingModelRestricted, ErrNoAvailableAccounts, requestedModel)
+}
+
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
