@@ -86,6 +86,7 @@ func provideCleanup(
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	batchImageCleanup *service.BatchImageCleanupService,
+	quotaLeaseDemoNodeWorker *service.QuotaLeaseDemoNodeWorker,
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
@@ -174,6 +175,12 @@ func provideCleanup(
 			{"BatchImageCleanupService", func() error {
 				if batchImageCleanup != nil {
 					batchImageCleanup.Stop()
+				}
+				return nil
+			}},
+			{"QuotaLeaseDemoNodeWorker", func() error {
+				if quotaLeaseDemoNodeWorker != nil {
+					quotaLeaseDemoNodeWorker.Stop()
 				}
 				return nil
 			}},

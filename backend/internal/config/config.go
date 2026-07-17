@@ -872,6 +872,8 @@ type GatewayConfig struct {
 
 	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
 	UsageRecord GatewayUsageRecordConfig `mapstructure:"usage_record"`
+	// QuotaLeaseDemo: 短期额度租约 demo，用于混合架构验证。
+	QuotaLeaseDemo GatewayQuotaLeaseDemoConfig `mapstructure:"quota_lease_demo"`
 
 	// UserGroupRateCacheTTLSeconds: 用户分组倍率热路径缓存 TTL（秒）
 	UserGroupRateCacheTTLSeconds int `mapstructure:"user_group_rate_cache_ttl_seconds"`
@@ -896,6 +898,18 @@ type GatewayOpenAIHTTP2Config struct {
 	FallbackWindowSeconds int `mapstructure:"fallback_window_seconds"`
 	// FallbackTTLSeconds: 触发后回退 HTTP/1.1 的持续时间（秒）
 	FallbackTTLSeconds int `mapstructure:"fallback_ttl_seconds"`
+}
+
+type GatewayQuotaLeaseDemoConfig struct {
+	Enabled                bool    `mapstructure:"enabled"`
+	NodeID                 string  `mapstructure:"node_id"`
+	NodeSecret             string  `mapstructure:"node_secret"`
+	ControlPlaneBaseURL    string  `mapstructure:"control_plane_base_url"`
+	ControlPlaneKey        string  `mapstructure:"control_plane_key"`
+	DefaultGrantAmount     float64 `mapstructure:"default_grant_amount"`
+	LeaseTTLSeconds        int     `mapstructure:"lease_ttl_seconds"`
+	ReclaimGraceSeconds    int     `mapstructure:"reclaim_grace_seconds"`
+	PreflightReserveAmount float64 `mapstructure:"preflight_reserve_amount"`
 }
 
 // UserMessageQueueConfig 用户消息串行队列配置
@@ -2169,6 +2183,15 @@ func setDefaults() {
 	viper.SetDefault("gateway.usage_record.auto_scale_down_step", 16)
 	viper.SetDefault("gateway.usage_record.auto_scale_check_interval_seconds", 3)
 	viper.SetDefault("gateway.usage_record.auto_scale_cooldown_seconds", 10)
+	viper.SetDefault("gateway.quota_lease_demo.enabled", false)
+	viper.SetDefault("gateway.quota_lease_demo.node_id", "gateway-demo")
+	viper.SetDefault("gateway.quota_lease_demo.node_secret", "")
+	viper.SetDefault("gateway.quota_lease_demo.control_plane_base_url", "")
+	viper.SetDefault("gateway.quota_lease_demo.control_plane_key", "")
+	viper.SetDefault("gateway.quota_lease_demo.default_grant_amount", 1.0)
+	viper.SetDefault("gateway.quota_lease_demo.lease_ttl_seconds", 600)
+	viper.SetDefault("gateway.quota_lease_demo.reclaim_grace_seconds", 3600)
+	viper.SetDefault("gateway.quota_lease_demo.preflight_reserve_amount", 0.000001)
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
 	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
@@ -3092,6 +3115,29 @@ func (c *Config) Validate() error {
 		}
 		if c.Gateway.UsageRecord.AutoScaleCooldownSeconds < 0 {
 			return fmt.Errorf("gateway.usage_record.auto_scale_cooldown_seconds must be non-negative")
+		}
+	}
+	if c.Gateway.QuotaLeaseDemo.Enabled {
+		if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneBaseURL) != "" {
+			controlURL, err := url.Parse(strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneBaseURL))
+			if err != nil || controlURL.Scheme == "" || controlURL.Host == "" || (controlURL.Scheme != "http" && controlURL.Scheme != "https") {
+				return fmt.Errorf("gateway.quota_lease_demo.control_plane_base_url must be a valid http(s) URL")
+			}
+			if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneKey) == "" {
+				return fmt.Errorf("gateway.quota_lease_demo.control_plane_key must be set when control_plane_base_url is set")
+			}
+		}
+		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.DefaultGrantAmount) || c.Gateway.QuotaLeaseDemo.DefaultGrantAmount <= 0 {
+			return fmt.Errorf("gateway.quota_lease_demo.default_grant_amount must be positive")
+		}
+		if c.Gateway.QuotaLeaseDemo.LeaseTTLSeconds <= 0 {
+			return fmt.Errorf("gateway.quota_lease_demo.lease_ttl_seconds must be positive")
+		}
+		if c.Gateway.QuotaLeaseDemo.ReclaimGraceSeconds <= 0 {
+			return fmt.Errorf("gateway.quota_lease_demo.reclaim_grace_seconds must be positive")
+		}
+		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.PreflightReserveAmount) || c.Gateway.QuotaLeaseDemo.PreflightReserveAmount <= 0 {
+			return fmt.Errorf("gateway.quota_lease_demo.preflight_reserve_amount must be positive")
 		}
 	}
 	if c.Gateway.UserGroupRateCacheTTLSeconds <= 0 {

@@ -35,6 +35,7 @@ import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
 import dailyCheckinsAPI from './dailyCheckins'
+import nodeLeasesAPI from './nodeLeases'
 
 /**
  * Unified admin API object for convenient access
@@ -71,7 +72,8 @@ export const adminAPI = {
   affiliates: affiliatesAPI,
   riskControl: riskControlAPI,
   compliance: adminComplianceAPI,
-  dailyCheckins: dailyCheckinsAPI
+  dailyCheckins: dailyCheckinsAPI,
+  nodeLeases: nodeLeasesAPI
 }
 
 export {
@@ -106,7 +108,8 @@ export {
   affiliatesAPI,
   riskControlAPI,
   adminComplianceAPI,
-  dailyCheckinsAPI
+  dailyCheckinsAPI,
+  nodeLeasesAPI
 }
 
 export default adminAPI
@@ -117,3 +120,9 @@ export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from 
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
 export type { ContentModerationConfig, ContentModerationLog, ModerationMode } from './riskControl'
+export type {
+  QuotaLeaseDemoAccountLoginTask,
+  QuotaLeaseDemoAssignedAccount,
+  QuotaLeaseDemoNode,
+  QuotaLeaseDemoSnapshot
+} from './nodeLeases'

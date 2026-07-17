@@ -176,6 +176,30 @@ gateway:
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
+  # Quota lease demo for hybrid deployments.
+  # 混合部署额度租约 demo，默认关闭。
+  quota_lease_demo:
+    enabled: false
+    node_id: "gateway-demo"
+    # Control-plane bootstrap secret required as X-Node-Secret on demo admin endpoints.
+    # 控制面引导密钥，配置后 demo 管理接口要求 X-Node-Secret。
+    node_secret: ""
+    # Foreign node mode: set both fields to fetch registration, leases, settlement and account assignments from the control plane.
+    # 国外节点模式：同时设置这两项后，节点从控制面获取注册、租约、结算、账号任务与账号分配。
+    control_plane_base_url: ""
+    control_plane_key: ""
+    # Default lease grant amount in USD.
+    # 默认租约额度，单位 USD。
+    default_grant_amount: 1.0
+    # Lease validity window in seconds.
+    # 租约有效期，单位秒。
+    lease_ttl_seconds: 600
+    # Grace window before unused quota is reclaimed.
+    # 未用额度回收宽限期，单位秒。
+    reclaim_grace_seconds: 3600
+    # Local preflight reserve used before forwarding a request.
+    # 请求转发前的本地预检保留额度。
+    preflight_reserve_amount: 0.000001
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608

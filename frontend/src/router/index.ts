@@ -546,6 +546,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/node-leases',
+    name: 'AdminNodeLeases',
+    component: () => import('@/views/admin/NodeLeasesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Node Leases',
+      titleKey: 'nav.nodeLeases'
+    }
+  },
+  {
     path: '/admin/redeem',
     name: 'AdminRedeem',
     component: () => import('@/views/admin/RedeemView.vue'),

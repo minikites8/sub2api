@@ -6,6 +6,9 @@ before:
   hooks:
     - go mod tidy -C backend
 
+snapshot:
+  version_template: "{{ if .Env.PACKAGE_VERSION }}{{ .Env.PACKAGE_VERSION }}{{ else }}snapshot{{ end }}"
+
 builds:
   - id: sub2api
     dir: backend

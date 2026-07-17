@@ -838,6 +838,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
+    { path: '/admin/node-leases', label: t('nav.nodeLeases'), icon: ServerIcon, hideInSimpleMode: true },
     { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
@@ -904,7 +905,7 @@ const adminNavGroups = computed((): NavGroup[] => {
     },
     {
       title: groupTitle('渠道与资源', 'Channels & Resources'),
-      items: pickItems(items, ['/admin/channels', '/admin/accounts', '/admin/proxies', '/admin/risk-control'])
+      items: pickItems(items, ['/admin/channels', '/admin/accounts', '/admin/proxies', '/admin/node-leases', '/admin/risk-control'])
     },
     {
       title: groupTitle('运营', 'Operations'),

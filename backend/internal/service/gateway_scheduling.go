@@ -912,6 +912,11 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 }
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
+	if leaseDemo := GetQuotaLeaseDemoService(s.cfg); leaseDemo != nil {
+		if accounts, handled := leaseDemo.AssignedAccountsForScheduling(ctx, groupID, platform); handled {
+			return accounts, false, nil
+		}
+	}
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {

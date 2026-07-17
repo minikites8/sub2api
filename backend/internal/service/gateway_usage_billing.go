@@ -285,6 +285,18 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	}
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
+	if deps.cfg != nil && deps.cfg.Gateway.QuotaLeaseDemo.Enabled {
+		handled, applied, leaseErr := GetQuotaLeaseDemoService(deps.cfg).ApplyUsageBilling(ctx, cmd)
+		if handled {
+			if leaseErr != nil {
+				return false, leaseErr
+			}
+			if deps.deferredService != nil && p.Account != nil {
+				deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
+			}
+			return applied, nil
+		}
+	}
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		postUsageBilling(ctx, p, deps)
 		return true, nil

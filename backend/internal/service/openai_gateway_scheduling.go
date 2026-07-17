@@ -1133,6 +1133,11 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
 	platform = normalizeOpenAICompatiblePlatform(platform)
+	if leaseDemo := GetQuotaLeaseDemoService(s.cfg); leaseDemo != nil {
+		if accounts, handled := leaseDemo.AssignedAccountsForScheduling(ctx, groupID, platform); handled {
+			return accounts, nil
+		}
+	}
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, false)
 		return accounts, err
@@ -1242,6 +1247,11 @@ func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroup(account *Acco
 }
 
 func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if leaseDemo := GetQuotaLeaseDemoService(s.cfg); leaseDemo != nil {
+		if account, handled := leaseDemo.AssignedAccountByID(ctx, accountID); handled {
+			return account, nil
+		}
+	}
 	var (
 		account *Account
 		err     error
