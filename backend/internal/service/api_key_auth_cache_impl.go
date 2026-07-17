@@ -201,6 +201,28 @@ func (s *APIKeyService) applyAuthCacheEntry(key string, entry *APIKeyAuthCacheEn
 	return s.snapshotToAPIKey(key, entry.Snapshot), true, nil
 }
 
+func (s *APIKeyService) AuthSnapshotForKey(ctx context.Context, key string) (*APIKeyAuthSnapshot, error) {
+	if s == nil {
+		return nil, ErrAPIKeyNotFound
+	}
+	apiKey, err := s.GetByKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := s.snapshotFromAPIKey(ctx, apiKey)
+	if snapshot == nil {
+		return nil, ErrAPIKeyNotFound
+	}
+	return snapshot, nil
+}
+
+func (s *APIKeyService) APIKeyFromAuthSnapshot(key string, snapshot *APIKeyAuthSnapshot) *APIKey {
+	if s == nil {
+		return nil
+	}
+	return s.snapshotToAPIKey(key, snapshot)
+}
+
 func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) *APIKeyAuthSnapshot {
 	if apiKey == nil || apiKey.User == nil {
 		return nil

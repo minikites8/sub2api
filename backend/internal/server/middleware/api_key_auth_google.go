@@ -34,7 +34,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 
-		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
+		apiKey, err := resolveAPIKeyWithQuotaLeaseDemoFallback(c.Request.Context(), apiKeyService, cfg, apiKeyString)
 		if err != nil {
 			if errors.Is(err, service.ErrAPIKeyNotFound) {
 				abortWithGoogleError(c, 401, "Invalid API key")

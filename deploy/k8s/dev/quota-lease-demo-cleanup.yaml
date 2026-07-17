@@ -1,0 +1,232 @@
+# Delete with:
+# kubectl delete -f deploy/k8s/dev/quota-lease-demo-cleanup.yaml --ignore-not-found=true
+#
+# This manifest intentionally keeps the dev namespace itself. It removes only
+# the quota-lease demo resources and PVCs, including older shared PG/Redis PVCs.
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: sub2api-dev
+      namespace: dev
+
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: sub2api-control
+      namespace: dev
+
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-us
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-sg
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-jp
+      namespace: dev
+
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-control-postgres
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-control-redis
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-us-postgres
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-us-redis
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-sg-postgres
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-sg-redis
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-jp-postgres
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-node-jp-redis
+      namespace: dev
+
+  # Older shared storage version.
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-postgres
+      namespace: dev
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: sub2api-redis
+      namespace: dev
+
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-control
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-node
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-node-headless
+      namespace: dev
+
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-control-postgres
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-control-redis
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-node-us-postgres
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-node-us-redis
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-node-sg-postgres
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-node-sg-redis
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-node-jp-postgres
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-node-jp-redis
+      namespace: dev
+
+  # Older shared storage version.
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-postgres
+      namespace: dev
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: sub2api-redis
+      namespace: dev
+
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: sub2api-common-config
+      namespace: dev
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: sub2api-control-config
+      namespace: dev
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: sub2api-node-config
+      namespace: dev
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: sub2api-dev-secrets
+      namespace: dev
+
+  # Current independent Postgres/Redis data.
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: postgres-data-sub2api-control-postgres-0
+      namespace: dev
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: redis-data-sub2api-control-redis-0
+      namespace: dev
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: postgres-data-sub2api-node-us-postgres-0
+      namespace: dev
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: redis-data-sub2api-node-us-redis-0
+      namespace: dev
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: postgres-data-sub2api-node-sg-postgres-0
+      namespace: dev
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: redis-data-sub2api-node-sg-redis-0
+      namespace: dev
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: postgres-data-sub2api-node-jp-postgres-0
+      namespace: dev
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: redis-data-sub2api-node-jp-redis-0
+      namespace: dev
+
+  # Older shared Postgres/Redis data.
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: postgres-data-sub2api-postgres-0
+      namespace: dev
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: redis-data-sub2api-redis-0
+      namespace: dev

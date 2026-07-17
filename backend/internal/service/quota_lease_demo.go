@@ -77,6 +77,7 @@ type QuotaLeaseDemoService struct {
 	events           map[string]*QuotaLeaseDemoLedgerEvent
 	nodes            map[string]*QuotaLeaseDemoNode
 	pendingEvents    map[string]QuotaLeaseDemoUsageEvent
+	clientAuthCache  map[string]*quotaLeaseDemoClientAuthCacheEntry
 	accountTasks     map[string]*QuotaLeaseDemoAccountLoginTask
 	assignedAccounts map[int64]*QuotaLeaseDemoAssignedAccount
 	remoteNodeID     string
@@ -90,6 +91,7 @@ func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 		events:           make(map[string]*QuotaLeaseDemoLedgerEvent),
 		nodes:            make(map[string]*QuotaLeaseDemoNode),
 		pendingEvents:    make(map[string]QuotaLeaseDemoUsageEvent),
+		clientAuthCache:  make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
 		accountTasks:     make(map[string]*QuotaLeaseDemoAccountLoginTask),
 		assignedAccounts: make(map[int64]*QuotaLeaseDemoAssignedAccount),
 	}
@@ -142,6 +144,15 @@ func (s *QuotaLeaseDemoService) NodeID() string {
 		return strings.TrimSpace(host)
 	}
 	return "gateway-demo"
+}
+
+func (s *QuotaLeaseDemoService) PreflightReserveAmount() float64 {
+	cfg := s.cfgSnapshot()
+	reserve := cfg.PreflightReserveAmount
+	if reserve <= 0 {
+		return 0.000001
+	}
+	return reserve
 }
 
 type QuotaLeaseDemoNodeRegistrationRequest struct {
@@ -480,12 +491,7 @@ func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey 
 	if s == nil || !s.Enabled() || apiKey == nil || apiKey.User == nil || subscription != nil {
 		return false
 	}
-	cfg := s.cfgSnapshot()
-	reserve := cfg.PreflightReserveAmount
-	if reserve <= 0 {
-		reserve = 0.000001
-	}
-	return s.ensureCapacity(ctx, s.NodeID(), apiKey.User.ID, apiKey.ID, reserve)
+	return s.ensureCapacity(ctx, s.NodeID(), apiKey.User.ID, apiKey.ID, s.PreflightReserveAmount())
 }
 
 func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *UsageBillingCommand) (handled bool, applied bool, err error) {

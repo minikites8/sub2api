@@ -7,13 +7,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterQuotaLeaseDemoRoutes(v1 *gin.RouterGroup, cfg *config.Config, adminSvc ...service.AdminService) {
+func RegisterQuotaLeaseDemoRoutes(v1 *gin.RouterGroup, cfg *config.Config, apiKeyService *service.APIKeyService, adminSvc ...service.AdminService) {
 	h := handler.NewQuotaLeaseDemoHandler(service.GetQuotaLeaseDemoService(cfg), adminSvc...)
+	h.SetAPIKeyService(apiKeyService)
 	group := v1.Group("/node-leases/demo")
 	{
 		group.POST("/nodes/register", h.RegisterNode)
 		group.POST("/nodes/heartbeat", h.HeartbeatNode)
 		group.GET("/nodes", h.ListNodes)
+		group.POST("/auth/client-key", h.AuthorizeClientKey)
 		group.POST("/accounts/login-tasks", h.CreateAccountLoginTask)
 		group.GET("/accounts/login-tasks", h.ListAccountLoginTasks)
 		group.POST("/accounts/login-tasks/:task_id/complete", h.CompleteAccountLoginTask)

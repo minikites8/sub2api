@@ -13,8 +13,9 @@ import (
 )
 
 type QuotaLeaseDemoHandler struct {
-	svc      *service.QuotaLeaseDemoService
-	adminSvc service.AdminService
+	svc           *service.QuotaLeaseDemoService
+	adminSvc      service.AdminService
+	apiKeyService *service.APIKeyService
 }
 
 const (
@@ -28,6 +29,13 @@ func NewQuotaLeaseDemoHandler(svc *service.QuotaLeaseDemoService, adminSvc ...se
 		h.adminSvc = adminSvc[0]
 	}
 	return h
+}
+
+func (h *QuotaLeaseDemoHandler) SetAPIKeyService(apiKeyService *service.APIKeyService) {
+	if h == nil {
+		return
+	}
+	h.apiKeyService = apiKeyService
 }
 
 func (h *QuotaLeaseDemoHandler) RegisterNode(c *gin.Context) {
@@ -574,6 +582,82 @@ func (h *QuotaLeaseDemoHandler) RequestLease(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"lease": lease})
+}
+
+func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	var req service.QuotaLeaseDemoClientAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	nodeID, ok := h.authenticateNodeOrControl(c, req.NodeID)
+	if !ok {
+		return
+	}
+	if req.NodeID == "" {
+		req.NodeID = nodeID
+	}
+	if h.apiKeyService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "api_key_service_unavailable"})
+		return
+	}
+	snapshot, err := h.apiKeyService.AuthSnapshotForKey(c.Request.Context(), req.APIKey)
+	if err != nil {
+		if errors.Is(err, service.ErrAPIKeyNotFound) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_api_key"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "api_key_auth_failed", "message": err.Error()})
+		return
+	}
+	if !quotaLeaseDemoHandlerCanIssueClientLease(snapshot) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "api_key_disabled"})
+		return
+	}
+	amount := req.Amount
+	if amount <= 0 {
+		amount = h.svc.PreflightReserveAmount()
+	}
+	lease, err := h.svc.RequestLease(c.Request.Context(), service.QuotaLeaseDemoLeaseRequest{
+		NodeID:   req.NodeID,
+		UserID:   snapshot.UserID,
+		APIKeyID: snapshot.APIKeyID,
+		Amount:   amount,
+	})
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	expiresAt := time.Now().UTC().Add(30 * time.Second)
+	if lease != nil && !lease.ExpiresAt.IsZero() && lease.ExpiresAt.Before(expiresAt) {
+		expiresAt = lease.ExpiresAt
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"snapshot":   snapshot,
+		"lease":      lease,
+		"expires_at": expiresAt,
+	})
+}
+
+func quotaLeaseDemoHandlerCanIssueClientLease(snapshot *service.APIKeyAuthSnapshot) bool {
+	if snapshot == nil {
+		return false
+	}
+	if snapshot.User.Status != service.StatusActive {
+		return false
+	}
+	if snapshot.Status != service.StatusActive &&
+		snapshot.Status != service.StatusAPIKeyExpired &&
+		snapshot.Status != service.StatusAPIKeyQuotaExhausted {
+		return false
+	}
+	if snapshot.Group != nil && snapshot.Group.Status != service.StatusActive {
+		return false
+	}
+	return true
 }
 
 func (h *QuotaLeaseDemoHandler) PostUsageBatch(c *gin.Context) {
