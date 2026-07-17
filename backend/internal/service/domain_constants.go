@@ -33,6 +33,7 @@ const (
 	AffiliateRebateDurationDaysDefault  = 0     // 0 = 永久有效
 	AffiliateRebateDurationDaysMax      = 3650  // ~10 年
 	AffiliateRebatePerInviteeCapDefault = 0.0   // 0 = 无上限
+	AdminRechargeRebateEnabledDefault   = false // 管理员充值默认不产生返利
 )
 
 // Platform constants
@@ -146,6 +147,7 @@ const (
 	SettingKeyAffiliateRebateFreezeHours          = "affiliate_rebate_freeze_hours"             // 返利冻结期（小时，0=不冻结）
 	SettingKeyAffiliateRebateDurationDays         = "affiliate_rebate_duration_days"            // 返利有效期（天，0=永久）
 	SettingKeyAffiliateRebatePerInviteeCap        = "affiliate_rebate_per_invitee_cap"          // 单人返利上限（0=无上限）
+	SettingKeyAffiliateAdminRechargeEnabled       = "affiliate_admin_recharge_enabled"          // 管理员充值是否产生返利
 	SettingKeyDailyCheckinEnabled                 = "daily_checkin_enabled"                     // 每日签到总开关
 	SettingKeyDailyCheckinAdsEnabled              = "daily_checkin_ads_enabled"                 // 每日签到广告开关
 	SettingKeyDailyCheckinDailyTotalLimit         = "daily_checkin_daily_total_limit"           // 全站每日签到发放总额度上限
@@ -393,6 +395,10 @@ const (
 	// without this key fall back to the API switch to avoid breaking published pages.
 	SettingKeyPublicTransitPageEnabled = "public_transit_page_enabled"
 
+	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
+	// for probing remote Sub2API API-key billing metadata.
+	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================
@@ -457,6 +463,10 @@ const (
 
 	// SettingKeyAllowUngroupedKeyScheduling 允许未分组 API Key 调度（默认 false：未分组 Key 返回 403）
 	SettingKeyAllowUngroupedKeyScheduling = "allow_ungrouped_key_scheduling"
+	// SettingKeyOpenAILowUpstreamRatePriorityEnabled 旧调度是否按上游 token 倍率优先。
+	SettingKeyOpenAILowUpstreamRatePriorityEnabled = "openai_low_upstream_rate_priority_enabled"
+	// SettingKeyOpenAIOAuthSchedulingRateMultiplier OAuth 账号参与成本调度时使用的参考倍率。
+	SettingKeyOpenAIOAuthSchedulingRateMultiplier = "openai_oauth_scheduling_rate_multiplier"
 	// SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled OpenAI 高级调度下是否启用粘性加权。
 	SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled = "openai_advanced_scheduler_sticky_weighted_enabled"
 	// SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled OpenAI 高级调度下是否优先使用订阅账号池。
@@ -469,6 +479,7 @@ const (
 	SettingKeyOpenAIAdvancedSchedulerWeightTTFT                  = "openai_advanced_scheduler_weight_ttft"
 	SettingKeyOpenAIAdvancedSchedulerWeightReset                 = "openai_advanced_scheduler_weight_reset"
 	SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom         = "openai_advanced_scheduler_weight_quota_headroom"
+	SettingKeyOpenAIAdvancedSchedulerWeightUpstreamCost          = "openai_advanced_scheduler_weight_upstream_cost"
 	SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse      = "openai_advanced_scheduler_weight_previous_response"
 	SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky         = "openai_advanced_scheduler_weight_session_sticky"
 

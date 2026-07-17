@@ -164,6 +164,7 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		if chPricing.PriorityMultiplier != nil {
 			resolved.BasePricing.PriorityMultiplier = normalizeChannelPriorityMultiplier(chPricing.PriorityMultiplier)
 		}
+		applyChannelImageInputPrice(chPricing, resolved.BasePricing)
 		return
 	}
 
@@ -204,6 +205,20 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	resolved.BasePricing.ImageOutputPriceExplicit = true
 	if chPricing.PriorityMultiplier != nil {
 		resolved.BasePricing.PriorityMultiplier = normalizeChannelPriorityMultiplier(chPricing.PriorityMultiplier)
+	}
+	applyChannelImageInputPrice(chPricing, resolved.BasePricing)
+}
+
+// applyChannelImageInputPrice 应用渠道图片输入价：显式配置则用配置值；
+// 未配置时归零，使 computeTokenBreakdown 回退到文本输入价（向后兼容，
+// 避免 commit 引入的 LiteLLM 图片输入价泄漏进渠道自定义定价）。
+// 与 image_output 不同，此处不设 Explicit 标志——图片输入未配置应回退文本价，
+// 而非硬置 0。
+func applyChannelImageInputPrice(chPricing *ChannelModelPricing, pricing *ModelPricing) {
+	if chPricing != nil && chPricing.ImageInputPrice != nil {
+		pricing.ImageInputPricePerToken = *chPricing.ImageInputPrice
+	} else {
+		pricing.ImageInputPricePerToken = 0
 	}
 }
 
@@ -268,7 +283,8 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool, ch
 		pricing.CacheReadPricePerToken = *iv.CacheReadPrice
 		pricing.CacheReadPricePerTokenPriority = *iv.CacheReadPrice
 	}
-	// 渠道定价存在时，ImageOutputPrice 显式覆盖
+	// 渠道定价存在时，ImageOutputPrice 显式覆盖；图片输入价用渠道级配置
+	// （区间不携带图片输入价，与 image_output 一致）。
 	if chPricing != nil {
 		pricing.ImageOutputPriceExplicit = true
 		if chPricing.ImageOutputPrice != nil {
@@ -277,6 +293,7 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool, ch
 		if chPricing.PriorityMultiplier != nil {
 			pricing.PriorityMultiplier = normalizeChannelPriorityMultiplier(chPricing.PriorityMultiplier)
 		}
+		applyChannelImageInputPrice(chPricing, pricing)
 	}
 	return pricing
 }
