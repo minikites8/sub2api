@@ -72,6 +72,13 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 	h.upstreamBillingProbe = probe
 }
 
+func (h *AccountHandler) AdminService() service.AdminService {
+	if h == nil {
+		return nil
+	}
+	return h.adminService
+}
+
 // NewAccountHandler creates a new admin account handler
 func NewAccountHandler(
 	adminService service.AdminService,

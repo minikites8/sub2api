@@ -580,6 +580,9 @@ func TestQuotaLeaseDemoOAuthExecutorGeneratesOpenAIURLAndExchangesCode(t *testin
 
 	task.LoginPayload = mergeQuotaLeaseDemoAnyPatch(task.LoginPayload, progressErr.LoginPayloadPatch)
 	task.LoginPayload["code"] = "openai-code"
+	task.LoginPayload["credential_overrides"] = map[string]any{
+		"model_mapping": map[string]any{"gpt-5": "gpt-5-node"},
+	}
 	account, err := executor.ExecuteAccountLoginTask(ctx, task)
 	require.NoError(t, err)
 	require.Equal(t, "openai-code", client.exchangeCode)
@@ -587,6 +590,7 @@ func TestQuotaLeaseDemoOAuthExecutorGeneratesOpenAIURLAndExchangesCode(t *testin
 	require.Equal(t, PlatformOpenAI, account.Platform)
 	require.Equal(t, "openai-access", account.Credentials["access_token"])
 	require.Equal(t, "openai-refresh", account.Credentials["refresh_token"])
+	require.Equal(t, map[string]any{"gpt-5": "gpt-5-node"}, account.Credentials["model_mapping"])
 	require.True(t, account.Schedulable)
 }
 

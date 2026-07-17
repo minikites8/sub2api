@@ -408,6 +408,7 @@ func quotaLeaseDemoBoolFromPayload(raw any) (bool, bool) {
 
 func quotaLeaseDemoSnapshotFromOAuthCredentials(task QuotaLeaseDemoAccountLoginTask, credentials map[string]any, payload map[string]any) QuotaLeaseDemoAccountSnapshot {
 	now := time.Now().UTC()
+	credentials = mergeQuotaLeaseDemoAnyPatch(credentials, quotaLeaseDemoAnyMapFromPayload(payload["credential_overrides"]))
 	account := QuotaLeaseDemoAccountSnapshot{
 		ID:          task.AccountID,
 		Name:        task.Name,

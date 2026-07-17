@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type quotaLeaseDemoSyncAdminService struct {
+	service.AdminService
+	updatedID int64
+	input     *service.UpdateAccountInput
+}
+
+func (s *quotaLeaseDemoSyncAdminService) UpdateAccount(_ context.Context, id int64, input *service.UpdateAccountInput) (*service.Account, error) {
+	s.updatedID = id
+	s.input = input
+	return &service.Account{ID: id, Status: input.Status, Credentials: input.Credentials, Extra: input.Extra}, nil
+}
 
 func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.QuotaLeaseDemoService) {
 	t.Helper()
@@ -57,6 +70,47 @@ func quotaLeaseDemoJSONRequest(t *testing.T, method, path string, body any) *htt
 	req := httptest.NewRequest(method, path, bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	return req
+}
+
+func TestQuotaLeaseDemoHandlerSyncsCompletedAccountToAdminService(t *testing.T) {
+	adminSvc := &quotaLeaseDemoSyncAdminService{}
+	h := NewQuotaLeaseDemoHandler(nil, adminSvc)
+	task := &service.QuotaLeaseDemoAccountLoginTask{
+		ID:          "task-1",
+		AccountID:   707,
+		Name:        "node-openai",
+		Type:        service.AccountTypeOAuth,
+		Concurrency: 2,
+		Priority:    5,
+		Status:      service.QuotaLeaseDemoAccountTaskCompleted,
+		Account: &service.QuotaLeaseDemoAccountSnapshot{
+			ID:          707,
+			Name:        "node-openai",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeOAuth,
+			Credentials: map[string]any{"access_token": "node-access"},
+			Extra:       map[string]any{"openai_long_context_billing_enabled": false},
+			Concurrency: 3,
+			Priority:    9,
+			GroupIDs:    []int64{10, 20},
+		},
+	}
+
+	require.NoError(t, h.syncCompletedAccount(context.Background(), task))
+
+	require.Equal(t, int64(707), adminSvc.updatedID)
+	require.NotNil(t, adminSvc.input)
+	require.Equal(t, service.StatusActive, adminSvc.input.Status)
+	require.Equal(t, service.AccountTypeOAuth, adminSvc.input.Type)
+	require.Equal(t, "node-access", adminSvc.input.Credentials["access_token"])
+	require.Equal(t, false, adminSvc.input.Extra["openai_long_context_billing_enabled"])
+	require.NotNil(t, adminSvc.input.Concurrency)
+	require.Equal(t, 3, *adminSvc.input.Concurrency)
+	require.NotNil(t, adminSvc.input.Priority)
+	require.Equal(t, 9, *adminSvc.input.Priority)
+	require.NotNil(t, adminSvc.input.GroupIDs)
+	require.Equal(t, []int64{10, 20}, *adminSvc.input.GroupIDs)
+	require.True(t, adminSvc.input.SkipMixedChannelCheck)
 }
 
 func TestQuotaLeaseDemoHandlerRegistersNodeAndUsesNodeSecret(t *testing.T) {

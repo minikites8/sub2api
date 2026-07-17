@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -11,11 +12,16 @@ import (
 )
 
 type QuotaLeaseDemoHandler struct {
-	svc *service.QuotaLeaseDemoService
+	svc      *service.QuotaLeaseDemoService
+	adminSvc service.AdminService
 }
 
-func NewQuotaLeaseDemoHandler(svc *service.QuotaLeaseDemoService) *QuotaLeaseDemoHandler {
-	return &QuotaLeaseDemoHandler{svc: svc}
+func NewQuotaLeaseDemoHandler(svc *service.QuotaLeaseDemoService, adminSvc ...service.AdminService) *QuotaLeaseDemoHandler {
+	h := &QuotaLeaseDemoHandler{svc: svc}
+	if len(adminSvc) > 0 {
+		h.adminSvc = adminSvc[0]
+	}
+	return h
 }
 
 func (h *QuotaLeaseDemoHandler) RegisterNode(c *gin.Context) {
@@ -121,7 +127,46 @@ func (h *QuotaLeaseDemoHandler) CompleteAccountLoginTask(c *gin.Context) {
 		h.writeError(c, err)
 		return
 	}
+	if err := h.syncCompletedAccount(c.Request.Context(), task); err != nil {
+		h.writeError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"task": task})
+}
+
+func (h *QuotaLeaseDemoHandler) syncCompletedAccount(ctx context.Context, task *service.QuotaLeaseDemoAccountLoginTask) error {
+	if h == nil || h.adminSvc == nil || task == nil || task.Status != service.QuotaLeaseDemoAccountTaskCompleted || task.Account == nil {
+		return nil
+	}
+	account := task.Account
+	if account.ID <= 0 {
+		return nil
+	}
+	concurrency := account.Concurrency
+	if concurrency <= 0 {
+		concurrency = task.Concurrency
+	}
+	priority := account.Priority
+	groupIDs := append([]int64(nil), account.GroupIDs...)
+	extra := account.Extra
+	if extra == nil {
+		extra = map[string]any{}
+	}
+	input := &service.UpdateAccountInput{
+		Name:                  account.Name,
+		Type:                  account.Type,
+		Credentials:           account.Credentials,
+		Extra:                 extra,
+		Concurrency:           &concurrency,
+		Priority:              &priority,
+		Status:                service.StatusActive,
+		SkipMixedChannelCheck: true,
+	}
+	if len(groupIDs) > 0 {
+		input.GroupIDs = &groupIDs
+	}
+	_, err := h.adminSvc.UpdateAccount(ctx, account.ID, input)
+	return err
 }
 
 func (h *QuotaLeaseDemoHandler) ReportAccountLoginTaskProgress(c *gin.Context) {

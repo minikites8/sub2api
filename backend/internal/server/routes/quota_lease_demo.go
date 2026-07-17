@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterQuotaLeaseDemoRoutes(v1 *gin.RouterGroup, cfg *config.Config) {
-	h := handler.NewQuotaLeaseDemoHandler(service.GetQuotaLeaseDemoService(cfg))
+func RegisterQuotaLeaseDemoRoutes(v1 *gin.RouterGroup, cfg *config.Config, adminSvc ...service.AdminService) {
+	h := handler.NewQuotaLeaseDemoHandler(service.GetQuotaLeaseDemoService(cfg), adminSvc...)
 	group := v1.Group("/node-leases/demo")
 	{
 		group.POST("/nodes/register", h.RegisterNode)

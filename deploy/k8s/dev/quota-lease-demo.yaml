@@ -1,0 +1,846 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    app.kubernetes.io/part-of: sub2api
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sub2api-dev-secrets
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/part-of: sub2api
+type: Opaque
+stringData:
+  DATABASE_PASSWORD: "sub2api-dev-postgres-password"
+  REDIS_PASSWORD: "sub2api-dev-redis-password"
+  JWT_SECRET: "sub2api-dev-jwt-secret-minimum-32-bytes"
+  TOTP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  ADMIN_PASSWORD: "sub2api-dev-admin-password"
+  QUOTA_LEASE_CONTROL_KEY: "sub2api-dev-quota-lease-control-key"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sub2api-common-config
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/part-of: sub2api
+data:
+  DATA_DIR: "/app/data"
+  AUTO_SETUP: "true"
+  SERVER_HOST: "0.0.0.0"
+  SERVER_PORT: "8080"
+  SERVER_MODE: "release"
+  RUN_MODE: "standard"
+  DATABASE_HOST: "sub2api-postgres"
+  DATABASE_PORT: "5432"
+  DATABASE_USER: "sub2api"
+  DATABASE_DBNAME: "sub2api"
+  DATABASE_SSLMODE: "disable"
+  REDIS_HOST: "sub2api-redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_ENABLE_TLS: "false"
+  ADMIN_EMAIL: "admin@sub2api.local"
+  JWT_EXPIRE_HOUR: "24"
+  SETUP_MIGRATION_TIMEOUT_SECONDS: "300"
+  TZ: "Asia/Shanghai"
+  GATEWAY_QUOTA_LEASE_DEMO_ENABLED: "true"
+  GATEWAY_QUOTA_LEASE_DEMO_DEFAULT_GRANT_AMOUNT: "1"
+  GATEWAY_QUOTA_LEASE_DEMO_LEASE_TTL_SECONDS: "600"
+  GATEWAY_QUOTA_LEASE_DEMO_RECLAIM_GRACE_SECONDS: "3600"
+  GATEWAY_QUOTA_LEASE_DEMO_PREFLIGHT_RESERVE_AMOUNT: "0.000001"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sub2api-control-config
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: sub2api
+data:
+  DEPLOYMENT_ROLE: "control"
+  GATEWAY_QUOTA_LEASE_DEMO_NODE_ID: "control-plane-dev"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sub2api-node-config
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: gateway-node
+    app.kubernetes.io/part-of: sub2api
+data:
+  DEPLOYMENT_ROLE: "node"
+  GATEWAY_QUOTA_LEASE_DEMO_CONTROL_PLANE_BASE_URL: "http://sub2api-control.dev.svc.cluster.local:8080/api/v1/node-leases/demo"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-postgres
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: sub2api
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-postgres
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: sub2api
+spec:
+  serviceName: sub2api-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: postgres
+        app.kubernetes.io/part-of: sub2api
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "sub2api"
+            - name: POSTGRES_DB
+              value: "sub2api"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: DATABASE_PASSWORD
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+            - name: TZ
+              value: "Asia/Shanghai"
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U sub2api -d sub2api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U sub2api -d sub2api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-redis
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: sub2api
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-redis
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: sub2api
+spec:
+  serviceName: sub2api-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: redis
+        app.kubernetes.io/part-of: sub2api
+    spec:
+      containers:
+        - name: redis
+          image: redis:8-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - exec redis-server --save 60 1 --appendonly yes --appendfsync everysec --requirepass "$REDIS_PASSWORD"
+          ports:
+            - name: redis
+              containerPort: 6379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: REDIS_PASSWORD
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: REDIS_PASSWORD
+            - name: TZ
+              value: "Asia/Shanghai"
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-control
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: sub2api
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: control-plane
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sub2api-control
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: sub2api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: control-plane
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: control-plane
+        app.kubernetes.io/part-of: sub2api
+    spec:
+      initContainers:
+        - name: wait-postgres
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until nc -z sub2api-postgres 5432; do sleep 2; done
+        - name: wait-redis
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until nc -z sub2api-redis 6379; do sleep 2; done
+      containers:
+        - name: sub2api
+          image: ghcr.io/minikites8/sub2api:test-codex-quota-lease-demo
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: sub2api-common-config
+            - configMapRef:
+                name: sub2api-control-config
+          env:
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: DATABASE_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: REDIS_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: JWT_SECRET
+            - name: TOTP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: TOTP_ENCRYPTION_KEY
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: ADMIN_PASSWORD
+            - name: GATEWAY_QUOTA_LEASE_DEMO_NODE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: QUOTA_LEASE_CONTROL_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: app-data
+              mountPath: /app/data
+      volumes:
+        - name: app-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-node-headless
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: gateway-node
+    app.kubernetes.io/part-of: sub2api
+spec:
+  clusterIP: None
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: gateway-node
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-node
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: gateway-node
+    app.kubernetes.io/part-of: sub2api
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: gateway-node
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-us
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: gateway-node
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/node-pool: us
+spec:
+  serviceName: sub2api-node-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: gateway-node
+      sub2api.dev/node-pool: us
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: gateway-node
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/node-pool: us
+    spec:
+      initContainers:
+        - name: wait-control-plane
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until wget -q -O /dev/null http://sub2api-control:8080/health; do sleep 2; done
+      containers:
+        - name: sub2api
+          image: ghcr.io/minikites8/sub2api:test-codex-quota-lease-demo
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: sub2api-common-config
+            - configMapRef:
+                name: sub2api-node-config
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GATEWAY_QUOTA_LEASE_DEMO_NODE_ID
+              value: "$(POD_NAME)"
+            - name: SUB2API_NODE_POOL
+              value: "us"
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: DATABASE_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: REDIS_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: JWT_SECRET
+            - name: TOTP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: TOTP_ENCRYPTION_KEY
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: ADMIN_PASSWORD
+            - name: GATEWAY_QUOTA_LEASE_DEMO_CONTROL_PLANE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: QUOTA_LEASE_CONTROL_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: app-data
+              mountPath: /app/data
+      volumes:
+        - name: app-data
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-sg
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: gateway-node
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/node-pool: sg
+spec:
+  serviceName: sub2api-node-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: gateway-node
+      sub2api.dev/node-pool: sg
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: gateway-node
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/node-pool: sg
+    spec:
+      initContainers:
+        - name: wait-control-plane
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until wget -q -O /dev/null http://sub2api-control:8080/health; do sleep 2; done
+      containers:
+        - name: sub2api
+          image: ghcr.io/minikites8/sub2api:test-codex-quota-lease-demo
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: sub2api-common-config
+            - configMapRef:
+                name: sub2api-node-config
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GATEWAY_QUOTA_LEASE_DEMO_NODE_ID
+              value: "$(POD_NAME)"
+            - name: SUB2API_NODE_POOL
+              value: "sg"
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: DATABASE_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: REDIS_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: JWT_SECRET
+            - name: TOTP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: TOTP_ENCRYPTION_KEY
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: ADMIN_PASSWORD
+            - name: GATEWAY_QUOTA_LEASE_DEMO_CONTROL_PLANE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: QUOTA_LEASE_CONTROL_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: app-data
+              mountPath: /app/data
+      volumes:
+        - name: app-data
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-jp
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: gateway-node
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/node-pool: jp
+spec:
+  serviceName: sub2api-node-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: gateway-node
+      sub2api.dev/node-pool: jp
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: gateway-node
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/node-pool: jp
+    spec:
+      initContainers:
+        - name: wait-control-plane
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until wget -q -O /dev/null http://sub2api-control:8080/health; do sleep 2; done
+      containers:
+        - name: sub2api
+          image: ghcr.io/minikites8/sub2api:test-codex-quota-lease-demo
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: sub2api-common-config
+            - configMapRef:
+                name: sub2api-node-config
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GATEWAY_QUOTA_LEASE_DEMO_NODE_ID
+              value: "$(POD_NAME)"
+            - name: SUB2API_NODE_POOL
+              value: "jp"
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: DATABASE_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: REDIS_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: JWT_SECRET
+            - name: TOTP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: TOTP_ENCRYPTION_KEY
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: ADMIN_PASSWORD
+            - name: GATEWAY_QUOTA_LEASE_DEMO_CONTROL_PLANE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: QUOTA_LEASE_CONTROL_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: app-data
+              mountPath: /app/data
+      volumes:
+        - name: app-data
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sub2api-dev
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/part-of: sub2api
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "256m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: sub2api-control.dev.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sub2api-control
+                port:
+                  name: http
+    - host: sub2api-api.dev.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sub2api-node
+                port:
+                  name: http

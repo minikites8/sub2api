@@ -4,12 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   createAccountMock,
+  updateAccountMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
+  listNodeLeaseNodesMock,
+  createNodeLoginTaskMock,
+  listNodeLoginTasksMock,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
+  updateAccountMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
+  listNodeLeaseNodesMock: vi.fn(),
+  createNodeLoginTaskMock: vi.fn(),
+  listNodeLoginTasksMock: vi.fn(),
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -28,9 +36,15 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       create: createAccountMock,
+      update: updateAccountMock,
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
+    },
+    nodeLeases: {
+      listNodes: listNodeLeaseNodesMock,
+      createLoginTask: createNodeLoginTaskMock,
+      listLoginTasks: listNodeLoginTasksMock,
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -72,9 +86,10 @@ const OAuthAuthorizationFlowStub = defineComponent({
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
-  emits: ['import-codex-session', 'import-codex-pat'],
+  emits: ['import-codex-session', 'import-codex-pat', 'generate-url'],
   template: `
     <div>
+      <button data-testid="generate-url" @click="$emit('generate-url')">generate</button>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
       <button data-testid="import-codex-pat" @click="$emit('import-codex-pat', 'pat-token')">pat</button>
     </div>
@@ -136,7 +151,9 @@ async function openCodexImportStep(toggleClicks = 0) {
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
   beforeEach(() => {
+    sessionStorage.clear()
     createAccountMock.mockReset().mockResolvedValue({})
+    updateAccountMock.mockReset().mockResolvedValue({})
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
       updated: 0,
@@ -146,6 +163,9 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       warnings: [],
     })
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
+    listNodeLeaseNodesMock.mockReset().mockResolvedValue([])
+    createNodeLoginTaskMock.mockReset().mockResolvedValue({})
+    listNodeLoginTasksMock.mockReset().mockResolvedValue([])
   })
 
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
@@ -167,6 +187,75 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(flow.props('showAgentIdentityOption')).toBe(true)
     expect(flow.props('showCodexPatOption')).toBe(true)
     expect(flow.props('initialInputMethod')).toBe('manual')
+  })
+
+  it('creates a node OAuth login task from the OpenAI create flow', async () => {
+    sessionStorage.setItem('sub2api_node_leases_demo_control_key', 'control-secret')
+    createAccountMock.mockResolvedValue({ id: 42 })
+    listNodeLeaseNodesMock.mockResolvedValue([
+      {
+        node_id: 'node-us-1',
+        region: 'us',
+        status: 'online',
+        inflight_requests: 0,
+        lease_remaining: 0,
+        registered_at: '2026-07-18T00:00:00Z',
+        updated_at: '2026-07-18T00:00:00Z',
+      },
+    ])
+    const waitingTask = {
+      id: 'task-1',
+      account_id: 42,
+      name: 'OpenAI node account',
+      platform: 'openai',
+      type: 'oauth',
+      assigned_node_id: 'node-us-1',
+      login_payload: {
+        auth_url: 'https://auth.example/start',
+        session_id: 'session-1',
+      },
+      group_ids: [],
+      concurrency: 10,
+      priority: 1,
+      status: 'waiting_callback',
+      created_at: '2026-07-18T00:00:00Z',
+      updated_at: '2026-07-18T00:00:00Z',
+    }
+    createNodeLoginTaskMock.mockResolvedValue({ ...waitingTask, status: 'pending', login_payload: {} })
+    listNodeLoginTasksMock.mockResolvedValue([waitingTask])
+
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI node account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="generate-url"]').trigger('click')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      name: 'OpenAI node account',
+      platform: 'openai',
+      type: 'oauth',
+      credentials: {
+        node_oauth_pending: true,
+      },
+    })
+    expect(updateAccountMock).toHaveBeenCalledWith(42, { status: 'inactive' })
+    expect(createNodeLoginTaskMock).toHaveBeenCalledTimes(1)
+    expect(createNodeLoginTaskMock.mock.calls[0]?.[0]).toMatchObject({
+      account_id: 42,
+      platform: 'openai',
+      type: 'oauth',
+      assigned_node_id: 'node-us-1',
+      login_payload: {
+        credential_overrides: {},
+        status: 'active',
+        schedulable: true,
+      },
+    })
+    expect(createNodeLoginTaskMock.mock.calls[0]?.[1]).toEqual({ controlKey: 'control-secret' })
   })
 
   it.each([

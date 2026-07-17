@@ -62,8 +62,8 @@ func SetupRouter(
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
 
-	// Serve embedded frontend with settings injection if available
-	if web.HasEmbeddedFrontend() {
+	// Serve embedded frontend with settings injection if available.
+	if !cfg.IsNodeRole() && web.HasEmbeddedFrontend() {
 		frontendServer, err := web.NewFrontendServer(settingService)
 		if err != nil {
 			log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
@@ -107,13 +107,22 @@ func registerRoutes(
 	// API v1
 	v1 := r.Group("/api/v1")
 
+	if cfg.IsNodeRole() {
+		routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
+		return
+	}
+
 	// 注册各模块路由
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, redisClient, settingService)
 	routes.RegisterPublicRoutes(v1, h)
 	routes.RegisterPublicTransitRoutes(r, v1, h)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, settingService)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, settingService)
-	routes.RegisterQuotaLeaseDemoRoutes(v1, cfg)
+	var adminSvc service.AdminService
+	if h != nil && h.Admin != nil && h.Admin.Account != nil {
+		adminSvc = h.Admin.Account.AdminService()
+	}
+	routes.RegisterQuotaLeaseDemoRoutes(v1, cfg, adminSvc)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)
 

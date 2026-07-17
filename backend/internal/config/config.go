@@ -21,6 +21,11 @@ const (
 	RunModeSimple   = "simple"
 )
 
+const (
+	DeploymentRoleControl = "control"
+	DeploymentRoleNode    = "node"
+)
+
 // 使用量记录队列溢出策略
 const (
 	UsageRecordOverflowPolicyDrop   = "drop"
@@ -91,6 +96,7 @@ type Config struct {
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
 	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
+	DeploymentRole          string                        `mapstructure:"deployment_role" yaml:"deployment_role"`
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
@@ -1520,6 +1526,20 @@ func NormalizeRunMode(value string) string {
 	}
 }
 
+func NormalizeDeploymentRole(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case DeploymentRoleControl, DeploymentRoleNode:
+		return normalized
+	default:
+		return DeploymentRoleControl
+	}
+}
+
+func (c *Config) IsNodeRole() bool {
+	return c != nil && c.DeploymentRole == DeploymentRoleNode
+}
+
 // Load 读取并校验完整配置（要求 jwt.secret 已显式提供）。
 func Load() (*Config, error) {
 	return load(false)
@@ -1582,6 +1602,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
+	cfg.DeploymentRole = NormalizeDeploymentRole(cfg.DeploymentRole)
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
@@ -1706,6 +1727,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 
 func setDefaults() {
 	viper.SetDefault("run_mode", RunModeStandard)
+	viper.SetDefault("deployment_role", DeploymentRoleControl)
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")

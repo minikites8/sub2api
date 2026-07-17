@@ -68,6 +68,27 @@ func TestNormalizeRunMode(t *testing.T) {
 	}
 }
 
+func TestNormalizeDeploymentRole(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"control", "control"},
+		{"CONTROL", "control"},
+		{"node", "node"},
+		{"NODE", "node"},
+		{"invalid", "control"},
+		{"", "control"},
+	}
+
+	for _, tt := range tests {
+		result := NormalizeDeploymentRole(tt.input)
+		if result != tt.expected {
+			t.Errorf("NormalizeDeploymentRole(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
+	}
+}
+
 func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

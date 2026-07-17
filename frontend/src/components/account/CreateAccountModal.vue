@@ -3653,8 +3653,66 @@
           <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">{{ currentOAuthError }}</p>
         </div>
       </div>
+      <div
+        v-if="isNodeOAuthSupported && !isKiroImportMode"
+        class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60"
+        data-testid="node-oauth-panel"
+      >
+        <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+          <input
+            v-model="nodeOAuthEnabled"
+            type="checkbox"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600"
+            data-testid="node-oauth-enabled"
+          />
+          节点执行 OAuth
+        </label>
+        <div v-if="nodeOAuthEnabled" class="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto]">
+          <div>
+            <label class="input-label">控制 Key</label>
+            <input
+              v-model="nodeOAuthControlKey"
+              type="password"
+              class="input"
+              placeholder="X-Node-Secret"
+              autocomplete="off"
+              data-testid="node-oauth-control-key"
+            />
+          </div>
+          <div>
+            <label class="input-label">执行节点</label>
+            <select
+              v-model="nodeOAuthSelectedNodeID"
+              class="input"
+              :disabled="nodeOAuthLoading"
+              data-testid="node-oauth-node-select"
+            >
+              <option value="">选择节点</option>
+              <option v-for="option in nodeOAuthOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+          <div class="flex items-end">
+            <button
+              type="button"
+              class="btn btn-secondary w-full"
+              :disabled="nodeOAuthLoading || !nodeOAuthControlKey.trim()"
+              data-testid="node-oauth-load-nodes"
+              @click="loadNodeOAuthNodes"
+            >
+              <Icon name="refresh" size="sm" class="mr-2" :class="nodeOAuthLoading ? 'animate-spin' : ''" />
+              刷新节点
+            </button>
+          </div>
+        </div>
+        <div v-if="nodeOAuthEnabled && nodeOAuthTask" class="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+          <span class="rounded bg-white px-2 py-1 font-mono dark:bg-dark-700">{{ nodeOAuthTask.id }}</span>
+          <span class="rounded bg-white px-2 py-1 dark:bg-dark-700">{{ nodeOAuthTask.status }}</span>
+        </div>
+      </div>
       <OAuthAuthorizationFlow
-        v-else
+        v-if="!isKiroImportMode"
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
         :auth-url="currentAuthUrl"
@@ -3665,14 +3723,14 @@
         :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
-        :show-mobile-refresh-token-option="form.platform === 'openai'"
+        :show-refresh-token-option="!nodeOAuthActive && (form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok')"
+        :show-mobile-refresh-token-option="!nodeOAuthActive && form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
-        :show-codex-session-import-option="form.platform === 'openai'"
-        :show-agent-identity-option="form.platform === 'openai'"
-        :show-codex-pat-option="form.platform === 'openai'"
-        :show-sso-option="form.platform === 'grok'"
+        :show-codex-session-import-option="!nodeOAuthActive && form.platform === 'openai'"
+        :show-agent-identity-option="!nodeOAuthActive && form.platform === 'openai'"
+        :show-codex-pat-option="!nodeOAuthActive && form.platform === 'openai'"
+        :show-sso-option="!nodeOAuthActive && form.platform === 'grok'"
         :show-manual-option="true"
         :initial-input-method="'manual'"
         :platform="form.platform"
@@ -4054,6 +4112,10 @@ import type {
   OpenAIResponsesMode,
   OpenAIEndpointCapability
 } from '@/types'
+import type {
+  QuotaLeaseDemoAccountLoginTask,
+  QuotaLeaseDemoNode
+} from '@/api/admin/nodeLeases'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -4106,6 +4168,10 @@ interface OAuthFlowExposed {
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const NODE_OAUTH_CONTROL_KEY_STORAGE = 'sub2api_node_leases_demo_control_key'
+const NODE_OAUTH_POLL_INTERVAL_MS = 1000
+const NODE_OAUTH_AUTH_URL_ATTEMPTS = 20
+const NODE_OAUTH_COMPLETE_ATTEMPTS = 30
 
 const oauthStepTitle = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
@@ -4160,6 +4226,7 @@ const grokOAuth = useGrokOAuth() // For Grok OAuth
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
+  if (nodeOAuthActive.value) return nodeOAuthAuthUrl.value
   if (form.platform === 'openai') return openaiOAuth.authUrl.value
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
@@ -4169,6 +4236,7 @@ const currentAuthUrl = computed(() => {
 })
 
 const currentSessionId = computed(() => {
+  if (nodeOAuthActive.value) return nodeOAuthSessionId.value
   if (form.platform === 'openai') return openaiOAuth.sessionId.value
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
@@ -4178,6 +4246,7 @@ const currentSessionId = computed(() => {
 })
 
 const currentOAuthLoading = computed(() => {
+  if (nodeOAuthActive.value) return nodeOAuthLoading.value
   if (form.platform === 'openai') return openaiOAuth.loading.value
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
@@ -4187,6 +4256,7 @@ const currentOAuthLoading = computed(() => {
 })
 
 const currentOAuthError = computed(() => {
+  if (nodeOAuthActive.value) return nodeOAuthError.value
   if (form.platform === 'openai') return openaiOAuth.error.value
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
@@ -4197,6 +4267,15 @@ const currentOAuthError = computed(() => {
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
+const initialNodeOAuthControlKey = sessionStorage.getItem(NODE_OAUTH_CONTROL_KEY_STORAGE) || ''
+const nodeOAuthEnabled = ref(!!initialNodeOAuthControlKey)
+const nodeOAuthControlKey = ref(initialNodeOAuthControlKey)
+const nodeOAuthNodes = ref<QuotaLeaseDemoNode[]>([])
+const nodeOAuthSelectedNodeID = ref('')
+const nodeOAuthLoading = ref(false)
+const nodeOAuthError = ref('')
+const nodeOAuthTask = ref<QuotaLeaseDemoAccountLoginTask | null>(null)
+const nodeOAuthLoaded = ref(false)
 
 // Model mapping type
 interface ModelMapping {
@@ -4707,6 +4786,33 @@ const isManualInputMethod = computed(() => {
   return oauthFlowRef.value?.inputMethod === 'manual'
 })
 
+const isNodeOAuthSupported = computed(() =>
+  isOAuthFlow.value && (form.platform === 'openai' || form.platform === 'grok')
+)
+
+const nodeOAuthActive = computed(() =>
+  isNodeOAuthSupported.value && nodeOAuthEnabled.value && isManualInputMethod.value
+)
+
+const nodeOAuthOptions = computed(() =>
+  nodeOAuthNodes.value.map((node) => ({
+    value: node.node_id,
+    label: `${node.node_id}${node.region ? ` (${node.region})` : ''}`
+  }))
+)
+
+const nodeOAuthLoginPayload = computed(() => nodeOAuthTask.value?.login_payload || {})
+
+const stringFromNodePayload = (key: string) => {
+  const value = nodeOAuthLoginPayload.value[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+const nodeOAuthAuthUrl = computed(() => stringFromNodePayload('auth_url'))
+const nodeOAuthSessionId = computed(() => stringFromNodePayload('session_id'))
+const nodeOAuthState = computed(() => stringFromNodePayload('state'))
+const nodeOAuthRedirectURI = computed(() => stringFromNodePayload('redirect_uri'))
+
 const expiresAtInput = computed({
   get: () => formatDateTimeLocal(form.expires_at),
   set: (value: string) => {
@@ -4716,6 +4822,9 @@ const expiresAtInput = computed({
 
 const canExchangeCode = computed(() => {
   const authCode = oauthFlowRef.value?.authCode || ''
+  if (nodeOAuthActive.value) {
+    return !!(authCode.trim() && nodeOAuthSessionId.value && nodeOAuthTask.value && !nodeOAuthLoading.value)
+  }
   if (form.platform === 'openai') {
     return authCode.trim() && openaiOAuth.sessionId.value && !openaiOAuth.loading.value
   }
@@ -4735,6 +4844,27 @@ const canExchangeCode = computed(() => {
 })
 
 // Watchers
+watch(nodeOAuthControlKey, (value) => {
+  sessionStorage.setItem(NODE_OAUTH_CONTROL_KEY_STORAGE, value.trim())
+})
+
+watch(
+  [() => props.show, step, () => form.platform, accountCategory, nodeOAuthEnabled],
+  ([show]) => {
+    resetNodeOAuthTaskState()
+    if (
+      show &&
+      step.value === 2 &&
+      isNodeOAuthSupported.value &&
+      nodeOAuthEnabled.value &&
+      nodeOAuthControlKey.value.trim() &&
+      !nodeOAuthLoaded.value
+    ) {
+      void loadNodeOAuthNodes()
+    }
+  }
+)
+
 watch(
   () => props.show,
   (newVal) => {
@@ -5389,6 +5519,7 @@ const resetForm = () => {
   antigravityOAuth.resetState()
   kiroOAuth.resetState()
   grokOAuth.resetState()
+  resetNodeOAuthState()
   oauthFlowRef.value?.reset()
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
@@ -5892,10 +6023,292 @@ const goBackToBasicInfo = () => {
   antigravityOAuth.resetState()
   kiroOAuth.resetState()
   grokOAuth.resetState()
+  resetNodeOAuthTaskState()
   oauthFlowRef.value?.reset()
 }
 
+function resetNodeOAuthTaskState() {
+  nodeOAuthError.value = ''
+  nodeOAuthTask.value = null
+}
+
+function resetNodeOAuthState() {
+  resetNodeOAuthTaskState()
+  nodeOAuthLoading.value = false
+  nodeOAuthSelectedNodeID.value = ''
+  nodeOAuthNodes.value = []
+  nodeOAuthLoaded.value = false
+}
+
+function nodeOAuthControlOptions() {
+  return { controlKey: nodeOAuthControlKey.value.trim() }
+}
+
+function nodeOAuthErrorMessage(error: any, fallback: string) {
+  return error?.response?.data?.message || error?.response?.data?.detail || error?.message || fallback
+}
+
+function nodeOAuthSleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+async function loadNodeOAuthNodes() {
+  const controlKey = nodeOAuthControlKey.value.trim()
+  if (!controlKey) {
+    nodeOAuthError.value = '请输入控制 Key'
+    appStore.showError(nodeOAuthError.value)
+    return
+  }
+  nodeOAuthLoading.value = true
+  nodeOAuthError.value = ''
+  try {
+    const nodes = await adminAPI.nodeLeases.listNodes({ controlKey })
+    nodeOAuthNodes.value = nodes
+    nodeOAuthLoaded.value = true
+    if (!nodeOAuthSelectedNodeID.value && nodes.length > 0) {
+      nodeOAuthSelectedNodeID.value = nodes.find((node) => node.status === 'online')?.node_id || nodes[0].node_id
+    }
+  } catch (error: any) {
+    nodeOAuthError.value = nodeOAuthErrorMessage(error, '节点列表加载失败')
+    appStore.showError(nodeOAuthError.value)
+  } finally {
+    nodeOAuthLoading.value = false
+  }
+}
+
+async function refreshNodeOAuthTask() {
+  const current = nodeOAuthTask.value
+  if (!current) return null
+  const tasks = await adminAPI.nodeLeases.listLoginTasks(
+    { node_id: nodeOAuthSelectedNodeID.value || undefined },
+    nodeOAuthControlOptions()
+  )
+  const next = tasks.find((task) => task.id === current.id) || current
+  nodeOAuthTask.value = next
+  return next
+}
+
+async function waitForNodeOAuthTask(
+  predicate: (task: QuotaLeaseDemoAccountLoginTask) => boolean,
+  attempts: number
+) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const task = await refreshNodeOAuthTask()
+    if (task && predicate(task)) {
+      return task
+    }
+    await nodeOAuthSleep(NODE_OAUTH_POLL_INTERVAL_MS)
+  }
+  return nodeOAuthTask.value
+}
+
+function buildNodeOAuthCredentialOverrides() {
+  const credentials: Record<string, unknown> = {}
+  if (form.platform === 'openai') {
+    if (!isOpenAIModelRestrictionDisabled.value) {
+      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (modelMapping) {
+        credentials.model_mapping = modelMapping
+      }
+    }
+    const compactModelMapping = buildOpenAICompactModelMapping()
+    if (compactModelMapping) {
+      credentials.compact_model_mapping = compactModelMapping
+    }
+  } else if (form.platform === 'grok') {
+    if (!validateGrokOAuthUpstreamConfig()) {
+      return null
+    }
+    applyGrokOAuthUpstreamConfig(credentials)
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    }
+  }
+  if (!applyTempUnschedConfig(credentials)) {
+    return null
+  }
+  return credentials
+}
+
+function buildNodeOAuthExtra() {
+  if (form.platform === 'openai') {
+    return buildOpenAIExtra()
+  }
+  return undefined
+}
+
+async function createNodeOAuthLoginTask() {
+  const nodeID = nodeOAuthSelectedNodeID.value.trim()
+  const controlKey = nodeOAuthControlKey.value.trim()
+  if (!controlKey) {
+    nodeOAuthError.value = '请输入控制 Key'
+    appStore.showError(nodeOAuthError.value)
+    return null
+  }
+  if (!nodeID) {
+    nodeOAuthError.value = '请选择执行节点'
+    appStore.showError(nodeOAuthError.value)
+    return null
+  }
+  const credentialOverrides = buildNodeOAuthCredentialOverrides()
+  if (credentialOverrides === null) {
+    return null
+  }
+  const extra = buildNodeOAuthExtra()
+  const pendingExtra = {
+    ...(extra || {}),
+    node_oauth_status: 'pending',
+    node_oauth_assigned_node_id: nodeID
+  }
+  const pendingCredentials = {
+    ...credentialOverrides,
+    node_oauth_pending: true
+  }
+
+  nodeOAuthLoading.value = true
+  nodeOAuthError.value = ''
+  try {
+    const account = await adminAPI.accounts.create({
+      name: form.name,
+      notes: form.notes,
+      platform: form.platform,
+      type: 'oauth',
+      credentials: pendingCredentials,
+      extra: pendingExtra,
+      proxy_id: form.proxy_id,
+      concurrency: form.concurrency,
+      load_factor: form.load_factor ?? undefined,
+      priority: form.priority,
+      rate_multiplier: form.rate_multiplier,
+      group_ids: form.group_ids,
+      expires_at: form.expires_at,
+      auto_pause_on_expired: autoPauseOnExpired.value
+    })
+    await adminAPI.accounts.update(account.id, { status: 'inactive' })
+
+    const loginPayload: Record<string, unknown> = {
+      extra,
+      credential_overrides: credentialOverrides,
+      status: 'active',
+      schedulable: true
+    }
+    if (form.proxy_id) {
+      loginPayload.proxy_id = form.proxy_id
+    }
+
+    const task = await adminAPI.nodeLeases.createLoginTask(
+      {
+        account_id: account.id,
+        name: form.name,
+        platform: form.platform,
+        type: 'oauth',
+        assigned_node_id: nodeID,
+        login_payload: loginPayload,
+        metadata: { source: 'account_create_modal' },
+        group_ids: form.group_ids,
+        concurrency: form.concurrency,
+        priority: form.priority
+      },
+      nodeOAuthControlOptions()
+    )
+    nodeOAuthTask.value = task
+    return task
+  } catch (error: any) {
+    nodeOAuthError.value = nodeOAuthErrorMessage(error, '节点 OAuth 任务创建失败')
+    appStore.showError(nodeOAuthError.value)
+    return null
+  } finally {
+    nodeOAuthLoading.value = false
+  }
+}
+
+async function handleNodeOAuthGenerateUrl() {
+  const task = nodeOAuthTask.value || await createNodeOAuthLoginTask()
+  if (!task) return
+
+  nodeOAuthLoading.value = true
+  try {
+    const updated = await waitForNodeOAuthTask(
+      (candidate) => !!candidate.login_payload?.auth_url || candidate.status === 'failed',
+      NODE_OAUTH_AUTH_URL_ATTEMPTS
+    )
+    if (updated?.status === 'failed') {
+      nodeOAuthError.value = updated.error || '节点 OAuth 授权链接生成失败'
+      appStore.showError(nodeOAuthError.value)
+      return
+    }
+    if (!updated?.login_payload?.auth_url) {
+      nodeOAuthError.value = '节点正在生成授权链接'
+      appStore.showWarning(nodeOAuthError.value)
+    }
+  } catch (error: any) {
+    nodeOAuthError.value = nodeOAuthErrorMessage(error, '节点 OAuth 状态刷新失败')
+    appStore.showError(nodeOAuthError.value)
+  } finally {
+    nodeOAuthLoading.value = false
+  }
+}
+
+async function handleNodeOAuthCallback(authCode: string) {
+  const task = nodeOAuthTask.value
+  if (!task) {
+    nodeOAuthError.value = '请先生成授权链接'
+    appStore.showError(nodeOAuthError.value)
+    return
+  }
+  if (!authCode.trim()) {
+    nodeOAuthError.value = '请输入授权码'
+    appStore.showError(nodeOAuthError.value)
+    return
+  }
+
+  nodeOAuthLoading.value = true
+  nodeOAuthError.value = ''
+  try {
+    const updated = await adminAPI.nodeLeases.submitLoginTaskCallback(
+      task.id,
+      {
+        code: authCode.trim(),
+        state: (oauthFlowRef.value?.oauthState || nodeOAuthState.value).trim() || undefined,
+        session_id: nodeOAuthSessionId.value,
+        redirect_uri: nodeOAuthRedirectURI.value || undefined,
+        proxy_id: form.proxy_id || undefined
+      },
+      nodeOAuthControlOptions()
+    )
+    nodeOAuthTask.value = updated
+    const completed = await waitForNodeOAuthTask(
+      (candidate) => candidate.status === 'completed' || candidate.status === 'failed',
+      NODE_OAUTH_COMPLETE_ATTEMPTS
+    )
+    if (completed?.status === 'failed') {
+      nodeOAuthError.value = completed.error || t('admin.accounts.oauth.authFailed')
+      appStore.showError(nodeOAuthError.value)
+      return
+    }
+    if (completed?.status === 'completed') {
+      appStore.showSuccess(t('admin.accounts.accountCreated'))
+      emit('created')
+      handleClose()
+      return
+    }
+    appStore.showSuccess('Callback 已提交，节点正在完成 OAuth')
+    emit('created')
+    handleClose()
+  } catch (error: any) {
+    nodeOAuthError.value = nodeOAuthErrorMessage(error, t('admin.accounts.oauth.authFailed'))
+    appStore.showError(nodeOAuthError.value)
+  } finally {
+    nodeOAuthLoading.value = false
+  }
+}
+
 const handleGenerateUrl = async () => {
+  if (nodeOAuthActive.value) {
+    await handleNodeOAuthGenerateUrl()
+    return
+  }
   if (form.platform === 'openai') {
     await openaiOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'gemini') {
@@ -6932,6 +7345,9 @@ const handleAnthropicExchange = async (authCode: string) => {
 // 主入口：根据平台路由到对应处理函数
 const handleExchangeCode = async () => {
   const authCode = oauthFlowRef.value?.authCode || ''
+  if (nodeOAuthActive.value) {
+    return handleNodeOAuthCallback(authCode)
+  }
 
   switch (form.platform) {
     case 'openai':
