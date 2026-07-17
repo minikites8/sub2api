@@ -298,6 +298,31 @@
               </div>
             </div>
           </template>
+          <template #cell-node="{ row }">
+            <div v-if="getNodeOAuthAssignedNodeID(row)" class="flex min-w-[8rem] flex-col gap-1">
+              <code
+                class="block max-w-[11rem] truncate rounded-md px-2 py-1 font-mono text-xs text-gray-700 dark:text-gray-200"
+                :title="getNodeOAuthAssignedNodeID(row)"
+                style="background: var(--md-surface-container-low);"
+              >
+                {{ getNodeOAuthAssignedNodeID(row) }}
+              </code>
+              <span
+                v-if="getNodeOAuthStatusLabel(row)"
+                :class="['inline-flex w-fit rounded px-1.5 py-0.5 text-[10px] font-medium', getNodeOAuthStatusClass(row)]"
+              >
+                {{ getNodeOAuthStatusLabel(row) }}
+              </span>
+              <span
+                v-if="getNodeOAuthLastSyncedAt(row)"
+                class="text-[11px] leading-4 text-gray-500 dark:text-gray-400"
+                :title="getNodeOAuthLastSyncedAtTitle(row)"
+              >
+                {{ t('admin.accounts.nodeOAuth.lastSyncedAt', { time: formatRelativeTime(getNodeOAuthLastSyncedAt(row)) }) }}
+              </span>
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
           <template #cell-capacity="{ row }">
             <AccountCapacityCell :account="row" />
           </template>
@@ -1334,6 +1359,56 @@ function accountDisplayEmail(row: any): string {
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
 }
 
+function getNodeOAuthAssignedNodeID(row: Account): string {
+  const value = row.extra?.node_oauth_assigned_node_id
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function getNodeOAuthStatus(row: Account): string {
+  const value = row.extra?.node_oauth_status
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function getNodeOAuthLastSyncedAt(row: Account): string {
+  const value = row.extra?.node_oauth_last_synced_at
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const date = new Date(trimmed)
+  return Number.isNaN(date.getTime()) ? '' : trimmed
+}
+
+function getNodeOAuthLastSyncedAtTitle(row: Account): string {
+  const value = getNodeOAuthLastSyncedAt(row)
+  return value ? formatDateTime(value) : ''
+}
+
+function getNodeOAuthStatusLabel(row: Account): string {
+  switch (getNodeOAuthStatus(row)) {
+    case 'pending':
+      return t('admin.accounts.nodeOAuth.status.pending')
+    case 'completed':
+      return t('admin.accounts.nodeOAuth.status.completed')
+    case 'failed':
+      return t('admin.accounts.nodeOAuth.status.failed')
+    default:
+      return ''
+  }
+}
+
+function getNodeOAuthStatusClass(row: Account): string {
+  switch (getNodeOAuthStatus(row)) {
+    case 'completed':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+    case 'pending':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+    case 'failed':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  }
+}
+
 type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
 
 function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {
@@ -1398,6 +1473,7 @@ const allColumns = computed(() => {
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
+    { key: 'node', label: t('admin.accounts.columns.node'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },

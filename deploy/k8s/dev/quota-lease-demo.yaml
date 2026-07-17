@@ -15,8 +15,14 @@ metadata:
     app.kubernetes.io/part-of: sub2api
 type: Opaque
 stringData:
-  DATABASE_PASSWORD: "sub2api-dev-postgres-password"
-  REDIS_PASSWORD: "sub2api-dev-redis-password"
+  CONTROL_DATABASE_PASSWORD: "sub2api-dev-control-postgres-password"
+  CONTROL_REDIS_PASSWORD: "sub2api-dev-control-redis-password"
+  NODE_US_DATABASE_PASSWORD: "sub2api-dev-node-us-postgres-password"
+  NODE_US_REDIS_PASSWORD: "sub2api-dev-node-us-redis-password"
+  NODE_SG_DATABASE_PASSWORD: "sub2api-dev-node-sg-postgres-password"
+  NODE_SG_REDIS_PASSWORD: "sub2api-dev-node-sg-redis-password"
+  NODE_JP_DATABASE_PASSWORD: "sub2api-dev-node-jp-postgres-password"
+  NODE_JP_REDIS_PASSWORD: "sub2api-dev-node-jp-redis-password"
   JWT_SECRET: "sub2api-dev-jwt-secret-minimum-32-bytes"
   TOTP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   ADMIN_PASSWORD: "sub2api-dev-admin-password"
@@ -37,12 +43,10 @@ data:
   SERVER_PORT: "8080"
   SERVER_MODE: "release"
   RUN_MODE: "standard"
-  DATABASE_HOST: "sub2api-postgres"
   DATABASE_PORT: "5432"
   DATABASE_USER: "sub2api"
   DATABASE_DBNAME: "sub2api"
   DATABASE_SSLMODE: "disable"
-  REDIS_HOST: "sub2api-redis"
   REDIS_PORT: "6379"
   REDIS_DB: "0"
   REDIS_ENABLE_TLS: "false"
@@ -85,12 +89,13 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sub2api-postgres
+  name: sub2api-control-postgres
   namespace: dev
   labels:
     app.kubernetes.io/name: sub2api
     app.kubernetes.io/component: postgres
     app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: control
 spec:
   type: ClusterIP
   ports:
@@ -100,29 +105,33 @@ spec:
   selector:
     app.kubernetes.io/name: sub2api
     app.kubernetes.io/component: postgres
+    sub2api.dev/storage: control
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: sub2api-postgres
+  name: sub2api-control-postgres
   namespace: dev
   labels:
     app.kubernetes.io/name: sub2api
     app.kubernetes.io/component: postgres
     app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: control
 spec:
-  serviceName: sub2api-postgres
+  serviceName: sub2api-control-postgres
   replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: sub2api
       app.kubernetes.io/component: postgres
+      sub2api.dev/storage: control
   template:
     metadata:
       labels:
         app.kubernetes.io/name: sub2api
         app.kubernetes.io/component: postgres
         app.kubernetes.io/part-of: sub2api
+        sub2api.dev/storage: control
     spec:
       containers:
         - name: postgres
@@ -140,7 +149,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: DATABASE_PASSWORD
+                  key: CONTROL_DATABASE_PASSWORD
             - name: PGDATA
               value: "/var/lib/postgresql/data/pgdata"
             - name: TZ
@@ -188,12 +197,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sub2api-redis
+  name: sub2api-control-redis
   namespace: dev
   labels:
     app.kubernetes.io/name: sub2api
     app.kubernetes.io/component: redis
     app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: control
 spec:
   type: ClusterIP
   ports:
@@ -203,29 +213,33 @@ spec:
   selector:
     app.kubernetes.io/name: sub2api
     app.kubernetes.io/component: redis
+    sub2api.dev/storage: control
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: sub2api-redis
+  name: sub2api-control-redis
   namespace: dev
   labels:
     app.kubernetes.io/name: sub2api
     app.kubernetes.io/component: redis
     app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: control
 spec:
-  serviceName: sub2api-redis
+  serviceName: sub2api-control-redis
   replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: sub2api
       app.kubernetes.io/component: redis
+      sub2api.dev/storage: control
   template:
     metadata:
       labels:
         app.kubernetes.io/name: sub2api
         app.kubernetes.io/component: redis
         app.kubernetes.io/part-of: sub2api
+        sub2api.dev/storage: control
     spec:
       containers:
         - name: redis
@@ -243,12 +257,663 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: REDIS_PASSWORD
+                  key: CONTROL_REDIS_PASSWORD
             - name: REDISCLI_AUTH
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: REDIS_PASSWORD
+                  key: CONTROL_REDIS_PASSWORD
+            - name: TZ
+              value: "Asia/Shanghai"
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-node-us-postgres
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-us
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    sub2api.dev/storage: node-us
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-us-postgres
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-us
+spec:
+  serviceName: sub2api-node-us-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: postgres
+      sub2api.dev/storage: node-us
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: postgres
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/storage: node-us
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "sub2api"
+            - name: POSTGRES_DB
+              value: "sub2api"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_US_DATABASE_PASSWORD
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+            - name: TZ
+              value: "Asia/Shanghai"
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U sub2api -d sub2api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U sub2api -d sub2api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-node-us-redis
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-us
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    sub2api.dev/storage: node-us
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-us-redis
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-us
+spec:
+  serviceName: sub2api-node-us-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: redis
+      sub2api.dev/storage: node-us
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: redis
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/storage: node-us
+    spec:
+      containers:
+        - name: redis
+          image: redis:8-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - exec redis-server --save 60 1 --appendonly yes --appendfsync everysec --requirepass "$REDIS_PASSWORD"
+          ports:
+            - name: redis
+              containerPort: 6379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_US_REDIS_PASSWORD
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_US_REDIS_PASSWORD
+            - name: TZ
+              value: "Asia/Shanghai"
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-node-sg-postgres
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-sg
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    sub2api.dev/storage: node-sg
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-sg-postgres
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-sg
+spec:
+  serviceName: sub2api-node-sg-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: postgres
+      sub2api.dev/storage: node-sg
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: postgres
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/storage: node-sg
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "sub2api"
+            - name: POSTGRES_DB
+              value: "sub2api"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_SG_DATABASE_PASSWORD
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+            - name: TZ
+              value: "Asia/Shanghai"
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U sub2api -d sub2api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U sub2api -d sub2api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-node-sg-redis
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-sg
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    sub2api.dev/storage: node-sg
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-sg-redis
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-sg
+spec:
+  serviceName: sub2api-node-sg-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: redis
+      sub2api.dev/storage: node-sg
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: redis
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/storage: node-sg
+    spec:
+      containers:
+        - name: redis
+          image: redis:8-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - exec redis-server --save 60 1 --appendonly yes --appendfsync everysec --requirepass "$REDIS_PASSWORD"
+          ports:
+            - name: redis
+              containerPort: 6379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_SG_REDIS_PASSWORD
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_SG_REDIS_PASSWORD
+            - name: TZ
+              value: "Asia/Shanghai"
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-node-jp-postgres
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-jp
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    sub2api.dev/storage: node-jp
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-jp-postgres
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-jp
+spec:
+  serviceName: sub2api-node-jp-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: postgres
+      sub2api.dev/storage: node-jp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: postgres
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/storage: node-jp
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "sub2api"
+            - name: POSTGRES_DB
+              value: "sub2api"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_JP_DATABASE_PASSWORD
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+            - name: TZ
+              value: "Asia/Shanghai"
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U sub2api -d sub2api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U sub2api -d sub2api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-node-jp-redis
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-jp
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    sub2api.dev/storage: node-jp
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sub2api-node-jp-redis
+  namespace: dev
+  labels:
+    app.kubernetes.io/name: sub2api
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: sub2api
+    sub2api.dev/storage: node-jp
+spec:
+  serviceName: sub2api-node-jp-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+      app.kubernetes.io/component: redis
+      sub2api.dev/storage: node-jp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+        app.kubernetes.io/component: redis
+        app.kubernetes.io/part-of: sub2api
+        sub2api.dev/storage: node-jp
+    spec:
+      containers:
+        - name: redis
+          image: redis:8-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - exec redis-server --save 60 1 --appendonly yes --appendfsync everysec --requirepass "$REDIS_PASSWORD"
+          ports:
+            - name: redis
+              containerPort: 6379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_JP_REDIS_PASSWORD
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: sub2api-dev-secrets
+                  key: NODE_JP_REDIS_PASSWORD
             - name: TZ
               value: "Asia/Shanghai"
           readinessProbe:
@@ -339,14 +1004,14 @@ spec:
           command:
             - sh
             - -c
-            - until nc -z sub2api-postgres 5432; do sleep 2; done
+            - until nc -z sub2api-control-postgres 5432; do sleep 2; done
         - name: wait-redis
           image: busybox:1.37
           imagePullPolicy: IfNotPresent
           command:
             - sh
             - -c
-            - until nc -z sub2api-redis 6379; do sleep 2; done
+            - until nc -z sub2api-control-redis 6379; do sleep 2; done
       containers:
         - name: sub2api
           image: ghcr.io/minikites8/sub2api:test-codex-quota-lease-demo
@@ -360,16 +1025,20 @@ spec:
             - configMapRef:
                 name: sub2api-control-config
           env:
+            - name: DATABASE_HOST
+              value: "sub2api-control-postgres"
+            - name: REDIS_HOST
+              value: "sub2api-control-redis"
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: DATABASE_PASSWORD
+                  key: CONTROL_DATABASE_PASSWORD
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: REDIS_PASSWORD
+                  key: CONTROL_REDIS_PASSWORD
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -494,6 +1163,20 @@ spec:
             - sh
             - -c
             - until wget -q -O /dev/null http://sub2api-control:8080/health; do sleep 2; done
+        - name: wait-node-postgres
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until nc -z sub2api-node-us-postgres 5432; do sleep 2; done
+        - name: wait-node-redis
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until nc -z sub2api-node-us-redis 6379; do sleep 2; done
       containers:
         - name: sub2api
           image: ghcr.io/minikites8/sub2api:test-codex-quota-lease-demo
@@ -515,16 +1198,20 @@ spec:
               value: "$(POD_NAME)"
             - name: SUB2API_NODE_POOL
               value: "us"
+            - name: DATABASE_HOST
+              value: "sub2api-node-us-postgres"
+            - name: REDIS_HOST
+              value: "sub2api-node-us-redis"
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: DATABASE_PASSWORD
+                  key: NODE_US_DATABASE_PASSWORD
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: REDIS_PASSWORD
+                  key: NODE_US_REDIS_PASSWORD
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -611,6 +1298,20 @@ spec:
             - sh
             - -c
             - until wget -q -O /dev/null http://sub2api-control:8080/health; do sleep 2; done
+        - name: wait-node-postgres
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until nc -z sub2api-node-sg-postgres 5432; do sleep 2; done
+        - name: wait-node-redis
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until nc -z sub2api-node-sg-redis 6379; do sleep 2; done
       containers:
         - name: sub2api
           image: ghcr.io/minikites8/sub2api:test-codex-quota-lease-demo
@@ -632,16 +1333,20 @@ spec:
               value: "$(POD_NAME)"
             - name: SUB2API_NODE_POOL
               value: "sg"
+            - name: DATABASE_HOST
+              value: "sub2api-node-sg-postgres"
+            - name: REDIS_HOST
+              value: "sub2api-node-sg-redis"
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: DATABASE_PASSWORD
+                  key: NODE_SG_DATABASE_PASSWORD
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: REDIS_PASSWORD
+                  key: NODE_SG_REDIS_PASSWORD
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -728,6 +1433,20 @@ spec:
             - sh
             - -c
             - until wget -q -O /dev/null http://sub2api-control:8080/health; do sleep 2; done
+        - name: wait-node-postgres
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until nc -z sub2api-node-jp-postgres 5432; do sleep 2; done
+        - name: wait-node-redis
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until nc -z sub2api-node-jp-redis 6379; do sleep 2; done
       containers:
         - name: sub2api
           image: ghcr.io/minikites8/sub2api:test-codex-quota-lease-demo
@@ -749,16 +1468,20 @@ spec:
               value: "$(POD_NAME)"
             - name: SUB2API_NODE_POOL
               value: "jp"
+            - name: DATABASE_HOST
+              value: "sub2api-node-jp-postgres"
+            - name: REDIS_HOST
+              value: "sub2api-node-jp-redis"
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: DATABASE_PASSWORD
+                  key: NODE_JP_DATABASE_PASSWORD
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
-                  key: REDIS_PASSWORD
+                  key: NODE_JP_REDIS_PASSWORD
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

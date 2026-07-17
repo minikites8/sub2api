@@ -1,6 +1,6 @@
 # Sub2API Quota Lease Demo on Kubernetes
 
-这个目录用于 `dev` namespace 的测试环境部署，包含 Postgres、Redis、控制面、3 个调用节点池、Service 和示例 Ingress。
+这个目录用于 `dev` namespace 的测试环境部署，包含控制面独立 Postgres/Redis、3 个节点池各自独立 Postgres/Redis、Service 和示例 Ingress。
 
 ## 镜像
 
@@ -29,8 +29,14 @@ kubectl -n dev set image statefulset/sub2api-node-jp sub2api=ghcr.io/minikites8/
 
 ```powershell
 kubectl apply -f deploy/k8s/dev/quota-lease-demo.yaml
-kubectl -n dev rollout status statefulset/sub2api-postgres
-kubectl -n dev rollout status statefulset/sub2api-redis
+kubectl -n dev rollout status statefulset/sub2api-control-postgres
+kubectl -n dev rollout status statefulset/sub2api-control-redis
+kubectl -n dev rollout status statefulset/sub2api-node-us-postgres
+kubectl -n dev rollout status statefulset/sub2api-node-us-redis
+kubectl -n dev rollout status statefulset/sub2api-node-sg-postgres
+kubectl -n dev rollout status statefulset/sub2api-node-sg-redis
+kubectl -n dev rollout status statefulset/sub2api-node-jp-postgres
+kubectl -n dev rollout status statefulset/sub2api-node-jp-redis
 kubectl -n dev rollout status deploy/sub2api-control
 kubectl -n dev rollout status statefulset/sub2api-node-us
 kubectl -n dev rollout status statefulset/sub2api-node-sg
@@ -67,6 +73,13 @@ kubectl -n dev scale statefulset/sub2api-node-jp --replicas=2
 
 节点池使用 `DEPLOYMENT_ROLE=node`，HTTP 层只开放健康检查和用户侧网关入口。控制面使用 `DEPLOYMENT_ROLE=control`，提供后台页面、节点注册、租约、流水和账号任务管理。
 
+每个角色连接自己的存储服务：
+
+- 控制面：`sub2api-control-postgres`、`sub2api-control-redis`
+- US 节点池：`sub2api-node-us-postgres`、`sub2api-node-us-redis`
+- SG 节点池：`sub2api-node-sg-postgres`、`sub2api-node-sg-redis`
+- JP 节点池：`sub2api-node-jp-postgres`、`sub2api-node-jp-redis`
+
 ## 配置点
 
 默认测试管理员：
@@ -78,8 +91,14 @@ sub2api-dev-admin-password
 
 关键 Secret 位于 `sub2api-dev-secrets`：
 
-- `DATABASE_PASSWORD`
-- `REDIS_PASSWORD`
+- `CONTROL_DATABASE_PASSWORD`
+- `CONTROL_REDIS_PASSWORD`
+- `NODE_US_DATABASE_PASSWORD`
+- `NODE_US_REDIS_PASSWORD`
+- `NODE_SG_DATABASE_PASSWORD`
+- `NODE_SG_REDIS_PASSWORD`
+- `NODE_JP_DATABASE_PASSWORD`
+- `NODE_JP_REDIS_PASSWORD`
 - `JWT_SECRET`
 - `TOTP_ENCRYPTION_KEY`
 - `ADMIN_PASSWORD`

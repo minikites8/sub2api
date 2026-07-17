@@ -492,6 +492,15 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 	require.Len(t, accounts, 1)
 	require.Equal(t, int64(202), accounts[0].ID)
 	require.Equal(t, "grok-node-access", accounts[0].Credentials["access_token"])
+
+	control.mu.Lock()
+	delete(control.assignedAccounts, 202)
+	control.mu.Unlock()
+
+	require.NoError(t, node.SyncAssignedAccounts(ctx))
+	accounts, handled = node.AssignedAccountsForScheduling(ctx, nil, PlatformGrok)
+	require.True(t, handled)
+	require.Empty(t, accounts)
 }
 
 func TestQuotaLeaseDemoNodeWorkerExecutesPendingAccountTask(t *testing.T) {

@@ -117,6 +117,7 @@ export default {
         name: '名称',
         id: '账号ID',
         platformType: '平台/类型',
+        node: '节点',
         platform: '平台',
         type: '类型',
         capacity: '容量',
@@ -136,6 +137,14 @@ export default {
         createdAt: '创建时间',
         expiresAt: '过期时间',
         actions: '操作'
+      },
+      nodeOAuth: {
+        lastSyncedAt: '最近同步：{time}',
+        status: {
+          pending: '授权中',
+          completed: '已完成',
+          failed: '失败'
+        }
       },
       schedulerScore: {
         baseShort: '普通',

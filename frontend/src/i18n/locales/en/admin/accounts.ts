@@ -169,6 +169,7 @@ export default {
         name: 'Name',
         id: 'Account ID',
         platformType: 'Platform/Type',
+        node: 'Node',
         platform: 'Platform',
         type: 'Type',
         capacity: 'Capacity',
@@ -188,6 +189,14 @@ export default {
         createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
+      },
+      nodeOAuth: {
+        lastSyncedAt: 'Last sync: {time}',
+        status: {
+          pending: 'Authorizing',
+          completed: 'Completed',
+          failed: 'Failed'
+        }
       },
       schedulerScore: {
         baseShort: 'Base',

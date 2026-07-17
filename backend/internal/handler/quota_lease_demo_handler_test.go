@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -16,14 +17,41 @@ import (
 
 type quotaLeaseDemoSyncAdminService struct {
 	service.AdminService
-	updatedID int64
-	input     *service.UpdateAccountInput
+	updatedID        int64
+	input            *service.UpdateAccountInput
+	updatedExtraID   int64
+	updatedExtra     map[string]any
+	clearedAccountID int64
+	listedAccounts   []service.Account
 }
 
 func (s *quotaLeaseDemoSyncAdminService) UpdateAccount(_ context.Context, id int64, input *service.UpdateAccountInput) (*service.Account, error) {
 	s.updatedID = id
 	s.input = input
 	return &service.Account{ID: id, Status: input.Status, Credentials: input.Credentials, Extra: input.Extra}, nil
+}
+
+func (s *quotaLeaseDemoSyncAdminService) UpdateAccountExtra(_ context.Context, id int64, updates map[string]any) error {
+	s.updatedExtraID = id
+	s.updatedExtra = updates
+	return nil
+}
+
+func (s *quotaLeaseDemoSyncAdminService) ClearAccountError(_ context.Context, id int64) (*service.Account, error) {
+	s.clearedAccountID = id
+	return &service.Account{ID: id, Status: service.StatusActive}, nil
+}
+
+func (s *quotaLeaseDemoSyncAdminService) ListAccounts(_ context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
+	start := (page - 1) * pageSize
+	if start >= len(s.listedAccounts) {
+		return nil, int64(len(s.listedAccounts)), nil
+	}
+	end := start + pageSize
+	if end > len(s.listedAccounts) {
+		end = len(s.listedAccounts)
+	}
+	return append([]service.Account(nil), s.listedAccounts[start:end]...), int64(len(s.listedAccounts)), nil
 }
 
 func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.QuotaLeaseDemoService) {
@@ -76,13 +104,14 @@ func TestQuotaLeaseDemoHandlerSyncsCompletedAccountToAdminService(t *testing.T) 
 	adminSvc := &quotaLeaseDemoSyncAdminService{}
 	h := NewQuotaLeaseDemoHandler(nil, adminSvc)
 	task := &service.QuotaLeaseDemoAccountLoginTask{
-		ID:          "task-1",
-		AccountID:   707,
-		Name:        "node-openai",
-		Type:        service.AccountTypeOAuth,
-		Concurrency: 2,
-		Priority:    5,
-		Status:      service.QuotaLeaseDemoAccountTaskCompleted,
+		ID:             "task-1",
+		AccountID:      707,
+		Name:           "node-openai",
+		Type:           service.AccountTypeOAuth,
+		AssignedNodeID: "foreign-1",
+		Concurrency:    2,
+		Priority:       5,
+		Status:         service.QuotaLeaseDemoAccountTaskCompleted,
 		Account: &service.QuotaLeaseDemoAccountSnapshot{
 			ID:          707,
 			Name:        "node-openai",
@@ -104,6 +133,8 @@ func TestQuotaLeaseDemoHandlerSyncsCompletedAccountToAdminService(t *testing.T) 
 	require.Equal(t, service.AccountTypeOAuth, adminSvc.input.Type)
 	require.Equal(t, "node-access", adminSvc.input.Credentials["access_token"])
 	require.Equal(t, false, adminSvc.input.Extra["openai_long_context_billing_enabled"])
+	require.Equal(t, service.QuotaLeaseDemoAccountTaskCompleted, adminSvc.input.Extra["node_oauth_status"])
+	require.Equal(t, "foreign-1", adminSvc.input.Extra["node_oauth_assigned_node_id"])
 	require.NotNil(t, adminSvc.input.Concurrency)
 	require.Equal(t, 3, *adminSvc.input.Concurrency)
 	require.NotNil(t, adminSvc.input.Priority)
@@ -111,6 +142,128 @@ func TestQuotaLeaseDemoHandlerSyncsCompletedAccountToAdminService(t *testing.T) 
 	require.NotNil(t, adminSvc.input.GroupIDs)
 	require.Equal(t, []int64{10, 20}, *adminSvc.input.GroupIDs)
 	require.True(t, adminSvc.input.SkipMixedChannelCheck)
+}
+
+func TestQuotaLeaseDemoHandlerSyncsReauthTaskWithExtraMerge(t *testing.T) {
+	adminSvc := &quotaLeaseDemoSyncAdminService{}
+	h := NewQuotaLeaseDemoHandler(nil, adminSvc)
+	task := &service.QuotaLeaseDemoAccountLoginTask{
+		ID:             "task-reauth",
+		AccountID:      808,
+		Name:           "existing-openai",
+		Type:           service.AccountTypeOAuth,
+		AssignedNodeID: "foreign-1",
+		Concurrency:    4,
+		Priority:       6,
+		Status:         service.QuotaLeaseDemoAccountTaskCompleted,
+		Metadata:       map[string]string{"source": "account_reauth_modal"},
+		Account: &service.QuotaLeaseDemoAccountSnapshot{
+			ID:          808,
+			Name:        "existing-openai",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeOAuth,
+			Credentials: map[string]any{"access_token": "fresh-access", "model_mapping": map[string]any{"mode": "allow"}},
+			Extra:       map[string]any{"account_uuid": "acct-new"},
+			Concurrency: 4,
+			Priority:    6,
+			GroupIDs:    []int64{30},
+		},
+	}
+
+	require.NoError(t, h.syncCompletedAccount(context.Background(), task))
+
+	require.Equal(t, int64(808), adminSvc.updatedID)
+	require.NotNil(t, adminSvc.input)
+	require.Nil(t, adminSvc.input.Extra)
+	require.Equal(t, "fresh-access", adminSvc.input.Credentials["access_token"])
+	require.Equal(t, int64(808), adminSvc.updatedExtraID)
+	require.Equal(t, map[string]any{
+		"account_uuid":                "acct-new",
+		"node_oauth_status":           service.QuotaLeaseDemoAccountTaskCompleted,
+		"node_oauth_assigned_node_id": "foreign-1",
+	}, adminSvc.updatedExtra)
+	require.Equal(t, int64(808), adminSvc.clearedAccountID)
+}
+
+func TestQuotaLeaseDemoHandlerListsAssignedAccountsFromPersistedAdminAccounts(t *testing.T) {
+	now := time.Now().UTC()
+	adminSvc := &quotaLeaseDemoSyncAdminService{
+		listedAccounts: []service.Account{
+			{
+				ID:          901,
+				Name:        "persisted-openai",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeOAuth,
+				Credentials: map[string]any{"access_token": "node-token"},
+				Extra: map[string]any{
+					"node_oauth_assigned_node_id": "foreign-1",
+					"node_oauth_status":           service.QuotaLeaseDemoAccountTaskCompleted,
+				},
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 2,
+				Priority:    7,
+				GroupIDs:    []int64{2},
+				CreatedAt:   now.Add(-time.Hour),
+				UpdatedAt:   now,
+			},
+			{
+				ID:       902,
+				Name:     "pending-openai",
+				Platform: service.PlatformOpenAI,
+				Type:     service.AccountTypeOAuth,
+				Credentials: map[string]any{
+					"node_oauth_pending": true,
+				},
+				Extra: map[string]any{
+					"node_oauth_assigned_node_id": "foreign-1",
+					"node_oauth_status":           service.QuotaLeaseDemoAccountTaskPending,
+				},
+				Status:      service.StatusActive,
+				Schedulable: true,
+			},
+			{
+				ID:          903,
+				Name:        "other-node-openai",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeOAuth,
+				Credentials: map[string]any{"access_token": "other-token"},
+				Extra: map[string]any{
+					"node_oauth_assigned_node_id": "foreign-2",
+					"node_oauth_status":           service.QuotaLeaseDemoAccountTaskCompleted,
+				},
+				Status:      service.StatusActive,
+				Schedulable: true,
+			},
+		},
+	}
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:            true,
+				NodeID:             "control-node",
+				NodeSecret:         "control-secret",
+				DefaultGrantAmount: 1,
+				LeaseTTLSeconds:    600,
+			},
+		},
+	})
+	h := NewQuotaLeaseDemoHandler(svc, adminSvc)
+
+	accounts, err := h.listAssignedAccounts(context.Background(), "foreign-1")
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	require.Equal(t, "foreign-1", accounts[0].NodeID)
+	require.Equal(t, int64(901), accounts[0].Account.ID)
+	require.Equal(t, "node-token", accounts[0].Account.Credentials["access_token"])
+	require.Equal(t, []int64{2}, accounts[0].Account.GroupIDs)
+	require.Equal(t, service.QuotaLeaseDemoAccountTaskCompleted, accounts[0].Account.Extra["node_oauth_status"])
+	lastSyncedAt, ok := accounts[0].Account.Extra["node_oauth_last_synced_at"].(string)
+	require.True(t, ok)
+	_, err = time.Parse(time.RFC3339Nano, lastSyncedAt)
+	require.NoError(t, err)
+	require.Equal(t, int64(901), adminSvc.updatedExtraID)
+	require.Equal(t, lastSyncedAt, adminSvc.updatedExtra["node_oauth_last_synced_at"])
 }
 
 func TestQuotaLeaseDemoHandlerRegistersNodeAndUsesNodeSecret(t *testing.T) {

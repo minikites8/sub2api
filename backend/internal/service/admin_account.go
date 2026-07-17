@@ -66,6 +66,16 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 const maxAccountNameRunes = 100
 const duplicateAccountOperationIDExtraKey = "duplicate_operation_id"
 
+var accountExtraAlwaysPreserveOnUpdateKeys = []string{
+	"quota_used",
+	"quota_daily_used",
+	"quota_daily_start",
+	"quota_weekly_used",
+	"quota_weekly_start",
+	UpstreamBillingProbeEnabledExtraKey,
+	UpstreamBillingProbeExtraKey,
+}
+
 func duplicateAccountName(sourceName string) string {
 	const suffix = " (Copy)"
 	nameRunes := []rune(strings.TrimSpace(sourceName))
@@ -89,6 +99,21 @@ func cloneAccountJSONMap(value map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 	return cloned, nil
+}
+
+func preserveNodeOAuthExtraKeysWhenOmitted(current, next map[string]any) {
+	if len(current) == 0 || next == nil {
+		return
+	}
+	for key, value := range current {
+		if !strings.HasPrefix(key, "node_oauth_") {
+			continue
+		}
+		if _, provided := next[key]; provided {
+			continue
+		}
+		next[key] = value
+	}
 }
 
 var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
@@ -605,20 +630,13 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
 		delete(normalizedExtra, UpstreamBillingProbeExtraKey)
-		// 保留配额用量字段，防止编辑账号时意外重置
-		for _, key := range []string{
-			"quota_used",
-			"quota_daily_used",
-			"quota_daily_start",
-			"quota_weekly_used",
-			"quota_weekly_start",
-			UpstreamBillingProbeEnabledExtraKey,
-			UpstreamBillingProbeExtraKey,
-		} {
+		// 保留运行态字段，防止编辑账号时意外重置。
+		for _, key := range accountExtraAlwaysPreserveOnUpdateKeys {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
 			}
 		}
+		preserveNodeOAuthExtraKeysWhenOmitted(account.Extra, normalizedExtra)
 		if hasRequestedProbeEnabled {
 			if isUpstreamBillingProbeAccount(account) {
 				normalizedExtra[UpstreamBillingProbeEnabledExtraKey] = requestedProbeEnabled

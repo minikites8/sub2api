@@ -162,6 +162,53 @@ func TestAdminServiceUpdateAccountPreservesOpenAILongContextBillingOptOutWhenOmi
 	require.Equal(t, false, account.Extra[openAILongContextBillingEnabledKey])
 }
 
+func TestAdminServiceUpdateAccountPreservesNodeOAuthExtraWhenOmitted(t *testing.T) {
+	repo := &longContextBillingRepoStub{account: &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"node_oauth_assigned_node_id": "foreign-1",
+			"node_oauth_status":           QuotaLeaseDemoAccountTaskCompleted,
+			"custom":                      "old",
+		},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	account, err := svc.UpdateAccount(context.Background(), 1, &UpdateAccountInput{
+		Extra: map[string]any{"custom": "new"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "foreign-1", account.Extra["node_oauth_assigned_node_id"])
+	require.Equal(t, QuotaLeaseDemoAccountTaskCompleted, account.Extra["node_oauth_status"])
+	require.Equal(t, "new", account.Extra["custom"])
+}
+
+func TestAdminServiceUpdateAccountAllowsExplicitNodeOAuthExtraUpdate(t *testing.T) {
+	repo := &longContextBillingRepoStub{account: &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"node_oauth_assigned_node_id": "foreign-1",
+			"node_oauth_status":           QuotaLeaseDemoAccountTaskCompleted,
+		},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	account, err := svc.UpdateAccount(context.Background(), 1, &UpdateAccountInput{
+		Extra: map[string]any{
+			"node_oauth_assigned_node_id": "foreign-2",
+			"node_oauth_status":           QuotaLeaseDemoAccountTaskPending,
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "foreign-2", account.Extra["node_oauth_assigned_node_id"])
+	require.Equal(t, QuotaLeaseDemoAccountTaskPending, account.Extra["node_oauth_status"])
+}
+
 func TestAdminServiceUpdateAccountAllowsExplicitCodexImportOptIn(t *testing.T) {
 	repo := &longContextBillingRepoStub{account: &Account{
 		ID:          1,
