@@ -67,6 +67,13 @@ func NewUsageHandler(
 	}
 }
 
+func (h *UsageHandler) UsageService() *service.UsageService {
+	if h == nil {
+		return nil
+	}
+	return h.usageService
+}
+
 func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) (*userUsageFilters, bool) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {

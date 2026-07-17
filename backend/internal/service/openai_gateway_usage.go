@@ -353,7 +353,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway", s.cfg)
 		if controller := s.gatewayRiskController(); controller != nil {
 			controller.applyAPIUsageIPUARiskControl(ctx, usageLog.UserID, input.IPAddress, input.UserAgent)
 		}
@@ -388,7 +388,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if billingErr != nil {
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway", s.cfg)
 	if controller := s.gatewayRiskController(); controller != nil {
 		controller.applyAPIUsageIPUARiskControl(ctx, usageLog.UserID, input.IPAddress, input.UserAgent)
 	}

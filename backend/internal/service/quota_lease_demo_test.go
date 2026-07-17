@@ -142,6 +142,23 @@ func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDe
 			var req QuotaLeaseDemoUsageBatchRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 			require.NoError(t, json.NewEncoder(w).Encode(control.PostUsageBatch(r.Context(), req)))
+		case "/api/v1/node-leases/demo/usage-logs/batch":
+			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			var req QuotaLeaseDemoUsageLogBatchRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			result := QuotaLeaseDemoUsageLogBatchResult{Results: make([]QuotaLeaseDemoUsageLogResult, 0, len(req.Logs))}
+			for _, item := range req.Logs {
+				result.Results = append(result.Results, QuotaLeaseDemoUsageLogResult{
+					RequestID: strings.TrimSpace(item.RequestID),
+					APIKeyID:  item.APIKeyID,
+					Applied:   true,
+				})
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(result))
 		case "/api/v1/node-leases/demo/accounts/login-tasks":
 			if r.Method == http.MethodPost {
 				if r.Header.Get("X-Node-Secret") != controlSecret {
@@ -396,6 +413,95 @@ func TestQuotaLeaseDemoRemoteNodeFetchesLeaseAndFlushesUsage(t *testing.T) {
 	require.Len(t, node.pendingUsageEvents(), 0)
 }
 
+func TestQuotaLeaseDemoRemoteNodeFlushesUsageLogs(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	var received []QuotaLeaseDemoUsageLogSnapshot
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/node-leases/demo/nodes/register":
+			if r.Header.Get("X-Node-Secret") != "control-secret" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			var req QuotaLeaseDemoNodeRegistrationRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			result, err := control.RegisterNode(r.Context(), req)
+			require.NoError(t, err)
+			require.NoError(t, json.NewEncoder(w).Encode(result))
+		case "/api/v1/node-leases/demo/usage-logs/batch":
+			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			var req QuotaLeaseDemoUsageLogBatchRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			received = append(received, req.Logs...)
+			result := QuotaLeaseDemoUsageLogBatchResult{Results: make([]QuotaLeaseDemoUsageLogResult, 0, len(req.Logs))}
+			for _, item := range req.Logs {
+				result.Results = append(result.Results, QuotaLeaseDemoUsageLogResult{
+					RequestID: item.RequestID,
+					APIKeyID:  item.APIKeyID,
+					Applied:   true,
+				})
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(result))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-us",
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+	ctx := context.Background()
+	serviceTier := "priority"
+	durationMs := 321
+	accountRate := 1.2
+	snapshot := NewQuotaLeaseDemoUsageLogSnapshot("", &UsageLog{
+		UserID:                10,
+		APIKeyID:              20,
+		AccountID:             30,
+		RequestID:             "usage-log-req-1",
+		Model:                 "gpt-5",
+		RequestedModel:        "gpt-5",
+		ServiceTier:           &serviceTier,
+		InputTokens:           11,
+		OutputTokens:          7,
+		CacheCreationTokens:   3,
+		CacheReadTokens:       5,
+		TotalCost:             0.45,
+		ActualCost:            0.4,
+		RateMultiplier:        1.1,
+		AccountRateMultiplier: &accountRate,
+		BillingType:           BillingTypeBalance,
+		RequestType:           RequestTypeStream,
+		DurationMs:            &durationMs,
+		CreatedAt:             time.Now().UTC(),
+	})
+	node.enqueuePendingUsageLogSnapshot(snapshot)
+
+	require.NoError(t, node.FlushPendingUsageLogs(ctx))
+	require.Len(t, received, 1)
+	require.Equal(t, "node-us", received[0].NodeID)
+	require.Equal(t, int64(20), received[0].APIKeyID)
+	require.Equal(t, "usage-log-req-1", received[0].RequestID)
+	require.Equal(t, RequestTypeStream, received[0].RequestType)
+	require.Equal(t, 11, received[0].InputTokens)
+	require.InDelta(t, 0.4, received[0].ActualCost, 1e-9)
+	require.Len(t, node.pendingUsageLogSnapshots(), 0)
+}
+
 func TestQuotaLeaseDemoRemoteNodeAuthorizesClientKeyViaControlPlane(t *testing.T) {
 	ctx := context.Background()
 	control := newQuotaLeaseDemoTestService()
@@ -571,6 +677,7 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 	require.Equal(t, task.ID, tasks[0].ID)
 
 	proxyID := int64(303)
+	groupID := int64(7)
 	_, err = node.CompleteAccountLoginTask(ctx, QuotaLeaseDemoAccountLoginTaskCompleteRequest{
 		TaskID: task.ID,
 		Account: QuotaLeaseDemoAccountSnapshot{
@@ -593,12 +700,13 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 2,
+			GroupIDs:    []int64{groupID},
 		},
 	})
 	require.NoError(t, err)
 
 	require.NoError(t, node.SyncAssignedAccounts(ctx))
-	accounts, handled := node.AssignedAccountsForScheduling(ctx, nil, PlatformGrok)
+	accounts, handled := node.AssignedAccountsForScheduling(ctx, &groupID, PlatformGrok)
 	require.True(t, handled)
 	require.Len(t, accounts, 1)
 	require.Equal(t, int64(202), accounts[0].ID)
@@ -613,7 +721,7 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 	control.mu.Unlock()
 
 	require.NoError(t, node.SyncAssignedAccounts(ctx))
-	accounts, handled = node.AssignedAccountsForScheduling(ctx, nil, PlatformGrok)
+	accounts, handled = node.AssignedAccountsForScheduling(ctx, &groupID, PlatformGrok)
 	require.True(t, handled)
 	require.Empty(t, accounts)
 }

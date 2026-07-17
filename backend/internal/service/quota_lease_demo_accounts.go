@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -500,12 +501,34 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 	_ = s.SyncAssignedAccounts(ctx)
 	assigned := s.ListAssignedAccounts(ctx, s.NodeID())
 	accounts := make([]Account, 0, len(assigned))
+	skippedPlatform := 0
+	skippedUnschedulable := 0
+	skippedGroup := 0
 	for _, item := range assigned {
 		account := quotaLeaseDemoAccountSnapshotToAccount(item.Account)
-		if !quotaLeaseDemoAccountMatchesScheduling(account, groupID, platform) {
+		if reason := quotaLeaseDemoAccountSchedulingSkipReason(account, groupID, platform); reason != "" {
+			switch reason {
+			case "platform":
+				skippedPlatform++
+			case "schedulable":
+				skippedUnschedulable++
+			case "group":
+				skippedGroup++
+			}
 			continue
 		}
 		accounts = append(accounts, account)
+	}
+	if len(assigned) > 0 && len(accounts) == 0 {
+		slog.Warn("quota_lease_demo.assigned_accounts_filtered",
+			"node_id", s.NodeID(),
+			"platform", strings.TrimSpace(platform),
+			"group_id", quotaLeaseDemoLogGroupID(groupID),
+			"assigned_count", len(assigned),
+			"skipped_platform", skippedPlatform,
+			"skipped_unschedulable", skippedUnschedulable,
+			"skipped_group", skippedGroup,
+		)
 	}
 	return accounts, true
 }
@@ -613,22 +636,36 @@ func quotaLeaseDemoAccountSnapshotToAccount(snapshot QuotaLeaseDemoAccountSnapsh
 }
 
 func quotaLeaseDemoAccountMatchesScheduling(account Account, groupID *int64, platform string) bool {
+	return quotaLeaseDemoAccountSchedulingSkipReason(account, groupID, platform) == ""
+}
+
+func quotaLeaseDemoAccountSchedulingSkipReason(account Account, groupID *int64, platform string) string {
 	platform = strings.TrimSpace(platform)
 	if platform != "" && account.Platform != platform {
-		return false
+		return "platform"
 	}
 	if !account.IsSchedulable() {
-		return false
+		return "schedulable"
 	}
 	if groupID == nil {
-		return len(account.GroupIDs) == 0
+		if len(account.GroupIDs) == 0 {
+			return ""
+		}
+		return "group"
 	}
 	for _, id := range account.GroupIDs {
 		if id == *groupID {
-			return true
+			return ""
 		}
 	}
-	return false
+	return "group"
+}
+
+func quotaLeaseDemoLogGroupID(groupID *int64) int64 {
+	if groupID == nil {
+		return 0
+	}
+	return *groupID
 }
 
 func cloneQuotaLeaseDemoAccountLoginTask(task *QuotaLeaseDemoAccountLoginTask) *QuotaLeaseDemoAccountLoginTask {

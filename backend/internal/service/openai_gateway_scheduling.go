@@ -912,24 +912,34 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 	baseCandidateCount := 0
 	candidates := make([]*Account, 0, len(accounts))
+	filteredEligibility := 0
+	filteredParent := 0
+	filteredRuntime := 0
+	filteredChannel := 0
+	filteredExcluded := 0
 	for i := range accounts {
 		acc := &accounts[i]
 		if isExcluded(acc.ID) {
+			filteredExcluded++
 			continue
 		}
 		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
 		// re-check schedulability here so recently rate-limited/overloaded accounts
 		// are not selected again before the bucket is rebuilt.
 		if !isOpenAICompatibleAccountEligibleForRequest(ctx, acc, platform, requestedModel, false, requiredCapability) {
+			filteredEligibility++
 			continue
 		}
 		if !parentHealthyForShadow(acc, parentLookupL2) {
+			filteredParent++
 			continue
 		}
 		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel) {
+			filteredRuntime++
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
+			filteredChannel++
 			continue
 		}
 		baseCandidateCount++
@@ -937,6 +947,18 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	if len(candidates) == 0 {
+		slog.Warn("openai_account_selection.candidates_filtered",
+			"platform", platform,
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel,
+			"account_count", len(accounts),
+			"filtered_excluded", filteredExcluded,
+			"filtered_eligibility", filteredEligibility,
+			"filtered_parent", filteredParent,
+			"filtered_runtime", filteredRuntime,
+			"filtered_channel", filteredChannel,
+			"required_capability", string(requiredCapability),
+		)
 		return nil, ErrNoAvailableAccounts
 	}
 	rateOrder := openAILegacyUpstreamRateOrder{}

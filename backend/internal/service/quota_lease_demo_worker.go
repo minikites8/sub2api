@@ -296,6 +296,12 @@ func (w *QuotaLeaseDemoNodeWorker) RunOnce(ctx context.Context) error {
 	if err := w.svc.SyncAssignedAccounts(ctx); err != nil {
 		combined = errors.Join(combined, err)
 	}
+	if err := w.svc.FlushPendingUsage(ctx); err != nil {
+		combined = errors.Join(combined, err)
+	}
+	if err := w.svc.FlushPendingUsageLogs(ctx); err != nil {
+		combined = errors.Join(combined, err)
+	}
 	return combined
 }
 

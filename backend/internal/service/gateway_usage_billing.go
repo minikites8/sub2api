@@ -524,35 +524,37 @@ func (s *GatewayService) billingDeps() *billingDeps {
 	}
 }
 
-func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
-	if repo == nil || usageLog == nil {
+func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string, cfgs ...*config.Config) {
+	if usageLog == nil {
 		return
 	}
-	usageCtx, cancel := detachedBillingContext(ctx)
-	defer cancel()
+	if repo != nil {
+		usageCtx, cancel := detachedBillingContext(ctx)
+		defer cancel()
 
-	if writer, ok := repo.(usageLogBestEffortWriter); ok {
-		if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
+		if writer, ok := repo.(usageLogBestEffortWriter); ok {
+			if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
+				logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
+				// 计费已在此前完成，日志必须落库：dropped（批处理队列超时）同样走同步兜底，
+				// 否则会出现“已扣费但无 usage_log”的对账缺口（issue #3656）。
+				// 重复写入由 usage_logs 的 ON CONFLICT (request_id, api_key_id) DO NOTHING 防护。
+				fallbackCtx := usageCtx
+				if usageCtx.Err() != nil {
+					// usageCtx 已耗尽（best-effort 入队阻塞到期限）：换新的 detached 窗口，避免兜底必然失败。
+					var fallbackCancel context.CancelFunc
+					fallbackCtx, fallbackCancel = detachedBillingContext(context.Background())
+					defer fallbackCancel()
+				}
+				if _, syncErr := repo.Create(fallbackCtx, usageLog); syncErr != nil {
+					logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
+				}
+			}
+		} else if _, err := repo.Create(usageCtx, usageLog); err != nil {
 			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
-			// 计费已在此前完成，日志必须落库：dropped（批处理队列超时）同样走同步兜底，
-			// 否则会出现“已扣费但无 usage_log”的对账缺口（issue #3656）。
-			// 重复写入由 usage_logs 的 ON CONFLICT (request_id, api_key_id) DO NOTHING 防护。
-			fallbackCtx := usageCtx
-			if usageCtx.Err() != nil {
-				// usageCtx 已耗尽（best-effort 入队阻塞到期限）：换新的 detached 窗口，避免兜底必然失败。
-				var fallbackCancel context.CancelFunc
-				fallbackCtx, fallbackCancel = detachedBillingContext(context.Background())
-				defer fallbackCancel()
-			}
-			if _, syncErr := repo.Create(fallbackCtx, usageLog); syncErr != nil {
-				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
-			}
 		}
-		return
 	}
-
-	if _, err := repo.Create(usageCtx, usageLog); err != nil {
-		logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
+	for _, cfg := range cfgs {
+		enqueueQuotaLeaseDemoUsageLogSnapshot(ctx, usageLog, cfg)
 	}
 }
 
@@ -737,7 +739,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway", s.cfg)
 		s.applyAPIUsageIPUARiskControl(ctx, usageLog.UserID, input.IPAddress, input.UserAgent)
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
@@ -768,7 +770,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if billingErr != nil {
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway", s.cfg)
 	s.applyAPIUsageIPUARiskControl(ctx, usageLog.UserID, input.IPAddress, input.UserAgent)
 
 	return nil

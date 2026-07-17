@@ -176,6 +176,26 @@ func (s *QuotaLeaseDemoService) postRemoteUsageBatch(ctx context.Context, req Qu
 	return result, nil
 }
 
+func (s *QuotaLeaseDemoService) postRemoteUsageLogBatch(ctx context.Context, req QuotaLeaseDemoUsageLogBatchRequest) (QuotaLeaseDemoUsageLogBatchResult, error) {
+	nodeID, secret, err := s.remoteNodeAuth(ctx)
+	if err != nil {
+		return QuotaLeaseDemoUsageLogBatchResult{}, err
+	}
+	if strings.TrimSpace(req.NodeID) == "" {
+		req.NodeID = nodeID
+	}
+	for i := range req.Logs {
+		if strings.TrimSpace(req.Logs[i].NodeID) == "" {
+			req.Logs[i].NodeID = req.NodeID
+		}
+	}
+	var result QuotaLeaseDemoUsageLogBatchResult
+	if err := s.doRemoteJSON(ctx, http.MethodPost, "/usage-logs/batch", nodeID, secret, req, &result); err != nil {
+		return QuotaLeaseDemoUsageLogBatchResult{}, err
+	}
+	return result, nil
+}
+
 func (s *QuotaLeaseDemoService) createRemoteAccountLoginTask(ctx context.Context, req QuotaLeaseDemoAccountLoginTaskCreateRequest) (*QuotaLeaseDemoAccountLoginTask, error) {
 	var result struct {
 		Task *QuotaLeaseDemoAccountLoginTask `json:"task"`
@@ -334,6 +354,29 @@ func (s *QuotaLeaseDemoService) FlushPendingUsage(ctx context.Context) error {
 	return nil
 }
 
+func (s *QuotaLeaseDemoService) FlushPendingUsageLogs(ctx context.Context) error {
+	if s == nil || !s.remoteMode() {
+		return nil
+	}
+	logs := s.pendingUsageLogSnapshots()
+	if len(logs) == 0 {
+		return nil
+	}
+	nodeID, _, err := s.remoteNodeAuth(ctx)
+	if err != nil {
+		return err
+	}
+	result, err := s.postRemoteUsageLogBatch(ctx, QuotaLeaseDemoUsageLogBatchRequest{
+		NodeID: nodeID,
+		Logs:   logs,
+	})
+	if err != nil {
+		return err
+	}
+	s.removePendingUsageLogResults(result)
+	return nil
+}
+
 func (s *QuotaLeaseDemoService) flushPendingUsageAsync() {
 	if s == nil || !s.remoteMode() {
 		return
@@ -342,6 +385,17 @@ func (s *QuotaLeaseDemoService) flushPendingUsageAsync() {
 		ctx, cancel := context.WithTimeout(context.Background(), quotaLeaseDemoRemoteTimeout)
 		defer cancel()
 		_ = s.FlushPendingUsage(ctx)
+	}()
+}
+
+func (s *QuotaLeaseDemoService) flushPendingUsageLogsAsync() {
+	if s == nil || !s.remoteMode() {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), quotaLeaseDemoRemoteTimeout)
+		defer cancel()
+		_ = s.FlushPendingUsageLogs(ctx)
 	}()
 }
 

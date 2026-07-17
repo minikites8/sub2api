@@ -16,6 +16,7 @@ type QuotaLeaseDemoHandler struct {
 	svc           *service.QuotaLeaseDemoService
 	adminSvc      service.AdminService
 	apiKeyService *service.APIKeyService
+	usageService  *service.UsageService
 }
 
 const (
@@ -36,6 +37,13 @@ func (h *QuotaLeaseDemoHandler) SetAPIKeyService(apiKeyService *service.APIKeySe
 		return
 	}
 	h.apiKeyService = apiKeyService
+}
+
+func (h *QuotaLeaseDemoHandler) SetUsageService(usageService *service.UsageService) {
+	if h == nil {
+		return
+	}
+	h.usageService = usageService
 }
 
 func (h *QuotaLeaseDemoHandler) RegisterNode(c *gin.Context) {
@@ -440,7 +448,7 @@ func (h *QuotaLeaseDemoHandler) quotaLeaseDemoHandlerAccountSnapshot(ctx context
 		Schedulable:             account.Schedulable,
 		Concurrency:             account.Concurrency,
 		Priority:                account.Priority,
-		GroupIDs:                quotaLeaseDemoHandlerCloneInt64Slice(account.GroupIDs),
+		GroupIDs:                quotaLeaseDemoHandlerAccountGroupIDs(account),
 		ExpiresAt:               quotaLeaseDemoHandlerCloneTime(account.ExpiresAt),
 		RateLimitResetAt:        quotaLeaseDemoHandlerCloneTime(account.RateLimitResetAt),
 		TempUnschedulableUntil:  quotaLeaseDemoHandlerCloneTime(account.TempUnschedulableUntil),
@@ -521,6 +529,36 @@ func quotaLeaseDemoHandlerCloneInt64Slice(src []int64) []int64 {
 	dst := make([]int64, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func quotaLeaseDemoHandlerAccountGroupIDs(account service.Account) []int64 {
+	seen := map[int64]struct{}{}
+	groupIDs := make([]int64, 0, len(account.GroupIDs)+len(account.AccountGroups)+len(account.Groups))
+	add := func(id int64) {
+		if id <= 0 {
+			return
+		}
+		if _, exists := seen[id]; exists {
+			return
+		}
+		seen[id] = struct{}{}
+		groupIDs = append(groupIDs, id)
+	}
+	for _, id := range account.GroupIDs {
+		add(id)
+	}
+	for _, accountGroup := range account.AccountGroups {
+		add(accountGroup.GroupID)
+	}
+	for _, group := range account.Groups {
+		if group != nil {
+			add(group.ID)
+		}
+	}
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	return groupIDs
 }
 
 func quotaLeaseDemoHandlerCloneInt64Ptr(src *int64) *int64 {
@@ -689,6 +727,69 @@ func (h *QuotaLeaseDemoHandler) PostUsageBatch(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, h.svc.PostUsageBatch(c.Request.Context(), req))
+}
+
+func (h *QuotaLeaseDemoHandler) PostUsageLogBatch(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	if h.usageService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "usage_service_unavailable"})
+		return
+	}
+	var req service.QuotaLeaseDemoUsageLogBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	nodeID, ok := h.authenticateNodeOrControl(c, req.NodeID)
+	if !ok {
+		return
+	}
+	if nodeID != "" {
+		if req.NodeID == "" {
+			req.NodeID = nodeID
+		}
+		if req.NodeID != nodeID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "node_mismatch"})
+			return
+		}
+		for _, item := range req.Logs {
+			if strings.TrimSpace(item.NodeID) != "" && strings.TrimSpace(item.NodeID) != nodeID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "node_mismatch"})
+				return
+			}
+		}
+	}
+
+	result := service.QuotaLeaseDemoUsageLogBatchResult{
+		Results: make([]service.QuotaLeaseDemoUsageLogResult, 0, len(req.Logs)),
+	}
+	for _, item := range req.Logs {
+		if strings.TrimSpace(item.NodeID) == "" {
+			item.NodeID = strings.TrimSpace(req.NodeID)
+		}
+		log := item.ToUsageLog()
+		row := service.QuotaLeaseDemoUsageLogResult{
+			RequestID: log.RequestID,
+			APIKeyID:  log.APIKeyID,
+		}
+		if strings.TrimSpace(log.RequestID) == "" || log.APIKeyID <= 0 {
+			row.Error = "request_id and api_key_id are required"
+			result.Results = append(result.Results, row)
+			continue
+		}
+		inserted, err := h.usageService.CreateLogBestEffort(c.Request.Context(), log)
+		if err != nil {
+			row.Error = err.Error()
+			result.Results = append(result.Results, row)
+			continue
+		}
+		row.Applied = inserted
+		row.Duplicate = !inserted
+		result.Results = append(result.Results, row)
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *QuotaLeaseDemoHandler) ReclaimExpired(c *gin.Context) {

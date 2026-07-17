@@ -225,7 +225,7 @@ func TestQuotaLeaseDemoHandlerListsAssignedAccountsFromPersistedAdminAccounts(t 
 				Concurrency: 2,
 				Priority:    7,
 				ProxyID:     &proxyID,
-				GroupIDs:    []int64{2},
+				Groups:      []*service.Group{{ID: 2, Name: "gpt"}},
 				CreatedAt:   now.Add(-time.Hour),
 				UpdatedAt:   now,
 			},

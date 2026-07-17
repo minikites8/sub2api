@@ -72,6 +72,21 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 	}
 }
 
+func (s *UsageService) CreateLogBestEffort(ctx context.Context, log *UsageLog) (bool, error) {
+	if log == nil {
+		return false, nil
+	}
+	if s == nil || s.usageRepo == nil {
+		return false, errors.New("usage log repository is not configured")
+	}
+	log.SyncRequestTypeAndLegacyFields()
+	inserted, err := s.usageRepo.Create(ctx, log)
+	if err != nil {
+		return false, fmt.Errorf("create usage log: %w", err)
+	}
+	return inserted, nil
+}
+
 // Create 创建使用日志
 func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*UsageLog, error) {
 	// 使用数据库事务保证「使用日志插入」与「扣费」的原子性，避免重复扣费或漏扣风险。

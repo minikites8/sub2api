@@ -77,6 +77,7 @@ type QuotaLeaseDemoService struct {
 	events           map[string]*QuotaLeaseDemoLedgerEvent
 	nodes            map[string]*QuotaLeaseDemoNode
 	pendingEvents    map[string]QuotaLeaseDemoUsageEvent
+	pendingUsageLogs map[string]QuotaLeaseDemoUsageLogSnapshot
 	clientAuthCache  map[string]*quotaLeaseDemoClientAuthCacheEntry
 	accountTasks     map[string]*QuotaLeaseDemoAccountLoginTask
 	assignedAccounts map[int64]*QuotaLeaseDemoAssignedAccount
@@ -91,6 +92,7 @@ func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 		events:           make(map[string]*QuotaLeaseDemoLedgerEvent),
 		nodes:            make(map[string]*QuotaLeaseDemoNode),
 		pendingEvents:    make(map[string]QuotaLeaseDemoUsageEvent),
+		pendingUsageLogs: make(map[string]QuotaLeaseDemoUsageLogSnapshot),
 		clientAuthCache:  make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
 		accountTasks:     make(map[string]*QuotaLeaseDemoAccountLoginTask),
 		assignedAccounts: make(map[int64]*QuotaLeaseDemoAssignedAccount),
