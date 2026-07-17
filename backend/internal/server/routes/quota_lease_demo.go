@@ -13,6 +13,7 @@ func RegisterQuotaLeaseDemoRoutes(v1 *gin.RouterGroup, cfg *config.Config, apiKe
 	h.SetUsageService(usageService)
 	group := v1.Group("/node-leases/demo")
 	{
+		group.POST("/nodes/registration-urls", h.CreateNodeRegistrationURL)
 		group.POST("/nodes/register", h.RegisterNode)
 		group.POST("/nodes/heartbeat", h.HeartbeatNode)
 		group.GET("/nodes", h.ListNodes)

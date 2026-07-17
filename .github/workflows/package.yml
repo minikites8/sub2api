@@ -84,14 +84,17 @@ jobs:
           if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
             channel="main"
             package_id="main-${short_sha}"
+            goreleaser_config=""
           else
             channel="test"
             package_id="test-${safe_ref:-manual}-${short_sha}"
+            goreleaser_config="--config=.goreleaser.package.yaml"
           fi
           {
             echo "channel=${channel}"
             echo "safe_ref=${safe_ref:-manual}"
             echo "package_id=${package_id}"
+            echo "goreleaser_config=${goreleaser_config}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Download frontend artifact
@@ -140,10 +143,6 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up QEMU
-        if: ${{ github.event_name == 'push' }}
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         if: ${{ github.event_name == 'push' }}
         uses: docker/setup-buildx-action@v3
@@ -160,7 +159,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v7
         with:
           version: '~> v2'
-          args: build --snapshot --clean
+          args: build --snapshot --clean ${{ steps.package_meta.outputs.goreleaser_config }}
         env:
           GITHUB_REPO_OWNER: ${{ github.repository_owner }}
           GITHUB_REPO_OWNER_LOWER: ${{ steps.lowercase.outputs.owner }}
@@ -170,7 +169,7 @@ jobs:
           PACKAGE_VERSION: ${{ steps.package_meta.outputs.package_id }}
 
       - name: Build and push GHCR image
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' && steps.package_meta.outputs.channel == 'main' }}
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -182,6 +181,42 @@ jobs:
             VERSION=${{ steps.package_meta.outputs.package_id }}
             COMMIT=${{ github.sha }}
             DATE=${{ github.event.head_commit.timestamp }}
+          cache-from: type=gha,scope=sub2api-package-main
+          cache-to: type=gha,mode=max,scope=sub2api-package-main
+
+      - name: Prepare fast Docker binary
+        id: fast_binary
+        if: ${{ github.event_name == 'push' && steps.package_meta.outputs.channel == 'test' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary_path="$(find dist -type f -name sub2api -path '*linux*amd64*' | sort | head -n 1)"
+          if [ -z "${binary_path}" ]; then
+            binary_path="$(find dist -type f -name sub2api | sort | head -n 1)"
+          fi
+          if [ -z "${binary_path}" ]; then
+            echo "Linux AMD64 sub2api binary was not found under dist" >&2
+            find dist -maxdepth 3 -type f | sort
+            exit 1
+          fi
+          mkdir -p dist/docker-fast
+          cp "${binary_path}" dist/docker-fast/sub2api
+          chmod +x dist/docker-fast/sub2api
+          echo "binary_path=${binary_path}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push fast GHCR image
+        if: ${{ github.event_name == 'push' && steps.package_meta.outputs.channel == 'test' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.goreleaser
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          build-args: |
+            BINARY_PATH=dist/docker-fast/sub2api
+          cache-from: type=gha,scope=sub2api-package-test-${{ steps.package_meta.outputs.safe_ref }}
+          cache-to: type=gha,mode=max,scope=sub2api-package-test-${{ steps.package_meta.outputs.safe_ref }}
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v7

@@ -163,15 +163,19 @@
       width="wide"
       @close="closeRegisterNodeDialog"
     >
-      <form id="register-node-form" class="space-y-4" @submit.prevent="registerNode">
+      <form id="register-node-form" class="space-y-4" @submit.prevent="createNodeRegistrationURL">
         <div class="grid gap-4 md:grid-cols-2">
           <div>
-            <label class="input-label">节点 ID</label>
+            <label class="input-label">节点名称 / ID</label>
             <input v-model.trim="nodeForm.node_id" class="input" placeholder="foreign-1" />
           </div>
           <div>
             <label class="input-label">区域</label>
             <input v-model.trim="nodeForm.region" class="input" placeholder="us-west" />
+          </div>
+          <div>
+            <label class="input-label">有效期秒数</label>
+            <input v-model.number="nodeForm.ttl_seconds" type="number" min="60" max="86400" step="60" class="input" />
           </div>
           <div class="md:col-span-2">
             <label class="input-label">节点 Base URL</label>
@@ -193,15 +197,18 @@
 
         <div v-if="lastRegistration" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800/50 dark:bg-emerald-900/20">
           <div class="mb-2 text-sm font-medium text-emerald-800 dark:text-emerald-200">
-            节点 Secret
+            节点注册链接
           </div>
           <div class="flex items-center gap-2">
-            <code class="code-cell flex-1" :title="lastRegistration.node_secret">
-              {{ lastRegistration.node_secret }}
+            <code class="code-cell flex-1" :title="lastRegistration.registration_url">
+              {{ lastRegistration.registration_url }}
             </code>
-            <button type="button" class="icon-button" title="复制 Secret" @click="copyNodeSecret">
+            <button type="button" class="icon-button" title="复制注册链接" @click="copyRegistrationURL">
               <Icon name="copy" size="sm" />
             </button>
+          </div>
+          <div class="mt-2 text-xs text-emerald-700 dark:text-emerald-200">
+            有效期至 {{ formatTime(lastRegistration.expires_at) }}
           </div>
         </div>
       </form>
@@ -209,7 +216,7 @@
       <template #footer>
         <button type="button" class="btn btn-secondary" @click="closeRegisterNodeDialog">关闭</button>
         <button type="submit" form="register-node-form" class="btn btn-primary" :disabled="submittingNode">
-          {{ submittingNode ? '注册中...' : '注册节点' }}
+          {{ submittingNode ? '生成中...' : '生成注册链接' }}
         </button>
       </template>
     </BaseDialog>
@@ -222,10 +229,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type {
+  NodeRegistrationURLResult,
   QuotaLeaseDemoLease,
   QuotaLeaseDemoNode,
-  QuotaLeaseDemoSnapshot,
-  RegisterNodeResult
+  QuotaLeaseDemoSnapshot
 } from '@/api/admin/nodeLeases'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -255,7 +262,7 @@ const nodeFilter = ref('')
 
 const showRegisterNode = ref(false)
 const submittingNode = ref(false)
-const lastRegistration = ref<RegisterNodeResult | null>(null)
+const lastRegistration = ref<NodeRegistrationURLResult | null>(null)
 
 const emptyStats = {
   active_leases: 0,
@@ -276,7 +283,8 @@ const nodeForm = reactive({
   region: '',
   base_url: '',
   public_key: '',
-  metadata_json: ''
+  metadata_json: '',
+  ttl_seconds: 900
 })
 
 const stats = computed(() => snapshot.value?.stats || emptyStats)
@@ -380,33 +388,33 @@ function closeRegisterNodeDialog() {
   showRegisterNode.value = false
 }
 
-async function registerNode() {
+async function createNodeRegistrationURL() {
   submittingNode.value = true
   try {
-    const metadata = parseJsonObject(nodeForm.metadata_json, 'Metadata JSON')
-    const result = await adminAPI.nodeLeases.registerNode(
+    const metadata = parseStringMap(nodeForm.metadata_json, 'Metadata JSON')
+    const result = await adminAPI.nodeLeases.createNodeRegistrationURL(
       {
         node_id: nodeForm.node_id.trim() || undefined,
         region: nodeForm.region.trim() || undefined,
         base_url: nodeForm.base_url.trim() || undefined,
         public_key: nodeForm.public_key.trim() || undefined,
-        metadata: metadata as Record<string, string> | undefined
+        metadata,
+        ttl_seconds: Number(nodeForm.ttl_seconds) || undefined
       },
       controlOptions()
     )
     lastRegistration.value = result
-    appStore.showSuccess('节点已注册')
-    await loadAll()
+    appStore.showSuccess('注册链接已生成')
   } catch (error) {
-    appStore.showError(extractApiErrorMessage(error, '节点注册失败'))
+    appStore.showError(extractApiErrorMessage(error, '注册链接生成失败'))
   } finally {
     submittingNode.value = false
   }
 }
 
-function copyNodeSecret() {
-  if (lastRegistration.value?.node_secret) {
-    void copyToClipboard(lastRegistration.value.node_secret, '节点 Secret 已复制')
+function copyRegistrationURL() {
+  if (lastRegistration.value?.registration_url) {
+    void copyToClipboard(lastRegistration.value.registration_url, '节点注册链接已复制')
   }
 }
 
@@ -423,14 +431,18 @@ function formatTime(value?: string | null) {
   return value ? formatDateTime(value) : '-'
 }
 
-function parseJsonObject(raw: string, label: string): Record<string, unknown> | undefined {
+function parseStringMap(raw: string, label: string): Record<string, string> | undefined {
   const trimmed = raw.trim()
   if (!trimmed) return undefined
   const parsed = JSON.parse(trimmed)
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`${label} 必须是 JSON 对象`)
   }
-  return parsed as Record<string, unknown>
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(parsed)) {
+    result[key] = typeof value === 'string' ? value : String(value)
+  }
+  return result
 }
 
 function statusLabel(status: string) {

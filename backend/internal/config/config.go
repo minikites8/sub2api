@@ -910,6 +910,7 @@ type GatewayQuotaLeaseDemoConfig struct {
 	Enabled                bool    `mapstructure:"enabled"`
 	NodeID                 string  `mapstructure:"node_id"`
 	NodeSecret             string  `mapstructure:"node_secret"`
+	RegistrationURL        string  `mapstructure:"registration_url"`
 	ControlPlaneBaseURL    string  `mapstructure:"control_plane_base_url"`
 	ControlPlaneKey        string  `mapstructure:"control_plane_key"`
 	DefaultGrantAmount     float64 `mapstructure:"default_grant_amount"`
@@ -2208,6 +2209,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.quota_lease_demo.enabled", false)
 	viper.SetDefault("gateway.quota_lease_demo.node_id", "gateway-demo")
 	viper.SetDefault("gateway.quota_lease_demo.node_secret", "")
+	viper.SetDefault("gateway.quota_lease_demo.registration_url", "")
 	viper.SetDefault("gateway.quota_lease_demo.control_plane_base_url", "")
 	viper.SetDefault("gateway.quota_lease_demo.control_plane_key", "")
 	viper.SetDefault("gateway.quota_lease_demo.default_grant_amount", 1.0)
@@ -3140,12 +3142,18 @@ func (c *Config) Validate() error {
 		}
 	}
 	if c.Gateway.QuotaLeaseDemo.Enabled {
+		if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL) != "" {
+			registrationURL, err := url.Parse(strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL))
+			if err != nil || registrationURL.Scheme == "" || registrationURL.Host == "" || (registrationURL.Scheme != "http" && registrationURL.Scheme != "https") {
+				return fmt.Errorf("gateway.quota_lease_demo.registration_url must be a valid http(s) URL")
+			}
+		}
 		if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneBaseURL) != "" {
 			controlURL, err := url.Parse(strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneBaseURL))
 			if err != nil || controlURL.Scheme == "" || controlURL.Host == "" || (controlURL.Scheme != "http" && controlURL.Scheme != "https") {
 				return fmt.Errorf("gateway.quota_lease_demo.control_plane_base_url must be a valid http(s) URL")
 			}
-			if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneKey) == "" {
+			if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneKey) == "" && strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL) == "" {
 				return fmt.Errorf("gateway.quota_lease_demo.control_plane_key must be set when control_plane_base_url is set")
 			}
 		}

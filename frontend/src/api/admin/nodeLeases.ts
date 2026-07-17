@@ -40,6 +40,17 @@ export interface RegisterNodeResult {
   node_secret: string
 }
 
+export interface CreateNodeRegistrationURLRequest extends RegisterNodeRequest {
+  ttl_seconds?: number
+}
+
+export interface NodeRegistrationURLResult {
+  registration_url: string
+  node_id?: string
+  expires_at: string
+  created_at: string
+}
+
 export interface QuotaLeaseDemoLease {
   id: string
   node_id: string
@@ -203,6 +214,18 @@ export async function registerNode(
   return data
 }
 
+export async function createNodeRegistrationURL(
+  payload: CreateNodeRegistrationURLRequest,
+  options?: NodeLeaseControlOptions
+): Promise<NodeRegistrationURLResult> {
+  const { data } = await apiClient.post<NodeRegistrationURLResult>(
+    '/node-leases/demo/nodes/registration-urls',
+    payload,
+    requestConfig(options)
+  )
+  return data
+}
+
 export async function listLoginTasks(
   params?: { status?: string; node_id?: string },
   options?: NodeLeaseControlOptions
@@ -276,6 +299,7 @@ export const nodeLeasesAPI = {
   getStatus,
   listNodes,
   registerNode,
+  createNodeRegistrationURL,
   listLoginTasks,
   createLoginTask,
   submitLoginTaskCallback,

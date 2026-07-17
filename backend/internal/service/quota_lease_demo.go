@@ -81,8 +81,10 @@ type QuotaLeaseDemoService struct {
 	clientAuthCache  map[string]*quotaLeaseDemoClientAuthCacheEntry
 	accountTasks     map[string]*QuotaLeaseDemoAccountLoginTask
 	assignedAccounts map[int64]*QuotaLeaseDemoAssignedAccount
+	registrationURLs map[string]*QuotaLeaseDemoNodeRegistrationURL
 	remoteNodeID     string
 	remoteNodeSecret string
+	remoteControlURL string
 }
 
 func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
@@ -96,6 +98,7 @@ func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 		clientAuthCache:  make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
 		accountTasks:     make(map[string]*QuotaLeaseDemoAccountLoginTask),
 		assignedAccounts: make(map[int64]*QuotaLeaseDemoAssignedAccount),
+		registrationURLs: make(map[string]*QuotaLeaseDemoNodeRegistrationURL),
 	}
 }
 
@@ -128,7 +131,19 @@ func (s *QuotaLeaseDemoService) NodeSecret() string {
 	return strings.TrimSpace(s.cfgSnapshot().NodeSecret)
 }
 
+func (s *QuotaLeaseDemoService) RegistrationURL() string {
+	return strings.TrimSpace(s.cfgSnapshot().RegistrationURL)
+}
+
 func (s *QuotaLeaseDemoService) ControlPlaneBaseURL() string {
+	if s != nil {
+		s.remoteMu.Lock()
+		remoteControlURL := strings.TrimSpace(s.remoteControlURL)
+		s.remoteMu.Unlock()
+		if remoteControlURL != "" {
+			return remoteControlURL
+		}
+	}
 	return strings.TrimSpace(s.cfgSnapshot().ControlPlaneBaseURL)
 }
 
@@ -158,16 +173,36 @@ func (s *QuotaLeaseDemoService) PreflightReserveAmount() float64 {
 }
 
 type QuotaLeaseDemoNodeRegistrationRequest struct {
-	NodeID    string            `json:"node_id"`
-	Region    string            `json:"region"`
-	BaseURL   string            `json:"base_url"`
-	PublicKey string            `json:"public_key"`
-	Metadata  map[string]string `json:"metadata"`
+	NodeID            string            `json:"node_id"`
+	NodeSecret        string            `json:"node_secret,omitempty"`
+	Region            string            `json:"region"`
+	BaseURL           string            `json:"base_url"`
+	PublicKey         string            `json:"public_key"`
+	Metadata          map[string]string `json:"metadata"`
+	RegistrationToken string            `json:"registration_token,omitempty"`
 }
 
 type QuotaLeaseDemoNodeRegistrationResult struct {
 	Node       *QuotaLeaseDemoNode `json:"node"`
 	NodeSecret string              `json:"node_secret"`
+}
+
+type QuotaLeaseDemoNodeRegistrationURLRequest struct {
+	NodeID     string            `json:"node_id"`
+	Region     string            `json:"region"`
+	BaseURL    string            `json:"base_url"`
+	PublicKey  string            `json:"public_key"`
+	Metadata   map[string]string `json:"metadata"`
+	TTLSeconds int               `json:"ttl_seconds"`
+}
+
+type QuotaLeaseDemoNodeRegistrationURL struct {
+	Token           string                                `json:"-"`
+	RegistrationURL string                                `json:"registration_url"`
+	NodeID          string                                `json:"node_id,omitempty"`
+	ExpiresAt       time.Time                             `json:"expires_at"`
+	Request         QuotaLeaseDemoNodeRegistrationRequest `json:"-"`
+	CreatedAt       time.Time                             `json:"created_at"`
 }
 
 type QuotaLeaseDemoNodeHeartbeatRequest struct {
@@ -201,17 +236,103 @@ func (s *QuotaLeaseDemoService) RegisterNode(ctx context.Context, req QuotaLease
 	return s.registerNodeLocal(ctx, req)
 }
 
+func (s *QuotaLeaseDemoService) CreateNodeRegistrationURL(ctx context.Context, req QuotaLeaseDemoNodeRegistrationURLRequest, externalBaseURL string) (*QuotaLeaseDemoNodeRegistrationURL, error) {
+	if s == nil || !s.Enabled() {
+		return nil, ErrQuotaLeaseDemoDisabled
+	}
+	externalBaseURL = strings.TrimSpace(externalBaseURL)
+	if externalBaseURL == "" {
+		return nil, fmt.Errorf("%w: external control plane URL is required", ErrQuotaLeaseDemoInvalidInput)
+	}
+	token, err := generateQuotaLeaseDemoRegistrationToken()
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	ttl := time.Duration(req.TTLSeconds) * time.Second
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+	if ttl > 24*time.Hour {
+		ttl = 24 * time.Hour
+	}
+	expiresAt := now.Add(ttl)
+	registrationURL, err := quotaLeaseDemoBuildRegistrationURL(externalBaseURL, token)
+	if err != nil {
+		return nil, err
+	}
+	nodeReq := QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID:    strings.TrimSpace(req.NodeID),
+		Region:    strings.TrimSpace(req.Region),
+		BaseURL:   strings.TrimSpace(req.BaseURL),
+		PublicKey: strings.TrimSpace(req.PublicKey),
+		Metadata:  cloneQuotaLeaseDemoStringMap(req.Metadata),
+	}
+	item := &QuotaLeaseDemoNodeRegistrationURL{
+		Token:           token,
+		RegistrationURL: registrationURL,
+		NodeID:          nodeReq.NodeID,
+		ExpiresAt:       expiresAt,
+		Request:         nodeReq,
+		CreatedAt:       now,
+	}
+
+	s.mu.Lock()
+	if s.registrationURLs == nil {
+		s.registrationURLs = make(map[string]*QuotaLeaseDemoNodeRegistrationURL)
+	}
+	s.cleanupExpiredRegistrationURLsLocked(now)
+	s.registrationURLs[token] = item
+	s.mu.Unlock()
+	_ = ctx
+	return cloneQuotaLeaseDemoNodeRegistrationURL(item), nil
+}
+
 func (s *QuotaLeaseDemoService) registerNodeLocal(ctx context.Context, req QuotaLeaseDemoNodeRegistrationRequest) (*QuotaLeaseDemoNodeRegistrationResult, error) {
 	if s == nil || !s.Enabled() {
 		return nil, ErrQuotaLeaseDemoDisabled
+	}
+	if token := strings.TrimSpace(req.RegistrationToken); token != "" {
+		tokenReq, err := s.resolveNodeRegistrationURL(token, time.Now().UTC())
+		if err != nil {
+			return nil, err
+		}
+		if nodeSecret := strings.TrimSpace(req.NodeSecret); nodeSecret != "" {
+			tokenReq.NodeSecret = nodeSecret
+		}
+		if publicKey := strings.TrimSpace(req.PublicKey); publicKey != "" {
+			tokenReq.PublicKey = publicKey
+		}
+		if baseURL := strings.TrimSpace(req.BaseURL); baseURL != "" {
+			tokenReq.BaseURL = baseURL
+		}
+		if len(req.Metadata) > 0 {
+			metadata := cloneQuotaLeaseDemoStringMap(tokenReq.Metadata)
+			if metadata == nil {
+				metadata = map[string]string{}
+			}
+			for key, value := range req.Metadata {
+				key = strings.TrimSpace(key)
+				if key == "" {
+					continue
+				}
+				metadata[key] = strings.TrimSpace(value)
+			}
+			tokenReq.Metadata = metadata
+		}
+		req = tokenReq
 	}
 	nodeID := strings.TrimSpace(req.NodeID)
 	if nodeID == "" {
 		nodeID = "node_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	}
-	secret, err := generateQuotaLeaseDemoNodeSecret()
-	if err != nil {
-		return nil, err
+	secret := strings.TrimSpace(req.NodeSecret)
+	if secret == "" {
+		generated, err := generateQuotaLeaseDemoNodeSecret()
+		if err != nil {
+			return nil, err
+		}
+		secret = generated
 	}
 	now := time.Now().UTC()
 	heartbeatAt := now
@@ -236,6 +357,32 @@ func (s *QuotaLeaseDemoService) registerNodeLocal(ctx context.Context, req Quota
 		Node:       cloneQuotaLeaseDemoNode(node),
 		NodeSecret: secret,
 	}, nil
+}
+
+func (s *QuotaLeaseDemoService) resolveNodeRegistrationURL(token string, now time.Time) (QuotaLeaseDemoNodeRegistrationRequest, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return QuotaLeaseDemoNodeRegistrationRequest{}, fmt.Errorf("%w: registration_token is required", ErrQuotaLeaseDemoInvalidInput)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleanupExpiredRegistrationURLsLocked(now)
+	item := s.registrationURLs[token]
+	if item == nil {
+		return QuotaLeaseDemoNodeRegistrationRequest{}, fmt.Errorf("%w: registration token is invalid or expired", ErrQuotaLeaseDemoInvalidInput)
+	}
+	return cloneQuotaLeaseDemoNodeRegistrationRequest(item.Request), nil
+}
+
+func (s *QuotaLeaseDemoService) cleanupExpiredRegistrationURLsLocked(now time.Time) {
+	if s == nil || len(s.registrationURLs) == 0 {
+		return
+	}
+	for token, item := range s.registrationURLs {
+		if item == nil || (!item.ExpiresAt.IsZero() && !now.Before(item.ExpiresAt)) {
+			delete(s.registrationURLs, token)
+		}
+	}
 }
 
 func (s *QuotaLeaseDemoService) AuthenticateNode(nodeID, secret string) bool {
@@ -850,6 +997,26 @@ func cloneQuotaLeaseDemoNode(node *QuotaLeaseDemoNode) *QuotaLeaseDemoNode {
 	return &value
 }
 
+func cloneQuotaLeaseDemoNodeRegistrationRequest(req QuotaLeaseDemoNodeRegistrationRequest) QuotaLeaseDemoNodeRegistrationRequest {
+	req.NodeID = strings.TrimSpace(req.NodeID)
+	req.NodeSecret = strings.TrimSpace(req.NodeSecret)
+	req.Region = strings.TrimSpace(req.Region)
+	req.BaseURL = strings.TrimSpace(req.BaseURL)
+	req.PublicKey = strings.TrimSpace(req.PublicKey)
+	req.RegistrationToken = strings.TrimSpace(req.RegistrationToken)
+	req.Metadata = cloneQuotaLeaseDemoStringMap(req.Metadata)
+	return req
+}
+
+func cloneQuotaLeaseDemoNodeRegistrationURL(item *QuotaLeaseDemoNodeRegistrationURL) *QuotaLeaseDemoNodeRegistrationURL {
+	if item == nil {
+		return nil
+	}
+	value := *item
+	value.Request = cloneQuotaLeaseDemoNodeRegistrationRequest(item.Request)
+	return &value
+}
+
 func cloneQuotaLeaseDemoStringMap(src map[string]string) map[string]string {
 	if len(src) == 0 {
 		return nil
@@ -892,6 +1059,14 @@ func generateQuotaLeaseDemoNodeSecret() (string, error) {
 		return "", err
 	}
 	return "qln_" + base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func generateQuotaLeaseDemoRegistrationToken() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return "qlr_" + base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func quotaLeaseDemoUsageEventID(nodeID, leaseID, requestID string) string {

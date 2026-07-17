@@ -498,8 +498,14 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 	if s == nil || !s.remoteMode() {
 		return nil, false
 	}
-	_ = s.SyncAssignedAccounts(ctx)
-	assigned := s.ListAssignedAccounts(ctx, s.NodeID())
+	if err := s.SyncAssignedAccounts(ctx); err != nil {
+		slog.Warn("quota_lease_demo.assigned_accounts_sync_failed",
+			"node_id", s.activeNodeID(),
+			"error", err,
+		)
+	}
+	nodeID := s.activeNodeID()
+	assigned := s.ListAssignedAccounts(ctx, nodeID)
 	accounts := make([]Account, 0, len(assigned))
 	skippedPlatform := 0
 	skippedUnschedulable := 0
@@ -519,9 +525,18 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 		}
 		accounts = append(accounts, account)
 	}
+	if len(assigned) == 0 {
+		slog.Warn("quota_lease_demo.assigned_accounts_empty",
+			"node_id", nodeID,
+			"configured_node_id", s.NodeID(),
+			"platform", strings.TrimSpace(platform),
+			"group_id", quotaLeaseDemoLogGroupID(groupID),
+		)
+	}
 	if len(assigned) > 0 && len(accounts) == 0 {
 		slog.Warn("quota_lease_demo.assigned_accounts_filtered",
-			"node_id", s.NodeID(),
+			"node_id", nodeID,
+			"configured_node_id", s.NodeID(),
 			"platform", strings.TrimSpace(platform),
 			"group_id", quotaLeaseDemoLogGroupID(groupID),
 			"assigned_count", len(assigned),
@@ -538,10 +553,11 @@ func (s *QuotaLeaseDemoService) AssignedAccountByID(ctx context.Context, account
 		return nil, false
 	}
 	_ = s.SyncAssignedAccounts(ctx)
+	nodeID := s.activeNodeID()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	assigned := s.assignedAccounts[accountID]
-	if assigned == nil || assigned.NodeID != s.NodeID() {
+	if assigned == nil || assigned.NodeID != nodeID {
 		return nil, true
 	}
 	account := quotaLeaseDemoAccountSnapshotToAccount(assigned.Account)

@@ -32,7 +32,7 @@ func (e *quotaLeaseDemoRemoteHTTPError) Error() string {
 }
 
 func (s *QuotaLeaseDemoService) remoteMode() bool {
-	return s != nil && s.Enabled() && strings.TrimSpace(s.ControlPlaneBaseURL()) != ""
+	return s != nil && s.Enabled() && (strings.TrimSpace(s.ControlPlaneBaseURL()) != "" || strings.TrimSpace(s.RegistrationURL()) != "")
 }
 
 func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, nodeID string, userID, apiKeyID int64, amount float64) bool {
@@ -74,33 +74,67 @@ func (s *QuotaLeaseDemoService) registerRemoteNode(ctx context.Context, req Quot
 	if s == nil || !s.Enabled() {
 		return nil, ErrQuotaLeaseDemoDisabled
 	}
-	s.remoteMu.Lock()
-	defer s.remoteMu.Unlock()
 
+	s.remoteMu.Lock()
 	if s.remoteNodeID != "" && s.remoteNodeSecret != "" {
 		node := &QuotaLeaseDemoNode{
 			NodeID: s.remoteNodeID,
 			Secret: s.remoteNodeSecret,
 			Status: QuotaLeaseDemoNodeStatusOnline,
 		}
+		s.remoteMu.Unlock()
 		return &QuotaLeaseDemoNodeRegistrationResult{Node: cloneQuotaLeaseDemoNode(node), NodeSecret: s.remoteNodeSecret}, nil
 	}
+	if strings.TrimSpace(req.NodeSecret) == "" {
+		if strings.TrimSpace(s.remoteNodeSecret) == "" {
+			generated, err := generateQuotaLeaseDemoNodeSecret()
+			if err != nil {
+				s.remoteMu.Unlock()
+				return nil, err
+			}
+			s.remoteNodeSecret = generated
+		}
+		req.NodeSecret = s.remoteNodeSecret
+	}
+	s.remoteMu.Unlock()
 
 	if strings.TrimSpace(req.NodeID) == "" {
 		req.NodeID = s.NodeID()
 	}
 	var result QuotaLeaseDemoNodeRegistrationResult
-	if err := s.doRemoteJSON(ctx, http.MethodPost, "/nodes/register", "", s.ControlPlaneKey(), req, &result); err != nil {
-		return nil, err
+	if registrationURL := strings.TrimSpace(s.RegistrationURL()); registrationURL != "" {
+		if err := s.registerRemoteNodeWithURL(ctx, registrationURL, req, &result); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.doRemoteJSON(ctx, http.MethodPost, "/nodes/register", "", s.ControlPlaneKey(), req, &result); err != nil {
+			return nil, err
+		}
 	}
 	if result.Node == nil || strings.TrimSpace(result.Node.NodeID) == "" || strings.TrimSpace(result.NodeSecret) == "" {
 		return nil, fmt.Errorf("%w: invalid node registration response", ErrQuotaLeaseDemoInvalidInput)
 	}
+	s.remoteMu.Lock()
 	s.remoteNodeID = strings.TrimSpace(result.Node.NodeID)
 	s.remoteNodeSecret = strings.TrimSpace(result.NodeSecret)
+	s.remoteMu.Unlock()
 	result.Node.Secret = s.remoteNodeSecret
 	s.cacheRemoteNode(result.Node)
 	return &result, nil
+}
+
+func (s *QuotaLeaseDemoService) registerRemoteNodeWithURL(ctx context.Context, registrationURL string, req QuotaLeaseDemoNodeRegistrationRequest, result *QuotaLeaseDemoNodeRegistrationResult) error {
+	endpoint, token, controlBaseURL, err := quotaLeaseDemoParseRegistrationURL(registrationURL)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.RegistrationToken) == "" {
+		req.RegistrationToken = token
+	}
+	s.remoteMu.Lock()
+	s.remoteControlURL = controlBaseURL
+	s.remoteMu.Unlock()
+	return s.doRemoteJSONToURL(ctx, http.MethodPost, endpoint, "", "", req, result)
 }
 
 func (s *QuotaLeaseDemoService) remoteNodeAuth(ctx context.Context) (string, string, error) {
@@ -331,6 +365,19 @@ func (s *QuotaLeaseDemoService) SyncAssignedAccounts(ctx context.Context) error 
 	return nil
 }
 
+func (s *QuotaLeaseDemoService) activeNodeID() string {
+	if s == nil {
+		return ""
+	}
+	s.remoteMu.Lock()
+	remoteNodeID := strings.TrimSpace(s.remoteNodeID)
+	s.remoteMu.Unlock()
+	if remoteNodeID != "" {
+		return remoteNodeID
+	}
+	return s.NodeID()
+}
+
 func (s *QuotaLeaseDemoService) FlushPendingUsage(ctx context.Context) error {
 	if s == nil || !s.remoteMode() {
 		return nil
@@ -557,6 +604,14 @@ func (s *QuotaLeaseDemoService) cacheRemoteAssignedAccount(nodeID string, accoun
 }
 
 func (s *QuotaLeaseDemoService) doRemoteJSON(ctx context.Context, method, endpoint, nodeID, secret string, input any, output any) error {
+	fullURL, err := quotaLeaseDemoRemoteEndpointURL(s.ControlPlaneBaseURL(), endpoint)
+	if err != nil {
+		return err
+	}
+	return s.doRemoteJSONToURL(ctx, method, fullURL, nodeID, secret, input, output)
+}
+
+func (s *QuotaLeaseDemoService) doRemoteJSONToURL(ctx context.Context, method, fullURL, nodeID, secret string, input any, output any) error {
 	if s == nil || !s.Enabled() {
 		return ErrQuotaLeaseDemoDisabled
 	}
@@ -573,10 +628,6 @@ func (s *QuotaLeaseDemoService) doRemoteJSON(ctx context.Context, method, endpoi
 			return err
 		}
 		reqBody = bytes.NewReader(payload)
-	}
-	fullURL, err := quotaLeaseDemoRemoteEndpointURL(s.ControlPlaneBaseURL(), endpoint)
-	if err != nil {
-		return err
 	}
 	req, err := http.NewRequestWithContext(reqCtx, method, fullURL, reqBody)
 	if err != nil {
@@ -622,4 +673,45 @@ func quotaLeaseDemoRemoteEndpointURL(baseURL, endpoint string) (string, error) {
 		return base + endpoint, nil
 	}
 	return base + quotaLeaseDemoControlPlanePrefix + endpoint, nil
+}
+
+func quotaLeaseDemoBuildRegistrationURL(externalBaseURL, token string) (string, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", fmt.Errorf("%w: registration token is required", ErrQuotaLeaseDemoInvalidInput)
+	}
+	endpoint, err := quotaLeaseDemoRemoteEndpointURL(externalBaseURL, "/nodes/register")
+	if err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("%w: registration url base is invalid", ErrQuotaLeaseDemoInvalidInput)
+	}
+	query := parsed.Query()
+	query.Set("registration_token", token)
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
+}
+
+func quotaLeaseDemoParseRegistrationURL(registrationURL string) (endpointURL string, token string, controlBaseURL string, err error) {
+	parsed, err := url.Parse(strings.TrimSpace(registrationURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", "", "", fmt.Errorf("%w: registration_url must be a valid http(s) URL", ErrQuotaLeaseDemoInvalidInput)
+	}
+	token = strings.TrimSpace(parsed.Query().Get("registration_token"))
+	if token == "" {
+		return "", "", "", fmt.Errorf("%w: registration_url missing registration_token", ErrQuotaLeaseDemoInvalidInput)
+	}
+	endpointURL = parsed.String()
+	basePath := strings.TrimRight(parsed.Path, "/")
+	if strings.HasSuffix(basePath, "/nodes/register") {
+		basePath = strings.TrimSuffix(basePath, "/nodes/register")
+	}
+	control := url.URL{
+		Scheme: parsed.Scheme,
+		Host:   parsed.Host,
+		Path:   basePath,
+	}
+	return endpointURL, token, control.String(), nil
 }

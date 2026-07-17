@@ -101,13 +101,16 @@ func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDe
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/node-leases/demo/nodes/register":
-			if r.Header.Get("X-Node-Secret") != controlSecret {
+			var req QuotaLeaseDemoNodeRegistrationRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			if req.RegistrationToken == "" {
+				req.RegistrationToken = strings.TrimSpace(r.URL.Query().Get("registration_token"))
+			}
+			if req.RegistrationToken == "" && r.Header.Get("X-Node-Secret") != controlSecret {
 				w.WriteHeader(http.StatusUnauthorized)
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
 				return
 			}
-			var req QuotaLeaseDemoNodeRegistrationRequest
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 			result, err := control.RegisterNode(r.Context(), req)
 			require.NoError(t, err)
 			require.NoError(t, json.NewEncoder(w).Encode(result))
@@ -724,6 +727,113 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 	accounts, handled = node.AssignedAccountsForScheduling(ctx, &groupID, PlatformGrok)
 	require.True(t, handled)
 	require.Empty(t, accounts)
+}
+
+func TestQuotaLeaseDemoRemoteNodeRegistersWithRegistrationURLAndNodeSecret(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	ctx := context.Background()
+	created, err := control.CreateNodeRegistrationURL(ctx, QuotaLeaseDemoNodeRegistrationURLRequest{
+		NodeID:     "foreign-url-1",
+		Region:     "us-west",
+		BaseURL:    "https://foreign-url-1.example",
+		Metadata:   map[string]string{"pool": "us"},
+		TTLSeconds: 600,
+	}, server.URL)
+	require.NoError(t, err)
+	require.Contains(t, created.RegistrationURL, "registration_token=")
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				RegistrationURL:        created.RegistrationURL,
+				DefaultGrantAmount:     1,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	})
+
+	registered, err := node.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
+	require.NoError(t, err)
+	require.Equal(t, "foreign-url-1", registered.Node.NodeID)
+	require.Equal(t, "us-west", registered.Node.Region)
+	require.Equal(t, "https://foreign-url-1.example", registered.Node.BaseURL)
+	require.Equal(t, "us", registered.Node.Metadata["pool"])
+	require.NotEmpty(t, registered.NodeSecret)
+	require.True(t, control.AuthenticateNode("foreign-url-1", registered.NodeSecret))
+
+	heartbeat, err := node.HeartbeatNode(ctx, QuotaLeaseDemoNodeHeartbeatRequest{
+		InflightRequests: 1,
+		LeaseRemaining:   0.75,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "foreign-url-1", heartbeat.NodeID)
+	require.Equal(t, 1, heartbeat.InflightRequests)
+}
+
+func TestQuotaLeaseDemoRemoteNodeUsesRegisteredNodeIDForSchedulingCache(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	ctx := context.Background()
+	registered, err := control.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID: "registered-node-1",
+	})
+	require.NoError(t, err)
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "configured-node-1",
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+	node.remoteNodeID = registered.Node.NodeID
+	node.remoteNodeSecret = registered.NodeSecret
+
+	groupID := int64(12)
+	task, err := control.CreateAccountLoginTask(ctx, QuotaLeaseDemoAccountLoginTaskCreateRequest{
+		AccountID:      606,
+		Name:           "gpt-oauth-registered-node",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		AssignedNodeID: registered.Node.NodeID,
+		GroupIDs:       []int64{groupID},
+	})
+	require.NoError(t, err)
+	_, err = control.CompleteAccountLoginTask(ctx, QuotaLeaseDemoAccountLoginTaskCompleteRequest{
+		TaskID: task.ID,
+		NodeID: registered.Node.NodeID,
+		Account: QuotaLeaseDemoAccountSnapshot{
+			ID:       606,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token": "node-access-token",
+			},
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			GroupIDs:    []int64{groupID},
+		},
+	})
+	require.NoError(t, err)
+
+	accounts, handled := node.AssignedAccountsForScheduling(ctx, &groupID, PlatformOpenAI)
+	require.True(t, handled)
+	require.Len(t, accounts, 1)
+	require.Equal(t, int64(606), accounts[0].ID)
+	require.Equal(t, "registered-node-1", node.activeNodeID())
+	require.Equal(t, "configured-node-1", node.NodeID())
 }
 
 func TestQuotaLeaseDemoNodeWorkerExecutesPendingAccountTask(t *testing.T) {

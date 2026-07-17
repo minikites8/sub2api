@@ -47,7 +47,7 @@ func (h *QuotaLeaseDemoHandler) SetUsageService(usageService *service.UsageServi
 }
 
 func (h *QuotaLeaseDemoHandler) RegisterNode(c *gin.Context) {
-	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
+	if !h.requireEnabled(c) {
 		return
 	}
 	var req service.QuotaLeaseDemoNodeRegistrationRequest
@@ -55,7 +55,30 @@ func (h *QuotaLeaseDemoHandler) RegisterNode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	if req.RegistrationToken == "" {
+		req.RegistrationToken = strings.TrimSpace(c.Query("registration_token"))
+	}
+	if strings.TrimSpace(req.RegistrationToken) == "" && !h.requireControlSecret(c) {
+		return
+	}
 	result, err := h.svc.RegisterNode(c.Request.Context(), req)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *QuotaLeaseDemoHandler) CreateNodeRegistrationURL(c *gin.Context) {
+	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
+		return
+	}
+	var req service.QuotaLeaseDemoNodeRegistrationURLRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	result, err := h.svc.CreateNodeRegistrationURL(c.Request.Context(), req, quotaLeaseDemoExternalBaseURL(c))
 	if err != nil {
 		h.writeError(c, err)
 		return
@@ -596,6 +619,37 @@ func quotaLeaseDemoHandlerString(value any) string {
 func quotaLeaseDemoHandlerBool(value any) bool {
 	v, ok := value.(bool)
 	return ok && v
+}
+
+func quotaLeaseDemoExternalBaseURL(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	proto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto"))
+	if proto == "" {
+		proto = strings.TrimSpace(c.GetHeader("X-Forwarded-Protocol"))
+	}
+	if proto == "" {
+		if c.Request.TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+	if comma := strings.Index(proto, ","); comma >= 0 {
+		proto = strings.TrimSpace(proto[:comma])
+	}
+	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		host = strings.TrimSpace(c.Request.Host)
+	}
+	if comma := strings.Index(host, ","); comma >= 0 {
+		host = strings.TrimSpace(host[:comma])
+	}
+	if host == "" {
+		return ""
+	}
+	return proto + "://" + host
 }
 
 func (h *QuotaLeaseDemoHandler) RequestLease(c *gin.Context) {

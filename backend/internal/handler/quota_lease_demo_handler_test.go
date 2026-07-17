@@ -83,6 +83,7 @@ func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.Quo
 	router := gin.New()
 	group := router.Group("/api/v1/node-leases/demo")
 	{
+		group.POST("/nodes/registration-urls", h.CreateNodeRegistrationURL)
 		group.POST("/nodes/register", h.RegisterNode)
 		group.POST("/nodes/heartbeat", h.HeartbeatNode)
 		group.GET("/nodes", h.ListNodes)
@@ -355,6 +356,67 @@ func TestQuotaLeaseDemoHandlerRegistersNodeAndUsesNodeSecret(t *testing.T) {
 	heartbeatRec := httptest.NewRecorder()
 	router.ServeHTTP(heartbeatRec, heartbeatReq)
 	require.Equal(t, http.StatusOK, heartbeatRec.Code)
+}
+
+func TestQuotaLeaseDemoHandlerCreatesRegistrationURLAndStoresNodeSecret(t *testing.T) {
+	router, _ := newQuotaLeaseDemoHandlerTestRouter(t)
+
+	unauthorized := httptest.NewRecorder()
+	router.ServeHTTP(unauthorized, quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/nodes/registration-urls", map[string]any{
+		"node_id": "foreign-url-1",
+	}))
+	require.Equal(t, http.StatusUnauthorized, unauthorized.Code)
+
+	createReq := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/nodes/registration-urls", map[string]any{
+		"node_id":     "foreign-url-1",
+		"region":      "us-west",
+		"base_url":    "https://foreign-url-1.example",
+		"metadata":    map[string]string{"pool": "us"},
+		"ttl_seconds": 120,
+	})
+	createReq.Header.Set("X-Node-Secret", "control-secret")
+	createReq.Header.Set("X-Forwarded-Proto", "https")
+	createReq.Header.Set("X-Forwarded-Host", "control.example.test")
+	createRec := httptest.NewRecorder()
+	router.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusOK, createRec.Code)
+
+	var createBody struct {
+		RegistrationURL string `json:"registration_url"`
+		NodeID          string `json:"node_id"`
+		ExpiresAt       string `json:"expires_at"`
+	}
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createBody))
+	require.Equal(t, "foreign-url-1", createBody.NodeID)
+	require.NotEmpty(t, createBody.ExpiresAt)
+	require.Contains(t, createBody.RegistrationURL, "https://control.example.test/api/v1/node-leases/demo/nodes/register")
+	require.Contains(t, createBody.RegistrationURL, "registration_token=")
+
+	registerReq := quotaLeaseDemoJSONRequest(t, http.MethodPost, createBody.RegistrationURL, map[string]any{
+		"node_secret": "node-generated-secret",
+	})
+	registerRec := httptest.NewRecorder()
+	router.ServeHTTP(registerRec, registerReq)
+	require.Equal(t, http.StatusOK, registerRec.Code)
+
+	var registerBody struct {
+		Node       service.QuotaLeaseDemoNode `json:"node"`
+		NodeSecret string                     `json:"node_secret"`
+	}
+	require.NoError(t, json.Unmarshal(registerRec.Body.Bytes(), &registerBody))
+	require.Equal(t, "foreign-url-1", registerBody.Node.NodeID)
+	require.Equal(t, "node-generated-secret", registerBody.NodeSecret)
+
+	leaseReq := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/leases/request", map[string]any{
+		"user_id":    10,
+		"api_key_id": 20,
+		"amount":     1,
+	})
+	leaseReq.Header.Set("X-Node-ID", "foreign-url-1")
+	leaseReq.Header.Set("X-Node-Secret", "node-generated-secret")
+	leaseRec := httptest.NewRecorder()
+	router.ServeHTTP(leaseRec, leaseReq)
+	require.Equal(t, http.StatusOK, leaseRec.Code)
 }
 
 func TestQuotaLeaseDemoHandlerRejectsNodeMismatch(t *testing.T) {
