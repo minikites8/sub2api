@@ -19,23 +19,40 @@ const (
 )
 
 type QuotaLeaseDemoAccountSnapshot struct {
-	ID                      int64          `json:"id"`
-	Name                    string         `json:"name"`
-	Platform                string         `json:"platform"`
-	Type                    string         `json:"type"`
-	Credentials             map[string]any `json:"credentials,omitempty"`
-	Extra                   map[string]any `json:"extra,omitempty"`
-	Status                  string         `json:"status"`
-	ErrorMessage            string         `json:"error_message,omitempty"`
-	Schedulable             bool           `json:"schedulable"`
-	Concurrency             int            `json:"concurrency"`
-	Priority                int            `json:"priority"`
-	GroupIDs                []int64        `json:"group_ids,omitempty"`
-	ExpiresAt               *time.Time     `json:"expires_at,omitempty"`
-	RateLimitResetAt        *time.Time     `json:"rate_limit_reset_at,omitempty"`
-	TempUnschedulableUntil  *time.Time     `json:"temp_unschedulable_until,omitempty"`
-	TempUnschedulableReason string         `json:"temp_unschedulable_reason,omitempty"`
-	UpdatedAt               time.Time      `json:"updated_at"`
+	ID                      int64                        `json:"id"`
+	Name                    string                       `json:"name"`
+	Platform                string                       `json:"platform"`
+	Type                    string                       `json:"type"`
+	Credentials             map[string]any               `json:"credentials,omitempty"`
+	Extra                   map[string]any               `json:"extra,omitempty"`
+	ProxyID                 *int64                       `json:"proxy_id,omitempty"`
+	Proxy                   *QuotaLeaseDemoProxySnapshot `json:"proxy,omitempty"`
+	Status                  string                       `json:"status"`
+	ErrorMessage            string                       `json:"error_message,omitempty"`
+	Schedulable             bool                         `json:"schedulable"`
+	Concurrency             int                          `json:"concurrency"`
+	Priority                int                          `json:"priority"`
+	GroupIDs                []int64                      `json:"group_ids,omitempty"`
+	ExpiresAt               *time.Time                   `json:"expires_at,omitempty"`
+	RateLimitResetAt        *time.Time                   `json:"rate_limit_reset_at,omitempty"`
+	TempUnschedulableUntil  *time.Time                   `json:"temp_unschedulable_until,omitempty"`
+	TempUnschedulableReason string                       `json:"temp_unschedulable_reason,omitempty"`
+	UpdatedAt               time.Time                    `json:"updated_at"`
+}
+
+type QuotaLeaseDemoProxySnapshot struct {
+	ID             int64      `json:"id"`
+	Name           string     `json:"name,omitempty"`
+	Protocol       string     `json:"protocol"`
+	Host           string     `json:"host"`
+	Port           int        `json:"port"`
+	Username       string     `json:"username,omitempty"`
+	Password       string     `json:"password,omitempty"`
+	Status         string     `json:"status,omitempty"`
+	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+	FallbackMode   string     `json:"fallback_mode,omitempty"`
+	BackupProxyID  *int64     `json:"backup_proxy_id,omitempty"`
+	ExpiryWarnDays int        `json:"expiry_warn_days,omitempty"`
 }
 
 type QuotaLeaseDemoAccountLoginTaskCreateRequest struct {
@@ -547,6 +564,11 @@ func normalizeQuotaLeaseDemoAccountSnapshot(account QuotaLeaseDemoAccountSnapsho
 	}
 	account.Credentials = cloneQuotaLeaseDemoAnyMap(account.Credentials)
 	account.Extra = cloneQuotaLeaseDemoAnyMap(account.Extra)
+	account.ProxyID = cloneQuotaLeaseDemoInt64Ptr(account.ProxyID)
+	account.Proxy = cloneQuotaLeaseDemoProxySnapshot(account.Proxy)
+	if account.ProxyID == nil && account.Proxy != nil && account.Proxy.ID > 0 {
+		account.ProxyID = &account.Proxy.ID
+	}
 	if account.UpdatedAt.IsZero() {
 		account.UpdatedAt = now
 	}
@@ -561,6 +583,8 @@ func quotaLeaseDemoAccountSnapshotToAccount(snapshot QuotaLeaseDemoAccountSnapsh
 		Type:                    snapshot.Type,
 		Credentials:             cloneQuotaLeaseDemoAnyMap(snapshot.Credentials),
 		Extra:                   cloneQuotaLeaseDemoAnyMap(snapshot.Extra),
+		ProxyID:                 cloneQuotaLeaseDemoInt64Ptr(snapshot.ProxyID),
+		Proxy:                   quotaLeaseDemoProxySnapshotToProxy(snapshot.Proxy),
 		Status:                  snapshot.Status,
 		ErrorMessage:            snapshot.ErrorMessage,
 		Schedulable:             snapshot.Schedulable,
@@ -581,6 +605,9 @@ func quotaLeaseDemoAccountSnapshotToAccount(snapshot QuotaLeaseDemoAccountSnapsh
 	}
 	if !account.Schedulable && account.Status == StatusActive {
 		account.Schedulable = true
+	}
+	if account.ProxyID == nil && account.Proxy != nil && account.Proxy.ID > 0 {
+		account.ProxyID = &account.Proxy.ID
 	}
 	return account
 }
@@ -635,6 +662,8 @@ func cloneQuotaLeaseDemoAssignedAccount(assigned *QuotaLeaseDemoAssignedAccount)
 func cloneQuotaLeaseDemoAccountSnapshot(account QuotaLeaseDemoAccountSnapshot) QuotaLeaseDemoAccountSnapshot {
 	account.Credentials = cloneQuotaLeaseDemoAnyMap(account.Credentials)
 	account.Extra = cloneQuotaLeaseDemoAnyMap(account.Extra)
+	account.ProxyID = cloneQuotaLeaseDemoInt64Ptr(account.ProxyID)
+	account.Proxy = cloneQuotaLeaseDemoProxySnapshot(account.Proxy)
 	account.GroupIDs = cloneQuotaLeaseDemoInt64Slice(account.GroupIDs)
 	if account.ExpiresAt != nil {
 		expiresAt := *account.ExpiresAt
@@ -649,6 +678,39 @@ func cloneQuotaLeaseDemoAccountSnapshot(account QuotaLeaseDemoAccountSnapshot) Q
 		account.TempUnschedulableUntil = &tempUnschedulableUntil
 	}
 	return account
+}
+
+func cloneQuotaLeaseDemoProxySnapshot(proxy *QuotaLeaseDemoProxySnapshot) *QuotaLeaseDemoProxySnapshot {
+	if proxy == nil {
+		return nil
+	}
+	value := *proxy
+	value.BackupProxyID = cloneQuotaLeaseDemoInt64Ptr(proxy.BackupProxyID)
+	if proxy.ExpiresAt != nil {
+		expiresAt := *proxy.ExpiresAt
+		value.ExpiresAt = &expiresAt
+	}
+	return &value
+}
+
+func quotaLeaseDemoProxySnapshotToProxy(snapshot *QuotaLeaseDemoProxySnapshot) *Proxy {
+	if snapshot == nil {
+		return nil
+	}
+	return &Proxy{
+		ID:             snapshot.ID,
+		Name:           strings.TrimSpace(snapshot.Name),
+		Protocol:       strings.TrimSpace(snapshot.Protocol),
+		Host:           strings.TrimSpace(snapshot.Host),
+		Port:           snapshot.Port,
+		Username:       strings.TrimSpace(snapshot.Username),
+		Password:       snapshot.Password,
+		Status:         strings.TrimSpace(snapshot.Status),
+		ExpiresAt:      cloneQuotaLeaseDemoTimePtr(snapshot.ExpiresAt),
+		FallbackMode:   strings.TrimSpace(snapshot.FallbackMode),
+		BackupProxyID:  cloneQuotaLeaseDemoInt64Ptr(snapshot.BackupProxyID),
+		ExpiryWarnDays: snapshot.ExpiryWarnDays,
+	}
 }
 
 func cloneQuotaLeaseDemoAnyMap(src map[string]any) map[string]any {
@@ -752,4 +814,20 @@ func cloneQuotaLeaseDemoInt64Slice(src []int64) []int64 {
 		return dst[i] < dst[j]
 	})
 	return dst
+}
+
+func cloneQuotaLeaseDemoInt64Ptr(src *int64) *int64 {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func cloneQuotaLeaseDemoTimePtr(src *time.Time) *time.Time {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
 }

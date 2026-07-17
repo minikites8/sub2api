@@ -470,6 +470,7 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 	require.Len(t, tasks, 1)
 	require.Equal(t, task.ID, tasks[0].ID)
 
+	proxyID := int64(303)
 	_, err = node.CompleteAccountLoginTask(ctx, QuotaLeaseDemoAccountLoginTaskCompleteRequest{
 		TaskID: task.ID,
 		Account: QuotaLeaseDemoAccountSnapshot{
@@ -478,6 +479,16 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 			Type:     AccountTypeOAuth,
 			Credentials: map[string]any{
 				"access_token": "grok-node-access",
+			},
+			ProxyID: &proxyID,
+			Proxy: &QuotaLeaseDemoProxySnapshot{
+				ID:       proxyID,
+				Protocol: "socks5",
+				Host:     "127.0.0.1",
+				Port:     19090,
+				Username: "grok-user",
+				Password: "grok-pass",
+				Status:   StatusActive,
 			},
 			Status:      StatusActive,
 			Schedulable: true,
@@ -492,6 +503,10 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 	require.Len(t, accounts, 1)
 	require.Equal(t, int64(202), accounts[0].ID)
 	require.Equal(t, "grok-node-access", accounts[0].Credentials["access_token"])
+	require.NotNil(t, accounts[0].ProxyID)
+	require.Equal(t, proxyID, *accounts[0].ProxyID)
+	require.NotNil(t, accounts[0].Proxy)
+	require.Equal(t, "socks5://grok-user:grok-pass@127.0.0.1:19090", accounts[0].Proxy.URL())
 
 	control.mu.Lock()
 	delete(control.assignedAccounts, 202)

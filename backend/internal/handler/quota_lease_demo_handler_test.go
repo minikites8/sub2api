@@ -23,6 +23,7 @@ type quotaLeaseDemoSyncAdminService struct {
 	updatedExtra     map[string]any
 	clearedAccountID int64
 	listedAccounts   []service.Account
+	proxies          map[int64]*service.Proxy
 }
 
 func (s *quotaLeaseDemoSyncAdminService) UpdateAccount(_ context.Context, id int64, input *service.UpdateAccountInput) (*service.Account, error) {
@@ -52,6 +53,13 @@ func (s *quotaLeaseDemoSyncAdminService) ListAccounts(_ context.Context, page, p
 		end = len(s.listedAccounts)
 	}
 	return append([]service.Account(nil), s.listedAccounts[start:end]...), int64(len(s.listedAccounts)), nil
+}
+
+func (s *quotaLeaseDemoSyncAdminService) GetProxy(_ context.Context, id int64) (*service.Proxy, error) {
+	if s.proxies == nil {
+		return nil, nil
+	}
+	return s.proxies[id], nil
 }
 
 func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.QuotaLeaseDemoService) {
@@ -187,7 +195,20 @@ func TestQuotaLeaseDemoHandlerSyncsReauthTaskWithExtraMerge(t *testing.T) {
 
 func TestQuotaLeaseDemoHandlerListsAssignedAccountsFromPersistedAdminAccounts(t *testing.T) {
 	now := time.Now().UTC()
+	proxyID := int64(88)
 	adminSvc := &quotaLeaseDemoSyncAdminService{
+		proxies: map[int64]*service.Proxy{
+			proxyID: {
+				ID:       proxyID,
+				Name:     "foreign-egress",
+				Protocol: "http",
+				Host:     "127.0.0.1",
+				Port:     18080,
+				Username: "node-user",
+				Password: "node-pass",
+				Status:   service.StatusActive,
+			},
+		},
 		listedAccounts: []service.Account{
 			{
 				ID:          901,
@@ -203,6 +224,7 @@ func TestQuotaLeaseDemoHandlerListsAssignedAccountsFromPersistedAdminAccounts(t 
 				Schedulable: true,
 				Concurrency: 2,
 				Priority:    7,
+				ProxyID:     &proxyID,
 				GroupIDs:    []int64{2},
 				CreatedAt:   now.Add(-time.Hour),
 				UpdatedAt:   now,
@@ -257,6 +279,18 @@ func TestQuotaLeaseDemoHandlerListsAssignedAccountsFromPersistedAdminAccounts(t 
 	require.Equal(t, int64(901), accounts[0].Account.ID)
 	require.Equal(t, "node-token", accounts[0].Account.Credentials["access_token"])
 	require.Equal(t, []int64{2}, accounts[0].Account.GroupIDs)
+	require.NotNil(t, accounts[0].Account.ProxyID)
+	require.Equal(t, proxyID, *accounts[0].Account.ProxyID)
+	require.NotNil(t, accounts[0].Account.Proxy)
+	require.Equal(t, "foreign-egress", accounts[0].Account.Proxy.Name)
+	proxySnapshot := &service.Proxy{
+		Protocol: accounts[0].Account.Proxy.Protocol,
+		Host:     accounts[0].Account.Proxy.Host,
+		Port:     accounts[0].Account.Proxy.Port,
+		Username: accounts[0].Account.Proxy.Username,
+		Password: accounts[0].Account.Proxy.Password,
+	}
+	require.Equal(t, "http://node-user:node-pass@127.0.0.1:18080", proxySnapshot.URL())
 	require.Equal(t, service.QuotaLeaseDemoAccountTaskCompleted, accounts[0].Account.Extra["node_oauth_status"])
 	lastSyncedAt, ok := accounts[0].Account.Extra["node_oauth_last_synced_at"].(string)
 	require.True(t, ok)

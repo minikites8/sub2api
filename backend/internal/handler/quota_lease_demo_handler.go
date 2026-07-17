@@ -162,6 +162,7 @@ func (h *QuotaLeaseDemoHandler) syncCompletedAccount(ctx context.Context, task *
 			Credentials:           account.Credentials,
 			Concurrency:           &concurrency,
 			Priority:              &priority,
+			ProxyID:               quotaLeaseDemoHandlerCloneInt64Ptr(account.ProxyID),
 			Status:                service.StatusActive,
 			SkipMixedChannelCheck: true,
 		}
@@ -186,6 +187,7 @@ func (h *QuotaLeaseDemoHandler) syncCompletedAccount(ctx context.Context, task *
 		Type:                  account.Type,
 		Credentials:           account.Credentials,
 		Extra:                 extra,
+		ProxyID:               quotaLeaseDemoHandlerCloneInt64Ptr(account.ProxyID),
 		Concurrency:           &concurrency,
 		Priority:              &priority,
 		Status:                service.StatusActive,
@@ -331,10 +333,10 @@ func (h *QuotaLeaseDemoHandler) listAssignedAccounts(ctx context.Context, nodeID
 			if !quotaLeaseDemoHandlerPersistedAccountReady(account) {
 				continue
 			}
-			snapshot := quotaLeaseDemoHandlerAccountSnapshot(account)
+			snapshot := h.quotaLeaseDemoHandlerAccountSnapshot(ctx, account)
 			snapshot.Extra = h.touchAssignedAccountSync(ctx, account.ID, account.Extra, snapshot.Extra, syncedAt)
 			if existingIndex, ok := seen[account.ID]; ok {
-				accounts[existingIndex].Account.Extra = snapshot.Extra
+				accounts[existingIndex].Account = snapshot
 				continue
 			}
 			accounts = append(accounts, service.QuotaLeaseDemoAssignedAccount{
@@ -415,7 +417,7 @@ func quotaLeaseDemoHandlerPersistedAccountReady(account service.Account) bool {
 	return true
 }
 
-func quotaLeaseDemoHandlerAccountSnapshot(account service.Account) service.QuotaLeaseDemoAccountSnapshot {
+func (h *QuotaLeaseDemoHandler) quotaLeaseDemoHandlerAccountSnapshot(ctx context.Context, account service.Account) service.QuotaLeaseDemoAccountSnapshot {
 	snapshot := service.QuotaLeaseDemoAccountSnapshot{
 		ID:                      account.ID,
 		Name:                    account.Name,
@@ -423,6 +425,8 @@ func quotaLeaseDemoHandlerAccountSnapshot(account service.Account) service.Quota
 		Type:                    account.Type,
 		Credentials:             quotaLeaseDemoHandlerCloneAnyMap(account.Credentials),
 		Extra:                   quotaLeaseDemoHandlerCloneAnyMap(account.Extra),
+		ProxyID:                 quotaLeaseDemoHandlerCloneInt64Ptr(account.ProxyID),
+		Proxy:                   quotaLeaseDemoHandlerProxySnapshot(h.quotaLeaseDemoHandlerAccountProxy(ctx, account)),
 		Status:                  account.Status,
 		ErrorMessage:            account.ErrorMessage,
 		Schedulable:             account.Schedulable,
@@ -444,7 +448,44 @@ func quotaLeaseDemoHandlerAccountSnapshot(account service.Account) service.Quota
 	if !snapshot.Schedulable && snapshot.Status == service.StatusActive {
 		snapshot.Schedulable = true
 	}
+	if snapshot.ProxyID == nil && snapshot.Proxy != nil && snapshot.Proxy.ID > 0 {
+		snapshot.ProxyID = &snapshot.Proxy.ID
+	}
 	return snapshot
+}
+
+func (h *QuotaLeaseDemoHandler) quotaLeaseDemoHandlerAccountProxy(ctx context.Context, account service.Account) *service.Proxy {
+	if account.Proxy != nil {
+		return account.Proxy
+	}
+	if h == nil || h.adminSvc == nil || account.ProxyID == nil || *account.ProxyID <= 0 {
+		return nil
+	}
+	proxy, err := h.adminSvc.GetProxy(ctx, *account.ProxyID)
+	if err != nil {
+		return nil
+	}
+	return proxy
+}
+
+func quotaLeaseDemoHandlerProxySnapshot(proxy *service.Proxy) *service.QuotaLeaseDemoProxySnapshot {
+	if proxy == nil {
+		return nil
+	}
+	return &service.QuotaLeaseDemoProxySnapshot{
+		ID:             proxy.ID,
+		Name:           proxy.Name,
+		Protocol:       proxy.Protocol,
+		Host:           proxy.Host,
+		Port:           proxy.Port,
+		Username:       proxy.Username,
+		Password:       proxy.Password,
+		Status:         proxy.Status,
+		ExpiresAt:      quotaLeaseDemoHandlerCloneTime(proxy.ExpiresAt),
+		FallbackMode:   proxy.FallbackMode,
+		BackupProxyID:  quotaLeaseDemoHandlerCloneInt64Ptr(proxy.BackupProxyID),
+		ExpiryWarnDays: proxy.ExpiryWarnDays,
+	}
 }
 
 func quotaLeaseDemoHandlerCloneAnyMap(src map[string]any) map[string]any {
@@ -472,6 +513,14 @@ func quotaLeaseDemoHandlerCloneInt64Slice(src []int64) []int64 {
 	dst := make([]int64, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func quotaLeaseDemoHandlerCloneInt64Ptr(src *int64) *int64 {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
 }
 
 func quotaLeaseDemoHandlerCloneTime(src *time.Time) *time.Time {

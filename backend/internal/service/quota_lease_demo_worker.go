@@ -409,6 +409,7 @@ func quotaLeaseDemoBoolFromPayload(raw any) (bool, bool) {
 func quotaLeaseDemoSnapshotFromOAuthCredentials(task QuotaLeaseDemoAccountLoginTask, credentials map[string]any, payload map[string]any) QuotaLeaseDemoAccountSnapshot {
 	now := time.Now().UTC()
 	credentials = mergeQuotaLeaseDemoAnyPatch(credentials, quotaLeaseDemoAnyMapFromPayload(payload["credential_overrides"]))
+	proxyID := quotaLeaseDemoProxyIDFromPayload(payload["proxy_id"])
 	account := QuotaLeaseDemoAccountSnapshot{
 		ID:          task.AccountID,
 		Name:        task.Name,
@@ -416,6 +417,7 @@ func quotaLeaseDemoSnapshotFromOAuthCredentials(task QuotaLeaseDemoAccountLoginT
 		Type:        task.Type,
 		Credentials: cloneQuotaLeaseDemoAnyMap(credentials),
 		Extra:       quotaLeaseDemoAnyMapFromPayload(payload["extra"]),
+		ProxyID:     proxyID,
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: task.Concurrency,
