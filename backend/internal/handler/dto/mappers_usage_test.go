@@ -171,6 +171,29 @@ func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *test
 	require.NotContains(t, string(userJSON), "account_cost")
 }
 
+func TestUsageLogFromServiceAdmin_IncludesNodeID(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID: "req_node",
+		NodeID:    "sub2api-node-us-1",
+		Model:     "gpt-5.5",
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	require.Equal(t, "sub2api-node-us-1", adminDTO.NodeID)
+
+	userJSON, err := json.Marshal(userDTO)
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "node_id")
+
+	adminJSON, err := json.Marshal(adminDTO)
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), `"node_id":"sub2api-node-us-1"`)
+}
+
 func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *testing.T) {
 	t.Parallel()
 

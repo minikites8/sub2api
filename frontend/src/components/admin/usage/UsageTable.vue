@@ -52,6 +52,17 @@
           <span class="text-sm text-gray-900 dark:text-white">{{ row.account?.name || '-' }}</span>
         </template>
 
+        <template #cell-node_id="{ row }">
+          <span
+            v-if="row.node_id"
+            class="block max-w-[180px] truncate font-mono text-xs text-gray-700 dark:text-gray-300"
+            :title="row.node_id"
+          >
+            {{ row.node_id }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-model="{ row }">
           <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5 text-xs">
             <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"

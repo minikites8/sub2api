@@ -1561,6 +1561,7 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  node_id?: string | null
   upstream_model?: string | null
   model_mapping_chain?: string | null
 

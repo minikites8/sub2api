@@ -515,6 +515,7 @@ export default {
       selectedUser: 'Selected',
       user: 'User',
       account: 'Account',
+      requestNode: 'Request Node',
       group: 'Group',
       requestId: 'Request ID',
       requestIdCopied: 'Request ID copied',

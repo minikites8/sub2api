@@ -548,6 +548,9 @@ type UsageLog struct {
 type AdminUsageLog struct {
 	UsageLog
 
+	// NodeID 请求经过的租约节点 ID。
+	NodeID string `json:"node_id,omitempty"`
+
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).
 	UpstreamModel *string `json:"upstream_model,omitempty"`

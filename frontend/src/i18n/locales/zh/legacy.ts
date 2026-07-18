@@ -5337,6 +5337,7 @@ export default {
       selectedUser: '已选择',
       user: '用户',
       account: '账户',
+      requestNode: '请求节点',
       group: '分组',
       requestId: '请求ID',
       requestIdCopied: '请求ID已复制',
