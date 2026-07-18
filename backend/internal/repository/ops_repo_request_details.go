@@ -90,6 +90,7 @@ WITH combined AS (
     'success'::TEXT AS kind,
     ul.created_at AS created_at,
     ul.request_id AS request_id,
+    ul.node_id AS node_id,
     COALESCE(NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
     ul.model AS model,
     ul.duration_ms AS duration_ms,
@@ -114,6 +115,7 @@ WITH combined AS (
     'error'::TEXT AS kind,
     o.created_at AS created_at,
     COALESCE(NULLIF(o.request_id,''), NULLIF(o.client_request_id,''), '') AS request_id,
+    NULL::TEXT AS node_id,
     COALESCE(NULLIF(o.platform, ''), NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
     o.model AS model,
     o.duration_ms AS duration_ms,
@@ -163,6 +165,7 @@ SELECT
   kind,
   created_at,
   request_id,
+  node_id,
   platform,
   model,
   duration_ms,
@@ -210,6 +213,7 @@ LIMIT $%d OFFSET $%d
 			kind      string
 			createdAt time.Time
 			requestID sql.NullString
+			nodeID    sql.NullString
 			platform  sql.NullString
 			model     sql.NullString
 
@@ -233,6 +237,7 @@ LIMIT $%d OFFSET $%d
 			&kind,
 			&createdAt,
 			&requestID,
+			&nodeID,
 			&platform,
 			&model,
 			&durationMs,
@@ -254,6 +259,7 @@ LIMIT $%d OFFSET $%d
 			Kind:      service.OpsRequestKind(kind),
 			CreatedAt: createdAt,
 			RequestID: strings.TrimSpace(requestID.String),
+			NodeID:    strings.TrimSpace(nodeID.String),
 			Platform:  strings.TrimSpace(platform.String),
 			Model:     strings.TrimSpace(model.String),
 

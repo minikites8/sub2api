@@ -87,16 +87,62 @@ func (s *UsageService) CreateLogBestEffort(ctx context.Context, log *UsageLog) (
 	return inserted, nil
 }
 
+// CreateLogWithResult 创建使用日志并返回是否新插入。
+func (s *UsageService) CreateLogWithResult(ctx context.Context, log *UsageLog) (*UsageLog, bool, error) {
+	if log == nil {
+		return nil, false, nil
+	}
+	req := CreateUsageLogRequest{
+		UserID:                log.UserID,
+		APIKeyID:              log.APIKeyID,
+		AccountID:             log.AccountID,
+		RequestID:             log.RequestID,
+		Model:                 log.Model,
+		InputTokens:           log.InputTokens,
+		OutputTokens:          log.OutputTokens,
+		CacheCreationTokens:   log.CacheCreationTokens,
+		CacheReadTokens:       log.CacheReadTokens,
+		CacheCreation5mTokens: log.CacheCreation5mTokens,
+		CacheCreation1hTokens: log.CacheCreation1hTokens,
+		InputCost:             log.InputCost,
+		OutputCost:            log.OutputCost,
+		CacheCreationCost:     log.CacheCreationCost,
+		CacheReadCost:         log.CacheReadCost,
+		TotalCost:             log.TotalCost,
+		ActualCost:            log.ActualCost,
+		RateMultiplier:        log.RateMultiplier,
+		Stream:                log.Stream,
+		DurationMs:            log.DurationMs,
+	}
+	return s.createWithResult(ctx, req)
+}
+
 // Create 创建使用日志
 func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*UsageLog, error) {
+	usageLog, _, err := s.createWithResult(ctx, req)
+	return usageLog, err
+}
+
+func (s *UsageService) createWithResult(ctx context.Context, req CreateUsageLogRequest) (*UsageLog, bool, error) {
+	if s == nil || s.usageRepo == nil {
+		return nil, false, errors.New("usage log repository is not configured")
+	}
+	if s.userRepo == nil {
+		return nil, false, errors.New("user repository is not configured")
+	}
+
 	// 使用数据库事务保证「使用日志插入」与「扣费」的原子性，避免重复扣费或漏扣风险。
-	tx, err := s.entClient.Tx(ctx)
-	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-		return nil, fmt.Errorf("begin transaction: %w", err)
+	var tx *dbent.Tx
+	var err error
+	if s.entClient != nil {
+		tx, err = s.entClient.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return nil, false, fmt.Errorf("begin transaction: %w", err)
+		}
 	}
 
 	txCtx := ctx
-	if err == nil {
+	if err == nil && tx != nil {
 		defer func() { _ = tx.Rollback() }()
 		txCtx = dbent.NewTxContext(ctx, tx)
 	}
@@ -104,7 +150,7 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	// 验证用户存在
 	_, err = s.userRepo.GetByID(txCtx, req.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
+		return nil, false, fmt.Errorf("get user: %w", err)
 	}
 
 	// 创建使用日志
@@ -133,27 +179,27 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 
 	inserted, err := s.usageRepo.Create(txCtx, usageLog)
 	if err != nil {
-		return nil, fmt.Errorf("create usage log: %w", err)
+		return nil, false, fmt.Errorf("create usage log: %w", err)
 	}
 
 	// 扣除用户余额
 	balanceUpdated := false
 	if inserted && req.ActualCost > 0 {
 		if err := s.userRepo.UpdateBalance(txCtx, req.UserID, -req.ActualCost); err != nil {
-			return nil, fmt.Errorf("update user balance: %w", err)
+			return nil, false, fmt.Errorf("update user balance: %w", err)
 		}
 		balanceUpdated = true
 	}
 
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("commit transaction: %w", err)
+			return nil, false, fmt.Errorf("commit transaction: %w", err)
 		}
 	}
 
 	s.invalidateUsageCaches(ctx, req.UserID, balanceUpdated)
 
-	return usageLog, nil
+	return usageLog, inserted, nil
 }
 
 func (s *UsageService) invalidateUsageCaches(ctx context.Context, userID int64, balanceUpdated bool) {

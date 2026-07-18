@@ -79,6 +79,61 @@
 
       <section class="node-panel">
         <div class="panel-heading">
+          <h2>租约预取设置</h2>
+          <span>运行时</span>
+        </div>
+        <form class="grid gap-3 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]" @submit.prevent="saveSettings">
+          <div>
+            <label class="input-label">低水位额度</label>
+            <input
+              v-model.number="settingsForm.prefetch_low_watermark_amount"
+              type="number"
+              min="0"
+              step="0.000001"
+              class="input"
+            />
+          </div>
+          <div>
+            <label class="input-label">平均窗口</label>
+            <input
+              v-model.number="settingsForm.prefetch_average_window"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+            />
+          </div>
+          <div>
+            <label class="input-label">平均倍数</label>
+            <input
+              v-model.number="settingsForm.prefetch_average_multiplier"
+              type="number"
+              min="0"
+              step="0.1"
+              class="input"
+            />
+          </div>
+          <div>
+            <label class="input-label">防抖秒数</label>
+            <input
+              v-model.number="settingsForm.prefetch_debounce_seconds"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+            />
+          </div>
+          <div class="flex items-end">
+            <button type="submit" class="btn btn-primary w-full lg:w-auto" :disabled="savingSettings">
+              <Icon name="check" size="sm" class="mr-2" />
+              {{ savingSettings ? '保存中...' : '保存设置' }}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="node-panel">
+        <div class="panel-heading">
           <h2>节点</h2>
           <span>{{ nodes.length }}</span>
         </div>
@@ -212,6 +267,7 @@ import type {
   NodeRegistrationURLResult,
   QuotaLeaseDemoLease,
   QuotaLeaseDemoNode,
+  QuotaLeaseDemoSettings,
   QuotaLeaseDemoSnapshot
 } from '@/api/admin/nodeLeases'
 import type { Column } from '@/components/common/types'
@@ -236,6 +292,7 @@ const controlKey = ref(sessionStorage.getItem(CONTROL_KEY_STORAGE) || '')
 const controlKeyVisible = ref(false)
 const loading = ref(false)
 const reclaiming = ref(false)
+const savingSettings = ref(false)
 const snapshot = ref<QuotaLeaseDemoSnapshot | null>(null)
 const nodes = ref<QuotaLeaseDemoNode[]>([])
 const nodeFilter = ref('')
@@ -261,6 +318,13 @@ const emptyStats = {
 const nodeForm = reactive({
   node_id: '',
   region: ''
+})
+
+const settingsForm = reactive<QuotaLeaseDemoSettings>({
+  prefetch_low_watermark_amount: 0.2,
+  prefetch_average_window: 5,
+  prefetch_average_multiplier: 3,
+  prefetch_debounce_seconds: 10
 })
 
 const stats = computed(() => snapshot.value?.stats || emptyStats)
@@ -327,12 +391,14 @@ async function loadAll() {
   loading.value = true
   try {
     const options = controlOptions()
-    const [statusResult, nodeResult] = await Promise.all([
+    const [statusResult, nodeResult, settingsResult] = await Promise.all([
       adminAPI.nodeLeases.getStatus(options),
-      adminAPI.nodeLeases.listNodes(options)
+      adminAPI.nodeLeases.listNodes(options),
+      adminAPI.nodeLeases.getSettings(options)
     ])
     snapshot.value = statusResult
     nodes.value = nodeResult
+    applySettingsForm(settingsResult)
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, '节点租约状态加载失败'))
   } finally {
@@ -353,6 +419,35 @@ async function reclaimExpired() {
   } finally {
     reclaiming.value = false
   }
+}
+
+async function saveSettings() {
+  savingSettings.value = true
+  try {
+    const result = await adminAPI.nodeLeases.updateSettings(
+      {
+        prefetch_low_watermark_amount: Number(settingsForm.prefetch_low_watermark_amount || 0),
+        prefetch_average_window: Number(settingsForm.prefetch_average_window || 0),
+        prefetch_average_multiplier: Number(settingsForm.prefetch_average_multiplier || 0),
+        prefetch_debounce_seconds: Number(settingsForm.prefetch_debounce_seconds || 0)
+      },
+      controlOptions()
+    )
+    applySettingsForm(result)
+    appStore.showSuccess('租约设置已保存')
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, '租约设置保存失败'))
+  } finally {
+    savingSettings.value = false
+  }
+}
+
+function applySettingsForm(settings?: QuotaLeaseDemoSettings | null) {
+  if (!settings) return
+  settingsForm.prefetch_low_watermark_amount = Number(settings.prefetch_low_watermark_amount || 0)
+  settingsForm.prefetch_average_window = Number(settings.prefetch_average_window || 0)
+  settingsForm.prefetch_average_multiplier = Number(settings.prefetch_average_multiplier || 0)
+  settingsForm.prefetch_debounce_seconds = Number(settings.prefetch_debounce_seconds || 0)
 }
 
 function openRegisterNodeDialog() {

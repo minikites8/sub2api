@@ -69,25 +69,31 @@ func QuotaLeaseDemoEnabled(cfg *config.Config) bool {
 }
 
 type QuotaLeaseDemoService struct {
-	mu               sync.Mutex
-	cfgMu            sync.RWMutex
-	remoteMu         sync.Mutex
-	cfg              *config.Config
-	leases           map[string]*QuotaLeaseDemoLease
-	events           map[string]*QuotaLeaseDemoLedgerEvent
-	nodes            map[string]*QuotaLeaseDemoNode
-	pendingEvents    map[string]QuotaLeaseDemoUsageEvent
-	pendingUsageLogs map[string]QuotaLeaseDemoUsageLogSnapshot
-	clientAuthCache  map[string]*quotaLeaseDemoClientAuthCacheEntry
-	accountTasks     map[string]*QuotaLeaseDemoAccountLoginTask
-	assignedAccounts map[int64]*QuotaLeaseDemoAssignedAccount
-	registrationURLs map[string]*QuotaLeaseDemoNodeRegistrationURL
-	mirrorStore      QuotaLeaseDemoMirrorStore
-	remoteNodeID     string
-	remoteNodeSecret string
-	remoteControlURL string
-	mirrorReady      bool
-	mirrorSyncedAt   time.Time
+	mu                       sync.Mutex
+	cfgMu                    sync.RWMutex
+	settingsMu               sync.RWMutex
+	remoteMu                 sync.Mutex
+	cfg                      *config.Config
+	settingService           *SettingService
+	billingRepo              UsageBillingRepository
+	runtimeSettings          *QuotaLeaseDemoSettings
+	runtimeSettingsExpiresAt time.Time
+	leases                   map[string]*QuotaLeaseDemoLease
+	events                   map[string]*QuotaLeaseDemoLedgerEvent
+	nodes                    map[string]*QuotaLeaseDemoNode
+	pendingEvents            map[string]QuotaLeaseDemoUsageEvent
+	pendingUsageLogs         map[string]QuotaLeaseDemoUsageLogSnapshot
+	prefetchState            map[string]*quotaLeaseDemoPrefetchState
+	clientAuthCache          map[string]*quotaLeaseDemoClientAuthCacheEntry
+	accountTasks             map[string]*QuotaLeaseDemoAccountLoginTask
+	assignedAccounts         map[int64]*QuotaLeaseDemoAssignedAccount
+	registrationURLs         map[string]*QuotaLeaseDemoNodeRegistrationURL
+	mirrorStore              QuotaLeaseDemoMirrorStore
+	remoteNodeID             string
+	remoteNodeSecret         string
+	remoteControlURL         string
+	mirrorReady              bool
+	mirrorSyncedAt           time.Time
 }
 
 func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
@@ -98,6 +104,7 @@ func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 		nodes:            make(map[string]*QuotaLeaseDemoNode),
 		pendingEvents:    make(map[string]QuotaLeaseDemoUsageEvent),
 		pendingUsageLogs: make(map[string]QuotaLeaseDemoUsageLogSnapshot),
+		prefetchState:    make(map[string]*quotaLeaseDemoPrefetchState),
 		clientAuthCache:  make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
 		accountTasks:     make(map[string]*QuotaLeaseDemoAccountLoginTask),
 		assignedAccounts: make(map[int64]*QuotaLeaseDemoAssignedAccount),
@@ -112,6 +119,24 @@ func (s *QuotaLeaseDemoService) SetConfig(cfg *config.Config) {
 	s.cfgMu.Lock()
 	s.cfg = cfg
 	s.cfgMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) SetUsageBillingRepository(repo UsageBillingRepository) {
+	if s == nil {
+		return
+	}
+	s.cfgMu.Lock()
+	s.billingRepo = repo
+	s.cfgMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) usageBillingRepository() UsageBillingRepository {
+	if s == nil {
+		return nil
+	}
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.billingRepo
 }
 
 func (s *QuotaLeaseDemoService) cfgSnapshot() config.GatewayQuotaLeaseDemoConfig {
@@ -638,8 +663,12 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	}
 	if extendable != nil {
 		delta := amount - extendable.Remaining()
+		targetGranted := extendable.Granted
 		if delta > 0 {
-			extendable.Granted += delta
+			if err := s.reserveLeaseBalance(ctx, extendable, delta, quotaLeaseDemoTopUpReserveRequestID(extendable.ID, extendable.Granted+delta)); err != nil {
+				return nil, err
+			}
+			targetGranted += delta
 		}
 		if extendable.ExpiresAt.Before(expiresAt) {
 			extendable.ExpiresAt = expiresAt
@@ -647,6 +676,7 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		if extendable.ReclaimAt.Before(reclaimAt) {
 			extendable.ReclaimAt = reclaimAt
 		}
+		extendable.Granted = targetGranted
 		extendable.UpdatedAt = now
 		eventID := "lease:" + extendable.ID
 		s.events[eventID] = &QuotaLeaseDemoLedgerEvent{
@@ -677,6 +707,10 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	}
 
 	s.leases[lease.ID] = lease
+	if err := s.reserveLeaseBalance(ctx, lease, amount, quotaLeaseDemoInitialReserveRequestID(lease.ID)); err != nil {
+		delete(s.leases, lease.ID)
+		return nil, err
+	}
 	s.events["lease:"+lease.ID] = &QuotaLeaseDemoLedgerEvent{
 		EventID:     "lease:" + lease.ID,
 		LeaseID:     lease.ID,
@@ -735,6 +769,7 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 	if s.remoteMode() && result.Applied && !result.Duplicate {
 		s.enqueuePendingUsageEvent(event)
 		s.flushPendingUsageAsync()
+		s.maybePrefetchUsageLease(ctx, result.Lease, cmd.BalanceCost)
 	}
 	return true, result.Applied && !result.Duplicate, nil
 }
@@ -747,6 +782,7 @@ func (s *QuotaLeaseDemoService) ConsumeUsage(ctx context.Context, event QuotaLea
 	if s.remoteMode() && result.Applied && !result.Duplicate {
 		s.enqueuePendingUsageEvent(event)
 		s.flushPendingUsageAsync()
+		s.maybePrefetchUsageLease(ctx, result.Lease, event.Amount)
 	}
 	return result, nil
 }
@@ -809,6 +845,9 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		return nil, ErrQuotaLeaseDemoNoCapacity
 	}
 
+	if err := s.captureLeaseBalance(ctx, event); err != nil {
+		return nil, err
+	}
 	lease.Consumed += event.Amount
 	lease.UpdatedAt = now
 	if lease.Remaining() <= 1e-12 {
@@ -896,6 +935,9 @@ func (s *QuotaLeaseDemoService) ReclaimExpired(ctx context.Context, now time.Tim
 		}
 		remaining := lease.Remaining()
 		if remaining > 0 {
+			if err := s.releaseLeaseBalance(ctx, lease, remaining); err != nil {
+				continue
+			}
 			lease.Reclaimed += remaining
 			result.ReclaimedTotal += remaining
 		}

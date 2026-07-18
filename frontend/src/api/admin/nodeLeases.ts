@@ -51,6 +51,13 @@ export interface NodeRegistrationURLResult {
   created_at: string
 }
 
+export interface QuotaLeaseDemoSettings {
+  prefetch_low_watermark_amount: number
+  prefetch_average_window: number
+  prefetch_average_multiplier: number
+  prefetch_debounce_seconds: number
+}
+
 export interface QuotaLeaseDemoLease {
   id: string
   node_id: string
@@ -202,6 +209,26 @@ export async function listNodes(options?: NodeLeaseControlOptions): Promise<Quot
   return data.nodes || []
 }
 
+export async function getSettings(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoSettings> {
+  const { data } = await apiClient.get<QuotaLeaseDemoSettings>(
+    '/node-leases/demo/settings',
+    requestConfig(options)
+  )
+  return data
+}
+
+export async function updateSettings(
+  payload: QuotaLeaseDemoSettings,
+  options?: NodeLeaseControlOptions
+): Promise<QuotaLeaseDemoSettings> {
+  const { data } = await apiClient.put<QuotaLeaseDemoSettings>(
+    '/node-leases/demo/settings',
+    payload,
+    requestConfig(options)
+  )
+  return data
+}
+
 export async function registerNode(
   payload: RegisterNodeRequest,
   options?: NodeLeaseControlOptions
@@ -298,6 +325,8 @@ export async function reclaimExpired(
 export const nodeLeasesAPI = {
   getStatus,
   listNodes,
+  getSettings,
+  updateSettings,
   registerNode,
   createNodeRegistrationURL,
   listLoginTasks,

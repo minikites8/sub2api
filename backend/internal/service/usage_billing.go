@@ -119,7 +119,65 @@ type UsageBillingApplyResult struct {
 	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
 }
 
-// BatchImageBalanceHoldCommand describes an idempotent balance hold operation.
+var (
+	ErrBalanceHoldInsufficientBalance       = errors.New("insufficient balance for balance hold")
+	ErrBalanceHoldActualAmountExceedsHold   = errors.New("balance hold actual amount exceeds hold")
+	ErrBalanceHoldFrozenBalanceInsufficient = errors.New("balance hold frozen balance is insufficient")
+)
+
+// BalanceHoldCommand describes an idempotent frozen-balance operation.
+type BalanceHoldCommand struct {
+	RequestID          string
+	APIKeyID           int64
+	RequestFingerprint string
+	RequestPayloadHash string
+	UserID             int64
+	HoldID             string
+	ReserveRequestID   string
+	HoldAmount         float64
+	ActualAmount       float64
+}
+
+func (c *BalanceHoldCommand) Normalize() {
+	if c == nil {
+		return
+	}
+	c.RequestID = strings.TrimSpace(c.RequestID)
+	c.HoldID = strings.TrimSpace(c.HoldID)
+	c.ReserveRequestID = strings.TrimSpace(c.ReserveRequestID)
+	if strings.TrimSpace(c.RequestFingerprint) == "" {
+		c.RequestFingerprint = buildBalanceHoldFingerprint(c)
+	}
+}
+
+func buildBalanceHoldFingerprint(c *BalanceHoldCommand) string {
+	if c == nil {
+		return ""
+	}
+	raw := fmt.Sprintf(
+		"%d|%d|%s|%s|%0.10f|%0.10f",
+		c.UserID,
+		c.APIKeyID,
+		strings.TrimSpace(c.HoldID),
+		strings.TrimSpace(c.ReserveRequestID),
+		c.HoldAmount,
+		c.ActualAmount,
+	)
+	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
+		raw += "|" + payloadHash
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
+}
+
+type BalanceHoldResult struct {
+	Applied       bool
+	NewBalance    *float64
+	FrozenBalance *float64
+}
+
+// BatchImageBalanceHoldCommand keeps the batch image public billing shape while
+// sharing the generic frozen-balance implementation.
 type BatchImageBalanceHoldCommand struct {
 	RequestID          string
 	APIKeyID           int64
@@ -146,29 +204,25 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 	if c == nil {
 		return ""
 	}
-	raw := fmt.Sprintf(
-		"%d|%d|%s|%0.10f|%0.10f",
-		c.UserID,
-		c.APIKeyID,
-		strings.TrimSpace(c.BatchID),
-		c.HoldAmount,
-		c.ActualAmount,
-	)
-	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
-		raw += "|" + payloadHash
-	}
-	sum := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(sum[:])
+	return buildBalanceHoldFingerprint(&BalanceHoldCommand{
+		RequestID:          c.RequestID,
+		APIKeyID:           c.APIKeyID,
+		RequestFingerprint: c.RequestFingerprint,
+		RequestPayloadHash: c.RequestPayloadHash,
+		UserID:             c.UserID,
+		HoldID:             c.BatchID,
+		HoldAmount:         c.HoldAmount,
+		ActualAmount:       c.ActualAmount,
+	})
 }
 
-type BatchImageBalanceHoldResult struct {
-	Applied       bool
-	NewBalance    *float64
-	FrozenBalance *float64
-}
+type BatchImageBalanceHoldResult = BalanceHoldResult
 
 type UsageBillingRepository interface {
 	Apply(ctx context.Context, cmd *UsageBillingCommand) (*UsageBillingApplyResult, error)
+	ReserveBalanceHold(ctx context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error)
+	CaptureBalanceHold(ctx context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error)
+	ReleaseBalanceHold(ctx context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error)
 	ReserveBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)
 	CaptureBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)
 	ReleaseBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)

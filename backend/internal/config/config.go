@@ -907,16 +907,20 @@ type GatewayOpenAIHTTP2Config struct {
 }
 
 type GatewayQuotaLeaseDemoConfig struct {
-	Enabled                bool    `mapstructure:"enabled"`
-	NodeID                 string  `mapstructure:"node_id"`
-	NodeSecret             string  `mapstructure:"node_secret"`
-	RegistrationURL        string  `mapstructure:"registration_url"`
-	ControlPlaneBaseURL    string  `mapstructure:"control_plane_base_url"`
-	ControlPlaneKey        string  `mapstructure:"control_plane_key"`
-	DefaultGrantAmount     float64 `mapstructure:"default_grant_amount"`
-	LeaseTTLSeconds        int     `mapstructure:"lease_ttl_seconds"`
-	ReclaimGraceSeconds    int     `mapstructure:"reclaim_grace_seconds"`
-	PreflightReserveAmount float64 `mapstructure:"preflight_reserve_amount"`
+	Enabled                    bool    `mapstructure:"enabled"`
+	NodeID                     string  `mapstructure:"node_id"`
+	NodeSecret                 string  `mapstructure:"node_secret"`
+	RegistrationURL            string  `mapstructure:"registration_url"`
+	ControlPlaneBaseURL        string  `mapstructure:"control_plane_base_url"`
+	ControlPlaneKey            string  `mapstructure:"control_plane_key"`
+	DefaultGrantAmount         float64 `mapstructure:"default_grant_amount"`
+	LeaseTTLSeconds            int     `mapstructure:"lease_ttl_seconds"`
+	ReclaimGraceSeconds        int     `mapstructure:"reclaim_grace_seconds"`
+	PreflightReserveAmount     float64 `mapstructure:"preflight_reserve_amount"`
+	PrefetchLowWatermarkAmount float64 `mapstructure:"prefetch_low_watermark_amount"`
+	PrefetchAverageWindow      int     `mapstructure:"prefetch_average_window"`
+	PrefetchAverageMultiplier  float64 `mapstructure:"prefetch_average_multiplier"`
+	PrefetchDebounceSeconds    int     `mapstructure:"prefetch_debounce_seconds"`
 }
 
 // UserMessageQueueConfig 用户消息串行队列配置
@@ -2216,6 +2220,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.quota_lease_demo.lease_ttl_seconds", 600)
 	viper.SetDefault("gateway.quota_lease_demo.reclaim_grace_seconds", 3600)
 	viper.SetDefault("gateway.quota_lease_demo.preflight_reserve_amount", 0.000001)
+	viper.SetDefault("gateway.quota_lease_demo.prefetch_low_watermark_amount", 0.2)
+	viper.SetDefault("gateway.quota_lease_demo.prefetch_average_window", 5)
+	viper.SetDefault("gateway.quota_lease_demo.prefetch_average_multiplier", 3.0)
+	viper.SetDefault("gateway.quota_lease_demo.prefetch_debounce_seconds", 10)
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
 	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
@@ -3168,6 +3176,18 @@ func (c *Config) Validate() error {
 		}
 		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.PreflightReserveAmount) || c.Gateway.QuotaLeaseDemo.PreflightReserveAmount <= 0 {
 			return fmt.Errorf("gateway.quota_lease_demo.preflight_reserve_amount must be positive")
+		}
+		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.PrefetchLowWatermarkAmount) {
+			return fmt.Errorf("gateway.quota_lease_demo.prefetch_low_watermark_amount must be non-negative")
+		}
+		if c.Gateway.QuotaLeaseDemo.PrefetchAverageWindow < 0 {
+			return fmt.Errorf("gateway.quota_lease_demo.prefetch_average_window must be non-negative")
+		}
+		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.PrefetchAverageMultiplier) {
+			return fmt.Errorf("gateway.quota_lease_demo.prefetch_average_multiplier must be non-negative")
+		}
+		if c.Gateway.QuotaLeaseDemo.PrefetchDebounceSeconds < 0 {
+			return fmt.Errorf("gateway.quota_lease_demo.prefetch_debounce_seconds must be non-negative")
 		}
 	}
 	if c.Gateway.UserGroupRateCacheTTLSeconds <= 0 {

@@ -427,9 +427,13 @@ func (r *fakeBatchImagePricingResolver) BatchImageUnitPrice(_ context.Context, j
 
 type fakeBatchImageBillingRepo struct {
 	commands       []*UsageBillingCommand
+	holdCommands   []*BalanceHoldCommand
 	reserves       []*BatchImageBalanceHoldCommand
 	captures       []*BatchImageBalanceHoldCommand
 	releases       []*BatchImageBalanceHoldCommand
+	holdReserves   []*BalanceHoldCommand
+	holdCaptures   []*BalanceHoldCommand
+	holdReleases   []*BalanceHoldCommand
 	seen           map[string]struct{}
 	alreadyApplied map[string]bool
 	err            error
@@ -456,6 +460,30 @@ func (r *fakeBatchImageBillingRepo) Apply(_ context.Context, cmd *UsageBillingCo
 	}
 	r.commands = append(r.commands, cmd)
 	return &UsageBillingApplyResult{Applied: true}, nil
+}
+
+func (r *fakeBatchImageBillingRepo) ReserveBalanceHold(_ context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error) {
+	if r.reserveErr != nil {
+		r.holdReserves = append(r.holdReserves, cmd)
+		return nil, r.reserveErr
+	}
+	return r.applyHoldCommand(cmd, &r.holdReserves)
+}
+
+func (r *fakeBatchImageBillingRepo) CaptureBalanceHold(_ context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error) {
+	if r.captureErr != nil {
+		r.holdCaptures = append(r.holdCaptures, cmd)
+		return nil, r.captureErr
+	}
+	return r.applyHoldCommand(cmd, &r.holdCaptures)
+}
+
+func (r *fakeBatchImageBillingRepo) ReleaseBalanceHold(_ context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error) {
+	if r.releaseErr != nil {
+		r.holdReleases = append(r.holdReleases, cmd)
+		return nil, r.releaseErr
+	}
+	return r.applyHoldCommand(cmd, &r.holdReleases)
 }
 
 func (r *fakeBatchImageBillingRepo) ReserveBatchImageBalance(_ context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error) {
@@ -500,6 +528,26 @@ func (r *fakeBatchImageBillingRepo) applyHold(cmd *BatchImageBalanceHoldCommand,
 	}
 	*calls = append(*calls, cmd)
 	return &BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *fakeBatchImageBillingRepo) applyHoldCommand(cmd *BalanceHoldCommand, calls *[]*BalanceHoldCommand) (*BalanceHoldResult, error) {
+	if r.seen == nil {
+		r.seen = make(map[string]struct{})
+	}
+	if r.err != nil {
+		*calls = append(*calls, cmd)
+		return nil, r.err
+	}
+	if cmd != nil {
+		cmd.Normalize()
+		if _, ok := r.seen[cmd.RequestID]; ok || r.alreadyApplied[cmd.RequestID] {
+			*calls = append(*calls, cmd)
+			return &BalanceHoldResult{Applied: false}, nil
+		}
+		r.seen[cmd.RequestID] = struct{}{}
+	}
+	*calls = append(*calls, cmd)
+	return &BalanceHoldResult{Applied: true}, nil
 }
 
 var _ UsageBillingRepository = (*fakeBatchImageBillingRepo)(nil)

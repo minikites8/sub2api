@@ -405,6 +405,7 @@ export default {
         table: {
           time: 'Time',
           kind: 'Kind',
+          requestNode: 'Request Node',
           platform: 'Platform',
           model: 'Model',
           duration: 'Duration',

@@ -203,6 +203,18 @@ gateway:
     # Local preflight reserve used before forwarding a request.
     # 请求转发前的本地预检保留额度。
     preflight_reserve_amount: 0.000001
+    # Background prefetch starts when local remaining quota falls below this amount.
+    # 本地剩余额度低于该值时后台提前申请新额度块。
+    prefetch_low_watermark_amount: 0.2
+    # Recent usage sample window used for dynamic prefetch threshold.
+    # 最近 N 次平均消耗采样窗口。
+    prefetch_average_window: 5
+    # Dynamic threshold multiplier: average usage * multiplier.
+    # 动态阈值倍数：最近平均消耗 * 倍数。
+    prefetch_average_multiplier: 3.0
+    # Minimum interval between prefetch attempts for the same node/user/key.
+    # 同一节点/用户/Key 的预取防抖秒数。
+    prefetch_debounce_seconds: 10
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608

@@ -109,25 +109,59 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 	return true, nil
 }
 
+func (r *usageBillingRepository) ReserveBalanceHold(ctx context.Context, cmd *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
+	return r.applyBalanceHold(ctx, cmd, reserveUsageBillingBalanceHold)
+}
+
+func (r *usageBillingRepository) CaptureBalanceHold(ctx context.Context, cmd *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
+	return r.applyBalanceHold(ctx, cmd, captureUsageBillingBalanceHold)
+}
+
+func (r *usageBillingRepository) ReleaseBalanceHold(ctx context.Context, cmd *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
+	return r.applyBalanceHold(ctx, cmd, releaseUsageBillingBalanceHold)
+}
+
 func (r *usageBillingRepository) ReserveBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, reserveUsageBillingBatchImageBalance)
+	return r.ReserveBalanceHold(ctx, batchImageBalanceHoldCommand(cmd, ""))
 }
 
 func (r *usageBillingRepository) CaptureBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, captureUsageBillingBatchImageBalance)
+	return r.CaptureBalanceHold(ctx, batchImageBalanceHoldCommand(cmd, ""))
 }
 
 func (r *usageBillingRepository) ReleaseBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, releaseUsageBillingBatchImageBalance)
+	reserveRequestID := ""
+	if cmd != nil {
+		reserveRequestID = service.BatchImageHoldRequestID(cmd.BatchID)
+	}
+	return r.ReleaseBalanceHold(ctx, batchImageBalanceHoldCommand(cmd, reserveRequestID))
 }
 
-func (r *usageBillingRepository) applyBatchImageBalanceHold(
-	ctx context.Context,
-	cmd *service.BatchImageBalanceHoldCommand,
-	apply func(context.Context, *sql.Tx, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error),
-) (_ *service.BatchImageBalanceHoldResult, err error) {
+func batchImageBalanceHoldCommand(cmd *service.BatchImageBalanceHoldCommand, reserveRequestID string) *service.BalanceHoldCommand {
 	if cmd == nil {
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return nil
+	}
+	cmd.Normalize()
+	return &service.BalanceHoldCommand{
+		RequestID:          cmd.RequestID,
+		APIKeyID:           cmd.APIKeyID,
+		RequestFingerprint: cmd.RequestFingerprint,
+		RequestPayloadHash: cmd.RequestPayloadHash,
+		UserID:             cmd.UserID,
+		HoldID:             cmd.BatchID,
+		ReserveRequestID:   reserveRequestID,
+		HoldAmount:         cmd.HoldAmount,
+		ActualAmount:       cmd.ActualAmount,
+	}
+}
+
+func (r *usageBillingRepository) applyBalanceHold(
+	ctx context.Context,
+	cmd *service.BalanceHoldCommand,
+	apply func(context.Context, *sql.Tx, *service.BalanceHoldCommand) (*service.BalanceHoldResult, error),
+) (_ *service.BalanceHoldResult, err error) {
+	if cmd == nil {
+		return &service.BalanceHoldResult{}, nil
 	}
 	if r == nil || r.db == nil {
 		return nil, errors.New("usage billing repository db is nil")
@@ -152,7 +186,7 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		return nil, err
 	}
 	if !applied {
-		return &service.BatchImageBalanceHoldResult{Applied: false}, nil
+		return &service.BalanceHoldResult{Applied: false}, nil
 	}
 
 	result, err := apply(ctx, tx, cmd)
@@ -160,7 +194,7 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		return nil, err
 	}
 	if result == nil {
-		result = &service.BatchImageBalanceHoldResult{}
+		result = &service.BalanceHoldResult{}
 	}
 	result.Applied = true
 
@@ -272,9 +306,9 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 	return newBalance, false, nil
 }
 
-func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func reserveUsageBillingBalanceHold(ctx context.Context, tx *sql.Tx, cmd *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
 	if cmd.HoldAmount <= 0 {
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return &service.BalanceHoldResult{}, nil
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
@@ -286,7 +320,7 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
-		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+		return &service.BalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -296,15 +330,15 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	} else if !exists {
 		return nil, service.ErrUserNotFound
 	}
-	return nil, service.ErrBatchImageInsufficientBalance
+	return nil, service.ErrBalanceHoldInsufficientBalance
 }
 
-func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func captureUsageBillingBalanceHold(ctx context.Context, tx *sql.Tx, cmd *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
 	if cmd.HoldAmount <= 0 && cmd.ActualAmount <= 0 {
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return &service.BalanceHoldResult{}, nil
 	}
 	if cmd.ActualAmount-cmd.HoldAmount > 0.00000001 {
-		return nil, service.ErrBatchImageSettlementCostExceedsHold
+		return nil, service.ErrBalanceHoldActualAmountExceedsHold
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
@@ -318,7 +352,7 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.ActualAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
-		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+		return &service.BalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -328,22 +362,22 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	} else if !exists {
 		return nil, service.ErrUserNotFound
 	}
-	return nil, errors.New("batch image frozen balance is insufficient")
+	return nil, service.ErrBalanceHoldFrozenBalanceInsufficient
 }
 
-func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func releaseUsageBillingBalanceHold(ctx context.Context, tx *sql.Tx, cmd *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
 	if cmd.HoldAmount <= 0 {
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return &service.BalanceHoldResult{}, nil
 	}
-	// 释放前校验该 job 确实预留过 hold（hold request id 已被 claim），
-	// 防止从未成功冻结的 job 触发"幻影释放"，从其他用户的冻结资金池中凭空生成余额。
-	held, heldErr := batchImageHoldClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
-	if heldErr != nil {
-		return nil, heldErr
-	}
-	if !held {
-		logger.LegacyPrintf("repository.usage_billing", "[BatchImage] release skipped, hold was never reserved: batch=%s", cmd.BatchID)
-		return &service.BatchImageBalanceHoldResult{}, nil
+	if reserveRequestID := strings.TrimSpace(cmd.ReserveRequestID); reserveRequestID != "" {
+		held, heldErr := balanceHoldClaimExists(ctx, tx, reserveRequestID, cmd.APIKeyID)
+		if heldErr != nil {
+			return nil, heldErr
+		}
+		if !held {
+			logger.LegacyPrintf("repository.usage_billing", "[BalanceHold] release skipped, hold was never reserved: hold=%s", cmd.HoldID)
+			return &service.BalanceHoldResult{}, nil
+		}
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
@@ -355,7 +389,7 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
-		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+		return &service.BalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -365,12 +399,10 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	} else if !exists {
 		return nil, service.ErrUserNotFound
 	}
-	return nil, errors.New("batch image frozen balance is insufficient")
+	return nil, service.ErrBalanceHoldFrozenBalanceInsufficient
 }
 
-// batchImageHoldClaimExists 检查 hold request id 是否已在 dedup（或归档）表中被 claim，
-// 即该 batch 的冻结操作确实成功提交过。
-func batchImageHoldClaimExists(ctx context.Context, tx *sql.Tx, holdRequestID string, apiKeyID int64) (bool, error) {
+func balanceHoldClaimExists(ctx context.Context, tx *sql.Tx, holdRequestID string, apiKeyID int64) (bool, error) {
 	var exists int
 	err := tx.QueryRowContext(ctx, `
 		SELECT 1

@@ -399,6 +399,9 @@ const (
 	// for probing remote Sub2API API-key billing metadata.
 	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"
 
+	// SettingKeyQuotaLeaseDemoSettings stores runtime settings for node quota leases.
+	SettingKeyQuotaLeaseDemoSettings = "quota_lease_demo_settings"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

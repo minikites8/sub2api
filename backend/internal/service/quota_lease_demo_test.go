@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -80,6 +81,84 @@ func (s *quotaLeaseDemoGrokOAuthClientStub) ConvertSSOToBuild(ctx context.Contex
 	return &xai.TokenResponse{AccessToken: "grok-sso-access", RefreshToken: "grok-sso-refresh", ExpiresIn: 3600}, nil
 }
 
+type quotaLeaseDemoSettingRepo struct {
+	mu     sync.Mutex
+	values map[string]string
+}
+
+func newQuotaLeaseDemoSettingRepo() *quotaLeaseDemoSettingRepo {
+	return &quotaLeaseDemoSettingRepo{values: make(map[string]string)}
+}
+
+func (r *quotaLeaseDemoSettingRepo) Get(ctx context.Context, key string) (*Setting, error) {
+	value, err := r.GetValue(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return &Setting{Key: key, Value: value, UpdatedAt: time.Now().UTC()}, nil
+}
+
+func (r *quotaLeaseDemoSettingRepo) GetValue(ctx context.Context, key string) (string, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	value, ok := r.values[key]
+	if !ok {
+		return "", ErrSettingNotFound
+	}
+	return value, nil
+}
+
+func (r *quotaLeaseDemoSettingRepo) Set(ctx context.Context, key, value string) error {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.values[key] = value
+	return nil
+}
+
+func (r *quotaLeaseDemoSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			out[key] = value
+		}
+	}
+	return out, nil
+}
+
+func (r *quotaLeaseDemoSettingRepo) SetMultiple(ctx context.Context, settings map[string]string) error {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for key, value := range settings {
+		r.values[key] = value
+	}
+	return nil
+}
+
+func (r *quotaLeaseDemoSettingRepo) GetAll(ctx context.Context) (map[string]string, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]string, len(r.values))
+	for key, value := range r.values {
+		out[key] = value
+	}
+	return out, nil
+}
+
+func (r *quotaLeaseDemoSettingRepo) Delete(ctx context.Context, key string) error {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.values, key)
+	return nil
+}
+
 func newQuotaLeaseDemoTestService() *QuotaLeaseDemoService {
 	return NewQuotaLeaseDemoService(&config.Config{
 		Gateway: config.GatewayConfig{
@@ -94,6 +173,77 @@ func newQuotaLeaseDemoTestService() *QuotaLeaseDemoService {
 		},
 	})
 }
+
+type quotaLeaseDemoBillingRepo struct {
+	reserves   []*BalanceHoldCommand
+	captures   []*BalanceHoldCommand
+	releases   []*BalanceHoldCommand
+	seen       map[string]struct{}
+	reserveErr error
+	captureErr error
+	releaseErr error
+}
+
+func (r *quotaLeaseDemoBillingRepo) Apply(_ context.Context, cmd *UsageBillingCommand) (*UsageBillingApplyResult, error) {
+	if cmd != nil {
+		cmd.Normalize()
+	}
+	return &UsageBillingApplyResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepo) ReserveBalanceHold(_ context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error) {
+	if r.reserveErr != nil {
+		r.reserves = append(r.reserves, cmd)
+		return nil, r.reserveErr
+	}
+	return r.applyHold(cmd, &r.reserves)
+}
+
+func (r *quotaLeaseDemoBillingRepo) CaptureBalanceHold(_ context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error) {
+	if r.captureErr != nil {
+		r.captures = append(r.captures, cmd)
+		return nil, r.captureErr
+	}
+	return r.applyHold(cmd, &r.captures)
+}
+
+func (r *quotaLeaseDemoBillingRepo) ReleaseBalanceHold(_ context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error) {
+	if r.releaseErr != nil {
+		r.releases = append(r.releases, cmd)
+		return nil, r.releaseErr
+	}
+	return r.applyHold(cmd, &r.releases)
+}
+
+func (r *quotaLeaseDemoBillingRepo) ReserveBatchImageBalance(_ context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error) {
+	return &BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepo) CaptureBatchImageBalance(_ context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error) {
+	return &BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepo) ReleaseBatchImageBalance(_ context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error) {
+	return &BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepo) applyHold(cmd *BalanceHoldCommand, calls *[]*BalanceHoldCommand) (*BalanceHoldResult, error) {
+	if r.seen == nil {
+		r.seen = make(map[string]struct{})
+	}
+	if cmd != nil {
+		cmd.Normalize()
+		if _, ok := r.seen[cmd.RequestID]; ok {
+			*calls = append(*calls, cmd)
+			return &BalanceHoldResult{Applied: false}, nil
+		}
+		r.seen[cmd.RequestID] = struct{}{}
+	}
+	*calls = append(*calls, cmd)
+	return &BalanceHoldResult{Applied: true}, nil
+}
+
+var _ UsageBillingRepository = (*quotaLeaseDemoBillingRepo)(nil)
 
 func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDemoService, controlSecret string) *httptest.Server {
 	t.Helper()
@@ -162,6 +312,19 @@ func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDe
 				})
 			}
 			require.NoError(t, json.NewEncoder(w).Encode(result))
+		case "/api/v1/node-leases/demo/settings":
+			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			settings, err := control.GetSettings(r.Context())
+			require.NoError(t, err)
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"code":    0,
+				"message": "success",
+				"data":    settings,
+			}))
 		case "/api/v1/node-leases/demo/accounts/login-tasks":
 			if r.Method == http.MethodPost {
 				if r.Header.Get("X-Node-Secret") != controlSecret {
@@ -256,6 +419,157 @@ func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDe
 	}))
 }
 
+func TestQuotaLeaseDemoSettingsServiceDefaultsUpdatesAndValidates(t *testing.T) {
+	repo := newQuotaLeaseDemoSettingRepo()
+	settingSvc := NewSettingService(repo, nil)
+	ctx := context.Background()
+
+	defaults, err := settingSvc.GetQuotaLeaseDemoSettings(ctx)
+	require.NoError(t, err)
+	require.InDelta(t, 0.2, defaults.PrefetchLowWatermarkAmount, 1e-12)
+	require.Equal(t, 5, defaults.PrefetchAverageWindow)
+	require.InDelta(t, 3.0, defaults.PrefetchAverageMultiplier, 1e-12)
+	require.Equal(t, 10, defaults.PrefetchDebounceSeconds)
+
+	lowWatermark := 0.45
+	window := 8
+	multiplier := 2.5
+	debounce := 4
+	updated, err := settingSvc.SetQuotaLeaseDemoSettings(ctx, &QuotaLeaseDemoSettingsPatch{
+		PrefetchLowWatermarkAmount: &lowWatermark,
+		PrefetchAverageWindow:      &window,
+		PrefetchAverageMultiplier:  &multiplier,
+		PrefetchDebounceSeconds:    &debounce,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, lowWatermark, updated.PrefetchLowWatermarkAmount, 1e-12)
+	require.Equal(t, window, updated.PrefetchAverageWindow)
+	require.InDelta(t, multiplier, updated.PrefetchAverageMultiplier, 1e-12)
+	require.Equal(t, debounce, updated.PrefetchDebounceSeconds)
+
+	raw, err := repo.GetValue(ctx, SettingKeyQuotaLeaseDemoSettings)
+	require.NoError(t, err)
+	var saved QuotaLeaseDemoSettings
+	require.NoError(t, json.Unmarshal([]byte(raw), &saved))
+	require.InDelta(t, lowWatermark, saved.PrefetchLowWatermarkAmount, 1e-12)
+	require.Equal(t, window, saved.PrefetchAverageWindow)
+
+	invalid := -0.1
+	_, err = settingSvc.SetQuotaLeaseDemoSettings(ctx, &QuotaLeaseDemoSettingsPatch{
+		PrefetchLowWatermarkAmount: &invalid,
+	})
+	require.Error(t, err)
+}
+
+func TestQuotaLeaseDemoRemoteNodeReadsPrefetchSettingsFromControlPlane(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	settingSvc := NewSettingService(newQuotaLeaseDemoSettingRepo(), nil)
+	lowWatermark := 0.35
+	window := 2
+	multiplier := 4.0
+	debounce := 1
+	_, err := settingSvc.SetQuotaLeaseDemoSettings(context.Background(), &QuotaLeaseDemoSettingsPatch{
+		PrefetchLowWatermarkAmount: &lowWatermark,
+		PrefetchAverageWindow:      &window,
+		PrefetchAverageMultiplier:  &multiplier,
+		PrefetchDebounceSeconds:    &debounce,
+	})
+	require.NoError(t, err)
+	control.SetSettingService(settingSvc)
+
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+
+	settings, err := node.GetSettings(context.Background())
+	require.NoError(t, err)
+	require.InDelta(t, lowWatermark, settings.PrefetchLowWatermarkAmount, 1e-12)
+	require.Equal(t, window, settings.PrefetchAverageWindow)
+	require.InDelta(t, multiplier, settings.PrefetchAverageMultiplier, 1e-12)
+	require.Equal(t, debounce, settings.PrefetchDebounceSeconds)
+}
+
+func TestQuotaLeaseDemoRemotePrefetchExpandsActiveLeaseFromControlSettings(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	settingSvc := NewSettingService(newQuotaLeaseDemoSettingRepo(), nil)
+	lowWatermark := 0.2
+	window := 0
+	multiplier := 0.0
+	debounce := 0
+	_, err := settingSvc.SetQuotaLeaseDemoSettings(context.Background(), &QuotaLeaseDemoSettingsPatch{
+		PrefetchLowWatermarkAmount: &lowWatermark,
+		PrefetchAverageWindow:      &window,
+		PrefetchAverageMultiplier:  &multiplier,
+		PrefetchDebounceSeconds:    &debounce,
+	})
+	require.NoError(t, err)
+	control.SetSettingService(settingSvc)
+
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				ControlPlaneBaseURL:    server.URL,
+				ControlPlaneKey:        "control-secret",
+				DefaultGrantAmount:     1,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	})
+	ctx := context.Background()
+
+	lease, err := node.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 1, lease.Granted, 1e-12)
+	initialLeaseID := lease.ID
+
+	handled, applied, err := node.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "prefetch-req-1",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: 0.9,
+	})
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.True(t, applied)
+
+	require.Eventually(t, func() bool {
+		snapshot := control.Snapshot()
+		if len(snapshot.Leases) != 1 {
+			return false
+		}
+		remoteLease := snapshot.Leases[0]
+		return remoteLease.ID == initialLeaseID &&
+			remoteLease.Granted >= 2.0-1e-9 &&
+			remoteLease.Consumed >= 0.9-1e-9 &&
+			remoteLease.Remaining() >= 1.1-1e-9
+	}, 2*time.Second, 20*time.Millisecond)
+
+	nodeSnapshot := node.Snapshot()
+	require.Len(t, nodeSnapshot.Leases, 1)
+	require.Equal(t, initialLeaseID, nodeSnapshot.Leases[0].ID)
+	require.GreaterOrEqual(t, nodeSnapshot.Leases[0].Granted, 2.0-1e-9)
+	require.GreaterOrEqual(t, nodeSnapshot.Leases[0].Consumed, 0.9-1e-9)
+}
+
 func TestQuotaLeaseDemoConsumeUsageIsIdempotent(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	ctx := context.Background()
@@ -287,6 +601,100 @@ func TestQuotaLeaseDemoConsumeUsageIsIdempotent(t *testing.T) {
 	require.False(t, second.Applied)
 	require.True(t, second.Duplicate)
 	require.InDelta(t, 0.6, second.Lease.Remaining(), 1e-9)
+}
+
+func TestQuotaLeaseDemoLeaseBalanceHoldLifecycle(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	billing := &quotaLeaseDemoBillingRepo{}
+	svc.SetUsageBillingRepository(billing)
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+	require.Len(t, billing.reserves, 1)
+	require.Equal(t, quotaLeaseDemoInitialReserveRequestID(lease.ID), billing.reserves[0].RequestID)
+	require.Equal(t, lease.ID, billing.reserves[0].HoldID)
+	require.InDelta(t, 1, billing.reserves[0].HoldAmount, 1e-12)
+
+	event := QuotaLeaseDemoUsageEvent{
+		EventID:   "event-hold-1",
+		LeaseID:   lease.ID,
+		NodeID:    "node-1",
+		UserID:    10,
+		APIKeyID:  20,
+		RequestID: "req-hold-1",
+		Amount:    0.4,
+	}
+	first, err := svc.ConsumeUsage(ctx, event)
+	require.NoError(t, err)
+	require.True(t, first.Applied)
+	require.Len(t, billing.captures, 1)
+	require.Equal(t, quotaLeaseDemoCaptureRequestID(event.EventID), billing.captures[0].RequestID)
+	require.InDelta(t, 0.4, billing.captures[0].HoldAmount, 1e-12)
+	require.InDelta(t, 0.4, billing.captures[0].ActualAmount, 1e-12)
+
+	duplicate, err := svc.ConsumeUsage(ctx, event)
+	require.NoError(t, err)
+	require.True(t, duplicate.Duplicate)
+	require.Len(t, billing.captures, 1)
+
+	reclaimed := svc.ReclaimExpired(ctx, lease.ReclaimAt.Add(time.Second))
+	require.Equal(t, 1, reclaimed.ReclaimedCount)
+	require.InDelta(t, 0.6, reclaimed.ReclaimedTotal, 1e-12)
+	require.Len(t, billing.releases, 1)
+	require.Equal(t, quotaLeaseDemoReleaseRequestID(lease.ID), billing.releases[0].RequestID)
+	require.Equal(t, quotaLeaseDemoInitialReserveRequestID(lease.ID), billing.releases[0].ReserveRequestID)
+	require.InDelta(t, 0.6, billing.releases[0].HoldAmount, 1e-12)
+}
+
+func TestQuotaLeaseDemoLeaseTopUpFreezesDeltaOnly(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	billing := &quotaLeaseDemoBillingRepo{}
+	svc.SetUsageBillingRepository(billing)
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   0.2,
+	})
+	require.NoError(t, err)
+
+	toppedUp, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, lease.ID, toppedUp.ID)
+	require.Len(t, billing.reserves, 2)
+	require.InDelta(t, 0.2, billing.reserves[0].HoldAmount, 1e-12)
+	require.InDelta(t, 0.8, billing.reserves[1].HoldAmount, 1e-12)
+	require.Equal(t, quotaLeaseDemoTopUpReserveRequestID(lease.ID, 1), billing.reserves[1].RequestID)
+	require.InDelta(t, 1, toppedUp.Granted, 1e-12)
+}
+
+func TestQuotaLeaseDemoLeaseReserveInsufficientBalance(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	billing := &quotaLeaseDemoBillingRepo{reserveErr: ErrBalanceHoldInsufficientBalance}
+	svc.SetUsageBillingRepository(billing)
+
+	_, err := svc.RequestLease(context.Background(), QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.ErrorIs(t, err, ErrQuotaLeaseDemoNoCapacity)
+	require.Len(t, billing.reserves, 1)
+	require.Empty(t, svc.Snapshot().Leases)
 }
 
 func TestQuotaLeaseDemoRequestLeaseReusesActiveCapacity(t *testing.T) {
@@ -570,6 +978,24 @@ func TestQuotaLeaseDemoRemoteNodeFlushesUsageLogs(t *testing.T) {
 	require.Equal(t, 11, received[0].InputTokens)
 	require.InDelta(t, 0.4, received[0].ActualCost, 1e-9)
 	require.Len(t, node.pendingUsageLogSnapshots(), 0)
+}
+
+func TestQuotaLeaseDemoUsageLogSnapshotPreservesNodeID(t *testing.T) {
+	createdAt := time.Date(2026, 7, 18, 12, 45, 0, 0, time.UTC)
+	snapshot := NewQuotaLeaseDemoUsageLogSnapshot("", &UsageLog{
+		NodeID:    " node-us ",
+		UserID:    10,
+		APIKeyID:  20,
+		AccountID: 30,
+		RequestID: "usage-log-node-id",
+		Model:     "gpt-5",
+		CreatedAt: createdAt,
+	})
+
+	require.Equal(t, "node-us", snapshot.NodeID)
+	log := snapshot.ToUsageLog()
+	require.Equal(t, "node-us", log.NodeID)
+	require.Equal(t, "usage-log-node-id", log.RequestID)
 }
 
 func TestQuotaLeaseDemoRemoteNodeAuthorizesClientKeyViaControlPlane(t *testing.T) {

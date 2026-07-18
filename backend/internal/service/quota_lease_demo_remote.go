@@ -229,6 +229,40 @@ func (s *QuotaLeaseDemoService) postRemoteUsageLogBatch(ctx context.Context, req
 	return result, nil
 }
 
+type quotaLeaseDemoRemoteSettingsResponse struct {
+	Data *QuotaLeaseDemoSettings `json:"data"`
+
+	PrefetchLowWatermarkAmount *float64 `json:"prefetch_low_watermark_amount"`
+	PrefetchAverageWindow      *int     `json:"prefetch_average_window"`
+	PrefetchAverageMultiplier  *float64 `json:"prefetch_average_multiplier"`
+	PrefetchDebounceSeconds    *int     `json:"prefetch_debounce_seconds"`
+}
+
+func (r quotaLeaseDemoRemoteSettingsResponse) settings() (*QuotaLeaseDemoSettings, error) {
+	if r.Data != nil {
+		return validateQuotaLeaseDemoSettings(r.Data)
+	}
+	patch := &QuotaLeaseDemoSettingsPatch{
+		PrefetchLowWatermarkAmount: r.PrefetchLowWatermarkAmount,
+		PrefetchAverageWindow:      r.PrefetchAverageWindow,
+		PrefetchAverageMultiplier:  r.PrefetchAverageMultiplier,
+		PrefetchDebounceSeconds:    r.PrefetchDebounceSeconds,
+	}
+	return validateQuotaLeaseDemoSettings(applyQuotaLeaseDemoSettingsPatch(defaultQuotaLeaseDemoSettings(), patch))
+}
+
+func (s *QuotaLeaseDemoService) fetchRemoteSettings(ctx context.Context) (*QuotaLeaseDemoSettings, error) {
+	nodeID, secret, err := s.remoteNodeAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var result quotaLeaseDemoRemoteSettingsResponse
+	if err := s.doRemoteJSON(ctx, http.MethodGet, "/settings", nodeID, secret, nil, &result); err != nil {
+		return nil, err
+	}
+	return result.settings()
+}
+
 func (s *QuotaLeaseDemoService) createRemoteAccountLoginTask(ctx context.Context, req QuotaLeaseDemoAccountLoginTaskCreateRequest) (*QuotaLeaseDemoAccountLoginTask, error) {
 	var result struct {
 		Task *QuotaLeaseDemoAccountLoginTask `json:"task"`
@@ -551,6 +585,14 @@ func (s *QuotaLeaseDemoService) cacheRemoteLease(lease *QuotaLeaseDemoLease) {
 	}
 	if s.events == nil {
 		s.events = make(map[string]*QuotaLeaseDemoLedgerEvent)
+	}
+	if existing := s.leases[copy.ID]; existing != nil {
+		if existing.Consumed > copy.Consumed {
+			copy.Consumed = existing.Consumed
+		}
+		if existing.Reclaimed > copy.Reclaimed {
+			copy.Reclaimed = existing.Reclaimed
+		}
 	}
 	s.leases[copy.ID] = &copy
 	eventID := "lease:" + copy.ID

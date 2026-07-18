@@ -97,6 +97,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // kiro_credits
+			sqlmock.AnyArg(), // node_id
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -187,6 +188,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // kiro_credits
+			sqlmock.AnyArg(), // node_id
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -273,8 +275,8 @@ func TestExecUsageLogInsertNoResult_UsesPlaceholderForEachArg(t *testing.T) {
 	err := execUsageLogInsertNoResult(context.Background(), capture, prepared)
 	require.NoError(t, err)
 	require.Len(t, capture.args, len(prepared.args))
-	require.Len(t, prepared.args, 57)
-	require.Contains(t, capture.query, "$57")
+	require.Len(t, prepared.args, 58)
+	require.Contains(t, capture.query, "$58")
 }
 
 func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
@@ -289,6 +291,22 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+}
+
+func TestPrepareUsageLogInsert_PersistsNodeID(t *testing.T) {
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		RequestID:      "req-node-id",
+		NodeID:         " node-us ",
+		Model:          "gpt-5",
+		RequestedModel: "gpt-5",
+		CreatedAt:      time.Date(2026, 7, 18, 12, 30, 0, 0, time.UTC),
+	})
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, "node-us", prepared.args[len(prepared.args)-2])
 }
 
 func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
@@ -868,6 +886,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullFloat64{},
 			sql.NullFloat64{},
+			sql.NullString{Valid: true, String: "node-us"},
 			now,
 		}})
 		require.NoError(t, err)
@@ -943,11 +962,13 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullString{Valid: true, String: "node-us"}, // node_id
 			now,
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
 		require.Equal(t, "priority", *log.ServiceTier)
+		require.Equal(t, "node-us", log.NodeID)
 		require.Equal(t, service.RequestTypeWSV2, log.RequestType)
 		require.True(t, log.Stream)
 		require.True(t, log.OpenAIWSMode)
@@ -1001,6 +1022,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullString{},  // node_id
 			now,
 		}})
 		require.NoError(t, err)
@@ -1059,6 +1081,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullString{},  // node_id
 			now,
 		}})
 		require.NoError(t, err)

@@ -5809,6 +5809,7 @@ export default {
         table: {
           time: '时间',
           kind: '类型',
+          requestNode: '请求节点',
           platform: '平台',
           model: '模型',
           duration: '耗时',

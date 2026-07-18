@@ -94,8 +94,12 @@ func NewQuotaLeaseDemoUsageLogSnapshot(nodeID string, log *UsageLog) QuotaLeaseD
 		return QuotaLeaseDemoUsageLogSnapshot{}
 	}
 	log.SyncRequestTypeAndLegacyFields()
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		nodeID = strings.TrimSpace(log.NodeID)
+	}
 	snap := QuotaLeaseDemoUsageLogSnapshot{
-		NodeID:                    strings.TrimSpace(nodeID),
+		NodeID:                    nodeID,
 		UserID:                    log.UserID,
 		APIKeyID:                  log.APIKeyID,
 		AccountID:                 log.AccountID,
@@ -166,6 +170,7 @@ func NewQuotaLeaseDemoUsageLogSnapshot(nodeID string, log *UsageLog) QuotaLeaseD
 
 func (s QuotaLeaseDemoUsageLogSnapshot) ToUsageLog() *UsageLog {
 	log := &UsageLog{
+		NodeID:                    strings.TrimSpace(s.NodeID),
 		UserID:                    s.UserID,
 		APIKeyID:                  s.APIKeyID,
 		AccountID:                 s.AccountID,

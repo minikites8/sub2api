@@ -67,7 +67,7 @@ func reserveBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 		return nil
 	}
 	if _, err := repo.ReserveBatchImageBalance(ctx, cmd); err != nil {
-		if errors.Is(err, ErrBatchImageInsufficientBalance) {
+		if errors.Is(err, ErrBatchImageInsufficientBalance) || errors.Is(err, ErrBalanceHoldInsufficientBalance) {
 			return ErrBatchImageInsufficientBalance
 		}
 		return ErrBatchImageBillingHoldFailed.WithCause(err)
@@ -84,6 +84,9 @@ func captureBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 		return err
 	}
 	if _, err := repo.CaptureBatchImageBalance(ctx, cmd); err != nil {
+		if errors.Is(err, ErrBalanceHoldActualAmountExceedsHold) {
+			return ErrBatchImageSettlementCostExceedsHold
+		}
 		return ErrBatchImageSettlementBillingFailed.WithCause(err)
 	}
 	return nil

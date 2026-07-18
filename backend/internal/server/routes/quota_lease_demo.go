@@ -17,6 +17,8 @@ func RegisterQuotaLeaseDemoRoutes(v1 *gin.RouterGroup, cfg *config.Config, apiKe
 		group.POST("/nodes/register", h.RegisterNode)
 		group.POST("/nodes/heartbeat", h.HeartbeatNode)
 		group.GET("/nodes", h.ListNodes)
+		group.GET("/settings", h.GetSettings)
+		group.PUT("/settings", h.UpdateSettings)
 		group.POST("/auth/client-key", h.AuthorizeClientKey)
 		group.POST("/accounts/login-tasks", h.CreateAccountLoginTask)
 		group.GET("/accounts/login-tasks", h.ListAccountLoginTasks)

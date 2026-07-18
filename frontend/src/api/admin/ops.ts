@@ -113,6 +113,7 @@ export interface OpsRequestDetail {
   kind: OpsRequestKind
   created_at: string
   request_id: string
+  node_id?: string
 
   platform?: string
   model?: string

@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +17,61 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type quotaLeaseDemoUsageRepoStub struct {
+	service.UsageLogRepository
+	mu       sync.Mutex
+	inserted map[string]bool
+	calls    []service.UsageLog
+}
+
+func (r *quotaLeaseDemoUsageRepoStub) Create(_ context.Context, log *service.UsageLog) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.inserted == nil {
+		r.inserted = make(map[string]bool)
+	}
+	if log == nil {
+		return false, nil
+	}
+	key := strings.TrimSpace(log.RequestID) + "\x1f" + strconv.FormatInt(log.APIKeyID, 10)
+	r.calls = append(r.calls, *log)
+	if r.inserted[key] {
+		return false, nil
+	}
+	r.inserted[key] = true
+	return true, nil
+}
+
+type quotaLeaseDemoUserRepoStub struct {
+	service.UserRepository
+	mu             sync.Mutex
+	user           *service.User
+	balanceUpdates []quotaLeaseDemoBalanceUpdate
+}
+
+type quotaLeaseDemoBalanceUpdate struct {
+	userID int64
+	amount float64
+}
+
+func (r *quotaLeaseDemoUserRepoStub) GetByID(_ context.Context, id int64) (*service.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.user != nil {
+		user := *r.user
+		user.ID = id
+		return &user, nil
+	}
+	return &service.User{ID: id, Status: service.StatusActive}, nil
+}
+
+func (r *quotaLeaseDemoUserRepoStub) UpdateBalance(_ context.Context, id int64, amount float64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.balanceUpdates = append(r.balanceUpdates, quotaLeaseDemoBalanceUpdate{userID: id, amount: amount})
+	return nil
+}
 
 type quotaLeaseDemoSyncAdminService struct {
 	service.AdminService
@@ -550,4 +608,51 @@ func TestQuotaLeaseDemoHandlerAccountLoginTaskFlow(t *testing.T) {
 	require.False(t, statusBody.Account.Account.Schedulable)
 	require.Equal(t, "oauth cooling down", statusBody.Account.Account.ErrorMessage)
 	require.Equal(t, "node-access-token-2", statusBody.Account.Account.Credentials["access_token"])
+}
+
+func TestQuotaLeaseDemoHandlerPostsUsageLogBatchWithoutBalanceDeduction(t *testing.T) {
+	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
+	usageRepo := &quotaLeaseDemoUsageRepoStub{}
+	userRepo := &quotaLeaseDemoUserRepoStub{
+		user: &service.User{
+			ID:     1,
+			Status: service.StatusActive,
+		},
+	}
+	usageSvc := service.NewUsageService(usageRepo, userRepo, nil, nil)
+	h := NewQuotaLeaseDemoHandler(svc)
+	h.SetUsageService(usageSvc)
+
+	group := router.Group("/api/v1/node-leases/demo")
+	group.POST("/usage/logs/batch", h.PostUsageLogBatch)
+
+	req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/usage/logs/batch", map[string]any{
+		"logs": []map[string]any{
+			{
+				"user_id":     1,
+				"api_key_id":  2,
+				"request_id":  "req-1",
+				"actual_cost": 1.25,
+			},
+			{
+				"user_id":     1,
+				"api_key_id":  2,
+				"request_id":  "req-1",
+				"actual_cost": 1.25,
+			},
+		},
+	})
+	req.Header.Set("X-Node-Secret", "control-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body service.QuotaLeaseDemoUsageLogBatchResult
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Results, 2)
+	require.True(t, body.Results[0].Applied)
+	require.False(t, body.Results[0].Duplicate)
+	require.False(t, body.Results[1].Applied)
+	require.True(t, body.Results[1].Duplicate)
+	require.Empty(t, userRepo.balanceUpdates)
 }

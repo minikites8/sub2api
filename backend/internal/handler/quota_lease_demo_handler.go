@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -115,6 +116,38 @@ func (h *QuotaLeaseDemoHandler) ListNodes(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"nodes": h.svc.ListNodes()})
+}
+
+func (h *QuotaLeaseDemoHandler) GetSettings(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	if _, ok := h.authenticateNodeOrControl(c, ""); !ok {
+		return
+	}
+	settings, err := h.svc.GetSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
+}
+
+func (h *QuotaLeaseDemoHandler) UpdateSettings(c *gin.Context) {
+	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
+		return
+	}
+	var req service.QuotaLeaseDemoSettingsPatch
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	settings, err := h.svc.UpdateSettings(c.Request.Context(), &req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
 }
 
 func (h *QuotaLeaseDemoHandler) CreateAccountLoginTask(c *gin.Context) {
