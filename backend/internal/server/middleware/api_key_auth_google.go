@@ -40,6 +40,11 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				abortWithGoogleError(c, 401, "Invalid API key")
 				return
 			}
+			if errors.Is(err, service.ErrQuotaLeaseDemoNoCapacity) {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				abortWithGoogleError(c, 403, "No local quota lease capacity available")
+				return
+			}
 			abortWithGoogleError(c, 500, "Failed to validate API key")
 			return
 		}

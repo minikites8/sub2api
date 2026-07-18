@@ -61,6 +61,9 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusUnauthorized && strings.Contains(httpErr.Body, "invalid_api_key") {
 			return nil, ErrAPIKeyNotFound
 		}
+		if quotaLeaseDemoRemoteNoCapacity(err) {
+			return nil, ErrQuotaLeaseDemoNoCapacity
+		}
 		return nil, err
 	}
 	if result.Snapshot == nil || result.Snapshot.APIKeyID <= 0 || result.Snapshot.UserID <= 0 {
@@ -68,6 +71,9 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	}
 	if result.Lease != nil {
 		s.cacheRemoteLease(result.Lease)
+	}
+	if err := s.ensureClientAuthCapacity(ctx, &result, amount); err != nil {
+		return nil, err
 	}
 	if result.ExpiresAt.IsZero() {
 		result.ExpiresAt = quotaLeaseDemoClientAuthExpiresAt(result.Lease)
@@ -87,6 +93,18 @@ func (s *QuotaLeaseDemoService) ensureClientAuthCapacity(ctx context.Context, re
 		return ErrQuotaLeaseDemoNoCapacity
 	}
 	return nil
+}
+
+func quotaLeaseDemoRemoteNoCapacity(err error) bool {
+	var httpErr *quotaLeaseDemoRemoteHTTPError
+	if !errors.As(err, &httpErr) {
+		return false
+	}
+	if httpErr.StatusCode != http.StatusForbidden {
+		return false
+	}
+	body := strings.ToLower(strings.TrimSpace(httpErr.Body))
+	return strings.Contains(body, "no_capacity") || strings.Contains(body, "quota_lease_demo_no_capacity")
 }
 
 func (s *QuotaLeaseDemoService) getClientAuthCache(apiKey string) *QuotaLeaseDemoClientAuthResult {

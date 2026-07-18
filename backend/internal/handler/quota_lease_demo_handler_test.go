@@ -121,6 +121,38 @@ func (s *quotaLeaseDemoSyncAdminService) GetProxy(_ context.Context, id int64) (
 	return s.proxies[id], nil
 }
 
+type quotaLeaseDemoBillingRepoStub struct {
+	service.UsageBillingRepository
+	reserveErr error
+}
+
+func (r *quotaLeaseDemoBillingRepoStub) ReserveBalanceHold(context.Context, *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
+	if r.reserveErr != nil {
+		return nil, r.reserveErr
+	}
+	return &service.BalanceHoldResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepoStub) CaptureBalanceHold(context.Context, *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
+	return &service.BalanceHoldResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepoStub) ReleaseBalanceHold(context.Context, *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
+	return &service.BalanceHoldResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepoStub) ReserveBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepoStub) CaptureBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *quotaLeaseDemoBillingRepoStub) ReleaseBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
 type quotaLeaseDemoAPIKeyRepoStub struct {
 	service.APIKeyRepository
 	apiKey *service.APIKey
@@ -651,7 +683,8 @@ func TestQuotaLeaseDemoHandlerAuthorizeClientKeyFallsBackToUserBalance(t *testin
 }
 
 func TestQuotaLeaseDemoHandlerAuthorizeClientKeyRejectsZeroBalance(t *testing.T) {
-	router, _ := newQuotaLeaseDemoHandlerTestRouter(t)
+	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
+	svc.SetUsageBillingRepository(&quotaLeaseDemoBillingRepoStub{reserveErr: service.ErrBalanceHoldInsufficientBalance})
 	apiKeySvc := service.NewAPIKeyService(
 		&quotaLeaseDemoAPIKeyRepoStub{
 			apiKey: &service.APIKey{
@@ -673,18 +706,20 @@ func TestQuotaLeaseDemoHandlerAuthorizeClientKeyRejectsZeroBalance(t *testing.T)
 		nil,
 		&config.Config{},
 	)
-	h := NewQuotaLeaseDemoHandler(service.GetQuotaLeaseDemoService(&config.Config{
+	h := NewQuotaLeaseDemoHandler(svc)
+	h.svc.SetConfig(&config.Config{
 		Gateway: config.GatewayConfig{
 			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
-				Enabled:             true,
-				NodeID:              "control-node",
-				NodeSecret:          "control-secret",
-				DefaultGrantAmount:  1,
-				LeaseTTLSeconds:     600,
-				ReclaimGraceSeconds: 3600,
+				Enabled:                true,
+				NodeID:                 "control-node",
+				NodeSecret:             "control-secret",
+				DefaultGrantAmount:     1,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
 			},
 		},
-	}))
+	})
 	h.SetAPIKeyService(apiKeySvc)
 	router.POST("/api/v1/node-leases/demo/auth/client-key/zero", h.AuthorizeClientKey)
 

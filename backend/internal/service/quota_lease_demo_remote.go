@@ -51,19 +51,11 @@ func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, nodeID strin
 		return false
 	}
 
-	requestAmount := 0.0
-	defaultGrant := s.cfgSnapshot().DefaultGrantAmount
-	if defaultGrant <= 0 {
-		defaultGrant = 1
-	}
-	if amount > defaultGrant {
-		requestAmount = amount
-	}
 	_, err := s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
 		NodeID:   "",
 		UserID:   userID,
 		APIKeyID: apiKeyID,
-		Amount:   requestAmount,
+		Amount:   amount,
 	})
 	if err != nil {
 		return false

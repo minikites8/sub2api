@@ -1022,13 +1022,12 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "api_key_disabled"})
 		return
 	}
-	if snapshot.User.Balance <= 0 {
-		h.writeError(c, service.ErrQuotaLeaseDemoNoCapacity)
-		return
-	}
 	amount := req.Amount
 	if amount <= 0 {
 		amount = h.svc.DefaultGrantAmount()
+		if snapshot.User.Balance <= 0 {
+			amount = h.svc.PreflightReserveAmount()
+		}
 	}
 	amount = quotaLeaseDemoClientLeaseAmount(snapshot, amount)
 	lease, err := h.svc.RequestLease(c.Request.Context(), service.QuotaLeaseDemoLeaseRequest{
