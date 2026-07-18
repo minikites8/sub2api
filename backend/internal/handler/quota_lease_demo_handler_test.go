@@ -123,10 +123,12 @@ func (s *quotaLeaseDemoSyncAdminService) GetProxy(_ context.Context, id int64) (
 
 type quotaLeaseDemoBillingRepoStub struct {
 	service.UsageBillingRepository
-	reserveErr error
+	reserveCalls int
+	reserveErr   error
 }
 
 func (r *quotaLeaseDemoBillingRepoStub) ReserveBalanceHold(context.Context, *service.BalanceHoldCommand) (*service.BalanceHoldResult, error) {
+	r.reserveCalls++
 	if r.reserveErr != nil {
 		return nil, r.reserveErr
 	}
@@ -288,6 +290,7 @@ func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.Quo
 		group.GET("/accounts/assignments", h.ListAssignedAccounts)
 		group.POST("/leases/request", h.RequestLease)
 		group.POST("/usage/batch", h.PostUsageBatch)
+		group.GET("/status", h.Status)
 	}
 	return router, svc
 }
@@ -628,8 +631,8 @@ func TestQuotaLeaseDemoHandlerCreatesRegistrationURLAndStoresNodeSecret(t *testi
 	require.Equal(t, http.StatusOK, leaseRec.Code)
 }
 
-func TestQuotaLeaseDemoHandlerAuthorizeClientKeyFallsBackToUserBalance(t *testing.T) {
-	router, _ := newQuotaLeaseDemoHandlerTestRouter(t)
+func TestQuotaLeaseDemoHandlerAuthorizeClientKeyUsesPreflightAmountByDefault(t *testing.T) {
+	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
 	apiKeySvc := service.NewAPIKeyService(
 		&quotaLeaseDemoAPIKeyRepoStub{
 			apiKey: &service.APIKey{
@@ -651,19 +654,7 @@ func TestQuotaLeaseDemoHandlerAuthorizeClientKeyFallsBackToUserBalance(t *testin
 		nil,
 		&config.Config{},
 	)
-	h := NewQuotaLeaseDemoHandler(service.GetQuotaLeaseDemoService(&config.Config{
-		Gateway: config.GatewayConfig{
-			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
-				Enabled:                true,
-				NodeID:                 "control-node",
-				NodeSecret:             "control-secret",
-				DefaultGrantAmount:     1,
-				LeaseTTLSeconds:        600,
-				ReclaimGraceSeconds:    3600,
-				PreflightReserveAmount: 0.000001,
-			},
-		},
-	}))
+	h := NewQuotaLeaseDemoHandler(svc)
 	h.SetAPIKeyService(apiKeySvc)
 	router.POST("/api/v1/node-leases/demo/auth/client-key", h.AuthorizeClientKey)
 
@@ -679,7 +670,104 @@ func TestQuotaLeaseDemoHandlerAuthorizeClientKeyFallsBackToUserBalance(t *testin
 		Lease service.QuotaLeaseDemoLease `json:"lease"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.InDelta(t, svc.PreflightReserveAmount(), body.Lease.Granted, 1e-12)
+}
+
+func TestQuotaLeaseDemoHandlerAuthorizeClientKeyCapsExplicitAmountToUserBalance(t *testing.T) {
+	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
+	apiKeySvc := service.NewAPIKeyService(
+		&quotaLeaseDemoAPIKeyRepoStub{
+			apiKey: &service.APIKey{
+				ID:     20,
+				UserID: 10,
+				Key:    "sk-live-user",
+				Status: service.StatusAPIKeyActive,
+				User: &service.User{
+					ID:      10,
+					Status:  service.StatusActive,
+					Balance: 0.6,
+				},
+			},
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		&config.Config{},
+	)
+	h := NewQuotaLeaseDemoHandler(svc)
+	h.SetAPIKeyService(apiKeySvc)
+	router.POST("/api/v1/node-leases/demo/auth/client-key/explicit", h.AuthorizeClientKey)
+
+	req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/auth/client-key/explicit", map[string]any{
+		"api_key": "sk-live-user",
+		"amount":  1,
+	})
+	req.Header.Set("X-Node-Secret", "control-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body struct {
+		Lease service.QuotaLeaseDemoLease `json:"lease"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.InDelta(t, 0.6, body.Lease.Granted, 1e-12)
+}
+
+func TestQuotaLeaseDemoHandlerAuthorizeClientKeyReusesExistingLeaseWithZeroAvailableBalance(t *testing.T) {
+	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
+	existing, err := svc.RequestLease(context.Background(), service.QuotaLeaseDemoLeaseRequest{
+		NodeID:   "foreign-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   0.5,
+	})
+	require.NoError(t, err)
+
+	billing := &quotaLeaseDemoBillingRepoStub{reserveErr: service.ErrBalanceHoldInsufficientBalance}
+	svc.SetUsageBillingRepository(billing)
+	apiKeySvc := service.NewAPIKeyService(
+		&quotaLeaseDemoAPIKeyRepoStub{
+			apiKey: &service.APIKey{
+				ID:     20,
+				UserID: 10,
+				Key:    "sk-live-user",
+				Status: service.StatusAPIKeyActive,
+				User: &service.User{
+					ID:      10,
+					Status:  service.StatusActive,
+					Balance: 0,
+				},
+			},
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		&config.Config{},
+	)
+	h := NewQuotaLeaseDemoHandler(svc)
+	h.SetAPIKeyService(apiKeySvc)
+	router.POST("/api/v1/node-leases/demo/auth/client-key/reuse", h.AuthorizeClientKey)
+
+	req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/auth/client-key/reuse", map[string]any{
+		"api_key": "sk-live-user",
+		"node_id": "foreign-1",
+	})
+	req.Header.Set("X-Node-Secret", "control-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body struct {
+		Lease service.QuotaLeaseDemoLease `json:"lease"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, existing.ID, body.Lease.ID)
+	require.InDelta(t, 0, float64(billing.reserveCalls), 1e-12)
 }
 
 func TestQuotaLeaseDemoHandlerAuthorizeClientKeyRejectsZeroBalance(t *testing.T) {

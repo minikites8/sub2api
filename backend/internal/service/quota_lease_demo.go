@@ -673,9 +673,6 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		delta := amount - extendable.Remaining()
 		targetGranted := extendable.Granted
 		if delta > 0 {
-			if err := s.reserveLeaseBalance(ctx, extendable, delta, quotaLeaseDemoTopUpReserveRequestID(extendable.ID, extendable.Granted+delta)); err != nil {
-				return nil, err
-			}
 			targetGranted += delta
 		}
 		extendable.ExpiresAt = expiresAt
@@ -711,10 +708,6 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	}
 
 	s.leases[lease.ID] = lease
-	if err := s.reserveLeaseBalance(ctx, lease, amount, quotaLeaseDemoInitialReserveRequestID(lease.ID)); err != nil {
-		delete(s.leases, lease.ID)
-		return nil, err
-	}
 	s.events["lease:"+lease.ID] = &QuotaLeaseDemoLedgerEvent{
 		EventID:     "lease:" + lease.ID,
 		LeaseID:     lease.ID,
@@ -748,7 +741,7 @@ func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey 
 	if s == nil || !s.Enabled() || apiKey == nil || apiKey.User == nil || subscription != nil {
 		return false
 	}
-	return s.ensureCapacity(ctx, s.activeNodeID(), apiKey.User.ID, apiKey.ID, s.PreflightReserveAmount())
+	return s.ensureCapacity(ctx, "gateway_preflight", s.activeNodeID(), apiKey.User.ID, apiKey.ID, s.PreflightReserveAmount())
 }
 
 func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *UsageBillingCommand) (handled bool, applied bool, err error) {
@@ -762,7 +755,7 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 	nodeID := s.activeNodeID()
 	lease := s.findLeaseForConsumption(nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost, time.Now().UTC())
 	if lease == nil && s.remoteMode() {
-		_ = s.ensureCapacity(ctx, nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost)
+		_ = s.ensureCapacity(ctx, "usage_billing", nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost)
 		lease = s.findLeaseForConsumption(nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost, time.Now().UTC())
 	}
 	if lease == nil {
@@ -863,7 +856,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		return nil, ErrQuotaLeaseDemoNoCapacity
 	}
 
-	if err := s.captureLeaseBalance(ctx, event); err != nil {
+	if err := s.applyLeaseUsageBilling(ctx, event); err != nil {
 		return nil, err
 	}
 	lease.Consumed += event.Amount
@@ -961,9 +954,6 @@ func (s *QuotaLeaseDemoService) ReclaimExpired(ctx context.Context, now time.Tim
 		}
 		remaining := lease.Remaining()
 		if remaining > 0 {
-			if err := s.releaseLeaseBalance(ctx, lease, remaining); err != nil {
-				continue
-			}
 			lease.Reclaimed += remaining
 			result.ReclaimedTotal += remaining
 		}
@@ -1059,6 +1049,17 @@ func (s *QuotaLeaseDemoService) Snapshot() QuotaLeaseDemoSnapshot {
 
 func (s *QuotaLeaseDemoService) hasCapacity(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) bool {
 	return s.findLeaseForConsumption(nodeID, userID, apiKeyID, amount, now) != nil
+}
+
+func (s *QuotaLeaseDemoService) HasCapacity(nodeID string, userID, apiKeyID int64, amount float64) bool {
+	if amount <= 0 && s != nil {
+		amount = s.PreflightReserveAmount()
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" && s != nil {
+		nodeID = s.NodeID()
+	}
+	return s.hasCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
 }
 
 func (s *QuotaLeaseDemoService) findLeaseForConsumption(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) *QuotaLeaseDemoLease {

@@ -1024,12 +1024,15 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 	}
 	amount := req.Amount
 	if amount <= 0 {
-		amount = h.svc.DefaultGrantAmount()
-		if snapshot.User.Balance <= 0 {
-			amount = h.svc.PreflightReserveAmount()
+		amount = h.svc.PreflightReserveAmount()
+	}
+	if !h.svc.HasCapacity(req.NodeID, snapshot.UserID, snapshot.APIKeyID, amount) {
+		amount = quotaLeaseDemoClientLeaseAmount(snapshot, amount)
+		if amount <= 0 {
+			h.writeError(c, service.ErrQuotaLeaseDemoNoCapacity)
+			return
 		}
 	}
-	amount = quotaLeaseDemoClientLeaseAmount(snapshot, amount)
 	lease, err := h.svc.RequestLease(c.Request.Context(), service.QuotaLeaseDemoLeaseRequest{
 		NodeID:   req.NodeID,
 		UserID:   snapshot.UserID,
@@ -1056,7 +1059,10 @@ func quotaLeaseDemoClientLeaseAmount(snapshot *service.APIKeyAuthSnapshot, reque
 		return requested
 	}
 	balance := snapshot.User.Balance
-	if balance > 0 && requested > balance {
+	if balance <= 0 {
+		return 0
+	}
+	if requested > balance {
 		return balance
 	}
 	return requested

@@ -175,19 +175,34 @@ func newQuotaLeaseDemoTestService() *QuotaLeaseDemoService {
 }
 
 type quotaLeaseDemoBillingRepo struct {
+	applies    []*UsageBillingCommand
 	reserves   []*BalanceHoldCommand
 	captures   []*BalanceHoldCommand
 	releases   []*BalanceHoldCommand
 	seen       map[string]struct{}
+	applyErr   error
 	reserveErr error
 	captureErr error
 	releaseErr error
 }
 
 func (r *quotaLeaseDemoBillingRepo) Apply(_ context.Context, cmd *UsageBillingCommand) (*UsageBillingApplyResult, error) {
+	if r.applyErr != nil {
+		r.applies = append(r.applies, cmd)
+		return nil, r.applyErr
+	}
+	if r.seen == nil {
+		r.seen = make(map[string]struct{})
+	}
 	if cmd != nil {
 		cmd.Normalize()
+		if _, ok := r.seen[cmd.RequestID]; ok {
+			r.applies = append(r.applies, cmd)
+			return &UsageBillingApplyResult{Applied: false}, nil
+		}
+		r.seen[cmd.RequestID] = struct{}{}
 	}
+	r.applies = append(r.applies, cmd)
 	return &UsageBillingApplyResult{Applied: true}, nil
 }
 
@@ -603,7 +618,7 @@ func TestQuotaLeaseDemoConsumeUsageIsIdempotent(t *testing.T) {
 	require.InDelta(t, 0.6, second.Lease.Remaining(), 1e-9)
 }
 
-func TestQuotaLeaseDemoLeaseBalanceHoldLifecycle(t *testing.T) {
+func TestQuotaLeaseDemoUsageBillingChargesBalanceOnConsumption(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	billing := &quotaLeaseDemoBillingRepo{}
 	svc.SetUsageBillingRepository(billing)
@@ -616,10 +631,7 @@ func TestQuotaLeaseDemoLeaseBalanceHoldLifecycle(t *testing.T) {
 		Amount:   1,
 	})
 	require.NoError(t, err)
-	require.Len(t, billing.reserves, 1)
-	require.Equal(t, quotaLeaseDemoInitialReserveRequestID(lease.ID), billing.reserves[0].RequestID)
-	require.Equal(t, lease.ID, billing.reserves[0].HoldID)
-	require.InDelta(t, 1, billing.reserves[0].HoldAmount, 1e-12)
+	require.Empty(t, billing.reserves)
 
 	event := QuotaLeaseDemoUsageEvent{
 		EventID:   "event-hold-1",
@@ -633,25 +645,24 @@ func TestQuotaLeaseDemoLeaseBalanceHoldLifecycle(t *testing.T) {
 	first, err := svc.ConsumeUsage(ctx, event)
 	require.NoError(t, err)
 	require.True(t, first.Applied)
-	require.Len(t, billing.captures, 1)
-	require.Equal(t, quotaLeaseDemoCaptureRequestID(event.EventID), billing.captures[0].RequestID)
-	require.InDelta(t, 0.4, billing.captures[0].HoldAmount, 1e-12)
-	require.InDelta(t, 0.4, billing.captures[0].ActualAmount, 1e-12)
+	require.Len(t, billing.applies, 1)
+	require.Equal(t, quotaLeaseDemoUsageBillingRequestID(event.EventID), billing.applies[0].RequestID)
+	require.Equal(t, int64(10), billing.applies[0].UserID)
+	require.Equal(t, int64(20), billing.applies[0].APIKeyID)
+	require.InDelta(t, 0.4, billing.applies[0].BalanceCost, 1e-12)
+	require.Empty(t, billing.captures)
 
 	duplicate, err := svc.ConsumeUsage(ctx, event)
 	require.NoError(t, err)
 	require.True(t, duplicate.Duplicate)
-	require.Len(t, billing.captures, 1)
+	require.Len(t, billing.applies, 1)
 
 	reclaimAt := first.Lease.ExpiresAt.Add(time.Second)
 	require.True(t, reclaimAt.Before(first.Lease.ReclaimAt))
 	reclaimed := svc.ReclaimExpired(ctx, reclaimAt)
 	require.Equal(t, 1, reclaimed.ReclaimedCount)
 	require.InDelta(t, 0.6, reclaimed.ReclaimedTotal, 1e-12)
-	require.Len(t, billing.releases, 1)
-	require.Equal(t, quotaLeaseDemoReleaseRequestID(lease.ID), billing.releases[0].RequestID)
-	require.Equal(t, quotaLeaseDemoInitialReserveRequestID(lease.ID), billing.releases[0].ReserveRequestID)
-	require.InDelta(t, 0.6, billing.releases[0].HoldAmount, 1e-12)
+	require.Empty(t, billing.releases)
 }
 
 func TestQuotaLeaseDemoLeaseUsesIdleExpiryWindow(t *testing.T) {
@@ -703,7 +714,7 @@ func TestQuotaLeaseDemoUsageConsumptionRefreshesExpiryWindow(t *testing.T) {
 	require.WithinDuration(t, refreshed.ExpiresAt.Add(1*time.Hour), refreshed.ReclaimAt, 2*time.Second)
 }
 
-func TestQuotaLeaseDemoLeaseTopUpFreezesDeltaOnly(t *testing.T) {
+func TestQuotaLeaseDemoLeaseTopUpExtendsGrantWithoutBalanceHold(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	billing := &quotaLeaseDemoBillingRepo{}
 	svc.SetUsageBillingRepository(billing)
@@ -725,27 +736,25 @@ func TestQuotaLeaseDemoLeaseTopUpFreezesDeltaOnly(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, lease.ID, toppedUp.ID)
-	require.Len(t, billing.reserves, 2)
-	require.InDelta(t, 0.2, billing.reserves[0].HoldAmount, 1e-12)
-	require.InDelta(t, 0.8, billing.reserves[1].HoldAmount, 1e-12)
-	require.Equal(t, quotaLeaseDemoTopUpReserveRequestID(lease.ID, 1), billing.reserves[1].RequestID)
+	require.Empty(t, billing.reserves)
 	require.InDelta(t, 1, toppedUp.Granted, 1e-12)
 }
 
-func TestQuotaLeaseDemoLeaseReserveInsufficientBalance(t *testing.T) {
+func TestQuotaLeaseDemoLeaseGrantSkipsBalanceHoldReserve(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	billing := &quotaLeaseDemoBillingRepo{reserveErr: ErrBalanceHoldInsufficientBalance}
 	svc.SetUsageBillingRepository(billing)
 
-	_, err := svc.RequestLease(context.Background(), QuotaLeaseDemoLeaseRequest{
+	lease, err := svc.RequestLease(context.Background(), QuotaLeaseDemoLeaseRequest{
 		NodeID:   "node-1",
 		UserID:   10,
 		APIKeyID: 20,
 		Amount:   1,
 	})
-	require.ErrorIs(t, err, ErrQuotaLeaseDemoNoCapacity)
-	require.Len(t, billing.reserves, 1)
-	require.Empty(t, svc.Snapshot().Leases)
+	require.NoError(t, err)
+	require.Equal(t, "node-1", lease.NodeID)
+	require.Empty(t, billing.reserves)
+	require.Len(t, svc.Snapshot().Leases, 1)
 }
 
 func TestQuotaLeaseDemoRequestLeaseReusesActiveCapacity(t *testing.T) {
@@ -1053,6 +1062,7 @@ func TestQuotaLeaseDemoRemoteNodeAuthorizesClientKeyViaControlPlane(t *testing.T
 	ctx := context.Background()
 	control := newQuotaLeaseDemoTestService()
 	authCalls := 0
+	var authAmount float64
 	groupID := int64(30)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1077,6 +1087,7 @@ func TestQuotaLeaseDemoRemoteNodeAuthorizesClientKeyViaControlPlane(t *testing.T
 			authCalls++
 			var req QuotaLeaseDemoClientAuthRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			authAmount = req.Amount
 			if req.APIKey != "sk-live-user" {
 				w.WriteHeader(http.StatusUnauthorized)
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_api_key"})
@@ -1141,6 +1152,8 @@ func TestQuotaLeaseDemoRemoteNodeAuthorizesClientKeyViaControlPlane(t *testing.T
 	require.NotNil(t, result.Snapshot)
 	require.Equal(t, int64(20), result.Snapshot.APIKeyID)
 	require.NotNil(t, result.Lease)
+	require.InDelta(t, node.PreflightReserveAmount(), authAmount, 1e-12)
+	require.InDelta(t, node.PreflightReserveAmount(), result.Lease.Granted, 1e-12)
 	require.True(t, node.hasCapacity("node-us", 10, 20, node.PreflightReserveAmount(), time.Now().UTC()))
 
 	cached, err := node.AuthorizeClientKeyViaControlPlane(ctx, "sk-live-user", 0)
@@ -1778,7 +1791,7 @@ func TestQuotaLeaseDemoReclaimExpiredLease(t *testing.T) {
 	require.InDelta(t, 0, snapshot.Leases[0].Remaining(), 1e-9)
 }
 
-func TestQuotaLeaseDemoReclaimWorkerReturnsExpiredUnusedHold(t *testing.T) {
+func TestQuotaLeaseDemoReclaimWorkerMarksExpiredUnusedLease(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	billing := &quotaLeaseDemoBillingRepo{}
 	svc.SetUsageBillingRepository(billing)
@@ -1801,9 +1814,7 @@ func TestQuotaLeaseDemoReclaimWorkerReturnsExpiredUnusedHold(t *testing.T) {
 	worker := NewQuotaLeaseDemoReclaimWorker(svc, time.Hour)
 	require.NoError(t, worker.RunOnce(ctx))
 
-	require.Len(t, billing.releases, 1)
-	require.Equal(t, quotaLeaseDemoReleaseRequestID(lease.ID), billing.releases[0].RequestID)
-	require.InDelta(t, 1, billing.releases[0].HoldAmount, 1e-12)
+	require.Empty(t, billing.releases)
 
 	snapshot := svc.Snapshot()
 	require.Equal(t, QuotaLeaseDemoStatusReclaimed, snapshot.Leases[0].Status)

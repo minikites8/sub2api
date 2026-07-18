@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -18,6 +19,21 @@ const (
 	quotaLeaseDemoControlPlanePrefix = "/api/v1/node-leases/demo"
 	quotaLeaseDemoRemoteTimeout      = 5 * time.Second
 )
+
+type quotaLeaseDemoCapacityProbe struct {
+	TotalLeases          int       `json:"total_leases"`
+	MatchingLeases       int       `json:"matching_leases"`
+	ActiveMatchingLeases int       `json:"active_matching_leases"`
+	BestLeaseID          string    `json:"best_lease_id,omitempty"`
+	BestLeaseNodeID      string    `json:"best_lease_node_id,omitempty"`
+	BestLeaseStatus      string    `json:"best_lease_status,omitempty"`
+	BestLeaseGranted     float64   `json:"best_lease_granted,omitempty"`
+	BestLeaseConsumed    float64   `json:"best_lease_consumed,omitempty"`
+	BestLeaseReclaimed   float64   `json:"best_lease_reclaimed,omitempty"`
+	BestLeaseRemaining   float64   `json:"best_lease_remaining,omitempty"`
+	BestLeaseExpiresAt   time.Time `json:"best_lease_expires_at,omitempty"`
+	BestLeaseReclaimAt   time.Time `json:"best_lease_reclaim_at,omitempty"`
+}
 
 type quotaLeaseDemoRemoteHTTPError struct {
 	StatusCode int
@@ -36,7 +52,7 @@ func (s *QuotaLeaseDemoService) remoteMode() bool {
 	return s != nil && s.Enabled() && (strings.TrimSpace(s.ControlPlaneBaseURL()) != "" || strings.TrimSpace(s.RegistrationURL()) != "")
 }
 
-func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, nodeID string, userID, apiKeyID int64, amount float64) bool {
+func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, operation, nodeID string, userID, apiKeyID int64, amount float64) bool {
 	if s == nil || !s.Enabled() || userID <= 0 || apiKeyID <= 0 || !finitePositive(amount) {
 		return false
 	}
@@ -44,10 +60,12 @@ func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, nodeID strin
 	if nodeID == "" {
 		nodeID = s.NodeID()
 	}
-	if s.hasCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC()) {
+	ok, probe := s.inspectCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+	if ok {
 		return true
 	}
 	if !s.remoteMode() {
+		s.logCapacityDenied(operation, "local_capacity_check_failed", nodeID, userID, apiKeyID, amount, probe)
 		return false
 	}
 
@@ -58,9 +76,16 @@ func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, nodeID strin
 		Amount:   amount,
 	})
 	if err != nil {
+		probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+		s.logCapacityDenied(operation, "request_lease_failed", nodeID, userID, apiKeyID, amount, probe, err)
 		return false
 	}
-	return s.hasCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+	ok, probe = s.inspectCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+	if ok {
+		return true
+	}
+	s.logCapacityDenied(operation, "post_request_capacity_check_failed", nodeID, userID, apiKeyID, amount, probe)
+	return false
 }
 
 func (s *QuotaLeaseDemoService) registerRemoteNode(ctx context.Context, req QuotaLeaseDemoNodeRegistrationRequest) (*QuotaLeaseDemoNodeRegistrationResult, error) {
@@ -219,6 +244,97 @@ func (s *QuotaLeaseDemoService) postRemoteUsageLogBatch(ctx context.Context, req
 		return QuotaLeaseDemoUsageLogBatchResult{}, err
 	}
 	return result, nil
+}
+
+func (s *QuotaLeaseDemoService) inspectCapacity(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) (bool, quotaLeaseDemoCapacityProbe) {
+	probe := s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, amount, now)
+	if probe.BestLeaseID == "" {
+		return false, probe
+	}
+	return probe.BestLeaseStatus == QuotaLeaseDemoStatusActive && probe.BestLeaseRemaining+1e-12 >= amount, probe
+}
+
+func (s *QuotaLeaseDemoService) inspectCapacitySnapshot(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) quotaLeaseDemoCapacityProbe {
+	probe := quotaLeaseDemoCapacityProbe{}
+	if s == nil || !finitePositive(amount) {
+		return probe
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		nodeID = s.NodeID()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var best *QuotaLeaseDemoLease
+	for _, lease := range s.leases {
+		if lease == nil {
+			continue
+		}
+		probe.TotalLeases++
+		s.refreshLeaseStatusLocked(lease, now)
+		if lease.NodeID != nodeID || lease.UserID != userID || lease.APIKeyID != apiKeyID {
+			continue
+		}
+		probe.MatchingLeases++
+		if lease.Status == QuotaLeaseDemoStatusActive {
+			probe.ActiveMatchingLeases++
+		}
+		if best == nil || lease.Remaining() > best.Remaining()+1e-12 || (math.Abs(lease.Remaining()-best.Remaining()) <= 1e-12 && lease.ExpiresAt.Before(best.ExpiresAt)) {
+			best = lease
+		}
+	}
+	if best == nil {
+		return probe
+	}
+	probe.BestLeaseID = best.ID
+	probe.BestLeaseNodeID = best.NodeID
+	probe.BestLeaseStatus = best.Status
+	probe.BestLeaseGranted = best.Granted
+	probe.BestLeaseConsumed = best.Consumed
+	probe.BestLeaseReclaimed = best.Reclaimed
+	probe.BestLeaseRemaining = best.Remaining()
+	probe.BestLeaseExpiresAt = best.ExpiresAt
+	probe.BestLeaseReclaimAt = best.ReclaimAt
+	return probe
+}
+
+func (s *QuotaLeaseDemoService) logCapacityDenied(operation, reason, nodeID string, userID, apiKeyID int64, amount float64, probe quotaLeaseDemoCapacityProbe, err ...error) {
+	if s == nil {
+		return
+	}
+	fields := []any{
+		"operation", strings.TrimSpace(operation),
+		"reason", strings.TrimSpace(reason),
+		"mode", func() string {
+			if s.remoteMode() {
+				return "remote"
+			}
+			return "local"
+		}(),
+		"node_id", strings.TrimSpace(nodeID),
+		"active_node_id", s.activeNodeID(),
+		"user_id", userID,
+		"api_key_id", apiKeyID,
+		"amount", amount,
+		"total_leases", probe.TotalLeases,
+		"matching_leases", probe.MatchingLeases,
+		"active_matching_leases", probe.ActiveMatchingLeases,
+		"best_lease_id", probe.BestLeaseID,
+		"best_lease_node_id", probe.BestLeaseNodeID,
+		"best_lease_status", probe.BestLeaseStatus,
+		"best_lease_granted", probe.BestLeaseGranted,
+		"best_lease_consumed", probe.BestLeaseConsumed,
+		"best_lease_reclaimed", probe.BestLeaseReclaimed,
+		"best_lease_remaining", probe.BestLeaseRemaining,
+		"best_lease_expires_at", probe.BestLeaseExpiresAt,
+		"best_lease_reclaim_at", probe.BestLeaseReclaimAt,
+	}
+	if len(err) > 0 && err[0] != nil {
+		fields = append(fields, "error", err[0])
+	}
+	slog.Warn("quota_lease_demo.capacity_denied", fields...)
 }
 
 type quotaLeaseDemoRemoteSettingsResponse struct {

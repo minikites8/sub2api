@@ -38,8 +38,12 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	if apiKey == "" {
 		return nil, ErrAPIKeyNotFound
 	}
+	authAmount := amount
+	if authAmount <= 0 {
+		authAmount = s.PreflightReserveAmount()
+	}
 	if cached := s.getClientAuthCache(apiKey); cached != nil {
-		if err := s.ensureClientAuthCapacity(ctx, cached, amount); err != nil {
+		if err := s.ensureClientAuthCapacity(ctx, cached, authAmount); err != nil {
 			s.deleteClientAuthCache(apiKey)
 			return nil, err
 		}
@@ -53,7 +57,7 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	req := QuotaLeaseDemoClientAuthRequest{
 		NodeID: nodeID,
 		APIKey: apiKey,
-		Amount: amount,
+		Amount: authAmount,
 	}
 	var result QuotaLeaseDemoClientAuthResult
 	if err := s.doRemoteJSON(ctx, http.MethodPost, "/auth/client-key", nodeID, secret, req, &result); err != nil {
@@ -62,6 +66,8 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 			return nil, ErrAPIKeyNotFound
 		}
 		if quotaLeaseDemoRemoteNoCapacity(err) {
+			probe := s.inspectCapacitySnapshot(nodeID, 0, 0, authAmount, time.Now().UTC())
+			s.logCapacityDenied("client_auth", "remote_client_auth_no_capacity", nodeID, 0, 0, authAmount, probe, err)
 			return nil, ErrQuotaLeaseDemoNoCapacity
 		}
 		return nil, err
@@ -72,7 +78,7 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	if result.Lease != nil {
 		s.cacheRemoteLease(result.Lease)
 	}
-	if err := s.ensureClientAuthCapacity(ctx, &result, amount); err != nil {
+	if err := s.ensureClientAuthCapacity(ctx, &result, authAmount); err != nil {
 		return nil, err
 	}
 	if result.ExpiresAt.IsZero() {
@@ -89,7 +95,7 @@ func (s *QuotaLeaseDemoService) ensureClientAuthCapacity(ctx context.Context, re
 	if amount <= 0 {
 		amount = s.PreflightReserveAmount()
 	}
-	if !s.ensureCapacity(ctx, s.activeNodeID(), result.Snapshot.UserID, result.Snapshot.APIKeyID, amount) {
+	if !s.ensureCapacity(ctx, "client_auth", s.activeNodeID(), result.Snapshot.UserID, result.Snapshot.APIKeyID, amount) {
 		return ErrQuotaLeaseDemoNoCapacity
 	}
 	return nil
