@@ -716,7 +716,7 @@ func TestQuotaLeaseDemoHandlerAuthorizeClientKeyCapsExplicitAmountToUserBalance(
 	require.InDelta(t, 0.6, body.Lease.Granted, 1e-12)
 }
 
-func TestQuotaLeaseDemoHandlerAuthorizeClientKeyReusesExistingLeaseWithZeroAvailableBalance(t *testing.T) {
+func TestQuotaLeaseDemoHandlerAuthorizeClientKeyRejectsZeroBalanceWithExistingLease(t *testing.T) {
 	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
 	existing, err := svc.RequestLease(context.Background(), service.QuotaLeaseDemoLeaseRequest{
 		NodeID:   "foreign-1",
@@ -760,13 +760,11 @@ func TestQuotaLeaseDemoHandlerAuthorizeClientKeyReusesExistingLeaseWithZeroAvail
 	req.Header.Set("X-Node-Secret", "control-secret")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	var body struct {
-		Lease service.QuotaLeaseDemoLease `json:"lease"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	require.Equal(t, existing.ID, body.Lease.ID)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "no_capacity")
+	snapshot := svc.Snapshot()
+	require.Len(t, snapshot.Leases, 1)
+	require.Equal(t, existing.ID, snapshot.Leases[0].ID)
 	require.InDelta(t, 0, float64(billing.reserveCalls), 1e-12)
 }
 

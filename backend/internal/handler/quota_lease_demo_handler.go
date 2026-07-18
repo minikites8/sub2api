@@ -981,6 +981,12 @@ func (h *QuotaLeaseDemoHandler) RequestLease(c *gin.Context) {
 	if req.NodeID == "" {
 		req.NodeID = nodeID
 	}
+	if amount, err := h.quotaLeaseDemoRequestLeaseAmount(c.Request.Context(), req); err != nil {
+		h.writeError(c, err)
+		return
+	} else {
+		req.Amount = amount
+	}
 	lease, err := h.svc.RequestLease(c.Request.Context(), req)
 	if err != nil {
 		h.writeError(c, err)
@@ -1026,12 +1032,10 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 	if amount <= 0 {
 		amount = h.svc.PreflightReserveAmount()
 	}
-	if !h.svc.HasCapacity(req.NodeID, snapshot.UserID, snapshot.APIKeyID, amount) {
-		amount = quotaLeaseDemoClientLeaseAmount(snapshot, amount)
-		if amount <= 0 {
-			h.writeError(c, service.ErrQuotaLeaseDemoNoCapacity)
-			return
-		}
+	amount = quotaLeaseDemoClientLeaseAmount(snapshot, amount)
+	if amount <= 0 {
+		h.writeError(c, service.ErrQuotaLeaseDemoNoCapacity)
+		return
 	}
 	lease, err := h.svc.RequestLease(c.Request.Context(), service.QuotaLeaseDemoLeaseRequest{
 		NodeID:   req.NodeID,
@@ -1052,6 +1056,44 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 		"lease":      lease,
 		"expires_at": expiresAt,
 	})
+}
+
+func (h *QuotaLeaseDemoHandler) quotaLeaseDemoRequestLeaseAmount(ctx context.Context, req service.QuotaLeaseDemoLeaseRequest) (float64, error) {
+	if h == nil || h.svc == nil {
+		return req.Amount, nil
+	}
+	amount := req.Amount
+	if amount <= 0 {
+		amount = h.svc.PreflightReserveAmount()
+	}
+	if req.UserID <= 0 || req.APIKeyID <= 0 || h.apiKeyService == nil {
+		return amount, nil
+	}
+	apiKey, err := h.apiKeyService.GetByID(ctx, req.APIKeyID)
+	if err != nil {
+		return 0, err
+	}
+	if apiKey == nil || apiKey.User == nil || apiKey.UserID != req.UserID {
+		return 0, service.ErrQuotaLeaseDemoNoCapacity
+	}
+	if apiKey.User.Status != service.StatusActive {
+		return 0, service.ErrQuotaLeaseDemoNoCapacity
+	}
+	if apiKey.Status != service.StatusActive &&
+		apiKey.Status != service.StatusAPIKeyExpired &&
+		apiKey.Status != service.StatusAPIKeyQuotaExhausted {
+		return 0, service.ErrQuotaLeaseDemoNoCapacity
+	}
+	if apiKey.Group != nil && apiKey.Group.Status != service.StatusActive {
+		return 0, service.ErrQuotaLeaseDemoNoCapacity
+	}
+	if apiKey.User.Balance <= 0 {
+		return 0, service.ErrQuotaLeaseDemoNoCapacity
+	}
+	if amount > apiKey.User.Balance {
+		return apiKey.User.Balance, nil
+	}
+	return amount, nil
 }
 
 func quotaLeaseDemoClientLeaseAmount(snapshot *service.APIKeyAuthSnapshot, requested float64) float64 {

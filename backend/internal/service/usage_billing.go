@@ -39,6 +39,7 @@ type UsageBillingCommand struct {
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
+	StrictBalance       bool
 }
 
 func (c *UsageBillingCommand) Normalize() {

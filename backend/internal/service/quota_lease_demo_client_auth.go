@@ -38,12 +38,16 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	if apiKey == "" {
 		return nil, ErrAPIKeyNotFound
 	}
-	authAmount := amount
-	if authAmount <= 0 {
-		authAmount = s.PreflightReserveAmount()
+	requestAmount := amount
+	if requestAmount <= 0 {
+		requestAmount = s.PreflightReserveAmount()
+	}
+	cacheAmount := amount
+	if cacheAmount <= 0 {
+		cacheAmount = s.PreflightReserveAmount()
 	}
 	if cached := s.getClientAuthCache(apiKey); cached != nil {
-		if err := s.ensureClientAuthCapacity(ctx, cached, authAmount); err != nil {
+		if err := s.ensureClientAuthCapacity(ctx, cached, cacheAmount); err != nil {
 			s.deleteClientAuthCache(apiKey)
 			return nil, err
 		}
@@ -57,7 +61,7 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	req := QuotaLeaseDemoClientAuthRequest{
 		NodeID: nodeID,
 		APIKey: apiKey,
-		Amount: authAmount,
+		Amount: requestAmount,
 	}
 	var result QuotaLeaseDemoClientAuthResult
 	if err := s.doRemoteJSON(ctx, http.MethodPost, "/auth/client-key", nodeID, secret, req, &result); err != nil {
@@ -66,8 +70,8 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 			return nil, ErrAPIKeyNotFound
 		}
 		if quotaLeaseDemoRemoteNoCapacity(err) {
-			probe := s.inspectCapacitySnapshot(nodeID, 0, 0, authAmount, time.Now().UTC())
-			s.logCapacityDenied("client_auth", "remote_client_auth_no_capacity", nodeID, 0, 0, authAmount, probe, err)
+			probe := s.inspectCapacitySnapshot(nodeID, 0, 0, requestAmount, time.Now().UTC())
+			s.logCapacityDenied("client_auth", "remote_client_auth_no_capacity", nodeID, 0, 0, requestAmount, probe, err)
 			return nil, ErrQuotaLeaseDemoNoCapacity
 		}
 		return nil, err
@@ -78,7 +82,7 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	if result.Lease != nil {
 		s.cacheRemoteLease(result.Lease)
 	}
-	if err := s.ensureClientAuthCapacity(ctx, &result, authAmount); err != nil {
+	if err := s.ensureClientAuthCapacity(ctx, &result, cacheAmount); err != nil {
 		return nil, err
 	}
 	if result.ExpiresAt.IsZero() {

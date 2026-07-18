@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -12,6 +13,30 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	result, err := reserveUsageBillingBalanceHold(ctx, tx, batchImageBalanceHoldCommand(cmd, ""))
+	if errors.Is(err, service.ErrBalanceHoldInsufficientBalance) {
+		return nil, service.ErrBatchImageInsufficientBalance
+	}
+	return result, err
+}
+
+func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	result, err := captureUsageBillingBalanceHold(ctx, tx, batchImageBalanceHoldCommand(cmd, ""))
+	if errors.Is(err, service.ErrBalanceHoldActualAmountExceedsHold) {
+		return nil, service.ErrBatchImageSettlementCostExceedsHold
+	}
+	return result, err
+}
+
+func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	reserveRequestID := ""
+	if cmd != nil {
+		reserveRequestID = service.BatchImageHoldRequestID(cmd.BatchID)
+	}
+	return releaseUsageBillingBalanceHold(ctx, tx, batchImageBalanceHoldCommand(cmd, reserveRequestID))
+}
 
 const (
 	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance`
@@ -36,7 +61,7 @@ func TestDeductUsageBillingBalance_UsesSufficientBalanceGuard(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(7.5))
 	mock.ExpectCommit()
 
-	newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, 42, 2.5)
+	newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, 42, 2.5, false)
 	require.NoError(t, err)
 	require.True(t, sufficient)
 	require.InDelta(t, 7.5, newBalance, 0.000001)
@@ -61,7 +86,7 @@ func TestDeductUsageBillingBalance_RecordsOverdraftWhenGuardMisses(t *testing.T)
 		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(-5.0))
 	mock.ExpectCommit()
 
-	newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, 42, 10)
+	newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, 42, 10, false)
 	require.NoError(t, err)
 	require.False(t, sufficient)
 	require.InDelta(t, -5.0, newBalance, 0.000001)
@@ -116,8 +141,32 @@ func TestDeductUsageBillingBalance_ReturnsUserNotFoundWhenNoUserUpdated(t *testi
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
-	_, _, err = deductUsageBillingBalance(ctx, tx, 42, 10)
+	_, _, err = deductUsageBillingBalance(ctx, tx, 42, 10, false)
 	require.ErrorIs(t, err, service.ErrUserNotFound)
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDeductUsageBillingBalance_StrictModeRejectsInsufficientBalance(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(conditionalBalanceDeductSQL).
+		WithArgs(10.0, int64(42)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(userExistsForBillingSQL).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectRollback()
+
+	_, sufficient, err := deductUsageBillingBalance(ctx, tx, 42, 10, true)
+	require.ErrorIs(t, err, service.ErrBalanceHoldInsufficientBalance)
+	require.False(t, sufficient)
 	require.NoError(t, tx.Rollback())
 	require.NoError(t, mock.ExpectationsWereMet())
 }

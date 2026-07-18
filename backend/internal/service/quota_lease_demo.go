@@ -755,7 +755,7 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 	nodeID := s.activeNodeID()
 	lease := s.findLeaseForConsumption(nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost, time.Now().UTC())
 	if lease == nil && s.remoteMode() {
-		_ = s.ensureCapacity(ctx, "usage_billing", nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost)
+		_ = s.ensureCapacity(ctx, "usage_billing", nodeID, cmd.UserID, cmd.APIKeyID, s.usageBillingCapacityTarget(cmd.BalanceCost))
 		lease = s.findLeaseForConsumption(nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost, time.Now().UTC())
 	}
 	if lease == nil {
@@ -856,8 +856,18 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		return nil, ErrQuotaLeaseDemoNoCapacity
 	}
 
-	if err := s.applyLeaseUsageBilling(ctx, event); err != nil {
+	billingApplied, err := s.applyLeaseUsageBilling(ctx, event)
+	if err != nil {
 		return nil, err
+	}
+	if !billingApplied {
+		return &QuotaLeaseDemoUsageResult{
+			EventID:   event.EventID,
+			LeaseID:   event.LeaseID,
+			Applied:   false,
+			Duplicate: true,
+			Lease:     cloneQuotaLeaseDemoLease(lease),
+		}, nil
 	}
 	lease.Consumed += event.Amount
 	if lease.Remaining() > 1e-12 {
@@ -1060,6 +1070,15 @@ func (s *QuotaLeaseDemoService) HasCapacity(nodeID string, userID, apiKeyID int6
 		nodeID = s.NodeID()
 	}
 	return s.hasCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+}
+
+func (s *QuotaLeaseDemoService) usageBillingCapacityTarget(amount float64) float64 {
+	target := amount
+	defaultGrant := s.DefaultGrantAmount()
+	if defaultGrant > target {
+		target = defaultGrant
+	}
+	return target
 }
 
 func (s *QuotaLeaseDemoService) findLeaseForConsumption(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) *QuotaLeaseDemoLease {

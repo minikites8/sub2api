@@ -646,10 +646,11 @@ func TestQuotaLeaseDemoUsageBillingChargesBalanceOnConsumption(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, first.Applied)
 	require.Len(t, billing.applies, 1)
-	require.Equal(t, quotaLeaseDemoUsageBillingRequestID(event.EventID), billing.applies[0].RequestID)
+	require.Equal(t, quotaLeaseDemoUsageBillingRequestID(event.NodeID, event.APIKeyID, event.RequestID), billing.applies[0].RequestID)
 	require.Equal(t, int64(10), billing.applies[0].UserID)
 	require.Equal(t, int64(20), billing.applies[0].APIKeyID)
 	require.InDelta(t, 0.4, billing.applies[0].BalanceCost, 1e-12)
+	require.True(t, billing.applies[0].StrictBalance)
 	require.Empty(t, billing.captures)
 
 	duplicate, err := svc.ConsumeUsage(ctx, event)
