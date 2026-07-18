@@ -476,6 +476,50 @@ func TestGatewayServiceRecordUsage_DroppedUsageLogFallsBackToSyncCreate(t *testi
 	require.NoError(t, usageRepo.lastCtxErr)
 }
 
+func TestWriteUsageLogBestEffort_QuotaLeaseDemoNodeForwardsWithoutLocalInsert(t *testing.T) {
+	globalQuotaLeaseDemo.mu.Lock()
+	previous := globalQuotaLeaseDemo.svc
+	globalQuotaLeaseDemo.svc = nil
+	globalQuotaLeaseDemo.mu.Unlock()
+	t.Cleanup(func() {
+		globalQuotaLeaseDemo.mu.Lock()
+		globalQuotaLeaseDemo.svc = previous
+		globalQuotaLeaseDemo.mu.Unlock()
+	})
+
+	cfg := &config.Config{
+		DeploymentRole: config.DeploymentRoleNode,
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-us",
+				ControlPlaneBaseURL: "http://%",
+			},
+		},
+	}
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{}
+
+	writeUsageLogBestEffort(context.Background(), usageRepo, &UsageLog{
+		UserID:    601,
+		APIKeyID:  501,
+		AccountID: 701,
+		RequestID: "gateway_node_forward_usage_log",
+		Model:     "gpt-5.5",
+		CreatedAt: time.Date(2026, 7, 18, 11, 10, 34, 0, time.UTC),
+	}, "service.openai_gateway", cfg)
+
+	require.Equal(t, 0, usageRepo.bestEffortCalls)
+	require.Equal(t, 0, usageRepo.createCalls)
+
+	svc := GetQuotaLeaseDemoService(cfg)
+	pending := svc.pendingUsageLogSnapshots()
+	require.Len(t, pending, 1)
+	require.Equal(t, "node-us", pending[0].NodeID)
+	require.Equal(t, int64(501), pending[0].APIKeyID)
+	require.Equal(t, int64(601), pending[0].UserID)
+	require.Equal(t, "gateway_node_forward_usage_log", pending[0].RequestID)
+}
+
 func TestGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{}
 	billingRepo := &openAIRecordUsageBillingRepoStub{err: context.DeadlineExceeded}

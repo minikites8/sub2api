@@ -238,6 +238,45 @@ func TestExecUsageLogInsertNoResult_PersistsRequestedModel(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+type usageLogExecCapture struct {
+	query string
+	args  []any
+}
+
+func (c *usageLogExecCapture) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	_ = ctx
+	c.query = query
+	c.args = args
+	return sqlmock.NewResult(0, 1), nil
+}
+
+func (c *usageLogExecCapture) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	_ = c
+	_ = ctx
+	_ = query
+	_ = args
+	return nil, fmt.Errorf("unexpected QueryContext")
+}
+
+func TestExecUsageLogInsertNoResult_UsesPlaceholderForEachArg(t *testing.T) {
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		RequestID:      "req-best-effort-placeholders",
+		Model:          "gpt-5",
+		RequestedModel: "gpt-5",
+		CreatedAt:      time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC),
+	})
+	capture := &usageLogExecCapture{}
+
+	err := execUsageLogInsertNoResult(context.Background(), capture, prepared)
+	require.NoError(t, err)
+	require.Len(t, capture.args, len(prepared.args))
+	require.Len(t, prepared.args, 57)
+	require.Contains(t, capture.query, "$57")
+}
+
 func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 	prepared := prepareUsageLogInsert(&service.UsageLog{
 		UserID:         1,

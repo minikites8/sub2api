@@ -528,6 +528,9 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	if usageLog == nil {
 		return
 	}
+	if forwardQuotaLeaseDemoNodeUsageLog(ctx, usageLog, cfgs...) {
+		return
+	}
 	if repo != nil {
 		usageCtx, cancel := detachedBillingContext(ctx)
 		defer cancel()
@@ -556,6 +559,22 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	for _, cfg := range cfgs {
 		enqueueQuotaLeaseDemoUsageLogSnapshot(ctx, usageLog, cfg)
 	}
+}
+
+func forwardQuotaLeaseDemoNodeUsageLog(ctx context.Context, usageLog *UsageLog, cfgs ...*config.Config) bool {
+	forwarded := false
+	for _, cfg := range cfgs {
+		if cfg == nil || !cfg.IsNodeRole() || !QuotaLeaseDemoEnabled(cfg) {
+			continue
+		}
+		svc := GetQuotaLeaseDemoService(cfg)
+		if svc == nil || !svc.remoteMode() {
+			continue
+		}
+		enqueueQuotaLeaseDemoUsageLogSnapshot(ctx, usageLog, cfg)
+		forwarded = true
+	}
+	return forwarded
 }
 
 // recordUsageOpts 内部选项，参数化普通计费与长上下文计费的差异点。
