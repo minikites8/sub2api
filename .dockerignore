@@ -29,7 +29,9 @@ docs/
 Thumbs.db
 
 # Build artifacts
-dist/
+dist/*
+!dist/docker-fast/
+!dist/docker-fast/sub2api
 build/
 
 # Node modules (will be installed in container)
