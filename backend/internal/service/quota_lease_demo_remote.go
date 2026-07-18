@@ -60,7 +60,7 @@ func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, nodeID strin
 		requestAmount = amount
 	}
 	_, err := s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
-		NodeID:   nodeID,
+		NodeID:   "",
 		UserID:   userID,
 		APIKeyID: apiKeyID,
 		Amount:   requestAmount,
@@ -175,9 +175,7 @@ func (s *QuotaLeaseDemoService) requestRemoteLease(ctx context.Context, req Quot
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(req.NodeID) == "" {
-		req.NodeID = nodeID
-	}
+	req.NodeID = nodeID
 	var result struct {
 		Lease *QuotaLeaseDemoLease `json:"lease"`
 	}

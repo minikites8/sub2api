@@ -289,6 +289,73 @@ func TestQuotaLeaseDemoConsumeUsageIsIdempotent(t *testing.T) {
 	require.InDelta(t, 0.6, second.Lease.Remaining(), 1e-9)
 }
 
+func TestQuotaLeaseDemoRequestLeaseReusesActiveCapacity(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+
+	reused, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   svc.PreflightReserveAmount(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, lease.ID, reused.ID)
+
+	snapshot := svc.Snapshot()
+	require.Len(t, snapshot.Leases, 1)
+	require.InDelta(t, 1, snapshot.Leases[0].Remaining(), 1e-9)
+}
+
+func TestQuotaLeaseDemoRequestLeaseTopsUpActivePreflightLease(t *testing.T) {
+	svc := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				NodeID:                 "node-1",
+				DefaultGrantAmount:     0.000001,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	})
+	ctx := context.Background()
+
+	preflight, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   svc.PreflightReserveAmount(),
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 0.000001, preflight.Granted, 1e-12)
+
+	toppedUp, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   0.005715,
+	})
+	require.NoError(t, err)
+	require.Equal(t, preflight.ID, toppedUp.ID)
+	require.InDelta(t, 0.005715, toppedUp.Granted, 1e-12)
+	require.InDelta(t, 0.005715, toppedUp.Remaining(), 1e-12)
+
+	snapshot := svc.Snapshot()
+	require.Len(t, snapshot.Leases, 1)
+	require.Equal(t, preflight.ID, snapshot.Leases[0].ID)
+	require.InDelta(t, 0.005715, snapshot.Leases[0].Granted, 1e-12)
+}
+
 func TestQuotaLeaseDemoRegisterNodeAndHeartbeat(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	ctx := context.Background()
@@ -834,6 +901,75 @@ func TestQuotaLeaseDemoRemoteNodeUsesRegisteredNodeIDForSchedulingCache(t *testi
 	require.Equal(t, int64(606), accounts[0].ID)
 	require.Equal(t, "registered-node-1", node.activeNodeID())
 	require.Equal(t, "configured-node-1", node.NodeID())
+}
+
+func TestQuotaLeaseDemoRemotePreflightUsesRegisteredNodeLease(t *testing.T) {
+	control := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				NodeID:                 "control-node",
+				DefaultGrantAmount:     0.000001,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	})
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	ctx := context.Background()
+	registered, err := control.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID: "registered-node-lease",
+	})
+	require.NoError(t, err)
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				NodeID:                 "configured-node-lease",
+				ControlPlaneBaseURL:    server.URL,
+				ControlPlaneKey:        "control-secret",
+				DefaultGrantAmount:     0.000001,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	})
+	node.remoteNodeID = registered.Node.NodeID
+	node.remoteNodeSecret = registered.NodeSecret
+
+	require.True(t, node.CanAuthorizeRequest(ctx, &APIKey{
+		ID:   20,
+		User: &User{ID: 10},
+	}, nil))
+
+	preflightSnapshot := control.Snapshot()
+	require.Len(t, preflightSnapshot.Leases, 1)
+	preflightLease := preflightSnapshot.Leases[0]
+	require.Equal(t, registered.Node.NodeID, preflightLease.NodeID)
+	require.InDelta(t, 0.000001, preflightLease.Granted, 1e-12)
+
+	handled, applied, err := node.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "remote-preflight-billing-1",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: 0.005715,
+	})
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.True(t, applied)
+
+	controlSnapshot := control.Snapshot()
+	require.Len(t, controlSnapshot.Leases, 1)
+	require.Equal(t, preflightLease.ID, controlSnapshot.Leases[0].ID)
+	require.InDelta(t, 0.005715, controlSnapshot.Leases[0].Granted, 1e-12)
+	nodeSnapshot := node.Snapshot()
+	require.Len(t, nodeSnapshot.Leases, 1)
+	require.Equal(t, preflightLease.ID, nodeSnapshot.Leases[0].ID)
 }
 
 func TestQuotaLeaseDemoNodeWorkerExecutesPendingAccountTask(t *testing.T) {

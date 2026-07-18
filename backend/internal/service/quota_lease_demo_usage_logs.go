@@ -243,7 +243,7 @@ func enqueueQuotaLeaseDemoUsageLogSnapshot(ctx context.Context, usageLog *UsageL
 	if svc == nil || !svc.remoteMode() {
 		return
 	}
-	nodeID := svc.NodeID()
+	nodeID := svc.activeNodeID()
 	snapshot := NewQuotaLeaseDemoUsageLogSnapshot(nodeID, usageLog)
 	if strings.TrimSpace(snapshot.RequestID) == "" || snapshot.APIKeyID <= 0 {
 		return

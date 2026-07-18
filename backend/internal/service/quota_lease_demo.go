@@ -610,6 +610,59 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	}
 
 	now := time.Now().UTC()
+	expiresAt := now.Add(time.Duration(ttlSeconds) * time.Second)
+	reclaimAt := now.Add(time.Duration(ttlSeconds+graceSeconds) * time.Second)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var reusable *QuotaLeaseDemoLease
+	var extendable *QuotaLeaseDemoLease
+	for _, lease := range s.leases {
+		s.refreshLeaseStatusLocked(lease, now)
+		if lease.Status != QuotaLeaseDemoStatusActive {
+			continue
+		}
+		if lease.NodeID != nodeID || lease.UserID != req.UserID || lease.APIKeyID != req.APIKeyID {
+			continue
+		}
+		if extendable == nil || lease.ExpiresAt.Before(extendable.ExpiresAt) {
+			extendable = lease
+		}
+		if lease.Remaining()+1e-12 >= amount && (reusable == nil || lease.ExpiresAt.Before(reusable.ExpiresAt)) {
+			reusable = lease
+		}
+	}
+	if reusable != nil {
+		return cloneQuotaLeaseDemoLease(reusable), nil
+	}
+	if extendable != nil {
+		delta := amount - extendable.Remaining()
+		if delta > 0 {
+			extendable.Granted += delta
+		}
+		if extendable.ExpiresAt.Before(expiresAt) {
+			extendable.ExpiresAt = expiresAt
+		}
+		if extendable.ReclaimAt.Before(reclaimAt) {
+			extendable.ReclaimAt = reclaimAt
+		}
+		extendable.UpdatedAt = now
+		eventID := "lease:" + extendable.ID
+		s.events[eventID] = &QuotaLeaseDemoLedgerEvent{
+			EventID:     eventID,
+			LeaseID:     extendable.ID,
+			NodeID:      extendable.NodeID,
+			UserID:      extendable.UserID,
+			APIKeyID:    extendable.APIKeyID,
+			Amount:      extendable.Granted,
+			EventType:   QuotaLeaseDemoEventLeaseGranted,
+			PayloadHash: quotaLeaseDemoPayloadHash(extendable.ID, extendable.NodeID, extendable.UserID, extendable.APIKeyID, "", extendable.Granted, QuotaLeaseDemoEventLeaseGranted),
+			CreatedAt:   extendable.CreatedAt,
+		}
+		return cloneQuotaLeaseDemoLease(extendable), nil
+	}
+
 	lease := &QuotaLeaseDemoLease{
 		ID:        "ql_demo_" + uuid.NewString(),
 		NodeID:    nodeID,
@@ -617,14 +670,12 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		APIKeyID:  req.APIKeyID,
 		Granted:   amount,
 		Status:    QuotaLeaseDemoStatusActive,
-		ExpiresAt: now.Add(time.Duration(ttlSeconds) * time.Second),
-		ReclaimAt: now.Add(time.Duration(ttlSeconds+graceSeconds) * time.Second),
+		ExpiresAt: expiresAt,
+		ReclaimAt: reclaimAt,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.leases[lease.ID] = lease
 	s.events["lease:"+lease.ID] = &QuotaLeaseDemoLedgerEvent{
 		EventID:     "lease:" + lease.ID,
@@ -645,7 +696,7 @@ func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey 
 	if s == nil || !s.Enabled() || apiKey == nil || apiKey.User == nil || subscription != nil {
 		return false
 	}
-	return s.ensureCapacity(ctx, s.NodeID(), apiKey.User.ID, apiKey.ID, s.PreflightReserveAmount())
+	return s.ensureCapacity(ctx, s.activeNodeID(), apiKey.User.ID, apiKey.ID, s.PreflightReserveAmount())
 }
 
 func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *UsageBillingCommand) (handled bool, applied bool, err error) {
@@ -656,7 +707,7 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 		return false, false, nil
 	}
 
-	nodeID := s.NodeID()
+	nodeID := s.activeNodeID()
 	lease := s.findLeaseForConsumption(nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost, time.Now().UTC())
 	if lease == nil && s.remoteMode() {
 		_ = s.ensureCapacity(ctx, nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost)
