@@ -224,9 +224,11 @@ func NewQuotaLeaseDemoNodeWorker(svc *QuotaLeaseDemoService, executor QuotaLease
 	}
 }
 
-func ProvideQuotaLeaseDemoNodeWorker(cfg *config.Config, openaiOAuth *OpenAIOAuthService, grokOAuth *GrokOAuthService) *QuotaLeaseDemoNodeWorker {
+func ProvideQuotaLeaseDemoNodeWorker(cfg *config.Config, openaiOAuth *OpenAIOAuthService, grokOAuth *GrokOAuthService, mirrorStore QuotaLeaseDemoMirrorStore) *QuotaLeaseDemoNodeWorker {
+	svc := GetQuotaLeaseDemoService(cfg)
+	svc.SetMirrorStore(mirrorStore)
 	worker := NewQuotaLeaseDemoNodeWorker(
-		GetQuotaLeaseDemoService(cfg),
+		svc,
 		NewQuotaLeaseDemoOAuthAccountTaskExecutor(openaiOAuth, grokOAuth),
 		quotaLeaseDemoNodeWorkerInterval,
 	)

@@ -25,6 +25,7 @@ func RegisterQuotaLeaseDemoRoutes(v1 *gin.RouterGroup, cfg *config.Config, apiKe
 		group.POST("/accounts/login-tasks/:task_id/callback", h.SubmitAccountLoginTaskCallback)
 		group.POST("/accounts/status", h.ReportAccountStatus)
 		group.GET("/accounts/assignments", h.ListAssignedAccounts)
+		group.GET("/mirror/snapshot", h.MirrorSnapshot)
 		group.POST("/leases/request", h.RequestLease)
 		group.POST("/usage/batch", h.PostUsageBatch)
 		group.POST("/usage-logs/batch", h.PostUsageLogBatch)

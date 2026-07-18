@@ -20,25 +20,40 @@ const (
 )
 
 type QuotaLeaseDemoAccountSnapshot struct {
-	ID                      int64                        `json:"id"`
-	Name                    string                       `json:"name"`
-	Platform                string                       `json:"platform"`
-	Type                    string                       `json:"type"`
-	Credentials             map[string]any               `json:"credentials,omitempty"`
-	Extra                   map[string]any               `json:"extra,omitempty"`
-	ProxyID                 *int64                       `json:"proxy_id,omitempty"`
-	Proxy                   *QuotaLeaseDemoProxySnapshot `json:"proxy,omitempty"`
-	Status                  string                       `json:"status"`
-	ErrorMessage            string                       `json:"error_message,omitempty"`
-	Schedulable             bool                         `json:"schedulable"`
-	Concurrency             int                          `json:"concurrency"`
-	Priority                int                          `json:"priority"`
-	GroupIDs                []int64                      `json:"group_ids,omitempty"`
-	ExpiresAt               *time.Time                   `json:"expires_at,omitempty"`
-	RateLimitResetAt        *time.Time                   `json:"rate_limit_reset_at,omitempty"`
-	TempUnschedulableUntil  *time.Time                   `json:"temp_unschedulable_until,omitempty"`
-	TempUnschedulableReason string                       `json:"temp_unschedulable_reason,omitempty"`
-	UpdatedAt               time.Time                    `json:"updated_at"`
+	ID                      int64                                `json:"id"`
+	Name                    string                               `json:"name"`
+	Notes                   *string                              `json:"notes,omitempty"`
+	Platform                string                               `json:"platform"`
+	Type                    string                               `json:"type"`
+	Credentials             map[string]any                       `json:"credentials,omitempty"`
+	Extra                   map[string]any                       `json:"extra,omitempty"`
+	ProxyID                 *int64                               `json:"proxy_id,omitempty"`
+	ProxyFallbackOriginID   *int64                               `json:"proxy_fallback_origin_id,omitempty"`
+	Proxy                   *QuotaLeaseDemoProxySnapshot         `json:"proxy,omitempty"`
+	Status                  string                               `json:"status"`
+	ErrorMessage            string                               `json:"error_message,omitempty"`
+	Schedulable             bool                                 `json:"schedulable"`
+	Concurrency             int                                  `json:"concurrency"`
+	LoadFactor              *int                                 `json:"load_factor,omitempty"`
+	Priority                int                                  `json:"priority"`
+	RateMultiplier          *float64                             `json:"rate_multiplier,omitempty"`
+	GroupIDs                []int64                              `json:"group_ids,omitempty"`
+	AccountGroups           []QuotaLeaseDemoAccountGroupSnapshot `json:"account_groups,omitempty"`
+	LastUsedAt              *time.Time                           `json:"last_used_at,omitempty"`
+	ExpiresAt               *time.Time                           `json:"expires_at,omitempty"`
+	AutoPauseOnExpired      bool                                 `json:"auto_pause_on_expired"`
+	RateLimitedAt           *time.Time                           `json:"rate_limited_at,omitempty"`
+	RateLimitResetAt        *time.Time                           `json:"rate_limit_reset_at,omitempty"`
+	OverloadUntil           *time.Time                           `json:"overload_until,omitempty"`
+	TempUnschedulableUntil  *time.Time                           `json:"temp_unschedulable_until,omitempty"`
+	TempUnschedulableReason string                               `json:"temp_unschedulable_reason,omitempty"`
+	SessionWindowStart      *time.Time                           `json:"session_window_start,omitempty"`
+	SessionWindowEnd        *time.Time                           `json:"session_window_end,omitempty"`
+	SessionWindowStatus     string                               `json:"session_window_status,omitempty"`
+	ParentAccountID         *int64                               `json:"parent_account_id,omitempty"`
+	QuotaDimension          string                               `json:"quota_dimension,omitempty"`
+	CreatedAt               time.Time                            `json:"created_at"`
+	UpdatedAt               time.Time                            `json:"updated_at"`
 }
 
 type QuotaLeaseDemoProxySnapshot struct {
@@ -54,6 +69,15 @@ type QuotaLeaseDemoProxySnapshot struct {
 	FallbackMode   string     `json:"fallback_mode,omitempty"`
 	BackupProxyID  *int64     `json:"backup_proxy_id,omitempty"`
 	ExpiryWarnDays int        `json:"expiry_warn_days,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+type QuotaLeaseDemoAccountGroupSnapshot struct {
+	AccountID int64     `json:"account_id"`
+	GroupID   int64     `json:"group_id"`
+	Priority  int       `json:"priority"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type QuotaLeaseDemoAccountLoginTaskCreateRequest struct {
@@ -498,6 +522,36 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 	if s == nil || !s.remoteMode() {
 		return nil, false
 	}
+	if store := s.quotaLeaseDemoMirrorStore(); store != nil {
+		if err := s.EnsureMirrorSnapshot(ctx); err != nil {
+			slog.Warn("quota_lease_demo.mirror_sync_failed",
+				"node_id", s.activeNodeID(),
+				"error", err,
+			)
+		}
+		accounts, err := store.ListSchedulableAccounts(ctx, groupID, platform)
+		if err != nil {
+			slog.Warn("quota_lease_demo.mirror_account_query_failed",
+				"node_id", s.activeNodeID(),
+				"platform", strings.TrimSpace(platform),
+				"group_id", quotaLeaseDemoLogGroupID(groupID),
+				"error", err,
+			)
+			return nil, true
+		}
+		if len(accounts) == 0 {
+			ready, syncedAt := s.mirrorSnapshotState()
+			slog.Warn("quota_lease_demo.mirror_accounts_empty",
+				"node_id", s.activeNodeID(),
+				"configured_node_id", s.NodeID(),
+				"platform", strings.TrimSpace(platform),
+				"group_id", quotaLeaseDemoLogGroupID(groupID),
+				"mirror_ready", ready,
+				"mirror_synced_at", syncedAt,
+			)
+		}
+		return accounts, true
+	}
 	if err := s.SyncAssignedAccounts(ctx); err != nil {
 		slog.Warn("quota_lease_demo.assigned_accounts_sync_failed",
 			"node_id", s.activeNodeID(),
@@ -552,6 +606,20 @@ func (s *QuotaLeaseDemoService) AssignedAccountByID(ctx context.Context, account
 	if s == nil || !s.remoteMode() || accountID <= 0 {
 		return nil, false
 	}
+	if store := s.quotaLeaseDemoMirrorStore(); store != nil {
+		if err := s.EnsureMirrorSnapshot(ctx); err != nil {
+			slog.Warn("quota_lease_demo.mirror_sync_failed",
+				"node_id", s.activeNodeID(),
+				"account_id", accountID,
+				"error", err,
+			)
+		}
+		account, err := store.GetAccountByID(ctx, accountID)
+		if err != nil || account == nil {
+			return nil, true
+		}
+		return account, true
+	}
 	_ = s.SyncAssignedAccounts(ctx)
 	nodeID := s.activeNodeID()
 	s.mu.Lock()
@@ -601,13 +669,36 @@ func normalizeQuotaLeaseDemoAccountSnapshot(account QuotaLeaseDemoAccountSnapsho
 	if !account.Schedulable && account.Status == StatusActive {
 		account.Schedulable = true
 	}
+	if task != nil && !account.AutoPauseOnExpired {
+		account.AutoPauseOnExpired = true
+	}
+	if account.CreatedAt.IsZero() {
+		account.CreatedAt = now
+	}
 	account.Credentials = cloneQuotaLeaseDemoAnyMap(account.Credentials)
 	account.Extra = cloneQuotaLeaseDemoAnyMap(account.Extra)
+	account.Notes = cloneQuotaLeaseDemoStringPtr(account.Notes)
 	account.ProxyID = cloneQuotaLeaseDemoInt64Ptr(account.ProxyID)
+	account.ProxyFallbackOriginID = cloneQuotaLeaseDemoInt64Ptr(account.ProxyFallbackOriginID)
 	account.Proxy = cloneQuotaLeaseDemoProxySnapshot(account.Proxy)
+	account.LoadFactor = cloneQuotaLeaseDemoIntPtr(account.LoadFactor)
+	account.RateMultiplier = cloneQuotaLeaseDemoFloat64Ptr(account.RateMultiplier)
 	if account.ProxyID == nil && account.Proxy != nil && account.Proxy.ID > 0 {
 		account.ProxyID = &account.Proxy.ID
 	}
+	account.AccountGroups = cloneQuotaLeaseDemoAccountGroupSnapshots(account.AccountGroups)
+	if len(account.AccountGroups) == 0 && len(account.GroupIDs) > 0 {
+		account.AccountGroups = quotaLeaseDemoAccountGroupsFromGroupIDs(account.ID, account.GroupIDs, now)
+	}
+	account.LastUsedAt = cloneQuotaLeaseDemoTimePtr(account.LastUsedAt)
+	account.ExpiresAt = cloneQuotaLeaseDemoTimePtr(account.ExpiresAt)
+	account.RateLimitedAt = cloneQuotaLeaseDemoTimePtr(account.RateLimitedAt)
+	account.RateLimitResetAt = cloneQuotaLeaseDemoTimePtr(account.RateLimitResetAt)
+	account.OverloadUntil = cloneQuotaLeaseDemoTimePtr(account.OverloadUntil)
+	account.TempUnschedulableUntil = cloneQuotaLeaseDemoTimePtr(account.TempUnschedulableUntil)
+	account.SessionWindowStart = cloneQuotaLeaseDemoTimePtr(account.SessionWindowStart)
+	account.SessionWindowEnd = cloneQuotaLeaseDemoTimePtr(account.SessionWindowEnd)
+	account.ParentAccountID = cloneQuotaLeaseDemoInt64Ptr(account.ParentAccountID)
 	if account.UpdatedAt.IsZero() {
 		account.UpdatedAt = now
 	}
@@ -618,22 +709,37 @@ func quotaLeaseDemoAccountSnapshotToAccount(snapshot QuotaLeaseDemoAccountSnapsh
 	account := Account{
 		ID:                      snapshot.ID,
 		Name:                    snapshot.Name,
+		Notes:                   cloneQuotaLeaseDemoStringPtr(snapshot.Notes),
 		Platform:                snapshot.Platform,
 		Type:                    snapshot.Type,
 		Credentials:             cloneQuotaLeaseDemoAnyMap(snapshot.Credentials),
 		Extra:                   cloneQuotaLeaseDemoAnyMap(snapshot.Extra),
 		ProxyID:                 cloneQuotaLeaseDemoInt64Ptr(snapshot.ProxyID),
+		ProxyFallbackOriginID:   cloneQuotaLeaseDemoInt64Ptr(snapshot.ProxyFallbackOriginID),
 		Proxy:                   quotaLeaseDemoProxySnapshotToProxy(snapshot.Proxy),
 		Status:                  snapshot.Status,
 		ErrorMessage:            snapshot.ErrorMessage,
 		Schedulable:             snapshot.Schedulable,
 		Concurrency:             snapshot.Concurrency,
+		LoadFactor:              cloneQuotaLeaseDemoIntPtr(snapshot.LoadFactor),
 		Priority:                snapshot.Priority,
+		RateMultiplier:          cloneQuotaLeaseDemoFloat64Ptr(snapshot.RateMultiplier),
 		GroupIDs:                cloneQuotaLeaseDemoInt64Slice(snapshot.GroupIDs),
+		AccountGroups:           quotaLeaseDemoAccountGroupSnapshotsToAccountGroups(snapshot.AccountGroups),
+		LastUsedAt:              cloneQuotaLeaseDemoTimePtr(snapshot.LastUsedAt),
 		ExpiresAt:               snapshot.ExpiresAt,
+		AutoPauseOnExpired:      snapshot.AutoPauseOnExpired,
+		RateLimitedAt:           cloneQuotaLeaseDemoTimePtr(snapshot.RateLimitedAt),
 		RateLimitResetAt:        snapshot.RateLimitResetAt,
+		OverloadUntil:           cloneQuotaLeaseDemoTimePtr(snapshot.OverloadUntil),
 		TempUnschedulableUntil:  snapshot.TempUnschedulableUntil,
 		TempUnschedulableReason: snapshot.TempUnschedulableReason,
+		SessionWindowStart:      cloneQuotaLeaseDemoTimePtr(snapshot.SessionWindowStart),
+		SessionWindowEnd:        cloneQuotaLeaseDemoTimePtr(snapshot.SessionWindowEnd),
+		SessionWindowStatus:     snapshot.SessionWindowStatus,
+		ParentAccountID:         cloneQuotaLeaseDemoInt64Ptr(snapshot.ParentAccountID),
+		QuotaDimension:          strings.TrimSpace(snapshot.QuotaDimension),
+		CreatedAt:               snapshot.CreatedAt,
 		UpdatedAt:               snapshot.UpdatedAt,
 	}
 	if account.Status == "" {
@@ -645,10 +751,21 @@ func quotaLeaseDemoAccountSnapshotToAccount(snapshot QuotaLeaseDemoAccountSnapsh
 	if !account.Schedulable && account.Status == StatusActive {
 		account.Schedulable = true
 	}
+	if len(account.GroupIDs) == 0 && len(account.AccountGroups) > 0 {
+		account.GroupIDs = quotaLeaseDemoGroupIDsFromAccountGroups(account.AccountGroups)
+	}
 	if account.ProxyID == nil && account.Proxy != nil && account.Proxy.ID > 0 {
 		account.ProxyID = &account.Proxy.ID
 	}
 	return account
+}
+
+func QuotaLeaseDemoAccountSnapshotToAccount(snapshot QuotaLeaseDemoAccountSnapshot) Account {
+	return quotaLeaseDemoAccountSnapshotToAccount(snapshot)
+}
+
+func QuotaLeaseDemoProxySnapshotToProxy(snapshot *QuotaLeaseDemoProxySnapshot) *Proxy {
+	return quotaLeaseDemoProxySnapshotToProxy(snapshot)
 }
 
 func quotaLeaseDemoAccountMatchesScheduling(account Account, groupID *int64, platform string) bool {
@@ -715,21 +832,23 @@ func cloneQuotaLeaseDemoAssignedAccount(assigned *QuotaLeaseDemoAssignedAccount)
 func cloneQuotaLeaseDemoAccountSnapshot(account QuotaLeaseDemoAccountSnapshot) QuotaLeaseDemoAccountSnapshot {
 	account.Credentials = cloneQuotaLeaseDemoAnyMap(account.Credentials)
 	account.Extra = cloneQuotaLeaseDemoAnyMap(account.Extra)
+	account.Notes = cloneQuotaLeaseDemoStringPtr(account.Notes)
 	account.ProxyID = cloneQuotaLeaseDemoInt64Ptr(account.ProxyID)
+	account.ProxyFallbackOriginID = cloneQuotaLeaseDemoInt64Ptr(account.ProxyFallbackOriginID)
 	account.Proxy = cloneQuotaLeaseDemoProxySnapshot(account.Proxy)
+	account.LoadFactor = cloneQuotaLeaseDemoIntPtr(account.LoadFactor)
+	account.RateMultiplier = cloneQuotaLeaseDemoFloat64Ptr(account.RateMultiplier)
 	account.GroupIDs = cloneQuotaLeaseDemoInt64Slice(account.GroupIDs)
-	if account.ExpiresAt != nil {
-		expiresAt := *account.ExpiresAt
-		account.ExpiresAt = &expiresAt
-	}
-	if account.RateLimitResetAt != nil {
-		rateLimitResetAt := *account.RateLimitResetAt
-		account.RateLimitResetAt = &rateLimitResetAt
-	}
-	if account.TempUnschedulableUntil != nil {
-		tempUnschedulableUntil := *account.TempUnschedulableUntil
-		account.TempUnschedulableUntil = &tempUnschedulableUntil
-	}
+	account.AccountGroups = cloneQuotaLeaseDemoAccountGroupSnapshots(account.AccountGroups)
+	account.LastUsedAt = cloneQuotaLeaseDemoTimePtr(account.LastUsedAt)
+	account.ExpiresAt = cloneQuotaLeaseDemoTimePtr(account.ExpiresAt)
+	account.RateLimitedAt = cloneQuotaLeaseDemoTimePtr(account.RateLimitedAt)
+	account.RateLimitResetAt = cloneQuotaLeaseDemoTimePtr(account.RateLimitResetAt)
+	account.OverloadUntil = cloneQuotaLeaseDemoTimePtr(account.OverloadUntil)
+	account.TempUnschedulableUntil = cloneQuotaLeaseDemoTimePtr(account.TempUnschedulableUntil)
+	account.SessionWindowStart = cloneQuotaLeaseDemoTimePtr(account.SessionWindowStart)
+	account.SessionWindowEnd = cloneQuotaLeaseDemoTimePtr(account.SessionWindowEnd)
+	account.ParentAccountID = cloneQuotaLeaseDemoInt64Ptr(account.ParentAccountID)
 	return account
 }
 
@@ -739,11 +858,99 @@ func cloneQuotaLeaseDemoProxySnapshot(proxy *QuotaLeaseDemoProxySnapshot) *Quota
 	}
 	value := *proxy
 	value.BackupProxyID = cloneQuotaLeaseDemoInt64Ptr(proxy.BackupProxyID)
-	if proxy.ExpiresAt != nil {
-		expiresAt := *proxy.ExpiresAt
-		value.ExpiresAt = &expiresAt
-	}
+	value.ExpiresAt = cloneQuotaLeaseDemoTimePtr(proxy.ExpiresAt)
 	return &value
+}
+
+func cloneQuotaLeaseDemoAccountGroupSnapshots(src []QuotaLeaseDemoAccountGroupSnapshot) []QuotaLeaseDemoAccountGroupSnapshot {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]QuotaLeaseDemoAccountGroupSnapshot, 0, len(src))
+	for _, item := range src {
+		if item.AccountID <= 0 || item.GroupID <= 0 {
+			continue
+		}
+		dst = append(dst, item)
+	}
+	if len(dst) == 0 {
+		return nil
+	}
+	return dst
+}
+
+func quotaLeaseDemoAccountGroupsFromGroupIDs(accountID int64, groupIDs []int64, now time.Time) []QuotaLeaseDemoAccountGroupSnapshot {
+	if accountID <= 0 || len(groupIDs) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(groupIDs))
+	out := make([]QuotaLeaseDemoAccountGroupSnapshot, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if _, exists := seen[groupID]; exists {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		out = append(out, QuotaLeaseDemoAccountGroupSnapshot{
+			AccountID: accountID,
+			GroupID:   groupID,
+			Priority:  0,
+			CreatedAt: now,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func quotaLeaseDemoAccountGroupSnapshotsToAccountGroups(src []QuotaLeaseDemoAccountGroupSnapshot) []AccountGroup {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]AccountGroup, 0, len(src))
+	for _, item := range src {
+		if item.AccountID <= 0 || item.GroupID <= 0 {
+			continue
+		}
+		out = append(out, AccountGroup{
+			AccountID: item.AccountID,
+			GroupID:   item.GroupID,
+			Priority:  item.Priority,
+			CreatedAt: item.CreatedAt,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func quotaLeaseDemoGroupIDsFromAccountGroups(src []AccountGroup) []int64 {
+	if len(src) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(src))
+	out := make([]int64, 0, len(src))
+	for _, item := range src {
+		if item.GroupID <= 0 {
+			continue
+		}
+		if _, exists := seen[item.GroupID]; exists {
+			continue
+		}
+		seen[item.GroupID] = struct{}{}
+		out = append(out, item.GroupID)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i] < out[j]
+	})
+	return out
 }
 
 func quotaLeaseDemoProxySnapshotToProxy(snapshot *QuotaLeaseDemoProxySnapshot) *Proxy {
@@ -763,6 +970,8 @@ func quotaLeaseDemoProxySnapshotToProxy(snapshot *QuotaLeaseDemoProxySnapshot) *
 		FallbackMode:   strings.TrimSpace(snapshot.FallbackMode),
 		BackupProxyID:  cloneQuotaLeaseDemoInt64Ptr(snapshot.BackupProxyID),
 		ExpiryWarnDays: snapshot.ExpiryWarnDays,
+		CreatedAt:      snapshot.CreatedAt,
+		UpdatedAt:      snapshot.UpdatedAt,
 	}
 }
 

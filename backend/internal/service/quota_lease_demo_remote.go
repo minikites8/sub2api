@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -282,6 +283,9 @@ func (s *QuotaLeaseDemoService) completeRemoteAccountLoginTask(ctx context.Conte
 	if result.Task == nil {
 		return nil, fmt.Errorf("%w: account login completion response missing task", ErrQuotaLeaseDemoInvalidInput)
 	}
+	if result.Task.Account != nil {
+		s.upsertRemoteMirrorAccountBestEffort(ctx, *result.Task.Account, "account_login_complete")
+	}
 	return result.Task, nil
 }
 
@@ -344,12 +348,16 @@ func (s *QuotaLeaseDemoService) reportRemoteAccountStatus(ctx context.Context, r
 		return nil, fmt.Errorf("%w: account status response missing account", ErrQuotaLeaseDemoInvalidInput)
 	}
 	s.cacheRemoteAssignedAccount(nodeID, result.Account)
+	s.upsertRemoteMirrorAccountBestEffort(ctx, result.Account.Account, "account_status")
 	return cloneQuotaLeaseDemoAssignedAccount(result.Account), nil
 }
 
 func (s *QuotaLeaseDemoService) SyncAssignedAccounts(ctx context.Context) error {
 	if s == nil || !s.remoteMode() {
 		return nil
+	}
+	if s.quotaLeaseDemoMirrorStore() != nil {
+		return s.SyncMirrorSnapshot(ctx)
 	}
 	nodeID, secret, err := s.remoteNodeAuth(ctx)
 	if err != nil {
@@ -363,6 +371,30 @@ func (s *QuotaLeaseDemoService) SyncAssignedAccounts(ctx context.Context) error 
 	}
 	s.cacheRemoteAssignedAccounts(nodeID, result.Accounts)
 	return nil
+}
+
+func (s *QuotaLeaseDemoService) upsertRemoteMirrorAccountBestEffort(ctx context.Context, account QuotaLeaseDemoAccountSnapshot, source string) {
+	store := s.quotaLeaseDemoMirrorStore()
+	if store == nil || account.ID <= 0 {
+		return
+	}
+	if nodeID := s.activeNodeID(); strings.TrimSpace(nodeID) != "" {
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		if strings.TrimSpace(quotaLeaseDemoStringFromPayload(account.Extra["node_oauth_assigned_node_id"])) == "" {
+			account.Extra["node_oauth_assigned_node_id"] = strings.TrimSpace(nodeID)
+		}
+	}
+	if err := store.UpsertAccount(ctx, account); err != nil {
+		slog.Warn("quota_lease_demo.mirror_account_upsert_failed",
+			"account_id", account.ID,
+			"source", strings.TrimSpace(source),
+			"error", err,
+		)
+		return
+	}
+	s.markMirrorSynced(time.Now().UTC())
 }
 
 func (s *QuotaLeaseDemoService) activeNodeID() string {

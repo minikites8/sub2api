@@ -82,9 +82,12 @@ type QuotaLeaseDemoService struct {
 	accountTasks     map[string]*QuotaLeaseDemoAccountLoginTask
 	assignedAccounts map[int64]*QuotaLeaseDemoAssignedAccount
 	registrationURLs map[string]*QuotaLeaseDemoNodeRegistrationURL
+	mirrorStore      QuotaLeaseDemoMirrorStore
 	remoteNodeID     string
 	remoteNodeSecret string
 	remoteControlURL string
+	mirrorReady      bool
+	mirrorSyncedAt   time.Time
 }
 
 func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
@@ -541,12 +544,14 @@ type QuotaLeaseDemoReclaimResult struct {
 }
 
 type QuotaLeaseDemoSnapshot struct {
-	Enabled bool                        `json:"enabled"`
-	NodeID  string                      `json:"node_id"`
-	Nodes   []QuotaLeaseDemoNode        `json:"nodes"`
-	Leases  []QuotaLeaseDemoLease       `json:"leases"`
-	Events  []QuotaLeaseDemoLedgerEvent `json:"events"`
-	Stats   QuotaLeaseDemoSnapshotStats `json:"stats"`
+	Enabled        bool                        `json:"enabled"`
+	NodeID         string                      `json:"node_id"`
+	MirrorReady    bool                        `json:"mirror_ready"`
+	MirrorSyncedAt *time.Time                  `json:"mirror_synced_at,omitempty"`
+	Nodes          []QuotaLeaseDemoNode        `json:"nodes"`
+	Leases         []QuotaLeaseDemoLease       `json:"leases"`
+	Events         []QuotaLeaseDemoLedgerEvent `json:"events"`
+	Stats          QuotaLeaseDemoSnapshotStats `json:"stats"`
 }
 
 type QuotaLeaseDemoSnapshotStats struct {
@@ -872,6 +877,12 @@ func (s *QuotaLeaseDemoService) Snapshot() QuotaLeaseDemoSnapshot {
 		return snap
 	}
 	snap.NodeID = s.NodeID()
+	mirrorReady, mirrorSyncedAt := s.mirrorSnapshotState()
+	snap.MirrorReady = mirrorReady
+	if !mirrorSyncedAt.IsZero() {
+		syncedAt := mirrorSyncedAt
+		snap.MirrorSyncedAt = &syncedAt
+	}
 	now := time.Now().UTC()
 
 	s.mu.Lock()

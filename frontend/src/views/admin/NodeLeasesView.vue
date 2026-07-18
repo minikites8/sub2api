@@ -173,26 +173,6 @@
             <label class="input-label">区域</label>
             <input v-model.trim="nodeForm.region" class="input" placeholder="us-west" />
           </div>
-          <div>
-            <label class="input-label">有效期秒数</label>
-            <input v-model.number="nodeForm.ttl_seconds" type="number" min="60" max="86400" step="60" class="input" />
-          </div>
-          <div class="md:col-span-2">
-            <label class="input-label">节点 Base URL</label>
-            <input v-model.trim="nodeForm.base_url" class="input" placeholder="https://node.example.com" />
-          </div>
-          <div class="md:col-span-2">
-            <label class="input-label">Public Key</label>
-            <textarea v-model="nodeForm.public_key" class="input min-h-[80px] font-mono text-xs" />
-          </div>
-          <div class="md:col-span-2">
-            <label class="input-label">Metadata JSON</label>
-            <textarea
-              v-model="nodeForm.metadata_json"
-              class="input min-h-[88px] font-mono text-xs"
-              placeholder='{"provider":"aws"}'
-            />
-          </div>
         </div>
 
         <div v-if="lastRegistration" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800/50 dark:bg-emerald-900/20">
@@ -280,11 +260,7 @@ const emptyStats = {
 
 const nodeForm = reactive({
   node_id: '',
-  region: '',
-  base_url: '',
-  public_key: '',
-  metadata_json: '',
-  ttl_seconds: 900
+  region: ''
 })
 
 const stats = computed(() => snapshot.value?.stats || emptyStats)
@@ -391,15 +367,10 @@ function closeRegisterNodeDialog() {
 async function createNodeRegistrationURL() {
   submittingNode.value = true
   try {
-    const metadata = parseStringMap(nodeForm.metadata_json, 'Metadata JSON')
     const result = await adminAPI.nodeLeases.createNodeRegistrationURL(
       {
         node_id: nodeForm.node_id.trim() || undefined,
-        region: nodeForm.region.trim() || undefined,
-        base_url: nodeForm.base_url.trim() || undefined,
-        public_key: nodeForm.public_key.trim() || undefined,
-        metadata,
-        ttl_seconds: Number(nodeForm.ttl_seconds) || undefined
+        region: nodeForm.region.trim() || undefined
       },
       controlOptions()
     )
@@ -429,20 +400,6 @@ function formatAmount(value: number) {
 
 function formatTime(value?: string | null) {
   return value ? formatDateTime(value) : '-'
-}
-
-function parseStringMap(raw: string, label: string): Record<string, string> | undefined {
-  const trimmed = raw.trim()
-  if (!trimmed) return undefined
-  const parsed = JSON.parse(trimmed)
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${label} 必须是 JSON 对象`)
-  }
-  const result: Record<string, string> = {}
-  for (const [key, value] of Object.entries(parsed)) {
-    result[key] = typeof value === 'string' ? value : String(value)
-  }
-  return result
 }
 
 function statusLabel(status: string) {

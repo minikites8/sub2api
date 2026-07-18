@@ -341,6 +341,93 @@ func (h *QuotaLeaseDemoHandler) ListAssignedAccounts(c *gin.Context) {
 	})
 }
 
+func (h *QuotaLeaseDemoHandler) MirrorSnapshot(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	requestedNodeID := strings.TrimSpace(c.Query("node_id"))
+	nodeID, ok := h.authenticateNodeOrControl(c, requestedNodeID)
+	if !ok {
+		return
+	}
+	if h.adminSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "admin_service_unavailable"})
+		return
+	}
+	snapshot, err := h.buildMirrorSnapshot(c.Request.Context(), nodeID)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"snapshot": snapshot})
+}
+
+func (h *QuotaLeaseDemoHandler) buildMirrorSnapshot(ctx context.Context, nodeID string) (service.QuotaLeaseDemoMirrorSnapshot, error) {
+	syncedAt := time.Now().UTC()
+	snapshot := service.QuotaLeaseDemoMirrorSnapshot{
+		NodeID:   strings.TrimSpace(nodeID),
+		SyncedAt: syncedAt,
+	}
+
+	groups, err := h.adminSvc.GetAllGroupsIncludingInactive(ctx)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.Groups = make([]service.QuotaLeaseDemoGroupSnapshot, 0, len(groups))
+	for _, group := range groups {
+		snapshot.Groups = append(snapshot.Groups, quotaLeaseDemoHandlerGroupSnapshot(group))
+	}
+
+	proxies, err := h.adminSvc.GetAllProxies(ctx)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.Proxies = make([]service.QuotaLeaseDemoProxySnapshot, 0, len(proxies))
+	for _, proxy := range proxies {
+		if proxySnapshot := quotaLeaseDemoHandlerProxySnapshot(&proxy); proxySnapshot != nil {
+			snapshot.Proxies = append(snapshot.Proxies, *proxySnapshot)
+		}
+	}
+
+	assigned, err := h.listAssignedAccounts(ctx, nodeID)
+	if err != nil {
+		return snapshot, err
+	}
+	accountGroups := make(map[[2]int64]service.QuotaLeaseDemoAccountGroupSnapshot)
+	snapshot.Accounts = make([]service.QuotaLeaseDemoAccountSnapshot, 0, len(assigned))
+	for _, item := range assigned {
+		account := item.Account
+		if quotaLeaseDemoHandlerString(account.Extra[quotaLeaseDemoNodeOAuthLastSyncedAtKey]) == "" {
+			if account.Extra == nil {
+				account.Extra = map[string]any{}
+			}
+			account.Extra[quotaLeaseDemoNodeOAuthLastSyncedAtKey] = syncedAt.Format(time.RFC3339Nano)
+		}
+		if len(account.AccountGroups) == 0 && len(account.GroupIDs) > 0 {
+			account.AccountGroups = quotaLeaseDemoHandlerAccountGroupSnapshotsFromIDs(account.ID, account.GroupIDs, quotaLeaseDemoHandlerTimeOrNow(account.CreatedAt))
+		}
+		snapshot.Accounts = append(snapshot.Accounts, account)
+		for _, accountGroup := range account.AccountGroups {
+			if accountGroup.AccountID <= 0 || accountGroup.GroupID <= 0 {
+				continue
+			}
+			key := [2]int64{accountGroup.AccountID, accountGroup.GroupID}
+			accountGroups[key] = accountGroup
+		}
+	}
+	snapshot.AccountGroups = make([]service.QuotaLeaseDemoAccountGroupSnapshot, 0, len(accountGroups))
+	for _, accountGroup := range accountGroups {
+		snapshot.AccountGroups = append(snapshot.AccountGroups, accountGroup)
+	}
+	sort.Slice(snapshot.AccountGroups, func(i, j int) bool {
+		if snapshot.AccountGroups[i].AccountID == snapshot.AccountGroups[j].AccountID {
+			return snapshot.AccountGroups[i].GroupID < snapshot.AccountGroups[j].GroupID
+		}
+		return snapshot.AccountGroups[i].AccountID < snapshot.AccountGroups[j].AccountID
+	})
+	return snapshot, nil
+}
+
 func (h *QuotaLeaseDemoHandler) listAssignedAccounts(ctx context.Context, nodeID string) ([]service.QuotaLeaseDemoAssignedAccount, error) {
 	accounts := h.svc.ListAssignedAccounts(ctx, nodeID)
 	if h.adminSvc == nil {
@@ -460,22 +547,37 @@ func (h *QuotaLeaseDemoHandler) quotaLeaseDemoHandlerAccountSnapshot(ctx context
 	snapshot := service.QuotaLeaseDemoAccountSnapshot{
 		ID:                      account.ID,
 		Name:                    account.Name,
+		Notes:                   quotaLeaseDemoHandlerCloneStringPtr(account.Notes),
 		Platform:                account.Platform,
 		Type:                    account.Type,
 		Credentials:             quotaLeaseDemoHandlerCloneAnyMap(account.Credentials),
 		Extra:                   quotaLeaseDemoHandlerCloneAnyMap(account.Extra),
 		ProxyID:                 quotaLeaseDemoHandlerCloneInt64Ptr(account.ProxyID),
+		ProxyFallbackOriginID:   quotaLeaseDemoHandlerCloneInt64Ptr(account.ProxyFallbackOriginID),
 		Proxy:                   quotaLeaseDemoHandlerProxySnapshot(h.quotaLeaseDemoHandlerAccountProxy(ctx, account)),
 		Status:                  account.Status,
 		ErrorMessage:            account.ErrorMessage,
 		Schedulable:             account.Schedulable,
 		Concurrency:             account.Concurrency,
+		LoadFactor:              quotaLeaseDemoHandlerCloneIntPtr(account.LoadFactor),
 		Priority:                account.Priority,
+		RateMultiplier:          quotaLeaseDemoHandlerCloneFloat64Ptr(account.RateMultiplier),
 		GroupIDs:                quotaLeaseDemoHandlerAccountGroupIDs(account),
+		AccountGroups:           quotaLeaseDemoHandlerAccountGroupSnapshots(account),
+		LastUsedAt:              quotaLeaseDemoHandlerCloneTime(account.LastUsedAt),
 		ExpiresAt:               quotaLeaseDemoHandlerCloneTime(account.ExpiresAt),
+		AutoPauseOnExpired:      account.AutoPauseOnExpired,
+		RateLimitedAt:           quotaLeaseDemoHandlerCloneTime(account.RateLimitedAt),
 		RateLimitResetAt:        quotaLeaseDemoHandlerCloneTime(account.RateLimitResetAt),
+		OverloadUntil:           quotaLeaseDemoHandlerCloneTime(account.OverloadUntil),
 		TempUnschedulableUntil:  quotaLeaseDemoHandlerCloneTime(account.TempUnschedulableUntil),
 		TempUnschedulableReason: account.TempUnschedulableReason,
+		SessionWindowStart:      quotaLeaseDemoHandlerCloneTime(account.SessionWindowStart),
+		SessionWindowEnd:        quotaLeaseDemoHandlerCloneTime(account.SessionWindowEnd),
+		SessionWindowStatus:     account.SessionWindowStatus,
+		ParentAccountID:         quotaLeaseDemoHandlerCloneInt64Ptr(account.ParentAccountID),
+		QuotaDimension:          account.QuotaDimensionOrDefault(),
+		CreatedAt:               quotaLeaseDemoHandlerTimeOrNow(account.CreatedAt),
 		UpdatedAt:               quotaLeaseDemoHandlerTimeOrNow(account.UpdatedAt),
 	}
 	if snapshot.Status == "" {
@@ -489,6 +591,9 @@ func (h *QuotaLeaseDemoHandler) quotaLeaseDemoHandlerAccountSnapshot(ctx context
 	}
 	if snapshot.ProxyID == nil && snapshot.Proxy != nil && snapshot.Proxy.ID > 0 {
 		snapshot.ProxyID = &snapshot.Proxy.ID
+	}
+	if len(snapshot.AccountGroups) == 0 && len(snapshot.GroupIDs) > 0 {
+		snapshot.AccountGroups = quotaLeaseDemoHandlerAccountGroupSnapshotsFromIDs(snapshot.ID, snapshot.GroupIDs, snapshot.CreatedAt)
 	}
 	return snapshot
 }
@@ -524,7 +629,122 @@ func quotaLeaseDemoHandlerProxySnapshot(proxy *service.Proxy) *service.QuotaLeas
 		FallbackMode:   proxy.FallbackMode,
 		BackupProxyID:  quotaLeaseDemoHandlerCloneInt64Ptr(proxy.BackupProxyID),
 		ExpiryWarnDays: proxy.ExpiryWarnDays,
+		CreatedAt:      quotaLeaseDemoHandlerTimeOrNow(proxy.CreatedAt),
+		UpdatedAt:      quotaLeaseDemoHandlerTimeOrNow(proxy.UpdatedAt),
 	}
+}
+
+func quotaLeaseDemoHandlerGroupSnapshot(group service.Group) service.QuotaLeaseDemoGroupSnapshot {
+	return service.QuotaLeaseDemoGroupSnapshot{
+		ID:                              group.ID,
+		Name:                            group.Name,
+		Description:                     group.Description,
+		Platform:                        group.Platform,
+		RateMultiplier:                  group.RateMultiplier,
+		PeakRateEnabled:                 group.PeakRateEnabled,
+		PeakStart:                       group.PeakStart,
+		PeakEnd:                         group.PeakEnd,
+		PeakRateMultiplier:              group.PeakRateMultiplier,
+		IsExclusive:                     group.IsExclusive,
+		Status:                          group.Status,
+		SubscriptionType:                group.SubscriptionType,
+		DailyLimitUSD:                   quotaLeaseDemoHandlerCloneFloat64Ptr(group.DailyLimitUSD),
+		WeeklyLimitUSD:                  quotaLeaseDemoHandlerCloneFloat64Ptr(group.WeeklyLimitUSD),
+		MonthlyLimitUSD:                 quotaLeaseDemoHandlerCloneFloat64Ptr(group.MonthlyLimitUSD),
+		DefaultValidityDays:             group.DefaultValidityDays,
+		AllowImageGeneration:            group.AllowImageGeneration,
+		AllowBatchImageGeneration:       group.AllowBatchImageGeneration,
+		ImageRateIndependent:            group.ImageRateIndependent,
+		ImageRateMultiplier:             group.ImageRateMultiplier,
+		ImagePrice1K:                    quotaLeaseDemoHandlerCloneFloat64Ptr(group.ImagePrice1K),
+		ImagePrice2K:                    quotaLeaseDemoHandlerCloneFloat64Ptr(group.ImagePrice2K),
+		ImagePrice4K:                    quotaLeaseDemoHandlerCloneFloat64Ptr(group.ImagePrice4K),
+		BatchImageDiscountMultiplier:    group.BatchImageDiscountMultiplier,
+		BatchImageHoldMultiplier:        group.BatchImageHoldMultiplier,
+		VideoRateIndependent:            group.VideoRateIndependent,
+		VideoRateMultiplier:             group.VideoRateMultiplier,
+		VideoPrice480P:                  quotaLeaseDemoHandlerCloneFloat64Ptr(group.VideoPrice480P),
+		VideoPrice720P:                  quotaLeaseDemoHandlerCloneFloat64Ptr(group.VideoPrice720P),
+		VideoPrice1080P:                 quotaLeaseDemoHandlerCloneFloat64Ptr(group.VideoPrice1080P),
+		WebSearchPricePerCall:           quotaLeaseDemoHandlerCloneFloat64Ptr(group.WebSearchPricePerCall),
+		ClaudeCodeOnly:                  group.ClaudeCodeOnly,
+		FallbackGroupID:                 quotaLeaseDemoHandlerCloneInt64Ptr(group.FallbackGroupID),
+		FallbackGroupIDOnInvalidRequest: quotaLeaseDemoHandlerCloneInt64Ptr(group.FallbackGroupIDOnInvalidRequest),
+		ModelRouting:                    quotaLeaseDemoHandlerCloneModelRouting(group.ModelRouting),
+		ModelRoutingEnabled:             group.ModelRoutingEnabled,
+		MCPXMLInject:                    group.MCPXMLInject,
+		SupportedModelScopes:            quotaLeaseDemoHandlerCloneStringSlice(group.SupportedModelScopes),
+		SortOrder:                       group.SortOrder,
+		AllowMessagesDispatch:           group.AllowMessagesDispatch,
+		RequireOAuthOnly:                group.RequireOAuthOnly,
+		RequirePrivacySet:               group.RequirePrivacySet,
+		DefaultMappedModel:              group.DefaultMappedModel,
+		MessagesDispatchModelConfig:     group.MessagesDispatchModelConfig,
+		ModelsListConfig:                group.ModelsListConfig,
+		RPMLimit:                        group.RPMLimit,
+		KiroCacheEmulationEnabled:       group.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           group.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:     group.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:         group.KiroCacheEmulationRatio,
+		KiroEndpointMode:                group.KiroEndpointMode,
+		CreatedAt:                       quotaLeaseDemoHandlerTimeOrNow(group.CreatedAt),
+		UpdatedAt:                       quotaLeaseDemoHandlerTimeOrNow(group.UpdatedAt),
+	}
+}
+
+func quotaLeaseDemoHandlerAccountGroupSnapshots(account service.Account) []service.QuotaLeaseDemoAccountGroupSnapshot {
+	if len(account.AccountGroups) == 0 {
+		return nil
+	}
+	out := make([]service.QuotaLeaseDemoAccountGroupSnapshot, 0, len(account.AccountGroups))
+	for _, item := range account.AccountGroups {
+		if item.AccountID <= 0 {
+			item.AccountID = account.ID
+		}
+		if item.AccountID <= 0 || item.GroupID <= 0 {
+			continue
+		}
+		createdAt := item.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = quotaLeaseDemoHandlerTimeOrNow(account.CreatedAt)
+		}
+		out = append(out, service.QuotaLeaseDemoAccountGroupSnapshot{
+			AccountID: item.AccountID,
+			GroupID:   item.GroupID,
+			Priority:  item.Priority,
+			CreatedAt: createdAt,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func quotaLeaseDemoHandlerAccountGroupSnapshotsFromIDs(accountID int64, groupIDs []int64, createdAt time.Time) []service.QuotaLeaseDemoAccountGroupSnapshot {
+	if accountID <= 0 || len(groupIDs) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(groupIDs))
+	out := make([]service.QuotaLeaseDemoAccountGroupSnapshot, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if _, exists := seen[groupID]; exists {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		out = append(out, service.QuotaLeaseDemoAccountGroupSnapshot{
+			AccountID: accountID,
+			GroupID:   groupID,
+			CreatedAt: quotaLeaseDemoHandlerTimeOrNow(createdAt),
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func quotaLeaseDemoHandlerCloneAnyMap(src map[string]any) map[string]any {
@@ -551,6 +771,33 @@ func quotaLeaseDemoHandlerCloneInt64Slice(src []int64) []int64 {
 	}
 	dst := make([]int64, len(src))
 	copy(dst, src)
+	return dst
+}
+
+func quotaLeaseDemoHandlerCloneStringSlice(src []string) []string {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]string, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func quotaLeaseDemoHandlerCloneModelRouting(src map[string][]int64) map[string][]int64 {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string][]int64, len(src))
+	for key, value := range src {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		dst[key] = quotaLeaseDemoHandlerCloneInt64Slice(value)
+	}
+	if len(dst) == 0 {
+		return nil
+	}
 	return dst
 }
 
@@ -585,6 +832,30 @@ func quotaLeaseDemoHandlerAccountGroupIDs(account service.Account) []int64 {
 }
 
 func quotaLeaseDemoHandlerCloneInt64Ptr(src *int64) *int64 {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func quotaLeaseDemoHandlerCloneIntPtr(src *int) *int {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func quotaLeaseDemoHandlerCloneFloat64Ptr(src *float64) *float64 {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func quotaLeaseDemoHandlerCloneStringPtr(src *string) *string {
 	if src == nil {
 		return nil
 	}
