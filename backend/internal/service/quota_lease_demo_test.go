@@ -952,6 +952,57 @@ func TestQuotaLeaseDemoRemoteNodeFetchesLeaseAndFlushesUsage(t *testing.T) {
 	require.Len(t, node.pendingUsageEvents(), 0)
 }
 
+func TestQuotaLeaseDemoNodeWorkerReportsRuntimeHeartbeat(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-us",
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+	ctx := context.Background()
+
+	lease, err := node.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "node-us", lease.NodeID)
+
+	handled, applied, err := node.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "remote-heartbeat-req-1",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: 0.25,
+	})
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.True(t, applied)
+
+	worker := NewQuotaLeaseDemoNodeWorker(node, NewQuotaLeaseDemoPayloadAccountTaskExecutor(), time.Hour)
+	require.NoError(t, worker.RunOnce(ctx))
+
+	nodes := control.ListNodes()
+	require.Len(t, nodes, 1)
+	require.Equal(t, "node-us", nodes[0].NodeID)
+	require.NotNil(t, nodes[0].LastHeartbeatAt)
+	require.InDelta(t, 0.75, nodes[0].LeaseRemaining, 1e-9)
+	require.Equal(t, 1.0, nodes[0].Metrics["active_leases"])
+
+	controlSnapshot := control.Snapshot()
+	require.Len(t, controlSnapshot.Leases, 1)
+	require.InDelta(t, 0.25, controlSnapshot.Leases[0].Consumed, 1e-9)
+	require.InDelta(t, 0.75, controlSnapshot.Nodes[0].LeaseRemaining, 1e-9)
+}
+
 func TestQuotaLeaseDemoRemoteNodeFlushesUsageLogs(t *testing.T) {
 	control := newQuotaLeaseDemoTestService()
 	var received []QuotaLeaseDemoUsageLogSnapshot
@@ -1543,6 +1594,63 @@ func TestQuotaLeaseDemoRemotePreflightUsesRegisteredNodeLease(t *testing.T) {
 	nodeSnapshot := node.Snapshot()
 	require.Len(t, nodeSnapshot.Leases, 1)
 	require.Equal(t, preflightLease.ID, nodeSnapshot.Leases[0].ID)
+}
+
+func TestQuotaLeaseDemoRemotePreflightRejectsWhenRemainingBelowDefaultGrant(t *testing.T) {
+	control := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				NodeID:                 "control-node",
+				DefaultGrantAmount:     1,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	})
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	ctx := context.Background()
+	registered, err := control.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID: "registered-node-lease",
+	})
+	require.NoError(t, err)
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				NodeID:                 "configured-node-lease",
+				ControlPlaneBaseURL:    server.URL,
+				ControlPlaneKey:        "control-secret",
+				DefaultGrantAmount:     1,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	})
+	node.remoteNodeID = registered.Node.NodeID
+	node.remoteNodeSecret = registered.NodeSecret
+
+	lease, err := node.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   0.00144,
+	})
+	require.NoError(t, err)
+	require.Equal(t, registered.Node.NodeID, lease.NodeID)
+
+	require.False(t, node.CanAuthorizeRequest(ctx, &APIKey{
+		ID:   20,
+		User: &User{ID: 10},
+	}, nil))
+
+	snapshot := control.Snapshot()
+	require.Len(t, snapshot.Leases, 1)
+	require.InDelta(t, 0.00144, snapshot.Leases[0].Remaining(), 1e-12)
 }
 
 func TestQuotaLeaseDemoNodeWorkerExecutesPendingAccountTask(t *testing.T) {

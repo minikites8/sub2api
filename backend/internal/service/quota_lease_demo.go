@@ -485,11 +485,14 @@ func (s *QuotaLeaseDemoService) ListNodes() []QuotaLeaseDemoNode {
 	if s == nil || !s.Enabled() {
 		return nil
 	}
+	now := time.Now().UTC()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	remainingByNode := s.nodeLeaseRemainingByNodeLocked(now)
 	nodes := make([]QuotaLeaseDemoNode, 0, len(s.nodes))
 	for _, node := range s.nodes {
 		if cloned := cloneQuotaLeaseDemoNode(node); cloned != nil {
+			cloned.LeaseRemaining = remainingByNode[cloned.NodeID]
 			nodes = append(nodes, *cloned)
 		}
 	}
@@ -497,6 +500,47 @@ func (s *QuotaLeaseDemoService) ListNodes() []QuotaLeaseDemoNode {
 		return nodes[i].RegisteredAt.Before(nodes[j].RegisteredAt)
 	})
 	return nodes
+}
+
+func (s *QuotaLeaseDemoService) RuntimeHeartbeatRequest() QuotaLeaseDemoNodeHeartbeatRequest {
+	req := QuotaLeaseDemoNodeHeartbeatRequest{
+		NodeID: s.activeNodeID(),
+		Status: QuotaLeaseDemoNodeStatusOnline,
+	}
+	if s == nil || !s.Enabled() {
+		return req
+	}
+
+	now := time.Now().UTC()
+	s.mu.Lock()
+	activeLeases := 0
+	for _, lease := range s.leases {
+		if lease == nil || lease.NodeID != req.NodeID {
+			continue
+		}
+		s.refreshLeaseStatusLocked(lease, now)
+		if lease.Status == QuotaLeaseDemoStatusActive {
+			activeLeases++
+			req.LeaseRemaining += lease.Remaining()
+		}
+	}
+	pendingUsageEvents := len(s.pendingEvents)
+	pendingUsageLogs := len(s.pendingUsageLogs)
+	s.mu.Unlock()
+
+	req.Metrics = map[string]float64{
+		"active_leases":        float64(activeLeases),
+		"pending_usage_events": float64(pendingUsageEvents),
+		"pending_usage_logs":   float64(pendingUsageLogs),
+	}
+	return req
+}
+
+func (s *QuotaLeaseDemoService) ReportRuntimeHeartbeat(ctx context.Context) (*QuotaLeaseDemoNode, error) {
+	if s == nil || !s.Enabled() {
+		return nil, ErrQuotaLeaseDemoDisabled
+	}
+	return s.HeartbeatNode(ctx, s.RuntimeHeartbeatRequest())
 }
 
 type QuotaLeaseDemoLeaseRequest struct {
@@ -741,7 +785,16 @@ func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey 
 	if s == nil || !s.Enabled() || apiKey == nil || apiKey.User == nil || subscription != nil {
 		return false
 	}
-	return s.ensureCapacity(ctx, "gateway_preflight", s.activeNodeID(), apiKey.User.ID, apiKey.ID, s.PreflightReserveAmount())
+	nodeID := s.activeNodeID()
+	amount := s.DefaultGrantAmount()
+	probe := s.inspectCapacitySnapshot(nodeID, apiKey.User.ID, apiKey.ID, amount, time.Now().UTC())
+	if probe.BestLeaseStatus == QuotaLeaseDemoStatusActive && probe.BestLeaseRemaining+1e-12 >= amount {
+		return true
+	}
+	if probe.ActiveMatchingLeases == 0 {
+		return s.ensureCapacity(ctx, "gateway_preflight", nodeID, apiKey.User.ID, apiKey.ID, amount)
+	}
+	return false
 }
 
 func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *UsageBillingCommand) (handled bool, applied bool, err error) {
@@ -1006,10 +1059,12 @@ func (s *QuotaLeaseDemoService) Snapshot() QuotaLeaseDemoSnapshot {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	remainingByNode := s.nodeLeaseRemainingByNodeLocked(now)
 
 	snap.Nodes = make([]QuotaLeaseDemoNode, 0, len(s.nodes))
 	for _, node := range s.nodes {
 		if cloned := cloneQuotaLeaseDemoNode(node); cloned != nil {
+			cloned.LeaseRemaining = remainingByNode[cloned.NodeID]
 			snap.Nodes = append(snap.Nodes, *cloned)
 			snap.Stats.NodeCount++
 			if cloned.Status == QuotaLeaseDemoNodeStatusOnline {
@@ -1055,6 +1110,20 @@ func (s *QuotaLeaseDemoService) Snapshot() QuotaLeaseDemoSnapshot {
 	})
 	snap.Stats.EventCount = len(snap.Events)
 	return snap
+}
+
+func (s *QuotaLeaseDemoService) nodeLeaseRemainingByNodeLocked(now time.Time) map[string]float64 {
+	remainingByNode := make(map[string]float64)
+	for _, lease := range s.leases {
+		if lease == nil {
+			continue
+		}
+		s.refreshLeaseStatusLocked(lease, now)
+		if lease.Status == QuotaLeaseDemoStatusActive {
+			remainingByNode[lease.NodeID] += lease.Remaining()
+		}
+	}
+	return remainingByNode
 }
 
 func (s *QuotaLeaseDemoService) hasCapacity(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) bool {

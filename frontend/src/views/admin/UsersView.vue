@@ -765,7 +765,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -773,6 +774,7 @@ import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
+const route = useRoute()
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
@@ -1020,7 +1022,8 @@ const columns = computed<Column[]>(() =>
 
 const users = ref<AdminUser[]>([])
 const loading = ref(false)
-const searchQuery = ref('')
+const initialSearch = typeof route.query.search === 'string' ? route.query.search.trim() : ''
+const searchQuery = ref(initialSearch)
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
   const fallback = { sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' }
@@ -1615,6 +1618,16 @@ const handleSearch = () => {
   }, 300)
 }
 
+const syncSearchFromRoute = () => {
+  const nextSearch = typeof route.query.search === 'string' ? route.query.search.trim() : ''
+  if (nextSearch === searchQuery.value) {
+    return
+  }
+  searchQuery.value = nextSearch
+  pagination.page = 1
+  loadUsers()
+}
+
 const handlePageChange = (page: number) => {
   // 确保页码在有效范围内
   const validPage = Math.max(1, Math.min(page, pagination.pages || 1))
@@ -1818,9 +1831,17 @@ onMounted(async () => {
   if (visibleFilters.has('apiKeyGroup')) {
     loadAllGroupsForApiKeyFilter()
   }
+  syncSearchFromRoute()
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('scroll', handleScroll, true)
 })
+
+watch(
+  () => route.query.search,
+  () => {
+    syncSearchFromRoute()
+  }
+)
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)

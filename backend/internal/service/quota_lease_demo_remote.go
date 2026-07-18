@@ -171,9 +171,7 @@ func (s *QuotaLeaseDemoService) heartbeatRemoteNode(ctx context.Context, req Quo
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(req.NodeID) == "" {
-		req.NodeID = nodeID
-	}
+	req.NodeID = nodeID
 	var result struct {
 		Node *QuotaLeaseDemoNode `json:"node"`
 	}

@@ -159,7 +159,13 @@
             <code class="code-cell max-w-[180px]" :title="value">{{ value }}</code>
           </template>
           <template #cell-user_key="{ row }">
-            <span class="font-mono text-xs">U{{ row.user_id }} / K{{ row.api_key_id }}</span>
+            <RouterLink
+              :to="leaseUserLink(row.user_id)"
+              class="inline-flex max-w-[180px] truncate text-sm font-medium text-primary-600 hover:underline dark:text-primary-400"
+              :title="leaseUserLabel(row.user_id)"
+            >
+              {{ leaseUserLabel(row.user_id) || `用户 #${row.user_id}` }}
+            </RouterLink>
           </template>
           <template #cell-amounts="{ row }">
             <span class="font-mono text-xs">
@@ -230,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type {
@@ -259,8 +265,10 @@ const { copyToClipboard } = useClipboard()
 const loading = ref(false)
 const reclaiming = ref(false)
 const savingSettings = ref(false)
+let autoRefreshTimer: number | null = null
 const snapshot = ref<QuotaLeaseDemoSnapshot | null>(null)
 const nodes = ref<QuotaLeaseDemoNode[]>([])
+const leaseUserLabels = reactive<Record<number, string>>({})
 const nodeFilter = ref('')
 
 const showRegisterNode = ref(false)
@@ -307,7 +315,6 @@ const nodeColumns = computed<Column[]>(() => [
   { key: 'node_id', label: '节点 ID', sortable: true },
   { key: 'region', label: '区域', sortable: true },
   { key: 'status', label: t('common.status'), sortable: true },
-  { key: 'inflight_requests', label: '请求中', sortable: true },
   { key: 'lease_remaining', label: '剩余额度', sortable: true },
   { key: 'last_heartbeat_at', label: '心跳', sortable: true },
   { key: 'base_url', label: 'Base URL', sortable: false }
@@ -316,7 +323,7 @@ const nodeColumns = computed<Column[]>(() => [
 const leaseColumns = computed<Column[]>(() => [
   { key: 'id', label: '租约 ID', sortable: true },
   { key: 'node_id', label: '节点', sortable: true },
-  { key: 'user_key', label: '用户 / Key', sortable: false },
+  { key: 'user_key', label: '用户', sortable: false },
   { key: 'amounts', label: '消费 / 分配', sortable: false },
   { key: 'remaining', label: '剩余', sortable: false },
   { key: 'status', label: t('common.status'), sortable: true },
@@ -330,6 +337,36 @@ const recentLeases = computed(() => {
     .slice(0, 30)
 })
 
+function leaseUserLabel(userId: number) {
+  return leaseUserLabels[userId] || ''
+}
+
+function leaseUserLink(userId: number) {
+  const search = leaseUserLabel(userId)
+  return search ? { path: '/admin/users', query: { search } } : { path: '/admin/users' }
+}
+
+async function hydrateRecentLeaseUsers() {
+  const userIds = [...new Set(recentLeases.value.map((lease) => lease.user_id).filter((userId) => userId > 0 && !leaseUserLabels[userId]))]
+  if (userIds.length === 0) {
+    return
+  }
+  const results = await Promise.all(
+    userIds.map(async (userId) => {
+      try {
+        const user = await adminAPI.users.getById(userId, true)
+        const label = user.username?.trim() || user.email?.trim() || `用户 #${userId}`
+        return [userId, label] as const
+      } catch {
+        return [userId, `用户 #${userId}`] as const
+      }
+    })
+  )
+  for (const [userId, label] of results) {
+    leaseUserLabels[userId] = label
+  }
+}
+
 watch(nodeFilter, () => {
   loadAll()
 })
@@ -337,18 +374,34 @@ watch(nodeFilter, () => {
 async function loadAll() {
   loading.value = true
   try {
-    const [statusResult, nodeResult, settingsResult] = await Promise.all([
-      adminAPI.nodeLeases.getStatus(),
-      adminAPI.nodeLeases.listNodes(),
+    const [settingsResult] = await Promise.all([
       adminAPI.nodeLeases.getSettings()
     ])
-    snapshot.value = statusResult
-    nodes.value = nodeResult
     applySettingsForm(settingsResult)
+    await loadRuntimeState()
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, '节点租约状态加载失败'))
   } finally {
     loading.value = false
+  }
+}
+
+async function loadRuntimeState() {
+  const [statusResult, nodeResult] = await Promise.all([
+    adminAPI.nodeLeases.getStatus(),
+    adminAPI.nodeLeases.listNodes()
+  ])
+  snapshot.value = statusResult
+  nodes.value = nodeResult
+  await hydrateRecentLeaseUsers()
+}
+
+async function refreshRuntimeState() {
+  if (loading.value || reclaiming.value || submittingNode.value) return
+  try {
+    await loadRuntimeState()
+  } catch (error) {
+    console.error('Failed to refresh node lease runtime state:', error)
   }
 }
 
@@ -469,6 +522,14 @@ function statusBadgeClass(status: string) {
 
 onMounted(() => {
   loadAll()
+  autoRefreshTimer = window.setInterval(refreshRuntimeState, 10_000)
+})
+
+onUnmounted(() => {
+  if (autoRefreshTimer) {
+    window.clearInterval(autoRefreshTimer)
+    autoRefreshTimer = null
+  }
 })
 </script>
 
