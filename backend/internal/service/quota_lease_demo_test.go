@@ -643,13 +643,64 @@ func TestQuotaLeaseDemoLeaseBalanceHoldLifecycle(t *testing.T) {
 	require.True(t, duplicate.Duplicate)
 	require.Len(t, billing.captures, 1)
 
-	reclaimed := svc.ReclaimExpired(ctx, lease.ReclaimAt.Add(time.Second))
+	reclaimAt := first.Lease.ExpiresAt.Add(time.Second)
+	require.True(t, reclaimAt.Before(first.Lease.ReclaimAt))
+	reclaimed := svc.ReclaimExpired(ctx, reclaimAt)
 	require.Equal(t, 1, reclaimed.ReclaimedCount)
 	require.InDelta(t, 0.6, reclaimed.ReclaimedTotal, 1e-12)
 	require.Len(t, billing.releases, 1)
 	require.Equal(t, quotaLeaseDemoReleaseRequestID(lease.ID), billing.releases[0].RequestID)
 	require.Equal(t, quotaLeaseDemoInitialReserveRequestID(lease.ID), billing.releases[0].ReserveRequestID)
 	require.InDelta(t, 0.6, billing.releases[0].HoldAmount, 1e-12)
+}
+
+func TestQuotaLeaseDemoLeaseUsesIdleExpiryWindow(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+	require.WithinDuration(t, now.Add(5*time.Minute), lease.ExpiresAt, 2*time.Second)
+	require.WithinDuration(t, lease.ExpiresAt.Add(1*time.Hour), lease.ReclaimAt, 2*time.Second)
+}
+
+func TestQuotaLeaseDemoUsageConsumptionRefreshesExpiryWindow(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	billing := &quotaLeaseDemoBillingRepo{}
+	svc.SetUsageBillingRepository(billing)
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+	before := lease.ExpiresAt
+	_, err = svc.ConsumeUsage(ctx, QuotaLeaseDemoUsageEvent{
+		EventID:   "event-refresh-1",
+		LeaseID:   lease.ID,
+		NodeID:    "node-1",
+		UserID:    10,
+		APIKeyID:  20,
+		RequestID: "req-refresh-1",
+		Amount:    0.25,
+	})
+	require.NoError(t, err)
+
+	refreshed := svc.Snapshot().Leases[0]
+	require.True(t, refreshed.ExpiresAt.After(before))
+	require.WithinDuration(t, time.Now().UTC().Add(5*time.Minute), refreshed.ExpiresAt, 2*time.Second)
+	require.WithinDuration(t, refreshed.ExpiresAt.Add(1*time.Hour), refreshed.ReclaimAt, 2*time.Second)
 }
 
 func TestQuotaLeaseDemoLeaseTopUpFreezesDeltaOnly(t *testing.T) {
@@ -1717,10 +1768,42 @@ func TestQuotaLeaseDemoReclaimExpiredLease(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result := svc.ReclaimExpired(ctx, lease.ReclaimAt.Add(time.Second))
+	result := svc.ReclaimExpired(ctx, lease.ExpiresAt.Add(time.Second))
 	require.Equal(t, 1, result.ExpiredCount)
 	require.Equal(t, 1, result.ReclaimedCount)
 	require.InDelta(t, 1, result.ReclaimedTotal, 1e-9)
+
+	snapshot := svc.Snapshot()
+	require.Equal(t, QuotaLeaseDemoStatusReclaimed, snapshot.Leases[0].Status)
+	require.InDelta(t, 0, snapshot.Leases[0].Remaining(), 1e-9)
+}
+
+func TestQuotaLeaseDemoReclaimWorkerReturnsExpiredUnusedHold(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	billing := &quotaLeaseDemoBillingRepo{}
+	svc.SetUsageBillingRepository(billing)
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+
+	svc.mu.Lock()
+	internalLease := svc.leases[lease.ID]
+	internalLease.ExpiresAt = time.Now().UTC().Add(-time.Second)
+	internalLease.ReclaimAt = time.Now().UTC().Add(time.Hour)
+	svc.mu.Unlock()
+
+	worker := NewQuotaLeaseDemoReclaimWorker(svc, time.Hour)
+	require.NoError(t, worker.RunOnce(ctx))
+
+	require.Len(t, billing.releases, 1)
+	require.Equal(t, quotaLeaseDemoReleaseRequestID(lease.ID), billing.releases[0].RequestID)
+	require.InDelta(t, 1, billing.releases[0].HoldAmount, 1e-12)
 
 	snapshot := svc.Snapshot()
 	require.Equal(t, QuotaLeaseDemoStatusReclaimed, snapshot.Leases[0].Status)

@@ -33,6 +33,9 @@ const (
 	QuotaLeaseDemoNodeStatusOnline   = "online"
 	QuotaLeaseDemoNodeStatusOffline  = "offline"
 	QuotaLeaseDemoNodeStatusDisabled = "disabled"
+
+	quotaLeaseDemoIdleLeaseTTL          = 5 * time.Minute
+	quotaLeaseDemoReclaimWorkerInterval = 10 * time.Second
 )
 
 var (
@@ -628,13 +631,6 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	if !finitePositive(amount) {
 		return nil, fmt.Errorf("%w: amount must be positive and finite", ErrQuotaLeaseDemoInvalidInput)
 	}
-	ttlSeconds := req.TTLSeconds
-	if ttlSeconds <= 0 {
-		ttlSeconds = cfg.LeaseTTLSeconds
-	}
-	if ttlSeconds <= 0 {
-		ttlSeconds = 600
-	}
 	graceSeconds := req.ReclaimGraceSeconds
 	if graceSeconds <= 0 {
 		graceSeconds = cfg.ReclaimGraceSeconds
@@ -644,8 +640,8 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	}
 
 	now := time.Now().UTC()
-	expiresAt := now.Add(time.Duration(ttlSeconds) * time.Second)
-	reclaimAt := now.Add(time.Duration(ttlSeconds+graceSeconds) * time.Second)
+	expiresAt := quotaLeaseDemoIdleExpiresAt(now)
+	reclaimAt := quotaLeaseDemoReclaimAt(expiresAt, graceSeconds)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -668,6 +664,9 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		}
 	}
 	if reusable != nil {
+		reusable.ExpiresAt = expiresAt
+		reusable.ReclaimAt = reclaimAt
+		reusable.UpdatedAt = now
 		return cloneQuotaLeaseDemoLease(reusable), nil
 	}
 	if extendable != nil {
@@ -679,12 +678,8 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 			}
 			targetGranted += delta
 		}
-		if extendable.ExpiresAt.Before(expiresAt) {
-			extendable.ExpiresAt = expiresAt
-		}
-		if extendable.ReclaimAt.Before(reclaimAt) {
-			extendable.ReclaimAt = reclaimAt
-		}
+		extendable.ExpiresAt = expiresAt
+		extendable.ReclaimAt = reclaimAt
 		extendable.Granted = targetGranted
 		extendable.UpdatedAt = now
 		eventID := "lease:" + extendable.ID
@@ -733,6 +728,20 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	}
 	_ = ctx
 	return cloneQuotaLeaseDemoLease(lease), nil
+}
+
+func quotaLeaseDemoIdleExpiresAt(now time.Time) time.Time {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return now.UTC().Add(quotaLeaseDemoIdleLeaseTTL)
+}
+
+func quotaLeaseDemoReclaimAt(expiresAt time.Time, graceSeconds int) time.Time {
+	if graceSeconds <= 0 {
+		graceSeconds = 3600
+	}
+	return expiresAt.Add(time.Duration(graceSeconds) * time.Second)
 }
 
 func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey *APIKey, subscription *UserSubscription) bool {
@@ -858,6 +867,14 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		return nil, err
 	}
 	lease.Consumed += event.Amount
+	if lease.Remaining() > 1e-12 {
+		graceSeconds := int(lease.ReclaimAt.Sub(lease.ExpiresAt).Seconds())
+		if graceSeconds <= 0 {
+			graceSeconds = 3600
+		}
+		lease.ExpiresAt = quotaLeaseDemoIdleExpiresAt(now)
+		lease.ReclaimAt = quotaLeaseDemoReclaimAt(lease.ExpiresAt, graceSeconds)
+	}
 	lease.UpdatedAt = now
 	if lease.Remaining() <= 1e-12 {
 		lease.Status = QuotaLeaseDemoStatusClosed
@@ -939,7 +956,7 @@ func (s *QuotaLeaseDemoService) ReclaimExpired(ctx context.Context, now time.Tim
 		if before == QuotaLeaseDemoStatusActive && lease.Status == QuotaLeaseDemoStatusExpired {
 			result.ExpiredCount++
 		}
-		if lease.Status != QuotaLeaseDemoStatusExpired || now.Before(lease.ReclaimAt) {
+		if lease.Status != QuotaLeaseDemoStatusExpired {
 			continue
 		}
 		remaining := lease.Remaining()

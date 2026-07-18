@@ -305,7 +305,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	quotaLeaseDemoNodeWorker := service.ProvideQuotaLeaseDemoNodeWorker(configConfig, openAIOAuthService, grokOAuthService, quotaLeaseDemoMirrorStore)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, quotaLeaseDemoNodeWorker, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, kiroOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService)
+	quotaLeaseDemoReclaimWorker := service.ProvideQuotaLeaseDemoReclaimWorker(configConfig)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, quotaLeaseDemoNodeWorker, quotaLeaseDemoReclaimWorker, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, kiroOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -349,6 +350,7 @@ func provideCleanup(
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	batchImageCleanup *service.BatchImageCleanupService,
 	quotaLeaseDemoNodeWorker *service.QuotaLeaseDemoNodeWorker,
+	quotaLeaseDemoReclaimWorker *service.QuotaLeaseDemoReclaimWorker,
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
@@ -442,6 +444,12 @@ func provideCleanup(
 			{"QuotaLeaseDemoNodeWorker", func() error {
 				if quotaLeaseDemoNodeWorker != nil {
 					quotaLeaseDemoNodeWorker.Stop()
+				}
+				return nil
+			}},
+			{"QuotaLeaseDemoReclaimWorker", func() error {
+				if quotaLeaseDemoReclaimWorker != nil {
+					quotaLeaseDemoReclaimWorker.Stop()
 				}
 				return nil
 			}},

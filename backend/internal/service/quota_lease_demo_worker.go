@@ -371,6 +371,95 @@ func (w *QuotaLeaseDemoNodeWorker) executeAccountLoginTask(ctx context.Context, 
 	}
 }
 
+type QuotaLeaseDemoReclaimWorker struct {
+	svc       *QuotaLeaseDemoService
+	interval  time.Duration
+	cancel    context.CancelFunc
+	done      chan struct{}
+	startOnce sync.Once
+	stopOnce  sync.Once
+}
+
+func NewQuotaLeaseDemoReclaimWorker(svc *QuotaLeaseDemoService, interval time.Duration) *QuotaLeaseDemoReclaimWorker {
+	if interval <= 0 {
+		interval = quotaLeaseDemoReclaimWorkerInterval
+	}
+	return &QuotaLeaseDemoReclaimWorker{
+		svc:      svc,
+		interval: interval,
+	}
+}
+
+func ProvideQuotaLeaseDemoReclaimWorker(cfg *config.Config) *QuotaLeaseDemoReclaimWorker {
+	svc := GetQuotaLeaseDemoService(cfg)
+	worker := NewQuotaLeaseDemoReclaimWorker(svc, quotaLeaseDemoReclaimWorkerInterval)
+	worker.Start(context.Background())
+	return worker
+}
+
+func (w *QuotaLeaseDemoReclaimWorker) Start(parent context.Context) {
+	if w == nil || w.svc == nil || w.svc.remoteMode() {
+		return
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	w.startOnce.Do(func() {
+		ctx, cancel := context.WithCancel(parent)
+		w.cancel = cancel
+		w.done = make(chan struct{})
+		go w.loop(ctx)
+	})
+}
+
+func (w *QuotaLeaseDemoReclaimWorker) Stop() {
+	if w == nil {
+		return
+	}
+	w.stopOnce.Do(func() {
+		if w.cancel != nil {
+			w.cancel()
+		}
+		if w.done != nil {
+			<-w.done
+		}
+	})
+}
+
+func (w *QuotaLeaseDemoReclaimWorker) RunOnce(ctx context.Context) error {
+	if w == nil || w.svc == nil || w.svc.remoteMode() {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	w.svc.ReclaimExpired(ctx, time.Now().UTC())
+	return nil
+}
+
+func (w *QuotaLeaseDemoReclaimWorker) loop(ctx context.Context) {
+	defer close(w.done)
+	w.runOnceWithTimeout(ctx)
+	ticker := time.NewTicker(w.interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.runOnceWithTimeout(ctx)
+		}
+	}
+}
+
+func (w *QuotaLeaseDemoReclaimWorker) runOnceWithTimeout(ctx context.Context) {
+	runCtx, cancel := context.WithTimeout(ctx, quotaLeaseDemoNodeWorkerRunTimeout)
+	defer cancel()
+	if err := w.RunOnce(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+		slog.Warn("quota lease demo reclaim worker run failed", "error", err)
+	}
+}
+
 func decodeQuotaLeaseDemoAccountSnapshot(raw any, account *QuotaLeaseDemoAccountSnapshot) error {
 	payload, err := json.Marshal(raw)
 	if err != nil {
