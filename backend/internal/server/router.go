@@ -126,7 +126,7 @@ func registerRoutes(
 	if h != nil && h.Usage != nil {
 		usageSvc = h.Usage.UsageService()
 	}
-	routes.RegisterQuotaLeaseDemoRoutes(v1, cfg, apiKeyService, usageSvc, adminSvc)
+	routes.RegisterQuotaLeaseDemoRoutes(v1, cfg, apiKeyService, usageSvc, adminAuth, settingService, adminSvc)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)
 

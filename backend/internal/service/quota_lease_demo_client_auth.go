@@ -39,6 +39,10 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 		return nil, ErrAPIKeyNotFound
 	}
 	if cached := s.getClientAuthCache(apiKey); cached != nil {
+		if err := s.ensureClientAuthCapacity(ctx, cached, amount); err != nil {
+			s.deleteClientAuthCache(apiKey)
+			return nil, err
+		}
 		return cached, nil
 	}
 
@@ -72,6 +76,19 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	return &result, nil
 }
 
+func (s *QuotaLeaseDemoService) ensureClientAuthCapacity(ctx context.Context, result *QuotaLeaseDemoClientAuthResult, amount float64) error {
+	if s == nil || result == nil || result.Snapshot == nil {
+		return ErrQuotaLeaseDemoNoCapacity
+	}
+	if amount <= 0 {
+		amount = s.PreflightReserveAmount()
+	}
+	if !s.ensureCapacity(ctx, s.activeNodeID(), result.Snapshot.UserID, result.Snapshot.APIKeyID, amount) {
+		return ErrQuotaLeaseDemoNoCapacity
+	}
+	return nil
+}
+
 func (s *QuotaLeaseDemoService) getClientAuthCache(apiKey string) *QuotaLeaseDemoClientAuthResult {
 	if s == nil {
 		return nil
@@ -90,6 +107,16 @@ func (s *QuotaLeaseDemoService) getClientAuthCache(apiKey string) *QuotaLeaseDem
 	}
 	result := entry.Result
 	return &result
+}
+
+func (s *QuotaLeaseDemoService) deleteClientAuthCache(apiKey string) {
+	if s == nil {
+		return
+	}
+	cacheKey := quotaLeaseDemoClientAuthCacheKey(apiKey)
+	s.mu.Lock()
+	delete(s.clientAuthCache, cacheKey)
+	s.mu.Unlock()
 }
 
 func (s *QuotaLeaseDemoService) setClientAuthCache(apiKey string, result *QuotaLeaseDemoClientAuthResult) {

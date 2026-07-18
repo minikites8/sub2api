@@ -190,7 +190,6 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   })
 
   it('creates a node OAuth login task from the OpenAI create flow', async () => {
-    sessionStorage.setItem('sub2api_node_leases_demo_control_key', 'control-secret')
     createAccountMock.mockResolvedValue({ id: 42 })
     listNodeLeaseNodesMock.mockResolvedValue([
       {
@@ -229,6 +228,8 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI node account')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
     await flushPromises()
+    await wrapper.get('[data-testid="node-oauth-enabled"]').setValue(true)
+    await flushPromises()
 
     await wrapper.get('[data-testid="generate-url"]').trigger('click')
     await flushPromises()
@@ -255,7 +256,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
         schedulable: true,
       },
     })
-    expect(createNodeLoginTaskMock.mock.calls[0]?.[1]).toEqual({ controlKey: 'control-secret' })
+    expect(createNodeLoginTaskMock.mock.calls[0]?.[1]).toBeUndefined()
   })
 
   it.each([

@@ -8,9 +8,10 @@ export type QuotaLeaseDemoTaskStatus =
   | 'failed'
 
 export interface NodeLeaseControlOptions {
-  controlKey?: string
   signal?: AbortSignal
 }
+
+const nodeLeaseDemoAdminBase = '/admin/node-leases/demo'
 
 export interface QuotaLeaseDemoNode {
   node_id: string
@@ -188,14 +189,13 @@ export interface QuotaLeaseDemoReclaimResult {
 
 function requestConfig(options?: NodeLeaseControlOptions) {
   return {
-    signal: options?.signal,
-    headers: options?.controlKey ? { 'X-Node-Secret': options.controlKey } : undefined
+    signal: options?.signal
   }
 }
 
 export async function getStatus(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoSnapshot> {
   const { data } = await apiClient.get<QuotaLeaseDemoSnapshot>(
-    '/node-leases/demo/status',
+    `${nodeLeaseDemoAdminBase}/status`,
     requestConfig(options)
   )
   return data
@@ -203,7 +203,7 @@ export async function getStatus(options?: NodeLeaseControlOptions): Promise<Quot
 
 export async function listNodes(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoNode[]> {
   const { data } = await apiClient.get<{ nodes: QuotaLeaseDemoNode[] }>(
-    '/node-leases/demo/nodes',
+    `${nodeLeaseDemoAdminBase}/nodes`,
     requestConfig(options)
   )
   return data.nodes || []
@@ -211,7 +211,7 @@ export async function listNodes(options?: NodeLeaseControlOptions): Promise<Quot
 
 export async function getSettings(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoSettings> {
   const { data } = await apiClient.get<QuotaLeaseDemoSettings>(
-    '/node-leases/demo/settings',
+    `${nodeLeaseDemoAdminBase}/settings`,
     requestConfig(options)
   )
   return data
@@ -222,7 +222,7 @@ export async function updateSettings(
   options?: NodeLeaseControlOptions
 ): Promise<QuotaLeaseDemoSettings> {
   const { data } = await apiClient.put<QuotaLeaseDemoSettings>(
-    '/node-leases/demo/settings',
+    `${nodeLeaseDemoAdminBase}/settings`,
     payload,
     requestConfig(options)
   )
@@ -234,7 +234,7 @@ export async function registerNode(
   options?: NodeLeaseControlOptions
 ): Promise<RegisterNodeResult> {
   const { data } = await apiClient.post<RegisterNodeResult>(
-    '/node-leases/demo/nodes/register',
+    `${nodeLeaseDemoAdminBase}/nodes/register`,
     payload,
     requestConfig(options)
   )
@@ -246,7 +246,7 @@ export async function createNodeRegistrationURL(
   options?: NodeLeaseControlOptions
 ): Promise<NodeRegistrationURLResult> {
   const { data } = await apiClient.post<NodeRegistrationURLResult>(
-    '/node-leases/demo/nodes/registration-urls',
+    `${nodeLeaseDemoAdminBase}/nodes/registration-urls`,
     payload,
     requestConfig(options)
   )
@@ -258,7 +258,7 @@ export async function listLoginTasks(
   options?: NodeLeaseControlOptions
 ): Promise<QuotaLeaseDemoAccountLoginTask[]> {
   const { data } = await apiClient.get<{ tasks: QuotaLeaseDemoAccountLoginTask[] }>(
-    '/node-leases/demo/accounts/login-tasks',
+    `${nodeLeaseDemoAdminBase}/accounts/login-tasks`,
     {
       ...requestConfig(options),
       params: {
@@ -275,7 +275,7 @@ export async function createLoginTask(
   options?: NodeLeaseControlOptions
 ): Promise<QuotaLeaseDemoAccountLoginTask> {
   const { data } = await apiClient.post<{ task: QuotaLeaseDemoAccountLoginTask }>(
-    '/node-leases/demo/accounts/login-tasks',
+    `${nodeLeaseDemoAdminBase}/accounts/login-tasks`,
     payload,
     requestConfig(options)
   )
@@ -288,7 +288,7 @@ export async function submitLoginTaskCallback(
   options?: NodeLeaseControlOptions
 ): Promise<QuotaLeaseDemoAccountLoginTask> {
   const { data } = await apiClient.post<{ task: QuotaLeaseDemoAccountLoginTask }>(
-    `/node-leases/demo/accounts/login-tasks/${encodeURIComponent(taskId)}/callback`,
+    `${nodeLeaseDemoAdminBase}/accounts/login-tasks/${encodeURIComponent(taskId)}/callback`,
     payload,
     requestConfig(options)
   )
@@ -300,7 +300,7 @@ export async function listAssignedAccounts(
   options?: NodeLeaseControlOptions
 ): Promise<QuotaLeaseDemoAssignedAccount[]> {
   const { data } = await apiClient.get<{ accounts: QuotaLeaseDemoAssignedAccount[] }>(
-    '/node-leases/demo/accounts/assignments',
+    `${nodeLeaseDemoAdminBase}/accounts/assignments`,
     {
       ...requestConfig(options),
       params: {
@@ -315,7 +315,7 @@ export async function reclaimExpired(
   options?: NodeLeaseControlOptions
 ): Promise<QuotaLeaseDemoReclaimResult> {
   const { data } = await apiClient.post<QuotaLeaseDemoReclaimResult>(
-    '/node-leases/demo/reclaim',
+    `${nodeLeaseDemoAdminBase}/reclaim`,
     {},
     requestConfig(options)
   )

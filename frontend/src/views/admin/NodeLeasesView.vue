@@ -25,37 +25,7 @@
             </div>
           </div>
 
-          <div class="flex flex-col gap-3 xl:min-w-[520px]">
-            <div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-              <div class="relative">
-                <label class="input-label">控制 Key</label>
-                <input
-                  v-model="controlKey"
-                  :type="controlKeyVisible ? 'text' : 'password'"
-                  class="input pr-10"
-                  placeholder="X-Node-Secret"
-                  autocomplete="off"
-                />
-                <button
-                  type="button"
-                  class="absolute bottom-2.5 right-3 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                  :title="controlKeyVisible ? '隐藏' : '显示'"
-                  @click="controlKeyVisible = !controlKeyVisible"
-                >
-                  <Icon :name="controlKeyVisible ? 'eyeOff' : 'eye'" size="sm" />
-                </button>
-              </div>
-              <div class="flex items-end gap-2">
-                <button type="button" class="btn btn-secondary" @click="saveControlKey">
-                  <Icon name="check" size="sm" class="mr-2" />
-                  保存
-                </button>
-                <button type="button" class="btn btn-secondary" @click="clearControlKey">
-                  <Icon name="x" size="sm" class="mr-2" />
-                  清空
-                </button>
-              </div>
-            </div>
+          <div class="flex flex-col gap-3 xl:min-w-[420px]">
             <div class="flex flex-wrap items-center justify-end gap-2">
               <div class="w-full sm:w-40">
                 <Select v-model="nodeFilter" :options="nodeFilterOptions" size="sm" />
@@ -286,10 +256,6 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const { copyToClipboard } = useClipboard()
 
-const CONTROL_KEY_STORAGE = 'sub2api_node_leases_demo_control_key'
-
-const controlKey = ref(sessionStorage.getItem(CONTROL_KEY_STORAGE) || '')
-const controlKeyVisible = ref(false)
 const loading = ref(false)
 const reclaiming = ref(false)
 const savingSettings = ref(false)
@@ -364,37 +330,17 @@ const recentLeases = computed(() => {
     .slice(0, 30)
 })
 
-watch(controlKey, (value) => {
-  sessionStorage.setItem(CONTROL_KEY_STORAGE, value)
-})
-
 watch(nodeFilter, () => {
   loadAll()
 })
 
-function controlOptions() {
-  return { controlKey: controlKey.value.trim() }
-}
-
-function saveControlKey() {
-  sessionStorage.setItem(CONTROL_KEY_STORAGE, controlKey.value.trim())
-  appStore.showSuccess('控制 Key 已保存')
-}
-
-function clearControlKey() {
-  controlKey.value = ''
-  sessionStorage.removeItem(CONTROL_KEY_STORAGE)
-  appStore.showSuccess('控制 Key 已清空')
-}
-
 async function loadAll() {
   loading.value = true
   try {
-    const options = controlOptions()
     const [statusResult, nodeResult, settingsResult] = await Promise.all([
-      adminAPI.nodeLeases.getStatus(options),
-      adminAPI.nodeLeases.listNodes(options),
-      adminAPI.nodeLeases.getSettings(options)
+      adminAPI.nodeLeases.getStatus(),
+      adminAPI.nodeLeases.listNodes(),
+      adminAPI.nodeLeases.getSettings()
     ])
     snapshot.value = statusResult
     nodes.value = nodeResult
@@ -409,7 +355,7 @@ async function loadAll() {
 async function reclaimExpired() {
   reclaiming.value = true
   try {
-    const result = await adminAPI.nodeLeases.reclaimExpired(controlOptions())
+    const result = await adminAPI.nodeLeases.reclaimExpired()
     appStore.showSuccess(
       `已回收 ${result.reclaimed_count} 个租约，额度 ${formatAmount(result.reclaimed_total)}`
     )
@@ -430,8 +376,7 @@ async function saveSettings() {
         prefetch_average_window: Number(settingsForm.prefetch_average_window || 0),
         prefetch_average_multiplier: Number(settingsForm.prefetch_average_multiplier || 0),
         prefetch_debounce_seconds: Number(settingsForm.prefetch_debounce_seconds || 0)
-      },
-      controlOptions()
+      }
     )
     applySettingsForm(result)
     appStore.showSuccess('租约设置已保存')
@@ -466,8 +411,7 @@ async function createNodeRegistrationURL() {
       {
         node_id: nodeForm.node_id.trim() || undefined,
         region: nodeForm.region.trim() || undefined
-      },
-      controlOptions()
+      }
     )
     lastRegistration.value = result
     appStore.showSuccess('注册链接已生成')

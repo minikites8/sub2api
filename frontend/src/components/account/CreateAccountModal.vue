@@ -3667,18 +3667,7 @@
           />
           节点执行 OAuth
         </label>
-        <div v-if="nodeOAuthEnabled" class="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto]">
-          <div>
-            <label class="input-label">控制 Key</label>
-            <input
-              v-model="nodeOAuthControlKey"
-              type="password"
-              class="input"
-              placeholder="X-Node-Secret"
-              autocomplete="off"
-              data-testid="node-oauth-control-key"
-            />
-          </div>
+        <div v-if="nodeOAuthEnabled" class="grid gap-3 md:grid-cols-[minmax(180px,240px)_auto]">
           <div>
             <label class="input-label">执行节点</label>
             <select
@@ -3697,7 +3686,7 @@
             <button
               type="button"
               class="btn btn-secondary w-full"
-              :disabled="nodeOAuthLoading || !nodeOAuthControlKey.trim()"
+              :disabled="nodeOAuthLoading"
               data-testid="node-oauth-load-nodes"
               @click="loadNodeOAuthNodes"
             >
@@ -4168,7 +4157,6 @@ interface OAuthFlowExposed {
 
 const { t } = useI18n()
 const authStore = useAuthStore()
-const NODE_OAUTH_CONTROL_KEY_STORAGE = 'sub2api_node_leases_demo_control_key'
 const NODE_OAUTH_POLL_INTERVAL_MS = 1000
 const NODE_OAUTH_AUTH_URL_ATTEMPTS = 20
 const NODE_OAUTH_COMPLETE_ATTEMPTS = 30
@@ -4267,9 +4255,7 @@ const currentOAuthError = computed(() => {
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
-const initialNodeOAuthControlKey = sessionStorage.getItem(NODE_OAUTH_CONTROL_KEY_STORAGE) || ''
-const nodeOAuthEnabled = ref(!!initialNodeOAuthControlKey)
-const nodeOAuthControlKey = ref(initialNodeOAuthControlKey)
+const nodeOAuthEnabled = ref(false)
 const nodeOAuthNodes = ref<QuotaLeaseDemoNode[]>([])
 const nodeOAuthSelectedNodeID = ref('')
 const nodeOAuthLoading = ref(false)
@@ -4843,11 +4829,6 @@ const canExchangeCode = computed(() => {
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
 
-// Watchers
-watch(nodeOAuthControlKey, (value) => {
-  sessionStorage.setItem(NODE_OAUTH_CONTROL_KEY_STORAGE, value.trim())
-})
-
 watch(
   [() => props.show, step, () => form.platform, accountCategory, nodeOAuthEnabled],
   ([show]) => {
@@ -4857,7 +4838,6 @@ watch(
       step.value === 2 &&
       isNodeOAuthSupported.value &&
       nodeOAuthEnabled.value &&
-      nodeOAuthControlKey.value.trim() &&
       !nodeOAuthLoaded.value
     ) {
       void loadNodeOAuthNodes()
@@ -6040,10 +6020,6 @@ function resetNodeOAuthState() {
   nodeOAuthLoaded.value = false
 }
 
-function nodeOAuthControlOptions() {
-  return { controlKey: nodeOAuthControlKey.value.trim() }
-}
-
 function nodeOAuthErrorMessage(error: any, fallback: string) {
   return error?.response?.data?.message || error?.response?.data?.detail || error?.message || fallback
 }
@@ -6053,16 +6029,10 @@ function nodeOAuthSleep(ms: number) {
 }
 
 async function loadNodeOAuthNodes() {
-  const controlKey = nodeOAuthControlKey.value.trim()
-  if (!controlKey) {
-    nodeOAuthError.value = '请输入控制 Key'
-    appStore.showError(nodeOAuthError.value)
-    return
-  }
   nodeOAuthLoading.value = true
   nodeOAuthError.value = ''
   try {
-    const nodes = await adminAPI.nodeLeases.listNodes({ controlKey })
+    const nodes = await adminAPI.nodeLeases.listNodes()
     nodeOAuthNodes.value = nodes
     nodeOAuthLoaded.value = true
     if (!nodeOAuthSelectedNodeID.value && nodes.length > 0) {
@@ -6080,8 +6050,7 @@ async function refreshNodeOAuthTask() {
   const current = nodeOAuthTask.value
   if (!current) return null
   const tasks = await adminAPI.nodeLeases.listLoginTasks(
-    { node_id: nodeOAuthSelectedNodeID.value || undefined },
-    nodeOAuthControlOptions()
+    { node_id: nodeOAuthSelectedNodeID.value || undefined }
   )
   const next = tasks.find((task) => task.id === current.id) || current
   nodeOAuthTask.value = next
@@ -6140,12 +6109,6 @@ function buildNodeOAuthExtra() {
 
 async function createNodeOAuthLoginTask() {
   const nodeID = nodeOAuthSelectedNodeID.value.trim()
-  const controlKey = nodeOAuthControlKey.value.trim()
-  if (!controlKey) {
-    nodeOAuthError.value = '请输入控制 Key'
-    appStore.showError(nodeOAuthError.value)
-    return null
-  }
   if (!nodeID) {
     nodeOAuthError.value = '请选择执行节点'
     appStore.showError(nodeOAuthError.value)
@@ -6209,8 +6172,7 @@ async function createNodeOAuthLoginTask() {
         group_ids: form.group_ids,
         concurrency: form.concurrency,
         priority: form.priority
-      },
-      nodeOAuthControlOptions()
+      }
     )
     nodeOAuthTask.value = task
     return task
@@ -6274,8 +6236,7 @@ async function handleNodeOAuthCallback(authCode: string) {
         session_id: nodeOAuthSessionId.value,
         redirect_uri: nodeOAuthRedirectURI.value || undefined,
         proxy_id: form.proxy_id || undefined
-      },
-      nodeOAuthControlOptions()
+      }
     )
     nodeOAuthTask.value = updated
     const completed = await waitForNodeOAuthTask(

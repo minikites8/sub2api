@@ -190,7 +190,6 @@ function mountModal() {
 describe('ReAuthAccountModal node OAuth', () => {
   beforeEach(() => {
     sessionStorage.clear()
-    sessionStorage.setItem('sub2api_node_leases_demo_control_key', 'control-secret')
     getAccountByIdMock.mockReset().mockResolvedValue({ ...account, status: 'active', error_message: null })
     applyOAuthCredentialsMock.mockReset()
     listNodeLeaseNodesMock.mockReset().mockResolvedValue([node])
@@ -228,6 +227,8 @@ describe('ReAuthAccountModal node OAuth', () => {
       .mockResolvedValueOnce([completedTask])
 
     const wrapper = mountModal()
+    await wrapper.get('[data-testid="reauth-node-oauth-enabled"]').setValue(true)
+    await flushPromises()
     await wrapper.get('[data-testid="reauth-node-oauth-load-nodes"]').trigger('click')
     await flushPromises()
 
@@ -254,7 +255,7 @@ describe('ReAuthAccountModal node OAuth', () => {
     })
     expect(createNodeLoginTaskMock.mock.calls[0]?.[0].login_payload.credential_overrides).not.toHaveProperty('access_token')
     expect(createNodeLoginTaskMock.mock.calls[0]?.[0].login_payload.credential_overrides).not.toHaveProperty('node_oauth_pending')
-    expect(createNodeLoginTaskMock.mock.calls[0]?.[1]).toEqual({ controlKey: 'control-secret' })
+    expect(createNodeLoginTaskMock.mock.calls[0]?.[1]).toBeUndefined()
     expect(wrapper.get('[data-testid="reauth-auth-url"]').text()).toBe('https://auth.openai.example/start')
 
     const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
@@ -274,8 +275,7 @@ describe('ReAuthAccountModal node OAuth', () => {
         session_id: 'session-1',
         redirect_uri: 'http://localhost:1455/auth/callback',
         proxy_id: 9,
-      },
-      { controlKey: 'control-secret' }
+      }
     )
     expect(getAccountByIdMock).toHaveBeenCalledWith(77)
     expect(wrapper.emitted('reauthorized')?.[0]?.[0]).toMatchObject({

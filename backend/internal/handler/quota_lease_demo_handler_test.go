@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -118,6 +119,107 @@ func (s *quotaLeaseDemoSyncAdminService) GetProxy(_ context.Context, id int64) (
 		return nil, nil
 	}
 	return s.proxies[id], nil
+}
+
+type quotaLeaseDemoAPIKeyRepoStub struct {
+	service.APIKeyRepository
+	apiKey *service.APIKey
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) Create(context.Context, *service.APIKey) error {
+	panic("unexpected Create call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) GetByID(context.Context, int64) (*service.APIKey, error) {
+	panic("unexpected GetByID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) GetKeyAndOwnerID(context.Context, int64) (string, int64, error) {
+	panic("unexpected GetKeyAndOwnerID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) GetByKey(context.Context, string) (*service.APIKey, error) {
+	return r.apiKey, nil
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) GetByKeyForAuth(context.Context, string) (*service.APIKey, error) {
+	return r.apiKey, nil
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) Update(context.Context, *service.APIKey) error {
+	panic("unexpected Update call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) DeleteWithAudit(context.Context, int64) error {
+	panic("unexpected DeleteWithAudit call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) ListByUserID(context.Context, int64, pagination.PaginationParams, service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+	panic("unexpected ListByUserID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) VerifyOwnership(context.Context, int64, []int64) ([]int64, error) {
+	panic("unexpected VerifyOwnership call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) CountByUserID(context.Context, int64) (int64, error) {
+	panic("unexpected CountByUserID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) ExistsByKey(context.Context, string) (bool, error) {
+	panic("unexpected ExistsByKey call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) ListByGroupID(context.Context, int64, pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
+	panic("unexpected ListByGroupID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) SearchAPIKeys(context.Context, int64, string, int) ([]service.APIKey, error) {
+	panic("unexpected SearchAPIKeys call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) ClearGroupIDByGroupID(context.Context, int64) (int64, error) {
+	panic("unexpected ClearGroupIDByGroupID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) UpdateGroupIDByUserAndGroup(context.Context, int64, int64, int64) (int64, error) {
+	panic("unexpected UpdateGroupIDByUserAndGroup call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) CountByGroupID(context.Context, int64) (int64, error) {
+	panic("unexpected CountByGroupID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) ListKeysByUserID(context.Context, int64) ([]string, error) {
+	panic("unexpected ListKeysByUserID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) ListKeysByGroupID(context.Context, int64) ([]string, error) {
+	panic("unexpected ListKeysByGroupID call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) IncrementQuotaUsed(context.Context, int64, float64) (float64, error) {
+	panic("unexpected IncrementQuotaUsed call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) UpdateLastUsed(context.Context, int64, time.Time) error {
+	panic("unexpected UpdateLastUsed call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) IncrementRateLimitUsage(context.Context, int64, float64) error {
+	panic("unexpected IncrementRateLimitUsage call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) ResetRateLimitWindows(context.Context, int64) error {
+	panic("unexpected ResetRateLimitWindows call")
+}
+
+func (r *quotaLeaseDemoAPIKeyRepoStub) GetRateLimitData(context.Context, int64) (*service.APIKeyRateLimitData, error) {
+	panic("unexpected GetRateLimitData call")
 }
 
 func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.QuotaLeaseDemoService) {
@@ -416,6 +518,23 @@ func TestQuotaLeaseDemoHandlerRegistersNodeAndUsesNodeSecret(t *testing.T) {
 	require.Equal(t, http.StatusOK, heartbeatRec.Code)
 }
 
+func TestQuotaLeaseDemoHandlerInjectsControlSecretForAdminRoute(t *testing.T) {
+	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
+	h := NewQuotaLeaseDemoHandler(svc)
+
+	adminGroup := router.Group("/api/v1/admin/node-leases/demo")
+	adminGroup.Use(h.InjectControlSecret)
+	adminGroup.GET("/status", h.Status)
+
+	publicRec := httptest.NewRecorder()
+	router.ServeHTTP(publicRec, httptest.NewRequest(http.MethodGet, "/api/v1/node-leases/demo/status", nil))
+	require.Equal(t, http.StatusUnauthorized, publicRec.Code)
+
+	adminRec := httptest.NewRecorder()
+	router.ServeHTTP(adminRec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/node-leases/demo/status", nil))
+	require.Equal(t, http.StatusOK, adminRec.Code)
+}
+
 func TestQuotaLeaseDemoHandlerCreatesRegistrationURLAndStoresNodeSecret(t *testing.T) {
 	router, _ := newQuotaLeaseDemoHandlerTestRouter(t)
 
@@ -475,6 +594,108 @@ func TestQuotaLeaseDemoHandlerCreatesRegistrationURLAndStoresNodeSecret(t *testi
 	leaseRec := httptest.NewRecorder()
 	router.ServeHTTP(leaseRec, leaseReq)
 	require.Equal(t, http.StatusOK, leaseRec.Code)
+}
+
+func TestQuotaLeaseDemoHandlerAuthorizeClientKeyFallsBackToUserBalance(t *testing.T) {
+	router, _ := newQuotaLeaseDemoHandlerTestRouter(t)
+	apiKeySvc := service.NewAPIKeyService(
+		&quotaLeaseDemoAPIKeyRepoStub{
+			apiKey: &service.APIKey{
+				ID:     20,
+				UserID: 10,
+				Key:    "sk-live-user",
+				Status: service.StatusAPIKeyActive,
+				User: &service.User{
+					ID:      10,
+					Status:  service.StatusActive,
+					Balance: 0.6,
+				},
+			},
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		&config.Config{},
+	)
+	h := NewQuotaLeaseDemoHandler(service.GetQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				NodeID:                 "control-node",
+				NodeSecret:             "control-secret",
+				DefaultGrantAmount:     1,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	}))
+	h.SetAPIKeyService(apiKeySvc)
+	router.POST("/api/v1/node-leases/demo/auth/client-key", h.AuthorizeClientKey)
+
+	req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/auth/client-key", map[string]any{
+		"api_key": "sk-live-user",
+	})
+	req.Header.Set("X-Node-Secret", "control-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body struct {
+		Lease service.QuotaLeaseDemoLease `json:"lease"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.InDelta(t, 0.6, body.Lease.Granted, 1e-12)
+}
+
+func TestQuotaLeaseDemoHandlerAuthorizeClientKeyRejectsZeroBalance(t *testing.T) {
+	router, _ := newQuotaLeaseDemoHandlerTestRouter(t)
+	apiKeySvc := service.NewAPIKeyService(
+		&quotaLeaseDemoAPIKeyRepoStub{
+			apiKey: &service.APIKey{
+				ID:     20,
+				UserID: 10,
+				Key:    "sk-live-user",
+				Status: service.StatusAPIKeyActive,
+				User: &service.User{
+					ID:      10,
+					Status:  service.StatusActive,
+					Balance: 0,
+				},
+			},
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		&config.Config{},
+	)
+	h := NewQuotaLeaseDemoHandler(service.GetQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "control-node",
+				NodeSecret:          "control-secret",
+				DefaultGrantAmount:  1,
+				LeaseTTLSeconds:     600,
+				ReclaimGraceSeconds: 3600,
+			},
+		},
+	}))
+	h.SetAPIKeyService(apiKeySvc)
+	router.POST("/api/v1/node-leases/demo/auth/client-key/zero", h.AuthorizeClientKey)
+
+	req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/auth/client-key/zero", map[string]any{
+		"api_key": "sk-live-user",
+	})
+	req.Header.Set("X-Node-Secret", "control-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "no_capacity")
 }
 
 func TestQuotaLeaseDemoHandlerRejectsNodeMismatch(t *testing.T) {

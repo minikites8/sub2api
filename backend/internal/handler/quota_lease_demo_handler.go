@@ -47,6 +47,15 @@ func (h *QuotaLeaseDemoHandler) SetUsageService(usageService *service.UsageServi
 	h.usageService = usageService
 }
 
+func (h *QuotaLeaseDemoHandler) InjectControlSecret(c *gin.Context) {
+	if h != nil && h.svc != nil {
+		if secret := h.svc.NodeSecret(); secret != "" {
+			c.Request.Header.Set("X-Node-Secret", secret)
+		}
+	}
+	c.Next()
+}
+
 func (h *QuotaLeaseDemoHandler) RegisterNode(c *gin.Context) {
 	if !h.requireEnabled(c) {
 		return
@@ -1013,10 +1022,15 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "api_key_disabled"})
 		return
 	}
+	if snapshot.User.Balance <= 0 {
+		h.writeError(c, service.ErrQuotaLeaseDemoNoCapacity)
+		return
+	}
 	amount := req.Amount
 	if amount <= 0 {
-		amount = h.svc.PreflightReserveAmount()
+		amount = h.svc.DefaultGrantAmount()
 	}
+	amount = quotaLeaseDemoClientLeaseAmount(snapshot, amount)
 	lease, err := h.svc.RequestLease(c.Request.Context(), service.QuotaLeaseDemoLeaseRequest{
 		NodeID:   req.NodeID,
 		UserID:   snapshot.UserID,
@@ -1036,6 +1050,17 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 		"lease":      lease,
 		"expires_at": expiresAt,
 	})
+}
+
+func quotaLeaseDemoClientLeaseAmount(snapshot *service.APIKeyAuthSnapshot, requested float64) float64 {
+	if snapshot == nil {
+		return requested
+	}
+	balance := snapshot.User.Balance
+	if balance > 0 && requested > balance {
+		return balance
+	}
+	return requested
 }
 
 func quotaLeaseDemoHandlerCanIssueClientLease(snapshot *service.APIKeyAuthSnapshot) bool {

@@ -1098,6 +1098,88 @@ func TestQuotaLeaseDemoRemoteNodeAuthorizesClientKeyViaControlPlane(t *testing.T
 	require.Equal(t, 1, authCalls)
 }
 
+func TestQuotaLeaseDemoRemoteClientAuthCacheRequiresLocalCapacity(t *testing.T) {
+	ctx := context.Background()
+	control := newQuotaLeaseDemoTestService()
+	authCalls := 0
+	groupID := int64(30)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/node-leases/demo/nodes/register":
+			var req QuotaLeaseDemoNodeRegistrationRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			result, err := control.RegisterNode(r.Context(), req)
+			require.NoError(t, err)
+			require.NoError(t, json.NewEncoder(w).Encode(result))
+		case "/api/v1/node-leases/demo/auth/client-key":
+			authCalls++
+			var req QuotaLeaseDemoClientAuthRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			lease, err := control.RequestLease(r.Context(), QuotaLeaseDemoLeaseRequest{
+				NodeID:   req.NodeID,
+				UserID:   10,
+				APIKeyID: 20,
+				Amount:   req.Amount,
+			})
+			require.NoError(t, err)
+			require.NoError(t, json.NewEncoder(w).Encode(QuotaLeaseDemoClientAuthResult{
+				Snapshot: &APIKeyAuthSnapshot{
+					Version:  apiKeyAuthSnapshotVersion,
+					APIKeyID: 20,
+					UserID:   10,
+					GroupID:  &groupID,
+					Name:     "client",
+					Status:   StatusActive,
+					User: APIKeyAuthUserSnapshot{
+						ID:          10,
+						Status:      StatusActive,
+						Role:        RoleUser,
+						Balance:     1,
+						Concurrency: 2,
+					},
+				},
+				Lease:     lease,
+				ExpiresAt: time.Now().UTC().Add(30 * time.Second),
+			}))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-us",
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+				DefaultGrantAmount:  1,
+				LeaseTTLSeconds:     600,
+				ReclaimGraceSeconds: 3600,
+			},
+		},
+	})
+
+	result, err := node.AuthorizeClientKeyViaControlPlane(ctx, "sk-live-user", 0)
+	require.NoError(t, err)
+	require.NotNil(t, result.Lease)
+	handled, applied, err := node.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "req-drain-lease",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: result.Lease.Granted,
+	})
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.True(t, applied)
+
+	_, err = node.AuthorizeClientKeyViaControlPlane(ctx, "sk-live-user", 0)
+	require.ErrorIs(t, err, ErrQuotaLeaseDemoNoCapacity)
+	require.Equal(t, 1, authCalls)
+}
+
 func TestQuotaLeaseDemoAccountLoginTaskAssignsNodeAccount(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	ctx := context.Background()

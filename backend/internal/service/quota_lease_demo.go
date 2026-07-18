@@ -200,6 +200,15 @@ func (s *QuotaLeaseDemoService) PreflightReserveAmount() float64 {
 	return reserve
 }
 
+func (s *QuotaLeaseDemoService) DefaultGrantAmount() float64 {
+	cfg := s.cfgSnapshot()
+	amount := cfg.DefaultGrantAmount
+	if amount <= 0 {
+		return 1
+	}
+	return amount
+}
+
 type QuotaLeaseDemoNodeRegistrationRequest struct {
 	NodeID            string            `json:"node_id"`
 	NodeSecret        string            `json:"node_secret,omitempty"`
