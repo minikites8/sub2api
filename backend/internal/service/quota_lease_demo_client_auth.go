@@ -40,14 +40,10 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	}
 	requestAmount := amount
 	if requestAmount <= 0 {
-		requestAmount = s.PreflightReserveAmount()
-	}
-	cacheAmount := amount
-	if cacheAmount <= 0 {
-		cacheAmount = s.PreflightReserveAmount()
+		requestAmount = s.DefaultGrantAmount()
 	}
 	if cached := s.getClientAuthCache(apiKey); cached != nil {
-		if err := s.ensureClientAuthCapacity(ctx, cached, cacheAmount); err != nil {
+		if err := s.ensureClientAuthCapacity(ctx, cached, requestAmount); err != nil {
 			s.deleteClientAuthCache(apiKey)
 			return nil, err
 		}
@@ -82,7 +78,7 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	if result.Lease != nil {
 		s.cacheRemoteLease(result.Lease)
 	}
-	if err := s.ensureClientAuthCapacity(ctx, &result, cacheAmount); err != nil {
+	if err := s.ensureClientAuthCapacity(ctx, &result, requestAmount); err != nil {
 		return nil, err
 	}
 	if result.ExpiresAt.IsZero() {
@@ -96,13 +92,35 @@ func (s *QuotaLeaseDemoService) ensureClientAuthCapacity(ctx context.Context, re
 	if s == nil || result == nil || result.Snapshot == nil {
 		return ErrQuotaLeaseDemoNoCapacity
 	}
+	amount = s.clientAuthCapacityAmount(result.Snapshot, amount)
 	if amount <= 0 {
-		amount = s.PreflightReserveAmount()
+		return ErrQuotaLeaseDemoNoCapacity
 	}
 	if !s.ensureCapacity(ctx, "client_auth", s.activeNodeID(), result.Snapshot.UserID, result.Snapshot.APIKeyID, amount) {
 		return ErrQuotaLeaseDemoNoCapacity
 	}
 	return nil
+}
+
+func (s *QuotaLeaseDemoService) clientAuthCapacityAmount(snapshot *APIKeyAuthSnapshot, requested float64) float64 {
+	if s == nil {
+		return 0
+	}
+	amount := requested
+	if amount <= 0 {
+		amount = s.DefaultGrantAmount()
+	}
+	if snapshot == nil {
+		return amount
+	}
+	balance := snapshot.User.Balance
+	if balance <= 0 {
+		return 0
+	}
+	if balance < amount {
+		return balance
+	}
+	return amount
 }
 
 func quotaLeaseDemoRemoteNoCapacity(err error) bool {

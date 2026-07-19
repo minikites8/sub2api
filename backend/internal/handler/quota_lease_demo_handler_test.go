@@ -631,7 +631,7 @@ func TestQuotaLeaseDemoHandlerCreatesRegistrationURLAndStoresNodeSecret(t *testi
 	require.Equal(t, http.StatusOK, leaseRec.Code)
 }
 
-func TestQuotaLeaseDemoHandlerAuthorizeClientKeyUsesPreflightAmountByDefault(t *testing.T) {
+func TestQuotaLeaseDemoHandlerAuthorizeClientKeyUsesDefaultGrantAmountByDefault(t *testing.T) {
 	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
 	apiKeySvc := service.NewAPIKeyService(
 		&quotaLeaseDemoAPIKeyRepoStub{
@@ -670,7 +670,7 @@ func TestQuotaLeaseDemoHandlerAuthorizeClientKeyUsesPreflightAmountByDefault(t *
 		Lease service.QuotaLeaseDemoLease `json:"lease"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	require.InDelta(t, svc.PreflightReserveAmount(), body.Lease.Granted, 1e-12)
+	require.InDelta(t, 0.6, body.Lease.Granted, 1e-12)
 }
 
 func TestQuotaLeaseDemoHandlerAuthorizeClientKeyCapsExplicitAmountToUserBalance(t *testing.T) {

@@ -1030,7 +1030,7 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 	}
 	amount := req.Amount
 	if amount <= 0 {
-		amount = h.svc.PreflightReserveAmount()
+		amount = h.svc.DefaultGrantAmount()
 	}
 	amount = quotaLeaseDemoClientLeaseAmount(snapshot, amount)
 	if amount <= 0 {
@@ -1064,7 +1064,7 @@ func (h *QuotaLeaseDemoHandler) quotaLeaseDemoRequestLeaseAmount(ctx context.Con
 	}
 	amount := req.Amount
 	if amount <= 0 {
-		amount = h.svc.PreflightReserveAmount()
+		amount = h.svc.DefaultGrantAmount()
 	}
 	if req.UserID <= 0 || req.APIKeyID <= 0 || h.apiKeyService == nil {
 		return amount, nil
