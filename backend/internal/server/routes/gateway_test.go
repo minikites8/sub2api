@@ -113,6 +113,34 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesBatchImagesReturnDisabledWhenHandlerMissing(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/v1/images/batches"},
+		{http.MethodGet, "/v1/images/batches"},
+		{http.MethodGet, "/v1/images/batches/models"},
+		{http.MethodGet, "/v1/images/batches/batch-1"},
+		{http.MethodGet, "/v1/images/batches/batch-1/items"},
+		{http.MethodGet, "/v1/images/batches/batch-1/items/item-1/content"},
+		{http.MethodGet, "/v1/images/batches/batch-1/download"},
+		{http.MethodPost, "/v1/images/batches/batch-1/cancel"},
+		{http.MethodDelete, "/v1/images/batches/batch-1"},
+		{http.MethodDelete, "/v1/images/batches/batch-1/outputs"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"model":"gpt-image-2"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
+		require.Contains(t, w.Body.String(), "Batch image API is not enabled on this node")
+	}
+}
+
 func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformGrok)
 

@@ -107,6 +107,24 @@ func RegisterGatewayRoutes(
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
 	}
+	batchImageUnavailable := func(c *gin.Context) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": "Batch image API is not enabled on this node",
+			},
+		})
+	}
+	batchImageHandler := func(fn func(*gin.Context)) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			if h == nil || h.BatchImage == nil || fn == nil {
+				batchImageUnavailable(c)
+				return
+			}
+			fn(c)
+		}
+	}
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
@@ -192,16 +210,16 @@ func RegisterGatewayRoutes(
 		})
 		gateway.POST("/images/generations", imagesHandler)
 		gateway.POST("/images/edits", imagesHandler)
-		gateway.POST("/images/batches", h.BatchImage.Submit)
-		gateway.GET("/images/batches", h.BatchImage.List)
-		gateway.GET("/images/batches/models", h.BatchImage.Models)
-		gateway.GET("/images/batches/:id", h.BatchImage.Get)
-		gateway.GET("/images/batches/:id/items", h.BatchImage.Items)
-		gateway.GET("/images/batches/:id/items/:custom_id/content", h.BatchImage.ItemContent)
-		gateway.GET("/images/batches/:id/download", h.BatchImage.Download)
-		gateway.POST("/images/batches/:id/cancel", h.BatchImage.Cancel)
-		gateway.DELETE("/images/batches/:id", h.BatchImage.DeleteRecord)
-		gateway.DELETE("/images/batches/:id/outputs", h.BatchImage.DeleteOutputs)
+		gateway.POST("/images/batches", batchImageHandler(func(c *gin.Context) { h.BatchImage.Submit(c) }))
+		gateway.GET("/images/batches", batchImageHandler(func(c *gin.Context) { h.BatchImage.List(c) }))
+		gateway.GET("/images/batches/models", batchImageHandler(func(c *gin.Context) { h.BatchImage.Models(c) }))
+		gateway.GET("/images/batches/:id", batchImageHandler(func(c *gin.Context) { h.BatchImage.Get(c) }))
+		gateway.GET("/images/batches/:id/items", batchImageHandler(func(c *gin.Context) { h.BatchImage.Items(c) }))
+		gateway.GET("/images/batches/:id/items/:custom_id/content", batchImageHandler(func(c *gin.Context) { h.BatchImage.ItemContent(c) }))
+		gateway.GET("/images/batches/:id/download", batchImageHandler(func(c *gin.Context) { h.BatchImage.Download(c) }))
+		gateway.POST("/images/batches/:id/cancel", batchImageHandler(func(c *gin.Context) { h.BatchImage.Cancel(c) }))
+		gateway.DELETE("/images/batches/:id", batchImageHandler(func(c *gin.Context) { h.BatchImage.DeleteRecord(c) }))
+		gateway.DELETE("/images/batches/:id/outputs", batchImageHandler(func(c *gin.Context) { h.BatchImage.DeleteOutputs(c) }))
 		gateway.POST("/videos/generations", videoGenerationHandler)
 		gateway.POST("/videos/edits", videoEditHandler)
 		gateway.POST("/videos/extensions", videoExtensionHandler)

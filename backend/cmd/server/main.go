@@ -74,8 +74,10 @@ func main() {
 		return
 	}
 
+	nodeBootstrap := strings.EqualFold(strings.TrimSpace(os.Getenv("DEPLOYMENT_ROLE")), config.DeploymentRoleNode)
+
 	// Check if setup is needed
-	if setup.NeedsSetup() {
+	if setup.NeedsSetup() && !nodeBootstrap {
 		// Check if auto-setup is enabled (for Docker deployment)
 		if setup.AutoSetupEnabled() {
 			log.Println("Auto setup mode enabled...")
@@ -148,7 +150,13 @@ func runMainServer() {
 		BuildType: BuildType,
 	}
 
-	app, err := initializeApplication(buildInfo)
+	var app *Application
+	if cfg.IsNodeRole() {
+		log.Printf("Node role enabled: starting lightweight gateway runtime")
+		app, err = initializeNodeApplication(cfg, buildInfo)
+	} else {
+		app, err = initializeApplication(buildInfo)
+	}
 	if err != nil {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
