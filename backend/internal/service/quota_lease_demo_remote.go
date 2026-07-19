@@ -292,7 +292,10 @@ func (s *QuotaLeaseDemoService) inspectCapacitySnapshot(nodeID string, userID, a
 		if lease.Status == QuotaLeaseDemoStatusActive {
 			probe.ActiveMatchingLeases++
 		}
-		if best == nil || lease.Remaining() > best.Remaining()+1e-12 || (math.Abs(lease.Remaining()-best.Remaining()) <= 1e-12 && lease.ExpiresAt.Before(best.ExpiresAt)) {
+		if best == nil ||
+			(lease.Status == QuotaLeaseDemoStatusActive && best.Status != QuotaLeaseDemoStatusActive) ||
+			(lease.Status == best.Status && (lease.Remaining() > best.Remaining()+1e-12 ||
+				(math.Abs(lease.Remaining()-best.Remaining()) <= 1e-12 && lease.ExpiresAt.Before(best.ExpiresAt)))) {
 			best = lease
 		}
 	}

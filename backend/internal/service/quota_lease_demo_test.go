@@ -825,6 +825,42 @@ func TestQuotaLeaseDemoRequestLeaseTopsUpActivePreflightLease(t *testing.T) {
 	require.InDelta(t, 0.005715, snapshot.Leases[0].Granted, 1e-12)
 }
 
+func TestQuotaLeaseDemoInspectCapacityPrefersActiveLease(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	now := time.Now().UTC()
+	svc.leases["expired-high"] = &QuotaLeaseDemoLease{
+		ID:        "expired-high",
+		NodeID:    "node-1",
+		UserID:    10,
+		APIKeyID:  20,
+		Granted:   0.5,
+		Consumed:  0.1,
+		Status:    QuotaLeaseDemoStatusActive,
+		ExpiresAt: now.Add(-time.Minute),
+		ReclaimAt: now.Add(time.Hour),
+		CreatedAt: now.Add(-10 * time.Minute),
+		UpdatedAt: now.Add(-10 * time.Minute),
+	}
+	svc.leases["active-low"] = &QuotaLeaseDemoLease{
+		ID:        "active-low",
+		NodeID:    "node-1",
+		UserID:    10,
+		APIKeyID:  20,
+		Granted:   0.03,
+		Status:    QuotaLeaseDemoStatusActive,
+		ExpiresAt: now.Add(time.Minute),
+		ReclaimAt: now.Add(time.Hour),
+		CreatedAt: now.Add(-time.Minute),
+		UpdatedAt: now.Add(-time.Minute),
+	}
+
+	ok, probe := svc.inspectCapacity("node-1", 10, 20, 0.02, now)
+	require.True(t, ok)
+	require.Equal(t, "active-low", probe.BestLeaseID)
+	require.Equal(t, QuotaLeaseDemoStatusActive, probe.BestLeaseStatus)
+	require.InDelta(t, 0.03, probe.BestLeaseRemaining, 1e-12)
+}
+
 func TestQuotaLeaseDemoRegisterNodeAndHeartbeat(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	ctx := context.Background()
