@@ -69,20 +69,33 @@ func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, operation, n
 		return false
 	}
 
-	_, err := s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
-		NodeID:   "",
-		UserID:   userID,
-		APIKeyID: apiKeyID,
-		Amount:   amount,
-	})
-	if err != nil {
-		probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, amount, time.Now().UTC())
-		s.logCapacityDenied(operation, "request_lease_failed", nodeID, userID, apiKeyID, amount, probe, err)
-		return false
-	}
-	ok, probe = s.inspectCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
-	if ok {
-		return true
+	var requestErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if flushErr := s.FlushPendingUsage(ctx); flushErr != nil {
+			slog.Warn("quota_lease_demo.pending_usage_flush_failed",
+				"operation", strings.TrimSpace(operation),
+				"node_id", nodeID,
+				"user_id", userID,
+				"api_key_id", apiKeyID,
+				"amount", amount,
+				"error", flushErr,
+			)
+		}
+		_, requestErr = s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+			NodeID:   "",
+			UserID:   userID,
+			APIKeyID: apiKeyID,
+			Amount:   amount,
+		})
+		if requestErr != nil {
+			probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+			s.logCapacityDenied(operation, "request_lease_failed", nodeID, userID, apiKeyID, amount, probe, requestErr)
+			return false
+		}
+		ok, probe = s.inspectCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+		if ok {
+			return true
+		}
 	}
 	s.logCapacityDenied(operation, "post_request_capacity_check_failed", nodeID, userID, apiKeyID, amount, probe)
 	return false

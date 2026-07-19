@@ -1308,10 +1308,12 @@ func TestQuotaLeaseDemoRemoteClientAuthCapsCapacityToSnapshotBalance(t *testing.
 	require.Equal(t, 1, authCalls)
 }
 
-func TestQuotaLeaseDemoRemoteClientAuthCacheRequiresLocalCapacity(t *testing.T) {
+func TestQuotaLeaseDemoRemoteClientAuthFlushesPendingUsageBeforeCapacityRequest(t *testing.T) {
 	ctx := context.Background()
 	control := newQuotaLeaseDemoTestService()
 	authCalls := 0
+	leaseCalls := 0
+	usageBatchCalls := 0
 	groupID := int64(30)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1352,6 +1354,28 @@ func TestQuotaLeaseDemoRemoteClientAuthCacheRequiresLocalCapacity(t *testing.T) 
 				Lease:     lease,
 				ExpiresAt: time.Now().UTC().Add(30 * time.Second),
 			}))
+		case "/api/v1/node-leases/demo/leases/request":
+			leaseCalls++
+			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			var req QuotaLeaseDemoLeaseRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			lease, err := control.RequestLease(r.Context(), req)
+			require.NoError(t, err)
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"lease": lease}))
+		case "/api/v1/node-leases/demo/usage/batch":
+			usageBatchCalls++
+			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			var req QuotaLeaseDemoUsageBatchRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			require.NoError(t, json.NewEncoder(w).Encode(control.PostUsageBatch(r.Context(), req)))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -1375,19 +1399,36 @@ func TestQuotaLeaseDemoRemoteClientAuthCacheRequiresLocalCapacity(t *testing.T) 
 	result, err := node.AuthorizeClientKeyViaControlPlane(ctx, "sk-live-user", 0)
 	require.NoError(t, err)
 	require.NotNil(t, result.Lease)
-	handled, applied, err := node.ApplyUsageBilling(ctx, &UsageBillingCommand{
-		RequestID:   "req-drain-lease",
-		UserID:      10,
-		APIKeyID:    20,
-		BalanceCost: result.Lease.Granted,
-	})
-	require.NoError(t, err)
-	require.True(t, handled)
-	require.True(t, applied)
+	require.True(t, node.hasCapacity("node-us", 10, 20, 1, time.Now().UTC()))
 
-	_, err = node.AuthorizeClientKeyViaControlPlane(ctx, "sk-live-user", 0)
-	require.ErrorIs(t, err, ErrQuotaLeaseDemoNoCapacity)
+	usageEvent := QuotaLeaseDemoUsageEvent{
+		EventID:   "evt-drain-lease",
+		LeaseID:   result.Lease.ID,
+		NodeID:    "node-us",
+		UserID:    10,
+		APIKeyID:  20,
+		RequestID: "req-drain-lease",
+		Amount:    0.4,
+		EventType: QuotaLeaseDemoEventUsagePosted,
+		CreatedAt: time.Now().UTC(),
+	}
+	_, err = node.consumeUsageLocal(ctx, usageEvent)
+	require.NoError(t, err)
+	node.enqueuePendingUsageEvent(usageEvent)
+	require.True(t, node.hasCapacity("node-us", 10, 20, 0.6, time.Now().UTC()))
+	require.False(t, node.hasCapacity("node-us", 10, 20, 1, time.Now().UTC()))
+
+	cached, err := node.AuthorizeClientKeyViaControlPlane(ctx, "sk-live-user", 0)
+	require.NoError(t, err)
+	require.Equal(t, result.Lease.ID, cached.Lease.ID)
 	require.Equal(t, 1, authCalls)
+	require.Equal(t, 1, leaseCalls)
+	require.Equal(t, 1, usageBatchCalls)
+	require.True(t, node.hasCapacity("node-us", 10, 20, 1, time.Now().UTC()))
+
+	controlLease := control.Snapshot().Leases[0]
+	require.InDelta(t, 1.4, controlLease.Granted, 1e-12)
+	require.InDelta(t, 0.4, controlLease.Consumed, 1e-12)
 }
 
 func TestQuotaLeaseDemoAccountLoginTaskAssignsNodeAccount(t *testing.T) {
