@@ -789,7 +789,7 @@ func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey 
 	if !finitePositive(amount) {
 		return false
 	}
-	return s.ensureCapacity(ctx, "gateway_preflight", nodeID, apiKey.User.ID, apiKey.ID, amount)
+	return s.ensureCapacityWithMinimum(ctx, "gateway_preflight", nodeID, apiKey.User.ID, apiKey.ID, amount, s.preflightCapacityCheckAmount(amount))
 }
 
 func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *UsageBillingCommand) (handled bool, applied bool, err error) {
@@ -832,8 +832,22 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 		s.enqueuePendingUsageEvent(event)
 		if result.Lease != nil && result.Lease.Remaining() < -1e-12 {
 			target := s.usageBillingCapacityTarget(-result.Lease.Remaining())
-			if !s.ensureCapacity(ctx, "usage_billing_overdraft", nodeID, cmd.UserID, cmd.APIKeyID, target) {
+			if flushErr := s.FlushPendingUsage(ctx); flushErr != nil {
+				probe := s.inspectCapacitySnapshot(nodeID, cmd.UserID, cmd.APIKeyID, s.preflightCapacityCheckAmount(target), time.Now().UTC())
+				s.logCapacityDenied("usage_billing_overdraft", "pending_usage_flush_failed", nodeID, cmd.UserID, cmd.APIKeyID, target, probe, flushErr)
 				return true, true, ErrQuotaLeaseDemoNoCapacity
+			}
+			if _, requestErr := s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+				UserID:   cmd.UserID,
+				APIKeyID: cmd.APIKeyID,
+				Amount:   target,
+			}); requestErr != nil {
+				probe := s.inspectCapacitySnapshot(nodeID, cmd.UserID, cmd.APIKeyID, s.preflightCapacityCheckAmount(target), time.Now().UTC())
+				s.logCapacityDenied("usage_billing_overdraft", "request_lease_failed", nodeID, cmd.UserID, cmd.APIKeyID, target, probe, requestErr)
+				return true, true, nil
+			}
+			if ok, probe := s.inspectCapacity(nodeID, cmd.UserID, cmd.APIKeyID, s.preflightCapacityCheckAmount(target), time.Now().UTC()); !ok {
+				s.logCapacityDenied("usage_billing_overdraft", "post_request_capacity_check_failed", nodeID, cmd.UserID, cmd.APIKeyID, target, probe)
 			}
 			return true, true, nil
 		}
@@ -1154,6 +1168,14 @@ func (s *QuotaLeaseDemoService) usageBillingCapacityTarget(amount float64) float
 		target = defaultGrant
 	}
 	return target
+}
+
+func (s *QuotaLeaseDemoService) preflightCapacityCheckAmount(requestAmount float64) float64 {
+	minimum := s.PreflightReserveAmount()
+	if requestAmount > 0 && requestAmount < minimum {
+		return requestAmount
+	}
+	return minimum
 }
 
 func (s *QuotaLeaseDemoService) findLeaseForConsumption(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) *QuotaLeaseDemoLease {

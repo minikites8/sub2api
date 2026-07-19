@@ -96,7 +96,7 @@ func (s *QuotaLeaseDemoService) ensureClientAuthCapacity(ctx context.Context, re
 	if amount <= 0 {
 		return ErrQuotaLeaseDemoNoCapacity
 	}
-	if !s.ensureCapacity(ctx, "client_auth", s.activeNodeID(), result.Snapshot.UserID, result.Snapshot.APIKeyID, amount) {
+	if !s.ensureCapacityWithMinimum(ctx, "client_auth", s.activeNodeID(), result.Snapshot.UserID, result.Snapshot.APIKeyID, amount, s.preflightCapacityCheckAmount(amount)) {
 		return ErrQuotaLeaseDemoNoCapacity
 	}
 	return nil

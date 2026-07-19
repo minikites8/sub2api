@@ -1032,17 +1032,19 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 	if amount <= 0 {
 		amount = h.svc.DefaultGrantAmount()
 	}
-	amount = quotaLeaseDemoClientLeaseAmount(snapshot, amount)
-	if amount <= 0 {
-		h.writeError(c, service.ErrQuotaLeaseDemoNoCapacity)
-		return
-	}
-	lease, err := h.svc.RequestLease(c.Request.Context(), service.QuotaLeaseDemoLeaseRequest{
+	leaseReq := service.QuotaLeaseDemoLeaseRequest{
 		NodeID:   req.NodeID,
 		UserID:   snapshot.UserID,
 		APIKeyID: snapshot.APIKeyID,
 		Amount:   amount,
-	})
+	}
+	amount, err = h.quotaLeaseDemoRequestLeaseAmount(c.Request.Context(), leaseReq)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	leaseReq.Amount = amount
+	lease, err := h.svc.RequestLease(c.Request.Context(), leaseReq)
 	if err != nil {
 		h.writeError(c, err)
 		return

@@ -53,46 +53,53 @@ func (s *QuotaLeaseDemoService) remoteMode() bool {
 }
 
 func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, operation, nodeID string, userID, apiKeyID int64, amount float64) bool {
-	if s == nil || !s.Enabled() || userID <= 0 || apiKeyID <= 0 || !finitePositive(amount) {
+	return s.ensureCapacityWithMinimum(ctx, operation, nodeID, userID, apiKeyID, amount, amount)
+}
+
+func (s *QuotaLeaseDemoService) ensureCapacityWithMinimum(ctx context.Context, operation, nodeID string, userID, apiKeyID int64, requestAmount, minimumAmount float64) bool {
+	if s == nil || !s.Enabled() || userID <= 0 || apiKeyID <= 0 || !finitePositive(requestAmount) {
 		return false
+	}
+	if !finitePositive(minimumAmount) || minimumAmount > requestAmount {
+		minimumAmount = requestAmount
 	}
 	nodeID = strings.TrimSpace(nodeID)
 	if nodeID == "" {
 		nodeID = s.NodeID()
 	}
-	ok, probe := s.inspectCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+	ok, probe := s.inspectCapacity(nodeID, userID, apiKeyID, minimumAmount, time.Now().UTC())
 	if ok {
 		return true
 	}
 	if !s.remoteMode() {
-		s.logCapacityDenied(operation, "local_capacity_check_failed", nodeID, userID, apiKeyID, amount, probe)
+		s.logCapacityDenied(operation, "local_capacity_check_failed", nodeID, userID, apiKeyID, requestAmount, probe)
 		return false
 	}
 
 	var requestErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		if flushErr := s.FlushPendingUsage(ctx); flushErr != nil {
-			probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, amount, time.Now().UTC())
-			s.logCapacityDenied(operation, "pending_usage_flush_failed", nodeID, userID, apiKeyID, amount, probe, flushErr)
+			probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, minimumAmount, time.Now().UTC())
+			s.logCapacityDenied(operation, "pending_usage_flush_failed", nodeID, userID, apiKeyID, requestAmount, probe, flushErr)
 			return false
 		}
 		_, requestErr = s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
 			NodeID:   "",
 			UserID:   userID,
 			APIKeyID: apiKeyID,
-			Amount:   amount,
+			Amount:   requestAmount,
 		})
 		if requestErr != nil {
-			probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, amount, time.Now().UTC())
-			s.logCapacityDenied(operation, "request_lease_failed", nodeID, userID, apiKeyID, amount, probe, requestErr)
+			probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, minimumAmount, time.Now().UTC())
+			s.logCapacityDenied(operation, "request_lease_failed", nodeID, userID, apiKeyID, requestAmount, probe, requestErr)
 			return false
 		}
-		ok, probe = s.inspectCapacity(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+		ok, probe = s.inspectCapacity(nodeID, userID, apiKeyID, minimumAmount, time.Now().UTC())
 		if ok {
 			return true
 		}
 	}
-	s.logCapacityDenied(operation, "post_request_capacity_check_failed", nodeID, userID, apiKeyID, amount, probe)
+	s.logCapacityDenied(operation, "post_request_capacity_check_failed", nodeID, userID, apiKeyID, requestAmount, probe)
 	return false
 }
 

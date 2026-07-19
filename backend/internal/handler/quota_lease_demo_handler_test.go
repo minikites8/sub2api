@@ -157,7 +157,8 @@ func (r *quotaLeaseDemoBillingRepoStub) ReleaseBatchImageBalance(context.Context
 
 type quotaLeaseDemoAPIKeyRepoStub struct {
 	service.APIKeyRepository
-	apiKey *service.APIKey
+	apiKey     *service.APIKey
+	apiKeyByID *service.APIKey
 }
 
 func (r *quotaLeaseDemoAPIKeyRepoStub) Create(context.Context, *service.APIKey) error {
@@ -165,7 +166,10 @@ func (r *quotaLeaseDemoAPIKeyRepoStub) Create(context.Context, *service.APIKey) 
 }
 
 func (r *quotaLeaseDemoAPIKeyRepoStub) GetByID(context.Context, int64) (*service.APIKey, error) {
-	panic("unexpected GetByID call")
+	if r.apiKeyByID != nil {
+		return r.apiKeyByID, nil
+	}
+	return r.apiKey, nil
 }
 
 func (r *quotaLeaseDemoAPIKeyRepoStub) GetKeyAndOwnerID(context.Context, int64) (string, int64, error) {
@@ -714,6 +718,57 @@ func TestQuotaLeaseDemoHandlerAuthorizeClientKeyCapsExplicitAmountToUserBalance(
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.InDelta(t, 0.6, body.Lease.Granted, 1e-12)
+}
+
+func TestQuotaLeaseDemoHandlerAuthorizeClientKeyUsesFreshBalanceForLease(t *testing.T) {
+	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
+	cached := &service.APIKey{
+		ID:     20,
+		UserID: 10,
+		Key:    "sk-live-user",
+		Status: service.StatusAPIKeyActive,
+		User: &service.User{
+			ID:      10,
+			Status:  service.StatusActive,
+			Balance: 0.6,
+		},
+	}
+	fresh := &service.APIKey{
+		ID:     20,
+		UserID: 10,
+		Key:    "sk-live-user",
+		Status: service.StatusAPIKeyActive,
+		User: &service.User{
+			ID:      10,
+			Status:  service.StatusActive,
+			Balance: -0.001,
+		},
+	}
+	apiKeySvc := service.NewAPIKeyService(
+		&quotaLeaseDemoAPIKeyRepoStub{
+			apiKey:     cached,
+			apiKeyByID: fresh,
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		&config.Config{},
+	)
+	h := NewQuotaLeaseDemoHandler(svc)
+	h.SetAPIKeyService(apiKeySvc)
+	router.POST("/api/v1/node-leases/demo/auth/client-key/fresh", h.AuthorizeClientKey)
+
+	req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/auth/client-key/fresh", map[string]any{
+		"api_key": "sk-live-user",
+	})
+	req.Header.Set("X-Node-Secret", "control-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "no_capacity")
+	require.Empty(t, svc.Snapshot().Leases)
 }
 
 func TestQuotaLeaseDemoHandlerAuthorizeClientKeyRejectsZeroBalanceWithExistingLease(t *testing.T) {
