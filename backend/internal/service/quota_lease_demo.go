@@ -787,14 +787,13 @@ func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey 
 	}
 	nodeID := s.activeNodeID()
 	amount := s.DefaultGrantAmount()
-	probe := s.inspectCapacitySnapshot(nodeID, apiKey.User.ID, apiKey.ID, amount, time.Now().UTC())
-	if probe.BestLeaseStatus == QuotaLeaseDemoStatusActive && probe.BestLeaseRemaining+1e-12 >= amount {
-		return true
+	if balance := apiKey.User.Balance; finitePositive(balance) && balance < amount {
+		amount = balance
 	}
-	if probe.ActiveMatchingLeases == 0 {
-		return s.ensureCapacity(ctx, "gateway_preflight", nodeID, apiKey.User.ID, apiKey.ID, amount)
+	if !finitePositive(amount) {
+		return false
 	}
-	return false
+	return s.ensureCapacity(ctx, "gateway_preflight", nodeID, apiKey.User.ID, apiKey.ID, amount)
 }
 
 func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *UsageBillingCommand) (handled bool, applied bool, err error) {

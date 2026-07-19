@@ -1568,7 +1568,7 @@ func TestQuotaLeaseDemoRemotePreflightUsesRegisteredNodeLease(t *testing.T) {
 
 	require.True(t, node.CanAuthorizeRequest(ctx, &APIKey{
 		ID:   20,
-		User: &User{ID: 10},
+		User: &User{ID: 10, Balance: 0.5},
 	}, nil))
 
 	preflightSnapshot := control.Snapshot()
@@ -1596,7 +1596,7 @@ func TestQuotaLeaseDemoRemotePreflightUsesRegisteredNodeLease(t *testing.T) {
 	require.Equal(t, preflightLease.ID, nodeSnapshot.Leases[0].ID)
 }
 
-func TestQuotaLeaseDemoRemotePreflightRejectsWhenRemainingBelowDefaultGrant(t *testing.T) {
+func TestQuotaLeaseDemoRemotePreflightCapsToUserBalance(t *testing.T) {
 	control := NewQuotaLeaseDemoService(&config.Config{
 		Gateway: config.GatewayConfig{
 			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
@@ -1632,25 +1632,42 @@ func TestQuotaLeaseDemoRemotePreflightRejectsWhenRemainingBelowDefaultGrant(t *t
 			},
 		},
 	})
+	node.SetSettingService(NewSettingService(newQuotaLeaseDemoSettingRepo(), &config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				NodeID:                 "configured-node-lease",
+				ControlPlaneBaseURL:    server.URL,
+				ControlPlaneKey:        "control-secret",
+				DefaultGrantAmount:     1,
+				LeaseTTLSeconds:        600,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	}))
 	node.remoteNodeID = registered.Node.NodeID
 	node.remoteNodeSecret = registered.NodeSecret
 
-	lease, err := node.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+	lease, err := control.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   registered.Node.NodeID,
 		UserID:   10,
 		APIKeyID: 20,
 		Amount:   0.00144,
 	})
 	require.NoError(t, err)
 	require.Equal(t, registered.Node.NodeID, lease.NodeID)
+	node.cacheRemoteLease(lease)
 
-	require.False(t, node.CanAuthorizeRequest(ctx, &APIKey{
+	require.True(t, node.CanAuthorizeRequest(ctx, &APIKey{
 		ID:   20,
-		User: &User{ID: 10},
+		User: &User{ID: 10, Balance: 0.5},
 	}, nil))
 
 	snapshot := control.Snapshot()
 	require.Len(t, snapshot.Leases, 1)
-	require.InDelta(t, 0.00144, snapshot.Leases[0].Remaining(), 1e-12)
+	require.InDelta(t, 0.5, snapshot.Leases[0].Granted, 1e-12)
+	require.InDelta(t, 0.5, snapshot.Leases[0].Remaining(), 1e-12)
 }
 
 func TestQuotaLeaseDemoNodeWorkerExecutesPendingAccountTask(t *testing.T) {
