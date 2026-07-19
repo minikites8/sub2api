@@ -319,9 +319,11 @@ func ProvideQuotaLeaseDemoNodeWorker(
 	accountUsageService *AccountUsageService,
 	openAIQuotaService *OpenAIQuotaService,
 	grokQuotaService *GrokQuotaService,
+	channelService *ChannelService,
 ) *QuotaLeaseDemoNodeWorker {
 	svc := GetQuotaLeaseDemoService(cfg)
 	svc.SetMirrorStore(mirrorStore)
+	svc.SetChannelService(channelService)
 	worker := NewQuotaLeaseDemoNodeWorker(
 		svc,
 		NewQuotaLeaseDemoOAuthAccountTaskExecutor(openaiOAuth, grokOAuth),

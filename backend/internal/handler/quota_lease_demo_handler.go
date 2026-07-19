@@ -14,11 +14,12 @@ import (
 )
 
 type QuotaLeaseDemoHandler struct {
-	svc           *service.QuotaLeaseDemoService
-	adminSvc      service.AdminService
-	apiKeyService *service.APIKeyService
-	usageService  *service.UsageService
-	opsService    *service.OpsService
+	svc            *service.QuotaLeaseDemoService
+	adminSvc       service.AdminService
+	apiKeyService  *service.APIKeyService
+	usageService   *service.UsageService
+	opsService     *service.OpsService
+	channelService *service.ChannelService
 }
 
 const (
@@ -53,6 +54,13 @@ func (h *QuotaLeaseDemoHandler) SetOpsService(opsService *service.OpsService) {
 		return
 	}
 	h.opsService = opsService
+}
+
+func (h *QuotaLeaseDemoHandler) SetChannelService(channelService *service.ChannelService) {
+	if h == nil {
+		return
+	}
+	h.channelService = channelService
 }
 
 func (h *QuotaLeaseDemoHandler) InjectControlSecret(c *gin.Context) {
@@ -515,6 +523,19 @@ func (h *QuotaLeaseDemoHandler) buildMirrorSnapshot(ctx context.Context, nodeID 
 	snapshot.Groups = make([]service.QuotaLeaseDemoGroupSnapshot, 0, len(groups))
 	for _, group := range groups {
 		snapshot.Groups = append(snapshot.Groups, quotaLeaseDemoHandlerGroupSnapshot(group))
+	}
+
+	if h.channelService != nil {
+		channels, err := h.channelService.ListAll(ctx)
+		if err != nil {
+			return snapshot, err
+		}
+		snapshot.Channels = make([]service.QuotaLeaseDemoChannelSnapshot, 0, len(channels))
+		for _, channel := range channels {
+			snapshot.Channels = append(snapshot.Channels, service.NewQuotaLeaseDemoChannelSnapshot(channel))
+		}
+	} else {
+		snapshot.Channels = []service.QuotaLeaseDemoChannelSnapshot{}
 	}
 
 	proxies, err := h.adminSvc.GetAllProxies(ctx)

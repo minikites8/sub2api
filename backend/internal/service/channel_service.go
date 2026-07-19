@@ -352,6 +352,16 @@ func (s *ChannelService) invalidateCache() {
 	}
 }
 
+func (s *ChannelService) RefreshCache(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	s.cache.Store((*channelCache)(nil))
+	s.cacheSF.Forget("channel_cache")
+	_, err := s.buildCache(ctx)
+	return err
+}
+
 // matchWildcard 在通配符定价中查找匹配项（最先匹配到优先）
 func (c *channelCache) matchWildcard(groupID int64, platform, modelLower string) *ChannelModelPricing {
 	gpKey := channelGroupPlatformKey{groupID: groupID, platform: platform}
@@ -904,6 +914,20 @@ func (s *ChannelService) List(ctx context.Context, params pagination.PaginationP
 		channels[i].normalizeBillingModelSource()
 	}
 	return channels, res, nil
+}
+
+func (s *ChannelService) ListAll(ctx context.Context) ([]Channel, error) {
+	if s == nil || s.repo == nil {
+		return nil, nil
+	}
+	channels, err := s.repo.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range channels {
+		channels[i].normalizeBillingModelSource()
+	}
+	return channels, nil
 }
 
 // modelEntry 表示一个模型模式条目（用于冲突检测）

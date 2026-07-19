@@ -51,6 +51,70 @@ func TestQuotaLeaseDemoMirrorAccountGroupsFromIDsDefaultCreatedAt(t *testing.T) 
 	require.False(t, groups[0].CreatedAt.IsZero())
 }
 
+func TestQuotaLeaseDemoMirrorStoreUpsertChannelsWritesPricingSnapshot(t *testing.T) {
+	store := &quotaLeaseDemoMirrorStore{}
+	exec := &quotaLeaseDemoMirrorSQLRecorder{}
+	now := time.Now().UTC()
+	inputPrice := 0.000001
+	outputPrice := 0.000002
+	imageInputPrice := 0.000003
+	imageOutputPrice := 0.04
+	priorityMultiplier := 1.25
+	maxTokens := 8192
+
+	err := store.upsertChannels(context.Background(), exec, []service.Channel{{
+		ID:                         77,
+		Name:                       "premium",
+		Status:                     service.StatusActive,
+		BillingModelSource:         service.BillingModelSourceChannelMapped,
+		RestrictModels:             true,
+		FeaturesConfig:             map[string]any{"web_search_emulation": map[string]any{"openai": true}},
+		ApplyPricingToAccountStats: true,
+		GroupIDs:                   []int64{11, 12},
+		ModelMapping:               map[string]map[string]string{service.PlatformOpenAI: {"gpt-5.5": "gpt-5.5-chat-latest"}},
+		ModelPricing: []service.ChannelModelPricing{{
+			ID:                 88,
+			Platform:           service.PlatformOpenAI,
+			Models:             []string{"gpt-5.5"},
+			BillingMode:        service.BillingModeToken,
+			InputPrice:         &inputPrice,
+			OutputPrice:        &outputPrice,
+			ImageInputPrice:    &imageInputPrice,
+			ImageOutputPrice:   &imageOutputPrice,
+			PriorityMultiplier: &priorityMultiplier,
+			Intervals: []service.PricingInterval{{
+				ID:              99,
+				MinTokens:       1024,
+				MaxTokens:       &maxTokens,
+				InputPrice:      &inputPrice,
+				OutputPrice:     &outputPrice,
+				PerRequestPrice: &imageOutputPrice,
+				SortOrder:       1,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+			}},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}})
+	require.NoError(t, err)
+
+	require.Len(t, exec.calls, 6)
+	require.Contains(t, exec.calls[2].query, "INSERT INTO channels")
+	require.Contains(t, exec.calls[2].query, "ON CONFLICT (id) DO UPDATE")
+	require.Equal(t, int64(77), exec.calls[2].args[0])
+	require.Contains(t, exec.calls[3].query, "INSERT INTO channel_groups")
+	require.Contains(t, exec.calls[4].query, "INSERT INTO channel_model_pricing")
+	require.Equal(t, int64(88), exec.calls[4].args[0])
+	require.Equal(t, int64(77), exec.calls[4].args[1])
+	require.Equal(t, service.PlatformOpenAI, exec.calls[4].args[2])
+	require.Contains(t, exec.calls[5].query, "INSERT INTO channel_pricing_intervals")
+	require.Equal(t, int64(99), exec.calls[5].args[0])
+	require.Equal(t, int64(88), exec.calls[5].args[1])
+}
+
 type quotaLeaseDemoMirrorSQLRecorder struct {
 	calls []quotaLeaseDemoMirrorSQLCall
 }

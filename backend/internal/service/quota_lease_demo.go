@@ -94,6 +94,7 @@ type QuotaLeaseDemoService struct {
 	assignedAccounts         map[int64]*QuotaLeaseDemoAssignedAccount
 	registrationURLs         map[string]*QuotaLeaseDemoNodeRegistrationURL
 	mirrorStore              QuotaLeaseDemoMirrorStore
+	channelService           *ChannelService
 	remoteNodeID             string
 	remoteNodeSecret         string
 	remoteControlURL         string

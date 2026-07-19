@@ -1918,6 +1918,86 @@ func TestQuotaLeaseDemoAccountLoginTaskAssignsNodeAccount(t *testing.T) {
 	require.Equal(t, []int64{7}, assigned[0].Account.GroupIDs)
 }
 
+func TestQuotaLeaseDemoChannelSnapshotRoundTripPreservesPricing(t *testing.T) {
+	inputPrice := 0.000001
+	outputPrice := 0.000002
+	cacheWritePrice := 0.0000005
+	cacheReadPrice := 0.0000001
+	imageInputPrice := 0.000003
+	imageOutputPrice := 0.04
+	perRequestPrice := 0.01
+	priorityMultiplier := 1.5
+	maxTokens := 8192
+	now := time.Now().UTC()
+
+	channel := Channel{
+		ID:                         77,
+		Name:                       "premium",
+		Description:                "custom pricing",
+		Status:                     StatusActive,
+		BillingModelSource:         BillingModelSourceChannelMapped,
+		RestrictModels:             true,
+		Features:                   `["web_search"]`,
+		FeaturesConfig:             map[string]any{"web_search_emulation": map[string]any{"openai": true}},
+		ApplyPricingToAccountStats: true,
+		GroupIDs:                   []int64{11, 12},
+		ModelMapping:               map[string]map[string]string{PlatformOpenAI: {"gpt-5.5": "gpt-5.5-chat-latest"}},
+		ModelPricing: []ChannelModelPricing{{
+			ID:                 88,
+			ChannelID:          77,
+			Platform:           PlatformOpenAI,
+			Models:             []string{"gpt-5.5", "gpt-5.5-mini"},
+			BillingMode:        BillingModeToken,
+			InputPrice:         &inputPrice,
+			OutputPrice:        &outputPrice,
+			CacheWritePrice:    &cacheWritePrice,
+			CacheReadPrice:     &cacheReadPrice,
+			ImageInputPrice:    &imageInputPrice,
+			ImageOutputPrice:   &imageOutputPrice,
+			PerRequestPrice:    &perRequestPrice,
+			PriorityMultiplier: &priorityMultiplier,
+			Intervals: []PricingInterval{{
+				ID:              99,
+				PricingID:       88,
+				MinTokens:       1024,
+				MaxTokens:       &maxTokens,
+				TierLabel:       "8K",
+				InputPrice:      &inputPrice,
+				OutputPrice:     &outputPrice,
+				CacheWritePrice: &cacheWritePrice,
+				CacheReadPrice:  &cacheReadPrice,
+				PerRequestPrice: &perRequestPrice,
+				SortOrder:       2,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+			}},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	snapshot := NewQuotaLeaseDemoChannelSnapshot(channel)
+	roundTrip := QuotaLeaseDemoChannelSnapshotToChannel(snapshot)
+
+	require.Equal(t, channel.ID, roundTrip.ID)
+	require.Equal(t, channel.GroupIDs, roundTrip.GroupIDs)
+	require.Equal(t, channel.ModelMapping, roundTrip.ModelMapping)
+	require.Equal(t, channel.FeaturesConfig, roundTrip.FeaturesConfig)
+	require.Len(t, roundTrip.ModelPricing, 1)
+	require.Equal(t, channel.ModelPricing[0].Models, roundTrip.ModelPricing[0].Models)
+	require.Equal(t, channel.ModelPricing[0].BillingMode, roundTrip.ModelPricing[0].BillingMode)
+	require.Equal(t, inputPrice, *roundTrip.ModelPricing[0].InputPrice)
+	require.Equal(t, outputPrice, *roundTrip.ModelPricing[0].OutputPrice)
+	require.Equal(t, imageInputPrice, *roundTrip.ModelPricing[0].ImageInputPrice)
+	require.Equal(t, imageOutputPrice, *roundTrip.ModelPricing[0].ImageOutputPrice)
+	require.Equal(t, priorityMultiplier, *roundTrip.ModelPricing[0].PriorityMultiplier)
+	require.Len(t, roundTrip.ModelPricing[0].Intervals, 1)
+	require.Equal(t, maxTokens, *roundTrip.ModelPricing[0].Intervals[0].MaxTokens)
+	require.Equal(t, perRequestPrice, *roundTrip.ModelPricing[0].Intervals[0].PerRequestPrice)
+}
+
 func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T) {
 	control := newQuotaLeaseDemoTestService()
 	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")

@@ -126,7 +126,11 @@ func registerRoutes(
 	if h != nil && h.Usage != nil {
 		usageSvc = h.Usage.UsageService()
 	}
-	routes.RegisterQuotaLeaseDemoRoutes(v1, cfg, apiKeyService, usageSvc, opsService, adminAuth, settingService, adminSvc)
+	var channelSvc *service.ChannelService
+	if h != nil && h.Admin != nil && h.Admin.Channel != nil {
+		channelSvc = h.Admin.Channel.ChannelService()
+	}
+	routes.RegisterQuotaLeaseDemoRoutes(v1, cfg, apiKeyService, usageSvc, opsService, channelSvc, adminAuth, settingService, adminSvc)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)
 

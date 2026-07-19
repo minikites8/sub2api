@@ -49,6 +49,8 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 	}
 
 	groups := cloneQuotaLeaseDemoMirrorGroups(snapshot.Groups)
+	channelsProvided := snapshot.Channels != nil
+	channels := cloneQuotaLeaseDemoMirrorChannels(snapshot.Channels)
 	proxies := cloneQuotaLeaseDemoMirrorProxies(snapshot.Proxies)
 	accounts := cloneQuotaLeaseDemoMirrorAccounts(snapshot.Accounts, snapshot)
 	accountGroups := cloneQuotaLeaseDemoMirrorAccountGroups(snapshot.AccountGroups, accounts)
@@ -62,6 +64,14 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 	exec := tx.Client()
 	if err := s.upsertGroups(ctx, exec, groups); err != nil {
 		return err
+	}
+	if channelsProvided {
+		if err := s.reconcileMirrorChannels(ctx, exec, channels); err != nil {
+			return err
+		}
+		if err := s.upsertChannels(ctx, exec, channels); err != nil {
+			return err
+		}
 	}
 	if err := s.upsertProxies(ctx, exec, proxies); err != nil {
 		return err
@@ -280,6 +290,234 @@ func (s *quotaLeaseDemoMirrorStore) upsertGroup(ctx context.Context, exec sqlExe
 		group.KiroStickySessionTTLSeconds, group.KiroCacheEmulationRatio, group.KiroEndpointMode,
 		group.CreatedAt, group.UpdatedAt)
 	return err
+}
+
+func (s *quotaLeaseDemoMirrorStore) upsertChannels(ctx context.Context, exec sqlExecutor, channels []service.Channel) error {
+	if len(channels) == 0 {
+		return nil
+	}
+	sort.Slice(channels, func(i, j int) bool {
+		return channels[i].ID < channels[j].ID
+	})
+	channelIDs := make([]int64, 0, len(channels))
+	for _, channel := range channels {
+		if channel.ID > 0 {
+			channelIDs = append(channelIDs, channel.ID)
+		}
+	}
+	if len(channelIDs) > 0 {
+		if _, err := exec.ExecContext(ctx, `DELETE FROM channel_groups WHERE channel_id = ANY($1::bigint[])`, pq.Array(channelIDs)); err != nil {
+			return fmt.Errorf("delete old mirror channel groups: %w", err)
+		}
+		if _, err := exec.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE channel_id = ANY($1::bigint[])`, pq.Array(channelIDs)); err != nil {
+			return fmt.Errorf("delete old mirror channel pricing: %w", err)
+		}
+	}
+	for _, channel := range channels {
+		if err := s.upsertChannel(ctx, exec, channel); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) upsertChannel(ctx context.Context, exec sqlExecutor, channel service.Channel) error {
+	if channel.ID <= 0 {
+		return nil
+	}
+	channel.Name = strings.TrimSpace(channel.Name)
+	if channel.Name == "" {
+		channel.Name = fmt.Sprintf("mirror-channel-%d", channel.ID)
+	}
+	channel.Status = strings.TrimSpace(channel.Status)
+	if channel.Status == "" {
+		channel.Status = service.StatusActive
+	}
+	channel.BillingModelSource = strings.TrimSpace(channel.BillingModelSource)
+	if channel.BillingModelSource == "" {
+		channel.BillingModelSource = service.BillingModelSourceChannelMapped
+	}
+	channel.CreatedAt = quotaLeaseDemoMirrorTimeOrNow(channel.CreatedAt)
+	channel.UpdatedAt = quotaLeaseDemoMirrorTimeOrNow(channel.UpdatedAt)
+
+	modelMapping, err := marshalModelMapping(channel.ModelMapping)
+	if err != nil {
+		return err
+	}
+	featuresConfig, err := marshalFeaturesConfig(channel.FeaturesConfig)
+	if err != nil {
+		return err
+	}
+	if _, err := exec.ExecContext(ctx, `
+		INSERT INTO channels (
+			id, name, description, status, model_mapping, billing_model_source, restrict_models,
+			features, features_config, apply_pricing_to_account_stats, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5::jsonb, $6, $7,
+			$8, $9::jsonb, $10, $11, $12
+		)
+		ON CONFLICT (id) DO UPDATE SET
+			name = EXCLUDED.name,
+			description = EXCLUDED.description,
+			status = EXCLUDED.status,
+			model_mapping = EXCLUDED.model_mapping,
+			billing_model_source = EXCLUDED.billing_model_source,
+			restrict_models = EXCLUDED.restrict_models,
+			features = EXCLUDED.features,
+			features_config = EXCLUDED.features_config,
+			apply_pricing_to_account_stats = EXCLUDED.apply_pricing_to_account_stats,
+			updated_at = EXCLUDED.updated_at
+	`, channel.ID, channel.Name, channel.Description, channel.Status, string(modelMapping), channel.BillingModelSource,
+		channel.RestrictModels, channel.Features, string(featuresConfig), channel.ApplyPricingToAccountStats,
+		channel.CreatedAt, channel.UpdatedAt); err != nil {
+		return fmt.Errorf("upsert mirror channel %d: %w", channel.ID, err)
+	}
+	if err := s.insertMirrorChannelGroupIDs(ctx, exec, channel.ID, channel.GroupIDs); err != nil {
+		return err
+	}
+	if err := s.insertMirrorChannelModelPricing(ctx, exec, channel.ID, channel.ModelPricing); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) insertMirrorChannelGroupIDs(ctx context.Context, exec sqlExecutor, channelID int64, groupIDs []int64) error {
+	if channelID <= 0 || len(groupIDs) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(groupIDs))
+	ids := make([]int64, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if _, exists := seen[groupID]; exists {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		ids = append(ids, groupID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := exec.ExecContext(ctx, `
+		INSERT INTO channel_groups (channel_id, group_id)
+		SELECT $1, unnest($2::bigint[])
+	`, channelID, pq.Array(ids)); err != nil {
+		return fmt.Errorf("insert mirror channel groups for channel %d: %w", channelID, err)
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) insertMirrorChannelModelPricing(ctx context.Context, exec sqlExecutor, channelID int64, pricingList []service.ChannelModelPricing) error {
+	if channelID <= 0 || len(pricingList) == 0 {
+		return nil
+	}
+	sort.Slice(pricingList, func(i, j int) bool {
+		return pricingList[i].ID < pricingList[j].ID
+	})
+	for _, pricing := range pricingList {
+		if err := s.insertMirrorChannelModelPricingItem(ctx, exec, channelID, pricing); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) insertMirrorChannelModelPricingItem(ctx context.Context, exec sqlExecutor, channelID int64, pricing service.ChannelModelPricing) error {
+	if channelID <= 0 || pricing.ID <= 0 {
+		return nil
+	}
+	models, err := json.Marshal(pricing.Models)
+	if err != nil {
+		return fmt.Errorf("marshal mirror channel pricing models: %w", err)
+	}
+	platform := strings.TrimSpace(pricing.Platform)
+	if platform == "" {
+		platform = "anthropic"
+	}
+	billingMode := pricing.BillingMode
+	if billingMode == "" {
+		billingMode = service.BillingModeToken
+	}
+	pricing.CreatedAt = quotaLeaseDemoMirrorTimeOrNow(pricing.CreatedAt)
+	pricing.UpdatedAt = quotaLeaseDemoMirrorTimeOrNow(pricing.UpdatedAt)
+	if _, err := exec.ExecContext(ctx, `
+		INSERT INTO channel_model_pricing (
+			id, channel_id, platform, models, billing_mode, input_price, output_price,
+			cache_write_price, cache_read_price, image_input_price, image_output_price,
+			per_request_price, priority_multiplier, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4::jsonb, $5, $6, $7,
+			$8, $9, $10, $11,
+			$12, $13, $14, $15
+		)
+	`, pricing.ID, channelID, platform, string(models), billingMode,
+		pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
+		pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.PriorityMultiplier,
+		pricing.CreatedAt, pricing.UpdatedAt); err != nil {
+		return fmt.Errorf("insert mirror channel pricing %d: %w", pricing.ID, err)
+	}
+	if err := s.insertMirrorChannelPricingIntervals(ctx, exec, pricing.ID, pricing.Intervals); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) insertMirrorChannelPricingIntervals(ctx context.Context, exec sqlExecutor, pricingID int64, intervals []service.PricingInterval) error {
+	if pricingID <= 0 || len(intervals) == 0 {
+		return nil
+	}
+	sort.Slice(intervals, func(i, j int) bool {
+		if intervals[i].SortOrder == intervals[j].SortOrder {
+			return intervals[i].ID < intervals[j].ID
+		}
+		return intervals[i].SortOrder < intervals[j].SortOrder
+	})
+	for _, interval := range intervals {
+		if interval.ID <= 0 {
+			continue
+		}
+		interval.CreatedAt = quotaLeaseDemoMirrorTimeOrNow(interval.CreatedAt)
+		interval.UpdatedAt = quotaLeaseDemoMirrorTimeOrNow(interval.UpdatedAt)
+		if _, err := exec.ExecContext(ctx, `
+			INSERT INTO channel_pricing_intervals (
+				id, pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price,
+				cache_write_price, cache_read_price, per_request_price, sort_order, created_at, updated_at
+			) VALUES (
+				$1, $2, $3, $4, $5, $6, $7,
+				$8, $9, $10, $11, $12, $13
+			)
+		`, interval.ID, pricingID, interval.MinTokens, interval.MaxTokens, interval.TierLabel,
+			interval.InputPrice, interval.OutputPrice, interval.CacheWritePrice, interval.CacheReadPrice,
+			interval.PerRequestPrice, interval.SortOrder, interval.CreatedAt, interval.UpdatedAt); err != nil {
+			return fmt.Errorf("insert mirror channel pricing interval %d: %w", interval.ID, err)
+		}
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) reconcileMirrorChannels(ctx context.Context, exec sqlExecutor, channels []service.Channel) error {
+	channelIDs := make([]int64, 0, len(channels))
+	for _, channel := range channels {
+		if channel.ID > 0 {
+			channelIDs = append(channelIDs, channel.ID)
+		}
+	}
+	if len(channelIDs) == 0 {
+		_, err := exec.ExecContext(ctx, `DELETE FROM channels`)
+		if err != nil {
+			return fmt.Errorf("delete mirror channels: %w", err)
+		}
+		return nil
+	}
+	if _, err := exec.ExecContext(ctx, `
+		DELETE FROM channels
+		WHERE NOT (id = ANY($1::bigint[]))
+	`, pq.Array(channelIDs)); err != nil {
+		return fmt.Errorf("reconcile mirror channels: %w", err)
+	}
+	return nil
 }
 
 func (s *quotaLeaseDemoMirrorStore) upsertProxies(ctx context.Context, exec sqlExecutor, proxies []service.Proxy) error {
@@ -626,6 +864,10 @@ func (s *quotaLeaseDemoMirrorStore) bumpSequences(ctx context.Context, exec sqlE
 		table string
 	}{
 		{table: "groups"},
+		{table: "channels"},
+		{table: "channel_groups"},
+		{table: "channel_model_pricing"},
+		{table: "channel_pricing_intervals"},
 		{table: "proxies"},
 		{table: "accounts"},
 	}
@@ -650,6 +892,21 @@ func cloneQuotaLeaseDemoMirrorGroups(src []service.QuotaLeaseDemoGroupSnapshot) 
 	out := make([]service.Group, 0, len(src))
 	for _, item := range src {
 		out = append(out, service.QuotaLeaseDemoGroupSnapshotToGroup(item))
+	}
+	return out
+}
+
+func cloneQuotaLeaseDemoMirrorChannels(src []service.QuotaLeaseDemoChannelSnapshot) []service.Channel {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]service.Channel, 0, len(src))
+	for _, item := range src {
+		channel := service.QuotaLeaseDemoChannelSnapshotToChannel(item)
+		if channel.ID <= 0 {
+			continue
+		}
+		out = append(out, channel)
 	}
 	return out
 }

@@ -14,6 +14,7 @@ func RegisterQuotaLeaseDemoRoutes(
 	apiKeyService *service.APIKeyService,
 	usageService *service.UsageService,
 	opsService *service.OpsService,
+	channelService *service.ChannelService,
 	adminAuth middleware.AdminAuthMiddleware,
 	settingService *service.SettingService,
 	adminSvc ...service.AdminService,
@@ -22,6 +23,7 @@ func RegisterQuotaLeaseDemoRoutes(
 	h.SetAPIKeyService(apiKeyService)
 	h.SetUsageService(usageService)
 	h.SetOpsService(opsService)
+	h.SetChannelService(channelService)
 	group := v1.Group("/node-leases/demo")
 	registerQuotaLeaseDemoGroup(group, h)
 

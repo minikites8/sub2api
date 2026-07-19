@@ -25,6 +25,13 @@ func NewChannelHandler(channelService *service.ChannelService, billingService *s
 	return &ChannelHandler{channelService: channelService, billingService: billingService, pricingService: pricingService}
 }
 
+func (h *ChannelHandler) ChannelService() *service.ChannelService {
+	if h == nil {
+		return nil
+	}
+	return h.channelService
+}
+
 // --- Request / Response types ---
 
 type createChannelRequest struct {
