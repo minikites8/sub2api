@@ -71,6 +71,7 @@ type DeletedKeyAuditResult struct {
 }
 
 type OpsInsertErrorLogInput struct {
+	NodeID          string
 	RequestID       string
 	ClientRequestID string
 

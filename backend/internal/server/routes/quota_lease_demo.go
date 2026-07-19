@@ -13,6 +13,7 @@ func RegisterQuotaLeaseDemoRoutes(
 	cfg *config.Config,
 	apiKeyService *service.APIKeyService,
 	usageService *service.UsageService,
+	opsService *service.OpsService,
 	adminAuth middleware.AdminAuthMiddleware,
 	settingService *service.SettingService,
 	adminSvc ...service.AdminService,
@@ -20,6 +21,7 @@ func RegisterQuotaLeaseDemoRoutes(
 	h := handler.NewQuotaLeaseDemoHandler(service.GetQuotaLeaseDemoService(cfg), adminSvc...)
 	h.SetAPIKeyService(apiKeyService)
 	h.SetUsageService(usageService)
+	h.SetOpsService(opsService)
 	group := v1.Group("/node-leases/demo")
 	registerQuotaLeaseDemoGroup(group, h)
 
@@ -55,6 +57,7 @@ func registerQuotaLeaseDemoGroup(group *gin.RouterGroup, h *handler.QuotaLeaseDe
 	group.POST("/leases/request", h.RequestLease)
 	group.POST("/usage/batch", h.PostUsageBatch)
 	group.POST("/usage-logs/batch", h.PostUsageLogBatch)
+	group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
 	group.POST("/reclaim", h.ReclaimExpired)
 	group.GET("/status", h.Status)
 }

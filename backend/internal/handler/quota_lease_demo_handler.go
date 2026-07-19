@@ -18,6 +18,7 @@ type QuotaLeaseDemoHandler struct {
 	adminSvc      service.AdminService
 	apiKeyService *service.APIKeyService
 	usageService  *service.UsageService
+	opsService    *service.OpsService
 }
 
 const (
@@ -45,6 +46,13 @@ func (h *QuotaLeaseDemoHandler) SetUsageService(usageService *service.UsageServi
 		return
 	}
 	h.usageService = usageService
+}
+
+func (h *QuotaLeaseDemoHandler) SetOpsService(opsService *service.OpsService) {
+	if h == nil {
+		return
+	}
+	h.opsService = opsService
 }
 
 func (h *QuotaLeaseDemoHandler) InjectControlSecret(c *gin.Context) {
@@ -1309,6 +1317,80 @@ func (h *QuotaLeaseDemoHandler) PostUsageLogBatch(c *gin.Context) {
 		row.Applied = inserted
 		row.Duplicate = !inserted
 		result.Results = append(result.Results, row)
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *QuotaLeaseDemoHandler) PostOpsErrorLogBatch(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	if h.opsService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "ops_service_unavailable"})
+		return
+	}
+	var req service.QuotaLeaseDemoOpsErrorLogBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	nodeID, ok := h.authenticateNodeOrControl(c, req.NodeID)
+	if !ok {
+		return
+	}
+	if nodeID != "" {
+		if req.NodeID == "" {
+			req.NodeID = nodeID
+		}
+		if req.NodeID != nodeID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "node_mismatch"})
+			return
+		}
+		for _, item := range req.Logs {
+			if strings.TrimSpace(item.NodeID) != "" && strings.TrimSpace(item.NodeID) != nodeID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "node_mismatch"})
+				return
+			}
+		}
+	}
+
+	result := service.QuotaLeaseDemoOpsErrorLogBatchResult{
+		Results: make([]service.QuotaLeaseDemoOpsErrorLogResult, 0, len(req.Logs)),
+	}
+	entries := make([]*service.OpsInsertErrorLogInput, 0, len(req.Logs))
+	for _, item := range req.Logs {
+		if strings.TrimSpace(item.NodeID) == "" {
+			item.NodeID = strings.TrimSpace(req.NodeID)
+		}
+		key := item.Key()
+		row := service.QuotaLeaseDemoOpsErrorLogResult{
+			Key:             key,
+			RequestID:       strings.TrimSpace(item.RequestID),
+			ClientRequestID: strings.TrimSpace(item.ClientRequestID),
+		}
+		if key == "" {
+			row.Error = "error log identity is required"
+			result.Results = append(result.Results, row)
+			continue
+		}
+		entries = append(entries, item.ToOpsInsertErrorLogInput())
+		result.Results = append(result.Results, row)
+	}
+	if len(entries) > 0 {
+		if err := h.opsService.RecordErrorBatch(c.Request.Context(), entries); err != nil {
+			for i := range result.Results {
+				if strings.TrimSpace(result.Results[i].Error) == "" {
+					result.Results[i].Error = err.Error()
+				}
+			}
+			c.JSON(http.StatusOK, result)
+			return
+		}
+		for i := range result.Results {
+			if strings.TrimSpace(result.Results[i].Error) == "" {
+				result.Results[i].Applied = true
+			}
+		}
 	}
 	c.JSON(http.StatusOK, result)
 }

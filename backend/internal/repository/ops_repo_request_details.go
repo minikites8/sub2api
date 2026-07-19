@@ -115,7 +115,7 @@ WITH combined AS (
     'error'::TEXT AS kind,
     o.created_at AS created_at,
     COALESCE(NULLIF(o.request_id,''), NULLIF(o.client_request_id,''), '') AS request_id,
-    NULL::TEXT AS node_id,
+    o.node_id AS node_id,
     COALESCE(NULLIF(o.platform, ''), NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
     o.model AS model,
     o.duration_ms AS duration_ms,

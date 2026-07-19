@@ -86,6 +86,7 @@ type QuotaLeaseDemoService struct {
 	nodes                    map[string]*QuotaLeaseDemoNode
 	pendingEvents            map[string]QuotaLeaseDemoUsageEvent
 	pendingUsageLogs         map[string]QuotaLeaseDemoUsageLogSnapshot
+	pendingOpsErrorLogs      map[string]QuotaLeaseDemoOpsErrorLogSnapshot
 	prefetchState            map[string]*quotaLeaseDemoPrefetchState
 	clientAuthCache          map[string]*quotaLeaseDemoClientAuthCacheEntry
 	accountTasks             map[string]*QuotaLeaseDemoAccountLoginTask
@@ -102,18 +103,19 @@ type QuotaLeaseDemoService struct {
 
 func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 	return &QuotaLeaseDemoService{
-		cfg:              cfg,
-		leases:           make(map[string]*QuotaLeaseDemoLease),
-		events:           make(map[string]*QuotaLeaseDemoLedgerEvent),
-		nodes:            make(map[string]*QuotaLeaseDemoNode),
-		pendingEvents:    make(map[string]QuotaLeaseDemoUsageEvent),
-		pendingUsageLogs: make(map[string]QuotaLeaseDemoUsageLogSnapshot),
-		prefetchState:    make(map[string]*quotaLeaseDemoPrefetchState),
-		clientAuthCache:  make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
-		accountTasks:     make(map[string]*QuotaLeaseDemoAccountLoginTask),
-		usageProbeTasks:  make(map[string]*QuotaLeaseDemoUsageProbeTask),
-		assignedAccounts: make(map[int64]*QuotaLeaseDemoAssignedAccount),
-		registrationURLs: make(map[string]*QuotaLeaseDemoNodeRegistrationURL),
+		cfg:                 cfg,
+		leases:              make(map[string]*QuotaLeaseDemoLease),
+		events:              make(map[string]*QuotaLeaseDemoLedgerEvent),
+		nodes:               make(map[string]*QuotaLeaseDemoNode),
+		pendingEvents:       make(map[string]QuotaLeaseDemoUsageEvent),
+		pendingUsageLogs:    make(map[string]QuotaLeaseDemoUsageLogSnapshot),
+		pendingOpsErrorLogs: make(map[string]QuotaLeaseDemoOpsErrorLogSnapshot),
+		prefetchState:       make(map[string]*quotaLeaseDemoPrefetchState),
+		clientAuthCache:     make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
+		accountTasks:        make(map[string]*QuotaLeaseDemoAccountLoginTask),
+		usageProbeTasks:     make(map[string]*QuotaLeaseDemoUsageProbeTask),
+		assignedAccounts:    make(map[int64]*QuotaLeaseDemoAssignedAccount),
+		registrationURLs:    make(map[string]*QuotaLeaseDemoNodeRegistrationURL),
 	}
 }
 
@@ -579,12 +581,14 @@ func (s *QuotaLeaseDemoService) RuntimeHeartbeatRequest() QuotaLeaseDemoNodeHear
 	}
 	pendingUsageEvents := len(s.pendingEvents)
 	pendingUsageLogs := len(s.pendingUsageLogs)
+	pendingOpsErrorLogs := len(s.pendingOpsErrorLogs)
 	s.mu.Unlock()
 
 	req.Metrics = map[string]float64{
-		"active_leases":        float64(activeLeases),
-		"pending_usage_events": float64(pendingUsageEvents),
-		"pending_usage_logs":   float64(pendingUsageLogs),
+		"active_leases":          float64(activeLeases),
+		"pending_usage_events":   float64(pendingUsageEvents),
+		"pending_usage_logs":     float64(pendingUsageLogs),
+		"pending_ops_error_logs": float64(pendingOpsErrorLogs),
 	}
 	return req
 }

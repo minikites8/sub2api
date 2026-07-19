@@ -691,6 +691,7 @@ const errAllColumns = computed(() => [
   { key: 'user', label: t('admin.ops.errorLog.user') },
   { key: 'api_key', label: t('admin.ops.errorLog.apiKey') },
   { key: 'account', label: t('admin.ops.errorLog.account') },
+  { key: 'node_id', label: t('admin.ops.errorLog.requestNode') },
   { key: 'platform', label: t('admin.ops.errorLog.platform') },
   { key: 'model', label: t('admin.ops.errorLog.model') },
   { key: 'endpoint', label: t('admin.ops.errorLog.endpoint') },

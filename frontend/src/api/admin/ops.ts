@@ -893,6 +893,7 @@ export interface OpsSystemLogSinkHealth {
 export interface OpsErrorLog {
   id: number
   created_at: string
+  node_id?: string
 
   // Standardized classification
   phase: OpsPhase

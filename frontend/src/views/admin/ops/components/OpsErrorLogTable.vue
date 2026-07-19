@@ -113,6 +113,17 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-node_id="{ row }">
+          <span
+            v-if="row.node_id"
+            class="block max-w-[180px] truncate font-mono text-xs text-gray-700 dark:text-gray-300"
+            :title="row.node_id"
+          >
+            {{ row.node_id }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-category="{ row }">
           <span class="text-sm text-gray-900 dark:text-white">
             {{ t('usage.errors.categories.' + mapErrorCategory(row.phase, row.type)) }}
@@ -213,6 +224,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'user', label: t('admin.ops.errorLog.user') },
   { key: 'api_key', label: t('admin.ops.errorLog.apiKey') },
   { key: 'account', label: t('admin.ops.errorLog.account') },
+  { key: 'node_id', label: t('admin.ops.errorLog.requestNode') },
   { key: 'platform', label: t('admin.ops.errorLog.platform') },
   { key: 'model', label: t('admin.ops.errorLog.model'), sortable: true },
   { key: 'endpoint', label: t('admin.ops.errorLog.endpoint') },

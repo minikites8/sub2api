@@ -25,6 +25,7 @@ type OpsSystemLog struct {
 type OpsErrorLog struct {
 	ID        int64     `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
+	NodeID    string    `json:"node_id,omitempty"`
 
 	// Standardized classification
 	// - phase: request|auth|account_auth|routing|upstream|network|internal

@@ -26,6 +26,7 @@ INSERT INTO ops_error_logs (
   account_id,
   group_id,
   client_ip,
+  node_id,
   platform,
   model,
   request_path,
@@ -61,7 +62,7 @@ INSERT INTO ops_error_logs (
   deleted_key_name,
   api_key_prefix
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -140,6 +141,7 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullInt64(input.AccountID),
 		opsNullInt64(input.GroupID),
 		opsNullString(input.ClientIP),
+		opsNullString(input.NodeID),
 		opsNullString(input.Platform),
 		opsNullString(input.Model),
 		opsNullString(input.RequestPath),
@@ -242,6 +244,7 @@ func (r *opsRepository) ListErrorLogs(ctx context.Context, filter *service.OpsEr
 SELECT
   e.id,
   e.created_at,
+  COALESCE(e.node_id, ''),
   e.error_phase,
   e.error_type,
   COALESCE(e.error_owner, ''),
@@ -319,6 +322,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		if err := rows.Scan(
 			&item.ID,
 			&item.CreatedAt,
+			&item.NodeID,
 			&item.Phase,
 			&item.Type,
 			&item.Owner,
@@ -456,6 +460,7 @@ func (r *opsRepository) GetErrorLogByID(ctx context.Context, id int64) (*service
 SELECT
   e.id,
   e.created_at,
+  COALESCE(e.node_id, ''),
   e.error_phase,
   e.error_type,
   COALESCE(e.error_owner, ''),
@@ -536,6 +541,7 @@ LIMIT 1`
 	err := r.db.QueryRowContext(ctx, q, id).Scan(
 		&out.ID,
 		&out.CreatedAt,
+		&out.NodeID,
 		&out.Phase,
 		&out.Type,
 		&out.Owner,

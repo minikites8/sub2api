@@ -418,6 +418,9 @@ func (w *QuotaLeaseDemoNodeWorker) RunOnce(ctx context.Context) error {
 	if err := w.svc.FlushPendingUsageLogs(ctx); err != nil {
 		combined = errors.Join(combined, err)
 	}
+	if err := w.svc.FlushPendingOpsErrorLogs(ctx); err != nil {
+		combined = errors.Join(combined, err)
+	}
 	if _, err := w.svc.ReportRuntimeHeartbeat(ctx); err != nil {
 		combined = errors.Join(combined, err)
 	}

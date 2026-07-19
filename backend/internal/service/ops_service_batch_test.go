@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -95,6 +96,70 @@ func TestOpsServiceRecordErrorBatch_FallsBackToSingleInsert(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, batchCalls)
 	require.Equal(t, 2, singleCalls)
+}
+
+func TestOpsServiceRecordErrorBatch_QuotaLeaseDemoNodeForwardsWithoutLocalInsert(t *testing.T) {
+	globalQuotaLeaseDemo.mu.Lock()
+	previous := globalQuotaLeaseDemo.svc
+	globalQuotaLeaseDemo.svc = nil
+	globalQuotaLeaseDemo.mu.Unlock()
+	t.Cleanup(func() {
+		globalQuotaLeaseDemo.mu.Lock()
+		globalQuotaLeaseDemo.svc = previous
+		globalQuotaLeaseDemo.mu.Unlock()
+	})
+
+	cfg := &config.Config{
+		DeploymentRole: config.DeploymentRoleNode,
+		Ops: config.OpsConfig{
+			Enabled: true,
+		},
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-us",
+				ControlPlaneBaseURL: "http://127.0.0.1:1",
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	}
+	var localInsertCalls int
+	repo := &opsRepoMock{
+		InsertErrorLogFn: func(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
+			localInsertCalls++
+			return 1, nil
+		},
+		BatchInsertErrorLogsFn: func(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error) {
+			localInsertCalls++
+			return int64(len(inputs)), nil
+		},
+	}
+	svc := NewOpsService(repo, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
+	userID := int64(10)
+	apiKeyID := int64(20)
+	upstreamStatus := 503
+
+	require.NoError(t, svc.RecordErrorBatch(context.Background(), []*OpsInsertErrorLogInput{{
+		RequestID:          "ops-forward-req-1",
+		UserID:             &userID,
+		APIKeyID:           &apiKeyID,
+		Platform:           PlatformOpenAI,
+		Model:              "gpt-5",
+		ErrorPhase:         "upstream",
+		ErrorType:          "upstream_error",
+		StatusCode:         503,
+		ErrorMessage:       "upstream failed",
+		ErrorBody:          `{"access_token":"secret"}`,
+		UpstreamStatusCode: &upstreamStatus,
+	}}))
+
+	require.Zero(t, localInsertCalls)
+	leaseSvc := GetQuotaLeaseDemoService(cfg)
+	pending := leaseSvc.pendingOpsErrorLogSnapshots()
+	require.Len(t, pending, 1)
+	require.Equal(t, "node-us", pending[0].NodeID)
+	require.Equal(t, "ops-forward-req-1", pending[0].RequestID)
+	require.NotContains(t, pending[0].ErrorBody, "secret")
 }
 
 func TestOpsServiceRecordErrorPersistsExplicitAccountAuthStatusZero(t *testing.T) {

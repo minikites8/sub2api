@@ -44,6 +44,26 @@ func (r *quotaLeaseDemoUsageRepoStub) Create(_ context.Context, log *service.Usa
 	return true, nil
 }
 
+type quotaLeaseDemoOpsRepoStub struct {
+	service.OpsRepository
+	mu      sync.Mutex
+	entries []*service.OpsInsertErrorLogInput
+}
+
+func (r *quotaLeaseDemoOpsRepoStub) InsertErrorLog(_ context.Context, input *service.OpsInsertErrorLogInput) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, input)
+	return int64(len(r.entries)), nil
+}
+
+func (r *quotaLeaseDemoOpsRepoStub) BatchInsertErrorLogs(_ context.Context, inputs []*service.OpsInsertErrorLogInput) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, inputs...)
+	return int64(len(inputs)), nil
+}
+
 type quotaLeaseDemoUserRepoStub struct {
 	service.UserRepository
 	mu             sync.Mutex
@@ -298,6 +318,7 @@ func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.Quo
 		group.GET("/accounts/assignments", h.ListAssignedAccounts)
 		group.POST("/leases/request", h.RequestLease)
 		group.POST("/usage/batch", h.PostUsageBatch)
+		group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
 		group.GET("/status", h.Status)
 	}
 	return router, svc
@@ -1187,4 +1208,62 @@ func TestQuotaLeaseDemoHandlerPostsUsageLogBatchWithoutBalanceDeduction(t *testi
 	require.False(t, body.Results[1].Applied)
 	require.True(t, body.Results[1].Duplicate)
 	require.Empty(t, userRepo.balanceUpdates)
+}
+
+func TestQuotaLeaseDemoHandlerPostsOpsErrorLogBatchWithNodeID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:    true,
+				NodeID:     "control-node",
+				NodeSecret: "control-secret",
+			},
+		},
+	})
+	_, err := svc.RegisterNode(context.Background(), service.QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID:     "foreign-1",
+		NodeSecret: "node-secret",
+	})
+	require.NoError(t, err)
+	opsRepo := &quotaLeaseDemoOpsRepoStub{}
+	opsSvc := service.NewOpsService(opsRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewQuotaLeaseDemoHandler(svc)
+	h.SetOpsService(opsSvc)
+
+	router := gin.New()
+	group := router.Group("/api/v1/node-leases/demo")
+	group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
+
+	req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/ops-error-logs/batch", map[string]any{
+		"node_id": "foreign-1",
+		"logs": []map[string]any{
+			{
+				"request_id":    "err-req-1",
+				"user_id":       1,
+				"api_key_id":    2,
+				"platform":      service.PlatformOpenAI,
+				"model":         "gpt-5",
+				"error_phase":   "upstream",
+				"error_type":    "upstream_error",
+				"status_code":   503,
+				"error_message": "upstream failed",
+				"created_at":    time.Now().UTC(),
+			},
+		},
+	})
+	req.Header.Set("X-Node-ID", "foreign-1")
+	req.Header.Set("X-Node-Secret", "node-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body service.QuotaLeaseDemoOpsErrorLogBatchResult
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Results, 1)
+	require.True(t, body.Results[0].Applied)
+	require.Empty(t, body.Results[0].Error)
+	require.Len(t, opsRepo.entries, 1)
+	require.Equal(t, "foreign-1", opsRepo.entries[0].NodeID)
+	require.Equal(t, "err-req-1", opsRepo.entries[0].RequestID)
 }

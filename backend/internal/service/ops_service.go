@@ -146,6 +146,12 @@ func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogIn
 		return nil
 	}
 
+	if s.forwardQuotaLeaseDemoNodeErrorLogs(ctx, []*OpsInsertErrorLogInput{prepared}) {
+		return nil
+	}
+	if s.opsRepo == nil {
+		return nil
+	}
 	if _, err := s.opsRepo.InsertErrorLog(ctx, prepared); err != nil {
 		// Never bubble up to gateway; best-effort logging.
 		log.Printf("[Ops] RecordError failed: %v", err)
@@ -170,6 +176,12 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 		}
 	}
 	if len(prepared) == 0 {
+		return nil
+	}
+	if s.forwardQuotaLeaseDemoNodeErrorLogs(ctx, prepared) {
+		return nil
+	}
+	if s.opsRepo == nil {
 		return nil
 	}
 	if len(prepared) == 1 {
@@ -201,9 +213,6 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 		return nil, false, nil
 	}
 	if !s.IsMonitoringEnabled(ctx) {
-		return nil, false, nil
-	}
-	if s.opsRepo == nil {
 		return nil, false, nil
 	}
 

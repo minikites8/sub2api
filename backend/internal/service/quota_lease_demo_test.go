@@ -1441,6 +1441,101 @@ func TestQuotaLeaseDemoRemoteNodeFlushesUsageLogs(t *testing.T) {
 	require.Len(t, node.pendingUsageLogSnapshots(), 0)
 }
 
+func TestQuotaLeaseDemoRemoteNodeFlushesOpsErrorLogs(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	var received []QuotaLeaseDemoOpsErrorLogSnapshot
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/node-leases/demo/nodes/register":
+			if r.Header.Get("X-Node-Secret") != "control-secret" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			var req QuotaLeaseDemoNodeRegistrationRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			result, err := control.RegisterNode(r.Context(), req)
+			require.NoError(t, err)
+			require.NoError(t, json.NewEncoder(w).Encode(result))
+		case "/api/v1/node-leases/demo/ops-error-logs/batch":
+			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			var req QuotaLeaseDemoOpsErrorLogBatchRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			received = append(received, req.Logs...)
+			result := QuotaLeaseDemoOpsErrorLogBatchResult{Results: make([]QuotaLeaseDemoOpsErrorLogResult, 0, len(req.Logs))}
+			for _, item := range req.Logs {
+				result.Results = append(result.Results, QuotaLeaseDemoOpsErrorLogResult{
+					Key:             item.Key(),
+					RequestID:       item.RequestID,
+					ClientRequestID: item.ClientRequestID,
+					Applied:         true,
+				})
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(result))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-us",
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+	ctx := context.Background()
+	upstreamStatus := 503
+	upstreamMessage := "upstream unavailable"
+	userID := int64(10)
+	apiKeyID := int64(20)
+	accountID := int64(30)
+	snapshot := NewQuotaLeaseDemoOpsErrorLogSnapshot("", &OpsInsertErrorLogInput{
+		UserID:               &userID,
+		APIKeyID:             &apiKeyID,
+		AccountID:            &accountID,
+		RequestID:            "ops-error-req-1",
+		ClientRequestID:      "client-req-1",
+		Platform:             PlatformOpenAI,
+		Model:                "gpt-5",
+		RequestPath:          "/v1/messages",
+		Stream:               true,
+		InboundEndpoint:      "/v1/messages",
+		RequestedModel:       "gpt-5",
+		ErrorPhase:           "upstream",
+		ErrorType:            "upstream_error",
+		Severity:             "P1",
+		StatusCode:           503,
+		ErrorMessage:         "upstream failed",
+		ErrorSource:          "upstream_http",
+		ErrorOwner:           "provider",
+		UpstreamStatusCode:   &upstreamStatus,
+		UpstreamErrorMessage: &upstreamMessage,
+		CreatedAt:            time.Now().UTC(),
+	})
+	require.True(t, node.enqueuePendingOpsErrorLogSnapshot(snapshot))
+
+	require.NoError(t, node.FlushPendingOpsErrorLogs(ctx))
+	require.Len(t, received, 1)
+	require.Equal(t, "node-us", received[0].NodeID)
+	require.Equal(t, "ops-error-req-1", received[0].RequestID)
+	require.NotNil(t, received[0].APIKeyID)
+	require.Equal(t, int64(20), *received[0].APIKeyID)
+	require.NotNil(t, received[0].UpstreamStatusCode)
+	require.Equal(t, 503, *received[0].UpstreamStatusCode)
+	require.Equal(t, "provider", received[0].ErrorOwner)
+	require.Len(t, node.pendingOpsErrorLogSnapshots(), 0)
+}
+
 func TestQuotaLeaseDemoUsageLogSnapshotPreservesNodeID(t *testing.T) {
 	createdAt := time.Date(2026, 7, 18, 12, 45, 0, 0, time.UTC)
 	snapshot := NewQuotaLeaseDemoUsageLogSnapshot("", &UsageLog{
