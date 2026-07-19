@@ -568,11 +568,7 @@ type QuotaLeaseDemoLease struct {
 }
 
 func (l QuotaLeaseDemoLease) Remaining() float64 {
-	remaining := l.Granted - l.Consumed - l.Reclaimed
-	if remaining < 0 {
-		return 0
-	}
-	return remaining
+	return l.Granted - l.Consumed - l.Reclaimed
 }
 
 type QuotaLeaseDemoUsageEvent struct {
@@ -811,6 +807,9 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 		lease = s.findLeaseForConsumption(nodeID, cmd.UserID, cmd.APIKeyID, cmd.BalanceCost, time.Now().UTC())
 	}
 	if lease == nil {
+		lease = s.findActiveLeaseForBilling(nodeID, cmd.UserID, cmd.APIKeyID, time.Now().UTC())
+	}
+	if lease == nil {
 		return true, false, ErrQuotaLeaseDemoNoCapacity
 	}
 	eventID := quotaLeaseDemoUsageEventID(nodeID, lease.ID, cmd.RequestID)
@@ -831,6 +830,13 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 	}
 	if s.remoteMode() && result.Applied && !result.Duplicate {
 		s.enqueuePendingUsageEvent(event)
+		if result.Lease != nil && result.Lease.Remaining() < -1e-12 {
+			target := s.usageBillingCapacityTarget(-result.Lease.Remaining())
+			if !s.ensureCapacity(ctx, "usage_billing_overdraft", nodeID, cmd.UserID, cmd.APIKeyID, target) {
+				return true, true, ErrQuotaLeaseDemoNoCapacity
+			}
+			return true, true, nil
+		}
 		s.flushPendingUsageAsync()
 		s.maybePrefetchUsageLease(ctx, result.Lease, cmd.BalanceCost)
 	}
@@ -904,10 +910,6 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 	if lease.NodeID != event.NodeID || lease.UserID != event.UserID || lease.APIKeyID != event.APIKeyID {
 		return nil, fmt.Errorf("%w: event does not match lease", ErrQuotaLeaseDemoInvalidInput)
 	}
-	if lease.Remaining()+1e-12 < event.Amount {
-		return nil, ErrQuotaLeaseDemoNoCapacity
-	}
-
 	billingApplied, err := s.applyLeaseUsageBilling(ctx, event)
 	if err != nil {
 		return nil, err
@@ -922,7 +924,8 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		}, nil
 	}
 	lease.Consumed += event.Amount
-	if lease.Remaining() > 1e-12 {
+	remaining := lease.Remaining()
+	if remaining > 1e-12 || remaining < -1e-12 {
 		graceSeconds := int(lease.ReclaimAt.Sub(lease.ExpiresAt).Seconds())
 		if graceSeconds <= 0 {
 			graceSeconds = 3600
@@ -931,7 +934,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		lease.ReclaimAt = quotaLeaseDemoReclaimAt(lease.ExpiresAt, graceSeconds)
 	}
 	lease.UpdatedAt = now
-	if lease.Remaining() <= 1e-12 {
+	if math.Abs(remaining) <= 1e-12 {
 		lease.Status = QuotaLeaseDemoStatusClosed
 	}
 	s.events[event.EventID] = &QuotaLeaseDemoLedgerEvent{
@@ -1015,9 +1018,13 @@ func (s *QuotaLeaseDemoService) ReclaimExpired(ctx context.Context, now time.Tim
 			continue
 		}
 		remaining := lease.Remaining()
-		if remaining > 0 {
-			lease.Reclaimed += remaining
-			result.ReclaimedTotal += remaining
+		reclaimed := remaining
+		if reclaimed < 0 {
+			reclaimed = 0
+		}
+		if reclaimed > 0 {
+			lease.Reclaimed += reclaimed
+			result.ReclaimedTotal += reclaimed
 		}
 		lease.Status = QuotaLeaseDemoStatusReclaimed
 		lease.UpdatedAt = now
@@ -1029,9 +1036,9 @@ func (s *QuotaLeaseDemoService) ReclaimExpired(ctx context.Context, now time.Tim
 			NodeID:      lease.NodeID,
 			UserID:      lease.UserID,
 			APIKeyID:    lease.APIKeyID,
-			Amount:      remaining,
+			Amount:      reclaimed,
 			EventType:   QuotaLeaseDemoEventReclaimed,
-			PayloadHash: quotaLeaseDemoPayloadHash(lease.ID, lease.NodeID, lease.UserID, lease.APIKeyID, eventID, remaining, QuotaLeaseDemoEventReclaimed),
+			PayloadHash: quotaLeaseDemoPayloadHash(lease.ID, lease.NodeID, lease.UserID, lease.APIKeyID, eventID, reclaimed, QuotaLeaseDemoEventReclaimed),
 			CreatedAt:   now,
 		}
 	}
@@ -1178,11 +1185,40 @@ func (s *QuotaLeaseDemoService) findLeaseForConsumption(nodeID string, userID, a
 	return cloneQuotaLeaseDemoLease(best)
 }
 
+func (s *QuotaLeaseDemoService) findActiveLeaseForBilling(nodeID string, userID, apiKeyID int64, now time.Time) *QuotaLeaseDemoLease {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var best *QuotaLeaseDemoLease
+	for _, lease := range s.leases {
+		s.refreshLeaseStatusLocked(lease, now)
+		if lease.Status != QuotaLeaseDemoStatusActive {
+			continue
+		}
+		if lease.NodeID != nodeID || lease.UserID != userID || lease.APIKeyID != apiKeyID {
+			continue
+		}
+		if best == nil ||
+			lease.Remaining() > best.Remaining()+1e-12 ||
+			(math.Abs(lease.Remaining()-best.Remaining()) <= 1e-12 && lease.ExpiresAt.Before(best.ExpiresAt)) {
+			best = lease
+		}
+	}
+	return cloneQuotaLeaseDemoLease(best)
+}
+
 func (s *QuotaLeaseDemoService) refreshLeaseStatusLocked(lease *QuotaLeaseDemoLease, now time.Time) {
 	if lease == nil {
 		return
 	}
-	if lease.Status == QuotaLeaseDemoStatusActive && lease.Remaining() <= 1e-12 {
+	remaining := lease.Remaining()
+	if lease.Status == QuotaLeaseDemoStatusActive && remaining < -1e-12 {
+		return
+	}
+	if lease.Status == QuotaLeaseDemoStatusActive && math.Abs(remaining) <= 1e-12 {
 		lease.Status = QuotaLeaseDemoStatusClosed
 		lease.UpdatedAt = now
 		return

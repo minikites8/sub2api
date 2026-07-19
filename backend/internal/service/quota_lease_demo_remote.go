@@ -72,14 +72,9 @@ func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, operation, n
 	var requestErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		if flushErr := s.FlushPendingUsage(ctx); flushErr != nil {
-			slog.Warn("quota_lease_demo.pending_usage_flush_failed",
-				"operation", strings.TrimSpace(operation),
-				"node_id", nodeID,
-				"user_id", userID,
-				"api_key_id", apiKeyID,
-				"amount", amount,
-				"error", flushErr,
-			)
+			probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, amount, time.Now().UTC())
+			s.logCapacityDenied(operation, "pending_usage_flush_failed", nodeID, userID, apiKeyID, amount, probe, flushErr)
+			return false
 		}
 		_, requestErr = s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
 			NodeID:   "",
@@ -584,7 +579,7 @@ func (s *QuotaLeaseDemoService) FlushPendingUsage(ctx context.Context) error {
 		return err
 	}
 	s.removePendingUsageResults(result)
-	return nil
+	return quotaLeaseDemoUsageBatchFlushError(result)
 }
 
 func (s *QuotaLeaseDemoService) FlushPendingUsageLogs(ctx context.Context) error {
@@ -694,6 +689,24 @@ func (s *QuotaLeaseDemoService) removePendingUsageResults(result QuotaLeaseDemoU
 			delete(s.pendingEvents, strings.TrimSpace(item.EventID))
 		}
 	}
+}
+
+func quotaLeaseDemoUsageBatchFlushError(result QuotaLeaseDemoUsageBatchResult) error {
+	for _, item := range result.Results {
+		message := strings.TrimSpace(item.Error)
+		if message == "" {
+			continue
+		}
+		eventID := strings.TrimSpace(item.EventID)
+		if eventID == "" {
+			eventID = strings.TrimSpace(item.LeaseID)
+		}
+		if eventID == "" {
+			return fmt.Errorf("%w: pending usage flush failed: %s", ErrQuotaLeaseDemoNoCapacity, message)
+		}
+		return fmt.Errorf("%w: pending usage %s failed: %s", ErrQuotaLeaseDemoNoCapacity, eventID, message)
+	}
+	return nil
 }
 
 func (s *QuotaLeaseDemoService) cacheRemoteLease(lease *QuotaLeaseDemoLease) {

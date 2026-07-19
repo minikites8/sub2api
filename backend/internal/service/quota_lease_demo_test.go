@@ -618,6 +618,33 @@ func TestQuotaLeaseDemoConsumeUsageIsIdempotent(t *testing.T) {
 	require.InDelta(t, 0.6, second.Lease.Remaining(), 1e-9)
 }
 
+func TestQuotaLeaseDemoConsumeUsageAllowsNegativeRemaining(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   0.02,
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ConsumeUsage(ctx, QuotaLeaseDemoUsageEvent{
+		EventID:   "event-overdraft-1",
+		LeaseID:   lease.ID,
+		NodeID:    "node-1",
+		UserID:    10,
+		APIKeyID:  20,
+		RequestID: "req-overdraft-1",
+		Amount:    1,
+	})
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+	require.InDelta(t, -0.98, result.Lease.Remaining(), 1e-9)
+	require.Equal(t, QuotaLeaseDemoStatusActive, result.Lease.Status)
+	require.False(t, svc.HasCapacity("node-1", 10, 20, 0.000001))
+}
+
 func TestQuotaLeaseDemoUsageBillingChargesBalanceOnConsumption(t *testing.T) {
 	svc := newQuotaLeaseDemoTestService()
 	billing := &quotaLeaseDemoBillingRepo{}
@@ -986,6 +1013,114 @@ func TestQuotaLeaseDemoRemoteNodeFetchesLeaseAndFlushesUsage(t *testing.T) {
 	require.Len(t, controlSnapshot.Leases, 1)
 	require.InDelta(t, 0.25, controlSnapshot.Leases[0].Consumed, 1e-9)
 	require.Len(t, node.pendingUsageEvents(), 0)
+}
+
+func TestQuotaLeaseDemoRemoteOverdraftBlocksWhenUsageFlushFails(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	leaseRequests := 0
+	usageBatchCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/node-leases/demo/nodes/register":
+			require.NoError(t, json.NewEncoder(w).Encode(QuotaLeaseDemoNodeRegistrationResult{
+				Node: &QuotaLeaseDemoNode{
+					NodeID:       "node-us",
+					Secret:       "node-secret",
+					Status:       QuotaLeaseDemoNodeStatusOnline,
+					RegisteredAt: now,
+					UpdatedAt:    now,
+				},
+				NodeSecret: "node-secret",
+			}))
+		case "/api/v1/node-leases/demo/leases/request":
+			leaseRequests++
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"lease": &QuotaLeaseDemoLease{
+					ID:        "lease-small",
+					NodeID:    "node-us",
+					UserID:    10,
+					APIKeyID:  20,
+					Granted:   0.02,
+					Status:    QuotaLeaseDemoStatusActive,
+					ExpiresAt: now.Add(time.Hour),
+					ReclaimAt: now.Add(2 * time.Hour),
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			}))
+		case "/api/v1/node-leases/demo/usage/batch":
+			usageBatchCalls++
+			var req QuotaLeaseDemoUsageBatchRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			results := make([]QuotaLeaseDemoUsageResult, 0, len(req.Events))
+			for _, event := range req.Events {
+				results = append(results, QuotaLeaseDemoUsageResult{
+					EventID: strings.TrimSpace(event.EventID),
+					LeaseID: strings.TrimSpace(event.LeaseID),
+					Error:   "insufficient balance",
+				})
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(QuotaLeaseDemoUsageBatchResult{Results: results}))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-us",
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+				DefaultGrantAmount:  1,
+				LeaseTTLSeconds:     600,
+				ReclaimGraceSeconds: 3600,
+			},
+		},
+	})
+	node.cacheRemoteLease(&QuotaLeaseDemoLease{
+		ID:        "lease-small",
+		NodeID:    "node-us",
+		UserID:    10,
+		APIKeyID:  20,
+		Granted:   0.02,
+		Status:    QuotaLeaseDemoStatusActive,
+		ExpiresAt: now.Add(time.Hour),
+		ReclaimAt: now.Add(2 * time.Hour),
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+
+	handled, applied, err := node.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "req-overdraft-remote",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: 1,
+	})
+	require.ErrorIs(t, err, ErrQuotaLeaseDemoNoCapacity)
+	require.True(t, handled)
+	require.True(t, applied)
+
+	snapshot := node.Snapshot()
+	require.Len(t, snapshot.Leases, 1)
+	require.InDelta(t, -0.98, snapshot.Leases[0].Remaining(), 1e-9)
+	require.Len(t, node.pendingUsageEvents(), 1)
+
+	require.False(t, node.CanAuthorizeRequest(ctx, &APIKey{
+		ID:     20,
+		UserID: 10,
+		User: &User{
+			ID:      10,
+			Status:  StatusActive,
+			Balance: 0.02,
+		},
+	}, nil))
+	require.GreaterOrEqual(t, usageBatchCalls, 1)
+	require.GreaterOrEqual(t, leaseRequests, 1)
 }
 
 func TestQuotaLeaseDemoNodeWorkerReportsRuntimeHeartbeat(t *testing.T) {

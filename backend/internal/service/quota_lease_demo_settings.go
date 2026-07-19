@@ -307,6 +307,7 @@ func (s *QuotaLeaseDemoService) maybePrefetchUsageLease(ctx context.Context, lea
 	}
 	target := s.prefetchTargetAmount(remaining, avg, settings)
 	go func() {
+		defer s.markPrefetchComplete(nodeID, lease.UserID, lease.APIKeyID)
 		reqCtx, cancel := context.WithTimeout(context.Background(), quotaLeaseDemoRemoteTimeout)
 		defer cancel()
 		if flushErr := s.FlushPendingUsage(reqCtx); flushErr != nil {
@@ -316,6 +317,7 @@ func (s *QuotaLeaseDemoService) maybePrefetchUsageLease(ctx context.Context, lea
 				"api_key_id", lease.APIKeyID,
 				"error", flushErr,
 			)
+			return
 		}
 		if _, requestErr := s.RequestLease(reqCtx, QuotaLeaseDemoLeaseRequest{
 			NodeID:   nodeID,
@@ -332,7 +334,6 @@ func (s *QuotaLeaseDemoService) maybePrefetchUsageLease(ctx context.Context, lea
 				"error", requestErr,
 			)
 		}
-		s.markPrefetchComplete(nodeID, lease.UserID, lease.APIKeyID)
 	}()
 }
 
