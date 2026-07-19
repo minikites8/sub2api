@@ -214,6 +214,125 @@ export interface QuotaLeaseDemoReclaimResult {
   reclaimed_total: number
 }
 
+export type QuotaLeaseDemoDiagnosticHealth = 'ok' | 'warning' | 'critical'
+
+export interface QuotaLeaseDemoDiagnosticStats {
+  node_count: number
+  online_nodes: number
+  user_count: number
+  lease_count: number
+  active_leases: number
+  expired_leases: number
+  closed_leases: number
+  reclaimed_leases: number
+  overdraft_leases: number
+  low_capacity_leases: number
+  granted_total: number
+  consumed_total: number
+  reclaimed_total: number
+  remaining_total: number
+  overdraft_total: number
+  event_count: number
+  pending_usage_events: number
+  pending_usage_logs: number
+  pending_ops_error_logs: number
+  issue_count: number
+  warning_count: number
+  critical_count: number
+}
+
+export interface QuotaLeaseDemoDiagnosticIssue {
+  id: string
+  level: QuotaLeaseDemoDiagnosticHealth
+  scope: string
+  code: string
+  message: string
+  detail?: string
+  node_id?: string
+  user_id?: number
+  api_key_id?: number
+  lease_id?: string
+  created_at?: string
+}
+
+export interface QuotaLeaseDemoNodeDiagnostic {
+  node_id: string
+  region?: string
+  base_url?: string
+  status: string
+  health: QuotaLeaseDemoDiagnosticHealth
+  issues?: string[]
+  last_heartbeat_at?: string
+  heartbeat_age_seconds?: number
+  active_lease_count: number
+  active_remaining: number
+  overdraft_amount: number
+  lease_count: number
+  sync_status?: QuotaLeaseDemoNodeSyncStatus
+  pending_usage_events: number
+  pending_usage_logs: number
+  pending_ops_error_logs: number
+}
+
+export interface QuotaLeaseDemoUserDiagnostic {
+  user_id: number
+  username?: string
+  email?: string
+  status?: string
+  balance?: number
+  frozen_balance?: number
+  profile_error?: string
+  health: QuotaLeaseDemoDiagnosticHealth
+  issues?: string[]
+  api_key_ids?: number[]
+  lease_count: number
+  active_lease_count: number
+  active_remaining: number
+  overdraft_amount: number
+  granted_total: number
+  consumed_total: number
+  reclaimed_total: number
+  last_lease_at?: string
+  last_event_at?: string
+}
+
+export interface QuotaLeaseDemoLeaseDiagnostic {
+  id: string
+  node_id: string
+  user_id: number
+  api_key_id: number
+  status: string
+  health: QuotaLeaseDemoDiagnosticHealth
+  issues?: string[]
+  granted: number
+  consumed: number
+  reclaimed: number
+  remaining: number
+  event_count: number
+  usage_event_total: number
+  last_event_at?: string
+  expires_at: string
+  reclaim_at: string
+  created_at: string
+  updated_at: string
+  expires_in_seconds: number
+  reclaim_in_seconds: number
+}
+
+export interface QuotaLeaseDemoDiagnostics {
+  generated_at: string
+  enabled: boolean
+  node_id: string
+  health: QuotaLeaseDemoDiagnosticHealth
+  default_grant_amount: number
+  preflight_reserve_amount: number
+  stats: QuotaLeaseDemoDiagnosticStats
+  issues: QuotaLeaseDemoDiagnosticIssue[]
+  nodes: QuotaLeaseDemoNodeDiagnostic[]
+  users: QuotaLeaseDemoUserDiagnostic[]
+  leases: QuotaLeaseDemoLeaseDiagnostic[]
+}
+
 function requestConfig(options?: NodeLeaseControlOptions) {
   return {
     signal: options?.signal
@@ -362,6 +481,14 @@ export async function reclaimExpired(
   return data
 }
 
+export async function getDiagnostics(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoDiagnostics> {
+  const { data } = await apiClient.get<{ diagnostics: QuotaLeaseDemoDiagnostics }>(
+    `${nodeLeaseDemoAdminBase}/diagnostics`,
+    requestConfig(options)
+  )
+  return data.diagnostics
+}
+
 export const nodeLeasesAPI = {
   getStatus,
   listNodes,
@@ -374,7 +501,8 @@ export const nodeLeasesAPI = {
   createLoginTask,
   submitLoginTaskCallback,
   listAssignedAccounts,
-  reclaimExpired
+  reclaimExpired,
+  getDiagnostics
 }
 
 export default nodeLeasesAPI

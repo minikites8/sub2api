@@ -103,6 +103,7 @@ type quotaLeaseDemoSyncAdminService struct {
 	clearedAccountID int64
 	listedAccounts   []service.Account
 	proxies          map[int64]*service.Proxy
+	users            map[int64]*service.User
 }
 
 func (s *quotaLeaseDemoSyncAdminService) UpdateAccount(_ context.Context, id int64, input *service.UpdateAccountInput) (*service.Account, error) {
@@ -139,6 +140,18 @@ func (s *quotaLeaseDemoSyncAdminService) GetProxy(_ context.Context, id int64) (
 		return nil, nil
 	}
 	return s.proxies[id], nil
+}
+
+func (s *quotaLeaseDemoSyncAdminService) GetUserIncludeDeleted(_ context.Context, id int64) (*service.User, error) {
+	if s.users == nil {
+		return nil, nil
+	}
+	user := s.users[id]
+	if user == nil {
+		return nil, nil
+	}
+	value := *user
+	return &value, nil
 }
 
 type quotaLeaseDemoBillingRepoStub struct {
@@ -319,6 +332,7 @@ func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.Quo
 		group.POST("/leases/request", h.RequestLease)
 		group.POST("/usage/batch", h.PostUsageBatch)
 		group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
+		group.GET("/diagnostics", h.Diagnostics)
 		group.GET("/status", h.Status)
 	}
 	return router, svc
@@ -702,6 +716,84 @@ func TestQuotaLeaseDemoHandlerCreatesRegistrationURLAndStoresNodeSecret(t *testi
 	leaseRec := httptest.NewRecorder()
 	router.ServeHTTP(leaseRec, leaseReq)
 	require.Equal(t, http.StatusOK, leaseRec.Code)
+}
+
+func TestQuotaLeaseDemoHandlerDiagnosticsIncludesUserProfile(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:                true,
+				NodeID:                 "control-node",
+				NodeSecret:             "control-secret",
+				DefaultGrantAmount:     1,
+				ReclaimGraceSeconds:    3600,
+				PreflightReserveAmount: 0.000001,
+			},
+		},
+	})
+	adminSvc := &quotaLeaseDemoSyncAdminService{
+		users: map[int64]*service.User{
+			7: {
+				ID:       7,
+				Username: "alice",
+				Email:    "alice@example.test",
+				Status:   service.StatusActive,
+				Balance:  0,
+			},
+		},
+	}
+	_, err := svc.RegisterNode(context.Background(), service.QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID:     "foreign-1",
+		NodeSecret: "node-secret",
+	})
+	require.NoError(t, err)
+	lease, err := svc.RequestLease(context.Background(), service.QuotaLeaseDemoLeaseRequest{
+		NodeID:   "foreign-1",
+		UserID:   7,
+		APIKeyID: 8,
+		Amount:   0.5,
+	})
+	require.NoError(t, err)
+	_, err = svc.ConsumeUsage(context.Background(), service.QuotaLeaseDemoUsageEvent{
+		EventID:   "evt-diagnostics",
+		LeaseID:   lease.ID,
+		NodeID:    "foreign-1",
+		UserID:    7,
+		APIKeyID:  8,
+		RequestID: "req-diagnostics",
+		Amount:    0.75,
+	})
+	require.NoError(t, err)
+
+	h := NewQuotaLeaseDemoHandler(svc, adminSvc)
+	router := gin.New()
+	router.GET("/api/v1/node-leases/demo/diagnostics", h.Diagnostics)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/node-leases/demo/diagnostics", nil)
+	req.Header.Set("X-Node-Secret", "control-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Diagnostics service.QuotaLeaseDemoDiagnostics `json:"diagnostics"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, service.QuotaLeaseDemoDiagnosticHealthCritical, body.Diagnostics.Health)
+	require.Len(t, body.Diagnostics.Users, 1)
+	require.Equal(t, "alice", body.Diagnostics.Users[0].Username)
+	require.NotNil(t, body.Diagnostics.Users[0].Balance)
+	require.Contains(t, quotaLeaseDemoHandlerDiagnosticIssueCodes(body.Diagnostics.Issues), "lease_overdraft")
+	require.Contains(t, quotaLeaseDemoHandlerDiagnosticIssueCodes(body.Diagnostics.Issues), "user_has_overdraft_lease")
+}
+
+func quotaLeaseDemoHandlerDiagnosticIssueCodes(issues []service.QuotaLeaseDemoDiagnosticIssue) []string {
+	codes := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		codes = append(codes, issue.Code)
+	}
+	return codes
 }
 
 func TestQuotaLeaseDemoHandlerAuthorizeClientKeyUsesDefaultGrantAmountByDefault(t *testing.T) {

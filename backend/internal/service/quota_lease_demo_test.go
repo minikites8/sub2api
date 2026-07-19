@@ -680,6 +680,82 @@ func TestQuotaLeaseDemoPrepareMirrorSnapshotVersionsAndDeltas(t *testing.T) {
 	require.Len(t, fallback.Groups, 1)
 }
 
+func TestQuotaLeaseDemoDiagnosticsFlagsOverdraftAndNodeSync(t *testing.T) {
+	ctx := context.Background()
+	svc := newQuotaLeaseDemoTestService()
+	_, err := svc.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID:     "foreign-1",
+		NodeSecret: "node-secret",
+		Region:     "us-west",
+	})
+	require.NoError(t, err)
+	_, err = svc.HeartbeatNode(ctx, QuotaLeaseDemoNodeHeartbeatRequest{
+		NodeID:           "foreign-1",
+		InflightRequests: 2,
+		LeaseRemaining:   0.1,
+		SyncStatus: &QuotaLeaseDemoNodeSyncStatus{
+			MirrorReady:         true,
+			LastSyncError:       "mirror apply failed",
+			PendingUsageEvents:  3,
+			PendingUsageLogs:    4,
+			PendingOpsErrorLogs: 5,
+		},
+	})
+	require.NoError(t, err)
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "foreign-1",
+		UserID:   7,
+		APIKeyID: 8,
+		Amount:   0.5,
+	})
+	require.NoError(t, err)
+	_, err = svc.ConsumeUsage(ctx, QuotaLeaseDemoUsageEvent{
+		EventID:   "evt-overdraft",
+		LeaseID:   lease.ID,
+		NodeID:    "foreign-1",
+		UserID:    7,
+		APIKeyID:  8,
+		RequestID: "req-overdraft",
+		Amount:    0.75,
+	})
+	require.NoError(t, err)
+
+	balance := 0.0
+	diag := svc.Diagnostics(ctx, func(_ context.Context, userID int64) (QuotaLeaseDemoDiagnosticUserProfile, error) {
+		return QuotaLeaseDemoDiagnosticUserProfile{
+			UserID:   userID,
+			Username: "alice",
+			Status:   StatusActive,
+			Balance:  &balance,
+			Found:    true,
+		}, nil
+	})
+
+	require.Equal(t, QuotaLeaseDemoDiagnosticHealthCritical, diag.Health)
+	require.Equal(t, 1, diag.Stats.OverdraftLeases)
+	require.InDelta(t, 0.25, diag.Stats.OverdraftTotal, 1e-9)
+	require.Equal(t, 3, diag.Stats.PendingUsageEvents)
+	require.Equal(t, 4, diag.Stats.PendingUsageLogs)
+	require.Equal(t, 5, diag.Stats.PendingOpsErrorLogs)
+	require.Len(t, diag.Users, 1)
+	require.Equal(t, "alice", diag.Users[0].Username)
+	require.Equal(t, QuotaLeaseDemoDiagnosticHealthCritical, diag.Users[0].Health)
+	require.Len(t, diag.Nodes, 1)
+	require.Equal(t, QuotaLeaseDemoDiagnosticHealthCritical, diag.Nodes[0].Health)
+	require.Contains(t, quotaLeaseDemoDiagnosticIssueCodes(diag.Issues), "lease_overdraft")
+	require.Contains(t, quotaLeaseDemoDiagnosticIssueCodes(diag.Issues), "node_sync_failed")
+	require.Contains(t, quotaLeaseDemoDiagnosticIssueCodes(diag.Issues), "user_has_overdraft_lease")
+}
+
+func quotaLeaseDemoDiagnosticIssueCodes(issues []QuotaLeaseDemoDiagnosticIssue) []string {
+	codes := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		codes = append(codes, issue.Code)
+	}
+	return codes
+}
+
 func TestQuotaLeaseDemoRemoteNodeReadsPrefetchSettingsFromControlPlane(t *testing.T) {
 	control := newQuotaLeaseDemoTestService()
 	settingSvc := NewSettingService(newQuotaLeaseDemoSettingRepo(), nil)

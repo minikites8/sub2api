@@ -38,6 +38,10 @@
                 <Icon name="cog" size="sm" class="mr-2" />
                 租约设置
               </button>
+              <RouterLink to="/admin/node-leases/diagnostics" class="btn btn-secondary">
+                <Icon name="chart" size="sm" class="mr-2" />
+                租约诊断
+              </RouterLink>
               <button type="button" class="btn btn-secondary" :disabled="reclaiming" @click="reclaimExpired">
                 <Icon name="sync" size="sm" class="mr-2" :class="reclaiming ? 'animate-spin' : ''" />
                 回收
@@ -170,8 +174,10 @@
           <template #cell-remaining="{ row }">
             <span class="font-mono text-xs">{{ formatAmount(leaseRemaining(row)) }}</span>
           </template>
-          <template #cell-status="{ value }">
-            <span :class="['badge', statusBadgeClass(value)]">{{ statusLabel(value) }}</span>
+          <template #cell-status="{ row }">
+            <span :class="['badge', statusBadgeClass(leaseDisplayStatus(row))]">
+              {{ statusLabel(leaseDisplayStatus(row)) }}
+            </span>
           </template>
           <template #cell-expires_at="{ value }">
             <span class="text-xs text-gray-600 dark:text-gray-300">{{ formatTime(value) }}</span>
@@ -413,6 +419,8 @@ const settingsForm = reactive<QuotaLeaseDemoSettings>({
   prefetch_debounce_seconds: 10
 })
 
+const leaseDisplayZeroThreshold = 0.0000005
+
 const stats = computed(() => snapshot.value?.stats || emptyStats)
 
 const nodeFilterOptions = computed(() => [
@@ -653,6 +661,17 @@ function leaseRemaining(row: QuotaLeaseDemoLease) {
   return Math.max(0, (row.granted || 0) - (row.consumed || 0) - (row.reclaimed || 0))
 }
 
+function leaseRawRemaining(row: QuotaLeaseDemoLease) {
+  return (row.granted || 0) - (row.consumed || 0) - (row.reclaimed || 0)
+}
+
+function leaseDisplayStatus(row: QuotaLeaseDemoLease) {
+  if (row.status === 'active' && leaseRawRemaining(row) <= leaseDisplayZeroThreshold) {
+    return 'spent'
+  }
+  return row.status
+}
+
 function formatAmount(value: number) {
   const amount = Number(value || 0)
   return amount.toFixed(6).replace(/\.?0+$/, '')
@@ -734,6 +753,7 @@ function statusLabel(status: string) {
     offline: '离线',
     disabled: '禁用',
     active: '活跃',
+    spent: '已用完',
     expired: '已过期',
     reclaimed: '已回收',
     closed: '已关闭',
@@ -749,7 +769,7 @@ function statusLabel(status: string) {
 
 function statusBadgeClass(status: string) {
   if (['online', 'active', 'completed', 'closed'].includes(status)) return 'badge-success'
-  if (['pending', 'waiting_callback', 'callback_ready', 'expired'].includes(status)) return 'badge-warning'
+  if (['pending', 'waiting_callback', 'callback_ready', 'expired', 'spent'].includes(status)) return 'badge-warning'
   if (['failed', 'error', 'offline', 'disabled'].includes(status)) return 'badge-danger'
   return 'badge-gray'
 }

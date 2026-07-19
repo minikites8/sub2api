@@ -838,7 +838,17 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
-    { path: '/admin/node-leases', label: t('nav.nodeLeases'), icon: ServerIcon, hideInSimpleMode: true },
+    {
+      path: '/admin/node-leases',
+      label: t('nav.nodeLeases'),
+      icon: ServerIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      children: [
+        { path: '/admin/node-leases', label: t('nav.nodeLeaseOverview'), icon: ServerIcon },
+        { path: '/admin/node-leases/diagnostics', label: t('nav.nodeLeaseDiagnostics'), icon: ChartIcon },
+      ],
+    },
     { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },

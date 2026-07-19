@@ -144,6 +144,42 @@ func (h *QuotaLeaseDemoHandler) ListNodes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"nodes": h.svc.ListNodes()})
 }
 
+func (h *QuotaLeaseDemoHandler) Diagnostics(c *gin.Context) {
+	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
+		return
+	}
+	var resolver service.QuotaLeaseDemoDiagnosticUserResolver
+	if h.adminSvc != nil {
+		resolver = h.resolveQuotaLeaseDemoDiagnosticUser
+	}
+	c.JSON(http.StatusOK, gin.H{"diagnostics": h.svc.Diagnostics(c.Request.Context(), resolver)})
+}
+
+func (h *QuotaLeaseDemoHandler) resolveQuotaLeaseDemoDiagnosticUser(ctx context.Context, userID int64) (service.QuotaLeaseDemoDiagnosticUserProfile, error) {
+	profile := service.QuotaLeaseDemoDiagnosticUserProfile{UserID: userID}
+	if h == nil || h.adminSvc == nil || userID <= 0 {
+		return profile, nil
+	}
+	user, err := h.adminSvc.GetUserIncludeDeleted(ctx, userID)
+	if err != nil {
+		return profile, err
+	}
+	if user == nil {
+		return profile, nil
+	}
+	balance := user.Balance
+	frozenBalance := user.FrozenBalance
+	return service.QuotaLeaseDemoDiagnosticUserProfile{
+		UserID:        user.ID,
+		Username:      strings.TrimSpace(user.Username),
+		Email:         strings.TrimSpace(user.Email),
+		Status:        strings.TrimSpace(user.Status),
+		Balance:       &balance,
+		FrozenBalance: &frozenBalance,
+		Found:         true,
+	}, nil
+}
+
 func (h *QuotaLeaseDemoHandler) UpdateNode(c *gin.Context) {
 	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
 		return

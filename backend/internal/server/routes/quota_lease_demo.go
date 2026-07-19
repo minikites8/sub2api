@@ -61,5 +61,6 @@ func registerQuotaLeaseDemoGroup(group *gin.RouterGroup, h *handler.QuotaLeaseDe
 	group.POST("/usage-logs/batch", h.PostUsageLogBatch)
 	group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
 	group.POST("/reclaim", h.ReclaimExpired)
+	group.GET("/diagnostics", h.Diagnostics)
 	group.GET("/status", h.Status)
 }

@@ -167,6 +167,8 @@ export default {
     accounts: 'Accounts',
     proxies: 'Proxies',
     nodeLeases: 'Node Leases',
+    nodeLeaseOverview: 'Lease Overview',
+    nodeLeaseDiagnostics: 'Lease Diagnostics',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
