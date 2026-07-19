@@ -528,13 +528,19 @@ func (s *QuotaLeaseDemoService) reportRemoteAccountStatus(ctx context.Context, r
 	return cloneQuotaLeaseDemoAssignedAccount(result.Account), nil
 }
 
-func (s *QuotaLeaseDemoService) SyncAssignedAccounts(ctx context.Context) error {
+func (s *QuotaLeaseDemoService) SyncAssignedAccounts(ctx context.Context) (err error) {
 	if s == nil || !s.remoteMode() {
 		return nil
 	}
 	if s.quotaLeaseDemoMirrorStore() != nil {
 		return s.SyncMirrorSnapshot(ctx)
 	}
+	s.markNodeSyncStarted(time.Now().UTC())
+	defer func() {
+		if err != nil {
+			s.markNodeSyncFailed(err, time.Now().UTC())
+		}
+	}()
 	nodeID, secret, err := s.remoteNodeAuth(ctx)
 	if err != nil {
 		return err
@@ -546,6 +552,7 @@ func (s *QuotaLeaseDemoService) SyncAssignedAccounts(ctx context.Context) error 
 		return err
 	}
 	s.cacheRemoteAssignedAccounts(nodeID, result.Accounts)
+	s.markAssignedAccountsSynced(result.Accounts, time.Now().UTC())
 	return nil
 }
 

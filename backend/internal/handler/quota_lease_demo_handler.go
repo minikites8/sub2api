@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -501,11 +502,17 @@ func (h *QuotaLeaseDemoHandler) MirrorSnapshot(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "admin_service_unavailable"})
 		return
 	}
+	sinceVersion, err := quotaLeaseDemoHandlerInt64Query(c, "since_version")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
 	snapshot, err := h.buildMirrorSnapshot(c.Request.Context(), nodeID)
 	if err != nil {
 		h.writeError(c, err)
 		return
 	}
+	snapshot = h.svc.PrepareMirrorSnapshot(snapshot, sinceVersion)
 	c.JSON(http.StatusOK, gin.H{"snapshot": snapshot})
 }
 
@@ -1050,6 +1057,18 @@ func quotaLeaseDemoHandlerString(value any) string {
 func quotaLeaseDemoHandlerBool(value any) bool {
 	v, ok := value.(bool)
 	return ok && v
+}
+
+func quotaLeaseDemoHandlerInt64Query(c *gin.Context, key string) (int64, error) {
+	raw := strings.TrimSpace(c.Query(key))
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		return 0, service.ErrQuotaLeaseDemoInvalidInput
+	}
+	return value, nil
 }
 
 func quotaLeaseDemoExternalBaseURL(c *gin.Context) string {

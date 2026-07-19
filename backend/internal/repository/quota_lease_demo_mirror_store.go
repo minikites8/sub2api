@@ -62,6 +62,15 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 	defer func() { _ = tx.Rollback() }()
 
 	exec := tx.Client()
+	if snapshot.Delta {
+		if err := s.applyDelta(ctx, exec, snapshot); err != nil {
+			return err
+		}
+		if err := s.bumpSequences(ctx, exec); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
 	if err := s.upsertGroups(ctx, exec, groups); err != nil {
 		return err
 	}
@@ -92,6 +101,47 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *quotaLeaseDemoMirrorStore) applyDelta(ctx context.Context, exec sqlExecutor, snapshot service.QuotaLeaseDemoMirrorSnapshot) error {
+	if err := s.deleteMirrorAccountIDs(ctx, exec, snapshot.DeletedAccountIDs, snapshot.NodeID); err != nil {
+		return err
+	}
+	if err := s.deleteMirrorChannelIDs(ctx, exec, snapshot.DeletedChannelIDs); err != nil {
+		return err
+	}
+	if err := s.deleteMirrorGroupIDs(ctx, exec, snapshot.DeletedGroupIDs); err != nil {
+		return err
+	}
+	if err := s.deleteMirrorProxyIDs(ctx, exec, snapshot.DeletedProxyIDs); err != nil {
+		return err
+	}
+
+	groups := cloneQuotaLeaseDemoMirrorGroups(snapshot.Groups)
+	channels := cloneQuotaLeaseDemoMirrorChannels(snapshot.Channels)
+	proxies := cloneQuotaLeaseDemoMirrorProxies(snapshot.Proxies)
+	accounts := cloneQuotaLeaseDemoMirrorAccounts(snapshot.Accounts, snapshot)
+	accountGroups := cloneQuotaLeaseDemoMirrorAccountGroups(snapshot.AccountGroups, accounts)
+
+	if err := s.upsertGroups(ctx, exec, groups); err != nil {
+		return err
+	}
+	if err := s.upsertChannels(ctx, exec, channels); err != nil {
+		return err
+	}
+	if err := s.upsertProxies(ctx, exec, proxies); err != nil {
+		return err
+	}
+	if err := s.upsertAccounts(ctx, exec, accounts, snapshot); err != nil {
+		return err
+	}
+	if err := s.reconcileMirrorAccountGroups(ctx, exec, accounts, accountGroups, snapshot.NodeID); err != nil {
+		return err
+	}
+	if err := s.reconcileMirrorAccountParents(ctx, exec, accounts); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *quotaLeaseDemoMirrorStore) UpsertAccount(ctx context.Context, account service.QuotaLeaseDemoAccountSnapshot) error {
@@ -520,6 +570,71 @@ func (s *quotaLeaseDemoMirrorStore) reconcileMirrorChannels(ctx context.Context,
 	return nil
 }
 
+func (s *quotaLeaseDemoMirrorStore) deleteMirrorChannelIDs(ctx context.Context, exec sqlExecutor, ids []int64) error {
+	ids = quotaLeaseDemoMirrorUniqueSortedIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := exec.ExecContext(ctx, `
+		DELETE FROM channel_pricing_intervals
+		WHERE pricing_id IN (
+			SELECT id
+			FROM channel_model_pricing
+			WHERE channel_id = ANY($1::bigint[])
+		)
+	`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror channel pricing intervals: %w", err)
+	}
+	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE channel_id = ANY($1::bigint[])`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror channel pricing: %w", err)
+	}
+	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_groups WHERE channel_id = ANY($1::bigint[])`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror channel groups: %w", err)
+	}
+	if _, err := exec.ExecContext(ctx, `DELETE FROM channels WHERE id = ANY($1::bigint[])`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror channels: %w", err)
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) deleteMirrorGroupIDs(ctx context.Context, exec sqlExecutor, ids []int64) error {
+	ids = quotaLeaseDemoMirrorUniqueSortedIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := exec.ExecContext(ctx, `DELETE FROM account_groups WHERE group_id = ANY($1::bigint[])`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror account groups by group: %w", err)
+	}
+	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_groups WHERE group_id = ANY($1::bigint[])`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror channel groups by group: %w", err)
+	}
+	if _, err := exec.ExecContext(ctx, `
+		UPDATE groups
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = ANY($1::bigint[])
+		  AND deleted_at IS NULL
+	`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror groups: %w", err)
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) deleteMirrorProxyIDs(ctx context.Context, exec sqlExecutor, ids []int64) error {
+	ids = quotaLeaseDemoMirrorUniqueSortedIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := exec.ExecContext(ctx, `
+		UPDATE proxies
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = ANY($1::bigint[])
+		  AND deleted_at IS NULL
+	`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror proxies: %w", err)
+	}
+	return nil
+}
+
 func (s *quotaLeaseDemoMirrorStore) upsertProxies(ctx context.Context, exec sqlExecutor, proxies []service.Proxy) error {
 	if len(proxies) == 0 {
 		return nil
@@ -805,6 +920,50 @@ func (s *quotaLeaseDemoMirrorStore) reconcileMirrorAccounts(ctx context.Context,
 		  AND NOT (id = ANY($3::bigint[]))
 	`, quotaLeaseDemoMirrorNodeIDExtraKey, nodeID, pq.Array(accountIDs)); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) deleteMirrorAccountIDs(ctx context.Context, exec sqlExecutor, ids []int64, nodeID string) error {
+	ids = quotaLeaseDemoMirrorUniqueSortedIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		if _, err := exec.ExecContext(ctx, `DELETE FROM account_groups WHERE account_id = ANY($1::bigint[])`, pq.Array(ids)); err != nil {
+			return fmt.Errorf("delete mirror account groups: %w", err)
+		}
+		if _, err := exec.ExecContext(ctx, `
+			UPDATE accounts
+			SET deleted_at = NOW(), updated_at = NOW()
+			WHERE id = ANY($1::bigint[])
+			  AND deleted_at IS NULL
+		`, pq.Array(ids)); err != nil {
+			return fmt.Errorf("delete mirror accounts: %w", err)
+		}
+		return nil
+	}
+	if _, err := exec.ExecContext(ctx, `
+		DELETE FROM account_groups
+		WHERE account_id IN (
+			SELECT id
+			FROM accounts
+			WHERE id = ANY($1::bigint[])
+			  AND extra ->> $2 = $3
+			  AND deleted_at IS NULL
+		)
+	`, pq.Array(ids), quotaLeaseDemoMirrorNodeIDExtraKey, nodeID); err != nil {
+		return fmt.Errorf("delete mirror account groups: %w", err)
+	}
+	if _, err := exec.ExecContext(ctx, `
+		UPDATE accounts
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = ANY($1::bigint[])
+		  AND extra ->> $2 = $3
+		  AND deleted_at IS NULL
+	`, pq.Array(ids), quotaLeaseDemoMirrorNodeIDExtraKey, nodeID); err != nil {
+		return fmt.Errorf("delete mirror accounts: %w", err)
 	}
 	return nil
 }
@@ -1098,6 +1257,31 @@ func quotaLeaseDemoMirrorAccountVisible(account service.Account) bool {
 	}
 	_, ok := account.Extra[quotaLeaseDemoMirrorFlagExtraKey]
 	return ok
+}
+
+func quotaLeaseDemoMirrorUniqueSortedIDs(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i] < out[j]
+	})
+	return out
 }
 
 func cloneStringAnyMap(src map[string]any) map[string]any {

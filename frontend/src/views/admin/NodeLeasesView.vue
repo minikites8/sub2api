@@ -75,6 +75,41 @@
           <template #cell-lease_remaining="{ value }">
             <span class="font-mono">{{ formatAmount(value || 0) }}</span>
           </template>
+          <template #cell-sync_status="{ row }">
+            <div class="sync-state-cell">
+              <span :class="['badge', syncStatusBadgeClass(row)]">{{ syncStatusLabel(row) }}</span>
+              <span class="sync-time">{{ syncStatusDetail(row) }}</span>
+            </div>
+          </template>
+          <template #cell-sync_data="{ row }">
+            <div class="sync-pill-group">
+              <span class="sync-pill">账号 {{ syncStatusNumber(row, 'synced_account_count') }}</span>
+              <span class="sync-pill">渠道 {{ syncStatusNumber(row, 'synced_channel_count') }}</span>
+              <span class="sync-pill">分组 {{ syncStatusNumber(row, 'synced_group_count') }}</span>
+              <span class="sync-pill">代理 {{ syncStatusNumber(row, 'synced_proxy_count') }}</span>
+            </div>
+          </template>
+          <template #cell-pending_upload="{ row }">
+            <div class="sync-pill-group">
+              <span :class="['sync-pill', pendingCountClass(syncStatusNumber(row, 'pending_usage_events'))]">
+                扣费 {{ syncStatusNumber(row, 'pending_usage_events') }}
+              </span>
+              <span :class="['sync-pill', pendingCountClass(syncStatusNumber(row, 'pending_usage_logs'))]">
+                记录 {{ syncStatusNumber(row, 'pending_usage_logs') }}
+              </span>
+              <span :class="['sync-pill', pendingCountClass(syncStatusNumber(row, 'pending_ops_error_logs'))]">
+                错误 {{ syncStatusNumber(row, 'pending_ops_error_logs') }}
+              </span>
+            </div>
+          </template>
+          <template #cell-sync_error="{ row }">
+            <span
+              class="block max-w-[220px] truncate text-xs text-red-600 dark:text-red-300"
+              :title="row.sync_status?.last_sync_error || ''"
+            >
+              {{ row.sync_status?.last_sync_error || '-' }}
+            </span>
+          </template>
           <template #cell-last_heartbeat_at="{ value }">
             <span class="text-xs text-gray-600 dark:text-gray-300">{{ formatTime(value) }}</span>
           </template>
@@ -399,6 +434,10 @@ const nodeColumns = computed<Column[]>(() => [
   { key: 'region', label: '区域', sortable: true },
   { key: 'status', label: t('common.status'), sortable: true },
   { key: 'lease_remaining', label: '剩余额度', sortable: true },
+  { key: 'sync_status', label: '同步状态', sortable: false },
+  { key: 'sync_data', label: '已同步数据', sortable: false },
+  { key: 'pending_upload', label: '待上传', sortable: false },
+  { key: 'sync_error', label: '同步错误', sortable: false },
   { key: 'last_heartbeat_at', label: '心跳', sortable: true },
   { key: 'base_url', label: 'Base URL', sortable: false },
   { key: 'actions', label: '操作', sortable: false }
@@ -623,6 +662,72 @@ function formatTime(value?: string | null) {
   return value ? formatDateTime(value) : '-'
 }
 
+function syncStatusLabel(node: QuotaLeaseDemoNode) {
+  const status = node.sync_status
+  if (!status) return '未上报'
+  if (status.last_sync_error) return '同步异常'
+  if (status.last_sync_success_at || status.mirror_synced_at) return '已同步'
+  if (status.last_sync_started_at) return '同步中'
+  return '待同步'
+}
+
+function syncStatusBadgeClass(node: QuotaLeaseDemoNode) {
+  const status = node.sync_status
+  if (!status) return 'badge-gray'
+  if (status.last_sync_error) return 'badge-danger'
+  if (status.last_sync_success_at || status.mirror_synced_at) return 'badge-success'
+  if (status.last_sync_started_at) return 'badge-warning'
+  return 'badge-gray'
+}
+
+function syncStatusTime(node: QuotaLeaseDemoNode) {
+  const status = node.sync_status
+  if (!status) return null
+  if (status.last_sync_error) return status.last_sync_failed_at || status.last_sync_started_at || null
+  return status.last_sync_success_at || status.mirror_synced_at || status.last_sync_started_at || null
+}
+
+function syncStatusDetail(node: QuotaLeaseDemoNode) {
+  const status = node.sync_status
+  if (!status) return '-'
+  const parts: string[] = []
+  if (Number(status.mirror_version || 0) > 0) {
+    parts.push(`v${status.mirror_version}`)
+  }
+  const modeLabel = syncModeLabel(status.last_sync_mode)
+  if (modeLabel) {
+    parts.push(modeLabel)
+  }
+  const timeLabel = formatTime(syncStatusTime(node))
+  if (timeLabel !== '-') {
+    parts.push(timeLabel)
+  }
+  return parts.length > 0 ? parts.join(' · ') : '-'
+}
+
+function syncModeLabel(mode?: string) {
+  if (mode === 'delta') return '增量'
+  if (mode === 'full') return '全量'
+  return ''
+}
+
+type SyncStatusNumberKey =
+  | 'synced_group_count'
+  | 'synced_channel_count'
+  | 'synced_proxy_count'
+  | 'synced_account_count'
+  | 'pending_usage_events'
+  | 'pending_usage_logs'
+  | 'pending_ops_error_logs'
+
+function syncStatusNumber(node: QuotaLeaseDemoNode, key: SyncStatusNumberKey) {
+  return Number(node.sync_status?.[key] || 0)
+}
+
+function pendingCountClass(count: number) {
+  return count > 0 ? 'sync-pill-warning' : ''
+}
+
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     online: '在线',
@@ -651,7 +756,7 @@ function statusBadgeClass(status: string) {
 
 onMounted(() => {
   loadAll()
-  autoRefreshTimer = window.setInterval(refreshRuntimeState, 10_000)
+  autoRefreshTimer = window.setInterval(refreshRuntimeState, 30_000)
 })
 
 onUnmounted(() => {
@@ -715,12 +820,38 @@ onUnmounted(() => {
   @apply inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-primary-300;
 }
 
+.sync-state-cell {
+  @apply flex min-w-[120px] flex-col gap-1;
+}
+
+.sync-time {
+  @apply text-xs text-gray-500 dark:text-gray-400;
+}
+
+.sync-pill-group {
+  @apply flex max-w-[240px] flex-wrap gap-1;
+}
+
+.sync-pill {
+  @apply rounded-md px-2 py-0.5 font-mono text-xs text-gray-600 dark:text-gray-300;
+  background: var(--md-surface-container-low);
+}
+
+.sync-pill-warning {
+  @apply text-amber-700 dark:text-amber-300;
+  background: rgb(254 243 199 / 0.8);
+}
+
+:global(.dark) .sync-pill-warning {
+  background: rgb(120 53 15 / 0.35);
+}
+
 .node-panel :deep(.table-wrapper) {
   max-height: 440px;
   overflow: auto;
 }
 
 .node-panel :deep(.data-table-surface) {
-  min-width: 1040px;
+  min-width: 1360px;
 }
 </style>

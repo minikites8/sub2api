@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	quotaLeaseDemoNodeWorkerInterval   = 10 * time.Second
+	quotaLeaseDemoNodeWorkerInterval   = 30 * time.Second
 	quotaLeaseDemoNodeWorkerRunTimeout = 30 * time.Second
 )
 

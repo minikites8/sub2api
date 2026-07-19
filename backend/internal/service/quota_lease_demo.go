@@ -95,6 +95,17 @@ type QuotaLeaseDemoService struct {
 	registrationURLs         map[string]*QuotaLeaseDemoNodeRegistrationURL
 	mirrorStore              QuotaLeaseDemoMirrorStore
 	channelService           *ChannelService
+	mirrorVersionStates      map[string]*quotaLeaseDemoMirrorVersionState
+	syncStartedAt            time.Time
+	syncSuccessAt            time.Time
+	syncFailedAt             time.Time
+	syncError                string
+	syncMode                 string
+	syncedGroupCount         int
+	syncedChannelCount       int
+	syncedProxyCount         int
+	syncedAccountCount       int
+	mirrorVersion            int64
 	remoteNodeID             string
 	remoteNodeSecret         string
 	remoteControlURL         string
@@ -117,6 +128,7 @@ func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 		usageProbeTasks:     make(map[string]*QuotaLeaseDemoUsageProbeTask),
 		assignedAccounts:    make(map[int64]*QuotaLeaseDemoAssignedAccount),
 		registrationURLs:    make(map[string]*QuotaLeaseDemoNodeRegistrationURL),
+		mirrorVersionStates: make(map[string]*quotaLeaseDemoMirrorVersionState),
 	}
 }
 
@@ -251,11 +263,12 @@ type QuotaLeaseDemoNodeRegistrationURL struct {
 }
 
 type QuotaLeaseDemoNodeHeartbeatRequest struct {
-	NodeID           string             `json:"node_id"`
-	InflightRequests int                `json:"inflight_requests"`
-	LeaseRemaining   float64            `json:"lease_remaining"`
-	Metrics          map[string]float64 `json:"metrics"`
-	Status           string             `json:"status"`
+	NodeID           string                        `json:"node_id"`
+	InflightRequests int                           `json:"inflight_requests"`
+	LeaseRemaining   float64                       `json:"lease_remaining"`
+	Metrics          map[string]float64            `json:"metrics"`
+	SyncStatus       *QuotaLeaseDemoNodeSyncStatus `json:"sync_status,omitempty"`
+	Status           string                        `json:"status"`
 }
 
 type QuotaLeaseDemoNodeUpdateRequest struct {
@@ -267,19 +280,38 @@ type QuotaLeaseDemoNodeUpdateRequest struct {
 }
 
 type QuotaLeaseDemoNode struct {
-	NodeID           string             `json:"node_id"`
-	Secret           string             `json:"-"`
-	Region           string             `json:"region,omitempty"`
-	BaseURL          string             `json:"base_url,omitempty"`
-	PublicKey        string             `json:"public_key,omitempty"`
-	Metadata         map[string]string  `json:"metadata,omitempty"`
-	Status           string             `json:"status"`
-	InflightRequests int                `json:"inflight_requests"`
-	LeaseRemaining   float64            `json:"lease_remaining"`
-	Metrics          map[string]float64 `json:"metrics,omitempty"`
-	RegisteredAt     time.Time          `json:"registered_at"`
-	LastHeartbeatAt  *time.Time         `json:"last_heartbeat_at,omitempty"`
-	UpdatedAt        time.Time          `json:"updated_at"`
+	NodeID           string                        `json:"node_id"`
+	Secret           string                        `json:"-"`
+	Region           string                        `json:"region,omitempty"`
+	BaseURL          string                        `json:"base_url,omitempty"`
+	PublicKey        string                        `json:"public_key,omitempty"`
+	Metadata         map[string]string             `json:"metadata,omitempty"`
+	Status           string                        `json:"status"`
+	InflightRequests int                           `json:"inflight_requests"`
+	LeaseRemaining   float64                       `json:"lease_remaining"`
+	Metrics          map[string]float64            `json:"metrics,omitempty"`
+	SyncStatus       *QuotaLeaseDemoNodeSyncStatus `json:"sync_status,omitempty"`
+	RegisteredAt     time.Time                     `json:"registered_at"`
+	LastHeartbeatAt  *time.Time                    `json:"last_heartbeat_at,omitempty"`
+	UpdatedAt        time.Time                     `json:"updated_at"`
+}
+
+type QuotaLeaseDemoNodeSyncStatus struct {
+	MirrorReady         bool       `json:"mirror_ready"`
+	MirrorSyncedAt      *time.Time `json:"mirror_synced_at,omitempty"`
+	LastSyncStartedAt   *time.Time `json:"last_sync_started_at,omitempty"`
+	LastSyncSuccessAt   *time.Time `json:"last_sync_success_at,omitempty"`
+	LastSyncFailedAt    *time.Time `json:"last_sync_failed_at,omitempty"`
+	LastSyncError       string     `json:"last_sync_error,omitempty"`
+	LastSyncMode        string     `json:"last_sync_mode,omitempty"`
+	MirrorVersion       int64      `json:"mirror_version"`
+	SyncedGroupCount    int        `json:"synced_group_count"`
+	SyncedChannelCount  int        `json:"synced_channel_count"`
+	SyncedProxyCount    int        `json:"synced_proxy_count"`
+	SyncedAccountCount  int        `json:"synced_account_count"`
+	PendingUsageEvents  int        `json:"pending_usage_events"`
+	PendingUsageLogs    int        `json:"pending_usage_logs"`
+	PendingOpsErrorLogs int        `json:"pending_ops_error_logs"`
 }
 
 func (s *QuotaLeaseDemoService) RegisterNode(ctx context.Context, req QuotaLeaseDemoNodeRegistrationRequest) (*QuotaLeaseDemoNodeRegistrationResult, error) {
@@ -488,6 +520,9 @@ func (s *QuotaLeaseDemoService) heartbeatNodeLocal(ctx context.Context, req Quot
 	node.InflightRequests = req.InflightRequests
 	node.LeaseRemaining = req.LeaseRemaining
 	node.Metrics = cloneQuotaLeaseDemoFloatMap(req.Metrics)
+	if req.SyncStatus != nil {
+		node.SyncStatus = cloneQuotaLeaseDemoNodeSyncStatus(req.SyncStatus)
+	}
 	node.LastHeartbeatAt = &now
 	node.UpdatedAt = now
 	_ = ctx
@@ -585,6 +620,11 @@ func (s *QuotaLeaseDemoService) RuntimeHeartbeatRequest() QuotaLeaseDemoNodeHear
 	pendingOpsErrorLogs := len(s.pendingOpsErrorLogs)
 	s.mu.Unlock()
 
+	syncStatus := s.nodeSyncStatusSnapshot()
+	syncStatus.PendingUsageEvents = pendingUsageEvents
+	syncStatus.PendingUsageLogs = pendingUsageLogs
+	syncStatus.PendingOpsErrorLogs = pendingOpsErrorLogs
+	req.SyncStatus = &syncStatus
 	req.Metrics = map[string]float64{
 		"active_leases":          float64(activeLeases),
 		"pending_usage_events":   float64(pendingUsageEvents),
@@ -1324,10 +1364,23 @@ func cloneQuotaLeaseDemoNode(node *QuotaLeaseDemoNode) *QuotaLeaseDemoNode {
 	value := *node
 	value.Metadata = cloneQuotaLeaseDemoStringMap(node.Metadata)
 	value.Metrics = cloneQuotaLeaseDemoFloatMap(node.Metrics)
+	value.SyncStatus = cloneQuotaLeaseDemoNodeSyncStatus(node.SyncStatus)
 	if node.LastHeartbeatAt != nil {
 		heartbeat := *node.LastHeartbeatAt
 		value.LastHeartbeatAt = &heartbeat
 	}
+	return &value
+}
+
+func cloneQuotaLeaseDemoNodeSyncStatus(status *QuotaLeaseDemoNodeSyncStatus) *QuotaLeaseDemoNodeSyncStatus {
+	if status == nil {
+		return nil
+	}
+	value := *status
+	value.MirrorSyncedAt = cloneQuotaLeaseDemoTimePtr(status.MirrorSyncedAt)
+	value.LastSyncStartedAt = cloneQuotaLeaseDemoTimePtr(status.LastSyncStartedAt)
+	value.LastSyncSuccessAt = cloneQuotaLeaseDemoTimePtr(status.LastSyncSuccessAt)
+	value.LastSyncFailedAt = cloneQuotaLeaseDemoTimePtr(status.LastSyncFailedAt)
 	return &value
 }
 

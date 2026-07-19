@@ -115,6 +115,63 @@ func TestQuotaLeaseDemoMirrorStoreUpsertChannelsWritesPricingSnapshot(t *testing
 	require.Equal(t, int64(88), exec.calls[5].args[1])
 }
 
+func TestQuotaLeaseDemoMirrorStoreApplyDeltaUsesTargetedUpdates(t *testing.T) {
+	store := &quotaLeaseDemoMirrorStore{}
+	exec := &quotaLeaseDemoMirrorSQLRecorder{}
+	now := time.Now().UTC()
+
+	err := store.applyDelta(context.Background(), exec, service.QuotaLeaseDemoMirrorSnapshot{
+		NodeID:            "foreign-1",
+		Version:           2,
+		BaseVersion:       1,
+		Delta:             true,
+		SyncedAt:          now,
+		DeletedAccountIDs: []int64{101},
+		DeletedChannelIDs: []int64{201},
+		DeletedGroupIDs:   []int64{301},
+		DeletedProxyIDs:   []int64{401},
+		Accounts: []service.QuotaLeaseDemoAccountSnapshot{{
+			ID:          102,
+			Name:        "mirror-account-102",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeOAuth,
+			Credentials: map[string]any{"access_token": "token"},
+			Extra: map[string]any{
+				"node_oauth_assigned_node_id": "foreign-1",
+			},
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			GroupIDs:    []int64{302},
+			AccountGroups: []service.QuotaLeaseDemoAccountGroupSnapshot{{
+				AccountID: 102,
+				GroupID:   302,
+				CreatedAt: now,
+			}},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		AccountGroups: []service.QuotaLeaseDemoAccountGroupSnapshot{{
+			AccountID: 102,
+			GroupID:   302,
+			CreatedAt: now,
+		}},
+	})
+	require.NoError(t, err)
+
+	require.GreaterOrEqual(t, len(exec.calls), 12)
+	require.Contains(t, exec.calls[0].query, "DELETE FROM account_groups")
+	require.Contains(t, exec.calls[0].query, "extra ->> $2 = $3")
+	require.Contains(t, exec.calls[1].query, "UPDATE accounts")
+	require.Contains(t, exec.calls[2].query, "DELETE FROM channel_pricing_intervals")
+	require.Contains(t, exec.calls[5].query, "DELETE FROM channels")
+	require.Contains(t, exec.calls[6].query, "DELETE FROM account_groups WHERE group_id")
+	require.Contains(t, exec.calls[8].query, "UPDATE groups")
+	require.Contains(t, exec.calls[9].query, "UPDATE proxies")
+	require.Contains(t, exec.calls[10].query, "INSERT INTO accounts")
+	require.Equal(t, int64(102), exec.calls[10].args[0])
+}
+
 type quotaLeaseDemoMirrorSQLRecorder struct {
 	calls []quotaLeaseDemoMirrorSQLCall
 }

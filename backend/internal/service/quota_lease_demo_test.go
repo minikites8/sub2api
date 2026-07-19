@@ -275,6 +275,38 @@ func (r *quotaLeaseDemoStrictBalanceRejectingBillingRepo) Apply(_ context.Contex
 
 var _ UsageBillingRepository = (*quotaLeaseDemoStrictBalanceRejectingBillingRepo)(nil)
 
+type quotaLeaseDemoMemoryMirrorStore struct {
+	mu        sync.Mutex
+	snapshots []QuotaLeaseDemoMirrorSnapshot
+}
+
+func (s *quotaLeaseDemoMemoryMirrorStore) ApplySnapshot(_ context.Context, snapshot QuotaLeaseDemoMirrorSnapshot) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.snapshots = append(s.snapshots, snapshot)
+	return nil
+}
+
+func (s *quotaLeaseDemoMemoryMirrorStore) UpsertAccount(context.Context, QuotaLeaseDemoAccountSnapshot) error {
+	return nil
+}
+
+func (s *quotaLeaseDemoMemoryMirrorStore) ListSchedulableAccounts(context.Context, *int64, string) ([]Account, error) {
+	return nil, nil
+}
+
+func (s *quotaLeaseDemoMemoryMirrorStore) GetAccountByID(context.Context, int64) (*Account, error) {
+	return nil, nil
+}
+
+func (s *quotaLeaseDemoMemoryMirrorStore) list() []QuotaLeaseDemoMirrorSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]QuotaLeaseDemoMirrorSnapshot(nil), s.snapshots...)
+}
+
+var _ QuotaLeaseDemoMirrorStore = (*quotaLeaseDemoMemoryMirrorStore)(nil)
+
 func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDemoService, controlSecret string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -525,6 +557,127 @@ func TestQuotaLeaseDemoSettingsServiceDefaultsUpdatesAndValidates(t *testing.T) 
 		PrefetchLowWatermarkAmount: &invalid,
 	})
 	require.Error(t, err)
+}
+
+func TestQuotaLeaseDemoPrepareMirrorSnapshotVersionsAndDeltas(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	price := 0.000001
+	base := QuotaLeaseDemoMirrorSnapshot{
+		NodeID:   "foreign-1",
+		SyncedAt: now,
+		Groups: []QuotaLeaseDemoGroupSnapshot{{
+			ID:                      1,
+			Name:                    "gpt",
+			Platform:                PlatformOpenAI,
+			RateMultiplier:          1,
+			Status:                  StatusActive,
+			SubscriptionType:        SubscriptionTypeStandard,
+			DefaultValidityDays:     30,
+			ImageRateMultiplier:     1,
+			VideoRateMultiplier:     1,
+			KiroCacheEmulationRatio: 1,
+			CreatedAt:               now,
+			UpdatedAt:               now,
+		}},
+		Channels: []QuotaLeaseDemoChannelSnapshot{{
+			ID:                 7,
+			Name:               "openai-channel",
+			Status:             StatusActive,
+			BillingModelSource: BillingModelSourceChannelMapped,
+			GroupIDs:           []int64{1},
+			ModelPricing: []QuotaLeaseDemoChannelModelPricingSnapshot{{
+				ID:          8,
+				ChannelID:   7,
+				Platform:    PlatformOpenAI,
+				Models:      []string{"gpt-5.5"},
+				BillingMode: BillingModeToken,
+				InputPrice:  &price,
+				OutputPrice: &price,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		Proxies: []QuotaLeaseDemoProxySnapshot{{
+			ID:        3,
+			Name:      "sg-proxy",
+			Protocol:  "http",
+			Host:      "127.0.0.1",
+			Port:      18080,
+			Status:    StatusActive,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		Accounts: []QuotaLeaseDemoAccountSnapshot{{
+			ID:          10,
+			Name:        "openai-account",
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Credentials: map[string]any{"access_token": "token-a"},
+			Extra: map[string]any{
+				"node_oauth_assigned_node_id": "foreign-1",
+				"node_oauth_last_synced_at":   now.Format(time.RFC3339Nano),
+			},
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			GroupIDs:    []int64{1},
+			AccountGroups: []QuotaLeaseDemoAccountGroupSnapshot{{
+				AccountID: 10,
+				GroupID:   1,
+				CreatedAt: now,
+			}},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		AccountGroups: []QuotaLeaseDemoAccountGroupSnapshot{{
+			AccountID: 10,
+			GroupID:   1,
+			CreatedAt: now,
+		}},
+	}
+
+	full := svc.PrepareMirrorSnapshot(base, 0)
+	require.False(t, full.Delta)
+	require.Equal(t, int64(1), full.Version)
+	require.Len(t, full.Groups, 1)
+	require.Equal(t, 1, full.TotalAccountCount)
+
+	same := cloneQuotaLeaseDemoMirrorSnapshot(base)
+	same.SyncedAt = now.Add(time.Minute)
+	same.Accounts[0].UpdatedAt = now.Add(time.Minute)
+	same.Accounts[0].Extra["node_oauth_last_synced_at"] = now.Add(time.Minute).Format(time.RFC3339Nano)
+	noChange := svc.PrepareMirrorSnapshot(same, full.Version)
+	require.True(t, noChange.Delta)
+	require.Equal(t, int64(1), noChange.Version)
+	require.Empty(t, noChange.Groups)
+	require.Empty(t, noChange.Accounts)
+	require.Empty(t, noChange.DeletedAccountIDs)
+	require.Equal(t, 1, noChange.TotalAccountCount)
+
+	changed := cloneQuotaLeaseDemoMirrorSnapshot(base)
+	changed.SyncedAt = now.Add(2 * time.Minute)
+	changed.Groups[0].Name = "gpt-updated"
+	changed.Proxies[0].Host = "127.0.0.2"
+	changed.Accounts = nil
+	changed.AccountGroups = nil
+	delta := svc.PrepareMirrorSnapshot(changed, full.Version)
+	require.True(t, delta.Delta)
+	require.Equal(t, int64(1), delta.BaseVersion)
+	require.Equal(t, int64(2), delta.Version)
+	require.Len(t, delta.Groups, 1)
+	require.Equal(t, "gpt-updated", delta.Groups[0].Name)
+	require.Len(t, delta.Proxies, 1)
+	require.Equal(t, "127.0.0.2", delta.Proxies[0].Host)
+	require.Equal(t, []int64{10}, delta.DeletedAccountIDs)
+	require.Equal(t, 0, delta.TotalAccountCount)
+
+	fallback := svc.PrepareMirrorSnapshot(changed, 999)
+	require.False(t, fallback.Delta)
+	require.Equal(t, int64(2), fallback.Version)
+	require.Len(t, fallback.Groups, 1)
 }
 
 func TestQuotaLeaseDemoRemoteNodeReadsPrefetchSettingsFromControlPlane(t *testing.T) {
@@ -994,18 +1147,35 @@ func TestQuotaLeaseDemoRegisterNodeAndHeartbeat(t *testing.T) {
 		Metrics: map[string]float64{
 			"rps": 12,
 		},
+		SyncStatus: &QuotaLeaseDemoNodeSyncStatus{
+			MirrorReady:         true,
+			SyncedGroupCount:    2,
+			SyncedChannelCount:  1,
+			SyncedProxyCount:    3,
+			SyncedAccountCount:  4,
+			PendingUsageEvents:  5,
+			PendingUsageLogs:    6,
+			PendingOpsErrorLogs: 7,
+		},
 	})
 	require.NoError(t, err)
 	require.Equal(t, QuotaLeaseDemoNodeStatusOnline, node.Status)
 	require.Equal(t, 7, node.InflightRequests)
 	require.InDelta(t, 0.75, node.LeaseRemaining, 1e-9)
 	require.Equal(t, 12.0, node.Metrics["rps"])
+	require.NotNil(t, node.SyncStatus)
+	require.True(t, node.SyncStatus.MirrorReady)
+	require.Equal(t, 1, node.SyncStatus.SyncedChannelCount)
+	require.Equal(t, 5, node.SyncStatus.PendingUsageEvents)
 
 	snapshot := svc.Snapshot()
 	require.Equal(t, 1, snapshot.Stats.NodeCount)
 	require.Equal(t, 1, snapshot.Stats.OnlineNodes)
 	require.Len(t, snapshot.Nodes, 1)
 	require.Equal(t, "foreign-1", snapshot.Nodes[0].NodeID)
+	require.NotNil(t, snapshot.Nodes[0].SyncStatus)
+	require.Equal(t, 4, snapshot.Nodes[0].SyncStatus.SyncedAccountCount)
+	require.Equal(t, 7, snapshot.Nodes[0].SyncStatus.PendingOpsErrorLogs)
 }
 
 func TestQuotaLeaseDemoApplyUsageBillingConsumesLocalLease(t *testing.T) {
@@ -1345,11 +1515,134 @@ func TestQuotaLeaseDemoNodeWorkerReportsRuntimeHeartbeat(t *testing.T) {
 	require.NotNil(t, nodes[0].LastHeartbeatAt)
 	require.InDelta(t, 0.75, nodes[0].LeaseRemaining, 1e-9)
 	require.Equal(t, 1.0, nodes[0].Metrics["active_leases"])
+	require.NotNil(t, nodes[0].SyncStatus)
+	require.NotNil(t, nodes[0].SyncStatus.LastSyncSuccessAt)
+	require.Equal(t, 0, nodes[0].SyncStatus.PendingUsageEvents)
+	require.Equal(t, 0, nodes[0].SyncStatus.PendingUsageLogs)
+	require.Equal(t, 0, nodes[0].SyncStatus.PendingOpsErrorLogs)
 
 	controlSnapshot := control.Snapshot()
 	require.Len(t, controlSnapshot.Leases, 1)
 	require.InDelta(t, 0.25, controlSnapshot.Leases[0].Consumed, 1e-9)
 	require.InDelta(t, 0.75, controlSnapshot.Nodes[0].LeaseRemaining, 1e-9)
+}
+
+func TestQuotaLeaseDemoSyncMirrorSnapshotRequestsIncrementalVersion(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	var sinceVersions []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/node-leases/demo/nodes/register":
+			require.NoError(t, json.NewEncoder(w).Encode(QuotaLeaseDemoNodeRegistrationResult{
+				Node: &QuotaLeaseDemoNode{
+					NodeID:       "node-us",
+					Secret:       "node-secret",
+					Status:       QuotaLeaseDemoNodeStatusOnline,
+					RegisteredAt: now,
+					UpdatedAt:    now,
+				},
+				NodeSecret: "node-secret",
+			}))
+		case "/api/v1/node-leases/demo/mirror/snapshot":
+			require.Equal(t, "node-us", r.Header.Get("X-Node-ID"))
+			require.Equal(t, "node-secret", r.Header.Get("X-Node-Secret"))
+			sinceVersions = append(sinceVersions, r.URL.Query().Get("since_version"))
+			if len(sinceVersions) == 1 {
+				require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+					"snapshot": QuotaLeaseDemoMirrorSnapshot{
+						NodeID:            "node-us",
+						Version:           1,
+						SyncedAt:          now,
+						TotalGroupCount:   1,
+						TotalAccountCount: 1,
+						Groups: []QuotaLeaseDemoGroupSnapshot{{
+							ID:                  1,
+							Name:                "gpt",
+							Platform:            PlatformOpenAI,
+							Status:              StatusActive,
+							RateMultiplier:      1,
+							SubscriptionType:    SubscriptionTypeStandard,
+							DefaultValidityDays: 30,
+							CreatedAt:           now,
+							UpdatedAt:           now,
+						}},
+						Accounts: []QuotaLeaseDemoAccountSnapshot{{
+							ID:          10,
+							Name:        "openai-account",
+							Platform:    PlatformOpenAI,
+							Type:        AccountTypeOAuth,
+							Credentials: map[string]any{"access_token": "token-a"},
+							Status:      StatusActive,
+							Schedulable: true,
+							Concurrency: 1,
+							GroupIDs:    []int64{1},
+							CreatedAt:   now,
+							UpdatedAt:   now,
+						}},
+					},
+				}))
+				return
+			}
+			require.Equal(t, "1", r.URL.Query().Get("since_version"))
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"snapshot": QuotaLeaseDemoMirrorSnapshot{
+					NodeID:            "node-us",
+					Version:           2,
+					BaseVersion:       1,
+					Delta:             true,
+					SyncedAt:          now.Add(time.Minute),
+					TotalGroupCount:   1,
+					TotalAccountCount: 1,
+					Accounts: []QuotaLeaseDemoAccountSnapshot{{
+						ID:          10,
+						Name:        "openai-account-renamed",
+						Platform:    PlatformOpenAI,
+						Type:        AccountTypeOAuth,
+						Credentials: map[string]any{"access_token": "token-b"},
+						Status:      StatusActive,
+						Schedulable: true,
+						Concurrency: 1,
+						GroupIDs:    []int64{1},
+						CreatedAt:   now,
+						UpdatedAt:   now.Add(time.Minute),
+					}},
+				},
+			}))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-us",
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+	store := &quotaLeaseDemoMemoryMirrorStore{}
+	node.SetMirrorStore(store)
+
+	require.NoError(t, node.SyncMirrorSnapshot(ctx))
+	require.NoError(t, node.SyncMirrorSnapshot(ctx))
+
+	snapshots := store.list()
+	require.Len(t, snapshots, 2)
+	require.False(t, snapshots[0].Delta)
+	require.Equal(t, int64(1), snapshots[0].Version)
+	require.True(t, snapshots[1].Delta)
+	require.Equal(t, int64(2), snapshots[1].Version)
+	require.Equal(t, []string{"", "1"}, sinceVersions)
+	status := node.nodeSyncStatusSnapshot()
+	require.Equal(t, int64(2), status.MirrorVersion)
+	require.Equal(t, quotaLeaseDemoMirrorSyncModeDelta, status.LastSyncMode)
+	require.Equal(t, 1, status.SyncedAccountCount)
 }
 
 func TestQuotaLeaseDemoRemoteNodeFlushesUsageLogs(t *testing.T) {

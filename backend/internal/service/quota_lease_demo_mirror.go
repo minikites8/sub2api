@@ -2,12 +2,23 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
-const quotaLeaseDemoMirrorFreshness = 5 * time.Second
+const (
+	quotaLeaseDemoMirrorFreshness           = 5 * time.Second
+	quotaLeaseDemoMirrorVersionHistoryLimit = 16
+	quotaLeaseDemoMirrorSyncModeFull        = "full"
+	quotaLeaseDemoMirrorSyncModeDelta       = "delta"
+)
 
 type QuotaLeaseDemoGroupSnapshot struct {
 	ID                              int64                             `json:"id"`
@@ -118,13 +129,32 @@ type QuotaLeaseDemoPricingIntervalSnapshot struct {
 }
 
 type QuotaLeaseDemoMirrorSnapshot struct {
-	NodeID        string                               `json:"node_id,omitempty"`
-	SyncedAt      time.Time                            `json:"synced_at"`
-	Groups        []QuotaLeaseDemoGroupSnapshot        `json:"groups"`
-	Channels      []QuotaLeaseDemoChannelSnapshot      `json:"channels"`
-	Proxies       []QuotaLeaseDemoProxySnapshot        `json:"proxies"`
-	Accounts      []QuotaLeaseDemoAccountSnapshot      `json:"accounts"`
-	AccountGroups []QuotaLeaseDemoAccountGroupSnapshot `json:"account_groups"`
+	NodeID            string                               `json:"node_id,omitempty"`
+	Version           int64                                `json:"version"`
+	BaseVersion       int64                                `json:"base_version,omitempty"`
+	Delta             bool                                 `json:"delta,omitempty"`
+	SyncedAt          time.Time                            `json:"synced_at"`
+	TotalGroupCount   int                                  `json:"total_group_count,omitempty"`
+	TotalChannelCount int                                  `json:"total_channel_count,omitempty"`
+	TotalProxyCount   int                                  `json:"total_proxy_count,omitempty"`
+	TotalAccountCount int                                  `json:"total_account_count,omitempty"`
+	Groups            []QuotaLeaseDemoGroupSnapshot        `json:"groups"`
+	Channels          []QuotaLeaseDemoChannelSnapshot      `json:"channels"`
+	Proxies           []QuotaLeaseDemoProxySnapshot        `json:"proxies"`
+	Accounts          []QuotaLeaseDemoAccountSnapshot      `json:"accounts"`
+	AccountGroups     []QuotaLeaseDemoAccountGroupSnapshot `json:"account_groups"`
+	DeletedGroupIDs   []int64                              `json:"deleted_group_ids,omitempty"`
+	DeletedChannelIDs []int64                              `json:"deleted_channel_ids,omitempty"`
+	DeletedProxyIDs   []int64                              `json:"deleted_proxy_ids,omitempty"`
+	DeletedAccountIDs []int64                              `json:"deleted_account_ids,omitempty"`
+}
+
+type quotaLeaseDemoMirrorVersionState struct {
+	Version   int64
+	Hash      string
+	Snapshot  QuotaLeaseDemoMirrorSnapshot
+	History   []QuotaLeaseDemoMirrorSnapshot
+	UpdatedAt time.Time
 }
 
 type QuotaLeaseDemoMirrorStore interface {
@@ -439,7 +469,7 @@ func (s *QuotaLeaseDemoService) EnsureMirrorSnapshot(ctx context.Context) error 
 	return s.SyncMirrorSnapshot(ctx)
 }
 
-func (s *QuotaLeaseDemoService) SyncMirrorSnapshot(ctx context.Context) error {
+func (s *QuotaLeaseDemoService) SyncMirrorSnapshot(ctx context.Context) (err error) {
 	if s == nil || !s.remoteMode() {
 		return nil
 	}
@@ -447,14 +477,26 @@ func (s *QuotaLeaseDemoService) SyncMirrorSnapshot(ctx context.Context) error {
 	if store == nil {
 		return nil
 	}
+	s.markNodeSyncStarted(time.Now().UTC())
+	defer func() {
+		if err != nil {
+			s.markNodeSyncFailed(err, time.Now().UTC())
+		}
+	}()
 	nodeID, secret, err := s.remoteNodeAuth(ctx)
 	if err != nil {
 		return err
 	}
+	endpoint := "/mirror/snapshot"
+	if sinceVersion := s.currentMirrorVersion(); sinceVersion > 0 {
+		query := url.Values{}
+		query.Set("since_version", strconv.FormatInt(sinceVersion, 10))
+		endpoint += "?" + query.Encode()
+	}
 	var result struct {
 		Snapshot QuotaLeaseDemoMirrorSnapshot `json:"snapshot"`
 	}
-	if err := s.doRemoteJSON(ctx, http.MethodGet, "/mirror/snapshot", nodeID, secret, nil, &result); err != nil {
+	if err := s.doRemoteJSON(ctx, http.MethodGet, endpoint, nodeID, secret, nil, &result); err != nil {
 		return err
 	}
 	snapshot := result.Snapshot
@@ -472,7 +514,7 @@ func (s *QuotaLeaseDemoService) SyncMirrorSnapshot(ctx context.Context) error {
 			return err
 		}
 	}
-	s.markMirrorSynced(snapshot.SyncedAt)
+	s.markMirrorSnapshotSynced(snapshot, time.Now().UTC())
 	return nil
 }
 
@@ -486,7 +528,606 @@ func (s *QuotaLeaseDemoService) markMirrorSynced(syncedAt time.Time) {
 	s.remoteMu.Lock()
 	s.mirrorReady = true
 	s.mirrorSyncedAt = syncedAt.UTC()
+	s.syncSuccessAt = time.Now().UTC()
+	s.syncError = ""
 	s.remoteMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) markMirrorSnapshotSynced(snapshot QuotaLeaseDemoMirrorSnapshot, completedAt time.Time) {
+	if s == nil {
+		return
+	}
+	if snapshot.SyncedAt.IsZero() {
+		snapshot.SyncedAt = completedAt
+	}
+	if completedAt.IsZero() {
+		completedAt = time.Now().UTC()
+	}
+	s.remoteMu.Lock()
+	s.mirrorReady = true
+	s.mirrorSyncedAt = snapshot.SyncedAt.UTC()
+	s.syncSuccessAt = completedAt.UTC()
+	s.syncError = ""
+	s.syncMode = quotaLeaseDemoMirrorSyncModeFull
+	if snapshot.Delta {
+		s.syncMode = quotaLeaseDemoMirrorSyncModeDelta
+	}
+	s.mirrorVersion = snapshot.Version
+	s.syncedGroupCount = quotaLeaseDemoMirrorCountOrLen(snapshot.TotalGroupCount, len(snapshot.Groups))
+	s.syncedChannelCount = quotaLeaseDemoMirrorCountOrLen(snapshot.TotalChannelCount, len(snapshot.Channels))
+	s.syncedProxyCount = quotaLeaseDemoMirrorCountOrLen(snapshot.TotalProxyCount, len(snapshot.Proxies))
+	s.syncedAccountCount = quotaLeaseDemoMirrorCountOrLen(snapshot.TotalAccountCount, len(snapshot.Accounts))
+	s.remoteMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) markAssignedAccountsSynced(accounts []QuotaLeaseDemoAssignedAccount, completedAt time.Time) {
+	if s == nil {
+		return
+	}
+	if completedAt.IsZero() {
+		completedAt = time.Now().UTC()
+	}
+	s.remoteMu.Lock()
+	s.syncSuccessAt = completedAt.UTC()
+	s.syncError = ""
+	s.syncMode = quotaLeaseDemoMirrorSyncModeFull
+	s.syncedAccountCount = len(accounts)
+	s.remoteMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) markNodeSyncStarted(startedAt time.Time) {
+	if s == nil {
+		return
+	}
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	s.remoteMu.Lock()
+	s.syncStartedAt = startedAt.UTC()
+	s.remoteMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) markNodeSyncFailed(err error, failedAt time.Time) {
+	if s == nil || err == nil {
+		return
+	}
+	if failedAt.IsZero() {
+		failedAt = time.Now().UTC()
+	}
+	s.remoteMu.Lock()
+	s.syncFailedAt = failedAt.UTC()
+	s.syncError = quotaLeaseDemoTrimSyncError(err.Error())
+	s.remoteMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) nodeSyncStatusSnapshot() QuotaLeaseDemoNodeSyncStatus {
+	status := QuotaLeaseDemoNodeSyncStatus{}
+	if s == nil {
+		return status
+	}
+	s.remoteMu.Lock()
+	defer s.remoteMu.Unlock()
+	status.MirrorReady = s.mirrorReady
+	status.MirrorSyncedAt = quotaLeaseDemoTimePtrFromValue(s.mirrorSyncedAt)
+	status.LastSyncStartedAt = quotaLeaseDemoTimePtrFromValue(s.syncStartedAt)
+	status.LastSyncSuccessAt = quotaLeaseDemoTimePtrFromValue(s.syncSuccessAt)
+	status.LastSyncFailedAt = quotaLeaseDemoTimePtrFromValue(s.syncFailedAt)
+	status.LastSyncError = s.syncError
+	status.LastSyncMode = s.syncMode
+	status.MirrorVersion = s.mirrorVersion
+	status.SyncedGroupCount = s.syncedGroupCount
+	status.SyncedChannelCount = s.syncedChannelCount
+	status.SyncedProxyCount = s.syncedProxyCount
+	status.SyncedAccountCount = s.syncedAccountCount
+	return status
+}
+
+func (s *QuotaLeaseDemoService) currentMirrorVersion() int64 {
+	if s == nil {
+		return 0
+	}
+	s.remoteMu.Lock()
+	defer s.remoteMu.Unlock()
+	return s.mirrorVersion
+}
+
+func (s *QuotaLeaseDemoService) PrepareMirrorSnapshot(snapshot QuotaLeaseDemoMirrorSnapshot, sinceVersion int64) QuotaLeaseDemoMirrorSnapshot {
+	snapshot = normalizeQuotaLeaseDemoMirrorSnapshot(snapshot)
+	hash := quotaLeaseDemoMirrorSnapshotHash(snapshot)
+	if hash == "" {
+		if snapshot.Version <= 0 {
+			snapshot.Version = 1
+		}
+		return snapshot
+	}
+	nodeID := strings.TrimSpace(snapshot.NodeID)
+	if nodeID == "" {
+		nodeID = "*"
+	}
+
+	s.remoteMu.Lock()
+	if s.mirrorVersionStates == nil {
+		s.mirrorVersionStates = make(map[string]*quotaLeaseDemoMirrorVersionState)
+	}
+	state := s.mirrorVersionStates[nodeID]
+	now := time.Now().UTC()
+	if state == nil {
+		snapshot.Version = 1
+		state = &quotaLeaseDemoMirrorVersionState{
+			Version:   snapshot.Version,
+			Hash:      hash,
+			Snapshot:  cloneQuotaLeaseDemoMirrorSnapshot(snapshot),
+			UpdatedAt: now,
+		}
+		s.mirrorVersionStates[nodeID] = state
+	} else if state.Hash != hash {
+		state.History = appendQuotaLeaseDemoMirrorHistory(state.History, state.Snapshot)
+		state.Version++
+		state.Hash = hash
+		snapshot.Version = state.Version
+		state.Snapshot = cloneQuotaLeaseDemoMirrorSnapshot(snapshot)
+		state.UpdatedAt = now
+	} else {
+		snapshot.Version = state.Version
+		state.Snapshot = cloneQuotaLeaseDemoMirrorSnapshot(snapshot)
+		state.Snapshot.Version = state.Version
+		state.UpdatedAt = now
+	}
+	current := cloneQuotaLeaseDemoMirrorSnapshot(state.Snapshot)
+	base := quotaLeaseDemoMirrorHistorySnapshot(state, sinceVersion)
+	s.remoteMu.Unlock()
+
+	if sinceVersion <= 0 {
+		current.Delta = false
+		current.BaseVersion = 0
+		return current
+	}
+	if sinceVersion == current.Version {
+		return quotaLeaseDemoBuildMirrorDelta(current, current)
+	}
+	if base == nil {
+		current.Delta = false
+		current.BaseVersion = 0
+		return current
+	}
+	return quotaLeaseDemoBuildMirrorDelta(*base, current)
+}
+
+func appendQuotaLeaseDemoMirrorHistory(history []QuotaLeaseDemoMirrorSnapshot, snapshot QuotaLeaseDemoMirrorSnapshot) []QuotaLeaseDemoMirrorSnapshot {
+	if snapshot.Version <= 0 {
+		return history
+	}
+	history = append(history, cloneQuotaLeaseDemoMirrorSnapshot(snapshot))
+	if len(history) <= quotaLeaseDemoMirrorVersionHistoryLimit {
+		return history
+	}
+	return append([]QuotaLeaseDemoMirrorSnapshot(nil), history[len(history)-quotaLeaseDemoMirrorVersionHistoryLimit:]...)
+}
+
+func quotaLeaseDemoMirrorHistorySnapshot(state *quotaLeaseDemoMirrorVersionState, version int64) *QuotaLeaseDemoMirrorSnapshot {
+	if state == nil || version <= 0 {
+		return nil
+	}
+	if state.Snapshot.Version == version {
+		snapshot := cloneQuotaLeaseDemoMirrorSnapshot(state.Snapshot)
+		return &snapshot
+	}
+	for i := len(state.History) - 1; i >= 0; i-- {
+		if state.History[i].Version == version {
+			snapshot := cloneQuotaLeaseDemoMirrorSnapshot(state.History[i])
+			return &snapshot
+		}
+	}
+	return nil
+}
+
+func quotaLeaseDemoBuildMirrorDelta(base, current QuotaLeaseDemoMirrorSnapshot) QuotaLeaseDemoMirrorSnapshot {
+	base = normalizeQuotaLeaseDemoMirrorSnapshot(base)
+	current = normalizeQuotaLeaseDemoMirrorSnapshot(current)
+	delta := QuotaLeaseDemoMirrorSnapshot{
+		NodeID:            current.NodeID,
+		Version:           current.Version,
+		BaseVersion:       base.Version,
+		Delta:             true,
+		SyncedAt:          current.SyncedAt,
+		TotalGroupCount:   len(current.Groups),
+		TotalChannelCount: len(current.Channels),
+		TotalProxyCount:   len(current.Proxies),
+		TotalAccountCount: len(current.Accounts),
+		Groups:            changedQuotaLeaseDemoMirrorGroups(base.Groups, current.Groups),
+		Channels:          changedQuotaLeaseDemoMirrorChannels(base.Channels, current.Channels),
+		Proxies:           changedQuotaLeaseDemoMirrorProxies(base.Proxies, current.Proxies),
+		Accounts:          changedQuotaLeaseDemoMirrorAccounts(base.Accounts, current.Accounts),
+		DeletedGroupIDs:   deletedQuotaLeaseDemoMirrorGroupIDs(base.Groups, current.Groups),
+		DeletedChannelIDs: deletedQuotaLeaseDemoMirrorChannelIDs(base.Channels, current.Channels),
+		DeletedProxyIDs:   deletedQuotaLeaseDemoMirrorProxyIDs(base.Proxies, current.Proxies),
+		DeletedAccountIDs: deletedQuotaLeaseDemoMirrorAccountIDs(base.Accounts, current.Accounts),
+	}
+	delta.AccountGroups = quotaLeaseDemoMirrorAccountGroupsForAccounts(current.AccountGroups, delta.Accounts)
+	return normalizeQuotaLeaseDemoMirrorSnapshot(delta)
+}
+
+func normalizeQuotaLeaseDemoMirrorSnapshot(snapshot QuotaLeaseDemoMirrorSnapshot) QuotaLeaseDemoMirrorSnapshot {
+	snapshot.NodeID = strings.TrimSpace(snapshot.NodeID)
+	if snapshot.SyncedAt.IsZero() {
+		snapshot.SyncedAt = time.Now().UTC()
+	} else {
+		snapshot.SyncedAt = snapshot.SyncedAt.UTC()
+	}
+	sort.Slice(snapshot.Groups, func(i, j int) bool {
+		return snapshot.Groups[i].ID < snapshot.Groups[j].ID
+	})
+	sort.Slice(snapshot.Channels, func(i, j int) bool {
+		return snapshot.Channels[i].ID < snapshot.Channels[j].ID
+	})
+	for i := range snapshot.Channels {
+		sort.Slice(snapshot.Channels[i].ModelPricing, func(a, b int) bool {
+			return snapshot.Channels[i].ModelPricing[a].ID < snapshot.Channels[i].ModelPricing[b].ID
+		})
+		for j := range snapshot.Channels[i].ModelPricing {
+			sort.Slice(snapshot.Channels[i].ModelPricing[j].Intervals, func(a, b int) bool {
+				if snapshot.Channels[i].ModelPricing[j].Intervals[a].SortOrder == snapshot.Channels[i].ModelPricing[j].Intervals[b].SortOrder {
+					return snapshot.Channels[i].ModelPricing[j].Intervals[a].ID < snapshot.Channels[i].ModelPricing[j].Intervals[b].ID
+				}
+				return snapshot.Channels[i].ModelPricing[j].Intervals[a].SortOrder < snapshot.Channels[i].ModelPricing[j].Intervals[b].SortOrder
+			})
+		}
+	}
+	sort.Slice(snapshot.Proxies, func(i, j int) bool {
+		return snapshot.Proxies[i].ID < snapshot.Proxies[j].ID
+	})
+	sort.Slice(snapshot.Accounts, func(i, j int) bool {
+		return snapshot.Accounts[i].ID < snapshot.Accounts[j].ID
+	})
+	for i := range snapshot.Accounts {
+		sort.Slice(snapshot.Accounts[i].AccountGroups, func(a, b int) bool {
+			if snapshot.Accounts[i].AccountGroups[a].AccountID == snapshot.Accounts[i].AccountGroups[b].AccountID {
+				return snapshot.Accounts[i].AccountGroups[a].GroupID < snapshot.Accounts[i].AccountGroups[b].GroupID
+			}
+			return snapshot.Accounts[i].AccountGroups[a].AccountID < snapshot.Accounts[i].AccountGroups[b].AccountID
+		})
+	}
+	sort.Slice(snapshot.AccountGroups, func(i, j int) bool {
+		if snapshot.AccountGroups[i].AccountID == snapshot.AccountGroups[j].AccountID {
+			return snapshot.AccountGroups[i].GroupID < snapshot.AccountGroups[j].GroupID
+		}
+		return snapshot.AccountGroups[i].AccountID < snapshot.AccountGroups[j].AccountID
+	})
+	snapshot.DeletedGroupIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedGroupIDs)
+	snapshot.DeletedChannelIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedChannelIDs)
+	snapshot.DeletedProxyIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedProxyIDs)
+	snapshot.DeletedAccountIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedAccountIDs)
+	if snapshot.TotalGroupCount <= 0 && len(snapshot.Groups) > 0 {
+		snapshot.TotalGroupCount = len(snapshot.Groups)
+	}
+	if snapshot.TotalChannelCount <= 0 && len(snapshot.Channels) > 0 {
+		snapshot.TotalChannelCount = len(snapshot.Channels)
+	}
+	if snapshot.TotalProxyCount <= 0 && len(snapshot.Proxies) > 0 {
+		snapshot.TotalProxyCount = len(snapshot.Proxies)
+	}
+	if snapshot.TotalAccountCount <= 0 && len(snapshot.Accounts) > 0 {
+		snapshot.TotalAccountCount = len(snapshot.Accounts)
+	}
+	return snapshot
+}
+
+func quotaLeaseDemoMirrorSnapshotHash(snapshot QuotaLeaseDemoMirrorSnapshot) string {
+	signature := normalizeQuotaLeaseDemoMirrorSnapshot(cloneQuotaLeaseDemoMirrorSnapshot(snapshot))
+	signature.Version = 0
+	signature.BaseVersion = 0
+	signature.Delta = false
+	signature.SyncedAt = time.Time{}
+	signature.TotalGroupCount = 0
+	signature.TotalChannelCount = 0
+	signature.TotalProxyCount = 0
+	signature.TotalAccountCount = 0
+	for i := range signature.Groups {
+		signature.Groups[i] = quotaLeaseDemoGroupSignatureSnapshot(signature.Groups[i])
+	}
+	for i := range signature.Channels {
+		signature.Channels[i] = quotaLeaseDemoChannelSignatureSnapshot(signature.Channels[i])
+	}
+	for i := range signature.Proxies {
+		signature.Proxies[i] = quotaLeaseDemoProxySignatureSnapshot(signature.Proxies[i])
+	}
+	for i := range signature.Accounts {
+		signature.Accounts[i] = quotaLeaseDemoAccountSignatureSnapshot(signature.Accounts[i])
+	}
+	for i := range signature.AccountGroups {
+		signature.AccountGroups[i].CreatedAt = time.Time{}
+	}
+	payload, err := json.Marshal(signature)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
+}
+
+func cloneQuotaLeaseDemoMirrorSnapshot(snapshot QuotaLeaseDemoMirrorSnapshot) QuotaLeaseDemoMirrorSnapshot {
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return snapshot
+	}
+	var out QuotaLeaseDemoMirrorSnapshot
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return snapshot
+	}
+	return out
+}
+
+func changedQuotaLeaseDemoMirrorGroups(base, current []QuotaLeaseDemoGroupSnapshot) []QuotaLeaseDemoGroupSnapshot {
+	baseHashes := make(map[int64]string, len(base))
+	for _, item := range base {
+		if item.ID > 0 {
+			baseHashes[item.ID] = quotaLeaseDemoMirrorItemHash(quotaLeaseDemoGroupSignatureSnapshot(item))
+		}
+	}
+	out := make([]QuotaLeaseDemoGroupSnapshot, 0)
+	for _, item := range current {
+		if item.ID <= 0 {
+			continue
+		}
+		if baseHashes[item.ID] != quotaLeaseDemoMirrorItemHash(quotaLeaseDemoGroupSignatureSnapshot(item)) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func changedQuotaLeaseDemoMirrorChannels(base, current []QuotaLeaseDemoChannelSnapshot) []QuotaLeaseDemoChannelSnapshot {
+	baseHashes := make(map[int64]string, len(base))
+	for _, item := range base {
+		if item.ID > 0 {
+			baseHashes[item.ID] = quotaLeaseDemoMirrorItemHash(quotaLeaseDemoChannelSignatureSnapshot(item))
+		}
+	}
+	out := make([]QuotaLeaseDemoChannelSnapshot, 0)
+	for _, item := range current {
+		if item.ID <= 0 {
+			continue
+		}
+		if baseHashes[item.ID] != quotaLeaseDemoMirrorItemHash(quotaLeaseDemoChannelSignatureSnapshot(item)) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func changedQuotaLeaseDemoMirrorProxies(base, current []QuotaLeaseDemoProxySnapshot) []QuotaLeaseDemoProxySnapshot {
+	baseHashes := make(map[int64]string, len(base))
+	for _, item := range base {
+		if item.ID > 0 {
+			baseHashes[item.ID] = quotaLeaseDemoMirrorItemHash(quotaLeaseDemoProxySignatureSnapshot(item))
+		}
+	}
+	out := make([]QuotaLeaseDemoProxySnapshot, 0)
+	for _, item := range current {
+		if item.ID <= 0 {
+			continue
+		}
+		if baseHashes[item.ID] != quotaLeaseDemoMirrorItemHash(quotaLeaseDemoProxySignatureSnapshot(item)) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func changedQuotaLeaseDemoMirrorAccounts(base, current []QuotaLeaseDemoAccountSnapshot) []QuotaLeaseDemoAccountSnapshot {
+	baseHashes := make(map[int64]string, len(base))
+	for _, item := range base {
+		if item.ID > 0 {
+			baseHashes[item.ID] = quotaLeaseDemoMirrorItemHash(quotaLeaseDemoAccountSignatureSnapshot(item))
+		}
+	}
+	out := make([]QuotaLeaseDemoAccountSnapshot, 0)
+	for _, item := range current {
+		if item.ID <= 0 {
+			continue
+		}
+		if baseHashes[item.ID] != quotaLeaseDemoMirrorItemHash(quotaLeaseDemoAccountSignatureSnapshot(item)) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func deletedQuotaLeaseDemoMirrorGroupIDs(base, current []QuotaLeaseDemoGroupSnapshot) []int64 {
+	currentIDs := make(map[int64]struct{}, len(current))
+	for _, item := range current {
+		if item.ID > 0 {
+			currentIDs[item.ID] = struct{}{}
+		}
+	}
+	out := make([]int64, 0)
+	for _, item := range base {
+		if item.ID <= 0 {
+			continue
+		}
+		if _, ok := currentIDs[item.ID]; !ok {
+			out = append(out, item.ID)
+		}
+	}
+	return quotaLeaseDemoUniqueSortedInt64s(out)
+}
+
+func deletedQuotaLeaseDemoMirrorChannelIDs(base, current []QuotaLeaseDemoChannelSnapshot) []int64 {
+	currentIDs := make(map[int64]struct{}, len(current))
+	for _, item := range current {
+		if item.ID > 0 {
+			currentIDs[item.ID] = struct{}{}
+		}
+	}
+	out := make([]int64, 0)
+	for _, item := range base {
+		if item.ID <= 0 {
+			continue
+		}
+		if _, ok := currentIDs[item.ID]; !ok {
+			out = append(out, item.ID)
+		}
+	}
+	return quotaLeaseDemoUniqueSortedInt64s(out)
+}
+
+func deletedQuotaLeaseDemoMirrorProxyIDs(base, current []QuotaLeaseDemoProxySnapshot) []int64 {
+	currentIDs := make(map[int64]struct{}, len(current))
+	for _, item := range current {
+		if item.ID > 0 {
+			currentIDs[item.ID] = struct{}{}
+		}
+	}
+	out := make([]int64, 0)
+	for _, item := range base {
+		if item.ID <= 0 {
+			continue
+		}
+		if _, ok := currentIDs[item.ID]; !ok {
+			out = append(out, item.ID)
+		}
+	}
+	return quotaLeaseDemoUniqueSortedInt64s(out)
+}
+
+func deletedQuotaLeaseDemoMirrorAccountIDs(base, current []QuotaLeaseDemoAccountSnapshot) []int64 {
+	currentIDs := make(map[int64]struct{}, len(current))
+	for _, item := range current {
+		if item.ID > 0 {
+			currentIDs[item.ID] = struct{}{}
+		}
+	}
+	out := make([]int64, 0)
+	for _, item := range base {
+		if item.ID <= 0 {
+			continue
+		}
+		if _, ok := currentIDs[item.ID]; !ok {
+			out = append(out, item.ID)
+		}
+	}
+	return quotaLeaseDemoUniqueSortedInt64s(out)
+}
+
+func quotaLeaseDemoMirrorAccountGroupsForAccounts(groups []QuotaLeaseDemoAccountGroupSnapshot, accounts []QuotaLeaseDemoAccountSnapshot) []QuotaLeaseDemoAccountGroupSnapshot {
+	if len(accounts) == 0 || len(groups) == 0 {
+		return nil
+	}
+	accountIDs := make(map[int64]struct{}, len(accounts))
+	for _, account := range accounts {
+		if account.ID > 0 {
+			accountIDs[account.ID] = struct{}{}
+		}
+	}
+	out := make([]QuotaLeaseDemoAccountGroupSnapshot, 0)
+	for _, group := range groups {
+		if _, ok := accountIDs[group.AccountID]; ok {
+			out = append(out, group)
+		}
+	}
+	return out
+}
+
+func quotaLeaseDemoGroupSignatureSnapshot(group QuotaLeaseDemoGroupSnapshot) QuotaLeaseDemoGroupSnapshot {
+	group.UpdatedAt = time.Time{}
+	return group
+}
+
+func quotaLeaseDemoChannelSignatureSnapshot(channel QuotaLeaseDemoChannelSnapshot) QuotaLeaseDemoChannelSnapshot {
+	channel = quotaLeaseDemoMirrorJSONClone(channel)
+	channel.UpdatedAt = time.Time{}
+	for i := range channel.ModelPricing {
+		channel.ModelPricing[i].UpdatedAt = time.Time{}
+		for j := range channel.ModelPricing[i].Intervals {
+			channel.ModelPricing[i].Intervals[j].UpdatedAt = time.Time{}
+		}
+	}
+	return channel
+}
+
+func quotaLeaseDemoProxySignatureSnapshot(proxy QuotaLeaseDemoProxySnapshot) QuotaLeaseDemoProxySnapshot {
+	proxy.UpdatedAt = time.Time{}
+	return proxy
+}
+
+func quotaLeaseDemoAccountSignatureSnapshot(account QuotaLeaseDemoAccountSnapshot) QuotaLeaseDemoAccountSnapshot {
+	account = quotaLeaseDemoMirrorJSONClone(account)
+	account.UpdatedAt = time.Time{}
+	account.Extra = cloneQuotaLeaseDemoAnyMap(account.Extra)
+	delete(account.Extra, "node_oauth_last_synced_at")
+	for i := range account.AccountGroups {
+		account.AccountGroups[i].CreatedAt = time.Time{}
+	}
+	return account
+}
+
+func quotaLeaseDemoMirrorJSONClone[T any](value T) T {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+	var out T
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return value
+	}
+	return out
+}
+
+func quotaLeaseDemoMirrorItemHash(value any) string {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
+}
+
+func quotaLeaseDemoUniqueSortedInt64s(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i] < out[j]
+	})
+	return out
+}
+
+func quotaLeaseDemoMirrorCountOrLen(total, length int) int {
+	if total > 0 || length == 0 {
+		return total
+	}
+	return length
+}
+
+func quotaLeaseDemoTimePtrFromValue(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	value = value.UTC()
+	return &value
+}
+
+func quotaLeaseDemoTrimSyncError(message string) string {
+	message = strings.TrimSpace(message)
+	if len(message) <= 500 {
+		return message
+	}
+	return message[:500]
 }
 
 func (s *QuotaLeaseDemoService) mirrorSnapshotFresh(now time.Time) bool {

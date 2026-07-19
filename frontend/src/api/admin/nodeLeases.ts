@@ -23,9 +23,28 @@ export interface QuotaLeaseDemoNode {
   inflight_requests: number
   lease_remaining: number
   metrics?: Record<string, number>
+  sync_status?: QuotaLeaseDemoNodeSyncStatus
   registered_at: string
   last_heartbeat_at?: string
   updated_at: string
+}
+
+export interface QuotaLeaseDemoNodeSyncStatus {
+  mirror_ready: boolean
+  mirror_synced_at?: string
+  last_sync_started_at?: string
+  last_sync_success_at?: string
+  last_sync_failed_at?: string
+  last_sync_error?: string
+  last_sync_mode?: string
+  mirror_version: number
+  synced_group_count: number
+  synced_channel_count: number
+  synced_proxy_count: number
+  synced_account_count: number
+  pending_usage_events: number
+  pending_usage_logs: number
+  pending_ops_error_logs: number
 }
 
 export interface RegisterNodeRequest {
