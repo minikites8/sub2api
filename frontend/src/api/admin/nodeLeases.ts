@@ -36,6 +36,14 @@ export interface RegisterNodeRequest {
   metadata?: Record<string, string>
 }
 
+export interface UpdateNodeRequest {
+  region?: string
+  base_url?: string
+  public_key?: string
+  metadata?: Record<string, string>
+  status?: string
+}
+
 export interface RegisterNodeResult {
   node: QuotaLeaseDemoNode
   node_secret: string
@@ -209,6 +217,19 @@ export async function listNodes(options?: NodeLeaseControlOptions): Promise<Quot
   return data.nodes || []
 }
 
+export async function updateNode(
+  nodeId: string,
+  payload: UpdateNodeRequest,
+  options?: NodeLeaseControlOptions
+): Promise<QuotaLeaseDemoNode> {
+  const { data } = await apiClient.put<{ node: QuotaLeaseDemoNode }>(
+    `${nodeLeaseDemoAdminBase}/nodes/${encodeURIComponent(nodeId)}`,
+    payload,
+    requestConfig(options)
+  )
+  return data.node
+}
+
 export async function getSettings(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoSettings> {
   const { data } = await apiClient.get<QuotaLeaseDemoSettings>(
     `${nodeLeaseDemoAdminBase}/settings`,
@@ -325,6 +346,7 @@ export async function reclaimExpired(
 export const nodeLeasesAPI = {
   getStatus,
   listNodes,
+  updateNode,
   getSettings,
   updateSettings,
   registerNode,

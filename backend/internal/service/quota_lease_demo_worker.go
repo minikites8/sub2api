@@ -23,6 +23,10 @@ type QuotaLeaseDemoAccountTaskExecutor interface {
 	ExecuteAccountLoginTask(ctx context.Context, task QuotaLeaseDemoAccountLoginTask) (QuotaLeaseDemoAccountSnapshot, error)
 }
 
+type QuotaLeaseDemoUsageProbeTaskExecutor interface {
+	ExecuteUsageProbeTask(ctx context.Context, task QuotaLeaseDemoUsageProbeTask) (QuotaLeaseDemoUsageProbeResult, error)
+}
+
 type QuotaLeaseDemoPayloadAccountTaskExecutor struct{}
 
 func NewQuotaLeaseDemoPayloadAccountTaskExecutor() *QuotaLeaseDemoPayloadAccountTaskExecutor {
@@ -200,37 +204,129 @@ func (e *QuotaLeaseDemoOAuthAccountTaskExecutor) executeGrok(ctx context.Context
 	}
 }
 
-type QuotaLeaseDemoNodeWorker struct {
-	svc       *QuotaLeaseDemoService
-	executor  QuotaLeaseDemoAccountTaskExecutor
-	interval  time.Duration
-	cancel    context.CancelFunc
-	done      chan struct{}
-	startOnce sync.Once
-	stopOnce  sync.Once
+type QuotaLeaseDemoAccountUsageProbeTaskExecutor struct {
+	accountUsageService *AccountUsageService
+	openAIQuotaService  *OpenAIQuotaService
+	grokQuotaService    *GrokQuotaService
 }
 
-func NewQuotaLeaseDemoNodeWorker(svc *QuotaLeaseDemoService, executor QuotaLeaseDemoAccountTaskExecutor, interval time.Duration) *QuotaLeaseDemoNodeWorker {
+func NewQuotaLeaseDemoAccountUsageProbeTaskExecutor(
+	accountUsageService *AccountUsageService,
+	openAIQuotaService *OpenAIQuotaService,
+	grokQuotaService *GrokQuotaService,
+) *QuotaLeaseDemoAccountUsageProbeTaskExecutor {
+	return &QuotaLeaseDemoAccountUsageProbeTaskExecutor{
+		accountUsageService: accountUsageService,
+		openAIQuotaService:  openAIQuotaService,
+		grokQuotaService:    grokQuotaService,
+	}
+}
+
+func (e *QuotaLeaseDemoAccountUsageProbeTaskExecutor) ExecuteUsageProbeTask(ctx context.Context, task QuotaLeaseDemoUsageProbeTask) (QuotaLeaseDemoUsageProbeResult, error) {
+	if e == nil {
+		return QuotaLeaseDemoUsageProbeResult{}, fmt.Errorf("%w: usage probe executor is required", ErrQuotaLeaseDemoInvalidInput)
+	}
+	if task.AccountID <= 0 {
+		return QuotaLeaseDemoUsageProbeResult{}, fmt.Errorf("%w: account_id is required", ErrQuotaLeaseDemoInvalidInput)
+	}
+	kind, err := normalizeQuotaLeaseDemoUsageProbeKind(task.ProbeKind)
+	if err != nil {
+		return QuotaLeaseDemoUsageProbeResult{}, err
+	}
+	now := time.Now().UTC()
+	switch kind {
+	case QuotaLeaseDemoUsageProbeKindOpenAIQuota:
+		if e.openAIQuotaService == nil {
+			return QuotaLeaseDemoUsageProbeResult{}, fmt.Errorf("%w: openai quota service is required", ErrQuotaLeaseDemoInvalidInput)
+		}
+		result, err := e.openAIQuotaService.QueryUsage(ctx, task.AccountID)
+		if err != nil {
+			return QuotaLeaseDemoUsageProbeResult{}, err
+		}
+		return QuotaLeaseDemoUsageProbeResult{
+			OpenAIQuota: result,
+			ExtraPatch:  quotaLeaseDemoUsageProbeExtraPatchFromOpenAIQuota(result, now),
+		}, nil
+	case QuotaLeaseDemoUsageProbeKindGrokQuota:
+		if e.grokQuotaService == nil {
+			return QuotaLeaseDemoUsageProbeResult{}, fmt.Errorf("%w: grok quota service is required", ErrQuotaLeaseDemoInvalidInput)
+		}
+		result, err := e.grokQuotaService.QueryQuota(ctx, task.AccountID)
+		if err != nil {
+			return QuotaLeaseDemoUsageProbeResult{}, err
+		}
+		return QuotaLeaseDemoUsageProbeResult{
+			GrokQuota:  result,
+			ExtraPatch: quotaLeaseDemoUsageProbeExtraPatchFromGrokQuota(result),
+		}, nil
+	default:
+		if e.accountUsageService == nil {
+			return QuotaLeaseDemoUsageProbeResult{}, fmt.Errorf("%w: account usage service is required", ErrQuotaLeaseDemoInvalidInput)
+		}
+		usage, err := e.accountUsageService.GetUsage(ctx, task.AccountID, task.Force)
+		if err != nil {
+			return QuotaLeaseDemoUsageProbeResult{}, err
+		}
+		var account *Account
+		if e.accountUsageService.accountRepo != nil {
+			account, _ = e.accountUsageService.accountRepo.GetByID(ctx, task.AccountID)
+		}
+		if account == nil && strings.TrimSpace(task.Platform) != "" {
+			account = &Account{ID: task.AccountID, Platform: strings.TrimSpace(task.Platform)}
+		}
+		return QuotaLeaseDemoUsageProbeResult{
+			Usage:      usage,
+			ExtraPatch: quotaLeaseDemoUsageProbeExtraPatchFromAccountUsage(account, usage, now),
+		}, nil
+	}
+}
+
+type QuotaLeaseDemoNodeWorker struct {
+	svc                *QuotaLeaseDemoService
+	executor           QuotaLeaseDemoAccountTaskExecutor
+	usageProbeExecutor QuotaLeaseDemoUsageProbeTaskExecutor
+	interval           time.Duration
+	cancel             context.CancelFunc
+	done               chan struct{}
+	startOnce          sync.Once
+	stopOnce           sync.Once
+}
+
+func NewQuotaLeaseDemoNodeWorker(svc *QuotaLeaseDemoService, executor QuotaLeaseDemoAccountTaskExecutor, interval time.Duration, usageProbeExecutor ...QuotaLeaseDemoUsageProbeTaskExecutor) *QuotaLeaseDemoNodeWorker {
 	if interval <= 0 {
 		interval = quotaLeaseDemoNodeWorkerInterval
 	}
 	if executor == nil {
 		executor = NewQuotaLeaseDemoPayloadAccountTaskExecutor()
 	}
+	var probeExecutor QuotaLeaseDemoUsageProbeTaskExecutor
+	if len(usageProbeExecutor) > 0 {
+		probeExecutor = usageProbeExecutor[0]
+	}
 	return &QuotaLeaseDemoNodeWorker{
-		svc:      svc,
-		executor: executor,
-		interval: interval,
+		svc:                svc,
+		executor:           executor,
+		usageProbeExecutor: probeExecutor,
+		interval:           interval,
 	}
 }
 
-func ProvideQuotaLeaseDemoNodeWorker(cfg *config.Config, openaiOAuth *OpenAIOAuthService, grokOAuth *GrokOAuthService, mirrorStore QuotaLeaseDemoMirrorStore) *QuotaLeaseDemoNodeWorker {
+func ProvideQuotaLeaseDemoNodeWorker(
+	cfg *config.Config,
+	openaiOAuth *OpenAIOAuthService,
+	grokOAuth *GrokOAuthService,
+	mirrorStore QuotaLeaseDemoMirrorStore,
+	accountUsageService *AccountUsageService,
+	openAIQuotaService *OpenAIQuotaService,
+	grokQuotaService *GrokQuotaService,
+) *QuotaLeaseDemoNodeWorker {
 	svc := GetQuotaLeaseDemoService(cfg)
 	svc.SetMirrorStore(mirrorStore)
 	worker := NewQuotaLeaseDemoNodeWorker(
 		svc,
 		NewQuotaLeaseDemoOAuthAccountTaskExecutor(openaiOAuth, grokOAuth),
 		quotaLeaseDemoNodeWorkerInterval,
+		NewQuotaLeaseDemoAccountUsageProbeTaskExecutor(accountUsageService, openAIQuotaService, grokQuotaService),
 	)
 	worker.Start(context.Background())
 	return worker
@@ -295,6 +391,21 @@ func (w *QuotaLeaseDemoNodeWorker) RunOnce(ctx context.Context) error {
 			}
 			if err := w.executeAccountLoginTask(ctx, task); err != nil {
 				combined = errors.Join(combined, err)
+			}
+		}
+	}
+	if w.usageProbeExecutor != nil {
+		tasks, err := w.svc.fetchRemoteUsageProbeTasks(ctx, QuotaLeaseDemoAccountTaskPending)
+		if err != nil {
+			combined = errors.Join(combined, err)
+		} else {
+			for _, task := range tasks {
+				if strings.TrimSpace(task.Status) != "" && task.Status != QuotaLeaseDemoAccountTaskPending {
+					continue
+				}
+				if err := w.executeUsageProbeTask(ctx, task); err != nil {
+					combined = errors.Join(combined, err)
+				}
 			}
 		}
 	}
@@ -372,6 +483,32 @@ func (w *QuotaLeaseDemoNodeWorker) executeAccountLoginTask(ctx context.Context, 
 		return fmt.Errorf("account login task %s: %w", task.ID, execErr)
 	case completeErr != nil:
 		return fmt.Errorf("account login task %s: %w", task.ID, completeErr)
+	default:
+		return nil
+	}
+}
+
+func (w *QuotaLeaseDemoNodeWorker) executeUsageProbeTask(ctx context.Context, task QuotaLeaseDemoUsageProbeTask) error {
+	result, execErr := w.usageProbeExecutor.ExecuteUsageProbeTask(ctx, task)
+	req := QuotaLeaseDemoUsageProbeTaskCompleteRequest{
+		TaskID: task.ID,
+	}
+	if execErr != nil {
+		req.Error = execErr.Error()
+	} else {
+		req.Usage = result.Usage
+		req.OpenAIQuota = result.OpenAIQuota
+		req.GrokQuota = result.GrokQuota
+		req.ExtraPatch = result.ExtraPatch
+	}
+	_, completeErr := w.svc.CompleteUsageProbeTask(ctx, req)
+	switch {
+	case execErr != nil && completeErr != nil:
+		return fmt.Errorf("usage probe task %s: %w", task.ID, errors.Join(execErr, completeErr))
+	case execErr != nil:
+		return fmt.Errorf("usage probe task %s: %w", task.ID, execErr)
+	case completeErr != nil:
+		return fmt.Errorf("usage probe task %s: %w", task.ID, completeErr)
 	default:
 		return nil
 	}

@@ -34,6 +34,10 @@
                 <Icon name="refresh" size="sm" class="mr-2" :class="loading ? 'animate-spin' : ''" />
                 刷新
               </button>
+              <button type="button" class="btn btn-secondary" @click="openLeaseSettingsDialog">
+                <Icon name="cog" size="sm" class="mr-2" />
+                租约设置
+              </button>
               <button type="button" class="btn btn-secondary" :disabled="reclaiming" @click="reclaimExpired">
                 <Icon name="sync" size="sm" class="mr-2" :class="reclaiming ? 'animate-spin' : ''" />
                 回收
@@ -45,61 +49,6 @@
             </div>
           </div>
         </div>
-      </section>
-
-      <section class="node-panel">
-        <div class="panel-heading">
-          <h2>租约预取设置</h2>
-          <span>运行时</span>
-        </div>
-        <form class="grid gap-3 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]" @submit.prevent="saveSettings">
-          <div>
-            <label class="input-label">低水位额度</label>
-            <input
-              v-model.number="settingsForm.prefetch_low_watermark_amount"
-              type="number"
-              min="0"
-              step="0.000001"
-              class="input"
-            />
-          </div>
-          <div>
-            <label class="input-label">平均窗口</label>
-            <input
-              v-model.number="settingsForm.prefetch_average_window"
-              type="number"
-              min="0"
-              step="1"
-              class="input"
-            />
-          </div>
-          <div>
-            <label class="input-label">平均倍数</label>
-            <input
-              v-model.number="settingsForm.prefetch_average_multiplier"
-              type="number"
-              min="0"
-              step="0.1"
-              class="input"
-            />
-          </div>
-          <div>
-            <label class="input-label">防抖秒数</label>
-            <input
-              v-model.number="settingsForm.prefetch_debounce_seconds"
-              type="number"
-              min="0"
-              step="1"
-              class="input"
-            />
-          </div>
-          <div class="flex items-end">
-            <button type="submit" class="btn btn-primary w-full lg:w-auto" :disabled="savingSettings">
-              <Icon name="check" size="sm" class="mr-2" />
-              {{ savingSettings ? '保存中...' : '保存设置' }}
-            </button>
-          </div>
-        </form>
       </section>
 
       <section class="node-panel">
@@ -133,6 +82,17 @@
             <span class="block max-w-[280px] truncate font-mono text-xs" :title="value || ''">
               {{ value || '-' }}
             </span>
+          </template>
+          <template #cell-actions="{ row }">
+            <button
+              type="button"
+              class="table-action-button"
+              title="编辑节点"
+              @click.stop="openEditNodeDialog(row)"
+            >
+              <Icon name="edit" size="sm" />
+              编辑
+            </button>
           </template>
           <template #empty>
             <EmptyState title="暂无节点" description="注册节点后会显示在这里" />
@@ -232,6 +192,111 @@
       </template>
     </BaseDialog>
 
+    <BaseDialog
+      :show="showEditNode"
+      title="编辑节点"
+      width="normal"
+      @close="closeEditNodeDialog"
+    >
+      <form id="edit-node-form" class="space-y-4" @submit.prevent="saveNode">
+        <div>
+          <label class="input-label">节点 ID</label>
+          <input v-model="editNodeForm.node_id" class="input font-mono text-xs" disabled />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="input-label">区域</label>
+            <input v-model="editNodeForm.region" class="input" placeholder="us-west" />
+          </div>
+          <div>
+            <label class="input-label">运行状态</label>
+            <Select v-model="editNodeForm.status" :options="nodeStatusOptions" size="sm" />
+          </div>
+        </div>
+        <div>
+          <label class="input-label">节点访问地址</label>
+          <input v-model="editNodeForm.base_url" class="input font-mono text-xs" placeholder="https://node.example" />
+        </div>
+        <div>
+          <label class="input-label">Public Key</label>
+          <textarea
+            v-model="editNodeForm.public_key"
+            rows="3"
+            class="input font-mono text-xs"
+            placeholder="可留空"
+          ></textarea>
+        </div>
+      </form>
+
+      <template #footer>
+        <button type="button" class="btn btn-secondary" @click="closeEditNodeDialog">关闭</button>
+        <button type="submit" form="edit-node-form" class="btn btn-primary" :disabled="savingNode">
+          <Icon name="check" size="sm" class="mr-2" />
+          {{ savingNode ? '保存中...' : '保存' }}
+        </button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :show="showLeaseSettings"
+      title="租约设置"
+      width="normal"
+      @close="closeLeaseSettingsDialog"
+    >
+      <form id="lease-settings-form" class="space-y-4" @submit.prevent="saveSettings">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="input-label">剩多少额度开始补</label>
+            <input
+              v-model.number="settingsForm.prefetch_low_watermark_amount"
+              type="number"
+              min="0"
+              step="0.000001"
+              class="input"
+            />
+          </div>
+          <div>
+            <label class="input-label">看最近几次请求</label>
+            <input
+              v-model.number="settingsForm.prefetch_average_window"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+            />
+          </div>
+          <div>
+            <label class="input-label">提前准备几次请求的量</label>
+            <input
+              v-model.number="settingsForm.prefetch_average_multiplier"
+              type="number"
+              min="0"
+              step="0.1"
+              class="input"
+            />
+          </div>
+          <div>
+            <label class="input-label">两次补额度最少间隔</label>
+            <input
+              v-model.number="settingsForm.prefetch_debounce_seconds"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+            />
+          </div>
+        </div>
+      </form>
+
+      <template #footer>
+        <button type="button" class="btn btn-secondary" @click="closeLeaseSettingsDialog">关闭</button>
+        <button type="submit" form="lease-settings-form" class="btn btn-primary" :disabled="savingSettings">
+          <Icon name="check" size="sm" class="mr-2" />
+          {{ savingSettings ? '保存中...' : '保存' }}
+        </button>
+      </template>
+    </BaseDialog>
+
   </AppLayout>
 </template>
 
@@ -244,7 +309,8 @@ import type {
   QuotaLeaseDemoLease,
   QuotaLeaseDemoNode,
   QuotaLeaseDemoSettings,
-  QuotaLeaseDemoSnapshot
+  QuotaLeaseDemoSnapshot,
+  UpdateNodeRequest
 } from '@/api/admin/nodeLeases'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -265,12 +331,15 @@ const { copyToClipboard } = useClipboard()
 const loading = ref(false)
 const reclaiming = ref(false)
 const savingSettings = ref(false)
+const savingNode = ref(false)
 let autoRefreshTimer: number | null = null
 const snapshot = ref<QuotaLeaseDemoSnapshot | null>(null)
 const nodes = ref<QuotaLeaseDemoNode[]>([])
 const leaseUserLabels = reactive<Record<number, string>>({})
 const nodeFilter = ref('')
 
+const showLeaseSettings = ref(false)
+const showEditNode = ref(false)
 const showRegisterNode = ref(false)
 const submittingNode = ref(false)
 const lastRegistration = ref<NodeRegistrationURLResult | null>(null)
@@ -294,6 +363,14 @@ const nodeForm = reactive({
   region: ''
 })
 
+const editNodeForm = reactive({
+  node_id: '',
+  region: '',
+  base_url: '',
+  public_key: '',
+  status: 'online'
+})
+
 const settingsForm = reactive<QuotaLeaseDemoSettings>({
   prefetch_low_watermark_amount: 0.2,
   prefetch_average_window: 5,
@@ -311,13 +388,20 @@ const nodeFilterOptions = computed(() => [
   }))
 ])
 
+const nodeStatusOptions = [
+  { value: 'online', label: '在线' },
+  { value: 'offline', label: '离线' },
+  { value: 'disabled', label: '禁用' }
+]
+
 const nodeColumns = computed<Column[]>(() => [
   { key: 'node_id', label: '节点 ID', sortable: true },
   { key: 'region', label: '区域', sortable: true },
   { key: 'status', label: t('common.status'), sortable: true },
   { key: 'lease_remaining', label: '剩余额度', sortable: true },
   { key: 'last_heartbeat_at', label: '心跳', sortable: true },
-  { key: 'base_url', label: 'Base URL', sortable: false }
+  { key: 'base_url', label: 'Base URL', sortable: false },
+  { key: 'actions', label: '操作', sortable: false }
 ])
 
 const leaseColumns = computed<Column[]>(() => [
@@ -397,7 +481,7 @@ async function loadRuntimeState() {
 }
 
 async function refreshRuntimeState() {
-  if (loading.value || reclaiming.value || submittingNode.value) return
+  if (loading.value || reclaiming.value || submittingNode.value || savingNode.value) return
   try {
     await loadRuntimeState()
   } catch (error) {
@@ -433,6 +517,7 @@ async function saveSettings() {
     )
     applySettingsForm(result)
     appStore.showSuccess('租约设置已保存')
+    closeLeaseSettingsDialog()
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, '租约设置保存失败'))
   } finally {
@@ -448,6 +533,14 @@ function applySettingsForm(settings?: QuotaLeaseDemoSettings | null) {
   settingsForm.prefetch_debounce_seconds = Number(settings.prefetch_debounce_seconds || 0)
 }
 
+function openLeaseSettingsDialog() {
+  showLeaseSettings.value = true
+}
+
+function closeLeaseSettingsDialog() {
+  showLeaseSettings.value = false
+}
+
 function openRegisterNodeDialog() {
   lastRegistration.value = null
   showRegisterNode.value = true
@@ -455,6 +548,42 @@ function openRegisterNodeDialog() {
 
 function closeRegisterNodeDialog() {
   showRegisterNode.value = false
+}
+
+function openEditNodeDialog(node: QuotaLeaseDemoNode) {
+  editNodeForm.node_id = node.node_id
+  editNodeForm.region = node.region || ''
+  editNodeForm.base_url = node.base_url || ''
+  editNodeForm.public_key = node.public_key || ''
+  editNodeForm.status = node.status || 'online'
+  showEditNode.value = true
+}
+
+function closeEditNodeDialog() {
+  showEditNode.value = false
+}
+
+async function saveNode() {
+  const nodeId = editNodeForm.node_id.trim()
+  if (!nodeId) return
+
+  savingNode.value = true
+  try {
+    const payload: UpdateNodeRequest = {
+      region: editNodeForm.region.trim(),
+      base_url: editNodeForm.base_url.trim(),
+      public_key: editNodeForm.public_key.trim(),
+      status: editNodeForm.status.trim() || 'online'
+    }
+    await adminAPI.nodeLeases.updateNode(nodeId, payload)
+    appStore.showSuccess('节点信息已保存')
+    closeEditNodeDialog()
+    await loadRuntimeState()
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, '节点信息保存失败'))
+  } finally {
+    savingNode.value = false
+  }
 }
 
 async function createNodeRegistrationURL() {
@@ -582,8 +711,8 @@ onUnmounted(() => {
   @apply inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-primary-300;
 }
 
-.field-label {
-  @apply mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400;
+.table-action-button {
+  @apply inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-primary-300;
 }
 
 .node-panel :deep(.table-wrapper) {
@@ -592,6 +721,6 @@ onUnmounted(() => {
 }
 
 .node-panel :deep(.data-table-surface) {
-  min-width: 920px;
+  min-width: 1040px;
 }
 </style>

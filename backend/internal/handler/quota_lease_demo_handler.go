@@ -127,6 +127,23 @@ func (h *QuotaLeaseDemoHandler) ListNodes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"nodes": h.svc.ListNodes()})
 }
 
+func (h *QuotaLeaseDemoHandler) UpdateNode(c *gin.Context) {
+	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
+		return
+	}
+	var req service.QuotaLeaseDemoNodeUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	node, err := h.svc.UpdateNode(c.Request.Context(), c.Param("node_id"), req)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"node": node})
+}
+
 func (h *QuotaLeaseDemoHandler) GetSettings(c *gin.Context) {
 	if !h.requireEnabled(c) {
 		return
@@ -338,6 +355,78 @@ func (h *QuotaLeaseDemoHandler) SubmitAccountLoginTaskCallback(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"task": task})
+}
+
+func (h *QuotaLeaseDemoHandler) CreateUsageProbeTask(c *gin.Context) {
+	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
+		return
+	}
+	var req service.QuotaLeaseDemoUsageProbeTaskCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	task, err := h.svc.CreateUsageProbeTask(c.Request.Context(), req)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"task": task})
+}
+
+func (h *QuotaLeaseDemoHandler) ListUsageProbeTasks(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	requestedNodeID := strings.TrimSpace(c.Query("node_id"))
+	nodeID, ok := h.authenticateNodeOrControl(c, requestedNodeID)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"tasks": h.svc.ListUsageProbeTasks(c.Request.Context(), nodeID, c.Query("status")),
+	})
+}
+
+func (h *QuotaLeaseDemoHandler) CompleteUsageProbeTask(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	var req service.QuotaLeaseDemoUsageProbeTaskCompleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	if req.TaskID == "" {
+		req.TaskID = c.Param("task_id")
+	}
+	nodeID, ok := h.authenticateNodeOrControl(c, req.NodeID)
+	if !ok {
+		return
+	}
+	if req.NodeID == "" {
+		req.NodeID = nodeID
+	}
+	task, err := h.svc.CompleteUsageProbeTask(c.Request.Context(), req)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	if err := h.syncUsageProbeTaskResult(c.Request.Context(), task); err != nil {
+		h.writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"task": task})
+}
+
+func (h *QuotaLeaseDemoHandler) syncUsageProbeTaskResult(ctx context.Context, task *service.QuotaLeaseDemoUsageProbeTask) error {
+	if h == nil || h.adminSvc == nil || task == nil || task.Status != service.QuotaLeaseDemoAccountTaskCompleted {
+		return nil
+	}
+	if task.AccountID <= 0 || len(task.ExtraPatch) == 0 {
+		return nil
+	}
+	return h.adminSvc.UpdateAccountExtra(ctx, task.AccountID, task.ExtraPatch)
 }
 
 func (h *QuotaLeaseDemoHandler) ReportAccountStatus(c *gin.Context) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ type GrokOAuthHandler struct {
 	quotaService     *service.GrokQuotaService
 	importProber     grokUsageProber
 	reconciler       service.GrokOAuthReconciler
+	quotaLeaseDemo   *service.QuotaLeaseDemoService
 }
 
 func NewGrokOAuthHandler(
@@ -32,14 +34,19 @@ func NewGrokOAuthHandler(
 	adminService service.AdminService,
 	quotaService *service.GrokQuotaService,
 	reconciler service.GrokOAuthReconciler,
+	quotaLeaseDemo ...*service.QuotaLeaseDemoService,
 ) *GrokOAuthHandler {
-	return &GrokOAuthHandler{
+	handler := &GrokOAuthHandler{
 		grokOAuthService: grokOAuthService,
 		adminService:     adminService,
 		quotaService:     quotaService,
 		importProber:     quotaService,
 		reconciler:       reconciler,
 	}
+	if len(quotaLeaseDemo) > 0 {
+		handler.quotaLeaseDemo = quotaLeaseDemo[0]
+	}
+	return handler
 }
 
 type GrokGenerateAuthURLRequest struct {
@@ -504,6 +511,26 @@ func (h *GrokOAuthHandler) QueryQuota(c *gin.Context) {
 	}
 	if h.quotaService == nil {
 		response.BadRequest(c, "grok quota service is not enabled")
+		return
+	}
+	if task, handled, probeErr := runQuotaLeaseDemoUsageProbeTaskForAdmin(
+		c.Request.Context(),
+		h.adminService,
+		h.quotaLeaseDemo,
+		accountID,
+		"active",
+		true,
+		service.QuotaLeaseDemoUsageProbeKindGrokQuota,
+	); handled {
+		if probeErr != nil {
+			response.ErrorFrom(c, probeErr)
+			return
+		}
+		if task == nil || task.GrokQuota == nil {
+			response.ErrorFrom(c, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_DEMO_USAGE_PROBE_EMPTY", "grok quota probe returned no usage data"))
+			return
+		}
+		response.Success(c, task.GrokQuota)
 		return
 	}
 	result, err := h.quotaService.QueryQuota(c.Request.Context(), accountID)

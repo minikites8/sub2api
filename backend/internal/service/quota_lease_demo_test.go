@@ -377,6 +377,28 @@ func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDe
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 				"tasks": control.ListAccountLoginTasks(r.Context(), r.Header.Get("X-Node-ID"), r.URL.Query().Get("status")),
 			}))
+		case "/api/v1/node-leases/demo/accounts/usage-probe-tasks":
+			if r.Method == http.MethodPost {
+				if r.Header.Get("X-Node-Secret") != controlSecret {
+					w.WriteHeader(http.StatusUnauthorized)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+					return
+				}
+				var req QuotaLeaseDemoUsageProbeTaskCreateRequest
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+				task, err := control.CreateUsageProbeTask(r.Context(), req)
+				require.NoError(t, err)
+				require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"task": task}))
+				return
+			}
+			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+				return
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"tasks": control.ListUsageProbeTasks(r.Context(), r.Header.Get("X-Node-ID"), r.URL.Query().Get("status")),
+			}))
 		case "/api/v1/node-leases/demo/accounts/assignments":
 			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
 				w.WriteHeader(http.StatusUnauthorized)
@@ -439,6 +461,20 @@ func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDe
 				var req QuotaLeaseDemoAccountLoginTaskCallbackRequest
 				require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 				task, err := control.SubmitAccountLoginTaskCallback(r.Context(), req)
+				require.NoError(t, err)
+				require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"task": task}))
+				return
+			}
+			if strings.HasPrefix(r.URL.Path, "/api/v1/node-leases/demo/accounts/usage-probe-tasks/") &&
+				strings.HasSuffix(r.URL.Path, "/complete") {
+				if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+					w.WriteHeader(http.StatusUnauthorized)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+					return
+				}
+				var req QuotaLeaseDemoUsageProbeTaskCompleteRequest
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+				task, err := control.CompleteUsageProbeTask(r.Context(), req)
 				require.NoError(t, err)
 				require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"task": task}))
 				return
@@ -2242,6 +2278,70 @@ func TestQuotaLeaseDemoNodeWorkerExecutesPendingAccountTask(t *testing.T) {
 	cached := node.ListAssignedAccounts(ctx, nodeID)
 	require.Len(t, cached, 1)
 	require.Equal(t, int64(303), cached[0].Account.ID)
+}
+
+type quotaLeaseDemoUsageProbeExecutorStub struct {
+	result QuotaLeaseDemoUsageProbeResult
+	err    error
+	tasks  []QuotaLeaseDemoUsageProbeTask
+}
+
+func (e *quotaLeaseDemoUsageProbeExecutorStub) ExecuteUsageProbeTask(_ context.Context, task QuotaLeaseDemoUsageProbeTask) (QuotaLeaseDemoUsageProbeResult, error) {
+	e.tasks = append(e.tasks, task)
+	return e.result, e.err
+}
+
+func TestQuotaLeaseDemoNodeWorkerExecutesPendingUsageProbeTask(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+	ctx := context.Background()
+	register, err := node.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
+	require.NoError(t, err)
+	nodeID := register.Node.NodeID
+
+	task, err := control.CreateUsageProbeTask(ctx, QuotaLeaseDemoUsageProbeTaskCreateRequest{
+		AccountID:      606,
+		AssignedNodeID: nodeID,
+		Platform:       PlatformOpenAI,
+		Source:         "active",
+		Force:          true,
+		ProbeKind:      QuotaLeaseDemoUsageProbeKindAccountUsage,
+	})
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	executor := &quotaLeaseDemoUsageProbeExecutorStub{
+		result: QuotaLeaseDemoUsageProbeResult{
+			Usage: &UsageInfo{
+				Source:    "active",
+				UpdatedAt: &now,
+				FiveHour:  &UsageProgress{Utilization: 12.5},
+			},
+			ExtraPatch: map[string]any{"codex_5h_used_percent": 12.5},
+		},
+	}
+	worker := NewQuotaLeaseDemoNodeWorker(node, NewQuotaLeaseDemoPayloadAccountTaskExecutor(), time.Millisecond, executor)
+	require.NoError(t, worker.RunOnce(ctx))
+
+	require.Len(t, executor.tasks, 1)
+	require.Equal(t, task.ID, executor.tasks[0].ID)
+	tasks := control.ListUsageProbeTasks(ctx, nodeID, QuotaLeaseDemoAccountTaskCompleted)
+	require.Len(t, tasks, 1)
+	require.Equal(t, task.ID, tasks[0].ID)
+	require.NotNil(t, tasks[0].Usage)
+	require.InDelta(t, 12.5, tasks[0].Usage.FiveHour.Utilization, 1e-9)
+	require.Equal(t, 12.5, tasks[0].ExtraPatch["codex_5h_used_percent"])
 }
 
 func TestQuotaLeaseDemoOAuthExecutorGeneratesOpenAIURLAndExchangesCode(t *testing.T) {

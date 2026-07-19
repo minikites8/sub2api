@@ -285,11 +285,15 @@ func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.Quo
 		group.POST("/nodes/register", h.RegisterNode)
 		group.POST("/nodes/heartbeat", h.HeartbeatNode)
 		group.GET("/nodes", h.ListNodes)
+		group.PUT("/nodes/:node_id", h.UpdateNode)
 		group.POST("/accounts/login-tasks", h.CreateAccountLoginTask)
 		group.GET("/accounts/login-tasks", h.ListAccountLoginTasks)
 		group.POST("/accounts/login-tasks/:task_id/complete", h.CompleteAccountLoginTask)
 		group.POST("/accounts/login-tasks/:task_id/progress", h.ReportAccountLoginTaskProgress)
 		group.POST("/accounts/login-tasks/:task_id/callback", h.SubmitAccountLoginTaskCallback)
+		group.POST("/accounts/usage-probe-tasks", h.CreateUsageProbeTask)
+		group.GET("/accounts/usage-probe-tasks", h.ListUsageProbeTasks)
+		group.POST("/accounts/usage-probe-tasks/:task_id/complete", h.CompleteUsageProbeTask)
 		group.POST("/accounts/status", h.ReportAccountStatus)
 		group.GET("/accounts/assignments", h.ListAssignedAccounts)
 		group.POST("/leases/request", h.RequestLease)
@@ -555,6 +559,50 @@ func TestQuotaLeaseDemoHandlerRegistersNodeAndUsesNodeSecret(t *testing.T) {
 	heartbeatRec := httptest.NewRecorder()
 	router.ServeHTTP(heartbeatRec, heartbeatReq)
 	require.Equal(t, http.StatusOK, heartbeatRec.Code)
+}
+
+func TestQuotaLeaseDemoHandlerUpdatesNode(t *testing.T) {
+	router, _ := newQuotaLeaseDemoHandlerTestRouter(t)
+
+	registerReq := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/nodes/register", map[string]any{
+		"node_id":  "foreign-edit-1",
+		"region":   "sg",
+		"base_url": "https://old-node.example",
+	})
+	registerReq.Header.Set("X-Node-Secret", "control-secret")
+	registerRec := httptest.NewRecorder()
+	router.ServeHTTP(registerRec, registerReq)
+	require.Equal(t, http.StatusOK, registerRec.Code)
+
+	unauthorizedReq := quotaLeaseDemoJSONRequest(t, http.MethodPut, "/api/v1/node-leases/demo/nodes/foreign-edit-1", map[string]any{
+		"region": "us-west",
+	})
+	unauthorizedRec := httptest.NewRecorder()
+	router.ServeHTTP(unauthorizedRec, unauthorizedReq)
+	require.Equal(t, http.StatusUnauthorized, unauthorizedRec.Code)
+
+	updateReq := quotaLeaseDemoJSONRequest(t, http.MethodPut, "/api/v1/node-leases/demo/nodes/foreign-edit-1", map[string]any{
+		"region":     "us-west",
+		"base_url":   "https://new-node.example",
+		"public_key": "node-public-key",
+		"metadata":   map[string]string{"pool": "west"},
+		"status":     service.QuotaLeaseDemoNodeStatusDisabled,
+	})
+	updateReq.Header.Set("X-Node-Secret", "control-secret")
+	updateRec := httptest.NewRecorder()
+	router.ServeHTTP(updateRec, updateReq)
+	require.Equal(t, http.StatusOK, updateRec.Code)
+
+	var updateBody struct {
+		Node service.QuotaLeaseDemoNode `json:"node"`
+	}
+	require.NoError(t, json.Unmarshal(updateRec.Body.Bytes(), &updateBody))
+	require.Equal(t, "foreign-edit-1", updateBody.Node.NodeID)
+	require.Equal(t, "us-west", updateBody.Node.Region)
+	require.Equal(t, "https://new-node.example", updateBody.Node.BaseURL)
+	require.Equal(t, "node-public-key", updateBody.Node.PublicKey)
+	require.Equal(t, "west", updateBody.Node.Metadata["pool"])
+	require.Equal(t, service.QuotaLeaseDemoNodeStatusDisabled, updateBody.Node.Status)
 }
 
 func TestQuotaLeaseDemoHandlerInjectsControlSecretForAdminRoute(t *testing.T) {
@@ -1005,6 +1053,93 @@ func TestQuotaLeaseDemoHandlerAccountLoginTaskFlow(t *testing.T) {
 	require.False(t, statusBody.Account.Account.Schedulable)
 	require.Equal(t, "oauth cooling down", statusBody.Account.Account.ErrorMessage)
 	require.Equal(t, "node-access-token-2", statusBody.Account.Account.Credentials["access_token"])
+}
+
+func TestQuotaLeaseDemoHandlerUsageProbeTaskSyncsExtraToAdminService(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:    true,
+				NodeSecret: "control-secret",
+			},
+		},
+	})
+	adminSvc := &quotaLeaseDemoSyncAdminService{}
+	h := NewQuotaLeaseDemoHandler(svc, adminSvc)
+	router := gin.New()
+	group := router.Group("/api/v1/node-leases/demo")
+	group.POST("/nodes/register", h.RegisterNode)
+	group.POST("/accounts/usage-probe-tasks", h.CreateUsageProbeTask)
+	group.GET("/accounts/usage-probe-tasks", h.ListUsageProbeTasks)
+	group.POST("/accounts/usage-probe-tasks/:task_id/complete", h.CompleteUsageProbeTask)
+
+	registerReq := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/nodes/register", map[string]any{
+		"node_id": "foreign-usage-1",
+	})
+	registerReq.Header.Set("X-Node-Secret", "control-secret")
+	registerRec := httptest.NewRecorder()
+	router.ServeHTTP(registerRec, registerReq)
+	require.Equal(t, http.StatusOK, registerRec.Code)
+
+	var registerBody struct {
+		NodeSecret string `json:"node_secret"`
+	}
+	require.NoError(t, json.Unmarshal(registerRec.Body.Bytes(), &registerBody))
+
+	createReq := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/accounts/usage-probe-tasks", map[string]any{
+		"account_id":       202,
+		"assigned_node_id": "foreign-usage-1",
+		"platform":         service.PlatformOpenAI,
+		"source":           "active",
+		"force":            true,
+		"probe_kind":       service.QuotaLeaseDemoUsageProbeKindAccountUsage,
+	})
+	createReq.Header.Set("X-Node-Secret", "control-secret")
+	createRec := httptest.NewRecorder()
+	router.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusOK, createRec.Code)
+
+	var createBody struct {
+		Task service.QuotaLeaseDemoUsageProbeTask `json:"task"`
+	}
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createBody))
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/node-leases/demo/accounts/usage-probe-tasks?status=pending", nil)
+	listReq.Header.Set("X-Node-ID", "foreign-usage-1")
+	listReq.Header.Set("X-Node-Secret", registerBody.NodeSecret)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	require.Equal(t, http.StatusOK, listRec.Code)
+
+	var listBody struct {
+		Tasks []service.QuotaLeaseDemoUsageProbeTask `json:"tasks"`
+	}
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &listBody))
+	require.Len(t, listBody.Tasks, 1)
+
+	now := time.Now().UTC()
+	completeReq := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/demo/accounts/usage-probe-tasks/"+createBody.Task.ID+"/complete", map[string]any{
+		"usage": map[string]any{
+			"source":     "active",
+			"updated_at": now.Format(time.RFC3339),
+			"five_hour": map[string]any{
+				"utilization": 19.5,
+			},
+		},
+		"extra_patch": map[string]any{
+			"codex_5h_used_percent": 19.5,
+			"unsafe_key":            "ignored",
+		},
+	})
+	completeReq.Header.Set("X-Node-ID", "foreign-usage-1")
+	completeReq.Header.Set("X-Node-Secret", registerBody.NodeSecret)
+	completeRec := httptest.NewRecorder()
+	router.ServeHTTP(completeRec, completeReq)
+	require.Equal(t, http.StatusOK, completeRec.Code)
+	require.Equal(t, int64(202), adminSvc.updatedExtraID)
+	require.Equal(t, 19.5, adminSvc.updatedExtra["codex_5h_used_percent"])
+	require.NotContains(t, adminSvc.updatedExtra, "unsafe_key")
 }
 
 func TestQuotaLeaseDemoHandlerPostsUsageLogBatchWithoutBalanceDeduction(t *testing.T) {

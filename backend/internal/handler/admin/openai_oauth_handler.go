@@ -1,11 +1,13 @@
 package admin
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -18,6 +20,7 @@ type OpenAIOAuthHandler struct {
 	openaiOAuthService *service.OpenAIOAuthService
 	adminService       service.AdminService
 	quotaService       *service.OpenAIQuotaService
+	quotaLeaseDemo     *service.QuotaLeaseDemoService
 }
 
 func oauthPlatformFromPath(c *gin.Context) string {
@@ -29,12 +32,17 @@ func NewOpenAIOAuthHandler(
 	openaiOAuthService *service.OpenAIOAuthService,
 	adminService service.AdminService,
 	quotaService *service.OpenAIQuotaService,
+	quotaLeaseDemo ...*service.QuotaLeaseDemoService,
 ) *OpenAIOAuthHandler {
-	return &OpenAIOAuthHandler{
+	handler := &OpenAIOAuthHandler{
 		openaiOAuthService: openaiOAuthService,
 		adminService:       adminService,
 		quotaService:       quotaService,
 	}
+	if len(quotaLeaseDemo) > 0 {
+		handler.quotaLeaseDemo = quotaLeaseDemo[0]
+	}
+	return handler
 }
 
 // OpenAIGenerateAuthURLRequest represents the request for generating OpenAI auth URL
@@ -418,6 +426,26 @@ func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
 	}
 	if h.quotaService == nil {
 		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	if task, handled, probeErr := runQuotaLeaseDemoUsageProbeTaskForAdmin(
+		c.Request.Context(),
+		h.adminService,
+		h.quotaLeaseDemo,
+		accountID,
+		"active",
+		true,
+		service.QuotaLeaseDemoUsageProbeKindOpenAIQuota,
+	); handled {
+		if probeErr != nil {
+			response.ErrorFrom(c, probeErr)
+			return
+		}
+		if task == nil || task.OpenAIQuota == nil {
+			response.ErrorFrom(c, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_DEMO_USAGE_PROBE_EMPTY", "openai quota probe returned no usage data"))
+			return
+		}
+		response.Success(c, task.OpenAIQuota)
 		return
 	}
 	usage, err := h.quotaService.QueryUsage(c.Request.Context(), accountID)

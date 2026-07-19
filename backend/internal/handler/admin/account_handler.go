@@ -65,11 +65,18 @@ type AccountHandler struct {
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	grokImportProber        grokUsageProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
+	quotaLeaseDemoService   *service.QuotaLeaseDemoService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
 func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamBillingProbeService) {
 	h.upstreamBillingProbe = probe
+}
+
+func (h *AccountHandler) SetQuotaLeaseDemoService(svc *service.QuotaLeaseDemoService) {
+	if h != nil {
+		h.quotaLeaseDemoService = svc
+	}
 }
 
 func (h *AccountHandler) AdminService() service.AdminService {
@@ -2160,6 +2167,16 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	if source == "passive" {
 		usage, err = h.accountUsageService.GetPassiveUsage(c.Request.Context(), accountID)
 	} else {
+		var handled bool
+		usage, handled, err = h.getUsageViaAssignedNode(c.Request.Context(), accountID, source, force)
+		if handled {
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			response.Success(c, usage)
+			return
+		}
 		usage, err = h.accountUsageService.GetUsage(c.Request.Context(), accountID, force)
 	}
 	if err != nil {
@@ -2168,6 +2185,31 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	}
 
 	response.Success(c, usage)
+}
+
+func (h *AccountHandler) getUsageViaAssignedNode(ctx context.Context, accountID int64, source string, force bool) (*service.UsageInfo, bool, error) {
+	if h == nil {
+		return nil, false, nil
+	}
+	task, handled, err := runQuotaLeaseDemoUsageProbeTaskForAdmin(
+		ctx,
+		h.adminService,
+		h.quotaLeaseDemoService,
+		accountID,
+		source,
+		force,
+		service.QuotaLeaseDemoUsageProbeKindAccountUsage,
+	)
+	if !handled {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, true, err
+	}
+	if task == nil || task.Usage == nil {
+		return nil, true, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_DEMO_USAGE_PROBE_EMPTY", "usage probe returned no usage data")
+	}
+	return task.Usage, true, nil
 }
 
 // ClearRateLimit handles clearing account rate limit status

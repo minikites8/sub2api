@@ -89,6 +89,7 @@ type QuotaLeaseDemoService struct {
 	prefetchState            map[string]*quotaLeaseDemoPrefetchState
 	clientAuthCache          map[string]*quotaLeaseDemoClientAuthCacheEntry
 	accountTasks             map[string]*QuotaLeaseDemoAccountLoginTask
+	usageProbeTasks          map[string]*QuotaLeaseDemoUsageProbeTask
 	assignedAccounts         map[int64]*QuotaLeaseDemoAssignedAccount
 	registrationURLs         map[string]*QuotaLeaseDemoNodeRegistrationURL
 	mirrorStore              QuotaLeaseDemoMirrorStore
@@ -110,6 +111,7 @@ func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 		prefetchState:    make(map[string]*quotaLeaseDemoPrefetchState),
 		clientAuthCache:  make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
 		accountTasks:     make(map[string]*QuotaLeaseDemoAccountLoginTask),
+		usageProbeTasks:  make(map[string]*QuotaLeaseDemoUsageProbeTask),
 		assignedAccounts: make(map[int64]*QuotaLeaseDemoAssignedAccount),
 		registrationURLs: make(map[string]*QuotaLeaseDemoNodeRegistrationURL),
 	}
@@ -251,6 +253,14 @@ type QuotaLeaseDemoNodeHeartbeatRequest struct {
 	LeaseRemaining   float64            `json:"lease_remaining"`
 	Metrics          map[string]float64 `json:"metrics"`
 	Status           string             `json:"status"`
+}
+
+type QuotaLeaseDemoNodeUpdateRequest struct {
+	Region    *string           `json:"region"`
+	BaseURL   *string           `json:"base_url"`
+	PublicKey *string           `json:"public_key"`
+	Metadata  map[string]string `json:"metadata"`
+	Status    *string           `json:"status"`
 }
 
 type QuotaLeaseDemoNode struct {
@@ -477,6 +487,49 @@ func (s *QuotaLeaseDemoService) heartbeatNodeLocal(ctx context.Context, req Quot
 	node.Metrics = cloneQuotaLeaseDemoFloatMap(req.Metrics)
 	node.LastHeartbeatAt = &now
 	node.UpdatedAt = now
+	_ = ctx
+	return cloneQuotaLeaseDemoNode(node), nil
+}
+
+func (s *QuotaLeaseDemoService) UpdateNode(ctx context.Context, nodeID string, req QuotaLeaseDemoNodeUpdateRequest) (*QuotaLeaseDemoNode, error) {
+	if s == nil || !s.Enabled() {
+		return nil, ErrQuotaLeaseDemoDisabled
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return nil, fmt.Errorf("%w: node_id is required", ErrQuotaLeaseDemoInvalidInput)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	node := s.nodes[nodeID]
+	if node == nil {
+		return nil, ErrQuotaLeaseDemoNodeNotFound
+	}
+
+	if req.Region != nil {
+		node.Region = strings.TrimSpace(*req.Region)
+	}
+	if req.BaseURL != nil {
+		node.BaseURL = strings.TrimSpace(*req.BaseURL)
+	}
+	if req.PublicKey != nil {
+		node.PublicKey = strings.TrimSpace(*req.PublicKey)
+	}
+	if req.Metadata != nil {
+		node.Metadata = cloneQuotaLeaseDemoStringMap(req.Metadata)
+	}
+	if req.Status != nil {
+		status := strings.TrimSpace(*req.Status)
+		switch status {
+		case QuotaLeaseDemoNodeStatusOnline, QuotaLeaseDemoNodeStatusOffline, QuotaLeaseDemoNodeStatusDisabled:
+			node.Status = status
+		default:
+			return nil, fmt.Errorf("%w: invalid node status", ErrQuotaLeaseDemoInvalidInput)
+		}
+	}
+	node.UpdatedAt = time.Now().UTC()
 	_ = ctx
 	return cloneQuotaLeaseDemoNode(node), nil
 }
