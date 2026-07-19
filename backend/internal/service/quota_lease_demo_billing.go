@@ -23,7 +23,7 @@ func (s *QuotaLeaseDemoService) applyLeaseUsageBilling(ctx context.Context, even
 		APIKeyID:           event.APIKeyID,
 		UserID:             event.UserID,
 		BalanceCost:        event.Amount,
-		StrictBalance:      true,
+		StrictBalance:      false,
 		RequestPayloadHash: quotaLeaseDemoUsageBillingPayloadHash(event.NodeID, event.UserID, event.APIKeyID, event.RequestID, event.Amount, event.EventType),
 	})
 	if err != nil {

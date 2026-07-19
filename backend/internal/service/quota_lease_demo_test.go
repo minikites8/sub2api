@@ -260,6 +260,21 @@ func (r *quotaLeaseDemoBillingRepo) applyHold(cmd *BalanceHoldCommand, calls *[]
 
 var _ UsageBillingRepository = (*quotaLeaseDemoBillingRepo)(nil)
 
+type quotaLeaseDemoStrictBalanceRejectingBillingRepo struct {
+	quotaLeaseDemoBillingRepo
+}
+
+func (r *quotaLeaseDemoStrictBalanceRejectingBillingRepo) Apply(_ context.Context, cmd *UsageBillingCommand) (*UsageBillingApplyResult, error) {
+	if cmd != nil && cmd.StrictBalance {
+		r.applies = append(r.applies, cmd)
+		return nil, ErrBalanceHoldInsufficientBalance
+	}
+	r.applies = append(r.applies, cmd)
+	return &UsageBillingApplyResult{Applied: true, BalanceOverdrafted: true}, nil
+}
+
+var _ UsageBillingRepository = (*quotaLeaseDemoStrictBalanceRejectingBillingRepo)(nil)
+
 func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDemoService, controlSecret string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -677,7 +692,7 @@ func TestQuotaLeaseDemoUsageBillingChargesBalanceOnConsumption(t *testing.T) {
 	require.Equal(t, int64(10), billing.applies[0].UserID)
 	require.Equal(t, int64(20), billing.applies[0].APIKeyID)
 	require.InDelta(t, 0.4, billing.applies[0].BalanceCost, 1e-12)
-	require.True(t, billing.applies[0].StrictBalance)
+	require.False(t, billing.applies[0].StrictBalance)
 	require.Empty(t, billing.captures)
 
 	duplicate, err := svc.ConsumeUsage(ctx, event)
@@ -691,6 +706,36 @@ func TestQuotaLeaseDemoUsageBillingChargesBalanceOnConsumption(t *testing.T) {
 	require.Equal(t, 1, reclaimed.ReclaimedCount)
 	require.InDelta(t, 0.6, reclaimed.ReclaimedTotal, 1e-12)
 	require.Empty(t, billing.releases)
+}
+
+func TestQuotaLeaseDemoUsageBillingAllowsControlPlaneBalanceOverdraft(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	billing := &quotaLeaseDemoStrictBalanceRejectingBillingRepo{}
+	svc.SetUsageBillingRepository(billing)
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-1",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   0.02,
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ConsumeUsage(ctx, QuotaLeaseDemoUsageEvent{
+		EventID:   "event-control-overdraft-1",
+		LeaseID:   lease.ID,
+		NodeID:    "node-1",
+		UserID:    10,
+		APIKeyID:  20,
+		RequestID: "req-control-overdraft-1",
+		Amount:    0.05,
+	})
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+	require.Len(t, billing.applies, 1)
+	require.False(t, billing.applies[0].StrictBalance)
+	require.InDelta(t, -0.03, result.Lease.Remaining(), 1e-9)
 }
 
 func TestQuotaLeaseDemoLeaseUsesIdleExpiryWindow(t *testing.T) {
