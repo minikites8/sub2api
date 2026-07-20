@@ -350,9 +350,17 @@ func (w *QuotaLeaseDemoNodeWorker) Start(parent context.Context) {
 }
 
 func (w *QuotaLeaseDemoNodeWorker) Stop() {
+	_ = w.StopAndDrain(context.Background())
+}
+
+func (w *QuotaLeaseDemoNodeWorker) StopAndDrain(ctx context.Context) error {
 	if w == nil {
-		return
+		return nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var drainErr error
 	w.stopOnce.Do(func() {
 		if w.cancel != nil {
 			w.cancel()
@@ -360,7 +368,11 @@ func (w *QuotaLeaseDemoNodeWorker) Stop() {
 		if w.done != nil {
 			<-w.done
 		}
+		if w.svc != nil {
+			drainErr = w.svc.DrainNodeRuntime(ctx)
+		}
 	})
+	return drainErr
 }
 
 func (w *QuotaLeaseDemoNodeWorker) RunOnce(ctx context.Context) error {
@@ -583,8 +595,17 @@ func (w *QuotaLeaseDemoReclaimWorker) RunOnce(ctx context.Context) error {
 	}
 	now := time.Now().UTC()
 	w.svc.ReclaimExpired(ctx, now)
-	_, err := w.svc.CleanupRetainedRecords(ctx, now)
-	return err
+	_, cleanupErr := w.svc.CleanupRetainedRecords(ctx, now)
+	var combined error
+	if cleanupErr != nil {
+		combined = errors.Join(combined, cleanupErr)
+	}
+	for _, result := range w.svc.ReconcileUsageLedgers(ctx) {
+		if strings.TrimSpace(result.Error) != "" {
+			combined = errors.Join(combined, fmt.Errorf("reconcile node %s: %s", result.NodeID, result.Error))
+		}
+	}
+	return combined
 }
 
 func (w *QuotaLeaseDemoReclaimWorker) loop(ctx context.Context) {

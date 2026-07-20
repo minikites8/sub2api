@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
@@ -87,6 +88,7 @@ type QuotaLeaseDemoService struct {
 	runtimeSettings          *QuotaLeaseDemoSettings
 	runtimeSettingsExpiresAt time.Time
 	leases                   map[string]*QuotaLeaseDemoLease
+	leaseIndex               map[string]map[string]struct{}
 	events                   map[string]*QuotaLeaseDemoLedgerEvent
 	nodes                    map[string]*QuotaLeaseDemoNode
 	pendingEvents            map[string]QuotaLeaseDemoUsageEvent
@@ -102,6 +104,7 @@ type QuotaLeaseDemoService struct {
 	mirrorStore              QuotaLeaseDemoMirrorStore
 	channelService           *ChannelService
 	mirrorVersionStates      map[string]*quotaLeaseDemoMirrorVersionState
+	reconcileWatermarks      map[string]string
 	syncStartedAt            time.Time
 	syncSuccessAt            time.Time
 	syncFailedAt             time.Time
@@ -123,6 +126,7 @@ func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 	return &QuotaLeaseDemoService{
 		cfg:                 cfg,
 		leases:              make(map[string]*QuotaLeaseDemoLease),
+		leaseIndex:          make(map[string]map[string]struct{}),
 		events:              make(map[string]*QuotaLeaseDemoLedgerEvent),
 		nodes:               make(map[string]*QuotaLeaseDemoNode),
 		pendingEvents:       make(map[string]QuotaLeaseDemoUsageEvent),
@@ -135,6 +139,7 @@ func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 		assignedAccounts:    make(map[int64]*QuotaLeaseDemoAssignedAccount),
 		registrationURLs:    make(map[string]*QuotaLeaseDemoNodeRegistrationURL),
 		mirrorVersionStates: make(map[string]*quotaLeaseDemoMirrorVersionState),
+		reconcileWatermarks: make(map[string]string),
 	}
 }
 
@@ -680,6 +685,8 @@ type QuotaLeaseDemoLeaseRequest struct {
 	UserID              int64   `json:"user_id"`
 	APIKeyID            int64   `json:"api_key_id"`
 	Amount              float64 `json:"amount"`
+	RequestID           string  `json:"request_id,omitempty"`
+	TraceID             string  `json:"trace_id,omitempty"`
 	TTLSeconds          int     `json:"ttl_seconds"`
 	ReclaimGraceSeconds int     `json:"reclaim_grace_seconds"`
 }
@@ -693,6 +700,7 @@ type QuotaLeaseDemoLease struct {
 	Consumed  float64   `json:"consumed"`
 	Reclaimed float64   `json:"reclaimed"`
 	Version   int64     `json:"version"`
+	TraceID   string    `json:"trace_id,omitempty"`
 	Status    string    `json:"status"`
 	ExpiresAt time.Time `json:"expires_at"`
 	ReclaimAt time.Time `json:"reclaim_at"`
@@ -711,6 +719,7 @@ type QuotaLeaseDemoUsageEvent struct {
 	UserID    int64     `json:"user_id"`
 	APIKeyID  int64     `json:"api_key_id"`
 	RequestID string    `json:"request_id"`
+	TraceID   string    `json:"trace_id,omitempty"`
 	Amount    float64   `json:"amount"`
 	EventType string    `json:"event_type"`
 	CreatedAt time.Time `json:"created_at"`
@@ -723,6 +732,7 @@ type QuotaLeaseDemoLedgerEvent struct {
 	UserID      int64     `json:"user_id"`
 	APIKeyID    int64     `json:"api_key_id"`
 	RequestID   string    `json:"request_id"`
+	TraceID     string    `json:"trace_id,omitempty"`
 	Amount      float64   `json:"amount"`
 	EventType   string    `json:"event_type"`
 	PayloadHash string    `json:"payload_hash"`
@@ -732,6 +742,7 @@ type QuotaLeaseDemoLedgerEvent struct {
 type QuotaLeaseDemoUsageResult struct {
 	EventID   string               `json:"event_id"`
 	LeaseID   string               `json:"lease_id"`
+	TraceID   string               `json:"trace_id,omitempty"`
 	Applied   bool                 `json:"applied"`
 	Duplicate bool                 `json:"duplicate"`
 	Error     string               `json:"error,omitempty"`
@@ -843,6 +854,8 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	if req.UserID <= 0 || req.APIKeyID <= 0 || nodeID == "" {
 		return nil, fmt.Errorf("%w: user_id, api_key_id and node_id are required", ErrQuotaLeaseDemoInvalidInput)
 	}
+	req.RequestID = strings.TrimSpace(req.RequestID)
+	req.TraceID = quotaLeaseDemoTraceID(req.TraceID, nodeID, req.UserID, req.APIKeyID, req.RequestID)
 	amount := req.Amount
 	if amount <= 0 {
 		amount = cfg.DefaultGrantAmount
@@ -869,12 +882,9 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 
 	var reusable *QuotaLeaseDemoLease
 	var extendable *QuotaLeaseDemoLease
-	for _, lease := range s.leases {
+	for _, lease := range s.indexedQuotaLeaseDemoLeasesLocked(nodeID, req.UserID, req.APIKeyID) {
 		s.refreshLeaseStatusLocked(lease, now)
 		if lease.Status != QuotaLeaseDemoStatusActive {
-			continue
-		}
-		if lease.NodeID != nodeID || lease.UserID != req.UserID || lease.APIKeyID != req.APIKeyID {
 			continue
 		}
 		if extendable == nil || lease.ExpiresAt.Before(extendable.ExpiresAt) {
@@ -888,8 +898,12 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		reusable.ExpiresAt = expiresAt
 		reusable.ReclaimAt = reclaimAt
 		reusable.UpdatedAt = now
+		reusable.TraceID = req.TraceID
 		advanceQuotaLeaseDemoLeaseVersion(reusable)
 		persistedLease = cloneQuotaLeaseDemoLease(reusable)
+		s.logQuotaLeaseDemoTrace("lease_reused", req.TraceID, req.RequestID, reusable.ID, nodeID, req.UserID, req.APIKeyID, map[string]any{
+			"remaining": reusable.Remaining(),
+		})
 		s.mu.Unlock()
 		if err := s.persistQuotaLeaseDemoLease(ctx, persistedLease); err != nil {
 			return nil, err
@@ -906,6 +920,7 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		extendable.ReclaimAt = reclaimAt
 		extendable.Granted = targetGranted
 		extendable.UpdatedAt = now
+		extendable.TraceID = req.TraceID
 		advanceQuotaLeaseDemoLeaseVersion(extendable)
 		eventID := "lease:" + extendable.ID
 		event := &QuotaLeaseDemoLedgerEvent{
@@ -914,6 +929,8 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 			NodeID:      extendable.NodeID,
 			UserID:      extendable.UserID,
 			APIKeyID:    extendable.APIKeyID,
+			RequestID:   req.RequestID,
+			TraceID:     req.TraceID,
 			Amount:      extendable.Granted,
 			EventType:   QuotaLeaseDemoEventLeaseGranted,
 			PayloadHash: quotaLeaseDemoPayloadHash(extendable.ID, extendable.NodeID, extendable.UserID, extendable.APIKeyID, "", extendable.Granted, QuotaLeaseDemoEventLeaseGranted),
@@ -922,6 +939,10 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		s.events[eventID] = event
 		persistedLease = cloneQuotaLeaseDemoLease(extendable)
 		persistedEvent = event
+		s.logQuotaLeaseDemoTrace("lease_extended", req.TraceID, req.RequestID, extendable.ID, nodeID, req.UserID, req.APIKeyID, map[string]any{
+			"granted":   extendable.Granted,
+			"remaining": extendable.Remaining(),
+		})
 		s.mu.Unlock()
 		if err := s.persistQuotaLeaseDemoLeaseAndEvent(ctx, persistedLease, persistedEvent); err != nil {
 			return nil, err
@@ -936,6 +957,7 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		APIKeyID:  req.APIKeyID,
 		Granted:   amount,
 		Version:   1,
+		TraceID:   req.TraceID,
 		Status:    QuotaLeaseDemoStatusActive,
 		ExpiresAt: expiresAt,
 		ReclaimAt: reclaimAt,
@@ -943,13 +965,15 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 		UpdatedAt: now,
 	}
 
-	s.leases[lease.ID] = lease
+	s.upsertQuotaLeaseDemoLeaseLocked(lease)
 	event := &QuotaLeaseDemoLedgerEvent{
 		EventID:     "lease:" + lease.ID,
 		LeaseID:     lease.ID,
 		NodeID:      lease.NodeID,
 		UserID:      lease.UserID,
 		APIKeyID:    lease.APIKeyID,
+		RequestID:   req.RequestID,
+		TraceID:     req.TraceID,
 		Amount:      lease.Granted,
 		EventType:   QuotaLeaseDemoEventLeaseGranted,
 		PayloadHash: quotaLeaseDemoPayloadHash(lease.ID, lease.NodeID, lease.UserID, lease.APIKeyID, "", lease.Granted, QuotaLeaseDemoEventLeaseGranted),
@@ -958,6 +982,9 @@ func (s *QuotaLeaseDemoService) requestLeaseLocal(ctx context.Context, req Quota
 	s.events[event.EventID] = event
 	persistedLease = cloneQuotaLeaseDemoLease(lease)
 	persistedEvent = event
+	s.logQuotaLeaseDemoTrace("lease_granted", req.TraceID, req.RequestID, lease.ID, nodeID, req.UserID, req.APIKeyID, map[string]any{
+		"granted": lease.Granted,
+	})
 	s.mu.Unlock()
 	if err := s.persistQuotaLeaseDemoLeaseAndEvent(ctx, persistedLease, persistedEvent); err != nil {
 		return nil, err
@@ -985,6 +1012,8 @@ func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey 
 		return false
 	}
 	nodeID := s.activeNodeID()
+	requestID := quotaLeaseDemoContextRequestID(ctx)
+	traceID := quotaLeaseDemoTraceID("", nodeID, apiKey.User.ID, apiKey.ID, requestID)
 	amount := s.DefaultGrantAmount()
 	if balance := apiKey.User.Balance; finitePositive(balance) && balance < amount {
 		amount = balance
@@ -992,6 +1021,9 @@ func (s *QuotaLeaseDemoService) CanAuthorizeRequest(ctx context.Context, apiKey 
 	if !finitePositive(amount) {
 		return false
 	}
+	s.logQuotaLeaseDemoTrace("gateway_preflight_start", traceID, requestID, "", nodeID, apiKey.User.ID, apiKey.ID, map[string]any{
+		"amount": amount,
+	})
 	return s.ensureCapacityWithMinimum(ctx, "gateway_preflight", nodeID, apiKey.User.ID, apiKey.ID, amount, s.preflightCapacityCheckAmount(amount))
 }
 
@@ -1015,6 +1047,7 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 	if lease == nil {
 		return true, false, ErrQuotaLeaseDemoNoCapacity
 	}
+	traceID := quotaLeaseDemoTraceID(strings.TrimSpace(lease.TraceID), nodeID, cmd.UserID, cmd.APIKeyID, cmd.RequestID)
 	eventID := quotaLeaseDemoUsageEventID(nodeID, lease.ID, cmd.RequestID)
 	event := QuotaLeaseDemoUsageEvent{
 		EventID:   eventID,
@@ -1023,10 +1056,15 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 		UserID:    cmd.UserID,
 		APIKeyID:  cmd.APIKeyID,
 		RequestID: cmd.RequestID,
+		TraceID:   traceID,
 		Amount:    cmd.BalanceCost,
 		EventType: QuotaLeaseDemoEventUsagePosted,
 		CreatedAt: time.Now().UTC(),
 	}
+	s.logQuotaLeaseDemoTrace("usage_billing_selected", traceID, cmd.RequestID, lease.ID, nodeID, cmd.UserID, cmd.APIKeyID, map[string]any{
+		"amount":    cmd.BalanceCost,
+		"remaining": lease.Remaining(),
+	})
 	result, consumeErr := s.consumeUsageLocal(ctx, event)
 	if consumeErr != nil {
 		return true, false, consumeErr
@@ -1043,9 +1081,11 @@ func (s *QuotaLeaseDemoService) ApplyUsageBilling(ctx context.Context, cmd *Usag
 				return true, true, ErrQuotaLeaseDemoNoCapacity
 			}
 			if _, requestErr := s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
-				UserID:   cmd.UserID,
-				APIKeyID: cmd.APIKeyID,
-				Amount:   target,
+				UserID:    cmd.UserID,
+				APIKeyID:  cmd.APIKeyID,
+				Amount:    target,
+				RequestID: cmd.RequestID,
+				TraceID:   traceID,
 			}); requestErr != nil {
 				probe := s.inspectCapacitySnapshot(nodeID, cmd.UserID, cmd.APIKeyID, s.preflightCapacityCheckAmount(target), time.Now().UTC())
 				s.logCapacityDenied("usage_billing_overdraft", "request_lease_failed", nodeID, cmd.UserID, cmd.APIKeyID, target, probe, requestErr)
@@ -1102,12 +1142,16 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 	event.LeaseID = strings.TrimSpace(event.LeaseID)
 	event.NodeID = strings.TrimSpace(event.NodeID)
 	event.RequestID = strings.TrimSpace(event.RequestID)
+	event.TraceID = strings.TrimSpace(event.TraceID)
 	event.EventType = strings.TrimSpace(event.EventType)
 	if event.EventType == "" {
 		event.EventType = QuotaLeaseDemoEventUsagePosted
 	}
 	if event.NodeID == "" {
 		event.NodeID = s.NodeID()
+	}
+	if event.TraceID == "" {
+		event.TraceID = quotaLeaseDemoTraceID("", event.NodeID, event.UserID, event.APIKeyID, event.RequestID)
 	}
 	if event.EventID == "" || event.LeaseID == "" || event.UserID <= 0 || event.APIKeyID <= 0 || event.RequestID == "" {
 		return nil, fmt.Errorf("%w: event_id, lease_id, user_id, api_key_id and request_id are required", ErrQuotaLeaseDemoInvalidInput)
@@ -1127,6 +1171,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		result := &QuotaLeaseDemoUsageResult{
 			EventID:   event.EventID,
 			LeaseID:   existing.LeaseID,
+			TraceID:   existing.TraceID,
 			Applied:   false,
 			Duplicate: true,
 			Lease:     cloneQuotaLeaseDemoLease(s.leases[existing.LeaseID]),
@@ -1135,6 +1180,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		return &QuotaLeaseDemoUsageResult{
 			EventID:   result.EventID,
 			LeaseID:   result.LeaseID,
+			TraceID:   result.TraceID,
 			Applied:   result.Applied,
 			Duplicate: result.Duplicate,
 			Lease:     result.Lease,
@@ -1169,6 +1215,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		nextLease.ReclaimAt = quotaLeaseDemoReclaimAt(nextLease.ExpiresAt, graceSeconds)
 	}
 	nextLease.UpdatedAt = now
+	nextLease.TraceID = event.TraceID
 	if math.Abs(remaining) <= 1e-12 {
 		nextLease.Status = QuotaLeaseDemoStatusClosed
 	}
@@ -1179,6 +1226,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		UserID:      event.UserID,
 		APIKeyID:    event.APIKeyID,
 		RequestID:   event.RequestID,
+		TraceID:     event.TraceID,
 		Amount:      event.Amount,
 		EventType:   event.EventType,
 		PayloadHash: payloadHash,
@@ -1193,6 +1241,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		result := &QuotaLeaseDemoUsageResult{
 			EventID:   event.EventID,
 			LeaseID:   event.LeaseID,
+			TraceID:   event.TraceID,
 			Applied:   false,
 			Duplicate: true,
 			Lease:     cloneQuotaLeaseDemoLease(lease),
@@ -1201,6 +1250,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		return &QuotaLeaseDemoUsageResult{
 			EventID:   result.EventID,
 			LeaseID:   result.LeaseID,
+			TraceID:   result.TraceID,
 			Applied:   result.Applied,
 			Duplicate: result.Duplicate,
 			Lease:     result.Lease,
@@ -1210,6 +1260,10 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 	s.events[event.EventID] = ledgerEvent
 	persistedLease := cloneQuotaLeaseDemoLease(lease)
 	persistedEvent := *ledgerEvent
+	s.logQuotaLeaseDemoTrace("usage_billing_applied", event.TraceID, event.RequestID, event.LeaseID, event.NodeID, event.UserID, event.APIKeyID, map[string]any{
+		"amount":    event.Amount,
+		"remaining": persistedLease.Remaining(),
+	})
 	s.mu.Unlock()
 	if !persistedByBilling {
 		if err := s.persistQuotaLeaseDemoLeaseAndEvent(ctx, persistedLease, &persistedEvent); err != nil {
@@ -1220,6 +1274,7 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 	return &QuotaLeaseDemoUsageResult{
 		EventID: event.EventID,
 		LeaseID: event.LeaseID,
+		TraceID: event.TraceID,
 		Applied: true,
 		Lease:   persistedLease,
 	}, nil
@@ -1307,6 +1362,7 @@ func (s *QuotaLeaseDemoService) ReclaimExpired(ctx context.Context, now time.Tim
 			APIKeyID:    lease.APIKeyID,
 			Amount:      reclaimed,
 			EventType:   QuotaLeaseDemoEventReclaimed,
+			TraceID:     lease.TraceID,
 			PayloadHash: quotaLeaseDemoPayloadHash(lease.ID, lease.NodeID, lease.UserID, lease.APIKeyID, eventID, reclaimed, QuotaLeaseDemoEventReclaimed),
 			CreatedAt:   now,
 		}
@@ -1414,6 +1470,107 @@ func (s *QuotaLeaseDemoService) nodeLeaseRemainingByNodeLocked(now time.Time) ma
 	return remainingByNode
 }
 
+func (s *QuotaLeaseDemoService) upsertQuotaLeaseDemoLeaseLocked(lease *QuotaLeaseDemoLease) {
+	if s == nil || lease == nil || strings.TrimSpace(lease.ID) == "" {
+		return
+	}
+	if s.leases == nil {
+		s.leases = make(map[string]*QuotaLeaseDemoLease)
+	}
+	if s.leaseIndex == nil {
+		s.leaseIndex = make(map[string]map[string]struct{})
+	}
+	if existing := s.leases[lease.ID]; existing != nil {
+		s.removeQuotaLeaseDemoLeaseIndexLocked(existing)
+	}
+	s.leases[lease.ID] = lease
+	key := quotaLeaseDemoLeaseIndexKey(lease.NodeID, lease.UserID, lease.APIKeyID)
+	if key == "" {
+		return
+	}
+	bucket := s.leaseIndex[key]
+	if bucket == nil {
+		bucket = make(map[string]struct{})
+		s.leaseIndex[key] = bucket
+	}
+	bucket[lease.ID] = struct{}{}
+}
+
+func (s *QuotaLeaseDemoService) deleteQuotaLeaseDemoLeaseLocked(leaseID string) {
+	if s == nil || strings.TrimSpace(leaseID) == "" {
+		return
+	}
+	lease := s.leases[strings.TrimSpace(leaseID)]
+	if lease != nil {
+		s.removeQuotaLeaseDemoLeaseIndexLocked(lease)
+	}
+	delete(s.leases, strings.TrimSpace(leaseID))
+}
+
+func (s *QuotaLeaseDemoService) removeQuotaLeaseDemoLeaseIndexLocked(lease *QuotaLeaseDemoLease) {
+	if s == nil || lease == nil || s.leaseIndex == nil {
+		return
+	}
+	key := quotaLeaseDemoLeaseIndexKey(lease.NodeID, lease.UserID, lease.APIKeyID)
+	if key == "" {
+		return
+	}
+	bucket := s.leaseIndex[key]
+	if bucket == nil {
+		return
+	}
+	delete(bucket, lease.ID)
+	if len(bucket) == 0 {
+		delete(s.leaseIndex, key)
+	}
+}
+
+func (s *QuotaLeaseDemoService) indexedQuotaLeaseDemoLeasesLocked(nodeID string, userID, apiKeyID int64) []*QuotaLeaseDemoLease {
+	if s == nil {
+		return nil
+	}
+	if s.leaseIndex == nil || (len(s.leaseIndex) == 0 && len(s.leases) > 0) {
+		s.rebuildQuotaLeaseDemoLeaseIndexLocked()
+	}
+	key := quotaLeaseDemoLeaseIndexKey(nodeID, userID, apiKeyID)
+	if key == "" {
+		return nil
+	}
+	ids := s.leaseIndex[key]
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]*QuotaLeaseDemoLease, 0, len(ids))
+	for id := range ids {
+		if lease := s.leases[id]; lease != nil {
+			out = append(out, lease)
+		}
+	}
+	return out
+}
+
+func (s *QuotaLeaseDemoService) rebuildQuotaLeaseDemoLeaseIndexLocked() {
+	if s == nil {
+		return
+	}
+	s.leaseIndex = make(map[string]map[string]struct{})
+	for _, lease := range s.leases {
+		if lease == nil || strings.TrimSpace(lease.ID) == "" {
+			continue
+		}
+		key := quotaLeaseDemoLeaseIndexKey(lease.NodeID, lease.UserID, lease.APIKeyID)
+		if key == "" {
+			continue
+		}
+		bucket := s.leaseIndex[key]
+		if bucket == nil {
+			bucket = make(map[string]struct{})
+			s.leaseIndex[key] = bucket
+		}
+		bucket[lease.ID] = struct{}{}
+	}
+}
+
 func (s *QuotaLeaseDemoService) hasCapacity(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) bool {
 	return s.findLeaseForConsumption(nodeID, userID, apiKeyID, amount, now) != nil
 }
@@ -1454,12 +1611,9 @@ func (s *QuotaLeaseDemoService) findLeaseForConsumption(nodeID string, userID, a
 	defer s.mu.Unlock()
 
 	var best *QuotaLeaseDemoLease
-	for _, lease := range s.leases {
+	for _, lease := range s.indexedQuotaLeaseDemoLeasesLocked(nodeID, userID, apiKeyID) {
 		s.refreshLeaseStatusLocked(lease, now)
 		if lease.Status != QuotaLeaseDemoStatusActive {
-			continue
-		}
-		if lease.NodeID != nodeID || lease.UserID != userID || lease.APIKeyID != apiKeyID {
 			continue
 		}
 		if lease.Remaining()+1e-12 < amount {
@@ -1483,12 +1637,9 @@ func (s *QuotaLeaseDemoService) findActiveLeaseForBilling(nodeID string, userID,
 	defer s.mu.Unlock()
 
 	var best *QuotaLeaseDemoLease
-	for _, lease := range s.leases {
+	for _, lease := range s.indexedQuotaLeaseDemoLeasesLocked(nodeID, userID, apiKeyID) {
 		s.refreshLeaseStatusLocked(lease, now)
 		if lease.Status != QuotaLeaseDemoStatusActive {
-			continue
-		}
-		if lease.NodeID != nodeID || lease.UserID != userID || lease.APIKeyID != apiKeyID {
 			continue
 		}
 		if best == nil ||
@@ -1624,6 +1775,62 @@ func quotaLeaseDemoUsageEventID(nodeID, leaseID, requestID string) string {
 
 func quotaLeaseDemoLeaseRequestGroupKey(nodeID string, userID, apiKeyID int64) string {
 	return fmt.Sprintf("%s:%d:%d", strings.TrimSpace(nodeID), userID, apiKeyID)
+}
+
+func quotaLeaseDemoLeaseIndexKey(nodeID string, userID, apiKeyID int64) string {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" || userID <= 0 || apiKeyID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%d", nodeID, userID, apiKeyID)
+}
+
+func quotaLeaseDemoContextRequestID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if value, ok := ctx.Value(ctxkey.RequestID).(string); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+func quotaLeaseDemoTraceID(candidate, nodeID string, userID, apiKeyID int64, requestID string) string {
+	candidate = strings.TrimSpace(candidate)
+	if candidate != "" {
+		return candidate
+	}
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return "qlt_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	}
+	raw := fmt.Sprintf("%s|%d|%d|%s", strings.TrimSpace(nodeID), userID, apiKeyID, requestID)
+	sum := sha256.Sum256([]byte(raw))
+	return "qlt_" + hex.EncodeToString(sum[:12])
+}
+
+func (s *QuotaLeaseDemoService) logQuotaLeaseDemoTrace(stage, traceID, requestID, leaseID, nodeID string, userID, apiKeyID int64, extra map[string]any) {
+	traceID = strings.TrimSpace(traceID)
+	if traceID == "" {
+		return
+	}
+	fields := []any{
+		"stage", strings.TrimSpace(stage),
+		"trace_id", traceID,
+		"request_id", strings.TrimSpace(requestID),
+		"lease_id", strings.TrimSpace(leaseID),
+		"node_id", strings.TrimSpace(nodeID),
+		"user_id", userID,
+		"api_key_id", apiKeyID,
+	}
+	for key, value := range extra {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		fields = append(fields, key, value)
+	}
+	slog.Info("quota_lease_demo.trace", fields...)
 }
 
 func nextQuotaLeaseDemoLeaseVersion(current int64) int64 {

@@ -77,6 +77,8 @@ func (s *QuotaLeaseDemoService) ensureCapacityWithMinimum(ctx context.Context, o
 	}
 
 	var requestErr error
+	requestID := quotaLeaseDemoContextRequestID(ctx)
+	traceID := quotaLeaseDemoTraceID("", nodeID, userID, apiKeyID, requestID)
 	for attempt := 0; attempt < 2; attempt++ {
 		if flushErr := s.FlushPendingUsage(ctx); flushErr != nil {
 			probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, minimumAmount, time.Now().UTC())
@@ -84,10 +86,12 @@ func (s *QuotaLeaseDemoService) ensureCapacityWithMinimum(ctx context.Context, o
 			return false
 		}
 		_, requestErr = s.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
-			NodeID:   "",
-			UserID:   userID,
-			APIKeyID: apiKeyID,
-			Amount:   requestAmount,
+			NodeID:    "",
+			UserID:    userID,
+			APIKeyID:  apiKeyID,
+			Amount:    requestAmount,
+			RequestID: requestID,
+			TraceID:   traceID,
 		})
 		if requestErr != nil {
 			probe = s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, minimumAmount, time.Now().UTC())
@@ -303,15 +307,12 @@ func (s *QuotaLeaseDemoService) inspectCapacitySnapshot(nodeID string, userID, a
 	defer s.mu.Unlock()
 
 	var best *QuotaLeaseDemoLease
-	for _, lease := range s.leases {
+	probe.TotalLeases = len(s.leases)
+	for _, lease := range s.indexedQuotaLeaseDemoLeasesLocked(nodeID, userID, apiKeyID) {
 		if lease == nil {
 			continue
 		}
-		probe.TotalLeases++
 		s.refreshLeaseStatusLocked(lease, now)
-		if lease.NodeID != nodeID || lease.UserID != userID || lease.APIKeyID != apiKeyID {
-			continue
-		}
 		probe.MatchingLeases++
 		if lease.Status == QuotaLeaseDemoStatusActive {
 			probe.ActiveMatchingLeases++
@@ -717,12 +718,16 @@ func (s *QuotaLeaseDemoService) enqueuePendingUsageEventWithContext(ctx context.
 	event.LeaseID = strings.TrimSpace(event.LeaseID)
 	event.NodeID = strings.TrimSpace(event.NodeID)
 	event.RequestID = strings.TrimSpace(event.RequestID)
+	event.TraceID = strings.TrimSpace(event.TraceID)
 	event.EventType = strings.TrimSpace(event.EventType)
 	if event.EventID == "" || event.LeaseID == "" {
 		return nil
 	}
 	if event.NodeID == "" {
 		event.NodeID = s.NodeID()
+	}
+	if event.TraceID == "" {
+		event.TraceID = quotaLeaseDemoTraceID("", event.NodeID, event.UserID, event.APIKeyID, event.RequestID)
 	}
 	if event.EventType == "" {
 		event.EventType = QuotaLeaseDemoEventUsagePosted
@@ -829,6 +834,7 @@ func (s *QuotaLeaseDemoService) cacheRemoteLeaseContext(ctx context.Context, lea
 		APIKeyID:    copy.APIKeyID,
 		Amount:      copy.Granted,
 		EventType:   QuotaLeaseDemoEventLeaseGranted,
+		TraceID:     copy.TraceID,
 		PayloadHash: quotaLeaseDemoPayloadHash(copy.ID, copy.NodeID, copy.UserID, copy.APIKeyID, "", copy.Granted, QuotaLeaseDemoEventLeaseGranted),
 		CreatedAt:   copy.CreatedAt,
 	}
@@ -846,8 +852,11 @@ func (s *QuotaLeaseDemoService) cacheRemoteLeaseContext(ctx context.Context, lea
 		if existing.Reclaimed > copy.Reclaimed {
 			copy.Reclaimed = existing.Reclaimed
 		}
+		if strings.TrimSpace(copy.TraceID) == "" {
+			copy.TraceID = strings.TrimSpace(existing.TraceID)
+		}
 	}
-	s.leases[copy.ID] = &copy
+	s.upsertQuotaLeaseDemoLeaseLocked(&copy)
 	s.events[eventID] = event
 	s.mu.Unlock()
 	return s.persistQuotaLeaseDemoLeaseAndEvent(ctx, &copy, event)

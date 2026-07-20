@@ -121,10 +121,10 @@ func (s *quotaLeaseDemoPersistenceStore) SaveQuotaLeaseDemoPendingUsageEvent(ctx
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO quota_lease_demo_pending_usage_events (
 			event_id, lease_id, node_id, user_id, api_key_id, request_id,
-			amount, event_type, created_at, updated_at
+			trace_id, amount, event_type, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
-			$7, $8, $9, NOW()
+			$7, $8, $9, $10, NOW()
 		)
 		ON CONFLICT (event_id) DO UPDATE SET
 			lease_id = EXCLUDED.lease_id,
@@ -132,12 +132,13 @@ func (s *quotaLeaseDemoPersistenceStore) SaveQuotaLeaseDemoPendingUsageEvent(ctx
 			user_id = EXCLUDED.user_id,
 			api_key_id = EXCLUDED.api_key_id,
 			request_id = EXCLUDED.request_id,
+			trace_id = EXCLUDED.trace_id,
 			amount = EXCLUDED.amount,
 			event_type = EXCLUDED.event_type,
 			created_at = EXCLUDED.created_at,
 			updated_at = NOW()
 	`, event.EventID, event.LeaseID, event.NodeID, event.UserID, event.APIKeyID, event.RequestID,
-		event.Amount, event.EventType, event.CreatedAt)
+		event.TraceID, event.Amount, event.EventType, event.CreatedAt)
 	return err
 }
 
@@ -320,7 +321,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadNodes(ctx context.Context) ([]servi
 func (s *quotaLeaseDemoPersistenceStore) loadLeases(ctx context.Context) ([]service.QuotaLeaseDemoLease, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, node_id, user_id, api_key_id, granted, consumed, reclaimed,
-			version, status, expires_at, reclaim_at, created_at, updated_at
+			version, trace_id, status, expires_at, reclaim_at, created_at, updated_at
 		FROM quota_lease_demo_leases
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -341,6 +342,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadLeases(ctx context.Context) ([]serv
 			&lease.Consumed,
 			&lease.Reclaimed,
 			&lease.Version,
+			&lease.TraceID,
 			&lease.Status,
 			&lease.ExpiresAt,
 			&lease.ReclaimAt,
@@ -357,7 +359,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadLeases(ctx context.Context) ([]serv
 func (s *quotaLeaseDemoPersistenceStore) loadLedgerEvents(ctx context.Context) ([]service.QuotaLeaseDemoLedgerEvent, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT event_id, lease_id, node_id, user_id, api_key_id, request_id,
-			amount, event_type, payload_hash, created_at
+			trace_id, amount, event_type, payload_hash, created_at
 		FROM quota_lease_demo_ledger_events
 		ORDER BY created_at ASC, event_id ASC
 	`)
@@ -376,6 +378,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadLedgerEvents(ctx context.Context) (
 			&event.UserID,
 			&event.APIKeyID,
 			&event.RequestID,
+			&event.TraceID,
 			&event.Amount,
 			&event.EventType,
 			&event.PayloadHash,
@@ -391,7 +394,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadLedgerEvents(ctx context.Context) (
 func (s *quotaLeaseDemoPersistenceStore) loadPendingUsageEvents(ctx context.Context) ([]service.QuotaLeaseDemoUsageEvent, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT event_id, lease_id, node_id, user_id, api_key_id, request_id,
-			amount, event_type, created_at
+			trace_id, amount, event_type, created_at
 		FROM quota_lease_demo_pending_usage_events
 		ORDER BY created_at ASC, event_id ASC
 	`)
@@ -410,6 +413,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadPendingUsageEvents(ctx context.Cont
 			&event.UserID,
 			&event.APIKeyID,
 			&event.RequestID,
+			&event.TraceID,
 			&event.Amount,
 			&event.EventType,
 			&event.CreatedAt,
@@ -428,10 +432,10 @@ func upsertQuotaLeaseDemoLease(ctx context.Context, exec sqlExecutor, lease serv
 	_, err := exec.ExecContext(ctx, `
 		INSERT INTO quota_lease_demo_leases (
 			id, node_id, user_id, api_key_id, granted, consumed, reclaimed,
-			version, status, expires_at, reclaim_at, created_at, updated_at
+			version, trace_id, status, expires_at, reclaim_at, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13
+			$8, $9, $10, $11, $12, $13, $14
 		)
 		ON CONFLICT (id) DO UPDATE SET
 			node_id = EXCLUDED.node_id,
@@ -441,13 +445,14 @@ func upsertQuotaLeaseDemoLease(ctx context.Context, exec sqlExecutor, lease serv
 			consumed = EXCLUDED.consumed,
 			reclaimed = EXCLUDED.reclaimed,
 			version = EXCLUDED.version,
+			trace_id = EXCLUDED.trace_id,
 			status = EXCLUDED.status,
 			expires_at = EXCLUDED.expires_at,
 			reclaim_at = EXCLUDED.reclaim_at,
 			created_at = EXCLUDED.created_at,
 			updated_at = EXCLUDED.updated_at
 	`, lease.ID, lease.NodeID, lease.UserID, lease.APIKeyID, lease.Granted, lease.Consumed, lease.Reclaimed,
-		lease.Version, lease.Status, lease.ExpiresAt, lease.ReclaimAt, lease.CreatedAt, lease.UpdatedAt)
+		lease.Version, lease.TraceID, lease.Status, lease.ExpiresAt, lease.ReclaimAt, lease.CreatedAt, lease.UpdatedAt)
 	return err
 }
 
@@ -468,13 +473,14 @@ func applyQuotaLeaseDemoLeaseUsage(ctx context.Context, tx *sql.Tx, lease servic
 			consumed = $5,
 			reclaimed = $6,
 			version = $7,
-			status = $8,
-			expires_at = $9,
-			reclaim_at = $10,
-			updated_at = $11
-		WHERE id = $1 AND version = $12
+			trace_id = $8,
+			status = $9,
+			expires_at = $10,
+			reclaim_at = $11,
+			updated_at = $12
+		WHERE id = $1 AND version = $13
 	`, lease.ID, lease.NodeID, lease.UserID, lease.APIKeyID, lease.Consumed, lease.Reclaimed,
-		lease.Version, lease.Status, lease.ExpiresAt, lease.ReclaimAt, lease.UpdatedAt, expectedVersion)
+		lease.Version, lease.TraceID, lease.Status, lease.ExpiresAt, lease.ReclaimAt, lease.UpdatedAt, expectedVersion)
 	if err != nil {
 		return err
 	}
@@ -488,12 +494,13 @@ func applyQuotaLeaseDemoLeaseUsage(ctx context.Context, tx *sql.Tx, lease servic
 			user_id = $3,
 			api_key_id = $4,
 			consumed = quota_lease_demo_leases.consumed + $5,
+			trace_id = $6,
 			expires_at = CASE
-				WHEN quota_lease_demo_leases.status = 'active' THEN GREATEST(quota_lease_demo_leases.expires_at, $6)
+				WHEN quota_lease_demo_leases.status = 'active' THEN GREATEST(quota_lease_demo_leases.expires_at, $7)
 				ELSE quota_lease_demo_leases.expires_at
 			END,
 			reclaim_at = CASE
-				WHEN quota_lease_demo_leases.status = 'active' THEN GREATEST(quota_lease_demo_leases.reclaim_at, $7)
+				WHEN quota_lease_demo_leases.status = 'active' THEN GREATEST(quota_lease_demo_leases.reclaim_at, $8)
 				ELSE quota_lease_demo_leases.reclaim_at
 			END,
 			status = CASE
@@ -502,10 +509,10 @@ func applyQuotaLeaseDemoLeaseUsage(ctx context.Context, tx *sql.Tx, lease servic
 				WHEN quota_lease_demo_leases.granted - (quota_lease_demo_leases.consumed + $5) - quota_lease_demo_leases.reclaimed < 0 THEN 'active'
 				ELSE quota_lease_demo_leases.status
 			END,
-			updated_at = $8,
+			updated_at = $9,
 			version = quota_lease_demo_leases.version + 1
 		WHERE id = $1
-	`, lease.ID, lease.NodeID, lease.UserID, lease.APIKeyID, event.Amount, lease.ExpiresAt, lease.ReclaimAt, lease.UpdatedAt)
+	`, lease.ID, lease.NodeID, lease.UserID, lease.APIKeyID, event.Amount, lease.TraceID, lease.ExpiresAt, lease.ReclaimAt, lease.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -522,10 +529,10 @@ func upsertQuotaLeaseDemoLedgerEvent(ctx context.Context, exec sqlExecutor, even
 	_, err := exec.ExecContext(ctx, `
 		INSERT INTO quota_lease_demo_ledger_events (
 			event_id, lease_id, node_id, user_id, api_key_id, request_id,
-			amount, event_type, payload_hash, created_at
+			trace_id, amount, event_type, payload_hash, created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
-			$7, $8, $9, $10
+			$7, $8, $9, $10, $11
 		)
 		ON CONFLICT (event_id) DO UPDATE SET
 			lease_id = EXCLUDED.lease_id,
@@ -533,12 +540,13 @@ func upsertQuotaLeaseDemoLedgerEvent(ctx context.Context, exec sqlExecutor, even
 			user_id = EXCLUDED.user_id,
 			api_key_id = EXCLUDED.api_key_id,
 			request_id = EXCLUDED.request_id,
+			trace_id = EXCLUDED.trace_id,
 			amount = EXCLUDED.amount,
 			event_type = EXCLUDED.event_type,
 			payload_hash = EXCLUDED.payload_hash,
 			created_at = EXCLUDED.created_at
 	`, event.EventID, event.LeaseID, event.NodeID, event.UserID, event.APIKeyID, event.RequestID,
-		event.Amount, event.EventType, event.PayloadHash, event.CreatedAt)
+		event.TraceID, event.Amount, event.EventType, event.PayloadHash, event.CreatedAt)
 	return err
 }
 

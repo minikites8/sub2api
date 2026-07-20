@@ -1996,6 +1996,217 @@ func TestQuotaLeaseDemoNodeWorkerReportsRuntimeHeartbeat(t *testing.T) {
 	require.InDelta(t, 0.75, controlSnapshot.Nodes[0].LeaseRemaining, 1e-9)
 }
 
+func TestQuotaLeaseDemoTracePropagatesThroughLeaseAndUsage(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:    10,
+		APIKeyID:  20,
+		Amount:    1,
+		RequestID: "trace-req-1",
+		TraceID:   "trace-custom-1",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "trace-custom-1", lease.TraceID)
+
+	result := svc.PostUsageBatch(ctx, QuotaLeaseDemoUsageBatchRequest{
+		NodeID: "node-1",
+		Events: []QuotaLeaseDemoUsageEvent{{
+			EventID:   "trace-event-1",
+			LeaseID:   lease.ID,
+			UserID:    10,
+			APIKeyID:  20,
+			RequestID: "trace-req-1",
+			TraceID:   "trace-custom-1",
+			Amount:    0.25,
+			EventType: QuotaLeaseDemoEventUsagePosted,
+			CreatedAt: time.Now().UTC(),
+		}},
+	})
+	require.Len(t, result.Results, 1)
+	require.True(t, result.Results[0].Applied)
+	require.Equal(t, "trace-custom-1", result.Results[0].TraceID)
+
+	snapshot := svc.Snapshot()
+	var usageEvent *QuotaLeaseDemoLedgerEvent
+	for i := range snapshot.Events {
+		if snapshot.Events[i].EventID == "trace-event-1" {
+			usageEvent = &snapshot.Events[i]
+			break
+		}
+	}
+	require.NotNil(t, usageEvent)
+	require.Equal(t, "trace-custom-1", usageEvent.TraceID)
+
+	handled, applied, err := svc.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "trace-billing-1",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: 0.1,
+	})
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.True(t, applied)
+
+	snapshot = svc.Snapshot()
+	var billingEvent *QuotaLeaseDemoLedgerEvent
+	billingEventID := quotaLeaseDemoUsageEventID("node-1", lease.ID, "trace-billing-1")
+	for i := range snapshot.Events {
+		if snapshot.Events[i].EventID == billingEventID {
+			billingEvent = &snapshot.Events[i]
+			break
+		}
+	}
+	require.NotNil(t, billingEvent)
+	require.Equal(t, "trace-custom-1", billingEvent.TraceID)
+}
+
+func TestQuotaLeaseDemoReconcileNodeUsageLedgerAppliesExportedEvents(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	nodeID := "node-reconcile"
+	nodeSecret := "node-secret"
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:            true,
+				NodeID:             nodeID,
+				DefaultGrantAmount: 1,
+				LeaseTTLSeconds:    600,
+			},
+		},
+	})
+	node.cacheRemoteNode(&QuotaLeaseDemoNode{
+		NodeID:       nodeID,
+		Secret:       nodeSecret,
+		Status:       QuotaLeaseDemoNodeStatusOnline,
+		RegisteredAt: now,
+		UpdatedAt:    now,
+	})
+	nodeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v1/node-leases/demo/reconcile/ledger-events" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if !node.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"})
+			return
+		}
+		exported, err := node.ExportUsageLedgerEvents(r.Context(), r.Header.Get("X-Node-ID"), r.URL.Query().Get("after_event_id"), 0)
+		require.NoError(t, err)
+		require.NoError(t, json.NewEncoder(w).Encode(exported))
+	}))
+	defer nodeServer.Close()
+
+	control := newQuotaLeaseDemoTestService()
+	_, err := control.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID:     nodeID,
+		NodeSecret: nodeSecret,
+		BaseURL:    nodeServer.URL,
+	})
+	require.NoError(t, err)
+	lease, err := control.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:    nodeID,
+		UserID:    10,
+		APIKeyID:  20,
+		Amount:    1,
+		RequestID: "reconcile-lease-1",
+		TraceID:   "trace-reconcile-1",
+	})
+	require.NoError(t, err)
+	node.cacheRemoteLease(lease)
+
+	posted := node.PostUsageBatch(ctx, QuotaLeaseDemoUsageBatchRequest{
+		NodeID: nodeID,
+		Events: []QuotaLeaseDemoUsageEvent{{
+			EventID:   "reconcile-event-1",
+			LeaseID:   lease.ID,
+			NodeID:    nodeID,
+			UserID:    10,
+			APIKeyID:  20,
+			RequestID: "reconcile-request-1",
+			TraceID:   "trace-reconcile-1",
+			Amount:    0.4,
+			EventType: QuotaLeaseDemoEventUsagePosted,
+			CreatedAt: now.Add(time.Second),
+		}},
+	})
+	require.Len(t, posted.Results, 1)
+	require.True(t, posted.Results[0].Applied)
+
+	result := control.ReconcileNodeUsageLedger(ctx, nodeID)
+	require.Empty(t, result.Error)
+	require.Equal(t, 1, result.FetchedCount)
+	require.Equal(t, 1, result.AppliedCount)
+	require.Equal(t, "reconcile-event-1", result.NextEventID)
+
+	snapshot := control.Snapshot()
+	var reconciled *QuotaLeaseDemoLease
+	for i := range snapshot.Leases {
+		if snapshot.Leases[i].ID == lease.ID {
+			reconciled = &snapshot.Leases[i]
+			break
+		}
+	}
+	require.NotNil(t, reconciled)
+	require.InDelta(t, 0.4, reconciled.Consumed, 1e-9)
+
+	again := control.ReconcileNodeUsageLedger(ctx, nodeID)
+	require.Empty(t, again.Error)
+	require.Equal(t, 0, again.FetchedCount)
+}
+
+func TestQuotaLeaseDemoNodeWorkerStopAndDrainFlushesRuntime(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				NodeID:              "node-drain",
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+	ctx := context.Background()
+	lease, err := node.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "node-drain", lease.NodeID)
+
+	handled, applied, err := node.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "drain-request-1",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: 0.25,
+	})
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.True(t, applied)
+
+	worker := NewQuotaLeaseDemoNodeWorker(node, NewQuotaLeaseDemoPayloadAccountTaskExecutor(), time.Hour)
+	drainCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	require.NoError(t, worker.StopAndDrain(drainCtx))
+
+	nodes := control.ListNodes()
+	require.Len(t, nodes, 1)
+	require.Equal(t, QuotaLeaseDemoNodeStatusOffline, nodes[0].Status)
+
+	controlSnapshot := control.Snapshot()
+	require.Len(t, controlSnapshot.Leases, 1)
+	require.InDelta(t, 0.25, controlSnapshot.Leases[0].Consumed, 1e-9)
+}
+
 func TestQuotaLeaseDemoSyncMirrorSnapshotRequestsIncrementalVersion(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()

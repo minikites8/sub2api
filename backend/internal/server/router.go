@@ -108,6 +108,19 @@ func registerRoutes(
 	v1 := r.Group("/api/v1")
 
 	if cfg.IsNodeRole() {
+		var adminSvc service.AdminService
+		if h != nil && h.Admin != nil && h.Admin.Account != nil {
+			adminSvc = h.Admin.Account.AdminService()
+		}
+		var usageSvc *service.UsageService
+		if h != nil && h.Usage != nil {
+			usageSvc = h.Usage.UsageService()
+		}
+		var channelSvc *service.ChannelService
+		if h != nil && h.Admin != nil && h.Admin.Channel != nil {
+			channelSvc = h.Admin.Channel.ChannelService()
+		}
+		routes.RegisterQuotaLeaseDemoRoutes(v1, cfg, apiKeyService, usageSvc, opsService, channelSvc, nil, settingService, adminSvc)
 		routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 		return
 	}

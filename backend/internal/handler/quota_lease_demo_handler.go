@@ -1206,10 +1206,12 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 		amount = h.svc.DefaultGrantAmount()
 	}
 	leaseReq := service.QuotaLeaseDemoLeaseRequest{
-		NodeID:   req.NodeID,
-		UserID:   snapshot.UserID,
-		APIKeyID: snapshot.APIKeyID,
-		Amount:   amount,
+		NodeID:    req.NodeID,
+		UserID:    snapshot.UserID,
+		APIKeyID:  snapshot.APIKeyID,
+		Amount:    amount,
+		RequestID: req.RequestID,
+		TraceID:   req.TraceID,
 	}
 	amount, err = h.quotaLeaseDemoRequestLeaseAmount(c.Request.Context(), leaseReq)
 	if err != nil {
@@ -1226,9 +1228,14 @@ func (h *QuotaLeaseDemoHandler) AuthorizeClientKey(c *gin.Context) {
 	if lease != nil && !lease.ExpiresAt.IsZero() && lease.ExpiresAt.Before(expiresAt) {
 		expiresAt = lease.ExpiresAt
 	}
+	traceID := strings.TrimSpace(req.TraceID)
+	if traceID == "" && lease != nil {
+		traceID = strings.TrimSpace(lease.TraceID)
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"snapshot":   snapshot,
 		"lease":      lease,
+		"trace_id":   traceID,
 		"expires_at": expiresAt,
 	})
 }
@@ -1490,6 +1497,46 @@ func (h *QuotaLeaseDemoHandler) ReclaimExpired(c *gin.Context) {
 	})
 }
 
+func (h *QuotaLeaseDemoHandler) ExportUsageLedgerEvents(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	requestedNodeID := strings.TrimSpace(c.Query("node_id"))
+	nodeID, ok := h.authenticateNodeOrControl(c, requestedNodeID)
+	if !ok {
+		return
+	}
+	if nodeID == "" {
+		nodeID = requestedNodeID
+	}
+	result, err := h.svc.ExportUsageLedgerEvents(
+		c.Request.Context(),
+		nodeID,
+		c.Query("after_event_id"),
+		quotaLeaseDemoHandlerReconcileLimit(c.Query("limit")),
+	)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *QuotaLeaseDemoHandler) ReconcileUsageLedgers(c *gin.Context) {
+	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
+		return
+	}
+	nodeID := strings.TrimSpace(c.Param("node_id"))
+	if nodeID == "" {
+		nodeID = strings.TrimSpace(c.Query("node_id"))
+	}
+	if nodeID != "" {
+		c.JSON(http.StatusOK, gin.H{"result": h.svc.ReconcileNodeUsageLedger(c.Request.Context(), nodeID)})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"results": h.svc.ReconcileUsageLedgers(c.Request.Context())})
+}
+
 func (h *QuotaLeaseDemoHandler) Status(c *gin.Context) {
 	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
 		return
@@ -1519,6 +1566,18 @@ func (h *QuotaLeaseDemoHandler) controlSecretOK(c *gin.Context) bool {
 		return true
 	}
 	return strings.TrimSpace(c.GetHeader("X-Node-Secret")) == secret
+}
+
+func quotaLeaseDemoHandlerReconcileLimit(raw string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
 }
 
 func (h *QuotaLeaseDemoHandler) authenticateNodeOrControl(c *gin.Context, requestedNodeID string) (string, bool) {

@@ -98,6 +98,9 @@ func (s *QuotaLeaseDemoService) restorePersistedState(state QuotaLeaseDemoPersis
 	if s.leases == nil {
 		s.leases = make(map[string]*QuotaLeaseDemoLease)
 	}
+	if s.leaseIndex == nil {
+		s.leaseIndex = make(map[string]map[string]struct{})
+	}
 	for _, lease := range state.Leases {
 		lease.ID = strings.TrimSpace(lease.ID)
 		if lease.ID == "" {
@@ -121,7 +124,7 @@ func (s *QuotaLeaseDemoService) restorePersistedState(state QuotaLeaseDemoPersis
 		}
 		convergeQuotaLeaseDemoLeaseState(&lease, now)
 		copy := lease
-		s.leases[lease.ID] = &copy
+		s.upsertQuotaLeaseDemoLeaseLocked(&copy)
 	}
 
 	if s.events == nil {
@@ -304,7 +307,7 @@ func (s *QuotaLeaseDemoService) cleanupQuotaLeaseDemoMemoryRecords(cutoff time.T
 			continue
 		}
 		deletedLeaseIDs[id] = struct{}{}
-		delete(s.leases, id)
+		s.deleteQuotaLeaseDemoLeaseLocked(id)
 		result.LeaseCount++
 	}
 	for id, event := range s.events {

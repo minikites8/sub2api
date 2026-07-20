@@ -14,14 +14,17 @@ import (
 const quotaLeaseDemoClientAuthCacheTTL = 30 * time.Second
 
 type QuotaLeaseDemoClientAuthRequest struct {
-	NodeID string  `json:"node_id"`
-	APIKey string  `json:"api_key"`
-	Amount float64 `json:"amount,omitempty"`
+	NodeID    string  `json:"node_id"`
+	APIKey    string  `json:"api_key"`
+	Amount    float64 `json:"amount,omitempty"`
+	RequestID string  `json:"request_id,omitempty"`
+	TraceID   string  `json:"trace_id,omitempty"`
 }
 
 type QuotaLeaseDemoClientAuthResult struct {
 	Snapshot  *APIKeyAuthSnapshot  `json:"snapshot"`
 	Lease     *QuotaLeaseDemoLease `json:"lease,omitempty"`
+	TraceID   string               `json:"trace_id,omitempty"`
 	ExpiresAt time.Time            `json:"expires_at"`
 }
 
@@ -42,6 +45,7 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	if requestAmount <= 0 {
 		requestAmount = s.DefaultGrantAmount()
 	}
+	requestID := quotaLeaseDemoContextRequestID(ctx)
 	if cached := s.getClientAuthCache(apiKey); cached != nil {
 		if err := s.ensureClientAuthCapacity(ctx, cached, requestAmount); err != nil {
 			s.deleteClientAuthCache(apiKey)
@@ -54,10 +58,13 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	if err != nil {
 		return nil, err
 	}
+	traceID := quotaLeaseDemoTraceID("", nodeID, 0, 0, requestID)
 	req := QuotaLeaseDemoClientAuthRequest{
-		NodeID: nodeID,
-		APIKey: apiKey,
-		Amount: requestAmount,
+		NodeID:    nodeID,
+		APIKey:    apiKey,
+		Amount:    requestAmount,
+		RequestID: requestID,
+		TraceID:   traceID,
 	}
 	var result QuotaLeaseDemoClientAuthResult
 	if err := s.doRemoteJSON(ctx, http.MethodPost, "/auth/client-key", nodeID, secret, req, &result); err != nil {
@@ -75,6 +82,7 @@ func (s *QuotaLeaseDemoService) AuthorizeClientKeyViaControlPlane(ctx context.Co
 	if result.Snapshot == nil || result.Snapshot.APIKeyID <= 0 || result.Snapshot.UserID <= 0 {
 		return nil, fmt.Errorf("%w: client auth response missing snapshot", ErrQuotaLeaseDemoInvalidInput)
 	}
+	result.TraceID = quotaLeaseDemoTraceID(result.TraceID, nodeID, result.Snapshot.UserID, result.Snapshot.APIKeyID, requestID)
 	if result.Lease != nil {
 		s.cacheRemoteLease(result.Lease)
 	}

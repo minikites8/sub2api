@@ -444,7 +444,7 @@ func provideCleanup(
 			}},
 			{"QuotaLeaseDemoNodeWorker", func() error {
 				if quotaLeaseDemoNodeWorker != nil {
-					quotaLeaseDemoNodeWorker.Stop()
+					return quotaLeaseDemoNodeWorker.StopAndDrain(ctx)
 				}
 				return nil
 			}},
