@@ -215,7 +215,9 @@ func (s *QuotaLeaseDemoService) requestRemoteLease(ctx context.Context, req Quot
 	if result.Lease == nil {
 		return nil, fmt.Errorf("%w: lease response missing lease", ErrQuotaLeaseDemoInvalidInput)
 	}
-	s.cacheRemoteLease(result.Lease)
+	if err := s.cacheRemoteLeaseContext(ctx, result.Lease); err != nil {
+		return nil, err
+	}
 	return cloneQuotaLeaseDemoLease(result.Lease), nil
 }
 
@@ -612,7 +614,9 @@ func (s *QuotaLeaseDemoService) FlushPendingUsage(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.removePendingUsageResults(result)
+	if err := s.removePendingUsageResults(ctx, result); err != nil {
+		return err
+	}
 	return quotaLeaseDemoUsageBatchFlushError(result)
 }
 
@@ -696,8 +700,18 @@ func (s *QuotaLeaseDemoService) flushPendingOpsErrorLogsAsync() {
 }
 
 func (s *QuotaLeaseDemoService) enqueuePendingUsageEvent(event QuotaLeaseDemoUsageEvent) {
+	if err := s.enqueuePendingUsageEventWithContext(context.Background(), event); err != nil {
+		slog.Warn("quota_lease_demo.pending_usage_persist_failed",
+			"event_id", strings.TrimSpace(event.EventID),
+			"lease_id", strings.TrimSpace(event.LeaseID),
+			"error", err,
+		)
+	}
+}
+
+func (s *QuotaLeaseDemoService) enqueuePendingUsageEventWithContext(ctx context.Context, event QuotaLeaseDemoUsageEvent) error {
 	if s == nil {
-		return
+		return nil
 	}
 	event.EventID = strings.TrimSpace(event.EventID)
 	event.LeaseID = strings.TrimSpace(event.LeaseID)
@@ -705,7 +719,7 @@ func (s *QuotaLeaseDemoService) enqueuePendingUsageEvent(event QuotaLeaseDemoUsa
 	event.RequestID = strings.TrimSpace(event.RequestID)
 	event.EventType = strings.TrimSpace(event.EventType)
 	if event.EventID == "" || event.LeaseID == "" {
-		return
+		return nil
 	}
 	if event.NodeID == "" {
 		event.NodeID = s.NodeID()
@@ -723,6 +737,7 @@ func (s *QuotaLeaseDemoService) enqueuePendingUsageEvent(event QuotaLeaseDemoUsa
 	}
 	s.pendingEvents[event.EventID] = event
 	s.mu.Unlock()
+	return s.persistQuotaLeaseDemoPendingUsageEvent(ctx, event)
 }
 
 func (s *QuotaLeaseDemoService) pendingUsageEvents() []QuotaLeaseDemoUsageEvent {
@@ -742,21 +757,30 @@ func (s *QuotaLeaseDemoService) pendingUsageEvents() []QuotaLeaseDemoUsageEvent 
 	return events
 }
 
-func (s *QuotaLeaseDemoService) removePendingUsageResults(result QuotaLeaseDemoUsageBatchResult) {
+func (s *QuotaLeaseDemoService) removePendingUsageResults(ctx context.Context, result QuotaLeaseDemoUsageBatchResult) error {
 	if s == nil {
-		return
+		return nil
 	}
+	var deleteIDs []string
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	for _, item := range result.Results {
 		if strings.TrimSpace(item.Error) != "" {
 			continue
 		}
 		if item.Applied || item.Duplicate {
-			delete(s.pendingEvents, strings.TrimSpace(item.EventID))
+			eventID := strings.TrimSpace(item.EventID)
+			delete(s.pendingEvents, eventID)
+			deleteIDs = append(deleteIDs, eventID)
 		}
 	}
+	s.mu.Unlock()
+	for _, eventID := range deleteIDs {
+		if err := s.deleteQuotaLeaseDemoPendingUsageEvent(ctx, eventID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func quotaLeaseDemoUsageBatchFlushError(result QuotaLeaseDemoUsageBatchResult) error {
@@ -778,10 +802,36 @@ func quotaLeaseDemoUsageBatchFlushError(result QuotaLeaseDemoUsageBatchResult) e
 }
 
 func (s *QuotaLeaseDemoService) cacheRemoteLease(lease *QuotaLeaseDemoLease) {
+	if err := s.cacheRemoteLeaseContext(context.Background(), lease); err != nil {
+		slog.Warn("quota_lease_demo.remote_lease_persist_failed",
+			"lease_id", func() string {
+				if lease == nil {
+					return ""
+				}
+				return lease.ID
+			}(),
+			"error", err,
+		)
+	}
+}
+
+func (s *QuotaLeaseDemoService) cacheRemoteLeaseContext(ctx context.Context, lease *QuotaLeaseDemoLease) error {
 	if s == nil || lease == nil {
-		return
+		return nil
 	}
 	copy := *lease
+	eventID := "lease:" + copy.ID
+	event := &QuotaLeaseDemoLedgerEvent{
+		EventID:     eventID,
+		LeaseID:     copy.ID,
+		NodeID:      copy.NodeID,
+		UserID:      copy.UserID,
+		APIKeyID:    copy.APIKeyID,
+		Amount:      copy.Granted,
+		EventType:   QuotaLeaseDemoEventLeaseGranted,
+		PayloadHash: quotaLeaseDemoPayloadHash(copy.ID, copy.NodeID, copy.UserID, copy.APIKeyID, "", copy.Granted, QuotaLeaseDemoEventLeaseGranted),
+		CreatedAt:   copy.CreatedAt,
+	}
 	s.mu.Lock()
 	if s.leases == nil {
 		s.leases = make(map[string]*QuotaLeaseDemoLease)
@@ -798,21 +848,9 @@ func (s *QuotaLeaseDemoService) cacheRemoteLease(lease *QuotaLeaseDemoLease) {
 		}
 	}
 	s.leases[copy.ID] = &copy
-	eventID := "lease:" + copy.ID
-	if s.events[eventID] == nil {
-		s.events[eventID] = &QuotaLeaseDemoLedgerEvent{
-			EventID:     eventID,
-			LeaseID:     copy.ID,
-			NodeID:      copy.NodeID,
-			UserID:      copy.UserID,
-			APIKeyID:    copy.APIKeyID,
-			Amount:      copy.Granted,
-			EventType:   QuotaLeaseDemoEventLeaseGranted,
-			PayloadHash: quotaLeaseDemoPayloadHash(copy.ID, copy.NodeID, copy.UserID, copy.APIKeyID, "", copy.Granted, QuotaLeaseDemoEventLeaseGranted),
-			CreatedAt:   copy.CreatedAt,
-		}
-	}
+	s.events[eventID] = event
 	s.mu.Unlock()
+	return s.persistQuotaLeaseDemoLeaseAndEvent(ctx, &copy, event)
 }
 
 func (s *QuotaLeaseDemoService) cacheRemoteNode(node *QuotaLeaseDemoNode) {
@@ -829,6 +867,9 @@ func (s *QuotaLeaseDemoService) cacheRemoteNode(node *QuotaLeaseDemoNode) {
 	}
 	s.nodes[copy.NodeID] = copy
 	s.mu.Unlock()
+	if err := s.persistQuotaLeaseDemoNode(context.Background(), copy); err != nil {
+		slog.Warn("quota_lease_demo.remote_node_persist_failed", "node_id", copy.NodeID, "error", err)
+	}
 }
 
 func (s *QuotaLeaseDemoService) cacheRemoteAssignedAccounts(nodeID string, accounts []QuotaLeaseDemoAssignedAccount) {

@@ -1475,7 +1475,19 @@ func (h *QuotaLeaseDemoHandler) ReclaimExpired(c *gin.Context) {
 	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
 		return
 	}
-	c.JSON(http.StatusOK, h.svc.ReclaimExpired(c.Request.Context(), time.Now().UTC()))
+	now := time.Now().UTC()
+	reclaim := h.svc.ReclaimExpired(c.Request.Context(), now)
+	cleanup, err := h.svc.CleanupRetainedRecords(c.Request.Context(), now)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"expired_count":   reclaim.ExpiredCount,
+		"reclaimed_count": reclaim.ReclaimedCount,
+		"reclaimed_total": reclaim.ReclaimedTotal,
+		"cleanup":         cleanup,
+	})
 }
 
 func (h *QuotaLeaseDemoHandler) Status(c *gin.Context) {

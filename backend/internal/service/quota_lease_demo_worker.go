@@ -581,8 +581,10 @@ func (w *QuotaLeaseDemoReclaimWorker) RunOnce(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	w.svc.ReclaimExpired(ctx, time.Now().UTC())
-	return nil
+	now := time.Now().UTC()
+	w.svc.ReclaimExpired(ctx, now)
+	_, err := w.svc.CleanupRetainedRecords(ctx, now)
+	return err
 }
 
 func (w *QuotaLeaseDemoReclaimWorker) loop(ctx context.Context) {

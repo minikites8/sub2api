@@ -93,6 +93,34 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "usage_billing_dedup_archive", "request_fingerprint", "character varying", 64, false)
 	requireIndex(t, tx, "usage_billing_dedup_archive", "usage_billing_dedup_archive_pkey")
 
+	var quotaLeaseNodesRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.quota_lease_demo_nodes')").Scan(&quotaLeaseNodesRegclass))
+	require.True(t, quotaLeaseNodesRegclass.Valid, "expected quota_lease_demo_nodes table to exist")
+	requireColumn(t, tx, "quota_lease_demo_nodes", "secret", "text", 0, false)
+	requireColumn(t, tx, "quota_lease_demo_nodes", "sync_status", "jsonb", 0, true)
+	requireIndex(t, tx, "quota_lease_demo_nodes", "idx_quota_lease_demo_nodes_status_updated")
+
+	var quotaLeaseLeasesRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.quota_lease_demo_leases')").Scan(&quotaLeaseLeasesRegclass))
+	require.True(t, quotaLeaseLeasesRegclass.Valid, "expected quota_lease_demo_leases table to exist")
+	requireColumn(t, tx, "quota_lease_demo_leases", "status", "text", 0, false)
+	requireColumn(t, tx, "quota_lease_demo_leases", "version", "bigint", 0, false)
+	requireIndex(t, tx, "quota_lease_demo_leases", "idx_quota_lease_demo_leases_lookup")
+	requireIndex(t, tx, "quota_lease_demo_leases", "idx_quota_lease_demo_leases_reclaim")
+	requireIndex(t, tx, "quota_lease_demo_leases", "idx_quota_lease_demo_leases_cleanup")
+
+	var quotaLeaseEventsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.quota_lease_demo_ledger_events')").Scan(&quotaLeaseEventsRegclass))
+	require.True(t, quotaLeaseEventsRegclass.Valid, "expected quota_lease_demo_ledger_events table to exist")
+	requireColumn(t, tx, "quota_lease_demo_ledger_events", "payload_hash", "character varying", 64, false)
+	requireIndex(t, tx, "quota_lease_demo_ledger_events", "idx_quota_lease_demo_events_node_created")
+
+	var quotaLeasePendingRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.quota_lease_demo_pending_usage_events')").Scan(&quotaLeasePendingRegclass))
+	require.True(t, quotaLeasePendingRegclass.Valid, "expected quota_lease_demo_pending_usage_events table to exist")
+	requireColumn(t, tx, "quota_lease_demo_pending_usage_events", "event_id", "text", 0, false)
+	requireIndex(t, tx, "quota_lease_demo_pending_usage_events", "idx_quota_lease_demo_pending_usage_node_created")
+
 	// settings table should exist
 	var settingsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.settings')").Scan(&settingsRegclass))

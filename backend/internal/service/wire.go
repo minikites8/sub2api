@@ -589,7 +589,14 @@ func ProvideOpsService(
 }
 
 // ProvideSettingService wires SettingService with group reader and proxy repo.
-func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config, usageBillingRepo UsageBillingRepository) *SettingService {
+func ProvideSettingService(
+	settingRepo SettingRepository,
+	groupRepo GroupRepository,
+	proxyRepo ProxyRepository,
+	cfg *config.Config,
+	usageBillingRepo UsageBillingRepository,
+	leasePersistenceStore QuotaLeaseDemoPersistenceStore,
+) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
 	svc.SetProxyRepository(proxyRepo)
@@ -606,6 +613,9 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	leaseDemo := GetQuotaLeaseDemoService(cfg)
 	leaseDemo.SetSettingService(svc)
 	leaseDemo.SetUsageBillingRepository(usageBillingRepo)
+	if err := leaseDemo.SetPersistenceStore(context.Background(), leasePersistenceStore); err != nil {
+		logger.LegacyPrintf("service.setting", "Warning: restore quota lease demo state failed: %v", err)
+	}
 	return svc
 }
 

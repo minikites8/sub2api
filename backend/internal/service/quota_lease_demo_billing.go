@@ -10,29 +10,44 @@ import (
 
 const quotaLeaseDemoUsageBillingRequestPrefix = "quota_lease_usage:"
 
-func (s *QuotaLeaseDemoService) applyLeaseUsageBilling(ctx context.Context, event QuotaLeaseDemoUsageEvent) (bool, error) {
+func (s *QuotaLeaseDemoService) applyLeaseUsageBilling(ctx context.Context, event QuotaLeaseDemoUsageEvent, lease *QuotaLeaseDemoLease, ledgerEvent *QuotaLeaseDemoLedgerEvent) (applied bool, persisted bool, err error) {
 	if s == nil || s.remoteMode() || event.Amount <= 0 {
-		return true, nil
+		return true, false, nil
 	}
 	repo := s.usageBillingRepository()
 	if repo == nil {
-		return true, nil
+		return true, false, nil
 	}
-	result, err := repo.Apply(ctx, &UsageBillingCommand{
+	cmd := &UsageBillingCommand{
 		RequestID:          quotaLeaseDemoUsageBillingRequestID(event.NodeID, event.APIKeyID, event.RequestID),
 		APIKeyID:           event.APIKeyID,
 		UserID:             event.UserID,
 		BalanceCost:        event.Amount,
 		StrictBalance:      false,
 		RequestPayloadHash: quotaLeaseDemoUsageBillingPayloadHash(event.NodeID, event.UserID, event.APIKeyID, event.RequestID, event.Amount, event.EventType),
-	})
+	}
+	if atomicRepo, ok := repo.(QuotaLeaseDemoUsageBillingRepository); ok && lease != nil && ledgerEvent != nil {
+		result, err := atomicRepo.ApplyQuotaLeaseUsage(ctx, &QuotaLeaseDemoUsageBillingCommand{
+			Billing: cmd,
+			Lease:   *lease,
+			Event:   *ledgerEvent,
+		})
+		if err != nil {
+			return false, false, err
+		}
+		if result != nil && !result.Applied {
+			return false, true, nil
+		}
+		return true, true, nil
+	}
+	result, err := repo.Apply(ctx, cmd)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	if result != nil && !result.Applied {
-		return false, nil
+		return false, false, nil
 	}
-	return true, nil
+	return true, false, nil
 }
 
 func quotaLeaseDemoUsageBillingRequestID(nodeID string, apiKeyID int64, requestID string) string {

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -306,6 +307,143 @@ func (s *quotaLeaseDemoMemoryMirrorStore) list() []QuotaLeaseDemoMirrorSnapshot 
 }
 
 var _ QuotaLeaseDemoMirrorStore = (*quotaLeaseDemoMemoryMirrorStore)(nil)
+
+type quotaLeaseDemoMemoryPersistenceStore struct {
+	mu      sync.Mutex
+	state   QuotaLeaseDemoPersistedState
+	deleted []string
+}
+
+func (s *quotaLeaseDemoMemoryPersistenceStore) LoadQuotaLeaseDemoState(context.Context) (QuotaLeaseDemoPersistedState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return QuotaLeaseDemoPersistedState{
+		Nodes:              append([]QuotaLeaseDemoNode(nil), s.state.Nodes...),
+		Leases:             append([]QuotaLeaseDemoLease(nil), s.state.Leases...),
+		Events:             append([]QuotaLeaseDemoLedgerEvent(nil), s.state.Events...),
+		PendingUsageEvents: append([]QuotaLeaseDemoUsageEvent(nil), s.state.PendingUsageEvents...),
+	}, nil
+}
+
+func (s *quotaLeaseDemoMemoryPersistenceStore) SaveQuotaLeaseDemoNode(_ context.Context, node QuotaLeaseDemoNode) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Nodes {
+		if s.state.Nodes[i].NodeID == node.NodeID {
+			s.state.Nodes[i] = node
+			return nil
+		}
+	}
+	s.state.Nodes = append(s.state.Nodes, node)
+	return nil
+}
+
+func (s *quotaLeaseDemoMemoryPersistenceStore) SaveQuotaLeaseDemoLease(_ context.Context, lease QuotaLeaseDemoLease) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Leases {
+		if s.state.Leases[i].ID == lease.ID {
+			s.state.Leases[i] = lease
+			return nil
+		}
+	}
+	s.state.Leases = append(s.state.Leases, lease)
+	return nil
+}
+
+func (s *quotaLeaseDemoMemoryPersistenceStore) SaveQuotaLeaseDemoLedgerEvent(_ context.Context, event QuotaLeaseDemoLedgerEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Events {
+		if s.state.Events[i].EventID == event.EventID {
+			s.state.Events[i] = event
+			return nil
+		}
+	}
+	s.state.Events = append(s.state.Events, event)
+	return nil
+}
+
+func (s *quotaLeaseDemoMemoryPersistenceStore) SaveQuotaLeaseDemoPendingUsageEvent(_ context.Context, event QuotaLeaseDemoUsageEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.PendingUsageEvents {
+		if s.state.PendingUsageEvents[i].EventID == event.EventID {
+			s.state.PendingUsageEvents[i] = event
+			return nil
+		}
+	}
+	s.state.PendingUsageEvents = append(s.state.PendingUsageEvents, event)
+	return nil
+}
+
+func (s *quotaLeaseDemoMemoryPersistenceStore) DeleteQuotaLeaseDemoPendingUsageEvent(_ context.Context, eventID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deleted = append(s.deleted, eventID)
+	filtered := s.state.PendingUsageEvents[:0]
+	for _, event := range s.state.PendingUsageEvents {
+		if event.EventID != eventID {
+			filtered = append(filtered, event)
+		}
+	}
+	s.state.PendingUsageEvents = filtered
+	return nil
+}
+
+func (s *quotaLeaseDemoMemoryPersistenceStore) CleanupQuotaLeaseDemoRecords(_ context.Context, cutoff time.Time, limit int) (QuotaLeaseDemoCleanupResult, error) {
+	result := QuotaLeaseDemoCleanupResult{}
+	if s == nil {
+		return result, nil
+	}
+	if limit <= 0 {
+		limit = quotaLeaseDemoCleanupBatchSize
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	deletedLeaseIDs := make(map[string]struct{})
+	filteredLeases := s.state.Leases[:0]
+	for _, lease := range s.state.Leases {
+		leaseCopy := lease
+		if result.LeaseCount < int64(limit) && quotaLeaseDemoLeaseCleanupEligible(&leaseCopy, cutoff) {
+			deletedLeaseIDs[lease.ID] = struct{}{}
+			result.LeaseCount++
+			continue
+		}
+		filteredLeases = append(filteredLeases, lease)
+	}
+	s.state.Leases = filteredLeases
+	filteredEvents := s.state.Events[:0]
+	for _, event := range s.state.Events {
+		if _, ok := deletedLeaseIDs[strings.TrimSpace(event.LeaseID)]; ok {
+			result.LedgerEventCount++
+			continue
+		}
+		filteredEvents = append(filteredEvents, event)
+	}
+	s.state.Events = filteredEvents
+	return result, nil
+}
+
+var _ QuotaLeaseDemoPersistenceStore = (*quotaLeaseDemoMemoryPersistenceStore)(nil)
+
+type quotaLeaseDemoAtomicBillingRepo struct {
+	quotaLeaseDemoBillingRepo
+	leases []QuotaLeaseDemoLease
+	events []QuotaLeaseDemoLedgerEvent
+}
+
+func (r *quotaLeaseDemoAtomicBillingRepo) ApplyQuotaLeaseUsage(_ context.Context, cmd *QuotaLeaseDemoUsageBillingCommand) (*UsageBillingApplyResult, error) {
+	result, err := r.Apply(context.Background(), cmd.Billing)
+	if err != nil || result == nil || !result.Applied {
+		return result, err
+	}
+	r.leases = append(r.leases, cmd.Lease)
+	r.events = append(r.events, cmd.Event)
+	return result, nil
+}
+
+var _ QuotaLeaseDemoUsageBillingRepository = (*quotaLeaseDemoAtomicBillingRepo)(nil)
 
 func newQuotaLeaseDemoControlPlaneTestServer(t *testing.T, control *QuotaLeaseDemoService, controlSecret string) *httptest.Server {
 	t.Helper()
@@ -1290,6 +1428,182 @@ func TestQuotaLeaseDemoApplyUsageBillingConsumesLocalLease(t *testing.T) {
 	require.InDelta(t, 0.75, svc.Snapshot().Leases[0].Remaining(), 1e-9)
 }
 
+func TestQuotaLeaseDemoLeaseVersionAdvancesOnGrantConsumeAndReclaim(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	ctx := context.Background()
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), lease.Version)
+
+	lease, err = svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   0.5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), lease.Version)
+
+	handled, applied, err := svc.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "req-version-1",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: 0.25,
+	})
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.True(t, applied)
+	snapshot := svc.Snapshot()
+	require.Len(t, snapshot.Leases, 1)
+	require.Equal(t, int64(3), snapshot.Leases[0].Version)
+
+	now := time.Now().UTC()
+	svc.mu.Lock()
+	svc.leases[lease.ID].ExpiresAt = now.Add(-time.Hour)
+	svc.leases[lease.ID].ReclaimAt = now.Add(time.Hour)
+	svc.mu.Unlock()
+	reclaimed := svc.ReclaimExpired(ctx, now)
+	require.Equal(t, 1, reclaimed.ReclaimedCount)
+	snapshot = svc.Snapshot()
+	require.Len(t, snapshot.Leases, 1)
+	require.Equal(t, QuotaLeaseDemoStatusReclaimed, snapshot.Leases[0].Status)
+	require.Equal(t, int64(4), snapshot.Leases[0].Version)
+}
+
+func TestQuotaLeaseDemoCleanupRetainedRecordsRemovesOldClosedLeasesAndEvents(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	now := time.Now().UTC()
+	oldUpdatedAt := now.Add(-quotaLeaseDemoRecordRetention - time.Hour)
+	recentUpdatedAt := now.Add(-time.Hour)
+	svc.mu.Lock()
+	svc.leases["old-closed"] = &QuotaLeaseDemoLease{
+		ID:        "old-closed",
+		NodeID:    "node-1",
+		UserID:    10,
+		APIKeyID:  20,
+		Granted:   1,
+		Consumed:  1,
+		Status:    QuotaLeaseDemoStatusClosed,
+		CreatedAt: oldUpdatedAt,
+		UpdatedAt: oldUpdatedAt,
+		ExpiresAt: oldUpdatedAt,
+		ReclaimAt: oldUpdatedAt,
+	}
+	svc.leases["recent-closed"] = &QuotaLeaseDemoLease{
+		ID:        "recent-closed",
+		NodeID:    "node-1",
+		UserID:    10,
+		APIKeyID:  20,
+		Granted:   1,
+		Consumed:  1,
+		Status:    QuotaLeaseDemoStatusClosed,
+		CreatedAt: recentUpdatedAt,
+		UpdatedAt: recentUpdatedAt,
+		ExpiresAt: recentUpdatedAt,
+		ReclaimAt: recentUpdatedAt,
+	}
+	svc.events["event-old"] = &QuotaLeaseDemoLedgerEvent{EventID: "event-old", LeaseID: "old-closed", CreatedAt: oldUpdatedAt}
+	svc.events["event-recent"] = &QuotaLeaseDemoLedgerEvent{EventID: "event-recent", LeaseID: "recent-closed", CreatedAt: recentUpdatedAt}
+	svc.mu.Unlock()
+
+	result, err := svc.CleanupRetainedRecords(context.Background(), now)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), result.LeaseCount)
+	require.Equal(t, int64(1), result.LedgerEventCount)
+	snapshot := svc.Snapshot()
+	require.Len(t, snapshot.Leases, 1)
+	require.Equal(t, "recent-closed", snapshot.Leases[0].ID)
+	require.Len(t, snapshot.Events, 1)
+	require.Equal(t, "event-recent", snapshot.Events[0].EventID)
+}
+
+func TestQuotaLeaseDemoPersistenceRestoresNodesLeasesEventsAndPendingUsage(t *testing.T) {
+	ctx := context.Background()
+	store := &quotaLeaseDemoMemoryPersistenceStore{}
+	svc := newQuotaLeaseDemoTestService()
+	require.NoError(t, svc.SetPersistenceStore(ctx, store))
+
+	registered, err := svc.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID:     "node-persist",
+		NodeSecret: "node-secret",
+		Region:     "us",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "node-secret", registered.NodeSecret)
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		NodeID:   "node-persist",
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+	_, err = svc.ConsumeUsage(ctx, QuotaLeaseDemoUsageEvent{
+		EventID:   "usage-persist-1",
+		LeaseID:   lease.ID,
+		NodeID:    "node-persist",
+		UserID:    10,
+		APIKeyID:  20,
+		RequestID: "request-persist-1",
+		Amount:    0.25,
+	})
+	require.NoError(t, err)
+	require.NoError(t, store.SaveQuotaLeaseDemoPendingUsageEvent(ctx, QuotaLeaseDemoUsageEvent{
+		EventID:   "pending-persist-1",
+		LeaseID:   lease.ID,
+		NodeID:    "node-persist",
+		UserID:    10,
+		APIKeyID:  20,
+		RequestID: "request-pending-1",
+		Amount:    0.1,
+		EventType: QuotaLeaseDemoEventUsagePosted,
+		CreatedAt: time.Now().UTC(),
+	}))
+
+	restored := newQuotaLeaseDemoTestService()
+	require.NoError(t, restored.SetPersistenceStore(ctx, store))
+	require.True(t, restored.AuthenticateNode("node-persist", "node-secret"))
+
+	snapshot := restored.Snapshot()
+	require.Len(t, snapshot.Nodes, 1)
+	require.Len(t, snapshot.Leases, 1)
+	require.InDelta(t, 0.75, snapshot.Leases[0].Remaining(), 1e-9)
+	require.Len(t, snapshot.Events, 2)
+	require.Len(t, restored.pendingUsageEvents(), 1)
+}
+
+func TestQuotaLeaseDemoApplyUsageBillingUsesAtomicPersistenceRepo(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	billing := &quotaLeaseDemoAtomicBillingRepo{}
+	svc.SetUsageBillingRepository(billing)
+	ctx := context.Background()
+
+	lease, err := svc.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+		UserID:   10,
+		APIKeyID: 20,
+		Amount:   1,
+	})
+	require.NoError(t, err)
+
+	handled, applied, err := svc.ApplyUsageBilling(ctx, &UsageBillingCommand{
+		RequestID:   "req-atomic-1",
+		UserID:      10,
+		APIKeyID:    20,
+		BalanceCost: 0.4,
+	})
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.True(t, applied)
+	require.Len(t, billing.leases, 1)
+	require.Equal(t, lease.ID, billing.leases[0].ID)
+	require.InDelta(t, 0.6, billing.leases[0].Remaining(), 1e-9)
+	require.Len(t, billing.events, 1)
+	require.Equal(t, "req-atomic-1", billing.events[0].RequestID)
+}
+
 func TestQuotaLeaseDemoRemoteNodeFetchesLeaseAndFlushesUsage(t *testing.T) {
 	control := newQuotaLeaseDemoTestService()
 	server := newQuotaLeaseDemoControlPlaneTestServer(t, control, "control-secret")
@@ -1340,6 +1654,85 @@ func TestQuotaLeaseDemoRemoteNodeFetchesLeaseAndFlushesUsage(t *testing.T) {
 	require.Len(t, controlSnapshot.Leases, 1)
 	require.InDelta(t, 0.25, controlSnapshot.Leases[0].Consumed, 1e-9)
 	require.Len(t, node.pendingUsageEvents(), 0)
+}
+
+func TestQuotaLeaseDemoRemoteRequestLeaseCoalescesSameUserRequests(t *testing.T) {
+	control := newQuotaLeaseDemoTestService()
+	var leaseRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/node-leases/demo/nodes/register":
+			var req QuotaLeaseDemoNodeRegistrationRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			result, err := control.RegisterNode(r.Context(), req)
+			require.NoError(t, err)
+			require.NoError(t, json.NewEncoder(w).Encode(result))
+		case "/api/v1/node-leases/demo/leases/request":
+			leaseRequests.Add(1)
+			if !control.AuthenticateNode(r.Header.Get("X-Node-ID"), r.Header.Get("X-Node-Secret")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				require.NoError(t, json.NewEncoder(w).Encode(map[string]string{"error": "invalid_node_secret"}))
+				return
+			}
+			var req QuotaLeaseDemoLeaseRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			lease, err := control.RequestLease(r.Context(), req)
+			require.NoError(t, err)
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"lease": lease}))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	node := NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled:             true,
+				ControlPlaneBaseURL: server.URL,
+				ControlPlaneKey:     "control-secret",
+			},
+		},
+	})
+	ctx := context.Background()
+	const workers = 16
+	start := make(chan struct{})
+	errs := make(chan error, workers)
+	leaseIDs := make(chan string, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			lease, err := node.RequestLease(ctx, QuotaLeaseDemoLeaseRequest{
+				UserID:   10,
+				APIKeyID: 20,
+				Amount:   1,
+			})
+			if err != nil {
+				errs <- err
+				return
+			}
+			leaseIDs <- lease.ID
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	close(leaseIDs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	ids := make(map[string]struct{})
+	for id := range leaseIDs {
+		ids[id] = struct{}{}
+	}
+	require.Len(t, ids, 1)
+	require.Equal(t, int64(1), leaseRequests.Load())
+	require.Len(t, node.Snapshot().Leases, 1)
+	require.Len(t, control.Snapshot().Leases, 1)
 }
 
 func TestQuotaLeaseDemoRemoteOverdraftBlocksWhenUsageFlushFails(t *testing.T) {
@@ -1450,7 +1843,7 @@ func TestQuotaLeaseDemoRemoteOverdraftBlocksWhenUsageFlushFails(t *testing.T) {
 	require.GreaterOrEqual(t, leaseRequests, 1)
 }
 
-func TestQuotaLeaseDemoRemoteOverdraftSettlementSucceedsWhenRenewalDenied(t *testing.T) {
+func TestQuotaLeaseDemoRemoteOverdraftSettlementBlocksWhenRenewalDenied(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	leaseRequests := 0
@@ -1526,7 +1919,7 @@ func TestQuotaLeaseDemoRemoteOverdraftSettlementSucceedsWhenRenewalDenied(t *tes
 		APIKeyID:    20,
 		BalanceCost: 0.05,
 	})
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrQuotaLeaseDemoNoCapacity)
 	require.True(t, handled)
 	require.True(t, applied)
 	require.Equal(t, 0, len(node.pendingUsageEvents()))
