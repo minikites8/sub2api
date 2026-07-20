@@ -196,6 +196,16 @@ export default {
           pending: 'Authorizing',
           completed: 'Completed',
           failed: 'Failed'
+        },
+        sync: {
+          synced: 'Synced',
+          waiting: 'Waiting',
+          auth: 'Authorizing',
+          delayed: 'Delayed',
+          stale: 'Stale',
+          failed: 'Auth Failed',
+          titleWithTime: 'Node: {node} | Last sync: {time}',
+          titleWaiting: 'Node: {node} | Waiting for account sync'
         }
       },
       schedulerScore: {

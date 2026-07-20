@@ -36,6 +36,48 @@ func (s *adminServiceImpl) ListAccountsForSchedulerScoreFilter(ctx context.Conte
 	return s.accountRepo.ListAllWithFilters(ctx, platform, accountType, status, search, groupID, privacyMode)
 }
 
+type nodeAssignedAccountRepository interface {
+	ListNodeAssignedAccounts(ctx context.Context, params pagination.PaginationParams, nodeID string) ([]Account, *pagination.PaginationResult, error)
+}
+
+func (s *adminServiceImpl) ListNodeAssignedAccounts(ctx context.Context, nodeID string, page, pageSize int) ([]Account, int64, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if s == nil || s.accountRepo == nil || nodeID == "" {
+		return []Account{}, 0, nil
+	}
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: "id", SortOrder: "asc"}
+	if repo, ok := s.accountRepo.(nodeAssignedAccountRepository); ok {
+		accounts, result, err := repo.ListNodeAssignedAccounts(ctx, params, nodeID)
+		if err != nil {
+			return nil, 0, err
+		}
+		if result == nil {
+			return accounts, int64(len(accounts)), nil
+		}
+		return accounts, result.Total, nil
+	}
+
+	all, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", 0, "")
+	if err != nil {
+		return nil, 0, err
+	}
+	filtered := make([]Account, 0)
+	for _, account := range all {
+		if strings.TrimSpace(fmt.Sprint(account.Extra["node_oauth_assigned_node_id"])) == nodeID {
+			filtered = append(filtered, account)
+		}
+	}
+	start := params.Offset()
+	if start >= len(filtered) {
+		return []Account{}, int64(len(filtered)), nil
+	}
+	end := start + params.Limit()
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[start:end], int64(len(filtered)), nil
+}
+
 func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error) {
 	if s == nil || s.accountRepo == nil {
 		return nil, nil

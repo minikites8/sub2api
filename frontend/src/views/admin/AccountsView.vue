@@ -308,10 +308,11 @@
                 {{ getNodeOAuthAssignedNodeID(row) }}
               </code>
               <span
-                v-if="getNodeOAuthStatusLabel(row)"
-                :class="['inline-flex w-fit rounded px-1.5 py-0.5 text-[10px] font-medium', getNodeOAuthStatusClass(row)]"
+                :class="['inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium', getNodeOAuthSyncClass(row)]"
+                :title="getNodeOAuthSyncTitle(row)"
               >
-                {{ getNodeOAuthStatusLabel(row) }}
+                <span :class="['h-1.5 w-1.5 rounded-full', getNodeOAuthSyncDotClass(row)]"></span>
+                {{ getNodeOAuthSyncLabel(row) }}
               </span>
               <span
                 v-if="getNodeOAuthLastSyncedAt(row)"
@@ -1383,30 +1384,81 @@ function getNodeOAuthLastSyncedAtTitle(row: Account): string {
   return value ? formatDateTime(value) : ''
 }
 
-function getNodeOAuthStatusLabel(row: Account): string {
-  switch (getNodeOAuthStatus(row)) {
-    case 'pending':
-      return t('admin.accounts.nodeOAuth.status.pending')
-    case 'completed':
-      return t('admin.accounts.nodeOAuth.status.completed')
+type NodeOAuthSyncState = 'synced' | 'waiting' | 'auth' | 'delayed' | 'stale' | 'failed'
+
+function getNodeOAuthLastSyncedDate(row: Account): Date | null {
+  const value = getNodeOAuthLastSyncedAt(row)
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function getNodeOAuthSyncState(row: Account): NodeOAuthSyncState {
+  const status = getNodeOAuthStatus(row)
+  if (status === 'failed') return 'failed'
+  if (status === 'pending') return 'auth'
+  const date = getNodeOAuthLastSyncedDate(row)
+  if (!date) return 'waiting'
+  const ageMs = Date.now() - date.getTime()
+  if (ageMs >= 5 * 60 * 1000) return 'stale'
+  if (ageMs >= 90 * 1000) return 'delayed'
+  return 'synced'
+}
+
+function getNodeOAuthSyncLabel(row: Account): string {
+  switch (getNodeOAuthSyncState(row)) {
+    case 'synced':
+      return t('admin.accounts.nodeOAuth.sync.synced')
+    case 'waiting':
+      return t('admin.accounts.nodeOAuth.sync.waiting')
+    case 'auth':
+      return t('admin.accounts.nodeOAuth.sync.auth')
+    case 'delayed':
+      return t('admin.accounts.nodeOAuth.sync.delayed')
+    case 'stale':
+      return t('admin.accounts.nodeOAuth.sync.stale')
     case 'failed':
-      return t('admin.accounts.nodeOAuth.status.failed')
-    default:
-      return ''
+      return t('admin.accounts.nodeOAuth.sync.failed')
   }
 }
 
-function getNodeOAuthStatusClass(row: Account): string {
-  switch (getNodeOAuthStatus(row)) {
-    case 'completed':
+function getNodeOAuthSyncClass(row: Account): string {
+  switch (getNodeOAuthSyncState(row)) {
+    case 'synced':
       return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
-    case 'pending':
+    case 'waiting':
+      return 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200'
+    case 'auth':
+    case 'delayed':
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+    case 'stale':
     case 'failed':
       return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
-    default:
-      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
   }
+}
+
+function getNodeOAuthSyncDotClass(row: Account): string {
+  switch (getNodeOAuthSyncState(row)) {
+    case 'synced':
+      return 'bg-emerald-500'
+    case 'waiting':
+      return 'bg-slate-400'
+    case 'auth':
+    case 'delayed':
+      return 'bg-amber-500'
+    case 'stale':
+    case 'failed':
+      return 'bg-red-500'
+  }
+}
+
+function getNodeOAuthSyncTitle(row: Account): string {
+  const nodeID = getNodeOAuthAssignedNodeID(row)
+  const lastSyncedAt = getNodeOAuthLastSyncedAtTitle(row)
+  if (lastSyncedAt) {
+    return t('admin.accounts.nodeOAuth.sync.titleWithTime', { node: nodeID, time: lastSyncedAt })
+  }
+  return t('admin.accounts.nodeOAuth.sync.titleWaiting', { node: nodeID })
 }
 
 type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'

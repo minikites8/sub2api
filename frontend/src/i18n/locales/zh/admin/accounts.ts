@@ -144,6 +144,16 @@ export default {
           pending: '授权中',
           completed: '已完成',
           failed: '失败'
+        },
+        sync: {
+          synced: '已同步',
+          waiting: '等待同步',
+          auth: '授权中',
+          delayed: '同步延迟',
+          stale: '同步超时',
+          failed: '授权失败',
+          titleWithTime: '节点：{node} | 最近同步：{time}',
+          titleWaiting: '节点：{node} | 等待节点同步账号数据'
         }
       },
       schedulerScore: {

@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -853,6 +854,108 @@ func (r *accountRepository) ListAllWithFilters(ctx context.Context, platform, ac
 		return nil, err
 	}
 	return r.accountsToService(ctx, accounts)
+}
+
+func (r *accountRepository) ListNodeAssignedAccounts(ctx context.Context, params pagination.PaginationParams, nodeID string) ([]service.Account, *pagination.PaginationResult, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return []service.Account{}, paginationResultFromTotal(0, params), nil
+	}
+	if r.sql != nil && r.client != nil {
+		var total int64
+		countRows, err := r.sql.QueryContext(ctx, `
+			SELECT COUNT(*)
+			FROM accounts
+			WHERE deleted_at IS NULL
+			  AND status = 'active'
+			  AND schedulable = TRUE
+			  AND extra ->> 'node_oauth_assigned_node_id' = $1
+		`, nodeID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if countRows.Next() {
+			if err := countRows.Scan(&total); err != nil {
+				_ = countRows.Close()
+				return nil, nil, err
+			}
+		}
+		if err := countRows.Close(); err != nil {
+			return nil, nil, err
+		}
+		if err := countRows.Err(); err != nil {
+			return nil, nil, err
+		}
+		if total == 0 {
+			return []service.Account{}, paginationResultFromTotal(0, params), nil
+		}
+		rows, err := r.sql.QueryContext(ctx, `
+			SELECT id
+			FROM accounts
+			WHERE deleted_at IS NULL
+			  AND status = 'active'
+			  AND schedulable = TRUE
+			  AND extra ->> 'node_oauth_assigned_node_id' = $1
+			ORDER BY id ASC
+			LIMIT $2 OFFSET $3
+		`, nodeID, params.Limit(), params.Offset())
+		if err != nil {
+			return nil, nil, err
+		}
+		defer rows.Close()
+		ids := make([]int64, 0, params.Limit())
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				return nil, nil, err
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, nil, err
+		}
+		if len(ids) == 0 {
+			return []service.Account{}, paginationResultFromTotal(total, params), nil
+		}
+		accounts, err := r.GetByIDs(ctx, ids)
+		if err != nil {
+			return nil, nil, err
+		}
+		out := make([]service.Account, 0, len(accounts))
+		for _, account := range accounts {
+			if account != nil {
+				out = append(out, *account)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool {
+			return out[i].ID < out[j].ID
+		})
+		return out, paginationResultFromTotal(total, params), nil
+	}
+
+	q := r.client.Account.Query().
+		Where(dbaccount.StatusEQ(service.StatusActive)).
+		Where(dbaccount.SchedulableEQ(true)).
+		Where(func(s *entsql.Selector) {
+			s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, nodeID, sqljson.Path("node_oauth_assigned_node_id")))
+		})
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := q.
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(dbent.Asc(dbaccount.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	out, err := r.accountsToService(ctx, accounts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, paginationResultFromTotal(int64(total), params), nil
 }
 
 func (r *accountRepository) ListOpsAccountsForStats(ctx context.Context, platformFilter string, groupIDFilter *int64) ([]service.Account, error) {

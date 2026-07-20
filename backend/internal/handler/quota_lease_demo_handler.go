@@ -28,6 +28,10 @@ const (
 	quotaLeaseDemoNodeOAuthLastSyncedAtPersistInterval = 5 * time.Second
 )
 
+type quotaLeaseDemoNodeAssignedAccountAdminService interface {
+	ListNodeAssignedAccounts(ctx context.Context, nodeID string, page, pageSize int) ([]service.Account, int64, error)
+}
+
 func NewQuotaLeaseDemoHandler(svc *service.QuotaLeaseDemoService, adminSvc ...service.AdminService) *QuotaLeaseDemoHandler {
 	h := &QuotaLeaseDemoHandler{svc: svc}
 	if len(adminSvc) > 0 {
@@ -641,8 +645,18 @@ func (h *QuotaLeaseDemoHandler) listAssignedAccounts(ctx context.Context, nodeID
 
 	syncedAt := time.Now().UTC()
 	const pageSize = 500
+	nodeAssignedLister, hasNodeAssignedLister := h.adminSvc.(quotaLeaseDemoNodeAssignedAccountAdminService)
 	for page := 1; ; page++ {
-		items, total, err := h.adminSvc.ListAccounts(ctx, page, pageSize, "", "", "", "", 0, "", "id", "asc")
+		var (
+			items []service.Account
+			total int64
+			err   error
+		)
+		if hasNodeAssignedLister {
+			items, total, err = nodeAssignedLister.ListNodeAssignedAccounts(ctx, nodeID, page, pageSize)
+		} else {
+			items, total, err = h.adminSvc.ListAccounts(ctx, page, pageSize, "", "", "", "", 0, "", "id", "asc")
+		}
 		if err != nil {
 			return nil, err
 		}

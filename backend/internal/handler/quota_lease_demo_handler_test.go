@@ -103,6 +103,7 @@ type quotaLeaseDemoSyncAdminService struct {
 	updatedExtra     map[string]any
 	clearedAccountID int64
 	listedAccounts   []service.Account
+	listedNodeIDs    []string
 	groups           []service.Group
 	allProxies       []service.Proxy
 	proxies          map[int64]*service.Proxy
@@ -136,6 +137,26 @@ func (s *quotaLeaseDemoSyncAdminService) ListAccounts(_ context.Context, page, p
 		end = len(s.listedAccounts)
 	}
 	return append([]service.Account(nil), s.listedAccounts[start:end]...), int64(len(s.listedAccounts)), nil
+}
+
+func (s *quotaLeaseDemoSyncAdminService) ListNodeAssignedAccounts(_ context.Context, nodeID string, page, pageSize int) ([]service.Account, int64, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	s.listedNodeIDs = append(s.listedNodeIDs, nodeID)
+	filtered := make([]service.Account, 0, len(s.listedAccounts))
+	for _, account := range s.listedAccounts {
+		if quotaLeaseDemoHandlerString(account.Extra["node_oauth_assigned_node_id"]) == nodeID {
+			filtered = append(filtered, account)
+		}
+	}
+	start := (page - 1) * pageSize
+	if start >= len(filtered) {
+		return nil, int64(len(filtered)), nil
+	}
+	end := start + pageSize
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return append([]service.Account(nil), filtered[start:end]...), int64(len(filtered)), nil
 }
 
 func (s *quotaLeaseDemoSyncAdminService) GetAllGroupsIncludingInactive(context.Context) ([]service.Group, error) {
@@ -560,6 +581,7 @@ func TestQuotaLeaseDemoHandlerListsAssignedAccountsFromPersistedAdminAccounts(t 
 	require.NoError(t, err)
 	require.Equal(t, int64(901), adminSvc.updatedExtraID)
 	require.Equal(t, lastSyncedAt, adminSvc.updatedExtra["node_oauth_last_synced_at"])
+	require.Equal(t, []string{"foreign-1"}, adminSvc.listedNodeIDs)
 }
 
 func TestQuotaLeaseDemoHandlerListsAssignedAPIKeyAccounts(t *testing.T) {
