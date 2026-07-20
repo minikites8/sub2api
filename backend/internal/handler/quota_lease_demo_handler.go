@@ -637,17 +637,12 @@ func (h *QuotaLeaseDemoHandler) listAssignedAccounts(ctx context.Context, nodeID
 		return accounts, nil
 	}
 
-	seen := make(map[int64]int, len(accounts))
-	for index, assigned := range accounts {
-		if assigned.Account.ID > 0 {
-			seen[assigned.Account.ID] = index
-		}
-	}
+	byID := make(map[int64]service.QuotaLeaseDemoAssignedAccount)
 
 	syncedAt := time.Now().UTC()
 	const pageSize = 500
 	for page := 1; ; page++ {
-		items, total, err := h.adminSvc.ListAccounts(ctx, page, pageSize, "", service.AccountTypeOAuth, service.StatusActive, "", 0, "", "id", "asc")
+		items, total, err := h.adminSvc.ListAccounts(ctx, page, pageSize, "", "", "", "", 0, "", "id", "asc")
 		if err != nil {
 			return nil, err
 		}
@@ -664,23 +659,22 @@ func (h *QuotaLeaseDemoHandler) listAssignedAccounts(ctx context.Context, nodeID
 			}
 			snapshot := h.quotaLeaseDemoHandlerAccountSnapshot(ctx, account)
 			snapshot.Extra = h.touchAssignedAccountSync(ctx, account.ID, account.Extra, snapshot.Extra, syncedAt)
-			if existingIndex, ok := seen[account.ID]; ok {
-				accounts[existingIndex].Account = snapshot
-				continue
-			}
-			accounts = append(accounts, service.QuotaLeaseDemoAssignedAccount{
+			byID[account.ID] = service.QuotaLeaseDemoAssignedAccount{
 				NodeID:    assignedNodeID,
 				Account:   snapshot,
 				CreatedAt: quotaLeaseDemoHandlerTimeOrNow(account.CreatedAt),
 				UpdatedAt: quotaLeaseDemoHandlerTimeOrNow(account.UpdatedAt),
-			})
-			seen[account.ID] = len(accounts) - 1
+			}
 		}
 		if len(items) == 0 || int64(page*pageSize) >= total {
 			break
 		}
 	}
 
+	accounts = make([]service.QuotaLeaseDemoAssignedAccount, 0, len(byID))
+	for _, assigned := range byID {
+		accounts = append(accounts, assigned)
+	}
 	sort.Slice(accounts, func(i, j int) bool {
 		return accounts[i].Account.ID < accounts[j].Account.ID
 	})
@@ -733,17 +727,24 @@ func quotaLeaseDemoHandlerTime(value any) (time.Time, bool) {
 }
 
 func quotaLeaseDemoHandlerPersistedAccountReady(account service.Account) bool {
-	if account.Platform != service.PlatformOpenAI && account.Platform != service.PlatformGrok {
+	if strings.TrimSpace(account.Platform) == "" || strings.TrimSpace(account.Type) == "" {
 		return false
 	}
-	status := strings.TrimSpace(quotaLeaseDemoHandlerString(account.Extra["node_oauth_status"]))
-	if status != "" && status != service.QuotaLeaseDemoAccountTaskCompleted {
+	if account.Status != service.StatusActive || !account.Schedulable {
 		return false
 	}
 	if quotaLeaseDemoHandlerBool(account.Credentials["node_oauth_pending"]) {
 		return false
 	}
-	return true
+	switch account.Type {
+	case service.AccountTypeOAuth, service.AccountTypeSetupToken:
+		status := strings.TrimSpace(quotaLeaseDemoHandlerString(account.Extra["node_oauth_status"]))
+		return status == "" || status == service.QuotaLeaseDemoAccountTaskCompleted
+	case service.AccountTypeAPIKey, service.AccountTypeUpstream, service.AccountTypeBedrock, service.AccountTypeServiceAccount:
+		return len(account.Credentials) > 0
+	default:
+		return false
+	}
 }
 
 func (h *QuotaLeaseDemoHandler) quotaLeaseDemoHandlerAccountSnapshot(ctx context.Context, account service.Account) service.QuotaLeaseDemoAccountSnapshot {

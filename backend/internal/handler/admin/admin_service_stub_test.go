@@ -394,7 +394,12 @@ func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.A
 	if s.getAccountResult != nil {
 		return s.getAccountResult, nil
 	}
-	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
+	account := service.Account{
+		ID:     id,
+		Name:   "account",
+		Status: service.StatusActive,
+		Extra:  map[string]any{accountAssignedNodeExtraKey: "node-test-1"},
+	}
 	return &account, nil
 }
 

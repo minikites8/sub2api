@@ -96,6 +96,16 @@ const OAuthAuthorizationFlowStub = defineComponent({
   `,
 })
 
+const defaultNode = {
+  node_id: 'node-default-1',
+  region: 'us',
+  status: 'online',
+  inflight_requests: 0,
+  lease_remaining: 0,
+  registered_at: '2026-07-18T00:00:00Z',
+  updated_at: '2026-07-18T00:00:00Z',
+}
+
 function mountModal() {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups: [] },
@@ -125,6 +135,7 @@ async function selectButtonByText(wrapper: ReturnType<typeof mountModal>, text: 
 
 async function submitApiKeyAccount(platform: 'openai' | 'anthropic', enableLongContextBilling = false) {
   const wrapper = mountModal()
+  await flushPromises()
   await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
   if (platform === 'openai') {
     await selectButtonByText(wrapper, 'API Key')
@@ -140,6 +151,7 @@ async function submitApiKeyAccount(platform: 'openai' | 'anthropic', enableLongC
 
 async function openCodexImportStep(toggleClicks = 0) {
   const wrapper = mountModal()
+  await flushPromises()
   await selectButtonByText(wrapper, 'OpenAI')
   for (let click = 0; click < toggleClicks; click += 1) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
@@ -163,7 +175,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       warnings: [],
     })
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
-    listNodeLeaseNodesMock.mockReset().mockResolvedValue([])
+    listNodeLeaseNodesMock.mockReset().mockResolvedValue([defaultNode])
     createNodeLoginTaskMock.mockReset().mockResolvedValue({})
     listNodeLoginTasksMock.mockReset().mockResolvedValue([])
   })
@@ -177,6 +189,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
   it('exposes Agent Identity in the OpenAI authorization methods', async () => {
     const wrapper = mountModal()
+    await flushPromises()
     await selectButtonByText(wrapper, 'OpenAI')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
@@ -224,11 +237,10 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     listNodeLoginTasksMock.mockResolvedValue([waitingTask])
 
     const wrapper = mountModal()
+    await flushPromises()
     await selectButtonByText(wrapper, 'OpenAI')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI node account')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-    await wrapper.get('[data-testid="node-oauth-enabled"]').setValue(true)
     await flushPromises()
 
     await wrapper.get('[data-testid="generate-url"]').trigger('click')

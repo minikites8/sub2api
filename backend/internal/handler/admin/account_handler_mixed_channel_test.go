@@ -100,6 +100,7 @@ func TestAccountHandlerCreateMixedChannelConflictSimplifiedResponse(t *testing.T
 		"platform":    "antigravity",
 		"type":        "oauth",
 		"credentials": map[string]any{"refresh_token": "rt"},
+		"extra":       map[string]any{accountAssignedNodeExtraKey: "node-test-1"},
 		"group_ids":   []int64{27},
 	})
 	rec := httptest.NewRecorder()

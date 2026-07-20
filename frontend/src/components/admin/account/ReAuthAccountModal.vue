@@ -343,48 +343,14 @@
       </div>
 
       <div
-        v-if="isNodeOAuthSupported && !isKiroImportMode"
+        v-if="nodeOAuthActive && !isKiroImportMode && nodeOAuthTask"
         class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60"
         data-testid="reauth-node-oauth-panel"
       >
-        <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-          <input
-            v-model="nodeOAuthEnabled"
-            type="checkbox"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600"
-            data-testid="reauth-node-oauth-enabled"
-          />
-          节点执行 OAuth
-        </label>
-        <div v-if="nodeOAuthEnabled" class="grid gap-3 md:grid-cols-[minmax(180px,240px)_auto]">
-          <div>
-            <label class="input-label">执行节点</label>
-            <select
-              v-model="nodeOAuthSelectedNodeID"
-              class="input"
-              :disabled="nodeOAuthLoading"
-              data-testid="reauth-node-oauth-node-select"
-            >
-              <option value="">选择节点</option>
-              <option v-for="option in nodeOAuthOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </div>
-          <div class="flex items-end">
-            <button
-              type="button"
-              class="btn btn-secondary w-full"
-              :disabled="nodeOAuthLoading"
-              data-testid="reauth-node-oauth-load-nodes"
-              @click="loadNodeOAuthNodes"
-            >
-              <Icon name="refresh" size="sm" class="mr-2" :class="nodeOAuthLoading ? 'animate-spin' : ''" />
-              刷新节点
-            </button>
-          </div>
+        <div class="text-sm font-medium text-gray-700 dark:text-gray-200">
+          节点正在执行 OAuth
         </div>
-        <div v-if="nodeOAuthEnabled && nodeOAuthTask" class="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <div class="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
           <span class="rounded bg-white px-2 py-1 font-mono dark:bg-dark-700">{{ nodeOAuthTask.id }}</span>
           <span class="rounded bg-white px-2 py-1 dark:bg-dark-700">{{ nodeOAuthTask.status }}</span>
         </div>
@@ -485,10 +451,7 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
-import type {
-  QuotaLeaseDemoAccountLoginTask,
-  QuotaLeaseDemoNode
-} from '@/api/admin/nodeLeases'
+import type { QuotaLeaseDemoAccountLoginTask } from '@/api/admin/nodeLeases'
 
 interface OAuthFlowExposed {
   authCode: string
@@ -633,14 +596,7 @@ const isManualInputMethod = computed(() => {
 const isNodeOAuthSupported = computed(() => isOpenAILike.value || isGrok.value)
 
 const nodeOAuthActive = computed(() =>
-  isNodeOAuthSupported.value && nodeOAuthEnabled.value && isManualInputMethod.value
-)
-
-const nodeOAuthOptions = computed(() =>
-  nodeOAuthNodes.value.map((node) => ({
-    value: node.node_id,
-    label: `${node.node_id}${node.region ? ` (${node.region})` : ''}`
-  }))
+  isNodeOAuthSupported.value && isManualInputMethod.value
 )
 
 const nodeOAuthLoginPayload = computed(() => nodeOAuthTask.value?.login_payload || {})
@@ -666,13 +622,16 @@ const canExchangeCode = computed(() => {
   return !!(authCode.trim() && currentSessionId.value && !currentLoading.value)
 })
 
-const nodeOAuthEnabled = ref(false)
-const nodeOAuthNodes = ref<QuotaLeaseDemoNode[]>([])
 const nodeOAuthSelectedNodeID = ref('')
 const nodeOAuthLoading = ref(false)
 const nodeOAuthError = ref('')
 const nodeOAuthTask = ref<QuotaLeaseDemoAccountLoginTask | null>(null)
-const nodeOAuthLoaded = ref(false)
+
+function readAccountNodeBinding(account: Account | null) {
+  const extra = account?.extra as Record<string, unknown> | undefined
+  const nodeID = extra?.node_oauth_assigned_node_id
+  return typeof nodeID === 'string' ? nodeID.trim() : ''
+}
 
 watch(
   () => props.show,
@@ -714,29 +673,15 @@ watch(
     }
 
     resetNodeOAuthTaskState()
-    if (
-      isNodeOAuthSupported.value &&
-      nodeOAuthEnabled.value &&
-      !nodeOAuthLoaded.value
-    ) {
-      void loadNodeOAuthNodes()
-    }
+    nodeOAuthSelectedNodeID.value = readAccountNodeBinding(props.account)
   }
 )
 
 watch(
-  [() => props.account?.id, () => props.account?.platform, nodeOAuthEnabled],
-  ([accountID]) => {
+  [() => props.account?.id, () => props.account?.platform],
+  () => {
     resetNodeOAuthTaskState()
-    if (
-      props.show &&
-      accountID &&
-      isNodeOAuthSupported.value &&
-      nodeOAuthEnabled.value &&
-      !nodeOAuthLoaded.value
-    ) {
-      void loadNodeOAuthNodes()
-    }
+    nodeOAuthSelectedNodeID.value = readAccountNodeBinding(props.account)
   }
 )
 
@@ -840,34 +785,14 @@ function resetNodeOAuthState() {
   resetNodeOAuthTaskState()
   nodeOAuthLoading.value = false
   nodeOAuthSelectedNodeID.value = ''
-  nodeOAuthNodes.value = []
-  nodeOAuthLoaded.value = false
-}
-
-function nodeOAuthErrorMessage(error: any, fallback: string) {
-  return error?.response?.data?.message || error?.response?.data?.detail || error?.message || fallback
 }
 
 function nodeOAuthSleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-async function loadNodeOAuthNodes() {
-  nodeOAuthLoading.value = true
-  nodeOAuthError.value = ''
-  try {
-    const nodes = await adminAPI.nodeLeases.listNodes()
-    nodeOAuthNodes.value = nodes
-    nodeOAuthLoaded.value = true
-    if (!nodeOAuthSelectedNodeID.value && nodes.length > 0) {
-      nodeOAuthSelectedNodeID.value = nodes.find((node) => node.status === 'online')?.node_id || nodes[0].node_id
-    }
-  } catch (error: any) {
-    nodeOAuthError.value = nodeOAuthErrorMessage(error, '节点列表加载失败')
-    appStore.showError(nodeOAuthError.value)
-  } finally {
-    nodeOAuthLoading.value = false
-  }
+function nodeOAuthErrorMessage(error: any, fallback: string) {
+  return error?.response?.data?.message || error?.response?.data?.detail || error?.message || fallback
 }
 
 async function refreshNodeOAuthTask() {
@@ -908,12 +833,13 @@ function buildNodeOAuthCredentialOverrides() {
 
 async function createNodeOAuthLoginTask() {
   if (!props.account) return null
-  const nodeID = nodeOAuthSelectedNodeID.value.trim()
+  const nodeID = (nodeOAuthSelectedNodeID.value || readAccountNodeBinding(props.account)).trim()
   if (!nodeID) {
-    nodeOAuthError.value = '请选择执行节点'
+    nodeOAuthError.value = '请先在账号设置里选择调度节点'
     appStore.showError(nodeOAuthError.value)
     return null
   }
+  nodeOAuthSelectedNodeID.value = nodeID
 
   nodeOAuthLoading.value = true
   nodeOAuthError.value = ''

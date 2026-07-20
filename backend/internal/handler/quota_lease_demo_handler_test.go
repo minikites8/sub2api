@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -102,6 +103,8 @@ type quotaLeaseDemoSyncAdminService struct {
 	updatedExtra     map[string]any
 	clearedAccountID int64
 	listedAccounts   []service.Account
+	groups           []service.Group
+	allProxies       []service.Proxy
 	proxies          map[int64]*service.Proxy
 	users            map[int64]*service.User
 }
@@ -133,6 +136,26 @@ func (s *quotaLeaseDemoSyncAdminService) ListAccounts(_ context.Context, page, p
 		end = len(s.listedAccounts)
 	}
 	return append([]service.Account(nil), s.listedAccounts[start:end]...), int64(len(s.listedAccounts)), nil
+}
+
+func (s *quotaLeaseDemoSyncAdminService) GetAllGroupsIncludingInactive(context.Context) ([]service.Group, error) {
+	return append([]service.Group(nil), s.groups...), nil
+}
+
+func (s *quotaLeaseDemoSyncAdminService) GetAllProxies(context.Context) ([]service.Proxy, error) {
+	if s.allProxies != nil {
+		return append([]service.Proxy(nil), s.allProxies...), nil
+	}
+	out := make([]service.Proxy, 0, len(s.proxies))
+	for _, proxy := range s.proxies {
+		if proxy != nil {
+			out = append(out, *proxy)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
 }
 
 func (s *quotaLeaseDemoSyncAdminService) GetProxy(_ context.Context, id int64) (*service.Proxy, error) {
@@ -537,6 +560,103 @@ func TestQuotaLeaseDemoHandlerListsAssignedAccountsFromPersistedAdminAccounts(t 
 	require.NoError(t, err)
 	require.Equal(t, int64(901), adminSvc.updatedExtraID)
 	require.Equal(t, lastSyncedAt, adminSvc.updatedExtra["node_oauth_last_synced_at"])
+}
+
+func TestQuotaLeaseDemoHandlerListsAssignedAPIKeyAccounts(t *testing.T) {
+	now := time.Now().UTC()
+	adminSvc := &quotaLeaseDemoSyncAdminService{
+		listedAccounts: []service.Account{
+			{
+				ID:          904,
+				Name:        "persisted-openai-key",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-node"},
+				Extra: map[string]any{
+					"node_oauth_assigned_node_id": "foreign-1",
+				},
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				GroupIDs:    []int64{2},
+				CreatedAt:   now.Add(-time.Hour),
+				UpdatedAt:   now,
+			},
+		},
+	}
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled: true,
+			},
+		},
+	})
+	h := NewQuotaLeaseDemoHandler(svc, adminSvc)
+
+	accounts, err := h.listAssignedAccounts(context.Background(), "foreign-1")
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	require.Equal(t, int64(904), accounts[0].Account.ID)
+	require.Equal(t, service.AccountTypeAPIKey, accounts[0].Account.Type)
+	require.Equal(t, "sk-node", accounts[0].Account.Credentials["api_key"])
+	require.Equal(t, "foreign-1", accounts[0].NodeID)
+}
+
+func TestQuotaLeaseDemoHandlerMirrorSnapshotMovesPersistedAccountBetweenNodes(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	adminSvc := &quotaLeaseDemoSyncAdminService{
+		listedAccounts: []service.Account{
+			{
+				ID:          1001,
+				Name:        "migrating-openai",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeOAuth,
+				Credentials: map[string]any{"access_token": "node-token-a"},
+				Extra: map[string]any{
+					"node_oauth_assigned_node_id": "node-a",
+					"node_oauth_status":           service.QuotaLeaseDemoAccountTaskCompleted,
+				},
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				CreatedAt:   now.Add(-time.Hour),
+				UpdatedAt:   now,
+			},
+		},
+	}
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled: true,
+			},
+		},
+	})
+	h := NewQuotaLeaseDemoHandler(svc, adminSvc)
+
+	firstNodeASnapshot, err := h.buildMirrorSnapshot(ctx, "node-a")
+	require.NoError(t, err)
+	firstNodeASnapshot = svc.PrepareMirrorSnapshot(firstNodeASnapshot, 0)
+	require.Len(t, firstNodeASnapshot.Accounts, 1)
+	require.Equal(t, int64(1001), firstNodeASnapshot.Accounts[0].ID)
+
+	adminSvc.listedAccounts[0].Extra["node_oauth_assigned_node_id"] = "node-b"
+	adminSvc.listedAccounts[0].UpdatedAt = now.Add(time.Minute)
+
+	secondNodeASnapshot, err := h.buildMirrorSnapshot(ctx, "node-a")
+	require.NoError(t, err)
+	secondNodeASnapshot = svc.PrepareMirrorSnapshot(secondNodeASnapshot, firstNodeASnapshot.Version)
+	require.True(t, secondNodeASnapshot.Delta)
+	require.Equal(t, []int64{1001}, secondNodeASnapshot.DeletedAccountIDs)
+	require.Empty(t, secondNodeASnapshot.Accounts)
+	require.Equal(t, 0, secondNodeASnapshot.TotalAccountCount)
+
+	nodeBSnapshot, err := h.buildMirrorSnapshot(ctx, "node-b")
+	require.NoError(t, err)
+	nodeBSnapshot = svc.PrepareMirrorSnapshot(nodeBSnapshot, 0)
+	require.Len(t, nodeBSnapshot.Accounts, 1)
+	require.Equal(t, int64(1001), nodeBSnapshot.Accounts[0].ID)
+	require.Equal(t, "node-b", nodeBSnapshot.Accounts[0].Extra["node_oauth_assigned_node_id"])
 }
 
 func TestQuotaLeaseDemoHandlerRegistersNodeAndUsesNodeSecret(t *testing.T) {

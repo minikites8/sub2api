@@ -104,7 +104,7 @@ func TestAccountCreateBoundaryDoesNotApplyOpenAIValidationToOtherPlatforms(t *te
 	router.POST("/accounts", handler.Create)
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/accounts", bytes.NewBufferString(
-		`{"name":"account","platform":"anthropic","type":"apikey","credentials":{"api_key":"test"},"extra":{"openai_long_context_billing_enabled":"provider-owned"}}`,
+		`{"name":"account","platform":"anthropic","type":"apikey","credentials":{"api_key":"test"},"extra":{"openai_long_context_billing_enabled":"provider-owned","node_oauth_assigned_node_id":"node-test-1"}}`,
 	))
 	request.Header.Set("Content-Type", "application/json")
 

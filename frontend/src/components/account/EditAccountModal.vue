@@ -2607,6 +2607,37 @@
       </div>
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <label class="input-label">调度节点 <span class="text-red-500">*</span></label>
+            <select
+              v-model="nodeBindingSelectedNodeID"
+              class="input"
+              :disabled="nodeBindingLoading"
+              required
+              data-testid="edit-account-node-binding-select"
+            >
+              <option value="">选择节点</option>
+              <option v-for="option in nodeBindingOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+            <p class="input-hint">账号会同步到这个节点，用户请求也会交给该节点调用上游。</p>
+            <p v-if="nodeBindingError" class="mt-2 text-xs text-red-500">{{ nodeBindingError }}</p>
+          </div>
+          <div class="flex items-end">
+            <button
+              type="button"
+              class="btn btn-secondary w-full"
+              :disabled="nodeBindingLoading"
+              data-testid="edit-account-node-binding-refresh"
+              @click="loadNodeBindingNodes"
+            >
+              <Icon name="refresh" size="sm" class="mr-2" :class="nodeBindingLoading ? 'animate-spin' : ''" />
+              刷新节点
+            </button>
+          </div>
+        </div>
         <div>
           <label class="input-label">{{ t('common.status') }}</label>
           <Select v-model="form.status" :options="statusOptions" />
@@ -2796,6 +2827,7 @@ import {
   type OpenAIWSMode,
   resolveOpenAIWSModeFromExtra
 } from '@/utils/openaiWsMode'
+import type { QuotaLeaseDemoNode } from '@/api/admin/nodeLeases'
 import {
   fetchKiroDefaultMappings,
   getPresetMappingsByPlatform,
@@ -2862,6 +2894,11 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const nodeBindingNodes = ref<QuotaLeaseDemoNode[]>([])
+const nodeBindingSelectedNodeID = ref('')
+const nodeBindingLoading = ref(false)
+const nodeBindingError = ref('')
+const nodeBindingLoaded = ref(false)
 const kiroCreditUnitPriceUsd = ref(0)
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
@@ -3376,6 +3413,13 @@ const statusOptions = computed(() => {
   return options
 })
 
+const nodeBindingOptions = computed(() =>
+  nodeBindingNodes.value.map((node) => ({
+    value: node.node_id,
+    label: `${node.node_id}${node.region ? ` (${node.region})` : ''}`
+  }))
+)
+
 const expiresAtInput = computed({
   get: () => formatDateTimeLocal(form.expires_at),
   set: (value: string) => {
@@ -3472,7 +3516,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load mixed scheduling setting (only for antigravity accounts)
   mixedScheduling.value = false
   allowOverages.value = false
-const extra = newAccount.extra as Record<string, unknown> | undefined
+  const extra = newAccount.extra as Record<string, unknown> | undefined
+  nodeBindingSelectedNodeID.value = typeof extra?.node_oauth_assigned_node_id === 'string'
+    ? extra.node_oauth_assigned_node_id.trim()
+    : ''
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
   const kiroCreditUnitPrice = extra?.kiro_credit_unit_price_usd
@@ -3802,6 +3849,28 @@ async function loadTLSProfiles() {
   }
 }
 
+function nodeBindingErrorMessage(error: any, fallback: string) {
+  return error?.response?.data?.message || error?.response?.data?.detail || error?.message || fallback
+}
+
+async function loadNodeBindingNodes() {
+  nodeBindingLoading.value = true
+  nodeBindingError.value = ''
+  try {
+    const nodes = await adminAPI.nodeLeases.listNodes()
+    nodeBindingNodes.value = nodes
+    nodeBindingLoaded.value = true
+    if (!nodeBindingSelectedNodeID.value && nodes.length > 0) {
+      nodeBindingSelectedNodeID.value = nodes.find((node) => node.status === 'online')?.node_id || nodes[0].node_id
+    }
+  } catch (error: any) {
+    nodeBindingError.value = nodeBindingErrorMessage(error, '节点列表加载失败')
+    appStore.showError(nodeBindingError.value)
+  } finally {
+    nodeBindingLoading.value = false
+  }
+}
+
 watch(
   [() => props.show, () => props.account],
   ([show, newAccount], [wasShow, previousAccount]) => {
@@ -3811,6 +3880,9 @@ watch(
     if (!wasShow || newAccount !== previousAccount) {
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
+      if (!nodeBindingLoaded.value) {
+        void loadNodeBindingNodes()
+      }
     }
   },
   { immediate: true }
@@ -4284,6 +4356,11 @@ const handleSubmit = async () => {
 
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
+    return
+  }
+  const selectedNodeID = nodeBindingSelectedNodeID.value.trim()
+  if (!selectedNodeID) {
+    appStore.showError('请选择调度节点')
     return
   }
 
@@ -4942,6 +5019,13 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
+    }
+
+    const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+      (props.account.extra as Record<string, unknown>) || {}
+    updatePayload.extra = {
+      ...currentExtra,
+      node_oauth_assigned_node_id: selectedNodeID
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

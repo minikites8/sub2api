@@ -217,18 +217,23 @@ func (h *GrokOAuthHandler) ReconcileOAuthAccounts(c *gin.Context) {
 
 func (h *GrokOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 	var req struct {
-		SessionID   string  `json:"session_id" binding:"required"`
-		Code        string  `json:"code" binding:"required"`
-		State       string  `json:"state"`
-		RedirectURI string  `json:"redirect_uri"`
-		ProxyID     *int64  `json:"proxy_id"`
-		Name        string  `json:"name"`
-		Concurrency int     `json:"concurrency"`
-		Priority    int     `json:"priority"`
-		GroupIDs    []int64 `json:"group_ids"`
+		SessionID   string         `json:"session_id" binding:"required"`
+		Code        string         `json:"code" binding:"required"`
+		State       string         `json:"state"`
+		RedirectURI string         `json:"redirect_uri"`
+		ProxyID     *int64         `json:"proxy_id"`
+		Name        string         `json:"name"`
+		Extra       map[string]any `json:"extra"`
+		Concurrency int            `json:"concurrency"`
+		Priority    int            `json:"priority"`
+		GroupIDs    []int64        `json:"group_ids"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := validateAccountAssignedNodeID(accountAssignedNodeIDFromExtra(req.Extra)); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	tokenInfo, err := h.grokOAuthService.ExchangeCode(c.Request.Context(), &service.GrokExchangeCodeInput{
@@ -257,6 +262,7 @@ func (h *GrokOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 		Platform:    service.PlatformGrok,
 		Type:        service.AccountTypeOAuth,
 		Credentials: credentials,
+		Extra:       req.Extra,
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
@@ -319,6 +325,10 @@ func (h *GrokOAuthHandler) CreateAccountsFromSSO(c *gin.Context) {
 	tokens := normalizeSSOImportTokens(req.SSOTokens, req.SSOToken)
 	if len(tokens) == 0 {
 		response.BadRequest(c, "sso_tokens is required")
+		return
+	}
+	if err := validateAccountAssignedNodeID(accountAssignedNodeIDFromExtra(req.Extra)); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 

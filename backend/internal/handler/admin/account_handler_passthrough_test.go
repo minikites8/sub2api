@@ -45,7 +45,8 @@ func TestAccountHandler_Create_AnthropicAPIKeyPassthroughExtraForwarded(t *testi
 			"base_url": "https://api.anthropic.com",
 		},
 		"extra": map[string]any{
-			"anthropic_passthrough": true,
+			"anthropic_passthrough":     true,
+			accountAssignedNodeExtraKey: "node-test-1",
 		},
 		"concurrency": 1,
 		"priority":    1,

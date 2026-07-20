@@ -162,6 +162,46 @@ type UpdateAccountRequest struct {
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
+const accountAssignedNodeExtraKey = "node_oauth_assigned_node_id"
+
+func accountAssignedNodeIDFromValue(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(v)
+	default:
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
+}
+
+func accountAssignedNodeIDFromExtra(extra map[string]any) string {
+	if len(extra) == 0 {
+		return ""
+	}
+	value, ok := extra[accountAssignedNodeExtraKey]
+	if !ok {
+		return ""
+	}
+	return accountAssignedNodeIDFromValue(value)
+}
+
+func accountAssignedNodeIDFromMergedExtra(current, next map[string]any) string {
+	if next != nil {
+		if value, ok := next[accountAssignedNodeExtraKey]; ok {
+			return accountAssignedNodeIDFromValue(value)
+		}
+	}
+	return accountAssignedNodeIDFromExtra(current)
+}
+
+func validateAccountAssignedNodeID(nodeID string) error {
+	if strings.TrimSpace(nodeID) == "" {
+		return infraerrors.BadRequest("ACCOUNT_NODE_BINDING_REQUIRED", "account scheduling node is required")
+	}
+	return nil
+}
+
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
 	AccountIDs              []int64                   `json:"account_ids"`
@@ -822,6 +862,10 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if err := validateAccountAssignedNodeID(accountAssignedNodeIDFromExtra(req.Extra)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
@@ -956,6 +1000,19 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
+		return
+	}
+	existing, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	if err := service.ValidateOpenAILongContextBillingExtra(existing.Platform, req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := validateAccountAssignedNodeID(accountAssignedNodeIDFromMergedExtra(existing.Extra, req.Extra)); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
@@ -1416,6 +1473,10 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		return
 	}
 	if err := service.ValidateOpenAILongContextBillingExtra(existing.Platform, req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := validateAccountAssignedNodeID(accountAssignedNodeIDFromMergedExtra(existing.Extra, req.Extra)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

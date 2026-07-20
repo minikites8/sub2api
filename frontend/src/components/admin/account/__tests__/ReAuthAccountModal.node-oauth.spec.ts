@@ -135,6 +135,9 @@ const account = {
     access_token: 'masked-old-access',
     node_oauth_pending: true,
   },
+  extra: {
+    node_oauth_assigned_node_id: 'sub2api-node-ip-0',
+  },
   proxy_id: 9,
   group_ids: [1, 2],
   concurrency: 5,
@@ -205,7 +208,7 @@ describe('ReAuthAccountModal node OAuth', () => {
     })
   })
 
-  it('runs re-authorization through a selected node', async () => {
+  it('runs re-authorization through the account bound node', async () => {
     const completedTask = {
       ...waitingTask,
       status: 'completed',
@@ -227,9 +230,6 @@ describe('ReAuthAccountModal node OAuth', () => {
       .mockResolvedValueOnce([completedTask])
 
     const wrapper = mountModal()
-    await wrapper.get('[data-testid="reauth-node-oauth-enabled"]').setValue(true)
-    await flushPromises()
-    await wrapper.get('[data-testid="reauth-node-oauth-load-nodes"]').trigger('click')
     await flushPromises()
 
     await wrapper.get('[data-testid="reauth-generate-url"]').trigger('click')

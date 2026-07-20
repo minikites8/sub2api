@@ -67,6 +67,40 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <label class="input-label">调度节点 <span class="text-red-500">*</span></label>
+            <select
+              v-model="nodeOAuthSelectedNodeID"
+              class="input"
+              :disabled="nodeOAuthLoading"
+              required
+              data-testid="account-node-binding-select"
+            >
+              <option value="">选择节点</option>
+              <option v-for="option in nodeOAuthOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+            <p class="input-hint">账号会同步到这个节点，用户请求也会交给该节点调用上游。</p>
+          </div>
+          <div class="flex items-end">
+            <button
+              type="button"
+              class="btn btn-secondary w-full"
+              :disabled="nodeOAuthLoading"
+              data-testid="account-node-binding-refresh"
+              @click="loadNodeOAuthNodes"
+            >
+              <Icon name="refresh" size="sm" class="mr-2" :class="nodeOAuthLoading ? 'animate-spin' : ''" />
+              刷新节点
+            </button>
+          </div>
+        </div>
+        <p v-if="nodeOAuthError" class="mt-2 text-xs text-red-500">{{ nodeOAuthError }}</p>
+      </div>
+
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
@@ -3654,48 +3688,14 @@
         </div>
       </div>
       <div
-        v-if="isNodeOAuthSupported && !isKiroImportMode"
+        v-if="nodeOAuthActive && !isKiroImportMode && nodeOAuthTask"
         class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60"
         data-testid="node-oauth-panel"
       >
-        <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-          <input
-            v-model="nodeOAuthEnabled"
-            type="checkbox"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600"
-            data-testid="node-oauth-enabled"
-          />
-          节点执行 OAuth
-        </label>
-        <div v-if="nodeOAuthEnabled" class="grid gap-3 md:grid-cols-[minmax(180px,240px)_auto]">
-          <div>
-            <label class="input-label">执行节点</label>
-            <select
-              v-model="nodeOAuthSelectedNodeID"
-              class="input"
-              :disabled="nodeOAuthLoading"
-              data-testid="node-oauth-node-select"
-            >
-              <option value="">选择节点</option>
-              <option v-for="option in nodeOAuthOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </div>
-          <div class="flex items-end">
-            <button
-              type="button"
-              class="btn btn-secondary w-full"
-              :disabled="nodeOAuthLoading"
-              data-testid="node-oauth-load-nodes"
-              @click="loadNodeOAuthNodes"
-            >
-              <Icon name="refresh" size="sm" class="mr-2" :class="nodeOAuthLoading ? 'animate-spin' : ''" />
-              刷新节点
-            </button>
-          </div>
+        <div class="text-sm font-medium text-gray-700 dark:text-gray-200">
+          节点正在执行 OAuth
         </div>
-        <div v-if="nodeOAuthEnabled && nodeOAuthTask" class="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <div class="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
           <span class="rounded bg-white px-2 py-1 font-mono dark:bg-dark-700">{{ nodeOAuthTask.id }}</span>
           <span class="rounded bg-white px-2 py-1 dark:bg-dark-700">{{ nodeOAuthTask.status }}</span>
         </div>
@@ -3712,14 +3712,14 @@
         :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="!nodeOAuthActive && (form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok')"
-        :show-mobile-refresh-token-option="!nodeOAuthActive && form.platform === 'openai'"
+        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
+        :show-mobile-refresh-token-option="form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
-        :show-codex-session-import-option="!nodeOAuthActive && form.platform === 'openai'"
-        :show-agent-identity-option="!nodeOAuthActive && form.platform === 'openai'"
-        :show-codex-pat-option="!nodeOAuthActive && form.platform === 'openai'"
-        :show-sso-option="!nodeOAuthActive && form.platform === 'grok'"
+        :show-codex-session-import-option="form.platform === 'openai'"
+        :show-agent-identity-option="form.platform === 'openai'"
+        :show-codex-pat-option="form.platform === 'openai'"
+        :show-sso-option="form.platform === 'grok'"
         :show-manual-option="true"
         :initial-input-method="'manual'"
         :platform="form.platform"
@@ -4255,7 +4255,6 @@ const currentOAuthError = computed(() => {
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
-const nodeOAuthEnabled = ref(false)
 const nodeOAuthNodes = ref<QuotaLeaseDemoNode[]>([])
 const nodeOAuthSelectedNodeID = ref('')
 const nodeOAuthLoading = ref(false)
@@ -4777,7 +4776,7 @@ const isNodeOAuthSupported = computed(() =>
 )
 
 const nodeOAuthActive = computed(() =>
-  isNodeOAuthSupported.value && nodeOAuthEnabled.value && isManualInputMethod.value
+  isNodeOAuthSupported.value && isManualInputMethod.value
 )
 
 const nodeOAuthOptions = computed(() =>
@@ -4830,16 +4829,10 @@ const canExchangeCode = computed(() => {
 })
 
 watch(
-  [() => props.show, step, () => form.platform, accountCategory, nodeOAuthEnabled],
+  [() => props.show, step, () => form.platform, accountCategory],
   ([show]) => {
     resetNodeOAuthTaskState()
-    if (
-      show &&
-      step.value === 2 &&
-      isNodeOAuthSupported.value &&
-      nodeOAuthEnabled.value &&
-      !nodeOAuthLoaded.value
-    ) {
+    if (show && !nodeOAuthLoaded.value) {
       void loadNodeOAuthNodes()
     }
   }
@@ -5363,7 +5356,7 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    await adminAPI.accounts.create(withNodeBindingPayload(withAntigravityConfirmFlag(payload)))
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -5605,6 +5598,33 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   return Object.keys(extra).length > 0 ? extra : undefined
 }
 
+function getSelectedNodeID() {
+  return nodeOAuthSelectedNodeID.value.trim()
+}
+
+function requireAccountNodeBinding() {
+  const nodeID = getSelectedNodeID()
+  if (!nodeID) {
+    appStore.showError('请选择调度节点')
+    return false
+  }
+  return true
+}
+
+function withNodeBindingExtra(extra?: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...(extra || {}),
+    node_oauth_assigned_node_id: getSelectedNodeID()
+  }
+}
+
+function withNodeBindingPayload<T extends { extra?: Record<string, unknown> }>(payload: T): T {
+  return {
+    ...payload,
+    extra: withNodeBindingExtra(payload.extra)
+  }
+}
+
 // Helper function to create account with mixed channel warning handling
 const doCreateAccount = async (payload: CreateAccountRequest) => {
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
@@ -5697,6 +5717,10 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (!requireAccountNodeBinding()) {
+    return
+  }
+
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {
@@ -6108,7 +6132,7 @@ function buildNodeOAuthExtra() {
 }
 
 async function createNodeOAuthLoginTask() {
-  const nodeID = nodeOAuthSelectedNodeID.value.trim()
+  const nodeID = getSelectedNodeID()
   if (!nodeID) {
     nodeOAuthError.value = '请选择执行节点'
     appStore.showError(nodeOAuthError.value)
@@ -6151,7 +6175,7 @@ async function createNodeOAuthLoginTask() {
     await adminAPI.accounts.update(account.id, { status: 'inactive' })
 
     const loginPayload: Record<string, unknown> = {
-      extra,
+      extra: withNodeBindingExtra(extra),
       credential_overrides: credentialOverrides,
       status: 'active',
       schedulable: true
@@ -6379,6 +6403,7 @@ const createAccountAndFinish = async (
     kiroExtra.kiro_credit_unit_price_usd = Number.isFinite(unitPrice) ? unitPrice : 0
     finalExtra = kiroExtra
   }
+  finalExtra = withNodeBindingExtra(finalExtra)
   if (platform === 'grok') {
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
@@ -6460,7 +6485,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           platform: 'grok',
           type: 'oauth',
           credentials,
-          extra,
+          extra: withNodeBindingExtra(extra),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -6530,6 +6555,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       proxy_id: form.proxy_id,
       group_ids: form.group_ids,
       credentials,
+      extra: withNodeBindingExtra(),
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -6626,7 +6652,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         platform: 'openai',
         type: 'oauth',
         credentials,
-        extra,
+        extra: withNodeBindingExtra(extra),
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
@@ -6741,7 +6767,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra,
+      extra: withNodeBindingExtra(extra),
       update_existing: true
     })
 
@@ -6819,7 +6845,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra
+      extra: withNodeBindingExtra(extra)
     })
 
     appStore.showSuccess(t('admin.accounts.messages.accountCreated'))
@@ -6907,7 +6933,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             platform: 'openai',
             type: 'oauth',
             credentials,
-            extra,
+            extra: withNodeBindingExtra(extra),
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
@@ -7016,7 +7042,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
-        await adminAPI.accounts.create(createPayload)
+        await adminAPI.accounts.create(withNodeBindingPayload(createPayload))
         successCount++
       } catch (error: any) {
         failedCount++
@@ -7485,7 +7511,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra,
+          extra: withNodeBindingExtra(extra),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
