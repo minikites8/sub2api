@@ -183,6 +183,34 @@ describe('AccountTestModal', () => {
     })
   })
 
+  it('显示服务端返回的节点测试途径', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-5.5', display_name: 'GPT-5.5' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"gpt-5.5","route":"node","node_id":"sub2api-us-1","text":"正在通过 sub2api-us-1 节点测试"}\n',
+        'data: {"type":"test_complete","success":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      id: 42,
+      name: 'OpenAI OAuth',
+      platform: 'openai',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    ;(wrapper.vm as any).selectedModelId = 'gpt-5.5'
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('正在通过 sub2api-us-1 节点测试')
+  })
+
   it('OpenAI Compact 探测会携带 compact 测试模式', async () => {
     getAvailableModels.mockResolvedValue([
       { id: 'gpt-5.4', display_name: 'GPT-5.4' }

@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,10 @@ type quotaLeaseDemoGlobalState struct {
 
 var globalQuotaLeaseDemo quotaLeaseDemoGlobalState
 
+type quotaLeaseDemoAccountExtraUpdater interface {
+	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error
+}
+
 // GetQuotaLeaseDemoService returns the process-local demo service shared by
 // handlers and billing code.
 func GetQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
@@ -84,6 +89,7 @@ type QuotaLeaseDemoService struct {
 	cfg                      *config.Config
 	settingService           *SettingService
 	billingRepo              UsageBillingRepository
+	accountExtraUpdater      quotaLeaseDemoAccountExtraUpdater
 	persistenceStore         QuotaLeaseDemoPersistenceStore
 	runtimeSettings          *QuotaLeaseDemoSettings
 	runtimeSettingsExpiresAt time.Time
@@ -159,6 +165,28 @@ func (s *QuotaLeaseDemoService) SetUsageBillingRepository(repo UsageBillingRepos
 	s.cfgMu.Lock()
 	s.billingRepo = repo
 	s.cfgMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) SetAccountRepository(repo AccountRepository) {
+	s.SetAccountExtraUpdater(repo)
+}
+
+func (s *QuotaLeaseDemoService) SetAccountExtraUpdater(updater quotaLeaseDemoAccountExtraUpdater) {
+	if s == nil {
+		return
+	}
+	s.cfgMu.Lock()
+	s.accountExtraUpdater = updater
+	s.cfgMu.Unlock()
+}
+
+func (s *QuotaLeaseDemoService) accountExtraUpdaterSnapshot() quotaLeaseDemoAccountExtraUpdater {
+	if s == nil {
+		return nil
+	}
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.accountExtraUpdater
 }
 
 func (s *QuotaLeaseDemoService) usageBillingRepository() UsageBillingRepository {
@@ -290,6 +318,16 @@ type QuotaLeaseDemoNodeHeartbeatRequest struct {
 	Metrics          map[string]float64            `json:"metrics"`
 	SyncStatus       *QuotaLeaseDemoNodeSyncStatus `json:"sync_status,omitempty"`
 	Status           string                        `json:"status"`
+}
+
+type QuotaLeaseDemoAccountRuntimeLoad struct {
+	AccountID          int64     `json:"account_id"`
+	CurrentConcurrency int       `json:"current_concurrency"`
+	WaitingCount       int       `json:"waiting_count"`
+	MaxCapacity        int       `json:"max_capacity"`
+	LoadRate           int       `json:"load_rate"`
+	NodeIDs            []string  `json:"node_ids,omitempty"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type QuotaLeaseDemoNodeUpdateRequest struct {
@@ -1744,6 +1782,164 @@ func cloneQuotaLeaseDemoFloatMap(src map[string]float64) map[string]float64 {
 		return nil
 	}
 	return dst
+}
+
+func mergeQuotaLeaseDemoFloatMaps(base map[string]float64, extra map[string]float64) map[string]float64 {
+	if len(base) == 0 {
+		return cloneQuotaLeaseDemoFloatMap(extra)
+	}
+	dst := cloneQuotaLeaseDemoFloatMap(base)
+	if dst == nil {
+		dst = make(map[string]float64)
+	}
+	for key, value := range extra {
+		key = strings.TrimSpace(key)
+		if key == "" || math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		dst[key] = value
+	}
+	if len(dst) == 0 {
+		return nil
+	}
+	return dst
+}
+
+func quotaLeaseDemoWriteAccountRuntimeLoadMetrics(metrics map[string]float64, accountID int64, current, waiting, maxCapacity, loadRate int) {
+	if metrics == nil || accountID <= 0 {
+		return
+	}
+	prefix := fmt.Sprintf("account_load.%d.", accountID)
+	metrics[prefix+"current_concurrency"] = float64(maxInt(0, current))
+	metrics[prefix+"waiting_count"] = float64(maxInt(0, waiting))
+	metrics[prefix+"max_capacity"] = float64(maxInt(0, maxCapacity))
+	metrics[prefix+"load_rate"] = float64(maxInt(0, loadRate))
+}
+
+func quotaLeaseDemoMetricInt(value float64) int {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
+		return 0
+	}
+	maxIntValue := int(^uint(0) >> 1)
+	if value > float64(maxIntValue) {
+		return maxIntValue
+	}
+	return int(value)
+}
+
+func quotaLeaseDemoAccountLoadMetricID(key, suffix string) (int64, bool) {
+	const prefix = "account_load."
+	key = strings.TrimSpace(key)
+	if !strings.HasPrefix(key, prefix) || !strings.HasSuffix(key, "."+suffix) {
+		return 0, false
+	}
+	idPart := strings.TrimSuffix(strings.TrimPrefix(key, prefix), "."+suffix)
+	id, err := strconv.ParseInt(idPart, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+func quotaLeaseDemoAccountRuntimeLoadsFromMetrics(nodeID string, metrics map[string]float64, updatedAt time.Time) map[int64]QuotaLeaseDemoAccountRuntimeLoad {
+	if len(metrics) == 0 {
+		return nil
+	}
+	out := make(map[int64]QuotaLeaseDemoAccountRuntimeLoad)
+	for key, value := range metrics {
+		if accountID, ok := quotaLeaseDemoAccountLoadMetricID(key, "current_concurrency"); ok {
+			load := out[accountID]
+			load.AccountID = accountID
+			load.CurrentConcurrency = quotaLeaseDemoMetricInt(value)
+			out[accountID] = load
+			continue
+		}
+		if accountID, ok := quotaLeaseDemoAccountLoadMetricID(key, "waiting_count"); ok {
+			load := out[accountID]
+			load.AccountID = accountID
+			load.WaitingCount = quotaLeaseDemoMetricInt(value)
+			out[accountID] = load
+			continue
+		}
+		if accountID, ok := quotaLeaseDemoAccountLoadMetricID(key, "max_capacity"); ok {
+			load := out[accountID]
+			load.AccountID = accountID
+			load.MaxCapacity = quotaLeaseDemoMetricInt(value)
+			out[accountID] = load
+			continue
+		}
+		if accountID, ok := quotaLeaseDemoAccountLoadMetricID(key, "load_rate"); ok {
+			load := out[accountID]
+			load.AccountID = accountID
+			load.LoadRate = quotaLeaseDemoMetricInt(value)
+			out[accountID] = load
+		}
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	for accountID, load := range out {
+		if load.AccountID <= 0 {
+			delete(out, accountID)
+			continue
+		}
+		if nodeID != "" {
+			load.NodeIDs = []string{nodeID}
+		}
+		if !updatedAt.IsZero() {
+			load.UpdatedAt = updatedAt
+		}
+		out[accountID] = load
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (s *QuotaLeaseDemoService) AccountRuntimeLoadsSnapshot() map[int64]QuotaLeaseDemoAccountRuntimeLoad {
+	if s == nil || !s.Enabled() {
+		return nil
+	}
+	now := time.Now().UTC()
+	const staleAfter = 2 * time.Minute
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[int64]QuotaLeaseDemoAccountRuntimeLoad)
+	for _, node := range s.nodes {
+		if node == nil || node.Status != QuotaLeaseDemoNodeStatusOnline {
+			continue
+		}
+		updatedAt := node.UpdatedAt
+		if node.LastHeartbeatAt != nil && !node.LastHeartbeatAt.IsZero() {
+			updatedAt = *node.LastHeartbeatAt
+		}
+		if !updatedAt.IsZero() && now.Sub(updatedAt) > staleAfter {
+			continue
+		}
+		loads := quotaLeaseDemoAccountRuntimeLoadsFromMetrics(node.NodeID, node.Metrics, updatedAt)
+		for accountID, load := range loads {
+			current := out[accountID]
+			if current.AccountID == 0 {
+				current.AccountID = accountID
+			}
+			current.CurrentConcurrency += load.CurrentConcurrency
+			current.WaitingCount += load.WaitingCount
+			current.MaxCapacity += load.MaxCapacity
+			if len(load.NodeIDs) > 0 {
+				current.NodeIDs = append(current.NodeIDs, load.NodeIDs...)
+			}
+			if current.UpdatedAt.IsZero() || load.UpdatedAt.After(current.UpdatedAt) {
+				current.UpdatedAt = load.UpdatedAt
+			}
+			if current.MaxCapacity > 0 {
+				current.LoadRate = int(math.Round(float64(current.CurrentConcurrency) / float64(current.MaxCapacity) * 100))
+			}
+			out[accountID] = current
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func generateQuotaLeaseDemoNodeSecret() (string, error) {

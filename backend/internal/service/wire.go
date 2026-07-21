@@ -195,6 +195,7 @@ func ProvideAccountTestService(
 		cfg,
 		tlsFPProfileService,
 	)
+	GetQuotaLeaseDemoService(cfg).SetAccountRepository(accountRepo)
 	service.agentIdentityWS = openAIGatewayService
 	return service
 }

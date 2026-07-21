@@ -496,6 +496,8 @@ const handleEvent = (event: {
   type: string
   text?: string
   model?: string
+  route?: string
+  node_id?: string
   success?: boolean
   error?: string
   image_url?: string
@@ -503,6 +505,13 @@ const handleEvent = (event: {
 }) => {
   switch (event.type) {
     case 'test_start':
+      if (event.text) {
+        addLine(event.text, event.route === 'node' ? 'text-purple-300' : 'text-cyan-300')
+      } else if (event.node_id) {
+        addLine(`正在通过 ${event.node_id} 节点测试`, 'text-purple-300')
+      } else if (event.route === 'control') {
+        addLine('正在通过控制面测试', 'text-cyan-300')
+      }
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')

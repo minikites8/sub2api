@@ -282,6 +282,8 @@ type CheckMixedChannelRequest struct {
 type AccountWithConcurrency struct {
 	*dto.Account
 	CurrentConcurrency int                          `json:"current_concurrency"`
+	NodeMaxCapacity    *int                         `json:"node_max_capacity,omitempty"`
+	NodeWaitingCount   *int                         `json:"node_waiting_count,omitempty"`
 	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
 	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
@@ -321,6 +323,19 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	if h.concurrencyService != nil {
 		if counts, err := h.concurrencyService.GetAccountConcurrencyBatch(ctx, []int64{account.ID}); err == nil {
 			item.CurrentConcurrency = counts[account.ID]
+		}
+	}
+	if h.quotaLeaseDemoService != nil {
+		if load, ok := h.quotaLeaseDemoService.AccountRuntimeLoadsSnapshot()[account.ID]; ok {
+			item.CurrentConcurrency += load.CurrentConcurrency
+			if load.MaxCapacity > 0 {
+				value := load.MaxCapacity
+				item.NodeMaxCapacity = &value
+			}
+			if load.WaitingCount > 0 {
+				value := load.WaitingCount
+				item.NodeWaitingCount = &value
+			}
 		}
 	}
 
@@ -656,6 +671,10 @@ func (h *AccountHandler) List(c *gin.Context) {
 			concurrencyCounts = cc
 		}
 	}
+	nodeRuntimeLoads := map[int64]service.QuotaLeaseDemoAccountRuntimeLoad{}
+	if h.quotaLeaseDemoService != nil {
+		nodeRuntimeLoads = h.quotaLeaseDemoService.AccountRuntimeLoadsSnapshot()
+	}
 
 	// 识别需要查询窗口费用、会话数和 RPM 的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
 	windowCostAccountIDs := make([]int64, 0)
@@ -729,9 +748,25 @@ func (h *AccountHandler) List(c *gin.Context) {
 		if h.accountUsageService != nil {
 			h.accountUsageService.EnrichAccountWithKiroRuntimeState(c.Request.Context(), acc)
 		}
+		currentConcurrency := concurrencyCounts[acc.ID]
+		var nodeMaxCapacity *int
+		var nodeWaitingCount *int
+		if load, ok := nodeRuntimeLoads[acc.ID]; ok {
+			currentConcurrency += load.CurrentConcurrency
+			if load.MaxCapacity > 0 {
+				value := load.MaxCapacity
+				nodeMaxCapacity = &value
+			}
+			if load.WaitingCount > 0 {
+				value := load.WaitingCount
+				nodeWaitingCount = &value
+			}
+		}
 		item := AccountWithConcurrency{
 			Account:            dto.AccountFromService(acc),
-			CurrentConcurrency: concurrencyCounts[acc.ID],
+			CurrentConcurrency: currentConcurrency,
+			NodeMaxCapacity:    nodeMaxCapacity,
+			NodeWaitingCount:   nodeWaitingCount,
 			SchedulerScore:     schedulerScores[acc.ID],
 			SchedulerScores:    schedulerGroupScores[acc.ID],
 		}

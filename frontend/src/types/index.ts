@@ -987,6 +987,8 @@ kiro_credit_unit_price_usd?: number
   concurrency: number
   load_factor?: number | null
   current_concurrency?: number // Real-time concurrency count from Redis
+  node_max_capacity?: number | null
+  node_waiting_count?: number | null
   scheduler_score?: {
     base_score: number
     sticky_score?: number

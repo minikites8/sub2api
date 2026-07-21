@@ -285,6 +285,7 @@ type QuotaLeaseDemoNodeWorker struct {
 	svc                *QuotaLeaseDemoService
 	executor           QuotaLeaseDemoAccountTaskExecutor
 	usageProbeExecutor QuotaLeaseDemoUsageProbeTaskExecutor
+	concurrencyService *ConcurrencyService
 	interval           time.Duration
 	cancel             context.CancelFunc
 	done               chan struct{}
@@ -311,6 +312,13 @@ func NewQuotaLeaseDemoNodeWorker(svc *QuotaLeaseDemoService, executor QuotaLease
 	}
 }
 
+func (w *QuotaLeaseDemoNodeWorker) SetConcurrencyService(concurrencyService *ConcurrencyService) {
+	if w == nil {
+		return
+	}
+	w.concurrencyService = concurrencyService
+}
+
 func ProvideQuotaLeaseDemoNodeWorker(
 	cfg *config.Config,
 	openaiOAuth *OpenAIOAuthService,
@@ -320,6 +328,7 @@ func ProvideQuotaLeaseDemoNodeWorker(
 	openAIQuotaService *OpenAIQuotaService,
 	grokQuotaService *GrokQuotaService,
 	channelService *ChannelService,
+	concurrencyService *ConcurrencyService,
 ) *QuotaLeaseDemoNodeWorker {
 	svc := GetQuotaLeaseDemoService(cfg)
 	svc.SetMirrorStore(mirrorStore)
@@ -330,6 +339,7 @@ func ProvideQuotaLeaseDemoNodeWorker(
 		quotaLeaseDemoNodeWorkerInterval,
 		NewQuotaLeaseDemoAccountUsageProbeTaskExecutor(accountUsageService, openAIQuotaService, grokQuotaService),
 	)
+	worker.SetConcurrencyService(concurrencyService)
 	worker.Start(context.Background())
 	return worker
 }
@@ -387,7 +397,7 @@ func (w *QuotaLeaseDemoNodeWorker) RunOnce(ctx context.Context) error {
 	}
 
 	var combined error
-	if _, err := w.svc.ReportRuntimeHeartbeat(ctx); err != nil {
+	if _, err := w.reportRuntimeHeartbeat(ctx); err != nil {
 		combined = errors.Join(combined, err)
 	}
 	if err := w.svc.SyncAssignedAccounts(ctx); err != nil {
@@ -435,10 +445,77 @@ func (w *QuotaLeaseDemoNodeWorker) RunOnce(ctx context.Context) error {
 	if err := w.svc.FlushPendingOpsErrorLogs(ctx); err != nil {
 		combined = errors.Join(combined, err)
 	}
-	if _, err := w.svc.ReportRuntimeHeartbeat(ctx); err != nil {
+	if _, err := w.reportRuntimeHeartbeat(ctx); err != nil {
 		combined = errors.Join(combined, err)
 	}
 	return combined
+}
+
+func (w *QuotaLeaseDemoNodeWorker) reportRuntimeHeartbeat(ctx context.Context) (*QuotaLeaseDemoNode, error) {
+	if w == nil || w.svc == nil {
+		return nil, ErrQuotaLeaseDemoDisabled
+	}
+	req := w.svc.RuntimeHeartbeatRequest()
+	req.Metrics = mergeQuotaLeaseDemoFloatMaps(req.Metrics, w.accountRuntimeLoadMetrics(ctx))
+	if current, ok := req.Metrics["account_load.total_current_concurrency"]; ok && current > 0 {
+		req.InflightRequests = int(current)
+	}
+	return w.svc.HeartbeatNode(ctx, req)
+}
+
+func (w *QuotaLeaseDemoNodeWorker) accountRuntimeLoadMetrics(ctx context.Context) map[string]float64 {
+	if w == nil || w.svc == nil || w.concurrencyService == nil {
+		return nil
+	}
+	nodeID := w.svc.activeNodeID()
+	assigned := w.svc.ListAssignedAccounts(ctx, nodeID)
+	if len(assigned) == 0 {
+		return nil
+	}
+	loadReq := make([]AccountWithConcurrency, 0, len(assigned))
+	for _, item := range assigned {
+		accountID := item.Account.ID
+		if accountID <= 0 {
+			continue
+		}
+		maxConcurrency := item.Account.Concurrency
+		if maxConcurrency <= 0 {
+			maxConcurrency = 1
+		}
+		loadReq = append(loadReq, AccountWithConcurrency{
+			ID:             accountID,
+			MaxConcurrency: maxConcurrency,
+		})
+	}
+	if len(loadReq) == 0 {
+		return nil
+	}
+	loadMap, err := w.concurrencyService.GetAccountsLoadBatch(ctx, loadReq)
+	if err != nil {
+		slog.Warn("quota_lease_demo.account_runtime_load_failed", "node_id", nodeID, "error", err)
+		return nil
+	}
+	metrics := make(map[string]float64, len(loadReq)*4+3)
+	totalCurrent := 0
+	totalWaiting := 0
+	for _, req := range loadReq {
+		load := loadMap[req.ID]
+		current := 0
+		waiting := 0
+		loadRate := 0
+		if load != nil {
+			current = load.CurrentConcurrency
+			waiting = load.WaitingCount
+			loadRate = load.LoadRate
+		}
+		totalCurrent += current
+		totalWaiting += waiting
+		quotaLeaseDemoWriteAccountRuntimeLoadMetrics(metrics, req.ID, current, waiting, req.MaxConcurrency, loadRate)
+	}
+	metrics["account_load.total_current_concurrency"] = float64(totalCurrent)
+	metrics["account_load.total_waiting_count"] = float64(totalWaiting)
+	metrics["account_load.account_count"] = float64(len(loadReq))
+	return metrics
 }
 
 func (w *QuotaLeaseDemoNodeWorker) loop(ctx context.Context) {

@@ -118,6 +118,31 @@ func (r *quotaLeaseDemoSettingRepo) Set(ctx context.Context, key, value string) 
 	return nil
 }
 
+type quotaLeaseDemoExtraUpdateRepo struct {
+	mu      sync.Mutex
+	updates map[int64]map[string]any
+}
+
+func (r *quotaLeaseDemoExtraUpdateRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.updates == nil {
+		r.updates = make(map[int64]map[string]any)
+	}
+	copied := make(map[string]any, len(updates))
+	for key, value := range updates {
+		copied[key] = value
+	}
+	r.updates[id] = copied
+	return nil
+}
+
+func (r *quotaLeaseDemoExtraUpdateRepo) updateFor(id int64) map[string]any {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return cloneQuotaLeaseDemoAnyMap(r.updates[id])
+}
+
 func (r *quotaLeaseDemoSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
 	_ = ctx
 	r.mu.Lock()
@@ -3490,6 +3515,37 @@ func TestQuotaLeaseDemoNodeWorkerExecutesPendingUsageProbeTask(t *testing.T) {
 	require.NotNil(t, tasks[0].Usage)
 	require.InDelta(t, 12.5, tasks[0].Usage.FiveHour.Utilization, 1e-9)
 	require.Equal(t, 12.5, tasks[0].ExtraPatch["codex_5h_used_percent"])
+}
+
+func TestQuotaLeaseDemoUsageProbeCompletionPersistsExtraPatch(t *testing.T) {
+	svc := newQuotaLeaseDemoTestService()
+	repo := &quotaLeaseDemoExtraUpdateRepo{}
+	svc.SetAccountExtraUpdater(repo)
+	ctx := context.Background()
+
+	task, err := svc.CreateUsageProbeTask(ctx, QuotaLeaseDemoUsageProbeTaskCreateRequest{
+		AccountID:      707,
+		AssignedNodeID: "node-usage-1",
+		Platform:       PlatformOpenAI,
+		Source:         "active",
+		Force:          true,
+		ProbeKind:      QuotaLeaseDemoUsageProbeKindAccountUsage,
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CompleteUsageProbeTask(ctx, QuotaLeaseDemoUsageProbeTaskCompleteRequest{
+		TaskID: task.ID,
+		NodeID: "node-usage-1",
+		ExtraPatch: map[string]any{
+			"codex_5h_used_percent": 18.5,
+			"unknown_runtime_key":   "ignored",
+		},
+	})
+	require.NoError(t, err)
+
+	updates := repo.updateFor(707)
+	require.Equal(t, 18.5, updates["codex_5h_used_percent"])
+	require.NotContains(t, updates, "unknown_runtime_key")
 }
 
 func TestQuotaLeaseDemoOAuthExecutorGeneratesOpenAIURLAndExchangesCode(t *testing.T) {

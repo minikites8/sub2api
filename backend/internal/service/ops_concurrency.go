@@ -130,6 +130,10 @@ func (s *OpsService) GetConcurrencyStats(
 
 	collectedAt := time.Now()
 	loadMap := s.getAccountsLoadMapBestEffort(ctx, accounts)
+	nodeRuntimeLoads := map[int64]QuotaLeaseDemoAccountRuntimeLoad{}
+	if quotaSvc := GetQuotaLeaseDemoService(s.cfg); quotaSvc != nil {
+		nodeRuntimeLoads = quotaSvc.AccountRuntimeLoadsSnapshot()
+	}
 
 	platform := make(map[string]*PlatformConcurrencyInfo)
 	group := make(map[int64]*GroupConcurrencyInfo)
@@ -164,6 +168,14 @@ func (s *OpsService) GetConcurrencyStats(
 			currentInUse = int64(load.CurrentConcurrency)
 			waiting = int64(load.WaitingCount)
 		}
+		maxCapacity := int64(acc.Concurrency)
+		if nodeLoad, ok := nodeRuntimeLoads[acc.ID]; ok {
+			currentInUse += int64(nodeLoad.CurrentConcurrency)
+			waiting += int64(nodeLoad.WaitingCount)
+			if nodeLoad.MaxCapacity > 0 && int64(nodeLoad.MaxCapacity) > maxCapacity {
+				maxCapacity = int64(nodeLoad.MaxCapacity)
+			}
+		}
 
 		// Account-level view picks one display group (the first group).
 		displayGroupID := int64(0)
@@ -184,7 +196,7 @@ func (s *OpsService) GetConcurrencyStats(
 				GroupID:        displayGroupID,
 				GroupName:      displayGroupName,
 				CurrentInUse:   currentInUse,
-				MaxCapacity:    int64(acc.Concurrency),
+				MaxCapacity:    maxCapacity,
 				WaitingInQueue: waiting,
 			}
 			if info.MaxCapacity > 0 {
@@ -201,7 +213,7 @@ func (s *OpsService) GetConcurrencyStats(
 				}
 			}
 			p := platform[acc.Platform]
-			p.MaxCapacity += int64(acc.Concurrency)
+			p.MaxCapacity += maxCapacity
 			p.CurrentInUse += currentInUse
 			p.WaitingInQueue += waiting
 		}
@@ -224,7 +236,7 @@ func (s *OpsService) GetConcurrencyStats(
 				// Groups are expected to be platform-scoped. If mismatch is observed, avoid misleading labels.
 				g.Platform = ""
 			}
-			g.MaxCapacity += int64(acc.Concurrency)
+			g.MaxCapacity += maxCapacity
 			g.CurrentInUse += currentInUse
 			g.WaitingInQueue += waiting
 		} else {
@@ -247,7 +259,7 @@ func (s *OpsService) GetConcurrencyStats(
 					// Groups are expected to be platform-scoped. If mismatch is observed, avoid misleading labels.
 					g.Platform = ""
 				}
-				g.MaxCapacity += int64(acc.Concurrency)
+				g.MaxCapacity += maxCapacity
 				g.CurrentInUse += currentInUse
 				g.WaitingInQueue += waiting
 			}

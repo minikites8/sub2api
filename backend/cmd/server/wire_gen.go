@@ -72,6 +72,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	concurrencyCache := repository.ProvideConcurrencyCache(redisClient, configConfig)
 	schedulerCache := repository.ProvideSchedulerCache(redisClient, configConfig)
 	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
+	service.GetQuotaLeaseDemoService(configConfig).SetAccountRepository(accountRepository)
 	adminAccountRepository := repository.NewAdminAccountRepository(client, db, schedulerCache)
 	quotaLeaseDemoMirrorStore := repository.NewQuotaLeaseDemoMirrorStore(client, db, accountRepository)
 	concurrencyService := service.ProvideConcurrencyService(concurrencyCache, accountRepository, configConfig)
@@ -305,7 +306,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	quotaLeaseDemoNodeWorker := service.ProvideQuotaLeaseDemoNodeWorker(configConfig, openAIOAuthService, grokOAuthService, quotaLeaseDemoMirrorStore, accountUsageService, openAIQuotaService, grokQuotaService, channelService)
+	quotaLeaseDemoNodeWorker := service.ProvideQuotaLeaseDemoNodeWorker(configConfig, openAIOAuthService, grokOAuthService, quotaLeaseDemoMirrorStore, accountUsageService, openAIQuotaService, grokQuotaService, channelService, concurrencyService)
 	quotaLeaseDemoReclaimWorker := service.ProvideQuotaLeaseDemoReclaimWorker(configConfig)
 	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, quotaLeaseDemoNodeWorker, quotaLeaseDemoReclaimWorker, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, kiroOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService)
 	application := &Application{

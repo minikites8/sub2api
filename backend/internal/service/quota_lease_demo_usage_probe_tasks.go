@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -171,16 +172,17 @@ func (s *QuotaLeaseDemoService) CompleteUsageProbeTask(ctx context.Context, req 
 	now := time.Now().UTC()
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	task := s.usageProbeTasks[taskID]
 	if task == nil {
+		s.mu.Unlock()
 		return nil, fmt.Errorf("%w: usage probe task not found", ErrQuotaLeaseDemoInvalidInput)
 	}
 	if nodeID == "" {
 		nodeID = task.AssignedNodeID
 	}
 	if task.AssignedNodeID != nodeID {
+		s.mu.Unlock()
 		return nil, fmt.Errorf("%w: usage probe task node mismatch", ErrQuotaLeaseDemoInvalidInput)
 	}
 
@@ -189,7 +191,9 @@ func (s *QuotaLeaseDemoService) CompleteUsageProbeTask(ctx context.Context, req 
 	task.CompletedAt = &now
 	if task.Error != "" {
 		task.Status = QuotaLeaseDemoAccountTaskFailed
-		return cloneQuotaLeaseDemoUsageProbeTask(task), nil
+		out := cloneQuotaLeaseDemoUsageProbeTask(task)
+		s.mu.Unlock()
+		return out, nil
 	}
 
 	task.Status = QuotaLeaseDemoAccountTaskCompleted
@@ -198,7 +202,29 @@ func (s *QuotaLeaseDemoService) CompleteUsageProbeTask(ctx context.Context, req 
 	task.GrokQuota = cloneQuotaLeaseDemoGrokQuotaProbeResult(req.GrokQuota)
 	task.ExtraPatch = quotaLeaseDemoAllowedUsageProbeExtraPatch(req.ExtraPatch)
 	s.mergeUsageProbeExtraPatchIntoAssignedAccountLocked(task, now)
-	return cloneQuotaLeaseDemoUsageProbeTask(task), nil
+	out := cloneQuotaLeaseDemoUsageProbeTask(task)
+	accountID := task.AccountID
+	extraPatch := cloneQuotaLeaseDemoAnyMap(task.ExtraPatch)
+	s.mu.Unlock()
+
+	s.persistUsageProbeExtraPatch(ctx, accountID, extraPatch)
+	return out, nil
+}
+
+func (s *QuotaLeaseDemoService) persistUsageProbeExtraPatch(ctx context.Context, accountID int64, extraPatch map[string]any) {
+	if accountID <= 0 || len(extraPatch) == 0 {
+		return
+	}
+	repo := s.accountExtraUpdaterSnapshot()
+	if repo == nil {
+		return
+	}
+	if err := repo.UpdateExtra(ctx, accountID, extraPatch); err != nil {
+		slog.Warn("quota_lease_demo.usage_probe_extra_persist_failed",
+			"account_id", accountID,
+			"error", err,
+		)
+	}
 }
 
 func (s *QuotaLeaseDemoService) WaitUsageProbeTask(ctx context.Context, taskID string, timeout, pollInterval time.Duration) (*QuotaLeaseDemoUsageProbeTask, error) {

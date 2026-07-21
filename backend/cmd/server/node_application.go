@@ -55,6 +55,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 	concurrencyCache := repository.ProvideConcurrencyCache(redisClient, cfg)
 	schedulerCache := repository.ProvideSchedulerCache(redisClient, cfg)
 	accountRepo := repository.NewAccountRepository(entClient, sqlDB, schedulerCache)
+	service.GetQuotaLeaseDemoService(cfg).SetAccountRepository(accountRepo)
 
 	concurrencyService := service.ProvideConcurrencyService(concurrencyCache, accountRepo, cfg)
 	billingCacheService := service.ProvideBillingCacheService(
@@ -290,6 +291,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		openAIQuotaService,
 		grokQuotaService,
 		channelService,
+		concurrencyService,
 	)
 
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(cfg)
