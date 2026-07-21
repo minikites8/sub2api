@@ -138,15 +138,37 @@ type QuotaLeaseDemoMirrorSnapshot struct {
 	TotalChannelCount int                                  `json:"total_channel_count,omitempty"`
 	TotalProxyCount   int                                  `json:"total_proxy_count,omitempty"`
 	TotalAccountCount int                                  `json:"total_account_count,omitempty"`
+	TotalAPIKeyCount  int                                  `json:"total_api_key_count,omitempty"`
 	Groups            []QuotaLeaseDemoGroupSnapshot        `json:"groups"`
 	Channels          []QuotaLeaseDemoChannelSnapshot      `json:"channels"`
 	Proxies           []QuotaLeaseDemoProxySnapshot        `json:"proxies"`
 	Accounts          []QuotaLeaseDemoAccountSnapshot      `json:"accounts"`
 	AccountGroups     []QuotaLeaseDemoAccountGroupSnapshot `json:"account_groups"`
+	APIKeys           []QuotaLeaseDemoAPIKeySnapshot       `json:"api_keys"`
 	DeletedGroupIDs   []int64                              `json:"deleted_group_ids,omitempty"`
 	DeletedChannelIDs []int64                              `json:"deleted_channel_ids,omitempty"`
 	DeletedProxyIDs   []int64                              `json:"deleted_proxy_ids,omitempty"`
 	DeletedAccountIDs []int64                              `json:"deleted_account_ids,omitempty"`
+	DeletedAPIKeyIDs  []int64                              `json:"deleted_api_key_ids,omitempty"`
+}
+
+type QuotaLeaseDemoAPIKeySnapshot struct {
+	ID        int64              `json:"id"`
+	Key       string             `json:"key"`
+	Snapshot  APIKeyAuthSnapshot `json:"snapshot"`
+	CreatedAt time.Time          `json:"created_at,omitempty"`
+	UpdatedAt time.Time          `json:"updated_at,omitempty"`
+}
+
+func NewQuotaLeaseDemoAPIKeySnapshot(key string, snapshot *APIKeyAuthSnapshot) QuotaLeaseDemoAPIKeySnapshot {
+	out := QuotaLeaseDemoAPIKeySnapshot{
+		Key: strings.TrimSpace(key),
+	}
+	if snapshot != nil {
+		out.ID = snapshot.APIKeyID
+		out.Snapshot = quotaLeaseDemoMirrorJSONClone(*snapshot)
+	}
+	return out
 }
 
 type quotaLeaseDemoMirrorVersionState struct {
@@ -734,14 +756,17 @@ func quotaLeaseDemoBuildMirrorDelta(base, current QuotaLeaseDemoMirrorSnapshot) 
 		TotalChannelCount: len(current.Channels),
 		TotalProxyCount:   len(current.Proxies),
 		TotalAccountCount: len(current.Accounts),
+		TotalAPIKeyCount:  len(current.APIKeys),
 		Groups:            changedQuotaLeaseDemoMirrorGroups(base.Groups, current.Groups),
 		Channels:          changedQuotaLeaseDemoMirrorChannels(base.Channels, current.Channels),
 		Proxies:           changedQuotaLeaseDemoMirrorProxies(base.Proxies, current.Proxies),
 		Accounts:          changedQuotaLeaseDemoMirrorAccounts(base.Accounts, current.Accounts),
+		APIKeys:           changedQuotaLeaseDemoMirrorAPIKeys(base.APIKeys, current.APIKeys),
 		DeletedGroupIDs:   deletedQuotaLeaseDemoMirrorGroupIDs(base.Groups, current.Groups),
 		DeletedChannelIDs: deletedQuotaLeaseDemoMirrorChannelIDs(base.Channels, current.Channels),
 		DeletedProxyIDs:   deletedQuotaLeaseDemoMirrorProxyIDs(base.Proxies, current.Proxies),
 		DeletedAccountIDs: deletedQuotaLeaseDemoMirrorAccountIDs(base.Accounts, current.Accounts),
+		DeletedAPIKeyIDs:  deletedQuotaLeaseDemoMirrorAPIKeyIDs(base.APIKeys, current.APIKeys),
 	}
 	delta.AccountGroups = quotaLeaseDemoMirrorAccountGroupsForAccounts(current.AccountGroups, delta.Accounts)
 	return normalizeQuotaLeaseDemoMirrorSnapshot(delta)
@@ -793,10 +818,14 @@ func normalizeQuotaLeaseDemoMirrorSnapshot(snapshot QuotaLeaseDemoMirrorSnapshot
 		}
 		return snapshot.AccountGroups[i].AccountID < snapshot.AccountGroups[j].AccountID
 	})
+	sort.Slice(snapshot.APIKeys, func(i, j int) bool {
+		return snapshot.APIKeys[i].ID < snapshot.APIKeys[j].ID
+	})
 	snapshot.DeletedGroupIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedGroupIDs)
 	snapshot.DeletedChannelIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedChannelIDs)
 	snapshot.DeletedProxyIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedProxyIDs)
 	snapshot.DeletedAccountIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedAccountIDs)
+	snapshot.DeletedAPIKeyIDs = quotaLeaseDemoUniqueSortedInt64s(snapshot.DeletedAPIKeyIDs)
 	if snapshot.TotalGroupCount <= 0 && len(snapshot.Groups) > 0 {
 		snapshot.TotalGroupCount = len(snapshot.Groups)
 	}
@@ -808,6 +837,9 @@ func normalizeQuotaLeaseDemoMirrorSnapshot(snapshot QuotaLeaseDemoMirrorSnapshot
 	}
 	if snapshot.TotalAccountCount <= 0 && len(snapshot.Accounts) > 0 {
 		snapshot.TotalAccountCount = len(snapshot.Accounts)
+	}
+	if snapshot.TotalAPIKeyCount <= 0 && len(snapshot.APIKeys) > 0 {
+		snapshot.TotalAPIKeyCount = len(snapshot.APIKeys)
 	}
 	return snapshot
 }
@@ -822,6 +854,7 @@ func quotaLeaseDemoMirrorSnapshotHash(snapshot QuotaLeaseDemoMirrorSnapshot) str
 	signature.TotalChannelCount = 0
 	signature.TotalProxyCount = 0
 	signature.TotalAccountCount = 0
+	signature.TotalAPIKeyCount = 0
 	for i := range signature.Groups {
 		signature.Groups[i] = quotaLeaseDemoGroupSignatureSnapshot(signature.Groups[i])
 	}
@@ -833,6 +866,9 @@ func quotaLeaseDemoMirrorSnapshotHash(snapshot QuotaLeaseDemoMirrorSnapshot) str
 	}
 	for i := range signature.Accounts {
 		signature.Accounts[i] = quotaLeaseDemoAccountSignatureSnapshot(signature.Accounts[i])
+	}
+	for i := range signature.APIKeys {
+		signature.APIKeys[i] = quotaLeaseDemoAPIKeySignatureSnapshot(signature.APIKeys[i])
 	}
 	for i := range signature.AccountGroups {
 		signature.AccountGroups[i].CreatedAt = time.Time{}
@@ -933,6 +969,25 @@ func changedQuotaLeaseDemoMirrorAccounts(base, current []QuotaLeaseDemoAccountSn
 	return out
 }
 
+func changedQuotaLeaseDemoMirrorAPIKeys(base, current []QuotaLeaseDemoAPIKeySnapshot) []QuotaLeaseDemoAPIKeySnapshot {
+	baseHashes := make(map[int64]string, len(base))
+	for _, item := range base {
+		if item.ID > 0 {
+			baseHashes[item.ID] = quotaLeaseDemoMirrorItemHash(quotaLeaseDemoAPIKeySignatureSnapshot(item))
+		}
+	}
+	out := make([]QuotaLeaseDemoAPIKeySnapshot, 0)
+	for _, item := range current {
+		if item.ID <= 0 {
+			continue
+		}
+		if baseHashes[item.ID] != quotaLeaseDemoMirrorItemHash(quotaLeaseDemoAPIKeySignatureSnapshot(item)) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
 func deletedQuotaLeaseDemoMirrorGroupIDs(base, current []QuotaLeaseDemoGroupSnapshot) []int64 {
 	currentIDs := make(map[int64]struct{}, len(current))
 	for _, item := range current {
@@ -1009,6 +1064,25 @@ func deletedQuotaLeaseDemoMirrorAccountIDs(base, current []QuotaLeaseDemoAccount
 	return quotaLeaseDemoUniqueSortedInt64s(out)
 }
 
+func deletedQuotaLeaseDemoMirrorAPIKeyIDs(base, current []QuotaLeaseDemoAPIKeySnapshot) []int64 {
+	currentIDs := make(map[int64]struct{}, len(current))
+	for _, item := range current {
+		if item.ID > 0 {
+			currentIDs[item.ID] = struct{}{}
+		}
+	}
+	out := make([]int64, 0)
+	for _, item := range base {
+		if item.ID <= 0 {
+			continue
+		}
+		if _, ok := currentIDs[item.ID]; !ok {
+			out = append(out, item.ID)
+		}
+	}
+	return quotaLeaseDemoUniqueSortedInt64s(out)
+}
+
 func quotaLeaseDemoMirrorAccountGroupsForAccounts(groups []QuotaLeaseDemoAccountGroupSnapshot, accounts []QuotaLeaseDemoAccountSnapshot) []QuotaLeaseDemoAccountGroupSnapshot {
 	if len(accounts) == 0 || len(groups) == 0 {
 		return nil
@@ -1059,6 +1133,13 @@ func quotaLeaseDemoAccountSignatureSnapshot(account QuotaLeaseDemoAccountSnapsho
 		account.AccountGroups[i].CreatedAt = time.Time{}
 	}
 	return account
+}
+
+func quotaLeaseDemoAPIKeySignatureSnapshot(apiKey QuotaLeaseDemoAPIKeySnapshot) QuotaLeaseDemoAPIKeySnapshot {
+	apiKey = quotaLeaseDemoMirrorJSONClone(apiKey)
+	apiKey.CreatedAt = time.Time{}
+	apiKey.UpdatedAt = time.Time{}
+	return apiKey
 }
 
 func quotaLeaseDemoMirrorJSONClone[T any](value T) T {

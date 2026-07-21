@@ -21,19 +21,25 @@ const (
 )
 
 type quotaLeaseDemoMirrorStore struct {
-	client      *dbent.Client
-	sql         sqlExecutor
-	accountRepo service.AccountRepository
+	client               *dbent.Client
+	sql                  sqlExecutor
+	accountRepo          service.AccountRepository
+	authCacheInvalidator service.APIKeyAuthCacheInvalidator
 }
 
-func NewQuotaLeaseDemoMirrorStore(client *dbent.Client, sqlDB *sql.DB, accountRepo service.AccountRepository) service.QuotaLeaseDemoMirrorStore {
+func NewQuotaLeaseDemoMirrorStore(client *dbent.Client, sqlDB *sql.DB, accountRepo service.AccountRepository, authCacheInvalidator ...service.APIKeyAuthCacheInvalidator) service.QuotaLeaseDemoMirrorStore {
 	if client == nil {
 		return nil
 	}
+	var invalidator service.APIKeyAuthCacheInvalidator
+	if len(authCacheInvalidator) > 0 {
+		invalidator = authCacheInvalidator[0]
+	}
 	return &quotaLeaseDemoMirrorStore{
-		client:      client,
-		sql:         sqlDB,
-		accountRepo: accountRepo,
+		client:               client,
+		sql:                  sqlDB,
+		accountRepo:          accountRepo,
+		authCacheInvalidator: invalidator,
 	}
 }
 
@@ -54,6 +60,8 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 	proxies := cloneQuotaLeaseDemoMirrorProxies(snapshot.Proxies)
 	accounts := cloneQuotaLeaseDemoMirrorAccounts(snapshot.Accounts, snapshot)
 	accountGroups := cloneQuotaLeaseDemoMirrorAccountGroups(snapshot.AccountGroups, accounts)
+	apiKeysProvided := snapshot.APIKeys != nil
+	apiKeys := cloneQuotaLeaseDemoMirrorAPIKeys(snapshot.APIKeys)
 
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
@@ -85,6 +93,14 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 	if err := s.upsertProxies(ctx, exec, proxies); err != nil {
 		return err
 	}
+	if apiKeysProvided {
+		if err := s.upsertAPIKeys(ctx, exec, apiKeys, snapshot); err != nil {
+			return err
+		}
+		if err := s.reconcileMirrorAPIKeys(ctx, exec, apiKeys); err != nil {
+			return err
+		}
+	}
 	if err := s.upsertAccounts(ctx, exec, accounts, snapshot); err != nil {
 		return err
 	}
@@ -107,6 +123,9 @@ func (s *quotaLeaseDemoMirrorStore) applyDelta(ctx context.Context, exec sqlExec
 	if err := s.deleteMirrorAccountIDs(ctx, exec, snapshot.DeletedAccountIDs, snapshot.NodeID); err != nil {
 		return err
 	}
+	if err := s.deleteMirrorAPIKeyIDs(ctx, exec, snapshot.DeletedAPIKeyIDs); err != nil {
+		return err
+	}
 	if err := s.deleteMirrorChannelIDs(ctx, exec, snapshot.DeletedChannelIDs); err != nil {
 		return err
 	}
@@ -122,6 +141,7 @@ func (s *quotaLeaseDemoMirrorStore) applyDelta(ctx context.Context, exec sqlExec
 	proxies := cloneQuotaLeaseDemoMirrorProxies(snapshot.Proxies)
 	accounts := cloneQuotaLeaseDemoMirrorAccounts(snapshot.Accounts, snapshot)
 	accountGroups := cloneQuotaLeaseDemoMirrorAccountGroups(snapshot.AccountGroups, accounts)
+	apiKeys := cloneQuotaLeaseDemoMirrorAPIKeys(snapshot.APIKeys)
 
 	if err := s.upsertGroups(ctx, exec, groups); err != nil {
 		return err
@@ -130,6 +150,9 @@ func (s *quotaLeaseDemoMirrorStore) applyDelta(ctx context.Context, exec sqlExec
 		return err
 	}
 	if err := s.upsertProxies(ctx, exec, proxies); err != nil {
+		return err
+	}
+	if err := s.upsertAPIKeys(ctx, exec, apiKeys, snapshot); err != nil {
 		return err
 	}
 	if err := s.upsertAccounts(ctx, exec, accounts, snapshot); err != nil {
@@ -690,6 +713,354 @@ func (s *quotaLeaseDemoMirrorStore) upsertProxy(ctx context.Context, exec sqlExe
 	return err
 }
 
+func (s *quotaLeaseDemoMirrorStore) upsertAPIKeys(ctx context.Context, exec sqlExecutor, apiKeys []service.QuotaLeaseDemoAPIKeySnapshot, snapshot service.QuotaLeaseDemoMirrorSnapshot) error {
+	if len(apiKeys) == 0 {
+		return nil
+	}
+	sort.Slice(apiKeys, func(i, j int) bool {
+		return apiKeys[i].ID < apiKeys[j].ID
+	})
+	for _, item := range apiKeys {
+		if item.ID <= 0 {
+			continue
+		}
+		if item.CreatedAt.IsZero() {
+			item.CreatedAt = snapshot.SyncedAt
+		}
+		if item.UpdatedAt.IsZero() {
+			item.UpdatedAt = snapshot.SyncedAt
+		}
+		if err := s.upsertAPIKeyUser(ctx, exec, item); err != nil {
+			return err
+		}
+		if err := s.syncAPIKeyUserAllowedGroups(ctx, exec, item); err != nil {
+			return err
+		}
+		if err := s.upsertAPIKey(ctx, exec, item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) upsertAPIKeyUser(ctx context.Context, exec sqlExecutor, item service.QuotaLeaseDemoAPIKeySnapshot) error {
+	user := item.Snapshot.User
+	if user.ID <= 0 {
+		user.ID = item.Snapshot.UserID
+	}
+	if user.ID <= 0 {
+		return nil
+	}
+	email := strings.TrimSpace(user.Email)
+	if email == "" {
+		email = fmt.Sprintf("mirror-user-%d@quota-lease-demo.local", user.ID)
+	}
+	username := strings.TrimSpace(user.Username)
+	if username == "" {
+		username = fmt.Sprintf("mirror-user-%d", user.ID)
+	}
+	role := strings.TrimSpace(user.Role)
+	if role == "" {
+		role = service.RoleUser
+	}
+	status := strings.TrimSpace(user.Status)
+	if status == "" {
+		status = service.StatusActive
+	}
+	concurrency := user.Concurrency
+	if concurrency <= 0 {
+		concurrency = 5
+	}
+	thresholdType := strings.TrimSpace(user.BalanceNotifyThresholdType)
+	if thresholdType == "" {
+		thresholdType = "fixed"
+	}
+	extraEmails := user.BalanceNotifyExtraEmails
+	if extraEmails == nil {
+		extraEmails = []service.NotifyEmailEntry{}
+	}
+	extraEmailsJSON, err := json.Marshal(extraEmails)
+	if err != nil {
+		return err
+	}
+	createdAt := quotaLeaseDemoMirrorTimeOrNow(item.CreatedAt)
+	updatedAt := quotaLeaseDemoMirrorTimeOrNow(item.UpdatedAt)
+	_, err = exec.ExecContext(ctx, `
+		INSERT INTO users (
+			id, email, signup_ip, password_hash, role, balance, frozen_balance, concurrency, status,
+			username, notes, totp_secret_encrypted, totp_enabled, totp_enabled_at, signup_source,
+			last_login_at, last_active_at, balance_notify_enabled, balance_notify_threshold_type,
+			balance_notify_threshold, balance_notify_extra_emails, total_recharged, rpm_limit,
+			created_at, updated_at, deleted_at
+		) VALUES (
+			$1, $2, NULL, $3, $4, $5, 0, $6, $7,
+			$8, '', NULL, false, NULL, 'email',
+			NULL, NULL, $9, $10,
+			$11, $12, $13, $14,
+			$15, $16, NULL
+		)
+		ON CONFLICT (id) DO UPDATE SET
+			email = EXCLUDED.email,
+			role = EXCLUDED.role,
+			balance = EXCLUDED.balance,
+			concurrency = EXCLUDED.concurrency,
+			status = EXCLUDED.status,
+			username = EXCLUDED.username,
+			balance_notify_enabled = EXCLUDED.balance_notify_enabled,
+			balance_notify_threshold_type = EXCLUDED.balance_notify_threshold_type,
+			balance_notify_threshold = EXCLUDED.balance_notify_threshold,
+			balance_notify_extra_emails = EXCLUDED.balance_notify_extra_emails,
+			total_recharged = EXCLUDED.total_recharged,
+			rpm_limit = EXCLUDED.rpm_limit,
+			updated_at = EXCLUDED.updated_at,
+			deleted_at = NULL
+	`, user.ID, email, "quota-lease-demo-mirror-user", role, user.Balance, concurrency, status,
+		username, user.BalanceNotifyEnabled, thresholdType, user.BalanceNotifyThreshold,
+		string(extraEmailsJSON), user.TotalRecharged, user.RPMLimit, createdAt, updatedAt)
+	return err
+}
+
+func (s *quotaLeaseDemoMirrorStore) syncAPIKeyUserAllowedGroups(ctx context.Context, exec sqlExecutor, item service.QuotaLeaseDemoAPIKeySnapshot) error {
+	userID := item.Snapshot.User.ID
+	if userID <= 0 {
+		userID = item.Snapshot.UserID
+	}
+	if userID <= 0 {
+		return nil
+	}
+	if _, err := exec.ExecContext(ctx, `DELETE FROM user_allowed_groups WHERE user_id = $1`, userID); err != nil {
+		return err
+	}
+	groupIDs := quotaLeaseDemoMirrorUniqueSortedIDs(item.Snapshot.User.AllowedGroups)
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	values := make([]any, 0, len(groupIDs)*3)
+	placeholders := make([]string, 0, len(groupIDs))
+	createdAt := quotaLeaseDemoMirrorTimeOrNow(item.UpdatedAt)
+	for _, groupID := range groupIDs {
+		base := len(placeholders) * 3
+		placeholders = append(placeholders, fmt.Sprintf("($%d, $%d, $%d)", base+1, base+2, base+3))
+		values = append(values, userID, groupID, createdAt)
+	}
+	query := `
+		INSERT INTO user_allowed_groups (user_id, group_id, created_at)
+		VALUES ` + strings.Join(placeholders, ", ") + `
+		ON CONFLICT (user_id, group_id) DO NOTHING
+	`
+	_, err := exec.ExecContext(ctx, query, values...)
+	return err
+}
+
+func (s *quotaLeaseDemoMirrorStore) upsertAPIKey(ctx context.Context, exec sqlExecutor, item service.QuotaLeaseDemoAPIKeySnapshot) error {
+	snapshot := item.Snapshot
+	if snapshot.APIKeyID <= 0 {
+		snapshot.APIKeyID = item.ID
+	}
+	if snapshot.UserID <= 0 {
+		snapshot.UserID = snapshot.User.ID
+	}
+	if snapshot.APIKeyID <= 0 || snapshot.UserID <= 0 {
+		return nil
+	}
+	key := strings.TrimSpace(item.Key)
+	if key == "" {
+		return nil
+	}
+	name := strings.TrimSpace(snapshot.Name)
+	if name == "" {
+		name = fmt.Sprintf("mirror-api-key-%d", snapshot.APIKeyID)
+	}
+	status := strings.TrimSpace(snapshot.Status)
+	if status == "" {
+		status = service.StatusActive
+	}
+	var groupID any
+	if snapshot.GroupID != nil && *snapshot.GroupID > 0 {
+		groupID = *snapshot.GroupID
+	}
+	ipWhitelist, err := json.Marshal(cloneQuotaLeaseDemoMirrorStringSlice(snapshot.IPWhitelist))
+	if err != nil {
+		return err
+	}
+	ipBlacklist, err := json.Marshal(cloneQuotaLeaseDemoMirrorStringSlice(snapshot.IPBlacklist))
+	if err != nil {
+		return err
+	}
+	createdAt := quotaLeaseDemoMirrorTimeOrNow(item.CreatedAt)
+	updatedAt := quotaLeaseDemoMirrorTimeOrNow(item.UpdatedAt)
+	oldKeys := s.existingAPIKeySecretsByIDs(ctx, exec, []int64{snapshot.APIKeyID})
+	_, err = exec.ExecContext(ctx, `
+		INSERT INTO api_keys (
+			id, user_id, key, name, group_id, status, last_used_at, ip_whitelist, ip_blacklist,
+			quota, quota_used, expires_at, rate_limit_5h, rate_limit_1d, rate_limit_7d,
+			usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start,
+			created_at, updated_at, deleted_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, NULL, $7::jsonb, $8::jsonb,
+			$9, $10, $11, $12, $13, $14,
+			0, 0, 0, NULL, NULL, NULL,
+			$15, $16, NULL
+		)
+		ON CONFLICT (id) DO UPDATE SET
+			user_id = EXCLUDED.user_id,
+			key = EXCLUDED.key,
+			name = EXCLUDED.name,
+			group_id = EXCLUDED.group_id,
+			status = EXCLUDED.status,
+			ip_whitelist = EXCLUDED.ip_whitelist,
+			ip_blacklist = EXCLUDED.ip_blacklist,
+			quota = EXCLUDED.quota,
+			quota_used = EXCLUDED.quota_used,
+			expires_at = EXCLUDED.expires_at,
+			rate_limit_5h = EXCLUDED.rate_limit_5h,
+			rate_limit_1d = EXCLUDED.rate_limit_1d,
+			rate_limit_7d = EXCLUDED.rate_limit_7d,
+			updated_at = EXCLUDED.updated_at,
+			deleted_at = NULL
+	`, snapshot.APIKeyID, snapshot.UserID, key, name, groupID, status, string(ipWhitelist), string(ipBlacklist),
+		snapshot.Quota, snapshot.QuotaUsed, snapshot.ExpiresAt, snapshot.RateLimit5h, snapshot.RateLimit1d, snapshot.RateLimit7d,
+		createdAt, updatedAt)
+	if err == nil {
+		s.invalidateMirrorAPIKeyCache(ctx, append(oldKeys, key)...)
+	}
+	return err
+}
+
+func (s *quotaLeaseDemoMirrorStore) reconcileMirrorAPIKeys(ctx context.Context, exec sqlExecutor, apiKeys []service.QuotaLeaseDemoAPIKeySnapshot) error {
+	ids := make([]int64, 0, len(apiKeys))
+	for _, item := range apiKeys {
+		if item.ID > 0 {
+			ids = append(ids, item.ID)
+		}
+	}
+	if len(ids) == 0 {
+		keys := s.existingAllAPIKeySecrets(ctx, exec)
+		if _, err := exec.ExecContext(ctx, `
+			UPDATE api_keys
+			SET key = CONCAT('__mirror_deleted__', id::text, '__', EXTRACT(EPOCH FROM NOW())::bigint::text),
+				deleted_at = NOW(),
+				updated_at = NOW()
+			WHERE deleted_at IS NULL
+		`); err != nil {
+			return fmt.Errorf("reconcile mirror api keys: %w", err)
+		}
+		s.invalidateMirrorAPIKeyCache(ctx, keys...)
+		return nil
+	}
+	keys := s.existingAPIKeySecretsOutsideIDs(ctx, exec, ids)
+	if _, err := exec.ExecContext(ctx, `
+		UPDATE api_keys
+		SET key = CONCAT('__mirror_deleted__', id::text, '__', EXTRACT(EPOCH FROM NOW())::bigint::text),
+			deleted_at = NOW(),
+			updated_at = NOW()
+		WHERE deleted_at IS NULL
+		  AND NOT (id = ANY($1::bigint[]))
+	`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("reconcile mirror api keys: %w", err)
+	}
+	s.invalidateMirrorAPIKeyCache(ctx, keys...)
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) deleteMirrorAPIKeyIDs(ctx context.Context, exec sqlExecutor, ids []int64) error {
+	ids = quotaLeaseDemoMirrorUniqueSortedIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	keys := s.existingAPIKeySecretsByIDs(ctx, exec, ids)
+	if _, err := exec.ExecContext(ctx, `
+		UPDATE api_keys
+		SET key = CONCAT('__mirror_deleted__', id::text, '__', EXTRACT(EPOCH FROM NOW())::bigint::text),
+			deleted_at = NOW(),
+			updated_at = NOW()
+		WHERE id = ANY($1::bigint[])
+		  AND deleted_at IS NULL
+	`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete mirror api keys: %w", err)
+	}
+	s.invalidateMirrorAPIKeyCache(ctx, keys...)
+	return nil
+}
+
+func (s *quotaLeaseDemoMirrorStore) existingAPIKeySecretsByIDs(ctx context.Context, exec sqlExecutor, ids []int64) []string {
+	ids = quotaLeaseDemoMirrorUniqueSortedIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.queryAPIKeySecrets(ctx, exec, `
+		SELECT key
+		FROM api_keys
+		WHERE id = ANY($1::bigint[])
+		  AND deleted_at IS NULL
+	`, pq.Array(ids))
+}
+
+func (s *quotaLeaseDemoMirrorStore) existingAPIKeySecretsOutsideIDs(ctx context.Context, exec sqlExecutor, ids []int64) []string {
+	ids = quotaLeaseDemoMirrorUniqueSortedIDs(ids)
+	if len(ids) == 0 {
+		return s.existingAllAPIKeySecrets(ctx, exec)
+	}
+	return s.queryAPIKeySecrets(ctx, exec, `
+		SELECT key
+		FROM api_keys
+		WHERE deleted_at IS NULL
+		  AND NOT (id = ANY($1::bigint[]))
+	`, pq.Array(ids))
+}
+
+func (s *quotaLeaseDemoMirrorStore) existingAllAPIKeySecrets(ctx context.Context, exec sqlExecutor) []string {
+	return s.queryAPIKeySecrets(ctx, exec, `
+		SELECT key
+		FROM api_keys
+		WHERE deleted_at IS NULL
+	`)
+}
+
+func (s *quotaLeaseDemoMirrorStore) queryAPIKeySecrets(ctx context.Context, exec sqlExecutor, query string, args ...any) []string {
+	if exec == nil {
+		return nil
+	}
+	rows, err := exec.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]string, 0)
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil
+		}
+		key = strings.TrimSpace(key)
+		if key != "" {
+			out = append(out, key)
+		}
+	}
+	if rows.Err() != nil {
+		return nil
+	}
+	return out
+}
+
+func (s *quotaLeaseDemoMirrorStore) invalidateMirrorAPIKeyCache(ctx context.Context, keys ...string) {
+	if s == nil || s.authCacheInvalidator == nil || len(keys) == 0 {
+		return
+	}
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, key)
+	}
+}
+
 func (s *quotaLeaseDemoMirrorStore) upsertAccounts(ctx context.Context, exec sqlExecutor, accounts []service.Account, snapshot service.QuotaLeaseDemoMirrorSnapshot) error {
 	if len(accounts) == 0 {
 		return nil
@@ -1028,6 +1399,8 @@ func (s *quotaLeaseDemoMirrorStore) bumpSequences(ctx context.Context, exec sqlE
 		{table: "channel_model_pricing"},
 		{table: "channel_pricing_intervals"},
 		{table: "proxies"},
+		{table: "users"},
+		{table: "api_keys"},
 		{table: "accounts"},
 	}
 	for _, item := range queries {
@@ -1079,6 +1452,21 @@ func cloneQuotaLeaseDemoMirrorProxies(src []service.QuotaLeaseDemoProxySnapshot)
 		if proxy := service.QuotaLeaseDemoProxySnapshotToProxy(&item); proxy != nil {
 			out = append(out, *proxy)
 		}
+	}
+	return out
+}
+
+func cloneQuotaLeaseDemoMirrorAPIKeys(src []service.QuotaLeaseDemoAPIKeySnapshot) []service.QuotaLeaseDemoAPIKeySnapshot {
+	if len(src) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(src)
+	if err != nil {
+		return src
+	}
+	var out []service.QuotaLeaseDemoAPIKeySnapshot
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return src
 	}
 	return out
 }
@@ -1298,6 +1686,24 @@ func cloneStringAnyMap(src map[string]any) map[string]any {
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+func cloneQuotaLeaseDemoMirrorStringSlice(src []string) []string {
+	if len(src) == 0 {
+		return []string{}
+	}
+	out := make([]string, 0, len(src))
+	for _, item := range src {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		out = append(out, item)
+	}
+	if len(out) == 0 {
+		return []string{}
 	}
 	return out
 }

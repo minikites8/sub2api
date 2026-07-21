@@ -55,7 +55,6 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 	concurrencyCache := repository.ProvideConcurrencyCache(redisClient, cfg)
 	schedulerCache := repository.ProvideSchedulerCache(redisClient, cfg)
 	accountRepo := repository.NewAccountRepository(entClient, sqlDB, schedulerCache)
-	quotaMirrorStore := repository.NewQuotaLeaseDemoMirrorStore(entClient, sqlDB, accountRepo)
 
 	concurrencyService := service.ProvideConcurrencyService(concurrencyCache, accountRepo, cfg)
 	billingCacheService := service.ProvideBillingCacheService(
@@ -80,6 +79,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		concurrencyService,
 	)
 	apiKeyAuthCacheInvalidator := service.ProvideAPIKeyAuthCacheInvalidator(apiKeyService)
+	quotaMirrorStore := repository.NewQuotaLeaseDemoMirrorStore(entClient, sqlDB, accountRepo, apiKeyAuthCacheInvalidator)
 	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, billingCacheService, entClient, cfg)
 	userService := service.NewUserService(userRepo, settingRepo, apiKeyAuthCacheInvalidator, billingCache)
 	usageLogRepo := repository.NewUsageLogRepository(entClient, sqlDB)

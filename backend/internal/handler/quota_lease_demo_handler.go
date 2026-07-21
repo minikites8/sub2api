@@ -632,7 +632,81 @@ func (h *QuotaLeaseDemoHandler) buildMirrorSnapshot(ctx context.Context, nodeID 
 		}
 		return snapshot.AccountGroups[i].AccountID < snapshot.AccountGroups[j].AccountID
 	})
+	apiKeys, err := h.listMirrorAPIKeySnapshots(ctx)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.APIKeys = apiKeys
 	return snapshot, nil
+}
+
+func (h *QuotaLeaseDemoHandler) listMirrorAPIKeySnapshots(ctx context.Context) ([]service.QuotaLeaseDemoAPIKeySnapshot, error) {
+	if h == nil || h.adminSvc == nil || h.apiKeyService == nil {
+		return nil, nil
+	}
+	const pageSize = 500
+	includeSubscriptions := false
+	out := make([]service.QuotaLeaseDemoAPIKeySnapshot, 0)
+	seen := make(map[int64]struct{})
+	for page := 1; ; page++ {
+		users, total, err := h.adminSvc.ListUsers(ctx, page, pageSize, service.UserListFilters{
+			IncludeSubscriptions: &includeSubscriptions,
+		}, "id", "asc")
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			keys, err := h.listMirrorAPIKeysByUser(ctx, user.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, key := range keys {
+				if key.ID <= 0 {
+					continue
+				}
+				if _, ok := seen[key.ID]; ok {
+					continue
+				}
+				seen[key.ID] = struct{}{}
+				out = append(out, key)
+			}
+		}
+		if len(users) == 0 || int64(page*pageSize) >= total {
+			break
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
+func (h *QuotaLeaseDemoHandler) listMirrorAPIKeysByUser(ctx context.Context, userID int64) ([]service.QuotaLeaseDemoAPIKeySnapshot, error) {
+	const pageSize = 500
+	out := make([]service.QuotaLeaseDemoAPIKeySnapshot, 0)
+	for page := 1; ; page++ {
+		keys, total, err := h.adminSvc.GetUserAPIKeys(ctx, userID, page, pageSize, "id", "asc")
+		if err != nil {
+			return nil, err
+		}
+		for _, key := range keys {
+			snapshot, err := h.apiKeyService.AuthSnapshotForKey(ctx, key.Key)
+			if err != nil {
+				if errors.Is(err, service.ErrAPIKeyNotFound) {
+					continue
+				}
+				return nil, err
+			}
+			item := service.NewQuotaLeaseDemoAPIKeySnapshot(key.Key, snapshot)
+			item.CreatedAt = quotaLeaseDemoHandlerTimeOrNow(key.CreatedAt)
+			item.UpdatedAt = quotaLeaseDemoHandlerTimeOrNow(key.UpdatedAt)
+			out = append(out, item)
+		}
+		if len(keys) == 0 || int64(page*pageSize) >= total {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (h *QuotaLeaseDemoHandler) listAssignedAccounts(ctx context.Context, nodeID string) ([]service.QuotaLeaseDemoAssignedAccount, error) {
