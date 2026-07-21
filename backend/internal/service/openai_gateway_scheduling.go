@@ -915,6 +915,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	filteredEligibility := 0
 	filteredParent := 0
 	filteredRuntime := 0
+	runtimeBlockedAccountIDs := make([]int64, 0)
 	filteredChannel := 0
 	filteredExcluded := 0
 	for i := range accounts {
@@ -936,6 +937,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel) {
 			filteredRuntime++
+			if len(runtimeBlockedAccountIDs) < 20 {
+				runtimeBlockedAccountIDs = append(runtimeBlockedAccountIDs, acc.ID)
+			}
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
@@ -956,6 +960,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			"filtered_eligibility", filteredEligibility,
 			"filtered_parent", filteredParent,
 			"filtered_runtime", filteredRuntime,
+			"runtime_blocked_account_ids", runtimeBlockedAccountIDs,
 			"filtered_channel", filteredChannel,
 			"required_capability", string(requiredCapability),
 		)

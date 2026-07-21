@@ -79,7 +79,6 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		concurrencyService,
 	)
 	apiKeyAuthCacheInvalidator := service.ProvideAPIKeyAuthCacheInvalidator(apiKeyService)
-	quotaMirrorStore := repository.NewQuotaLeaseDemoMirrorStore(entClient, sqlDB, accountRepo, apiKeyAuthCacheInvalidator)
 	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, billingCacheService, entClient, cfg)
 	userService := service.NewUserService(userRepo, settingRepo, apiKeyAuthCacheInvalidator, billingCache)
 	usageLogRepo := repository.NewUsageLogRepository(entClient, sqlDB)
@@ -209,6 +208,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		apiKeyAuthCacheInvalidator,
 		userPlatformQuotaAdapter,
 	)
+	quotaMirrorStore := repository.NewQuotaLeaseDemoMirrorStore(entClient, sqlDB, accountRepo, apiKeyAuthCacheInvalidator, openAIGatewayService)
 	tokenRefreshService := service.ProvideTokenRefreshService(
 		accountRepo,
 		oauthService,

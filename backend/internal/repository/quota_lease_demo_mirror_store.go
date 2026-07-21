@@ -25,21 +25,29 @@ type quotaLeaseDemoMirrorStore struct {
 	sql                  sqlExecutor
 	accountRepo          service.AccountRepository
 	authCacheInvalidator service.APIKeyAuthCacheInvalidator
+	runtimeBlocker       service.AccountRuntimeBlocker
 }
 
-func NewQuotaLeaseDemoMirrorStore(client *dbent.Client, sqlDB *sql.DB, accountRepo service.AccountRepository, authCacheInvalidator ...service.APIKeyAuthCacheInvalidator) service.QuotaLeaseDemoMirrorStore {
+func NewQuotaLeaseDemoMirrorStore(client *dbent.Client, sqlDB *sql.DB, accountRepo service.AccountRepository, opts ...any) service.QuotaLeaseDemoMirrorStore {
 	if client == nil {
 		return nil
 	}
 	var invalidator service.APIKeyAuthCacheInvalidator
-	if len(authCacheInvalidator) > 0 {
-		invalidator = authCacheInvalidator[0]
+	var runtimeBlocker service.AccountRuntimeBlocker
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case service.APIKeyAuthCacheInvalidator:
+			invalidator = v
+		case service.AccountRuntimeBlocker:
+			runtimeBlocker = v
+		}
 	}
 	return &quotaLeaseDemoMirrorStore{
 		client:               client,
 		sql:                  sqlDB,
 		accountRepo:          accountRepo,
 		authCacheInvalidator: invalidator,
+		runtimeBlocker:       runtimeBlocker,
 	}
 }
 
@@ -62,6 +70,8 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 	accountGroups := cloneQuotaLeaseDemoMirrorAccountGroups(snapshot.AccountGroups, accounts)
 	apiKeysProvided := snapshot.APIKeys != nil
 	apiKeys := cloneQuotaLeaseDemoMirrorAPIKeys(snapshot.APIKeys)
+	accountBlockIDs := quotaLeaseDemoMirrorAccountIDs(accounts)
+	accountBlockIDs = append(accountBlockIDs, snapshot.DeletedAccountIDs...)
 
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
@@ -77,7 +87,11 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 		if err := s.bumpSequences(ctx, exec); err != nil {
 			return err
 		}
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		s.clearAccountRuntimeBlocks(accountBlockIDs...)
+		return nil
 	}
 	if err := s.upsertGroups(ctx, exec, groups); err != nil {
 		return err
@@ -116,7 +130,11 @@ func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot 
 	if err := s.bumpSequences(ctx, exec); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.clearAccountRuntimeBlocks(accountBlockIDs...)
+	return nil
 }
 
 func (s *quotaLeaseDemoMirrorStore) applyDelta(ctx context.Context, exec sqlExecutor, snapshot service.QuotaLeaseDemoMirrorSnapshot) error {
@@ -1059,6 +1077,28 @@ func (s *quotaLeaseDemoMirrorStore) invalidateMirrorAPIKeyCache(ctx context.Cont
 		seen[key] = struct{}{}
 		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, key)
 	}
+}
+
+func (s *quotaLeaseDemoMirrorStore) clearAccountRuntimeBlocks(ids ...int64) {
+	if s == nil || s.runtimeBlocker == nil || len(ids) == 0 {
+		return
+	}
+	for _, id := range quotaLeaseDemoMirrorUniqueSortedIDs(ids) {
+		s.runtimeBlocker.ClearAccountSchedulingBlock(id)
+	}
+}
+
+func quotaLeaseDemoMirrorAccountIDs(accounts []service.Account) []int64 {
+	if len(accounts) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(accounts))
+	for _, account := range accounts {
+		if account.ID > 0 {
+			ids = append(ids, account.ID)
+		}
+	}
+	return ids
 }
 
 func (s *quotaLeaseDemoMirrorStore) upsertAccounts(ctx context.Context, exec sqlExecutor, accounts []service.Account, snapshot service.QuotaLeaseDemoMirrorSnapshot) error {

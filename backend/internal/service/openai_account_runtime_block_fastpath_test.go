@@ -131,6 +131,20 @@ func TestOpenAIRuntimeBlock_ClearAccountSchedulingBlock(t *testing.T) {
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 
+func TestOpenAIRuntimeBlock_ClearAccountSchedulingBlockClearsModelTransient(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 48, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	now := time.Now()
+	state := svc.getOpenAIAccountModelTransientState()
+	state.recordFailure(account.ID, "gpt-5.6-terra", now)
+	state.recordFailure(account.ID, "gpt-5.6-terra", now.Add(time.Second))
+	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6-terra"))
+
+	svc.ClearAccountSchedulingBlock(account.ID)
+
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6-terra"))
+}
+
 func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
