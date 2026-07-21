@@ -905,7 +905,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}
 
 		// Skip logging if the error should be filtered based on settings
-		if shouldSkipOpsErrorLog(c.Request.Context(), ops, parsed.Message, string(body), c.Request.URL.Path) {
+		if shouldSkipOpsErrorLog(c.Request.Context(), ops, parsed.Message, string(body), c.Request.URL.Path, status) {
 			return
 		}
 
@@ -1062,16 +1062,16 @@ func logOpsStreamError(c *gin.Context, ops *service.OpsService, wireStatus int) 
 		}
 	}
 
-	// 复用与 status>=400 分支相同的设置过滤（context canceled / 无可用账号等）。
-	if shouldSkipOpsErrorLog(c.Request.Context(), ops, streamErr.Message, streamErr.Message, c.Request.URL.Path) {
-		return
-	}
-
 	// 分级用「本应返回的状态码」(如并发限流 429)，wire 状态码缺省时回退。
 	classifyStatus := streamErr.IntendedStatus
 	if classifyStatus <= 0 {
 		classifyStatus = wireStatus
 	}
+	// 复用与 status>=400 分支相同的设置过滤（context canceled / 无可用账号等）。
+	if shouldSkipOpsErrorLog(c.Request.Context(), ops, streamErr.Message, streamErr.Message, c.Request.URL.Path, classifyStatus) {
+		return
+	}
+
 	normalizedType := normalizeOpsErrorType(streamErr.ErrType, "")
 	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, streamErr.Message, "", classifyStatus)
 
@@ -1688,7 +1688,7 @@ func strconvItoa(v int) string {
 
 // shouldSkipOpsErrorLog determines if an error should be skipped from logging based on settings.
 // Returns true for errors that should be filtered according to OpsAdvancedSettings.
-func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message, body, requestPath string) bool {
+func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message, body, requestPath string, status int) bool {
 	if ops == nil {
 		return false
 	}
@@ -1718,6 +1718,9 @@ func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message
 	// Check if "no available accounts" errors should be ignored
 	if settings.IgnoreNoAvailableAccounts {
 		if strings.Contains(msgLower, opsErrNoAvailableAccounts) || strings.Contains(bodyLower, opsErrNoAvailableAccounts) {
+			if ops.IsQuotaLeaseDemoNodeForwarder() && status >= http.StatusInternalServerError {
+				return false
+			}
 			return true
 		}
 	}

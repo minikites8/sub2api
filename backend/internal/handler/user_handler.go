@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
@@ -44,6 +45,53 @@ func NewUserHandler(
 		promoService:          promoService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 	}
+}
+
+// GetAPIKeyBalance handles API-key authenticated balance lookup.
+// GET /user/balance
+func (h *UserHandler) GetAPIKeyBalance(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil {
+		response.Unauthorized(c, "API key not authenticated")
+		return
+	}
+
+	subject, _ := middleware2.GetAuthSubjectFromContext(c)
+	user := apiKey.User
+	if h != nil && h.userService != nil && subject.UserID > 0 {
+		freshUser, err := h.userService.GetProfile(c.Request.Context(), subject.UserID)
+		if err != nil {
+			if user == nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+		} else if freshUser != nil {
+			user = freshUser
+		}
+	}
+	if user == nil {
+		response.Unauthorized(c, "User associated with API key not found")
+		return
+	}
+
+	isActive := apiKey.IsActive() && user.IsActive() && !apiKey.IsExpired() && !apiKey.IsQuotaExhausted()
+	c.JSON(http.StatusOK, gin.H{
+		"is_valid":        true,
+		"is_active":       isActive,
+		"can_request":     isActive && user.Balance > 0,
+		"balance":         user.Balance,
+		"remaining":       user.Balance,
+		"unit":            "USD",
+		"currency":        "USD",
+		"user_id":         user.ID,
+		"api_key_id":      apiKey.ID,
+		"api_key_name":    apiKey.Name,
+		"api_key_status":  apiKey.Status,
+		"user_status":     user.Status,
+		"quota":           apiKey.Quota,
+		"quota_used":      apiKey.QuotaUsed,
+		"quota_remaining": apiKey.GetQuotaRemaining(),
+	})
 }
 
 // GetMyPlatformQuotas GET /user/platform-quotas

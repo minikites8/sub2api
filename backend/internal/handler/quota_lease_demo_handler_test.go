@@ -144,7 +144,7 @@ func (s *quotaLeaseDemoSyncAdminService) ListNodeAssignedAccounts(_ context.Cont
 	s.listedNodeIDs = append(s.listedNodeIDs, nodeID)
 	filtered := make([]service.Account, 0, len(s.listedAccounts))
 	for _, account := range s.listedAccounts {
-		if quotaLeaseDemoHandlerString(account.Extra["node_oauth_assigned_node_id"]) == nodeID {
+		if service.QuotaLeaseDemoAccountAssignedToNode(account, nodeID) {
 			filtered = append(filtered, account)
 		}
 	}
@@ -622,6 +622,54 @@ func TestQuotaLeaseDemoHandlerListsAssignedAPIKeyAccounts(t *testing.T) {
 	require.Equal(t, service.AccountTypeAPIKey, accounts[0].Account.Type)
 	require.Equal(t, "sk-node", accounts[0].Account.Credentials["api_key"])
 	require.Equal(t, "foreign-1", accounts[0].NodeID)
+}
+
+func TestQuotaLeaseDemoHandlerListsAssignedAPIKeyAccountsForMultipleNodes(t *testing.T) {
+	now := time.Now().UTC()
+	adminSvc := &quotaLeaseDemoSyncAdminService{
+		listedAccounts: []service.Account{
+			{
+				ID:          905,
+				Name:        "shared-openai-key",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-shared"},
+				Extra: map[string]any{
+					service.QuotaLeaseDemoAssignedNodeIDsExtraKey: []any{"foreign-1", "foreign-2"},
+				},
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				GroupIDs:    []int64{2},
+				CreatedAt:   now.Add(-time.Hour),
+				UpdatedAt:   now,
+			},
+		},
+	}
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled: true,
+			},
+		},
+	})
+	h := NewQuotaLeaseDemoHandler(svc, adminSvc)
+
+	nodeOneAccounts, err := h.listAssignedAccounts(context.Background(), "foreign-1")
+	require.NoError(t, err)
+	require.Len(t, nodeOneAccounts, 1)
+	require.Equal(t, int64(905), nodeOneAccounts[0].Account.ID)
+	require.Equal(t, "foreign-1", nodeOneAccounts[0].NodeID)
+
+	nodeTwoAccounts, err := h.listAssignedAccounts(context.Background(), "foreign-2")
+	require.NoError(t, err)
+	require.Len(t, nodeTwoAccounts, 1)
+	require.Equal(t, int64(905), nodeTwoAccounts[0].Account.ID)
+	require.Equal(t, "foreign-2", nodeTwoAccounts[0].NodeID)
+
+	otherNodeAccounts, err := h.listAssignedAccounts(context.Background(), "foreign-3")
+	require.NoError(t, err)
+	require.Empty(t, otherNodeAccounts)
 }
 
 func TestQuotaLeaseDemoHandlerMirrorSnapshotMovesPersistedAccountBetweenNodes(t *testing.T) {

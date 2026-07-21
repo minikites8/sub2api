@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -30,7 +29,7 @@ func runQuotaLeaseDemoUsageProbeTaskForAdmin(
 	if account == nil {
 		return nil, true, service.ErrAccountNotFound
 	}
-	nodeID := quotaLeaseDemoAssignedNodeIDFromExtra(account.Extra)
+	nodeID := service.QuotaLeaseDemoAssignedNodeID(*account)
 	if nodeID == "" {
 		return nil, false, nil
 	}
@@ -50,15 +49,4 @@ func runQuotaLeaseDemoUsageProbeTaskForAdmin(
 		return task, true, err
 	}
 	return task, true, nil
-}
-
-func quotaLeaseDemoAssignedNodeIDFromExtra(extra map[string]any) string {
-	if extra == nil {
-		return ""
-	}
-	raw, ok := extra["node_oauth_assigned_node_id"]
-	if !ok || raw == nil {
-		return ""
-	}
-	return strings.TrimSpace(fmt.Sprint(raw))
 }

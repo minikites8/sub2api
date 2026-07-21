@@ -136,6 +136,10 @@ func (s *OpsService) IsMonitoringEnabled(ctx context.Context) bool {
 	}
 }
 
+func (s *OpsService) IsQuotaLeaseDemoNodeForwarder() bool {
+	return s != nil && s.cfg != nil && s.cfg.IsNodeRole() && QuotaLeaseDemoEnabled(s.cfg)
+}
+
 func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogInput) error {
 	prepared, ok, err := s.prepareErrorLogInput(ctx, entry)
 	if err != nil {

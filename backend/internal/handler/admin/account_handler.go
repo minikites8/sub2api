@@ -162,7 +162,10 @@ type UpdateAccountRequest struct {
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
-const accountAssignedNodeExtraKey = "node_oauth_assigned_node_id"
+const (
+	accountAssignedNodeExtraKey    = service.QuotaLeaseDemoAssignedNodeIDExtraKey
+	accountAssignedNodeIDsExtraKey = service.QuotaLeaseDemoAssignedNodeIDsExtraKey
+)
 
 func accountAssignedNodeIDFromValue(value any) string {
 	switch v := value.(type) {
@@ -195,11 +198,50 @@ func accountAssignedNodeIDFromMergedExtra(current, next map[string]any) string {
 	return accountAssignedNodeIDFromExtra(current)
 }
 
+func accountMergedExtra(current, next map[string]any) map[string]any {
+	merged := make(map[string]any, len(current)+len(next))
+	for key, value := range current {
+		merged[key] = value
+	}
+	for key, value := range next {
+		merged[key] = value
+	}
+	return merged
+}
+
+func accountAssignedNodeIDsFromExtra(accountType string, extra map[string]any) []string {
+	return service.QuotaLeaseDemoAssignedNodeIDs(service.Account{Type: strings.TrimSpace(accountType), Extra: extra})
+}
+
+func accountAssignedNodeIDsFromMergedExtra(accountType string, current, next map[string]any) []string {
+	if next == nil {
+		return accountAssignedNodeIDsFromExtra(accountType, current)
+	}
+	return accountAssignedNodeIDsFromExtra(accountType, accountMergedExtra(current, next))
+}
+
 func validateAccountAssignedNodeID(nodeID string) error {
 	if strings.TrimSpace(nodeID) == "" {
 		return infraerrors.BadRequest("ACCOUNT_NODE_BINDING_REQUIRED", "account scheduling node is required")
 	}
 	return nil
+}
+
+func validateAccountAssignedNodeIDs(nodeIDs []string) error {
+	if len(nodeIDs) == 0 {
+		return infraerrors.BadRequest("ACCOUNT_NODE_BINDING_REQUIRED", "account scheduling node is required")
+	}
+	return nil
+}
+
+func validateAccountAssignedNodeBinding(accountType string, nodeIDs []string) error {
+	if strings.TrimSpace(accountType) == service.AccountTypeAPIKey {
+		return validateAccountAssignedNodeIDs(nodeIDs)
+	}
+	if len(nodeIDs) == 0 {
+		return validateAccountAssignedNodeID("")
+	}
+	return validateAccountAssignedNodeID(nodeIDs[0])
 }
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
@@ -862,7 +904,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := validateAccountAssignedNodeID(accountAssignedNodeIDFromExtra(req.Extra)); err != nil {
+	if err := validateAccountAssignedNodeBinding(req.Type, accountAssignedNodeIDsFromExtra(req.Type, req.Extra)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1011,7 +1053,11 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := validateAccountAssignedNodeID(accountAssignedNodeIDFromMergedExtra(existing.Extra, req.Extra)); err != nil {
+	effectiveType := strings.TrimSpace(req.Type)
+	if effectiveType == "" {
+		effectiveType = existing.Type
+	}
+	if err := validateAccountAssignedNodeBinding(effectiveType, accountAssignedNodeIDsFromMergedExtra(effectiveType, existing.Extra, req.Extra)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

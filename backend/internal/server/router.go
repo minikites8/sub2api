@@ -126,6 +126,7 @@ func registerRoutes(
 	}
 
 	// 注册各模块路由
+	registerAPIKeyBalanceRoutes(r, v1, h, apiKeyAuth)
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, redisClient, settingService)
 	routes.RegisterPublicRoutes(v1, h)
 	routes.RegisterPublicTransitRoutes(r, v1, h)
@@ -148,4 +149,18 @@ func registerRoutes(
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)
+}
+
+func registerAPIKeyBalanceRoutes(
+	r *gin.Engine,
+	v1 *gin.RouterGroup,
+	h *handler.Handlers,
+	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+) {
+	if r == nil || v1 == nil || h == nil || h.User == nil || apiKeyAuth == nil {
+		return
+	}
+	balanceHandler := []gin.HandlerFunc{gin.HandlerFunc(apiKeyAuth), h.User.GetAPIKeyBalance}
+	r.GET("/user/balance", balanceHandler...)
+	v1.GET("/user/balance", balanceHandler...)
 }

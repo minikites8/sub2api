@@ -268,6 +268,19 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		openAIGatewayService,
 		kiroTokenProvider,
 	)
+	opsService := service.NewOpsService(
+		nil,
+		settingRepo,
+		cfg,
+		accountRepo,
+		userRepo,
+		concurrencyService,
+		gatewayService,
+		openAIGatewayService,
+		geminiCompatService,
+		antigravityGatewayService,
+		nil,
+	)
 	quotaLeaseDemoNodeWorker := service.ProvideQuotaLeaseDemoNodeWorker(
 		cfg,
 		openAIOAuthService,
@@ -315,7 +328,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		OpenAIGateway: openAIGatewayHandler,
 	}
 	apiKeyAuth := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)
-	router := server.ProvideRouter(cfg, handlers, nil, nil, apiKeyAuth, apiKeyService, subscriptionService, nil, settingService, redisClient)
+	router := server.ProvideRouter(cfg, handlers, nil, nil, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, redisClient)
 	httpServer := server.ProvideHTTPServer(cfg, router)
 
 	cleanup := provideNodeCleanup(

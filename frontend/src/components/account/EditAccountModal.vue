@@ -2610,7 +2610,25 @@
         <div class="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
           <div>
             <label class="input-label">调度节点 <span class="text-red-500">*</span></label>
+            <div v-if="isAPIKeyNodeBinding" class="grid gap-2 sm:grid-cols-2">
+              <label
+                v-for="option in nodeBindingOptions"
+                :key="option.value"
+                class="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-700 dark:hover:bg-primary-900/20"
+              >
+                <input
+                  v-model="nodeBindingSelectedNodeIDs"
+                  type="checkbox"
+                  :value="option.value"
+                  :disabled="nodeBindingLoading"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
+                  data-testid="edit-account-node-binding-checkbox"
+                />
+                <span class="min-w-0 truncate" :title="option.label">{{ option.label }}</span>
+              </label>
+            </div>
             <select
+              v-else
               v-model="nodeBindingSelectedNodeID"
               class="input"
               :disabled="nodeBindingLoading"
@@ -2622,7 +2640,7 @@
                 {{ option.label }}
               </option>
             </select>
-            <p class="input-hint">账号会同步到这个节点，用户请求也会交给该节点调用上游。</p>
+            <p class="input-hint">API Key 账号会同步到选中的节点，OAuth 账号会同步到选中的单个节点。</p>
             <p v-if="nodeBindingError" class="mt-2 text-xs text-red-500">{{ nodeBindingError }}</p>
           </div>
           <div class="flex items-end">
@@ -2876,6 +2894,7 @@ const isKiroOAuthAccount = computed(() => props.account?.platform === 'kiro' && 
 const isKiroAccount = computed(() => props.account?.platform === 'kiro')
 // Kiro 外部中转账号(apikey + 已配 base_url):编辑时显示 base_url 输入。
 const isKiroRelay = computed(() => isKiroRelayAccount(props.account))
+const isAPIKeyNodeBinding = computed(() => props.account?.type === 'apikey')
 
 // Model mapping type
 interface ModelMapping {
@@ -2896,6 +2915,7 @@ const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
 const nodeBindingNodes = ref<QuotaLeaseDemoNode[]>([])
 const nodeBindingSelectedNodeID = ref('')
+const nodeBindingSelectedNodeIDs = ref<string[]>([])
 const nodeBindingLoading = ref(false)
 const nodeBindingError = ref('')
 const nodeBindingLoaded = ref(false)
@@ -3420,6 +3440,39 @@ const nodeBindingOptions = computed(() =>
   }))
 )
 
+function normalizeNodeBindingIDs(values: unknown[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  values.forEach((value) => {
+    if (typeof value !== 'string') return
+    const nodeID = value.trim()
+    if (!nodeID || seen.has(nodeID)) return
+    seen.add(nodeID)
+    out.push(nodeID)
+  })
+  return out
+}
+
+function readNodeBindingIDs(extra?: Record<string, unknown>): string[] {
+  const rawIDs = extra?.node_oauth_assigned_node_ids
+  const ids = Array.isArray(rawIDs) ? normalizeNodeBindingIDs(rawIDs) : []
+  const single = typeof extra?.node_oauth_assigned_node_id === 'string'
+    ? extra.node_oauth_assigned_node_id.trim()
+    : ''
+  if (single && !ids.includes(single)) {
+    ids.unshift(single)
+  }
+  return ids
+}
+
+function getSelectedNodeBindingIDs(): string[] {
+  if (isAPIKeyNodeBinding.value) {
+    return normalizeNodeBindingIDs(nodeBindingSelectedNodeIDs.value)
+  }
+  const nodeID = nodeBindingSelectedNodeID.value.trim()
+  return nodeID ? [nodeID] : []
+}
+
 const expiresAtInput = computed({
   get: () => formatDateTimeLocal(form.expires_at),
   set: (value: string) => {
@@ -3517,9 +3570,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
   const extra = newAccount.extra as Record<string, unknown> | undefined
-  nodeBindingSelectedNodeID.value = typeof extra?.node_oauth_assigned_node_id === 'string'
-    ? extra.node_oauth_assigned_node_id.trim()
-    : ''
+  const assignedNodeIDs = readNodeBindingIDs(extra)
+  nodeBindingSelectedNodeID.value = assignedNodeIDs[0] || ''
+  nodeBindingSelectedNodeIDs.value = assignedNodeIDs
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
   const kiroCreditUnitPrice = extra?.kiro_credit_unit_price_usd
@@ -3862,6 +3915,9 @@ async function loadNodeBindingNodes() {
     nodeBindingLoaded.value = true
     if (!nodeBindingSelectedNodeID.value && nodes.length > 0) {
       nodeBindingSelectedNodeID.value = nodes.find((node) => node.status === 'online')?.node_id || nodes[0].node_id
+    }
+    if (nodeBindingSelectedNodeIDs.value.length === 0 && nodeBindingSelectedNodeID.value) {
+      nodeBindingSelectedNodeIDs.value = [nodeBindingSelectedNodeID.value]
     }
   } catch (error: any) {
     nodeBindingError.value = nodeBindingErrorMessage(error, '节点列表加载失败')
@@ -4358,11 +4414,12 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
   }
-  const selectedNodeID = nodeBindingSelectedNodeID.value.trim()
-  if (!selectedNodeID) {
+  const selectedNodeIDs = getSelectedNodeBindingIDs()
+  if (selectedNodeIDs.length === 0) {
     appStore.showError('请选择调度节点')
     return
   }
+  const selectedNodeID = selectedNodeIDs[0]
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
@@ -5023,10 +5080,16 @@ const handleSubmit = async () => {
 
     const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
       (props.account.extra as Record<string, unknown>) || {}
-    updatePayload.extra = {
+    const bindingExtra: Record<string, unknown> = {
       ...currentExtra,
       node_oauth_assigned_node_id: selectedNodeID
     }
+    if (props.account.type === 'apikey') {
+      bindingExtra.node_oauth_assigned_node_ids = selectedNodeIDs
+    } else {
+      delete bindingExtra.node_oauth_assigned_node_ids
+    }
+    updatePayload.extra = bindingExtra
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)

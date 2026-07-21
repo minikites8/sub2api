@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -42,6 +44,67 @@ func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	opsErrorLogShutdownCh = make(chan struct{})
 	opsErrorLogShutdownOnce = sync.Once{}
 	opsErrorLogDrained.Store(false)
+}
+
+type opsErrorLoggerSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *opsErrorLoggerSettingRepoStub) Get(_ context.Context, key string) (*service.Setting, error) {
+	value, err := s.GetValue(context.Background(), key)
+	if err != nil {
+		return nil, err
+	}
+	return &service.Setting{Key: key, Value: value}, nil
+}
+
+func (s *opsErrorLoggerSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if s != nil && s.values != nil {
+		if value, ok := s.values[key]; ok {
+			return value, nil
+		}
+	}
+	return "", service.ErrSettingNotFound
+}
+
+func (s *opsErrorLoggerSettingRepoStub) Set(_ context.Context, key, value string) error {
+	if s.values == nil {
+		s.values = make(map[string]string)
+	}
+	s.values[key] = value
+	return nil
+}
+
+func (s *opsErrorLoggerSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, err := s.GetValue(context.Background(), key); err == nil {
+			out[key] = value
+		}
+	}
+	return out, nil
+}
+
+func (s *opsErrorLoggerSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	for key, value := range settings {
+		if err := s.Set(ctx, key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *opsErrorLoggerSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(s.values))
+	for key, value := range s.values {
+		out[key] = value
+	}
+	return out, nil
+}
+
+func (s *opsErrorLoggerSettingRepoStub) Delete(_ context.Context, key string) error {
+	delete(s.values, key)
+	return nil
 }
 
 func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {
@@ -306,6 +369,31 @@ func TestClassifyOpsNoAvailableAccountsExcludedFromSLA(t *testing.T) {
 	require.True(t, isBusinessLimited)
 	require.Equal(t, "platform", errorOwner)
 	require.Equal(t, "gateway", errorSource)
+}
+
+func TestShouldSkipOpsErrorLog_NodeForwarderKeepsNoAvailable503(t *testing.T) {
+	repo := &opsErrorLoggerSettingRepoStub{
+		values: map[string]string{
+			service.SettingKeyOpsAdvancedSettings: `{"ignore_no_available_accounts":true}`,
+		},
+	}
+	controlOps := service.NewOpsService(nil, repo, &config.Config{
+		Ops: config.OpsConfig{Enabled: true},
+	}, nil, nil, nil, nil, nil, nil, nil, nil)
+	nodeOps := service.NewOpsService(nil, repo, &config.Config{
+		DeploymentRole: config.DeploymentRoleNode,
+		Ops:            config.OpsConfig{Enabled: true},
+		Gateway: config.GatewayConfig{
+			QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+				Enabled: true,
+				NodeID:  "node-us",
+			},
+		},
+	}, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	require.True(t, shouldSkipOpsErrorLog(context.Background(), controlOps, "no available accounts", "", "/v1/messages", http.StatusServiceUnavailable))
+	require.False(t, shouldSkipOpsErrorLog(context.Background(), nodeOps, "no available accounts", "", "/v1/messages", http.StatusServiceUnavailable))
+	require.True(t, nodeOps.IsQuotaLeaseDemoNodeForwarder())
 }
 
 func TestClassifyOpsRoutingCapacityMarkerExcludesMaskedSelectionFailureFromSLA(t *testing.T) {

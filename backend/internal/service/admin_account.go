@@ -63,7 +63,7 @@ func (s *adminServiceImpl) ListNodeAssignedAccounts(ctx context.Context, nodeID 
 	}
 	filtered := make([]Account, 0)
 	for _, account := range all {
-		if strings.TrimSpace(fmt.Sprint(account.Extra["node_oauth_assigned_node_id"])) == nodeID {
+		if QuotaLeaseDemoAccountAssignedToNode(account, nodeID) {
 			filtered = append(filtered, account)
 		}
 	}

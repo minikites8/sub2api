@@ -135,7 +135,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
 		c.Request = c.Request.WithContext(ctx)
 		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest
+		skipBilling := apiKeyAuthSkipsBilling(c.Request.URL.Path)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -309,6 +309,15 @@ func setGroupContext(c *gin.Context, group *service.Group) {
 // 否则已配置该值的存量部署升级后，0 < balance < reserve 的用户会在所有端点被静默 403。
 func apiKeyBalanceBelowAuthThreshold(balance float64, _ *config.Config) bool {
 	return balance <= 0
+}
+
+func apiKeyAuthSkipsBilling(path string) bool {
+	switch path {
+	case "/v1/usage", "/v1/sub2api/billing", "/user/balance", "/api/v1/user/balance":
+		return true
+	default:
+		return false
+	}
 }
 
 func abortIfAPIKeyGroupUnavailable(c *gin.Context, apiKey *service.APIKey) bool {

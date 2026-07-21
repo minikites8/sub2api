@@ -1360,9 +1360,35 @@ function accountDisplayEmail(row: any): string {
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
 }
 
+function normalizeNodeOAuthAssignedNodeIDs(values: unknown[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  values.forEach((value) => {
+    if (typeof value !== 'string') return
+    const nodeID = value.trim()
+    if (!nodeID || seen.has(nodeID)) return
+    seen.add(nodeID)
+    out.push(nodeID)
+  })
+  return out
+}
+
+function getNodeOAuthAssignedNodeIDs(row: Account): string[] {
+  const extra = row.extra as Record<string, unknown> | undefined
+  const ids = Array.isArray(extra?.node_oauth_assigned_node_ids)
+    ? normalizeNodeOAuthAssignedNodeIDs(extra.node_oauth_assigned_node_ids)
+    : []
+  const single = typeof extra?.node_oauth_assigned_node_id === 'string'
+    ? extra.node_oauth_assigned_node_id.trim()
+    : ''
+  if (single && !ids.includes(single)) {
+    ids.unshift(single)
+  }
+  return ids
+}
+
 function getNodeOAuthAssignedNodeID(row: Account): string {
-  const value = row.extra?.node_oauth_assigned_node_id
-  return typeof value === 'string' ? value.trim() : ''
+  return getNodeOAuthAssignedNodeIDs(row).join(', ')
 }
 
 function getNodeOAuthStatus(row: Account): string {

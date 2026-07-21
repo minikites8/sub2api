@@ -869,8 +869,15 @@ func (r *accountRepository) ListNodeAssignedAccounts(ctx context.Context, params
 			WHERE deleted_at IS NULL
 			  AND status = 'active'
 			  AND schedulable = TRUE
-			  AND extra ->> 'node_oauth_assigned_node_id' = $1
-		`, nodeID)
+			  AND (
+			    extra ->> 'node_oauth_assigned_node_id' = $1
+			    OR (
+			      type = $2
+			      AND jsonb_typeof(extra -> 'node_oauth_assigned_node_ids') = 'array'
+			      AND (extra -> 'node_oauth_assigned_node_ids') ? $1
+			    )
+			  )
+		`, nodeID, service.AccountTypeAPIKey)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -895,10 +902,17 @@ func (r *accountRepository) ListNodeAssignedAccounts(ctx context.Context, params
 			WHERE deleted_at IS NULL
 			  AND status = 'active'
 			  AND schedulable = TRUE
-			  AND extra ->> 'node_oauth_assigned_node_id' = $1
+			  AND (
+			    extra ->> 'node_oauth_assigned_node_id' = $1
+			    OR (
+			      type = $4
+			      AND jsonb_typeof(extra -> 'node_oauth_assigned_node_ids') = 'array'
+			      AND (extra -> 'node_oauth_assigned_node_ids') ? $1
+			    )
+			  )
 			ORDER BY id ASC
 			LIMIT $2 OFFSET $3
-		`, nodeID, params.Limit(), params.Offset())
+		`, nodeID, params.Limit(), params.Offset(), service.AccountTypeAPIKey)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -935,27 +949,32 @@ func (r *accountRepository) ListNodeAssignedAccounts(ctx context.Context, params
 
 	q := r.client.Account.Query().
 		Where(dbaccount.StatusEQ(service.StatusActive)).
-		Where(dbaccount.SchedulableEQ(true)).
-		Where(func(s *entsql.Selector) {
-			s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, nodeID, sqljson.Path("node_oauth_assigned_node_id")))
-		})
-	total, err := q.Clone().Count(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
+		Where(dbaccount.SchedulableEQ(true))
 	accounts, err := q.
-		Offset(params.Offset()).
-		Limit(params.Limit()).
 		Order(dbent.Asc(dbaccount.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	out, err := r.accountsToService(ctx, accounts)
+	all, err := r.accountsToService(ctx, accounts)
 	if err != nil {
 		return nil, nil, err
 	}
-	return out, paginationResultFromTotal(int64(total), params), nil
+	filtered := make([]service.Account, 0, len(all))
+	for _, account := range all {
+		if service.QuotaLeaseDemoAccountAssignedToNode(account, nodeID) {
+			filtered = append(filtered, account)
+		}
+	}
+	start := params.Offset()
+	if start >= len(filtered) {
+		return []service.Account{}, paginationResultFromTotal(int64(len(filtered)), params), nil
+	}
+	end := start + params.Limit()
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[start:end], paginationResultFromTotal(int64(len(filtered)), params), nil
 }
 
 func (r *accountRepository) ListOpsAccountsForStats(ctx context.Context, platformFilter string, groupIDFilter *int64) ([]service.Account, error) {

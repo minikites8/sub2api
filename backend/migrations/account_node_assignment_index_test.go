@@ -19,3 +19,17 @@ func TestAccountNodeAssignmentIndexMigration(t *testing.T) {
 	require.Contains(t, sql, "schedulable = TRUE")
 	require.Contains(t, sql, "extra ? 'node_oauth_assigned_node_id'")
 }
+
+func TestAccountNodeAssignmentIDsIndexMigration(t *testing.T) {
+	content, err := FS.ReadFile("186_account_node_assignment_ids_index_notx.sql")
+	require.NoError(t, err)
+
+	sql := strings.Join(strings.Fields(string(content)), " ")
+	require.Contains(t, sql, "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_accounts_node_oauth_assigned_node_ids")
+	require.Contains(t, sql, "USING GIN ((extra -> 'node_oauth_assigned_node_ids'))")
+	require.Contains(t, sql, "WHERE deleted_at IS NULL")
+	require.Contains(t, sql, "status = 'active'")
+	require.Contains(t, sql, "schedulable = TRUE")
+	require.Contains(t, sql, "type = 'apikey'")
+	require.Contains(t, sql, "extra ? 'node_oauth_assigned_node_ids'")
+}

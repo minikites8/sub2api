@@ -71,7 +71,25 @@
         <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
           <div>
             <label class="input-label">调度节点 <span class="text-red-500">*</span></label>
+            <div v-if="isAPIKeyNodeMultiBinding" class="grid gap-2 sm:grid-cols-2">
+              <label
+                v-for="option in nodeOAuthOptions"
+                :key="option.value"
+                class="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-700 dark:hover:bg-primary-900/20"
+              >
+                <input
+                  v-model="nodeOAuthSelectedNodeIDs"
+                  type="checkbox"
+                  :value="option.value"
+                  :disabled="nodeOAuthLoading"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
+                  data-testid="account-node-binding-checkbox"
+                />
+                <span class="min-w-0 truncate" :title="option.label">{{ option.label }}</span>
+              </label>
+            </div>
             <select
+              v-else
               v-model="nodeOAuthSelectedNodeID"
               class="input"
               :disabled="nodeOAuthLoading"
@@ -83,7 +101,7 @@
                 {{ option.label }}
               </option>
             </select>
-            <p class="input-hint">账号会同步到这个节点，用户请求也会交给该节点调用上游。</p>
+            <p class="input-hint">API Key 账号会同步到选中的节点，OAuth 登录任务会在选中的节点执行。</p>
           </div>
           <div class="flex items-end">
             <button
@@ -4257,6 +4275,7 @@ const currentOAuthError = computed(() => {
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 const nodeOAuthNodes = ref<QuotaLeaseDemoNode[]>([])
 const nodeOAuthSelectedNodeID = ref('')
+const nodeOAuthSelectedNodeIDs = ref<string[]>([])
 const nodeOAuthLoading = ref(false)
 const nodeOAuthError = ref('')
 const nodeOAuthTask = ref<QuotaLeaseDemoAccountLoginTask | null>(null)
@@ -4778,6 +4797,8 @@ const isNodeOAuthSupported = computed(() =>
 const nodeOAuthActive = computed(() =>
   isNodeOAuthSupported.value && isManualInputMethod.value
 )
+
+const isAPIKeyNodeMultiBinding = computed(() => form.type === 'apikey')
 
 const nodeOAuthOptions = computed(() =>
   nodeOAuthNodes.value.map((node) => ({
@@ -5602,9 +5623,29 @@ function getSelectedNodeID() {
   return nodeOAuthSelectedNodeID.value.trim()
 }
 
-function requireAccountNodeBinding() {
+function normalizeNodeBindingIDs(values: unknown[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  values.forEach((value) => {
+    if (typeof value !== 'string') return
+    const nodeID = value.trim()
+    if (!nodeID || seen.has(nodeID)) return
+    seen.add(nodeID)
+    out.push(nodeID)
+  })
+  return out
+}
+
+function getSelectedNodeIDs() {
+  if (isAPIKeyNodeMultiBinding.value) {
+    return normalizeNodeBindingIDs(nodeOAuthSelectedNodeIDs.value)
+  }
   const nodeID = getSelectedNodeID()
-  if (!nodeID) {
+  return nodeID ? [nodeID] : []
+}
+
+function requireAccountNodeBinding() {
+  if (getSelectedNodeIDs().length === 0) {
     appStore.showError('请选择调度节点')
     return false
   }
@@ -5612,10 +5653,15 @@ function requireAccountNodeBinding() {
 }
 
 function withNodeBindingExtra(extra?: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...(extra || {}),
-    node_oauth_assigned_node_id: getSelectedNodeID()
+  const next: Record<string, unknown> = { ...(extra || {}) }
+  const nodeIDs = getSelectedNodeIDs()
+  next.node_oauth_assigned_node_id = nodeIDs[0] || ''
+  if (isAPIKeyNodeMultiBinding.value) {
+    next.node_oauth_assigned_node_ids = nodeIDs
+  } else {
+    delete next.node_oauth_assigned_node_ids
   }
+  return next
 }
 
 function withNodeBindingPayload<T extends { extra?: Record<string, unknown> }>(payload: T): T {
@@ -6040,6 +6086,7 @@ function resetNodeOAuthState() {
   resetNodeOAuthTaskState()
   nodeOAuthLoading.value = false
   nodeOAuthSelectedNodeID.value = ''
+  nodeOAuthSelectedNodeIDs.value = []
   nodeOAuthNodes.value = []
   nodeOAuthLoaded.value = false
 }
@@ -6062,6 +6109,9 @@ async function loadNodeOAuthNodes() {
     if (!nodeOAuthSelectedNodeID.value && nodes.length > 0) {
       nodeOAuthSelectedNodeID.value = nodes.find((node) => node.status === 'online')?.node_id || nodes[0].node_id
     }
+    if (nodeOAuthSelectedNodeIDs.value.length === 0 && nodeOAuthSelectedNodeID.value) {
+      nodeOAuthSelectedNodeIDs.value = [nodeOAuthSelectedNodeID.value]
+    }
   } catch (error: any) {
     nodeOAuthError.value = nodeOAuthErrorMessage(error, '节点列表加载失败')
     appStore.showError(nodeOAuthError.value)
@@ -6069,6 +6119,18 @@ async function loadNodeOAuthNodes() {
     nodeOAuthLoading.value = false
   }
 }
+
+watch(
+  () => form.type,
+  () => {
+    if (isAPIKeyNodeMultiBinding.value && nodeOAuthSelectedNodeIDs.value.length === 0 && nodeOAuthSelectedNodeID.value) {
+      nodeOAuthSelectedNodeIDs.value = [nodeOAuthSelectedNodeID.value]
+    }
+    if (!isAPIKeyNodeMultiBinding.value && nodeOAuthSelectedNodeIDs.value.length > 0) {
+      nodeOAuthSelectedNodeID.value = nodeOAuthSelectedNodeIDs.value[0]
+    }
+  }
+)
 
 async function refreshNodeOAuthTask() {
   const current = nodeOAuthTask.value

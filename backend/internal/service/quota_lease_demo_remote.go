@@ -568,8 +568,11 @@ func (s *QuotaLeaseDemoService) upsertRemoteMirrorAccountBestEffort(ctx context.
 		if account.Extra == nil {
 			account.Extra = make(map[string]any)
 		}
-		if strings.TrimSpace(quotaLeaseDemoStringFromPayload(account.Extra["node_oauth_assigned_node_id"])) == "" {
-			account.Extra["node_oauth_assigned_node_id"] = strings.TrimSpace(nodeID)
+		nodeID = strings.TrimSpace(nodeID)
+		if account.Type == AccountTypeAPIKey && QuotaLeaseDemoAccountAssignedToNode(Account{Type: account.Type, Extra: account.Extra}, nodeID) {
+			account.Extra[QuotaLeaseDemoAssignedNodeIDExtraKey] = nodeID
+		} else if strings.TrimSpace(quotaLeaseDemoStringFromPayload(account.Extra[QuotaLeaseDemoAssignedNodeIDExtraKey])) == "" {
+			account.Extra[QuotaLeaseDemoAssignedNodeIDExtraKey] = nodeID
 		}
 	}
 	if err := store.UpsertAccount(ctx, account); err != nil {

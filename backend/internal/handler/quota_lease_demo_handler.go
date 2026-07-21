@@ -738,8 +738,14 @@ func (h *QuotaLeaseDemoHandler) listAssignedAccounts(ctx context.Context, nodeID
 			if account.ID <= 0 {
 				continue
 			}
-			assignedNodeID := quotaLeaseDemoHandlerString(account.Extra["node_oauth_assigned_node_id"])
-			if assignedNodeID == "" || (nodeID != "" && assignedNodeID != nodeID) {
+			assignedNodeID := service.QuotaLeaseDemoAssignedNodeID(account)
+			if nodeID != "" {
+				if !service.QuotaLeaseDemoAccountAssignedToNode(account, nodeID) {
+					continue
+				}
+				assignedNodeID = nodeID
+			}
+			if assignedNodeID == "" {
 				continue
 			}
 			if !quotaLeaseDemoHandlerPersistedAccountReady(account) {
