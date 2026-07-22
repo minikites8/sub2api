@@ -752,6 +752,11 @@ func TestForwardGrokMediaOAuthImageToVideoUsesOfficialAPI(t *testing.T) {
 	require.NotEqual(t, grokUpstreamUserAgent, upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "data:image/png;base64,"+imageData, gjson.GetBytes(upstream.lastBody, "image.url").String())
 	require.True(t, result.GrokMediaOfficialAPI)
+	require.Equal(t, "api.x.ai", result.GrokMediaUpstreamHost)
+	require.Equal(t, "/v1/videos/generations", result.GrokMediaUpstreamPath)
+	require.True(t, result.GrokMediaHasInputImage)
+	require.False(t, result.GrokMediaForceOfficialAPI)
+	require.False(t, result.GrokMediaCLIHeadersApplied)
 }
 
 func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
@@ -834,6 +839,11 @@ func TestForwardGrokMediaOAuthVideoStatusUsesOfficialAPIWhenFlagged(t *testing.T
 	require.NotEqual(t, grokUpstreamUserAgent, upstream.lastReq.Header.Get("User-Agent"))
 	require.Empty(t, upstream.lastBody)
 	require.True(t, result.GrokMediaOfficialAPI)
+	require.Equal(t, "api.x.ai", result.GrokMediaUpstreamHost)
+	require.Equal(t, "/v1/videos/request-123", result.GrokMediaUpstreamPath)
+	require.False(t, result.GrokMediaHasInputImage)
+	require.True(t, result.GrokMediaForceOfficialAPI)
+	require.False(t, result.GrokMediaCLIHeadersApplied)
 }
 
 func TestForwardGrokMediaVideoMutationEndpoints(t *testing.T) {

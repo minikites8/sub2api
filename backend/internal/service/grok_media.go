@@ -364,7 +364,8 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	upstreamReq.Header.Set("Authorization", "Bearer "+token)
 	upstreamReq.Header.Set("Accept", "application/json")
 	usedOfficialGrokAPI := account.IsGrokOAuth() && xai.IsAPIBaseURL(targetURL)
-	if account.IsGrokOAuth() && xai.IsCLIBaseURL(targetURL) {
+	cliHeadersApplied := account.IsGrokOAuth() && xai.IsCLIBaseURL(targetURL)
+	if cliHeadersApplied {
 		applyGrokCLIHeaders(upstreamReq.Header)
 	}
 	if endpoint.RequiresRequestBody() {
@@ -403,22 +404,27 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
 	return &OpenAIForwardResult{
-		RequestID:            requestIDHeader,
-		ResponseID:           usage.ResponseID,
-		Usage:                usage.Usage,
-		Model:                requestModel,
-		BillingModel:         requestModel,
-		UpstreamModel:        requestModel,
-		ResponseHeaders:      resp.Header.Clone(),
-		Duration:             time.Since(startTime),
-		ImageCount:           usage.ImageCount,
-		ImageSize:            usage.ImageSize,
-		ImageInputSize:       usage.ImageInputSize,
-		ImageOutputSizes:     usage.ImageOutputSizes,
-		VideoCount:           usage.VideoCount,
-		VideoResolution:      usage.VideoResolution,
-		VideoDurationSeconds: usage.VideoDurationSeconds,
-		GrokMediaOfficialAPI: usedOfficialGrokAPI,
+		RequestID:                  requestIDHeader,
+		ResponseID:                 usage.ResponseID,
+		Usage:                      usage.Usage,
+		Model:                      requestModel,
+		BillingModel:               requestModel,
+		UpstreamModel:              requestModel,
+		ResponseHeaders:            resp.Header.Clone(),
+		Duration:                   time.Since(startTime),
+		ImageCount:                 usage.ImageCount,
+		ImageSize:                  usage.ImageSize,
+		ImageInputSize:             usage.ImageInputSize,
+		ImageOutputSizes:           usage.ImageOutputSizes,
+		VideoCount:                 usage.VideoCount,
+		VideoResolution:            usage.VideoResolution,
+		VideoDurationSeconds:       usage.VideoDurationSeconds,
+		GrokMediaOfficialAPI:       usedOfficialGrokAPI,
+		GrokMediaUpstreamHost:      upstreamReq.URL.Hostname(),
+		GrokMediaUpstreamPath:      upstreamReq.URL.Path,
+		GrokMediaHasInputImage:     requestInfo.HasInputImage(),
+		GrokMediaForceOfficialAPI:  forwardOptions.ForceOfficialAPI,
+		GrokMediaCLIHeadersApplied: cliHeadersApplied,
 	}, nil
 }
 
