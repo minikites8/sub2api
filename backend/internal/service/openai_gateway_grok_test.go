@@ -711,7 +711,7 @@ func TestForwardGrokMediaVideoGenerationNormalizesLegacyImageURL(t *testing.T) {
 	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
 }
 
-func TestForwardGrokMediaOAuthImageToVideoKeepsCLIGatewayForLargeBody(t *testing.T) {
+func TestForwardGrokMediaOAuthImageToVideoUsesOfficialAPI(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	recorder := httptest.NewRecorder()
@@ -745,10 +745,13 @@ func TestForwardGrokMediaOAuthImageToVideoKeepsCLIGatewayForLargeBody(t *testing
 	}}
 	svc := &OpenAIGatewayService{httpUpstream: upstream, grokTokenProvider: NewGrokTokenProvider(nil, nil)}
 
-	_, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 	require.NoError(t, err)
-	require.Equal(t, xai.DefaultCLIBaseURL+"/videos/generations", upstream.lastReq.URL.String())
+	require.Equal(t, xai.DefaultBaseURL+"/videos/generations", upstream.lastReq.URL.String())
+	require.Empty(t, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
+	require.NotEqual(t, grokUpstreamUserAgent, upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "data:image/png;base64,"+imageData, gjson.GetBytes(upstream.lastBody, "image.url").String())
+	require.True(t, result.GrokMediaOfficialAPI)
 }
 
 func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
@@ -792,6 +795,45 @@ func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"id":"request-123","status":"completed"}`, recorder.Body.String())
 	require.Equal(t, "xai-video-req", result.RequestID)
+}
+
+func TestForwardGrokMediaOAuthVideoStatusUsesOfficialAPIWhenFlagged(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/request-123", nil)
+
+	account := &Account{
+		ID:          67,
+		Name:        "grok-oauth",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":  "oauth-access-token",
+			"refresh_token": "oauth-refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+			"base_url":      xai.DefaultCLIBaseURL,
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"request-123","status":"completed"}`)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream, grokTokenProvider: NewGrokTokenProvider(nil, nil)}
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideoStatus, "request-123", nil, "", WithGrokMediaOfficialAPI())
+	require.NoError(t, err)
+	require.Equal(t, xai.DefaultBaseURL+"/videos/request-123", upstream.lastReq.URL.String())
+	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
+	require.Empty(t, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
+	require.NotEqual(t, grokUpstreamUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	require.Empty(t, upstream.lastBody)
+	require.True(t, result.GrokMediaOfficialAPI)
 }
 
 func TestForwardGrokMediaVideoMutationEndpoints(t *testing.T) {
@@ -850,6 +892,12 @@ func TestBindGrokMediaVideoRequestAccountUsesRequestIDStickyHash(t *testing.T) {
 	accountID, err := svc.getStickySessionAccountID(ctx, &groupID, hash)
 	require.NoError(t, err)
 	require.Equal(t, int64(63), accountID)
+
+	routeHash := GrokMediaVideoRequestOfficialAPISessionHash("video-request-123")
+	require.NotEmpty(t, routeHash)
+	require.NoError(t, svc.BindGrokMediaVideoRequestOfficialAPI(ctx, &groupID, "video-request-123"))
+	require.True(t, svc.IsGrokMediaVideoRequestOfficialAPI(ctx, &groupID, "video-request-123"))
+	require.False(t, svc.IsGrokMediaVideoRequestOfficialAPI(ctx, &groupID, "missing-request"))
 }
 
 func TestForwardGrokMedia429ReconcilesRateLimitBeforeCustomErrorBypass(t *testing.T) {
