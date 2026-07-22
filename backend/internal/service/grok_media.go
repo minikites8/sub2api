@@ -9,6 +9,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -350,6 +351,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if err != nil {
 		return nil, err
 	}
+	bodyShape := summarizeGrokMediaForwardBody(body)
 
 	var bodyReader io.Reader
 	if endpoint.RequiresRequestBody() {
@@ -404,28 +406,81 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
 	return &OpenAIForwardResult{
-		RequestID:                  requestIDHeader,
-		ResponseID:                 usage.ResponseID,
-		Usage:                      usage.Usage,
-		Model:                      requestModel,
-		BillingModel:               requestModel,
-		UpstreamModel:              requestModel,
-		ResponseHeaders:            resp.Header.Clone(),
-		Duration:                   time.Since(startTime),
-		ImageCount:                 usage.ImageCount,
-		ImageSize:                  usage.ImageSize,
-		ImageInputSize:             usage.ImageInputSize,
-		ImageOutputSizes:           usage.ImageOutputSizes,
-		VideoCount:                 usage.VideoCount,
-		VideoResolution:            usage.VideoResolution,
-		VideoDurationSeconds:       usage.VideoDurationSeconds,
-		GrokMediaOfficialAPI:       usedOfficialGrokAPI,
-		GrokMediaUpstreamHost:      upstreamReq.URL.Hostname(),
-		GrokMediaUpstreamPath:      upstreamReq.URL.Path,
-		GrokMediaHasInputImage:     requestInfo.HasInputImage(),
-		GrokMediaForceOfficialAPI:  forwardOptions.ForceOfficialAPI,
-		GrokMediaCLIHeadersApplied: cliHeadersApplied,
+		RequestID:                      requestIDHeader,
+		ResponseID:                     usage.ResponseID,
+		Usage:                          usage.Usage,
+		Model:                          requestModel,
+		BillingModel:                   requestModel,
+		UpstreamModel:                  requestModel,
+		ResponseHeaders:                resp.Header.Clone(),
+		Duration:                       time.Since(startTime),
+		ImageCount:                     usage.ImageCount,
+		ImageSize:                      usage.ImageSize,
+		ImageInputSize:                 usage.ImageInputSize,
+		ImageOutputSizes:               usage.ImageOutputSizes,
+		VideoCount:                     usage.VideoCount,
+		VideoResolution:                usage.VideoResolution,
+		VideoDurationSeconds:           usage.VideoDurationSeconds,
+		GrokMediaOfficialAPI:           usedOfficialGrokAPI,
+		GrokMediaUpstreamHost:          upstreamReq.URL.Hostname(),
+		GrokMediaUpstreamPath:          upstreamReq.URL.Path,
+		GrokMediaHasInputImage:         requestInfo.HasInputImage(),
+		GrokMediaForceOfficialAPI:      forwardOptions.ForceOfficialAPI,
+		GrokMediaCLIHeadersApplied:     cliHeadersApplied,
+		GrokMediaBodyBytes:             bodyShape.BodyBytes,
+		GrokMediaBodyPromptBytes:       bodyShape.PromptBytes,
+		GrokMediaBodyImageFieldExists:  bodyShape.ImageFieldExists,
+		GrokMediaBodyImagesFieldExists: bodyShape.ImagesFieldExists,
+		GrokMediaBodyImageURLExists:    bodyShape.ImageURLExists,
+		GrokMediaBodyImageURLScheme:    bodyShape.ImageURLScheme,
+		GrokMediaBodyImageURLHost:      bodyShape.ImageURLHost,
+		GrokMediaBodyImageURLIsData:    bodyShape.ImageURLIsData,
+		GrokMediaBodyImageURLLength:    bodyShape.ImageURLLength,
 	}, nil
+}
+
+type grokMediaForwardBodyShape struct {
+	BodyBytes         int
+	PromptBytes       int
+	ImageFieldExists  bool
+	ImagesFieldExists bool
+	ImageURLExists    bool
+	ImageURLScheme    string
+	ImageURLHost      string
+	ImageURLIsData    bool
+	ImageURLLength    int
+}
+
+func summarizeGrokMediaForwardBody(body []byte) grokMediaForwardBodyShape {
+	shape := grokMediaForwardBodyShape{BodyBytes: len(body)}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return shape
+	}
+
+	shape.PromptBytes = len(gjson.GetBytes(body, "prompt").String())
+	shape.ImageFieldExists = gjson.GetBytes(body, "image").Exists()
+	shape.ImagesFieldExists = gjson.GetBytes(body, "images").Exists()
+	imageURL := strings.TrimSpace(gjson.GetBytes(body, "image.url").String())
+	if imageURL == "" {
+		return shape
+	}
+
+	shape.ImageURLExists = true
+	shape.ImageURLLength = len(imageURL)
+	lower := strings.ToLower(imageURL)
+	if strings.HasPrefix(lower, "data:") {
+		shape.ImageURLScheme = "data"
+		shape.ImageURLIsData = true
+		return shape
+	}
+
+	parsed, err := url.Parse(imageURL)
+	if err != nil {
+		return shape
+	}
+	shape.ImageURLScheme = strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	shape.ImageURLHost = strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	return shape
 }
 
 func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
