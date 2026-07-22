@@ -35,6 +35,38 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadQuotaLeaseConfigFromOfficialEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_QUOTA_LEASE_ENABLED", "true")
+	t.Setenv("GATEWAY_QUOTA_LEASE_NODE_ID", "node-official")
+	t.Setenv("GATEWAY_QUOTA_LEASE_DEFAULT_GRANT_AMOUNT", "0.5")
+	t.Setenv("GATEWAY_QUOTA_LEASE_REMOTE_TIMEOUT_SECONDS", "21")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.QuotaLease.Enabled)
+	require.True(t, cfg.Gateway.QuotaLeaseDemo.Enabled)
+	require.Equal(t, "node-official", cfg.Gateway.QuotaLease.NodeID)
+	require.Equal(t, "node-official", cfg.Gateway.QuotaLeaseDemo.NodeID)
+	require.Equal(t, 0.5, cfg.Gateway.QuotaLease.DefaultGrantAmount)
+	require.Equal(t, 21, cfg.Gateway.QuotaLease.RemoteTimeoutSeconds)
+}
+
+func TestLoadQuotaLeaseConfigFromLegacyDemoEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_QUOTA_LEASE_DEMO_ENABLED", "true")
+	t.Setenv("GATEWAY_QUOTA_LEASE_DEMO_NODE_ID", "node-legacy")
+	t.Setenv("GATEWAY_QUOTA_LEASE_DEMO_REMOTE_TIMEOUT_SECONDS", "18")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.QuotaLease.Enabled)
+	require.True(t, cfg.Gateway.QuotaLeaseDemo.Enabled)
+	require.Equal(t, "node-legacy", cfg.Gateway.QuotaLease.NodeID)
+	require.Equal(t, "node-legacy", cfg.Gateway.QuotaLeaseDemo.NodeID)
+	require.Equal(t, 18, cfg.Gateway.QuotaLease.RemoteTimeoutSeconds)
+}
+
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	viper.Reset()
 	t.Setenv("JWT_SECRET", "")

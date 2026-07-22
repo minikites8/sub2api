@@ -495,19 +495,11 @@ func applyQuotaLeaseDemoLeaseUsage(ctx context.Context, tx *sql.Tx, lease servic
 			api_key_id = $4,
 			consumed = quota_lease_demo_leases.consumed + $5,
 			trace_id = $6,
-			expires_at = CASE
-				WHEN quota_lease_demo_leases.status = 'active' THEN GREATEST(quota_lease_demo_leases.expires_at, $7)
-				ELSE quota_lease_demo_leases.expires_at
-			END,
-			reclaim_at = CASE
-				WHEN quota_lease_demo_leases.status = 'active' THEN GREATEST(quota_lease_demo_leases.reclaim_at, $8)
-				ELSE quota_lease_demo_leases.reclaim_at
-			END,
+			expires_at = GREATEST(quota_lease_demo_leases.expires_at, $7),
+			reclaim_at = GREATEST(quota_lease_demo_leases.reclaim_at, $8),
 			status = CASE
-				WHEN quota_lease_demo_leases.status = 'reclaimed' THEN quota_lease_demo_leases.status
 				WHEN ABS(quota_lease_demo_leases.granted - (quota_lease_demo_leases.consumed + $5) - quota_lease_demo_leases.reclaimed) <= 0.000000000001 THEN 'closed'
-				WHEN quota_lease_demo_leases.granted - (quota_lease_demo_leases.consumed + $5) - quota_lease_demo_leases.reclaimed < 0 THEN 'active'
-				ELSE quota_lease_demo_leases.status
+				ELSE 'active'
 			END,
 			updated_at = $9,
 			version = quota_lease_demo_leases.version + 1

@@ -1,6 +1,6 @@
 import { apiClient } from '../client'
 
-export type QuotaLeaseDemoTaskStatus =
+export type QuotaLeaseTaskStatus =
   | 'pending'
   | 'waiting_callback'
   | 'callback_ready'
@@ -11,9 +11,9 @@ export interface NodeLeaseControlOptions {
   signal?: AbortSignal
 }
 
-const nodeLeaseDemoAdminBase = '/admin/node-leases/demo'
+const nodeLeaseAdminBase = '/admin/node-leases'
 
-export interface QuotaLeaseDemoNode {
+export interface QuotaLeaseNode {
   node_id: string
   region?: string
   base_url?: string
@@ -23,13 +23,13 @@ export interface QuotaLeaseDemoNode {
   inflight_requests: number
   lease_remaining: number
   metrics?: Record<string, number>
-  sync_status?: QuotaLeaseDemoNodeSyncStatus
+  sync_status?: QuotaLeaseNodeSyncStatus
   registered_at: string
   last_heartbeat_at?: string
   updated_at: string
 }
 
-export interface QuotaLeaseDemoNodeSyncStatus {
+export interface QuotaLeaseNodeSyncStatus {
   mirror_ready: boolean
   mirror_synced_at?: string
   last_sync_started_at?: string
@@ -64,7 +64,7 @@ export interface UpdateNodeRequest {
 }
 
 export interface RegisterNodeResult {
-  node: QuotaLeaseDemoNode
+  node: QuotaLeaseNode
   node_secret: string
 }
 
@@ -79,14 +79,14 @@ export interface NodeRegistrationURLResult {
   created_at: string
 }
 
-export interface QuotaLeaseDemoSettings {
+export interface QuotaLeaseSettings {
   prefetch_low_watermark_amount: number
   prefetch_average_window: number
   prefetch_average_multiplier: number
   prefetch_debounce_seconds: number
 }
 
-export interface QuotaLeaseDemoLease {
+export interface QuotaLeaseLease {
   id: string
   node_id: string
   user_id: number
@@ -101,7 +101,7 @@ export interface QuotaLeaseDemoLease {
   updated_at: string
 }
 
-export interface QuotaLeaseDemoLedgerEvent {
+export interface QuotaLeaseLedgerEvent {
   event_id: string
   lease_id: string
   node_id: string
@@ -114,7 +114,7 @@ export interface QuotaLeaseDemoLedgerEvent {
   created_at: string
 }
 
-export interface QuotaLeaseDemoSnapshotStats {
+export interface QuotaLeaseSnapshotStats {
   active_leases: number
   expired_leases: number
   closed_leases: number
@@ -128,16 +128,16 @@ export interface QuotaLeaseDemoSnapshotStats {
   online_nodes: number
 }
 
-export interface QuotaLeaseDemoSnapshot {
+export interface QuotaLeaseSnapshot {
   enabled: boolean
   node_id: string
-  nodes: QuotaLeaseDemoNode[]
-  leases: QuotaLeaseDemoLease[]
-  events: QuotaLeaseDemoLedgerEvent[]
-  stats: QuotaLeaseDemoSnapshotStats
+  nodes: QuotaLeaseNode[]
+  leases: QuotaLeaseLease[]
+  events: QuotaLeaseLedgerEvent[]
+  stats: QuotaLeaseSnapshotStats
 }
 
-export interface QuotaLeaseDemoAccountSnapshot {
+export interface QuotaLeaseAccountSnapshot {
   id: number
   name: string
   platform: string
@@ -157,7 +157,7 @@ export interface QuotaLeaseDemoAccountSnapshot {
   updated_at: string
 }
 
-export interface QuotaLeaseDemoAccountLoginTask {
+export interface QuotaLeaseAccountLoginTask {
   id: string
   account_id: number
   name: string
@@ -169,9 +169,9 @@ export interface QuotaLeaseDemoAccountLoginTask {
   group_ids?: number[]
   concurrency: number
   priority: number
-  status: QuotaLeaseDemoTaskStatus
+  status: QuotaLeaseTaskStatus
   error?: string
-  account?: QuotaLeaseDemoAccountSnapshot
+  account?: QuotaLeaseAccountSnapshot
   created_at: string
   updated_at: string
   completed_at?: string
@@ -200,23 +200,23 @@ export interface SubmitAccountLoginTaskCallbackRequest {
   payload?: Record<string, unknown>
 }
 
-export interface QuotaLeaseDemoAssignedAccount {
+export interface QuotaLeaseAssignedAccount {
   node_id: string
   task_id?: string
-  account: QuotaLeaseDemoAccountSnapshot
+  account: QuotaLeaseAccountSnapshot
   created_at: string
   updated_at: string
 }
 
-export interface QuotaLeaseDemoReclaimResult {
+export interface QuotaLeaseReclaimResult {
   expired_count: number
   reclaimed_count: number
   reclaimed_total: number
 }
 
-export type QuotaLeaseDemoDiagnosticHealth = 'ok' | 'warning' | 'critical'
+export type QuotaLeaseDiagnosticHealth = 'ok' | 'warning' | 'critical'
 
-export interface QuotaLeaseDemoDiagnosticStats {
+export interface QuotaLeaseDiagnosticStats {
   node_count: number
   online_nodes: number
   user_count: number
@@ -241,9 +241,9 @@ export interface QuotaLeaseDemoDiagnosticStats {
   critical_count: number
 }
 
-export interface QuotaLeaseDemoDiagnosticIssue {
+export interface QuotaLeaseDiagnosticIssue {
   id: string
-  level: QuotaLeaseDemoDiagnosticHealth
+  level: QuotaLeaseDiagnosticHealth
   scope: string
   code: string
   message: string
@@ -255,12 +255,12 @@ export interface QuotaLeaseDemoDiagnosticIssue {
   created_at?: string
 }
 
-export interface QuotaLeaseDemoNodeDiagnostic {
+export interface QuotaLeaseNodeDiagnostic {
   node_id: string
   region?: string
   base_url?: string
   status: string
-  health: QuotaLeaseDemoDiagnosticHealth
+  health: QuotaLeaseDiagnosticHealth
   issues?: string[]
   last_heartbeat_at?: string
   heartbeat_age_seconds?: number
@@ -268,13 +268,13 @@ export interface QuotaLeaseDemoNodeDiagnostic {
   active_remaining: number
   overdraft_amount: number
   lease_count: number
-  sync_status?: QuotaLeaseDemoNodeSyncStatus
+  sync_status?: QuotaLeaseNodeSyncStatus
   pending_usage_events: number
   pending_usage_logs: number
   pending_ops_error_logs: number
 }
 
-export interface QuotaLeaseDemoUserDiagnostic {
+export interface QuotaLeaseUserDiagnostic {
   user_id: number
   username?: string
   email?: string
@@ -282,7 +282,7 @@ export interface QuotaLeaseDemoUserDiagnostic {
   balance?: number
   frozen_balance?: number
   profile_error?: string
-  health: QuotaLeaseDemoDiagnosticHealth
+  health: QuotaLeaseDiagnosticHealth
   issues?: string[]
   api_key_ids?: number[]
   lease_count: number
@@ -296,13 +296,13 @@ export interface QuotaLeaseDemoUserDiagnostic {
   last_event_at?: string
 }
 
-export interface QuotaLeaseDemoLeaseDiagnostic {
+export interface QuotaLeaseLeaseDiagnostic {
   id: string
   node_id: string
   user_id: number
   api_key_id: number
   status: string
-  health: QuotaLeaseDemoDiagnosticHealth
+  health: QuotaLeaseDiagnosticHealth
   issues?: string[]
   granted: number
   consumed: number
@@ -319,18 +319,18 @@ export interface QuotaLeaseDemoLeaseDiagnostic {
   reclaim_in_seconds: number
 }
 
-export interface QuotaLeaseDemoDiagnostics {
+export interface QuotaLeaseDiagnostics {
   generated_at: string
   enabled: boolean
   node_id: string
-  health: QuotaLeaseDemoDiagnosticHealth
+  health: QuotaLeaseDiagnosticHealth
   default_grant_amount: number
   preflight_reserve_amount: number
-  stats: QuotaLeaseDemoDiagnosticStats
-  issues: QuotaLeaseDemoDiagnosticIssue[]
-  nodes: QuotaLeaseDemoNodeDiagnostic[]
-  users: QuotaLeaseDemoUserDiagnostic[]
-  leases: QuotaLeaseDemoLeaseDiagnostic[]
+  stats: QuotaLeaseDiagnosticStats
+  issues: QuotaLeaseDiagnosticIssue[]
+  nodes: QuotaLeaseNodeDiagnostic[]
+  users: QuotaLeaseUserDiagnostic[]
+  leases: QuotaLeaseLeaseDiagnostic[]
 }
 
 function requestConfig(options?: NodeLeaseControlOptions) {
@@ -339,17 +339,17 @@ function requestConfig(options?: NodeLeaseControlOptions) {
   }
 }
 
-export async function getStatus(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoSnapshot> {
-  const { data } = await apiClient.get<QuotaLeaseDemoSnapshot>(
-    `${nodeLeaseDemoAdminBase}/status`,
+export async function getStatus(options?: NodeLeaseControlOptions): Promise<QuotaLeaseSnapshot> {
+  const { data } = await apiClient.get<QuotaLeaseSnapshot>(
+    `${nodeLeaseAdminBase}/status`,
     requestConfig(options)
   )
   return data
 }
 
-export async function listNodes(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoNode[]> {
-  const { data } = await apiClient.get<{ nodes: QuotaLeaseDemoNode[] }>(
-    `${nodeLeaseDemoAdminBase}/nodes`,
+export async function listNodes(options?: NodeLeaseControlOptions): Promise<QuotaLeaseNode[]> {
+  const { data } = await apiClient.get<{ nodes: QuotaLeaseNode[] }>(
+    `${nodeLeaseAdminBase}/nodes`,
     requestConfig(options)
   )
   return data.nodes || []
@@ -359,29 +359,29 @@ export async function updateNode(
   nodeId: string,
   payload: UpdateNodeRequest,
   options?: NodeLeaseControlOptions
-): Promise<QuotaLeaseDemoNode> {
-  const { data } = await apiClient.put<{ node: QuotaLeaseDemoNode }>(
-    `${nodeLeaseDemoAdminBase}/nodes/${encodeURIComponent(nodeId)}`,
+): Promise<QuotaLeaseNode> {
+  const { data } = await apiClient.put<{ node: QuotaLeaseNode }>(
+    `${nodeLeaseAdminBase}/nodes/${encodeURIComponent(nodeId)}`,
     payload,
     requestConfig(options)
   )
   return data.node
 }
 
-export async function getSettings(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoSettings> {
-  const { data } = await apiClient.get<QuotaLeaseDemoSettings>(
-    `${nodeLeaseDemoAdminBase}/settings`,
+export async function getSettings(options?: NodeLeaseControlOptions): Promise<QuotaLeaseSettings> {
+  const { data } = await apiClient.get<QuotaLeaseSettings>(
+    `${nodeLeaseAdminBase}/settings`,
     requestConfig(options)
   )
   return data
 }
 
 export async function updateSettings(
-  payload: QuotaLeaseDemoSettings,
+  payload: QuotaLeaseSettings,
   options?: NodeLeaseControlOptions
-): Promise<QuotaLeaseDemoSettings> {
-  const { data } = await apiClient.put<QuotaLeaseDemoSettings>(
-    `${nodeLeaseDemoAdminBase}/settings`,
+): Promise<QuotaLeaseSettings> {
+  const { data } = await apiClient.put<QuotaLeaseSettings>(
+    `${nodeLeaseAdminBase}/settings`,
     payload,
     requestConfig(options)
   )
@@ -393,7 +393,7 @@ export async function registerNode(
   options?: NodeLeaseControlOptions
 ): Promise<RegisterNodeResult> {
   const { data } = await apiClient.post<RegisterNodeResult>(
-    `${nodeLeaseDemoAdminBase}/nodes/register`,
+    `${nodeLeaseAdminBase}/nodes/register`,
     payload,
     requestConfig(options)
   )
@@ -405,7 +405,7 @@ export async function createNodeRegistrationURL(
   options?: NodeLeaseControlOptions
 ): Promise<NodeRegistrationURLResult> {
   const { data } = await apiClient.post<NodeRegistrationURLResult>(
-    `${nodeLeaseDemoAdminBase}/nodes/registration-urls`,
+    `${nodeLeaseAdminBase}/nodes/registration-urls`,
     payload,
     requestConfig(options)
   )
@@ -415,9 +415,9 @@ export async function createNodeRegistrationURL(
 export async function listLoginTasks(
   params?: { status?: string; node_id?: string },
   options?: NodeLeaseControlOptions
-): Promise<QuotaLeaseDemoAccountLoginTask[]> {
-  const { data } = await apiClient.get<{ tasks: QuotaLeaseDemoAccountLoginTask[] }>(
-    `${nodeLeaseDemoAdminBase}/accounts/login-tasks`,
+): Promise<QuotaLeaseAccountLoginTask[]> {
+  const { data } = await apiClient.get<{ tasks: QuotaLeaseAccountLoginTask[] }>(
+    `${nodeLeaseAdminBase}/accounts/login-tasks`,
     {
       ...requestConfig(options),
       params: {
@@ -432,9 +432,9 @@ export async function listLoginTasks(
 export async function createLoginTask(
   payload: CreateAccountLoginTaskRequest,
   options?: NodeLeaseControlOptions
-): Promise<QuotaLeaseDemoAccountLoginTask> {
-  const { data } = await apiClient.post<{ task: QuotaLeaseDemoAccountLoginTask }>(
-    `${nodeLeaseDemoAdminBase}/accounts/login-tasks`,
+): Promise<QuotaLeaseAccountLoginTask> {
+  const { data } = await apiClient.post<{ task: QuotaLeaseAccountLoginTask }>(
+    `${nodeLeaseAdminBase}/accounts/login-tasks`,
     payload,
     requestConfig(options)
   )
@@ -445,9 +445,9 @@ export async function submitLoginTaskCallback(
   taskId: string,
   payload: SubmitAccountLoginTaskCallbackRequest,
   options?: NodeLeaseControlOptions
-): Promise<QuotaLeaseDemoAccountLoginTask> {
-  const { data } = await apiClient.post<{ task: QuotaLeaseDemoAccountLoginTask }>(
-    `${nodeLeaseDemoAdminBase}/accounts/login-tasks/${encodeURIComponent(taskId)}/callback`,
+): Promise<QuotaLeaseAccountLoginTask> {
+  const { data } = await apiClient.post<{ task: QuotaLeaseAccountLoginTask }>(
+    `${nodeLeaseAdminBase}/accounts/login-tasks/${encodeURIComponent(taskId)}/callback`,
     payload,
     requestConfig(options)
   )
@@ -457,9 +457,9 @@ export async function submitLoginTaskCallback(
 export async function listAssignedAccounts(
   params?: { node_id?: string },
   options?: NodeLeaseControlOptions
-): Promise<QuotaLeaseDemoAssignedAccount[]> {
-  const { data } = await apiClient.get<{ accounts: QuotaLeaseDemoAssignedAccount[] }>(
-    `${nodeLeaseDemoAdminBase}/accounts/assignments`,
+): Promise<QuotaLeaseAssignedAccount[]> {
+  const { data } = await apiClient.get<{ accounts: QuotaLeaseAssignedAccount[] }>(
+    `${nodeLeaseAdminBase}/accounts/assignments`,
     {
       ...requestConfig(options),
       params: {
@@ -472,18 +472,18 @@ export async function listAssignedAccounts(
 
 export async function reclaimExpired(
   options?: NodeLeaseControlOptions
-): Promise<QuotaLeaseDemoReclaimResult> {
-  const { data } = await apiClient.post<QuotaLeaseDemoReclaimResult>(
-    `${nodeLeaseDemoAdminBase}/reclaim`,
+): Promise<QuotaLeaseReclaimResult> {
+  const { data } = await apiClient.post<QuotaLeaseReclaimResult>(
+    `${nodeLeaseAdminBase}/reclaim`,
     {},
     requestConfig(options)
   )
   return data
 }
 
-export async function getDiagnostics(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDemoDiagnostics> {
-  const { data } = await apiClient.get<{ diagnostics: QuotaLeaseDemoDiagnostics }>(
-    `${nodeLeaseDemoAdminBase}/diagnostics`,
+export async function getDiagnostics(options?: NodeLeaseControlOptions): Promise<QuotaLeaseDiagnostics> {
+  const { data } = await apiClient.get<{ diagnostics: QuotaLeaseDiagnostics }>(
+    `${nodeLeaseAdminBase}/diagnostics`,
     requestConfig(options)
   )
   return data.diagnostics

@@ -537,7 +537,7 @@ func (h *GrokOAuthHandler) QueryQuota(c *gin.Context) {
 			return
 		}
 		if task == nil || task.GrokQuota == nil {
-			response.ErrorFrom(c, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_DEMO_USAGE_PROBE_EMPTY", "grok quota probe returned no usage data"))
+			response.ErrorFrom(c, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_USAGE_PROBE_EMPTY", "grok quota probe returned no usage data"))
 			return
 		}
 		response.Success(c, task.GrokQuota)

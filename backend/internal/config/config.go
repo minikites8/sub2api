@@ -878,7 +878,9 @@ type GatewayConfig struct {
 
 	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
 	UsageRecord GatewayUsageRecordConfig `mapstructure:"usage_record"`
-	// QuotaLeaseDemo: 短期额度租约 demo，用于混合架构验证。
+	// QuotaLease: 短期额度租约，用于控制面 + 节点混合部署。
+	QuotaLease GatewayQuotaLeaseDemoConfig `mapstructure:"quota_lease"`
+	// QuotaLeaseDemo is kept for old config files and environment variables.
 	QuotaLeaseDemo GatewayQuotaLeaseDemoConfig `mapstructure:"quota_lease_demo"`
 
 	// UserGroupRateCacheTTLSeconds: 用户分组倍率热路径缓存 TTL（秒）
@@ -916,6 +918,7 @@ type GatewayQuotaLeaseDemoConfig struct {
 	DefaultGrantAmount         float64 `mapstructure:"default_grant_amount"`
 	LeaseTTLSeconds            int     `mapstructure:"lease_ttl_seconds"`
 	ReclaimGraceSeconds        int     `mapstructure:"reclaim_grace_seconds"`
+	RemoteTimeoutSeconds       int     `mapstructure:"remote_timeout_seconds"`
 	PreflightReserveAmount     float64 `mapstructure:"preflight_reserve_amount"`
 	PrefetchLowWatermarkAmount float64 `mapstructure:"prefetch_low_watermark_amount"`
 	PrefetchAverageWindow      int     `mapstructure:"prefetch_average_window"`
@@ -1596,6 +1599,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config error: %w", err)
 	}
+	applyQuotaLeaseConfigCompatibility(&cfg)
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs == 0 {
 		cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 15000
 	}
@@ -2210,20 +2214,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.usage_record.auto_scale_down_step", 16)
 	viper.SetDefault("gateway.usage_record.auto_scale_check_interval_seconds", 3)
 	viper.SetDefault("gateway.usage_record.auto_scale_cooldown_seconds", 10)
-	viper.SetDefault("gateway.quota_lease_demo.enabled", false)
-	viper.SetDefault("gateway.quota_lease_demo.node_id", "gateway-demo")
-	viper.SetDefault("gateway.quota_lease_demo.node_secret", "")
-	viper.SetDefault("gateway.quota_lease_demo.registration_url", "")
-	viper.SetDefault("gateway.quota_lease_demo.control_plane_base_url", "")
-	viper.SetDefault("gateway.quota_lease_demo.control_plane_key", "")
-	viper.SetDefault("gateway.quota_lease_demo.default_grant_amount", 1.0)
-	viper.SetDefault("gateway.quota_lease_demo.lease_ttl_seconds", 600)
-	viper.SetDefault("gateway.quota_lease_demo.reclaim_grace_seconds", 3600)
-	viper.SetDefault("gateway.quota_lease_demo.preflight_reserve_amount", 0.000001)
-	viper.SetDefault("gateway.quota_lease_demo.prefetch_low_watermark_amount", 0.2)
-	viper.SetDefault("gateway.quota_lease_demo.prefetch_average_window", 5)
-	viper.SetDefault("gateway.quota_lease_demo.prefetch_average_multiplier", 3.0)
-	viper.SetDefault("gateway.quota_lease_demo.prefetch_debounce_seconds", 10)
+	setQuotaLeaseDefaults()
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
 	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
@@ -2263,6 +2254,104 @@ func setDefaults() {
 	viper.SetDefault("subscription_maintenance.worker_count", 2)
 	viper.SetDefault("subscription_maintenance.queue_size", 1024)
 
+}
+
+func setQuotaLeaseDefaults() {
+	defaults := map[string]any{
+		"enabled":                       false,
+		"node_id":                       "gateway-node",
+		"node_secret":                   "",
+		"registration_url":              "",
+		"control_plane_base_url":        "",
+		"control_plane_key":             "",
+		"default_grant_amount":          1.0,
+		"lease_ttl_seconds":             600,
+		"reclaim_grace_seconds":         3600,
+		"remote_timeout_seconds":        15,
+		"preflight_reserve_amount":      0.000001,
+		"prefetch_low_watermark_amount": 0.2,
+		"prefetch_average_window":       5,
+		"prefetch_average_multiplier":   3.0,
+		"prefetch_debounce_seconds":     10,
+	}
+	for key, value := range defaults {
+		viper.SetDefault("gateway.quota_lease."+key, value)
+		_ = viper.BindEnv("gateway.quota_lease." + key)
+		_ = viper.BindEnv("gateway.quota_lease_demo." + key)
+	}
+}
+
+func applyQuotaLeaseConfigCompatibility(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	official := cfg.Gateway.QuotaLease
+	legacy := cfg.Gateway.QuotaLeaseDemo
+	if quotaLeaseLegacyKeyExplicit("enabled") && !quotaLeaseOfficialKeyExplicit("enabled") {
+		official.Enabled = legacy.Enabled
+	}
+	if quotaLeaseLegacyKeyExplicit("node_id") && !quotaLeaseOfficialKeyExplicit("node_id") {
+		official.NodeID = legacy.NodeID
+	}
+	if quotaLeaseLegacyKeyExplicit("node_secret") && !quotaLeaseOfficialKeyExplicit("node_secret") {
+		official.NodeSecret = legacy.NodeSecret
+	}
+	if quotaLeaseLegacyKeyExplicit("registration_url") && !quotaLeaseOfficialKeyExplicit("registration_url") {
+		official.RegistrationURL = legacy.RegistrationURL
+	}
+	if quotaLeaseLegacyKeyExplicit("control_plane_base_url") && !quotaLeaseOfficialKeyExplicit("control_plane_base_url") {
+		official.ControlPlaneBaseURL = legacy.ControlPlaneBaseURL
+	}
+	if quotaLeaseLegacyKeyExplicit("control_plane_key") && !quotaLeaseOfficialKeyExplicit("control_plane_key") {
+		official.ControlPlaneKey = legacy.ControlPlaneKey
+	}
+	if quotaLeaseLegacyKeyExplicit("default_grant_amount") && !quotaLeaseOfficialKeyExplicit("default_grant_amount") {
+		official.DefaultGrantAmount = legacy.DefaultGrantAmount
+	}
+	if quotaLeaseLegacyKeyExplicit("lease_ttl_seconds") && !quotaLeaseOfficialKeyExplicit("lease_ttl_seconds") {
+		official.LeaseTTLSeconds = legacy.LeaseTTLSeconds
+	}
+	if quotaLeaseLegacyKeyExplicit("reclaim_grace_seconds") && !quotaLeaseOfficialKeyExplicit("reclaim_grace_seconds") {
+		official.ReclaimGraceSeconds = legacy.ReclaimGraceSeconds
+	}
+	if quotaLeaseLegacyKeyExplicit("remote_timeout_seconds") && !quotaLeaseOfficialKeyExplicit("remote_timeout_seconds") {
+		official.RemoteTimeoutSeconds = legacy.RemoteTimeoutSeconds
+	}
+	if quotaLeaseLegacyKeyExplicit("preflight_reserve_amount") && !quotaLeaseOfficialKeyExplicit("preflight_reserve_amount") {
+		official.PreflightReserveAmount = legacy.PreflightReserveAmount
+	}
+	if quotaLeaseLegacyKeyExplicit("prefetch_low_watermark_amount") && !quotaLeaseOfficialKeyExplicit("prefetch_low_watermark_amount") {
+		official.PrefetchLowWatermarkAmount = legacy.PrefetchLowWatermarkAmount
+	}
+	if quotaLeaseLegacyKeyExplicit("prefetch_average_window") && !quotaLeaseOfficialKeyExplicit("prefetch_average_window") {
+		official.PrefetchAverageWindow = legacy.PrefetchAverageWindow
+	}
+	if quotaLeaseLegacyKeyExplicit("prefetch_average_multiplier") && !quotaLeaseOfficialKeyExplicit("prefetch_average_multiplier") {
+		official.PrefetchAverageMultiplier = legacy.PrefetchAverageMultiplier
+	}
+	if quotaLeaseLegacyKeyExplicit("prefetch_debounce_seconds") && !quotaLeaseOfficialKeyExplicit("prefetch_debounce_seconds") {
+		official.PrefetchDebounceSeconds = legacy.PrefetchDebounceSeconds
+	}
+	cfg.Gateway.QuotaLease = official
+	cfg.Gateway.QuotaLeaseDemo = official
+}
+
+func quotaLeaseOfficialKeyExplicit(key string) bool {
+	return quotaLeaseConfigKeyExplicit("gateway.quota_lease", key)
+}
+
+func quotaLeaseLegacyKeyExplicit(key string) bool {
+	return quotaLeaseConfigKeyExplicit("gateway.quota_lease_demo", key)
+}
+
+func quotaLeaseConfigKeyExplicit(prefix, key string) bool {
+	configKey := prefix + "." + key
+	if viper.InConfig(configKey) {
+		return true
+	}
+	envKey := strings.ToUpper(strings.ReplaceAll(configKey, ".", "_"))
+	_, ok := os.LookupEnv(envKey)
+	return ok
 }
 
 func (c *Config) Validate() error {
@@ -3153,41 +3242,44 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL) != "" {
 			registrationURL, err := url.Parse(strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL))
 			if err != nil || registrationURL.Scheme == "" || registrationURL.Host == "" || (registrationURL.Scheme != "http" && registrationURL.Scheme != "https") {
-				return fmt.Errorf("gateway.quota_lease_demo.registration_url must be a valid http(s) URL")
+				return fmt.Errorf("gateway.quota_lease.registration_url must be a valid http(s) URL")
 			}
 		}
 		if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneBaseURL) != "" {
 			controlURL, err := url.Parse(strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneBaseURL))
 			if err != nil || controlURL.Scheme == "" || controlURL.Host == "" || (controlURL.Scheme != "http" && controlURL.Scheme != "https") {
-				return fmt.Errorf("gateway.quota_lease_demo.control_plane_base_url must be a valid http(s) URL")
+				return fmt.Errorf("gateway.quota_lease.control_plane_base_url must be a valid http(s) URL")
 			}
 			if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneKey) == "" && strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL) == "" {
-				return fmt.Errorf("gateway.quota_lease_demo.control_plane_key must be set when control_plane_base_url is set")
+				return fmt.Errorf("gateway.quota_lease.control_plane_key must be set when control_plane_base_url is set")
 			}
 		}
 		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.DefaultGrantAmount) || c.Gateway.QuotaLeaseDemo.DefaultGrantAmount <= 0 {
-			return fmt.Errorf("gateway.quota_lease_demo.default_grant_amount must be positive")
+			return fmt.Errorf("gateway.quota_lease.default_grant_amount must be positive")
 		}
 		if c.Gateway.QuotaLeaseDemo.LeaseTTLSeconds <= 0 {
-			return fmt.Errorf("gateway.quota_lease_demo.lease_ttl_seconds must be positive")
+			return fmt.Errorf("gateway.quota_lease.lease_ttl_seconds must be positive")
 		}
 		if c.Gateway.QuotaLeaseDemo.ReclaimGraceSeconds <= 0 {
-			return fmt.Errorf("gateway.quota_lease_demo.reclaim_grace_seconds must be positive")
+			return fmt.Errorf("gateway.quota_lease.reclaim_grace_seconds must be positive")
+		}
+		if c.Gateway.QuotaLeaseDemo.RemoteTimeoutSeconds <= 0 {
+			return fmt.Errorf("gateway.quota_lease.remote_timeout_seconds must be positive")
 		}
 		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.PreflightReserveAmount) || c.Gateway.QuotaLeaseDemo.PreflightReserveAmount <= 0 {
-			return fmt.Errorf("gateway.quota_lease_demo.preflight_reserve_amount must be positive")
+			return fmt.Errorf("gateway.quota_lease.preflight_reserve_amount must be positive")
 		}
 		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.PrefetchLowWatermarkAmount) {
-			return fmt.Errorf("gateway.quota_lease_demo.prefetch_low_watermark_amount must be non-negative")
+			return fmt.Errorf("gateway.quota_lease.prefetch_low_watermark_amount must be non-negative")
 		}
 		if c.Gateway.QuotaLeaseDemo.PrefetchAverageWindow < 0 {
-			return fmt.Errorf("gateway.quota_lease_demo.prefetch_average_window must be non-negative")
+			return fmt.Errorf("gateway.quota_lease.prefetch_average_window must be non-negative")
 		}
 		if !isFiniteNonNegative(c.Gateway.QuotaLeaseDemo.PrefetchAverageMultiplier) {
-			return fmt.Errorf("gateway.quota_lease_demo.prefetch_average_multiplier must be non-negative")
+			return fmt.Errorf("gateway.quota_lease.prefetch_average_multiplier must be non-negative")
 		}
 		if c.Gateway.QuotaLeaseDemo.PrefetchDebounceSeconds < 0 {
-			return fmt.Errorf("gateway.quota_lease_demo.prefetch_debounce_seconds must be non-negative")
+			return fmt.Errorf("gateway.quota_lease.prefetch_debounce_seconds must be non-negative")
 		}
 	}
 	if c.Gateway.UserGroupRateCacheTTLSeconds <= 0 {

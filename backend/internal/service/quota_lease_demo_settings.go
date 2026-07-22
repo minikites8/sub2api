@@ -50,16 +50,24 @@ func (s *SettingService) GetQuotaLeaseDemoSettings(ctx context.Context) (*QuotaL
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyQuotaLeaseDemoSettings)
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyQuotaLeaseSettings)
 	if err != nil {
 		if errors.Is(err, ErrSettingNotFound) {
-			return defaults, nil
+			legacyRaw, legacyErr := s.settingRepo.GetValue(ctx, SettingKeyQuotaLeaseDemoSettings)
+			if legacyErr != nil {
+				if errors.Is(legacyErr, ErrSettingNotFound) {
+					return defaults, nil
+				}
+				return nil, fmt.Errorf("get quota lease settings: %w", legacyErr)
+			}
+			raw = legacyRaw
+		} else {
+			return nil, fmt.Errorf("get quota lease settings: %w", err)
 		}
-		return nil, fmt.Errorf("get quota lease demo settings: %w", err)
 	}
 	settings, err := parseQuotaLeaseDemoSettingsJSON(raw, defaults)
 	if err != nil {
-		return nil, fmt.Errorf("parse quota lease demo settings: %w", err)
+		return nil, fmt.Errorf("parse quota lease settings: %w", err)
 	}
 	return settings, nil
 }
@@ -69,14 +77,14 @@ func (s *SettingService) SetQuotaLeaseDemoSettings(ctx context.Context, patch *Q
 		return nil, fmt.Errorf("setting repository is unavailable")
 	}
 	if patch == nil {
-		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_DEMO_SETTINGS", "settings cannot be nil")
+		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_SETTINGS", "settings cannot be nil")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	current, err := s.GetQuotaLeaseDemoSettings(ctx)
 	if err != nil {
-		slog.Warn("quota_lease_demo.settings_load_for_update_failed", "error", err)
+		slog.Warn("quota_lease.settings_load_for_update_failed", "error", err)
 		current = s.defaultQuotaLeaseDemoSettings()
 	}
 	settings := applyQuotaLeaseDemoSettingsPatch(current, patch)
@@ -86,10 +94,13 @@ func (s *SettingService) SetQuotaLeaseDemoSettings(ctx context.Context, patch *Q
 	}
 	data, err := json.Marshal(normalized)
 	if err != nil {
-		return nil, fmt.Errorf("marshal quota lease demo settings: %w", err)
+		return nil, fmt.Errorf("marshal quota lease settings: %w", err)
 	}
-	if err := s.settingRepo.Set(ctx, SettingKeyQuotaLeaseDemoSettings, string(data)); err != nil {
-		return nil, fmt.Errorf("save quota lease demo settings: %w", err)
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
+		SettingKeyQuotaLeaseSettings:     string(data),
+		SettingKeyQuotaLeaseDemoSettings: string(data),
+	}); err != nil {
+		return nil, fmt.Errorf("save quota lease settings: %w", err)
 	}
 	if s.onUpdate != nil {
 		s.onUpdate()
@@ -101,7 +112,11 @@ func (s *SettingService) defaultQuotaLeaseDemoSettings() *QuotaLeaseDemoSettings
 	if s == nil || s.cfg == nil {
 		return defaultQuotaLeaseDemoSettings()
 	}
-	return quotaLeaseDemoSettingsFromConfig(s.cfg.Gateway.QuotaLeaseDemo)
+	cfg := s.cfg.Gateway.QuotaLeaseDemo
+	if s.cfg.Gateway.QuotaLease.Enabled {
+		cfg = s.cfg.Gateway.QuotaLease
+	}
+	return quotaLeaseDemoSettingsFromConfig(cfg)
 }
 
 func defaultQuotaLeaseDemoSettings() *QuotaLeaseDemoSettings {
@@ -165,19 +180,19 @@ func applyQuotaLeaseDemoSettingsPatch(base *QuotaLeaseDemoSettings, patch *Quota
 
 func validateQuotaLeaseDemoSettings(settings *QuotaLeaseDemoSettings) (*QuotaLeaseDemoSettings, error) {
 	if settings == nil {
-		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_DEMO_SETTINGS", "settings cannot be nil")
+		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_SETTINGS", "settings cannot be nil")
 	}
 	if !isFiniteNonNegativeFloat(settings.PrefetchLowWatermarkAmount) {
-		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_DEMO_SETTINGS", "prefetch_low_watermark_amount must be >= 0")
+		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_SETTINGS", "prefetch_low_watermark_amount must be >= 0")
 	}
 	if settings.PrefetchAverageWindow < 0 {
-		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_DEMO_SETTINGS", "prefetch_average_window must be >= 0")
+		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_SETTINGS", "prefetch_average_window must be >= 0")
 	}
 	if !isFiniteNonNegativeFloat(settings.PrefetchAverageMultiplier) {
-		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_DEMO_SETTINGS", "prefetch_average_multiplier must be >= 0")
+		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_SETTINGS", "prefetch_average_multiplier must be >= 0")
 	}
 	if settings.PrefetchDebounceSeconds < 0 {
-		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_DEMO_SETTINGS", "prefetch_debounce_seconds must be >= 0")
+		return nil, infraerrors.BadRequest("INVALID_QUOTA_LEASE_SETTINGS", "prefetch_debounce_seconds must be >= 0")
 	}
 	normalized := *settings
 	return &normalized, nil
@@ -214,7 +229,7 @@ func (s *QuotaLeaseDemoService) UpdateSettings(ctx context.Context, patch *Quota
 	settingService := s.settingService
 	s.settingsMu.RUnlock()
 	if settingService == nil {
-		return nil, infraerrors.ServiceUnavailable("QUOTA_LEASE_DEMO_SETTINGS_UNAVAILABLE", "quota lease demo settings service is unavailable")
+		return nil, infraerrors.ServiceUnavailable("QUOTA_LEASE_SETTINGS_UNAVAILABLE", "quota lease settings service is unavailable")
 	}
 	settings, err := settingService.SetQuotaLeaseDemoSettings(ctx, patch)
 	if err != nil {
@@ -247,7 +262,7 @@ func (s *QuotaLeaseDemoService) runtimeSettingsSnapshot(ctx context.Context, req
 		if cached != nil {
 			return cached, nil
 		}
-		slog.Warn("quota_lease_demo.remote_settings_load_failed", "error", err)
+		slog.Warn("quota_lease.remote_settings_load_failed", "error", err)
 	}
 	if settingService == nil {
 		settings := quotaLeaseDemoSettingsFromConfig(s.cfgSnapshot())
@@ -259,7 +274,7 @@ func (s *QuotaLeaseDemoService) runtimeSettingsSnapshot(ctx context.Context, req
 		if cached != nil {
 			return cached, nil
 		}
-		slog.Warn("quota_lease_demo.settings_load_failed", "error", err)
+		slog.Warn("quota_lease.settings_load_failed", "error", err)
 		settings = quotaLeaseDemoSettingsFromConfig(s.cfgSnapshot())
 	}
 	s.cacheRuntimeSettings(settings, now.Add(quotaLeaseDemoSettingsCacheTTL))
@@ -308,10 +323,10 @@ func (s *QuotaLeaseDemoService) maybePrefetchUsageLease(ctx context.Context, lea
 	target := s.prefetchTargetAmount(remaining, avg, settings)
 	go func() {
 		defer s.markPrefetchComplete(nodeID, lease.UserID, lease.APIKeyID)
-		reqCtx, cancel := context.WithTimeout(context.Background(), quotaLeaseDemoRemoteTimeout)
+		reqCtx, cancel := context.WithTimeout(context.Background(), s.RemoteTimeout())
 		defer cancel()
 		if flushErr := s.FlushPendingUsage(reqCtx); flushErr != nil {
-			slog.Warn("quota_lease_demo.prefetch_usage_flush_failed",
+			slog.Warn("quota_lease.prefetch_usage_flush_failed",
 				"node_id", nodeID,
 				"user_id", lease.UserID,
 				"api_key_id", lease.APIKeyID,
@@ -325,7 +340,7 @@ func (s *QuotaLeaseDemoService) maybePrefetchUsageLease(ctx context.Context, lea
 			APIKeyID: lease.APIKeyID,
 			Amount:   target,
 		}); requestErr != nil {
-			slog.Warn("quota_lease_demo.prefetch_failed",
+			slog.Warn("quota_lease.prefetch_failed",
 				"node_id", nodeID,
 				"user_id", lease.UserID,
 				"api_key_id", lease.APIKeyID,

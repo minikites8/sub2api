@@ -437,7 +437,11 @@ func (w *QuotaLeaseDemoNodeWorker) RunOnce(ctx context.Context) error {
 		combined = errors.Join(combined, err)
 	}
 	if err := w.svc.FlushPendingUsage(ctx); err != nil {
-		combined = errors.Join(combined, err)
+		if errors.Is(err, ErrQuotaLeaseDemoNoCapacity) {
+			slog.Warn("quota_lease.pending_usage_flush_blocked", "error", err)
+		} else {
+			combined = errors.Join(combined, err)
+		}
 	}
 	if err := w.svc.FlushPendingUsageLogs(ctx); err != nil {
 		combined = errors.Join(combined, err)
@@ -492,7 +496,7 @@ func (w *QuotaLeaseDemoNodeWorker) accountRuntimeLoadMetrics(ctx context.Context
 	}
 	loadMap, err := w.concurrencyService.GetAccountsLoadBatch(ctx, loadReq)
 	if err != nil {
-		slog.Warn("quota_lease_demo.account_runtime_load_failed", "node_id", nodeID, "error", err)
+		slog.Warn("quota_lease.account_runtime_load_failed", "node_id", nodeID, "error", err)
 		return nil
 	}
 	metrics := make(map[string]float64, len(loadReq)*4+3)
@@ -534,10 +538,16 @@ func (w *QuotaLeaseDemoNodeWorker) loop(ctx context.Context) {
 }
 
 func (w *QuotaLeaseDemoNodeWorker) runOnceWithTimeout(ctx context.Context) {
-	runCtx, cancel := context.WithTimeout(ctx, quotaLeaseDemoNodeWorkerRunTimeout)
+	timeout := quotaLeaseDemoNodeWorkerRunTimeout
+	if w != nil && w.svc != nil {
+		if remoteTimeout := w.svc.RemoteTimeout() * 4; remoteTimeout > timeout {
+			timeout = remoteTimeout
+		}
+	}
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err := w.RunOnce(runCtx); err != nil && !errors.Is(err, context.Canceled) {
-		slog.Warn("quota lease demo node worker run failed", "error", err)
+		slog.Warn("quota lease node worker run failed", "error", err)
 	}
 }
 
@@ -704,7 +714,7 @@ func (w *QuotaLeaseDemoReclaimWorker) runOnceWithTimeout(ctx context.Context) {
 	runCtx, cancel := context.WithTimeout(ctx, quotaLeaseDemoNodeWorkerRunTimeout)
 	defer cancel()
 	if err := w.RunOnce(runCtx); err != nil && !errors.Is(err, context.Canceled) {
-		slog.Warn("quota lease demo reclaim worker run failed", "error", err)
+		slog.Warn("quota lease reclaim worker run failed", "error", err)
 	}
 }
 

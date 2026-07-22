@@ -1,8 +1,9 @@
 # Delete with:
-# kubectl delete -f deploy/k8s/dev/quota-lease-demo-cleanup.yaml --ignore-not-found=true
+# kubectl delete -f deploy/k8s/dev/quota-lease-cleanup.yaml --ignore-not-found=true
 #
-# This manifest intentionally keeps the dev namespace itself. It removes only
-# the quota-lease demo resources and PVCs, including older shared PG/Redis PVCs.
+# This manifest intentionally keeps the dev namespace itself. It removes quota
+# lease test resources and PVCs, including older multi-node and shared storage
+# variants from previous dev deployments.
 apiVersion: v1
 kind: List
 items:

@@ -220,7 +220,7 @@ func (s *QuotaLeaseDemoService) persistUsageProbeExtraPatch(ctx context.Context,
 		return
 	}
 	if err := repo.UpdateExtra(ctx, accountID, extraPatch); err != nil {
-		slog.Warn("quota_lease_demo.usage_probe_extra_persist_failed",
+		slog.Warn("quota_lease.usage_probe_extra_persist_failed",
 			"account_id", accountID,
 			"error", err,
 		)
@@ -262,12 +262,12 @@ func (s *QuotaLeaseDemoService) WaitUsageProbeTask(ctx context.Context, taskID s
 			if message == "" {
 				message = "usage probe task failed"
 			}
-			return task, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_DEMO_USAGE_PROBE_FAILED", message)
+			return task, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_USAGE_PROBE_FAILED", message)
 		}
 
 		select {
 		case <-waitCtx.Done():
-			return task, infraerrors.New(http.StatusGatewayTimeout, "QUOTA_LEASE_DEMO_USAGE_PROBE_TIMEOUT", "usage probe task timed out")
+			return task, infraerrors.New(http.StatusGatewayTimeout, "QUOTA_LEASE_USAGE_PROBE_TIMEOUT", "usage probe task timed out")
 		case <-ticker.C:
 		}
 	}

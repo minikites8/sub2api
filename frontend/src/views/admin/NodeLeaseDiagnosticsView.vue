@@ -265,9 +265,9 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { adminAPI } from '@/api/admin'
 import type {
-  QuotaLeaseDemoDiagnostics,
-  QuotaLeaseDemoNodeDiagnostic,
-  QuotaLeaseDemoUserDiagnostic
+  QuotaLeaseDiagnostics,
+  QuotaLeaseNodeDiagnostic,
+  QuotaLeaseUserDiagnostic
 } from '@/api/admin/nodeLeases'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -281,7 +281,7 @@ import { formatDateTime } from '@/utils/format'
 
 const appStore = useAppStore()
 
-const diagnostics = ref<QuotaLeaseDemoDiagnostics | null>(null)
+const diagnostics = ref<QuotaLeaseDiagnostics | null>(null)
 const loading = ref(false)
 const nodeFilter = ref('')
 const levelFilter = ref('')
@@ -377,7 +377,7 @@ const leaseColumns = computed<Column[]>(() => [
 ])
 
 const usersByID = computed(() => {
-  const out = new Map<number, QuotaLeaseDemoUserDiagnostic>()
+  const out = new Map<number, QuotaLeaseUserDiagnostic>()
   for (const user of diagnostics.value?.users || []) {
     out.set(user.user_id, user)
   }
@@ -484,7 +484,7 @@ function scopeLabel(scope: string) {
   return labels[scope] || scope || '-'
 }
 
-function userDisplayName(user: QuotaLeaseDemoUserDiagnostic) {
+function userDisplayName(user: QuotaLeaseUserDiagnostic) {
   return user.username?.trim() || user.email?.trim() || `用户 #${user.user_id}`
 }
 
@@ -530,12 +530,12 @@ function formatAge(seconds?: number | null) {
   return `${hours}时${minutes % 60}分`
 }
 
-function heartbeatLabel(node: QuotaLeaseDemoNodeDiagnostic) {
+function heartbeatLabel(node: QuotaLeaseNodeDiagnostic) {
   const age = formatAge(node.heartbeat_age_seconds)
   return node.last_heartbeat_at ? `${age}前` : '-'
 }
 
-function syncStatusLabel(node: QuotaLeaseDemoNodeDiagnostic) {
+function syncStatusLabel(node: QuotaLeaseNodeDiagnostic) {
   const status = node.sync_status
   if (!status) return '待上报'
   if (status.last_sync_error) return '同步异常'
@@ -544,7 +544,7 @@ function syncStatusLabel(node: QuotaLeaseDemoNodeDiagnostic) {
   return '待同步'
 }
 
-function syncStatusBadgeClass(node: QuotaLeaseDemoNodeDiagnostic) {
+function syncStatusBadgeClass(node: QuotaLeaseNodeDiagnostic) {
   const status = node.sync_status
   if (!status) return 'badge-gray'
   if (status.last_sync_error) return 'badge-danger'
@@ -553,7 +553,7 @@ function syncStatusBadgeClass(node: QuotaLeaseDemoNodeDiagnostic) {
   return 'badge-gray'
 }
 
-function syncStatusDetail(node: QuotaLeaseDemoNodeDiagnostic) {
+function syncStatusDetail(node: QuotaLeaseNodeDiagnostic) {
   const status = node.sync_status
   if (!status) return '-'
   const parts: string[] = []

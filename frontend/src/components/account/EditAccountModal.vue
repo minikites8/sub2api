@@ -2845,7 +2845,7 @@ import {
   type OpenAIWSMode,
   resolveOpenAIWSModeFromExtra
 } from '@/utils/openaiWsMode'
-import type { QuotaLeaseDemoNode } from '@/api/admin/nodeLeases'
+import type { QuotaLeaseNode } from '@/api/admin/nodeLeases'
 import {
   fetchKiroDefaultMappings,
   getPresetMappingsByPlatform,
@@ -2913,7 +2913,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
-const nodeBindingNodes = ref<QuotaLeaseDemoNode[]>([])
+const nodeBindingNodes = ref<QuotaLeaseNode[]>([])
 const nodeBindingSelectedNodeID = ref('')
 const nodeBindingSelectedNodeIDs = ref<string[]>([])
 const nodeBindingLoading = ref(false)

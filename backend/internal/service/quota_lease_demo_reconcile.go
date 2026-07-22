@@ -192,7 +192,7 @@ func (s *QuotaLeaseDemoService) ReconcileNodeUsageLedger(ctx context.Context, no
 	if result.FailedCount > 0 {
 		result.Error = fmt.Sprintf("%d ledger events failed", result.FailedCount)
 	}
-	slog.Info("quota_lease_demo.reconcile_usage_ledger",
+	slog.Info("quota_lease.reconcile_usage_ledger",
 		"node_id", result.NodeID,
 		"fetched_count", result.FetchedCount,
 		"applied_count", result.AppliedCount,

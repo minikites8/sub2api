@@ -4,7 +4,7 @@
       <section class="node-panel">
         <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div class="min-w-0">
-            <h1 class="text-xl font-semibold text-gray-900 dark:text-white">节点租约 Demo</h1>
+            <h1 class="text-xl font-semibold text-gray-900 dark:text-white">节点租约</h1>
             <div class="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <div class="stat-tile">
                 <span class="stat-label">节点</span>
@@ -347,10 +347,10 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type {
   NodeRegistrationURLResult,
-  QuotaLeaseDemoLease,
-  QuotaLeaseDemoNode,
-  QuotaLeaseDemoSettings,
-  QuotaLeaseDemoSnapshot,
+  QuotaLeaseLease,
+  QuotaLeaseNode,
+  QuotaLeaseSettings,
+  QuotaLeaseSnapshot,
   UpdateNodeRequest
 } from '@/api/admin/nodeLeases'
 import type { Column } from '@/components/common/types'
@@ -374,8 +374,8 @@ const reclaiming = ref(false)
 const savingSettings = ref(false)
 const savingNode = ref(false)
 let autoRefreshTimer: number | null = null
-const snapshot = ref<QuotaLeaseDemoSnapshot | null>(null)
-const nodes = ref<QuotaLeaseDemoNode[]>([])
+const snapshot = ref<QuotaLeaseSnapshot | null>(null)
+const nodes = ref<QuotaLeaseNode[]>([])
 const leaseUserLabels = reactive<Record<number, string>>({})
 const nodeFilter = ref('')
 
@@ -412,7 +412,7 @@ const editNodeForm = reactive({
   status: 'online'
 })
 
-const settingsForm = reactive<QuotaLeaseDemoSettings>({
+const settingsForm = reactive<QuotaLeaseSettings>({
   prefetch_low_watermark_amount: 0.2,
   prefetch_average_window: 5,
   prefetch_average_multiplier: 3,
@@ -572,7 +572,7 @@ async function saveSettings() {
   }
 }
 
-function applySettingsForm(settings?: QuotaLeaseDemoSettings | null) {
+function applySettingsForm(settings?: QuotaLeaseSettings | null) {
   if (!settings) return
   settingsForm.prefetch_low_watermark_amount = Number(settings.prefetch_low_watermark_amount || 0)
   settingsForm.prefetch_average_window = Number(settings.prefetch_average_window || 0)
@@ -597,7 +597,7 @@ function closeRegisterNodeDialog() {
   showRegisterNode.value = false
 }
 
-function openEditNodeDialog(node: QuotaLeaseDemoNode) {
+function openEditNodeDialog(node: QuotaLeaseNode) {
   editNodeForm.node_id = node.node_id
   editNodeForm.region = node.region || ''
   editNodeForm.base_url = node.base_url || ''
@@ -657,15 +657,15 @@ function copyRegistrationURL() {
   }
 }
 
-function leaseRemaining(row: QuotaLeaseDemoLease) {
+function leaseRemaining(row: QuotaLeaseLease) {
   return Math.max(0, (row.granted || 0) - (row.consumed || 0) - (row.reclaimed || 0))
 }
 
-function leaseRawRemaining(row: QuotaLeaseDemoLease) {
+function leaseRawRemaining(row: QuotaLeaseLease) {
   return (row.granted || 0) - (row.consumed || 0) - (row.reclaimed || 0)
 }
 
-function leaseDisplayStatus(row: QuotaLeaseDemoLease) {
+function leaseDisplayStatus(row: QuotaLeaseLease) {
   if (row.status === 'active' && leaseRawRemaining(row) <= leaseDisplayZeroThreshold) {
     return 'spent'
   }
@@ -681,7 +681,7 @@ function formatTime(value?: string | null) {
   return value ? formatDateTime(value) : '-'
 }
 
-function syncStatusLabel(node: QuotaLeaseDemoNode) {
+function syncStatusLabel(node: QuotaLeaseNode) {
   const status = node.sync_status
   if (!status) return '未上报'
   if (status.last_sync_error) return '同步异常'
@@ -690,7 +690,7 @@ function syncStatusLabel(node: QuotaLeaseDemoNode) {
   return '待同步'
 }
 
-function syncStatusBadgeClass(node: QuotaLeaseDemoNode) {
+function syncStatusBadgeClass(node: QuotaLeaseNode) {
   const status = node.sync_status
   if (!status) return 'badge-gray'
   if (status.last_sync_error) return 'badge-danger'
@@ -699,14 +699,14 @@ function syncStatusBadgeClass(node: QuotaLeaseDemoNode) {
   return 'badge-gray'
 }
 
-function syncStatusTime(node: QuotaLeaseDemoNode) {
+function syncStatusTime(node: QuotaLeaseNode) {
   const status = node.sync_status
   if (!status) return null
   if (status.last_sync_error) return status.last_sync_failed_at || status.last_sync_started_at || null
   return status.last_sync_success_at || status.mirror_synced_at || status.last_sync_started_at || null
 }
 
-function syncStatusDetail(node: QuotaLeaseDemoNode) {
+function syncStatusDetail(node: QuotaLeaseNode) {
   const status = node.sync_status
   if (!status) return '-'
   const parts: string[] = []
@@ -739,7 +739,7 @@ type SyncStatusNumberKey =
   | 'pending_usage_logs'
   | 'pending_ops_error_logs'
 
-function syncStatusNumber(node: QuotaLeaseDemoNode, key: SyncStatusNumberKey) {
+function syncStatusNumber(node: QuotaLeaseNode, key: SyncStatusNumberKey) {
   return Number(node.sync_status?.[key] || 0)
 }
 

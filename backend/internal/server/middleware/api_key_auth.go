@@ -76,7 +76,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			}
 			if errors.Is(err, service.ErrQuotaLeaseDemoNoCapacity) {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
-				AbortWithError(c, 403, "QUOTA_LEASE_DEMO_NO_CAPACITY", "No local quota lease capacity available")
+				AbortWithError(c, 403, "QUOTA_LEASE_NO_CAPACITY", "No local quota lease capacity available")
 				return
 			}
 			AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to validate API key")

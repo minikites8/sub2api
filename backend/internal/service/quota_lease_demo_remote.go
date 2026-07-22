@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	quotaLeaseDemoControlPlanePrefix = "/api/v1/node-leases/demo"
-	quotaLeaseDemoRemoteTimeout      = 5 * time.Second
+	quotaLeaseControlPlanePrefix           = "/api/v1/node-leases"
+	quotaLeaseLegacyDemoControlPlanePrefix = "/api/v1/node-leases/demo"
+	quotaLeaseDemoDefaultRemoteTimeout     = 15 * time.Second
 )
 
 type quotaLeaseDemoCapacityProbe struct {
@@ -43,13 +44,24 @@ type quotaLeaseDemoRemoteHTTPError struct {
 func (e *quotaLeaseDemoRemoteHTTPError) Error() string {
 	body := strings.TrimSpace(e.Body)
 	if body == "" {
-		return fmt.Sprintf("quota lease demo control plane returned status %d", e.StatusCode)
+		return fmt.Sprintf("quota lease control plane returned status %d", e.StatusCode)
 	}
-	return fmt.Sprintf("quota lease demo control plane returned status %d: %s", e.StatusCode, body)
+	return fmt.Sprintf("quota lease control plane returned status %d: %s", e.StatusCode, body)
 }
 
 func (s *QuotaLeaseDemoService) remoteMode() bool {
 	return s != nil && s.Enabled() && (strings.TrimSpace(s.ControlPlaneBaseURL()) != "" || strings.TrimSpace(s.RegistrationURL()) != "")
+}
+
+func (s *QuotaLeaseDemoService) RemoteTimeout() time.Duration {
+	if s == nil {
+		return quotaLeaseDemoDefaultRemoteTimeout
+	}
+	seconds := s.cfgSnapshot().RemoteTimeoutSeconds
+	if seconds <= 0 {
+		return quotaLeaseDemoDefaultRemoteTimeout
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func (s *QuotaLeaseDemoService) ensureCapacity(ctx context.Context, operation, nodeID string, userID, apiKeyID int64, amount float64) bool {
@@ -373,7 +385,7 @@ func (s *QuotaLeaseDemoService) logCapacityDenied(operation, reason, nodeID stri
 	if len(err) > 0 && err[0] != nil {
 		fields = append(fields, "error", err[0])
 	}
-	slog.Warn("quota_lease_demo.capacity_denied", fields...)
+	slog.Warn("quota_lease.capacity_denied", fields...)
 }
 
 type quotaLeaseDemoRemoteSettingsResponse struct {
@@ -576,7 +588,7 @@ func (s *QuotaLeaseDemoService) upsertRemoteMirrorAccountBestEffort(ctx context.
 		}
 	}
 	if err := store.UpsertAccount(ctx, account); err != nil {
-		slog.Warn("quota_lease_demo.mirror_account_upsert_failed",
+		slog.Warn("quota_lease.mirror_account_upsert_failed",
 			"account_id", account.ID,
 			"source", strings.TrimSpace(source),
 			"error", err,
@@ -675,7 +687,7 @@ func (s *QuotaLeaseDemoService) flushPendingUsageAsync() {
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), quotaLeaseDemoRemoteTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), s.RemoteTimeout())
 		defer cancel()
 		_ = s.FlushPendingUsage(ctx)
 	}()
@@ -686,7 +698,7 @@ func (s *QuotaLeaseDemoService) flushPendingUsageLogsAsync() {
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), quotaLeaseDemoRemoteTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), s.RemoteTimeout())
 		defer cancel()
 		_ = s.FlushPendingUsageLogs(ctx)
 	}()
@@ -697,7 +709,7 @@ func (s *QuotaLeaseDemoService) flushPendingOpsErrorLogsAsync() {
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), quotaLeaseDemoRemoteTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), s.RemoteTimeout())
 		defer cancel()
 		_ = s.FlushPendingOpsErrorLogs(ctx)
 	}()
@@ -705,7 +717,7 @@ func (s *QuotaLeaseDemoService) flushPendingOpsErrorLogsAsync() {
 
 func (s *QuotaLeaseDemoService) enqueuePendingUsageEvent(event QuotaLeaseDemoUsageEvent) {
 	if err := s.enqueuePendingUsageEventWithContext(context.Background(), event); err != nil {
-		slog.Warn("quota_lease_demo.pending_usage_persist_failed",
+		slog.Warn("quota_lease.pending_usage_persist_failed",
 			"event_id", strings.TrimSpace(event.EventID),
 			"lease_id", strings.TrimSpace(event.LeaseID),
 			"error", err,
@@ -811,7 +823,7 @@ func quotaLeaseDemoUsageBatchFlushError(result QuotaLeaseDemoUsageBatchResult) e
 
 func (s *QuotaLeaseDemoService) cacheRemoteLease(lease *QuotaLeaseDemoLease) {
 	if err := s.cacheRemoteLeaseContext(context.Background(), lease); err != nil {
-		slog.Warn("quota_lease_demo.remote_lease_persist_failed",
+		slog.Warn("quota_lease.remote_lease_persist_failed",
 			"lease_id", func() string {
 				if lease == nil {
 					return ""
@@ -880,7 +892,7 @@ func (s *QuotaLeaseDemoService) cacheRemoteNode(node *QuotaLeaseDemoNode) {
 	s.nodes[copy.NodeID] = copy
 	s.mu.Unlock()
 	if err := s.persistQuotaLeaseDemoNode(context.Background(), copy); err != nil {
-		slog.Warn("quota_lease_demo.remote_node_persist_failed", "node_id", copy.NodeID, "error", err)
+		slog.Warn("quota_lease.remote_node_persist_failed", "node_id", copy.NodeID, "error", err)
 	}
 }
 
@@ -946,7 +958,7 @@ func (s *QuotaLeaseDemoService) doRemoteJSONToURL(ctx context.Context, method, f
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, quotaLeaseDemoRemoteTimeout)
+	reqCtx, cancel := context.WithTimeout(ctx, s.RemoteTimeout())
 	defer cancel()
 
 	var reqBody io.Reader
@@ -997,10 +1009,13 @@ func quotaLeaseDemoRemoteEndpointURL(baseURL, endpoint string) (string, error) {
 	if base == "" {
 		return "", fmt.Errorf("%w: control_plane_base_url is required", ErrQuotaLeaseDemoInvalidInput)
 	}
-	if strings.HasSuffix(base, quotaLeaseDemoControlPlanePrefix) || strings.HasSuffix(base, "/node-leases/demo") {
+	if strings.HasSuffix(base, quotaLeaseControlPlanePrefix) ||
+		strings.HasSuffix(base, quotaLeaseLegacyDemoControlPlanePrefix) ||
+		strings.HasSuffix(base, "/node-leases") ||
+		strings.HasSuffix(base, "/node-leases/demo") {
 		return base + endpoint, nil
 	}
-	return base + quotaLeaseDemoControlPlanePrefix + endpoint, nil
+	return base + quotaLeaseControlPlanePrefix + endpoint, nil
 }
 
 func quotaLeaseDemoBuildRegistrationURL(externalBaseURL, token string) (string, error) {

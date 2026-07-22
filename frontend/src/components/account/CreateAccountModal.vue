@@ -4120,8 +4120,8 @@ import type {
   OpenAIEndpointCapability
 } from '@/types'
 import type {
-  QuotaLeaseDemoAccountLoginTask,
-  QuotaLeaseDemoNode
+  QuotaLeaseAccountLoginTask,
+  QuotaLeaseNode
 } from '@/api/admin/nodeLeases'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -4273,12 +4273,12 @@ const currentOAuthError = computed(() => {
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
-const nodeOAuthNodes = ref<QuotaLeaseDemoNode[]>([])
+const nodeOAuthNodes = ref<QuotaLeaseNode[]>([])
 const nodeOAuthSelectedNodeID = ref('')
 const nodeOAuthSelectedNodeIDs = ref<string[]>([])
 const nodeOAuthLoading = ref(false)
 const nodeOAuthError = ref('')
-const nodeOAuthTask = ref<QuotaLeaseDemoAccountLoginTask | null>(null)
+const nodeOAuthTask = ref<QuotaLeaseAccountLoginTask | null>(null)
 const nodeOAuthLoaded = ref(false)
 
 // Model mapping type
@@ -6144,7 +6144,7 @@ async function refreshNodeOAuthTask() {
 }
 
 async function waitForNodeOAuthTask(
-  predicate: (task: QuotaLeaseDemoAccountLoginTask) => boolean,
+  predicate: (task: QuotaLeaseAccountLoginTask) => boolean,
   attempts: number
 ) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {

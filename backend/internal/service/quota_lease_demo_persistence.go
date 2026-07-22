@@ -255,7 +255,7 @@ func (s *QuotaLeaseDemoService) persistQuotaLeaseDemoLeaseBestEffort(lease *Quot
 		return
 	}
 	if err := s.persistQuotaLeaseDemoLease(context.Background(), lease); err != nil {
-		slog.Warn("quota_lease_demo.persist_lease_failed",
+		slog.Warn("quota_lease.persist_lease_failed",
 			"lease_id", lease.ID,
 			"reason", strings.TrimSpace(reason),
 			"error", err,

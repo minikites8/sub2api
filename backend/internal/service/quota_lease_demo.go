@@ -45,11 +45,11 @@ const (
 )
 
 var (
-	ErrQuotaLeaseDemoDisabled     = errors.New("quota lease demo disabled")
-	ErrQuotaLeaseDemoInvalidInput = errors.New("quota lease demo invalid input")
-	ErrQuotaLeaseDemoConflict     = errors.New("quota lease demo event conflict")
-	ErrQuotaLeaseDemoNodeNotFound = errors.New("quota lease demo node not found")
-	ErrQuotaLeaseDemoNoCapacity   = infraerrors.Forbidden("QUOTA_LEASE_DEMO_NO_CAPACITY", "No local quota lease capacity available")
+	ErrQuotaLeaseDemoDisabled     = errors.New("quota lease disabled")
+	ErrQuotaLeaseDemoInvalidInput = errors.New("quota lease invalid input")
+	ErrQuotaLeaseDemoConflict     = errors.New("quota lease event conflict")
+	ErrQuotaLeaseDemoNodeNotFound = errors.New("quota lease node not found")
+	ErrQuotaLeaseDemoNoCapacity   = infraerrors.Forbidden("QUOTA_LEASE_NO_CAPACITY", "No local quota lease capacity available")
 )
 
 type quotaLeaseDemoGlobalState struct {
@@ -78,7 +78,7 @@ func GetQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 }
 
 func QuotaLeaseDemoEnabled(cfg *config.Config) bool {
-	return cfg != nil && cfg.Gateway.QuotaLeaseDemo.Enabled
+	return cfg != nil && (cfg.Gateway.QuotaLease.Enabled || cfg.Gateway.QuotaLeaseDemo.Enabled)
 }
 
 type QuotaLeaseDemoService struct {
@@ -207,7 +207,11 @@ func (s *QuotaLeaseDemoService) cfgSnapshot() config.GatewayQuotaLeaseDemoConfig
 	if s.cfg == nil {
 		return config.GatewayQuotaLeaseDemoConfig{}
 	}
-	return s.cfg.Gateway.QuotaLeaseDemo
+	cfg := s.cfg.Gateway.QuotaLeaseDemo
+	if s.cfg.Gateway.QuotaLease.Enabled {
+		cfg = s.cfg.Gateway.QuotaLease
+	}
+	return cfg
 }
 
 func (s *QuotaLeaseDemoService) Enabled() bool {
@@ -257,7 +261,7 @@ func (s *QuotaLeaseDemoService) NodeID() string {
 	if host, err := os.Hostname(); err == nil && strings.TrimSpace(host) != "" {
 		return strings.TrimSpace(host)
 	}
-	return "gateway-demo"
+	return "gateway-node"
 }
 
 func (s *QuotaLeaseDemoService) PreflightReserveAmount() float64 {
@@ -1232,13 +1236,13 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 	}
 	now := time.Now().UTC()
 	s.refreshLeaseStatusLocked(lease, now)
-	if lease.Status != QuotaLeaseDemoStatusActive {
-		s.mu.Unlock()
-		return nil, ErrQuotaLeaseDemoNoCapacity
-	}
 	if lease.NodeID != event.NodeID || lease.UserID != event.UserID || lease.APIKeyID != event.APIKeyID {
 		s.mu.Unlock()
 		return nil, fmt.Errorf("%w: event does not match lease", ErrQuotaLeaseDemoInvalidInput)
+	}
+	if lease.Status != QuotaLeaseDemoStatusActive && !quotaLeaseDemoCanSettleInactiveUsage(lease, event) {
+		s.mu.Unlock()
+		return nil, ErrQuotaLeaseDemoNoCapacity
 	}
 	nextLease := *lease
 	nextLease.Consumed += event.Amount
@@ -1256,6 +1260,8 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 	nextLease.TraceID = event.TraceID
 	if math.Abs(remaining) <= 1e-12 {
 		nextLease.Status = QuotaLeaseDemoStatusClosed
+	} else {
+		nextLease.Status = QuotaLeaseDemoStatusActive
 	}
 	ledgerEvent := &QuotaLeaseDemoLedgerEvent{
 		EventID:     event.EventID,
@@ -1316,6 +1322,18 @@ func (s *QuotaLeaseDemoService) consumeUsageLocal(ctx context.Context, event Quo
 		Applied: true,
 		Lease:   persistedLease,
 	}, nil
+}
+
+func quotaLeaseDemoCanSettleInactiveUsage(lease *QuotaLeaseDemoLease, event QuotaLeaseDemoUsageEvent) bool {
+	if lease == nil || strings.TrimSpace(event.EventType) != QuotaLeaseDemoEventUsagePosted {
+		return false
+	}
+	switch strings.TrimSpace(lease.Status) {
+	case QuotaLeaseDemoStatusClosed, QuotaLeaseDemoStatusExpired, QuotaLeaseDemoStatusReclaimed:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *QuotaLeaseDemoService) PostUsageBatch(ctx context.Context, req QuotaLeaseDemoUsageBatchRequest) QuotaLeaseDemoUsageBatchResult {
@@ -1415,7 +1433,7 @@ func (s *QuotaLeaseDemoService) ReclaimExpired(ctx context.Context, now time.Tim
 			event = persistedEvents[i]
 		}
 		if err := s.persistQuotaLeaseDemoLeaseAndEvent(ctx, persistedLeases[i], event); err != nil {
-			slog.Warn("quota_lease_demo.reclaim_persist_failed", "lease_id", persistedLeases[i].ID, "error", err)
+			slog.Warn("quota_lease.reclaim_persist_failed", "lease_id", persistedLeases[i].ID, "error", err)
 		}
 	}
 	_ = ctx
@@ -2026,7 +2044,7 @@ func (s *QuotaLeaseDemoService) logQuotaLeaseDemoTrace(stage, traceID, requestID
 		}
 		fields = append(fields, key, value)
 	}
-	slog.Info("quota_lease_demo.trace", fields...)
+	slog.Info("quota_lease.trace", fields...)
 }
 
 func nextQuotaLeaseDemoLeaseVersion(current int64) int64 {

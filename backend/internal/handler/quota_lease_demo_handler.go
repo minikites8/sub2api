@@ -1641,7 +1641,7 @@ func (h *QuotaLeaseDemoHandler) Status(c *gin.Context) {
 
 func (h *QuotaLeaseDemoHandler) requireEnabled(c *gin.Context) bool {
 	if h == nil || h.svc == nil || !h.svc.Enabled() {
-		c.JSON(http.StatusNotFound, gin.H{"error": "quota_lease_demo_disabled"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "quota_lease_disabled"})
 		return false
 	}
 	return true
@@ -1700,7 +1700,7 @@ func (h *QuotaLeaseDemoHandler) authenticateNodeOrControl(c *gin.Context, reques
 func (h *QuotaLeaseDemoHandler) writeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrQuotaLeaseDemoDisabled):
-		c.JSON(http.StatusNotFound, gin.H{"error": "quota_lease_demo_disabled"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "quota_lease_disabled"})
 	case errors.Is(err, service.ErrQuotaLeaseDemoInvalidInput):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 	case errors.Is(err, service.ErrQuotaLeaseDemoConflict):

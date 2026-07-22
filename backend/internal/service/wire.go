@@ -615,7 +615,7 @@ func ProvideSettingService(
 	leaseDemo.SetSettingService(svc)
 	leaseDemo.SetUsageBillingRepository(usageBillingRepo)
 	if err := leaseDemo.SetPersistenceStore(context.Background(), leasePersistenceStore); err != nil {
-		logger.LegacyPrintf("service.setting", "Warning: restore quota lease demo state failed: %v", err)
+		logger.LegacyPrintf("service.setting", "Warning: restore quota lease state failed: %v", err)
 	}
 	return svc
 }

@@ -24,15 +24,22 @@ func RegisterQuotaLeaseDemoRoutes(
 	h.SetUsageService(usageService)
 	h.SetOpsService(opsService)
 	h.SetChannelService(channelService)
-	group := v1.Group("/node-leases/demo")
+	group := v1.Group("/node-leases")
 	registerQuotaLeaseDemoGroup(group, h)
+	legacyGroup := v1.Group("/node-leases/demo")
+	registerQuotaLeaseDemoGroup(legacyGroup, h)
 
 	if adminAuth != nil {
-		adminGroup := v1.Group("/admin/node-leases/demo")
+		adminGroup := v1.Group("/admin/node-leases")
 		adminGroup.Use(gin.HandlerFunc(adminAuth))
 		adminGroup.Use(middleware.AdminComplianceGuard(settingService))
 		adminGroup.Use(h.InjectControlSecret)
 		registerQuotaLeaseDemoGroup(adminGroup, h)
+		legacyAdminGroup := v1.Group("/admin/node-leases/demo")
+		legacyAdminGroup.Use(gin.HandlerFunc(adminAuth))
+		legacyAdminGroup.Use(middleware.AdminComplianceGuard(settingService))
+		legacyAdminGroup.Use(h.InjectControlSecret)
+		registerQuotaLeaseDemoGroup(legacyAdminGroup, h)
 	}
 }
 

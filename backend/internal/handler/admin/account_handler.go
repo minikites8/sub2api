@@ -2349,7 +2349,7 @@ func (h *AccountHandler) getUsageViaAssignedNode(ctx context.Context, accountID 
 		return nil, true, err
 	}
 	if task == nil || task.Usage == nil {
-		return nil, true, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_DEMO_USAGE_PROBE_EMPTY", "usage probe returned no usage data")
+		return nil, true, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_USAGE_PROBE_EMPTY", "usage probe returned no usage data")
 	}
 	return task.Usage, true, nil
 }

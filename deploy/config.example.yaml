@@ -176,13 +176,13 @@ gateway:
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
-  # Quota lease demo for hybrid deployments.
-  # 混合部署额度租约 demo，默认关闭。
-  quota_lease_demo:
+  # Quota lease for hybrid control-plane + gateway-node deployments.
+  # 混合部署额度租约，默认关闭。旧字段 quota_lease_demo 可继续读取。
+  quota_lease:
     enabled: false
-    node_id: "gateway-demo"
-    # Control-plane bootstrap secret required as X-Node-Secret on demo admin endpoints.
-    # 控制面引导密钥，配置后 demo 管理接口要求 X-Node-Secret。
+    node_id: "gateway-node"
+    # Control-plane bootstrap secret required as X-Node-Secret on node lease admin endpoints.
+    # 控制面引导密钥，配置后租约管理接口要求 X-Node-Secret。
     node_secret: ""
     # Foreign node mode: set registration_url to let a node bootstrap itself with a temporary control-plane URL.
     # 国外节点模式：设置 registration_url 后，节点使用控制面生成的临时 URL 完成注册。
@@ -200,6 +200,9 @@ gateway:
     # Grace window before unused quota is reclaimed.
     # 未用额度回收宽限期，单位秒。
     reclaim_grace_seconds: 3600
+    # Control-plane request timeout in seconds for heartbeat, mirror sync and ledger upload.
+    # 节点访问控制面的超时时间，单位秒。
+    remote_timeout_seconds: 15
     # Local preflight reserve used before forwarding a request.
     # 请求转发前的本地预检保留额度。
     preflight_reserve_amount: 0.000001

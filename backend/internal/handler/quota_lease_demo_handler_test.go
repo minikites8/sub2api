@@ -356,30 +356,32 @@ func newQuotaLeaseDemoHandlerTestRouter(t *testing.T) (*gin.Engine, *service.Quo
 	})
 	h := NewQuotaLeaseDemoHandler(svc)
 	router := gin.New()
-	group := router.Group("/api/v1/node-leases/demo")
-	{
-		group.POST("/nodes/registration-urls", h.CreateNodeRegistrationURL)
-		group.POST("/nodes/register", h.RegisterNode)
-		group.POST("/nodes/heartbeat", h.HeartbeatNode)
-		group.GET("/nodes", h.ListNodes)
-		group.PUT("/nodes/:node_id", h.UpdateNode)
-		group.POST("/accounts/login-tasks", h.CreateAccountLoginTask)
-		group.GET("/accounts/login-tasks", h.ListAccountLoginTasks)
-		group.POST("/accounts/login-tasks/:task_id/complete", h.CompleteAccountLoginTask)
-		group.POST("/accounts/login-tasks/:task_id/progress", h.ReportAccountLoginTaskProgress)
-		group.POST("/accounts/login-tasks/:task_id/callback", h.SubmitAccountLoginTaskCallback)
-		group.POST("/accounts/usage-probe-tasks", h.CreateUsageProbeTask)
-		group.GET("/accounts/usage-probe-tasks", h.ListUsageProbeTasks)
-		group.POST("/accounts/usage-probe-tasks/:task_id/complete", h.CompleteUsageProbeTask)
-		group.POST("/accounts/status", h.ReportAccountStatus)
-		group.GET("/accounts/assignments", h.ListAssignedAccounts)
-		group.POST("/leases/request", h.RequestLease)
-		group.POST("/usage/batch", h.PostUsageBatch)
-		group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
-		group.GET("/diagnostics", h.Diagnostics)
-		group.GET("/status", h.Status)
-	}
+	registerQuotaLeaseDemoHandlerTestRoutes(router.Group("/api/v1/node-leases"), h)
+	registerQuotaLeaseDemoHandlerTestRoutes(router.Group("/api/v1/node-leases/demo"), h)
 	return router, svc
+}
+
+func registerQuotaLeaseDemoHandlerTestRoutes(group *gin.RouterGroup, h *QuotaLeaseDemoHandler) {
+	group.POST("/nodes/registration-urls", h.CreateNodeRegistrationURL)
+	group.POST("/nodes/register", h.RegisterNode)
+	group.POST("/nodes/heartbeat", h.HeartbeatNode)
+	group.GET("/nodes", h.ListNodes)
+	group.PUT("/nodes/:node_id", h.UpdateNode)
+	group.POST("/accounts/login-tasks", h.CreateAccountLoginTask)
+	group.GET("/accounts/login-tasks", h.ListAccountLoginTasks)
+	group.POST("/accounts/login-tasks/:task_id/complete", h.CompleteAccountLoginTask)
+	group.POST("/accounts/login-tasks/:task_id/progress", h.ReportAccountLoginTaskProgress)
+	group.POST("/accounts/login-tasks/:task_id/callback", h.SubmitAccountLoginTaskCallback)
+	group.POST("/accounts/usage-probe-tasks", h.CreateUsageProbeTask)
+	group.GET("/accounts/usage-probe-tasks", h.ListUsageProbeTasks)
+	group.POST("/accounts/usage-probe-tasks/:task_id/complete", h.CompleteUsageProbeTask)
+	group.POST("/accounts/status", h.ReportAccountStatus)
+	group.GET("/accounts/assignments", h.ListAssignedAccounts)
+	group.POST("/leases/request", h.RequestLease)
+	group.POST("/usage/batch", h.PostUsageBatch)
+	group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
+	group.GET("/diagnostics", h.Diagnostics)
+	group.GET("/status", h.Status)
 }
 
 func quotaLeaseDemoJSONRequest(t *testing.T, method, path string, body any) *http.Request {
@@ -389,6 +391,15 @@ func quotaLeaseDemoJSONRequest(t *testing.T, method, path string, body any) *htt
 	req := httptest.NewRequest(method, path, bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	return req
+}
+
+func TestQuotaLeaseDemoHandlerOfficialRouteStatus(t *testing.T) {
+	router, _ := newQuotaLeaseDemoHandlerTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/node-leases/status", nil)
+	req.Header.Set("X-Node-Secret", "control-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestQuotaLeaseDemoHandlerSyncsCompletedAccountToAdminService(t *testing.T) {
@@ -878,7 +889,7 @@ func TestQuotaLeaseDemoHandlerCreatesRegistrationURLAndStoresNodeSecret(t *testi
 	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createBody))
 	require.Equal(t, "foreign-url-1", createBody.NodeID)
 	require.NotEmpty(t, createBody.ExpiresAt)
-	require.Contains(t, createBody.RegistrationURL, "https://control.example.test/api/v1/node-leases/demo/nodes/register")
+	require.Contains(t, createBody.RegistrationURL, "https://control.example.test/api/v1/node-leases/nodes/register")
 	require.Contains(t, createBody.RegistrationURL, "registration_token=")
 
 	registerReq := quotaLeaseDemoJSONRequest(t, http.MethodPost, createBody.RegistrationURL, map[string]any{

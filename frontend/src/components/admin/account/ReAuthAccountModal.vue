@@ -451,7 +451,7 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
-import type { QuotaLeaseDemoAccountLoginTask } from '@/api/admin/nodeLeases'
+import type { QuotaLeaseAccountLoginTask } from '@/api/admin/nodeLeases'
 
 interface OAuthFlowExposed {
   authCode: string
@@ -625,7 +625,7 @@ const canExchangeCode = computed(() => {
 const nodeOAuthSelectedNodeID = ref('')
 const nodeOAuthLoading = ref(false)
 const nodeOAuthError = ref('')
-const nodeOAuthTask = ref<QuotaLeaseDemoAccountLoginTask | null>(null)
+const nodeOAuthTask = ref<QuotaLeaseAccountLoginTask | null>(null)
 
 function readAccountNodeBinding(account: Account | null) {
   const extra = account?.extra as Record<string, unknown> | undefined
@@ -807,7 +807,7 @@ async function refreshNodeOAuthTask() {
 }
 
 async function waitForNodeOAuthTask(
-  predicate: (task: QuotaLeaseDemoAccountLoginTask) => boolean,
+  predicate: (task: QuotaLeaseAccountLoginTask) => boolean,
   attempts: number
 ) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {

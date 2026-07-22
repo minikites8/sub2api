@@ -524,14 +524,14 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 	}
 	if store := s.quotaLeaseDemoMirrorStore(); store != nil {
 		if err := s.EnsureMirrorSnapshot(ctx); err != nil {
-			slog.Warn("quota_lease_demo.mirror_sync_failed",
+			slog.Warn("quota_lease.mirror_sync_failed",
 				"node_id", s.activeNodeID(),
 				"error", err,
 			)
 		}
 		accounts, err := store.ListSchedulableAccounts(ctx, groupID, platform)
 		if err != nil {
-			slog.Warn("quota_lease_demo.mirror_account_query_failed",
+			slog.Warn("quota_lease.mirror_account_query_failed",
 				"node_id", s.activeNodeID(),
 				"platform", strings.TrimSpace(platform),
 				"group_id", quotaLeaseDemoLogGroupID(groupID),
@@ -541,7 +541,7 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 		}
 		if len(accounts) == 0 {
 			ready, syncedAt := s.mirrorSnapshotState()
-			slog.Warn("quota_lease_demo.mirror_accounts_empty",
+			slog.Warn("quota_lease.mirror_accounts_empty",
 				"node_id", s.activeNodeID(),
 				"configured_node_id", s.NodeID(),
 				"platform", strings.TrimSpace(platform),
@@ -553,7 +553,7 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 		return accounts, true
 	}
 	if err := s.SyncAssignedAccounts(ctx); err != nil {
-		slog.Warn("quota_lease_demo.assigned_accounts_sync_failed",
+		slog.Warn("quota_lease.assigned_accounts_sync_failed",
 			"node_id", s.activeNodeID(),
 			"error", err,
 		)
@@ -580,7 +580,7 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 		accounts = append(accounts, account)
 	}
 	if len(assigned) == 0 {
-		slog.Warn("quota_lease_demo.assigned_accounts_empty",
+		slog.Warn("quota_lease.assigned_accounts_empty",
 			"node_id", nodeID,
 			"configured_node_id", s.NodeID(),
 			"platform", strings.TrimSpace(platform),
@@ -588,7 +588,7 @@ func (s *QuotaLeaseDemoService) AssignedAccountsForScheduling(ctx context.Contex
 		)
 	}
 	if len(assigned) > 0 && len(accounts) == 0 {
-		slog.Warn("quota_lease_demo.assigned_accounts_filtered",
+		slog.Warn("quota_lease.assigned_accounts_filtered",
 			"node_id", nodeID,
 			"configured_node_id", s.NodeID(),
 			"platform", strings.TrimSpace(platform),
@@ -608,7 +608,7 @@ func (s *QuotaLeaseDemoService) AssignedAccountByID(ctx context.Context, account
 	}
 	if store := s.quotaLeaseDemoMirrorStore(); store != nil {
 		if err := s.EnsureMirrorSnapshot(ctx); err != nil {
-			slog.Warn("quota_lease_demo.mirror_sync_failed",
+			slog.Warn("quota_lease.mirror_sync_failed",
 				"node_id", s.activeNodeID(),
 				"account_id", accountID,
 				"error", err,

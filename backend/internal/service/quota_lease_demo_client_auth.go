@@ -140,7 +140,9 @@ func quotaLeaseDemoRemoteNoCapacity(err error) bool {
 		return false
 	}
 	body := strings.ToLower(strings.TrimSpace(httpErr.Body))
-	return strings.Contains(body, "no_capacity") || strings.Contains(body, "quota_lease_demo_no_capacity")
+	return strings.Contains(body, "no_capacity") ||
+		strings.Contains(body, "quota_lease_no_capacity") ||
+		strings.Contains(body, "quota_lease_demo_no_capacity")
 }
 
 func (s *QuotaLeaseDemoService) getClientAuthCache(apiKey string) *QuotaLeaseDemoClientAuthResult {

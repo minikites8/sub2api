@@ -23,7 +23,7 @@ stringData:
   TOTP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   ADMIN_PASSWORD: "sub2api-dev-admin-password"
   QUOTA_LEASE_CONTROL_KEY: "sub2api-dev-quota-lease-control-key"
-  NODE_REGISTRATION_URL: "https://sub2api-control.dev.example.com/api/v1/node-leases/demo/nodes/register?registration_token=replace-me"
+  NODE_REGISTRATION_URL: "https://sub2api-control.dev.example.com/api/v1/node-leases/nodes/register?registration_token=replace-me"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -51,11 +51,12 @@ data:
   JWT_EXPIRE_HOUR: "24"
   SETUP_MIGRATION_TIMEOUT_SECONDS: "300"
   TZ: "Asia/Shanghai"
-  GATEWAY_QUOTA_LEASE_DEMO_ENABLED: "true"
-  GATEWAY_QUOTA_LEASE_DEMO_DEFAULT_GRANT_AMOUNT: "1"
-  GATEWAY_QUOTA_LEASE_DEMO_LEASE_TTL_SECONDS: "600"
-  GATEWAY_QUOTA_LEASE_DEMO_RECLAIM_GRACE_SECONDS: "3600"
-  GATEWAY_QUOTA_LEASE_DEMO_PREFLIGHT_RESERVE_AMOUNT: "0.000001"
+  GATEWAY_QUOTA_LEASE_ENABLED: "true"
+  GATEWAY_QUOTA_LEASE_DEFAULT_GRANT_AMOUNT: "1"
+  GATEWAY_QUOTA_LEASE_LEASE_TTL_SECONDS: "600"
+  GATEWAY_QUOTA_LEASE_RECLAIM_GRACE_SECONDS: "3600"
+  GATEWAY_QUOTA_LEASE_REMOTE_TIMEOUT_SECONDS: "15"
+  GATEWAY_QUOTA_LEASE_PREFLIGHT_RESERVE_AMOUNT: "0.000001"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -68,7 +69,7 @@ metadata:
     app.kubernetes.io/part-of: sub2api
 data:
   DEPLOYMENT_ROLE: "control"
-  GATEWAY_QUOTA_LEASE_DEMO_NODE_ID: "control-plane-dev"
+  GATEWAY_QUOTA_LEASE_NODE_ID: "control-plane-dev"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -616,7 +617,7 @@ spec:
                 secretKeyRef:
                   name: sub2api-dev-secrets
                   key: ADMIN_PASSWORD
-            - name: GATEWAY_QUOTA_LEASE_DEMO_NODE_SECRET
+            - name: GATEWAY_QUOTA_LEASE_NODE_SECRET
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets
@@ -756,7 +757,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: GATEWAY_QUOTA_LEASE_DEMO_NODE_ID
+            - name: GATEWAY_QUOTA_LEASE_NODE_ID
               value: "$(POD_NAME)"
             - name: SUB2API_NODE_POOL
               value: "us"
@@ -789,7 +790,7 @@ spec:
                 secretKeyRef:
                   name: sub2api-dev-secrets
                   key: ADMIN_PASSWORD
-            - name: GATEWAY_QUOTA_LEASE_DEMO_REGISTRATION_URL
+            - name: GATEWAY_QUOTA_LEASE_REGISTRATION_URL
               valueFrom:
                 secretKeyRef:
                   name: sub2api-dev-secrets

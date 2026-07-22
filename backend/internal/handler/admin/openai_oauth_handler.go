@@ -442,7 +442,7 @@ func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
 			return
 		}
 		if task == nil || task.OpenAIQuota == nil {
-			response.ErrorFrom(c, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_DEMO_USAGE_PROBE_EMPTY", "openai quota probe returned no usage data"))
+			response.ErrorFrom(c, infraerrors.New(http.StatusBadGateway, "QUOTA_LEASE_USAGE_PROBE_EMPTY", "openai quota probe returned no usage data"))
 			return
 		}
 		response.Success(c, task.OpenAIQuota)
