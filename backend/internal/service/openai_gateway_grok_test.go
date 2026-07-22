@@ -757,6 +757,14 @@ func TestForwardGrokMediaOAuthImageToVideoUsesOfficialAPI(t *testing.T) {
 	require.True(t, result.GrokMediaHasInputImage)
 	require.False(t, result.GrokMediaForceOfficialAPI)
 	require.False(t, result.GrokMediaCLIHeadersApplied)
+	require.Equal(t, len(upstream.lastBody), result.GrokMediaBodyBytes)
+	require.Equal(t, len("animate"), result.GrokMediaBodyPromptBytes)
+	require.True(t, result.GrokMediaBodyImageFieldExists)
+	require.False(t, result.GrokMediaBodyImagesFieldExists)
+	require.True(t, result.GrokMediaBodyImageURLExists)
+	require.Equal(t, "data", result.GrokMediaBodyImageURLScheme)
+	require.True(t, result.GrokMediaBodyImageURLIsData)
+	require.Equal(t, len("data:image/png;base64,"+imageData), result.GrokMediaBodyImageURLLength)
 }
 
 func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
@@ -844,6 +852,8 @@ func TestForwardGrokMediaOAuthVideoStatusUsesOfficialAPIWhenFlagged(t *testing.T
 	require.False(t, result.GrokMediaHasInputImage)
 	require.True(t, result.GrokMediaForceOfficialAPI)
 	require.False(t, result.GrokMediaCLIHeadersApplied)
+	require.Zero(t, result.GrokMediaBodyBytes)
+	require.False(t, result.GrokMediaBodyImageFieldExists)
 }
 
 func TestForwardGrokMediaVideoMutationEndpoints(t *testing.T) {
