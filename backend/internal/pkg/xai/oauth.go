@@ -39,9 +39,14 @@ const (
 	EnvUnsafeAllowHighConcurrency = "XAI_GROK_UNSAFE_ALLOW_CONCURRENCY_GT_ONE"
 )
 
+const (
+	apiBaseURLHost = "api.x.ai"
+	cliBaseURLHost = "cli-chat-proxy.grok.com"
+)
+
 var (
 	oauthEndpointAllowedHosts = []string{"x.ai", "*.x.ai"}
-	baseURLAllowedHosts       = []string{"api.x.ai", "cli-chat-proxy.grok.com"}
+	baseURLAllowedHosts       = []string{apiBaseURLHost, cliBaseURLHost}
 )
 
 // OAuthSession stores one PKCE OAuth flow.
@@ -356,6 +361,26 @@ func IsOfficialBaseURL(raw string) bool {
 		return true
 	}
 	return IsOfficialBaseURLHost(parsed.Hostname())
+}
+
+func IsAPIBaseURL(raw string) bool {
+	return isKnownBaseURLHost(raw, apiBaseURLHost)
+}
+
+func IsCLIBaseURL(raw string) bool {
+	return isKnownBaseURLHost(raw, cliBaseURLHost)
+}
+
+func isKnownBaseURLHost(raw, host string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(parsed.Hostname()), host)
 }
 
 func AllowUnsafeURLOverrides() bool {

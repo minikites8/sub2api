@@ -217,6 +217,48 @@ func TestIsOfficialBaseURL(t *testing.T) {
 	}
 }
 
+func TestIsAPIBaseURL(t *testing.T) {
+	api := []string{
+		DefaultBaseURL,
+		"HTTPS://API.X.AI:443/%76%31/",
+	}
+	for _, raw := range api {
+		require.True(t, IsAPIBaseURL(raw), "expected API base URL: %q", raw)
+	}
+
+	nonAPI := []string{
+		"",
+		DefaultCLIBaseURL,
+		"https://cli-chat-proxy.grok.com/v1/videos/generations",
+		"https://relay.example.test/v1",
+		"::invalid::url",
+	}
+	for _, raw := range nonAPI {
+		require.False(t, IsAPIBaseURL(raw), "expected non-API base URL: %q", raw)
+	}
+}
+
+func TestIsCLIBaseURL(t *testing.T) {
+	cli := []string{
+		DefaultCLIBaseURL,
+		"HTTPS://CLI-CHAT-PROXY.GROK.COM:443/%76%31/",
+	}
+	for _, raw := range cli {
+		require.True(t, IsCLIBaseURL(raw), "expected CLI base URL: %q", raw)
+	}
+
+	nonCLI := []string{
+		"",
+		DefaultBaseURL,
+		"https://api.x.ai/v1/videos/generations",
+		"https://relay.example.test/v1",
+		"::invalid::url",
+	}
+	for _, raw := range nonCLI {
+		require.False(t, IsCLIBaseURL(raw), "expected non-CLI base URL: %q", raw)
+	}
+}
+
 func TestValidateBaseURLsRejectEmptyQueryDelimiter(t *testing.T) {
 	_, err := ValidateBaseURL("https://grok.example.test/v1?")
 	require.Error(t, err)

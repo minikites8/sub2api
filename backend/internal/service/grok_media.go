@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -55,6 +56,30 @@ type GrokMediaRequestInfo struct {
 	MaskImageURL    string
 	Uploads         []OpenAIImagesUpload
 	MaskUpload      *OpenAIImagesUpload
+}
+
+type GrokMediaForwardOption func(*grokMediaForwardOptions)
+
+type grokMediaForwardOptions struct {
+	ForceOfficialAPI bool
+}
+
+func WithGrokMediaOfficialAPI() GrokMediaForwardOption {
+	return func(opts *grokMediaForwardOptions) {
+		if opts != nil {
+			opts.ForceOfficialAPI = true
+		}
+	}
+}
+
+func applyGrokMediaForwardOptions(options []GrokMediaForwardOption) grokMediaForwardOptions {
+	opts := grokMediaForwardOptions{}
+	for _, option := range options {
+		if option != nil {
+			option(&opts)
+		}
+	}
+	return opts
 }
 
 func (r GrokMediaRequestInfo) ModerationBody() []byte {
@@ -261,8 +286,27 @@ func GrokMediaVideoRequestSessionHash(requestID string) string {
 	return "grok-video:" + DeriveSessionHashFromSeed(requestID)
 }
 
+const grokMediaOfficialAPIRouteFlagID int64 = 1
+
+func GrokMediaVideoRequestOfficialAPISessionHash(requestID string) string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return ""
+	}
+	return "grok-video-official-api:" + DeriveSessionHashFromSeed(requestID)
+}
+
 func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(ctx context.Context, groupID *int64, requestID string, accountID int64) error {
 	return s.BindStickySession(ctx, groupID, GrokMediaVideoRequestSessionHash(requestID), accountID)
+}
+
+func (s *OpenAIGatewayService) BindGrokMediaVideoRequestOfficialAPI(ctx context.Context, groupID *int64, requestID string) error {
+	return s.BindStickySession(ctx, groupID, GrokMediaVideoRequestOfficialAPISessionHash(requestID), grokMediaOfficialAPIRouteFlagID)
+}
+
+func (s *OpenAIGatewayService) IsGrokMediaVideoRequestOfficialAPI(ctx context.Context, groupID *int64, requestID string) bool {
+	flagID, err := s.getStickySessionAccountID(ctx, groupID, GrokMediaVideoRequestOfficialAPISessionHash(requestID))
+	return err == nil && flagID == grokMediaOfficialAPIRouteFlagID
 }
 
 func (s *OpenAIGatewayService) ForwardGrokMedia(
@@ -273,8 +317,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	requestID string,
 	body []byte,
 	contentType string,
+	options ...GrokMediaForwardOption,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	forwardOptions := applyGrokMediaForwardOptions(options)
 	if account == nil {
 		return nil, fmt.Errorf("grok account is required")
 	}
@@ -283,10 +329,6 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 
 	token, _, err := s.getRequestCredential(ctx, c, account)
-	if err != nil {
-		return nil, err
-	}
-	targetURL, err := buildGrokMediaURL(account, s.cfg, endpoint, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -300,6 +342,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		return nil, err
 	}
 	requestInfo := ParseGrokMediaRequest(contentType, body)
+	targetURL, err := buildGrokMediaURL(account, s.cfg, endpoint, requestID, requestInfo, forwardOptions.ForceOfficialAPI)
+	if err != nil {
+		return nil, err
+	}
 	body, contentType, err = sanitizeGrokMediaForwardBody(endpoint, body, contentType)
 	if err != nil {
 		return nil, err
@@ -317,7 +363,8 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 	upstreamReq.Header.Set("Authorization", "Bearer "+token)
 	upstreamReq.Header.Set("Accept", "application/json")
-	if account.IsGrokOAuth() {
+	usedOfficialGrokAPI := account.IsGrokOAuth() && xai.IsAPIBaseURL(targetURL)
+	if account.IsGrokOAuth() && xai.IsCLIBaseURL(targetURL) {
 		applyGrokCLIHeaders(upstreamReq.Header)
 	}
 	if endpoint.RequiresRequestBody() {
@@ -371,6 +418,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		VideoCount:           usage.VideoCount,
 		VideoResolution:      usage.VideoResolution,
 		VideoDurationSeconds: usage.VideoDurationSeconds,
+		GrokMediaOfficialAPI: usedOfficialGrokAPI,
 	}, nil
 }
 

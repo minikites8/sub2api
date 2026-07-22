@@ -32,7 +32,7 @@ func TestGrokAPIKeyURLPolicyFollowsGlobalSecurityConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "http://grok.example.test/v1/chat/completions", chatURL)
 
-		mediaURL, err := buildGrokMediaURL(account, cfg, GrokMediaEndpointImagesGenerations, "")
+		mediaURL, err := buildGrokMediaURL(account, cfg, GrokMediaEndpointImagesGenerations, "", GrokMediaRequestInfo{}, false)
 		require.NoError(t, err)
 		require.Equal(t, "http://grok.example.test/v1/images/generations", mediaURL)
 	})
@@ -231,6 +231,71 @@ func TestGrokOAuthURLPolicy(t *testing.T) {
 		target, err := buildGrokResponsesURL(official, cfg)
 		require.NoError(t, err)
 		require.Equal(t, xai.DefaultCLIBaseURL+"/responses", target)
+	})
+}
+
+func TestGrokOAuthMediaURLPolicy(t *testing.T) {
+	t.Run("image-conditioned video generation uses official API", func(t *testing.T) {
+		account := &Account{
+			Platform:    PlatformGrok,
+			Type:        AccountTypeOAuth,
+			Credentials: map[string]any{},
+		}
+		cfg := &config.Config{}
+		cfg.Security.URLAllowlist.Enabled = true
+		cfg.Security.URLAllowlist.UpstreamHosts = []string{"other.example.test"}
+
+		target, err := buildGrokMediaURL(account, cfg, GrokMediaEndpointVideosGenerations, "", GrokMediaRequestInfo{
+			Model:          "grok-imagine-video-1.5",
+			InputImageURLs: []string{"https://docs.x.ai/assets/api-examples/video/milkyway-still.png"},
+		}, false)
+		require.NoError(t, err)
+		require.Equal(t, xai.DefaultBaseURL+"/videos/generations", target)
+	})
+
+	t.Run("text-only video generation keeps CLI proxy", func(t *testing.T) {
+		account := &Account{
+			Platform:    PlatformGrok,
+			Type:        AccountTypeOAuth,
+			Credentials: map[string]any{},
+		}
+
+		target, err := buildGrokMediaURL(account, nil, GrokMediaEndpointVideosGenerations, "", GrokMediaRequestInfo{
+			Model: "grok-imagine-video",
+		}, false)
+		require.NoError(t, err)
+		require.Equal(t, xai.DefaultCLIBaseURL+"/videos/generations", target)
+	})
+
+	t.Run("custom forwarding address keeps operator route", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformGrok,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"base_url": "https://relay.example.test/v1",
+			},
+		}
+		cfg := &config.Config{}
+		cfg.Security.URLAllowlist.Enabled = false
+
+		target, err := buildGrokMediaURL(account, cfg, GrokMediaEndpointVideosGenerations, "", GrokMediaRequestInfo{
+			Model:          "grok-imagine-video-1.5",
+			InputImageURLs: []string{"https://example.com/input.png"},
+		}, false)
+		require.NoError(t, err)
+		require.Equal(t, "https://relay.example.test/v1/videos/generations", target)
+	})
+
+	t.Run("status with route flag uses official API", func(t *testing.T) {
+		account := &Account{
+			Platform:    PlatformGrok,
+			Type:        AccountTypeOAuth,
+			Credentials: map[string]any{},
+		}
+
+		target, err := buildGrokMediaURL(account, nil, GrokMediaEndpointVideoStatus, "request-123", GrokMediaRequestInfo{}, true)
+		require.NoError(t, err)
+		require.Equal(t, xai.DefaultBaseURL+"/videos/request-123", target)
 	})
 }
 

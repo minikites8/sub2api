@@ -163,6 +163,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID)
 	}
 	requestCtx := c.Request.Context()
+	forwardOptions := []service.GrokMediaForwardOption{}
+	if endpoint == service.GrokMediaEndpointVideoStatus && h.gatewayService.IsGrokMediaVideoRequestOfficialAPI(requestCtx, apiKey.GroupID, requestID) {
+		forwardOptions = append(forwardOptions, service.WithGrokMediaOfficialAPI())
+	}
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
@@ -252,7 +256,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
+			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType, forwardOptions...)
 		}()
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -341,6 +345,15 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					zap.String("request_id", result.ResponseID),
 					zap.Error(err),
 				)
+			}
+			if result.GrokMediaOfficialAPI {
+				if err := h.gatewayService.BindGrokMediaVideoRequestOfficialAPI(requestCtx, apiKey.GroupID, result.ResponseID); err != nil {
+					reqLog.Warn("grok_media.bind_video_request_official_api_failed",
+						zap.Int64("account_id", account.ID),
+						zap.String("request_id", result.ResponseID),
+						zap.Error(err),
+					)
+				}
 			}
 		}
 		if shouldRecordGrokMediaUsage(endpoint, requestModel) {
