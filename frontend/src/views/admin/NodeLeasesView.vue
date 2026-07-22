@@ -16,7 +16,10 @@
               </div>
               <div class="stat-tile">
                 <span class="stat-label">剩余额度</span>
-                <span class="stat-value">{{ formatAmount(stats.remaining_total) }}</span>
+                <span class="stat-value">{{ formatAmount(totalAvailableRemaining) }}</span>
+                <span v-if="totalOverdraftAmount > leaseDisplayZeroThreshold" class="stat-subvalue">
+                  超支 {{ formatAmount(totalOverdraftAmount) }}
+                </span>
               </div>
               <div class="stat-tile">
                 <span class="stat-label">流水</span>
@@ -77,7 +80,12 @@
             <span :class="['badge', statusBadgeClass(value)]">{{ statusLabel(value) }}</span>
           </template>
           <template #cell-lease_remaining="{ value }">
-            <span class="font-mono">{{ formatAmount(value || 0) }}</span>
+            <div class="lease-balance-cell">
+              <span class="font-mono">{{ formatAmount(nodeAvailableLeaseRemaining(value || 0)) }}</span>
+              <span v-if="nodeLeaseOverdraft(value || 0) > leaseDisplayZeroThreshold" class="lease-overdraft">
+                超支 {{ formatAmount(nodeLeaseOverdraft(value || 0)) }}
+              </span>
+            </div>
           </template>
           <template #cell-sync_status="{ row }">
             <div class="sync-state-cell">
@@ -423,6 +431,15 @@ const leaseDisplayZeroThreshold = 0.0000005
 
 const stats = computed(() => snapshot.value?.stats || emptyStats)
 
+const totalAvailableRemaining = computed(() => Math.max(0, stats.value.remaining_total || 0))
+
+const totalOverdraftAmount = computed(() => {
+  return (snapshot.value?.leases || []).reduce((sum, lease) => {
+    if (leaseDisplayStatus(lease) !== 'active') return sum
+    return sum + Math.max(0, -leaseRawRemaining(lease))
+  }, 0)
+})
+
 const nodeFilterOptions = computed(() => [
   { value: '', label: '全部节点' },
   ...nodes.value.map((node) => ({
@@ -441,7 +458,7 @@ const nodeColumns = computed<Column[]>(() => [
   { key: 'node_id', label: '节点 ID', sortable: true },
   { key: 'region', label: '区域', sortable: true },
   { key: 'status', label: t('common.status'), sortable: true },
-  { key: 'lease_remaining', label: '剩余额度', sortable: true },
+  { key: 'lease_remaining', label: '可用额度', sortable: true },
   { key: 'sync_status', label: '同步状态', sortable: false },
   { key: 'sync_data', label: '已同步数据', sortable: false },
   { key: 'pending_upload', label: '待上传', sortable: false },
@@ -672,6 +689,14 @@ function leaseDisplayStatus(row: QuotaLeaseLease) {
   return row.status
 }
 
+function nodeAvailableLeaseRemaining(value: number) {
+  return Math.max(0, Number(value) || 0)
+}
+
+function nodeLeaseOverdraft(value: number) {
+  return Math.max(0, -(Number(value) || 0))
+}
+
 function formatAmount(value: number) {
   const amount = Number(value || 0)
   return amount.toFixed(6).replace(/\.?0+$/, '')
@@ -827,6 +852,10 @@ onUnmounted(() => {
   @apply mt-1 font-mono text-lg font-semibold text-gray-900 dark:text-white;
 }
 
+.stat-subvalue {
+  @apply mt-0.5 font-mono text-xs font-medium text-red-600 dark:text-red-300;
+}
+
 .code-cell {
   @apply block truncate rounded-md px-2 py-1 font-mono text-xs text-gray-700 dark:text-gray-200;
   background: var(--md-surface-container-low);
@@ -860,6 +889,14 @@ onUnmounted(() => {
 .sync-pill-warning {
   @apply text-amber-700 dark:text-amber-300;
   background: rgb(254 243 199 / 0.8);
+}
+
+.lease-balance-cell {
+  @apply flex min-w-[96px] flex-col gap-1;
+}
+
+.lease-overdraft {
+  @apply font-mono text-xs font-medium text-red-600 dark:text-red-300;
 }
 
 :global(.dark) .sync-pill-warning {
