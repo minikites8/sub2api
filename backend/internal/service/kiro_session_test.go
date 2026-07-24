@@ -4,11 +4,21 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func (s *GatewayService) buildKiroPayloadForAccount(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, modelID, token, requestModel string, headers http.Header) (*kiropkg.KiroBuildResult, error) {
+	var profileArn string
+	if kiroEndpointModeForRequest(account, parsed) == KiroEndpointModeKRS {
+		profileArn = kiroResolveProfileArnForKRS(account)
+	}
+	return s.buildKiroPayloadForAccountWithArn(ctx, account, parsed, anthropicBody, modelID, token, requestModel, headers, profileArn)
+}
 
 func TestBuildKiroPayloadForAccountUsesStableConversationIDs(t *testing.T) {
 	svc := &GatewayService{}

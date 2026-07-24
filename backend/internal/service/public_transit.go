@@ -729,11 +729,7 @@ func buildPublicTransitMonitors(views []*UserMonitorView, details map[int64]*Use
 		}
 		extras := make([]PublicTransitExtraModelStatus, 0, len(v.ExtraModels))
 		for _, e := range v.ExtraModels {
-			extras = append(extras, PublicTransitExtraModelStatus{
-				Model:     e.Model,
-				Status:    e.Status,
-				LatencyMs: e.LatencyMs,
-			})
+			extras = append(extras, PublicTransitExtraModelStatus(e))
 		}
 		models := buildPublicTransitMonitorModels(details[v.ID])
 		timeline := buildPublicTransitMonitorTimeline(v.Timeline)
@@ -780,15 +776,7 @@ func buildPublicTransitMonitorModels(detail *UserMonitorDetail) []PublicTransitM
 	}
 	out := make([]PublicTransitMonitorModel, 0, len(detail.Models))
 	for _, m := range detail.Models {
-		out = append(out, PublicTransitMonitorModel{
-			Model:           m.Model,
-			LatestStatus:    m.LatestStatus,
-			LatestLatencyMs: m.LatestLatencyMs,
-			Availability7d:  m.Availability7d,
-			Availability15d: m.Availability15d,
-			Availability30d: m.Availability30d,
-			AvgLatency7dMs:  m.AvgLatency7dMs,
-		})
+		out = append(out, PublicTransitMonitorModel(m))
 	}
 	return out
 }

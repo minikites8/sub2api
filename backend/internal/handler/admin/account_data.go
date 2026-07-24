@@ -13,7 +13,6 @@ import (
 	"log/slog"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -749,59 +748,6 @@ func isKiroAccountManagerDataAccount(item DataAccount) bool {
 		dataImportMapString(item.Extra, "import_source") == dataImportSourceKiroAccountManager
 }
 
-func refreshKiroAccountManagerCredentials(ctx context.Context, item *DataAccount) error {
-	if item == nil || !isKiroAccountManagerDataAccount(*item) {
-		return nil
-	}
-	credentials := item.Credentials
-	if credentials == nil {
-		return errors.New("kiro credentials is required")
-	}
-
-	refreshToken := dataImportMapString(credentials, "refresh_token")
-	if refreshToken == "" {
-		return errors.New("kiro 导入需要可验证的 refreshToken")
-	}
-
-	authMethod := strings.ToLower(strings.TrimSpace(dataImportMapString(credentials, "auth_method")))
-	var token *kiropkg.TokenData
-	var err error
-	switch authMethod {
-	case "idc":
-		clientID := dataImportMapString(credentials, "client_id")
-		clientSecret := dataImportMapString(credentials, "client_secret")
-		if clientID == "" || clientSecret == "" {
-			return errors.New("kiro IdC 导入需要 clientId 和 clientSecret")
-		}
-		token, err = kiropkg.RefreshIDCToken(ctx, "", clientID, clientSecret, refreshToken, dataImportMapString(credentials, "region"), dataImportMapString(credentials, "start_url"), dataImportMapString(credentials, "provider"))
-	default:
-		token, err = kiropkg.RefreshSocialToken(ctx, "", refreshToken, dataImportMapString(credentials, "provider"))
-	}
-	if err != nil {
-		return fmt.Errorf("kiro refreshToken 验证失败: %w", err)
-	}
-	mergeKiroTokenData(credentials, token)
-	return nil
-}
-
-func mergeKiroTokenData(credentials map[string]any, token *kiropkg.TokenData) {
-	if credentials == nil || token == nil {
-		return
-	}
-	setDataImportString(credentials, "access_token", token.AccessToken)
-	setDataImportString(credentials, "refresh_token", token.RefreshToken)
-	setDataImportString(credentials, "profile_arn", token.ProfileArn)
-	setDataImportString(credentials, "expires_at", token.ExpiresAt)
-	setDataImportString(credentials, "auth_method", token.AuthMethod)
-	setDataImportString(credentials, "provider", token.Provider)
-	setDataImportString(credentials, "client_id", token.ClientID)
-	setDataImportString(credentials, "client_secret", token.ClientSecret)
-	setDataImportString(credentials, "client_id_hash", token.ClientIDHash)
-	setDataImportString(credentials, "email", token.Email)
-	setDataImportString(credentials, "start_url", token.StartURL)
-	setDataImportString(credentials, "region", token.Region)
-}
-
 func dataImportMapString(values map[string]any, key string) string {
 	if values == nil {
 		return ""
@@ -809,20 +755,13 @@ func dataImportMapString(values map[string]any, key string) string {
 	switch value := values[key].(type) {
 	case string:
 		return strings.TrimSpace(value)
-	case fmt.Stringer:
-		return strings.TrimSpace(value.String())
 	case json.Number:
+		return strings.TrimSpace(value.String())
+	case fmt.Stringer:
 		return strings.TrimSpace(value.String())
 	default:
 		return ""
 	}
-}
-
-func setDataImportString(values map[string]any, key, value string) {
-	if values == nil || strings.TrimSpace(value) == "" {
-		return
-	}
-	values[key] = value
 }
 
 func defaultProxyName(name string) string {

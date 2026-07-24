@@ -411,6 +411,13 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 			}
 
 			if resp.StatusCode == http.StatusTooManyRequests {
+				if idx+1 < len(endpoints) {
+					_ = resp.Body.Close()
+					if sleepErr := sleepKiroRetry(ctx, attempt); sleepErr != nil {
+						return nil, requestCtx, sleepErr
+					}
+					break
+				}
 				if attempt < maxRetries {
 					_ = resp.Body.Close()
 					if sleepErr := sleepKiroRetry(ctx, attempt); sleepErr != nil {
@@ -424,13 +431,6 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 				if err != nil {
 					_ = resp.Body.Close()
 					return nil, requestCtx, err
-				}
-				if idx+1 < len(endpoints) {
-					_ = resp.Body.Close()
-					if sleepErr := sleepKiroRetry(ctx, attempt); sleepErr != nil {
-						return nil, requestCtx, sleepErr
-					}
-					break
 				}
 				resp.Header.Set("x-kiro-cooldown", cooldown.String())
 				return resp, requestCtx, nil
@@ -593,14 +593,6 @@ func kiroEndpointModeForRequest(account *Account, parsed *ParsedRequest) string 
 		return KiroEndpointModeQ
 	}
 	return parsed.Group.EffectiveKiroEndpointMode()
-}
-
-func (s *GatewayService) buildKiroPayloadForAccount(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, modelID, token, requestModel string, headers http.Header) (*kiropkg.KiroBuildResult, error) {
-	var profileArn string
-	if kiroEndpointModeForRequest(account, parsed) == KiroEndpointModeKRS {
-		profileArn = kiroResolveProfileArnForKRS(account)
-	}
-	return s.buildKiroPayloadForAccountWithArn(ctx, account, parsed, anthropicBody, modelID, token, requestModel, headers, profileArn)
 }
 
 // buildKiroPayloadForAccountWithArn 使用显式 profileArn 构建 Kiro 请求 payload。
