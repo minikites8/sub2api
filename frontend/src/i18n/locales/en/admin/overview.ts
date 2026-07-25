@@ -77,6 +77,8 @@ export default {
       groupPricingDesc: 'Configure batch discount and hold ratio',
       systemSettings: 'System Settings',
       configureSystem: 'Configure system settings',
+      channelTokenCapacity: 'Channel Capacity',
+      availableAccounts: 'Available Accounts',
       failedToLoad: 'Failed to load dashboard statistics'
     },
 

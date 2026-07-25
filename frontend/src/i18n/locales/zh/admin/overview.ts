@@ -77,6 +77,8 @@ export default {
       groupPricingDesc: '设置批量折扣和冻结比例',
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
+      channelTokenCapacity: '渠道容量',
+      availableAccounts: '可用账号',
       failedToLoad: '加载仪表盘数据失败'
     },
 

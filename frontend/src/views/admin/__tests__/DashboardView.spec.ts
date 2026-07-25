@@ -140,7 +140,58 @@ describe('admin DashboardView', () => {
     expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({
       start_date: formatLocalDate(yesterday),
       end_date: formatLocalDate(now),
-      granularity: 'hour'
+      granularity: 'hour',
+      include_channel_token_capacity: true
     }))
+  })
+
+  it('shows available accounts instead of the five-hour capacity window', async () => {
+    getSnapshotV2.mockResolvedValue({
+      stats: createDashboardStats(),
+      trend: [],
+      models: [],
+      channel_token_capacity: {
+        platform: 'openai',
+        available_accounts: 12,
+        five_hour: {
+          used_tokens: 500,
+          total_tokens: 1000,
+          remaining_tokens: 500,
+          used_percent: 50,
+          known_accounts: 4
+        },
+        seven_day: {
+          used_tokens: 250,
+          total_tokens: 1000,
+          remaining_tokens: 750,
+          used_percent: 25,
+          known_accounts: 3
+        }
+      }
+    })
+
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          LoadingSpinner: true,
+          Icon: true,
+          DateRangePicker: true,
+          Select: true,
+          ModelDistributionChart: true,
+          TokenUsageTrend: true,
+          Line: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="available-account-disc"]').text()).toContain('12')
+    expect(wrapper.text()).toContain('admin.dashboard.availableAccounts')
+    expect(wrapper.text()).toContain('7d')
+    expect(wrapper.text()).toContain('25.0%')
+    expect(wrapper.text()).not.toContain('50.0%')
+    expect(wrapper.text()).not.toContain('5h')
   })
 })

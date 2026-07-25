@@ -219,18 +219,9 @@
         <!-- Channel Token Capacity -->
         <div v-if="channelTokenCapacity" class="card p-4">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-                {{ t('admin.dashboard.channelTokenCapacity') }}
-              </h2>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{
-                  t('admin.dashboard.openAIAvailableOauthAccounts', {
-                    count: channelTokenCapacity.available_accounts
-                  })
-                }}
-              </p>
-            </div>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.dashboard.channelTokenCapacity') }}
+            </h2>
             <span
               class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
             >
@@ -239,48 +230,69 @@
           </div>
           <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div
-              v-for="item in channelCapacityWindows"
-              :key="item.label"
-              class="rounded-lg border border-gray-100 p-4 dark:border-dark-700"
+              class="flex min-h-44 items-center justify-center rounded-lg border border-gray-100 p-4 dark:border-dark-700"
             >
+              <div class="flex flex-col items-center gap-3 text-center">
+                <div
+                  data-testid="available-account-disc"
+                  class="flex h-28 w-28 flex-shrink-0 items-center justify-center rounded-full border-[10px] border-emerald-100 bg-emerald-50 shadow-inner dark:border-emerald-900/60 dark:bg-emerald-900/20"
+                >
+                  <span
+                    class="max-w-20 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300"
+                    :title="String(channelTokenCapacity.available_accounts)"
+                  >
+                    {{ formatNumber(channelTokenCapacity.available_accounts) }}
+                  </span>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ t('admin.dashboard.availableAccounts') }}
+                  </p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">OpenAI OAuth GPT</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-gray-100 p-4 dark:border-dark-700">
               <div class="mb-3 flex items-center justify-between gap-3">
                 <div>
-                  <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ item.label }}</p>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">7d</p>
                   <p class="text-xs text-gray-500 dark:text-gray-400">
                     {{
                       t('admin.dashboard.knownQuotaAccounts', {
-                        count: item.window.known_accounts
+                        count: channelTokenCapacity.seven_day.known_accounts
                       })
                     }}
                   </p>
                 </div>
                 <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                  {{ formatPercent(item.window.used_percent) }}
+                  {{ formatPercent(channelTokenCapacity.seven_day.used_percent) }}
                 </span>
               </div>
               <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
                 <div
                   class="h-full rounded-full bg-emerald-500 transition-all"
-                  :style="{ width: `${Math.min(item.window.used_percent || 0, 100)}%` }"
+                  :style="{
+                    width: `${Math.min(channelTokenCapacity.seven_day.used_percent || 0, 100)}%`
+                  }"
                 />
               </div>
               <div class="mt-3 grid grid-cols-3 gap-3 text-xs">
                 <div>
                   <p class="text-gray-500 dark:text-gray-400">{{ t('admin.dashboard.used') }}</p>
                   <p class="font-semibold text-gray-900 dark:text-white">
-                    {{ formatTokens(item.window.used_tokens) }}
+                    {{ formatTokens(channelTokenCapacity.seven_day.used_tokens) }}
                   </p>
                 </div>
                 <div>
                   <p class="text-gray-500 dark:text-gray-400">{{ t('admin.dashboard.capacity') }}</p>
                   <p class="font-semibold text-gray-900 dark:text-white">
-                    {{ formatCapacityTokens(item.window.total_tokens) }}
+                    {{ formatCapacityTokens(channelTokenCapacity.seven_day.total_tokens) }}
                   </p>
                 </div>
                 <div>
                   <p class="text-gray-500 dark:text-gray-400">{{ t('admin.dashboard.remaining') }}</p>
                   <p class="font-semibold text-gray-900 dark:text-white">
-                    {{ formatCapacityTokens(item.window.remaining_tokens) }}
+                    {{ formatCapacityTokens(channelTokenCapacity.seven_day.remaining_tokens) }}
                   </p>
                 </div>
               </div>
@@ -483,14 +495,6 @@ let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
-
-const channelCapacityWindows = computed(() => {
-  if (!channelTokenCapacity.value) return []
-  return [
-    { label: '5h', window: channelTokenCapacity.value.five_hour },
-    { label: '7d', window: channelTokenCapacity.value.seven_day }
-  ]
-})
 
 // Helper function to format date in local timezone
 const formatLocalDate = (date: Date): string => {
