@@ -263,21 +263,23 @@ const (
 	SettingKeyGoogleOAuthFrontendRedirectURL = "google_oauth_frontend_redirect_url"
 
 	// OEM设置
-	SettingKeySiteName                    = "site_name"                     // 网站名称
-	SettingKeySiteLogo                    = "site_logo"                     // 网站Logo (base64)
-	SettingKeySiteSubtitle                = "site_subtitle"                 // 网站副标题
-	SettingKeyAPIBaseURL                  = "api_base_url"                  // API端点地址（用于客户端配置和导入）
-	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
-	SettingKeyEnterpriseBillingContactQR  = "enterprise_billing_contact_qr" // 企业账单客服二维码
-	SettingKeyDocURL                      = "doc_url"                       // 文档链接
-	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
-	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
-	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
-	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）
-	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数
-	SettingKeyTablePageSizeOptions        = "table_page_size_options"       // 表格可选每页条数（JSON 数组）
-	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
-	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
+	SettingKeySiteName                       = "site_name"                          // 网站名称
+	SettingKeySiteLogo                       = "site_logo"                          // 网站Logo (base64)
+	SettingKeySiteSubtitle                   = "site_subtitle"                      // 网站副标题
+	SettingKeyAPIBaseURL                     = "api_base_url"                       // API端点地址（用于客户端配置和导入）
+	SettingKeyContactInfo                    = "contact_info"                       // 客服联系方式
+	SettingKeyEnterpriseBillingContactQR     = "enterprise_billing_contact_qr"      // 企业账单客服二维码
+	SettingKeySiteICPFilingNumber            = "site_icp_filing_number"             // ICP备案号
+	SettingKeySitePublicSecurityFilingNumber = "site_public_security_filing_number" // 公安备案号
+	SettingKeyDocURL                         = "doc_url"                            // 文档链接
+	SettingKeyHomeContent                    = "home_content"                       // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
+	SettingKeyHideCcsImportButton            = "hide_ccs_import_button"             // 是否隐藏 API Keys 页面的导入 CCS 按钮
+	SettingKeyPurchaseSubscriptionEnabled    = "purchase_subscription_enabled"      // 是否展示"购买订阅"页面入口
+	SettingKeyPurchaseSubscriptionURL        = "purchase_subscription_url"          // "购买订阅"页面 URL（作为 iframe src）
+	SettingKeyTableDefaultPageSize           = "table_default_page_size"            // 表格默认每页条数
+	SettingKeyTablePageSizeOptions           = "table_page_size_options"            // 表格可选每页条数（JSON 数组）
+	SettingKeyCustomMenuItems                = "custom_menu_items"                  // 自定义菜单项（JSON 数组）
+	SettingKeyCustomEndpoints                = "custom_endpoints"                   // 自定义端点列表（JSON 数组）
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"    // 新用户默认并发量
@@ -559,7 +561,7 @@ const (
 	QuotaDimensionSpark  = "spark"
 )
 
-// AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
+// AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "yc_" keys).
 const AdminAPIKeyPrefix = "admin-"
 
 // SettingKeyAllowUserViewErrorRequests controls whether end users can view

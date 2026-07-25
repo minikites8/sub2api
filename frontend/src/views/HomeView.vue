@@ -9,160 +9,154 @@
     <div v-else v-html="homeContent"></div>
   </div>
 
-  <div v-else class="md3-home min-h-screen" :class="{ 'md3-home-dark': isDark }">
-    <header class="md3-top-bar">
-      <nav class="md3-container flex h-full items-center justify-between gap-4">
-        <router-link to="/home" class="md3-brand" :aria-label="siteName">
-          <span class="md3-brand-logo">
-            <img :src="siteLogo || '/logo.png'" alt="" class="h-full w-full object-contain" />
-          </span>
-          <span class="min-w-0 truncate text-sm font-semibold">{{ siteName }}</span>
-        </router-link>
+  <div v-else class="stitch-page">
+    <div class="stitch-grid" aria-hidden="true"></div>
+    <div class="stitch-vignette" aria-hidden="true"></div>
 
-        <div class="flex items-center gap-1 sm:gap-2">
-          <div class="md3-locale">
-            <LocaleSwitcher />
-          </div>
-
-          <router-link
-            v-if="publicTransitEnabled"
-            to="/public/transit"
-            class="md3-transit-link"
-          >
-            {{ t('publicTransit.nav') }}
+    <header class="stitch-header">
+      <nav class="stitch-nav" :aria-label="t('home.primaryNavigation')">
+        <div class="stitch-nav-start">
+          <router-link to="/home" class="stitch-brand" :aria-label="siteName">
+            <img v-if="siteLogo" :src="siteLogo" alt="" class="stitch-brand-logo" />
+            <span>{{ siteName }}</span>
           </router-link>
 
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="md3-icon-button"
-            :title="t('home.viewDocs')"
-          >
-            <Icon name="book" size="md" />
-          </a>
-
-          <button
-            type="button"
-            class="md3-icon-button"
-            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
-            :aria-label="isDark ? t('home.switchToLight') : t('home.switchToDark')"
-            :aria-pressed="isDark"
-            @click="toggleTheme"
-          >
-            <Icon v-if="isDark" name="sun" size="md" />
-            <Icon v-else name="moon" size="md" />
-          </button>
-
-          <router-link v-if="isAuthenticated" :to="dashboardPath" class="md3-tonal-button">
-            <span class="md3-avatar">{{ userInitial }}</span>
-            <span>{{ t('home.dashboard') }}</span>
-          </router-link>
-          <router-link v-else to="/login" class="md3-filled-button">
-            {{ t('home.login') }}
-          </router-link>
-        </div>
-      </nav>
-    </header>
-
-    <main>
-      <section class="md3-container md3-hero">
-        <div class="md3-hero-copy">
-          <div class="md3-assist-chip">
-            <Icon name="sparkles" size="sm" />
-            <span>{{ t('home.heroSubtitle') }}</span>
-          </div>
-
-          <h1>{{ siteName }}</h1>
-          <p class="md3-hero-subtitle">{{ siteSubtitle }}</p>
-          <p class="md3-hero-description">{{ t('home.heroDescription') }}</p>
-
-          <div class="flex flex-col gap-3 sm:flex-row">
-            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="md3-hero-action">
-              <span>{{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}</span>
-              <Icon name="arrowRight" size="md" />
+          <div class="stitch-nav-links">
+            <router-link to="/docs" class="stitch-nav-link">
+              {{ t('home.docs') }}
+            </router-link>
+            <router-link to="/pricing" class="stitch-nav-link">
+              {{ t('home.pricing') }}
             </router-link>
             <router-link
               v-if="publicTransitEnabled"
               to="/public/transit"
-              class="md3-hero-secondary"
+              class="stitch-nav-link"
             >
-              <Icon name="server" size="md" />
-              <span>{{ t('publicTransit.nav') }}</span>
+              {{ t('publicTransit.nav') }}
             </router-link>
-            <a
-              v-if="docUrl"
-              :href="docUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="md3-hero-secondary"
+            <router-link to="/models" class="stitch-nav-link">
+              {{ t('home.modelMarketplace') }}
+            </router-link>
+          </div>
+        </div>
+
+        <div class="stitch-nav-actions">
+          <div class="stitch-locale"><LocaleSwitcher /></div>
+          <router-link
+            :to="isAuthenticated ? dashboardPath : '/login'"
+            class="stitch-login-button"
+          >
+            {{ isAuthenticated ? t('home.dashboard') : t('home.login') }}
+          </router-link>
+          <button
+            type="button"
+            class="stitch-mobile-menu-button"
+            :aria-label="mobileMenuOpen ? t('home.closeNavigation') : t('home.openNavigation')"
+            :aria-expanded="mobileMenuOpen"
+            aria-controls="stitch-mobile-menu"
+            @click="mobileMenuOpen = !mobileMenuOpen"
+          >
+            <Icon :name="mobileMenuOpen ? 'x' : 'menu'" size="md" />
+          </button>
+        </div>
+      </nav>
+
+      <nav
+        v-if="mobileMenuOpen"
+        id="stitch-mobile-menu"
+        class="stitch-mobile-menu"
+        :aria-label="t('home.mobileNavigation')"
+      >
+        <router-link to="/docs" @click="mobileMenuOpen = false">
+          {{ t('home.docs') }}
+        </router-link>
+        <router-link to="/pricing" @click="mobileMenuOpen = false">
+          {{ t('home.pricing') }}
+        </router-link>
+        <router-link
+          v-if="publicTransitEnabled"
+          to="/public/transit"
+          @click="mobileMenuOpen = false"
+        >
+          {{ t('publicTransit.nav') }}
+        </router-link>
+        <router-link to="/models" @click="mobileMenuOpen = false">
+          {{ t('home.modelMarketplace') }}
+        </router-link>
+      </nav>
+    </header>
+
+    <main class="stitch-main">
+      <section class="stitch-hero" aria-labelledby="home-hero-title">
+        <div class="stitch-hero-copy">
+          <div class="stitch-chip">{{ t('home.heroSubtitle') }}</div>
+          <h1 id="home-hero-title" class="stitch-headline">{{ t('home.heroTitle') }}</h1>
+          <p class="stitch-description">{{ t('home.heroDescription') }}</p>
+
+          <div class="stitch-hero-actions">
+            <router-link
+              :to="isAuthenticated ? dashboardPath : '/login'"
+              class="stitch-primary-button"
             >
-              <Icon name="book" size="md" />
-              <span>{{ t('home.docs') }}</span>
-            </a>
+              <span>{{ isAuthenticated ? t('home.goToDashboard') : t('home.heroCta') }}</span>
+              <Icon name="arrowRight" size="sm" />
+            </router-link>
+            <router-link to="/docs" class="stitch-secondary-button">
+              <Icon name="book" size="sm" />
+              <span>{{ t('home.heroCtaDocs') }}</span>
+            </router-link>
           </div>
         </div>
 
-        <div class="md3-gateway-panel" aria-label="Gateway preview">
-          <div class="md3-panel-header">
-            <div>
-              <p class="md3-panel-label">Gateway</p>
-              <h2>/v1/messages</h2>
-            </div>
-            <span class="md3-status-chip">
-              <span class="md3-status-dot"></span>
-              200 OK
-            </span>
-          </div>
-
-          <div class="md3-request-block">
-            <div class="flex items-center gap-2">
-              <span class="md3-method">POST</span>
-              <span class="truncate text-sm">claude-opus / gpt-5.5 / gemini</span>
-            </div>
-            <div class="mt-4 grid gap-3 sm:grid-cols-3">
-              <div v-for="metric in heroMetrics" :key="metric.label" class="md3-metric">
-                <span>{{ metric.label }}</span>
-                <strong>{{ metric.value }}</strong>
+        <div id="api-example" class="stitch-code-shell">
+          <div class="stitch-code-glow" aria-hidden="true"></div>
+          <div class="stitch-code-window">
+            <div class="stitch-code-titlebar">
+              <div class="stitch-window-dots" aria-hidden="true">
+                <span class="stitch-window-dot stitch-window-dot-red"></span>
+                <span class="stitch-window-dot stitch-window-dot-neutral"></span>
+                <span class="stitch-window-dot stitch-window-dot-green"></span>
               </div>
+              <span class="stitch-code-filename">{{ t('home.codeBlockTitle') }}</span>
+              <button
+                type="button"
+                class="stitch-copy-button"
+                :title="copied ? t('home.codeCopied') : t('home.copyCode')"
+                :aria-label="copied ? t('home.codeCopied') : t('home.copyCode')"
+                @click="copyCode"
+              >
+                <Icon :name="copied ? 'check' : 'copy'" size="sm" />
+              </button>
             </div>
-          </div>
+            <div class="stitch-code-body">
+              <pre><code><span class="code-keyword">import</span> { Gateway } <span class="code-keyword">from</span> <span class="code-string">'@your-code/sdk'</span>;
 
-          <div class="space-y-2">
-            <div v-for="route in routeRows" :key="route.name" class="md3-route-row">
-              <span class="md3-route-icon">
-                <Icon :name="route.icon" size="sm" />
-              </span>
-              <div class="min-w-0 flex-1">
-                <p>{{ route.name }}</p>
-                <span class="md3-route-detail">{{ route.detail }}</span>
-              </div>
-              <strong>{{ route.value }}</strong>
+<span class="code-keyword">const</span> ai = <span class="code-keyword">new</span> Gateway({
+  apiKey: <span class="code-string">'yc_xxxxxx'</span>
+});
+
+<span class="code-comment">// Instantly switch models</span>
+<span class="code-keyword">const</span> response = <span class="code-keyword">await</span> ai.complete({
+  model: <span class="code-string">'anthropic/claude-3-opus'</span>,
+  messages: [{ role: <span class="code-string">'user'</span>, content: <span class="code-string">'Hello world'</span> }]
+});</code></pre>
             </div>
+            <p class="sr-only" aria-live="polite">{{ copied ? t('home.codeCopied') : '' }}</p>
           </div>
         </div>
       </section>
 
-      <section class="md3-container">
-        <div class="md3-chip-row">
-          <span v-for="tag in featureTags" :key="tag.label" class="md3-filter-chip">
-            <Icon :name="tag.icon" size="sm" />
-            {{ tag.label }}
-          </span>
-        </div>
-      </section>
+      <section class="stitch-features" aria-labelledby="home-features-title">
+        <h2 id="home-features-title" class="stitch-section-title">
+          {{ t('home.models.title') }}
+        </h2>
 
-      <section class="md3-container md3-section">
-        <div class="md3-section-heading">
-          <p>{{ t('home.solutions.subtitle') }}</p>
-          <h2>{{ t('home.solutions.title') }}</h2>
-        </div>
-
-        <div class="grid gap-4 md:grid-cols-3">
-          <article v-for="feature in featureCards" :key="feature.title" class="md3-feature-card">
-            <span class="md3-feature-icon">
-              <Icon :name="feature.icon" size="lg" />
+        <div class="stitch-feature-grid">
+          <article v-for="feature in features" :key="feature.id" class="stitch-feature-card">
+            <Icon :name="feature.watermark" size="xl" class="stitch-feature-watermark" aria-hidden="true" />
+            <span class="stitch-feature-icon" aria-hidden="true">
+              <Icon :name="feature.icon" size="md" />
             </span>
             <h3>{{ feature.title }}</h3>
             <p>{{ feature.description }}</p>
@@ -170,859 +164,854 @@
         </div>
       </section>
 
-      <section class="md3-container md3-section">
-        <div class="md3-comparison">
-          <div class="md3-comparison-heading">
-            <p>{{ t('home.comparison.title') }}</p>
-            <h2>{{ t('home.features.balanceQuota') }} · {{ t('home.features.multiAccount') }}</h2>
-          </div>
-
-          <div class="md3-comparison-list">
-            <div v-for="item in comparisonItems" :key="item.feature" class="md3-comparison-row">
-              <span>{{ item.feature }}</span>
-              <p>{{ item.official }}</p>
-              <strong>{{ item.us }}</strong>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="md3-container md3-section">
-        <div class="md3-section-heading">
-          <p>{{ t('home.providers.description') }}</p>
-          <h2>{{ t('home.providers.title') }}</h2>
-        </div>
-
-        <div class="md3-provider-grid">
-          <div
-            v-for="provider in providers"
-            :key="provider.name"
-            class="md3-provider"
-            :class="{ 'md3-provider-muted': provider.soon }"
-          >
-            <span class="md3-provider-mark">{{ provider.mark }}</span>
-            <span class="min-w-0 flex-1 truncate">{{ provider.name }}</span>
-            <small>{{ provider.soon ? t('home.providers.soon') : t('home.providers.supported') }}</small>
-          </div>
-        </div>
-      </section>
-
-      <section class="md3-container md3-cta-section">
-        <div class="md3-cta">
-          <div>
-            <p>{{ t('home.cta.description') }}</p>
-            <h2>{{ t('home.cta.title') }}</h2>
-          </div>
-          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="md3-cta-button">
-            <span>{{ isAuthenticated ? t('home.goToDashboard') : t('home.cta.button') }}</span>
-            <Icon name="arrowRight" size="md" />
-          </router-link>
-        </div>
+      <section class="stitch-visual" :aria-label="t('home.heroImageAlt')">
+        <img
+          src="/gateway-data-streams.png"
+          :alt="t('home.heroImageAlt')"
+          class="stitch-visual-image"
+        />
+        <div class="stitch-visual-overlay" aria-hidden="true"></div>
       </section>
     </main>
 
-    <footer class="md3-footer">
-      <div class="md3-container flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
-        <p>&copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}</p>
-        <div class="flex items-center gap-5">
-          <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">
-            {{ t('home.docs') }}
-          </a>
-          <a :href="githubUrl" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
-      </div>
+    <footer class="stitch-footer">
+      <p>&copy; {{ currentYear }} {{ siteName }} - {{ t('home.footer.allRightsReserved') }}</p>
+      <nav
+        v-if="legalDocuments.length || icpFilingNumber || publicSecurityFilingNumber"
+        class="stitch-footer-links"
+        :aria-label="t('home.footerNavigation')"
+      >
+        <router-link
+          v-for="document in legalDocuments"
+          :key="document.id"
+          :to="`/legal/${encodeURIComponent(document.id)}`"
+        >
+          {{ footerDocumentTitle(document.id, document.title) }}
+        </router-link>
+        <a
+          v-if="icpFilingNumber"
+          href="https://beian.miit.gov.cn/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {{ icpFilingNumber }}
+        </a>
+        <a
+          v-if="publicSecurityFilingNumber"
+          href="https://beian.mps.gov.cn/#/query/webSearch"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {{ publicSecurityFilingNumber }}
+        </a>
+      </nav>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { useAppStore, useAuthStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
 
-type IconName = 'chart' | 'creditCard' | 'database' | 'server' | 'shield' | 'swap' | 'sync' | 'users'
+type FeatureIcon = 'bolt' | 'link' | 'chartBar' | 'globe' | 'server' | 'trendingUp'
 
 const { t } = useI18n()
-
 const authStore = useAuthStore()
 const appStore = useAppStore()
 
+const codeSnippet = `import { Gateway } from '@your-code/sdk';
+
+const ai = new Gateway({
+  apiKey: 'yc_xxxxxx'
+});
+
+// Instantly switch models
+const response = await ai.complete({
+  model: 'anthropic/claude-3-opus',
+  messages: [{ role: 'user', content: 'Hello world' }]
+});`
+
+const copied = ref(false)
+const mobileMenuOpen = ref(false)
+let copyFeedbackTimer: number | undefined
+
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
-const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+const icpFilingNumber = computed(
+  () => appStore.cachedPublicSettings?.site_icp_filing_number?.trim() || ''
+)
+const publicSecurityFilingNumber = computed(
+  () => appStore.cachedPublicSettings?.site_public_security_filing_number?.trim() || ''
+)
 const publicTransitEnabled = computed(() =>
   appStore.cachedPublicSettings?.public_transit_enabled === true &&
   appStore.cachedPublicSettings?.public_transit_page_enabled === true
 )
-
+const legalDocuments = computed(() =>
+  (appStore.cachedPublicSettings?.login_agreement_documents || [])
+    .filter((document) => document.id?.trim() && document.title?.trim())
+    .slice(0, 3)
+)
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
   return content.startsWith('http://') || content.startsWith('https://')
 })
 
-const isDark = ref(document.documentElement.classList.contains('dark'))
-const preferredColorScheme = window.matchMedia('(prefers-color-scheme: dark)')
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
-
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
-const userInitial = computed(() => {
-  const user = authStore.user
-  if (!user || !user.email) return ''
-  return user.email.charAt(0).toUpperCase()
-})
-
 const currentYear = computed(() => new Date().getFullYear())
 
-const heroMetrics = computed(() => [
-  { label: t('home.tags.subscriptionToApi'), value: '1 key' },
-  { label: t('home.tags.stickySession'), value: 'stable' },
-  { label: t('home.tags.realtimeBilling'), value: 'live' }
-])
-
-const routeRows = computed<Array<{ name: string; detail: string; value: string; icon: IconName }>>(() => [
+const features = computed<Array<{
+  id: string
+  icon: FeatureIcon
+  watermark: FeatureIcon
+  title: string
+  description: string
+}>>(() => [
   {
-    name: t('home.features.unifiedGateway'),
-    detail: t('home.features.unifiedGatewayDesc'),
-    value: 'API',
-    icon: 'server'
-  },
-  {
-    name: t('home.features.multiAccount'),
-    detail: t('home.features.multiAccountDesc'),
-    value: 'pool',
-    icon: 'sync'
-  },
-  {
-    name: t('home.features.balanceQuota'),
-    detail: t('home.features.balanceQuotaDesc'),
-    value: 'quota',
-    icon: 'creditCard'
-  }
-])
-
-const featureTags = computed<Array<{ label: string; icon: IconName }>>(() => [
-  { label: t('home.tags.subscriptionToApi'), icon: 'swap' },
-  { label: t('home.tags.stickySession'), icon: 'shield' },
-  { label: t('home.tags.realtimeBilling'), icon: 'chart' }
-])
-
-const featureCards = computed<Array<{ title: string; description: string; icon: IconName }>>(() => [
-  {
+    id: 'speed',
+    icon: 'globe',
+    watermark: 'bolt',
     title: t('home.features.unifiedGateway'),
-    description: t('home.features.unifiedGatewayDesc'),
-    icon: 'server'
+    description: t('home.features.unifiedGatewayDesc')
   },
   {
+    id: 'api',
+    icon: 'link',
+    watermark: 'server',
     title: t('home.features.multiAccount'),
-    description: t('home.features.multiAccountDesc'),
-    icon: 'users'
+    description: t('home.features.multiAccountDesc')
   },
   {
+    id: 'monitoring',
+    icon: 'chartBar',
+    watermark: 'trendingUp',
     title: t('home.features.balanceQuota'),
-    description: t('home.features.balanceQuotaDesc'),
-    icon: 'database'
+    description: t('home.features.balanceQuotaDesc')
   }
 ])
 
-const comparisonItems = computed(() => [
-  {
-    feature: t('home.comparison.items.pricing.feature'),
-    official: t('home.comparison.items.pricing.official'),
-    us: t('home.comparison.items.pricing.us')
-  },
-  {
-    feature: t('home.comparison.items.models.feature'),
-    official: t('home.comparison.items.models.official'),
-    us: t('home.comparison.items.models.us')
-  },
-  {
-    feature: t('home.comparison.items.management.feature'),
-    official: t('home.comparison.items.management.official'),
-    us: t('home.comparison.items.management.us')
-  },
-  {
-    feature: t('home.comparison.items.control.feature'),
-    official: t('home.comparison.items.control.official'),
-    us: t('home.comparison.items.control.us')
-  }
-])
-
-const providers = computed(() => [
-  { name: t('home.providers.claude'), mark: 'C', soon: false },
-  { name: 'GPT', mark: 'G', soon: false },
-  { name: t('home.providers.gemini'), mark: 'G', soon: false },
-  { name: t('home.providers.antigravity'), mark: 'A', soon: false },
-  { name: t('home.providers.more'), mark: '+', soon: true }
-])
-
-function resolveThemePreference(): boolean {
-  const savedTheme = localStorage.getItem('theme')
-  if (savedTheme === 'dark') return true
-  if (savedTheme === 'light') return false
-  return preferredColorScheme.matches
+function footerDocumentTitle(id: string, title: string): string {
+  if (id === 'terms') return t('home.footer.terms')
+  if (id === 'privacy') return t('home.footer.privacy')
+  return title
 }
 
-function applyTheme(dark: boolean, persist = true) {
-  isDark.value = dark
-  document.documentElement.classList.toggle('dark', dark)
-
-  if (persist) {
-    localStorage.setItem('theme', dark ? 'dark' : 'light')
+async function copyCode(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(codeSnippet)
+    copied.value = true
+    if (copyFeedbackTimer) window.clearTimeout(copyFeedbackTimer)
+    copyFeedbackTimer = window.setTimeout(() => {
+      copied.value = false
+    }, 1800)
+  } catch {
+    copied.value = false
   }
 }
 
-function syncThemePreference() {
-  applyTheme(resolveThemePreference(), false)
-}
-
-function toggleTheme() {
-  applyTheme(!isDark.value)
-}
-
-function handleThemeStorage(event: StorageEvent) {
-  if (event.key === 'theme') {
-    syncThemePreference()
-  }
-}
-
-function handleSystemThemeChange() {
-  if (!localStorage.getItem('theme')) {
-    syncThemePreference()
-  }
+function handleNavigationKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') mobileMenuOpen.value = false
 }
 
 onMounted(() => {
-  syncThemePreference()
-  window.addEventListener('storage', handleThemeStorage)
-  preferredColorScheme.addEventListener('change', handleSystemThemeChange)
-
+  document.addEventListener('keydown', handleNavigationKeydown)
   authStore.checkAuth()
-
-  if (!appStore.publicSettingsLoaded) {
-    appStore.fetchPublicSettings()
-  }
+  if (!appStore.publicSettingsLoaded) appStore.fetchPublicSettings()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('storage', handleThemeStorage)
-  preferredColorScheme.removeEventListener('change', handleSystemThemeChange)
+  document.removeEventListener('keydown', handleNavigationKeydown)
+  if (copyFeedbackTimer) window.clearTimeout(copyFeedbackTimer)
 })
 </script>
 
 <style scoped>
-.md3-home {
-  --md-primary: #202124;
-  --md-on-primary: #ffffff;
-  --md-primary-container: #e8eaed;
-  --md-on-primary-container: #202124;
-  --md-secondary-container: #f1f3f4;
-  --md-on-secondary-container: #3c4043;
-  --md-surface: #ffffff;
-  --md-surface-container-low: #f8fafd;
-  --md-surface-container: #f1f3f4;
-  --md-surface-container-high: #e8eaed;
-  --md-on-surface: #202124;
-  --md-on-surface-variant: #5f6368;
-  --md-outline: #9aa0a6;
-  --md-outline-variant: #dadce0;
-  --md-shadow: 0 1px 2px rgb(0 0 0 / 0.14), 0 1px 3px 1px rgb(0 0 0 / 0.08);
-  background: var(--md-surface);
-  color: var(--md-on-surface);
-}
-
-.md3-home-dark {
-  --md-primary: #f1f3f4;
-  --md-on-primary: #202124;
-  --md-primary-container: #3f3f3f;
-  --md-on-primary-container: #f1f3f4;
-  --md-secondary-container: #383838;
-  --md-on-secondary-container: #f1f3f4;
-  --md-surface: #1f1f1f;
-  --md-surface-container-low: #2a2a2a;
-  --md-surface-container: #303030;
-  --md-surface-container-high: #3f3f3f;
-  --md-on-surface: #f1f3f4;
-  --md-on-surface-variant: #c7c7c7;
-  --md-outline: #8e8e8e;
-  --md-outline-variant: #4d4d4d;
-  --md-shadow: none;
-}
-
-.md3-container {
-  width: min(1120px, calc(100% - 32px));
-  margin-inline: auto;
-}
-
-.md3-top-bar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  height: 72px;
-  border-bottom: 1px solid var(--md-outline-variant);
-  background: color-mix(in srgb, var(--md-surface) 92%, transparent);
-  backdrop-filter: blur(16px);
-}
-
-.md3-brand {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 48vw;
-  align-items: center;
-  gap: 12px;
-  color: var(--md-on-surface);
-}
-
-.md3-brand-logo {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  place-items: center;
+.stitch-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  border-radius: 8px;
-  background: var(--md-surface-container-high);
+  background: #0b141c;
+  color: #dae3ee;
+  font-family: 'Geist', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
-.md3-icon-button {
-  display: inline-grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border-radius: 20px;
-  color: var(--md-on-surface-variant);
-  transition: background-color 160ms ease, color 160ms ease;
+.stitch-grid,
+.stitch-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
 }
 
-.md3-icon-button:hover {
-  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
-  color: var(--md-on-surface);
+.stitch-grid {
+  background-image:
+    linear-gradient(rgba(59, 74, 63, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 74, 63, 0.14) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
-.md3-transit-link {
-  display: none;
-  min-height: 40px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 20px;
-  background: var(--md-surface-container-low);
-  padding: 0 14px;
-  color: var(--md-on-surface-variant);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  transition: background-color 160ms ease, color 160ms ease;
+.stitch-vignette {
+  z-index: -1;
+  background: radial-gradient(circle at 50% 30%, rgba(11, 20, 28, 0.2) 0%, #0b141c 76%);
 }
 
-.md3-transit-link:hover {
-  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
-  color: var(--md-on-surface);
+.stitch-header {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 30;
+  height: 64px;
+  background: rgba(6, 15, 22, 0.86);
+  border-bottom: 1px solid #3b4a3f;
+  backdrop-filter: blur(12px);
 }
 
-@media (min-width: 640px) {
-  .md3-transit-link {
-    display: inline-flex;
-  }
-}
-
-.md3-locale :deep(button) {
-  height: 40px;
-  border-radius: 20px;
-  color: var(--md-on-surface-variant);
-}
-
-.md3-locale :deep(button:hover) {
-  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
-}
-
-.md3-filled-button,
-.md3-tonal-button,
-.md3-hero-action,
-.md3-hero-secondary,
-.md3-cta-button {
-  display: inline-flex;
-  min-height: 40px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border-radius: 20px;
+.stitch-nav {
+  width: 100%;
+  height: 100%;
   padding: 0 20px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-
-.md3-filled-button,
-.md3-hero-action,
-.md3-cta-button {
-  background: var(--md-primary);
-  color: var(--md-on-primary);
-  box-shadow: var(--md-shadow);
-}
-
-.md3-filled-button:hover,
-.md3-hero-action:hover,
-.md3-cta-button:hover {
-  background: color-mix(in srgb, var(--md-primary) 92%, var(--md-on-primary));
-  box-shadow: 0 2px 6px rgb(0 0 0 / 0.16);
-}
-
-.md3-tonal-button,
-.md3-hero-secondary {
-  background: var(--md-secondary-container);
-  color: var(--md-on-secondary-container);
-}
-
-.md3-tonal-button:hover,
-.md3-hero-secondary:hover {
-  background: color-mix(in srgb, var(--md-secondary-container) 88%, var(--md-on-secondary-container));
-}
-
-.md3-avatar {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--md-primary);
-  color: var(--md-on-primary);
-  font-size: 0.75rem;
-}
-
-.md3-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 32px;
-  padding-top: 64px;
-  padding-bottom: 48px;
-}
-
-.md3-hero-copy {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-}
-
-.md3-assist-chip,
-.md3-filter-chip {
-  display: inline-flex;
-  min-height: 32px;
   align-items: center;
-  gap: 8px;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface-container-low);
-  padding: 0 12px;
-  color: var(--md-on-surface-variant);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.md3-hero h1 {
-  margin-top: 24px;
-  max-width: 760px;
-  color: var(--md-on-surface);
-  font-size: clamp(2.5rem, 6vw, 4.75rem);
-  font-weight: 700;
-  line-height: 1.02;
-}
-
-.md3-hero-subtitle {
-  margin-top: 18px;
-  color: var(--md-primary);
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.md3-hero-description {
-  margin-top: 12px;
-  max-width: 620px;
-  color: var(--md-on-surface-variant);
-  font-size: 1rem;
-  line-height: 1.75;
-}
-
-.md3-hero-action,
-.md3-hero-secondary {
-  margin-top: 28px;
-  min-height: 48px;
-  border-radius: 24px;
-}
-
-.md3-gateway-panel {
-  align-self: center;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface-container-low);
-  box-shadow: var(--md-shadow);
-  padding: 20px;
-}
-
-.md3-panel-header {
-  display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid var(--md-outline-variant);
-  padding-bottom: 16px;
+  gap: 20px;
 }
 
-.md3-panel-label,
-.md3-section-heading p,
-.md3-comparison-heading p,
-.md3-cta p {
-  color: var(--md-on-surface-variant);
-  font-size: 0.8125rem;
-  font-weight: 600;
+.stitch-nav-start,
+.stitch-nav-actions,
+.stitch-nav-links {
+  display: flex;
+  align-items: center;
 }
 
-.md3-panel-header h2 {
-  margin-top: 4px;
-  color: var(--md-on-surface);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 1rem;
-  font-weight: 700;
+.stitch-nav-start {
+  min-width: 0;
+  gap: 32px;
 }
 
-.md3-status-chip {
+.stitch-nav-actions {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.stitch-nav-links {
+  display: none;
+  gap: 24px;
+}
+
+.stitch-brand {
+  min-width: 0;
+  max-width: 42vw;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  border-radius: 8px;
-  background: var(--md-primary-container);
-  padding: 6px 10px;
-  color: var(--md-on-primary-container);
-  font-size: 0.75rem;
+  gap: 10px;
+  overflow: hidden;
+  color: #00e38b;
+  font-size: 22px;
   font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-decoration: none;
 }
 
-.md3-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
+.stitch-brand span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.md3-request-block {
-  margin: 16px 0;
-  border-radius: 8px;
-  background: var(--md-surface);
-  padding: 16px;
+.stitch-brand-logo {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  object-fit: contain;
 }
 
-.md3-method {
-  border-radius: 6px;
-  background: var(--md-secondary-container);
-  padding: 4px 8px;
-  color: var(--md-on-secondary-container);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.75rem;
-  font-weight: 800;
+.stitch-nav-link {
+  color: #b9cbbc;
+  font-size: 15px;
+  text-decoration: none;
+  transition: color 160ms ease;
 }
 
-.md3-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-left: 3px solid var(--md-primary);
-  padding-left: 10px;
+.stitch-nav-link:hover,
+.stitch-nav-link:focus-visible {
+  color: #00ff9d;
 }
 
-.md3-metric span,
-.md3-route-row span,
-.md3-footer {
-  color: var(--md-on-surface-variant);
+.stitch-locale :deep(> div > button) {
+  min-width: 42px;
+  min-height: 36px;
+  justify-content: center;
+  border-radius: 4px;
+  color: #b9cbbc;
 }
 
-.md3-metric strong {
-  color: var(--md-on-surface);
-  font-size: 0.9375rem;
+.stitch-locale :deep(> div > button:hover),
+.stitch-locale :deep(> div > button:focus-visible) {
+  background: #182028;
+  color: #f4fff3;
 }
 
-.md3-route-row {
-  display: flex;
+.stitch-locale :deep(.absolute) {
+  border-color: #3b4a3f;
+  border-radius: 4px;
+  background: #060f16;
+}
+
+.stitch-locale :deep(.absolute button) {
+  border-radius: 0;
+  color: #dae3ee;
+}
+
+.stitch-locale :deep(.absolute button:hover) {
+  background: #182028;
+}
+
+.stitch-login-button {
+  min-height: 36px;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  border-radius: 8px;
-  padding: 12px;
-  transition: background-color 160ms ease;
+  justify-content: center;
+  padding: 7px 14px;
+  border: 1px solid #3b4a3f;
+  border-radius: 4px;
+  color: #00e38b;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 
-.md3-route-row:hover {
-  background: color-mix(in srgb, var(--md-on-surface) 6%, transparent);
+.stitch-login-button:hover,
+.stitch-login-button:focus-visible {
+  border-color: #00e38b;
+  background: rgba(0, 227, 139, 0.06);
 }
 
-.md3-route-icon,
-.md3-feature-icon {
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-}
-
-.md3-route-icon {
+.stitch-mobile-menu-button {
   width: 36px;
   height: 36px;
-  flex: 0 0 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #3b4a3f;
+  border-radius: 4px;
+  background: transparent;
+  color: #b9cbbc;
+  cursor: pointer;
 }
 
-.md3-route-row p {
-  overflow: hidden;
-  color: var(--md-on-surface);
-  font-size: 0.875rem;
+.stitch-mobile-menu-button:hover,
+.stitch-mobile-menu-button:focus-visible {
+  border-color: #00e38b;
+  color: #00e38b;
+}
+
+.stitch-mobile-menu {
+  position: fixed;
+  inset: 64px 0 auto;
+  z-index: 29;
+  display: grid;
+  gap: 2px;
+  padding: 12px 20px 16px;
+  border-bottom: 1px solid #3b4a3f;
+  background: rgba(6, 15, 22, 0.98);
+  box-shadow: 0 20px 36px rgba(0, 0, 0, 0.28);
+}
+
+.stitch-mobile-menu a {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 4px;
+  color: #dae3ee;
+  text-decoration: none;
+}
+
+.stitch-mobile-menu a:hover,
+.stitch-mobile-menu a:focus-visible {
+  background: #182028;
+  color: #00e38b;
+}
+
+.stitch-main {
+  width: min(100%, 1280px);
+  flex: 1;
+  margin: 0 auto;
+  padding: 120px 20px 96px;
+}
+
+.stitch-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 48px;
+  margin-bottom: 112px;
+}
+
+.stitch-hero-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 22px;
+}
+
+.stitch-chip {
+  max-width: 100%;
+  padding: 4px 11px;
+  overflow-wrap: anywhere;
+  border: 1px solid #3b4a3f;
+  border-radius: 4px;
+  background: rgba(11, 20, 28, 0.6);
+  color: #00e38b;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.md3-route-detail {
-  display: block;
-  overflow: hidden;
-  font-size: 0.75rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.md3-route-row strong {
-  color: var(--md-primary);
-  font-size: 0.75rem;
+  line-height: 1.2;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
-.md3-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 8px 0 24px;
-}
-
-.md3-section {
-  padding-top: 56px;
-  padding-bottom: 16px;
-}
-
-.md3-section-heading {
-  margin-bottom: 20px;
-}
-
-.md3-section-heading h2,
-.md3-comparison-heading h2,
-.md3-cta h2 {
-  margin-top: 4px;
-  color: var(--md-on-surface);
-  font-size: 1.75rem;
+.stitch-headline {
+  max-width: 650px;
+  margin: 0;
+  color: #f4fff3;
+  font-size: 34px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.16;
+  letter-spacing: 0;
+  text-wrap: balance;
 }
 
-.md3-feature-card {
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface-container-low);
-  padding: 20px;
-  transition: background-color 160ms ease, box-shadow 160ms ease;
-}
-
-.md3-feature-card:hover {
-  background: var(--md-surface-container);
-  box-shadow: var(--md-shadow);
-}
-
-.md3-feature-icon {
-  width: 48px;
-  height: 48px;
-  margin-bottom: 18px;
-}
-
-.md3-feature-card h3 {
-  color: var(--md-on-surface);
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.md3-feature-card p {
-  margin-top: 8px;
-  color: var(--md-on-surface-variant);
-  font-size: 0.875rem;
+.stitch-description {
+  max-width: 600px;
+  margin: 0;
+  color: #b9cbbc;
+  font-size: 16px;
   line-height: 1.65;
 }
 
-.md3-comparison {
-  display: grid;
-  gap: 20px;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface-container-low);
-  padding: 20px;
-}
-
-.md3-comparison-list {
-  display: grid;
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-outline-variant);
-}
-
-.md3-comparison-row {
-  display: grid;
-  gap: 8px;
-  background: var(--md-surface);
-  padding: 14px;
-}
-
-.md3-comparison-row span {
-  color: var(--md-on-surface);
-  font-weight: 700;
-}
-
-.md3-comparison-row p {
-  color: var(--md-on-surface-variant);
-  font-size: 0.875rem;
-}
-
-.md3-comparison-row strong {
-  color: var(--md-primary);
-  font-size: 0.875rem;
-}
-
-.md3-provider-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-}
-
-.md3-provider {
+.stitch-hero-actions {
+  width: 100%;
   display: flex;
-  min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface-container-low);
-  padding: 12px;
+  gap: 14px;
+  margin-top: 6px;
 }
 
-.md3-provider-muted {
-  opacity: 0.68;
+.stitch-primary-button,
+.stitch-secondary-button {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 11px 22px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 14px;
+  line-height: 1;
+  text-decoration: none;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
 }
 
-.md3-provider-mark {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--md-secondary-container);
-  color: var(--md-on-secondary-container);
-  font-weight: 800;
-}
-
-.md3-provider small {
-  border-radius: 6px;
-  background: var(--md-primary-container);
-  padding: 4px 8px;
-  color: var(--md-on-primary-container);
-  font-size: 0.6875rem;
+.stitch-primary-button {
+  border: 1px solid #00ff9d;
+  background: #00ff9d;
+  color: #00391f;
   font-weight: 700;
 }
 
-.md3-cta-section {
-  padding-top: 64px;
-  padding-bottom: 48px;
+.stitch-primary-button:hover,
+.stitch-primary-button:focus-visible {
+  background: #56ffa8;
 }
 
-.md3-cta {
+.stitch-secondary-button {
+  border: 1px solid #3b4a3f;
+  color: #dae3ee;
+  font-weight: 500;
+}
+
+.stitch-secondary-button:hover,
+.stitch-secondary-button:focus-visible {
+  border-color: #508eff;
+  color: #aec6ff;
+}
+
+.stitch-code-shell {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  scroll-margin-top: 88px;
+}
+
+.stitch-code-glow {
+  position: absolute;
+  inset: 8%;
+  z-index: -1;
+  background: rgba(0, 255, 157, 0.1);
+  filter: blur(56px);
+}
+
+.stitch-code-window {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #3b4a3f;
+  border-radius: 8px;
+  background: #010409;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+}
+
+.stitch-code-titlebar {
+  position: relative;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid #3b4a3f;
+  background: #060f16;
+}
+
+.stitch-window-dots {
+  display: flex;
+  gap: 7px;
+}
+
+.stitch-window-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 9999px;
+}
+
+.stitch-window-dot-red { background: #ffb4ab; }
+.stitch-window-dot-neutral { background: #849587; }
+.stitch-window-dot-green { background: #00e38b; }
+
+.stitch-code-filename {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #b9cbbc;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.stitch-copy-button {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: -3px -6px -3px 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #b9cbbc;
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.stitch-copy-button:hover,
+.stitch-copy-button:focus-visible {
+  background: #182028;
+  color: #00e38b;
+}
+
+.stitch-code-body {
+  overflow-x: auto;
+  padding: 22px;
+}
+
+.stitch-code-body pre {
+  min-width: 540px;
+  margin: 0;
+  color: #dae3ee;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.code-keyword { color: #aec6ff; }
+.code-string { color: #00e38b; }
+.code-comment { color: #737a82; }
+
+.stitch-features {
+  margin-bottom: 112px;
+}
+
+.stitch-section-title {
+  margin: 0 0 42px;
+  color: #f4fff3;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.stitch-feature-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+}
+
+.stitch-feature-card {
+  position: relative;
+  min-width: 0;
+  min-height: 246px;
+  overflow: hidden;
+  padding: 28px;
+  border: 1px solid #3b4a3f;
+  border-radius: 8px;
+  background: rgba(11, 20, 28, 0.82);
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.stitch-feature-card:hover {
+  border-color: #00e38b;
+  background: #0d1821;
+}
+
+.stitch-feature-watermark {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 58px;
+  height: 58px;
+  color: #00e38b;
+  opacity: 0.1;
+  transition: opacity 180ms ease;
+}
+
+.stitch-feature-card:hover .stitch-feature-watermark {
+  opacity: 0.2;
+}
+
+.stitch-feature-icon {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 22px;
+  border: 1px solid #3b4a3f;
+  border-radius: 4px;
+  background: #222b33;
+  color: #00e38b;
+}
+
+.stitch-feature-card h3 {
+  position: relative;
+  margin: 0 0 10px;
+  color: #dae3ee;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.stitch-feature-card p {
+  position: relative;
+  margin: 0;
+  color: #b9cbbc;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.stitch-visual {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 32px;
+  border: 1px solid #3b4a3f;
+  border-radius: 8px;
+  background: #060f16;
+  box-shadow: 0 0 70px rgba(0, 255, 157, 0.06);
+}
+
+.stitch-visual-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+}
+
+.stitch-visual-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(11, 20, 28, 0.44), transparent 52%);
+  pointer-events: none;
+}
+
+.stitch-footer {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  border-radius: 8px;
-  background: var(--md-primary-container);
-  padding: 24px;
-  color: var(--md-on-primary-container);
+  align-items: center;
+  gap: 16px;
+  padding: 28px 20px;
+  border-top: 1px solid #3b4a3f;
+  background: #060f16;
+  color: #737a82;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.md3-cta h2,
-.md3-cta p {
-  color: var(--md-on-primary-container);
+.stitch-footer p {
+  margin: 0;
+  text-align: center;
 }
 
-.md3-cta-button {
-  align-self: flex-start;
-  background: var(--md-on-primary-container);
-  color: var(--md-primary-container);
+.stitch-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 22px;
 }
 
-.md3-footer {
-  border-top: 1px solid var(--md-outline-variant);
-  font-size: 0.875rem;
+.stitch-footer a {
+  color: #737a82;
+  text-decoration: none;
+  transition: color 160ms ease;
 }
 
-.md3-footer a {
-  color: var(--md-on-surface-variant);
-  font-weight: 600;
+.stitch-footer a:hover,
+.stitch-footer a:focus-visible {
+  color: #f4fff3;
 }
 
-.md3-footer a:hover {
-  color: var(--md-primary);
+.stitch-page :where(a, button):focus-visible {
+  outline: 2px solid #aec6ff;
+  outline-offset: 3px;
+}
+
+@media (min-width: 640px) {
+  .stitch-main {
+    padding-inline: 32px;
+  }
+
+  .stitch-headline {
+    font-size: 42px;
+  }
+
+  .stitch-visual {
+    aspect-ratio: 3 / 1;
+  }
 }
 
 @media (min-width: 768px) {
-  .md3-comparison {
-    grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
-    align-items: start;
+  .stitch-nav {
+    padding-inline: 48px;
   }
 
-  .md3-comparison-row {
-    grid-template-columns: 0.7fr 1fr 1fr;
-    align-items: center;
+  .stitch-nav-links {
+    display: flex;
+  }
+
+  .stitch-mobile-menu-button,
+  .stitch-mobile-menu {
+    display: none;
+  }
+
+  .stitch-main {
+    padding: 128px 48px 112px;
+  }
+
+  .stitch-feature-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .stitch-footer {
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 30px 48px;
+  }
+
+  .stitch-footer p {
+    text-align: left;
   }
 }
 
 @media (min-width: 1024px) {
-  .md3-hero {
-    grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
-    gap: 56px;
-    padding-top: 88px;
-    padding-bottom: 56px;
+  .stitch-nav {
+    padding-inline: 64px;
+  }
+
+  .stitch-main {
+    padding-inline: 64px;
+  }
+
+  .stitch-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(440px, 1fr);
+    gap: 64px;
+    margin-bottom: 124px;
+  }
+
+  .stitch-headline {
+    font-size: 48px;
+    line-height: 1.1;
+  }
+
+  .stitch-features {
+    margin-bottom: 124px;
+  }
+
+  .stitch-footer {
+    padding-inline: 64px;
   }
 }
 
-@media (max-width: 640px) {
-  .md3-container {
-    width: min(100% - 24px, 1120px);
+@media (max-width: 479px) {
+  .stitch-locale :deep(> div > button span:nth-child(2)),
+  .stitch-locale :deep(> div > button svg) {
+    display: none;
   }
 
-  .md3-top-bar {
-    height: 64px;
-  }
-
-  .md3-brand {
-    max-width: 38vw;
-  }
-
-  .md3-hero {
-    padding-top: 40px;
-  }
-
-  .md3-hero h1 {
-    font-size: 2.625rem;
-  }
-
-  .md3-hero-action,
-  .md3-hero-secondary,
-  .md3-cta-button {
+  .stitch-primary-button,
+  .stitch-secondary-button {
     width: 100%;
+  }
+
+  .stitch-code-body {
+    padding: 18px;
+  }
+
+  .stitch-code-body pre {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stitch-page *,
+  .stitch-page *::before,
+  .stitch-page *::after {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
   }
 }
 </style>

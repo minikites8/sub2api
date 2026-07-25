@@ -484,6 +484,51 @@ func TestOverrideFilesNeverReceiveImmutableCacheHeaders(t *testing.T) {
 }
 
 func TestFrontendServer_Middleware(t *testing.T) {
+	t.Run("redirects_legacy_site_info_permanently", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, legacySiteInfoPath, nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, modelMarketplacePath, w.Header().Get("Location"))
+	})
+
+	t.Run("serves_model_marketplace_for_html_requests", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+		nextCalled := false
+		router.GET(modelMarketplacePath, func(c *gin.Context) {
+			nextCalled = true
+			c.String(http.StatusOK, "api")
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, modelMarketplacePath, nil)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml")
+		router.ServeHTTP(w, req)
+
+		assert.False(t, nextCalled)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+	})
+
 	t.Run("skips_api_routes", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
@@ -747,6 +792,41 @@ func TestHasEmbeddedFrontend(t *testing.T) {
 
 // Tests for legacy ServeEmbeddedFrontend function
 func TestServeEmbeddedFrontend(t *testing.T) {
+	t.Run("redirects_legacy_site_info_permanently", func(t *testing.T) {
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, legacySiteInfoPath, nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, modelMarketplacePath, w.Header().Get("Location"))
+	})
+
+	t.Run("serves_model_marketplace_for_html_requests", func(t *testing.T) {
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+		nextCalled := false
+		router.GET(modelMarketplacePath, func(c *gin.Context) {
+			nextCalled = true
+			c.String(http.StatusOK, "api")
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, modelMarketplacePath, nil)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml")
+		router.ServeHTTP(w, req)
+
+		assert.False(t, nextCalled)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+	})
+
 	t.Run("serves_static_files", func(t *testing.T) {
 		middleware := ServeEmbeddedFrontend()
 

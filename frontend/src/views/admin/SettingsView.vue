@@ -5264,6 +5264,44 @@
                 </div>
               </div>
 
+              <!-- Regulatory filing numbers -->
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.site.icpFilingNumber") }}
+                  </label>
+                  <input
+                    v-model="form.site_icp_filing_number"
+                    type="text"
+                    maxlength="100"
+                    class="input"
+                    :placeholder="t('admin.settings.site.icpFilingNumberPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.site.icpFilingNumberHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.site.publicSecurityFilingNumber") }}
+                  </label>
+                  <input
+                    v-model="form.site_public_security_filing_number"
+                    type="text"
+                    maxlength="100"
+                    class="input"
+                    :placeholder="t('admin.settings.site.publicSecurityFilingNumberPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.site.publicSecurityFilingNumberHint") }}
+                  </p>
+                </div>
+              </div>
+
               <!-- API Base URL -->
               <div>
                 <label
@@ -8386,6 +8424,8 @@ const form = reactive<SettingsForm>({
   api_base_url: "",
   contact_info: "",
   enterprise_billing_contact_qr: "",
+  site_icp_filing_number: "",
+  site_public_security_filing_number: "",
   doc_url: "",
   home_content: "",
   backend_mode_enabled: false,
@@ -9775,6 +9815,9 @@ async function saveSettings() {
       api_base_url: form.api_base_url,
       contact_info: form.contact_info,
       enterprise_billing_contact_qr: form.enterprise_billing_contact_qr,
+      site_icp_filing_number: form.site_icp_filing_number.trim(),
+      site_public_security_filing_number:
+        form.site_public_security_filing_number.trim(),
       doc_url: form.doc_url,
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,

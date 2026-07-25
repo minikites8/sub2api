@@ -27,19 +27,25 @@
         <AnnouncementBell v-if="user" />
 
         <!-- Docs Link -->
-        <a
-          v-if="docUrl"
-          :href="docUrl"
-          target="_blank"
-          rel="noopener noreferrer"
+        <router-link
+          to="/docs"
           class="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
-        </a>
+        </router-link>
 
         <!-- Language Switcher -->
         <LocaleSwitcher />
+
+        <router-link
+          v-if="!user"
+          to="/login"
+          class="inline-flex h-9 items-center gap-1.5 rounded border border-primary-500/40 bg-primary-500 px-3 text-sm font-semibold text-dark-950 transition hover:bg-primary-400"
+        >
+          <Icon name="login" size="sm" />
+          {{ t('home.login') }}
+        </router-link>
 
         <!-- Subscription Progress (for users with active subscriptions) -->
         <SubscriptionProgressMini v-if="user" />
@@ -249,7 +255,6 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { sanitizeUrl } from '@/utils/url'
 
 const router = useRouter()
 const route = useRoute()
@@ -263,9 +268,14 @@ const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
-const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
-const hideDesktopTitle = computed(() => route.name === 'Dashboard')
+const hideDesktopTitle = computed(() =>
+  route.name === 'Dashboard' ||
+  route.name === 'Keys' ||
+  route.name === 'Usage' ||
+  route.name === 'PurchaseSubscription' ||
+  route.name === 'ModelMarketplace'
+)
 const availableBalance = computed(() => Number(user.value?.balance || 0))
 const frozenBalance = computed(() => Number(user.value?.frozen_balance || 0))
 const totalBalance = computed(() => availableBalance.value + frozenBalance.value)

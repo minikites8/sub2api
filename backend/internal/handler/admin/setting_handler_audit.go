@@ -302,6 +302,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.EnterpriseBillingContactQR != after.EnterpriseBillingContactQR {
 		changed = append(changed, "enterprise_billing_contact_qr")
 	}
+	if before.SiteICPFilingNumber != after.SiteICPFilingNumber {
+		changed = append(changed, "site_icp_filing_number")
+	}
+	if before.SitePublicSecurityFilingNumber != after.SitePublicSecurityFilingNumber {
+		changed = append(changed, "site_public_security_filing_number")
+	}
 	if before.DocURL != after.DocURL {
 		changed = append(changed, "doc_url")
 	}

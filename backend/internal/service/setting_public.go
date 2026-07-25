@@ -177,6 +177,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
 		SettingKeyEnterpriseBillingContactQR,
+		SettingKeySiteICPFilingNumber,
+		SettingKeySitePublicSecurityFilingNumber,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
 		SettingKeyHideCcsImportButton,
@@ -305,6 +307,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		EnterpriseBillingContactQR:       settings[SettingKeyEnterpriseBillingContactQR],
+		SiteICPFilingNumber:              strings.TrimSpace(settings[SettingKeySiteICPFilingNumber]),
+		SitePublicSecurityFilingNumber:   strings.TrimSpace(settings[SettingKeySitePublicSecurityFilingNumber]),
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
@@ -465,6 +469,8 @@ type PublicSettingsInjectionPayload struct {
 	APIBaseURL                       string                   `json:"api_base_url"`
 	ContactInfo                      string                   `json:"contact_info"`
 	EnterpriseBillingContactQR       string                   `json:"enterprise_billing_contact_qr"`
+	SiteICPFilingNumber              string                   `json:"site_icp_filing_number"`
+	SitePublicSecurityFilingNumber   string                   `json:"site_public_security_filing_number"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
@@ -537,6 +543,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		APIBaseURL:                       settings.APIBaseURL,
 		ContactInfo:                      settings.ContactInfo,
 		EnterpriseBillingContactQR:       settings.EnterpriseBillingContactQR,
+		SiteICPFilingNumber:              settings.SiteICPFilingNumber,
+		SitePublicSecurityFilingNumber:   settings.SitePublicSecurityFilingNumber,
 		DocURL:                           settings.DocURL,
 		HomeContent:                      settings.HomeContent,
 		HideCcsImportButton:              settings.HideCcsImportButton,

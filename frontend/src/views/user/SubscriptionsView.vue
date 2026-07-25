@@ -1,6 +1,6 @@
 <template>
-  <AppLayout>
-    <div class="space-y-6">
+  <component :is="embedded ? 'div' : AppLayout">
+    <div class="space-y-6" :class="{ 'recharge-embedded-view': embedded }">
       <!-- Loading State -->
       <div v-if="loading" class="flex justify-center py-12">
         <div
@@ -73,7 +73,7 @@
               <button
                 v-if="subscription.status === 'active'"
                 :class="['rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors', platformButtonClass(subscription.group?.platform || '')]"
-                @click="router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })"
+                @click="router.push({ path: '/purchase', query: { tab: 'recharge', mode: 'subscription', group: String(subscription.group_id) } })"
               >
                 {{ t('payment.renewNow') }}
               </button>
@@ -244,7 +244,7 @@
         </div>
       </div>
     </div>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -260,6 +260,12 @@ import { formatDateOnly } from '@/utils/format'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
 import { getRemainingDurationParts, isOneTimeDailyQuota, type RemainingDurationParts } from '@/utils/subscriptionQuota'
+
+withDefaults(defineProps<{
+  embedded?: boolean
+}>(), {
+  embedded: false,
+})
 
 function platformAccentDotClass(p: string): string {
   switch (p) {

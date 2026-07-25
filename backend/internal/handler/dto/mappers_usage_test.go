@@ -171,7 +171,7 @@ func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *test
 	require.NotContains(t, string(userJSON), "account_cost")
 }
 
-func TestUsageLogFromServiceAdmin_IncludesNodeID(t *testing.T) {
+func TestUsageLogFromService_IncludesNodeIDForOwnerAndAdmin(t *testing.T) {
 	t.Parallel()
 
 	log := &service.UsageLog{
@@ -183,11 +183,12 @@ func TestUsageLogFromServiceAdmin_IncludesNodeID(t *testing.T) {
 	userDTO := UsageLogFromService(log)
 	adminDTO := UsageLogFromServiceAdmin(log)
 
+	require.Equal(t, "sub2api-node-us-1", userDTO.NodeID)
 	require.Equal(t, "sub2api-node-us-1", adminDTO.NodeID)
 
 	userJSON, err := json.Marshal(userDTO)
 	require.NoError(t, err)
-	require.NotContains(t, string(userJSON), "node_id")
+	require.Contains(t, string(userJSON), `"node_id":"sub2api-node-us-1"`)
 
 	adminJSON, err := json.Marshal(adminDTO)
 	require.NoError(t, err)

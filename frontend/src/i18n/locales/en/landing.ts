@@ -8,19 +8,62 @@ export default {
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
     docs: 'Docs',
+    pricing: 'Pricing',
+    adminPanel: 'Dashboard',
+    modelMarketplace: 'Models',
+    primaryNavigation: 'Primary navigation',
+    mobileNavigation: 'Mobile navigation',
+    openNavigation: 'Open navigation',
+    closeNavigation: 'Close navigation',
+    footerNavigation: 'Footer navigation',
     switchToLight: 'Switch to Light Mode',
     switchToDark: 'Switch to Dark Mode',
     dashboard: 'Dashboard',
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
-    // User-focused value proposition
-    heroSubtitle: 'One Key, All AI Models',
-    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
+    // Hero
+    heroTitle: 'One API to Rule All Models',
+    heroSubtitle: 'Global AI Gateway for Modern Devs',
+    heroDescription: 'Access hundreds of AI models through one API with simpler integration and better pricing.',
+    heroCta: 'Start for Free',
+    heroCtaDocs: 'Read Docs',
+    // Code block
+    codeBlockTitle: 'request.ts',
+    copyCode: 'Copy code',
+    codeCopied: 'Code copied',
+    heroImageAlt: 'Neon data streams converging through an AI gateway',
+    // Tags
     tags: {
       subscriptionToApi: 'Subscription to API',
       stickySession: 'Session Persistence',
       realtimeBilling: 'Pay As You Go'
+    },
+    // Models section
+    models: {
+      title: 'Engineered for Performance',
+      description: 'One API, every frontier model',
+      claude: 'Claude',
+      claudeDesc: 'Anthropic\'s most capable model for complex reasoning and coding',
+      gpt4o: 'GPT-4o',
+      gpt4oDesc: 'OpenAI multimodal flagship with vision and function calling',
+      gemini: 'Gemini 2.5 Pro',
+      geminiDesc: 'Google DeepMind\'s latest with 1M token context window',
+      grok: 'Grok 3',
+      grokDesc: 'xAI\'s real-time conversational model',
+      more: '+12 More',
+      moreDesc: 'Llama, Mistral, DeepSeek and more added regularly'
+    },
+    // Stats
+    stats: {
+      latency: 'TTFB',
+      latencyValue: '<1ms',
+      uptime: 'Uptime',
+      uptimeValue: '99.99%',
+      models: 'Models Connected',
+      modelsValue: '17',
+      requests: 'Req/Day',
+      requestsValue: '10M+'
     },
     // Pain points section
     painPoints: {
@@ -50,12 +93,12 @@ export default {
       subtitle: 'Three simple steps to stress-free AI access'
     },
     features: {
-      unifiedGateway: 'One-Click Access',
-      unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
-      multiAccount: 'Always Reliable',
-      multiAccountDesc: 'Smart routing across multiple upstream accounts with automatic failover. Say goodbye to errors.',
-      balanceQuota: 'Pay What You Use',
-      balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into team consumption.'
+      unifiedGateway: 'Edge Acceleration',
+      unifiedGatewayDesc: 'Requests are routed through our globally distributed edge network, ensuring the lowest possible latency to the provider\'s nearest datacenter.',
+      multiAccount: 'Unified API',
+      multiAccountDesc: 'YourCode gives enterprises one unified connection to leading AI models. Integrate once to reduce duplicate development and maintenance while making model access, switching, and expansion more efficient.',
+      balanceQuota: 'Real-time Monitoring',
+      balanceQuotaDesc: 'Granular observability into token usage, cost, and latency across all models and providers in a single, high-density dashboard.'
     },
     // Comparison section
     comparison: {
@@ -112,7 +155,10 @@ export default {
       button: 'Sign Up Free'
     },
     footer: {
-      allRightsReserved: 'All rights reserved.'
+      allRightsReserved: 'High Performance AI Gateway',
+      systemStatus: 'System Status',
+      terms: 'Terms',
+      privacy: 'Privacy'
     }
   },
 

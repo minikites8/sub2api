@@ -181,7 +181,7 @@ export default {
     logout: 'Logout',
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
-    buySubscription: 'Recharge / Subscription',
+    buySubscription: 'Recharge',
     docs: 'Docs',
     myOrders: 'My Orders',
     orderManagement: 'Orders',
@@ -191,8 +191,12 @@ export default {
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
-    channelStatus: 'Channel Status',
+    channelStatus: 'Model Marketplace',
     riskControl: 'Risk Control',
+    guestUser: 'Guest User',
+    publicAccess: 'PUBLIC ACCESS',
+    payAsYouGo: 'Pay-as-you-go',
+    signInRequired: 'Available after sign in',
   },
 
   // Auth

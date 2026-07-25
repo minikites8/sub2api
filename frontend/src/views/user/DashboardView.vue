@@ -1,16 +1,16 @@
 <template>
   <AppLayout>
-    <section class="md3-dashboard">
-      <header class="md3-dashboard-header">
+    <section class="telemetry-dashboard">
+      <header class="telemetry-dashboard-header">
         <div class="min-w-0">
-          <p class="md3-dashboard-kicker">{{ t('nav.dashboard') }}</p>
-          <h1>{{ t('dashboard.title') }}</h1>
-          <p>{{ t('dashboard.welcomeMessage') }}</p>
+          <p class="telemetry-dashboard-kicker">{{ t('nav.dashboard') }}</p>
+          <h1>{{ t('dashboard.overview') }}</h1>
+          <p>{{ t('dashboard.telemetry') }}</p>
         </div>
-        <div class="md3-dashboard-actions">
+        <div class="telemetry-dashboard-actions">
           <button
             type="button"
-            class="md3-tonal-button"
+            class="telemetry-secondary-button"
             :disabled="dashboardBusy"
             :title="t('common.refresh')"
             @click="refreshAll"
@@ -22,7 +22,7 @@
             v-if="dailyCheckinStatus?.enabled"
             data-testid="daily-checkin-entry"
             type="button"
-            class="btn btn-primary inline-flex min-w-[8rem] items-center justify-center gap-2"
+            class="telemetry-primary-button"
             :disabled="dailyCheckinLoading"
             :title="dailyCheckinTitle"
             @click="openDailyCheckinDialog"
@@ -164,24 +164,41 @@
         </div>
       </BaseDialog>
 
-      <div v-if="loading" class="md3-dashboard-loading">
+      <div v-if="loading" class="telemetry-dashboard-loading">
         <LoadingSpinner />
       </div>
       <template v-else-if="stats">
-        <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" />
-        <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
+        <UserDashboardStats
+          :stats="stats"
+          :balance="dashboardBalance"
+          :is-simple="dashboardSimpleMode"
+        />
+        <UserDashboardCharts
+          v-model:startDate="startDate"
+          v-model:endDate="endDate"
+          v-model:granularity="granularity"
+          :loading="loadingCharts"
+          :trend="trendData"
+          :models="modelStats"
+          :api-keys="activeApiKeys"
+          :api-keys-loading="loadingApiKeys"
+          @dateRangeChange="loadCharts"
+          @granularityChange="loadCharts"
+          @refresh="refreshAll"
+        />
       </template>
     </section>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores'
 import { usageAPI, type UserDashboardStats as UserStatsType } from '@/api/usage'
+import { keysAPI } from '@/api/keys'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserDashboardStats from '@/components/user/dashboard/UserDashboardStats.vue'
@@ -190,16 +207,24 @@ import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import GoogleAdSenseAd from '@/components/ads/GoogleAdSenseAd.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { TrendDataPoint, ModelStat, DailyCheckinStatus } from '@/types'
+import type { TrendDataPoint, ModelStat, DailyCheckinStatus, ApiKey } from '@/types'
 import { getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isDailyCheckinRechargeEligible } from '@/utils/dailyCheckin'
+import type { DashboardPreviewData } from '@/mocks/dashboardPreview'
+
+const props = withDefaults(defineProps<{
+  previewData?: DashboardPreviewData
+}>(), {
+  previewData: undefined
+})
 
 const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 const user = computed(() => authStore.user)
+const previewMode = import.meta.env.DEV && Boolean(props.previewData)
 
 const stats = ref<UserStatsType | null>(null)
 const loading = ref(false)
@@ -207,12 +232,17 @@ const loadingCharts = ref(false)
 const publicSettingsLoading = ref(false)
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
+const activeApiKeys = ref<ApiKey[]>([])
+const loadingApiKeys = ref(false)
 const dailyCheckinStatus = ref<DailyCheckinStatus | null>(null)
 const dailyCheckinLoading = ref(false)
 const showDailyCheckinDialog = ref(false)
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref('')
 const turnstileError = ref('')
+
+const dashboardBalance = computed(() => previewMode ? props.previewData?.balance || 0 : user.value?.balance || 0)
+const dashboardSimpleMode = computed(() => previewMode ? false : authStore.isSimpleMode)
 
 const formatLD = (d: Date) => d.toISOString().split('T')[0]
 const startDate = ref(formatLD(new Date(Date.now() - 6 * 86400000)))
@@ -234,7 +264,9 @@ const dailyCheckinRechargeEligible = computed(() => {
 const dailyCheckinDisabled = computed(() => {
   return dailyCheckinLoading.value || publicSettingsLoading.value || !dailyCheckinAvailable.value || !turnstileReady.value || !turnstileToken.value
 })
-const dashboardBusy = computed(() => loading.value || loadingCharts.value || dailyCheckinLoading.value)
+const dashboardBusy = computed(
+  () => loading.value || loadingCharts.value || loadingApiKeys.value || dailyCheckinLoading.value
+)
 const dailyCheckinTitle = computed(() => {
   const status = dailyCheckinStatus.value
   if (!status) return ''
@@ -273,8 +305,12 @@ const dailyCheckinButtonText = computed(() => {
 const loadStats = async () => {
   loading.value = true
   try {
-    await authStore.refreshUser()
-    stats.value = await usageAPI.getDashboardStats()
+    if (previewMode) {
+      stats.value = props.previewData?.stats || null
+    } else {
+      await authStore.refreshUser()
+      stats.value = await usageAPI.getDashboardStats()
+    }
   } catch (error) {
     console.error('Failed to load dashboard stats:', error)
   } finally {
@@ -285,12 +321,17 @@ const loadStats = async () => {
 const loadCharts = async () => {
   loadingCharts.value = true
   try {
-    const res = await Promise.all([
-      usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any }),
-      usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value })
-    ])
-    trendData.value = res[0].trend || []
-    modelStats.value = res[1].models || []
+    if (previewMode) {
+      trendData.value = props.previewData?.trend || []
+      modelStats.value = props.previewData?.models || []
+    } else {
+      const res = await Promise.all([
+        usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any }),
+        usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value })
+      ])
+      trendData.value = res[0].trend || []
+      modelStats.value = res[1].models || []
+    }
   } catch (error) {
     console.error('Failed to load charts:', error)
   } finally {
@@ -298,9 +339,32 @@ const loadCharts = async () => {
   }
 }
 
+const loadApiKeys = async () => {
+  loadingApiKeys.value = true
+  try {
+    if (previewMode) {
+      activeApiKeys.value = props.previewData?.apiKeys || []
+    } else {
+      const response = await keysAPI.list(1, 3, {
+        status: 'active',
+        sort_by: 'updated_at',
+        sort_order: 'desc'
+      })
+      activeApiKeys.value = response.items
+    }
+  } catch (error) {
+    console.warn('Failed to load dashboard API keys:', error)
+    activeApiKeys.value = []
+  } finally {
+    loadingApiKeys.value = false
+  }
+}
+
 const loadDailyCheckin = async () => {
   try {
-    dailyCheckinStatus.value = await getDailyCheckinStatus()
+    dailyCheckinStatus.value = previewMode
+      ? props.previewData?.dailyCheckinStatus || null
+      : await getDailyCheckinStatus()
   } catch (error) {
     console.warn('Failed to load daily check-in status:', error)
     dailyCheckinStatus.value = null
@@ -308,6 +372,7 @@ const loadDailyCheckin = async () => {
 }
 
 const loadPublicSettings = async () => {
+  if (previewMode) return
   publicSettingsLoading.value = true
   try {
     await appStore.fetchPublicSettings()
@@ -319,6 +384,7 @@ const loadPublicSettings = async () => {
 const refreshAll = () => {
   loadStats()
   loadCharts()
+  loadApiKeys()
   loadDailyCheckin()
   loadPublicSettings()
 }
@@ -391,164 +457,168 @@ const handleDailyCheckin = async () => {
   }
 }
 
+const htmlElement = document.documentElement
+const hadDarkTheme = htmlElement.classList.contains('dark')
+
 onMounted(() => {
+  htmlElement.classList.add('dark')
   refreshAll()
+})
+
+onBeforeUnmount(() => {
+  htmlElement.classList.toggle('dark', hadDarkTheme)
 })
 </script>
 
 <style scoped>
-.md3-dashboard {
+.telemetry-dashboard {
+  --md-surface: #061016;
+  --md-surface-container-low: #101b22;
+  --md-surface-container: #152129;
+  --md-surface-container-high: #1d2a31;
+  --md-on-surface: #e6f0eb;
+  --md-on-surface-variant: #8da198;
+  --md-outline-variant: #303b3a;
+  --md-primary: #00e38b;
+  --md-chart-1: #00e38b;
+  --md-chart-2: #508eff;
+  --md-chart-3: #b3c7ff;
+  --md-chart-4: #56ffa8;
+  --md-chart-5: #e1bd68;
+  --md-chart-6: #ff8d84;
+  --md-chart-7: #b9cbbc;
+  --md-chart-8: #849587;
   display: grid;
-  gap: 16px;
+  min-height: calc(100vh - 64px);
+  gap: 32px;
+  margin: -24px -32px;
+  background-color: #0b141c;
+  background-image:
+    linear-gradient(rgb(59 74 63 / 13%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(59 74 63 / 13%) 1px, transparent 1px);
+  background-size: 32px 32px;
+  padding: 42px 48px 80px;
+  color: #dae3ee;
 }
 
-.md3-dashboard-header {
+.telemetry-dashboard-header {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  padding: 4px 0 2px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  gap: 24px;
 }
 
-.dark .md3-dashboard-header {
-  background: transparent;
-  box-shadow: none;
-}
-
-.md3-dashboard-kicker {
-  margin: 0 0 4px;
-  color: var(--md-on-surface-variant);
-  font-size: 0.6875rem;
-  font-weight: 650;
+.telemetry-dashboard-kicker {
+  margin-bottom: 9px;
+  color: #00e38b;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.dark .md3-dashboard-kicker {
-  color: var(--md-on-surface-variant);
+.telemetry-dashboard-header h1 {
+  color: #f4fff8;
+  font-size: clamp(2.1rem, 4vw, 3rem);
+  font-weight: 760;
+  line-height: 1.08;
+  letter-spacing: 0;
 }
 
-.md3-dashboard-header h1 {
-  margin: 0;
-  color: var(--md-on-surface);
-  font-size: 1.5rem;
-  line-height: 1.2;
-  font-weight: 700;
+.telemetry-dashboard-header p:not(.telemetry-dashboard-kicker) {
+  margin-top: 10px;
+  color: #91a69c;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
 }
 
-.dark .md3-dashboard-header h1 {
-  color: var(--md-on-surface);
-}
-
-.md3-dashboard-header p:not(.md3-dashboard-kicker) {
-  margin: 6px 0 0;
-  max-width: 42rem;
-  color: var(--md-on-surface-variant);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-.dark .md3-dashboard-header p:not(.md3-dashboard-kicker) {
-  color: var(--md-on-surface-variant);
-}
-
-.md3-dashboard-actions {
+.telemetry-dashboard-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
 }
 
-.md3-tonal-button,
-.md3-filled-button {
+.telemetry-secondary-button,
+.telemetry-primary-button {
   display: inline-flex;
-  min-height: 40px;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  border-radius: 999px;
+  gap: 9px;
+  border-radius: 4px;
   padding: 0 16px;
-  font-size: 0.875rem;
-  font-weight: 700;
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+  font-size: 0.78rem;
+  font-weight: 750;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
 }
 
-.md3-tonal-button {
-  border: 1px solid transparent;
-  background: var(--md-primary-container);
-  color: var(--md-on-primary-container);
+.telemetry-secondary-button {
+  border: 1px solid #31443c;
+  background: #101b22;
+  color: #c5d2cc;
 }
 
-.md3-tonal-button:hover:not(:disabled) {
-  background: var(--md-surface-container-high);
+.telemetry-secondary-button:hover:enabled {
+  border-color: #00e38b;
+  color: #00e38b;
 }
 
-.md3-filled-button {
-  border: 1px solid transparent;
-  background: var(--md-brand);
-  color: var(--md-on-brand);
+.telemetry-primary-button {
+  min-width: 128px;
+  border: 1px solid #00e38b;
+  background: #00e38b;
+  color: #03130d;
 }
 
-.md3-filled-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-brand) 88%, black);
+.telemetry-primary-button:hover:enabled {
+  background: #17f09b;
 }
 
-.md3-tonal-button:disabled,
-.md3-filled-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.56;
+.telemetry-secondary-button:disabled,
+.telemetry-primary-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
-.dark .md3-tonal-button {
-  background: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-}
-
-.dark .md3-tonal-button:hover:not(:disabled) {
-  background: var(--md-surface-container-high);
-}
-
-.dark .md3-filled-button {
-  background: var(--md-brand);
-  color: var(--md-on-brand);
-}
-
-.dark .md3-filled-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-brand) 88%, black);
-}
-
-.md3-dashboard-loading {
+.telemetry-dashboard-loading {
   display: flex;
-  min-height: 280px;
+  min-height: 360px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
+  border: 1px solid #303b3a;
+  border-radius: 6px;
+  background: #061016;
 }
 
-.dark .md3-dashboard-loading {
-  border-color: var(--md-outline-variant);
-  background: var(--md-surface);
+@media (max-width: 1024px) {
+  .telemetry-dashboard {
+    padding-inline: 32px;
+  }
 }
 
 @media (max-width: 768px) {
-  .md3-dashboard-header {
+  .telemetry-dashboard {
+    gap: 24px;
+    margin: -20px -16px;
+    padding: 30px 20px 64px;
+  }
+
+  .telemetry-dashboard-header {
+    align-items: flex-start;
     flex-direction: column;
   }
 
-  .md3-dashboard-actions {
+  .telemetry-dashboard-actions {
     width: 100%;
     justify-content: stretch;
   }
 
-  .md3-tonal-button,
-  .md3-filled-button {
-    flex: 1 1 160px;
+  .telemetry-secondary-button,
+  .telemetry-primary-button {
+    flex: 1 1 148px;
   }
 }
 </style>

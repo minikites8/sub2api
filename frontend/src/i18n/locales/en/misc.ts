@@ -247,7 +247,7 @@ export default {
       },
       keySubmit: {
         title: '🎉 Generate and Copy',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">System will generate a complete API Key after clicking create.</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ Important Reminder:</b><ul style="margin: 8px 0 0 16px;"><li>Key is only shown once, copy immediately</li><li>Need to regenerate if lost</li><li>Keep it safe, don\'t share with others</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 Next Steps:</b><ul style="margin: 8px 0 0 16px;"><li>Copy the generated sk-xxx key</li><li>Use in any OpenAI-compatible client</li><li>Start experiencing AI services!</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Click "Create" button</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">System will generate a complete API Key after clicking create.</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ Important Reminder:</b><ul style="margin: 8px 0 0 16px;"><li>Key is only shown once, copy immediately</li><li>Need to regenerate if lost</li><li>Keep it safe, don\'t share with others</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 Next Steps:</b><ul style="margin: 8px 0 0 16px;"><li>Copy the generated yc_xxxxxx key</li><li>Use in any OpenAI-compatible client</li><li>Start experiencing AI services!</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Click "Create" button</p></div>'
       }
     },
     // User tour steps
@@ -278,7 +278,7 @@ export default {
       },
       keySubmit: {
         title: '🎉 Complete Creation',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Click to confirm and create your API key.</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ Important:</b><ul style="margin: 8px 0 0 16px;"><li>Copy the key (sk-xxx) immediately after creation</li><li>Key is only shown once, need to regenerate if lost</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 How to Use:</b><br/>Configure the key in any OpenAI-compatible client (like ChatBox, OpenCat, etc.) and start using!</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Click "Create" button</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Click to confirm and create your API key.</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ Important:</b><ul style="margin: 8px 0 0 16px;"><li>Copy the key (yc_xxxxxx) immediately after creation</li><li>Key is only shown once, need to regenerate if lost</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 How to Use:</b><br/>Configure the key in any OpenAI-compatible client (like ChatBox, OpenCat, etc.) and start using!</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Click "Create" button</p></div>'
       }
     }
   },
@@ -369,6 +369,27 @@ export default {
       viewOrders: 'View Orders',
     },
     currentBalance: 'Current Balance',
+    rechargeEyebrow: 'BILLING / CREDITS',
+    rechargeCenter: 'Recharge Center',
+    rechargeSubtitle: 'Add API credits and manage subscriptions, orders, and redemptions in one place.',
+    currentCreditBalance: 'Current Credit Balance',
+    accountHealthy: 'API service healthy',
+    callQuota: 'call quota',
+    billingDetails: 'Billing Details',
+    billingCurrentPlan: 'Current Plan',
+    billingPayAsYouGo: 'Pay-as-you-go',
+    billingAutoRecharge: 'Auto-recharge',
+    billingDisabled: 'Disabled',
+    billingTax: 'Tax / VAT',
+    billingTaxCheckout: 'Calculated at checkout',
+    billingExpiresAt: 'Expires',
+    billingRateMultiplier: 'Billing Multiplier',
+    billingNeverExpires: 'Never expires',
+    billingViewPricing: 'View Pricing Matrix',
+    tabMySubscriptions: 'My Subscriptions',
+    tabMyOrders: 'My Orders',
+    tabRedeem: 'Redeem',
+    creditsToReceive: 'Credits to receive',
     groupFallback: 'Group #{id}',
     rechargeAccount: 'Recharge Account',
     activeSubscription: 'Active Subscription',

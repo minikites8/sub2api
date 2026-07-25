@@ -181,7 +181,7 @@ export default {
     logout: '退出登录',
     github: 'GitHub',
     mySubscriptions: '我的订阅',
-    buySubscription: '充值/订阅',
+    buySubscription: '充值',
     docs: '文档',
     myOrders: '我的订单',
     orderManagement: '订单管理',
@@ -191,8 +191,12 @@ export default {
     channelManagement: '渠道管理',
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
-    channelStatus: '渠道状态',
+    channelStatus: '模型广场',
     riskControl: '风控中心',
+    guestUser: '访客用户',
+    publicAccess: 'PUBLIC ACCESS',
+    payAsYouGo: 'Pay-as-you-go',
+    signInRequired: '登录后可用',
   },
 
   // Auth

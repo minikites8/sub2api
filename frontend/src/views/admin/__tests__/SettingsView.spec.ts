@@ -335,6 +335,9 @@ const baseSettingsResponse = {
   site_subtitle: "",
   api_base_url: "",
   contact_info: "",
+  enterprise_billing_contact_qr: "",
+  site_icp_filing_number: "",
+  site_public_security_filing_number: "",
   doc_url: "",
   home_content: "",
   hide_ccs_import_button: false,
@@ -674,6 +677,27 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         signup_ip_keep_previous_accounts: 1,
+      }),
+    );
+  });
+
+  it("submits trimmed site filing numbers", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      site_icp_filing_number: " 京ICP备12345678号-1 ",
+      site_public_security_filing_number: " 京公网安备11000002000001号 ",
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        site_icp_filing_number: "京ICP备12345678号-1",
+        site_public_security_filing_number: "京公网安备11000002000001号",
       }),
     );
   });

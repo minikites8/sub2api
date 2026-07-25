@@ -8,19 +8,62 @@ export default {
     viewOnGithub: '在 GitHub 上查看',
     viewDocs: '查看文档',
     docs: '文档',
+    pricing: '价格',
+    adminPanel: '面板',
+    modelMarketplace: '模型广场',
+    primaryNavigation: '主导航',
+    mobileNavigation: '移动端导航',
+    openNavigation: '打开导航',
+    closeNavigation: '关闭导航',
+    footerNavigation: '页脚导航',
     switchToLight: '切换到浅色模式',
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
     login: '登录',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
-    // 新增：面向用户的价值主张
-    heroSubtitle: '一个密钥，畅用多个 AI 模型',
-    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
+    // Hero
+    heroTitle: '一个接口，调用所有模型',
+    heroSubtitle: '为开发者打造的全球 AI 网关',
+    heroDescription: '一个 API 接入数百种 AI 模型，集成更简单、价格更优惠。',
+    heroCta: '免费试用',
+    heroCtaDocs: '阅读文档',
+    // Code block
+    codeBlockTitle: 'request.ts',
+    copyCode: '复制代码',
+    codeCopied: '代码已复制',
+    heroImageAlt: '汇聚于 AI 网关的霓虹数据流',
+    // Tags
     tags: {
       subscriptionToApi: '订阅转 API',
       stickySession: '会话保持',
       realtimeBilling: '按量计费'
+    },
+    // Models section
+    models: {
+      title: '极致性能',
+      description: '一个 API，所有前沿模型',
+      claude: 'Claude',
+      claudeDesc: 'Anthropic 旗舰，擅长推理与代码',
+      gpt4o: 'GPT-4o',
+      gpt4oDesc: 'OpenAI 多模态旗舰',
+      gemini: 'Gemini 2.5 Pro',
+      geminiDesc: 'Google 最新，百万级上下文',
+      grok: 'Grok 3',
+      grokDesc: 'xAI 实时对话模型',
+      more: '+12 更多',
+      moreDesc: 'Llama、Mistral、DeepSeek 等持续接入'
+    },
+    // Stats
+    stats: {
+      latency: 'TTFB',
+      latencyValue: '<1ms',
+      uptime: '可用率',
+      uptimeValue: '99.99%',
+      models: '已接入模型',
+      modelsValue: '17',
+      requests: '日请求量',
+      requestsValue: '10M+'
     },
     // 用户痛点区块
     painPoints: {
@@ -50,12 +93,12 @@ export default {
       subtitle: '简单三步，开始省心使用 AI'
     },
     features: {
-      unifiedGateway: '一键接入',
-      unifiedGatewayDesc: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。',
-      multiAccount: '稳定可靠',
-      multiAccountDesc: '智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。',
-      balanceQuota: '用多少付多少',
-      balanceQuotaDesc: '按实际使用量计费，支持设置配额上限，团队用量一目了然。'
+      unifiedGateway: '边缘加速',
+      unifiedGatewayDesc: '请求经全球边缘节点就近转发，确保到达 AI 服务商的链路延迟最低。',
+      multiAccount: '统一接口',
+      multiAccountDesc: 'YourCode 为企业提供统一的 AI 大模型接入。一次对接，即可灵活调用多家主流模型，减少重复开发与维护成本，让模型接入、切换与扩展都更高效。',
+      balanceQuota: '实时监控',
+      balanceQuotaDesc: '一站式查看所有模型的 token 消耗、费用和响应延迟，用量一目了然。'
     },
     // 优势对比
     comparison: {
@@ -112,7 +155,10 @@ export default {
       button: '免费注册'
     },
     footer: {
-      allRightsReserved: '保留所有权利。'
+      allRightsReserved: '高性能 AI 网关',
+      systemStatus: '系统状态',
+      terms: '服务条款',
+      privacy: '隐私政策'
     }
   },
 

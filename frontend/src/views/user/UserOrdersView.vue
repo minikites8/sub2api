@@ -1,6 +1,6 @@
 <template>
-  <AppLayout>
-    <div class="space-y-4">
+  <component :is="embedded ? 'div' : AppLayout">
+    <div class="space-y-4" :class="{ 'recharge-embedded-view': embedded }">
       <!-- Filters -->
       <div class="card p-4">
         <div class="flex flex-wrap items-center gap-3">
@@ -9,7 +9,7 @@
             <button @click="fetchOrders" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
-            <button class="btn btn-primary" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+            <button v-if="!embedded" class="btn btn-primary" @click="router.push({ path: '/purchase', query: { tab: 'recharge' } })">{{ t('payment.result.backToRecharge') }}</button>
           </div>
         </div>
       </div>
@@ -77,7 +77,7 @@
         </div>
       </template>
     </BaseDialog>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -94,6 +94,14 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OrderTable from '@/components/payment/OrderTable.vue'
+
+const props = withDefaults(defineProps<{
+  embedded?: boolean
+  previewOrders?: PaymentOrder[]
+}>(), {
+  embedded: false,
+  previewOrders: undefined,
+})
 
 const { t } = useI18n()
 const router = useRouter()
@@ -118,6 +126,11 @@ const statusFilters = computed(() => [
 ])
 
 async function fetchOrders() {
+  if (props.previewOrders) {
+    orders.value = props.previewOrders
+    pagination.total = props.previewOrders.length
+    return
+  }
   loading.value = true
   try {
     const res = await paymentAPI.getMyOrders({
@@ -185,5 +198,8 @@ async function loadRefundEligibility() {
   } catch { /* ignore — default to hiding refund button */ }
 }
 
-onMounted(() => { fetchOrders(); loadRefundEligibility() })
+onMounted(() => {
+  fetchOrders()
+  if (!props.previewOrders) loadRefundEligibility()
+})
 </script>

@@ -1,6 +1,237 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
+    <div class="api-keys-page">
+      <header class="api-keys-header">
+        <div>
+          <p class="api-keys-kicker">ACCESS CONTROL / API KEYS</p>
+          <h1>{{ t('keys.title') }}</h1>
+          <p class="api-keys-description">{{ t('keys.description') }}</p>
+        </div>
+        <button
+          class="api-keys-primary-button"
+          data-tour="keys-create-btn"
+          @click="showCreateModal = true"
+        >
+          <Icon name="plus" size="sm" :stroke-width="2" />
+          {{ t('keys.createKey') }}
+        </button>
+      </header>
+
+      <section class="api-keys-security" role="alert">
+        <Icon name="shield" size="md" :stroke-width="2" />
+        <div>
+          <h2>{{ t('keys.securityWarning.title') }}</h2>
+          <p>{{ t('keys.securityWarning.description') }}</p>
+        </div>
+      </section>
+
+      <section v-if="!showAdvancedTable" class="api-keys-workspace">
+        <div class="api-keys-toolbar">
+          <label class="api-keys-search">
+            <Icon name="search" size="sm" />
+            <input
+              v-model="filterSearch"
+              type="search"
+              :placeholder="t('keys.searchPlaceholder')"
+              @keyup.enter="onFilterChange"
+            />
+          </label>
+
+          <label class="api-keys-select-wrap">
+            <span class="sr-only">{{ t('keys.group') }}</span>
+            <select v-model="filterGroupId" @change="onFilterChange">
+              <option
+                v-for="option in groupFilterOptions"
+                :key="String(option.value)"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+            <Icon name="chevronDown" size="xs" />
+          </label>
+
+          <label class="api-keys-select-wrap">
+            <span class="sr-only">{{ t('common.status') }}</span>
+            <select v-model="filterStatus" @change="onFilterChange">
+              <option
+                v-for="option in statusFilterOptions"
+                :key="String(option.value)"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+            <Icon name="chevronDown" size="xs" />
+          </label>
+
+          <div class="api-keys-toolbar-spacer" />
+
+          <EndpointPopover
+            v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
+            class="api-keys-endpoint"
+            variant="integrated"
+            :api-base-url="publicSettings?.api_base_url || ''"
+            :custom-endpoints="publicSettings?.custom_endpoints || []"
+          />
+
+          <button
+            class="api-keys-icon-button"
+            :title="t('common.refresh')"
+            :disabled="loading"
+            @click="loadApiKeys"
+          >
+            <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
+          </button>
+        </div>
+
+        <div class="api-keys-table-wrap">
+          <table class="api-keys-table">
+            <thead>
+              <tr>
+                <th>{{ t('common.name') }}</th>
+                <th>{{ t('keys.keyRevealHint') }}</th>
+                <th>{{ t('keys.created') }}</th>
+                <th>{{ t('keys.lastUsedAt') }}</th>
+                <th>{{ t('common.status') }}</th>
+                <th class="api-keys-actions-heading">{{ t('common.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="loading" class="api-keys-loading-row">
+                <td colspan="6">
+                  <Icon name="refresh" size="md" class="animate-spin" />
+                  <span>{{ t('common.loading') }}</span>
+                </td>
+              </tr>
+              <tr v-else-if="apiKeys.length === 0" class="api-keys-empty-row">
+                <td colspan="6">
+                  <Icon name="key" size="lg" />
+                  <strong>{{ t('keys.noKeysYet') }}</strong>
+                  <span>{{ t('keys.createFirstKey') }}</span>
+                  <button class="api-keys-empty-action" @click="showCreateModal = true">
+                    <Icon name="plus" size="xs" :stroke-width="2" />
+                    {{ t('keys.createKey') }}
+                  </button>
+                </td>
+              </tr>
+              <tr v-for="row in apiKeys" v-else :key="row.id" class="api-keys-row">
+                <td :data-label="t('common.name')">
+                  <div class="api-keys-name-cell">
+                    <span class="api-keys-name-line">
+                      <strong>{{ row.name }}</strong>
+                      <Icon
+                        v-if="row.ip_whitelist?.length > 0 || row.ip_blacklist?.length > 0"
+                        name="shield"
+                        size="xs"
+                        :title="t('keys.ipRestrictionEnabled')"
+                      />
+                    </span>
+                    <button
+                      :ref="(el) => setGroupButtonRef(row.id, el)"
+                      class="group/dropdown api-keys-group-link"
+                      :title="t('keys.clickToChangeGroup')"
+                      @click="openGroupSelector(row)"
+                    >
+                      {{ row.group?.name || t('keys.noGroup') }}
+                    </button>
+                  </div>
+                </td>
+                <td :data-label="t('keys.apiKey')">
+                  <div
+                    class="api-key-secret"
+                    :class="{ 'api-key-secret-revealed': isKeyRevealed(row.id) }"
+                  >
+                    <code>{{ row.key }}</code>
+                    <button
+                      class="api-key-secret-button api-key-visibility-button"
+                      :title="isKeyRevealed(row.id) ? t('keys.hideKey') : t('keys.revealKey')"
+                      @click="toggleKeyVisibility(row.id)"
+                    >
+                      <Icon :name="isKeyRevealed(row.id) ? 'eyeOff' : 'eye'" size="sm" />
+                    </button>
+                    <button
+                      class="api-key-secret-button"
+                      :class="{ 'api-key-copy-success': copiedKeyId === row.id }"
+                      :title="copiedKeyId === row.id ? t('keys.copied') : t('keys.copyToClipboard')"
+                      @click="copyToClipboard(row.key, row.id)"
+                    >
+                      <Icon :name="copiedKeyId === row.id ? 'check' : 'clipboard'" size="sm" />
+                    </button>
+                  </div>
+                </td>
+                <td :data-label="t('keys.created')" class="api-keys-metadata">
+                  {{ formatDateOnly(row.created_at) }}
+                </td>
+                <td :data-label="t('keys.lastUsedAt')" class="api-keys-metadata">
+                  {{ row.last_used_at ? formatRelativeTime(row.last_used_at) : t('common.time.never') }}
+                </td>
+                <td :data-label="t('common.status')">
+                  <span class="api-key-status" :class="`api-key-status-${row.status}`">
+                    <span class="api-key-status-dot" />
+                    {{ t('keys.status.' + row.status) }}
+                  </span>
+                </td>
+                <td :data-label="t('common.actions')" class="api-keys-actions-cell">
+                  <div class="api-keys-row-actions">
+                    <button :title="t('keys.useKey')" @click="openUseKeyModal(row)">
+                      <Icon name="terminal" size="sm" />
+                    </button>
+                    <button :title="t('common.edit')" @click="editKey(row)">
+                      <Icon name="edit" size="sm" />
+                    </button>
+                    <div class="api-keys-more-wrap">
+                      <button
+                        :title="t('keys.moreActions')"
+                        @click.stop="toggleActionMenu(row.id)"
+                      >
+                        <Icon name="more" size="sm" />
+                      </button>
+                      <div
+                        v-if="openActionKeyId === row.id"
+                        class="api-keys-action-menu"
+                        @click.stop
+                      >
+                        <button
+                          v-if="!publicSettings?.hide_ccs_import_button"
+                          @click="importToCcswitch(row); openActionKeyId = null"
+                        >
+                          <Icon name="upload" size="sm" />
+                          {{ t('keys.importToCcSwitch') }}
+                        </button>
+                        <button @click="toggleKeyStatus(row); openActionKeyId = null">
+                          <Icon :name="row.status === 'active' ? 'ban' : 'checkCircle'" size="sm" />
+                          {{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}
+                        </button>
+                        <button
+                          class="api-keys-menu-danger"
+                          @click="confirmDelete(row); openActionKeyId = null"
+                        >
+                          <Icon name="trash" size="sm" />
+                          {{ t('common.delete') }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <footer v-if="pagination.total > 0" class="api-keys-table-footer">
+            <span>{{ t('keys.keyCount', { count: pagination.total }) }}</span>
+            <Pagination
+              :page="pagination.page"
+              :total="pagination.total"
+              :page-size="pagination.page_size"
+              @update:page="handlePageChange"
+              @update:pageSize="handlePageSizeChange"
+            />
+          </footer>
+        </div>
+      </section>
+
+      <TablePageLayout v-else>
       <template #filters>
         <div class="flex flex-col gap-3">
           <div class="flex flex-wrap items-center gap-3">
@@ -52,6 +283,14 @@
 
       <template #actions>
         <div class="flex justify-end gap-3">
+          <button
+            class="btn btn-secondary"
+            :title="t('keys.showCompactView')"
+            @click="showAdvancedTable = false"
+          >
+            <Icon name="key" size="md" class="mr-2" />
+            {{ t('keys.showCompactView') }}
+          </button>
           <button
             @click="loadApiKeys"
             :disabled="loading"
@@ -458,7 +697,8 @@
           @update:pageSize="handlePageSizeChange"
         />
       </template>
-    </TablePageLayout>
+      </TablePageLayout>
+    </div>
 
     <!-- Create/Edit Modal -->
     <BaseDialog
@@ -1174,7 +1414,6 @@
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
-const { t } = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1193,14 +1432,25 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
-import { formatCurrency, formatDateTime } from '@/utils/format'
+import { formatCurrency, formatDateOnly, formatDateTime, formatRelativeTime } from '@/utils/format'
 import { formatMultiplier } from '@/utils/formatters'
 import { getReverseAvailableQuota } from '@/utils/groupQuota'
 import { maskApiKey } from '@/utils/maskApiKey'
+import type { KeysPreviewData } from '@/mocks/keysPreview'
 import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
+
+const { t } = useI18n()
+
+const props = withDefaults(defineProps<{
+  previewData?: KeysPreviewData
+}>(), {
+  previewData: undefined
+})
+
+const previewMode = import.meta.env.DEV && Boolean(props.previewData)
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -1323,6 +1573,7 @@ const columns = computed<Column[]>(() =>
 )
 
 const apiKeys = ref<ApiKey[]>([])
+const previewSourceKeys = ref<ApiKey[]>([])
 const groups = ref<Group[]>([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -1355,6 +1606,9 @@ const showResetRateLimitDialog = ref(false)
 const showUseKeyModal = ref(false)
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
+const showAdvancedTable = ref(false)
+const openActionKeyId = ref<number | null>(null)
+const revealedKeyIds = reactive<Set<number>>(new Set())
 const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
@@ -1560,13 +1814,64 @@ const copyToClipboard = async (text: string, keyId: number) => {
   }
 }
 
+const isKeyRevealed = (keyId: number) => revealedKeyIds.has(keyId)
+
+const toggleKeyVisibility = (keyId: number) => {
+  if (revealedKeyIds.has(keyId)) {
+    revealedKeyIds.delete(keyId)
+  } else {
+    revealedKeyIds.add(keyId)
+  }
+}
+
+const toggleActionMenu = (keyId: number) => {
+  openActionKeyId.value = openActionKeyId.value === keyId ? null : keyId
+}
+
 const isAbortError = (error: unknown) => {
   if (!error || typeof error !== 'object') return false
   const { name, code } = error as { name?: string; code?: string }
   return name === 'AbortError' || code === 'ERR_CANCELED'
 }
 
+const applyPreviewFilters = () => {
+  const query = filterSearch.value.trim().toLowerCase()
+  const selectedGroup = filterGroupId.value
+  const selectedStatus = filterStatus.value
+  const sortKey = sortState.value.sort_by as keyof ApiKey
+  const direction = sortState.value.sort_order === 'asc' ? 1 : -1
+
+  const filtered = previewSourceKeys.value
+    .filter((key) => {
+      const matchesQuery = query.length === 0 || [key.name, key.key, key.group?.name]
+        .some((value) => value?.toLowerCase().includes(query))
+      const matchesStatus = selectedStatus === '' || key.status === selectedStatus
+      const matchesGroup = selectedGroup === '' || Number(key.group_id ?? 0) === Number(selectedGroup)
+      return matchesQuery && matchesStatus && matchesGroup
+    })
+    .sort((left, right) => {
+      const leftValue = left[sortKey]
+      const rightValue = right[sortKey]
+      if (leftValue === rightValue) return 0
+      if (leftValue === null || leftValue === undefined) return direction
+      if (rightValue === null || rightValue === undefined) return -direction
+      return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true }) * direction
+    })
+
+  pagination.value.total = filtered.length
+  pagination.value.pages = Math.ceil(filtered.length / pagination.value.page_size)
+  const offset = (pagination.value.page - 1) * pagination.value.page_size
+  apiKeys.value = filtered.slice(offset, offset + pagination.value.page_size)
+}
+
 const loadApiKeys = async () => {
+  if (previewMode) {
+    loading.value = true
+    applyPreviewFilters()
+    loading.value = false
+    return
+  }
+
   abortController?.abort()
   const controller = new AbortController()
   abortController = controller
@@ -1621,6 +1926,11 @@ const loadApiKeys = async () => {
 }
 
 const loadGroups = async () => {
+  if (previewMode) {
+    groups.value = props.previewData?.groups || []
+    return
+  }
+
   try {
     groups.value = await userGroupsAPI.getAvailable()
   } catch (error) {
@@ -1629,6 +1939,11 @@ const loadGroups = async () => {
 }
 
 const loadUserGroupRates = async () => {
+  if (previewMode) {
+    userGroupRates.value = {}
+    return
+  }
+
   try {
     userGroupRates.value = await userGroupsAPI.getUserGroupRates()
   } catch (error) {
@@ -1637,6 +1952,11 @@ const loadUserGroupRates = async () => {
 }
 
 const loadPublicSettings = async () => {
+  if (previewMode) {
+    publicSettings.value = (props.previewData?.publicSettings || {}) as PublicSettings
+    return
+  }
+
   try {
     publicSettings.value = await authAPI.getPublicSettings()
   } catch (error) {
@@ -1700,6 +2020,17 @@ const editKey = (key: ApiKey) => {
 
 const toggleKeyStatus = async (key: ApiKey) => {
   const newStatus = key.status === 'active' ? 'inactive' : 'active'
+
+  if (previewMode) {
+    const target = previewSourceKeys.value.find((item) => item.id === key.id)
+    if (target) target.status = newStatus
+    applyPreviewFilters()
+    appStore.showSuccess(
+      newStatus === 'active' ? t('keys.keyEnabledSuccess') : t('keys.keyDisabledSuccess')
+    )
+    return
+  }
+
   try {
     await keysAPI.toggleStatus(key.id, newStatus)
     appStore.showSuccess(
@@ -1747,6 +2078,17 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   dropdownPosition.value = null
   if (key.group_id === newGroupId) return
 
+  if (previewMode) {
+    const target = previewSourceKeys.value.find((item) => item.id === key.id)
+    if (target) {
+      target.group_id = newGroupId
+      target.group = groups.value.find((group) => group.id === newGroupId)
+    }
+    applyPreviewFilters()
+    appStore.showSuccess(t('keys.groupChangedSuccess'))
+    return
+  }
+
   try {
     await keysAPI.update(key.id, { group_id: newGroupId })
     appStore.showSuccess(t('keys.groupChangedSuccess'))
@@ -1765,6 +2107,9 @@ const closeGroupSelector = (event: MouseEvent) => {
   }
   if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
     showColumnDropdown.value = false
+  }
+  if (!target.closest('.api-keys-more-wrap')) {
+    openActionKeyId.value = null
   }
 }
 
@@ -1827,6 +2172,71 @@ const handleSubmit = async () => {
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
+  if (previewMode) {
+    const group = groups.value.find((item) => item.id === formData.value.group_id)
+    if (showEditModal.value && selectedKey.value) {
+      const target = previewSourceKeys.value.find((item) => item.id === selectedKey.value?.id)
+      if (target) {
+        Object.assign(target, {
+          name: formData.value.name,
+          group_id: formData.value.group_id,
+          group,
+          status: formData.value.status,
+          ip_whitelist: ipWhitelist,
+          ip_blacklist: ipBlacklist,
+          quota,
+          expires_at: expiresAt ? expiresAt : null,
+          rate_limit_5h: rateLimitData.rate_limit_5h,
+          rate_limit_1d: rateLimitData.rate_limit_1d,
+          rate_limit_7d: rateLimitData.rate_limit_7d,
+          updated_at: new Date().toISOString()
+        })
+      }
+      appStore.showSuccess(t('keys.keyUpdatedSuccess'))
+    } else {
+      const createdAt = new Date()
+      const id = Math.max(0, ...previewSourceKeys.value.map((item) => item.id)) + 1
+      const expiresAtValue = expiresInDays
+        ? new Date(createdAt.getTime() + expiresInDays * 86400000).toISOString()
+        : null
+      previewSourceKeys.value.unshift({
+        id,
+        user_id: 1,
+        key: formData.value.use_custom_key
+          ? formData.value.custom_key
+          : `sk-preview-${id}-${createdAt.getTime().toString(36)}`,
+        name: formData.value.name,
+        group_id: formData.value.group_id,
+        group,
+        status: 'active',
+        ip_whitelist: ipWhitelist,
+        ip_blacklist: ipBlacklist,
+        last_used_at: null,
+        last_used_ip: null,
+        quota,
+        quota_used: 0,
+        expires_at: expiresAtValue,
+        created_at: createdAt.toISOString(),
+        updated_at: createdAt.toISOString(),
+        current_concurrency: 0,
+        ...rateLimitData,
+        usage_5h: 0,
+        usage_1d: 0,
+        usage_7d: 0,
+        window_5h_start: null,
+        window_1d_start: null,
+        window_7d_start: null,
+        reset_5h_at: null,
+        reset_1d_at: null,
+        reset_7d_at: null
+      })
+      appStore.showSuccess(t('keys.keyCreatedSuccess'))
+    }
+    closeModals()
+    applyPreviewFilters()
+    return
+  }
+
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
@@ -1883,6 +2293,17 @@ const handleSubmit = async () => {
 const handleDelete = async () => {
   if (!selectedKey.value) return
 
+  if (previewMode) {
+    previewSourceKeys.value = previewSourceKeys.value.filter(
+      (item) => item.id !== selectedKey.value?.id
+    )
+    showDeleteDialog.value = false
+    selectedKey.value = null
+    applyPreviewFilters()
+    appStore.showSuccess(t('keys.keyDeletedSuccess'))
+    return
+  }
+
   try {
     await keysAPI.delete(selectedKey.value.id)
     appStore.showSuccess(t('keys.keyDeletedSuccess'))
@@ -1937,6 +2358,14 @@ const setExpirationDays = (days: number) => {
 const resetQuotaUsed = async () => {
   if (!selectedKey.value) return
   showResetQuotaDialog.value = false
+
+  if (previewMode) {
+    const target = previewSourceKeys.value.find((item) => item.id === selectedKey.value?.id)
+    if (target) target.quota_used = 0
+    appStore.showSuccess(t('keys.quotaResetSuccess'))
+    return
+  }
+
   try {
     await keysAPI.update(selectedKey.value.id, { reset_quota: true })
     appStore.showSuccess(t('keys.quotaResetSuccess'))
@@ -1965,6 +2394,19 @@ const confirmResetRateLimitFromTable = (row: ApiKey) => {
 const resetRateLimitUsage = async () => {
   if (!selectedKey.value) return
   showResetRateLimitDialog.value = false
+
+  if (previewMode) {
+    const target = previewSourceKeys.value.find((item) => item.id === selectedKey.value?.id)
+    if (target) {
+      target.usage_5h = 0
+      target.usage_1d = 0
+      target.usage_7d = 0
+    }
+    applyPreviewFilters()
+    appStore.showSuccess(t('keys.rateLimitResetSuccess'))
+    return
+  }
+
   try {
     await keysAPI.update(selectedKey.value.id, { reset_rate_limit_usage: true })
     appStore.showSuccess(t('keys.rateLimitResetSuccess'))
@@ -2065,7 +2507,14 @@ function formatResetTime(resetAt: string | null): string {
   return `${mins}m`
 }
 
+const htmlElement = document.documentElement
+const hadDarkTheme = htmlElement.classList.contains('dark')
+
 onMounted(() => {
+  htmlElement.classList.add('dark')
+  if (previewMode) {
+    previewSourceKeys.value = (props.previewData?.apiKeys || []).map((key) => ({ ...key }))
+  }
   loadSavedColumns()
   loadApiKeys()
   loadGroups()
@@ -2076,12 +2525,773 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  abortController?.abort()
   document.removeEventListener('click', closeGroupSelector)
   if (resetTimer) clearInterval(resetTimer)
+  htmlElement.classList.toggle('dark', hadDarkTheme)
 })
 </script>
 
 <style scoped>
+.api-keys-page {
+  --keys-bg: #0b141c;
+  --keys-bg-deep: #060f16;
+  --keys-surface: #141c24;
+  --keys-surface-raised: #182028;
+  --keys-surface-hover: #222b33;
+  --keys-border: #3b4a3f;
+  --keys-text: #dae3ee;
+  --keys-muted: #91a69c;
+  --keys-green: #00e38b;
+  --keys-green-bright: #00ff9d;
+  min-height: calc(100vh - 64px);
+  margin: -24px -32px;
+  padding: 42px 48px 80px;
+  background-color: var(--keys-bg);
+  background-image:
+    linear-gradient(rgb(59 74 63 / 13%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(59 74 63 / 13%) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--keys-text);
+}
+
+.api-keys-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--keys-border);
+}
+
+.api-keys-kicker {
+  margin-bottom: 10px;
+  color: var(--keys-green);
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.api-keys-header h1 {
+  color: #f4fff8;
+  font-size: 3rem;
+  font-weight: 760;
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.api-keys-description {
+  max-width: 720px;
+  margin-top: 10px;
+  color: var(--keys-muted);
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.api-keys-primary-button,
+.api-keys-empty-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid var(--keys-green-bright);
+  border-radius: 4px;
+  background: var(--keys-green-bright);
+  color: #03130d;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 800;
+  transition: background-color 160ms ease, box-shadow 160ms ease, transform 100ms ease;
+}
+
+.api-keys-primary-button {
+  flex: 0 0 auto;
+  padding: 0 20px;
+  box-shadow: 0 0 18px rgb(0 255 157 / 12%);
+}
+
+.api-keys-primary-button:hover,
+.api-keys-empty-action:hover {
+  background: #38ffad;
+  box-shadow: 0 0 20px rgb(0 255 157 / 18%);
+}
+
+.api-keys-primary-button:active,
+.api-keys-empty-action:active {
+  transform: translateY(1px);
+}
+
+.api-keys-security {
+  display: flex;
+  max-width: 1280px;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 28px auto 24px;
+  border: 1px solid rgb(255 215 0 / 30%);
+  border-radius: 6px;
+  padding: 16px 18px;
+  background: #1a1500;
+  color: #ffd700;
+  box-shadow: 0 0 16px rgb(255 215 0 / 5%);
+}
+
+.api-keys-security > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.api-keys-security h2 {
+  margin-bottom: 4px;
+  color: #ffe86a;
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.api-keys-security p {
+  max-width: 980px;
+  color: #c4bd95;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.api-keys-workspace {
+  max-width: 1280px;
+  margin: 0 auto;
+  border: 1px solid var(--keys-border);
+  border-radius: 8px;
+  background: var(--keys-surface-raised);
+  overflow: visible;
+}
+
+.api-keys-toolbar {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--keys-border);
+  border-radius: 8px 8px 0 0;
+  background: rgb(6 15 22 / 76%);
+}
+
+.api-keys-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.api-keys-endpoint {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.api-keys-endpoint > :deep(div) {
+  flex-wrap: nowrap;
+}
+
+.api-keys-search,
+.api-keys-select-wrap {
+  display: flex;
+  height: 38px;
+  align-items: center;
+  border: 1px solid #34433d;
+  border-radius: 4px;
+  background: #09131a;
+  color: #81958c;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.api-keys-search:focus-within,
+.api-keys-select-wrap:focus-within {
+  border-color: var(--keys-green);
+  box-shadow: 0 0 0 2px rgb(0 227 139 / 10%);
+}
+
+.api-keys-search {
+  width: min(300px, 30vw);
+  gap: 9px;
+  padding: 0 11px;
+}
+
+.api-keys-search input,
+.api-keys-select-wrap select {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #d5dfda;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.74rem;
+  outline: 0;
+  box-shadow: none;
+}
+
+.api-keys-search input::placeholder {
+  color: #687d74;
+}
+
+.api-keys-search input::-webkit-search-cancel-button {
+  filter: invert(0.8);
+}
+
+.api-keys-select-wrap {
+  position: relative;
+  width: 150px;
+  padding: 0 9px 0 11px;
+}
+
+.api-keys-select-wrap select {
+  height: 100%;
+  padding-right: 22px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.api-keys-select-wrap > svg {
+  position: absolute;
+  right: 9px;
+  pointer-events: none;
+}
+
+.api-keys-select-wrap option {
+  background: #101b22;
+  color: var(--keys-text);
+}
+
+.api-keys-icon-button {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #34433d;
+  border-radius: 4px;
+  background: #101b22;
+  color: #a5b6ae;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+.api-keys-icon-button:hover:enabled {
+  border-color: #508eff;
+  background: #142330;
+  color: #aec6ff;
+}
+
+.api-keys-icon-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.api-keys-table-wrap {
+  overflow: visible;
+}
+
+.api-keys-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.api-keys-table th {
+  padding: 14px 18px;
+  background: var(--keys-surface);
+  color: #91a69c;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.api-keys-table th:first-child {
+  border-radius: 0;
+}
+
+.api-keys-table th:last-child {
+  border-radius: 0;
+}
+
+.api-keys-table td {
+  padding: 16px 18px;
+  border-top: 1px solid var(--keys-border);
+  vertical-align: middle;
+}
+
+.api-keys-table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.api-keys-row:hover {
+  background: var(--keys-surface-hover);
+}
+
+.api-keys-name-cell {
+  display: grid;
+  min-width: 154px;
+  gap: 5px;
+}
+
+.api-keys-name-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #eaf3ef;
+  font-size: 0.82rem;
+}
+
+.api-keys-name-line strong {
+  font-weight: 720;
+}
+
+.api-keys-name-line svg {
+  color: var(--keys-green);
+}
+
+.api-keys-group-link {
+  width: max-content;
+  max-width: 180px;
+  overflow: hidden;
+  color: #7f978c;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.65rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 160ms ease;
+}
+
+.api-keys-group-link:hover {
+  color: #aec6ff;
+}
+
+.api-key-secret {
+  display: grid;
+  width: min(100%, 340px);
+  min-width: 260px;
+  grid-template-columns: minmax(0, 1fr) 30px 30px;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid #34433d;
+  border-radius: 4px;
+  padding: 4px 4px 4px 11px;
+  background: #010409;
+}
+
+.api-key-secret code {
+  display: block;
+  overflow: hidden;
+  color: transparent;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 7px rgb(218 227 238 / 80%);
+  white-space: nowrap;
+  user-select: none;
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+.api-key-secret-revealed code,
+.api-key-secret:focus-within code {
+  color: #dfffea;
+  text-shadow: none;
+  user-select: text;
+}
+
+.api-key-secret-button,
+.api-keys-row-actions > button,
+.api-keys-more-wrap > button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #81958c;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.api-key-secret-button:hover,
+.api-keys-row-actions > button:hover,
+.api-keys-more-wrap > button:hover {
+  background: #1b2830;
+  color: var(--keys-green);
+}
+
+.api-key-copy-success {
+  color: var(--keys-green);
+}
+
+.api-keys-metadata {
+  color: #9aaca4;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.api-key-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.71rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.api-key-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: currentColor;
+}
+
+.api-key-status-active {
+  color: var(--keys-green-bright);
+}
+
+.api-key-status-active .api-key-status-dot {
+  animation: api-key-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 8px rgb(0 255 157 / 50%);
+}
+
+.api-key-status-inactive {
+  color: #e1bd68;
+}
+
+.api-key-status-quota_exhausted {
+  color: #ffcf66;
+}
+
+.api-key-status-expired {
+  color: #ff8d84;
+}
+
+@keyframes api-key-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.42;
+  }
+}
+
+.api-keys-actions-heading,
+.api-keys-actions-cell {
+  text-align: right;
+}
+
+.api-keys-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.api-keys-more-wrap {
+  position: relative;
+}
+
+.api-keys-action-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  min-width: 154px;
+  overflow: hidden;
+  border: 1px solid var(--keys-border);
+  border-radius: 6px;
+  padding: 4px;
+  background: rgb(11 20 28 / 98%);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 38%);
+}
+
+.api-keys-action-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 9px;
+  border-radius: 4px;
+  padding: 8px 9px;
+  color: #b8c8c0;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.api-keys-action-menu button:hover {
+  background: var(--keys-surface-hover);
+  color: #f4fff8;
+}
+
+.api-keys-action-menu .api-keys-menu-danger {
+  color: #ffaaa3;
+}
+
+.api-keys-action-menu .api-keys-menu-danger:hover {
+  background: rgb(147 0 10 / 22%);
+  color: #ffb4ab;
+}
+
+.api-keys-loading-row td,
+.api-keys-empty-row td {
+  height: 260px;
+  text-align: center;
+}
+
+.api-keys-loading-row td {
+  color: var(--keys-muted);
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.api-keys-loading-row svg {
+  display: inline-block;
+  margin-right: 9px;
+  vertical-align: middle;
+}
+
+.api-keys-empty-row td > svg,
+.api-keys-empty-row strong,
+.api-keys-empty-row span,
+.api-keys-empty-row button {
+  margin-inline: auto;
+}
+
+.api-keys-empty-row td > svg {
+  margin-bottom: 12px;
+  color: #668076;
+}
+
+.api-keys-empty-row strong,
+.api-keys-empty-row span {
+  display: block;
+}
+
+.api-keys-empty-row strong {
+  color: #e6f0eb;
+  font-size: 0.95rem;
+}
+
+.api-keys-empty-row span {
+  margin-top: 5px;
+  color: var(--keys-muted);
+  font-size: 0.78rem;
+}
+
+.api-keys-empty-action {
+  min-height: 36px;
+  margin-top: 16px;
+  padding: 0 13px;
+  font-size: 0.7rem;
+}
+
+.api-keys-table-footer {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 8px 14px 8px 18px;
+  border-top: 1px solid var(--keys-border);
+  border-radius: 0 0 8px 8px;
+  background: var(--keys-surface);
+}
+
+.api-keys-table-footer > span {
+  color: #81958c;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .api-key-secret:hover code {
+    color: #dfffea;
+    text-shadow: none;
+    user-select: text;
+  }
+
+  .api-key-visibility-button {
+    display: none;
+  }
+
+  .api-key-secret {
+    grid-template-columns: minmax(0, 1fr) 30px;
+  }
+
+  .api-keys-row-actions {
+    opacity: 0.35;
+    transition: opacity 160ms ease;
+  }
+
+  .api-keys-row:hover .api-keys-row-actions,
+  .api-keys-row:focus-within .api-keys-row-actions {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 1100px) {
+  .api-keys-page {
+    padding-inline: 32px;
+  }
+
+  .api-keys-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .api-keys-toolbar-spacer {
+    display: none;
+  }
+
+  .api-keys-search {
+    width: min(360px, 100%);
+  }
+
+  .api-keys-table-wrap {
+    overflow-x: auto;
+  }
+
+  .api-keys-table {
+    min-width: 980px;
+  }
+}
+
+@media (max-width: 768px) {
+  .api-keys-page {
+    min-height: calc(100vh - 60px);
+    margin: -20px -16px;
+    padding: 30px 20px 64px;
+  }
+
+  .api-keys-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .api-keys-header h1 {
+    font-size: 2rem;
+  }
+
+  .api-keys-primary-button {
+    width: 100%;
+  }
+
+  .api-keys-security {
+    margin-top: 22px;
+  }
+
+  .api-keys-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 38px;
+  }
+
+  .api-keys-search {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .api-keys-select-wrap {
+    width: auto;
+  }
+
+  .api-keys-endpoint {
+    max-width: 100%;
+    grid-column: 1 / -1;
+    overflow-x: auto;
+  }
+
+  .api-keys-table-wrap {
+    overflow: visible;
+  }
+
+  .api-keys-table,
+  .api-keys-table tbody {
+    display: block;
+    min-width: 0;
+  }
+
+  .api-keys-table thead {
+    display: none;
+  }
+
+  .api-keys-table tr.api-keys-row {
+    display: grid;
+    padding: 5px 14px;
+    border-top: 1px solid var(--keys-border);
+  }
+
+  .api-keys-table td {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(88px, 0.34fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    border-top: 0;
+    padding: 10px 0;
+    text-align: left;
+  }
+
+  .api-keys-table td::before {
+    color: #71877d;
+    content: attr(data-label);
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 0.64rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .api-key-secret {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .api-keys-actions-cell {
+    text-align: left;
+  }
+
+  .api-keys-row-actions {
+    justify-content: flex-start;
+  }
+
+  .api-keys-action-menu {
+    right: auto;
+    left: 0;
+  }
+
+  .api-keys-loading-row,
+  .api-keys-empty-row {
+    display: table;
+    width: 100%;
+  }
+
+  .api-keys-loading-row td,
+  .api-keys-empty-row td {
+    display: table-cell;
+    width: 100%;
+    padding: 24px;
+    vertical-align: middle;
+  }
+
+  .api-keys-loading-row td::before,
+  .api-keys-empty-row td::before {
+    content: none;
+  }
+
+  .api-keys-table-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px;
+  }
+}
+
 .group-selector-dropdown {
   border: 1px solid var(--md-outline-variant);
   background: var(--md-surface);

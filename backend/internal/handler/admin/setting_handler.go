@@ -218,6 +218,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		APIBaseURL:                                             settings.APIBaseURL,
 		ContactInfo:                                            settings.ContactInfo,
 		EnterpriseBillingContactQR:                             settings.EnterpriseBillingContactQR,
+		SiteICPFilingNumber:                                    settings.SiteICPFilingNumber,
+		SitePublicSecurityFilingNumber:                         settings.SitePublicSecurityFilingNumber,
 		DocURL:                                                 settings.DocURL,
 		HomeContent:                                            settings.HomeContent,
 		HideCcsImportButton:                                    settings.HideCcsImportButton,

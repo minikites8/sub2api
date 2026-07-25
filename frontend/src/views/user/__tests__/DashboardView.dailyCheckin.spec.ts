@@ -9,6 +9,7 @@ const refreshUser = vi.hoisted(() => vi.fn())
 const getDashboardStats = vi.hoisted(() => vi.fn())
 const getDashboardTrend = vi.hoisted(() => vi.fn())
 const getDashboardModels = vi.hoisted(() => vi.fn())
+const listApiKeys = vi.hoisted(() => vi.fn())
 const getByDateRange = vi.hoisted(() => vi.fn())
 const getMyPlatformQuotas = vi.hoisted(() => vi.fn())
 const getDailyCheckinStatus = vi.hoisted(() => vi.fn())
@@ -86,6 +87,12 @@ vi.mock('@/api/usage', () => ({
     getDashboardTrend,
     getDashboardModels,
     getByDateRange
+  }
+}))
+
+vi.mock('@/api/keys', () => ({
+  keysAPI: {
+    list: listApiKeys
   }
 }))
 
@@ -194,6 +201,7 @@ describe('DashboardView daily check-in UI', () => {
     })
     getDashboardTrend.mockResolvedValue({ trend: [] })
     getDashboardModels.mockResolvedValue({ models: [] })
+    listApiKeys.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 3 })
     getByDateRange.mockResolvedValue({ items: [] })
     getMyPlatformQuotas.mockResolvedValue({ platform_quotas: [] })
     fetchPublicSettings.mockResolvedValue(undefined)

@@ -488,7 +488,7 @@ func writeConfigFile(cfg *SetupConfig) error {
 		}{
 			UserConcurrency: defaultUserConcurrency,
 			UserBalance:     0,
-			APIKeyPrefix:    "sk-",
+			APIKeyPrefix:    "yc_",
 			RateMultiplier:  1.0,
 		},
 		RateLimit: struct {

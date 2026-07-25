@@ -133,21 +133,23 @@ type SystemSettings struct {
 	GoogleOAuthRedirectURL            string
 	GoogleOAuthFrontendRedirectURL    string
 
-	SiteName                    string
-	SiteLogo                    string
-	SiteSubtitle                string
-	APIBaseURL                  string
-	ContactInfo                 string
-	EnterpriseBillingContactQR  string
-	DocURL                      string
-	HomeContent                 string
-	HideCcsImportButton         bool
-	PurchaseSubscriptionEnabled bool
-	PurchaseSubscriptionURL     string
-	TableDefaultPageSize        int
-	TablePageSizeOptions        []int
-	CustomMenuItems             string // JSON array of custom menu items
-	CustomEndpoints             string // JSON array of custom endpoints
+	SiteName                       string
+	SiteLogo                       string
+	SiteSubtitle                   string
+	APIBaseURL                     string
+	ContactInfo                    string
+	EnterpriseBillingContactQR     string
+	SiteICPFilingNumber            string
+	SitePublicSecurityFilingNumber string
+	DocURL                         string
+	HomeContent                    string
+	HideCcsImportButton            bool
+	PurchaseSubscriptionEnabled    bool
+	PurchaseSubscriptionURL        string
+	TableDefaultPageSize           int
+	TablePageSizeOptions           []int
+	CustomMenuItems                string // JSON array of custom menu items
+	CustomEndpoints                string // JSON array of custom endpoints
 
 	DefaultConcurrency           int
 	DefaultBalance               float64
@@ -304,6 +306,8 @@ type PublicSettings struct {
 	APIBaseURL                       string
 	ContactInfo                      string
 	EnterpriseBillingContactQR       string
+	SiteICPFilingNumber              string
+	SitePublicSecurityFilingNumber   string
 	DocURL                           string
 	HomeContent                      string
 	HideCcsImportButton              bool

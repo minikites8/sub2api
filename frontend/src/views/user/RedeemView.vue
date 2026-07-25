@@ -1,7 +1,7 @@
 <template>
-  <AppLayout>
-    <div class="redeem-page mx-auto space-y-6">
-      <section class="redeem-workspace">
+  <component :is="embedded ? 'div' : AppLayout">
+    <div class="redeem-page mx-auto space-y-6" :class="{ 'recharge-embedded-view': embedded }">
+      <section v-if="!embedded" class="redeem-workspace">
         <header class="redeem-header">
           <div>
             <h1>{{ t('redeem.title') }}</h1>
@@ -221,7 +221,7 @@
         </div>
       </section>
     </div>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -234,6 +234,12 @@ import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+
+withDefaults(defineProps<{
+  embedded?: boolean
+}>(), {
+  embedded: false,
+})
 
 const { t } = useI18n()
 const authStore = useAuthStore()

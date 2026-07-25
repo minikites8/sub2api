@@ -85,6 +85,7 @@ function simulateGuard(
     }
     if (authState.backendModeEnabled && !authState.isAuthenticated) {
       const allowed = ['/login', '/key-usage', '/setup', '/payment/result']
+      const exactAllowed = ['/docs', '/pricing', '/models', '/monitor']
       const callbackPaths = [
         '/auth/callback',
         '/auth/linuxdo/callback',
@@ -94,6 +95,7 @@ function simulateGuard(
       ]
       const pendingAuthPaths = ['/register', '/email-verify']
       const isAllowed =
+        exactAllowed.includes(toPath) ||
         allowed.some((path) => toPath === path || toPath.startsWith(path)) ||
         callbackPaths.includes(toPath) ||
         (authState.hasPendingAuthSession && pendingAuthPaths.includes(toPath))
@@ -134,6 +136,7 @@ function simulateGuard(
       return null
     }
     const allowed = ['/login', '/key-usage', '/setup', '/payment/result']
+    const exactAllowed = ['/docs', '/pricing', '/models', '/monitor']
     const callbackPaths = [
       '/auth/callback',
       '/auth/linuxdo/callback',
@@ -143,6 +146,7 @@ function simulateGuard(
     ]
     const pendingAuthPaths = ['/register', '/email-verify']
     const isAllowed =
+      exactAllowed.includes(toPath) ||
       allowed.some((path) => toPath === path || toPath.startsWith(path)) ||
       callbackPaths.includes(toPath) ||
       (authState.hasPendingAuthSession && pendingAuthPaths.includes(toPath))
@@ -187,6 +191,11 @@ describe('路由守卫逻辑', () => {
 
     it('访问 /home 公开页面允许通过', () => {
       const redirect = simulateGuard('/home', { requiresAuth: false }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('访问 /docs 公开页面允许通过', () => {
+      const redirect = simulateGuard('/docs', { requiresAuth: false }, authState)
       expect(redirect).toBeNull()
     })
   })
@@ -369,6 +378,54 @@ describe('路由守卫逻辑', () => {
         hasPendingAuthSession: false,
       }
       const redirect = simulateGuard('/key-usage', { requiresAuth: false }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('unauthenticated: /docs is allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/docs', { requiresAuth: false }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('unauthenticated: /monitor is allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/monitor', { requiresAuth: false }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('unauthenticated: /models is allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/models', { requiresAuth: false }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('unauthenticated: /pricing is allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/pricing', { requiresAuth: false }, authState)
       expect(redirect).toBeNull()
     })
 

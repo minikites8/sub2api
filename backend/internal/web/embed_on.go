@@ -24,6 +24,8 @@ import (
 const (
 	// NonceHTMLPlaceholder is the placeholder for nonce in HTML script tags
 	NonceHTMLPlaceholder = "__CSP_NONCE_VALUE__"
+	legacySiteInfoPath   = "/site-info"
+	modelMarketplacePath = "/models"
 )
 
 //go:embed all:dist
@@ -93,8 +95,12 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
+		if redirectLegacySiteInfo(c) {
+			return
+		}
+
 		// Skip API routes
-		if shouldBypassEmbeddedFrontend(path) {
+		if shouldBypassEmbeddedFrontend(path) && !isModelMarketplacePageRequest(c.Request) {
 			c.Next()
 			return
 		}
@@ -281,7 +287,11 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
-		if shouldBypassEmbeddedFrontend(path) {
+		if redirectLegacySiteInfo(c) {
+			return
+		}
+
+		if shouldBypassEmbeddedFrontend(path) && !isModelMarketplacePageRequest(c.Request) {
 			c.Next()
 			return
 		}
@@ -338,6 +348,27 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		trimmed == "/alpha/search" ||
 		strings.HasPrefix(trimmed, "/images/") ||
 		strings.HasPrefix(trimmed, "/videos/")
+}
+
+func redirectLegacySiteInfo(c *gin.Context) bool {
+	path := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
+	if path != legacySiteInfoPath {
+		return false
+	}
+
+	c.Redirect(http.StatusMovedPermanently, modelMarketplacePath)
+	c.Abort()
+	return true
+}
+
+func isModelMarketplacePageRequest(request *http.Request) bool {
+	if request == nil || request.URL == nil || request.URL.Path != modelMarketplacePath {
+		return false
+	}
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		return false
+	}
+	return strings.Contains(strings.ToLower(request.Header.Get("Accept")), "text/html")
 }
 
 func serveIndexHTML(c *gin.Context, fsys fs.FS) {

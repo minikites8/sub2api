@@ -1,16 +1,105 @@
 <template>
   <AppLayout>
     <div class="purchase-page mx-auto space-y-6">
+      <section class="recharge-hero">
+        <header class="recharge-hero-header">
+          <div>
+            <p class="recharge-eyebrow">{{ t('payment.rechargeEyebrow') }}</p>
+            <h1>{{ t('payment.rechargeCenter') }}</h1>
+            <p>{{ t('payment.rechargeSubtitle') }}</p>
+          </div>
+          <button
+            type="button"
+            class="credits-icon-button"
+            :disabled="refreshingPurchaseData"
+            :title="t('common.refresh')"
+            :aria-label="t('common.refresh')"
+            @click="refreshPurchaseData"
+          >
+            <Icon name="refresh" size="sm" :class="{ 'animate-spin': refreshingPurchaseData }" />
+          </button>
+        </header>
+
+        <div class="recharge-overview-grid">
+          <div class="credits-balance-card">
+            <div>
+              <span class="credits-balance-label">{{ t('payment.currentCreditBalance') }}</span>
+              <div class="credits-balance-value">
+                <strong>{{ currentCreditText }}</strong>
+                <span>Credits</span>
+              </div>
+            </div>
+            <p class="credits-rate-card">1 Credit = 0.01 USD {{ t('payment.callQuota') }}</p>
+          </div>
+
+          <aside class="billing-details-card">
+            <header>
+              <Icon name="infoCircle" size="sm" />
+              <span>{{ t('payment.billingDetails') }}</span>
+            </header>
+            <div class="billing-details-rows">
+              <div>
+                <span>{{ t('payment.billingCurrentPlan') }}</span>
+                <strong :title="billingPlanName">{{ billingPlanName }}</strong>
+              </div>
+              <template v-if="billingSubscription">
+                <div>
+                  <span>{{ t('payment.billingExpiresAt') }}</span>
+                  <strong>{{ billingExpiryText }}</strong>
+                </div>
+                <div>
+                  <span>{{ t('payment.billingRateMultiplier') }}</span>
+                  <strong>×{{ billingSubscription.group?.rate_multiplier ?? 1 }}</strong>
+                </div>
+              </template>
+              <template v-else>
+                <div>
+                  <span>{{ t('payment.billingAutoRecharge') }}</span>
+                  <strong class="billing-status-disabled">{{ t('payment.billingDisabled') }}</strong>
+                </div>
+                <div>
+                  <span>{{ t('payment.billingTax') }}</span>
+                  <strong>{{ t('payment.billingTaxCheckout') }}</strong>
+                </div>
+              </template>
+            </div>
+            <button type="button" class="billing-pricing-link" @click="viewPricingMatrix">
+              <span>{{ t('payment.billingViewPricing') }}</span>
+              <Icon name="externalLink" size="xs" />
+            </button>
+          </aside>
+        </div>
+      </section>
+
+      <nav v-if="paymentPhase === 'select' && !selectedPlan" class="recharge-sections" :aria-label="t('payment.rechargeCenter')">
+        <button
+          v-for="section in rechargeSections"
+          :key="section.key"
+          type="button"
+          :class="{ 'recharge-section-active': activeSection === section.key }"
+          @click="selectSection(section.key)"
+        >
+          {{ section.label }}
+        </button>
+      </nav>
+
+      <section v-if="activeSection === 'subscriptions'" class="recharge-embedded-panel">
+        <SubscriptionsView embedded />
+      </section>
+      <section v-else-if="activeSection === 'redeem'" class="recharge-embedded-panel">
+        <RedeemView embedded />
+      </section>
+      <template v-else>
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
       <template v-else>
         <!-- Tab Switcher (hide during payment and subscription confirm) -->
-        <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="purchase-tabs">
-          <button v-for="tab in tabs" :key="tab.key"
+        <div v-if="checkoutTabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="purchase-tabs">
+          <button v-for="tab in checkoutTabs" :key="tab.key"
             class="purchase-tab-button"
-            :class="{ 'purchase-tab-button-active': activeTab === tab.key }"
-            @click="activeTab = tab.key">{{ tab.label }}</button>
+            :class="{ 'purchase-tab-button-active': checkoutMode === tab.key }"
+            @click="checkoutMode = tab.key">{{ tab.label }}</button>
         </div>
         <!-- Payment in progress (shared by recharge and subscription) -->
         <template v-if="paymentPhase === 'paying'">
@@ -30,36 +119,7 @@
         <!-- Tab content (select phase) -->
         <template v-else>
           <!-- Top-up Tab -->
-          <template v-if="activeTab === 'recharge'">
-            <section class="credits-workspace">
-              <header class="credits-header">
-                <div>
-                  <h1>{{ t('payment.creditsTitle') }}</h1>
-                  <p>{{ t('payment.personalAccount', { account: accountDisplayName }) }}</p>
-                </div>
-                <button
-                  type="button"
-                  class="credits-icon-button"
-                  :disabled="loadingRecentOrders"
-                  :title="t('common.refresh')"
-                  :aria-label="t('common.refresh')"
-                  @click="refreshPurchaseData"
-                >
-                  <Icon name="refresh" size="sm" :class="{ 'animate-spin': loadingRecentOrders }" />
-                </button>
-              </header>
-
-              <div class="credits-balance-card">
-                <div class="credits-balance-value">
-                  <span>$</span>
-                  <strong>{{ currentBalanceText }}</strong>
-                </div>
-                <div class="credits-balance-info" :title="t('payment.currentBalance')">
-                  <Icon name="infoCircle" size="sm" />
-                </div>
-              </div>
-            </section>
-
+          <template v-if="checkoutMode === 'recharge'">
             <div v-if="enabledMethods.length === 0" class="purchase-panel purchase-empty-panel">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
@@ -74,8 +134,20 @@
                   </header>
 
                   <div class="purchase-panel-body">
+                    <div class="credits-presets" :aria-label="t('payment.quickAmounts')">
+                      <button
+                        v-for="preset in presetAmounts"
+                        :key="preset"
+                        type="button"
+                        :class="{ 'credits-preset-active': validAmount === preset }"
+                        @click="selectRechargeAmount(preset)"
+                      >
+                        <strong>{{ preset }} CNY</strong>
+                        <span>{{ formatCredits(preset * CREDITS_PER_RMB, 0) }} Credits</span>
+                      </button>
+                    </div>
                     <label class="credits-amount-field">
-                      <span>{{ t('payment.amountLabel') }}</span>
+                      <span>CNY</span>
                       <input
                         type="text"
                         inputmode="decimal"
@@ -86,11 +158,12 @@
                     </label>
                     <p v-if="amountError" class="credits-field-error">{{ amountError }}</p>
 
+                    <div v-if="validAmount > 0" class="credits-conversion-card">
+                      <span>{{ t('payment.creditsToReceive') }}</span>
+                      <strong>{{ formatCredits(rechargeCreditAmount, 0) }} Credits</strong>
+                    </div>
+
                     <div v-if="validAmount > 0" class="credits-summary">
-                      <div class="credits-summary-row">
-                        <span>{{ t('payment.paymentAmount') }}</span>
-                        <strong>{{ formatSelectedPaymentAmount(validAmount) }}</strong>
-                      </div>
                       <div v-if="availableRechargePromo" class="credits-promo-card">
                         <div class="credits-promo-topline">
                           <span>{{ t('payment.rechargePromo.available') }}</span>
@@ -102,7 +175,7 @@
                           <span v-else>{{ t('payment.rechargePromo.remainingDiscount', { remaining: availableRechargePromo.discount_remaining }) }}</span>
                         </p>
                         <p v-if="rechargeBonusAmount > 0">
-                          {{ t('payment.rechargePromo.bonusPreview', { amount: formatBalanceAmount(rechargeBonusAmount) }) }}
+                          {{ t('payment.rechargePromo.bonusPreview', { amount: `${formatCredits(rechargeBonusCredits, 0)} Credits` }) }}
                         </p>
                       </div>
                       <div v-if="rechargeDiscountActive" class="credits-summary-row">
@@ -121,13 +194,6 @@
                         <span>{{ t('payment.totalDue') }}</span>
                         <strong>{{ formatSelectedPaymentAmount(totalAmount) }}</strong>
                       </div>
-                      <div v-if="showCreditedAmount" class="credits-summary-row">
-                        <span>{{ t('payment.creditedBalance') }}</span>
-                        <strong>{{ formatBalanceAmount(creditedAmount) }}</strong>
-                      </div>
-                      <p v-if="balanceRechargeMultiplier !== 1" class="credits-summary-note">
-                        {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
-                      </p>
                     </div>
 
                     <button type="button" class="credits-purchase-button" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
@@ -138,18 +204,10 @@
                       <span v-else>{{ t('payment.purchase') }}</span>
                     </button>
 
-                    <div class="credits-account-note">
-                      {{ t('payment.personalAccount', { account: accountDisplayName }) }}
-                    </div>
                     <p class="credits-confirm-note">
                       {{ t('payment.confirmationHint') }}
                       <Icon name="infoCircle" size="xs" />
                     </p>
-
-                    <footer class="credits-panel-footer">
-                      <button type="button" @click="router.push('/orders')">{{ t('payment.viewUsage') }}</button>
-                      <button type="button" @click="router.push('/redeem')">{{ t('payment.redeemPromoCode') }}</button>
-                    </footer>
                   </div>
                 </article>
 
@@ -166,8 +224,9 @@
                   </div>
                 </article>
               </section>
+            </template>
 
-              <section class="recent-transactions">
+              <section id="transactions" class="recent-transactions">
                 <div class="recent-transactions-rule"></div>
                 <header class="recent-transactions-header">
                   <div>
@@ -176,41 +235,16 @@
                       {{ t('payment.enterpriseBilling') }}
                     </button>
                   </div>
-                  <div class="recent-transactions-actions">
-                    <button type="button" :disabled="loadingRecentOrders" @click="loadRecentOrders">
-                      <Icon name="refresh" size="sm" :class="{ 'animate-spin': loadingRecentOrders }" />
-                    </button>
-                    <button type="button" @click="router.push('/orders')">
-                      <Icon name="chevronRight" size="sm" />
-                    </button>
-                  </div>
                 </header>
-
-                <div class="recent-transactions-table">
-                  <div v-if="loadingRecentOrders" class="recent-transactions-empty">
-                    {{ t('common.processing') }}
-                  </div>
-                  <div v-else-if="recentOrders.length === 0" class="recent-transactions-empty">
-                    {{ t('payment.noResults') }}
-                  </div>
-                  <div v-else class="recent-transaction-list">
-                    <div v-for="order in recentOrders" :key="order.id" class="recent-transaction-row">
-                      <div class="min-w-0">
-                        <p>{{ formatRecentOrderTitle(order) }}</p>
-                        <span>{{ formatRecentOrderMeta(order) }}</span>
-                      </div>
-                      <div class="recent-transaction-amount">
-                        <strong>{{ formatOrderPayAmount(order) }}</strong>
-                        <span>{{ t(`payment.status.${order.status.toLowerCase()}`, order.status) }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <UserOrdersView
+                  :key="ordersRefreshKey"
+                  embedded
+                  :preview-orders="previewData?.recentOrders"
+                />
               </section>
-            </template>
           </template>
           <!-- Subscribe Tab -->
-          <template v-else-if="activeTab === 'subscription'">
+          <template v-else-if="checkoutMode === 'subscription'">
             <!-- Subscription confirm (inline, replaces plan list) -->
             <template v-if="selectedPlan">
               <div class="card p-5">
@@ -342,6 +376,7 @@
           </div>
         </div>
       </template>
+      </template>
     </div>
     <BaseDialog
       :show="showEnterpriseBillingContact"
@@ -424,10 +459,28 @@ import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import SubscriptionsView from '@/views/user/SubscriptionsView.vue'
+import UserOrdersView from '@/views/user/UserOrdersView.vue'
+import RedeemView from '@/views/user/RedeemView.vue'
 import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
+import { CREDITS_PER_RMB, formatCredits, usdToCredits } from '@/utils/credit'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
+
+interface RechargePreviewData {
+  user: {
+    email?: string
+    username?: string
+    balance: number
+  }
+  checkout: CheckoutInfoResponse
+  recentOrders: PaymentOrder[]
+}
+
+const props = defineProps<{
+  previewData?: RechargePreviewData
+}>()
 
 const i18n = useI18n()
 const { t } = i18n
@@ -438,8 +491,27 @@ const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
 
-const user = computed(() => authStore.user)
+const user = computed(() => props.previewData?.user ?? authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
+const billingSubscription = computed(() => activeSubscriptions.value[0] ?? null)
+const billingPlanName = computed(() => {
+  const subscription = billingSubscription.value
+  if (!subscription) return t('payment.billingPayAsYouGo')
+  return subscription.group?.name?.trim() || t('payment.groupFallback', { id: subscription.group_id })
+})
+const billingExpiryText = computed(() => {
+  const expiresAt = billingSubscription.value?.expires_at
+  if (!expiresAt) return t('payment.billingNeverExpires')
+
+  const date = new Date(expiresAt)
+  if (Number.isNaN(date.getTime())) return expiresAt
+
+  return new Intl.DateTimeFormat(i18n.locale.value.startsWith('zh') ? 'zh-CN' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
+})
 
 function getDaysRemaining(expiresAt: string): number {
   const diff = new Date(expiresAt).getTime() - Date.now()
@@ -458,18 +530,65 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-const activeTab = ref<'recharge' | 'subscription'>('recharge')
+type RechargeSection = 'recharge' | 'subscriptions' | 'redeem'
+type CheckoutMode = 'recharge' | 'subscription'
+
+function normalizeRechargeSection(value: unknown): RechargeSection {
+  if (value === 'subscriptions' || value === 'redeem') return value
+  return 'recharge'
+}
+
+const activeSection = ref<RechargeSection>(normalizeRechargeSection(route.query.tab))
+const checkoutMode = ref<CheckoutMode>(
+  route.query.tab === 'subscription' || route.query.mode === 'subscription' ? 'subscription' : 'recharge'
+)
+const presetAmounts = [10, 50, 100, 500] as const
 const amount = ref<number | null>(null)
 const amountInputText = ref('')
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
-const recentOrders = ref<PaymentOrder[]>([])
-const loadingRecentOrders = ref(false)
+const refreshingPurchaseData = ref(false)
+const ordersRefreshKey = ref(0)
 const showEnterpriseBillingContact = ref(false)
 const enterpriseBillingContactQr = computed(() => appStore.enterpriseBillingContactQr)
 
 const paymentPhase = ref<'select' | 'paying'>('select')
+
+const rechargeSections = computed<{ key: RechargeSection; label: string }[]>(() => [
+  { key: 'recharge', label: t('payment.tabTopUp') },
+  { key: 'subscriptions', label: t('payment.tabMySubscriptions') },
+  { key: 'redeem', label: t('payment.tabRedeem') },
+])
+
+function selectSection(section: RechargeSection) {
+  activeSection.value = section
+  const query = { ...route.query }
+  query.tab = section
+  delete query.mode
+  delete query.group
+  void router.replace({ path: route.path, query })
+}
+
+function viewPricingMatrix() {
+  activeSection.value = 'recharge'
+  checkoutMode.value = 'subscription'
+  selectedPlan.value = null
+  paymentPhase.value = 'select'
+  void router.replace({
+    path: route.path,
+    query: { ...route.query, tab: 'recharge', mode: 'subscription' },
+  })
+}
+
+watch(() => route.query.tab, (value) => {
+  activeSection.value = normalizeRechargeSection(value)
+  if (value === 'subscription') checkoutMode.value = 'subscription'
+})
+
+watch(() => route.query.mode, (value) => {
+  if (value === 'subscription' || value === 'recharge') checkoutMode.value = value
+})
 
 interface CreateOrderOptions {
   openid?: string
@@ -628,7 +747,7 @@ function onPaymentDone() {
 function onPaymentSuccess() {
   removeRecoverySnapshot()
   authStore.refreshUser()
-  loadRecentOrders()
+  ordersRefreshKey.value += 1
   if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
@@ -644,7 +763,7 @@ const checkout = ref<CheckoutInfoResponse>({
   plans: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
-const tabs = computed(() => {
+const checkoutTabs = computed(() => {
   const result: { key: 'recharge' | 'subscription'; label: string }[] = []
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
@@ -654,10 +773,6 @@ const tabs = computed(() => {
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
-const balanceRechargeMultiplier = computed(() => {
-  const multiplier = checkout.value.balance_recharge_multiplier
-  return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
-})
 // 订阅 CNY 换算汇率（1 USD = X CNY）。0 = 未配置，订阅保持 price 直付（与后端 opt-in 条件严格镜像）。
 const subscriptionUsdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate
@@ -685,10 +800,10 @@ const discountedRechargePaymentAmount = computed(() => {
 const rechargeDiscountAmount = computed(() =>
   Math.max(0, Math.round((validAmount.value - discountedRechargePaymentAmount.value) * 100) / 100)
 )
-const creditedAmount = computed(() =>
-  Math.round(((validAmount.value * balanceRechargeMultiplier.value) + rechargeBonusAmount.value) * 100) / 100
+const rechargeBonusCredits = computed(() => rechargeBonusAmount.value * CREDITS_PER_RMB)
+const rechargeCreditAmount = computed(() =>
+  (validAmount.value * CREDITS_PER_RMB) + rechargeBonusCredits.value
 )
-const showCreditedAmount = computed(() => balanceRechargeMultiplier.value !== 1 || rechargeBonusAmount.value > 0)
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -718,8 +833,7 @@ const globalMinAmount = computed(() => {
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
 const selectedCurrency = computed(() => normalizePaymentCurrency(selectedLimit.value?.currency))
-const accountDisplayName = computed(() => user.value?.email || user.value?.username || '-')
-const currentBalanceText = computed(() => (Number(user.value?.balance || 0)).toFixed(2))
+const currentCreditText = computed(() => formatCredits(usdToCredits(user.value?.balance), 0))
 const localeCode = computed(() => {
   const raw = i18n.locale as unknown
   if (typeof raw === 'string') return raw
@@ -762,10 +876,6 @@ function formatSelectedPaymentAmount(value: number): string {
   return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
 }
 
-function formatBalanceAmount(value: number): string {
-  return `$${(Number.isFinite(value) ? value : 0).toFixed(2)}`
-}
-
 function formatCompactPaymentAmount(value: number): string {
   const amountText = Number.isInteger(value)
     ? String(value)
@@ -793,6 +903,10 @@ const minimumAmountLabel = computed(() => {
 
 const AMOUNT_PATTERN = /^\d*(\.\d{0,2})?$/
 
+function selectRechargeAmount(value: number) {
+  amount.value = value
+}
+
 function handleAmountInput(event: Event) {
   const input = event.target as HTMLInputElement
   const nextValue = input.value.trim()
@@ -818,37 +932,15 @@ watch(amount, (nextAmount) => {
   }
 }, { immediate: true })
 
-async function loadRecentOrders() {
-  loadingRecentOrders.value = true
-  try {
-    const response = await paymentAPI.getMyOrders({ page: 1, page_size: 5 })
-    recentOrders.value = response.data.items || []
-  } catch (err: unknown) {
-    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
-  } finally {
-    loadingRecentOrders.value = false
-  }
-}
-
 async function refreshPurchaseData() {
-  await Promise.all([
-    authStore.refreshUser().catch(() => {}),
-    loadRecentOrders()
-  ])
-}
-
-function formatOrderPayAmount(order: PaymentOrder): string {
-  return formatPaymentAmount(order.pay_amount || order.amount || 0, normalizePaymentCurrency(order.currency), localeCode.value)
-}
-
-function formatRecentOrderTitle(order: PaymentOrder): string {
-  const method = t(`payment.methods.${order.payment_type}`, order.payment_type)
-  const typeKey = order.order_type === 'subscription' ? 'payment.tabSubscribe' : 'payment.tabTopUp'
-  return `${t(typeKey)} · ${method}`
-}
-
-function formatRecentOrderMeta(order: PaymentOrder): string {
-  return `#${order.id} · ${new Date(order.created_at).toLocaleString()}`
+  if (props.previewData) return
+  refreshingPurchaseData.value = true
+  try {
+    await authStore.refreshUser()
+    ordersRefreshKey.value += 1
+  } finally {
+    refreshingPurchaseData.value = false
+  }
 }
 
 function formatSelectedSubscriptionPaymentAmount(value: number): string {
@@ -1011,6 +1103,7 @@ function closeRenewalModal() {
 }
 
 async function handleSubmitRecharge() {
+  if (props.previewData) return
   if (!canSubmit.value || submitting.value) return
   await createOrder(validAmount.value, 'balance')
 }
@@ -1350,19 +1443,29 @@ async function resumeWechatPaymentFromQuery() {
   }
 }
 
+function selectDefaultPaymentMethod() {
+  if (!enabledMethods.value.length) return
+  const order: readonly string[] = METHOD_ORDER
+  const sorted = [...enabledMethods.value].sort((a, b) => {
+    const ai = order.indexOf(a)
+    const bi = order.indexOf(b)
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+  })
+  selectedMethod.value = sorted[0]
+}
+
 onMounted(async () => {
+  if (props.previewData) {
+    checkout.value = props.previewData.checkout
+    amount.value = 100
+    selectDefaultPaymentMethod()
+    loading.value = false
+    return
+  }
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
-    if (enabledMethods.value.length) {
-      const order: readonly string[] = METHOD_ORDER
-      const sorted = [...enabledMethods.value].sort((a, b) => {
-        const ai = order.indexOf(a)
-        const bi = order.indexOf(b)
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-      })
-      selectedMethod.value = sorted[0]
-    }
+    selectDefaultPaymentMethod()
     if (typeof window !== 'undefined') {
       if (hasWechatResumeQuery(route.query)) {
         removeRecoverySnapshot()
@@ -1389,13 +1492,12 @@ onMounted(async () => {
       }
     }
     await resumeWechatPaymentFromQuery()
-    loadRecentOrders()
     if (checkout.value.balance_disabled) {
-      activeTab.value = 'subscription'
+      checkoutMode.value = 'subscription'
     }
     // Handle renewal navigation: ?tab=subscription&group=123
-    if (route.query.tab === 'subscription') {
-      activeTab.value = 'subscription'
+    if (route.query.tab === 'subscription' || route.query.mode === 'subscription') {
+      checkoutMode.value = 'subscription'
       if (route.query.group) {
         const groupId = Number(route.query.group)
         const groupPlans = checkout.value.plans.filter(p => p.group_id === groupId)
@@ -1416,7 +1518,93 @@ onMounted(async () => {
 
 <style scoped>
 .purchase-page {
-  width: min(100%, 112rem);
+  width: min(100%, 80rem);
+  color: var(--md-on-surface);
+}
+
+.recharge-hero {
+  display: grid;
+  gap: 24px;
+}
+
+.recharge-hero-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.recharge-eyebrow {
+  margin: 0 0 10px;
+  color: #00e38b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.recharge-hero-header h1 {
+  margin: 0;
+  color: var(--md-on-surface);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 750;
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.recharge-hero-header p:last-child {
+  max-width: 46rem;
+  margin: 12px 0 0;
+  color: var(--md-on-surface-variant);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+.recharge-sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--md-surface-container-low) 92%, #07130e);
+}
+
+.recharge-sections button {
+  min-height: 46px;
+  border-right: 1px solid var(--md-outline-variant);
+  color: var(--md-on-surface-variant);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.recharge-sections button:last-child {
+  border-right: 0;
+}
+
+.recharge-sections button:hover {
+  background: var(--md-state-hover);
+  color: var(--md-on-surface);
+}
+
+.recharge-sections .recharge-section-active {
+  background: #00e38b;
+  color: #002110;
+}
+
+.recharge-embedded-panel {
+  min-width: 0;
+}
+
+.recharge-embedded-panel :deep(.card),
+.recharge-embedded-panel :deep(.rounded-2xl) {
+  border-radius: 8px;
+}
+
+.recent-transactions :deep(.card) {
+  border-radius: 8px;
+  background: var(--md-surface-container-lowest);
+  box-shadow: none;
 }
 
 .purchase-tabs {
@@ -1500,53 +1688,150 @@ onMounted(async () => {
   opacity: 0.56;
 }
 
+.recharge-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(18.5rem, 0.55fr);
+  gap: 22px;
+}
+
 .credits-balance-card {
   display: flex;
-  min-height: 104px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 12px;
-  background: var(--md-surface-container);
-  padding: 22px 24px;
-  box-shadow: var(--md-elevation-1);
+  min-height: 228px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, #00e38b 28%, var(--md-outline-variant));
+  border-radius: 8px;
+  background:
+    linear-gradient(color-mix(in srgb, var(--md-surface-container-lowest) 94%, transparent), color-mix(in srgb, var(--md-surface-container-lowest) 94%, transparent)),
+    linear-gradient(to right, color-mix(in srgb, var(--md-outline-variant) 24%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--md-outline-variant) 24%, transparent) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+  padding: 24px 28px;
+  box-shadow: inset 3px 0 0 #00e38b;
+}
+
+.credits-balance-label {
+  color: var(--md-on-surface-variant);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
 }
 
 .credits-balance-value {
   display: flex;
   align-items: baseline;
-  gap: 12px;
-  color: var(--md-on-surface);
+  gap: 10px;
+  margin-top: 8px;
+  color: #00e38b;
   font-variant-numeric: tabular-nums;
 }
 
 .credits-balance-value span {
-  color: var(--md-on-surface-variant);
-  font-size: 2.25rem;
-  font-weight: 500;
+  color: var(--md-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 650;
 }
 
 .credits-balance-value strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 2.75rem;
   font-weight: 750;
   line-height: 1;
 }
 
-.credits-balance-info {
+.credits-rate-card {
+  width: 100%;
+  margin: 22px 0 0;
+  border-top: 1px solid var(--md-outline-variant);
+  padding: 16px 0 0;
   color: var(--md-on-surface-variant);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.billing-details-card {
+  display: flex;
+  min-width: 0;
+  min-height: 228px;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, #00e38b 22%, var(--md-outline-variant));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--md-surface-container-lowest) 95%, transparent);
+  padding: 20px 24px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  box-shadow: var(--md-elevation-1);
+}
+
+.billing-details-card > header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid var(--md-outline-variant);
+  padding-bottom: 13px;
+  color: var(--md-on-surface);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.billing-details-rows {
+  display: grid;
+  gap: 13px;
+  padding: 16px 0;
+}
+
+.billing-details-rows > div {
+  display: grid;
+  grid-template-columns: minmax(7.25rem, 1fr) minmax(0, auto);
+  align-items: start;
+  gap: 16px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.billing-details-rows strong {
+  max-width: 13rem;
+  color: var(--md-on-surface);
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.billing-details-rows .billing-status-disabled {
+  color: #ff9d93;
+}
+
+.billing-pricing-link {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  border-top: 1px solid var(--md-outline-variant);
+  padding-top: 13px;
+  color: var(--md-primary);
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-align: left;
+}
+
+.billing-pricing-link:hover,
+.billing-pricing-link:focus-visible {
+  color: var(--md-on-surface);
+  outline: none;
 }
 
 .credits-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
   gap: 22px;
 }
 
 .purchase-panel {
   overflow: hidden;
   border: 1px solid var(--md-outline-variant);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--md-surface);
   box-shadow: var(--md-elevation-1);
 }
@@ -1594,6 +1879,68 @@ onMounted(async () => {
 
 .buy-credits-panel .purchase-panel-body {
   gap: 16px;
+}
+
+.credits-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.credits-presets button {
+  display: grid;
+  min-height: 78px;
+  align-content: center;
+  gap: 5px;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 4px;
+  background: var(--md-surface-container-lowest);
+  padding: 10px;
+  color: var(--md-on-surface);
+  text-align: left;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.credits-presets button:hover,
+.credits-presets .credits-preset-active {
+  border-color: #00e38b;
+  background: color-mix(in srgb, #00e38b 12%, var(--md-surface-container));
+}
+
+.credits-presets strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+}
+
+.credits-presets span {
+  color: var(--md-on-surface-variant);
+  font-size: 0.6875rem;
+}
+
+.credits-preset-active strong {
+  color: #00e38b;
+}
+
+.credits-conversion-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 16px;
+  border: 1px solid color-mix(in srgb, #00e38b 35%, var(--md-outline-variant));
+  border-radius: 4px;
+  background: color-mix(in srgb, #00e38b 8%, var(--md-surface-container-lowest));
+  padding: 12px 14px;
+}
+
+.credits-conversion-card span {
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.credits-conversion-card strong {
+  color: #00e38b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 1rem;
 }
 
 .credits-amount-field {
@@ -1693,8 +2040,7 @@ onMounted(async () => {
 }
 
 .credits-summary-note,
-.credits-confirm-note,
-.credits-account-note {
+.credits-confirm-note {
   color: var(--md-on-surface-variant);
   font-size: 0.875rem;
   text-align: center;
@@ -1713,16 +2059,16 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--md-info) 82%, var(--md-primary));
-  color: white;
+  border-radius: 4px;
+  background: #00e38b;
+  color: #002110;
   font-size: 1rem;
   font-weight: 750;
   transition: background-color 160ms ease, opacity 160ms ease;
 }
 
 .credits-purchase-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-info) 72%, var(--md-primary));
+  background: #56ffa8;
 }
 
 .credits-purchase-button:disabled {
@@ -1736,22 +2082,6 @@ onMounted(async () => {
   gap: 6px;
   margin: 4px 0 0;
   font-size: 0.75rem;
-}
-
-.credits-panel-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding-top: 4px;
-}
-
-.credits-panel-footer button {
-  color: var(--md-info);
-  font-size: 0.875rem;
-  font-weight: 650;
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 .payment-method-panel :deep(label) {
@@ -1928,6 +2258,12 @@ onMounted(async () => {
   }
 }
 
+@media (max-width: 900px) {
+  .recharge-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 720px) {
   .purchase-page {
     width: 100%;
@@ -1937,6 +2273,18 @@ onMounted(async () => {
     width: 100%;
   }
 
+  .recharge-hero-header {
+    gap: 12px;
+  }
+
+  .recharge-hero-header h1 {
+    font-size: 2rem;
+  }
+
+  .recharge-sections {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .purchase-tab-button {
     min-width: 0;
     flex: 1;
@@ -1944,14 +2292,13 @@ onMounted(async () => {
 
   .credits-header,
   .recent-transactions-header,
-  .credits-panel-footer,
   .recent-transaction-row {
     align-items: stretch;
     flex-direction: column;
   }
 
   .credits-balance-card {
-    min-height: 92px;
+    min-height: 0;
     padding: 18px;
   }
 
@@ -1960,7 +2307,26 @@ onMounted(async () => {
   }
 
   .credits-balance-value span {
-    font-size: 1.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .billing-details-card {
+    min-height: 0;
+    padding: 18px;
+  }
+
+  .billing-details-rows > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .billing-details-rows strong {
+    max-width: none;
+    text-align: left;
+  }
+
+  .credits-presets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .payment-method-panel :deep(.grid) {

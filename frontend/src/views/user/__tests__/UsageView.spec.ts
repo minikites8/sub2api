@@ -60,6 +60,39 @@ const messages: Record<string, string> = {
   'usage.preparingExport': 'Preparing export',
   'usage.exportSuccess': 'Export success',
   'usage.exportFailed': 'Export failed',
+  'usage.costDetails': 'Cost Breakdown',
+  'usage.inputTokenPrice': 'Input price',
+  'usage.outputTokenPrice': 'Output price',
+  'usage.perMillionTokens': '/ 1M tokens',
+  'usage.serviceTier': 'Service tier',
+  'usage.serviceTierPriority': 'Fast',
+  'usage.rate': 'Rate',
+  'usage.time': 'Time',
+  'usage.userAgent': 'User-Agent',
+  'usage.reasoningEffort': 'Reasoning Effort',
+  'usage.inboundEndpoint': 'Inbound Endpoint',
+  'usage.requestDetails.action': 'Details',
+  'usage.requestDetails.openAria': 'View request details',
+  'usage.requestDetails.title': 'Request Details',
+  'usage.requestDetails.request': 'Requested model',
+  'usage.requestDetails.requestContext': 'Request Context',
+  'usage.requestDetails.requestId': 'Request ID',
+  'usage.requestDetails.routing': 'Routing & Model Options',
+  'usage.requestDetails.transport': 'Transport',
+  'usage.requestDetails.websocket': 'WebSocket',
+  'usage.requestDetails.streaming': 'Streaming response',
+  'usage.requestDetails.synchronous': 'Synchronous response',
+  'usage.requestDetails.nodeId': 'Processing Node ID',
+  'usage.requestDetails.client': 'Client',
+  'usage.requestDetails.ipAddress': 'IP Address',
+  'usage.requestDetails.imageMetadata': 'Image Parameters',
+  'usage.requestDetails.mediaType': 'Media Type',
+  'usage.analytics.firstTokenLatency': 'First token',
+  'usage.analytics.totalLatency': 'Total latency',
+  'admin.usage.inputCost': 'Input Cost',
+  'admin.usage.outputCost': 'Output Cost',
+  'admin.usage.cacheCreationCost': 'Cache Creation Cost',
+  'admin.usage.cacheReadCost': 'Cache Read Cost',
   'common.refresh': 'Refresh',
   'common.reset': 'Reset',
 }
@@ -99,6 +132,7 @@ const chartStub = { template: '<div />' }
 const usageLog = {
   id: 1,
   request_id: 'req-user-export',
+  node_id: 'edge-cn-01',
   actual_cost: 0.092883,
   total_cost: 0.092883,
   rate_multiplier: 1,
@@ -120,8 +154,11 @@ const usageLog = {
   created_at: '2026-03-08T00:00:00Z',
   model: 'gpt-5.4',
   reasoning_effort: null,
+  inbound_endpoint: null,
+  user_agent: 'openai-node/4.71.1',
   ip_address: '203.0.113.10',
   api_key: { name: 'demo-key' },
+  group: { name: 'default' },
   billing_mode: 'token',
   request_type: 'sync',
   stream: false,
@@ -142,6 +179,10 @@ function mountUsageView() {
         GroupDistributionChart: chartStub,
         EndpointDistributionChart: chartStub,
         TokenUsageTrend: chartStub,
+        UsageTokenBarChart: chartStub,
+        UsageModelCreditChart: chartStub,
+        UsageLatencyHeatmap: chartStub,
+        LoadingSpinner: chartStub,
       },
     },
   })
@@ -192,7 +233,7 @@ describe('user UsageView', () => {
   })
 
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
-    mountUsageView()
+    const wrapper = mountUsageView()
     await flushPromises()
 
     expect(query).toHaveBeenCalled()
@@ -205,6 +246,89 @@ describe('user UsageView', () => {
     }))
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('default (1x)')
+    expect(wrapper.findAll('[data-testid="token-details-trigger"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="credit-details-trigger"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="request-details-trigger"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="log-latency"]').text()).toContain('First token12ms')
+    expect(wrapper.get('[data-testid="log-latency"]').text()).toContain('Total latency345ms')
+  })
+
+  it('shows auxiliary request metadata in the request details dialog', async () => {
+    query.mockResolvedValue({
+      items: [{ ...usageLog, reasoning_effort: 'high', inbound_endpoint: '/v1/responses' }],
+      total: 1,
+      pages: 1,
+    })
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="request-details-trigger"]').trigger('click')
+    await flushPromises()
+
+    const dialog = document.body.querySelector('[data-testid="request-details-dialog"]')
+    expect(dialog?.textContent).toContain('Request IDreq-user-export')
+    expect(dialog?.textContent).toContain('Inbound Endpoint/v1/responses')
+    expect(dialog?.textContent).toContain('Processing Node IDedge-cn-01')
+    expect(dialog?.textContent).toContain('IP Address203.0.113.10')
+    expect(dialog?.textContent).toContain('User-Agentopenai-node/4.71.1')
+    expect(dialog?.textContent).toContain('Reasoning EffortHigh')
+    expect(dialog?.textContent).not.toContain('Billing Context')
+
+    wrapper.unmount()
+  })
+
+  it('shows the requested Credit breakdown details', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="credit-details-trigger"]').trigger('mouseenter')
+    const tooltip = document.body.querySelector('.usage-credit-tooltip')
+
+    expect(tooltip?.textContent).toContain('Input Cost2.0285 Credits')
+    expect(tooltip?.textContent).toContain('Output Cost0.303 Credits')
+    expect(tooltip?.textContent).toContain('Cache Creation Cost0.0001 Credits')
+    expect(tooltip?.textContent).toContain('Cache Read Cost6.9568 Credits')
+    expect(tooltip?.textContent).toContain('Input price500 Credits / 1M tokens')
+    expect(tooltip?.textContent).toContain('Output price3,000 Credits / 1M tokens')
+    expect(tooltip?.textContent).toContain('Service tierFast')
+    expect(tooltip?.textContent).toContain('Rate1x')
+    expect(tooltip?.querySelectorAll('dl > div')).toHaveLength(8)
+
+    wrapper.unmount()
+  })
+
+  it('projects 7-day Credits from month-to-date actual usage', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    const now = new Date()
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const projectedCredits = (0.08 * 100 / now.getDate()) * 7
+    const projectedText = new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(projectedCredits)
+
+    expect(getStats).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: monthStart,
+      end_date: today,
+    }))
+    expect(wrapper.text()).toContain('usage.analytics.estimated7DayCredits')
+    expect(wrapper.text()).toContain(`${projectedText} Credits`)
+
+    const viewModel = wrapper.vm as any
+    viewModel.applyDatePreset(30)
+    await flushPromises()
+
+    const projected30DayCredits = (0.08 * 100 / now.getDate()) * 30
+    const projected30DayText = new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(projected30DayCredits)
+    expect(wrapper.text()).toContain('usage.analytics.estimated30DayCredits')
+    expect(wrapper.text()).toContain(`${projected30DayText} Credits`)
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {
@@ -239,13 +363,13 @@ describe('user UsageView', () => {
     expect(showSuccess).toHaveBeenCalled()
     expect(csvContent.startsWith('\uFEFF')).toBe(true)
     expect(csvContent.slice(1)).toBe([
-      'Time,API Key Name,Model,Reasoning Effort,Inbound Endpoint,IP Address,Type,Billing Mode,Input Tokens,Output Tokens,Cache Read Tokens,Cache Creation Tokens,Rate Multiplier,Billed Cost,Original Cost,First Token (ms),Duration (ms)',
-      '2026-03-08T00:00:00Z,demo-key,gpt-5.4,"\'-",,203.0.113.10,Sync,Token,4057,101,278272,4,1,0.09288300,0.09288300,12,345',
+      'Time,API Key Name,Model,Reasoning Effort,Inbound Endpoint,IP Address,Type,Billing Mode,Input Tokens,Output Tokens,Cache Read Tokens,Cache Creation Tokens,Rate Multiplier,Actual Credits,Standard Credits,First Token (ms),Duration (ms)',
+      '2026-03-08T00:00:00Z,demo-key,gpt-5.4,"\'-",,203.0.113.10,Sync,Token,4057,101,278272,4,1,9.2883,9.2883,12,345',
     ].join('\n'))
     expect(csvContent).toContain('IP Address')
     expect(csvContent).toContain('203.0.113.10')
-    expect(csvContent).toContain('Billed Cost')
-    expect(csvContent).toContain('Original Cost')
+    expect(csvContent).toContain('Actual Credits')
+    expect(csvContent).toContain('Standard Credits')
     expect(csvContent).not.toContain('Upstream Endpoint')
     expect(csvContent).not.toContain('account_cost')
     expect(csvContent).not.toContain('account_rate_multiplier')

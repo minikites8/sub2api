@@ -616,6 +616,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		APIKeyID:                  l.APIKeyID,
 		AccountID:                 l.AccountID,
 		RequestID:                 l.RequestID,
+		NodeID:                    l.NodeID,
 		Model:                     requestedModel,
 		ServiceTier:               l.ServiceTier,
 		ReasoningEffort:           l.ReasoningEffort,
@@ -685,7 +686,6 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	usageLog.UpstreamEndpoint = l.UpstreamEndpoint
 	return &AdminUsageLog{
 		UsageLog:              usageLog,
-		NodeID:                l.NodeID,
 		UpstreamModel:         l.UpstreamModel,
 		ChannelID:             l.ChannelID,
 		ModelMappingChain:     l.ModelMappingChain,

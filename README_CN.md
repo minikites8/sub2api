@@ -643,7 +643,7 @@ jwt:
 default:
   user_concurrency: 5
   user_balance: 0
-  api_key_prefix: "sk-"
+  api_key_prefix: "yc_"
   rate_multiplier: 1.0
 ```
 

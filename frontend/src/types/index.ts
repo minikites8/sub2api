@@ -244,6 +244,8 @@ export interface PublicSettings {
   api_base_url: string
   contact_info: string
   enterprise_billing_contact_qr: string
+  site_icp_filing_number?: string
+  site_public_security_filing_number?: string
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
@@ -1495,6 +1497,7 @@ export interface UsageLog {
   api_key_id: number
   account_id: number | null
   request_id: string
+  node_id?: string | null
   model: string
   service_tier?: string | null
   reasoning_effort?: string | null
@@ -1538,6 +1541,7 @@ export interface UsageLog {
   image_input_cost: number
   image_output_tokens: number
   image_output_cost: number
+  media_type?: string | null
 
   // User-Agent
   user_agent: string | null
@@ -1563,7 +1567,6 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
-  node_id?: string | null
   upstream_model?: string | null
   model_mapping_chain?: string | null
 

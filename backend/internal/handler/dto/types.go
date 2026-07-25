@@ -474,6 +474,8 @@ type UsageLog struct {
 	APIKeyID  int64  `json:"api_key_id"`
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
+	// NodeID is the processing node that handled the request.
+	NodeID string `json:"node_id,omitempty"`
 	Model     string `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
@@ -547,9 +549,6 @@ type UsageLog struct {
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
 	UsageLog
-
-	// NodeID 请求经过的租约节点 ID。
-	NodeID string `json:"node_id,omitempty"`
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).

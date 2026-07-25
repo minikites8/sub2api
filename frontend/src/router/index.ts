@@ -40,6 +40,26 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/docs',
+    name: 'Docs',
+    component: () => import('@/views/DocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'API Documentation',
+      titleKey: 'docsPage.pageTitle'
+    }
+  },
+  {
+    path: '/pricing',
+    name: 'Pricing',
+    component: () => import('@/views/public/PricingView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Pricing',
+      titleKey: 'pricingPage.pageTitle'
+    }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
@@ -169,7 +189,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/site-info',
     name: 'SiteInfo',
-    component: () => import('@/views/public/SiteInfoView.vue'),
+    redirect: '/models',
     meta: {
       requiresAuth: false,
       title: 'Site Info',
@@ -252,14 +272,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/redeem',
     name: 'Redeem',
-    component: () => import('@/views/user/RedeemView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Redeem Code',
-      titleKey: 'redeem.title',
-      descriptionKey: 'redeem.description'
-    }
+    redirect: { path: '/purchase', query: { tab: 'redeem' } },
   },
   {
     path: '/affiliate',
@@ -300,14 +313,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/subscriptions',
     name: 'Subscriptions',
-    component: () => import('@/views/user/SubscriptionsView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'My Subscriptions',
-      titleKey: 'userSubscriptions.title',
-      descriptionKey: 'userSubscriptions.description'
-    }
+    redirect: { path: '/purchase', query: { tab: 'subscriptions' } },
   },
   {
     path: '/purchase',
@@ -318,21 +324,13 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'Purchase Subscription',
       titleKey: 'nav.buySubscription',
-      descriptionKey: 'purchase.description',
-      requiresPayment: true
+      descriptionKey: 'purchase.description'
     }
   },
   {
     path: '/orders',
     name: 'OrderList',
-    component: () => import('@/views/user/UserOrdersView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'My Orders',
-      titleKey: 'nav.myOrders',
-      requiresPayment: true
-    }
+    redirect: { path: '/purchase', hash: '#transactions' },
   },
   {
     path: '/payment/qrcode',
@@ -487,14 +485,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/monitor',
-    name: 'ChannelStatus',
+    path: '/models',
+    alias: '/monitor',
+    name: 'ModelMarketplace',
     component: () => import('@/views/user/ChannelStatusView.vue'),
     meta: {
-      requiresAuth: true,
+      requiresAuth: false,
       requiresAdmin: false,
-      title: 'Channel Status',
-      titleKey: 'nav.channelStatus'
+      title: 'Model Marketplace',
+      titleKey: 'nav.channelStatus',
+      descriptionKey: 'modelMarketplace.description'
     }
   },
   {
@@ -737,10 +737,13 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, _from, savedPosition) {
     // Scroll to saved position when using browser back/forward
     if (savedPosition) {
       return savedPosition
+    }
+    if (to.hash) {
+      return { el: to.hash, top: 16 }
     }
     // Scroll to top for new routes
     return { top: 0 }
@@ -757,6 +760,7 @@ const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
 const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_EXACT_PATHS = ['/docs', '/pricing', '/models', '/monitor']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
@@ -769,6 +773,10 @@ const BACKEND_MODE_CALLBACK_PATHS = [
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
 
 function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: boolean): boolean {
+  if (BACKEND_MODE_ALLOWED_EXACT_PATHS.includes(path)) {
+    return true
+  }
+
   if (BACKEND_MODE_ALLOWED_PATHS.some((allowedPath) => path === allowedPath || path.startsWith(allowedPath))) {
     return true
   }

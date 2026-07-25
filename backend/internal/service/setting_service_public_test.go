@@ -91,6 +91,21 @@ func TestSettingService_GetPublicSettings_ExposesEnterpriseBillingContactQR(t *t
 	require.Equal(t, "data:image/png;base64,qr-code", settings.EnterpriseBillingContactQR)
 }
 
+func TestSettingService_GetPublicSettings_ExposesSiteFilingNumbers(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeySiteICPFilingNumber:            " 京ICP备12345678号-1 ",
+			SettingKeySitePublicSecurityFilingNumber: " 京公网安备11000002000001号 ",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "京ICP备12345678号-1", settings.SiteICPFilingNumber)
+	require.Equal(t, "京公网安备11000002000001号", settings.SitePublicSecurityFilingNumber)
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

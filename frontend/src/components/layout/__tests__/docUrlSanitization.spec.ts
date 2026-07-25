@@ -9,21 +9,14 @@ const headerSource = readFileSync(resolve(dir, '../AppHeader.vue'), 'utf8')
 const homeViewSource = readFileSync(resolve(dir, '../../../views/HomeView.vue'), 'utf8')
 const keyUsageViewSource = readFileSync(resolve(dir, '../../../views/KeyUsageView.vue'), 'utf8')
 
-describe('doc_url sanitization', () => {
-  it('AppHeader imports sanitizeUrl', () => {
-    expect(headerSource).toContain("import { sanitizeUrl } from '@/utils/url'")
+describe('documentation links', () => {
+  it('AppHeader routes to the public documentation page', () => {
+    expect(headerSource).toContain('<router-link\n          to="/docs"')
   })
 
-  it('AppHeader applies sanitizeUrl to docUrl', () => {
-    expect(headerSource).toContain('sanitizeUrl(appStore.docUrl)')
-  })
-
-  it('HomeView imports sanitizeUrl', () => {
-    expect(homeViewSource).toContain("import { sanitizeUrl } from '@/utils/url'")
-  })
-
-  it('HomeView applies sanitizeUrl to docUrl', () => {
-    expect(homeViewSource).toContain('sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl')
+  it('HomeView routes to the public documentation page', () => {
+    expect(homeViewSource).toContain('<router-link to="/docs" class="stitch-nav-link">')
+    expect(homeViewSource).toContain('<router-link to="/docs" class="stitch-secondary-button">')
   })
 
   it('KeyUsageView imports sanitizeUrl', () => {

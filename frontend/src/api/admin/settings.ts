@@ -438,6 +438,8 @@ export interface SystemSettings {
   api_base_url: string;
   contact_info: string;
   enterprise_billing_contact_qr: string;
+  site_icp_filing_number: string;
+  site_public_security_filing_number: string;
   doc_url: string;
   home_content: string;
   hide_ccs_import_button: boolean;
@@ -750,6 +752,8 @@ export interface UpdateSettingsRequest {
   api_base_url?: string;
   contact_info?: string;
   enterprise_billing_contact_qr?: string;
+  site_icp_filing_number?: string;
+  site_public_security_filing_number?: string;
   doc_url?: string;
   home_content?: string;
   hide_ccs_import_button?: boolean;

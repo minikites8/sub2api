@@ -77,16 +77,15 @@ onMounted(() => {
 <style scoped>
 .md3-actions-panel {
   overflow: hidden;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 12px;
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
+  border: 1px solid #303b3a;
+  border-radius: 6px;
+  background: #061016;
+  box-shadow: none;
+  transition: border-color 180ms ease;
 }
 
-.dark .md3-actions-panel {
-  border-color: var(--md-outline-variant);
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
+.md3-actions-panel:hover {
+  border-color: #4b6258;
 }
 
 .md3-actions-header {
@@ -100,13 +99,10 @@ onMounted(() => {
 
 .md3-actions-header h2 {
   margin: 0;
-  color: var(--md-on-surface);
-  font-size: 0.9375rem;
-  font-weight: 650;
-}
-
-.dark .md3-actions-header h2 {
-  color: var(--md-on-surface);
+  color: #e8f1ed;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .md3-actions-list {
@@ -135,16 +131,7 @@ onMounted(() => {
 }
 
 .md3-action-row:hover {
-  background: transparent;
-}
-
-.dark .md3-action-row {
-  border-color: var(--md-outline-variant);
-  background: transparent;
-}
-
-.dark .md3-action-row:hover {
-  background: transparent;
+  background: rgb(0 227 139 / 4%);
 }
 
 .md3-action-icon {
@@ -154,21 +141,13 @@ onMounted(() => {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 
 .md3-action-icon-key,
 .md3-action-icon-usage,
 .md3-action-icon-batch,
 .md3-action-icon-redeem {
-  background: var(--md-surface-container-high);
-  color: var(--md-on-surface-variant);
-}
-
-.dark .md3-action-icon-key,
-.dark .md3-action-icon-usage,
-.dark .md3-action-icon-batch,
-.dark .md3-action-icon-redeem {
   background: var(--md-surface-container-high);
   color: var(--md-on-surface-variant);
 }
@@ -208,15 +187,4 @@ onMounted(() => {
   color: var(--md-primary);
 }
 
-.dark .md3-action-copy strong {
-  color: var(--md-on-surface);
-}
-
-.dark .md3-action-copy span {
-  color: var(--md-on-surface-variant);
-}
-
-.dark .md3-action-row:hover .md3-action-chevron {
-  color: var(--md-primary);
-}
 </style>

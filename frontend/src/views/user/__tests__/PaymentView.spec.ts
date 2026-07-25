@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import PaymentView from '../PaymentView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
@@ -22,6 +22,7 @@ const showWarning = vi.hoisted(() => vi.fn())
 const getCheckoutInfo = vi.hoisted(() => vi.fn())
 const getMyOrders = vi.hoisted(() => vi.fn())
 const bridgeInvoke = vi.hoisted(() => vi.fn())
+const activeSubscriptions = vi.hoisted(() => [] as Array<Record<string, unknown>>)
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -42,6 +43,7 @@ vi.mock('vue-i18n', async () => {
     ...actual,
     useI18n: () => ({
       t: (key: string) => key,
+      locale: { value: 'en' },
     }),
   }
 })
@@ -64,7 +66,7 @@ vi.mock('@/stores/payment', () => ({
 
 vi.mock('@/stores/subscriptions', () => ({
   useSubscriptionStore: () => ({
-    activeSubscriptions: [],
+    activeSubscriptions,
     fetchActiveSubscriptions,
   }),
 }))
@@ -118,6 +120,85 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
     data: { ...data, ...overrides },
   }
 }
+
+function mountBillingOverview() {
+  return shallowMount(PaymentView, {
+    props: {
+      previewData: {
+        user: { username: 'demo-user', balance: 12.34 },
+        checkout: checkoutInfoFixture().data,
+        recentOrders: [],
+      },
+    },
+    global: {
+      stubs: {
+        AppLayout: {
+          template: '<div><slot /></div>',
+        },
+        Teleport: true,
+        Transition: false,
+      },
+    },
+  })
+}
+
+describe('PaymentView billing overview', () => {
+  beforeEach(() => {
+    activeSubscriptions.length = 0
+    routerReplace.mockReset().mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    activeSubscriptions.length = 0
+  })
+
+  it('shows pay-as-you-go billing details and the Credit quota rule', async () => {
+    const wrapper = mountBillingOverview()
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('payment.billingPayAsYouGo')
+    expect(text).toContain('1 Credit = 0.01 USD payment.callQuota')
+    expect(text).not.toContain('1 RMB = 100 Credits')
+    expect(text).not.toContain('payment.accountHealthy')
+  })
+
+  it('shows one final payment total and keeps the recharge card compact', async () => {
+    const wrapper = mountBillingOverview()
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('payment.totalDue')
+    expect(text).toContain('100 CNY')
+    expect(text).not.toContain('payment.paymentAmount')
+    expect(text).not.toContain('100 RMB')
+    expect(text).not.toContain('100 RMB × 100')
+    expect(text).not.toContain('payment.personalAccount')
+    expect(text).not.toContain('payment.viewUsage')
+    expect(text).not.toContain('payment.redeemPromoCode')
+  })
+
+  it('shows active subscription details', async () => {
+    activeSubscriptions.push({
+      id: 9,
+      group_id: 3,
+      expires_at: '2099-12-31T00:00:00.000Z',
+      group: {
+        name: 'Pro Network',
+        rate_multiplier: 1.4,
+      },
+    })
+
+    const wrapper = mountBillingOverview()
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('Pro Network')
+    expect(text).toContain('×1.4')
+    expect(text).toContain('2099')
+    expect(text).not.toContain('payment.billingPayAsYouGo')
+  })
+})
 
 function checkoutInfoWithPlansFixture(options: {
   checkout?: Partial<CheckoutInfoResponse>
@@ -691,6 +772,6 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(html).toContain('¥80.00')
     expect(html).toContain('¥1.60')
     expect(html).toContain('¥81.60')
-    expect(html).toContain('$110.00')
+    expect(html).toContain('11,000 Credits')
   })
 })

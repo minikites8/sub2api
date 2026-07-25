@@ -34,11 +34,23 @@ const messages: Record<string, string> = {
   'common.name': 'Name',
   'common.refresh': 'Refresh',
   'common.status': 'Status',
+  'common.time.never': 'Never',
   'keys.apiKey': 'API Key',
   'keys.allGroups': 'All Groups',
   'keys.allStatus': 'All Status',
   'keys.columnSettings': 'Column Settings',
+  'keys.showDetailedView': 'Show detailed view',
+  'keys.showCompactView': 'Return to key view',
+  'keys.securityWarning.title': 'Security warning',
+  'keys.securityWarning.description': 'Keep keys secure.',
+  'keys.keyRevealHint': 'Key (hover to reveal)',
+  'keys.revealKey': 'Reveal key',
+  'keys.hideKey': 'Hide key',
+  'keys.moreActions': 'More actions',
+  'keys.keyCount': '1 key',
   'keys.createKey': 'Create API Key',
+  'keys.copied': 'Copied!',
+  'keys.copyToClipboard': 'Copy to clipboard',
   'keys.created': 'Created',
   'keys.expiresAt': 'Expires',
   'keys.group': 'Group',
@@ -228,7 +240,7 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
-const mountView = async () => {
+const mountView = async (options: { detailed?: boolean } = {}) => {
   const wrapper = mount(KeysView, {
     global: {
       stubs: {
@@ -252,6 +264,10 @@ const mountView = async () => {
   })
   await flushPromises()
   await nextTick()
+  if (options.detailed !== false) {
+    (wrapper.vm as unknown as { showAdvancedTable: boolean }).showAdvancedTable = true
+    await nextTick()
+  }
   return wrapper
 }
 
@@ -450,5 +466,62 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+})
+
+describe('user KeysView compact key workspace', () => {
+  beforeEach(() => {
+    localStorage.clear()
+
+    listKeys.mockReset()
+    getPublicSettings.mockReset()
+    getDashboardApiKeysUsage.mockReset()
+    getAvailableGroups.mockReset()
+    getUserGroupRates.mockReset()
+    showError.mockReset()
+    showSuccess.mockReset()
+    copyToClipboard.mockReset()
+    isCurrentStep.mockReset()
+    nextStep.mockReset()
+
+    listKeys.mockResolvedValue({
+      items: [createApiKey()],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getPublicSettings.mockResolvedValue({})
+    getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
+    getAvailableGroups.mockResolvedValue([])
+    getUserGroupRates.mockResolvedValue({})
+    isCurrentStep.mockReturnValue(false)
+  })
+
+  it('renders the security notice and six-column key table', async () => {
+    const wrapper = await mountView({ detailed: false })
+
+    expect(wrapper.get('.api-keys-security').text()).toContain('Security warning')
+    expect(wrapper.findAll('.api-keys-table thead th')).toHaveLength(6)
+    expect(wrapper.get('.api-key-secret code').text()).toBe('sk-test-key')
+  })
+
+  it('reveals a key on demand and copies its full value', async () => {
+    copyToClipboard.mockResolvedValue(true)
+    const wrapper = await mountView({ detailed: false })
+
+    await wrapper.get('button[title="Reveal key"]').trigger('click')
+    expect(wrapper.get('.api-key-secret').classes()).toContain('api-key-secret-revealed')
+
+    await wrapper.get('button[title="Copy to clipboard"]').trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith('sk-test-key', 'Copied!')
+  })
+
+  it('places the delete command in the more actions menu', async () => {
+    const wrapper = await mountView({ detailed: false })
+
+    expect(wrapper.find('.api-keys-row-actions > .api-key-delete-action').exists()).toBe(false)
+    await wrapper.get('button[title="More actions"]').trigger('click')
+    expect(wrapper.get('.api-keys-menu-danger').text()).toContain('common.delete')
   })
 })

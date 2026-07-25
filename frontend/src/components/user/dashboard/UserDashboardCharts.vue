@@ -36,6 +36,12 @@
       <TokenUsageTrend :trend-data="trend" :loading="loading" embedded />
     </article>
 
+    <UserDashboardActiveKeys
+      class="md3-active-keys-card"
+      :keys="apiKeys"
+      :loading="apiKeysLoading"
+    />
+
     <article class="md3-model-card">
       <div class="md3-model-card-inner">
         <div v-if="loading" class="md3-card-loading">
@@ -99,13 +105,23 @@ import { Doughnut } from 'vue-chartjs'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
+import UserDashboardActiveKeys from '@/components/user/dashboard/UserDashboardActiveKeys.vue'
 import { useThemeRevision } from '@/composables/useThemeRevision'
-import type { TrendDataPoint, ModelStat } from '@/types'
+import type { TrendDataPoint, ModelStat, ApiKey } from '@/types'
 import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler)
 
-const props = defineProps<{ loading: boolean, startDate: string, endDate: string, granularity: string, trend: TrendDataPoint[], models: ModelStat[] }>()
+const props = defineProps<{
+  loading: boolean
+  startDate: string
+  endDate: string
+  granularity: string
+  trend: TrendDataPoint[]
+  models: ModelStat[]
+  apiKeys: ApiKey[]
+  apiKeysLoading: boolean
+}>()
 defineEmits(['update:startDate', 'update:endDate', 'update:granularity', 'dateRangeChange', 'granularityChange', 'refresh'])
 const { t } = useI18n()
 const themeRevision = useThemeRevision()
@@ -161,29 +177,41 @@ const doughnutOptions = {
 <style scoped>
 .md3-charts-shell {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .md3-trend-card,
 .md3-model-card-inner {
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 12px;
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
+  border: 1px solid #303b3a;
+  border-radius: 6px;
+  background: #061016;
+  box-shadow: none;
+  transition: border-color 180ms ease;
 }
 
 .md3-trend-card {
   display: grid;
   min-width: 0;
-  grid-column: 1 / -1;
+  min-height: 398px;
+  grid-column: span 2;
   gap: 8px;
-  padding: 16px;
+  padding: 22px;
+}
+
+.md3-trend-card:hover,
+.md3-model-card-inner:hover {
+  border-color: #4b6258;
+}
+
+.md3-active-keys-card {
+  min-width: 0;
+  grid-column: span 1;
 }
 
 .md3-model-card {
   min-width: 0;
-  grid-column: span 3;
+  grid-column: span 2;
 }
 
 .md3-quick-actions-card {
@@ -195,14 +223,7 @@ const doughnutOptions = {
 .md3-model-card-inner {
   position: relative;
   overflow: hidden;
-  padding: 16px;
-}
-
-.dark .md3-trend-card,
-.dark .md3-model-card-inner {
-  border-color: var(--md-outline-variant);
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
+  padding: 22px;
 }
 
 .md3-chart-header {
@@ -236,16 +257,17 @@ const doughnutOptions = {
   height: 34px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: var(--md-surface-container-low);
-  color: var(--md-on-surface-variant);
+  border: 1px solid #31443c;
+  border-radius: 4px;
+  background: #101b22;
+  color: #8da198;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 
 .md3-refresh-button:hover:not(:disabled) {
-  background: var(--md-state-hover);
-  color: var(--md-on-surface);
+  border-color: #00e38b;
+  background: rgb(0 227 139 / 7%);
+  color: #00e38b;
 }
 
 .md3-refresh-button:disabled {
@@ -253,30 +275,16 @@ const doughnutOptions = {
   opacity: 0.56;
 }
 
-.dark .md3-refresh-button {
-  border-color: var(--md-outline-variant);
-  background: var(--md-surface-container-low);
-  color: var(--md-on-surface-variant);
-}
-
-.dark .md3-refresh-button:hover:not(:disabled) {
-  background: var(--md-state-hover);
-  color: var(--md-on-surface);
-}
-
 .md3-chart-controls :deep(.date-picker-trigger),
 .md3-chart-controls :deep(.select-trigger) {
   min-height: 34px;
-  border-radius: 8px;
-  background: var(--md-surface-container-low);
+  border-color: #31443c;
+  border-radius: 4px;
+  background: #101b22;
+  color: #dce8e2;
   padding-top: 0.375rem;
   padding-bottom: 0.375rem;
   box-shadow: none;
-}
-
-.dark .md3-chart-controls :deep(.date-picker-trigger),
-.dark .md3-chart-controls :deep(.select-trigger) {
-  background: var(--md-surface-container-low);
 }
 
 .md3-card-loading {
@@ -286,11 +294,7 @@ const doughnutOptions = {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--md-surface) 84%, transparent);
-}
-
-.dark .md3-card-loading {
-  background: color-mix(in srgb, var(--md-surface) 84%, transparent);
+  background: rgb(6 16 22 / 84%);
 }
 
 .md3-card-header {
@@ -299,23 +303,16 @@ const doughnutOptions = {
 
 .md3-card-header h2 {
   margin: 0;
-  color: var(--md-on-surface);
-  font-size: 0.9375rem;
-  font-weight: 650;
+  color: #e8f1ed;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .md3-card-header p {
   margin: 4px 0 0;
-  color: var(--md-on-surface-variant);
+  color: #7e9188;
   font-size: 0.75rem;
-}
-
-.dark .md3-card-header h2 {
-  color: var(--md-on-surface);
-}
-
-.dark .md3-card-header p {
-  color: var(--md-on-surface-variant);
 }
 
 .md3-model-content {
@@ -336,7 +333,7 @@ const doughnutOptions = {
   align-items: center;
   justify-content: center;
   border: 1px dashed var(--md-outline-variant);
-  border-radius: 12px;
+  border-radius: 6px;
   color: var(--md-on-surface-variant);
   font-size: 0.8125rem;
   text-align: center;
@@ -357,6 +354,7 @@ const doughnutOptions = {
   width: 100%;
   min-width: 460px;
   border-collapse: collapse;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.75rem;
 }
 
@@ -447,7 +445,12 @@ const doughnutOptions = {
   }
 
   .md3-model-card,
+  .md3-active-keys-card,
   .md3-quick-actions-card {
+    grid-column: 1 / -1;
+  }
+
+  .md3-trend-card {
     grid-column: 1 / -1;
   }
 }

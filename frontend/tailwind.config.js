@@ -62,7 +62,9 @@ export default {
           'Microsoft YaHei',
           'sans-serif'
         ],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        geist: ['Geist', 'system-ui', 'sans-serif'],
+        'jetbrains-mono': ['JetBrains Mono', 'ui-monospace', 'monospace']
       },
       boxShadow: {
         glass: '0 1px 2px rgba(0, 0, 0, 0.08)',

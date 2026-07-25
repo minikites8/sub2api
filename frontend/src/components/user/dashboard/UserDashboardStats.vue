@@ -1,34 +1,44 @@
 <template>
-  <section class="md3-stats-shell">
-    <div class="md3-stat-grid">
-      <article v-if="!isSimple" class="md3-stat-card">
-        <span class="md3-stat-label">{{ t('dashboard.balance') }}</span>
-        <strong class="md3-stat-value">${{ formatBalance(balance) }}</strong>
-        <span class="md3-stat-meta">{{ t('common.available') }}</span>
-      </article>
-
-      <article class="md3-stat-card">
-        <span class="md3-stat-label">{{ t('dashboard.todayRequests') }}</span>
-        <strong class="md3-stat-value">{{ formatNumber(stats?.today_requests || 0) }}</strong>
-        <span class="md3-stat-meta">{{ t('common.total') }}: {{ formatNumber(stats?.total_requests || 0) }}</span>
-      </article>
-
-      <article class="md3-stat-card">
-        <span class="md3-stat-label">{{ t('dashboard.todayCost') }}</span>
-        <strong class="md3-stat-value">${{ formatCost(stats?.today_actual_cost || 0) }}</strong>
-        <span class="md3-stat-meta">
-          {{ t('dashboard.standard') }} ${{ formatCost(stats?.today_cost || 0) }} ·
-          {{ t('common.total') }} ${{ formatCost(stats?.total_actual_cost || 0) }}
+  <section class="telemetry-stats">
+    <div class="telemetry-stat-grid">
+      <article class="telemetry-stat-card telemetry-stat-card--green">
+        <span class="telemetry-stat-label">{{ t('dashboard.totalRequestsAll') }}</span>
+        <strong class="telemetry-stat-value">{{ formatCompact(stats.total_requests || 0) }}</strong>
+        <span class="telemetry-stat-meta telemetry-stat-meta--green">
+          <Icon name="trendingUp" size="xs" />
+          {{ t('dashboard.todayRequests') }} {{ formatNumber(stats.today_requests || 0) }}
         </span>
       </article>
 
-      <article class="md3-stat-card">
-        <span class="md3-stat-label">{{ t('dashboard.todayTokens') }}</span>
-        <strong class="md3-stat-value">{{ formatTokens(stats?.today_tokens || 0) }}</strong>
-        <span class="md3-stat-meta">
-          <span class="md3-token-input">{{ t('dashboard.input') }} {{ formatTokens(stats?.today_input_tokens || 0) }}</span>
-          <span> · </span>
-          <span class="md3-token-output">{{ t('dashboard.output') }} {{ formatTokens(stats?.today_output_tokens || 0) }}</span>
+      <article class="telemetry-stat-card telemetry-stat-card--blue">
+        <span class="telemetry-stat-label">{{ t('dashboard.avgLatency') }}</span>
+        <strong class="telemetry-stat-value">
+          {{ formatNumber(Math.round(stats.average_duration_ms || 0)) }}<small>ms</small>
+        </strong>
+        <span class="telemetry-stat-meta telemetry-stat-meta--blue">
+          <Icon name="bolt" size="xs" />
+          RPM {{ formatNumber(stats.rpm || 0) }}
+        </span>
+      </article>
+
+      <article class="telemetry-stat-card telemetry-stat-card--neutral">
+        <span class="telemetry-stat-label">{{ t('dashboard.totalTokensAll') }}</span>
+        <strong class="telemetry-stat-value">{{ formatTokens(stats.total_tokens || 0) }}</strong>
+        <span class="telemetry-stat-meta">
+          {{ t('dashboard.actual') }} ${{ formatCost(stats.total_actual_cost || 0) }}
+        </span>
+      </article>
+
+      <article class="telemetry-stat-card telemetry-stat-card--live">
+        <span class="telemetry-live-dot" aria-hidden="true"></span>
+        <span class="telemetry-stat-label">
+          {{ isSimple ? t('dashboard.activeKeys') : t('dashboard.availableBalance') }}
+        </span>
+        <strong class="telemetry-stat-value">
+          {{ isSimple ? formatNumber(stats.active_api_keys || 0) : `$${formatBalance(balance)}` }}
+        </strong>
+        <span class="telemetry-stat-meta">
+          {{ stats.active_api_keys || 0 }} / {{ stats.total_api_keys || 0 }} {{ t('common.active') }}
         </span>
       </article>
     </div>
@@ -37,6 +47,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import Icon from '@/components/icons/Icon.vue'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 
 defineProps<{
@@ -54,6 +65,8 @@ const formatBalance = (b: number) =>
 
 const formatNumber = (n: number) => n.toLocaleString()
 const formatCost = (c: number) => c.toFixed(4)
+const formatCompact = (value: number) =>
+  new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value)
 const formatTokens = (t: number) => {
   if (t >= 1_000_000) return `${(t / 1_000_000).toFixed(1)}M`
   if (t >= 1000) return `${(t / 1000).toFixed(1)}K`
@@ -62,84 +75,125 @@ const formatTokens = (t: number) => {
 </script>
 
 <style scoped>
-.md3-stats-shell {
-  display: grid;
-  gap: 16px;
-}
-
-.md3-stat-grid {
+.telemetry-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 20px;
 }
 
-.md3-stat-card {
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 12px;
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
-}
-
-.dark .md3-stat-card {
-  border-color: var(--md-outline-variant);
-  background: var(--md-surface);
-  box-shadow: var(--md-elevation-1);
-}
-
-.md3-stat-card {
+.telemetry-stat-card {
+  position: relative;
   min-width: 0;
   display: grid;
-  min-height: 116px;
+  min-height: 150px;
   grid-template-rows: auto 1fr auto;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  overflow: hidden;
+  border: 1px solid #303b3a;
+  border-radius: 6px;
+  background: #061016;
+  padding: 22px;
+  transition: border-color 180ms ease, transform 180ms ease;
 }
 
-.md3-stat-label {
-  color: var(--md-on-surface-variant);
-  font-size: 0.75rem;
-  font-weight: 450;
-  line-height: 1.35;
+.telemetry-stat-card::after {
+  position: absolute;
+  top: -36px;
+  right: -36px;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: rgb(0 227 139 / 5%);
+  content: '';
 }
 
-.md3-stat-value {
+.telemetry-stat-card--blue::after {
+  background: rgb(80 142 255 / 7%);
+}
+
+.telemetry-stat-card:hover {
+  border-color: #00e38b;
+  transform: translateY(-1px);
+}
+
+.telemetry-stat-card--live {
+  box-shadow: 0 0 18px rgb(0 227 139 / 7%);
+}
+
+.telemetry-stat-label {
+  color: #82978d;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.telemetry-stat-value {
   min-width: 0;
-  color: var(--md-on-surface);
+  color: #edf7f2;
   align-self: center;
-  font-size: 1.625rem;
-  line-height: 1.15;
-  font-weight: 650;
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 700;
   letter-spacing: 0;
   word-break: break-word;
 }
 
-.md3-stat-meta {
+.telemetry-stat-value small {
+  margin-left: 3px;
+  color: #81938b;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.telemetry-stat-meta {
+  display: flex;
   min-width: 0;
-  color: var(--md-on-surface-variant);
-  font-size: 0.75rem;
+  align-items: center;
+  gap: 7px;
+  color: #82958c;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.66rem;
   line-height: 1.45;
 }
 
-.md3-token-input {
-  color: var(--md-token-input);
+.telemetry-stat-meta--green {
+  color: #00e38b;
 }
 
-.md3-token-output {
-  color: var(--md-token-output);
+.telemetry-stat-meta--blue {
+  color: #8eb5ff;
+}
+
+.telemetry-live-dot {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00e38b;
+  box-shadow: 0 0 10px rgb(0 227 139 / 55%);
+  animation: telemetry-pulse 2s ease-in-out infinite;
+}
+
+@keyframes telemetry-pulse {
+  50% { opacity: 0.45; }
 }
 
 @media (max-width: 1200px) {
-  .md3-stat-grid {
+  .telemetry-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
-  .md3-stat-grid {
+  .telemetry-stat-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .md3-stat-card {
+  .telemetry-stat-card {
     min-height: auto;
   }
 }

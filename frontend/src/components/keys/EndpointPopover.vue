@@ -4,10 +4,13 @@ import { useI18n } from 'vue-i18n'
 import { useClipboard } from '@/composables/useClipboard'
 import type { CustomEndpoint } from '@/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   apiBaseUrl: string
   customEndpoints: CustomEndpoint[]
-}>()
+  variant?: 'default' | 'integrated'
+}>(), {
+  variant: 'default'
+})
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -68,7 +71,10 @@ onBeforeUnmount(() => {
     <div
       v-for="(item, index) in allEndpoints"
       :key="index"
-      class="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs transition-colors hover:border-primary-200 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-primary-700"
+      :class="[
+        'flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs transition-colors hover:border-primary-200 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-primary-700',
+        variant === 'integrated' ? 'endpoint-pill-integrated' : ''
+      ]"
     >
       <span class="font-medium text-gray-600 dark:text-gray-300">{{ item.name }}</span>
       <span
@@ -139,3 +145,35 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.endpoint-pill-integrated {
+  border-color: #34433d !important;
+  border-radius: 4px;
+  background: #09131a !important;
+  color: #91a69c;
+}
+
+.endpoint-pill-integrated:hover {
+  border-color: #508eff !important;
+  background: #0d1921 !important;
+}
+
+.endpoint-pill-integrated > span:first-child {
+  color: #b9cbbc;
+}
+
+.endpoint-pill-integrated > span:nth-child(2) {
+  background: #10271f;
+  color: #00e38b;
+}
+
+.endpoint-pill-integrated code {
+  color: #aebfb7;
+}
+
+.endpoint-pill-integrated code:hover,
+.endpoint-pill-integrated code:focus {
+  color: #00e38b;
+}
+</style>
