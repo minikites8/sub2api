@@ -746,7 +746,8 @@ export default {
       taxIdPlaceholder: '如：91110000XXXXXXXXXX',
       taxIdIndividualHint: '个人开票无需填写纳税人识别号。',
       deliveryEmail: '接收邮箱',
-      deliveryEmailPlaceholder: 'billing@example.com',
+      // vue-i18n 把 @ 当作链接消息语法，字面量的 @ 必须写成 {'@'}。
+      deliveryEmailPlaceholder: "billing{'@'}example.com",
       deliveryEmailHint: '开票完成后发票将发送至该邮箱。',
       notes: '备注（选填）',
       notesPlaceholder: '采购单号、部门等信息',

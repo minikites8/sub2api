@@ -6554,7 +6554,9 @@ export default {
         claudeOAuthSystemPromptPlaceholder: '留空时使用内置 Claude Code 扩展提示词。',
         claudeOAuthSystemPromptHint: '兼容旧配置：仅控制第三个注入的 system block。',
         claudeOAuthSystemPromptBlocks: 'Claude OAuth System Blocks',
-        claudeOAuthSystemPromptBlocksPlaceholder: '留空时使用内置 3 个 blocks。支持数组或 {"blocks": [...]}。',
+        // 花括号是 vue-i18n 的插值语法，JSON 示例里的字面量花括号必须转义，
+        // 否则渲染时抛 Invalid token in placeholder 并炸掉整个组件树。
+        claudeOAuthSystemPromptBlocksPlaceholder: '留空时使用内置 3 个 blocks。支持数组或 {\'{\'}"blocks": [...]{\'}\'}。',
         claudeOAuthSystemPromptBlocksHint: '每个 block 会保存为带 enabled、type、text、可选 cache_control 的 JSON。{billing_header} 会按请求动态生成；Claude Code 身份提示词和扩展提示词可直接编辑，也可用预设恢复默认值。',
         systemBlockTitle: 'System Block {index}',
         systemBlockPreset: '预设',

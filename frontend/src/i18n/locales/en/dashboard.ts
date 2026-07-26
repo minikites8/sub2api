@@ -741,7 +741,8 @@ export default {
       taxIdPlaceholder: 'e.g. US123456789',
       taxIdIndividualHint: 'A tax ID is not needed for an individual invoice.',
       deliveryEmail: 'Delivery email',
-      deliveryEmailPlaceholder: 'billing@example.com',
+      // vue-i18n treats @ as linked-message syntax; a literal @ must be escaped.
+      deliveryEmailPlaceholder: "billing{'@'}example.com",
       deliveryEmailHint: 'The invoice is sent to this address once it is issued.',
       notes: 'Additional notes (optional)',
       notesPlaceholder: 'PO number, specific department, etc.',
