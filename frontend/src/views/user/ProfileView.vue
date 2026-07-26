@@ -44,6 +44,18 @@
       />
 
       <ProfileTotpCard />
+
+      <div class="profile-logout-card">
+        <div>
+          <h3 class="font-semibold text-gray-900 dark:text-white">
+            {{ t('profile.accountSession') }}
+          </h3>
+          <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('profile.logoutDescription') }}</p>
+        </div>
+        <button type="button" class="btn btn-danger" @click="handleLogout">
+          {{ t('nav.logout') }}
+        </button>
+      </div>
     </div>
   </AppLayout>
 </template>
@@ -51,6 +63,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { Icon } from '@/components/icons'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
@@ -62,6 +75,7 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
@@ -108,6 +122,16 @@ onMounted(async () => {
 
   await Promise.all([profileRefresh, settingsLoad])
 })
+
+async function handleLogout() {
+  try {
+    await authStore.logout()
+  } catch (error) {
+    // Ignore logout errors - still redirect to login
+    console.error('Logout error:', error)
+  }
+  await router.push('/login')
+}
 </script>
 
 <style scoped>
@@ -116,6 +140,19 @@ onMounted(async () => {
 }
 
 .profile-support-card {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  background: var(--md-surface);
+  padding: 20px;
+  box-shadow: none;
+}
+
+.profile-logout-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border: 1px solid var(--md-outline-variant);
   border-radius: 12px;
   background: var(--md-surface);

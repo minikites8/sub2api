@@ -53,7 +53,10 @@
         <span v-if="sidebarCollapsed" class="sidebar-account-monogram">{{ sidebarUserInitial }}</span>
         <span v-else class="min-w-0">
           <span class="sidebar-account-name">{{ sidebarDisplayName }}</span>
-          <span class="sidebar-account-plan">{{ sidebarPlanName }}</span>
+          <span class="sidebar-account-plan-row">
+            <span class="sidebar-account-plan">{{ sidebarPlanName }}</span>
+            <span v-if="sidebarCreditBalance" class="sidebar-account-balance">{{ sidebarCreditBalance }}</span>
+          </span>
         </span>
       </router-link>
     </template>
@@ -249,6 +252,7 @@ import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { formatCredits, usdToCredits } from '@/utils/credit'
 
 interface NavItem {
   path: string
@@ -332,6 +336,10 @@ const sidebarPlanName = computed(() => {
   if (!authStore.user) return t('nav.publicAccess')
   const activeSubscription = subscriptionStore.activeSubscriptions[0]
   return activeSubscription?.group?.name?.trim() || t('nav.payAsYouGo')
+})
+const sidebarCreditBalance = computed(() => {
+  if (!authStore.user) return ''
+  return `${formatCredits(usdToCredits(authStore.user.balance), 0)} Credits`
 })
 
 // SVG Icon Components
@@ -1150,15 +1158,11 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-.sidebar-account-name,
-.sidebar-account-plan {
+.sidebar-account-name {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.sidebar-account-name {
   max-width: 13.5rem;
   color: #f4f7f5;
   font-size: 1.25rem;
@@ -1166,15 +1170,38 @@ onBeforeUnmount(() => {
   line-height: 1.3;
 }
 
-.sidebar-account-plan {
+.sidebar-account-plan-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
   max-width: 13.5rem;
   margin-top: 0.3rem;
+}
+
+.sidebar-account-plan {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
   color: #9eada7;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.625rem;
   line-height: 1.4;
   text-transform: uppercase;
   letter-spacing: 0;
+}
+
+.sidebar-account-balance {
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #42e7a4;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .sidebar-user :deep(.sidebar-nav) {

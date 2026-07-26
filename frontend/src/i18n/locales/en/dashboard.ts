@@ -776,6 +776,8 @@ export default {
     linkedProfileSourcesDescription: 'Some profile details may stay synced from third-party sign-in methods.',
     securityTitle: 'Security Settings',
     securityDescription: 'Password, two-factor authentication, and alerts live in the right rail.',
+    accountSession: 'Account Session',
+    logoutDescription: 'Sign out of your account on this device.',
     administrator: 'Administrator',
     user: 'User',
     username: 'Username',

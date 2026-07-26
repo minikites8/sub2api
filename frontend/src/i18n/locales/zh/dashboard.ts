@@ -781,6 +781,8 @@ export default {
     linkedProfileSourcesDescription: '部分头像和昵称可能同步自第三方登录方式。',
     securityTitle: '安全设置',
     securityDescription: '密码、双因素认证和通知提醒集中放在右侧。',
+    accountSession: '账户会话',
+    logoutDescription: '退出当前设备上的登录状态。',
     administrator: '管理员',
     user: '用户',
     username: '用户名',
