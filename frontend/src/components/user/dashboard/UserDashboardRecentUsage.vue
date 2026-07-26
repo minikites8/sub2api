@@ -31,8 +31,8 @@
           </div>
           <div class="md3-usage-metrics">
             <strong>
-              <span class="md3-actual-cost" :title="t('dashboard.actual')">${{ formatCost(log.actual_cost) }}</span>
-              <span class="md3-standard-cost" :title="t('dashboard.standard')"> / ${{ formatCost(log.total_cost) }}</span>
+              <span class="md3-actual-cost" :title="t('dashboard.actual')">{{ formatCreditAmount(log.actual_cost) }}</span>
+              <span class="md3-standard-cost" :title="t('dashboard.standard')"> / {{ formatCreditAmount(log.total_cost) }} Credits</span>
             </strong>
             <span>{{ (log.input_tokens + log.output_tokens).toLocaleString() }} tokens</span>
           </div>
@@ -48,6 +48,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+import { formatCredits, usdToCredits } from '@/utils/credit'
 import type { UsageLog } from '@/types'
 
 defineProps<{
@@ -55,7 +56,9 @@ defineProps<{
   loading: boolean
 }>()
 const { t } = useI18n()
-const formatCost = (c: number) => c.toFixed(4)
+// Costs come from the API in USD; the UI presents everything in Credits.
+// Per-request amounts are small, so keep more precision than the 2-digit default.
+const formatCreditAmount = (usd: number) => formatCredits(usdToCredits(usd), 4)
 </script>
 
 <style scoped>

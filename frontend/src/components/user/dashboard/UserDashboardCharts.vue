@@ -81,8 +81,8 @@
                   </td>
                   <td>{{ formatNumber(model.requests) }}</td>
                   <td>{{ formatTokens(model.total_tokens) }}</td>
-                  <td class="md3-actual-cost">${{ formatCost(model.actual_cost) }}</td>
-                  <td class="md3-standard-cost">${{ formatCost(model.cost) }}</td>
+                  <td class="md3-actual-cost">{{ formatCreditValue(model.actual_cost) }}</td>
+                  <td class="md3-standard-cost">{{ formatCreditValue(model.cost) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -108,9 +108,13 @@ import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboard
 import UserDashboardActiveKeys from '@/components/user/dashboard/UserDashboardActiveKeys.vue'
 import { useThemeRevision } from '@/composables/useThemeRevision'
 import type { TrendDataPoint, ModelStat, ApiKey } from '@/types'
-import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
+import { formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
+import { formatCredits, usdToCredits } from '@/utils/credit'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler)
+
+// Costs come from the API in USD; the UI presents everything in Credits.
+const formatCreditValue = (usd: number) => `${formatCredits(usdToCredits(usd))} Credits`
 
 const props = defineProps<{
   loading: boolean

@@ -210,6 +210,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { TrendDataPoint, ModelStat, DailyCheckinStatus, ApiKey } from '@/types'
 import { getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
 import { extractI18nErrorMessage } from '@/utils/apiError'
+import { formatCredits, usdToCredits } from '@/utils/credit'
 import { isDailyCheckinRechargeEligible } from '@/utils/dailyCheckin'
 import type { DashboardPreviewData } from '@/mocks/dashboardPreview'
 
@@ -249,7 +250,8 @@ const startDate = ref(formatLD(new Date(Date.now() - 6 * 86400000)))
 const endDate = ref(formatLD(new Date()))
 const granularity = ref('day')
 
-const formatCurrency = (value: number) => `$${Number(value || 0).toFixed(2)}`
+// Check-in rewards are credited to the USD balance; the UI presents them in Credits.
+const formatCurrency = (value: number) => `${formatCredits(usdToCredits(value))} Credits`
 
 const turnstileSiteKey = computed(() => appStore.cachedPublicSettings?.turnstile_site_key || '')
 const turnstileReady = computed(() => Boolean(appStore.cachedPublicSettings?.turnstile_enabled && turnstileSiteKey.value))

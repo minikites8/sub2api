@@ -25,7 +25,7 @@
         <span class="telemetry-stat-label">{{ t('dashboard.totalTokensAll') }}</span>
         <strong class="telemetry-stat-value">{{ formatTokens(stats.total_tokens || 0) }}</strong>
         <span class="telemetry-stat-meta">
-          {{ t('dashboard.actual') }} ${{ formatCost(stats.total_actual_cost || 0) }}
+          {{ t('dashboard.actual') }} {{ formatCreditValue(stats.total_actual_cost || 0) }}
         </span>
       </article>
 
@@ -35,7 +35,7 @@
           {{ isSimple ? t('dashboard.activeKeys') : t('dashboard.availableBalance') }}
         </span>
         <strong class="telemetry-stat-value">
-          {{ isSimple ? formatNumber(stats.active_api_keys || 0) : `$${formatBalance(balance)}` }}
+          {{ isSimple ? formatNumber(stats.active_api_keys || 0) : formatCreditAmount(balance) }}<small v-if="!isSimple">Credits</small>
         </strong>
         <span class="telemetry-stat-meta">
           {{ stats.active_api_keys || 0 }} / {{ stats.total_api_keys || 0 }} {{ t('common.active') }}
@@ -48,6 +48,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import { formatCredits, usdToCredits } from '@/utils/credit'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 
 defineProps<{
@@ -57,14 +58,11 @@ defineProps<{
 }>()
 const { t } = useI18n()
 
-const formatBalance = (b: number) =>
-  new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(b)
+// Amounts come from the API in USD; the UI presents everything in Credits.
+const formatCreditAmount = (usd: number) => formatCredits(usdToCredits(usd))
+const formatCreditValue = (usd: number) => `${formatCreditAmount(usd)} Credits`
 
 const formatNumber = (n: number) => n.toLocaleString()
-const formatCost = (c: number) => c.toFixed(4)
 const formatCompact = (value: number) =>
   new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value)
 const formatTokens = (t: number) => {
