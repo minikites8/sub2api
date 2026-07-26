@@ -134,35 +134,41 @@ const averageFor = (day: string, hour: number | null) => {
   return bucket ? bucket.total / bucket.count : null
 }
 
-// 档位与请求列表保持同一把尺子（<5s 正常、5~10s 偏慢、>10s 过慢），
-// 正常区间再拆出一档 <2s，否则网关的秒级延迟会全部落进同一格。
+// 这里统计的是总时间（duration_ms），所以用总时间那把尺子：
+// <45s 正常、45~115s 偏慢、>115s 过慢，与请求列表的总时间列一致。
+// 正常区间再拆出一档 <15s，否则健康请求会全部落进同一格。
 const latencyClass = (day: string, hour: number | null) => {
   const value = averageFor(day, hour)
   if (value == null) return 'usage-heatmap__cell--empty'
-  if (value < 2000) return 'usage-heatmap__cell--fast'
-  if (value < 5000) return 'usage-heatmap__cell--normal'
-  if (value <= 10000) return 'usage-heatmap__cell--slow'
+  if (value < 15000) return 'usage-heatmap__cell--fast'
+  if (value < 45000) return 'usage-heatmap__cell--normal'
+  if (value <= 115000) return 'usage-heatmap__cell--slow'
   return 'usage-heatmap__cell--critical'
 }
+
+// 秒级延迟写成 "47.8s" 比 "47823ms" 好读，与请求列表的写法一致。
+const formatLatency = (value: number) => value >= 1000
+  ? `${(value / 1000).toFixed(1)}s`
+  : `${Math.round(value)}ms`
 
 const cellTitle = (day: string, hour: number | null) => {
   const value = averageFor(day, hour)
   const timeLabel = hour == null ? t('usage.analytics.dailyAverage') : `${String(hour).padStart(2, '0')}:00`
   return value == null
     ? `${day} ${timeLabel} · ${t('usage.analytics.noRequests')}`
-    : `${day} ${timeLabel} · ${Math.round(value)}ms`
+    : `${day} ${timeLabel} · ${formatLatency(value)}`
 }
 
 const dailyLatencyLabel = (day: string) => {
   const value = averageFor(day, null)
-  return value == null ? '--' : `${Math.round(value)}ms`
+  return value == null ? '--' : formatLatency(value)
 }
 
 const legend = computed(() => [
-  { label: '< 2s', className: 'usage-heatmap__key usage-heatmap__key--fast' },
-  { label: '2–5s', className: 'usage-heatmap__key usage-heatmap__key--normal' },
-  { label: '5–10s', className: 'usage-heatmap__key usage-heatmap__key--slow' },
-  { label: '> 10s', className: 'usage-heatmap__key usage-heatmap__key--critical' },
+  { label: '< 15s', className: 'usage-heatmap__key usage-heatmap__key--fast' },
+  { label: '15–45s', className: 'usage-heatmap__key usage-heatmap__key--normal' },
+  { label: '45–115s', className: 'usage-heatmap__key usage-heatmap__key--slow' },
+  { label: '> 115s', className: 'usage-heatmap__key usage-heatmap__key--critical' },
 ])
 </script>
 

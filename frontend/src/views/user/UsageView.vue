@@ -43,7 +43,7 @@
           <strong>{{ formatCreditValue(projectedPeriodCredits) }}</strong>
           <p>{{ t('usage.analytics.periodProjectionHint', { days: projectedPeriodDays }) }}</p>
         </article>
-        <article class="usage-kpi-card" :class="{ 'usage-kpi-card--warning': averageLatency >= LATENCY_SLOW_MS }">
+        <article class="usage-kpi-card" :class="{ 'usage-kpi-card--warning': averageLatency >= TOTAL_LATENCY_SLOW_MS }">
           <div class="usage-kpi-card__label"><span>{{ t('usage.analytics.averageLatency') }}</span><Icon name="clock" size="sm" /></div>
           <strong>{{ formatLatency(averageLatency) }}</strong>
           <p>{{ formatCompactNumber(usageStats?.total_tokens || 0) }} {{ t('usage.analytics.tokensProcessed') }}</p>
@@ -153,7 +153,7 @@
                   </td>
                   <td>
                     <div class="usage-log-latency" data-testid="log-latency">
-                      <div>
+                      <div :class="firstTokenTone(log.first_token_ms)">
                         <span>{{ t('usage.analytics.firstTokenLatency') }}</span>
                         <strong>{{ formatOptionalLatency(log.first_token_ms) }}</strong>
                       </div>
@@ -485,19 +485,28 @@ const formatRateMultiplier = (value: number) => Number(value || 1)
   .replace(/(\.\d)0$/, '$1')
 const formatLogGroup = (log: UsageLog) =>
   `${log.group?.name || t('usage.analytics.unknownGroup')} (${formatRateMultiplier(log.rate_multiplier)}x)`
-// 延迟分档：<5s 绿、5~10s 黄、>10s 红。
-// 阈值以秒为单位，因为网关请求本来就在秒级，毫秒级的档位分不出有效信息。
-const LATENCY_SLOW_MS = 5000
-const LATENCY_CRITICAL_MS = 10000
+// 首字时间和总时间是两个量级不同的指标，各用一把尺子：
+// 首字 <5s 绿 / 5~10s 黄 / >10s 红；总时间 <45s 绿 / 45~115s 黄 / >115s 红。
+// 用同一组阈值会让总时间几乎全红，或让首字几乎全绿，两边都失去区分度。
+const FIRST_TOKEN_SLOW_MS = 5000
+const FIRST_TOKEN_CRITICAL_MS = 10000
+const TOTAL_LATENCY_SLOW_MS = 45000
+const TOTAL_LATENCY_CRITICAL_MS = 115000
 
-const latencyTone = (duration: number | null) => {
+const latencyToneFor = (duration: number | null, slowMs: number, criticalMs: number) => {
   const ms = Number(duration || 0)
   return {
-    'usage-latency--fast': ms < LATENCY_SLOW_MS,
-    'usage-latency--slow': ms >= LATENCY_SLOW_MS && ms <= LATENCY_CRITICAL_MS,
-    'usage-latency--critical': ms > LATENCY_CRITICAL_MS,
+    'usage-latency--fast': ms < slowMs,
+    'usage-latency--slow': ms >= slowMs && ms <= criticalMs,
+    'usage-latency--critical': ms > criticalMs,
   }
 }
+
+const firstTokenTone = (duration: number | null) =>
+  latencyToneFor(duration, FIRST_TOKEN_SLOW_MS, FIRST_TOKEN_CRITICAL_MS)
+
+const latencyTone = (duration: number | null) =>
+  latencyToneFor(duration, TOTAL_LATENCY_SLOW_MS, TOTAL_LATENCY_CRITICAL_MS)
 
 const positionTokenTooltip = (target: EventTarget | null) => {
   const element = target as HTMLElement | null
