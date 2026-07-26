@@ -46,13 +46,17 @@ export default {
       },
       enterprise: {
         name: 'Enterprise',
-        price: 'Custom',
-        description: 'For large deployments that need tailored infrastructure and SLAs.',
+        price: 'Custom plan',
+        description: 'For teams, high-volume workloads, and businesses that need fine-grained cost control.',
         features: {
-          discount: 'Custom Credit discounts',
-          sla: '99.99% uptime SLA',
-          support: 'Dedicated 24/7 support',
-          infrastructure: 'Custom infrastructure'
+          credits: 'Custom Credit packages with volume discounts',
+          limits: 'Higher RPM, TPM and concurrency ceilings',
+          scheduling: 'Dedicated groups and custom scheduling policies',
+          team: 'Member, project and API key management',
+          reports: 'Usage reports, budget controls and billing exports',
+          security: 'IP allowlists and action audit logs',
+          onboarding: 'Onboarding and migration assistance',
+          support: 'Priority technical support'
         },
         action: 'Contact sales'
       }
@@ -62,50 +66,66 @@ export default {
       feature: 'Feature',
       included: 'Included',
       rows: {
-        requests: {
-          label: 'API requests',
-          payg: 'Usage-based Credits',
-          pro: '10,000 Credits monthly',
-          enterprise: 'Custom allowance'
+        credits: {
+          label: 'Credits',
+          payg: 'Top up as needed',
+          pro: 'Monthly plan allowance',
+          enterprise: 'Custom allowance with volume discounts'
         },
-        creditPrice: {
-          label: 'Credit pricing',
-          payg: 'Standard',
-          pro: 'Plan discount',
-          enterprise: 'Custom discount'
+        throughput: {
+          label: 'RPM / TPM',
+          payg: 'Standard ceiling',
+          pro: 'Higher ceiling',
+          enterprise: 'Sized to your workload'
         },
-        limits: {
-          label: 'RPM and concurrency',
+        concurrency: {
+          label: 'Concurrency',
           payg: 'Standard',
-          pro: 'Higher limits',
+          pro: 'Raised',
           enterprise: 'Custom'
         },
         scheduling: {
-          label: 'Peak scheduling',
+          label: 'Scheduling priority',
           payg: 'Standard',
-          pro: 'Priority',
-          enterprise: 'Dedicated policy'
+          pro: 'Priority scheduling',
+          enterprise: 'Dedicated groups and policies'
+        },
+        keyCount: {
+          label: 'API keys',
+          payg: 'Basic quota',
+          pro: 'More keys',
+          enterprise: 'Managed per project and member'
         },
         keyLimit: 'Per-key limits',
         ipAllowlist: 'IP allowlist',
+        teamMembers: 'Team member management',
+        usageReports: {
+          label: 'Usage reports',
+          payg: 'Basic stats',
+          pro: 'Detailed reports',
+          enterprise: 'Project-level reports and export'
+        },
+        budget: {
+          label: 'Budget controls',
+          enterprise: 'Team and project budgets'
+        },
         requestLogs: {
           label: 'Request history',
-          payg: '7 days',
-          pro: '90 days',
-          enterprise: 'Custom'
+          payg: 'Standard retention',
+          pro: 'Extended retention',
+          enterprise: 'Custom retention'
         },
-        billingReports: {
-          label: 'Usage reports',
-          payg: 'Basic',
-          pro: 'Full export',
-          enterprise: 'Full export'
-        },
-        customModels: 'Custom models',
         support: {
           label: 'Support',
           payg: 'Community',
           pro: 'Priority tickets',
-          enterprise: 'Dedicated support'
+          enterprise: 'Onboarding help and priority support'
+        },
+        contract: {
+          label: 'Contracts and invoices',
+          payg: 'Case by case',
+          pro: 'Case by case',
+          enterprise: 'Commercial contracts and invoicing'
         }
       }
     },

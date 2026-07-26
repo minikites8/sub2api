@@ -46,13 +46,17 @@ export default {
       },
       enterprise: {
         name: '企业版',
-        price: '自定义',
-        description: '面向需要定制 SLA 与基础设施的大规模部署。',
+        price: '定制方案',
+        description: '面向团队协作、大规模调用及需要精细化成本管理的业务场景。',
         features: {
-          discount: '专属 Credits 折扣',
-          sla: '99.99% 运行时间 SLA',
-          support: '24/7 专属支持',
-          infrastructure: '自定义基础设施'
+          credits: '定制 Credits 套餐与阶梯折扣',
+          limits: '更高 RPM、TPM 与并发上限',
+          scheduling: '专属分组及自定义调度策略',
+          team: '团队成员、项目与 API Key 管理',
+          reports: '用量报表、预算控制及账单导出',
+          security: 'IP 白名单与操作审计',
+          onboarding: '接入配置与迁移协助',
+          support: '优先技术支持'
         },
         action: '联系销售'
       }
@@ -62,50 +66,66 @@ export default {
       feature: '功能',
       included: '已包含',
       rows: {
-        requests: {
-          label: 'API 请求',
-          payg: '按需扣除 Credits',
-          pro: '每月 10,000 Credits',
-          enterprise: '自定义额度'
+        credits: {
+          label: 'Credits',
+          payg: '按需充值',
+          pro: '每月套餐额度',
+          enterprise: '定制额度与阶梯折扣'
         },
-        creditPrice: {
-          label: 'Credits 单价',
-          payg: '标准',
-          pro: '套餐优惠',
-          enterprise: '专属折扣'
-        },
-        limits: {
-          label: 'RPM 与并发',
-          payg: '标准',
+        throughput: {
+          label: 'RPM / TPM',
+          payg: '标准上限',
           pro: '更高上限',
-          enterprise: '自定义'
+          enterprise: '按业务需求定制'
+        },
+        concurrency: {
+          label: '并发数',
+          payg: '标准',
+          pro: '提升',
+          enterprise: '定制'
         },
         scheduling: {
-          label: '高峰期调度',
+          label: '调度优先级',
           payg: '普通',
-          pro: '优先',
-          enterprise: '专属策略'
+          pro: '优先调度',
+          enterprise: '专属分组与调度策略'
         },
-        keyLimit: 'Key 独立限额',
+        keyCount: {
+          label: 'API Key 数量',
+          payg: '基础数量',
+          pro: '更多密钥',
+          enterprise: '按项目及成员管理'
+        },
+        keyLimit: '密钥独立限额',
         ipAllowlist: 'IP 白名单',
+        teamMembers: '团队成员管理',
+        usageReports: {
+          label: '用量报表',
+          payg: '基础统计',
+          pro: '详细报表',
+          enterprise: '项目级报表与导出'
+        },
+        budget: {
+          label: '预算控制',
+          enterprise: '团队及项目级预算'
+        },
         requestLogs: {
           label: '请求日志',
-          payg: '7 天',
-          pro: '90 天',
-          enterprise: '自定义'
+          payg: '基础期限',
+          pro: '延长保存',
+          enterprise: '自定义保存周期'
         },
-        billingReports: {
-          label: '消费报表',
-          payg: '基础',
-          pro: '完整导出',
-          enterprise: '完整导出'
-        },
-        customModels: '自定义模型',
         support: {
-          label: '支持',
-          payg: '社区',
+          label: '技术支持',
+          payg: '社区支持',
           pro: '优先工单',
-          enterprise: '专属支持'
+          enterprise: '接入协助与优先支持'
+        },
+        contract: {
+          label: '合同与发票',
+          payg: '按实际情况',
+          pro: '按实际情况',
+          enterprise: '支持商务合同及开票'
         }
       }
     },

@@ -238,10 +238,14 @@ const tiers = computed(() => [
     unit: '',
     description: t('pricingPage.tiers.enterprise.description'),
     features: [
-      t('pricingPage.tiers.enterprise.features.discount'),
-      t('pricingPage.tiers.enterprise.features.sla'),
-      t('pricingPage.tiers.enterprise.features.support'),
-      t('pricingPage.tiers.enterprise.features.infrastructure')
+      t('pricingPage.tiers.enterprise.features.credits'),
+      t('pricingPage.tiers.enterprise.features.limits'),
+      t('pricingPage.tiers.enterprise.features.scheduling'),
+      t('pricingPage.tiers.enterprise.features.team'),
+      t('pricingPage.tiers.enterprise.features.reports'),
+      t('pricingPage.tiers.enterprise.features.security'),
+      t('pricingPage.tiers.enterprise.features.onboarding'),
+      t('pricingPage.tiers.enterprise.features.support')
     ],
     actionLabel: t('pricingPage.tiers.enterprise.action'),
     actionTo: ''
@@ -254,30 +258,30 @@ const comparisonRows = computed<Array<{
   values: ComparisonValue[]
 }>>(() => [
   {
-    id: 'requests',
-    label: t('pricingPage.comparison.rows.requests.label'),
+    id: 'credits',
+    label: t('pricingPage.comparison.rows.credits.label'),
     values: [
-      { kind: 'text', text: t('pricingPage.comparison.rows.requests.payg') },
-      { kind: 'text', text: t('pricingPage.comparison.rows.requests.pro') },
-      { kind: 'text', text: t('pricingPage.comparison.rows.requests.enterprise') }
+      { kind: 'text', text: t('pricingPage.comparison.rows.credits.payg') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.credits.pro') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.credits.enterprise') }
     ]
   },
   {
-    id: 'credit-price',
-    label: t('pricingPage.comparison.rows.creditPrice.label'),
+    id: 'throughput',
+    label: t('pricingPage.comparison.rows.throughput.label'),
     values: [
-      { kind: 'text', text: t('pricingPage.comparison.rows.creditPrice.payg') },
-      { kind: 'text', text: t('pricingPage.comparison.rows.creditPrice.pro') },
-      { kind: 'text', text: t('pricingPage.comparison.rows.creditPrice.enterprise') }
+      { kind: 'text', text: t('pricingPage.comparison.rows.throughput.payg') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.throughput.pro') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.throughput.enterprise') }
     ]
   },
   {
-    id: 'limits',
-    label: t('pricingPage.comparison.rows.limits.label'),
+    id: 'concurrency',
+    label: t('pricingPage.comparison.rows.concurrency.label'),
     values: [
-      { kind: 'text', text: t('pricingPage.comparison.rows.limits.payg') },
-      { kind: 'text', text: t('pricingPage.comparison.rows.limits.pro') },
-      { kind: 'text', text: t('pricingPage.comparison.rows.limits.enterprise') }
+      { kind: 'text', text: t('pricingPage.comparison.rows.concurrency.payg') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.concurrency.pro') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.concurrency.enterprise') }
     ]
   },
   {
@@ -287,6 +291,15 @@ const comparisonRows = computed<Array<{
       { kind: 'text', text: t('pricingPage.comparison.rows.scheduling.payg') },
       { kind: 'text', text: t('pricingPage.comparison.rows.scheduling.pro') },
       { kind: 'text', text: t('pricingPage.comparison.rows.scheduling.enterprise') }
+    ]
+  },
+  {
+    id: 'key-count',
+    label: t('pricingPage.comparison.rows.keyCount.label'),
+    values: [
+      { kind: 'text', text: t('pricingPage.comparison.rows.keyCount.payg') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.keyCount.pro') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.keyCount.enterprise') }
     ]
   },
   {
@@ -308,6 +321,33 @@ const comparisonRows = computed<Array<{
     ]
   },
   {
+    id: 'team-members',
+    label: t('pricingPage.comparison.rows.teamMembers'),
+    values: [
+      { kind: 'text', text: '—' },
+      { kind: 'text', text: '—' },
+      { kind: 'check' }
+    ]
+  },
+  {
+    id: 'usage-reports',
+    label: t('pricingPage.comparison.rows.usageReports.label'),
+    values: [
+      { kind: 'text', text: t('pricingPage.comparison.rows.usageReports.payg') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.usageReports.pro') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.usageReports.enterprise') }
+    ]
+  },
+  {
+    id: 'budget',
+    label: t('pricingPage.comparison.rows.budget.label'),
+    values: [
+      { kind: 'text', text: '—' },
+      { kind: 'check' },
+      { kind: 'text', text: t('pricingPage.comparison.rows.budget.enterprise') }
+    ]
+  },
+  {
     id: 'request-logs',
     label: t('pricingPage.comparison.rows.requestLogs.label'),
     values: [
@@ -317,30 +357,21 @@ const comparisonRows = computed<Array<{
     ]
   },
   {
-    id: 'billing-reports',
-    label: t('pricingPage.comparison.rows.billingReports.label'),
-    values: [
-      { kind: 'text', text: t('pricingPage.comparison.rows.billingReports.payg') },
-      { kind: 'text', text: t('pricingPage.comparison.rows.billingReports.pro') },
-      { kind: 'text', text: t('pricingPage.comparison.rows.billingReports.enterprise') }
-    ]
-  },
-  {
-    id: 'custom-models',
-    label: t('pricingPage.comparison.rows.customModels'),
-    values: [
-      { kind: 'text', text: '—' },
-      { kind: 'text', text: '—' },
-      { kind: 'check' }
-    ]
-  },
-  {
     id: 'support',
     label: t('pricingPage.comparison.rows.support.label'),
     values: [
       { kind: 'text', text: t('pricingPage.comparison.rows.support.payg') },
       { kind: 'text', text: t('pricingPage.comparison.rows.support.pro') },
       { kind: 'text', text: t('pricingPage.comparison.rows.support.enterprise') }
+    ]
+  },
+  {
+    id: 'contract',
+    label: t('pricingPage.comparison.rows.contract.label'),
+    values: [
+      { kind: 'text', text: t('pricingPage.comparison.rows.contract.payg') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.contract.pro') },
+      { kind: 'text', text: t('pricingPage.comparison.rows.contract.enterprise') }
     ]
   }
 ])
