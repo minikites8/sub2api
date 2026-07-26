@@ -72,12 +72,16 @@ const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
 
 const user = computed(() => authStore.user)
+// 这些页面自带页面级标题与说明，顶栏再显示一遍就是重复。
 const hideDesktopTitle = computed(() =>
   route.name === 'Dashboard' ||
   route.name === 'Keys' ||
   route.name === 'Usage' ||
   route.name === 'PurchaseSubscription' ||
-  route.name === 'ModelMarketplace'
+  route.name === 'ModelMarketplace' ||
+  route.name === 'Invoices' ||
+  route.name === 'Affiliate' ||
+  route.name === 'Profile'
 )
 
 const pageTitle = computed(() => {
