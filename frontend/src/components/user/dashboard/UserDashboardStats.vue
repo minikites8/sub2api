@@ -26,6 +26,10 @@
         <strong class="telemetry-stat-value">{{ formatTokens(stats.total_tokens || 0) }}</strong>
         <span class="telemetry-stat-meta">
           {{ t('dashboard.actual') }} {{ formatCreditValue(stats.total_actual_cost || 0) }}
+          <span class="telemetry-stat-meta-sep">·</span>
+          <span class="telemetry-stat-meta--green">
+            {{ t('dashboard.cacheHitRate') }} {{ formatPercent(cacheHitRate) }}
+          </span>
         </span>
       </article>
 
@@ -46,17 +50,31 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { formatCredits, usdToCredits } from '@/utils/credit'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 
-defineProps<{
+const props = defineProps<{
   stats: UserStatsType
   balance: number
   isSimple: boolean
 }>()
 const { t } = useI18n()
+
+// 与后端 cacheHitRate 保持同一公式（usage_log_repo_trend.go）：
+// 命中率 = 缓存读取 / (输入 + 缓存创建 + 缓存读取)。分母用 prompt 侧
+// token 而不是 total_tokens，因为输出 token 不经过缓存。
+const cacheHitRate = computed(() => {
+  const s = props.stats
+  const cacheRead = s.total_cache_read_tokens || 0
+  const promptTokens = (s.total_input_tokens || 0) + (s.total_cache_creation_tokens || 0) + cacheRead
+  if (promptTokens <= 0 || cacheRead <= 0) return 0
+  return (cacheRead / promptTokens) * 100
+})
+
+const formatPercent = (value: number) => `${value.toFixed(1)}%`
 
 // Amounts come from the API in USD; the UI presents everything in Credits.
 const formatCreditAmount = (usd: number) => formatCredits(usdToCredits(usd))
@@ -158,6 +176,10 @@ const formatTokens = (t: number) => {
 
 .telemetry-stat-meta--green {
   color: #00e38b;
+}
+
+.telemetry-stat-meta-sep {
+  color: var(--md-outline);
 }
 
 .telemetry-stat-meta--blue {

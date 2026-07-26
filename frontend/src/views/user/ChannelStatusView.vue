@@ -581,9 +581,9 @@ const ModelPricingDetail = defineComponent({
         ...detailProps.model.rawModels.map((rawModel) => h('span', { class: 'rounded border border-dark-800 px-2 py-1 font-jetbrains-mono text-[10px] text-dark-500' }, rawModel)),
       ]),
       h('div', { class: 'overflow-x-auto rounded border border-dark-800' }, [
-        h('table', { class: `w-full border-collapse text-left ${detailProps.compact ? 'min-w-[860px]' : 'min-w-[980px]'}` }, [
+        h('table', { class: `w-full border-collapse text-left ${detailProps.compact ? 'min-w-[760px]' : 'min-w-[860px]'}` }, [
           h('thead', { class: 'bg-dark-900 font-jetbrains-mono text-[9px] uppercase text-dark-500' }, [
-            h('tr', {}, [label('group'), label('mode'), label('multiplier'), label('input'), label('output'), label('cacheWrite'), label('cacheRead'), label('requestImage'), label('source')].map((text) => h('th', { class: 'px-3 py-2 font-medium' }, text))),
+            h('tr', {}, [label('group'), label('mode'), label('multiplier'), label('input'), label('output'), label('cacheWrite'), label('cacheRead'), label('requestImage')].map((text) => h('th', { class: 'px-3 py-2 font-medium' }, text))),
           ]),
           h('tbody', { class: 'divide-y divide-dark-800 font-jetbrains-mono text-[11px]' }, detailProps.model.profiles.map((profile) => h('tr', { class: 'text-dark-200' }, [
             h('td', { class: 'px-3 py-3' }, [h('div', { class: 'font-sans text-xs font-medium text-white' }, profile.groupName), h('div', { class: 'mt-1 text-[9px] text-dark-500' }, platformLabel(profile.platform))]),
@@ -594,7 +594,6 @@ const ModelPricingDetail = defineComponent({
             h('td', { class: 'px-3 py-3' }, money(profile.model.price?.cache_write_usd_per_token, profile.multiplier)),
             h('td', { class: 'px-3 py-3' }, money(profile.model.price?.cache_read_usd_per_token, profile.multiplier)),
             h('td', { class: 'px-3 py-3 whitespace-nowrap' }, requestAndImagePrices(profile.model, profile.multiplier)),
-            h('td', { class: 'px-3 py-3' }, [h('div', {}, profile.model.price_source || '-'), h('div', { class: 'mt-1 text-[9px] text-dark-500' }, profile.model.source.disclosure || profile.model.source.upstream_type)]),
           ]))),
         ]),
       ]),

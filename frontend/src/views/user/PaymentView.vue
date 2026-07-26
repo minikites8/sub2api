@@ -231,9 +231,6 @@
                 <header class="recent-transactions-header">
                   <div>
                     <h2>{{ t('payment.recentTransactions') }}</h2>
-                    <button type="button" class="enterprise-billing-contact" @click="showEnterpriseBillingContact = true">
-                      {{ t('payment.enterpriseBilling') }}
-                    </button>
                   </div>
                 </header>
                 <UserOrdersView
@@ -378,27 +375,6 @@
       </template>
       </template>
     </div>
-    <BaseDialog
-      :show="showEnterpriseBillingContact"
-      :title="t('payment.enterpriseBillingContactTitle')"
-      width="narrow"
-      @close="showEnterpriseBillingContact = false"
-    >
-      <div class="enterprise-billing-contact-dialog">
-        <template v-if="enterpriseBillingContactQr">
-          <img
-            :src="enterpriseBillingContactQr"
-            :alt="t('payment.enterpriseBillingContactTitle')"
-            class="enterprise-billing-contact-qr"
-          />
-          <p>{{ t('payment.enterpriseBillingContactHint') }}</p>
-        </template>
-        <template v-else>
-          <p class="enterprise-billing-contact-unavailable">{{ t('payment.enterpriseBillingContactUnavailable') }}</p>
-          <strong v-if="appStore.contactInfo">{{ appStore.contactInfo }}</strong>
-        </template>
-      </div>
-    </BaseDialog>
     <!-- Renewal Plan Selection Modal -->
     <Teleport to="body">
       <Transition name="modal">
@@ -457,7 +433,6 @@ import {
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SubscriptionsView from '@/views/user/SubscriptionsView.vue'
 import UserOrdersView from '@/views/user/UserOrdersView.vue'
@@ -550,8 +525,6 @@ const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 const refreshingPurchaseData = ref(false)
 const ordersRefreshKey = ref(0)
-const showEnterpriseBillingContact = ref(false)
-const enterpriseBillingContactQr = computed(() => appStore.enterpriseBillingContactQr)
 
 const paymentPhase = ref<'select' | 'paying'>('select')
 
@@ -2130,50 +2103,6 @@ onMounted(async () => {
   color: var(--md-on-surface-variant);
   font-size: 1.125rem;
   font-weight: 700;
-}
-
-.enterprise-billing-contact {
-  display: block;
-  margin-top: 12px;
-  color: var(--md-on-surface-variant);
-  font-size: 0.875rem;
-  text-align: left;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  transition: color 160ms ease;
-}
-
-.enterprise-billing-contact:hover,
-.enterprise-billing-contact:focus-visible {
-  color: var(--md-primary);
-  outline: none;
-}
-
-.enterprise-billing-contact-dialog {
-  display: grid;
-  justify-items: center;
-  gap: 16px;
-  color: var(--md-on-surface-variant);
-  text-align: center;
-}
-
-.enterprise-billing-contact-dialog p {
-  margin: 0;
-  font-size: 0.875rem;
-}
-
-.enterprise-billing-contact-qr {
-  width: min(100%, 256px);
-  aspect-ratio: 1;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  background: #fff;
-  object-fit: contain;
-}
-
-.enterprise-billing-contact-unavailable {
-  color: var(--md-on-surface);
-  font-weight: 600;
 }
 
 .recent-transactions-actions {
