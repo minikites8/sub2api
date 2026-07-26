@@ -9,12 +9,12 @@
             </h1>
             <span
               v-if="snapshot?.schema_version"
-              class="rounded-full border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-1 font-jetbrains-mono text-[11px] text-emerald-300"
+              class="rounded-full border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-1 font-jetbrains-mono text-xs text-emerald-300"
             >
               v{{ snapshot.schema_version }}
             </span>
           </div>
-          <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-jetbrains-mono text-[11px] text-gray-500 dark:text-dark-400">
+          <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-jetbrains-mono text-xs text-gray-500 dark:text-dark-400">
             <span class="inline-flex items-center gap-1.5">
               <span class="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               {{ t('modelMarketplace.publicAccess') }}
@@ -26,19 +26,19 @@
 
         <div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-dark-700 bg-dark-700 sm:grid-cols-4 xl:min-w-[520px]">
           <div class="bg-dark-900 px-4 py-3">
-            <div class="font-jetbrains-mono text-[10px] uppercase text-dark-400">{{ t('modelMarketplace.stats.models') }}</div>
+            <div class="font-jetbrains-mono text-xs uppercase text-dark-400">{{ t('modelMarketplace.stats.models') }}</div>
             <div class="mt-1 text-xl font-semibold text-white">{{ models.length }}</div>
           </div>
           <div class="bg-dark-900 px-4 py-3">
-            <div class="font-jetbrains-mono text-[10px] uppercase text-dark-400">{{ t('modelMarketplace.stats.providers') }}</div>
+            <div class="font-jetbrains-mono text-xs uppercase text-dark-400">{{ t('modelMarketplace.stats.providers') }}</div>
             <div class="mt-1 text-xl font-semibold text-white">{{ providerOptions.length - 1 }}</div>
           </div>
           <div class="bg-dark-900 px-4 py-3">
-            <div class="font-jetbrains-mono text-[10px] uppercase text-dark-400">{{ t('modelMarketplace.stats.operational') }}</div>
+            <div class="font-jetbrains-mono text-xs uppercase text-dark-400">{{ t('modelMarketplace.stats.operational') }}</div>
             <div class="mt-1 text-xl font-semibold text-emerald-300">{{ operationalCount }}</div>
           </div>
           <div class="bg-dark-900 px-4 py-3">
-            <div class="font-jetbrains-mono text-[10px] uppercase text-dark-400">{{ t('modelMarketplace.stats.monitored') }}</div>
+            <div class="font-jetbrains-mono text-xs uppercase text-dark-400">{{ t('modelMarketplace.stats.monitored') }}</div>
             <div class="mt-1 text-xl font-semibold text-white">{{ monitoringCoverage }}</div>
           </div>
         </div>
@@ -111,7 +111,7 @@
       </div>
 
       <div v-else-if="filteredModels.length === 0" class="rounded-lg border border-dark-700 bg-dark-900 px-6 py-16 text-center">
-        <Icon name="cpu" size="xl" class="mx-auto text-dark-500" />
+        <Icon name="cpu" size="xl" class="mx-auto text-dark-400" />
         <h2 class="mt-4 text-lg font-semibold text-white">{{ t('modelMarketplace.empty.title') }}</h2>
         <p class="mt-2 text-sm text-dark-400">{{ t('modelMarketplace.empty.description') }}</p>
       </div>
@@ -121,7 +121,7 @@
           <div class="overflow-x-auto">
             <table class="w-full min-w-[920px] border-collapse text-left">
               <thead class="border-b border-dark-700 bg-dark-900">
-                <tr class="font-jetbrains-mono text-[10px] uppercase text-dark-400">
+                <tr class="font-jetbrains-mono text-xs uppercase text-dark-400">
                   <th class="px-5 py-3 font-semibold">{{ t('modelMarketplace.columns.model') }}</th>
                   <th class="px-4 py-3 font-semibold">{{ t('modelMarketplace.columns.billing') }}</th>
                   <th class="px-4 py-3 font-semibold">{{ t('modelMarketplace.columns.input') }}</th>
@@ -168,7 +168,7 @@
                     </td>
                     <td class="px-4 py-4">
                       <div class="flex flex-wrap gap-1.5">
-                        <span v-for="mode in model.billingModes" :key="mode" class="rounded border border-dark-700 bg-dark-900 px-2 py-1 font-jetbrains-mono text-[10px] text-dark-200">
+                        <span v-for="mode in model.billingModes" :key="mode" class="rounded border border-dark-700 bg-dark-900 px-2 py-1 font-jetbrains-mono text-xs text-dark-200">
                           {{ billingModeLabel(mode) }}
                         </span>
                       </div>
@@ -176,18 +176,18 @@
                     <td class="px-4 py-4 font-jetbrains-mono text-xs text-white">{{ tokenPriceRange(model, 'input_usd_per_token') }}</td>
                     <td class="px-4 py-4 font-jetbrains-mono text-xs text-white">{{ tokenPriceRange(model, 'output_usd_per_token') }}</td>
                     <td class="px-4 py-4">
-                      <div class="space-y-1 font-jetbrains-mono text-[11px]">
-                        <div class="text-dark-200"><span class="text-dark-500">W</span> {{ tokenPriceRange(model, 'cache_write_usd_per_token') }}</div>
-                        <div class="text-dark-200"><span class="text-dark-500">R</span> {{ tokenPriceRange(model, 'cache_read_usd_per_token') }}</div>
+                      <div class="space-y-1 font-jetbrains-mono text-xs">
+                        <div class="text-dark-200"><span class="text-dark-400">W</span> {{ tokenPriceRange(model, 'cache_write_usd_per_token') }}</div>
+                        <div class="text-dark-200"><span class="text-dark-400">R</span> {{ tokenPriceRange(model, 'cache_read_usd_per_token') }}</div>
                       </div>
                     </td>
                     <td class="px-4 py-4">
                       <div class="text-sm font-medium text-white">{{ model.profiles.length }}</div>
-                      <div class="mt-1 font-jetbrains-mono text-[10px] text-dark-400">{{ multiplierRange(model) }}</div>
+                      <div class="mt-1 font-jetbrains-mono text-xs text-dark-400">{{ multiplierRange(model) }}</div>
                     </td>
                     <td class="px-4 py-4">
                       <div class="font-jetbrains-mono text-xs text-white">{{ formatLatency(model.monitoring.latestLatencyMs) }}</div>
-                      <div v-if="model.monitoring.avgLatency7dMs != null" class="mt-1 text-[10px] text-dark-400">
+                      <div v-if="model.monitoring.avgLatency7dMs != null" class="mt-1 text-xs text-dark-400">
                         {{ t('modelMarketplace.avg7d') }} {{ formatLatency(model.monitoring.avgLatency7dMs) }}
                       </div>
                     </td>
@@ -224,7 +224,7 @@
                   <span class="block truncate text-lg font-semibold text-white">{{ model.name }}</span>
                   <span class="mt-1 block font-jetbrains-mono text-xs text-dark-400">{{ platformNames(model.platforms) }} · {{ billingModeNames(model.billingModes) }}</span>
                   <span class="mt-2 flex items-center gap-2">
-                    <span class="font-jetbrains-mono text-[10px]" :class="statusTextClass(model.monitoring.status)">{{ formatAvailability(model) }}</span>
+                    <span class="font-jetbrains-mono text-xs" :class="statusTextClass(model.monitoring.status)">{{ formatAvailability(model) }}</span>
                     <span
                       class="flex gap-[2px]"
                       :aria-label="`${t('modelMarketplace.recentChecks')}: ${statusLabel(model.monitoring.status)} ${formatAvailability(model)}`"
@@ -244,19 +244,19 @@
             </button>
             <div class="grid grid-cols-2 gap-px border-y border-dark-800 bg-dark-800">
               <div class="bg-dark-950 p-3">
-                <div class="font-jetbrains-mono text-[9px] uppercase text-dark-500">{{ t('modelMarketplace.columns.input') }}</div>
+                <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.input') }}</div>
                 <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ tokenPriceRange(model, 'input_usd_per_token') }}</div>
               </div>
               <div class="bg-dark-950 p-3">
-                <div class="font-jetbrains-mono text-[9px] uppercase text-dark-500">{{ t('modelMarketplace.columns.output') }}</div>
+                <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.output') }}</div>
                 <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ tokenPriceRange(model, 'output_usd_per_token') }}</div>
               </div>
               <div class="bg-dark-950 p-3">
-                <div class="font-jetbrains-mono text-[9px] uppercase text-dark-500">{{ t('modelMarketplace.columns.groups') }}</div>
+                <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.groups') }}</div>
                 <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ model.profiles.length }} · {{ multiplierRange(model) }}</div>
               </div>
               <div class="bg-dark-950 p-3">
-                <div class="font-jetbrains-mono text-[9px] uppercase text-dark-500">{{ t('modelMarketplace.columns.latency') }}</div>
+                <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.latency') }}</div>
                 <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ formatLatency(model.monitoring.latestLatencyMs) }}</div>
               </div>
             </div>
@@ -266,7 +266,7 @@
           </article>
         </div>
 
-        <div class="mt-4 flex flex-col gap-2 text-[11px] text-dark-500 sm:flex-row sm:items-center sm:justify-between">
+        <div class="mt-4 flex flex-col gap-2 text-xs text-dark-400 sm:flex-row sm:items-center sm:justify-between">
           <span>{{ t('modelMarketplace.showing', { shown: filteredModels.length, total: models.length }) }}</span>
           <span>{{ t('modelMarketplace.priceNote') }}</span>
         </div>
@@ -578,15 +578,15 @@ const ModelPricingDetail = defineComponent({
 
     return () => h('div', { class: 'space-y-5' }, [
       h('div', { class: 'flex flex-wrap gap-2' }, [
-        ...detailProps.model.rawModels.map((rawModel) => h('span', { class: 'rounded border border-dark-800 px-2 py-1 font-jetbrains-mono text-[10px] text-dark-500' }, rawModel)),
+        ...detailProps.model.rawModels.map((rawModel) => h('span', { class: 'rounded border border-dark-800 px-2 py-1 font-jetbrains-mono text-xs text-dark-400' }, rawModel)),
       ]),
       h('div', { class: 'overflow-x-auto rounded border border-dark-800' }, [
         h('table', { class: `w-full border-collapse text-left ${detailProps.compact ? 'min-w-[760px]' : 'min-w-[860px]'}` }, [
-          h('thead', { class: 'bg-dark-900 font-jetbrains-mono text-[9px] uppercase text-dark-500' }, [
+          h('thead', { class: 'bg-dark-900 font-jetbrains-mono text-[11px] uppercase text-dark-400' }, [
             h('tr', {}, [label('group'), label('mode'), label('multiplier'), label('input'), label('output'), label('cacheWrite'), label('cacheRead'), label('requestImage')].map((text) => h('th', { class: 'px-3 py-2 font-medium' }, text))),
           ]),
-          h('tbody', { class: 'divide-y divide-dark-800 font-jetbrains-mono text-[11px]' }, detailProps.model.profiles.map((profile) => h('tr', { class: 'text-dark-200' }, [
-            h('td', { class: 'px-3 py-3' }, [h('div', { class: 'font-sans text-xs font-medium text-white' }, profile.groupName), h('div', { class: 'mt-1 text-[9px] text-dark-500' }, platformLabel(profile.platform))]),
+          h('tbody', { class: 'divide-y divide-dark-800 font-jetbrains-mono text-xs' }, detailProps.model.profiles.map((profile) => h('tr', { class: 'text-dark-200' }, [
+            h('td', { class: 'px-3 py-3' }, [h('div', { class: 'font-sans text-xs font-medium text-white' }, profile.groupName), h('div', { class: 'mt-1 text-[11px] text-dark-400' }, platformLabel(profile.platform))]),
             h('td', { class: 'px-3 py-3' }, billingModeLabel(profile.model.billing_mode)),
             h('td', { class: 'px-3 py-3 text-emerald-300' }, formatMultiplier(profile.multiplier)),
             h('td', { class: 'px-3 py-3' }, money(profile.model.price?.input_usd_per_token, profile.multiplier)),
@@ -600,14 +600,14 @@ const ModelPricingDetail = defineComponent({
       ...detailProps.model.profiles.flatMap((profile) => (profile.model.intervals || []).length > 0
         ? [h('div', { class: 'rounded border border-dark-800 bg-dark-900/50 p-3' }, [
             h('div', { class: 'mb-2 text-xs font-medium text-white' }, `${profile.groupName} · ${label('tierPricing')}`),
-            h('div', { class: 'grid gap-2 sm:grid-cols-2 xl:grid-cols-3' }, (profile.model.intervals || []).map((interval) => h('div', { class: 'rounded border border-dark-800 bg-dark-950 p-3 font-jetbrains-mono text-[10px] text-dark-300' }, [
+            h('div', { class: 'grid gap-2 sm:grid-cols-2 xl:grid-cols-3' }, (profile.model.intervals || []).map((interval) => h('div', { class: 'rounded border border-dark-800 bg-dark-950 p-3 font-jetbrains-mono text-xs text-dark-300' }, [
               h('div', { class: 'mb-2 text-white' }, interval.tier_label || tierRange(interval.min_tokens, interval.max_tokens)),
               h('div', {}, `${label('tokenRange')}: ${tierRange(interval.min_tokens, interval.max_tokens)}`),
               h('div', { class: 'mt-1' }, `${label('input')}: ${money(interval.input_usd_per_token, profile.multiplier)} · ${label('output')}: ${money(interval.output_usd_per_token, profile.multiplier)}`),
             ]))),
           ])]
         : []),
-      h('div', { class: 'font-jetbrains-mono text-[10px] text-dark-500' }, t('modelMarketplace.detail.unitNote')),
+      h('div', { class: 'font-jetbrains-mono text-xs text-dark-400' }, t('modelMarketplace.detail.unitNote')),
     ])
   },
 })

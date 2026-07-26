@@ -199,7 +199,9 @@ describe('ProfileInfoCard', () => {
     })
 
     expect(wrapper.get('[data-testid="profile-overview-hero"]').text()).toContain('alice@example.com')
-    expect(wrapper.get('[data-testid="profile-overview-metric-balance"]').text()).toContain('Account Balance')
+    // 余额不在个人资料页展示——仪表盘和充值页各有一处，这里是账号信息不是账单信息。
+    expect(wrapper.find('[data-testid="profile-overview-metric-balance"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Account Balance')
     expect(wrapper.get('[data-testid="profile-overview-metric-concurrency"]').text()).toContain('Concurrency Limit')
     expect(wrapper.get('[data-testid="profile-overview-metric-member-since"]').text()).toContain('Member Since')
     expect(wrapper.get('[data-testid="profile-main-column"]').exists()).toBe(true)

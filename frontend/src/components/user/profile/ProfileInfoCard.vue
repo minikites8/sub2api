@@ -67,18 +67,9 @@
               </div>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-3">
-              <div
-                data-testid="profile-overview-metric-balance"
-                class="profile-metric"
-              >
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {{ t('profile.accountBalance') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ formatCurrency(user?.balance || 0) }}
-                </p>
-              </div>
+            <!-- 余额不在这里展示：仪表盘和充值页各有一处，个人资料页重复第三遍
+                 没有意义，而且这里是账号信息，不是账单信息。 -->
+            <div class="grid gap-3 sm:grid-cols-2">
               <div
                 data-testid="profile-overview-metric-concurrency"
                 class="profile-metric"
@@ -256,10 +247,6 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   github: 'GitHub',
   google: 'Google'
 }))
-
-function formatCurrency(value: number): string {
-  return `$${value.toFixed(2)}`
-}
 
 function normalizeProvider(value: string): UserAuthProvider | null {
   const normalized = value.trim().toLowerCase()
