@@ -82,7 +82,7 @@ func TestGrokSSOBatchImportKeepsCreatedAccountsWhenOneAutomaticProbeFails(t *tes
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/admin/grok/sso-to-oauth",
-		strings.NewReader(`{"sso_tokens":["sso-one","sso-two","sso-three"]}`),
+		strings.NewReader(`{"sso_tokens":["sso-one","sso-two","sso-three"],"extra":{"node_oauth_assigned_node_id":"node-test"}}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, request)
@@ -110,7 +110,7 @@ func TestAccountCreateWithoutAutomaticGrokProbeServiceStillSucceeds(t *testing.T
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/admin/accounts",
-		strings.NewReader(`{"name":"grok-rt","platform":"grok","type":"oauth","credentials":{"refresh_token":"secret"}}`),
+		strings.NewReader(`{"name":"grok-rt","platform":"grok","type":"oauth","credentials":{"refresh_token":"secret"},"extra":{"node_oauth_assigned_node_id":"node-test"}}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, request)

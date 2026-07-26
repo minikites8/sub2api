@@ -294,17 +294,3 @@ func (s *QuotaLeaseDemoService) DrainNodeRuntime(ctx context.Context) error {
 	}
 	return combined
 }
-
-func parseQuotaLeaseDemoReconcileLimit(raw string) int {
-	if strings.TrimSpace(raw) == "" {
-		return quotaLeaseDemoReconcileBatchSize
-	}
-	var value int
-	if _, err := fmt.Sscanf(strings.TrimSpace(raw), "%d", &value); err != nil || value <= 0 {
-		return quotaLeaseDemoReconcileBatchSize
-	}
-	if value > quotaLeaseDemoReconcileBatchSize {
-		return quotaLeaseDemoReconcileBatchSize
-	}
-	return value
-}

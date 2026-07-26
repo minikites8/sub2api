@@ -1373,20 +1373,6 @@ func (h *QuotaLeaseDemoHandler) quotaLeaseDemoRequestLeaseAmount(ctx context.Con
 	return amount, nil
 }
 
-func quotaLeaseDemoClientLeaseAmount(snapshot *service.APIKeyAuthSnapshot, requested float64) float64 {
-	if snapshot == nil {
-		return requested
-	}
-	balance := snapshot.User.Balance
-	if balance <= 0 {
-		return 0
-	}
-	if requested > balance {
-		return balance
-	}
-	return requested
-}
-
 func quotaLeaseDemoHandlerCanIssueClientLease(snapshot *service.APIKeyAuthSnapshot) bool {
 	if snapshot == nil {
 		return false

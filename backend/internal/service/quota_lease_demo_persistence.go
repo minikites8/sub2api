@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"time"
 )
@@ -248,19 +247,6 @@ func (s *QuotaLeaseDemoService) deleteQuotaLeaseDemoPendingUsageEvent(ctx contex
 		return nil
 	}
 	return store.DeleteQuotaLeaseDemoPendingUsageEvent(ctx, strings.TrimSpace(eventID))
-}
-
-func (s *QuotaLeaseDemoService) persistQuotaLeaseDemoLeaseBestEffort(lease *QuotaLeaseDemoLease, reason string) {
-	if s == nil || lease == nil || s.quotaLeaseDemoPersistenceStore() == nil {
-		return
-	}
-	if err := s.persistQuotaLeaseDemoLease(context.Background(), lease); err != nil {
-		slog.Warn("quota_lease.persist_lease_failed",
-			"lease_id", lease.ID,
-			"reason", strings.TrimSpace(reason),
-			"error", err,
-		)
-	}
 }
 
 func (s *QuotaLeaseDemoService) CleanupRetainedRecords(ctx context.Context, now time.Time) (QuotaLeaseDemoCleanupResult, error) {

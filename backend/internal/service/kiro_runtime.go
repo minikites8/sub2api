@@ -595,6 +595,7 @@ func kiroEndpointModeForRequest(account *Account, parsed *ParsedRequest) string 
 	return parsed.Group.EffectiveKiroEndpointMode()
 }
 
+//nolint:unused // Exercised by unit-tagged Kiro payload tests.
 func (s *GatewayService) buildKiroPayloadForAccount(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, modelID, token, requestModel string, headers http.Header) (*kiropkg.KiroBuildResult, error) {
 	var profileArn string
 	if kiroEndpointModeForRequest(account, parsed) == KiroEndpointModeKRS {

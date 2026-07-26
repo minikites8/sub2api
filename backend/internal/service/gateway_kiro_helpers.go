@@ -18,6 +18,7 @@ func kiroCreditsFromUsageGJSON(usage gjson.Result) float64 {
 	return 0
 }
 
+//nolint:unused // Exercised by unit-tagged Kiro alignment tests.
 func (s *GatewayService) streamKeepaliveIntervalForAccount(account *Account) time.Duration {
 	if account != nil && account.Platform == PlatformKiro {
 		if s != nil && s.cfg != nil && s.cfg.Gateway.KiroStreamKeepaliveInterval > 0 {

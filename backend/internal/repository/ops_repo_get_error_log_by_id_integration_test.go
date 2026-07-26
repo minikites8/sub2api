@@ -72,7 +72,7 @@ func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
 	require.Empty(t, plain.APIKeyPrefix, "no api key prefix for plain error")
 
 	// ── Case 3: 有效(未删除)key 报错,经 InsertErrorLog 快照 api_key_prefix ──────
-	// 走真实 InsertErrorLog 写入路径(覆盖新列 + $41 占位符),再 GetErrorLogByID 读回。
+	// 走真实 InsertErrorLog 写入路径(覆盖新列 + $42 占位符),再 GetErrorLogByID 读回。
 	validID, err := repo.InsertErrorLog(ctx, &service.OpsInsertErrorLogInput{
 		ErrorPhase:   "request",
 		ErrorType:    "api_error",

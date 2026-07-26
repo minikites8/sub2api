@@ -985,7 +985,7 @@ func (s *QuotaLeaseDemoService) doRemoteJSONToURL(ctx context.Context, method, f
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
@@ -1048,9 +1048,7 @@ func quotaLeaseDemoParseRegistrationURL(registrationURL string) (endpointURL str
 	}
 	endpointURL = parsed.String()
 	basePath := strings.TrimRight(parsed.Path, "/")
-	if strings.HasSuffix(basePath, "/nodes/register") {
-		basePath = strings.TrimSuffix(basePath, "/nodes/register")
-	}
+	basePath = strings.TrimSuffix(basePath, "/nodes/register")
 	control := url.URL{
 		Scheme: parsed.Scheme,
 		Host:   parsed.Host,

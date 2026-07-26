@@ -502,8 +502,9 @@ func TestExecuteKiroUpstreamAutoSwitchesFromQ429ToKRS(t *testing.T) {
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"api_region":  "us-west-2",
-			"profile_arn": profileARN,
+			"api_region":                 "us-west-2",
+			"profile_arn":                profileARN,
+			"kiro_transient_retry_count": 0,
 		},
 	}
 	upstream := &queuedHTTPUpstream{

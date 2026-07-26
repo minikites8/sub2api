@@ -274,7 +274,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadNodes(ctx context.Context) ([]servi
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var nodes []service.QuotaLeaseDemoNode
 	for rows.Next() {
@@ -328,7 +328,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadLeases(ctx context.Context) ([]serv
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var leases []service.QuotaLeaseDemoLease
 	for rows.Next() {
@@ -366,7 +366,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadLedgerEvents(ctx context.Context) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []service.QuotaLeaseDemoLedgerEvent
 	for rows.Next() {
@@ -401,7 +401,7 @@ func (s *quotaLeaseDemoPersistenceStore) loadPendingUsageEvents(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []service.QuotaLeaseDemoUsageEvent
 	for rows.Next() {

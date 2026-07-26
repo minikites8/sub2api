@@ -476,7 +476,7 @@ type UsageLog struct {
 	RequestID string `json:"request_id"`
 	// NodeID is the processing node that handled the request.
 	NodeID string `json:"node_id,omitempty"`
-	Model     string `json:"model"`
+	Model  string `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the request's reasoning effort level.

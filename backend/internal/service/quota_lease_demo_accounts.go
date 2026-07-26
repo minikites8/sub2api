@@ -768,10 +768,6 @@ func QuotaLeaseDemoProxySnapshotToProxy(snapshot *QuotaLeaseDemoProxySnapshot) *
 	return quotaLeaseDemoProxySnapshotToProxy(snapshot)
 }
 
-func quotaLeaseDemoAccountMatchesScheduling(account Account, groupID *int64, platform string) bool {
-	return quotaLeaseDemoAccountSchedulingSkipReason(account, groupID, platform) == ""
-}
-
 func quotaLeaseDemoAccountSchedulingSkipReason(account Account, groupID *int64, platform string) string {
 	platform = strings.TrimSpace(platform)
 	if platform != "" && account.Platform != platform {

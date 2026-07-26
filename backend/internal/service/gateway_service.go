@@ -955,19 +955,6 @@ func stickySessionTTLForGroup(group *Group) time.Duration {
 	return stickySessionTTL
 }
 
-func (s *GatewayService) stickySessionTTLForGroupID(ctx context.Context, groupID *int64) time.Duration {
-	resolvedGroupID := derefGroupID(groupID)
-	if group := s.groupFromContext(ctx, resolvedGroupID); group != nil {
-		return stickySessionTTLForGroup(group)
-	}
-	if groupID != nil && s.groupRepo != nil {
-		if group, err := s.groupRepo.GetByIDLite(ctx, *groupID); err == nil {
-			return stickySessionTTLForGroup(group)
-		}
-	}
-	return stickySessionTTL
-}
-
 // GetCachedSessionAccountID retrieves the account ID bound to a sticky session.
 // Returns 0 if no binding exists or on error.
 func (s *GatewayService) GetCachedSessionAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {

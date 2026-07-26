@@ -916,7 +916,7 @@ func (r *accountRepository) ListNodeAssignedAccounts(ctx context.Context, params
 		if err != nil {
 			return nil, nil, err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		ids := make([]int64, 0, params.Limit())
 		for rows.Next() {
 			var id int64

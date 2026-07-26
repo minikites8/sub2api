@@ -3765,7 +3765,9 @@ func TestQuotaLeaseDemoOAuthExecutorGeneratesGrokURLAndExchangesCallbackURL(t *t
 	require.NotEmpty(t, progressErr.LoginPayloadPatch["state"])
 
 	task.LoginPayload = mergeQuotaLeaseDemoAnyPatch(task.LoginPayload, progressErr.LoginPayloadPatch)
-	task.LoginPayload["callback_url"] = "http://127.0.0.1:56121/callback?code=grok-code&state=" + task.LoginPayload["state"].(string)
+	state, ok := task.LoginPayload["state"].(string)
+	require.True(t, ok)
+	task.LoginPayload["callback_url"] = "http://127.0.0.1:56121/callback?code=grok-code&state=" + state
 	account, err := executor.ExecuteAccountLoginTask(ctx, task)
 	require.NoError(t, err)
 	require.Equal(t, "grok-code", client.exchangeCode)

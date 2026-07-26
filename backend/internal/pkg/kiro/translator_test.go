@@ -1629,7 +1629,7 @@ func extractStreamedToolInputJSON(t *testing.T, sse, toolUseID string) string {
 			if idx, ok := evt["index"].(float64); ok && int(idx) == targetIndex {
 				if delta, _ := evt["delta"].(map[string]any); delta != nil {
 					if pj, ok := delta["partial_json"].(string); ok {
-						sb.WriteString(pj)
+						_, _ = sb.WriteString(pj)
 					}
 				}
 			}
