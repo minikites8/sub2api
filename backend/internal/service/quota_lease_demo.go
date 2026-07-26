@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -377,9 +378,14 @@ type QuotaLeaseDemoNodeSyncStatus struct {
 	PendingOpsErrorLogs int        `json:"pending_ops_error_logs"`
 }
 
+// RegisterNode serves the inbound registration endpoint. Only the control
+// plane is a registration authority; a gateway node must not answer it, or it
+// would hand its own node secret to any caller that can reach its public
+// gateway port. The node's own outbound bootstrap goes through
+// registerRemoteNode directly.
 func (s *QuotaLeaseDemoService) RegisterNode(ctx context.Context, req QuotaLeaseDemoNodeRegistrationRequest) (*QuotaLeaseDemoNodeRegistrationResult, error) {
 	if s.remoteMode() {
-		return s.registerRemoteNode(ctx, req)
+		return nil, ErrQuotaLeaseDemoDisabled
 	}
 	return s.registerNodeLocal(ctx, req)
 }
@@ -550,7 +556,10 @@ func (s *QuotaLeaseDemoService) AuthenticateNode(nodeID, secret string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	node := s.nodes[nodeID]
-	return node != nil && node.Status != QuotaLeaseDemoNodeStatusDisabled && node.Secret == secret
+	if node == nil || node.Status == QuotaLeaseDemoNodeStatusDisabled {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(node.Secret), []byte(secret)) == 1
 }
 
 func (s *QuotaLeaseDemoService) HeartbeatNode(ctx context.Context, req QuotaLeaseDemoNodeHeartbeatRequest) (*QuotaLeaseDemoNode, error) {

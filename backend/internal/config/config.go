@@ -3239,6 +3239,15 @@ func (c *Config) Validate() error {
 		}
 	}
 	if c.Gateway.QuotaLeaseDemo.Enabled {
+		// A control-plane instance authenticates nodes with this secret. Empty
+		// means every node lease endpoint is closed, so refuse to start rather
+		// than run a control plane no node can talk to.
+		isRemoteNode := c.IsNodeRole() ||
+			strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL) != "" ||
+			strings.TrimSpace(c.Gateway.QuotaLeaseDemo.ControlPlaneBaseURL) != ""
+		if !isRemoteNode && strings.TrimSpace(c.Gateway.QuotaLeaseDemo.NodeSecret) == "" {
+			return fmt.Errorf("gateway.quota_lease.node_secret must be set when gateway.quota_lease.enabled is true (generate with: openssl rand -hex 32)")
+		}
 		if strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL) != "" {
 			registrationURL, err := url.Parse(strings.TrimSpace(c.Gateway.QuotaLeaseDemo.RegistrationURL))
 			if err != nil || registrationURL.Scheme == "" || registrationURL.Host == "" || (registrationURL.Scheme != "http" && registrationURL.Scheme != "https") {

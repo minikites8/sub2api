@@ -181,8 +181,12 @@ gateway:
   quota_lease:
     enabled: false
     node_id: "gateway-node"
-    # Control-plane bootstrap secret required as X-Node-Secret on node lease admin endpoints.
-    # 控制面引导密钥，配置后租约管理接口要求 X-Node-Secret。
+    # Control-plane bootstrap secret sent as X-Node-Secret on node lease endpoints.
+    # Required on the control plane whenever enabled is true; startup fails if it is empty.
+    # Gateway nodes leave it empty: they authenticate with the per-node secret from registration.
+    # Generate with: openssl rand -hex 32
+    # 控制面引导密钥，作为 X-Node-Secret 请求头使用。
+    # 控制面启用租约后必须设置，留空将拒绝启动；节点侧留空即可（使用注册下发的节点专属密钥）。
     node_secret: ""
     # Foreign node mode: set registration_url to let a node bootstrap itself with a temporary control-plane URL.
     # 国外节点模式：设置 registration_url 后，节点使用控制面生成的临时 URL 完成注册。

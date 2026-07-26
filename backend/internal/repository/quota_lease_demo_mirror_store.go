@@ -881,7 +881,9 @@ func (s *quotaLeaseDemoMirrorStore) upsertAPIKey(ctx context.Context, exec sqlEx
 	if snapshot.APIKeyID <= 0 || snapshot.UserID <= 0 {
 		return nil
 	}
-	key := strings.TrimSpace(item.Key)
+	// The mirror never receives the secret, so the api_keys.key column on a
+	// node holds the digest that node-side auth matches against.
+	key := strings.TrimSpace(item.KeyHash)
 	if key == "" {
 		return nil
 	}
@@ -1035,6 +1037,8 @@ func (s *quotaLeaseDemoMirrorStore) existingAllAPIKeySecrets(ctx context.Context
 	`)
 }
 
+// On a node the api_keys.key column holds the mirrored digest, not the secret,
+// so the values returned here are what auth cache entries are addressed by.
 func (s *quotaLeaseDemoMirrorStore) queryAPIKeySecrets(ctx context.Context, exec sqlExecutor, query string, args ...any) []string {
 	if exec == nil {
 		return nil

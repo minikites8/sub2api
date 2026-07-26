@@ -3159,7 +3159,7 @@ func TestQuotaLeaseDemoRemoteNodeSyncsAssignedAccountsForScheduling(t *testing.T
 		},
 	})
 	ctx := context.Background()
-	register, err := node.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
+	register, err := node.registerRemoteNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
 	require.NoError(t, err)
 	nodeID := register.Node.NodeID
 
@@ -3255,7 +3255,7 @@ func TestQuotaLeaseDemoRemoteNodeRegistersWithRegistrationURLAndNodeSecret(t *te
 		},
 	})
 
-	registered, err := node.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
+	registered, err := node.registerRemoteNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
 	require.NoError(t, err)
 	require.Equal(t, "foreign-url-1", registered.Node.NodeID)
 	require.Equal(t, "us-west", registered.Node.Region)
@@ -3558,7 +3558,7 @@ func TestQuotaLeaseDemoNodeWorkerExecutesPendingAccountTask(t *testing.T) {
 		},
 	})
 	ctx := context.Background()
-	register, err := node.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
+	register, err := node.registerRemoteNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
 	require.NoError(t, err)
 	nodeID := register.Node.NodeID
 
@@ -3627,7 +3627,7 @@ func TestQuotaLeaseDemoNodeWorkerExecutesPendingUsageProbeTask(t *testing.T) {
 		},
 	})
 	ctx := context.Background()
-	register, err := node.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
+	register, err := node.registerRemoteNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
 	require.NoError(t, err)
 	nodeID := register.Node.NodeID
 
@@ -3794,7 +3794,7 @@ func TestQuotaLeaseDemoRemoteNodeReportsAccountStatus(t *testing.T) {
 		},
 	})
 	ctx := context.Background()
-	register, err := node.RegisterNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
+	register, err := node.registerRemoteNode(ctx, QuotaLeaseDemoNodeRegistrationRequest{})
 	require.NoError(t, err)
 	nodeID := register.Node.NodeID
 

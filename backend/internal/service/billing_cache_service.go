@@ -754,6 +754,27 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		}
 	}
 
+	return s.checkNonBalanceEligibility(ctx, user, apiKey, group, isSubscriptionMode, platform)
+}
+
+// CheckNonBalanceEligibility 执行除余额/订阅额度以外的全部准入检查：管理员配置的
+// user × platform 消费限额、API Key 限流与 RPM 限流。
+// 配额租约 preflight 只替代余额检查，因此仍需调用本方法，否则这些控制会被整体绕过。
+func (s *BillingCacheService) CheckNonBalanceEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+	if s == nil || user == nil {
+		return nil
+	}
+	if s.cfg.RunMode == config.RunModeSimple {
+		return nil
+	}
+	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
+		return ErrBillingServiceUnavailable
+	}
+	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
+	return s.checkNonBalanceEligibility(ctx, user, apiKey, group, isSubscriptionMode, platform)
+}
+
+func (s *BillingCacheService) checkNonBalanceEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, isSubscriptionMode bool, platform string) error {
 	// user × platform quota 仅在 standard（余额）模式生效；订阅模式豁免
 	if !isSubscriptionMode {
 		if err := s.checkUserPlatformQuotaEligibility(ctx, user.ID, platform); err != nil {

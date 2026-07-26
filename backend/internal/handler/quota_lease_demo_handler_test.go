@@ -1560,3 +1560,110 @@ func TestQuotaLeaseDemoHandlerPostsOpsErrorLogBatchWithNodeID(t *testing.T) {
 	require.Equal(t, "foreign-1", opsRepo.entries[0].NodeID)
 	require.Equal(t, "err-req-1", opsRepo.entries[0].RequestID)
 }
+
+func newQuotaLeaseDemoSecretTestRouter(t *testing.T, cfg config.GatewayQuotaLeaseDemoConfig) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	cfg.Enabled = true
+	cfg.DefaultGrantAmount = 1
+	cfg.LeaseTTLSeconds = 600
+	cfg.ReclaimGraceSeconds = 3600
+	cfg.PreflightReserveAmount = 0.000001
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{QuotaLeaseDemo: cfg},
+	})
+	h := NewQuotaLeaseDemoHandler(svc)
+	router := gin.New()
+	registerQuotaLeaseDemoHandlerTestRoutes(router.Group("/api/v1/node-leases"), h)
+	adminGroup := router.Group("/api/v1/admin/node-leases")
+	adminGroup.Use(h.InjectControlSecret)
+	registerQuotaLeaseDemoHandlerTestRoutes(adminGroup, h)
+	return router
+}
+
+func TestQuotaLeaseDemoHandlerDeniesAnonymousWhenNodeSecretEmpty(t *testing.T) {
+	router := newQuotaLeaseDemoSecretTestRouter(t, config.GatewayQuotaLeaseDemoConfig{NodeID: "control-node"})
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/node-leases/status", nil))
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestQuotaLeaseDemoHandlerDeniesWrongNodeSecret(t *testing.T) {
+	router := newQuotaLeaseDemoSecretTestRouter(t, config.GatewayQuotaLeaseDemoConfig{
+		NodeID:     "control-node",
+		NodeSecret: "control-secret",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/node-leases/status", nil)
+	req.Header.Set("X-Node-Secret", "wrong-secret")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestQuotaLeaseDemoHandlerAdminGroupAllowedWithoutNodeSecret(t *testing.T) {
+	router := newQuotaLeaseDemoSecretTestRouter(t, config.GatewayQuotaLeaseDemoConfig{NodeID: "control-node"})
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/node-leases/status", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestQuotaLeaseDemoHandlerScopedProxySnapshots(t *testing.T) {
+	backupID := int64(2)
+	proxies := []service.Proxy{
+		{ID: 1, Name: "assigned", Password: "assigned-secret", BackupProxyID: &backupID},
+		{ID: 2, Name: "fallback", Password: "fallback-secret"},
+		{ID: 3, Name: "unrelated", Password: "unrelated-secret"},
+	}
+	assignedProxyID := int64(1)
+	accounts := []service.QuotaLeaseDemoAccountSnapshot{{ID: 10, ProxyID: &assignedProxyID}}
+
+	scoped := quotaLeaseDemoHandlerScopedProxySnapshots(proxies, accounts)
+
+	ids := make([]int64, 0, len(scoped))
+	for _, proxy := range scoped {
+		ids = append(ids, proxy.ID)
+	}
+	// The fallback chain has to come along or the node cannot honour it.
+	require.Equal(t, []int64{1, 2}, ids)
+}
+
+func TestQuotaLeaseDemoHandlerScopedProxySnapshotsEmptyWithoutAccounts(t *testing.T) {
+	proxies := []service.Proxy{
+		{ID: 1, Name: "one", Password: "one-secret"},
+		{ID: 2, Name: "two", Password: "two-secret"},
+	}
+
+	require.Empty(t, quotaLeaseDemoHandlerScopedProxySnapshots(proxies, nil))
+}
+
+func TestQuotaLeaseDemoMirrorAPIKeySnapshotOmitsPlaintext(t *testing.T) {
+	const plaintext = "sk-quota-lease-plaintext-key"
+	item := service.NewQuotaLeaseDemoAPIKeySnapshot(plaintext, &service.APIKeyAuthSnapshot{APIKeyID: 7, UserID: 3})
+
+	require.Equal(t, service.QuotaLeaseDemoAPIKeyHash(plaintext), item.KeyHash)
+	require.NotEqual(t, plaintext, item.KeyHash)
+
+	payload, err := json.Marshal(item)
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), plaintext)
+}
+
+func TestQuotaLeaseDemoHandlerRemoteNodeRefusesRegistration(t *testing.T) {
+	router := newQuotaLeaseDemoSecretTestRouter(t, config.GatewayQuotaLeaseDemoConfig{
+		NodeID:          "foreign-node-1",
+		RegistrationURL: "https://control.example.com/api/v1/node-leases/nodes/register?registration_token=token-1",
+	})
+
+	// A registration token skips the control-secret check, so only the
+	// remote-mode guard stops a node from handing out its own secret.
+	req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/nodes/register",
+		map[string]string{"registration_token": "attacker-supplied"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.NotContains(t, rec.Body.String(), "node_secret")
+}

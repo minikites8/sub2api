@@ -13,6 +13,18 @@ func resolveAPIKeyWithQuotaLeaseDemoFallback(ctx context.Context, apiKeyService 
 	if apiKeyService == nil {
 		return nil, service.ErrAPIKeyNotFound
 	}
+	// A node mirrors key digests, not secrets, so match on the digest first.
+	// Plaintext lookup still runs afterwards for keys created on this instance.
+	if quotaLeaseDemoMirrorsAPIKeyDigests(cfg) {
+		if digest := service.QuotaLeaseDemoAPIKeyHash(apiKeyString); digest != "" {
+			if apiKey, digestErr := apiKeyService.GetByKey(ctx, digest); digestErr == nil {
+				apiKey.Key = apiKeyString
+				return apiKey, nil
+			} else if !errors.Is(digestErr, service.ErrAPIKeyNotFound) {
+				return nil, digestErr
+			}
+		}
+	}
 	apiKey, err := apiKeyService.GetByKey(ctx, apiKeyString)
 	if err == nil {
 		return apiKey, nil
@@ -25,6 +37,10 @@ func resolveAPIKeyWithQuotaLeaseDemoFallback(ctx context.Context, apiKeyService 
 		return remoteAPIKey, remoteErr
 	}
 	return nil, err
+}
+
+func quotaLeaseDemoMirrorsAPIKeyDigests(cfg *config.Config) bool {
+	return cfg != nil && cfg.IsNodeRole() && service.QuotaLeaseDemoEnabled(cfg)
 }
 
 func resolveAPIKeyFromQuotaLeaseDemoControlPlane(ctx context.Context, apiKeyService *service.APIKeyService, cfg *config.Config, apiKeyString string) (*service.APIKey, bool, error) {

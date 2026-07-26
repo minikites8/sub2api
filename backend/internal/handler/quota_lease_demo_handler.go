@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"sort"
@@ -26,6 +27,9 @@ type QuotaLeaseDemoHandler struct {
 const (
 	quotaLeaseDemoNodeOAuthLastSyncedAtKey             = "node_oauth_last_synced_at"
 	quotaLeaseDemoNodeOAuthLastSyncedAtPersistInterval = 5 * time.Second
+	// Set only by InjectControlSecret, which runs behind the admin auth
+	// middleware. Never derived from request input.
+	quotaLeaseDemoAdminAuthedKey = "quota_lease_admin_authed"
 )
 
 type quotaLeaseDemoNodeAssignedAccountAdminService interface {
@@ -69,6 +73,7 @@ func (h *QuotaLeaseDemoHandler) SetChannelService(channelService *service.Channe
 }
 
 func (h *QuotaLeaseDemoHandler) InjectControlSecret(c *gin.Context) {
+	c.Set(quotaLeaseDemoAdminAuthedKey, true)
 	if h != nil && h.svc != nil {
 		if secret := h.svc.NodeSecret(); secret != "" {
 			c.Request.Header.Set("X-Node-Secret", secret)
@@ -585,17 +590,6 @@ func (h *QuotaLeaseDemoHandler) buildMirrorSnapshot(ctx context.Context, nodeID 
 		snapshot.Channels = []service.QuotaLeaseDemoChannelSnapshot{}
 	}
 
-	proxies, err := h.adminSvc.GetAllProxies(ctx)
-	if err != nil {
-		return snapshot, err
-	}
-	snapshot.Proxies = make([]service.QuotaLeaseDemoProxySnapshot, 0, len(proxies))
-	for _, proxy := range proxies {
-		if proxySnapshot := quotaLeaseDemoHandlerProxySnapshot(&proxy); proxySnapshot != nil {
-			snapshot.Proxies = append(snapshot.Proxies, *proxySnapshot)
-		}
-	}
-
 	assigned, err := h.listAssignedAccounts(ctx, nodeID)
 	if err != nil {
 		return snapshot, err
@@ -632,6 +626,11 @@ func (h *QuotaLeaseDemoHandler) buildMirrorSnapshot(ctx context.Context, nodeID 
 		}
 		return snapshot.AccountGroups[i].AccountID < snapshot.AccountGroups[j].AccountID
 	})
+	proxies, err := h.adminSvc.GetAllProxies(ctx)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.Proxies = quotaLeaseDemoHandlerScopedProxySnapshots(proxies, snapshot.Accounts)
 	apiKeys, err := h.listMirrorAPIKeySnapshots(ctx)
 	if err != nil {
 		return snapshot, err
@@ -908,6 +907,52 @@ func (h *QuotaLeaseDemoHandler) quotaLeaseDemoHandlerAccountProxy(ctx context.Co
 		return nil
 	}
 	return proxy
+}
+
+// quotaLeaseDemoHandlerScopedProxySnapshots keeps only the proxies the node's
+// own accounts route through, plus the fallback chain they can escalate to.
+// Proxy records carry credentials, so a node with zero assigned accounts must
+// not receive the whole fleet.
+func quotaLeaseDemoHandlerScopedProxySnapshots(proxies []service.Proxy, accounts []service.QuotaLeaseDemoAccountSnapshot) []service.QuotaLeaseDemoProxySnapshot {
+	byID := make(map[int64]*service.Proxy, len(proxies))
+	for i := range proxies {
+		byID[proxies[i].ID] = &proxies[i]
+	}
+	referenced := make(map[int64]struct{})
+	var reference func(id int64)
+	reference = func(id int64) {
+		if id <= 0 {
+			return
+		}
+		if _, ok := referenced[id]; ok {
+			return
+		}
+		referenced[id] = struct{}{}
+		if proxy := byID[id]; proxy != nil && proxy.BackupProxyID != nil {
+			reference(*proxy.BackupProxyID)
+		}
+	}
+	for _, account := range accounts {
+		if account.ProxyID != nil {
+			reference(*account.ProxyID)
+		}
+		if account.ProxyFallbackOriginID != nil {
+			reference(*account.ProxyFallbackOriginID)
+		}
+		if account.Proxy != nil {
+			reference(account.Proxy.ID)
+		}
+	}
+	out := make([]service.QuotaLeaseDemoProxySnapshot, 0, len(referenced))
+	for i := range proxies {
+		if _, ok := referenced[proxies[i].ID]; !ok {
+			continue
+		}
+		if proxySnapshot := quotaLeaseDemoHandlerProxySnapshot(&proxies[i]); proxySnapshot != nil {
+			out = append(out, *proxySnapshot)
+		}
+	}
+	return out
 }
 
 func quotaLeaseDemoHandlerProxySnapshot(proxy *service.Proxy) *service.QuotaLeaseDemoProxySnapshot {
@@ -1642,11 +1687,17 @@ func (h *QuotaLeaseDemoHandler) requireControlSecret(c *gin.Context) bool {
 }
 
 func (h *QuotaLeaseDemoHandler) controlSecretOK(c *gin.Context) bool {
+	if authed, exists := c.Get(quotaLeaseDemoAdminAuthedKey); exists {
+		if ok, isBool := authed.(bool); isBool && ok {
+			return true
+		}
+	}
 	secret := h.svc.NodeSecret()
 	if secret == "" {
-		return true
+		return false
 	}
-	return strings.TrimSpace(c.GetHeader("X-Node-Secret")) == secret
+	provided := strings.TrimSpace(c.GetHeader("X-Node-Secret"))
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) == 1
 }
 
 func quotaLeaseDemoHandlerReconcileLimit(raw string) int {

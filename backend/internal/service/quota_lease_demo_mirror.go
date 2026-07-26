@@ -152,17 +152,33 @@ type QuotaLeaseDemoMirrorSnapshot struct {
 	DeletedAPIKeyIDs  []int64                              `json:"deleted_api_key_ids,omitempty"`
 }
 
+// QuotaLeaseDemoAPIKeySnapshot carries a key digest rather than the secret
+// itself: a node only ever needs to recognise a key presented to it, and a
+// stolen node credential must not yield usable keys for the whole platform.
 type QuotaLeaseDemoAPIKeySnapshot struct {
 	ID        int64              `json:"id"`
-	Key       string             `json:"key"`
+	KeyHash   string             `json:"key_hash"`
 	Snapshot  APIKeyAuthSnapshot `json:"snapshot"`
 	CreatedAt time.Time          `json:"created_at,omitempty"`
 	UpdatedAt time.Time          `json:"updated_at,omitempty"`
 }
 
+// QuotaLeaseDemoAPIKeyHash derives the mirror lookup digest for an API key.
+// Nodes store this instead of the secret and match inbound keys against it.
+func QuotaLeaseDemoAPIKeyHash(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
+
+// NewQuotaLeaseDemoAPIKeySnapshot takes the plaintext key but never stores it;
+// only its digest leaves the control plane.
 func NewQuotaLeaseDemoAPIKeySnapshot(key string, snapshot *APIKeyAuthSnapshot) QuotaLeaseDemoAPIKeySnapshot {
 	out := QuotaLeaseDemoAPIKeySnapshot{
-		Key: strings.TrimSpace(key),
+		KeyHash: QuotaLeaseDemoAPIKeyHash(key),
 	}
 	if snapshot != nil {
 		out.ID = snapshot.APIKeyID
