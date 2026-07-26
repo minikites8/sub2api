@@ -135,7 +135,7 @@ const chartOptions = computed(() => ({
 .usage-token-chart { min-height: 390px; }
 .usage-chart-canvas { height: 300px; padding: 8px 18px 18px; }
 .usage-chart-state { display: flex; height: 300px; align-items: center; justify-content: center; color: #83958f; font-size: 13px; }
-.usage-chart-legend { display: flex; flex-wrap: wrap; gap: 16px; color: #91a39d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.usage-chart-legend { display: flex; flex-wrap: wrap; gap: 16px; color: #91a39d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .usage-chart-legend span { display: inline-flex; align-items: center; gap: 7px; }
 .usage-chart-legend__dot { width: 9px; height: 9px; border-radius: 2px; background: #263a39; border: 1px solid #47615c; }
 .usage-chart-legend__dot--output { background: #00f5a8; border-color: #00f5a8; }

@@ -204,19 +204,19 @@ const imageItems = computed<DetailItem[]>(() => {
 }
 
 .usage-request-details__summary > div { min-width: 0; }
-.usage-request-details__summary span { display: block; color: #71877f; font-size: 9px; text-transform: uppercase; }
+.usage-request-details__summary span { display: block; color: #71877f; font-size: 11px; text-transform: uppercase; }
 .usage-request-details__summary strong { display: block; margin-top: 5px; overflow: hidden; color: #f2f7f5; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.usage-request-details__status { display: inline-flex !important; flex: 0 0 auto; align-items: center; gap: 7px; color: #00f5a8 !important; font-size: 10px !important; white-space: nowrap; }
+.usage-request-details__status { display: inline-flex !important; flex: 0 0 auto; align-items: center; gap: 7px; color: #00f5a8 !important; font-size: 12px !important; white-space: nowrap; }
 .usage-request-details__status i { width: 6px; height: 6px; border-radius: 50%; background: #00f5a8; }
 
 .usage-request-details__section { border-top: 1px solid #2b3e38; padding-top: 14px; }
-.usage-request-details__section h4 { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; color: #9db0a9; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+.usage-request-details__section h4 { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; color: #9db0a9; font-size: 12px; font-weight: 600; text-transform: uppercase; }
 .usage-request-details__section h4 :deep(svg) { color: #00f5a8; }
 .usage-request-details__section dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .usage-request-details__section dl > div { min-width: 0; border: 1px solid rgba(72, 96, 89, .46); background: rgba(8, 17, 21, .68); padding: 10px 11px; }
 .usage-request-details__item--wide { grid-column: 1 / -1; }
-.usage-request-details__section dt { color: #748981; font-size: 9px; }
-.usage-request-details__section dd { margin-top: 5px; overflow-wrap: anywhere; color: #d9e4e0; font-size: 11px; line-height: 1.45; }
+.usage-request-details__section dt { color: #748981; font-size: 11px; }
+.usage-request-details__section dd { margin-top: 5px; overflow-wrap: anywhere; color: #d9e4e0; font-size: 12px; line-height: 1.45; }
 .usage-request-details__mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 @media (max-width: 520px) {

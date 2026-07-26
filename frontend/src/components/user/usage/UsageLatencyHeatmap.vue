@@ -134,12 +134,14 @@ const averageFor = (day: string, hour: number | null) => {
   return bucket ? bucket.total / bucket.count : null
 }
 
+// 档位与请求列表保持同一把尺子（<5s 正常、5~10s 偏慢、>10s 过慢），
+// 正常区间再拆出一档 <2s，否则网关的秒级延迟会全部落进同一格。
 const latencyClass = (day: string, hour: number | null) => {
   const value = averageFor(day, hour)
   if (value == null) return 'usage-heatmap__cell--empty'
-  if (value < 100) return 'usage-heatmap__cell--fast'
-  if (value < 300) return 'usage-heatmap__cell--normal'
-  if (value < 600) return 'usage-heatmap__cell--slow'
+  if (value < 2000) return 'usage-heatmap__cell--fast'
+  if (value < 5000) return 'usage-heatmap__cell--normal'
+  if (value <= 10000) return 'usage-heatmap__cell--slow'
   return 'usage-heatmap__cell--critical'
 }
 
@@ -157,39 +159,39 @@ const dailyLatencyLabel = (day: string) => {
 }
 
 const legend = computed(() => [
-  { label: '< 100ms', className: 'usage-heatmap__key usage-heatmap__key--fast' },
-  { label: '100–300ms', className: 'usage-heatmap__key usage-heatmap__key--normal' },
-  { label: '300–600ms', className: 'usage-heatmap__key usage-heatmap__key--slow' },
-  { label: '> 600ms', className: 'usage-heatmap__key usage-heatmap__key--critical' },
+  { label: '< 2s', className: 'usage-heatmap__key usage-heatmap__key--fast' },
+  { label: '2–5s', className: 'usage-heatmap__key usage-heatmap__key--normal' },
+  { label: '5–10s', className: 'usage-heatmap__key usage-heatmap__key--slow' },
+  { label: '> 10s', className: 'usage-heatmap__key usage-heatmap__key--critical' },
 ])
 </script>
 
 <style scoped>
 .usage-heatmap__header { align-items: flex-end; }
 .usage-heatmap__header p:last-child { margin-top: 5px; color: #7d8f89; font-size: 12px; }
-.usage-heatmap__legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; color: #91a39d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.usage-heatmap__legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; color: #91a39d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .usage-heatmap__legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.usage-heatmap__key { width: 9px; height: 9px; border: 1px solid #263934; background: #0a1316; }
+.usage-heatmap__key { width: 9px; height: 9px; border: 1px solid #263934; background: #00f5a8; }
 .usage-heatmap__key--normal { background: #0e4e3d; }
-.usage-heatmap__key--slow { background: #00a974; }
-.usage-heatmap__key--critical { background: #ffa59e; }
+.usage-heatmap__key--slow { background: #ffbd59; }
+.usage-heatmap__key--critical { background: #ff9f97; }
 .usage-heatmap__scroll { overflow-x: auto; padding: 5px 18px 22px; scrollbar-width: thin; scrollbar-color: #30443f transparent; }
 .usage-heatmap__grid { display: grid; grid-template-columns: 54px repeat(var(--heatmap-columns), minmax(45px, 1fr)); min-width: 720px; gap: 5px; }
-.usage-heatmap__corner, .usage-heatmap__hour, .usage-heatmap__date { display: flex; align-items: center; color: #879991; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; }
+.usage-heatmap__corner, .usage-heatmap__hour, .usage-heatmap__date { display: flex; align-items: center; color: #879991; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .usage-heatmap__corner, .usage-heatmap__hour { height: 24px; }
 .usage-heatmap__hour { justify-content: center; }
 .usage-heatmap__date { min-height: 25px; }
 .usage-heatmap__cell { min-height: 25px; border: 1px solid #20322e; background: #0a1316; transition: transform .12s ease, border-color .12s ease; }
 .usage-heatmap__cell:hover { z-index: 1; transform: scale(1.08); border-color: #9cb0a9; }
-.usage-heatmap__cell--fast { background: #102620; }
+.usage-heatmap__cell--fast { background: #00f5a8; }
 .usage-heatmap__cell--normal { background: #0e4e3d; }
-.usage-heatmap__cell--slow { background: #00a974; }
-.usage-heatmap__cell--critical { border-color: #ffb8b2; background: #ffa59e; }
+.usage-heatmap__cell--slow { background: #ffbd59; }
+.usage-heatmap__cell--critical { border-color: #ffb8b2; background: #ff9f97; }
 .usage-heatmap__calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 630px; gap: 7px; }
-.usage-heatmap__weekday { padding: 4px 8px 7px; color: #879991; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; text-align: center; text-transform: uppercase; }
+.usage-heatmap__weekday { padding: 4px 8px 7px; color: #879991; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; text-align: center; text-transform: uppercase; }
 .usage-heatmap__calendar-blank { min-height: 64px; border: 1px dashed rgba(48, 68, 63, .28); background: rgba(5, 11, 14, .25); }
 .usage-heatmap__calendar-day { display: flex; min-height: 64px; flex-direction: column; justify-content: space-between; padding: 8px 10px; }
-.usage-heatmap__calendar-day span { color: #b8c7c2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.usage-heatmap__calendar-day span { color: #b8c7c2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .usage-heatmap__calendar-day strong { align-self: flex-end; color: #eff7f4; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .usage-heatmap__calendar-day.usage-heatmap__cell--critical span,
 .usage-heatmap__calendar-day.usage-heatmap__cell--critical strong { color: #2c1717; }

@@ -108,9 +108,9 @@ const getPercentage = (value: number) => totalUsd.value > 0
 .usage-model-chart__donut { position: relative; width: 190px; height: 190px; flex: none; }
 .usage-model-chart__total { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
 .usage-model-chart__total strong { color: #f2f7f5; font-size: 20px; line-height: 1.1; }
-.usage-model-chart__total span { margin-top: 5px; color: #73867f; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; letter-spacing: 0; }
+.usage-model-chart__total span { margin-top: 5px; color: #73867f; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; letter-spacing: 0; }
 .usage-model-chart__legend { display: grid; width: 100%; gap: 7px; }
-.usage-model-chart__row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto 34px; align-items: center; gap: 8px; border: 1px solid rgba(72, 96, 89, .55); background: rgba(4, 10, 13, .45); padding: 7px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.usage-model-chart__row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto 34px; align-items: center; gap: 8px; border: 1px solid rgba(72, 96, 89, .55); background: rgba(4, 10, 13, .45); padding: 7px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .usage-model-chart__swatch { width: 8px; height: 8px; border-radius: 50%; }
 .usage-model-chart__name { overflow: hidden; color: #c6d2ce; text-overflow: ellipsis; white-space: nowrap; }
 .usage-model-chart__row strong { color: #edf5f2; font-weight: 600; }
