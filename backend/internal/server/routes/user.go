@@ -125,5 +125,18 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		// 开票申请与查询
+		if h.Invoice != nil {
+			invoices := authenticated.Group("/invoices")
+			{
+				invoices.GET("", h.Invoice.List)
+				invoices.POST("", h.Invoice.Create)
+				// 放在 /:id 之前，否则 invoiceable-orders 会被当成 id 匹配。
+				invoices.GET("/invoiceable-orders", h.Invoice.ListInvoiceableOrders)
+				invoices.GET("/:id", h.Invoice.Get)
+				invoices.POST("/:id/cancel", h.Invoice.Cancel)
+			}
+		}
 	}
 }

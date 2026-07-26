@@ -40,6 +40,7 @@ type AdminHandlers struct {
 	Payment                *admin.PaymentHandler
 	Affiliate              *admin.AffiliateHandler
 	Compliance             *admin.ComplianceHandler
+	Invoice                *admin.InvoiceHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -64,6 +65,7 @@ type Handlers struct {
 	AvailableChannel *AvailableChannelHandler
 	PublicTransit    *PublicTransitHandler
 	BatchImage       *BatchImageHandler
+	Invoice          *InvoiceHandler
 }
 
 // BuildInfo contains build-time information

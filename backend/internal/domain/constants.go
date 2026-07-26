@@ -50,6 +50,24 @@ const (
 	PromoCodeStatusDisabled = "disabled"
 )
 
+// Invoice status constants
+//
+// 开票为人工流程：用户提交申请后由管理员在税控系统线下开具，再回填发票号或
+// 附件链接。因此状态机是 pending -> issued / rejected，另有用户自行撤回的
+// cancelled。只有 pending 和 issued 会占用订单（见 invoice_items.active）。
+const (
+	InvoiceStatusPending   = "pending"
+	InvoiceStatusIssued    = "issued"
+	InvoiceStatusRejected  = "rejected"
+	InvoiceStatusCancelled = "cancelled"
+)
+
+// Invoice entity type constants
+const (
+	InvoiceEntityCompany    = "company"
+	InvoiceEntityIndividual = "individual"
+)
+
 // Admin adjustment type constants
 const (
 	AdjustmentTypeAdminBalance     = "admin_balance"     // 管理员调整余额

@@ -758,6 +758,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/models', label: t('nav.channelStatus'), icon: SignalIcon },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true },
+    { path: '/invoices', label: t('nav.invoices'), icon: OrderIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
@@ -781,8 +782,8 @@ const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(tru
 const userPrimaryNavItems = computed((): NavItem[] => {
   const items = userNavItems.value
   const preferredOrder = isGuest.value
-    ? ['/models', '/dashboard', '/keys', '/usage', '/purchase', '/batch-image', '/available-channels', '/affiliate', '/profile']
-    : ['/dashboard', '/models', '/keys', '/usage', '/purchase', '/batch-image', '/available-channels', '/affiliate', '/profile']
+    ? ['/models', '/dashboard', '/keys', '/usage', '/purchase', '/invoices', '/batch-image', '/available-channels', '/affiliate', '/profile']
+    : ['/dashboard', '/models', '/keys', '/usage', '/purchase', '/invoices', '/batch-image', '/available-channels', '/affiliate', '/profile']
   const ordered = preferredOrder.flatMap((path) => items.filter((item) => item.path === path))
   const customItems = items.filter((item) => item.path.startsWith('/custom/'))
   return [...ordered, ...customItems]
@@ -820,7 +821,7 @@ function buildSelfNavGroups(items: NavItem[], options: { includeOverview: boolea
     },
     {
       title: `${prefix}${groupTitle('订阅与余额', 'Billing')}`,
-      items: pickItems(items, ['/purchase'])
+      items: pickItems(items, ['/purchase', '/invoices'])
     },
     {
       title: `${prefix}${groupTitle('账户', 'Account')}`,
@@ -917,6 +918,7 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
       ],
     },
+    { path: '/admin/invoices', label: t('admin.invoices.title'), icon: OrderIcon, hideInSimpleMode: true },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/daily-checkins', label: t('nav.dailyCheckins'), icon: GiftIcon, hideInSimpleMode: true }
   ]
@@ -962,7 +964,7 @@ const adminNavGroups = computed((): NavGroup[] => {
     },
     {
       title: groupTitle('商业', 'Commerce'),
-      items: pickItems(items, ['/admin/redeem', '/admin/promo-codes', '/admin/affiliates', '/admin/orders'])
+      items: pickItems(items, ['/admin/redeem', '/admin/promo-codes', '/admin/affiliates', '/admin/orders', '/admin/invoices'])
     },
     {
       title: groupTitle('系统', 'System'),

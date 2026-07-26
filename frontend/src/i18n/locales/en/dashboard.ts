@@ -719,6 +719,78 @@ export default {
     }
   },
 
+  // Invoice
+  invoice: {
+    title: 'Invoices',
+    description: 'Request invoices for paid orders and review past requests.',
+    tabs: {
+      apply: 'Request an invoice',
+      history: 'Invoice history'
+    },
+    apply: {
+      title: 'Request an invoice',
+      description: 'Pick the orders to invoice and fill in your billing details.',
+      billingTitle: 'Billing information',
+      entityType: 'Entity type',
+      entityCompany: 'Company',
+      entityIndividual: 'Individual',
+      invoiceTitle: 'Invoice title',
+      invoiceTitlePlaceholderCompany: 'e.g. Acme Corp LLC',
+      invoiceTitlePlaceholderIndividual: 'e.g. Jane Doe',
+      taxId: 'Tax ID / VAT number',
+      taxIdPlaceholder: 'e.g. US123456789',
+      taxIdIndividualHint: 'A tax ID is not needed for an individual invoice.',
+      deliveryEmail: 'Delivery email',
+      deliveryEmailPlaceholder: 'billing@example.com',
+      deliveryEmailHint: 'The invoice is sent to this address once it is issued.',
+      notes: 'Additional notes (optional)',
+      notesPlaceholder: 'PO number, specific department, etc.',
+      ordersTitle: 'Uninvoiced orders',
+      ordersHint: 'Select the orders to invoice',
+      ordersEmpty: 'No orders are available to invoice',
+      selectAll: 'Select all',
+      columnDescription: 'Order',
+      columnDate: 'Paid',
+      columnAmount: 'Amount',
+      summaryTitle: 'Summary',
+      summarySelected: 'Selected orders ({count})',
+      summaryTotal: 'Total',
+      submit: 'Submit request',
+      submitting: 'Submitting...',
+      manualHint: 'Invoices are issued by our team. Track progress under Invoice history.',
+      submitSuccess: 'Request submitted, reference {invoiceNo}',
+      submitFailed: 'Failed to submit the invoice request',
+      loadOrdersFailed: 'Failed to load invoiceable orders'
+    },
+    history: {
+      title: 'Invoice history',
+      description: 'Review past invoice requests and their results.',
+      searchPlaceholder: 'Search by reference or invoice number...',
+      allStatuses: 'All statuses',
+      empty: 'No invoice requests yet',
+      columnDate: 'Requested',
+      columnInvoiceNo: 'Reference',
+      columnAmount: 'Amount',
+      columnStatus: 'Status',
+      columnAction: 'Action',
+      download: 'Download invoice',
+      cancel: 'Withdraw request',
+      cancelConfirm: 'Withdrawing frees the selected orders to be invoiced again. Continue?',
+      cancelSuccess: 'Invoice request withdrawn',
+      cancelFailed: 'Failed to withdraw the invoice request',
+      loadFailed: 'Failed to load invoice requests',
+      issuedNo: 'Invoice number',
+      rejectReason: 'Reason',
+      showing: '{total} requests'
+    },
+    status: {
+      pending: 'Pending',
+      issued: 'Issued',
+      rejected: 'Rejected',
+      cancelled: 'Withdrawn'
+    }
+  },
+
   // Redeem
   redeem: {
     title: 'Redeem Code',

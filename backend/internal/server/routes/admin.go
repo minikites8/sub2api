@@ -111,6 +111,9 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// 开票申请处理
+		registerInvoiceRoutes(admin, h)
 	}
 }
 
@@ -722,5 +725,19 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			users.PUT("/:user_id", h.Admin.Affiliate.UpdateUserSettings)
 			users.DELETE("/:user_id", h.Admin.Affiliate.ClearUserSettings)
 		}
+	}
+}
+
+// registerInvoiceRoutes 注册开票申请的管理端路由。
+// 开票本身在税控系统线下完成，这里只负责查看申请、回填结果或驳回。
+func registerInvoiceRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin == nil || h.Admin.Invoice == nil {
+		return
+	}
+	invoices := admin.Group("/invoices")
+	{
+		invoices.GET("", h.Admin.Invoice.List)
+		invoices.POST("/:id/issue", h.Admin.Invoice.Issue)
+		invoices.POST("/:id/reject", h.Admin.Invoice.Reject)
 	}
 }

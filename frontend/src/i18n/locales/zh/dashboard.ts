@@ -724,6 +724,78 @@ export default {
     }
   },
 
+  // Invoice
+  invoice: {
+    title: '发票',
+    description: '为已支付的订单申请发票，并查询历史开票记录。',
+    tabs: {
+      apply: '申请开票',
+      history: '历史发票'
+    },
+    apply: {
+      title: '申请开票',
+      description: '选择需要开票的订单并填写开票信息。',
+      billingTitle: '开票信息',
+      entityType: '开票类型',
+      entityCompany: '企业',
+      entityIndividual: '个人',
+      invoiceTitle: '发票抬头',
+      invoiceTitlePlaceholderCompany: '如：某某科技有限公司',
+      invoiceTitlePlaceholderIndividual: '如：张三',
+      taxId: '纳税人识别号',
+      taxIdPlaceholder: '如：91110000XXXXXXXXXX',
+      taxIdIndividualHint: '个人开票无需填写纳税人识别号。',
+      deliveryEmail: '接收邮箱',
+      deliveryEmailPlaceholder: 'billing@example.com',
+      deliveryEmailHint: '开票完成后发票将发送至该邮箱。',
+      notes: '备注（选填）',
+      notesPlaceholder: '采购单号、部门等信息',
+      ordersTitle: '待开票订单',
+      ordersHint: '勾选需要开票的订单',
+      ordersEmpty: '暂无可开票的订单',
+      selectAll: '全选',
+      columnDescription: '订单',
+      columnDate: '支付时间',
+      columnAmount: '金额',
+      summaryTitle: '开票汇总',
+      summarySelected: '已选订单（{count}）',
+      summaryTotal: '合计',
+      submit: '提交开票申请',
+      submitting: '提交中...',
+      manualHint: '发票由工作人员线下开具，开具后可在「历史发票」中查看。',
+      submitSuccess: '开票申请已提交，编号 {invoiceNo}',
+      submitFailed: '提交开票申请失败',
+      loadOrdersFailed: '加载可开票订单失败'
+    },
+    history: {
+      title: '历史发票',
+      description: '查询过往开票申请与开具结果。',
+      searchPlaceholder: '搜索申请编号或发票号码...',
+      allStatuses: '全部状态',
+      empty: '暂无开票记录',
+      columnDate: '申请时间',
+      columnInvoiceNo: '申请编号',
+      columnAmount: '金额',
+      columnStatus: '状态',
+      columnAction: '操作',
+      download: '下载发票',
+      cancel: '撤回申请',
+      cancelConfirm: '撤回后所选订单可重新开票，确认撤回？',
+      cancelSuccess: '开票申请已撤回',
+      cancelFailed: '撤回开票申请失败',
+      loadFailed: '加载开票记录失败',
+      issuedNo: '发票号码',
+      rejectReason: '驳回原因',
+      showing: '共 {total} 条记录'
+    },
+    status: {
+      pending: '待开具',
+      issued: '已开具',
+      rejected: '已驳回',
+      cancelled: '已撤回'
+    }
+  },
+
   // Redeem
   redeem: {
     title: '兑换码',

@@ -35,6 +35,7 @@ import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
 import dailyCheckinsAPI from './dailyCheckins'
+import invoicesAPI from './invoices'
 import nodeLeasesAPI from './nodeLeases'
 
 /**
@@ -73,6 +74,7 @@ export const adminAPI = {
   riskControl: riskControlAPI,
   compliance: adminComplianceAPI,
   dailyCheckins: dailyCheckinsAPI,
+  invoices: invoicesAPI,
   nodeLeases: nodeLeasesAPI
 }
 
@@ -109,6 +111,7 @@ export {
   riskControlAPI,
   adminComplianceAPI,
   dailyCheckinsAPI,
+  invoicesAPI,
   nodeLeasesAPI
 }
 

@@ -596,5 +596,42 @@ export default {
       }
     },
 
+    invoices: {
+      title: '开票申请',
+      description: '处理用户提交的开票申请。发票在税控系统线下开具后，在此回填发票号码。',
+      searchPlaceholder: '搜索申请编号或发票号码...',
+      allStatuses: '全部状态',
+      empty: '暂无开票申请',
+      columnCreatedAt: '申请时间',
+      columnInvoiceNo: '申请编号',
+      columnEntity: '开票类型',
+      columnTitle: '发票抬头',
+      columnTaxId: '纳税人识别号',
+      columnEmail: '接收邮箱',
+      columnAmount: '金额',
+      columnOrders: '覆盖订单',
+      columnStatus: '状态',
+      columnAction: '操作',
+      orderCount: '{count} 笔',
+      issue: '回填发票',
+      reject: '驳回',
+      issueTitle: '回填发票信息',
+      issuedNo: '发票号码',
+      issuedNoPlaceholder: '税控系统开具的发票号码',
+      issuedFileUrl: '发票文件地址（选填）',
+      issuedFileUrlPlaceholder: 'https://...',
+      issueSubmit: '确认已开具',
+      issueSuccess: '发票信息已回填',
+      issueFailed: '回填发票信息失败',
+      rejectTitle: '驳回开票申请',
+      rejectReason: '驳回原因',
+      rejectReasonPlaceholder: '说明需要用户修正的内容，例如抬头与税号不匹配',
+      rejectHint: '驳回后所选订单将释放，用户可修正后重新提交。',
+      rejectSubmit: '确认驳回',
+      rejectSuccess: '开票申请已驳回',
+      rejectFailed: '驳回开票申请失败',
+      loadFailed: '加载开票申请失败'
+    },
+
     // Ops Monitoring
 }

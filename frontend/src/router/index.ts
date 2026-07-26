@@ -299,6 +299,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/invoices',
+    name: 'Invoices',
+    component: () => import('@/views/user/InvoiceView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Invoices',
+      titleKey: 'invoice.title',
+      descriptionKey: 'invoice.description'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),
@@ -693,6 +705,17 @@ const routes: RouteRecordRaw[] = [
       title: 'Payment Dashboard',
       titleKey: 'nav.paymentDashboard',
       requiresPayment: true
+    }
+  },
+  {
+    path: '/admin/invoices',
+    name: 'AdminInvoices',
+    component: () => import('@/views/admin/AdminInvoicesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Invoice Requests',
+      titleKey: 'admin.invoices.title'
     }
   },
   {

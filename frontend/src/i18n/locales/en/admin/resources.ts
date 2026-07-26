@@ -599,5 +599,42 @@ export default {
       }
     },
 
+    invoices: {
+      title: 'Invoice requests',
+      description: 'Handle invoice requests. Issue the invoice in the tax system, then record its number here.',
+      searchPlaceholder: 'Search by reference or invoice number...',
+      allStatuses: 'All statuses',
+      empty: 'No invoice requests',
+      columnCreatedAt: 'Requested',
+      columnInvoiceNo: 'Reference',
+      columnEntity: 'Entity',
+      columnTitle: 'Invoice title',
+      columnTaxId: 'Tax ID',
+      columnEmail: 'Delivery email',
+      columnAmount: 'Amount',
+      columnOrders: 'Orders',
+      columnStatus: 'Status',
+      columnAction: 'Action',
+      orderCount: '{count} orders',
+      issue: 'Record invoice',
+      reject: 'Reject',
+      issueTitle: 'Record the issued invoice',
+      issuedNo: 'Invoice number',
+      issuedNoPlaceholder: 'Number from the tax system',
+      issuedFileUrl: 'Invoice file URL (optional)',
+      issuedFileUrlPlaceholder: 'https://...',
+      issueSubmit: 'Mark as issued',
+      issueSuccess: 'Invoice recorded',
+      issueFailed: 'Failed to record the invoice',
+      rejectTitle: 'Reject the invoice request',
+      rejectReason: 'Reason',
+      rejectReasonPlaceholder: 'Tell the user what to fix, e.g. the tax ID does not match the company name',
+      rejectHint: 'Rejecting frees the covered orders so the user can correct and resubmit.',
+      rejectSubmit: 'Reject request',
+      rejectSuccess: 'Invoice request rejected',
+      rejectFailed: 'Failed to reject the invoice request',
+      loadFailed: 'Failed to load invoice requests'
+    },
+
     // Ops Monitoring
 }
