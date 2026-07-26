@@ -710,7 +710,10 @@ export default {
         username: '用户名',
         rebate: '返利明细',
         joinedAt: '注册时间'
-      }
+      },
+      noDataToExport: '没有可导出的邀请记录',
+      exportSuccess: '邀请记录导出成功',
+      exportFailed: '邀请记录导出失败'
     },
     tips: {
       title: '使用说明',
@@ -783,6 +786,10 @@ export default {
     securityDescription: '密码、双因素认证和通知提醒集中放在右侧。',
     accountSession: '账户会话',
     logoutDescription: '退出当前设备上的登录状态。',
+    navProfile: '个人资料',
+    navSecurity: '安全',
+    navNotifications: '通知',
+    navAccount: '退出账户',
     administrator: '管理员',
     user: '用户',
     username: '用户名',
@@ -791,6 +798,9 @@ export default {
     role: '角色',
     enterUsername: '输入用户名',
     editProfile: '编辑个人资料',
+    editUsername: {
+      title: '修改用户名'
+    },
     updateProfile: '更新资料',
     updating: '更新中...',
     updateSuccess: '资料更新成功',

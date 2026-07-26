@@ -705,7 +705,10 @@ export default {
         username: 'Username',
         rebate: 'Rebate',
         joinedAt: 'Joined At'
-      }
+      },
+      noDataToExport: 'No invitee records to export',
+      exportSuccess: 'Invitee records exported successfully',
+      exportFailed: 'Failed to export invitee records'
     },
     tips: {
       title: 'How It Works',
@@ -778,6 +781,10 @@ export default {
     securityDescription: 'Password, two-factor authentication, and alerts live in the right rail.',
     accountSession: 'Account Session',
     logoutDescription: 'Sign out of your account on this device.',
+    navProfile: 'Profile',
+    navSecurity: 'Security',
+    navNotifications: 'Notifications',
+    navAccount: 'Log Out',
     administrator: 'Administrator',
     user: 'User',
     username: 'Username',
@@ -786,6 +793,9 @@ export default {
     role: 'Role',
     enterUsername: 'Enter username',
     editProfile: 'Edit Profile',
+    editUsername: {
+      title: 'Edit Username'
+    },
     updateProfile: 'Update Profile',
     updating: 'Updating...',
     updateSuccess: 'Profile updated successfully',

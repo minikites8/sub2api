@@ -33,6 +33,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.memberSince') return 'Member Since'
         if (key === 'profile.administrator') return 'Administrator'
         if (key === 'profile.user') return 'User'
+        if (key === 'common.edit') return 'Edit'
         if (key === 'profile.authBindings.providers.email') return 'Email'
         if (key === 'profile.authBindings.providers.linuxdo') return 'LinuxDo'
         if (key === 'profile.authBindings.providers.wechat') return 'WeChat'
@@ -43,17 +44,6 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.authBindings.source.username') {
           return `Username synced from ${params?.providerName || 'provider'}`
         }
-        if (key === 'profile.referralCodesTitle') return 'Promo & Affiliate Codes'
-        if (key === 'profile.referralCodesDescription') return 'Review account promo and affiliate info'
-        if (key === 'profile.myAffiliateCode') return 'My Affiliate Code'
-        if (key === 'profile.affiliateInviterBound') return 'Affiliate inviter bound'
-        if (key === 'profile.affiliateInviterEmpty') return 'No affiliate inviter bound'
-        if (key === 'profile.usedAffiliateCode') return 'Used Affiliate Code'
-        if (key === 'profile.usedPromoCodes') return 'Used Promo Codes'
-        if (key === 'profile.noUsedPromoCodes') return 'No platform promo codes used yet'
-        if (key === 'profile.promoBonusAmount') return `Bonus ${params?.amount || ''}`.trim()
-        if (key === 'profile.promoUsed') return 'Used'
-        if (key === 'common.none') return 'None'
         return key
       }
     })
@@ -80,6 +70,14 @@ function createUser(overrides: Partial<User> = {}): User {
   }
 }
 
+const STUBS = {
+  Icon: true,
+  EditUsernameModal: {
+    props: ['show', 'currentUsername'],
+    template: '<div data-testid="edit-username-modal-stub" :data-show="show" />'
+  }
+}
+
 describe('ProfileInfoCard', () => {
   it('renders basic account information inside the new overview shell', () => {
     const wrapper = mount(ProfileInfoCard, {
@@ -87,17 +85,32 @@ describe('ProfileInfoCard', () => {
         user: createUser()
       },
       global: {
-        stubs: {
-          Icon: true
-        }
+        stubs: STUBS
       }
     })
 
     expect(wrapper.text()).toContain('alice@example.com')
     expect(wrapper.text()).toContain('alice')
     expect(wrapper.text()).toContain('User')
-    expect(wrapper.get('[data-testid="profile-basics-panel"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="profile-auth-bindings-panel"]').exists()).toBe(true)
+  })
+
+  it('opens the edit-username modal when the edit button is clicked', async () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser()
+      },
+      global: {
+        stubs: STUBS
+      }
+    })
+
+    const modal = wrapper.get('[data-testid="edit-username-modal-stub"]')
+    expect(modal.attributes('data-show')).toBe('false')
+
+    await wrapper.get('[data-testid="profile-edit-username-button"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="edit-username-modal-stub"]').attributes('data-show')).toBe('true')
   })
 
   it('renders third-party source hints from profile sources', () => {
@@ -112,9 +125,7 @@ describe('ProfileInfoCard', () => {
         })
       },
       global: {
-        stubs: {
-          Icon: true
-        }
+        stubs: STUBS
       }
     })
 
@@ -133,9 +144,7 @@ describe('ProfileInfoCard', () => {
         oidcProviderName: 'ExampleID'
       },
       global: {
-        stubs: {
-          Icon: true
-        }
+        stubs: STUBS
       }
     })
 
@@ -154,9 +163,7 @@ describe('ProfileInfoCard', () => {
         })
       },
       global: {
-        stubs: {
-          Icon: true
-        }
+        stubs: STUBS
       }
     })
 
@@ -174,24 +181,20 @@ describe('ProfileInfoCard', () => {
         })
       },
       global: {
-        stubs: {
-          Icon: true
-        }
+        stubs: STUBS
       }
     })
 
     expect(wrapper.text()).not.toContain('legacy-user@wechat-connect.invalid')
   })
 
-  it('renders the approved overview hero and two-column content shell', () => {
+  it('renders a single-column shell when there are no linked-source hints to show', () => {
     const wrapper = mount(ProfileInfoCard, {
       props: {
         user: createUser()
       },
       global: {
-        stubs: {
-          Icon: true
-        }
+        stubs: STUBS
       }
     })
 
@@ -199,44 +202,25 @@ describe('ProfileInfoCard', () => {
     expect(wrapper.get('[data-testid="profile-overview-metric-balance"]').text()).toContain('Account Balance')
     expect(wrapper.get('[data-testid="profile-overview-metric-concurrency"]').text()).toContain('Concurrency Limit')
     expect(wrapper.get('[data-testid="profile-overview-metric-member-since"]').text()).toContain('Member Since')
-    expect(wrapper.find('[data-testid="profile-info-summary-grid"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="profile-main-column"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="profile-side-column"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="profile-basics-panel"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="profile-auth-bindings-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="profile-side-column"]').exists()).toBe(false)
   })
 
-  it('renders used promo codes and affiliate code information', () => {
+  it('renders the side column only when there are linked-source hints', () => {
     const wrapper = mount(ProfileInfoCard, {
       props: {
         user: createUser({
-          affiliate: {
-            aff_code: 'AFF123',
-            inviter_id: 99,
-            inviter_aff_code: 'INVITER99'
-          },
-          used_promo_codes: [
-            {
-              code: 'PARTNER50',
-              bonus_amount: 5,
-              used_at: '2026-06-17T08:00:00Z'
-            }
-          ]
+          profile_sources: {
+            username: { provider: 'linuxdo', source: 'linuxdo' }
+          }
         })
       },
       global: {
-        stubs: {
-          Icon: true
-        }
+        stubs: STUBS
       }
     })
 
-    const panel = wrapper.get('[data-testid="profile-referral-codes-panel"]')
-    expect(panel.text()).toContain('AFF123')
-    expect(panel.text()).toContain('Affiliate inviter bound')
-    expect(panel.text()).toContain('Used Affiliate Code')
-    expect(panel.text()).toContain('INVITER99')
-    expect(panel.text()).toContain('PARTNER50')
-    expect(panel.text()).toContain('Bonus $5.00')
+    expect(wrapper.get('[data-testid="profile-side-column"]').exists()).toBe(true)
   })
 })

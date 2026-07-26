@@ -24,6 +24,15 @@
                 <h2 class="truncate text-2xl font-semibold text-gray-900 dark:text-white">
                   {{ displayName }}
                 </h2>
+                <button
+                  type="button"
+                  class="profile-edit-username-button"
+                  data-testid="profile-edit-username-button"
+                  @click="showEditUsernameModal = true"
+                >
+                  <Icon name="edit" size="sm" />
+                  {{ t('common.edit') }}
+                </button>
                 <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : 'badge-gray']">
                   {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') }}
                 </span>
@@ -98,40 +107,8 @@
       </div>
     </section>
 
-    <div class="profile-content-grid">
+    <div class="profile-content-grid" :class="{ 'profile-content-grid-full': !sourceHints.length }">
       <div data-testid="profile-main-column" class="space-y-6">
-        <section
-          data-testid="profile-basics-panel"
-          class="profile-section"
-        >
-          <div class="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t('profile.basicsTitle') }}
-              </h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t('profile.basicsDescription') }}
-              </p>
-            </div>
-          </div>
-
-          <div class="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
-            <div class="profile-subsection">
-              <ProfileAvatarCard
-                :user="user"
-                embedded
-              />
-            </div>
-
-            <div class="profile-subsection">
-              <ProfileEditForm
-                :initial-username="user?.username || ''"
-                embedded
-              />
-            </div>
-          </div>
-        </section>
-
         <section
           data-testid="profile-auth-bindings-panel"
           class="profile-section"
@@ -151,89 +128,12 @@
         </section>
       </div>
 
-      <div data-testid="profile-side-column" class="space-y-6">
-        <section
-          data-testid="profile-referral-codes-panel"
-          class="profile-section"
-        >
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.referralCodesTitle') }}
-          </h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('profile.referralCodesDescription') }}
-          </p>
-
-          <div class="mt-5 space-y-4">
-            <div class="profile-subsection">
-              <div class="flex items-center justify-between gap-3">
-                <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
-                  {{ t('profile.myAffiliateCode') }}
-                </span>
-                <span
-                  v-if="affiliateCode"
-                  class="profile-code-chip"
-                >
-                  {{ affiliateCode }}
-                </span>
-                <span v-else class="text-sm text-gray-400 dark:text-gray-500">
-                  {{ t('common.none') }}
-                </span>
-              </div>
-              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {{
-                  inviterBound
-                    ? t('profile.affiliateInviterBound')
-                    : t('profile.affiliateInviterEmpty')
-                }}
-              </p>
-              <div
-                v-if="inviterAffiliateCode"
-                class="profile-list-row mt-3 text-sm"
-              >
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {{ t('profile.usedAffiliateCode') }}
-                </span>
-                <span class="font-mono font-semibold text-gray-800 dark:text-gray-100">
-                  {{ inviterAffiliateCode }}
-                </span>
-              </div>
-            </div>
-
-            <div class="profile-subsection">
-              <div class="mb-3 flex items-center justify-between gap-3">
-                <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
-                  {{ t('profile.usedPromoCodes') }}
-                </span>
-                <span class="text-xs text-gray-400 dark:text-gray-500">
-                  {{ usedPromoCodes.length }}
-                </span>
-              </div>
-
-              <div v-if="usedPromoCodes.length" class="space-y-2">
-                <div
-                  v-for="usage in usedPromoCodes"
-                  :key="`${usage.code}-${usage.used_at}`"
-                  class="profile-list-row"
-                >
-                  <span class="font-mono font-semibold text-gray-800 dark:text-gray-100">
-                    {{ usage.code }}
-                  </span>
-                  <span class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ formatPromoUsageLabel(usage) }}
-                  </span>
-                </div>
-              </div>
-              <p v-else class="text-sm text-gray-500 dark:text-gray-400">
-                {{ t('profile.noUsedPromoCodes') }}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section
-          v-if="sourceHints.length"
-          class="profile-section"
-        >
+      <div
+        v-if="sourceHints.length"
+        data-testid="profile-side-column"
+        class="space-y-6"
+      >
+        <section class="profile-section">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('profile.linkedProfileSources') }}
           </h3>
@@ -254,17 +154,22 @@
         </section>
       </div>
     </div>
+
+    <EditUsernameModal
+      :show="showEditUsernameModal"
+      :current-username="user?.username || ''"
+      @close="showEditUsernameModal = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
-import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
+import EditUsernameModal from '@/components/user/profile/EditUsernameModal.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
-import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext, UserPromoCodeUsage } from '@/types'
+import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext } from '@/types'
 
 const props = withDefaults(defineProps<{
   user: User | null
@@ -286,6 +191,8 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
+
+const showEditUsernameModal = ref(false)
 
 function normalizeBindingStatus(binding: boolean | UserAuthBindingStatus | undefined): boolean | null {
   if (typeof binding === 'boolean') {
@@ -323,10 +230,6 @@ const primaryEmailDisplay = computed(() => {
   return email
 })
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
-const usedPromoCodes = computed(() => props.user?.used_promo_codes ?? [])
-const affiliateCode = computed(() => props.user?.affiliate?.aff_code?.trim() || '')
-const inviterAffiliateCode = computed(() => props.user?.affiliate?.inviter_aff_code?.trim() || '')
-const inviterBound = computed(() => Boolean(props.user?.affiliate?.inviter_id))
 const memberSinceLabel = computed(() => {
   const raw = props.user?.created_at?.trim()
   if (!raw) {
@@ -356,27 +259,6 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
 
 function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`
-}
-
-function formatPromoUsageLabel(usage: UserPromoCodeUsage): string {
-  const bonus = Number(usage.bonus_amount || 0)
-  if (bonus > 0) {
-    return t('profile.promoBonusAmount', { amount: formatCurrency(bonus) })
-  }
-
-  const rawDate = usage.used_at?.trim()
-  if (!rawDate) {
-    return t('profile.promoUsed')
-  }
-  const date = new Date(rawDate)
-  if (Number.isNaN(date.getTime())) {
-    return t('profile.promoUsed')
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  }).format(date)
 }
 
 function normalizeProvider(value: string): UserAuthProvider | null {
@@ -491,6 +373,12 @@ const sourceHints = computed(() => {
   background: var(--md-surface);
   color: var(--md-on-surface);
   box-shadow: none;
+  transition: border-color 0.2s ease;
+}
+
+.profile-overview-surface:hover,
+.profile-section:hover {
+  border-color: var(--md-primary);
 }
 
 .profile-overview-surface {
@@ -509,8 +397,26 @@ const sourceHints = computed(() => {
   box-shadow: none;
 }
 
-.profile-source-chip,
-.profile-code-chip {
+.profile-edit-username-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 999px;
+  background: none;
+  padding: 0.25rem 0.75rem;
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.profile-edit-username-button:hover {
+  border-color: var(--md-primary);
+  color: var(--md-primary);
+}
+
+.profile-source-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -521,34 +427,22 @@ const sourceHints = computed(() => {
   padding: 0.25rem 0.75rem;
 }
 
-.profile-code-chip {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--md-on-surface);
-}
-
-.profile-metric,
-.profile-subsection,
-.profile-list-row {
+.profile-metric {
   border: 1px solid var(--md-outline-variant);
   border-radius: 10px;
   background: var(--md-surface-container-low);
   box-shadow: none;
-}
-
-.profile-metric {
   padding: 0.875rem 1rem;
-}
-
-.profile-subsection {
-  padding: 1rem;
 }
 
 .profile-list-row {
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px;
+  background: var(--md-surface-container-low);
+  box-shadow: none;
   padding: 0.625rem 0.75rem;
 }
 
@@ -565,6 +459,10 @@ const sourceHints = computed(() => {
   .profile-content-grid {
     grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
     align-items: start;
+  }
+
+  .profile-content-grid-full {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

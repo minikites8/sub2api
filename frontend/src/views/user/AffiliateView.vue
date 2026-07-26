@@ -1,134 +1,135 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <div v-if="loading" class="flex justify-center py-12">
-        <div
-          class="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
-        ></div>
+    <div class="affiliate-page">
+      <div v-if="loading" class="affiliate-loading">
+        <div class="affiliate-spinner"></div>
       </div>
 
       <template v-else-if="detail">
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div class="card p-5">
-            <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
-              <Icon name="dollar" size="sm" class="text-primary-500" />
-              {{ t('affiliate.stats.rebateRate') }}
-            </p>
-            <p class="mt-2 text-2xl font-semibold text-primary-600 dark:text-primary-400">
-              {{ formattedRebateRate }}<span class="ml-0.5 text-base font-medium">%</span>
-            </p>
-            <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
-              {{ t('affiliate.stats.rebateRateHint') }}
-            </p>
+        <header class="affiliate-header">
+          <p class="affiliate-kicker">AFFILIATE / REFERRALS</p>
+          <h1 class="affiliate-title">{{ t('affiliate.title') }}</h1>
+          <p class="affiliate-description">{{ t('affiliate.description') }}</p>
+        </header>
+
+        <div class="affiliate-stat-grid">
+          <div class="affiliate-stat-card">
+            <span class="affiliate-stat-label">{{ t('affiliate.stats.invitedUsers') }}</span>
+            <strong class="affiliate-stat-value">{{ formatCount(detail.aff_count) }}</strong>
           </div>
-          <div class="card p-5">
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.invitedUsers') }}</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-              {{ formatCount(detail.aff_count) }}
-            </p>
+
+          <div class="affiliate-stat-card">
+            <span class="affiliate-stat-label">{{ t('affiliate.stats.totalQuota') }}</span>
+            <strong class="affiliate-stat-value">{{ formatCurrency(detail.aff_history_quota) }}</strong>
           </div>
-          <div class="card p-5">
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.availableQuota') }}</p>
-            <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-              {{ formatCurrency(detail.aff_quota) }}
-            </p>
+
+          <div class="affiliate-stat-card">
+            <span class="affiliate-stat-label">{{ t('affiliate.stats.rebateRate') }}</span>
+            <strong class="affiliate-stat-value">{{ formattedRebateRate }}<small>%</small></strong>
+            <span class="affiliate-stat-meta">{{ t('affiliate.stats.rebateRateHint') }}</span>
           </div>
-          <div class="card p-5">
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.totalQuota') }}</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-              {{ formatCurrency(detail.aff_history_quota) }}
-            </p>
-            <p v-if="detail.aff_frozen_quota > 0" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+
+          <div class="affiliate-stat-card affiliate-stat-card-action">
+            <span class="affiliate-stat-label">{{ t('affiliate.stats.availableQuota') }}</span>
+            <strong class="affiliate-stat-value">{{ formatCurrency(detail.aff_quota) }}</strong>
+            <span v-if="detail.aff_frozen_quota > 0" class="affiliate-stat-meta">
               {{ t('affiliate.stats.frozenQuota') }}: {{ formatCurrency(detail.aff_frozen_quota) }}
-            </p>
-          </div>
-        </div>
-
-        <div class="card p-6">
-          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.title') }}</h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.description') }}</p>
-
-          <div class="mt-5 grid gap-4 md:grid-cols-2">
-            <div class="space-y-2">
-              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('affiliate.yourCode') }}</p>
-              <div class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900">
-                <code class="flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ detail.aff_code }}</code>
-                <button class="btn btn-secondary btn-sm" @click="copyCode">
-                  <Icon name="copy" size="sm" />
-                  <span>{{ t('affiliate.copyCode') }}</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="space-y-2">
-              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('affiliate.inviteLink') }}</p>
-              <div class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900">
-                <code class="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">{{ inviteLink }}</code>
-                <button class="btn btn-secondary btn-sm" @click="copyInviteLink">
-                  <Icon name="copy" size="sm" />
-                  <span>{{ t('affiliate.copyLink') }}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-5 rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-900/40 dark:bg-primary-900/20">
-            <p class="text-sm font-medium text-primary-800 dark:text-primary-200">{{ t('affiliate.tips.title') }}</p>
-            <ul class="mt-2 space-y-1 text-sm text-primary-700 dark:text-primary-300">
-              <li>1. {{ t('affiliate.tips.line1') }}</li>
-              <li>2. {{ t('affiliate.tips.line2', { rate: `${formattedRebateRate}%` }) }}</li>
-              <li>3. {{ t('affiliate.tips.line3') }}</li>
-              <li v-if="detail.aff_frozen_quota > 0">4. {{ t('affiliate.tips.line4') }}</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="card p-6">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.transfer.title') }}</h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.transfer.description') }}</p>
-            </div>
+            </span>
             <button
-              class="btn btn-primary"
+              type="button"
+              class="affiliate-claim-button"
               :disabled="transferring || detail.aff_quota <= 0"
               @click="transferQuota"
             >
               <Icon v-if="transferring" name="refresh" size="sm" class="animate-spin" />
               <Icon v-else name="dollar" size="sm" />
-              <span>{{ transferring ? t('affiliate.transfer.transferring') : t('affiliate.transfer.button') }}</span>
+              {{ transferring ? t('affiliate.transfer.transferring') : t('affiliate.transfer.button') }}
             </button>
+            <p v-if="detail.aff_quota <= 0" class="affiliate-claim-hint">
+              {{ t('affiliate.transfer.empty') }}
+            </p>
           </div>
-          <p v-if="detail.aff_quota <= 0" class="mt-3 text-sm text-amber-600 dark:text-amber-400">
-            {{ t('affiliate.transfer.empty') }}
-          </p>
         </div>
 
-        <div class="card p-6">
-          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.invitees.title') }}</h3>
-          <div v-if="detail.invitees.length === 0" class="mt-4 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400">
+        <div class="affiliate-columns">
+          <div class="affiliate-card">
+            <h2 class="affiliate-card-title">
+              <Icon name="link" size="sm" />
+              {{ t('affiliate.yourCode') }}
+            </h2>
+            <p class="affiliate-card-hint">{{ t('affiliate.tips.line1') }}</p>
+
+            <div class="affiliate-code-row">
+              <span class="affiliate-code-label">{{ t('affiliate.yourCode') }}</span>
+              <code class="affiliate-code-value">{{ detail.aff_code }}</code>
+              <button type="button" class="affiliate-copy-button" @click="copyCode">
+                <Icon name="copy" size="sm" />
+                {{ t('affiliate.copyCode') }}
+              </button>
+            </div>
+
+            <div class="affiliate-code-row">
+              <span class="affiliate-code-label">{{ t('affiliate.inviteLink') }}</span>
+              <code class="affiliate-code-value">{{ inviteLink }}</code>
+              <button type="button" class="affiliate-copy-button" @click="copyInviteLink">
+                <Icon name="copy" size="sm" />
+                {{ t('affiliate.copyLink') }}
+              </button>
+            </div>
+          </div>
+
+          <div class="affiliate-card">
+            <h2 class="affiliate-card-title">
+              <Icon name="lightbulb" size="sm" />
+              {{ t('affiliate.tips.title') }}
+            </h2>
+            <ul class="affiliate-tips-list">
+              <li>{{ t('affiliate.tips.line1') }}</li>
+              <li>{{ t('affiliate.tips.line2', { rate: `${formattedRebateRate}%` }) }}</li>
+              <li>{{ t('affiliate.tips.line3') }}</li>
+              <li v-if="detail.aff_frozen_quota > 0">{{ t('affiliate.tips.line4') }}</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="affiliate-card affiliate-history-card">
+          <div class="affiliate-history-header">
+            <h2 class="affiliate-card-title">
+              <Icon name="clock" size="sm" />
+              {{ t('affiliate.invitees.title') }}
+            </h2>
+            <button
+              type="button"
+              class="affiliate-export-button"
+              :disabled="exporting || detail.invitees.length === 0"
+              @click="exportInviteesCSV"
+            >
+              <Icon name="download" size="sm" />
+              {{ t('usage.exportCsv') }}
+            </button>
+          </div>
+
+          <div v-if="detail.invitees.length === 0" class="affiliate-empty">
             {{ t('affiliate.invitees.empty') }}
           </div>
-          <div v-else class="mt-4 overflow-x-auto">
-            <table class="w-full min-w-[560px] text-left text-sm">
+          <div v-else class="affiliate-table-scroll">
+            <table class="affiliate-table">
               <thead>
-                <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
-                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.email') }}</th>
-                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.username') }}</th>
-                  <th class="px-3 py-2 font-medium text-right">{{ t('affiliate.invitees.columns.rebate') }}</th>
-                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.joinedAt') }}</th>
+                <tr>
+                  <th>{{ t('affiliate.invitees.columns.email') }}</th>
+                  <th>{{ t('affiliate.invitees.columns.username') }}</th>
+                  <th>{{ t('affiliate.invitees.columns.joinedAt') }}</th>
+                  <th class="affiliate-table-align-right">{{ t('affiliate.invitees.columns.rebate') }}</th>
                 </tr>
               </thead>
               <tbody>
-                <tr
-                  v-for="item in detail.invitees"
-                  :key="item.user_id"
-                  class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
-                >
-                  <td class="px-3 py-3 text-gray-900 dark:text-white">{{ item.email || '-' }}</td>
-                  <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ item.username || '-' }}</td>
-                  <td class="px-3 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(item.total_rebate) }}</td>
-                  <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ formatDateTime(item.created_at) || '-' }}</td>
+                <tr v-for="item in detail.invitees" :key="item.user_id">
+                  <td>{{ item.email || '-' }}</td>
+                  <td>{{ item.username || '-' }}</td>
+                  <td>{{ formatDateTime(item.created_at) || '-' }}</td>
+                  <td class="affiliate-table-align-right affiliate-table-rebate">
+                    +{{ formatCurrency(item.total_rebate) }}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -159,6 +160,7 @@ const { copyToClipboard } = useClipboard()
 
 const loading = ref(true)
 const transferring = ref(false)
+const exporting = ref(false)
 const detail = ref<UserAffiliateDetail | null>(null)
 
 const inviteLink = computed(() => {
@@ -221,7 +223,449 @@ async function transferQuota(): Promise<void> {
   }
 }
 
+const escapeCSVValue = (value: unknown): string => {
+  if (value == null) return ''
+  const str = String(value)
+  const escaped = str.replace(/"/g, '""')
+  if (/^[=+\-@\t\r]/.test(str)) return `"'${escaped}"`
+  if (/[,"\n\r]/.test(str)) return `"${escaped}"`
+  return str
+}
+
+function exportInviteesCSV(): void {
+  if (!detail.value || detail.value.invitees.length === 0) {
+    appStore.showWarning(t('affiliate.invitees.noDataToExport'))
+    return
+  }
+
+  exporting.value = true
+  try {
+    const headers = [
+      t('affiliate.invitees.columns.email'),
+      t('affiliate.invitees.columns.username'),
+      t('affiliate.invitees.columns.joinedAt'),
+      t('affiliate.invitees.columns.rebate'),
+    ]
+    const rows = detail.value.invitees.map((item) => [
+      item.email || '',
+      item.username || '',
+      item.created_at,
+      formatCurrency(item.total_rebate),
+    ].map(escapeCSVValue))
+    const csvContent = [
+      headers.map(escapeCSVValue).join(','),
+      ...rows.map((row) => row.join(',')),
+    ].join('\n')
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `affiliate_invitees_${detail.value.aff_code}.csv`
+    link.click()
+    window.URL.revokeObjectURL(url)
+    appStore.showSuccess(t('affiliate.invitees.exportSuccess'))
+  } catch (error) {
+    console.error('Affiliate CSV export failed:', error)
+    appStore.showError(t('affiliate.invitees.exportFailed'))
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(() => {
   void loadAffiliateDetail()
 })
 </script>
+
+<style scoped>
+.affiliate-page {
+  --md-surface: #0b141c;
+  --md-surface-container-low: #141c24;
+  --md-surface-container: #182028;
+  --md-surface-container-high: #222b33;
+  --md-on-surface: #dae3ee;
+  --md-on-surface-variant: #b9cbbc;
+  --md-outline-variant: #3b4a3f;
+  --md-primary: #00e38b;
+  min-height: calc(100vh - 64px);
+  margin: -24px -32px;
+  padding: 42px 48px 80px;
+  background-color: #0b141c;
+  background-image:
+    linear-gradient(rgb(59 74 63 / 13%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(59 74 63 / 13%) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: #dae3ee;
+}
+
+.affiliate-loading {
+  display: flex;
+  min-height: 240px;
+  align-items: center;
+  justify-content: center;
+}
+
+.affiliate-spinner {
+  height: 32px;
+  width: 32px;
+  border: 2px solid var(--md-outline-variant);
+  border-top-color: var(--md-primary);
+  border-radius: 999px;
+  animation: affiliate-spin 0.8s linear infinite;
+}
+
+@keyframes affiliate-spin {
+  to { transform: rotate(360deg); }
+}
+
+.affiliate-header {
+  max-width: 1280px;
+  margin: 0 auto 32px;
+}
+
+.affiliate-kicker {
+  margin-bottom: 10px;
+  color: #00e38b;
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.affiliate-title {
+  color: #f4fff8;
+  font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  font-size: 2.5rem;
+  font-weight: 760;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.affiliate-description {
+  max-width: 640px;
+  margin-top: 10px;
+  color: #b9cbbc;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.affiliate-stat-grid {
+  display: grid;
+  max-width: 1280px;
+  margin: 0 auto 24px;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 20px;
+}
+
+@media (min-width: 768px) {
+  .affiliate-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .affiliate-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.affiliate-stat-card {
+  position: relative;
+  display: flex;
+  min-height: 130px;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 8px;
+  background: var(--md-surface-container-low);
+  padding: 20px;
+  transition: border-color 180ms ease;
+}
+
+.affiliate-stat-card:hover {
+  border-color: var(--md-primary);
+}
+
+.affiliate-stat-label {
+  color: var(--md-on-surface-variant);
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.affiliate-stat-value {
+  color: #f4fff8;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.affiliate-stat-value small {
+  margin-left: 2px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.affiliate-stat-meta {
+  margin-top: auto;
+  color: var(--md-on-surface-variant);
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.affiliate-stat-card-action {
+  border-color: rgb(0 227 139 / 30%);
+}
+
+.affiliate-stat-card-action::after {
+  position: absolute;
+  top: -36px;
+  right: -36px;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: rgb(0 227 139 / 8%);
+  content: '';
+}
+
+.affiliate-claim-button {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 6px;
+  background: var(--md-primary);
+  padding: 6px 14px;
+  color: #00230f;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.affiliate-claim-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.affiliate-claim-button:not(:disabled):hover {
+  opacity: 0.9;
+}
+
+.affiliate-claim-hint {
+  color: var(--md-on-surface-variant);
+  font-size: 0.72rem;
+}
+
+.affiliate-columns {
+  display: grid;
+  max-width: 1280px;
+  margin: 0 auto 24px;
+  gap: 24px;
+}
+
+@media (min-width: 1024px) {
+  .affiliate-columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.affiliate-card {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 8px;
+  background: var(--md-surface-container-low);
+  padding: 24px;
+  transition: border-color 180ms ease;
+}
+
+.affiliate-card:hover {
+  border-color: var(--md-primary);
+}
+
+.affiliate-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #f4fff8;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.affiliate-card-hint {
+  margin-top: 8px;
+  margin-bottom: 16px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.affiliate-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 30%);
+  padding: 10px 12px;
+}
+
+.affiliate-code-row + .affiliate-code-row {
+  margin-top: 12px;
+}
+
+.affiliate-code-label {
+  flex: none;
+  color: var(--md-on-surface-variant);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.affiliate-code-value {
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+  color: #f4fff8;
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.affiliate-copy-button,
+.affiliate-export-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 6px;
+  background: none;
+  padding: 6px 12px;
+  color: var(--md-on-surface);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.affiliate-copy-button:hover,
+.affiliate-export-button:not(:disabled):hover {
+  border-color: var(--md-primary);
+  color: var(--md-primary);
+}
+
+.affiliate-export-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.affiliate-tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  counter-reset: affiliate-tip;
+  color: var(--md-on-surface-variant);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.affiliate-tips-list li {
+  position: relative;
+  padding-left: 24px;
+  counter-increment: affiliate-tip;
+}
+
+.affiliate-tips-list li::before {
+  position: absolute;
+  left: 0;
+  color: var(--md-primary);
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  font-weight: 700;
+  content: counter(affiliate-tip) '.';
+}
+
+.affiliate-history-card {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.affiliate-history-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.affiliate-empty {
+  border: 1px dashed var(--md-outline-variant);
+  border-radius: 8px;
+  padding: 32px;
+  text-align: center;
+  color: var(--md-on-surface-variant);
+  font-size: 0.9rem;
+}
+
+.affiliate-table-scroll {
+  overflow-x: auto;
+}
+
+.affiliate-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.affiliate-table thead tr {
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+
+.affiliate-table th {
+  padding: 0 16px 12px 0;
+  color: var(--md-on-surface-variant);
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.affiliate-table tbody tr {
+  border-bottom: 1px solid rgb(59 74 63 / 50%);
+  transition: background-color 150ms ease;
+}
+
+.affiliate-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.affiliate-table tbody tr:hover {
+  background: var(--md-surface-container-high);
+}
+
+.affiliate-table td {
+  padding: 14px 16px 14px 0;
+  color: var(--md-on-surface);
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.affiliate-table-align-right {
+  text-align: right;
+}
+
+.affiliate-table-rebate {
+  color: var(--md-primary);
+  font-weight: 600;
+}
+</style>
