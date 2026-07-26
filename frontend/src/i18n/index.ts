@@ -91,9 +91,11 @@ export function getLocale(): LocaleCode {
   return isLocaleCode(current) ? current : DEFAULT_LOCALE
 }
 
+// 语言名用各自语言书写（endonym），使用者不必先看懂当前界面语言
+// 才能找到自己的语言。
 export const availableLocales = [
-  { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'zh', name: '中文', flag: '🇨🇳' }
+  { code: 'en', name: 'English' },
+  { code: 'zh', name: '简体中文' }
 ] as const
 
 export default i18n
