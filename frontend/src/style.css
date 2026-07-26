@@ -1000,6 +1000,23 @@
   .table-wrapper thead.sticky {
     box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
   }
+
+  /* ============ 控制台页面外壳 ============ */
+  /* 登录后各页共用的版心：负边距抵消 AppLayout 的 main padding，让页面铺满
+     内容区，再用自己的一套内边距。这里不设背景，直接透出 .app-main 的
+     --md-app-bg，因此所有页面与应用外框始终同色。 */
+  .console-page {
+    min-height: calc(100vh - 64px);
+    margin: -24px -32px;
+    padding: 42px 48px 80px;
+  }
+
+  @media (max-width: 768px) {
+    .console-page {
+      margin: -20px -16px;
+      padding: 30px 20px 64px;
+    }
+  }
 }
 
 @layer utilities {

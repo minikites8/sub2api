@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="api-keys-page">
+    <div class="console-page api-keys-page">
       <header class="api-keys-header">
         <div>
           <p class="api-keys-kicker">ACCESS CONTROL / API KEYS</p>
@@ -2534,8 +2534,6 @@ onUnmounted(() => {
 
 <style scoped>
 .api-keys-page {
-  --keys-bg: #0b141c;
-  --keys-bg-deep: #060f16;
   --keys-surface: #141c24;
   --keys-surface-raised: #182028;
   --keys-surface-hover: #222b33;
@@ -2544,14 +2542,6 @@ onUnmounted(() => {
   --keys-muted: #91a69c;
   --keys-green: #00e38b;
   --keys-green-bright: #00ff9d;
-  min-height: calc(100vh - 64px);
-  margin: -24px -32px;
-  padding: 42px 48px 80px;
-  background-color: var(--keys-bg);
-  background-image:
-    linear-gradient(rgb(59 74 63 / 13%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(59 74 63 / 13%) 1px, transparent 1px);
-  background-size: 32px 32px;
   color: var(--keys-text);
 }
 

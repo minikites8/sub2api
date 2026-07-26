@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="affiliate-page">
+    <div class="console-page affiliate-page">
       <div v-if="loading" class="affiliate-loading">
         <div class="affiliate-spinner"></div>
       </div>
@@ -269,14 +269,6 @@ onMounted(() => {
   --md-on-surface-variant: #b9cbbc;
   --md-outline-variant: #3b4a3f;
   --md-primary: #00e38b;
-  min-height: calc(100vh - 64px);
-  margin: -24px -32px;
-  padding: 42px 48px 80px;
-  background-color: #0b141c;
-  background-image:
-    linear-gradient(rgb(59 74 63 / 13%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(59 74 63 / 13%) 1px, transparent 1px);
-  background-size: 32px 32px;
   color: #dae3ee;
 }
 

@@ -1055,7 +1055,6 @@ onUnmounted(() => {
 
 <style scoped>
 .usage-analytics {
-  --usage-bg: #091216;
   --usage-panel: #111b1f;
   --usage-panel-deep: #050b0e;
   --usage-border: #30443f;
@@ -1064,21 +1063,8 @@ onUnmounted(() => {
   --usage-muted: #8b9c96;
   --usage-accent: #00f5a8;
   position: relative;
-  isolation: isolate;
   min-height: calc(100vh - 96px);
   color: var(--usage-text);
-}
-
-.usage-analytics::before {
-  position: absolute;
-  z-index: -1;
-  inset: -24px -32px;
-  background-color: var(--usage-bg);
-  background-image:
-    linear-gradient(rgba(50, 77, 70, .14) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(50, 77, 70, .14) 1px, transparent 1px);
-  background-size: 32px 32px;
-  content: '';
 }
 
 .usage-analytics__hero {
@@ -1228,7 +1214,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
-  .usage-analytics::before { inset: -20px -16px; }
   .usage-analytics__hero h1 { font-size: 30px; }
   .usage-range-control { flex-wrap: wrap; }
   .usage-range-control > button { min-width: 50%; border-bottom: 1px solid var(--usage-border); }

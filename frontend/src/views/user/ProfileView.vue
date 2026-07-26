@@ -2,7 +2,7 @@
   <AppLayout>
     <div
       data-testid="profile-shell"
-      class="profile-settings-page"
+      class="console-page profile-settings-page"
     >
       <header class="profile-settings-header">
         <p class="profile-settings-kicker">ACCOUNT / SETTINGS</p>
@@ -245,14 +245,6 @@ async function handleLogout() {
   --md-on-primary-container: #dae3ee;
   --md-state-hover: rgb(0 227 139 / 8%);
   --md-state-focus: rgb(0 227 139 / 18%);
-  min-height: calc(100vh - 64px);
-  margin: -24px -32px;
-  padding: 42px 48px 80px;
-  background-color: #0b141c;
-  background-image:
-    linear-gradient(rgb(59 74 63 / 13%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(59 74 63 / 13%) 1px, transparent 1px);
-  background-size: 32px 32px;
   color: #dae3ee;
 }
 

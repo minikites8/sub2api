@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <section class="telemetry-dashboard">
+    <section class="console-page telemetry-dashboard">
       <header class="telemetry-dashboard-header">
         <div class="min-w-0">
           <p class="telemetry-dashboard-kicker">{{ t('nav.dashboard') }}</p>
@@ -491,15 +491,7 @@ onBeforeUnmount(() => {
   --md-chart-7: #b9cbbc;
   --md-chart-8: #849587;
   display: grid;
-  min-height: calc(100vh - 64px);
   gap: 32px;
-  margin: -24px -32px;
-  background-color: #0b141c;
-  background-image:
-    linear-gradient(rgb(59 74 63 / 13%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(59 74 63 / 13%) 1px, transparent 1px);
-  background-size: 32px 32px;
-  padding: 42px 48px 80px;
   color: #dae3ee;
 }
 
@@ -604,8 +596,6 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .telemetry-dashboard {
     gap: 24px;
-    margin: -20px -16px;
-    padding: 30px 20px 64px;
   }
 
   .telemetry-dashboard-header {
