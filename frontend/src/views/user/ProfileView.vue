@@ -233,13 +233,10 @@ async function handleLogout() {
 
 <style scoped>
 .profile-settings-page {
+  /* 表面与文字直接继承全局中性令牌，这里只覆盖强调色。
+     注意不要写成 --md-surface-container-low: var(--md-surface-container-low)：
+     自引用的自定义属性在计算阶段即失效，用到它的背景会变成透明。 */
   --md-surface: var(--md-surface-container-low);
-  --md-surface-container-low: var(--md-surface-container-low);
-  --md-surface-container: var(--md-surface-container);
-  --md-surface-container-high: var(--md-surface-container-high);
-  --md-on-surface: var(--md-on-surface);
-  --md-on-surface-variant: var(--md-on-surface-variant);
-  --md-outline-variant: var(--md-outline-variant);
   --md-primary: #00e38b;
   --md-primary-container: var(--md-surface-container);
   --md-on-primary-container: var(--md-on-surface);
