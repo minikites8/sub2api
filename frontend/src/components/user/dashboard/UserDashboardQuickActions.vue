@@ -77,15 +77,15 @@ onMounted(() => {
 <style scoped>
 .md3-actions-panel {
   overflow: hidden;
-  border: 1px solid #303b3a;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 6px;
-  background: #061016;
+  background: var(--md-surface-container-low);
   box-shadow: none;
   transition: border-color 180ms ease;
 }
 
 .md3-actions-panel:hover {
-  border-color: #4b6258;
+  border-color: var(--md-outline);
 }
 
 .md3-actions-header {
@@ -99,7 +99,7 @@ onMounted(() => {
 
 .md3-actions-header h2 {
   margin: 0;
-  color: #e8f1ed;
+  color: var(--md-on-surface);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.9rem;
   font-weight: 700;

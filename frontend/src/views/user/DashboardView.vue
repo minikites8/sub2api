@@ -474,13 +474,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .telemetry-dashboard {
-  --md-surface: #061016;
-  --md-surface-container-low: #101b22;
-  --md-surface-container: #152129;
-  --md-surface-container-high: #1d2a31;
-  --md-on-surface: #e6f0eb;
-  --md-on-surface-variant: #8da198;
-  --md-outline-variant: #303b3a;
+  /* 表面与文字沿用全局中性暗色令牌，和页面底色（--md-app-bg）同一色系；
+     这里只覆盖强调色和图表色。之前这里覆盖了一套偏青的表面色，是为搭配
+     旧的青蓝页面底色，换成纯黑底后卡片会泛青、且比底色还暗，像凹陷。 */
   --md-primary: #00e38b;
   --md-chart-1: #00e38b;
   --md-chart-2: #508eff;
@@ -492,7 +488,7 @@ onBeforeUnmount(() => {
   --md-chart-8: #849587;
   display: grid;
   gap: 32px;
-  color: #dae3ee;
+  color: var(--md-on-surface);
 }
 
 .telemetry-dashboard-header {
@@ -513,7 +509,7 @@ onBeforeUnmount(() => {
 }
 
 .telemetry-dashboard-header h1 {
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-size: clamp(2.1rem, 4vw, 3rem);
   font-weight: 760;
   line-height: 1.08;
@@ -522,7 +518,7 @@ onBeforeUnmount(() => {
 
 .telemetry-dashboard-header p:not(.telemetry-dashboard-kicker) {
   margin-top: 10px;
-  color: #91a69c;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.78rem;
   line-height: 1.55;
@@ -550,9 +546,9 @@ onBeforeUnmount(() => {
 }
 
 .telemetry-secondary-button {
-  border: 1px solid #31443c;
-  background: #101b22;
-  color: #c5d2cc;
+  border: 1px solid var(--md-outline-variant);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
 }
 
 .telemetry-secondary-button:hover:enabled {
@@ -582,9 +578,9 @@ onBeforeUnmount(() => {
   min-height: 360px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #303b3a;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 6px;
-  background: #061016;
+  background: var(--md-surface-container-low);
 }
 
 @media (max-width: 1024px) {

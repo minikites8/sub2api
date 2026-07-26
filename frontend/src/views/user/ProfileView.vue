@@ -233,19 +233,19 @@ async function handleLogout() {
 
 <style scoped>
 .profile-settings-page {
-  --md-surface: #0b141c;
-  --md-surface-container-low: #141c24;
-  --md-surface-container: #182028;
-  --md-surface-container-high: #222b33;
-  --md-on-surface: #dae3ee;
-  --md-on-surface-variant: #b9cbbc;
-  --md-outline-variant: #3b4a3f;
+  --md-surface: var(--md-surface-container-low);
+  --md-surface-container-low: var(--md-surface-container-low);
+  --md-surface-container: var(--md-surface-container);
+  --md-surface-container-high: var(--md-surface-container-high);
+  --md-on-surface: var(--md-on-surface);
+  --md-on-surface-variant: var(--md-on-surface-variant);
+  --md-outline-variant: var(--md-outline-variant);
   --md-primary: #00e38b;
-  --md-primary-container: #1d2a31;
-  --md-on-primary-container: #dae3ee;
+  --md-primary-container: var(--md-surface-container);
+  --md-on-primary-container: var(--md-on-surface);
   --md-state-hover: rgb(0 227 139 / 8%);
   --md-state-focus: rgb(0 227 139 / 18%);
-  color: #dae3ee;
+  color: var(--md-on-surface);
 }
 
 .profile-settings-header {
@@ -264,7 +264,7 @@ async function handleLogout() {
 }
 
 .profile-settings-title {
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
   font-size: 2.5rem;
   font-weight: 760;
@@ -275,7 +275,7 @@ async function handleLogout() {
 .profile-settings-description {
   max-width: 640px;
   margin-top: 10px;
-  color: #b9cbbc;
+  color: var(--md-on-surface-variant);
   font-size: 0.95rem;
   line-height: 1.6;
 }
@@ -359,7 +359,7 @@ async function handleLogout() {
   margin-bottom: 20px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--md-outline-variant);
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
   font-size: 1.375rem;
   font-weight: 700;

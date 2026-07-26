@@ -2534,12 +2534,12 @@ onUnmounted(() => {
 
 <style scoped>
 .api-keys-page {
-  --keys-surface: #141c24;
-  --keys-surface-raised: #182028;
-  --keys-surface-hover: #222b33;
-  --keys-border: #3b4a3f;
-  --keys-text: #dae3ee;
-  --keys-muted: #91a69c;
+  --keys-surface: var(--md-surface-container-low);
+  --keys-surface-raised: var(--md-surface-container);
+  --keys-surface-hover: var(--md-surface-container-high);
+  --keys-border: var(--md-outline-variant);
+  --keys-text: var(--md-on-surface);
+  --keys-muted: var(--md-on-surface-variant);
   --keys-green: #00e38b;
   --keys-green-bright: #00ff9d;
   color: var(--keys-text);
@@ -2566,7 +2566,7 @@ onUnmounted(() => {
 }
 
 .api-keys-header h1 {
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-size: 3rem;
   font-weight: 760;
   line-height: 1.08;
@@ -2687,10 +2687,10 @@ onUnmounted(() => {
   display: flex;
   height: 38px;
   align-items: center;
-  border: 1px solid #34433d;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 4px;
-  background: #09131a;
-  color: #81958c;
+  background: var(--md-surface-container-low);
+  color: var(--md-outline);
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -2712,7 +2712,7 @@ onUnmounted(() => {
   border: 0;
   padding: 0;
   background: transparent;
-  color: #d5dfda;
+  color: var(--md-on-surface);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.74rem;
   outline: 0;
@@ -2720,7 +2720,7 @@ onUnmounted(() => {
 }
 
 .api-keys-search input::placeholder {
-  color: #687d74;
+  color: var(--md-outline);
 }
 
 .api-keys-search input::-webkit-search-cancel-button {
@@ -2747,7 +2747,7 @@ onUnmounted(() => {
 }
 
 .api-keys-select-wrap option {
-  background: #101b22;
+  background: var(--md-surface-container-low);
   color: var(--keys-text);
 }
 
@@ -2758,16 +2758,16 @@ onUnmounted(() => {
   flex: 0 0 38px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #34433d;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 4px;
-  background: #101b22;
-  color: #a5b6ae;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
   transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
 }
 
 .api-keys-icon-button:hover:enabled {
   border-color: #508eff;
-  background: #142330;
+  background: var(--md-surface-container-low);
   color: #aec6ff;
 }
 
@@ -2789,7 +2789,7 @@ onUnmounted(() => {
 .api-keys-table th {
   padding: 14px 18px;
   background: var(--keys-surface);
-  color: #91a69c;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.66rem;
   font-weight: 750;
@@ -2830,7 +2830,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #eaf3ef;
+  color: var(--md-on-surface);
   font-size: 0.82rem;
 }
 
@@ -2846,7 +2846,7 @@ onUnmounted(() => {
   width: max-content;
   max-width: 180px;
   overflow: hidden;
-  color: #7f978c;
+  color: var(--md-outline);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.65rem;
   text-align: left;
@@ -2866,10 +2866,10 @@ onUnmounted(() => {
   grid-template-columns: minmax(0, 1fr) 30px 30px;
   align-items: center;
   gap: 2px;
-  border: 1px solid #34433d;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 4px;
   padding: 4px 4px 4px 11px;
-  background: #010409;
+  background: var(--md-app-bg);
 }
 
 .api-key-secret code {
@@ -2902,14 +2902,14 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  color: #81958c;
+  color: var(--md-outline);
   transition: color 160ms ease, background-color 160ms ease;
 }
 
 .api-key-secret-button:hover,
 .api-keys-row-actions > button:hover,
 .api-keys-more-wrap > button:hover {
-  background: #1b2830;
+  background: var(--md-surface-container-low);
   color: var(--keys-green);
 }
 
@@ -2918,7 +2918,7 @@ onUnmounted(() => {
 }
 
 .api-keys-metadata {
-  color: #9aaca4;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.72rem;
   white-space: nowrap;
@@ -3010,14 +3010,14 @@ onUnmounted(() => {
   gap: 9px;
   border-radius: 4px;
   padding: 8px 9px;
-  color: #b8c8c0;
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
   text-align: left;
 }
 
 .api-keys-action-menu button:hover {
   background: var(--keys-surface-hover);
-  color: #f4fff8;
+  color: var(--md-on-surface);
 }
 
 .api-keys-action-menu .api-keys-menu-danger {
@@ -3056,7 +3056,7 @@ onUnmounted(() => {
 
 .api-keys-empty-row td > svg {
   margin-bottom: 12px;
-  color: #668076;
+  color: var(--md-outline);
 }
 
 .api-keys-empty-row strong,
@@ -3065,7 +3065,7 @@ onUnmounted(() => {
 }
 
 .api-keys-empty-row strong {
-  color: #e6f0eb;
+  color: var(--md-on-surface);
   font-size: 0.95rem;
 }
 
@@ -3095,7 +3095,7 @@ onUnmounted(() => {
 }
 
 .api-keys-table-footer > span {
-  color: #81958c;
+  color: var(--md-outline);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.68rem;
   white-space: nowrap;
@@ -3230,7 +3230,7 @@ onUnmounted(() => {
   }
 
   .api-keys-table td::before {
-    color: #71877d;
+    color: var(--md-outline);
     content: attr(data-label);
     font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
     font-size: 0.64rem;

@@ -261,15 +261,15 @@ onMounted(() => {
 
 <style scoped>
 .affiliate-page {
-  --md-surface: #0b141c;
-  --md-surface-container-low: #141c24;
-  --md-surface-container: #182028;
-  --md-surface-container-high: #222b33;
-  --md-on-surface: #dae3ee;
-  --md-on-surface-variant: #b9cbbc;
-  --md-outline-variant: #3b4a3f;
+  --md-surface: var(--md-surface-container-low);
+  --md-surface-container-low: var(--md-surface-container-low);
+  --md-surface-container: var(--md-surface-container);
+  --md-surface-container-high: var(--md-surface-container-high);
+  --md-on-surface: var(--md-on-surface);
+  --md-on-surface-variant: var(--md-on-surface-variant);
+  --md-outline-variant: var(--md-outline-variant);
   --md-primary: #00e38b;
-  color: #dae3ee;
+  color: var(--md-on-surface);
 }
 
 .affiliate-loading {
@@ -308,7 +308,7 @@ onMounted(() => {
 }
 
 .affiliate-title {
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
   font-size: 2.5rem;
   font-weight: 760;
@@ -319,7 +319,7 @@ onMounted(() => {
 .affiliate-description {
   max-width: 640px;
   margin-top: 10px;
-  color: #b9cbbc;
+  color: var(--md-on-surface-variant);
   font-size: 0.95rem;
   line-height: 1.6;
 }
@@ -372,7 +372,7 @@ onMounted(() => {
 }
 
 .affiliate-stat-value {
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-size: 2rem;
   font-weight: 700;
   line-height: 1;
@@ -453,7 +453,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-size: 1.1rem;
   font-weight: 700;
 }
@@ -480,7 +480,7 @@ onMounted(() => {
   flex: 1;
   overflow-x: auto;
   white-space: nowrap;
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
   font-size: 0.85rem;
 }

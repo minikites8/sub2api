@@ -187,9 +187,9 @@ const doughnutOptions = {
 
 .md3-trend-card,
 .md3-model-card-inner {
-  border: 1px solid #303b3a;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 6px;
-  background: #061016;
+  background: var(--md-surface-container-low);
   box-shadow: none;
   transition: border-color 180ms ease;
 }
@@ -205,7 +205,7 @@ const doughnutOptions = {
 
 .md3-trend-card:hover,
 .md3-model-card-inner:hover {
-  border-color: #4b6258;
+  border-color: var(--md-outline);
 }
 
 .md3-active-keys-card {
@@ -261,10 +261,10 @@ const doughnutOptions = {
   height: 34px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #31443c;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 4px;
-  background: #101b22;
-  color: #8da198;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 
@@ -282,10 +282,10 @@ const doughnutOptions = {
 .md3-chart-controls :deep(.date-picker-trigger),
 .md3-chart-controls :deep(.select-trigger) {
   min-height: 34px;
-  border-color: #31443c;
+  border-color: var(--md-outline-variant);
   border-radius: 4px;
-  background: #101b22;
-  color: #dce8e2;
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
   padding-top: 0.375rem;
   padding-bottom: 0.375rem;
   box-shadow: none;
@@ -307,7 +307,7 @@ const doughnutOptions = {
 
 .md3-card-header h2 {
   margin: 0;
-  color: #e8f1ed;
+  color: var(--md-on-surface);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.9rem;
   font-weight: 700;
@@ -315,7 +315,7 @@ const doughnutOptions = {
 
 .md3-card-header p {
   margin: 4px 0 0;
-  color: #7e9188;
+  color: var(--md-on-surface-variant);
   font-size: 0.75rem;
 }
 

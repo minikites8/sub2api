@@ -94,15 +94,15 @@ function formatExpiration(value: string | null): string {
   min-width: 0;
   min-height: 398px;
   flex-direction: column;
-  border: 1px solid #303b3a;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 6px;
-  background: #061016;
+  background: var(--md-surface-container-low);
   padding: 22px;
   transition: border-color 180ms ease;
 }
 
 .telemetry-keys-panel:hover {
-  border-color: #4b6258;
+  border-color: var(--md-outline);
 }
 
 .telemetry-panel-header {
@@ -116,7 +116,7 @@ function formatExpiration(value: string | null): string {
 .telemetry-panel-kicker {
   display: block;
   margin-bottom: 7px;
-  color: #70857b;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.64rem;
   font-weight: 700;
@@ -124,7 +124,7 @@ function formatExpiration(value: string | null): string {
 }
 
 .telemetry-panel-header h2 {
-  color: #e7f0ec;
+  color: var(--md-on-surface);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.9rem;
   font-weight: 700;
@@ -136,7 +136,7 @@ function formatExpiration(value: string | null): string {
   height: 34px;
   flex: 0 0 34px;
   place-items: center;
-  border: 1px solid #31443c;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 4px;
   color: #00e38b;
   transition: border-color 160ms ease, background-color 160ms ease;
@@ -158,7 +158,7 @@ function formatExpiration(value: string | null): string {
 .telemetry-keys-empty {
   flex-direction: column;
   gap: 10px;
-  color: #73867d;
+  color: var(--md-on-surface-variant);
   text-align: center;
 }
 
@@ -179,9 +179,9 @@ function formatExpiration(value: string | null): string {
 
 .telemetry-key-item {
   min-width: 0;
-  border: 1px solid #263832;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 4px;
-  background: #101b22;
+  background: var(--md-surface-container-low);
   padding: 13px;
   transition: border-color 160ms ease;
 }
@@ -209,7 +209,7 @@ function formatExpiration(value: string | null): string {
 
 .telemetry-key-name strong {
   overflow: hidden;
-  color: #dbe7e1;
+  color: var(--md-on-surface);
   font-size: 0.78rem;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -218,7 +218,7 @@ function formatExpiration(value: string | null): string {
 
 .telemetry-key-heading > span {
   flex: 0 0 auto;
-  color: #71837b;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.62rem;
 }
@@ -228,7 +228,7 @@ function formatExpiration(value: string | null): string {
   height: 7px;
   flex: 0 0 7px;
   border-radius: 50%;
-  background: #73867d;
+  background: var(--md-on-surface-variant);
 }
 
 .telemetry-key-status--active {
@@ -245,11 +245,11 @@ function formatExpiration(value: string | null): string {
   display: block;
   overflow: hidden;
   margin-top: 10px;
-  border: 1px solid #22332d;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 3px;
-  background: #02090d;
+  background: var(--md-app-bg);
   padding: 7px 9px;
-  color: #7f9188;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.68rem;
   text-overflow: ellipsis;
@@ -266,7 +266,7 @@ function formatExpiration(value: string | null): string {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  background: #02090d;
+  background: var(--md-app-bg);
 }
 
 .telemetry-key-track span {
@@ -277,7 +277,7 @@ function formatExpiration(value: string | null): string {
 
 .telemetry-key-usage > span {
   flex: 0 0 auto;
-  color: #71837b;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.6rem;
 }
@@ -289,7 +289,7 @@ function formatExpiration(value: string | null): string {
   gap: 8px;
   margin-top: auto;
   padding-top: 18px;
-  color: #8ba097;
+  color: var(--md-on-surface-variant);
   font-size: 0.74rem;
   font-weight: 700;
 }

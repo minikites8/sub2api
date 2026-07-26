@@ -87,9 +87,9 @@ const formatTokens = (t: number) => {
   grid-template-rows: auto 1fr auto;
   gap: 14px;
   overflow: hidden;
-  border: 1px solid #303b3a;
+  border: 1px solid var(--md-outline-variant);
   border-radius: 6px;
-  background: #061016;
+  background: var(--md-surface-container-low);
   padding: 22px;
   transition: border-color 180ms ease, transform 180ms ease;
 }
@@ -119,7 +119,7 @@ const formatTokens = (t: number) => {
 }
 
 .telemetry-stat-label {
-  color: #82978d;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.66rem;
   font-weight: 700;
@@ -129,7 +129,7 @@ const formatTokens = (t: number) => {
 
 .telemetry-stat-value {
   min-width: 0;
-  color: #edf7f2;
+  color: var(--md-on-surface);
   align-self: center;
   font-size: 2rem;
   line-height: 1;
@@ -140,7 +140,7 @@ const formatTokens = (t: number) => {
 
 .telemetry-stat-value small {
   margin-left: 3px;
-  color: #81938b;
+  color: var(--md-on-surface-variant);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -150,7 +150,7 @@ const formatTokens = (t: number) => {
   min-width: 0;
   align-items: center;
   gap: 7px;
-  color: #82958c;
+  color: var(--md-on-surface-variant);
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.66rem;
   line-height: 1.45;

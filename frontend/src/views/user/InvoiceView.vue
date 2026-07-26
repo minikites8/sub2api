@@ -500,11 +500,11 @@ onMounted(() => {
 
 <style scoped>
 .invoice-page {
-  --invoice-surface: #141c24;
+  --invoice-surface: var(--md-surface-container-low);
   --invoice-surface-deep: rgb(0 0 0 / 30%);
-  --invoice-border: #3b4a3f;
-  --invoice-text: #dae3ee;
-  --invoice-muted: #b9cbbc;
+  --invoice-border: var(--md-outline-variant);
+  --invoice-text: var(--md-on-surface);
+  --invoice-muted: var(--md-on-surface-variant);
   --invoice-accent: #00e38b;
   color: var(--invoice-text);
 }
@@ -525,7 +525,7 @@ onMounted(() => {
 }
 
 .invoice-title {
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
   font-size: 2.5rem;
   font-weight: 760;
@@ -567,7 +567,7 @@ onMounted(() => {
 
 .invoice-tabs button.invoice-tab-active {
   border-bottom-color: var(--invoice-accent);
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-weight: 700;
 }
 
@@ -613,7 +613,7 @@ onMounted(() => {
 }
 
 .invoice-card-title {
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-size: 1.1rem;
   font-weight: 700;
 }
@@ -847,7 +847,7 @@ onMounted(() => {
 }
 
 .invoice-summary-total strong {
-  color: #f4fff8;
+  color: var(--md-on-surface);
   font-size: 1.5rem;
   font-weight: 760;
 }
