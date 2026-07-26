@@ -98,32 +98,40 @@ describe('AffiliateView', () => {
     getAffiliateDetailMock.mockResolvedValue(createDetail())
   })
 
-  it('renders the stat grid, referral code and invitee history', async () => {
+  it('renders the stat grid, invite link and invitee history', async () => {
     const wrapper = mount(AffiliateView, { global: { stubs: STUBS } })
     await flushPromises()
 
     expect(wrapper.findAll('.affiliate-stat-card')).toHaveLength(4)
     expect(wrapper.get('.affiliate-title').exists()).toBe(true)
-    expect(wrapper.text()).toContain('AFF123')
+    expect(wrapper.get('.affiliate-code-value').text()).toContain('/register?aff=AFF123')
     expect(wrapper.text()).toContain('bob@example.com')
     expect(wrapper.findAll('.affiliate-table tbody tr')).toHaveLength(1)
   })
 
-  it('copies the referral code and the invite link separately', async () => {
+  it('exposes only the invite link, with the raw referral code hidden', async () => {
     const wrapper = mount(AffiliateView, { global: { stubs: STUBS } })
     await flushPromises()
 
     const copyButtons = wrapper.findAll('.affiliate-copy-button')
-    expect(copyButtons).toHaveLength(2)
+    expect(copyButtons).toHaveLength(1)
 
     await copyButtons[0].trigger('click')
-    expect(copyToClipboardMock).toHaveBeenCalledWith('AFF123', 'affiliate.codeCopied')
-
-    await copyButtons[1].trigger('click')
-    expect(copyToClipboardMock).toHaveBeenLastCalledWith(
+    expect(copyToClipboardMock).toHaveBeenCalledWith(
       expect.stringContaining('/register?aff=AFF123'),
       'affiliate.linkCopied'
     )
+  })
+
+  it('merges the invite link and the usage tips into a single card', async () => {
+    const wrapper = mount(AffiliateView, { global: { stubs: STUBS } })
+    await flushPromises()
+
+    const inviteCard = wrapper.get('.affiliate-invite-card')
+    expect(inviteCard.find('.affiliate-code-row').exists()).toBe(true)
+    expect(inviteCard.find('.affiliate-tips-list').exists()).toBe(true)
+    // The tips list previously lived in its own card next to the link card.
+    expect(wrapper.findAll('.affiliate-tips-list')).toHaveLength(1)
   })
 
   it('transfers the available rebate quota and refreshes the detail', async () => {

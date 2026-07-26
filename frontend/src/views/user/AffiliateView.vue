@@ -51,38 +51,25 @@
           </div>
         </div>
 
-        <div class="affiliate-columns">
-          <div class="affiliate-card">
-            <h2 class="affiliate-card-title">
-              <Icon name="link" size="sm" />
-              {{ t('affiliate.yourCode') }}
-            </h2>
-            <p class="affiliate-card-hint">{{ t('affiliate.tips.line1') }}</p>
+        <div class="affiliate-card affiliate-invite-card">
+          <h2 class="affiliate-card-title">
+            <Icon name="link" size="sm" />
+            {{ t('affiliate.inviteLink') }}
+          </h2>
 
-            <div class="affiliate-code-row">
-              <span class="affiliate-code-label">{{ t('affiliate.yourCode') }}</span>
-              <code class="affiliate-code-value">{{ detail.aff_code }}</code>
-              <button type="button" class="affiliate-copy-button" @click="copyCode">
-                <Icon name="copy" size="sm" />
-                {{ t('affiliate.copyCode') }}
-              </button>
-            </div>
-
-            <div class="affiliate-code-row">
-              <span class="affiliate-code-label">{{ t('affiliate.inviteLink') }}</span>
-              <code class="affiliate-code-value">{{ inviteLink }}</code>
-              <button type="button" class="affiliate-copy-button" @click="copyInviteLink">
-                <Icon name="copy" size="sm" />
-                {{ t('affiliate.copyLink') }}
-              </button>
-            </div>
+          <div class="affiliate-code-row">
+            <code class="affiliate-code-value">{{ inviteLink }}</code>
+            <button type="button" class="affiliate-copy-button" @click="copyInviteLink">
+              <Icon name="copy" size="sm" />
+              {{ t('affiliate.copyLink') }}
+            </button>
           </div>
 
-          <div class="affiliate-card">
-            <h2 class="affiliate-card-title">
+          <div class="affiliate-tips">
+            <h3 class="affiliate-tips-title">
               <Icon name="lightbulb" size="sm" />
               {{ t('affiliate.tips.title') }}
-            </h2>
+            </h3>
             <ul class="affiliate-tips-list">
               <li>{{ t('affiliate.tips.line1') }}</li>
               <li>{{ t('affiliate.tips.line2', { rate: `${formattedRebateRate}%` }) }}</li>
@@ -194,11 +181,6 @@ async function loadAffiliateDetail(silent = false): Promise<void> {
       loading.value = false
     }
   }
-}
-
-async function copyCode(): Promise<void> {
-  if (!detail.value?.aff_code) return
-  await copyToClipboard(detail.value.aff_code, t('affiliate.codeCopied'))
 }
 
 async function copyInviteLink(): Promise<void> {
@@ -463,20 +445,6 @@ onMounted(() => {
   font-size: 0.72rem;
 }
 
-.affiliate-columns {
-  display: grid;
-  max-width: 1280px;
-  margin: 0 auto 24px;
-  gap: 24px;
-}
-
-@media (min-width: 1024px) {
-  .affiliate-columns {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: start;
-  }
-}
-
 .affiliate-card {
   border: 1px solid var(--md-outline-variant);
   border-radius: 8px;
@@ -498,12 +466,9 @@ onMounted(() => {
   font-weight: 700;
 }
 
-.affiliate-card-hint {
-  margin-top: 8px;
-  margin-bottom: 16px;
-  color: var(--md-on-surface-variant);
-  font-size: 0.85rem;
-  line-height: 1.6;
+.affiliate-invite-card {
+  max-width: 1280px;
+  margin: 0 auto 24px;
 }
 
 .affiliate-code-row {
@@ -511,22 +476,11 @@ onMounted(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  margin-top: 16px;
   border: 1px solid var(--md-outline-variant);
   border-radius: 6px;
   background: rgb(0 0 0 / 30%);
   padding: 10px 12px;
-}
-
-.affiliate-code-row + .affiliate-code-row {
-  margin-top: 12px;
-}
-
-.affiliate-code-label {
-  flex: none;
-  color: var(--md-on-surface-variant);
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
 }
 
 .affiliate-code-value {
@@ -564,6 +518,22 @@ onMounted(() => {
 .affiliate-export-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.affiliate-tips {
+  margin-top: 24px;
+  border-top: 1px solid var(--md-outline-variant);
+  padding-top: 20px;
+}
+
+.affiliate-tips-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--md-on-surface);
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .affiliate-tips-list {
