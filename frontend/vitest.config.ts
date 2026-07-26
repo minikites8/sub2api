@@ -10,6 +10,12 @@ export default defineConfig({
       'vue-i18n': 'vue-i18n/dist/vue-i18n.runtime.esm-bundler.js'
     }
   },
+  // Mirror vite.config.ts: the runtime-only vue-i18n build cannot compile
+  // messages without this flag, so without it no test can render a real
+  // translation — they would all silently fall back to the key.
+  define: {
+    __INTLIFY_JIT_COMPILATION__: true
+  },
   test: {
     globals: true,
     environment: 'jsdom',

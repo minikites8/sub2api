@@ -47,12 +47,12 @@
         :to="sidebarAccountPath"
         class="sidebar-account"
         :class="{ 'sidebar-account-collapsed': sidebarCollapsed }"
-        :title="sidebarCollapsed ? sidebarDisplayName : undefined"
+        :title="sidebarProjectLabel"
         @click="handleMenuItemClick(sidebarAccountPath)"
       >
         <span v-if="sidebarCollapsed" class="sidebar-account-monogram">{{ sidebarUserInitial }}</span>
         <span v-else class="min-w-0">
-          <span class="sidebar-account-name">{{ sidebarDisplayName }}</span>
+          <span class="sidebar-account-name">{{ sidebarProjectLabel }}</span>
           <span class="sidebar-account-plan-row">
             <span class="sidebar-account-plan">{{ sidebarPlanName }}</span>
             <span v-if="sidebarCreditBalance" class="sidebar-account-balance">{{ sidebarCreditBalance }}</span>
@@ -330,6 +330,9 @@ const sidebarDisplayName = computed(() => {
   if (email) return email.split('@')[0]
   return t('nav.guestUser')
 })
+// The account block is rendered as "<name>'s project"; the monogram and any
+// initial-based styling still key off the bare name.
+const sidebarProjectLabel = computed(() => t('nav.userProject', { name: sidebarDisplayName.value }))
 const sidebarUserInitial = computed(() => sidebarDisplayName.value.slice(0, 1).toUpperCase())
 const sidebarAccountPath = computed(() => authStore.user ? '/profile' : '/login')
 const sidebarPlanName = computed(() => {

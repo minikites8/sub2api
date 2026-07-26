@@ -195,6 +195,7 @@ export default {
     riskControl: '风控中心',
     guestUser: '访客用户',
     publicAccess: 'PUBLIC ACCESS',
+    userProject: "{name}'s project",
     payAsYouGo: 'Pay-as-you-go',
     signInRequired: '登录后可用',
   },

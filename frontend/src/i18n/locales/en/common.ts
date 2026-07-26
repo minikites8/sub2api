@@ -195,6 +195,7 @@ export default {
     riskControl: 'Risk Control',
     guestUser: 'Guest User',
     publicAccess: 'PUBLIC ACCESS',
+    userProject: "{name}'s project",
     payAsYouGo: 'Pay-as-you-go',
     signInRequired: 'Available after sign in',
   },
