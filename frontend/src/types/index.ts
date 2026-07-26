@@ -1738,6 +1738,8 @@ export interface TrendDataPoint {
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除
+  // 该时间桶内的平均总耗时，延迟热力图按此着色；桶内没有耗时样本时为 0。
+  avg_duration_ms?: number
 }
 
 export interface ModelStat {

@@ -58,10 +58,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { UsageLog } from '@/types'
+import { type LatencyPoint, parseBucketDate } from './latencyPoints'
 
+// points 必须覆盖整个查询区间。这里曾经直接吃请求列表的 items，而那只是当前
+// 分页的一页——于是除了最新那一天/两小时以外的格子全是空的。
 const props = defineProps<{
-  logs: UsageLog[]
+  points: LatencyPoint[]
   endDate: string
   periodDays: number
 }>()
@@ -113,16 +115,25 @@ const calendarLeadingDays = computed(() => {
 
 const buckets = computed(() => {
   const result = new Map<string, { total: number; count: number }>()
-  props.logs.forEach((log) => {
-    if (log.duration_ms == null) return
-    const date = new Date(log.created_at)
-    if (Number.isNaN(date.getTime())) return
-    const dayKey = localDateKey(date)
-    const hour = Math.floor(date.getHours() / 2) * 2
-    const key = isDailyView.value ? dayKey : `${dayKey}-${hour}`
+  props.points.forEach((point) => {
+    const parsed = parseBucketDate(point.date)
+    if (!parsed) return
+    // 后端在整桶都没有耗时样本时返回 0，这是"没有数据"而不是"0 毫秒"。
+    const average = Number(point.avg_duration_ms) || 0
+    if (average <= 0) return
+    let key: string
+    if (isDailyView.value) {
+      key = parsed.day
+    } else {
+      // 按小时的点合并成 2 小时一格；只有按天的点时这一格无从落位，跳过。
+      if (parsed.hour == null) return
+      key = `${parsed.day}-${Math.floor(parsed.hour / 2) * 2}`
+    }
+    // 按请求数加权，否则一个只有 1 次请求的小时会和 500 次请求的小时等权。
+    const weight = Math.max(1, Number(point.requests) || 0)
     const bucket = result.get(key) || { total: 0, count: 0 }
-    bucket.total += log.duration_ms
-    bucket.count += 1
+    bucket.total += average * weight
+    bucket.count += weight
     result.set(key, bucket)
   })
   return result

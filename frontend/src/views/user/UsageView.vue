@@ -56,7 +56,7 @@
       </div>
 
       <UsageLatencyHeatmap
-        :logs="analyticsLogs"
+        :points="heatmapPoints"
         :end-date="endDate"
         :period-days="projectedPeriodDays"
       />
@@ -285,6 +285,7 @@ import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
 import UsageLatencyHeatmap from '@/components/user/usage/UsageLatencyHeatmap.vue'
+import { type LatencyPoint, latencyPointsFromLogs } from '@/components/user/usage/latencyPoints'
 import UsageModelCreditChart from '@/components/user/usage/UsageModelCreditChart.vue'
 import UsageRequestDetailsDialog from '@/components/user/usage/UsageRequestDetailsDialog.vue'
 import UsageTokenBarChart from '@/components/user/usage/UsageTokenBarChart.vue'
@@ -321,7 +322,6 @@ const previewMode = import.meta.env.DEV && Boolean(props.previewData)
 const usageStats = ref<UsageStatsResponse | null>(null)
 const monthToDateActualCost = ref(0)
 const usageLogs = ref<UsageLog[]>([])
-const analyticsLogs = ref<UsageLog[]>([])
 const previewSourceLogs = ref<UsageLog[]>([])
 const trendData = ref<TrendDataPoint[]>([])
 const requestedModelStats = ref<ModelStat[]>([])
@@ -435,6 +435,20 @@ const activeRangePreset = computed<'7' | '30' | 'custom'>(() => {
 const totalActualCredits = computed(() => usdToCredits(usageStats.value?.total_actual_cost))
 const averageLatency = computed(() => Number(usageStats.value?.average_duration_ms || 0))
 const projectedPeriodDays = computed(() => activeRangePreset.value === '7' ? 7 : 30)
+
+// 热力图按天（30 天视图）或按 2 小时（7 天视图）着色，需要的聚合粒度和折线图
+// 不一定相同——7 天预设下折线图按天聚合，热力图却要小时级。粒度一致时复用
+// 趋势数据，不一致时才额外取一次。
+const heatmapGranularity = computed<'day' | 'hour'>(() => projectedPeriodDays.value >= 30 ? 'day' : 'hour')
+const heatmapTrend = ref<LatencyPoint[]>([])
+const toLatencyPoints = (points: TrendDataPoint[]): LatencyPoint[] => points.map((point) => ({
+  date: point.date,
+  avg_duration_ms: Number(point.avg_duration_ms || 0),
+  requests: Number(point.requests || 0),
+}))
+const heatmapPoints = computed<LatencyPoint[]>(() => heatmapGranularity.value === granularity.value
+  ? toLatencyPoints(trendData.value)
+  : heatmapTrend.value)
 const projectedPeriodCredits = computed(() => {
   const now = new Date()
   const elapsedDays = Math.max(1, now.getDate())
@@ -689,7 +703,6 @@ const loadLogs = async () => {
     const filtered = getFilteredPreviewLogs()
     const offset = (pagination.page - 1) * pagination.page_size
     usageLogs.value = filtered.slice(offset, offset + pagination.page_size)
-    analyticsLogs.value = filtered
     pagination.total = filtered.length
     return
   }
@@ -703,7 +716,6 @@ const loadLogs = async () => {
     })
     if (!controller.signal.aborted) {
       usageLogs.value = res.items
-      analyticsLogs.value = res.items
       pagination.total = res.total
     }
   } catch (error: any) {
@@ -773,24 +785,43 @@ const loadModelStats = async () => {
 const loadChartData = async () => {
   if (previewMode) {
     trendData.value = props.previewData?.trend || []
+    // 预览数据只有按天的趋势，热力图的小时视图靠本地聚合它自带的完整日志补齐。
+    heatmapTrend.value = latencyPointsFromLogs(
+      props.previewData?.logs || [],
+      heatmapGranularity.value === 'hour',
+    )
     return
   }
   const seq = ++chartReqSeq
   chartsLoading.value = true
+  const needsOwnHeatmapTrend = heatmapGranularity.value !== granularity.value
   try {
-    const snapshot = await usageAPI.getDashboardSnapshotV2({
-      ...normalizedFilters.value,
-      granularity: granularity.value,
-      include_trend: true,
-      include_model_stats: false,
-      include_group_stats: true,
-    })
+    const [snapshot, heatmapSnapshot] = await Promise.all([
+      usageAPI.getDashboardSnapshotV2({
+        ...normalizedFilters.value,
+        granularity: granularity.value,
+        include_trend: true,
+        include_model_stats: false,
+        include_group_stats: true,
+      }),
+      needsOwnHeatmapTrend
+        ? usageAPI.getDashboardSnapshotV2({
+          ...normalizedFilters.value,
+          granularity: heatmapGranularity.value,
+          include_trend: true,
+          include_model_stats: false,
+          include_group_stats: false,
+        })
+        : Promise.resolve(null),
+    ])
     if (seq !== chartReqSeq) return
     trendData.value = snapshot.trend || []
+    heatmapTrend.value = toLatencyPoints(heatmapSnapshot?.trend || [])
   } catch (error) {
     if (seq !== chartReqSeq) return
     console.error('Failed to load chart data:', error)
     trendData.value = []
+    heatmapTrend.value = []
   } finally {
     if (seq === chartReqSeq) chartsLoading.value = false
   }

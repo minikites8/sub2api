@@ -90,6 +90,9 @@ type TrendDataPoint struct {
 	TotalTokens         int64   `json:"total_tokens"`
 	Cost                float64 `json:"cost"`        // 标准计费
 	ActualCost          float64 `json:"actual_cost"` // 实际扣除
+	// 该时间桶内的平均总耗时。延迟热力图按此着色——它需要覆盖整个查询区间的
+	// 服务端聚合值，而不是请求列表当前那一页的样本。
+	AvgDurationMs float64 `json:"avg_duration_ms"`
 }
 
 // ModelStat represents usage statistics for a single model

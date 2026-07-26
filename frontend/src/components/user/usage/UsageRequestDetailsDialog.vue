@@ -7,33 +7,17 @@
   >
     <div v-if="log" class="usage-request-details" data-testid="request-details-dialog">
       <div class="usage-request-details__summary">
-        <div>
-          <span>{{ t('usage.requestDetails.request') }}</span>
-          <strong>{{ log.model || emptyValue }}</strong>
-        </div>
-        <span class="usage-request-details__status"><i />200 OK</span>
+        <span>{{ t('usage.requestDetails.request') }}</span>
+        <strong>{{ log.model || emptyValue }}</strong>
+        <time :datetime="log.created_at">{{ formatDateTime(log.created_at) }}</time>
       </div>
 
       <section v-for="section in sections" :key="section.title" class="usage-request-details__section">
         <h4><Icon :name="section.icon" size="sm" />{{ section.title }}</h4>
         <dl>
-          <div
-            v-for="item in section.items"
-            :key="item.label"
-            :class="{ 'usage-request-details__item--wide': item.wide }"
-          >
+          <div v-for="item in section.items" :key="item.label">
             <dt>{{ item.label }}</dt>
             <dd :class="{ 'usage-request-details__mono': item.monospace }">{{ item.value }}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section v-if="imageItems.length" class="usage-request-details__section">
-        <h4><Icon name="sparkles" size="sm" />{{ t('usage.requestDetails.imageMetadata') }}</h4>
-        <dl>
-          <div v-for="item in imageItems" :key="item.label">
-            <dt>{{ item.label }}</dt>
-            <dd>{{ item.value }}</dd>
           </div>
         </dl>
       </section>
@@ -51,13 +35,12 @@ import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
 import type { UsageLog } from '@/types'
 
-type DetailIcon = 'clipboard' | 'server' | 'globe'
+type DetailIcon = 'clipboard' | 'server' | 'globe' | 'sparkles'
 
 interface DetailItem {
   label: string
   value: string
   monospace?: boolean
-  wide?: boolean
 }
 
 interface DetailSection {
@@ -101,15 +84,6 @@ const requestTypeLabel = (log: UsageLog) => {
   return t('usage.unknown')
 }
 
-const transportLabel = (log: UsageLog) => {
-  if (log.openai_ws_mode || resolveUsageRequestType(log) === 'ws_v2') {
-    return t('usage.requestDetails.websocket')
-  }
-  return log.stream
-    ? t('usage.requestDetails.streaming')
-    : t('usage.requestDetails.synchronous')
-}
-
 const groupLabel = (log: UsageLog) => {
   const group = log.group?.name || t('usage.analytics.unknownGroup')
   const multiplier = Number(log.rate_multiplier || 1)
@@ -132,17 +106,19 @@ const imageSizeSourceLabel = (source: UsageLog['image_size_source']) => {
   return emptyValue
 }
 
+// 这个弹窗只放辅助元数据——token 和 Credit 明细在表格行上各有自己的悬浮层。
+// 所以这里的取舍一律是减法：拿不到值的字段直接不出现，整段都拿不到就整段不出现。
+// 之前每个字段无论有没有值都占一个带边框的格子，十几个 "--" 把真正有用的几行淹了。
 const sections = computed<DetailSection[]>(() => {
   const log = props.log
   if (!log) return []
 
-  return [
+  const draft: DetailSection[] = [
     {
       title: t('usage.requestDetails.requestContext'),
       icon: 'clipboard',
       items: [
-        { label: t('usage.requestDetails.requestId'), value: present(log.request_id), monospace: true, wide: true },
-        { label: t('usage.time'), value: formatDateTime(log.created_at) },
+        { label: t('usage.requestDetails.requestId'), value: present(log.request_id), monospace: true },
         { label: t('usage.apiKeyFilter'), value: present(log.api_key?.name) },
         { label: t('admin.usage.group'), value: groupLabel(log) },
       ],
@@ -151,9 +127,9 @@ const sections = computed<DetailSection[]>(() => {
       title: t('usage.requestDetails.routing'),
       icon: 'server',
       items: [
-        { label: t('usage.inboundEndpoint'), value: present(log.inbound_endpoint), monospace: true, wide: true },
+        { label: t('usage.inboundEndpoint'), value: present(log.inbound_endpoint), monospace: true },
+        // 不再单列"传输"：它只会说流式/同步/WebSocket，而"类型"已经涵盖同一件事。
         { label: t('usage.type'), value: requestTypeLabel(log) },
-        { label: t('usage.requestDetails.transport'), value: transportLabel(log) },
         { label: t('usage.reasoningEffort'), value: reasoningEffortLabel(log.reasoning_effort) },
         { label: t('usage.serviceTier'), value: getUsageServiceTierLabel(log.service_tier, t) },
         { label: t('usage.requestDetails.nodeId'), value: present(log.node_id), monospace: true },
@@ -164,63 +140,74 @@ const sections = computed<DetailSection[]>(() => {
       icon: 'globe',
       items: [
         { label: t('usage.requestDetails.ipAddress'), value: present(log.ip_address), monospace: true },
-        { label: t('usage.userAgent'), value: present(log.user_agent), monospace: true, wide: true },
+        { label: t('usage.userAgent'), value: present(log.user_agent), monospace: true },
       ],
     },
   ]
-})
 
-const imageItems = computed<DetailItem[]>(() => {
-  const log = props.log
-  if (!log || log.image_count <= 0) return []
-  return [
-    { label: t('usage.requestDetails.mediaType'), value: present(log.media_type) },
-    { label: t('usage.imageCount'), value: present(log.image_count) },
-    { label: t('usage.imageBillingSize'), value: present(log.image_size) },
-    { label: t('usage.imageInputSize'), value: present(log.image_input_size) },
-    { label: t('usage.imageOutputSize'), value: present(log.image_output_size) },
-    { label: t('usage.imageSizeSource'), value: imageSizeSourceLabel(log.image_size_source) },
-  ]
+  if (log.image_count > 0) {
+    draft.push({
+      title: t('usage.requestDetails.imageMetadata'),
+      icon: 'sparkles',
+      items: [
+        { label: t('usage.requestDetails.mediaType'), value: present(log.media_type) },
+        { label: t('usage.imageCount'), value: present(log.image_count) },
+        { label: t('usage.imageBillingSize'), value: present(log.image_size) },
+        { label: t('usage.imageInputSize'), value: present(log.image_input_size) },
+        { label: t('usage.imageOutputSize'), value: present(log.image_output_size) },
+        { label: t('usage.imageSizeSource'), value: imageSizeSourceLabel(log.image_size_source) },
+      ],
+    })
+  }
+
+  return draft
+    .map((section) => ({ ...section, items: section.items.filter((item) => item.value !== emptyValue) }))
+    .filter((section) => section.items.length > 0)
 })
 </script>
 
 <style scoped>
+/* 等宽字体只留给数值——请求 ID、端点、UA 这类需要逐字符看的东西。
+   标签跟着界面字体走，否则整个弹窗都像一片数据。 */
 .usage-request-details {
   display: grid;
-  gap: 18px;
+  gap: 20px;
   color: #d9e4e0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .usage-request-details__summary {
   display: flex;
   min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border: 1px solid #30443f;
-  background: #0b1519;
-  padding: 13px 14px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
 }
 
-.usage-request-details__summary > div { min-width: 0; }
-.usage-request-details__summary span { display: block; color: #71877f; font-size: 11px; text-transform: uppercase; }
-.usage-request-details__summary strong { display: block; margin-top: 5px; overflow: hidden; color: #f2f7f5; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.usage-request-details__status { display: inline-flex !important; flex: 0 0 auto; align-items: center; gap: 7px; color: #00f5a8 !important; font-size: 12px !important; white-space: nowrap; }
-.usage-request-details__status i { width: 6px; height: 6px; border-radius: 50%; background: #00f5a8; }
+.usage-request-details__summary span { flex: 0 0 100%; color: #71877f; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.usage-request-details__summary strong { min-width: 0; overflow: hidden; color: #f2f7f5; font-size: 17px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.usage-request-details__summary time { color: #8b9e97; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 
-.usage-request-details__section { border-top: 1px solid #2b3e38; padding-top: 14px; }
-.usage-request-details__section h4 { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; color: #9db0a9; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+.usage-request-details__section h4 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: #9db0a9; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .usage-request-details__section h4 :deep(svg) { color: #00f5a8; }
-.usage-request-details__section dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.usage-request-details__section dl > div { min-width: 0; border: 1px solid rgba(72, 96, 89, .46); background: rgba(8, 17, 21, .68); padding: 10px 11px; }
-.usage-request-details__item--wide { grid-column: 1 / -1; }
-.usage-request-details__section dt { color: #748981; font-size: 11px; }
-.usage-request-details__section dd { margin-top: 5px; overflow-wrap: anywhere; color: #d9e4e0; font-size: 12px; line-height: 1.45; }
+
+/* 规格表式的两列：标签定宽在左，取值靠右占满剩余宽度，行间只用一条细线分隔。
+   原先每个字段都套一层边框加底色，十几个方块的视觉噪音盖过了内容本身。 */
+.usage-request-details__section dl { display: grid; }
+.usage-request-details__section dl > div {
+  display: grid;
+  min-width: 0;
+  align-items: baseline;
+  grid-template-columns: minmax(88px, 132px) minmax(0, 1fr);
+  gap: 16px;
+  border-bottom: 1px solid rgba(72, 96, 89, .28);
+  padding: 9px 0;
+}
+.usage-request-details__section dl > div:last-child { border-bottom: 0; }
+.usage-request-details__section dt { color: #748981; font-size: 12px; line-height: 1.45; }
+.usage-request-details__section dd { min-width: 0; overflow-wrap: anywhere; color: #eaf2ef; font-size: 12px; line-height: 1.45; }
 .usage-request-details__mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 @media (max-width: 520px) {
-  .usage-request-details__section dl { grid-template-columns: 1fr; }
-  .usage-request-details__item--wide { grid-column: auto; }
+  .usage-request-details__section dl > div { grid-template-columns: 1fr; gap: 3px; }
 }
 </style>
