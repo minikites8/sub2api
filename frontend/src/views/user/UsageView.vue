@@ -1207,9 +1207,14 @@ onUnmounted(() => {
 .usage-log-latency .usage-latency--slow strong { color: #ffbd59; }
 .usage-log-latency .usage-latency--critical strong { color: #ff9f97; }
 .usage-log-table__credits { color: var(--usage-accent) !important; font-weight: 700; white-space: nowrap; }
-.usage-log-table__action-heading { width: 84px; text-align: right !important; }
-.usage-log-table__action { text-align: right; }
-.usage-request-details-trigger { display: inline-flex; min-width: 58px; height: 28px; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--md-outline-variant); background: var(--md-surface-container-low); padding: 0 9px; color: var(--md-on-surface-variant); font-family: inherit; font-size: 12px; transition: border-color .14s ease, background-color .14s ease, color .14s ease; }
+/* 列宽要容得下按钮加上单元格 36px 的左右内边距；英文 "Details" 比中文
+   "详情" 宽，按较宽的那个留。 */
+.usage-log-table__action-heading { width: 124px; text-align: right !important; }
+.usage-log-table__action { text-align: right; white-space: nowrap; }
+/* white-space: nowrap 是这里的关键：按钮标签在任何宽度下都不该折行，
+   否则中文会逐字竖排。图标也不能被压缩。 */
+.usage-request-details-trigger { display: inline-flex; min-width: 72px; height: 28px; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--md-outline-variant); background: var(--md-surface-container-low); padding: 0 10px; color: var(--md-on-surface-variant); font-family: inherit; font-size: 12px; white-space: nowrap; transition: border-color .14s ease, background-color .14s ease, color .14s ease; }
+.usage-request-details-trigger :deep(svg) { flex: none; }
 .usage-request-details-trigger:hover, .usage-request-details-trigger:focus-visible { border-color: var(--usage-accent); outline: none; background: rgba(0, 245, 168, .07); color: var(--usage-accent); }
 .usage-latency--fast { color: var(--usage-accent) !important; }
 .usage-latency--slow { color: #ffbd59 !important; }
