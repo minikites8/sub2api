@@ -287,9 +287,10 @@ type SectionId =
   | 'authentication'
   | 'chat-completion'
   | 'image-generation'
+  | 'video-generation'
   | 'model-list'
 
-type DocsIcon = 'grid' | 'cpu' | 'key' | 'chartBar' | 'cog' | 'lock' | 'chatBubble' | 'sparkles' | 'document'
+type DocsIcon = 'grid' | 'cpu' | 'key' | 'chartBar' | 'cog' | 'lock' | 'chatBubble' | 'sparkles' | 'video' | 'document'
 
 interface NavigationItem {
   id: SectionId
@@ -352,6 +353,7 @@ const validSections: SectionId[] = [
   'authentication',
   'chat-completion',
   'image-generation',
+  'video-generation',
   'model-list'
 ]
 
@@ -392,6 +394,7 @@ const apiReferenceItems = computed<NavigationItem[]>(() => [
   createNavigationItem('authentication', 'lock', 'authentication'),
   createNavigationItem('chat-completion', 'chatBubble', 'chatCompletion'),
   createNavigationItem('image-generation', 'sparkles', 'imageGeneration'),
+  createNavigationItem('video-generation', 'video', 'videoGeneration'),
   createNavigationItem('model-list', 'document', 'modelList')
 ])
 
@@ -410,6 +413,7 @@ const articleKeys: Record<SectionId, string> = {
   authentication: 'authentication',
   'chat-completion': 'chatCompletion',
   'image-generation': 'imageGeneration',
+  'video-generation': 'videoGeneration',
   'model-list': 'modelList'
 }
 
@@ -421,6 +425,7 @@ const articleLayouts: Record<GuideSectionId, string[]> = {
   settings: ['connection', 'production'],
   authentication: ['headers', 'errors'],
   'image-generation': ['generation', 'editing'],
+  'video-generation': ['capabilities', 'lifecycle'],
   'model-list': ['catalog', 'refresh']
 }
 
@@ -467,6 +472,58 @@ const codeExamples: Record<GuideSectionId, CodeExampleDefinition[]> = {
     key: 'response',
     language: 'json',
     code: `{\n  "created": 1710000000,\n  "data": [\n    {\n      "b64_json": "iVBORw0KGgoAAA...",\n      "revised_prompt": "A precise isometric diagram of an AI gateway"\n    }\n  ]\n}`
+  }],
+  'video-generation': [{
+    key: 'textToVideo',
+    language: 'bash',
+    code: `curl -X POST https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
+    "model": "happyhorse-1.1-t2v",
+    "prompt": "A white horse running along the coast at sunset",
+    "resolution": "720P",
+    "ratio": "16:9",
+    "seconds": 5
+  }'`
+  }, {
+    key: 'imageToVideo',
+    language: 'bash',
+    code: `curl -X POST https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
+    "model": "happyhorse-1.1-i2v",
+    "prompt": "Slowly move the camera forward while the subject blinks naturally",
+    "first_frame": "https://example.com/first-frame.jpg",
+    "resolution": "720P",
+    "ratio": "16:9",
+    "seconds": 5
+  }'`
+  }, {
+    key: 'referenceToVideo',
+    language: 'bash',
+    code: `curl -X POST https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
+    "model": "happyhorse-1.1-r2v",
+    "prompt": "Keep the referenced character and outfit while walking through a city street",
+    "reference_images": [
+      "https://example.com/character.jpg",
+      "https://example.com/outfit.jpg"
+    ],
+    "resolution": "720P",
+    "ratio": "16:9",
+    "seconds": 5
+  }'`
+  }, {
+    key: 'videoEdit',
+    language: 'bash',
+    code: `curl -X POST https://api.your-code.cc/v1/videos/edits \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
+    "model": "happyhorse-1.1-video-edit",
+    "prompt": "Dress the subject in the striped sweater from the reference image",
+    "video": "https://example.com/input.mp4",
+    "image": "https://example.com/sweater.jpg",
+    "resolution": "720P",
+    "ratio": "16:9",
+    "seconds": 5
+  }'`
+  }, {
+    key: 'status',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos/video_TASK_ID \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
   }],
   'model-list': [{
     key: 'primary',

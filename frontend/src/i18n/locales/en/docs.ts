@@ -38,6 +38,7 @@ export default {
       authentication: 'Authentication and errors',
       chatCompletion: 'Chat completions',
       imageGeneration: 'Image generation',
+      videoGeneration: 'Video generation',
       modelList: 'Model list'
     },
     articles: {
@@ -415,6 +416,74 @@ export default {
         callout: {
           title: 'Check group access first',
           body: 'The group must enable image generation. Model access and a compatible upstream account complete the routing requirements for image requests.'
+        }
+      },
+      videoGeneration: {
+        title: 'Video Generation API',
+        description: 'Call HappyHorse through an asynchronous video API for text-to-video, first-frame image-to-video, reference-to-video, and video editing.',
+        sections: {
+          capabilities: {
+            title: 'HappyHorse capabilities and inputs',
+            body: 'HappyHorse 1.0 and 1.1 each expose four capability-specific models. Image and video inputs use public HTTPS URLs reachable by the generation service.',
+            items: {
+              first: {
+                title: 'Model names',
+                description: 'Use happyhorse-1.0 or happyhorse-1.1 with the -t2v, -i2v, -r2v, or -video-edit suffix that matches the requested capability.'
+              },
+              second: {
+                title: 'Media fields',
+                description: 'Use first_frame for image-to-video, reference_images for reference-to-video, and video plus an optional image for video editing.'
+              },
+              third: {
+                title: 'Generation parameters',
+                description: 'resolution supports 720P and 1080P, ratio defaults to 16:9, and seconds or duration sets the output duration with a 5-second default.'
+              }
+            }
+          },
+          lifecycle: {
+            title: 'Submit, poll, and settle',
+            body: 'Video generation uses asynchronous tasks. The create endpoint returns a task ID immediately, while Sub2API polls the generation service and exposes a unified task status and result.',
+            items: {
+              first: {
+                title: 'Create a task',
+                description: 'POST /v1/videos creates a generation task, /v1/videos/generations is an alias, and video editing uses POST /v1/videos/edits.'
+              },
+              second: {
+                title: 'Poll task status',
+                description: 'Call GET /v1/videos/:id for queued, in_progress, settling, completed, or failed. A completed response includes video_url.'
+              },
+              third: {
+                title: 'Billing and result URLs',
+                description: 'Submission reserves Credits, success settles against actual output, and failure releases the reservation. expires_at identifies signed result URL expiry.'
+              }
+            }
+          }
+        },
+        examples: {
+          textToVideo: {
+            title: 'Text to video',
+            description: 'Choose a -t2v model and provide prompt. This 5-second 720P request is suitable for an initial connectivity check.'
+          },
+          imageToVideo: {
+            title: 'Image to video from a first frame',
+            description: 'Choose an -i2v model and provide the first-frame image URL through first_frame. image is also accepted as an alias.'
+          },
+          referenceToVideo: {
+            title: 'Reference to video',
+            description: 'Choose an -r2v model and provide one or more reference image URLs through the reference_images array.'
+          },
+          videoEdit: {
+            title: 'Video editing',
+            description: 'Choose a -video-edit model, provide the source video URL through video, and optionally add a reference image through image.'
+          },
+          status: {
+            title: 'Poll a video task',
+            description: 'Replace the path value with id from the create response. Poll every 5 to 10 seconds until the status reaches completed or failed.'
+          }
+        },
+        callout: {
+          title: 'Use publicly reachable media URLs',
+          body: 'The generation service downloads resources referenced by first_frame, reference_images, video, and image. Keep each URL valid during execution and save generated output before expires_at.'
         }
       },
       modelList: {

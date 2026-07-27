@@ -38,6 +38,7 @@ export default {
       authentication: '认证与错误',
       chatCompletion: '对话补全',
       imageGeneration: '图像生成',
+      videoGeneration: '视频生成',
       modelList: '模型列表'
     },
     articles: {
@@ -415,6 +416,74 @@ export default {
         callout: {
           title: '先检查分组功能',
           body: '图像接口需要分组开启图像生成权限。模型不可用、功能关闭或上游账号缺少生成能力时，网关会返回明确的权限或路由错误。'
+        }
+      },
+      videoGeneration: {
+        title: '视频生成 API',
+        description: '通过异步视频接口调用 HappyHorse，支持文生视频、首帧图生视频、参考生视频和视频编辑。',
+        sections: {
+          capabilities: {
+            title: 'HappyHorse 能力与输入',
+            body: 'HappyHorse 1.0 和 1.1 均提供四类独立模型。图片与视频输入使用生成服务可以访问的公网 HTTPS URL。',
+            items: {
+              first: {
+                title: '模型名称',
+                description: '使用 happyhorse-1.0 或 happyhorse-1.1，并按能力选择 -t2v、-i2v、-r2v 或 -video-edit 后缀。'
+              },
+              second: {
+                title: '媒体字段',
+                description: '首帧图生视频使用 first_frame，参考生视频使用 reference_images，视频编辑使用 video，并可通过 image 添加参考图。'
+              },
+              third: {
+                title: '生成参数',
+                description: 'resolution 支持 720P 和 1080P；ratio 默认 16:9；seconds 或 duration 设置输出时长，省略时使用 5 秒。'
+              }
+            }
+          },
+          lifecycle: {
+            title: '提交、查询与结算',
+            body: '视频采用异步任务模式。创建接口立即返回任务 ID，Sub2API 后台轮询上游并将任务状态和结果统一暴露给客户端。',
+            items: {
+              first: {
+                title: '创建任务',
+                description: 'POST /v1/videos 创建生成任务，/v1/videos/generations 是兼容路径；视频编辑使用 POST /v1/videos/edits。'
+              },
+              second: {
+                title: '查询状态',
+                description: '通过 GET /v1/videos/:id 查询 queued、in_progress、settling、completed 或 failed 状态。completed 响应包含 video_url。'
+              },
+              third: {
+                title: '计费与结果地址',
+                description: '提交时预扣 Credits，成功后按实际输出结算，失败时释放预扣额度。expires_at 表示签名结果地址的过期时间。'
+              }
+            }
+          }
+        },
+        examples: {
+          textToVideo: {
+            title: '文生视频',
+            description: '选择 -t2v 模型并提供 prompt。以下 5 秒 720P 请求适合首次连通性验证。'
+          },
+          imageToVideo: {
+            title: '图生视频（基于首帧）',
+            description: '选择 -i2v 模型，通过 first_frame 提供首帧图片 URL。image 可作为兼容字段。'
+          },
+          referenceToVideo: {
+            title: '参考生视频',
+            description: '选择 -r2v 模型，通过 reference_images 数组提供一个或多个参考图片 URL。'
+          },
+          videoEdit: {
+            title: '视频编辑',
+            description: '选择 -video-edit 模型，通过 video 提供待编辑视频 URL，并可通过 image 提供参考图片。'
+          },
+          status: {
+            title: '查询视频任务',
+            description: '将创建响应中的 id 替换到查询路径。客户端可每 5 至 10 秒轮询一次，直到进入 completed 或 failed。'
+          }
+        },
+        callout: {
+          title: '使用可公开访问的媒体地址',
+          body: '上游会直接下载 first_frame、reference_images、video 和 image 指向的资源。请确保 URL 在任务执行期间有效，并在 expires_at 前保存生成结果。'
         }
       },
       modelList: {
