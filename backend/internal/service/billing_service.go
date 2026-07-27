@@ -1424,11 +1424,12 @@ type ImagePriceConfig struct {
 	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
 }
 
-// VideoPriceConfig 视频生成计费配置。所有价格均为**每秒**单价（USD/s），与 xAI 官方计费口径一致。
+// VideoPriceConfig 视频生成计费配置。所有价格均为每秒单价（Credits/s）。
 type VideoPriceConfig struct {
 	Price480P  *float64 // 480p 每秒价格（nil 表示使用默认值）
 	Price720P  *float64 // 720p 每秒价格（nil 表示使用默认值）
 	Price1080P *float64 // 1080p 每秒价格（nil 表示使用默认值）
+	Price4K    *float64 // 4K 每秒价格（nil 表示使用默认值）
 }
 
 const (
@@ -1439,7 +1440,7 @@ const (
 	defaultGrokImagineImageQualityPrice1K = 0.05
 	defaultGrokImagineImageQualityPrice2K = 0.07
 
-	// 视频默认价为 xAI 官方**每秒**输出价格（USD/s），总价 = 每秒价 × 时长（秒）。
+	// 视频默认价以 Credits/s 表示，总价 = 每秒价 × 时长（秒）。
 	defaultGrokImagineVideoPrice480P    = 0.05
 	defaultGrokImagineVideoPrice720P    = 0.07
 	defaultGrokImagineVideo15Price480P  = 0.08
@@ -1450,6 +1451,25 @@ const (
 	defaultHappyHorse10VideoPrice1080P = 1.6
 	defaultHappyHorse11VideoPrice720P  = 0.9
 	defaultHappyHorse11VideoPrice1080P = 1.2
+
+	// Seedance 默认价格使用官方 16:9、在线推理、无输入视频示例折算为 Credits/s。
+	defaultSeedance20VideoPrice480P    = 0.46
+	defaultSeedance20VideoPrice720P    = 0.99
+	defaultSeedance20VideoPrice1080P   = 2.48
+	defaultSeedance20VideoPrice4K      = 5.05
+	defaultSeedance20FastPrice480P     = 0.37
+	defaultSeedance20FastPrice720P     = 0.80
+	defaultSeedance20MiniPrice480P     = 0.23
+	defaultSeedance20MiniPrice720P     = 0.50
+	defaultSeedance15ProPrice480P      = 0.16
+	defaultSeedance15ProPrice720P      = 0.346
+	defaultSeedance15ProPrice1080P     = 0.778
+	defaultSeedance10ProPrice480P      = 0.1458
+	defaultSeedance10ProPrice720P      = 0.324
+	defaultSeedance10ProPrice1080P     = 0.729
+	defaultSeedance10ProFastPrice480P  = 0.040824
+	defaultSeedance10ProFastPrice720P  = 0.09072
+	defaultSeedance10ProFastPrice1080P = 0.20412
 
 	// Codex alpha/search 网页搜索单次默认价：OpenAI 官方 web search 定价 $10/1000 次。
 	defaultWebSearchPricePerCall = 0.01
@@ -1579,6 +1599,10 @@ func (s *BillingService) getVideoUnitPrice(model string, resolution string, grou
 			if groupConfig.Price1080P != nil {
 				return *groupConfig.Price1080P
 			}
+		case VideoBillingResolution4K:
+			if groupConfig.Price4K != nil {
+				return *groupConfig.Price4K
+			}
 		}
 	}
 
@@ -1624,12 +1648,50 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 	if price, ok := getDefaultHappyHorseVideoPrice(model, resolution); ok {
 		return price
 	}
+	if price, ok := getDefaultSeedanceVideoPrice(model, resolution); ok {
+		return price
+	}
 
 	// The bundled LiteLLM schema does not expose an output video generation price.
 	// Keep the historical model default as the fallback (interpreted as a per-second
 	// rate; today only Grok models reach video billing, so this path is a safety net),
 	// while letting group-level video prices override it independently from image prices.
 	return s.getDefaultImagePrice(model, ImageBillingSize2K)
+}
+
+func getDefaultSeedanceVideoPrice(model, resolution string) (float64, bool) {
+	model = strings.ToLower(strings.TrimSpace(model))
+	res := NormalizeVideoBillingResolutionOrDefault(resolution)
+	priceByResolution := func(price480P, price720P, price1080P, price4K float64) (float64, bool) {
+		switch res {
+		case VideoBillingResolution480P:
+			return price480P, price480P > 0
+		case VideoBillingResolution720P:
+			return price720P, price720P > 0
+		case VideoBillingResolution1080P:
+			return price1080P, price1080P > 0
+		case VideoBillingResolution4K:
+			return price4K, price4K > 0
+		default:
+			return 0, false
+		}
+	}
+	switch model {
+	case "doubao-seedance-2-0-260128":
+		return priceByResolution(defaultSeedance20VideoPrice480P, defaultSeedance20VideoPrice720P, defaultSeedance20VideoPrice1080P, defaultSeedance20VideoPrice4K)
+	case "doubao-seedance-2-0-fast-260128":
+		return priceByResolution(defaultSeedance20FastPrice480P, defaultSeedance20FastPrice720P, 0, 0)
+	case "doubao-seedance-2-0-mini-260615":
+		return priceByResolution(defaultSeedance20MiniPrice480P, defaultSeedance20MiniPrice720P, 0, 0)
+	case "doubao-seedance-1-5-pro-251215":
+		return priceByResolution(defaultSeedance15ProPrice480P, defaultSeedance15ProPrice720P, defaultSeedance15ProPrice1080P, 0)
+	case "doubao-seedance-1-0-pro-250528":
+		return priceByResolution(defaultSeedance10ProPrice480P, defaultSeedance10ProPrice720P, defaultSeedance10ProPrice1080P, 0)
+	case "doubao-seedance-1-0-pro-fast-251015":
+		return priceByResolution(defaultSeedance10ProFastPrice480P, defaultSeedance10ProFastPrice720P, defaultSeedance10ProFastPrice1080P, 0)
+	default:
+		return 0, false
+	}
 }
 
 func getDefaultHappyHorseVideoPrice(model, resolution string) (float64, bool) {

@@ -23,6 +23,7 @@ func videoPriceConfigFromAPIKey(apiKey *APIKey) *VideoPriceConfig {
 		Price480P:  apiKey.Group.VideoPrice480P,
 		Price720P:  apiKey.Group.VideoPrice720P,
 		Price1080P: apiKey.Group.VideoPrice1080P,
+		Price4K:    apiKey.Group.VideoPrice4K,
 	}
 }
 

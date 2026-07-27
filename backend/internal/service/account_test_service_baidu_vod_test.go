@@ -25,6 +25,10 @@ func (r *baiduVODAccountTestRepo) GetByID(_ context.Context, id int64) (*Account
 }
 
 func runBaiduVODAccountTest(t *testing.T, account *Account, response *http.Response) (*httpUpstreamRecorder, *httptest.ResponseRecorder, error) {
+	return runBaiduVODAccountTestModel(t, account, "", response)
+}
+
+func runBaiduVODAccountTestModel(t *testing.T, account *Account, model string, response *http.Response) (*httpUpstreamRecorder, *httptest.ResponseRecorder, error) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{resp: response}
@@ -35,8 +39,23 @@ func runBaiduVODAccountTest(t *testing.T, account *Account, response *http.Respo
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/1/test", nil)
-	err := service.TestAccountConnection(c, account.ID, "", "", AccountTestModeDefault)
+	err := service.TestAccountConnection(c, account.ID, model, "", AccountTestModeDefault)
 	return upstream, recorder, err
+}
+
+func TestAccountTestServiceBaiduVODSeedanceUsesSeedanceProbe(t *testing.T) {
+	account := &Account{ID: 4, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
+		"auth_mode": BaiduVODAuthModeAPIKey,
+		"api_key":   "seedance-key",
+	}}
+	upstream, recorder, err := runBaiduVODAccountTestModel(t, account, "doubao-seedance-2-0-260128", &http.Response{
+		StatusCode: http.StatusNotFound,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"NotFound","message":"task does not exist"}}`)),
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/seedance"+BaiduVODSeedanceTaskPath+baiduVODConnectivityTaskID, upstream.lastReq.URL.String())
+	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
 }
 
 func TestAccountTestServiceBaiduVODAPIKeyAcceptsMissingProbeTask(t *testing.T) {

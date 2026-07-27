@@ -1009,6 +1009,7 @@ func quotaLeaseDemoHandlerGroupSnapshot(group service.Group) service.QuotaLeaseD
 		VideoPrice480P:                  quotaLeaseDemoHandlerCloneFloat64Ptr(group.VideoPrice480P),
 		VideoPrice720P:                  quotaLeaseDemoHandlerCloneFloat64Ptr(group.VideoPrice720P),
 		VideoPrice1080P:                 quotaLeaseDemoHandlerCloneFloat64Ptr(group.VideoPrice1080P),
+		VideoPrice4K:                    quotaLeaseDemoHandlerCloneFloat64Ptr(group.VideoPrice4K),
 		WebSearchPricePerCall:           quotaLeaseDemoHandlerCloneFloat64Ptr(group.WebSearchPricePerCall),
 		ClaudeCodeOnly:                  group.ClaudeCodeOnly,
 		FallbackGroupID:                 quotaLeaseDemoHandlerCloneInt64Ptr(group.FallbackGroupID),

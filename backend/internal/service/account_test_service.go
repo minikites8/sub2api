@@ -252,8 +252,10 @@ func (s *AccountTestService) testBaiduVODAccountConnection(c *gin.Context, accou
 	}
 
 	testModelID := strings.TrimSpace(modelID)
-	if _, ok := BaiduVODModel(testModelID); !ok {
+	spec, ok := BaiduVODModel(testModelID)
+	if !ok {
 		testModelID = baiduVODDefaultTestModel
+		spec, _ = BaiduVODModel(testModelID)
 	}
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
@@ -267,8 +269,9 @@ func (s *AccountTestService) testBaiduVODAccountConnection(c *gin.Context, accou
 	body, status, err := upstream.do(
 		c.Request.Context(),
 		account,
+		spec.Provider,
 		http.MethodGet,
-		BaiduVODTaskPath+baiduVODConnectivityTaskID,
+		spec.TaskPath+baiduVODConnectivityTaskID,
 		nil,
 	)
 	if err != nil {
@@ -277,7 +280,19 @@ func (s *AccountTestService) testBaiduVODAccountConnection(c *gin.Context, accou
 
 	var result BaiduVODTaskResponse
 	if len(bytes.TrimSpace(body)) > 0 {
-		_ = json.Unmarshal(body, &result)
+		if spec.Provider == BaiduVODProviderSeedance {
+			var seedanceResult baiduVODSeedanceTaskResponse
+			if json.Unmarshal(body, &seedanceResult) == nil {
+				result.Code = baiduVODJSONCode(seedanceResult.Code)
+				result.Message = strings.TrimSpace(seedanceResult.Message)
+				if seedanceResult.Error != nil {
+					result.Code = firstNonEmpty(baiduVODJSONCode(seedanceResult.Error.Code), result.Code)
+					result.Message = firstNonEmpty(strings.TrimSpace(seedanceResult.Error.Message), result.Message)
+				}
+			}
+		} else {
+			_ = json.Unmarshal(body, &result)
+		}
 	}
 	if baiduVODConnectivityTaskMissing(status, result.Code, result.Message) {
 		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})

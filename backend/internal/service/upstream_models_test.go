@@ -331,6 +331,12 @@ func TestFetchUpstreamSupportedModelsBaiduVODUsesRegistry(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, []string{
+		"doubao-seedance-1-0-pro-250528",
+		"doubao-seedance-1-0-pro-fast-251015",
+		"doubao-seedance-1-5-pro-251215",
+		"doubao-seedance-2-0-260128",
+		"doubao-seedance-2-0-fast-260128",
+		"doubao-seedance-2-0-mini-260615",
 		"happyhorse-1.0-i2v",
 		"happyhorse-1.0-r2v",
 		"happyhorse-1.0-t2v",

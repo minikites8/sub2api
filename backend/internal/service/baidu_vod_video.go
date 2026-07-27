@@ -17,39 +17,84 @@ import (
 )
 
 const (
-	BaiduVODDefaultBaseURL = "https://vod.bj.baidubce.com"
-	BaiduVODCreatePath     = "/api/v1/services/aigc/video-generation/video-synthesis"
-	BaiduVODTaskPath       = "/api/v1/tasks/"
-	BaiduVODTaskStatusPath = "/tasks/"
+	BaiduVODDefaultBaseURL       = "https://vod.bj.baidubce.com"
+	BaiduVODCreatePath           = "/api/v1/services/aigc/video-generation/video-synthesis"
+	BaiduVODTaskPath             = "/api/v1/tasks/"
+	BaiduVODTaskStatusPath       = "/tasks/"
+	BaiduVODSeedanceCreatePath   = "/api/v3/contents/generations/tasks"
+	BaiduVODSeedanceTaskPath     = "/api/v3/contents/generations/tasks/"
+	BaiduVODProviderHappyHorse   = "happyhorse"
+	BaiduVODProviderSeedance     = "seedance"
+	BaiduVODProvider             = BaiduVODProviderHappyHorse
+	BaiduVODAuthModeAPIKey       = "apikey"
+	BaiduVODAuthModeAKSK         = "aksk"
+	baiduVODDefaultDuration      = 5
+	baiduVODSeedanceMaxMediaSecs = 15
 )
 
 type BaiduVODVideoCapability string
 
 const (
-	BaiduVODCapabilityT2V  BaiduVODVideoCapability = "t2v"
-	BaiduVODCapabilityI2V  BaiduVODVideoCapability = "i2v"
-	BaiduVODCapabilityR2V  BaiduVODVideoCapability = "r2v"
-	BaiduVODCapabilityEdit BaiduVODVideoCapability = "video_edit"
-	BaiduVODProvider       string                  = "happyhorse"
-	BaiduVODAuthModeAPIKey string                  = "apikey"
-	BaiduVODAuthModeAKSK   string                  = "aksk"
+	BaiduVODCapabilityT2V   BaiduVODVideoCapability = "t2v"
+	BaiduVODCapabilityI2V   BaiduVODVideoCapability = "i2v"
+	BaiduVODCapabilityR2V   BaiduVODVideoCapability = "r2v"
+	BaiduVODCapabilityEdit  BaiduVODVideoCapability = "video_edit"
+	BaiduVODCapabilityMulti BaiduVODVideoCapability = "multimodal"
 )
 
 type BaiduVODModelSpec struct {
-	Model         string
-	UpstreamModel string
-	Capability    BaiduVODVideoCapability
+	Model             string
+	UpstreamModel     string
+	Provider          string
+	Capability        BaiduVODVideoCapability
+	CreatePath        string
+	TaskPath          string
+	Resolutions       []string
+	DefaultResolution string
+	DefaultRatio      string
+	DefaultDuration   int
+	MinDuration       int
+	MaxDuration       int
+	AllowAutoDuration bool
 }
 
 var baiduVODModelRegistry = map[string]BaiduVODModelSpec{
-	"happyhorse-1.0-t2v":        {Model: "happyhorse-1.0-t2v", UpstreamModel: "happyhorse-1.0-t2v", Capability: BaiduVODCapabilityT2V},
-	"happyhorse-1.0-i2v":        {Model: "happyhorse-1.0-i2v", UpstreamModel: "happyhorse-1.0-i2v", Capability: BaiduVODCapabilityI2V},
-	"happyhorse-1.0-r2v":        {Model: "happyhorse-1.0-r2v", UpstreamModel: "happyhorse-1.0-r2v", Capability: BaiduVODCapabilityR2V},
-	"happyhorse-1.0-video-edit": {Model: "happyhorse-1.0-video-edit", UpstreamModel: "happyhorse-1.0-video-edit", Capability: BaiduVODCapabilityEdit},
-	"happyhorse-1.1-t2v":        {Model: "happyhorse-1.1-t2v", UpstreamModel: "happyhorse-1.1-t2v", Capability: BaiduVODCapabilityT2V},
-	"happyhorse-1.1-i2v":        {Model: "happyhorse-1.1-i2v", UpstreamModel: "happyhorse-1.1-i2v", Capability: BaiduVODCapabilityI2V},
-	"happyhorse-1.1-r2v":        {Model: "happyhorse-1.1-r2v", UpstreamModel: "happyhorse-1.1-r2v", Capability: BaiduVODCapabilityR2V},
-	"happyhorse-1.1-video-edit": {Model: "happyhorse-1.1-video-edit", UpstreamModel: "happyhorse-1.1-video-edit", Capability: BaiduVODCapabilityEdit},
+	"happyhorse-1.0-t2v":                  happyHorseModelSpec("happyhorse-1.0-t2v", BaiduVODCapabilityT2V),
+	"happyhorse-1.0-i2v":                  happyHorseModelSpec("happyhorse-1.0-i2v", BaiduVODCapabilityI2V),
+	"happyhorse-1.0-r2v":                  happyHorseModelSpec("happyhorse-1.0-r2v", BaiduVODCapabilityR2V),
+	"happyhorse-1.0-video-edit":           happyHorseModelSpec("happyhorse-1.0-video-edit", BaiduVODCapabilityEdit),
+	"happyhorse-1.1-t2v":                  happyHorseModelSpec("happyhorse-1.1-t2v", BaiduVODCapabilityT2V),
+	"happyhorse-1.1-i2v":                  happyHorseModelSpec("happyhorse-1.1-i2v", BaiduVODCapabilityI2V),
+	"happyhorse-1.1-r2v":                  happyHorseModelSpec("happyhorse-1.1-r2v", BaiduVODCapabilityR2V),
+	"happyhorse-1.1-video-edit":           happyHorseModelSpec("happyhorse-1.1-video-edit", BaiduVODCapabilityEdit),
+	"doubao-seedance-2-0-260128":          seedanceModelSpec("doubao-seedance-2-0-260128", []string{"480P", "720P", "1080P", "4K"}, "720P", 4, 15, true),
+	"doubao-seedance-2-0-fast-260128":     seedanceModelSpec("doubao-seedance-2-0-fast-260128", []string{"480P", "720P"}, "720P", 4, 15, true),
+	"doubao-seedance-2-0-mini-260615":     seedanceModelSpec("doubao-seedance-2-0-mini-260615", []string{"480P", "720P"}, "720P", 4, 15, true),
+	"doubao-seedance-1-5-pro-251215":      seedanceModelSpec("doubao-seedance-1-5-pro-251215", []string{"480P", "720P", "1080P"}, "720P", 4, 12, true),
+	"doubao-seedance-1-0-pro-250528":      seedanceModelSpec("doubao-seedance-1-0-pro-250528", []string{"480P", "720P", "1080P"}, "1080P", 2, 12, false),
+	"doubao-seedance-1-0-pro-fast-251015": seedanceModelSpec("doubao-seedance-1-0-pro-fast-251015", []string{"480P", "720P", "1080P"}, "1080P", 2, 12, false),
+}
+
+func happyHorseModelSpec(model string, capability BaiduVODVideoCapability) BaiduVODModelSpec {
+	return BaiduVODModelSpec{
+		Model: model, UpstreamModel: model, Provider: BaiduVODProviderHappyHorse, Capability: capability,
+		CreatePath: BaiduVODCreatePath, TaskPath: BaiduVODTaskPath,
+		Resolutions: []string{"720P", "1080P"}, DefaultResolution: "720P", DefaultRatio: "16:9",
+		DefaultDuration: baiduVODDefaultDuration,
+	}
+}
+
+func seedanceModelSpec(model string, resolutions []string, defaultResolution string, minDuration, maxDuration int, allowAutoDuration bool) BaiduVODModelSpec {
+	defaultRatio := "adaptive"
+	if strings.Contains(model, "seedance-1-0") {
+		defaultRatio = "16:9"
+	}
+	return BaiduVODModelSpec{
+		Model: model, UpstreamModel: model, Provider: BaiduVODProviderSeedance, Capability: BaiduVODCapabilityMulti,
+		CreatePath: BaiduVODSeedanceCreatePath, TaskPath: BaiduVODSeedanceTaskPath,
+		Resolutions: resolutions, DefaultResolution: defaultResolution, DefaultRatio: defaultRatio,
+		DefaultDuration: baiduVODDefaultDuration, MinDuration: minDuration, MaxDuration: maxDuration, AllowAutoDuration: allowAutoDuration,
+	}
 }
 
 func BaiduVODModel(model string) (BaiduVODModelSpec, bool) {
@@ -69,6 +114,7 @@ func BaiduVODModels() []BaiduVODModelSpec {
 type BaiduVODMedia struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
+	Role string `json:"role,omitempty"`
 }
 
 type BaiduVODVideoRequest struct {
@@ -82,14 +128,35 @@ type BaiduVODVideoRequest struct {
 	Image           json.RawMessage   `json:"image"`
 	Images          []json.RawMessage `json:"images"`
 	FirstFrame      json.RawMessage   `json:"first_frame"`
+	LastFrame       json.RawMessage   `json:"last_frame"`
 	ReferenceImages []json.RawMessage `json:"reference_images"`
 	Video           json.RawMessage   `json:"video"`
+	Videos          []json.RawMessage `json:"videos"`
+	ReferenceVideos []json.RawMessage `json:"reference_videos"`
+	Audio           json.RawMessage   `json:"audio"`
+	Audios          []json.RawMessage `json:"audios"`
+	ReferenceAudios []json.RawMessage `json:"reference_audios"`
 	Media           []BaiduVODMedia   `json:"media"`
+	Content         []json.RawMessage `json:"content"`
+	GenerateAudio   *bool             `json:"generate_audio"`
+	Watermark       *bool             `json:"watermark"`
+	ReturnLastFrame *bool             `json:"return_last_frame"`
+	CallbackURL     string            `json:"callback_url"`
+	ServiceTier     string            `json:"service_tier"`
+	ExpiresAfter    *int              `json:"execution_expires_after"`
+	Draft           *bool             `json:"draft"`
+	Frames          *int              `json:"frames"`
+	Seed            *int64            `json:"seed"`
+	CameraFixed     *bool             `json:"camera_fixed"`
+	SafetyID        string            `json:"safety_identifier"`
+	Priority        *int              `json:"priority"`
+	Tools           []json.RawMessage `json:"tools"`
 }
 
 type BaiduVODUpstreamRequest struct {
-	Model string `json:"model"`
-	Input struct {
+	Provider string `json:"-"`
+	Model    string `json:"model"`
+	Input    struct {
 		Prompt string          `json:"prompt,omitempty"`
 		Media  []BaiduVODMedia `json:"media,omitempty"`
 	} `json:"input"`
@@ -98,6 +165,60 @@ type BaiduVODUpstreamRequest struct {
 		Ratio      string `json:"ratio"`
 		Duration   int    `json:"duration"`
 	} `json:"parameters"`
+	Content         []json.RawMessage `json:"-"`
+	Resolution      string            `json:"-"`
+	Ratio           string            `json:"-"`
+	Duration        int               `json:"-"`
+	GenerateAudio   *bool             `json:"-"`
+	Watermark       *bool             `json:"-"`
+	ReturnLastFrame *bool             `json:"-"`
+	CallbackURL     string            `json:"-"`
+	ServiceTier     string            `json:"-"`
+	ExpiresAfter    *int              `json:"-"`
+	Draft           *bool             `json:"-"`
+	Frames          *int              `json:"-"`
+	Seed            *int64            `json:"-"`
+	CameraFixed     *bool             `json:"-"`
+	SafetyID        string            `json:"-"`
+	Priority        *int              `json:"-"`
+	Tools           []json.RawMessage `json:"-"`
+}
+
+func (r BaiduVODUpstreamRequest) MarshalJSON() ([]byte, error) {
+	if r.Provider != BaiduVODProviderSeedance {
+		type happyHorseRequest struct {
+			Model      string `json:"model"`
+			Input      any    `json:"input"`
+			Parameters any    `json:"parameters"`
+		}
+		return json.Marshal(happyHorseRequest{Model: r.Model, Input: r.Input, Parameters: r.Parameters})
+	}
+	type seedanceRequest struct {
+		Model           string            `json:"model"`
+		Content         []json.RawMessage `json:"content"`
+		Resolution      string            `json:"resolution,omitempty"`
+		Ratio           string            `json:"ratio,omitempty"`
+		Duration        int               `json:"duration,omitempty"`
+		GenerateAudio   *bool             `json:"generate_audio,omitempty"`
+		Watermark       *bool             `json:"watermark,omitempty"`
+		ReturnLastFrame *bool             `json:"return_last_frame,omitempty"`
+		CallbackURL     string            `json:"callback_url,omitempty"`
+		ServiceTier     string            `json:"service_tier,omitempty"`
+		ExpiresAfter    *int              `json:"execution_expires_after,omitempty"`
+		Draft           *bool             `json:"draft,omitempty"`
+		Frames          *int              `json:"frames,omitempty"`
+		Seed            *int64            `json:"seed,omitempty"`
+		CameraFixed     *bool             `json:"camera_fixed,omitempty"`
+		SafetyID        string            `json:"safety_identifier,omitempty"`
+		Priority        *int              `json:"priority,omitempty"`
+		Tools           []json.RawMessage `json:"tools,omitempty"`
+	}
+	return json.Marshal(seedanceRequest{
+		Model: r.Model, Content: r.Content, Resolution: strings.ToLower(r.Resolution), Ratio: r.Ratio, Duration: r.Duration,
+		GenerateAudio: r.GenerateAudio, Watermark: r.Watermark, ReturnLastFrame: r.ReturnLastFrame,
+		CallbackURL: r.CallbackURL, ServiceTier: r.ServiceTier, ExpiresAfter: r.ExpiresAfter, Draft: r.Draft,
+		Frames: r.Frames, Seed: r.Seed, CameraFixed: r.CameraFixed, SafetyID: r.SafetyID, Priority: r.Priority, Tools: r.Tools,
+	})
 }
 
 func ParseBaiduVODVideoRequest(body []byte) (BaiduVODVideoRequest, error) {
@@ -110,23 +231,28 @@ func ParseBaiduVODVideoRequest(body []byte) (BaiduVODVideoRequest, error) {
 	}
 	req.Model = strings.TrimSpace(req.Model)
 	req.Prompt = strings.TrimSpace(req.Prompt)
-	if req.Duration <= 0 {
+	if req.Duration == 0 {
 		req.Duration = req.Seconds
 	}
-	if req.Duration <= 0 {
-		req.Duration = 5
+	spec, knownModel := BaiduVODModel(req.Model)
+	defaultDuration, defaultResolution, defaultRatio := baiduVODDefaultDuration, "720P", "16:9"
+	if knownModel {
+		defaultDuration, defaultResolution, defaultRatio = spec.DefaultDuration, spec.DefaultResolution, spec.DefaultRatio
 	}
-	req.Resolution = normalizeBaiduVODResolution(req.Resolution, req.Size)
+	if req.Duration == 0 {
+		req.Duration = defaultDuration
+	}
+	req.Resolution = normalizeBaiduVODResolution(req.Resolution, req.Size, defaultResolution)
 	if req.Ratio == "" {
 		req.Ratio = ratioFromBaiduVODSize(req.Size)
 	}
 	if req.Ratio == "" {
-		req.Ratio = "16:9"
+		req.Ratio = defaultRatio
 	}
 	return req, nil
 }
 
-func normalizeBaiduVODResolution(resolution, size string) string {
+func normalizeBaiduVODResolution(resolution, size, fallback string) string {
 	value := strings.ToLower(strings.TrimSpace(resolution))
 	if strings.HasSuffix(value, "p") {
 		value = strings.TrimSuffix(value, "p")
@@ -134,11 +260,20 @@ func normalizeBaiduVODResolution(resolution, size string) string {
 	if value == "480" || value == "720" || value == "1080" {
 		return value + "P"
 	}
+	if value == "4k" || value == "2160" {
+		return "4K"
+	}
 	size = strings.ToLower(strings.TrimSpace(size))
 	if strings.Contains(size, "1920x1080") || strings.Contains(size, "1080x1920") {
 		return "1080P"
 	}
-	return "720P"
+	if strings.Contains(size, "3840x2160") || strings.Contains(size, "2160x3840") {
+		return "4K"
+	}
+	if strings.TrimSpace(fallback) == "" {
+		fallback = "720P"
+	}
+	return strings.ToUpper(strings.TrimSpace(fallback))
 }
 
 func ratioFromBaiduVODSize(size string) string {
@@ -229,23 +364,324 @@ func (r BaiduVODVideoRequest) mediaFor(spec BaiduVODModelSpec) ([]BaiduVODMedia,
 	return media, nil
 }
 
+func appendSeedanceContent(content *[]json.RawMessage, kind, rawURL, role string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil
+	}
+	item := map[string]any{"type": kind, kind: map[string]string{"url": rawURL}}
+	if role != "" {
+		item["role"] = role
+	}
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	*content = append(*content, raw)
+	return nil
+}
+
+func (r BaiduVODVideoRequest) seedanceContentFor(spec BaiduVODModelSpec) ([]json.RawMessage, error) {
+	content := append([]json.RawMessage(nil), r.Content...)
+	hasText := false
+	for _, raw := range content {
+		var item struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &item) == nil && strings.EqualFold(strings.TrimSpace(item.Type), "text") {
+			hasText = true
+		}
+	}
+	if r.Prompt != "" && !hasText {
+		raw, err := json.Marshal(map[string]string{"type": "text", "text": r.Prompt})
+		if err != nil {
+			return nil, err
+		}
+		content = append([]json.RawMessage{raw}, content...)
+	}
+	add := func(raw json.RawMessage, kind, role string) error {
+		return appendSeedanceContent(&content, kind, baiduVODURL(raw), role)
+	}
+	if err := add(r.FirstFrame, "image_url", "first_frame"); err != nil {
+		return nil, err
+	}
+	if err := add(r.LastFrame, "image_url", "last_frame"); err != nil {
+		return nil, err
+	}
+	if baiduVODURL(r.FirstFrame) == "" {
+		if err := add(r.Image, "image_url", "first_frame"); err != nil {
+			return nil, err
+		}
+	}
+	for _, raw := range append(append([]json.RawMessage(nil), r.ReferenceImages...), r.Images...) {
+		if err := add(raw, "image_url", "reference_image"); err != nil {
+			return nil, err
+		}
+	}
+	for _, raw := range append(append([]json.RawMessage{r.Video}, r.ReferenceVideos...), r.Videos...) {
+		if err := add(raw, "video_url", "reference_video"); err != nil {
+			return nil, err
+		}
+	}
+	for _, raw := range append(append([]json.RawMessage{r.Audio}, r.ReferenceAudios...), r.Audios...) {
+		if err := add(raw, "audio_url", "reference_audio"); err != nil {
+			return nil, err
+		}
+	}
+	for _, item := range r.Media {
+		kind, role := seedanceMediaKind(item.Type, item.Role)
+		if err := appendSeedanceContent(&content, kind, item.URL, role); err != nil {
+			return nil, err
+		}
+	}
+	if err := validateSeedanceContent(spec, content); err != nil {
+		return nil, err
+	}
+	return content, nil
+}
+
+func seedanceMediaKind(kind, role string) (string, string) {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	role = strings.ToLower(strings.TrimSpace(role))
+	switch kind {
+	case "first_frame", "last_frame", "reference_image", "image", "image_url":
+		if role == "" && kind != "image" && kind != "image_url" {
+			role = kind
+		}
+		if role == "" {
+			role = "reference_image"
+		}
+		return "image_url", role
+	case "video", "video_url", "reference_video":
+		if role == "" {
+			role = "reference_video"
+		}
+		return "video_url", role
+	case "audio", "audio_url", "reference_audio":
+		if role == "" {
+			role = "reference_audio"
+		}
+		return "audio_url", role
+	default:
+		return kind, role
+	}
+}
+
+func validateSeedanceContent(spec BaiduVODModelSpec, content []json.RawMessage) error {
+	counts := map[string]int{}
+	for _, raw := range content {
+		var item struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &item); err != nil || strings.TrimSpace(item.Type) == "" {
+			return errors.New("Seedance content entries require a type")
+		}
+		counts[strings.ToLower(strings.TrimSpace(item.Type))]++
+	}
+	mediaCount := counts["image_url"] + counts["video_url"]
+	if counts["audio_url"] > 0 && mediaCount == 0 {
+		return errors.New("Seedance audio content requires an image or video")
+	}
+	if len(content) == counts["audio_url"] {
+		return errors.New("Seedance requires text, image, or video content")
+	}
+	if strings.Contains(spec.Model, "seedance-2-0") {
+		if counts["image_url"] > 9 || counts["video_url"] > 3 || counts["audio_url"] > 3 {
+			return errors.New("Seedance 2.0 supports up to 9 images, 3 videos, and 3 audio files")
+		}
+		return nil
+	}
+	if counts["video_url"] > 0 || counts["audio_url"] > 0 {
+		return fmt.Errorf("model %s supports text and image content", spec.Model)
+	}
+	maxImages := 2
+	if strings.Contains(spec.Model, "pro-fast") {
+		maxImages = 1
+	}
+	if counts["image_url"] > maxImages {
+		return fmt.Errorf("model %s supports up to %d image inputs", spec.Model, maxImages)
+	}
+	return nil
+}
+
+func estimateSeedanceCompletionTokens(req BaiduVODVideoRequest, spec BaiduVODModelSpec) int {
+	content, err := req.seedanceContentFor(spec)
+	if err != nil {
+		return 0
+	}
+	videoCount := 0
+	for _, raw := range content {
+		var item struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &item) == nil && strings.EqualFold(strings.TrimSpace(item.Type), "video_url") {
+			videoCount++
+		}
+	}
+	duration := req.Duration
+	if duration == -1 {
+		duration = spec.MaxDuration
+	}
+	if duration <= 0 {
+		duration = spec.DefaultDuration
+	}
+	width, height := seedanceVideoDimensions(req.Resolution, req.Ratio)
+	if width <= 0 || height <= 0 {
+		return 0
+	}
+	frames := int64(duration * 24)
+	if req.Frames != nil && *req.Frames > 0 {
+		frames = int64(*req.Frames)
+	}
+	frames += int64(videoCount * baiduVODSeedanceMaxMediaSecs * 24)
+	tokens := (int64(width)*int64(height)*frames + 1023) / 1024
+	if tokens > int64(^uint(0)>>1) {
+		return int(^uint(0) >> 1)
+	}
+	return int(tokens)
+}
+
+func seedanceVideoDimensions(resolution, ratio string) (int, int) {
+	short, long := 720, 1280
+	switch normalizeBaiduVODResolution(resolution, "", "720P") {
+	case "480P":
+		short, long = 480, 864
+	case "1080P":
+		short, long = 1080, 1920
+	case "4K":
+		short, long = 2160, 3840
+	}
+	switch strings.ToLower(strings.TrimSpace(ratio)) {
+	case "9:16":
+		return short, long
+	case "3:4":
+		return short, short * 4 / 3
+	case "1:1":
+		return short, short
+	case "4:3":
+		return short * 4 / 3, short
+	case "21:9", "adaptive":
+		return short * 21 / 9, short
+	default:
+		return long, short
+	}
+}
+
+func baiduVODSupportsResolution(spec BaiduVODModelSpec, resolution string) bool {
+	for _, supported := range spec.Resolutions {
+		if strings.EqualFold(supported, resolution) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateSeedanceParameters(req BaiduVODVideoRequest, spec BaiduVODModelSpec) error {
+	allowedRatios := map[string]bool{"16:9": true, "4:3": true, "1:1": true, "3:4": true, "9:16": true, "21:9": true, "adaptive": true}
+	if !allowedRatios[strings.ToLower(strings.TrimSpace(req.Ratio))] {
+		return fmt.Errorf("unsupported Seedance ratio: %s", req.Ratio)
+	}
+	if req.ExpiresAfter != nil && (*req.ExpiresAfter < 3600 || *req.ExpiresAfter > 259200) {
+		return errors.New("Seedance execution_expires_after must be between 3600 and 259200 seconds")
+	}
+	is20 := strings.Contains(spec.Model, "seedance-2-0")
+	is15 := strings.Contains(spec.Model, "seedance-1-5")
+	if is20 && strings.TrimSpace(req.ServiceTier) != "" && !strings.EqualFold(strings.TrimSpace(req.ServiceTier), "default") {
+		return fmt.Errorf("model %s supports the default service tier", spec.Model)
+	}
+	if req.Frames != nil {
+		if is20 || is15 {
+			return fmt.Errorf("model %s does not support frames", spec.Model)
+		}
+		if *req.Frames < 29 || *req.Frames > 289 || (*req.Frames-25)%4 != 0 {
+			return errors.New("Seedance frames must be between 29 and 289 and match 25 + 4n")
+		}
+	}
+	if req.GenerateAudio != nil && !is20 && !is15 {
+		return fmt.Errorf("model %s does not support generate_audio", spec.Model)
+	}
+	if req.Priority != nil {
+		if !is20 {
+			return fmt.Errorf("model %s does not support priority", spec.Model)
+		}
+		if *req.Priority < 0 || *req.Priority > 9 {
+			return errors.New("Seedance priority must be between 0 and 9")
+		}
+	}
+	if is20 && req.Seed != nil {
+		return fmt.Errorf("model %s does not support seed", spec.Model)
+	}
+	if req.Seed != nil && (*req.Seed < -1 || *req.Seed > int64(^uint32(0))) {
+		return errors.New("Seedance seed must be between -1 and 4294967295")
+	}
+	if is20 && req.CameraFixed != nil {
+		return fmt.Errorf("model %s does not support camera_fixed", spec.Model)
+	}
+	if len(req.Tools) > 0 && !is20 {
+		return fmt.Errorf("model %s does not support tools", spec.Model)
+	}
+	if req.Draft != nil && !is15 {
+		return fmt.Errorf("model %s does not support draft mode", spec.Model)
+	}
+	if req.Draft != nil && *req.Draft {
+		if !strings.EqualFold(req.Resolution, "480P") {
+			return errors.New("Seedance draft mode requires 480P resolution")
+		}
+		if req.ReturnLastFrame != nil && *req.ReturnLastFrame {
+			return errors.New("Seedance draft mode does not support return_last_frame")
+		}
+		if strings.EqualFold(strings.TrimSpace(req.ServiceTier), "flex") {
+			return errors.New("Seedance draft mode does not support flex service tier")
+		}
+	}
+	return nil
+}
+
 func TranslateBaiduVODVideoRequest(req BaiduVODVideoRequest) (BaiduVODModelSpec, BaiduVODUpstreamRequest, error) {
 	spec, ok := BaiduVODModel(req.Model)
 	if !ok {
-		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, fmt.Errorf("unsupported HappyHorse model: %s", req.Model)
+		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, fmt.Errorf("unsupported Baidu VOD model: %s", req.Model)
+	}
+	if req.Duration == 0 {
+		req.Duration = spec.DefaultDuration
+	}
+	req.Resolution = normalizeBaiduVODResolution(req.Resolution, req.Size, spec.DefaultResolution)
+	if req.Ratio == "" {
+		req.Ratio = firstNonEmpty(ratioFromBaiduVODSize(req.Size), spec.DefaultRatio)
+	}
+	if !baiduVODSupportsResolution(spec, req.Resolution) {
+		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, fmt.Errorf("model %s does not support resolution %s", spec.Model, req.Resolution)
+	}
+	if spec.MinDuration > 0 && req.Duration != -1 && (req.Duration < spec.MinDuration || req.Duration > spec.MaxDuration) {
+		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, fmt.Errorf("model %s duration must be between %d and %d seconds", spec.Model, spec.MinDuration, spec.MaxDuration)
+	}
+	if req.Duration == -1 && !spec.AllowAutoDuration {
+		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, fmt.Errorf("model %s does not support automatic duration", spec.Model)
+	}
+	var out BaiduVODUpstreamRequest
+	out.Provider, out.Model = spec.Provider, spec.UpstreamModel
+	if spec.Provider == BaiduVODProviderSeedance {
+		if err := validateSeedanceParameters(req, spec); err != nil {
+			return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, err
+		}
+		content, err := req.seedanceContentFor(spec)
+		if err != nil {
+			return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, err
+		}
+		out.Content, out.Resolution, out.Ratio, out.Duration = content, req.Resolution, req.Ratio, req.Duration
+		out.GenerateAudio, out.Watermark, out.ReturnLastFrame = req.GenerateAudio, req.Watermark, req.ReturnLastFrame
+		out.CallbackURL, out.ServiceTier, out.ExpiresAfter = strings.TrimSpace(req.CallbackURL), strings.TrimSpace(req.ServiceTier), req.ExpiresAfter
+		out.Draft, out.Frames, out.Seed, out.CameraFixed = req.Draft, req.Frames, req.Seed, req.CameraFixed
+		out.SafetyID, out.Priority, out.Tools = strings.TrimSpace(req.SafetyID), req.Priority, req.Tools
+		return spec, out, nil
 	}
 	if strings.TrimSpace(req.Prompt) == "" {
 		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, errors.New("prompt is required")
-	}
-	if req.Resolution != "720P" && req.Resolution != "1080P" {
-		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, fmt.Errorf("unsupported HappyHorse resolution: %s", req.Resolution)
 	}
 	media, err := req.mediaFor(spec)
 	if err != nil {
 		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, err
 	}
-	var out BaiduVODUpstreamRequest
-	out.Model = spec.UpstreamModel
 	out.Input.Prompt = req.Prompt
 	out.Input.Media = media
 	out.Parameters.Resolution = req.Resolution
@@ -264,7 +700,20 @@ type BaiduVODCreateResponse struct {
 	Message   string `json:"message"`
 }
 
+type BaiduVODTaskUsage struct {
+	Duration            int    `json:"duration"`
+	InputVideoDuration  int    `json:"input_video_duration"`
+	OutputVideoDuration int    `json:"output_video_duration"`
+	VideoCount          int    `json:"video_count"`
+	SR                  int    `json:"SR"`
+	Ratio               string `json:"ratio"`
+	Resolution          string `json:"resolution"`
+	CompletionTokens    int    `json:"completion_tokens"`
+	TotalTokens         int    `json:"total_tokens"`
+}
+
 type BaiduVODTaskResponse struct {
+	Provider  string `json:"-"`
 	RequestID string `json:"request_id"`
 	Code      string `json:"code"`
 	Message   string `json:"message"`
@@ -278,14 +727,54 @@ type BaiduVODTaskResponse struct {
 		ScheduledTime string `json:"scheduled_time"`
 		EndTime       string `json:"end_time"`
 	} `json:"output"`
+	Usage *BaiduVODTaskUsage `json:"usage"`
+}
+
+type baiduVODSeedanceError struct {
+	Code    json.RawMessage `json:"code"`
+	Message string          `json:"message"`
+}
+
+type baiduVODSeedanceCreateResponse struct {
+	ID        string                 `json:"id"`
+	RequestID string                 `json:"request_id"`
+	Code      json.RawMessage        `json:"code"`
+	Message   string                 `json:"message"`
+	Error     *baiduVODSeedanceError `json:"error"`
+}
+
+type baiduVODSeedanceTaskResponse struct {
+	ID        string                 `json:"id"`
+	Model     string                 `json:"model"`
+	Status    string                 `json:"status"`
+	RequestID string                 `json:"request_id"`
+	Code      json.RawMessage        `json:"code"`
+	Message   string                 `json:"message"`
+	Error     *baiduVODSeedanceError `json:"error"`
+	Content   struct {
+		VideoURL     string `json:"video_url"`
+		LastFrameURL string `json:"last_frame_url"`
+		FileURL      string `json:"file_url"`
+	} `json:"content"`
 	Usage *struct {
-		Duration            int    `json:"duration"`
-		InputVideoDuration  int    `json:"input_video_duration"`
-		OutputVideoDuration int    `json:"output_video_duration"`
-		VideoCount          int    `json:"video_count"`
-		SR                  int    `json:"SR"`
-		Ratio               string `json:"ratio"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
 	} `json:"usage"`
+	Duration   int    `json:"duration"`
+	Ratio      string `json:"ratio"`
+	Resolution string `json:"resolution"`
+}
+
+func baiduVODJSONCode(raw json.RawMessage) string {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" || trimmed == `""` {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+	return trimmed
 }
 
 func parseBaiduVODTime(value string) *time.Time {

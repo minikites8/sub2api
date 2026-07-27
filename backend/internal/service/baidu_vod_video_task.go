@@ -36,6 +36,7 @@ type BaiduVODVideoTask struct {
 	OutputDuration        int
 	InputVideoDuration    int
 	VideoCount            int
+	BillingMode           string
 	EstimatedCost         float64
 	HoldAmount            float64
 	ActualCost            *float64

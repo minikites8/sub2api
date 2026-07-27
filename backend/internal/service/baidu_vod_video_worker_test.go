@@ -102,6 +102,43 @@ func TestBaiduVODVideoWorkerSucceededCapturesActualUsage(t *testing.T) {
 	require.InDelta(t, 24, *update.ActualCost, 0.00000001)
 }
 
+func TestBaiduVODVideoWorkerPollsSeedanceTask(t *testing.T) {
+	worker, tasks, billingRepo := newBaiduVODWorkerHarness(baiduVODWorkerResponse(http.StatusOK,
+		`{"id":"cgt-seedance-1","status":"succeeded","content":{"video_url":"https://example.com/seedance.mp4"},"usage":{"completion_tokens":108000,"total_tokens":108000},"duration":6,"resolution":"720p","ratio":"16:9"}`), nil)
+	task := newBaiduVODWorkerTask()
+	task.Provider = BaiduVODProviderSeedance
+	task.Model = "doubao-seedance-2-0-260128"
+	task.UpstreamModel = task.Model
+	task.UpstreamTaskID = "cgt-seedance-1"
+	task.HoldAmount = 10
+
+	worker.processOne(context.Background(), task)
+
+	require.Len(t, billingRepo.captures, 1)
+	require.InDelta(t, 5.4, billingRepo.captures[0].ActualAmount, 0.00000001)
+	require.Len(t, tasks.updates, 1)
+	require.Equal(t, BaiduVODTaskStatusCompleted, tasks.updates[0].Status)
+	require.Equal(t, 6, tasks.updates[0].OutputDuration)
+	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/seedance"+BaiduVODSeedanceTaskPath+"cgt-seedance-1", worker.service.http.(*httpUpstreamRecorder).lastReq.URL.String())
+}
+
+func TestBaiduVODVideoWorkerKeepsSeedanceTaskFor72Hours(t *testing.T) {
+	worker, tasks, billingRepo := newBaiduVODWorkerHarness(baiduVODWorkerResponse(http.StatusOK,
+		`{"id":"cgt-seedance-long","status":"running"}`), nil)
+	task := newBaiduVODWorkerTask()
+	task.Provider = BaiduVODProviderSeedance
+	task.Model = "doubao-seedance-2-0-260128"
+	task.UpstreamModel = task.Model
+	task.UpstreamTaskID = "cgt-seedance-long"
+	task.SubmittedAt = time.Now().Add(-71 * time.Hour)
+
+	worker.processOne(context.Background(), task)
+
+	require.Empty(t, billingRepo.releases)
+	require.Len(t, tasks.updates, 1)
+	require.Equal(t, BaiduVODTaskStatusInProgress, tasks.updates[0].Status)
+}
+
 func TestBaiduVODVideoWorkerTerminalFailuresReleaseHold(t *testing.T) {
 	for _, status := range []string{"FAILED", "UNKNOWN"} {
 		t.Run(status, func(t *testing.T) {

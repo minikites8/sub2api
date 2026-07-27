@@ -810,8 +810,8 @@ func TestComputeTokenBreakdown_GptImage2ImageEditIssue4386(t *testing.T) {
 
 	cost := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
 
-	wantTextInput := float64(19) * 5e-6    // 0.000095
-	wantImageInput := float64(352) * 8e-6  // 0.002816
+	wantTextInput := float64(19) * 5e-6     // 0.000095
+	wantImageInput := float64(352) * 8e-6   // 0.002816
 	wantImageOutput := float64(439) * 30e-6 // 0.013170
 	require.InDelta(t, wantTextInput, cost.InputCost, 1e-15, "InputCost 仅含文本输入")
 	require.InDelta(t, wantImageInput, cost.ImageInputCost, 1e-15, "图片输入按 $8/1M 独立计费")
@@ -950,6 +950,16 @@ func TestCalculateVideoCostUsesSeparateConfig(t *testing.T) {
 	require.InDelta(t, 0.8, videoCost.TotalCost, 1e-10)
 	require.InDelta(t, 0.4, videoCost.ActualCost, 1e-10)
 	require.Equal(t, string(BillingModeVideo), videoCost.BillingMode)
+}
+
+func TestCalculateVideoCostUses4KConfig(t *testing.T) {
+	svc := NewBillingService(nil, nil)
+	price4K := 5.25
+
+	cost := svc.CalculateVideoCost("doubao-seedance-2-0-260128", "4K", 1, 6, &VideoPriceConfig{Price4K: &price4K}, 0.5)
+
+	require.InDelta(t, 31.5, cost.TotalCost, 1e-12)
+	require.InDelta(t, 15.75, cost.ActualCost, 1e-12)
 }
 
 func TestCalculateVideoCostBillsPerSecond(t *testing.T) {

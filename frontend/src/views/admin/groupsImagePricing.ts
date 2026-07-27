@@ -23,7 +23,8 @@ type ImagePricingTierKey = "image_price_1k" | "image_price_2k" | "image_price_4k
 type VideoPricingTierKey =
   | "video_price_480p"
   | "video_price_720p"
-  | "video_price_1080p";
+  | "video_price_1080p"
+  | "video_price_4k";
 
 const defaultImagePricePlaceholders: Record<
   string,
@@ -41,8 +42,7 @@ const defaultImagePricePlaceholders: Record<
   },
 };
 
-// 视频价为每秒单价（USD/s）。480p/720p 取 grok-imagine-video（文生视频实际走该模型）的
-// 官方每秒价；1080p 仅 grok-imagine-video-1.5 图生视频支持，取 1.5 的每秒价。
+// 视频价为每秒单价（Credits/s）。占位值用于展示常用模型的默认价格。
 const defaultVideoPricePlaceholders: Record<
   string,
   Record<VideoPricingTierKey, string>
@@ -51,12 +51,15 @@ const defaultVideoPricePlaceholders: Record<
     video_price_480p: "0.05",
     video_price_720p: "0.07",
     video_price_1080p: "0.25",
+    video_price_4k: "",
   },
   baidu_vod: {
     video_price_480p: "",
     video_price_720p: "0.9",
     // HappyHorse 1.0 and 1.1 use model-specific 1080p defaults in the backend.
     video_price_1080p: "",
+    // Seedance 2.0 uses its model-specific 4K default in the backend.
+    video_price_4k: "",
   },
 };
 

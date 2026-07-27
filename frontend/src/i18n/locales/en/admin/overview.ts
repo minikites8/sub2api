@@ -953,11 +953,11 @@ export default {
       videoPricing: {
         title: 'Video Generation Pricing',
         description:
-          'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',
+          'Configure video generation prices in Credits/s. Empty fields use model defaults. Channel pricing supports per-second and per-token billing.',
         independentMultiplier: 'Use independent video multiplier',
         videoMultiplier: 'Video multiplier',
         modeHint:
-          'Videos are billed per second: per-second price × duration (1-15s, default 8s). By default the current effective group multiplier applies; independent mode uses the video multiplier instead.',
+          'Per-second billing uses Credits/s × generated duration. The current effective group multiplier applies by default; independent mode uses the video multiplier.',
         finalPricePreview: 'Final per-second price preview',
         notConfigured: 'Not configured'
       },

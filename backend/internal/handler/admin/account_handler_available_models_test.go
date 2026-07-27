@@ -144,7 +144,7 @@ func TestAccountHandlerGetAvailableModels_GrokDefaultsToXAIModelsWithoutMapping(
 	require.Contains(t, ids, "grok-build-0.1")
 }
 
-func TestAccountHandlerGetAvailableModels_BaiduVODUsesHappyHorseRegistry(t *testing.T) {
+func TestAccountHandlerGetAvailableModels_BaiduVODUsesVideoRegistry(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
 		account: service.Account{
@@ -170,13 +170,17 @@ func TestAccountHandlerGetAvailableModels_BaiduVODUsesHappyHorseRegistry(t *test
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &result))
-	require.Len(t, result.Data, 8)
+	require.Len(t, result.Data, 14)
+	ids := make([]string, 0, len(result.Data))
 	for _, model := range result.Data {
 		require.Equal(t, "model", model.Object)
 		require.Equal(t, "model", model.Type)
 		require.Equal(t, model.ID, model.DisplayName)
-		require.Contains(t, model.ID, "happyhorse-")
+		ids = append(ids, model.ID)
 	}
+	require.Contains(t, ids, "happyhorse-1.1-t2v")
+	require.Contains(t, ids, "doubao-seedance-2-0-260128")
+	require.Contains(t, ids, "doubao-seedance-1-0-pro-fast-251015")
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {

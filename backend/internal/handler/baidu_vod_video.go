@@ -143,7 +143,7 @@ func (h *OpenAIGatewayHandler) BaiduVODVideoCreate(c *gin.Context) {
 	updated, err := h.baiduVODVideoService.MarkSubmitted(c.Request.Context(), task.TaskID, *submitted)
 	if err != nil || !updated {
 		_ = h.baiduVODVideoService.Release(c.Request.Context(), task)
-		_, _ = h.baiduVODVideoService.MarkSubmissionFailed(c.Request.Context(), task.TaskID, "TASK_PERSIST_FAILED", "Failed to persist HappyHorse submission")
+		_, _ = h.baiduVODVideoService.MarkSubmissionFailed(c.Request.Context(), task.TaskID, "TASK_PERSIST_FAILED", "Failed to persist Baidu VOD submission")
 		reqLog.Error("baidu_vod_video.submission_persist_failed", zap.Error(err), zap.Bool("updated", updated))
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to persist video submission")
 		return
@@ -157,7 +157,7 @@ func (h *OpenAIGatewayHandler) BaiduVODVideoCreate(c *gin.Context) {
 
 func (h *OpenAIGatewayHandler) failBaiduVODSubmission(c *gin.Context, reqLog *zap.Logger, task *service.BaiduVODVideoTask, submitErr error) {
 	code := "UPSTREAM_SUBMISSION_FAILED"
-	message := "HappyHorse task submission failed"
+	message := "Baidu VOD task submission failed"
 	status := http.StatusBadGateway
 	var upstreamErr *service.BaiduVODUpstreamError
 	if errors.As(submitErr, &upstreamErr) {
@@ -254,14 +254,25 @@ func (h *OpenAIGatewayHandler) writeBaiduVODVideo(c *gin.Context, task *service.
 
 func baiduVODVideoSize(resolution, ratio string) string {
 	short, long := 720, 1280
-	if strings.EqualFold(strings.TrimSpace(resolution), "1080P") {
+	switch service.NormalizeVideoBillingResolutionOrDefault(resolution) {
+	case service.VideoBillingResolution480P:
+		short, long = 480, 864
+	case service.VideoBillingResolution1080P:
 		short, long = 1080, 1920
+	case service.VideoBillingResolution4K:
+		short, long = 2160, 3840
 	}
 	switch strings.TrimSpace(ratio) {
 	case "9:16":
 		return stringInt(short) + "x" + stringInt(long)
+	case "3:4":
+		return stringInt(short) + "x" + stringInt(short*4/3)
 	case "1:1":
 		return stringInt(short) + "x" + stringInt(short)
+	case "4:3":
+		return stringInt(short*4/3) + "x" + stringInt(short)
+	case "21:9":
+		return stringInt(short*21/9) + "x" + stringInt(short)
 	default:
 		return stringInt(long) + "x" + stringInt(short)
 	}

@@ -181,6 +181,7 @@ func TestAdminService_CreateGroup_WithVideoPricing(t *testing.T) {
 	price480P := 0.08
 	price720P := 0.12
 	price1080P := 0.18
+	price4K := 0.32
 	videoMultiplier := 0.75
 
 	input := &CreateGroupInput{
@@ -193,6 +194,7 @@ func TestAdminService_CreateGroup_WithVideoPricing(t *testing.T) {
 		VideoPrice480P:       &price480P,
 		VideoPrice720P:       &price720P,
 		VideoPrice1080P:      &price1080P,
+		VideoPrice4K:         &price4K,
 	}
 
 	group, err := svc.CreateGroup(context.Background(), input)
@@ -205,9 +207,11 @@ func TestAdminService_CreateGroup_WithVideoPricing(t *testing.T) {
 	require.NotNil(t, repo.created.VideoPrice480P)
 	require.NotNil(t, repo.created.VideoPrice720P)
 	require.NotNil(t, repo.created.VideoPrice1080P)
+	require.NotNil(t, repo.created.VideoPrice4K)
 	require.InDelta(t, 0.08, *repo.created.VideoPrice480P, 0.0001)
 	require.InDelta(t, 0.12, *repo.created.VideoPrice720P, 0.0001)
 	require.InDelta(t, 0.18, *repo.created.VideoPrice1080P, 0.0001)
+	require.InDelta(t, 0.32, *repo.created.VideoPrice4K, 0.0001)
 }
 
 // TestAdminService_CreateGroup_NilImagePricing 测试 ImagePrice 为 nil 时正常创建
@@ -399,6 +403,7 @@ func TestAdminService_UpdateGroup_WithVideoPricing(t *testing.T) {
 	price480P := 0.09
 	price720P := 0.13
 	price1080P := 0.19
+	price4K := 0.35
 	videoMultiplier := 0.6
 	independent := true
 
@@ -408,6 +413,7 @@ func TestAdminService_UpdateGroup_WithVideoPricing(t *testing.T) {
 		VideoPrice480P:       &price480P,
 		VideoPrice720P:       &price720P,
 		VideoPrice1080P:      &price1080P,
+		VideoPrice4K:         &price4K,
 	}
 
 	group, err := svc.UpdateGroup(context.Background(), 1, input)
@@ -420,6 +426,7 @@ func TestAdminService_UpdateGroup_WithVideoPricing(t *testing.T) {
 	require.InDelta(t, 0.09, *repo.updated.VideoPrice480P, 0.0001)
 	require.InDelta(t, 0.13, *repo.updated.VideoPrice720P, 0.0001)
 	require.InDelta(t, 0.19, *repo.updated.VideoPrice1080P, 0.0001)
+	require.InDelta(t, 0.35, *repo.updated.VideoPrice4K, 0.0001)
 }
 
 func TestAdminService_UpdateGroup_PreservesKiroRuntimeSettings(t *testing.T) {

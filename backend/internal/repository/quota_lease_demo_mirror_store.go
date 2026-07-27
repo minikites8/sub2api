@@ -303,7 +303,7 @@ func (s *quotaLeaseDemoMirrorStore) upsertGroup(ctx context.Context, exec sqlExe
 			require_privacy_set, default_mapped_model, messages_dispatch_model_config, models_list_config,
 			rpm_limit, kiro_cache_emulation_enabled, kiro_auto_sticky_enabled,
 			kiro_sticky_session_ttl_seconds, kiro_cache_emulation_ratio, kiro_endpoint_mode,
-			created_at, updated_at, deleted_at
+			created_at, updated_at, deleted_at, video_price_4k
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8,
 			$9, $10, $11, $12, $13, $14,
@@ -316,7 +316,7 @@ func (s *quotaLeaseDemoMirrorStore) upsertGroup(ctx context.Context, exec sqlExe
 			$38::jsonb, $39, $40, $41,
 			$42, $43, $44::jsonb, $45::jsonb,
 			$46, $47, $48, $49, $50, $51,
-			$52, $53, NULL
+			$52, $53, NULL, $54
 		)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
@@ -348,6 +348,7 @@ func (s *quotaLeaseDemoMirrorStore) upsertGroup(ctx context.Context, exec sqlExe
 			video_price_480p = EXCLUDED.video_price_480p,
 			video_price_720p = EXCLUDED.video_price_720p,
 			video_price_1080p = EXCLUDED.video_price_1080p,
+			video_price_4k = EXCLUDED.video_price_4k,
 			web_search_price_per_call = EXCLUDED.web_search_price_per_call,
 			claude_code_only = EXCLUDED.claude_code_only,
 			fallback_group_id = EXCLUDED.fallback_group_id,
@@ -383,7 +384,7 @@ func (s *quotaLeaseDemoMirrorStore) upsertGroup(ctx context.Context, exec sqlExe
 		group.RequirePrivacySet, group.DefaultMappedModel, string(messagesDispatchConfig), string(modelsListConfig),
 		group.RPMLimit, group.KiroCacheEmulationEnabled, group.KiroAutoStickyEnabled,
 		group.KiroStickySessionTTLSeconds, group.KiroCacheEmulationRatio, group.KiroEndpointMode,
-		group.CreatedAt, group.UpdatedAt)
+		group.CreatedAt, group.UpdatedAt, group.VideoPrice4K)
 	return err
 }
 

@@ -15,6 +15,7 @@ import (
 const (
 	baiduVODPollLease       = 2 * time.Minute
 	baiduVODTaskTimeout     = 30 * time.Minute
+	baiduVODSeedanceTimeout = 72 * time.Hour
 	baiduVODWorkerInterval  = 3 * time.Second
 	baiduVODPollMaxAttempts = 12
 )
@@ -95,15 +96,19 @@ func (w *BaiduVODVideoWorker) processOne(ctx context.Context, task *BaiduVODVide
 		return
 	}
 	if task.Status == BaiduVODTaskStatusSubmitting && strings.TrimSpace(task.UpstreamTaskID) == "" {
-		w.fail(ctx, task, "SUBMISSION_INTERRUPTED", "HappyHorse task submission did not complete")
+		w.fail(ctx, task, "SUBMISSION_INTERRUPTED", "Baidu VOD task submission did not complete")
 		return
 	}
-	if time.Since(task.SubmittedAt) > baiduVODTaskTimeout {
+	taskTimeout := baiduVODTaskTimeout
+	if task.Provider == BaiduVODProviderSeedance {
+		taskTimeout = baiduVODSeedanceTimeout
+	}
+	if time.Since(task.SubmittedAt) > taskTimeout {
 		if w.service.Release(ctx, task) == nil {
 			finished := time.Now()
 			settled := finished
 			_, _ = w.service.tasks.UpdatePoll(ctx, task.TaskID, BaiduVODVideoTaskPollUpdate{Version: task.Version, Status: BaiduVODTaskStatusFailed,
-				UpstreamStatus: "TIMEOUT", LastErrorCode: baiduVODStringPtr("TASK_TIMEOUT"), LastErrorMessage: baiduVODStringPtr("HappyHorse task exceeded the maximum polling time"),
+				UpstreamStatus: "TIMEOUT", LastErrorCode: baiduVODStringPtr("TASK_TIMEOUT"), LastErrorMessage: baiduVODStringPtr("Baidu VOD task exceeded the maximum polling time"),
 				NextPollAt: finished, RetryCount: task.RetryCount, FinishedAt: &finished, SettledAt: &settled})
 		}
 		return
@@ -114,7 +119,7 @@ func (w *BaiduVODVideoWorker) processOne(ctx context.Context, task *BaiduVODVide
 		return
 	}
 	pollCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-	response, err := w.service.Poll(pollCtx, account, task.UpstreamTaskID)
+	response, err := w.service.Poll(pollCtx, account, task)
 	cancel()
 	if err != nil {
 		var upstreamErr *BaiduVODUpstreamError
@@ -129,14 +134,14 @@ func (w *BaiduVODVideoWorker) processOne(ctx context.Context, task *BaiduVODVide
 	switch status {
 	case "SUCCEEDED":
 		w.succeed(ctx, task, response)
-	case "FAILED", "UNKNOWN", "CANCELED", "CANCELLED":
+	case "FAILED", "UNKNOWN", "CANCELED", "CANCELLED", "EXPIRED":
 		code := response.Output.Code
 		message := response.Output.Message
 		if status == "UNKNOWN" && code == "" {
 			code = "TASK_UNKNOWN"
 		}
 		if message == "" {
-			message = "HappyHorse task ended with status " + status
+			message = "Baidu VOD task ended with status " + status
 		}
 		w.fail(ctx, task, code, message)
 	default:
@@ -174,7 +179,7 @@ func (w *BaiduVODVideoWorker) pending(ctx context.Context, task *BaiduVODVideoTa
 
 func (w *BaiduVODVideoWorker) succeed(ctx context.Context, task *BaiduVODVideoTask, response *BaiduVODTaskResponse) {
 	if response == nil || strings.TrimSpace(response.Output.VideoURL) == "" {
-		w.fail(ctx, task, "RESULT_URL_MISSING", "HappyHorse returned SUCCEEDED without video_url")
+		w.fail(ctx, task, "RESULT_URL_MISSING", "Baidu VOD returned SUCCEEDED without video_url")
 		return
 	}
 	outputDuration := task.RequestedDuration
@@ -191,14 +196,27 @@ func (w *BaiduVODVideoWorker) succeed(ctx context.Context, task *BaiduVODVideoTa
 		}
 	}
 	actualResolution := task.Resolution
-	if response.Usage != nil && response.Usage.SR > 0 {
-		actualResolution = NormalizeVideoBillingResolutionOrDefault(strconv.Itoa(response.Usage.SR))
+	completionTokens := 0
+	if response.Usage != nil {
+		completionTokens = response.Usage.CompletionTokens
+		if strings.TrimSpace(response.Usage.Resolution) != "" {
+			actualResolution = NormalizeVideoBillingResolutionOrDefault(response.Usage.Resolution)
+		} else if response.Usage.SR > 0 {
+			actualResolution = NormalizeVideoBillingResolutionOrDefault(strconv.Itoa(response.Usage.SR))
+		}
 	}
 	actual := task.EstimatedCost
-	if actualResolution == task.Resolution && task.RequestedDuration > 0 && outputDuration > 0 {
+	billingMode := firstNonEmpty(task.BillingMode, string(BillingModeVideo))
+	if billingMode == string(BillingModeToken) && completionTokens > 0 && w.service.billing != nil {
+		cost := w.service.calculateVideoCost(ctx, task.Model, task.GroupID, actualResolution, videoCount, outputDuration, completionTokens, nil, false, task.VideoRateMultiplier)
+		actual = cost.ActualCost
+		billingMode = firstNonEmpty(cost.BillingMode, billingMode)
+	} else if NormalizeVideoBillingResolutionOrDefault(actualResolution) == NormalizeVideoBillingResolutionOrDefault(task.Resolution) && task.RequestedDuration > 0 && outputDuration > 0 {
 		actual = task.EstimatedCost * float64(outputDuration) / float64(task.RequestedDuration) * float64(videoCount)
 	} else if w.service.billing != nil {
-		actual = w.service.calculateVideoCost(ctx, task.Model, task.GroupID, actualResolution, videoCount, outputDuration, nil, false, task.VideoRateMultiplier).ActualCost
+		cost := w.service.calculateVideoCost(ctx, task.Model, task.GroupID, actualResolution, videoCount, outputDuration, 0, nil, false, task.VideoRateMultiplier)
+		actual = cost.ActualCost
+		billingMode = firstNonEmpty(cost.BillingMode, billingMode)
 	}
 	if actual-task.HoldAmount > 0.00000001 {
 		w.fail(ctx, task, "ACTUAL_COST_EXCEEDS_HOLD", "actual video duration exceeds the reserved balance")
@@ -218,7 +236,7 @@ func (w *BaiduVODVideoWorker) succeed(ctx context.Context, task *BaiduVODVideoTa
 		RetryCount: task.RetryCount, FinishedAt: &finished, SettledAt: &settled})
 	if err == nil && updated {
 		task.OutputDuration, task.VideoCount, task.ActualCost = outputDuration, videoCount, &actual
-		w.service.recordUsage(ctx, task, actual, finished)
+		w.service.recordUsage(ctx, task, actual, billingMode, completionTokens, finished)
 	}
 }
 
@@ -234,7 +252,7 @@ func (w *BaiduVODVideoWorker) fail(ctx context.Context, task *BaiduVODVideoTask,
 		code = "UPSTREAM_TASK_FAILED"
 	}
 	if message == "" {
-		message = "HappyHorse task failed"
+		message = "Baidu VOD task failed"
 	}
 	if err := w.service.Release(ctx, task); err != nil {
 		w.retry(ctx, task, "RELEASE_FAILED", err.Error())

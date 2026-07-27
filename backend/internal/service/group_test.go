@@ -63,6 +63,15 @@ func TestGroup_GetImagePrice_4K(t *testing.T) {
 	require.InDelta(t, 0.30, *result, 0.0001)
 }
 
+func TestGroup_GetVideoPrice_4K(t *testing.T) {
+	price := 5.25
+	group := &Group{VideoPrice4K: &price}
+
+	result := group.GetVideoPrice("4K")
+	require.NotNil(t, result)
+	require.InDelta(t, 5.25, *result, 0.0001)
+}
+
 // TestGroup_GetImagePrice_UnknownSize 测试未知尺寸回退 2K
 func TestGroup_GetImagePrice_UnknownSize(t *testing.T) {
 	price2K := 0.15

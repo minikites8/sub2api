@@ -113,13 +113,38 @@ func (s *BaiduVODVideoService) SelectAccount(ctx context.Context, groupID *int64
 }
 
 func (s *BaiduVODVideoService) Submit(ctx context.Context, account *Account, payload BaiduVODUpstreamRequest) (*BaiduVODSubmitResult, error) {
+	spec, ok := BaiduVODModel(payload.Model)
+	if !ok {
+		return nil, fmt.Errorf("unsupported Baidu VOD model: %s", payload.Model)
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	respBody, status, err := s.do(ctx, account, http.MethodPost, BaiduVODCreatePath, body)
+	respBody, status, err := s.do(ctx, account, spec.Provider, http.MethodPost, spec.CreatePath, body)
 	if err != nil {
 		return nil, err
+	}
+	if spec.Provider == BaiduVODProviderSeedance {
+		var response baiduVODSeedanceCreateResponse
+		if err := json.Unmarshal(respBody, &response); err != nil {
+			return nil, fmt.Errorf("decode baidu vod Seedance create response: %w", err)
+		}
+		code, message := baiduVODJSONCode(response.Code), strings.TrimSpace(response.Message)
+		if response.Error != nil {
+			code = firstNonEmpty(baiduVODJSONCode(response.Error.Code), code)
+			message = firstNonEmpty(strings.TrimSpace(response.Error.Message), message)
+		}
+		if status >= http.StatusBadRequest || code != "" {
+			return nil, &BaiduVODUpstreamError{StatusCode: status, Code: code, Message: message}
+		}
+		if strings.TrimSpace(response.ID) == "" {
+			return nil, &BaiduVODUpstreamError{StatusCode: status, Code: "INVALID_RESPONSE", Message: "upstream response is missing id"}
+		}
+		if s.accounts != nil {
+			_ = s.accounts.UpdateLastUsed(ctx, account.ID)
+		}
+		return &BaiduVODSubmitResult{TaskID: strings.TrimSpace(response.ID), TaskStatus: "queued", RequestID: strings.TrimSpace(response.RequestID)}, nil
 	}
 	var response BaiduVODCreateResponse
 	if err := json.Unmarshal(respBody, &response); err != nil {
@@ -137,10 +162,46 @@ func (s *BaiduVODVideoService) Submit(ctx context.Context, account *Account, pay
 	return &BaiduVODSubmitResult{TaskID: strings.TrimSpace(response.Output.TaskID), TaskStatus: strings.TrimSpace(response.Output.TaskStatus), RequestID: strings.TrimSpace(response.RequestID)}, nil
 }
 
-func (s *BaiduVODVideoService) Poll(ctx context.Context, account *Account, upstreamTaskID string) (*BaiduVODTaskResponse, error) {
-	respBody, status, err := s.do(ctx, account, http.MethodGet, BaiduVODTaskPath+strings.TrimSpace(upstreamTaskID), nil)
+func (s *BaiduVODVideoService) Poll(ctx context.Context, account *Account, task *BaiduVODVideoTask) (*BaiduVODTaskResponse, error) {
+	if task == nil {
+		return nil, errors.New("baidu vod task is required")
+	}
+	provider, taskPath := task.Provider, BaiduVODTaskPath
+	if spec, ok := BaiduVODModel(task.Model); ok {
+		provider, taskPath = spec.Provider, spec.TaskPath
+	} else if provider == BaiduVODProviderSeedance {
+		taskPath = BaiduVODSeedanceTaskPath
+	}
+	respBody, status, err := s.do(ctx, account, provider, http.MethodGet, taskPath+strings.TrimSpace(task.UpstreamTaskID), nil)
 	if err != nil {
 		return nil, err
+	}
+	if provider == BaiduVODProviderSeedance {
+		var response baiduVODSeedanceTaskResponse
+		if err := json.Unmarshal(respBody, &response); err != nil {
+			return nil, fmt.Errorf("decode baidu vod Seedance task response: %w", err)
+		}
+		code, message := baiduVODJSONCode(response.Code), strings.TrimSpace(response.Message)
+		if response.Error != nil {
+			code = firstNonEmpty(baiduVODJSONCode(response.Error.Code), code)
+			message = firstNonEmpty(strings.TrimSpace(response.Error.Message), message)
+		}
+		if status >= http.StatusBadRequest || (code != "" && strings.TrimSpace(response.Status) == "") {
+			return nil, &BaiduVODUpstreamError{StatusCode: status, Code: code, Message: message}
+		}
+		result := &BaiduVODTaskResponse{Provider: provider, RequestID: strings.TrimSpace(response.RequestID), Code: code, Message: message}
+		result.Output.TaskID = strings.TrimSpace(response.ID)
+		result.Output.TaskStatus = strings.ToUpper(strings.TrimSpace(response.Status))
+		result.Output.Code = code
+		result.Output.Message = message
+		result.Output.VideoURL = firstNonEmpty(strings.TrimSpace(response.Content.VideoURL), strings.TrimSpace(response.Content.FileURL))
+		result.Usage = &BaiduVODTaskUsage{Duration: response.Duration, OutputVideoDuration: response.Duration, VideoCount: 1,
+			Ratio: strings.TrimSpace(response.Ratio), Resolution: strings.TrimSpace(response.Resolution)}
+		if response.Usage != nil {
+			result.Usage.CompletionTokens = response.Usage.CompletionTokens
+			result.Usage.TotalTokens = response.Usage.TotalTokens
+		}
+		return result, nil
 	}
 	var response BaiduVODTaskResponse
 	if err := json.Unmarshal(respBody, &response); err != nil {
@@ -152,11 +213,11 @@ func (s *BaiduVODVideoService) Poll(ctx context.Context, account *Account, upstr
 	return &response, nil
 }
 
-func (s *BaiduVODVideoService) do(ctx context.Context, account *Account, method, suffix string, body []byte) ([]byte, int, error) {
+func (s *BaiduVODVideoService) do(ctx context.Context, account *Account, provider, method, suffix string, body []byte) ([]byte, int, error) {
 	if s == nil || s.http == nil || account == nil || account.Platform != PlatformBaiduVOD {
 		return nil, 0, errors.New("baidu vod upstream service or account is invalid")
 	}
-	target, authMode, err := baiduVODUpstreamURL(account, suffix)
+	target, authMode, err := baiduVODUpstreamURL(account, provider, suffix)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -170,7 +231,7 @@ func (s *BaiduVODVideoService) do(ctx context.Context, account *Account, method,
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
-	if method == http.MethodPost {
+	if method == http.MethodPost && provider == BaiduVODProviderHappyHorse {
 		req.Header.Set("X-DashScope-Async", "enable")
 	}
 	switch authMode {
@@ -207,7 +268,7 @@ func (s *BaiduVODVideoService) do(ctx context.Context, account *Account, method,
 	return respBody, resp.StatusCode, nil
 }
 
-func baiduVODUpstreamURL(account *Account, suffix string) (string, string, error) {
+func baiduVODUpstreamURL(account *Account, provider, suffix string) (string, string, error) {
 	authMode := strings.ToLower(strings.TrimSpace(account.GetCredential("auth_mode")))
 	if authMode != BaiduVODAuthModeAKSK {
 		authMode = BaiduVODAuthModeAPIKey
@@ -224,15 +285,19 @@ func baiduVODUpstreamURL(account *Account, suffix string) (string, string, error
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
-	for _, knownPrefix := range []string{"/v2/aigc/bailian", "/v3/aigc/bailian"} {
+	for _, knownPrefix := range []string{"/v2/aigc/bailian", "/v3/aigc/bailian", "/v2/aigc/seedance", "/v3/aigc/seedance"} {
 		if strings.HasSuffix(parsed.Path, knownPrefix) {
 			parsed.Path = strings.TrimSuffix(parsed.Path, knownPrefix)
 			break
 		}
 	}
-	prefix := "/v3/aigc/bailian"
+	product := "bailian"
+	if provider == BaiduVODProviderSeedance {
+		product = "seedance"
+	}
+	prefix := "/v3/aigc/" + product
 	if authMode == BaiduVODAuthModeAKSK {
-		prefix = "/v2/aigc/bailian"
+		prefix = "/v2/aigc/" + product
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/") + prefix + "/" + strings.TrimLeft(suffix, "/")
 	return parsed.String(), authMode, nil
@@ -251,19 +316,28 @@ func (s *BaiduVODVideoService) NewTask(ctx context.Context, publicID string, api
 		if apiKey.Group.VideoRateIndependent {
 			videoMultiplier = apiKey.Group.VideoRateMultiplier
 		}
-		groupConfig = &VideoPriceConfig{Price480P: apiKey.Group.VideoPrice480P, Price720P: apiKey.Group.VideoPrice720P, Price1080P: apiKey.Group.VideoPrice1080P}
+		groupConfig = &VideoPriceConfig{Price480P: apiKey.Group.VideoPrice480P, Price720P: apiKey.Group.VideoPrice720P, Price1080P: apiKey.Group.VideoPrice1080P, Price4K: apiKey.Group.VideoPrice4K}
 	}
 	resolution := NormalizeVideoBillingResolutionOrDefault(req.Resolution)
 	groupPriceConfigured := apiKeyHasConfiguredVideoPrice(apiKey, resolution)
-	cost := s.calculateVideoCost(ctx, req.Model, apiKey.GroupID, resolution, 1, req.Duration, groupConfig, groupPriceConfigured, videoMultiplier)
+	billingDuration := req.Duration
+	if billingDuration == -1 && spec.MaxDuration > 0 {
+		billingDuration = spec.MaxDuration
+	}
+	estimatedTokens := 0
+	if spec.Provider == BaiduVODProviderSeedance {
+		estimatedTokens = estimateSeedanceCompletionTokens(req, spec)
+	}
+	cost := s.calculateVideoCost(ctx, req.Model, apiKey.GroupID, resolution, 1, billingDuration, estimatedTokens, groupConfig, groupPriceConfigured, videoMultiplier)
+	billingMode := firstNonEmpty(cost.BillingMode, string(BillingModeVideo))
 	now := time.Now()
 	requestID := strings.TrimSpace(submitted.RequestID)
 	task := &BaiduVODVideoTask{
-		Platform: PlatformBaiduVOD, Provider: BaiduVODProvider, TaskID: strings.TrimSpace(publicID), UpstreamTaskID: submitted.TaskID,
+		Platform: PlatformBaiduVOD, Provider: spec.Provider, TaskID: strings.TrimSpace(publicID), UpstreamTaskID: submitted.TaskID,
 		UserID: apiKey.UserID, APIKeyID: apiKey.ID, AccountID: account.ID, GroupID: apiKey.GroupID,
 		Model: req.Model, UpstreamModel: spec.UpstreamModel, Capability: spec.Capability, Status: BaiduVODTaskStatusQueued,
 		UpstreamStatus: firstNonEmpty(strings.TrimSpace(submitted.TaskStatus), "PENDING"), Resolution: resolution, Ratio: req.Ratio,
-		RequestedDuration: req.Duration, VideoCount: 1, EstimatedCost: cost.ActualCost, HoldAmount: cost.ActualCost,
+		RequestedDuration: req.Duration, VideoCount: 1, BillingMode: billingMode, EstimatedCost: cost.ActualCost, HoldAmount: cost.ActualCost,
 		GroupRateMultiplier: groupMultiplier, VideoRateMultiplier: videoMultiplier, AccountRateMultiplier: account.BillingRateMultiplier(),
 		RequestHash: requestHash, NextPollAt: now.Add(5 * time.Second), SubmittedAt: now, CreatedAt: now, UpdatedAt: now,
 	}
@@ -285,6 +359,7 @@ func (s *BaiduVODVideoService) calculateVideoCost(
 	resolution string,
 	videoCount int,
 	durationSeconds int,
+	completionTokens int,
 	groupConfig *VideoPriceConfig,
 	groupPriceConfigured bool,
 	rateMultiplier float64,
@@ -296,7 +371,7 @@ func (s *BaiduVODVideoService) calculateVideoCost(
 		return s.billing.CalculateVideoCost(model, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
 	}
 	resolved := s.pricing.Resolve(ctx, PricingInput{Model: model, GroupID: groupID})
-	if resolved != nil && resolved.Mode == BillingModeVideo {
+	if resolved != nil && (resolved.Mode == BillingModeVideo || (resolved.Mode == BillingModeToken && completionTokens > 0)) {
 		cost, err := s.billing.CalculateCostUnified(CostInput{
 			Ctx:             ctx,
 			Model:           model,
@@ -304,6 +379,7 @@ func (s *BaiduVODVideoService) calculateVideoCost(
 			RequestCount:    videoCount,
 			SizeTier:        resolution,
 			DurationSeconds: durationSeconds,
+			Tokens:          UsageTokens{OutputTokens: completionTokens},
 			RateMultiplier:  rateMultiplier,
 			Resolver:        s.pricing,
 			Resolved:        resolved,
@@ -372,11 +448,15 @@ func (s *BaiduVODVideoService) GetForOwner(ctx context.Context, userID, apiKeyID
 	return s.tasks.GetForOwner(ctx, userID, apiKeyID, taskID)
 }
 
-func (s *BaiduVODVideoService) recordUsage(ctx context.Context, task *BaiduVODVideoTask, actual float64, now time.Time) {
+func (s *BaiduVODVideoService) recordUsage(ctx context.Context, task *BaiduVODVideoTask, actual float64, billingMode string, completionTokens int, now time.Time) {
 	if s == nil || s.usageLogs == nil || task == nil {
 		return
 	}
-	billingMode, inbound, upstream, mediaType := string(BillingModeVideo), "/v1/videos/generations", BaiduVODCreatePath, "video"
+	billingMode = firstNonEmpty(strings.TrimSpace(billingMode), string(BillingModeVideo))
+	inbound, upstream, mediaType := "/v1/videos/generations", BaiduVODCreatePath, "video"
+	if spec, ok := BaiduVODModel(task.Model); ok {
+		upstream = spec.CreatePath
+	}
 	resolution, duration := task.Resolution, task.OutputDuration
 	if duration <= 0 {
 		duration = task.RequestedDuration
@@ -389,9 +469,12 @@ func (s *BaiduVODVideoService) recordUsage(ctx context.Context, task *BaiduVODVi
 	log := &UsageLog{UserID: task.UserID, APIKeyID: task.APIKeyID, AccountID: task.AccountID, RequestID: baiduVODCapturePrefix + task.TaskID,
 		Model: task.Model, RequestedModel: task.Model, UpstreamModel: optionalNonEqualStringPtr(task.UpstreamModel, task.Model), GroupID: task.GroupID,
 		InboundEndpoint: &inbound, UpstreamEndpoint: &upstream, ImageCount: task.VideoCount, MediaType: &mediaType,
-		VideoCount: task.VideoCount, VideoResolution: &resolution, VideoDurationSeconds: &duration, TotalCost: totalCost, ActualCost: actual,
+		OutputTokens: completionTokens, VideoCount: task.VideoCount, VideoResolution: &resolution, VideoDurationSeconds: &duration, TotalCost: totalCost, ActualCost: actual,
 		RateMultiplier: task.VideoRateMultiplier, AccountRateMultiplier: &accountRate, BillingType: BillingTypeBalance, RequestType: RequestTypeSync,
 		BillingMode: &billingMode, CreatedAt: now}
+	if billingMode == string(BillingModeToken) {
+		log.OutputCost = totalCost
+	}
 	writeUsageLogBestEffort(ctx, s.usageLogs, log, "service.baidu_vod_video", s.cfg)
 	if s.authCache != nil {
 		s.authCache.InvalidateAuthCacheByUserID(ctx, task.UserID)
