@@ -174,38 +174,7 @@
       </section>
     </main>
 
-    <footer class="stitch-footer">
-      <p>&copy; {{ currentYear }} {{ siteName }} - {{ t('home.footer.allRightsReserved') }}</p>
-      <nav
-        v-if="legalDocuments.length || icpFilingNumber || publicSecurityFilingNumber"
-        class="stitch-footer-links"
-        :aria-label="t('home.footerNavigation')"
-      >
-        <router-link
-          v-for="document in legalDocuments"
-          :key="document.id"
-          :to="`/legal/${encodeURIComponent(document.id)}`"
-        >
-          {{ footerDocumentTitle(document.id, document.title) }}
-        </router-link>
-        <a
-          v-if="icpFilingNumber"
-          href="https://beian.miit.gov.cn/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {{ icpFilingNumber }}
-        </a>
-        <a
-          v-if="publicSecurityFilingNumber"
-          href="https://beian.mps.gov.cn/#/query/webSearch"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {{ publicSecurityFilingNumber }}
-        </a>
-      </nav>
-    </footer>
+    <PublicSiteFooter :description="t('home.footer.allRightsReserved')" theme="home" />
   </div>
 </template>
 
@@ -214,6 +183,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PublicSiteFooter from '@/components/public/PublicSiteFooter.vue'
 import { useAppStore, useAuthStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
 
@@ -242,20 +212,9 @@ let copyFeedbackTimer: number | undefined
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
-const icpFilingNumber = computed(
-  () => appStore.cachedPublicSettings?.site_icp_filing_number?.trim() || ''
-)
-const publicSecurityFilingNumber = computed(
-  () => appStore.cachedPublicSettings?.site_public_security_filing_number?.trim() || ''
-)
 const publicTransitEnabled = computed(() =>
   appStore.cachedPublicSettings?.public_transit_enabled === true &&
   appStore.cachedPublicSettings?.public_transit_page_enabled === true
-)
-const legalDocuments = computed(() =>
-  (appStore.cachedPublicSettings?.login_agreement_documents || [])
-    .filter((document) => document.id?.trim() && document.title?.trim())
-    .slice(0, 3)
 )
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
@@ -265,7 +224,6 @@ const isHomeContentUrl = computed(() => {
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
-const currentYear = computed(() => new Date().getFullYear())
 
 const features = computed<Array<{
   id: string
@@ -296,12 +254,6 @@ const features = computed<Array<{
     description: t('home.features.balanceQuotaDesc')
   }
 ])
-
-function footerDocumentTitle(id: string, title: string): string {
-  if (id === 'terms') return t('home.footer.terms')
-  if (id === 'privacy') return t('home.footer.privacy')
-  return title
-}
 
 async function copyCode(): Promise<void> {
   try {
@@ -867,44 +819,6 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.stitch-footer {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 28px 20px;
-  border-top: 1px solid #3b4a3f;
-  background: #060f16;
-  color: #737a82;
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.stitch-footer p {
-  margin: 0;
-  text-align: center;
-}
-
-.stitch-footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px 22px;
-}
-
-.stitch-footer a {
-  color: #737a82;
-  text-decoration: none;
-  transition: color 160ms ease;
-}
-
-.stitch-footer a:hover,
-.stitch-footer a:focus-visible {
-  color: #f4fff3;
-}
-
 .stitch-page :where(a, button):focus-visible {
   outline: 2px solid #aec6ff;
   outline-offset: 3px;
@@ -945,16 +859,6 @@ onBeforeUnmount(() => {
   .stitch-feature-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-
-  .stitch-footer {
-    flex-direction: row;
-    justify-content: space-between;
-    padding: 30px 48px;
-  }
-
-  .stitch-footer p {
-    text-align: left;
-  }
 }
 
 @media (min-width: 1024px) {
@@ -979,10 +883,6 @@ onBeforeUnmount(() => {
 
   .stitch-features {
     margin-bottom: 124px;
-  }
-
-  .stitch-footer {
-    padding-inline: 64px;
   }
 }
 

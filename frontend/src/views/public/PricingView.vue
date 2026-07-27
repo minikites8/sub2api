@@ -142,18 +142,7 @@
       </section>
     </main>
 
-    <footer class="pricing-footer">
-      <p>&copy; {{ currentYear }} {{ siteName }} - {{ t('pricingPage.footerDescription') }}</p>
-      <nav aria-label="Footer navigation">
-        <router-link
-          v-for="document in legalDocuments"
-          :key="document.id"
-          :to="`/legal/${encodeURIComponent(document.id)}`"
-        >
-          {{ document.title }}
-        </router-link>
-      </nav>
-    </footer>
+    <PublicSiteFooter :description="t('pricingPage.footerDescription')" theme="pricing" />
   </div>
 </template>
 
@@ -162,6 +151,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PublicSiteFooter from '@/components/public/PublicSiteFooter.vue'
 import { useAppStore, useAuthStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
 
@@ -189,13 +179,6 @@ const professionalLink = computed(() => {
   const target = '/purchase?tab=subscriptions'
   return isAuthenticated.value ? target : `/login?redirect=${encodeURIComponent(target)}`
 })
-const currentYear = computed(() => new Date().getFullYear())
-const legalDocuments = computed(() =>
-  (appStore.cachedPublicSettings?.login_agreement_documents || [])
-    .filter((document) => document.id?.trim() && document.title?.trim())
-    .slice(0, 3)
-)
-
 const tiers = computed(() => [
   {
     id: 'payg',
@@ -884,44 +867,6 @@ onBeforeUnmount(() => {
   color: var(--pricing-accent);
 }
 
-.pricing-footer {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 28px 20px;
-  border-top: 1px solid var(--pricing-border);
-  background: #000000;
-  color: var(--pricing-faint);
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.pricing-footer p {
-  margin: 0;
-  text-align: center;
-}
-
-.pricing-footer nav {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px 20px;
-}
-
-.pricing-footer a {
-  color: var(--pricing-faint);
-  text-decoration: none;
-  transition: color 160ms ease;
-}
-
-.pricing-footer a:hover,
-.pricing-footer a:focus-visible {
-  color: var(--pricing-accent);
-}
-
 .pricing-page :where(a, button):focus-visible {
   outline: 2px solid #aec6ff;
   outline-offset: 3px;
@@ -971,25 +916,11 @@ onBeforeUnmount(() => {
   .pricing-tier-recommended {
     transform: translateY(-16px);
   }
-
-  .pricing-footer {
-    flex-direction: row;
-    justify-content: space-between;
-    padding: 30px 48px;
-  }
-
-  .pricing-footer p {
-    text-align: left;
-  }
 }
 
 @media (min-width: 1024px) {
   .pricing-nav,
   .pricing-main {
-    padding-inline: 64px;
-  }
-
-  .pricing-footer {
     padding-inline: 64px;
   }
 }

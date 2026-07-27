@@ -311,6 +311,7 @@
         </div>
       </template>
     </section>
+    <PublicSiteFooter :description="t('home.footer.allRightsReserved')" theme="models" />
   </AppLayout>
 </template>
 
@@ -320,6 +321,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import PublicSiteFooter from '@/components/public/PublicSiteFooter.vue'
 import { getPublicTransitSnapshot, type PublicTransitModel, type PublicTransitSnapshot } from '@/api/publicTransit'
 import { useClipboard } from '@/composables/useClipboard'
 import {

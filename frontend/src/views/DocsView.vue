@@ -215,9 +215,7 @@
         </template>
       </div>
 
-      <footer class="docs-footer">
-        <p>&copy; {{ currentYear }} {{ siteName }} - {{ t('docsPage.footerDescription') }}</p>
-      </footer>
+      <PublicSiteFooter :description="t('docsPage.footerDescription')" theme="docs" />
     </main>
 
     <div v-if="searchOpen" class="docs-search-overlay" role="presentation" @click.self="closeSearch">
@@ -275,6 +273,7 @@ import { useRoute, useRouter } from 'vue-router'
 import CodeBlock from '@/components/docs/CodeBlock.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PublicSiteFooter from '@/components/public/PublicSiteFooter.vue'
 import { useAppStore, useAuthStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
 
@@ -377,7 +376,6 @@ const siteLogo = computed(() => sanitizeUrl(
 ))
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const dashboardPath = computed(() => authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
-const currentYear = computed(() => new Date().getFullYear())
 const apiBaseUrl = computed(() => (
   appStore.cachedPublicSettings?.api_base_url || appStore.apiBaseUrl || window.location.origin
 ).replace(/\/+$/, ''))
@@ -1190,34 +1188,6 @@ onBeforeUnmount(() => {
   margin-top: -20px;
 }
 
-.docs-footer {
-  display: flex;
-  min-height: 89px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  border-top: 1px solid var(--docs-outline);
-  padding: 24px 48px;
-  color: rgb(185 203 188 / 68%);
-  background: rgb(6 15 22 / 76%);
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 11px;
-}
-
-.docs-footer p {
-  margin: 0;
-}
-
-.docs-footer a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.docs-footer a:hover,
-.docs-footer a:focus-visible {
-  color: var(--docs-primary);
-}
-
 .docs-search-overlay {
   position: fixed;
   z-index: 80;
@@ -1497,16 +1467,6 @@ onBeforeUnmount(() => {
 
   .docs-example-section + .docs-example-section {
     margin-top: -10px;
-  }
-
-  .docs-footer {
-    min-height: 116px;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 12px;
-    padding: 24px 20px;
-    line-height: 1.7;
   }
 
   .docs-search-overlay {

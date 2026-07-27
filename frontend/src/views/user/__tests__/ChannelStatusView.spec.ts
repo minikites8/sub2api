@@ -22,6 +22,7 @@ describe('ChannelStatusView video pricing', () => {
         plugins: [i18n],
         stubs: {
           AppLayout: { template: '<div><slot /></div>' },
+          PublicSiteFooter: true,
           Icon: true,
           PlatformIcon: true,
         },
