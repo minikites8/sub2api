@@ -293,6 +293,17 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		channelService,
 		concurrencyService,
 	)
+	baiduVODVideoTaskRepo := repository.NewBaiduVODVideoTaskRepository(entClient)
+	baiduVODVideoWorkerRuntime := service.ProvideBaiduVODVideoWorkerRuntime(
+		baiduVODVideoTaskRepo,
+		accountRepo,
+		usageBillingRepo,
+		usageLogRepo,
+		httpUpstream,
+		billingService,
+		apiKeyAuthCacheInvalidator,
+		cfg,
+	)
 
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(cfg)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
@@ -314,7 +325,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		cfg,
 		settingService,
 	)
-	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(
+	openAIGatewayHandler := handler.ProvideOpenAIGatewayHandler(
 		openAIGatewayService,
 		concurrencyService,
 		billingCacheService,
@@ -323,6 +334,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		nil,
 		nil,
 		nil,
+		baiduVODVideoWorkerRuntime,
 		cfg,
 	)
 	handlers := &handler.Handlers{
@@ -339,6 +351,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		schedulerSnapshot,
 		tokenRefreshService,
 		quotaLeaseDemoNodeWorker,
+		baiduVODVideoWorkerRuntime,
 		pricingService,
 		billingCacheService,
 		usageRecordWorkerPool,
@@ -375,6 +388,7 @@ func provideNodeCleanup(
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	quotaLeaseDemoNodeWorker *service.QuotaLeaseDemoNodeWorker,
+	baiduVODVideoWorker *service.BaiduVODVideoWorkerRuntime,
 	pricing *service.PricingService,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
@@ -415,6 +429,12 @@ func provideNodeCleanup(
 			{"QuotaLeaseDemoNodeWorker", func() error {
 				if quotaLeaseDemoNodeWorker != nil {
 					return quotaLeaseDemoNodeWorker.StopAndDrain(ctx)
+				}
+				return nil
+			}},
+			{"BaiduVODVideoWorkerRuntime", func() error {
+				if baiduVODVideoWorker != nil {
+					baiduVODVideoWorker.Stop()
 				}
 				return nil
 			}},
