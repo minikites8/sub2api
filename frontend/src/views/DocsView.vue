@@ -111,108 +111,29 @@
           <p>{{ activeArticle.description }}</p>
         </header>
 
-        <template v-if="activeSection === 'chat-completion'">
-          <section class="docs-section" aria-labelledby="quick-start-heading">
-            <h2 id="quick-start-heading">{{ t('docsPage.quickStart') }}</h2>
+        <div class="docs-quick-start">
+          <section
+            v-for="step in activeArticle.steps"
+            :key="step.key"
+            class="docs-section docs-quick-start-section"
+            :aria-labelledby="`${activeSection}-${step.key}-heading`"
+          >
+            <h2 :id="`${activeSection}-${step.key}-heading`">{{ step.title }}</h2>
+            <p>{{ step.description }}</p>
+            <router-link v-if="step.action" :to="step.action.to" class="docs-quick-start-action">
+              <span>{{ step.action.label }}</span>
+              <Icon name="arrowRight" size="sm" />
+            </router-link>
             <CodeBlock
-              language="bash"
-              :code="chatCompletionCode"
-              :copy-label="copiedBlock === 'chat-completion' ? t('docsPage.copied') : t('docsPage.copy')"
-              :copied="copiedBlock === 'chat-completion'"
-              @copy="copyCode('chat-completion', chatCompletionCode)"
+              v-if="step.example"
+              :language="step.example.language"
+              :code="step.example.code"
+              :copy-label="copiedBlock === `${activeSection}-${step.key}` ? t('docsPage.copied') : t('docsPage.copy')"
+              :copied="copiedBlock === `${activeSection}-${step.key}`"
+              @copy="copyCode(`${activeSection}-${step.key}`, step.example.code)"
             />
           </section>
-
-          <section class="docs-section" aria-labelledby="parameters-heading">
-            <h2 id="parameters-heading">{{ t('docsPage.parameters') }}</h2>
-            <div class="docs-table-wrap">
-              <table class="docs-parameter-table">
-                <thead>
-                  <tr>
-                    <th>{{ t('docsPage.parameter') }}</th>
-                    <th>{{ t('docsPage.type') }}</th>
-                    <th>{{ t('docsPage.description') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="row in parameterRows" :key="row.name">
-                    <td>{{ row.name }}</td>
-                    <td>{{ row.type }}</td>
-                    <td>{{ row.description }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section class="docs-callout" aria-labelledby="rate-limits-heading">
-            <Icon name="infoCircle" size="lg" />
-            <div>
-              <h2 id="rate-limits-heading">{{ t('docsPage.rateLimits') }}</h2>
-              <p>{{ t('docsPage.rateLimitDescription') }}</p>
-            </div>
-          </section>
-        </template>
-
-        <template v-else>
-          <section
-            v-for="section in activeArticle.sections"
-            :key="section.key"
-            class="docs-section docs-guide-section"
-            :aria-labelledby="`${activeSection}-${section.key}-heading`"
-          >
-            <h2 :id="`${activeSection}-${section.key}-heading`">{{ section.title }}</h2>
-            <p class="docs-section-intro">{{ section.body }}</p>
-
-            <div
-              v-if="section.key === 'generation' && inlineImageExample"
-              class="docs-inline-example"
-            >
-              <h3>{{ inlineImageExample.title }}</h3>
-              <p>{{ inlineImageExample.description }}</p>
-              <CodeBlock
-                :language="inlineImageExample.language"
-                :code="inlineImageExample.code"
-                :copy-label="copiedBlock === `${activeSection}-${inlineImageExample.key}` ? t('docsPage.copied') : t('docsPage.copy')"
-                :copied="copiedBlock === `${activeSection}-${inlineImageExample.key}`"
-                @copy="copyCode(`${activeSection}-${inlineImageExample.key}`, inlineImageExample.code)"
-              />
-            </div>
-
-            <div class="docs-detail-grid">
-              <article v-for="(item, index) in section.items" :key="item.title" class="docs-detail-item">
-                <span class="docs-detail-index">{{ String(index + 1).padStart(2, '0') }}</span>
-                <h3>{{ item.title }}</h3>
-                <p>{{ item.description }}</p>
-              </article>
-            </div>
-          </section>
-
-          <section
-            v-for="example in standaloneExamples"
-            :key="example.key"
-            class="docs-section docs-example-section"
-            :aria-labelledby="`${activeSection}-${example.key}-example-heading`"
-          >
-            <h2 :id="`${activeSection}-${example.key}-example-heading`">{{ example.title }}</h2>
-            <p class="docs-section-intro">{{ example.description }}</p>
-            <CodeBlock
-              :language="example.language"
-              :code="example.code"
-              :copy-label="copiedBlock === `${activeSection}-${example.key}` ? t('docsPage.copied') : t('docsPage.copy')"
-              :copied="copiedBlock === `${activeSection}-${example.key}`"
-              @copy="copyCode(`${activeSection}-${example.key}`, example.code)"
-            />
-          </section>
-
-          <section class="docs-callout" :aria-labelledby="`${activeSection}-callout-heading`">
-            <Icon name="infoCircle" size="lg" />
-            <div>
-              <h2 :id="`${activeSection}-callout-heading`">{{ activeArticle.callout.title }}</h2>
-              <p>{{ activeArticle.callout.body }}</p>
-            </div>
-          </section>
-        </template>
+        </div>
       </div>
 
       <PublicSiteFooter :description="t('docsPage.footerDescription')" theme="docs" />
@@ -298,30 +219,26 @@ interface NavigationItem {
   icon: DocsIcon
 }
 
-type GuideSectionId = Exclude<SectionId, 'chat-completion'>
-
-interface ArticleDetailItem {
-  title: string
-  description: string
-}
-
-interface ArticleSection {
-  key: string
-  title: string
-  body: string
-  items: ArticleDetailItem[]
-}
-
 interface ArticleExample {
-  key: string
-  title: string
-  description: string
   language: string
   code: string
 }
 
-interface CodeExampleDefinition {
+interface ArticleStep {
   key: string
+  title: string
+  description: string
+  action: { to: string; label: string } | null
+  example: ArticleExample | null
+}
+
+interface ArticleStepDefinition {
+  key: string
+  actionTo?: string
+}
+
+interface CodeExampleDefinition {
+  stepKey: string
   language: string
   code: string
 }
@@ -329,12 +246,7 @@ interface CodeExampleDefinition {
 interface ArticleContent {
   title: string
   description: string
-  sections: ArticleSection[]
-  examples: ArticleExample[]
-  callout: {
-    title: string
-    body: string
-  }
+  steps: ArticleStep[]
 }
 
 const { t } = useI18n()
@@ -358,7 +270,7 @@ const validSections: SectionId[] = [
 
 function sectionFromHash(hash: string): SectionId {
   const id = hash.replace(/^#/, '') as SectionId
-  return validSections.includes(id) ? id : 'chat-completion'
+  return validSections.includes(id) ? id : 'overview'
 }
 
 const activeSection = ref<SectionId>(sectionFromHash(route.hash))
@@ -399,7 +311,7 @@ const apiReferenceItems = computed<NavigationItem[]>(() => [
 const allNavigationItems = computed(() => [...navigationItems.value, ...apiReferenceItems.value])
 const activeItem = computed<NavigationItem>(() => (
   allNavigationItems.value.find((item) => item.id === activeSection.value)
-  || createNavigationItem('chat-completion', 'chatBubble', 'chatCompletion')
+  || createNavigationItem('overview', 'grid', 'overview')
 ))
 
 const articleKeys: Record<SectionId, string> = {
@@ -415,190 +327,138 @@ const articleKeys: Record<SectionId, string> = {
   'model-list': 'modelList'
 }
 
-const articleLayouts: Record<GuideSectionId, string[]> = {
-  overview: ['start', 'endpoints'],
-  models: ['selection', 'routing'],
-  'api-keys': ['lifecycle', 'controls'],
-  usage: ['query', 'response'],
-  settings: ['connection', 'production'],
-  authentication: ['headers', 'errors'],
-  'image-generation': ['generation', 'editing'],
-  'video-generation': ['capabilities', 'lifecycle'],
-  'model-list': ['catalog', 'refresh']
+const articleStepLayouts: Record<SectionId, ArticleStepDefinition[]> = {
+  overview: [
+    { key: 'apiKey', actionTo: '/keys' },
+    { key: 'model', actionTo: '/models' },
+    { key: 'request' }
+  ],
+  models: [
+    { key: 'browse', actionTo: '/models' },
+    { key: 'copy' },
+    { key: 'use' }
+  ],
+  'api-keys': [
+    { key: 'create', actionTo: '/keys' },
+    { key: 'save' },
+    { key: 'use' }
+  ],
+  usage: [
+    { key: 'open', actionTo: '/usage' },
+    { key: 'range' },
+    { key: 'quota' }
+  ],
+  settings: [
+    { key: 'install' },
+    { key: 'request' }
+  ],
+  authentication: [
+    { key: 'header' },
+    { key: 'unauthorized' },
+    { key: 'limited' }
+  ],
+  'chat-completion': [
+    { key: 'model', actionTo: '/models' },
+    { key: 'request' },
+    { key: 'response' }
+  ],
+  'image-generation': [
+    { key: 'model', actionTo: '/models' },
+    { key: 'request' },
+    { key: 'result' }
+  ],
+  'video-generation': [
+    { key: 'model', actionTo: '/models' },
+    { key: 'request' },
+    { key: 'result' }
+  ],
+  'model-list': [
+    { key: 'request' },
+    { key: 'read' },
+    { key: 'use' }
+  ]
 }
 
-const codeExamples: Record<GuideSectionId, CodeExampleDefinition[]> = {
-  overview: [{
-    key: 'primary',
-    language: 'typescript',
-    code: `import OpenAI from 'openai'\n\nconst client = new OpenAI({\n  apiKey: process.env.SUB2API_KEY,\n  baseURL: 'https://api.your-code.cc/v1'\n})\n\nconst models = await client.models.list()\nconsole.log(models.data.map((model) => model.id))`
-  }],
-  models: [{
-    key: 'primary',
+const chatRequestCode = `curl https://api.your-code.cc/v1/chat/completions \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "YOUR_MODEL",
+    "messages": [
+      {"role": "user", "content": "Hello"}
+    ]
+  }'`
+
+const articleExamples: Partial<Record<SectionId, CodeExampleDefinition>> = {
+  overview: {
+    stepKey: 'request',
+    language: 'bash',
+    code: chatRequestCode
+  },
+  models: {
+    stepKey: 'use',
     language: 'json',
-    code: `{\n  "model": "MODEL_ID_FROM_V1_MODELS",\n  "messages": [\n    { "role": "user", "content": "Explain this repository." }\n  ],\n  "stream": true\n}`
-  }],
-  'api-keys': [{
-    key: 'primary',
-    language: 'env',
-    code: `SUB2API_KEY=YOUR_API_KEY\nSUB2API_BASE_URL=https://api.your-code.cc/v1`
-  }],
-  usage: [{
-    key: 'primary',
-    language: 'bash',
-    code: `curl https://api.your-code.cc/api/v1/usage \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
-  }],
-  settings: [{
-    key: 'primary',
-    language: 'typescript',
-    code: `const client = new OpenAI({\n  apiKey: process.env.GATEWAY_API_KEY,\n  baseURL: 'https://api.your-code.cc/v1',\n  timeout: 60_000,\n  maxRetries: 2\n})`
-  }],
-  authentication: [{
-    key: 'primary',
-    language: 'bash',
-    code: `curl https://api.your-code.cc/v1/models \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json"`
-  }],
-  'image-generation': [{
-    key: 'primary',
-    language: 'bash',
-    code: `curl -X POST https://api.your-code.cc/v1/images/generations \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "IMAGE_MODEL_ID_FROM_V1_MODELS",\n    "prompt": "A precise isometric diagram of an AI gateway",\n    "size": "1024x1024",\n    "quality": "high",\n    "n": 1,\n    "response_format": "b64_json"\n  }'`
-  }, {
-    key: 'edit',
-    language: 'bash',
-    code: `curl -X POST https://api.your-code.cc/v1/images/edits \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -F "model=IMAGE_MODEL_ID_FROM_V1_MODELS" \\\n  -F "image=@reference.png" \\\n  -F "prompt=Replace the background with a clean studio backdrop" \\\n  -F "size=1024x1024" \\\n  -F "response_format=b64_json"`
-  }, {
-    key: 'response',
-    language: 'json',
-    code: `{\n  "created": 1710000000,\n  "data": [\n    {\n      "b64_json": "iVBORw0KGgoAAA...",\n      "revised_prompt": "A precise isometric diagram of an AI gateway"\n    }\n  ]\n}`
-  }],
-  'video-generation': [{
-    key: 'textToVideo',
-    language: 'bash',
-    code: `curl -X POST https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
-    "model": "happyhorse-1.1-t2v",
-    "prompt": "A white horse running along the coast at sunset",
-    "resolution": "720P",
-    "ratio": "16:9",
-    "seconds": 5
-  }'`
-  }, {
-    key: 'imageToVideo',
-    language: 'bash',
-    code: `curl -X POST https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
-    "model": "happyhorse-1.1-i2v",
-    "prompt": "Slowly move the camera forward while the subject blinks naturally",
-    "first_frame": "https://example.com/first-frame.jpg",
-    "resolution": "720P",
-    "ratio": "16:9",
-    "seconds": 5
-  }'`
-  }, {
-    key: 'referenceToVideo',
-    language: 'bash',
-    code: `curl -X POST https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
-    "model": "happyhorse-1.1-r2v",
-    "prompt": "Keep the referenced character and outfit while walking through a city street",
-    "reference_images": [
-      "https://example.com/character.jpg",
-      "https://example.com/outfit.jpg"
-    ],
-    "resolution": "720P",
-    "ratio": "16:9",
-    "seconds": 5
-  }'`
-  }, {
-    key: 'videoEdit',
-    language: 'bash',
-    code: `curl -X POST https://api.your-code.cc/v1/videos/edits \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
-    "model": "happyhorse-1.1-video-edit",
-    "prompt": "Dress the subject in the striped sweater from the reference image",
-    "video": "https://example.com/input.mp4",
-    "image": "https://example.com/sweater.jpg",
-    "resolution": "720P",
-    "ratio": "16:9",
-    "seconds": 5
-  }'`
-  }, {
-    key: 'status',
-    language: 'bash',
-    code: `curl https://api.your-code.cc/v1/videos/video_TASK_ID \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
-  }],
-  'model-list': [{
-    key: 'primary',
+    code: `{\n  "model": "YOUR_MODEL",\n  "messages": [\n    {"role": "user", "content": "Hello"}\n  ]\n}`
+  },
+  'api-keys': {
+    stepKey: 'use',
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/models \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
-  }]
+  },
+  settings: {
+    stepKey: 'request',
+    language: 'typescript',
+    code: `import OpenAI from 'openai'\n\nconst client = new OpenAI({\n  apiKey: 'YOUR_API_KEY',\n  baseURL: 'https://api.your-code.cc/v1'\n})\n\nconst response = await client.chat.completions.create({\n  model: 'YOUR_MODEL',\n  messages: [{ role: 'user', content: 'Hello' }]\n})\n\nconsole.log(response.choices[0].message.content)`
+  },
+  authentication: {
+    stepKey: 'header',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/models \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
+  },
+  'chat-completion': {
+    stepKey: 'request',
+    language: 'bash',
+    code: chatRequestCode
+  },
+  'image-generation': {
+    stepKey: 'request',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/images/generations \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "YOUR_IMAGE_MODEL",\n    "prompt": "A quiet mountain lake at sunrise"\n  }'`
+  },
+  'video-generation': {
+    stepKey: 'request',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "YOUR_VIDEO_MODEL",\n    "prompt": "Ocean waves moving at sunset"\n  }'`
+  },
+  'model-list': {
+    stepKey: 'request',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/models \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
+  }
 }
-
-const chatCompletionCode = `curl -X POST https://api.your-code.cc/v1/chat/completions \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -d '{
-    "model": "high-perf-v2",
-    "messages": [
-      {"role": "system", "content": "You are a helpful assistant."},
-      {"role": "user", "content": "Analyze this dataset."}
-    ],
-    "temperature": 0.2
-  }'`
 
 const activeArticle = computed<ArticleContent>(() => {
   const articleKey = articleKeys[activeSection.value]
-  if (activeSection.value === 'chat-completion') {
-    return {
-      title: t(`docsPage.articles.${articleKey}.title`),
-      description: t(`docsPage.articles.${articleKey}.description`),
-      sections: [],
-      examples: [],
-      callout: { title: '', body: '' }
-    }
-  }
-
-  const guideId = activeSection.value as GuideSectionId
+  const exampleDefinition = articleExamples[activeSection.value]
   return {
     title: t(`docsPage.articles.${articleKey}.title`),
     description: t(`docsPage.articles.${articleKey}.description`),
-    sections: articleLayouts[guideId].map((sectionKey) => ({
-      key: sectionKey,
-      title: t(`docsPage.articles.${articleKey}.sections.${sectionKey}.title`),
-      body: t(`docsPage.articles.${articleKey}.sections.${sectionKey}.body`),
-      items: ['first', 'second', 'third'].map((itemKey) => ({
-        title: t(`docsPage.articles.${articleKey}.sections.${sectionKey}.items.${itemKey}.title`),
-        description: t(`docsPage.articles.${articleKey}.sections.${sectionKey}.items.${itemKey}.description`)
-      }))
-    })),
-    examples: codeExamples[guideId].map((example) => ({
-      key: example.key,
-      title: t(`docsPage.articles.${articleKey}.examples.${example.key}.title`),
-      description: t(`docsPage.articles.${articleKey}.examples.${example.key}.description`),
-      language: example.language,
-      code: example.code
-        .split('https://api.your-code.cc').join(apiBaseUrl.value)
-        .replace('/api/v1/usage', '/v1/usage?days=30&timezone=Asia%2FShanghai')
-    })),
-    callout: {
-      title: t(`docsPage.articles.${articleKey}.callout.title`),
-      body: t(`docsPage.articles.${articleKey}.callout.body`)
-    }
+    steps: articleStepLayouts[activeSection.value].map((step) => ({
+      key: step.key,
+      title: t(`docsPage.articles.${articleKey}.steps.${step.key}.title`),
+      description: t(`docsPage.articles.${articleKey}.steps.${step.key}.description`),
+      action: step.actionTo
+        ? { to: step.actionTo, label: t(`docsPage.articles.${articleKey}.steps.${step.key}.action`) }
+        : null,
+      example: exampleDefinition?.stepKey === step.key
+        ? {
+            language: exampleDefinition.language,
+            code: exampleDefinition.code.split('https://api.your-code.cc').join(apiBaseUrl.value)
+          }
+        : null
+    }))
   }
 })
-
-const inlineImageExample = computed<ArticleExample | null>(() => {
-  if (activeSection.value !== 'image-generation') return null
-  return activeArticle.value.examples.find((example) => example.key === 'primary') || null
-})
-
-const standaloneExamples = computed<ArticleExample[]>(() => {
-  if (!inlineImageExample.value) return activeArticle.value.examples
-  return activeArticle.value.examples.filter((example) => example.key !== inlineImageExample.value?.key)
-})
-
-const parameterRows = computed(() => [
-  { name: 'model', type: 'string', description: t('docsPage.parameterRows.model') },
-  { name: 'messages', type: 'array', description: t('docsPage.parameterRows.messages') },
-  { name: 'temperature', type: 'number', description: t('docsPage.parameterRows.temperature') },
-  { name: 'max_tokens', type: 'integer', description: t('docsPage.parameterRows.maxTokens') }
-])
 
 const searchResults = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
@@ -1045,147 +905,47 @@ onBeforeUnmount(() => {
   letter-spacing: 0;
 }
 
-.docs-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--docs-outline);
-  border-radius: 6px;
-  background: var(--docs-surface-low);
-}
-
-.docs-parameter-table {
-  width: 100%;
-  min-width: 720px;
-  border-collapse: collapse;
-  text-align: left;
-}
-
-.docs-parameter-table th {
-  padding: 16px 18px;
-  color: var(--docs-muted);
-  background: var(--docs-surface-highest);
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.docs-parameter-table td {
-  border-top: 1px solid var(--docs-outline);
-  padding: 17px 18px;
-  color: var(--docs-muted);
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  vertical-align: top;
-}
-
-.docs-parameter-table td:first-child {
-  color: #f4fff3;
-  font-weight: 700;
-}
-
-.docs-parameter-table td:nth-child(2) {
-  color: var(--docs-secondary);
-}
-
-.docs-parameter-table tbody tr:hover {
-  background: var(--docs-surface-lowest);
-}
-
-.docs-callout {
-  display: flex;
-  align-items: flex-start;
-  gap: 18px;
-  border: 1px solid var(--docs-outline);
-  border-radius: 6px;
-  padding: 24px;
-  background: var(--docs-surface-lowest);
-  transition: border-color 160ms ease;
-}
-
-.docs-callout:hover {
-  border-color: var(--docs-primary-dim);
-}
-
-.docs-callout > svg {
-  flex: 0 0 auto;
-  color: var(--docs-primary);
-}
-
-.docs-callout h2 {
-  margin: 0 0 8px;
-  color: #f4fff3;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.docs-callout p,
-.docs-section-intro,
-.docs-detail-item p {
-  margin: 0;
-  color: var(--docs-muted);
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-.docs-section-intro {
+.docs-quick-start {
   max-width: 800px;
-  margin-top: -6px;
 }
 
-.docs-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
-  margin-top: 30px;
+.docs-quick-start-section {
+  margin-bottom: 52px;
 }
 
-.docs-inline-example {
-  margin-top: 30px;
+.docs-quick-start-section > h2 {
+  margin-bottom: 16px;
 }
 
-.docs-inline-example > h3 {
-  margin: 0 0 8px;
-  color: var(--docs-text);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.docs-inline-example > p {
-  max-width: 800px;
+.docs-quick-start-section > p {
   margin: 0 0 18px;
   color: var(--docs-muted);
   font-size: 15px;
   line-height: 1.7;
 }
 
-.docs-detail-item {
-  min-width: 0;
-  border-top: 2px solid var(--docs-outline);
-  padding-top: 18px;
-}
-
-.docs-detail-index {
-  display: block;
-  margin-bottom: 16px;
+.docs-quick-start-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--docs-primary-dim);
+  border-radius: 4px;
+  padding: 9px 13px;
   color: var(--docs-primary);
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.docs-detail-item h3 {
-  margin: 0 0 9px;
-  color: var(--docs-text);
-  font-size: 16px;
+  background: var(--docs-surface-lowest);
+  font-size: 14px;
   font-weight: 600;
-  line-height: 1.4;
+  text-decoration: none;
+  transition: border-color 160ms ease, background 160ms ease;
 }
 
-.docs-example-section + .docs-example-section {
-  margin-top: -20px;
+.docs-quick-start-action:hover {
+  border-color: var(--docs-primary);
+  background: var(--docs-surface-high);
+}
+
+.docs-quick-start-section .docs-code-block {
+  margin-top: 20px;
 }
 
 .docs-search-overlay {
@@ -1393,9 +1153,6 @@ onBeforeUnmount(() => {
     padding: 56px 32px 64px;
   }
 
-  .docs-detail-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 600px) {
@@ -1453,20 +1210,6 @@ onBeforeUnmount(() => {
   .docs-section > h2 {
     margin-bottom: 20px;
     font-size: 22px;
-  }
-
-  .docs-callout {
-    gap: 14px;
-    padding: 18px;
-  }
-
-  .docs-detail-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 22px;
-  }
-
-  .docs-example-section + .docs-example-section {
-    margin-top: -10px;
   }
 
   .docs-search-overlay {
