@@ -271,7 +271,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, userMessageQueueService, configConfig, settingService)
 	baiduVODVideoTaskRepository := repository.NewBaiduVODVideoTaskRepository(client)
-	baiduVODVideoWorkerRuntime := service.ProvideBaiduVODVideoWorkerRuntime(baiduVODVideoTaskRepository, accountRepository, usageBillingRepository, usageLogRepository, httpUpstream, billingService, apiKeyAuthCacheInvalidator, configConfig)
+	baiduVODVideoWorkerRuntime := service.ProvideBaiduVODVideoWorkerRuntime(baiduVODVideoTaskRepository, accountRepository, usageBillingRepository, usageLogRepository, httpUpstream, billingService, modelPricingResolver, apiKeyAuthCacheInvalidator, configConfig)
 	openAIGatewayHandler := handler.ProvideOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, baiduVODVideoWorkerRuntime, configConfig)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)

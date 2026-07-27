@@ -81,7 +81,7 @@
               class="mt-1"
             />
           </div>
-          <div class="w-40">
+          <div class="w-48">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.billingMode') }}
             </label>
@@ -99,7 +99,7 @@
           <!-- Default prices (fallback when no interval matches) -->
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ t('admin.channels.form.defaultPrices') }}
-            <span class="ml-1 font-normal text-gray-400">$/MTok</span>
+            <span class="ml-1 font-normal text-gray-400">Credits / MTok</span>
           </label>
           <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
             <div>
@@ -168,7 +168,7 @@
           <!-- Default per-request price -->
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ t('admin.channels.form.defaultPerRequestPrice') }}
-            <span class="ml-1 font-normal text-gray-400">$</span>
+            <span class="ml-1 font-normal text-gray-400">Credits</span>
           </label>
           <div class="mt-1 w-48">
             <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
@@ -204,7 +204,7 @@
           <!-- Default image price (per-request, same as per_request mode) -->
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ t('admin.channels.form.defaultImagePrice') }}
-            <span class="ml-1 font-normal text-gray-400">$</span>
+            <span class="ml-1 font-normal text-gray-400">Credits</span>
           </label>
           <div class="mt-1 w-48">
             <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
@@ -231,6 +231,45 @@
             />
           </div>
         </div>
+
+        <!-- Video mode -->
+        <div v-else-if="entry.billing_mode === 'video'">
+          <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            {{ t('admin.channels.form.defaultVideoSecondPrice') }}
+            <span class="ml-1 font-normal text-gray-400">Credits / s</span>
+          </label>
+          <div class="mt-1 w-48">
+            <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
+              type="number" step="any" min="0" class="input text-sm" :placeholder="t('admin.channels.form.pricePlaceholder')" />
+          </div>
+
+          <div class="mt-3 flex items-center justify-between">
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {{ t('admin.channels.form.videoResolutionTiers') }}
+            </label>
+            <button
+              v-if="nextVideoTier"
+              type="button"
+              @click="addVideoTier"
+              class="text-xs text-primary-600 hover:text-primary-700"
+            >
+              + {{ t('admin.channels.form.addTier') }}
+            </button>
+          </div>
+          <div v-if="entry.intervals && entry.intervals.length > 0" class="mt-2 space-y-2">
+            <IntervalRow
+              v-for="(iv, idx) in entry.intervals"
+              :key="idx"
+              :interval="iv"
+              :mode="entry.billing_mode"
+              @update="updateInterval(idx, $event)"
+              @remove="removeInterval(idx)"
+            />
+          </div>
+          <div v-else class="mt-2 rounded border border-dashed border-gray-300 p-3 text-center text-xs text-gray-400 dark:border-dark-500">
+            {{ t('admin.channels.form.noVideoTiersYet') }}
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -250,10 +289,13 @@ import channelsAPI from '@/api/admin/channels'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   entry: PricingFormEntry
   platform?: string
-}>()
+  allowVideo?: boolean
+}>(), {
+  allowVideo: true
+})
 
 const emit = defineEmits<{
   update: [entry: PricingFormEntry]
@@ -263,11 +305,17 @@ const emit = defineEmits<{
 // Collapse state: entries with existing models default to collapsed
 const collapsed = ref(props.entry.models.length > 0)
 
-const billingModeOptions = computed(() => [
-  { value: 'token', label: t('admin.channels.billingMode.token') },
-  { value: 'per_request', label: t('admin.channels.billingMode.perRequest') },
-  { value: 'image', label: t('admin.channels.billingMode.image') }
-])
+const billingModeOptions = computed(() => {
+  const options = [
+    { value: 'token', label: t('admin.channels.billingMode.token') },
+    { value: 'per_request', label: t('admin.channels.billingMode.perRequest') },
+    { value: 'image', label: t('admin.channels.billingMode.image') }
+  ]
+  if (props.allowVideo) {
+    options.push({ value: 'video', label: t('admin.channels.billingMode.video') })
+  }
+  return options
+})
 
 const billingModeLabel = computed(() => {
   const opt = billingModeOptions.value.find(o => o.value === props.entry.billing_mode)
@@ -294,6 +342,24 @@ function addImageTier() {
   const labels = ['1K', '2K', '4K', 'HD']
   intervals.push({
     min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '',
+    input_price: null, output_price: null, cache_write_price: null,
+    cache_read_price: null, per_request_price: null,
+    sort_order: intervals.length
+  })
+  emit('update', { ...props.entry, intervals })
+}
+
+const videoTierLabels = ['720P', '1080P', '4K']
+const nextVideoTier = computed(() => {
+  const configured = new Set((props.entry.intervals || []).map(iv => iv.tier_label.toUpperCase()))
+  return videoTierLabels.find(label => !configured.has(label)) || ''
+})
+
+function addVideoTier() {
+  if (!nextVideoTier.value) return
+  const intervals = [...(props.entry.intervals || [])]
+  intervals.push({
+    min_tokens: 0, max_tokens: null, tier_label: nextVideoTier.value,
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
     sort_order: intervals.length

@@ -301,6 +301,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		usageLogRepo,
 		httpUpstream,
 		billingService,
+		modelPricingResolver,
 		apiKeyAuthCacheInvalidator,
 		cfg,
 	)

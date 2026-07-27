@@ -198,7 +198,7 @@ func (w *BaiduVODVideoWorker) succeed(ctx context.Context, task *BaiduVODVideoTa
 	if actualResolution == task.Resolution && task.RequestedDuration > 0 && outputDuration > 0 {
 		actual = task.EstimatedCost * float64(outputDuration) / float64(task.RequestedDuration) * float64(videoCount)
 	} else if w.service.billing != nil {
-		actual = w.service.billing.CalculateVideoCost(task.Model, actualResolution, videoCount, outputDuration, nil, task.VideoRateMultiplier).ActualCost
+		actual = w.service.calculateVideoCost(ctx, task.Model, task.GroupID, actualResolution, videoCount, outputDuration, nil, false, task.VideoRateMultiplier).ActualCost
 	}
 	if actual-task.HoldAmount > 0.00000001 {
 		w.fail(ctx, task, "ACTUAL_COST_EXCEEDS_HOLD", "actual video duration exceeds the reserved balance")
@@ -259,10 +259,11 @@ func ProvideBaiduVODVideoWorkerRuntime(
 	usageLogs UsageLogRepository,
 	httpUpstream HTTPUpstream,
 	billing *BillingService,
+	pricing *ModelPricingResolver,
 	authCache APIKeyAuthCacheInvalidator,
 	cfg *config.Config,
 ) *BaiduVODVideoWorkerRuntime {
-	service := NewBaiduVODVideoService(tasks, accounts, billingRepo, usageLogs, httpUpstream, billing, authCache, cfg)
+	service := NewBaiduVODVideoService(tasks, accounts, billingRepo, usageLogs, httpUpstream, billing, pricing, authCache, cfg)
 	runtime := &BaiduVODVideoWorkerRuntime{worker: NewBaiduVODVideoWorker(service)}
 	runtime.worker.Start()
 	return runtime

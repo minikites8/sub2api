@@ -26,16 +26,18 @@ export default {
         billingModeToken: '按 Token',
         billingModePerRequest: '按次',
         billingModeImage: '按图片',
-        billingModeVideo: '按视频',
+        billingModeVideo: '视频（按秒）',
         inputPrice: '输入',
         outputPrice: '输出',
         cacheWritePrice: '缓存写入',
         cacheReadPrice: '缓存读取',
         imageOutputPrice: '图片输出',
         perRequestPrice: '每次请求',
+        videoSecondPrice: '每秒视频',
         intervals: '阶梯定价',
-        unitPerMillion: '/ 1M token',
-        unitPerRequest: '/ 次'
+        unitPerMillion: 'Credits / 1M token',
+        unitPerRequest: 'Credits / 次',
+        unitPerSecond: 'Credits / s'
       }
     },
 
@@ -93,7 +95,8 @@ export default {
       billingMode: {
         token: 'Token',
         perRequest: '按次',
-        image: '图片（按次）'
+        image: '图片（按次）',
+        video: '视频（按秒）'
       },
       form: {
         name: '名称',
@@ -128,11 +131,14 @@ export default {
         addInterval: '添加区间',
         requestTiers: '按次计费层级',
         imageTiers: '图片计费层级（按次）',
+        videoResolutionTiers: '视频分辨率计费层级',
         addTier: '添加层级',
         noTiersYet: '暂无层级，点击添加配置按次计费价格',
+        noVideoTiersYet: '暂无分辨率层级，将使用默认每秒价格',
         noPricingRules: '暂无定价规则，点击"添加"创建',
         perRequestPrice: '单次价格',
-        perRequestPriceRequired: '按次/图片计费模式必须设置默认价格或至少一个计费层级',
+        videoSecondPrice: '每秒价格',
+        perRequestPriceRequired: '按次/图片/视频计费模式必须设置默认价格或至少一个计费层级',
         tierLabel: '层级',
         resolution: '分辨率',
         modelMapping: '模型映射',
@@ -152,6 +158,7 @@ export default {
         restrictModelsHint: '开启后，仅允许模型定价列表中的模型。不在列表中的模型请求将被拒绝。',
         defaultPerRequestPrice: '默认单次价格（未命中层级时使用）',
         defaultImagePrice: '默认图片价格（未命中层级时使用）',
+        defaultVideoSecondPrice: '默认视频每秒价格（未命中分辨率层级时使用）',
         platformConfig: '平台配置',
         webSearchEmulation: 'Web Search 模拟',
         webSearchEmulationHint: '⚠️ 开启后该渠道下所有 Anthropic 分组的账号将自动拦截 web_search 请求，请谨慎操作',

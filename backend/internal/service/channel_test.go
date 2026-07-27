@@ -220,6 +220,7 @@ func TestBillingModeIsValid(t *testing.T) {
 		{"token", BillingModeToken, true},
 		{"per_request", BillingModePerRequest, true},
 		{"image", BillingModeImage, true},
+		{"video", BillingModeVideo, true},
 		{"empty", BillingMode(""), true},
 		{"unknown", BillingMode("unknown"), false},
 		{"random", BillingMode("xyz"), false},
@@ -443,6 +444,7 @@ func TestValidateIntervals_ImageModeAllowsMultipleUnboundedTiers(t *testing.T) {
 	}
 	require.NoError(t, ValidateIntervals(intervals, BillingModeImage))
 	require.NoError(t, ValidateIntervals(intervals, BillingModePerRequest))
+	require.NoError(t, ValidateIntervals(intervals, BillingModeVideo))
 }
 
 func TestValidateIntervals_ImageModeStillRejectsNegativePrice(t *testing.T) {
@@ -512,7 +514,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 		require.NotContains(t, m.Name, "*")
 	}
 }
-
 
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{

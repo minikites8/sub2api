@@ -177,7 +177,7 @@ type CostBreakdown struct {
 	CacheReadCost             float64
 	TotalCost                 float64
 	ActualCost                float64 // 应用倍率后的实际费用
-	BillingMode               string  // 计费模式（"token"/"per_request"/"image"），由 CalculateCostUnified 填充
+	BillingMode               string  // 计费模式（"token"/"per_request"/"image"/"video"），由 CalculateCostUnified 填充
 	LongContextBillingApplied bool
 }
 
@@ -919,7 +919,8 @@ type CostInput struct {
 	GroupID                   *int64 // 用于渠道定价查找
 	Tokens                    UsageTokens
 	RequestCount              int    // 按次计费时使用
-	SizeTier                  string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
+	SizeTier                  string // 按次/图片/视频模式的层级标签（"1K","2K","4K","720P" 等）
+	DurationSeconds           int    // 视频模式的单个视频时长（秒）
 	RateMultiplier            float64
 	ServiceTier               string                // "priority","flex","" 等
 	Resolver                  *ModelPricingResolver // 定价解析器
@@ -927,7 +928,7 @@ type CostInput struct {
 	LongContextBillingEnabled *bool
 }
 
-// CalculateCostUnified 统一计费入口，支持三种计费模式。
+// CalculateCostUnified 统一计费入口，支持 token、按次、图片和视频计费模式。
 // 使用 ModelPricingResolver 解析定价，然后根据 BillingMode 分发计算。
 func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, error) {
 	if input.Resolver == nil {
@@ -965,6 +966,8 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 	switch resolved.Mode {
 	case BillingModePerRequest, BillingModeImage:
 		breakdown, err = s.calculatePerRequestCost(resolved, input)
+	case BillingModeVideo:
+		breakdown, err = s.calculateVideoSecondCost(resolved, input)
 	default: // BillingModeToken
 		breakdown, err = s.calculateTokenCost(resolved, input)
 	}
@@ -975,6 +978,24 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		}
 	}
 	return breakdown, err
+}
+
+// calculateVideoSecondCost 使用渠道配置的分辨率每秒价格计算视频费用。
+func (s *BillingService) calculateVideoSecondCost(resolved *ResolvedPricing, input CostInput) (*CostBreakdown, error) {
+	count := input.RequestCount
+	if count <= 0 {
+		count = 1
+	}
+	duration := NormalizeVideoBillingDurationSecondsOrDefault(input.DurationSeconds)
+	unitPrice, configured := input.Resolver.GetVideoSecondPrice(resolved, input.SizeTier)
+	if !configured {
+		unitPrice = s.getVideoUnitPrice(input.Model, input.SizeTier, nil)
+	}
+	totalCost := unitPrice * float64(duration) * float64(count)
+	return &CostBreakdown{
+		TotalCost:  totalCost,
+		ActualCost: totalCost * input.RateMultiplier,
+	}, nil
 }
 
 // calculateTokenCost 按 token 区间计费
@@ -1492,7 +1513,7 @@ func (s *BillingService) CalculateImageCost(model string, imageSize string, imag
 
 // CalculateVideoCost 计算视频生成费用（按秒计费，与 xAI 口径一致）。
 // model: 请求的模型名称（用于获取默认价格）
-// resolution: 视频分辨率 "480p", "720p", "1080p"
+// resolution: 视频分辨率 "480p", "720p", "1080p", "4k"
 // videoCount: 生成的视频数量
 // durationSeconds: 单个视频时长（秒），<=0 时按上游默认时长计
 // groupConfig: 分组配置的每秒价格（可能为 nil，表示使用默认值）

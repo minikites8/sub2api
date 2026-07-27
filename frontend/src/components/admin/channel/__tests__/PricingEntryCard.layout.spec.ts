@@ -28,6 +28,7 @@ function baseEntry(): PricingFormEntry {
     output_price: null,
     cache_write_price: null,
     cache_read_price: null,
+    image_input_price: null,
     image_output_price: null,
     per_request_price: null,
     priority_multiplier: null,
@@ -64,5 +65,30 @@ describe('PricingEntryCard 布局', () => {
     const inner = wrapper.get('.collapsible-inner')
     expect(inner.classes()).toContain('px-0.5')
     expect(inner.classes()).toContain('pb-0.5')
+  })
+
+  it('视频模式使用 Credits 每秒价格并依次添加 720P 档位', async () => {
+    const wrapper = mount(PricingEntryCard, {
+      props: {
+        entry: { ...baseEntry(), billing_mode: 'video', intervals: [] },
+        platform: 'baidu_vod',
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Credits / s')
+    const addTier = wrapper.findAll('button').find(button =>
+      button.text().includes('admin.channels.form.addTier'),
+    )
+    expect(addTier).toBeDefined()
+    await addTier!.trigger('click')
+
+    const updates = wrapper.emitted('update')
+    expect(updates).toHaveLength(1)
+    expect((updates![0][0] as PricingFormEntry).intervals[0].tier_label).toBe('720P')
   })
 })

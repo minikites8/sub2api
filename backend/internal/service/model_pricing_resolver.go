@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"strings"
 )
 
 // PricingSource 定价来源标识
@@ -23,10 +24,10 @@ type ResolvedPricing struct {
 	// Token 模式：区间定价列表（如有，覆盖 BasePricing 中的对应字段）
 	Intervals []PricingInterval
 
-	// 按次/图片模式：分层定价
+	// 按次/图片/视频模式：分层定价
 	RequestTiers []PricingInterval
 
-	// 按次/图片模式：默认价格（未命中层级时使用）
+	// 按次/图片模式：默认单次价格；视频模式：默认每秒价格
 	DefaultPerRequestPrice float64
 
 	// 来源标识
@@ -72,7 +73,7 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 			if mode == "" {
 				mode = BillingModeToken
 			}
-			if mode == BillingModePerRequest || mode == BillingModeImage {
+			if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
 				resolved := &ResolvedPricing{
 					Mode:           mode,
 					Source:         PricingSourceChannel,
@@ -134,7 +135,7 @@ func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupI
 	switch resolved.Mode {
 	case BillingModeToken:
 		r.applyTokenOverrides(chPricing, resolved)
-	case BillingModePerRequest, BillingModeImage:
+	case BillingModePerRequest, BillingModeImage, BillingModeVideo:
 		r.applyRequestTierOverrides(chPricing, resolved)
 	}
 }
@@ -222,7 +223,7 @@ func applyChannelImageInputPrice(chPricing *ChannelModelPricing, pricing *ModelP
 	}
 }
 
-// applyRequestTierOverrides 应用按次/图片模式的渠道覆盖
+// applyRequestTierOverrides 应用按次/图片/视频模式的渠道覆盖
 func (r *ModelPricingResolver) applyRequestTierOverrides(chPricing *ChannelModelPricing, resolved *ResolvedPricing) {
 	resolved.RequestTiers = filterValidIntervals(chPricing.Intervals)
 	if chPricing.PerRequestPrice != nil {
@@ -326,4 +327,38 @@ func (r *ModelPricingResolver) GetRequestTierPriceByContext(resolved *ResolvedPr
 		return *iv.PerRequestPrice
 	}
 	return 0
+}
+
+// GetVideoSecondPrice 根据分辨率获取渠道视频每秒价格。
+// bool 表示渠道是否显式配置该价格，允许管理员配置 0 Credits 免费档位。
+func (r *ModelPricingResolver) GetVideoSecondPrice(resolved *ResolvedPricing, resolution string) (float64, bool) {
+	if resolved == nil || resolved.Mode != BillingModeVideo {
+		return 0, false
+	}
+	target := normalizeVideoPricingTier(resolution)
+	for _, tier := range resolved.RequestTiers {
+		if normalizeVideoPricingTier(tier.TierLabel) == target && tier.PerRequestPrice != nil {
+			return *tier.PerRequestPrice, true
+		}
+	}
+	if resolved.channelPricing != nil && resolved.channelPricing.PerRequestPrice != nil {
+		return *resolved.channelPricing.PerRequestPrice, true
+	}
+	return 0, false
+}
+
+func normalizeVideoPricingTier(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "720", "720p", "hd":
+		return VideoBillingResolution720P
+	case "1080", "1080p", "full_hd", "full-hd", "fhd":
+		return VideoBillingResolution1080P
+	case "4k", "2160", "2160p", "uhd":
+		return VideoBillingResolution4K
+	case "480", "480p", "sd":
+		return VideoBillingResolution480P
+	default:
+		return value
+	}
 }

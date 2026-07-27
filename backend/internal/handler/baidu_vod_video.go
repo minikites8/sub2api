@@ -114,7 +114,7 @@ func (h *OpenAIGatewayHandler) BaiduVODVideoCreate(c *gin.Context) {
 	publicID := "video_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	requestSum := sha256.Sum256(body)
 	requestHash := hex.EncodeToString(requestSum[:])
-	task, err := h.baiduVODVideoService.NewTask(publicID, apiKey, account, request, spec,
+	task, err := h.baiduVODVideoService.NewTask(c.Request.Context(), publicID, apiKey, account, request, spec,
 		&service.BaiduVODSubmitResult{TaskStatus: "SUBMITTING"}, requestHash)
 	if err != nil {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to prepare video task")

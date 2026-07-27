@@ -26,16 +26,18 @@ export default {
         billingModeToken: 'Per Token',
         billingModePerRequest: 'Per Request',
         billingModeImage: 'Per Image',
-        billingModeVideo: 'Per Video',
+        billingModeVideo: 'Video (Per Second)',
         inputPrice: 'Input',
         outputPrice: 'Output',
         cacheWritePrice: 'Cache Write',
         cacheReadPrice: 'Cache Read',
         imageOutputPrice: 'Image Output',
         perRequestPrice: 'Per Request',
+        videoSecondPrice: 'Video Per Second',
         intervals: 'Tiered Pricing',
-        unitPerMillion: '/ 1M tokens',
-        unitPerRequest: '/ request'
+        unitPerMillion: 'Credits / 1M tokens',
+        unitPerRequest: 'Credits / request',
+        unitPerSecond: 'Credits / s'
       }
     },
 
@@ -93,7 +95,8 @@ export default {
       billingMode: {
         token: 'Token',
         perRequest: 'Per Request',
-        image: 'Image (Per Request)'
+        image: 'Image (Per Request)',
+        video: 'Video (Per Second)'
       },
       form: {
         name: 'Name',
@@ -128,11 +131,14 @@ export default {
         addInterval: 'Add Interval',
         requestTiers: 'Request Tiers',
         imageTiers: 'Image Tiers (Per Request)',
+        videoResolutionTiers: 'Video Resolution Tiers',
         addTier: 'Add Tier',
         noTiersYet: 'No tiers yet. Click add to configure per-request pricing.',
+        noVideoTiersYet: 'No resolution tiers. The default per-second price will be used.',
         noPricingRules: 'No pricing rules yet. Click "Add" to create one.',
         perRequestPrice: 'Price per Request',
-        perRequestPriceRequired: 'Per-request price or billing tiers required for per-request/image billing mode',
+        videoSecondPrice: 'Price per Second',
+        perRequestPriceRequired: 'Default price or billing tiers required for per-request/image/video billing mode',
         tierLabel: 'Tier',
         resolution: 'Resolution',
         modelMapping: 'Model Mapping',
@@ -152,6 +158,7 @@ export default {
         restrictModelsHint: 'When enabled, only models in the pricing list are allowed. Others will be rejected.',
         defaultPerRequestPrice: 'Default per-request price (fallback when no tier matches)',
         defaultImagePrice: 'Default image price (fallback when no tier matches)',
+        defaultVideoSecondPrice: 'Default video price per second (fallback when no resolution tier matches)',
         platformConfig: 'Platform Configuration',
         webSearchEmulation: 'Web Search Emulation',
         webSearchEmulationHint: '⚠️ When enabled, all accounts in this channel\'s Anthropic groups will intercept web_search requests. Use with caution.',

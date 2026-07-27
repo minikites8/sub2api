@@ -1,7 +1,7 @@
 <template>
   <div class="flex items-start gap-2 rounded border p-2"
        :class="isEmpty ? 'border-red-400 bg-red-50 dark:border-red-500 dark:bg-red-950/20' : 'border-gray-200 bg-white dark:border-dark-500 dark:bg-dark-700'">
-    <!-- Token mode: context range + prices ($/MTok) -->
+    <!-- Token mode: context range + prices (Credits/MTok) -->
     <template v-if="mode === 'token'">
       <div class="w-20">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.minTokens') }}</label>
@@ -14,23 +14,51 @@
           type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">Credits / MTok</span></label>
         <input :value="interval.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">Credits / MTok</span></label>
         <input :value="interval.output_price" @input="emitField('output_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWritePriceShort') }} <span class="text-gray-300">$/M</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWritePriceShort') }} <span class="text-gray-300">Credits / MTok</span></label>
         <input :value="interval.cache_write_price" @input="emitField('cache_write_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPriceShort') }} <span class="text-gray-300">$/M</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPriceShort') }} <span class="text-gray-300">Credits / MTok</span></label>
         <input :value="interval.cache_read_price" @input="emitField('cache_read_price', ($event.target as HTMLInputElement).value)"
+          type="number" step="any" min="0" class="input mt-0.5 text-xs" />
+      </div>
+    </template>
+
+    <!-- Video mode: resolution + per-second price -->
+    <template v-else-if="mode === 'video'">
+      <div class="w-32">
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.resolution') }}</label>
+        <select
+          :value="interval.tier_label"
+          @change="emitField('tier_label', ($event.target as HTMLSelectElement).value)"
+          class="input mt-0.5 text-xs"
+        >
+          <option v-if="!videoResolutionOptions.includes(interval.tier_label)" :value="interval.tier_label">
+            {{ interval.tier_label }}
+          </option>
+          <option v-for="resolution in videoResolutionOptions" :key="resolution" :value="resolution">
+            {{ resolution }}
+          </option>
+        </select>
+      </div>
+      <div class="min-w-0 flex-1">
+        <label class="text-xs text-gray-400">
+          {{ t('admin.channels.form.videoSecondPrice') }}
+          <span v-if="isEmpty" class="text-red-500">*</span>
+          <span class="text-gray-300">Credits / s</span>
+        </label>
+        <input :value="interval.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
     </template>
@@ -55,7 +83,7 @@
           type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.perRequestPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.perRequestPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">Credits</span></label>
         <input :value="interval.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
@@ -85,6 +113,8 @@ const emit = defineEmits<{
   update: [interval: IntervalFormEntry]
   remove: []
 }>()
+
+const videoResolutionOptions = ['720P', '1080P', '4K']
 
 // 检测所有价格字段是否都为空
 const isEmpty = computed(() => {

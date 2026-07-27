@@ -496,6 +496,36 @@ func TestResolve_WithChannelOverride_ImageTierLabels(t *testing.T) {
 	require.InDelta(t, 0.0, r.GetRequestTierPrice(resolved, "8K"), 1e-12) // not found
 }
 
+func TestResolve_WithChannelOverride_VideoSecondTiers(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"happyhorse-1.1-t2v"},
+		BillingMode:     BillingModeVideo,
+		PerRequestPrice: testPtrFloat64(0.5),
+		Intervals: []PricingInterval{
+			{TierLabel: "720P", PerRequestPrice: testPtrFloat64(0.6)},
+			{TierLabel: "1080p", PerRequestPrice: testPtrFloat64(0.9)},
+			{TierLabel: "4K", PerRequestPrice: testPtrFloat64(1.4)},
+		},
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "happyhorse-1.1-t2v",
+		GroupID: groupIDPtr(),
+	})
+
+	require.Equal(t, BillingModeVideo, resolved.Mode)
+	price, configured := r.GetVideoSecondPrice(resolved, "720p")
+	require.True(t, configured)
+	require.InDelta(t, 0.6, price, 1e-12)
+	price, configured = r.GetVideoSecondPrice(resolved, "2160P")
+	require.True(t, configured)
+	require.InDelta(t, 1.4, price, 1e-12)
+	price, configured = r.GetVideoSecondPrice(resolved, "480P")
+	require.True(t, configured)
+	require.InDelta(t, 0.5, price, 1e-12)
+}
+
 // ---------------------------------------------------------------------------
 // 4. Source tracking & default mode
 // ---------------------------------------------------------------------------

@@ -53,6 +53,7 @@ type BaiduVODVideoService struct {
 	usageLogs   UsageLogRepository
 	http        HTTPUpstream
 	billing     *BillingService
+	pricing     *ModelPricingResolver
 	authCache   APIKeyAuthCacheInvalidator
 	cfg         *config.Config
 }
@@ -64,10 +65,11 @@ func NewBaiduVODVideoService(
 	usageLogs UsageLogRepository,
 	httpUpstream HTTPUpstream,
 	billing *BillingService,
+	pricing *ModelPricingResolver,
 	authCache APIKeyAuthCacheInvalidator,
 	cfg *config.Config,
 ) *BaiduVODVideoService {
-	return &BaiduVODVideoService{tasks: tasks, accounts: accounts, billingRepo: billingRepo, usageLogs: usageLogs, http: httpUpstream, billing: billing, authCache: authCache, cfg: cfg}
+	return &BaiduVODVideoService{tasks: tasks, accounts: accounts, billingRepo: billingRepo, usageLogs: usageLogs, http: httpUpstream, billing: billing, pricing: pricing, authCache: authCache, cfg: cfg}
 }
 
 func (s *BaiduVODVideoService) SelectAccount(ctx context.Context, groupID *int64, model string) (*Account, error) {
@@ -236,7 +238,7 @@ func baiduVODUpstreamURL(account *Account, suffix string) (string, string, error
 	return parsed.String(), authMode, nil
 }
 
-func (s *BaiduVODVideoService) NewTask(publicID string, apiKey *APIKey, account *Account, req BaiduVODVideoRequest, spec BaiduVODModelSpec, submitted *BaiduVODSubmitResult, requestHash string) (*BaiduVODVideoTask, error) {
+func (s *BaiduVODVideoService) NewTask(ctx context.Context, publicID string, apiKey *APIKey, account *Account, req BaiduVODVideoRequest, spec BaiduVODModelSpec, submitted *BaiduVODSubmitResult, requestHash string) (*BaiduVODVideoTask, error) {
 	if s == nil || s.billing == nil || apiKey == nil || apiKey.User == nil || account == nil || submitted == nil {
 		return nil, errors.New("baidu vod task billing context is incomplete")
 	}
@@ -252,7 +254,8 @@ func (s *BaiduVODVideoService) NewTask(publicID string, apiKey *APIKey, account 
 		groupConfig = &VideoPriceConfig{Price480P: apiKey.Group.VideoPrice480P, Price720P: apiKey.Group.VideoPrice720P, Price1080P: apiKey.Group.VideoPrice1080P}
 	}
 	resolution := NormalizeVideoBillingResolutionOrDefault(req.Resolution)
-	cost := s.billing.CalculateVideoCost(req.Model, resolution, 1, req.Duration, groupConfig, videoMultiplier)
+	groupPriceConfigured := apiKeyHasConfiguredVideoPrice(apiKey, resolution)
+	cost := s.calculateVideoCost(ctx, req.Model, apiKey.GroupID, resolution, 1, req.Duration, groupConfig, groupPriceConfigured, videoMultiplier)
 	now := time.Now()
 	requestID := strings.TrimSpace(submitted.RequestID)
 	task := &BaiduVODVideoTask{
@@ -273,6 +276,43 @@ func (s *BaiduVODVideoService) NewTask(publicID string, apiKey *APIKey, account 
 		task.UpstreamRequestID = &requestID
 	}
 	return task, nil
+}
+
+func (s *BaiduVODVideoService) calculateVideoCost(
+	ctx context.Context,
+	model string,
+	groupID *int64,
+	resolution string,
+	videoCount int,
+	durationSeconds int,
+	groupConfig *VideoPriceConfig,
+	groupPriceConfigured bool,
+	rateMultiplier float64,
+) *CostBreakdown {
+	if s == nil || s.billing == nil {
+		return &CostBreakdown{}
+	}
+	if groupPriceConfigured || s.pricing == nil || groupID == nil {
+		return s.billing.CalculateVideoCost(model, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
+	}
+	resolved := s.pricing.Resolve(ctx, PricingInput{Model: model, GroupID: groupID})
+	if resolved != nil && resolved.Mode == BillingModeVideo {
+		cost, err := s.billing.CalculateCostUnified(CostInput{
+			Ctx:             ctx,
+			Model:           model,
+			GroupID:         groupID,
+			RequestCount:    videoCount,
+			SizeTier:        resolution,
+			DurationSeconds: durationSeconds,
+			RateMultiplier:  rateMultiplier,
+			Resolver:        s.pricing,
+			Resolved:        resolved,
+		})
+		if err == nil {
+			return cost
+		}
+	}
+	return s.billing.CalculateVideoCost(model, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
 }
 
 func (s *BaiduVODVideoService) MarkSubmitted(ctx context.Context, taskID string, submitted BaiduVODSubmitResult) (bool, error) {
