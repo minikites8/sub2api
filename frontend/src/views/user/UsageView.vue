@@ -646,6 +646,7 @@ const billingModeOptions = computed<SelectOption[]>(() => [
   { value: 'per_request', label: t('admin.usage.billingModePerRequest') },
   { value: 'image', label: t('admin.usage.billingModeImage') },
   { value: 'video', label: t('admin.usage.billingModeVideo') },
+  { value: 'video_token', label: t('admin.usage.billingModeVideoToken') },
 ])
 
 const apiKeys = ref<ApiKey[]>([])

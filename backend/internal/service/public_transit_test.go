@@ -196,3 +196,90 @@ func TestToPublicTransitModel_NormalizesImageModeToPerRequest(t *testing.T) {
 	require.InDelta(t, 0.201, *model.Price.ImageSizePrices["2k"], 1e-12)
 	require.InDelta(t, 0.268, *model.Price.ImageSizePrices["4k"], 1e-12)
 }
+
+func TestToPublicTransitModel_ExportsVideoResolutionPrices(t *testing.T) {
+	group := Group{
+		Platform:        PlatformBaiduVOD,
+		RateMultiplier:  1.25,
+		VideoPrice1080P: testPtrFloat64(1.1),
+	}
+	model := toPublicTransitModel(SupportedModel{
+		Name:          "doubao-seedance-2-0-260128",
+		Platform:      PlatformBaiduVOD,
+		PricingSource: ModelPriceSourceCustom,
+		CatalogSource: ModelCatalogSourceChannel,
+		Pricing: &ChannelModelPricing{
+			BillingMode: BillingModeVideo,
+			Intervals: []PricingInterval{
+				{TierLabel: "720P", PerRequestPrice: testPtrFloat64(0.8)},
+				{TierLabel: "2160p", PerRequestPrice: testPtrFloat64(4.5)},
+			},
+		},
+	}, group)
+
+	require.Equal(t, string(BillingModeVideo), model.BillingMode)
+	require.NotNil(t, model.Price)
+	require.InDelta(t, defaultSeedance20VideoPrice480P, *model.Price.VideoResolutionPrices["480p"], 1e-12)
+	require.InDelta(t, 0.8, *model.Price.VideoResolutionPrices["720p"], 1e-12)
+	require.InDelta(t, 1.1, *model.Price.VideoResolutionPrices["1080p"], 1e-12)
+	require.InDelta(t, 4.5, *model.Price.VideoResolutionPrices["4k"], 1e-12)
+}
+
+func TestToPublicTransitModel_ExportsHappyHorseDefaults(t *testing.T) {
+	model := toPublicTransitModel(SupportedModel{
+		Name:     "happyhorse-1.1-t2v",
+		Platform: PlatformBaiduVOD,
+	}, Group{RateMultiplier: 1})
+
+	require.Equal(t, string(BillingModeVideo), model.BillingMode)
+	require.NotNil(t, model.Price)
+	require.Len(t, model.Price.VideoResolutionPrices, 2)
+	require.InDelta(t, defaultHappyHorse11VideoPrice720P, *model.Price.VideoResolutionPrices["720p"], 1e-12)
+	require.InDelta(t, defaultHappyHorse11VideoPrice1080P, *model.Price.VideoResolutionPrices["1080p"], 1e-12)
+}
+
+func TestToPublicTransitModel_PreservesSeedanceTokenPricing(t *testing.T) {
+	model := toPublicTransitModel(SupportedModel{
+		Name:     "doubao-seedance-2-0-260128",
+		Platform: PlatformBaiduVOD,
+		Pricing: &ChannelModelPricing{
+			BillingMode: BillingModeToken,
+			OutputPrice: testPtrFloat64(2.5e-6),
+		},
+	}, Group{RateMultiplier: 1})
+
+	require.Equal(t, string(BillingModeToken), model.BillingMode)
+	require.NotNil(t, model.Price)
+	require.InDelta(t, 2.5e-6, *model.Price.OutputUSDPerToken, 1e-12)
+	require.Empty(t, model.Price.VideoResolutionPrices)
+}
+
+func TestToPublicTransitModel_ExportsConditionalVideoTokenPricing(t *testing.T) {
+	model := toPublicTransitModel(SupportedModel{
+		Name:     "doubao-seedance-2-0-260128",
+		Platform: PlatformBaiduVOD,
+		Pricing: &ChannelModelPricing{
+			BillingMode: BillingModeVideoToken,
+			Intervals: []PricingInterval{
+				{TierLabel: "720p:text", OutputPrice: testPtrFloat64(46e-6)},
+				{TierLabel: "720p:video", OutputPrice: testPtrFloat64(28e-6)},
+			},
+		},
+	}, Group{RateMultiplier: 1, VideoRateMultiplier: 0.5, VideoRateIndependent: true})
+
+	require.Equal(t, string(BillingModeVideoToken), model.BillingMode)
+	require.NotNil(t, model.Price)
+	require.Empty(t, model.Price.VideoResolutionPrices)
+	require.Len(t, model.Intervals, 2)
+	require.Equal(t, "720p:text", model.Intervals[0].TierLabel)
+	require.InDelta(t, 46e-6, *model.Intervals[0].OutputUSDPerToken, 1e-12)
+}
+
+func TestPublicVideoRateMultiplier(t *testing.T) {
+	require.InDelta(t, 1.25, publicVideoRateMultiplier(Group{RateMultiplier: 1.25}), 1e-12)
+	require.InDelta(t, 0.6, publicVideoRateMultiplier(Group{
+		RateMultiplier:       1.25,
+		VideoRateIndependent: true,
+		VideoRateMultiplier:  0.6,
+	}), 1e-12)
+}

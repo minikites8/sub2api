@@ -15,12 +15,13 @@ const (
 	BillingModePerRequest BillingMode = "per_request" // 按次计费（支持上下文窗口分层）
 	BillingModeImage      BillingMode = "image"       // 图片计费（当前按次，预留 token 计费）
 	BillingModeVideo      BillingMode = "video"       // 视频生成计费（按秒）
+	BillingModeVideoToken BillingMode = "video_token" // 视频生成计费（按输出分辨率、输入类型和输出 token）
 )
 
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
-	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, BillingModeVideoToken, "":
 		return true
 	}
 	return false
@@ -29,7 +30,7 @@ func (m BillingMode) IsValid() bool {
 // IsValidUsageFilter 检查 BillingMode 是否可用于使用记录筛选。
 func (m BillingMode) IsValidUsageFilter() bool {
 	switch m {
-	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, BillingModeVideoToken, "":
 		return true
 	}
 	return false
@@ -289,7 +290,7 @@ func deepCopyFeaturesConfig(src map[string]any) map[string]any {
 // mode 决定区间语义：
 //   - BillingModeToken（含空值）：区间是上下文 token 数分段 (min, max]，
 //     按 MinTokens 排序后无重叠，无界区间（MaxTokens=nil）必须是最后一个。
-//   - BillingModePerRequest / BillingModeImage / BillingModeVideo：区间是按 tier_label
+//   - BillingModePerRequest / BillingModeImage / BillingModeVideo / BillingModeVideoToken：区间是按 tier_label
 //     (1K/2K/4K、720P/1080P/4K 等) 分层，匹配走 label 不依赖 min/max，因此跳过区间重叠
 //     与 last-unlimited 校验，仅做单条字段自洽（min/max/价格非负）检查。
 //
@@ -310,12 +311,33 @@ func ValidateIntervals(intervals []PricingInterval, mode BillingMode) error {
 			return err
 		}
 	}
+	if mode == BillingModeVideoToken {
+		return validateVideoTokenIntervals(sorted)
+	}
 
 	// per_request / image / video 模式按 tier_label 匹配，不做 token 区间重叠校验
 	if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
 		return nil
 	}
 	return validateIntervalOverlap(sorted)
+}
+
+func validateVideoTokenIntervals(intervals []PricingInterval) error {
+	seen := make(map[string]struct{}, len(intervals))
+	for i := range intervals {
+		label := normalizeVideoTokenPricingTier(intervals[i].TierLabel)
+		if label == "" {
+			return fmt.Errorf("interval #%d: invalid video token tier_label %q", i+1, intervals[i].TierLabel)
+		}
+		if intervals[i].OutputPrice == nil {
+			return fmt.Errorf("interval #%d: output_price is required for video_token billing", i+1)
+		}
+		if _, exists := seen[label]; exists {
+			return fmt.Errorf("interval #%d: duplicate video token tier_label %q", i+1, intervals[i].TierLabel)
+		}
+		seen[label] = struct{}{}
+	}
+	return nil
 }
 
 // validateSingleInterval 校验单个区间的字段合法性

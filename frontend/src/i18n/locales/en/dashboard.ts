@@ -557,8 +557,10 @@ export default {
     publicAccess: 'PUBLIC ACCESS',
     creditRule: '1 Credit = 0.01 USD of API usage',
     updatedAt: 'Snapshot updated {time}',
-    searchPlaceholder: 'Search models, providers, protocols, or groups...',
+    searchPlaceholder: 'Search models, developers, providers, protocols, or groups...',
     providerFilter: 'Provider filter',
+    showProviders: 'Show providers',
+    unknownDeveloper: 'Unknown developer',
     billingFilter: 'Billing filter',
     statusFilter: 'Status filter',
     refresh: 'Refresh data',
@@ -575,7 +577,7 @@ export default {
     latestStatusTooltip: 'Latest status · {status}',
     noCheckData: 'No check record',
     showing: 'Showing {shown} of {total} models',
-    priceNote: 'Table prices are Credits / 1M tokens with group multipliers applied',
+    priceNote: 'Video prices use Credits/s; token prices use Credits/1M tokens; applicable group rates are included',
     stats: {
       models: 'Models',
       providers: 'Providers',
@@ -589,7 +591,13 @@ export default {
     },
     billing: {
       token: 'Per Token',
-      perRequest: 'Per Request / Image'
+      perRequest: 'Per Request / Image',
+      video: 'Video per Second',
+      videoToken: 'Video Token'
+    },
+    units: {
+      token: 'Credits/1M',
+      video: 'Credits/s'
     },
     status: {
       operational: 'Operational',
@@ -600,6 +608,7 @@ export default {
     columns: {
       model: 'Model',
       billing: 'Billing',
+      pricing: 'Pricing',
       input: 'Input Credits/1M',
       output: 'Output Credits/1M',
       cache: 'Cache W/R',
@@ -612,6 +621,7 @@ export default {
       group: 'Group / Platform',
       mode: 'Billing',
       multiplier: 'Rate',
+      pricing: 'Pricing',
       input: 'Input',
       output: 'Output',
       cacheWrite: 'Cache Write',
@@ -619,8 +629,11 @@ export default {
       requestImage: 'Request / Image',
       source: 'Price Source',
       tierPricing: 'Tier Pricing',
+      videoTokenPricing: 'Video Token Conditional Pricing',
       tokenRange: 'Token Range',
-      unitNote: 'All prices include the group multiplier. Token prices use Credits / 1M tokens; request and image prices use Credits / request.'
+      inputWithoutVideo: 'Input without Video',
+      inputWithVideo: 'Input with Video',
+      unitNote: 'Prices include the applicable group rate. Token: Credits/1M tokens; video: Credits/s; request and image: Credits/request.'
     },
     empty: {
       title: 'No matching models',
@@ -653,6 +666,7 @@ export default {
       billingModePerRequest: 'Per Request',
       billingModeImage: 'Per Image',
       billingModeVideo: 'Per Video',
+      billingModeVideoToken: 'Video Token',
       inputPrice: 'Input',
       outputPrice: 'Output',
       cacheWritePrice: 'Cache Write',
@@ -660,9 +674,14 @@ export default {
       imageInputPrice: 'Image Input',
       imageOutputPrice: 'Image Output',
       perRequestPrice: 'Per Request',
+      videoSecondPrice: 'Video Per Second',
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
-      unitPerRequest: '/ request'
+      unitPerRequest: '/ request',
+      unitPerSecond: 'Credits / s',
+      defaultResolution: 'Default',
+      inputWithoutVideo: 'No video input',
+      inputWithVideo: 'Includes video input'
     }
   },
 

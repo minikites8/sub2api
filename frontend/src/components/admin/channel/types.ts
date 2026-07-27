@@ -1,4 +1,5 @@
 import type { BillingMode, PricingInterval } from '@/api/admin/channels'
+import { CREDITS_PER_USD } from '@/utils/credit'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
@@ -37,17 +38,28 @@ export function toNullableNumber(val: number | string | null | undefined): numbe
   return isNaN(num) ? null : num
 }
 
+/** 前端显示值(Credits) -> 后端存储值(USD) */
+export function creditsToUSD(val: number | string | null | undefined): number | null {
+  const num = toNullableNumber(val)
+  return num === null ? null : parseFloat((num / CREDITS_PER_USD).toPrecision(10))
+}
+
+/** 后端存储值(USD) -> 前端显示值(Credits) */
+export function usdToCreditsValue(val: number | null | undefined): number | null {
+  if (val === null || val === undefined) return null
+  return parseFloat((val * CREDITS_PER_USD).toPrecision(10))
+}
+
 /** 前端显示值(Credits/MTok) → 后端存储值(per-token) */
 export function mTokToPerToken(val: number | string | null | undefined): number | null {
   const num = toNullableNumber(val)
-  return num === null ? null : parseFloat((num / MTOK).toPrecision(10))
+  return num === null ? null : parseFloat((num / CREDITS_PER_USD / MTOK).toPrecision(10))
 }
 
 /** 后端存储值(per-token) → 前端显示值(Credits/MTok) */
 export function perTokenToMTok(val: number | null | undefined): number | null {
   if (val === null || val === undefined) return null
-  // toPrecision(10) 消除 IEEE 754 浮点乘法精度误差，如 5e-8 * 1e6 = 0.04999...96 → 0.05
-  return parseFloat((val * MTOK).toPrecision(10))
+  return parseFloat((val * MTOK * CREDITS_PER_USD).toPrecision(10))
 }
 
 export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEntry[] {
@@ -59,7 +71,7 @@ export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEn
     output_price: perTokenToMTok(iv.output_price),
     cache_write_price: perTokenToMTok(iv.cache_write_price),
     cache_read_price: perTokenToMTok(iv.cache_read_price),
-    per_request_price: iv.per_request_price,
+    per_request_price: usdToCreditsValue(iv.per_request_price),
     sort_order: iv.sort_order
   }))
 }
@@ -73,7 +85,7 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     output_price: mTokToPerToken(iv.output_price),
     cache_write_price: mTokToPerToken(iv.cache_write_price),
     cache_read_price: mTokToPerToken(iv.cache_read_price),
-    per_request_price: toNullableNumber(iv.per_request_price),
+    per_request_price: creditsToUSD(iv.per_request_price),
     sort_order: iv.sort_order
   }))
 }
@@ -123,7 +135,7 @@ export function findModelConflict(models: string[]): [string, string] | null {
  *
  * mode 决定区间语义：
  * - token：区间是上下文 token 数分段 (min, max]，不能重叠，无上限段必须放最后
- * - per_request / image / video：区间是按 tier_label 分层（1K/2K/4K、720P/1080P/4K 等），后端按 label
+ * - per_request / image / video / video_token：区间是按 tier_label 分层，后端按 label
  *   匹配，不依赖 min/max，因此跳过重叠 / last-unlimited 校验
  */
 export function validateIntervals(
@@ -141,9 +153,30 @@ export function validateIntervals(
     if (err) return err
   }
 
+  if (mode === 'video_token') return validateVideoTokenIntervals(sorted, t)
+
   // per_request / image / video 模式按 tier_label 匹配，不做 token 区间重叠校验
   if (mode !== 'token') return null
   return checkIntervalOverlap(sorted, t)
+}
+
+function validateVideoTokenIntervals(intervals: IntervalFormEntry[], t: TranslateFn): string | null {
+  const validLabels = /^(default|480p|720p|1080p|4k):(text|video)$/i
+  const seen = new Set<string>()
+  for (let i = 0; i < intervals.length; i++) {
+    const label = intervals[i].tier_label.trim().toLowerCase()
+    if (!validLabels.test(label)) {
+      return intervalValidationMessage(t, 'invalidVideoTokenTier', { index: i + 1 })
+    }
+    if (intervals[i].output_price == null || intervals[i].output_price === '') {
+      return intervalValidationMessage(t, 'videoTokenOutputRequired', { index: i + 1 })
+    }
+    if (seen.has(label)) {
+      return intervalValidationMessage(t, 'duplicateVideoTokenTier', { index: i + 1 })
+    }
+    seen.add(label)
+  }
+  return null
 }
 
 function intervalValidationMessage(

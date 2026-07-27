@@ -85,6 +85,30 @@ export function createModelMarketplacePreviewSnapshot(): PublicTransitSnapshot {
           { standard_model: 'gemini-2.5-pro', raw_model: 'gemini-2.5-pro-preview-06-05', platform: 'gemini', billing_mode: 'token', price_source: 'standard', price: perToken(1.25, 10, 1.25, 0.31), source: { upstream_type: 'official', account_pool_type: 'pooled', disclosure: '官方账户池' }, supported_protocols: ['gemini-generate-content', 'openai-chat'] },
         ],
       },
+      {
+        name: '百度 VOD 视频',
+        platform: 'baidu_vod',
+        subscription_type: 'standard',
+        rate_multiplier: 1,
+        video_rate_multiplier: 0.5,
+        is_exclusive: false,
+        cache_usage: { last_24h: { period: '24h', input_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cache_hit_rate: 0 }, last_7d: { period: '7d', input_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cache_hit_rate: 0 } },
+        models: [
+          { standard_model: 'doubao-seedance-2-0-260128', raw_model: 'doubao-seedance-2-0-260128', platform: 'baidu_vod', billing_mode: 'video', price_source: 'standard', price: { video_resolution_prices: { '480p': 0.46, '720p': 0.99, '1080p': 2.48, '4k': 5.05 } }, source: { upstream_type: 'official', account_pool_type: 'pooled', disclosure: '百度 VOD' }, supported_protocols: ['openai-videos'] },
+          { standard_model: 'happyhorse-1.1-t2v', raw_model: 'happyhorse-1.1-t2v', platform: 'baidu_vod', billing_mode: 'video', price_source: 'standard', price: { video_resolution_prices: { '720p': 0.9, '1080p': 1.2 } }, source: { upstream_type: 'official', account_pool_type: 'pooled', disclosure: '百度 VOD' }, supported_protocols: ['openai-videos'] },
+        ],
+      },
+      {
+        name: 'Seedance Token 路由',
+        platform: 'baidu_vod',
+        subscription_type: 'standard',
+        rate_multiplier: 0.2,
+        is_exclusive: false,
+        cache_usage: { last_24h: { period: '24h', input_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cache_hit_rate: 0 }, last_7d: { period: '7d', input_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cache_hit_rate: 0 } },
+        models: [
+          { standard_model: 'doubao-seedance-2-0-260128', raw_model: 'doubao-seedance-2-0-260128', platform: 'baidu_vod', billing_mode: 'token', price_source: 'custom', price: perToken(0, 2.5), source: { upstream_type: 'official', account_pool_type: 'pooled', disclosure: '百度 VOD' }, supported_protocols: ['openai-videos'] },
+        ],
+      },
     ],
     monitoring: [
       { name: 'OpenAI 标准路由', provider: 'openai', group_name: '标准路由', primary_model: 'gpt-4.1', primary_status: 'operational', availability_7d: 99.98, availability_15d: 99.94, availability_30d: 99.91, avg_latency_7d_ms: 842, latest_latency_ms: 714, last_checked_at: now, extra_models: [], models: [{ model: 'gpt-4.1', latest_status: 'operational', latest_latency_ms: 714, availability_7d: 99.98, availability_15d: 99.94, availability_30d: 99.91, avg_latency_7d_ms: 842 }, { model: 'o3', latest_status: 'operational', latest_latency_ms: 1280, availability_7d: 99.87, availability_15d: 99.81, availability_30d: 99.76, avg_latency_7d_ms: 1430 }, { model: 'gpt-image-1', latest_status: 'operational', latest_latency_ms: 6720, availability_7d: 99.62, availability_15d: 99.58, availability_30d: 99.44, avg_latency_7d_ms: 6950 }], timeline: timeline(714) },

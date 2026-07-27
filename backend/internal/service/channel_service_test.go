@@ -2329,6 +2329,19 @@ func TestValidatePricingBillingMode(t *testing.T) {
 			errMsg:  "default price or intervals required",
 		},
 		{
+			name: "video_token with output price - valid",
+			pricing: []ChannelModelPricing{{
+				BillingMode: BillingModeVideoToken,
+				Intervals:   []PricingInterval{{TierLabel: "default:text", OutputPrice: testPtrFloat64(37e-6)}},
+			}},
+		},
+		{
+			name:    "video_token no intervals - invalid",
+			pricing: []ChannelModelPricing{{BillingMode: BillingModeVideoToken}},
+			wantErr: true,
+			errMsg:  "pricing intervals required",
+		},
+		{
 			name:    "empty list - valid",
 			pricing: []ChannelModelPricing{},
 		},

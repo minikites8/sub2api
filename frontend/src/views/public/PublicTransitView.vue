@@ -466,12 +466,35 @@ function requestPriceParts(model: PublicTransitModel) {
       parts.push({ label: size.toUpperCase(), value: formatPrice(value) })
     }
   }
+  if (model.billing_mode === 'video_token') {
+    for (const interval of model.intervals || []) {
+      if (interval.output_usd_per_token == null) continue
+      parts.push({
+        label: formatVideoTokenTier(interval.tier_label || ''),
+        value: formatTokenPrice(interval.output_usd_per_token),
+      })
+    }
+  }
   return parts
+}
+
+function formatVideoTokenTier(tier: string) {
+  const [resolution = tier, inputType = 'text'] = tier.split(':')
+  const resolutionLabel = resolution.toLowerCase() === 'default'
+    ? t('publicTransit.defaultResolution')
+    : resolution.toUpperCase()
+  const inputLabel = inputType.toLowerCase() === 'video'
+    ? t('publicTransit.inputWithVideo')
+    : t('publicTransit.inputWithoutVideo')
+  return `${resolutionLabel} · ${inputLabel}`
 }
 
 function formatBillingMode(value?: string) {
   if (value === 'per_request') return t('publicTransit.billingPerRequest')
   if (value === 'token') return t('publicTransit.billingToken')
+  if (value === 'image') return t('publicTransit.billingImage')
+  if (value === 'video') return t('publicTransit.billingVideo')
+  if (value === 'video_token') return t('publicTransit.billingVideoToken')
   return value || '-'
 }
 

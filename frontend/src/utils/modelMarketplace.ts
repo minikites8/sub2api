@@ -6,6 +6,7 @@ import type {
   PublicTransitSnapshot,
 } from '@/api/publicTransit'
 import type { GroupPlatform } from '@/types'
+import { CREDITS_PER_USD } from '@/utils/credit'
 
 export type MarketplaceStatus = 'operational' | 'degraded' | 'unavailable' | 'unmonitored'
 export type MarketplaceWindow = '7d' | '15d' | '30d'
@@ -20,6 +21,7 @@ export interface MarketplacePriceProfile {
   groupName: string
   platform: GroupPlatform
   multiplier: number
+  videoMultiplier: number
   subscriptionType?: string
   exclusive: boolean
   model: PublicTransitModel
@@ -45,6 +47,7 @@ export interface MarketplaceMonitorSample {
 export interface MarketplaceModel {
   id: string
   name: string
+  developer: string
   rawModels: string[]
   platforms: GroupPlatform[]
   billingModes: string[]
@@ -52,6 +55,13 @@ export interface MarketplaceModel {
   profiles: MarketplacePriceProfile[]
   monitoring: MarketplaceMonitoring
 }
+
+export interface MarketplaceVideoPrice {
+  resolution: string
+  values: number[]
+}
+
+export const VIDEO_RESOLUTION_ORDER = ['480p', '720p', '1080p', '4k'] as const
 
 interface MonitorObservation {
   status: string
@@ -70,6 +80,45 @@ interface MonitoringIndex {
 
 function normalizedModelName(value: string): string {
   return value.trim().toLowerCase()
+}
+
+const MODEL_DEVELOPER_RULES: Array<{ pattern: RegExp; developer: string }> = [
+  { pattern: /(^|[-_.])claude([-_.]|$)/, developer: 'Anthropic' },
+  {
+    pattern:
+      /(^|[-_.])(gpt|chatgpt|codex|dall-e|sora|whisper)([-_.]|$)|^o[134]([-_.]|$)|^text-embedding-3([-_.]|$)|^tts-1([-_.]|$)/,
+    developer: 'OpenAI',
+  },
+  { pattern: /(^|[-_.])(gemini|gemma|imagen|veo)([-_.]|$)/, developer: 'Google' },
+  { pattern: /(^|[-_.])(doubao|seedance|seedream)([-_.]|$)/, developer: 'ByteDance' },
+  { pattern: /(^|[-_.])deepseek([-_.]|$)/, developer: 'DeepSeek' },
+  { pattern: /(^|[-_.])grok([-_.]|$)/, developer: 'xAI' },
+  { pattern: /(^|[-_.])(qwen|qwq|wan)([-_.]|$)/, developer: 'Alibaba' },
+  { pattern: /(^|[-_.])(kimi|moonshot)([-_.]|$)/, developer: 'Moonshot AI' },
+  { pattern: /(^|[-_.])(minimax|hailuo)([-_.]|$)/, developer: 'MiniMax' },
+  { pattern: /(^|[-_.])(glm|chatglm|cogview|cogvideo)([-_.]|$)/, developer: 'Zhipu AI' },
+  { pattern: /(^|[-_.])hunyuan([-_.]|$)/, developer: 'Tencent' },
+  { pattern: /(^|[-_.])(ernie|wenxin)([-_.]|$)/, developer: 'Baidu' },
+  { pattern: /(^|[-_.])llama([-_.]|$)/, developer: 'Meta' },
+  {
+    pattern: /(^|[-_.])(mistral|mixtral|codestral|pixtral)([-_.]|$)/,
+    developer: 'Mistral AI',
+  },
+  { pattern: /(^|[-_.])(command-r|command-a)([-_.]|$)/, developer: 'Cohere' },
+  { pattern: /(^|[-_.])phi([-_.]|$)/, developer: 'Microsoft' },
+  { pattern: /(^|[-_.])(nova|titan)([-_.]|$)/, developer: 'Amazon' },
+  { pattern: /(^|[-_.])flux([-_.]|$)/, developer: 'Black Forest Labs' },
+  { pattern: /(^|[-_.])happyhorse([-_.]|$)/, developer: 'HappyHorse' },
+  { pattern: /(^|[-_.])kling([-_.]|$)/, developer: 'Kuaishou' },
+  { pattern: /(^|[-_.])vidu([-_.]|$)/, developer: 'ShengShu AI' },
+  { pattern: /(^|[-_.])step([-_.]|$)/, developer: 'StepFun' },
+  { pattern: /(^|[-_.])baichuan([-_.]|$)/, developer: 'Baichuan AI' },
+  { pattern: /(^|[-_.])nemotron([-_.]|$)/, developer: 'NVIDIA' },
+]
+
+export function modelDeveloper(modelName: string): string {
+  const normalized = normalizedModelName(modelName)
+  return MODEL_DEVELOPER_RULES.find((rule) => rule.pattern.test(normalized))?.developer || ''
 }
 
 function finiteValues(values: Array<number | undefined>): number[] {
@@ -263,6 +312,7 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
       const current = models.get(id) || {
         id,
         name: model.standard_model,
+        developer: modelDeveloper(model.standard_model),
         rawModels: [],
         platforms: [],
         billingModes: [],
@@ -272,6 +322,10 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
       if (!current.rawModels.includes(model.raw_model)) current.rawModels.push(model.raw_model)
       if (!current.platforms.includes(model.platform)) current.platforms.push(model.platform)
       if (!current.billingModes.includes(model.billing_mode)) current.billingModes.push(model.billing_mode)
+      if (Object.values(model.price?.video_resolution_prices || {}).some((value) => typeof value === 'number')
+        && !current.billingModes.includes('video')) {
+        current.billingModes.push('video')
+      }
       for (const protocol of model.supported_protocols || []) {
         if (!current.supportedProtocols.includes(protocol)) current.supportedProtocols.push(protocol)
       }
@@ -280,6 +334,7 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
         groupName: group.name,
         platform: group.platform,
         multiplier: group.rate_multiplier,
+        videoMultiplier: group.video_rate_multiplier ?? group.rate_multiplier,
         subscriptionType: group.subscription_type,
         exclusive: group.is_exclusive,
         model,
@@ -311,7 +366,7 @@ export function availabilityForWindow(
 }
 
 export function usdToCredits(value: number, multiplier = 1): number {
-  return value * 100 * multiplier
+  return value * CREDITS_PER_USD * multiplier
 }
 
 function priceValuesFromRecord(
@@ -329,7 +384,40 @@ export function effectiveTokenPrices(
   const values = model.profiles.flatMap((profile) => {
     const base = priceValuesFromRecord(profile.model.price, field)
     const intervals = (profile.model.intervals || []).flatMap((interval) => priceValuesFromRecord(interval, field))
-    return [...base, ...intervals].map((value) => usdToCredits(value * 1_000_000, profile.multiplier))
+    const multiplier = profile.model.billing_mode === 'video_token' ? profile.videoMultiplier : profile.multiplier
+    return [...base, ...intervals].map((value) => usdToCredits(value * 1_000_000, multiplier))
   })
   return Array.from(new Set(values)).sort((a, b) => a - b)
+}
+
+export function effectiveVideoPrices(model: MarketplaceModel): MarketplaceVideoPrice[] {
+  const valuesByResolution = new Map<string, Set<number>>()
+  for (const profile of model.profiles) {
+    for (const [resolution, price] of Object.entries(profile.model.price?.video_resolution_prices || {})) {
+      if (price == null || !Number.isFinite(price)) continue
+      const key = normalizedModelName(resolution)
+      const values = valuesByResolution.get(key) || new Set<number>()
+      values.add(usdToCredits(price, profile.videoMultiplier))
+      valuesByResolution.set(key, values)
+    }
+  }
+
+  const order = new Map<string, number>(VIDEO_RESOLUTION_ORDER.map((resolution, index) => [resolution, index]))
+  return Array.from(valuesByResolution.entries())
+    .map(([resolution, values]) => ({
+      resolution,
+      values: Array.from(values).sort((a, b) => a - b),
+    }))
+    .sort((a, b) => (order.get(a.resolution) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.resolution) ?? Number.MAX_SAFE_INTEGER)
+      || a.resolution.localeCompare(b.resolution))
+}
+
+export function hasTokenPricing(model: MarketplaceModel): boolean {
+  const fields: TokenPriceField[] = [
+    'input_usd_per_token',
+    'output_usd_per_token',
+    'cache_write_usd_per_token',
+    'cache_read_usd_per_token',
+  ]
+  return fields.some((field) => effectiveTokenPrices(model, field).length > 0)
 }

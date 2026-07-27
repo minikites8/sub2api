@@ -562,8 +562,10 @@ export default {
     publicAccess: 'PUBLIC ACCESS',
     creditRule: '1 Credit = 0.01 USD 调用额度',
     updatedAt: '快照更新 {time}',
-    searchPlaceholder: '搜索模型、供应商、协议或分组...',
+    searchPlaceholder: '搜索模型、开发商、供应商、协议或分组...',
     providerFilter: '供应商筛选',
+    showProviders: '显示渠道提供商',
+    unknownDeveloper: '未知开发商',
     billingFilter: '计费方式筛选',
     statusFilter: '状态筛选',
     refresh: '刷新数据',
@@ -580,7 +582,7 @@ export default {
     latestStatusTooltip: '最新状态 · {status}',
     noCheckData: '暂无检测记录',
     showing: '显示 {shown} / {total} 个模型',
-    priceNote: '主表价格单位为 Credits / 1M tokens，已包含分组倍率',
+    priceNote: '视频价格单位为 Credits/s，Token 价格单位为 Credits/1M tokens，均已应用对应分组倍率',
     stats: {
       models: '模型总数',
       providers: '供应商',
@@ -594,7 +596,13 @@ export default {
     },
     billing: {
       token: '按 Token',
-      perRequest: '按次 / 图片'
+      perRequest: '按次 / 图片',
+      video: '视频按秒',
+      videoToken: '视频 Token'
+    },
+    units: {
+      token: 'Credits/1M',
+      video: 'Credits/s'
     },
     status: {
       operational: '运行正常',
@@ -605,6 +613,7 @@ export default {
     columns: {
       model: '模型',
       billing: '计费方式',
+      pricing: '价格',
       input: '输入 Credits/1M',
       output: '输出 Credits/1M',
       cache: '缓存 W/R',
@@ -617,6 +626,7 @@ export default {
       group: '分组 / 平台',
       mode: '计费方式',
       multiplier: '倍率',
+      pricing: '价格',
       input: '输入',
       output: '输出',
       cacheWrite: '缓存创建',
@@ -624,8 +634,11 @@ export default {
       requestImage: '按次 / 图片',
       source: '价格来源',
       tierPricing: '阶梯价格',
+      videoTokenPricing: '视频 Token 条件价格',
       tokenRange: 'Token 区间',
-      unitNote: '价格均为应用分组倍率后的 Credit 价格。Token 价格单位：Credits / 1M tokens；按次与图片价格单位：Credits / 次。'
+      inputWithoutVideo: '输入不含视频',
+      inputWithVideo: '输入包含视频',
+      unitNote: '价格均已应用对应分组倍率。Token：Credits/1M tokens；视频：Credits/s；按次与图片：Credits/次。'
     },
     empty: {
       title: '没有匹配的模型',
@@ -658,6 +671,7 @@ export default {
       billingModePerRequest: '按次',
       billingModeImage: '按图片',
       billingModeVideo: '按视频',
+      billingModeVideoToken: '视频 Token',
       inputPrice: '输入',
       outputPrice: '输出',
       cacheWritePrice: '缓存写入',
@@ -665,9 +679,14 @@ export default {
       imageInputPrice: '图片输入',
       imageOutputPrice: '图片输出',
       perRequestPrice: '每次请求',
+      videoSecondPrice: '每秒视频',
       intervals: '阶梯定价',
       unitPerMillion: '/ 1M token',
-      unitPerRequest: '/ 次'
+      unitPerRequest: '/ 次',
+      unitPerSecond: 'Credits / s',
+      defaultResolution: '默认',
+      inputWithoutVideo: '输入不含视频',
+      inputWithVideo: '输入包含视频'
     }
   },
 

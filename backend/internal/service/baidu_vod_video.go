@@ -509,15 +509,7 @@ func estimateSeedanceCompletionTokens(req BaiduVODVideoRequest, spec BaiduVODMod
 	if err != nil {
 		return 0
 	}
-	videoCount := 0
-	for _, raw := range content {
-		var item struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal(raw, &item) == nil && strings.EqualFold(strings.TrimSpace(item.Type), "video_url") {
-			videoCount++
-		}
-	}
+	videoCount := seedanceVideoInputCount(content)
 	duration := req.Duration
 	if duration == -1 {
 		duration = spec.MaxDuration
@@ -539,6 +531,24 @@ func estimateSeedanceCompletionTokens(req BaiduVODVideoRequest, spec BaiduVODMod
 		return int(^uint(0) >> 1)
 	}
 	return int(tokens)
+}
+
+func seedanceInputContainsVideo(req BaiduVODVideoRequest, spec BaiduVODModelSpec) bool {
+	content, err := req.seedanceContentFor(spec)
+	return err == nil && seedanceVideoInputCount(content) > 0
+}
+
+func seedanceVideoInputCount(content []json.RawMessage) int {
+	videoCount := 0
+	for _, raw := range content {
+		var item struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &item) == nil && strings.EqualFold(strings.TrimSpace(item.Type), "video_url") {
+			videoCount++
+		}
+	}
+	return videoCount
 }
 
 func seedanceVideoDimensions(resolution, ratio string) (int, int) {

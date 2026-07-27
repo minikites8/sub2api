@@ -264,8 +264,8 @@ describe('ChannelsView 弹框布局', () => {
 
     const pricingCards = wrapper.findAll('.pricing-entry-card-stub')
     expect(pricingCards[0].find('.pricing-models').text()).toBe('claude-opus-4-8')
-    expect(pricingCards[0].find('.pricing-input-price').text()).toBe('1')
+    expect(pricingCards[0].find('.pricing-input-price').text()).toBe('100')
     expect(pricingCards[1].find('.pricing-models').text()).toBe('claude-opus-4-8-thinking')
-    expect(pricingCards[1].find('.pricing-input-price').text()).toBe('2')
+    expect(pricingCards[1].find('.pricing-input-price').text()).toBe('200')
   })
 })

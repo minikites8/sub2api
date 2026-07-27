@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -76,6 +77,39 @@ func TestBaiduVODNewSeedanceTaskUsesChannelTokenPrice(t *testing.T) {
 	require.Equal(t, string(BillingModeToken), task.BillingMode)
 }
 
+func TestBaiduVODNewSeedanceTaskUsesConditionalVideoTokenPrice(t *testing.T) {
+	resolver := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform: "anthropic", Models: []string{"doubao-seedance-2-0-260128"}, BillingMode: BillingModeVideoToken,
+		Intervals: []PricingInterval{
+			{TierLabel: "720p:text", OutputPrice: testPtrFloat64(46e-6)},
+			{TierLabel: "720p:video", OutputPrice: testPtrFloat64(28e-6)},
+		},
+	}})
+	videoService := &BaiduVODVideoService{billing: NewBillingService(nil, nil), pricing: resolver}
+	groupID := groupIDPtr()
+	apiKey := &APIKey{ID: 12, UserID: 22, User: &User{ID: 22}, GroupID: groupID, Group: &Group{ID: *groupID, RateMultiplier: 2}}
+	account := &Account{ID: 32, Platform: PlatformBaiduVOD}
+	spec, ok := BaiduVODModel("doubao-seedance-2-0-260128")
+	require.True(t, ok)
+
+	textRequest := BaiduVODVideoRequest{Model: spec.Model, Prompt: "video", Resolution: "720P", Ratio: "16:9", Duration: 5}
+	textTask, err := videoService.NewTask(context.Background(), "video_seedance_text", apiKey, account, textRequest, spec,
+		&BaiduVODSubmitResult{TaskID: "cgt-seedance-text", TaskStatus: "queued"}, "request-hash-text")
+	require.NoError(t, err)
+	require.False(t, textTask.InputContainsVideo)
+	require.Equal(t, string(BillingModeVideoToken), textTask.BillingMode)
+	require.InDelta(t, float64(estimateSeedanceCompletionTokens(textRequest, spec))*46e-6*2, textTask.EstimatedCost, 1e-12)
+
+	videoRequest := textRequest
+	videoRequest.Video = json.RawMessage(`"https://example.com/input.mp4"`)
+	videoTask, err := videoService.NewTask(context.Background(), "video_seedance_video", apiKey, account, videoRequest, spec,
+		&BaiduVODSubmitResult{TaskID: "cgt-seedance-video", TaskStatus: "queued"}, "request-hash-video")
+	require.NoError(t, err)
+	require.True(t, videoTask.InputContainsVideo)
+	require.Equal(t, string(BillingModeVideoToken), videoTask.BillingMode)
+	require.InDelta(t, float64(estimateSeedanceCompletionTokens(videoRequest, spec))*28e-6*2, videoTask.EstimatedCost, 1e-12)
+}
+
 func TestBaiduVODVideoWorkerSettlesSeedanceTokenPricing(t *testing.T) {
 	worker, tasks, billingRepo := newBaiduVODWorkerHarness(baiduVODWorkerResponse(200,
 		`{"id":"cgt-seedance-token","status":"succeeded","content":{"video_url":"https://example.com/seedance-token.mp4"},"usage":{"completion_tokens":120000,"total_tokens":120000},"duration":5,"resolution":"720p","ratio":"16:9"}`), nil)
@@ -98,6 +132,36 @@ func TestBaiduVODVideoWorkerSettlesSeedanceTokenPricing(t *testing.T) {
 
 	require.Len(t, billingRepo.captures, 1)
 	require.InDelta(t, 0.48, billingRepo.captures[0].ActualAmount, 1e-12)
+	require.Len(t, tasks.updates, 1)
+	require.Equal(t, BaiduVODTaskStatusCompleted, tasks.updates[0].Status)
+}
+
+func TestBaiduVODVideoWorkerSettlesConditionalVideoTokenPricing(t *testing.T) {
+	worker, tasks, billingRepo := newBaiduVODWorkerHarness(baiduVODWorkerResponse(200,
+		`{"id":"cgt-seedance-video-token","status":"succeeded","content":{"video_url":"https://example.com/seedance-token.mp4"},"usage":{"completion_tokens":120000,"total_tokens":120000},"duration":5,"resolution":"1080p","ratio":"16:9"}`), nil)
+	worker.service.pricing = newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform: "anthropic", Models: []string{"doubao-seedance-2-0-260128"}, BillingMode: BillingModeVideoToken,
+		Intervals: []PricingInterval{
+			{TierLabel: "720p:video", OutputPrice: testPtrFloat64(28e-6)},
+			{TierLabel: "1080p:video", OutputPrice: testPtrFloat64(31e-6)},
+		},
+	}})
+	task := newBaiduVODWorkerTask()
+	task.Provider = BaiduVODProviderSeedance
+	task.Model = "doubao-seedance-2-0-260128"
+	task.UpstreamModel = task.Model
+	task.UpstreamTaskID = "cgt-seedance-video-token"
+	task.GroupID = groupIDPtr()
+	task.BillingMode = string(BillingModeVideoToken)
+	task.InputContainsVideo = true
+	task.VideoRateMultiplier = 2
+	task.EstimatedCost = 6
+	task.HoldAmount = 10
+
+	worker.processOne(context.Background(), task)
+
+	require.Len(t, billingRepo.captures, 1)
+	require.InDelta(t, 7.44, billingRepo.captures[0].ActualAmount, 1e-12)
 	require.Len(t, tasks.updates, 1)
 	require.Equal(t, BaiduVODTaskStatusCompleted, tasks.updates[0].Status)
 }

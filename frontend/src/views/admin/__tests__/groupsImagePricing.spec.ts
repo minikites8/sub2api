@@ -40,10 +40,11 @@ describe("groups image pricing platform support", () => {
     expect(getImagePricePlaceholder("grok", "image_price_2k")).toBe("0.02");
     // 视频 placeholder 为每秒单价：480p/720p 取 grok-imagine-video 官方每秒价，
     // 1080p 仅 video-1.5 支持、取 1.5 每秒价。
-    expect(getVideoPricePlaceholder("grok", "video_price_480p")).toBe("0.05");
-    expect(getVideoPricePlaceholder("grok", "video_price_720p")).toBe("0.07");
-    expect(getVideoPricePlaceholder("grok", "video_price_1080p")).toBe("0.25");
+    expect(getVideoPricePlaceholder("grok", "video_price_480p")).toBe("5");
+    expect(getVideoPricePlaceholder("grok", "video_price_720p")).toBe("7");
+    expect(getVideoPricePlaceholder("grok", "video_price_1080p")).toBe("25");
     expect(getVideoPricePlaceholder("grok", "video_price_4k")).toBe("");
+    expect(getVideoPricePlaceholder("baidu_vod", "video_price_720p")).toBe("90");
   });
 
   it("keeps non-Grok image placeholders on the generic image card", () => {

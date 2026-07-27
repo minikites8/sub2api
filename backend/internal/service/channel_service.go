@@ -643,6 +643,12 @@ func checkBillingModeRequirements(p ChannelModelPricing) error {
 			)
 		}
 	}
+	if p.BillingMode == BillingModeVideoToken && len(p.Intervals) == 0 {
+		return infraerrors.BadRequest(
+			"BILLING_MODE_MISSING_PRICE",
+			"pricing intervals required for video_token billing mode",
+		)
+	}
 	return nil
 }
 

@@ -3757,6 +3757,7 @@ import {
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import { platformBadgeLightClass } from "@/utils/platformColors";
+import { CREDITS_PER_USD } from "@/utils/credit";
 import {
   getDefaultImagePreviewPrice,
   getDefaultVideoPreviewPrice,
@@ -4640,6 +4641,22 @@ const parsePreviewPrice = (value: number | string | null | undefined) => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 };
 
+const creditsPriceToUSD = (
+  value: number | string | null | undefined,
+): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed / CREDITS_PER_USD : null;
+};
+
+const usdPriceToCredits = (
+  value: number | string | null | undefined,
+): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed * CREDITS_PER_USD : null;
+};
+
 const formatImagePricePreview = (value: number | string | null | undefined) => {
   if (value === null || value === undefined || value === "") {
     return t("admin.groups.imagePricing.notConfigured");
@@ -4659,7 +4676,7 @@ const formatVideoPricePreview = (value: number | string | null | undefined) => {
   if (!Number.isFinite(price) || price < 0) {
     return t("admin.groups.videoPricing.notConfigured");
   }
-  return `$${price.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`;
+  return `${price.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")} Credits/s`;
 };
 
 const buildImageFinalPricePreview = (form: ImagePricingFormState) => {
@@ -5098,10 +5115,10 @@ const handleCreateGroup = async () => {
     requestData.image_price_1k = emptyToNull(requestData.image_price_1k);
     requestData.image_price_2k = emptyToNull(requestData.image_price_2k);
     requestData.image_price_4k = emptyToNull(requestData.image_price_4k);
-    requestData.video_price_480p = emptyToNull(requestData.video_price_480p);
-    requestData.video_price_720p = emptyToNull(requestData.video_price_720p);
-    requestData.video_price_1080p = emptyToNull(requestData.video_price_1080p);
-    requestData.video_price_4k = emptyToNull(requestData.video_price_4k);
+    requestData.video_price_480p = creditsPriceToUSD(emptyToNull(requestData.video_price_480p));
+    requestData.video_price_720p = creditsPriceToUSD(emptyToNull(requestData.video_price_720p));
+    requestData.video_price_1080p = creditsPriceToUSD(emptyToNull(requestData.video_price_1080p));
+    requestData.video_price_4k = creditsPriceToUSD(emptyToNull(requestData.video_price_4k));
     requestData.web_search_price_per_call = emptyToNull(
       requestData.web_search_price_per_call,
     );
@@ -5155,10 +5172,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_4k = group.image_price_4k;
   editForm.video_rate_independent = group.video_rate_independent ?? false;
   editForm.video_rate_multiplier = group.video_rate_multiplier ?? 1;
-  editForm.video_price_480p = group.video_price_480p;
-  editForm.video_price_720p = group.video_price_720p;
-  editForm.video_price_1080p = group.video_price_1080p;
-  editForm.video_price_4k = group.video_price_4k;
+  editForm.video_price_480p = usdPriceToCredits(group.video_price_480p);
+  editForm.video_price_720p = usdPriceToCredits(group.video_price_720p);
+  editForm.video_price_1080p = usdPriceToCredits(group.video_price_1080p);
+  editForm.video_price_4k = usdPriceToCredits(group.video_price_4k);
   editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";
@@ -5313,10 +5330,10 @@ const handleUpdateGroup = async () => {
     payload.image_price_1k = emptyPriceToClear(payload.image_price_1k);
     payload.image_price_2k = emptyPriceToClear(payload.image_price_2k);
     payload.image_price_4k = emptyPriceToClear(payload.image_price_4k);
-    payload.video_price_480p = emptyPriceToClear(payload.video_price_480p);
-    payload.video_price_720p = emptyPriceToClear(payload.video_price_720p);
-    payload.video_price_1080p = emptyPriceToClear(payload.video_price_1080p);
-    payload.video_price_4k = emptyPriceToClear(payload.video_price_4k);
+    payload.video_price_480p = emptyPriceToClear(creditsPriceToUSD(payload.video_price_480p));
+    payload.video_price_720p = emptyPriceToClear(creditsPriceToUSD(payload.video_price_720p));
+    payload.video_price_1080p = emptyPriceToClear(creditsPriceToUSD(payload.video_price_1080p));
+    payload.video_price_4k = emptyPriceToClear(creditsPriceToUSD(payload.video_price_4k));
     payload.web_search_price_per_call = emptyPriceToClear(
       payload.web_search_price_per_call,
     );

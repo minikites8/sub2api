@@ -20,7 +20,7 @@ func NewBaiduVODVideoTaskRepository(client *dbent.Client) service.BaiduVODVideoT
 const baiduVODTaskColumns = `id, platform, provider, task_id, upstream_task_id, upstream_request_id,
  user_id, api_key_id, account_id, group_id, model, upstream_model, capability,
  status, upstream_status, resolution, ratio, requested_duration, output_duration,
- input_video_duration, video_count, billing_mode, estimated_cost, hold_amount, actual_cost,
+ input_video_duration, input_contains_video, video_count, billing_mode, estimated_cost, hold_amount, actual_cost,
  group_rate_multiplier, video_rate_multiplier, account_rate_multiplier, request_hash,
  result_url, result_expires_at, last_error_code, last_error_message, retry_count,
  version, next_poll_at, poll_claimed_until, last_polled_at, created_at, updated_at,
@@ -36,15 +36,15 @@ func (r *baiduVODVideoTaskRepository) Create(ctx context.Context, task *service.
 	rows, err := r.client.QueryContext(ctx, `INSERT INTO baidu_vod_video_tasks
  (platform, provider, task_id, upstream_task_id, upstream_request_id, user_id, api_key_id, account_id, group_id,
   model, upstream_model, capability, status, upstream_status, resolution, ratio, requested_duration,
-  output_duration, input_video_duration, video_count, billing_mode, estimated_cost, hold_amount,
+  output_duration, input_video_duration, input_contains_video, video_count, billing_mode, estimated_cost, hold_amount,
   group_rate_multiplier, video_rate_multiplier, account_rate_multiplier, request_hash, next_poll_at,
   submitted_at)
- VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
  RETURNING id`,
 		task.Platform, task.Provider, task.TaskID, task.UpstreamTaskID, baiduVODNullableString(task.UpstreamRequestID), task.UserID, task.APIKeyID,
 		task.AccountID, baiduVODNullableInt64(task.GroupID), task.Model, task.UpstreamModel, string(task.Capability), task.Status,
 		task.UpstreamStatus, task.Resolution, task.Ratio, task.RequestedDuration, task.OutputDuration,
-		task.InputVideoDuration, task.VideoCount, task.BillingMode, task.EstimatedCost, task.HoldAmount, task.GroupRateMultiplier,
+		task.InputVideoDuration, task.InputContainsVideo, task.VideoCount, task.BillingMode, task.EstimatedCost, task.HoldAmount, task.GroupRateMultiplier,
 		task.VideoRateMultiplier, task.AccountRateMultiplier, task.RequestHash, task.NextPollAt, task.SubmittedAt)
 	if err != nil {
 		return err
@@ -202,7 +202,7 @@ func scanBaiduVODVideoTask(scanner baiduVODTaskScanner) (*service.BaiduVODVideoT
 	var capability string
 	err := scanner.Scan(&task.ID, &task.Platform, &task.Provider, &task.TaskID, &task.UpstreamTaskID, &upstreamReq, &task.UserID, &task.APIKeyID, &task.AccountID,
 		&groupIDInt, &task.Model, &task.UpstreamModel, &capability, &task.Status, &task.UpstreamStatus, &task.Resolution, &task.Ratio,
-		&task.RequestedDuration, &task.OutputDuration, &task.InputVideoDuration, &task.VideoCount, &task.BillingMode, &task.EstimatedCost, &task.HoldAmount,
+		&task.RequestedDuration, &task.OutputDuration, &task.InputVideoDuration, &task.InputContainsVideo, &task.VideoCount, &task.BillingMode, &task.EstimatedCost, &task.HoldAmount,
 		&actualCostFloat, &task.GroupRateMultiplier, &task.VideoRateMultiplier, &task.AccountRateMultiplier, &task.RequestHash,
 		&resultURL, &resultExpiry, &errorCode, &errorMessage, &task.RetryCount, &task.Version, &task.NextPollAt, &claimedAt,
 		&polledAt, &created, &updated, &submitted, &startedAt, &finishedAt, &settledAt)

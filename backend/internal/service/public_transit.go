@@ -136,13 +136,14 @@ type PublicTransitBilling struct {
 }
 
 type PublicTransitGroup struct {
-	Name             string                  `json:"name"`
-	Platform         string                  `json:"platform"`
-	SubscriptionType string                  `json:"subscription_type,omitempty"`
-	RateMultiplier   float64                 `json:"rate_multiplier"`
-	IsExclusive      bool                    `json:"is_exclusive"`
-	CacheUsage       PublicTransitCacheUsage `json:"cache_usage"`
-	Models           []PublicTransitModel    `json:"models"`
+	Name                string                  `json:"name"`
+	Platform            string                  `json:"platform"`
+	SubscriptionType    string                  `json:"subscription_type,omitempty"`
+	RateMultiplier      float64                 `json:"rate_multiplier"`
+	VideoRateMultiplier float64                 `json:"video_rate_multiplier"`
+	IsExclusive         bool                    `json:"is_exclusive"`
+	CacheUsage          PublicTransitCacheUsage `json:"cache_usage"`
+	Models              []PublicTransitModel    `json:"models"`
 }
 
 type PublicTransitCacheUsage struct {
@@ -180,6 +181,7 @@ type PublicTransitModelPrice struct {
 	ImageOutputUSDPerToken *float64            `json:"image_output_usd_per_token,omitempty"`
 	PerRequestUSD          *float64            `json:"per_request_usd,omitempty"`
 	ImageSizePrices        map[string]*float64 `json:"image_size_prices,omitempty"`
+	VideoResolutionPrices  map[string]*float64 `json:"video_resolution_prices,omitempty"`
 }
 
 type PublicTransitPriceInterval struct {
@@ -420,13 +422,14 @@ func buildPublicTransitGroups(configuredGroups []Group, channels []AvailableChan
 		key := groupKey{id: g.ID, name: g.Name, platform: g.Platform}
 		groupByKey[key] = g
 		byKey[key] = &PublicTransitGroup{
-			Name:             g.Name,
-			Platform:         g.Platform,
-			SubscriptionType: g.SubscriptionType,
-			RateMultiplier:   g.RateMultiplier,
-			IsExclusive:      false,
-			CacheUsage:       publicCacheUsageForGroup(cacheUsageByGroupID, g.ID),
-			Models:           []PublicTransitModel{},
+			Name:                g.Name,
+			Platform:            g.Platform,
+			SubscriptionType:    g.SubscriptionType,
+			RateMultiplier:      g.RateMultiplier,
+			VideoRateMultiplier: publicVideoRateMultiplier(g),
+			IsExclusive:         false,
+			CacheUsage:          publicCacheUsageForGroup(cacheUsageByGroupID, g.ID),
+			Models:              []PublicTransitModel{},
 		}
 		modelSeen[key] = make(map[string]struct{})
 	}
@@ -452,13 +455,14 @@ func buildPublicTransitGroups(configuredGroups []Group, channels []AvailableChan
 					Status:           StatusActive,
 				}
 				byKey[key] = &PublicTransitGroup{
-					Name:             g.Name,
-					Platform:         g.Platform,
-					SubscriptionType: g.SubscriptionType,
-					RateMultiplier:   g.RateMultiplier,
-					IsExclusive:      false,
-					CacheUsage:       publicCacheUsageForGroup(cacheUsageByGroupID, g.ID),
-					Models:           []PublicTransitModel{},
+					Name:                g.Name,
+					Platform:            g.Platform,
+					SubscriptionType:    g.SubscriptionType,
+					RateMultiplier:      g.RateMultiplier,
+					VideoRateMultiplier: g.RateMultiplier,
+					IsExclusive:         false,
+					CacheUsage:          publicCacheUsageForGroup(cacheUsageByGroupID, g.ID),
+					Models:              []PublicTransitModel{},
 				}
 				modelSeen[key] = make(map[string]struct{})
 				out = byKey[key]
@@ -548,7 +552,7 @@ func supportedModelFromPublicCatalog(platform, name string, pricingService *Pric
 }
 
 func toPublicTransitModel(m SupportedModel, group Group) PublicTransitModel {
-	billingMode := publicBillingMode(m.Pricing)
+	billingMode := publicBillingMode(m.Name, m.Pricing)
 	priceSource := m.PricingSource
 	if priceSource == "" {
 		if m.Pricing != nil {
@@ -568,7 +572,7 @@ func toPublicTransitModel(m SupportedModel, group Group) PublicTransitModel {
 		BillingMode:       billingMode,
 		PriceSource:       priceSource,
 		CatalogSource:     catalogSource,
-		Price:             toPublicTransitPrice(m.Pricing, group),
+		Price:             toPublicTransitPrice(m.Name, m.Pricing, group),
 		Source:            defaultPublicTransitModelSource(),
 		SupportedProtocol: protocolsForPlatform(m.Platform),
 	}
@@ -578,29 +582,127 @@ func toPublicTransitModel(m SupportedModel, group Group) PublicTransitModel {
 	return out
 }
 
-func publicBillingMode(p *ChannelModelPricing) string {
+func publicBillingMode(model string, p *ChannelModelPricing) string {
 	if p == nil || p.BillingMode == "" {
+		if hasDefaultPublicVideoPricing(model) {
+			return string(BillingModeVideo)
+		}
 		return string(BillingModeToken)
 	}
 	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage {
 		return string(BillingModePerRequest)
 	}
+	if p.BillingMode == BillingModeVideo {
+		return string(BillingModeVideo)
+	}
+	if p.BillingMode == BillingModeVideoToken {
+		return string(BillingModeVideoToken)
+	}
 	return string(BillingModeToken)
 }
 
-func toPublicTransitPrice(p *ChannelModelPricing, group Group) *PublicTransitModelPrice {
-	if p == nil {
+func toPublicTransitPrice(model string, p *ChannelModelPricing, group Group) *PublicTransitModelPrice {
+	videoPrices := publicVideoResolutionPrices(model, p, group)
+	if p == nil && len(videoPrices) == 0 {
 		return nil
 	}
-	return &PublicTransitModelPrice{
-		InputUSDPerToken:       p.InputPrice,
-		OutputUSDPerToken:      p.OutputPrice,
-		CacheWriteUSDPerToken:  p.CacheWritePrice,
-		CacheReadUSDPerToken:   p.CacheReadPrice,
-		ImageOutputUSDPerToken: p.ImageOutputPrice,
-		PerRequestUSD:          p.PerRequestPrice,
-		ImageSizePrices:        publicImageSizePrices(p, group),
+	price := &PublicTransitModelPrice{VideoResolutionPrices: videoPrices}
+	if p == nil {
+		return price
 	}
+	price.InputUSDPerToken = p.InputPrice
+	price.OutputUSDPerToken = p.OutputPrice
+	price.CacheWriteUSDPerToken = p.CacheWritePrice
+	price.CacheReadUSDPerToken = p.CacheReadPrice
+	price.ImageOutputUSDPerToken = p.ImageOutputPrice
+	price.PerRequestUSD = p.PerRequestPrice
+	price.ImageSizePrices = publicImageSizePrices(p, group)
+	return price
+}
+
+var publicVideoResolutions = []string{
+	VideoBillingResolution480P,
+	VideoBillingResolution720P,
+	VideoBillingResolution1080P,
+	VideoBillingResolution4K,
+}
+
+func publicVideoRateMultiplier(group Group) float64 {
+	if group.VideoRateIndependent {
+		return group.VideoRateMultiplier
+	}
+	return group.RateMultiplier
+}
+
+func publicVideoResolutionPrices(model string, p *ChannelModelPricing, group Group) map[string]*float64 {
+	hasVideoMode := p != nil && p.BillingMode == BillingModeVideo
+	hasVideoTokenMode := p != nil && p.BillingMode == BillingModeVideoToken
+	hasDefaultPricing := hasDefaultPublicVideoPricing(model)
+	if !hasVideoMode && !hasVideoTokenMode && !hasDefaultPricing {
+		return nil
+	}
+
+	prices := make(map[string]*float64)
+	for _, resolution := range publicVideoResolutions {
+		if groupPrice := group.GetVideoPrice(resolution); groupPrice != nil {
+			prices[resolution] = groupPrice
+			continue
+		}
+		if p != nil && (p.BillingMode == BillingModeToken || p.BillingMode == BillingModeVideoToken) {
+			continue
+		}
+		if channelPrice := publicChannelVideoPrice(p, resolution); channelPrice != nil {
+			prices[resolution] = channelPrice
+			continue
+		}
+		if defaultPrice, ok := defaultPublicVideoPrice(model, resolution); ok {
+			price := defaultPrice
+			prices[resolution] = &price
+		}
+	}
+	if len(prices) == 0 {
+		return nil
+	}
+	return prices
+}
+
+func publicChannelVideoPrice(p *ChannelModelPricing, resolution string) *float64 {
+	if p == nil || p.BillingMode != BillingModeVideo {
+		return nil
+	}
+	for i := range p.Intervals {
+		interval := &p.Intervals[i]
+		if normalizeVideoPricingTier(interval.TierLabel) == resolution && interval.PerRequestPrice != nil {
+			return interval.PerRequestPrice
+		}
+	}
+	return p.PerRequestPrice
+}
+
+func hasDefaultPublicVideoPricing(model string) bool {
+	for _, resolution := range publicVideoResolutions {
+		if _, ok := defaultPublicVideoPrice(model, resolution); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultPublicVideoPrice(model, resolution string) (float64, bool) {
+	if price, ok := getDefaultSeedanceVideoPrice(model, resolution); ok {
+		return price, true
+	}
+	if resolution == VideoBillingResolution720P || resolution == VideoBillingResolution1080P {
+		if price, ok := getDefaultHappyHorseVideoPrice(model, resolution); ok {
+			return price, true
+		}
+	}
+	if price, ok := getDefaultGrokImagineVideoPrice(model, resolution); ok {
+		if resolution != VideoBillingResolution4K {
+			return price, true
+		}
+	}
+	return 0, false
 }
 
 func publicImageSizePrices(p *ChannelModelPricing, group Group) map[string]*float64 {

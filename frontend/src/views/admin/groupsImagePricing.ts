@@ -42,20 +42,20 @@ const defaultImagePricePlaceholders: Record<
   },
 };
 
-// 视频价为每秒单价（Credits/s）。占位值用于展示常用模型的默认价格。
+// 后端视频价使用 USD/s；管理端输入与占位值统一显示 Credits/s。
 const defaultVideoPricePlaceholders: Record<
   string,
   Record<VideoPricingTierKey, string>
 > = {
   grok: {
-    video_price_480p: "0.05",
-    video_price_720p: "0.07",
-    video_price_1080p: "0.25",
+    video_price_480p: "5",
+    video_price_720p: "7",
+    video_price_1080p: "25",
     video_price_4k: "",
   },
   baidu_vod: {
     video_price_480p: "",
-    video_price_720p: "0.9",
+    video_price_720p: "90",
     // HappyHorse 1.0 and 1.1 use model-specific 1080p defaults in the backend.
     video_price_1080p: "",
     // Seedance 2.0 uses its model-specific 4K default in the backend.

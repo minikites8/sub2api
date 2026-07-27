@@ -114,7 +114,7 @@
               :label="t(prefixKey('perRequestPrice'))"
               :value="model.pricing.per_request_price"
               :unit="t(prefixKey('unitPerRequest'))"
-              :scale="1"
+              :scale="CREDITS_PER_USD"
             />
 
             <PricingRow
@@ -125,7 +125,7 @@
               :label="t(prefixKey('imageOutputPrice'))"
               :value="model.pricing.image_output_price"
               :unit="t(prefixKey('unitPerRequest'))"
-              :scale="1"
+              :scale="CREDITS_PER_USD"
             />
 
             <PricingRow
@@ -136,7 +136,7 @@
               :label="t(prefixKey('videoSecondPrice'))"
               :value="model.pricing.per_request_price"
               :unit="t(prefixKey('unitPerSecond'))"
-              :scale="1"
+              :scale="CREDITS_PER_USD"
             />
 
             <div
@@ -154,7 +154,7 @@
                   class="flex justify-between text-[11px]"
                 >
                   <span class="text-gray-500 dark:text-gray-400">
-                    <template v-if="iv.tier_label">{{ iv.tier_label }}</template>
+                    <template v-if="iv.tier_label">{{ formatTierLabel(iv.tier_label, model.pricing.billing_mode) }}</template>
                     <template v-else>{{ formatRange(iv.min_tokens, iv.max_tokens) }}</template>
                   </span>
                   <span>{{ formatInterval(iv, model.pricing.billing_mode) }}</span>
@@ -173,11 +173,13 @@ import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PricingRow from './PricingRow.vue'
 import { formatScaled } from '@/utils/pricing'
+import { CREDITS_PER_USD } from '@/utils/credit'
 import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_IMAGE,
   BILLING_MODE_VIDEO,
+  BILLING_MODE_VIDEO_TOKEN,
   type BillingMode
 } from '@/constants/channel'
 // 复用 api/channels.ts 的用户侧最小形态 DTO。
@@ -213,7 +215,7 @@ const effectivePlatform = computed<string>(() => props.model.platform || props.p
 const { t } = useI18n()
 
 /** 按 token 定价展示时的换算单位：每百万 token。 */
-const perMillionScale = 1_000_000
+const perMillionScale = 1_000_000 * CREDITS_PER_USD
 
 // Popover border + header classes echo the platform theme so each card reads
 // at a glance which model family it belongs to.
@@ -243,6 +245,8 @@ const billingModeLabel = computed(() => {
       return t(prefixKey('billingModeImage'))
     case BILLING_MODE_VIDEO:
       return t(prefixKey('billingModeVideo'))
+    case BILLING_MODE_VIDEO_TOKEN:
+      return t(prefixKey('billingModeVideoToken'))
     default:
       return '-'
   }
@@ -255,14 +259,29 @@ function formatRange(min: number, max: number | null): string {
 
 function formatInterval(iv: UserPricingInterval, mode: BillingMode): string {
   if (mode === BILLING_MODE_VIDEO) {
-    return `${formatScaled(iv.per_request_price, 1)} ${t(prefixKey('unitPerSecond'))}`
+    return `${formatScaled(iv.per_request_price, CREDITS_PER_USD)} ${t(prefixKey('unitPerSecond'))}`
+  }
+  if (mode === BILLING_MODE_VIDEO_TOKEN) {
+    return `${formatScaled(iv.output_price, perMillionScale)} ${t(prefixKey('unitPerMillion'))}`
   }
   if (mode === BILLING_MODE_PER_REQUEST || mode === BILLING_MODE_IMAGE) {
-    return formatScaled(iv.per_request_price, 1)
+    return formatScaled(iv.per_request_price, CREDITS_PER_USD)
   }
   const input = formatScaled(iv.input_price, perMillionScale)
   const output = formatScaled(iv.output_price, perMillionScale)
   return `${input} / ${output}`
+}
+
+function formatTierLabel(tier: string, mode: BillingMode): string {
+  if (mode !== BILLING_MODE_VIDEO_TOKEN) return tier
+  const [resolution = tier, inputType = 'text'] = tier.split(':')
+  const resolutionLabel = resolution.toLowerCase() === 'default'
+    ? t(prefixKey('defaultResolution'))
+    : resolution.toUpperCase()
+  const inputLabel = inputType.toLowerCase() === 'video'
+    ? t(prefixKey('inputWithVideo'))
+    : t(prefixKey('inputWithoutVideo'))
+  return `${resolutionLabel} · ${inputLabel}`
 }
 
 // ── Popover positioning ─────────────────────────────────────────────

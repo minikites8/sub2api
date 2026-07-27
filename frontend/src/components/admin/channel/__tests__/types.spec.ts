@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { validateIntervals, type IntervalFormEntry } from '../types'
+import {
+  apiIntervalsToForm,
+  creditsToUSD,
+  formIntervalsToAPI,
+  mTokToPerToken,
+  perTokenToMTok,
+  usdToCreditsValue,
+  validateIntervals,
+  type IntervalFormEntry,
+} from '../types'
 
 function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   return {
@@ -80,5 +89,47 @@ describe('validateIntervals', () => {
       ]
       expect(validateIntervals(intervals, 'image', t)).toContain('maxGreaterThanMin')
     })
+  })
+
+  describe('video_token mode', () => {
+    it('accepts conditional output token prices', () => {
+      const intervals = [
+        makeInterval({ tier_label: 'default:text', output_price: 37 }),
+        makeInterval({ tier_label: '720P:video', output_price: 28 }),
+        makeInterval({ tier_label: '4k:text', output_price: 26 }),
+      ]
+      expect(validateIntervals(intervals, 'video_token', t)).toBeNull()
+    })
+
+    it('requires an output price and unique valid tier', () => {
+      expect(validateIntervals([
+        makeInterval({ tier_label: '720p:text', input_price: 46 }),
+      ], 'video_token', t)).toContain('videoTokenOutputRequired')
+      expect(validateIntervals([
+        makeInterval({ tier_label: '720p:text', output_price: 46 }),
+        makeInterval({ tier_label: '720P:text', output_price: 45 }),
+      ], 'video_token', t)).toContain('duplicateVideoTokenTier')
+      expect(validateIntervals([
+        makeInterval({ tier_label: '2k:text', output_price: 1 }),
+      ], 'video_token', t)).toContain('invalidVideoTokenTier')
+    })
+  })
+})
+
+describe('Credit price conversion', () => {
+  it('converts Credit display values to backend USD values in both directions', () => {
+    expect(mTokToPerToken(200)).toBe(2e-6)
+    expect(perTokenToMTok(2e-6)).toBe(200)
+    expect(creditsToUSD(5)).toBe(0.05)
+    expect(usdToCreditsValue(0.05)).toBe(5)
+  })
+
+  it('converts interval token and request prices', () => {
+    const form = [makeInterval({ input_price: 200, output_price: 800, per_request_price: 5 })]
+    const api = formIntervalsToAPI(form)
+    expect(api[0].input_price).toBe(2e-6)
+    expect(api[0].output_price).toBe(8e-6)
+    expect(api[0].per_request_price).toBe(0.05)
+    expect(apiIntervalsToForm(api)).toEqual(form)
   })
 })

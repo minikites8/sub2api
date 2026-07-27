@@ -207,14 +207,14 @@ func (w *BaiduVODVideoWorker) succeed(ctx context.Context, task *BaiduVODVideoTa
 	}
 	actual := task.EstimatedCost
 	billingMode := firstNonEmpty(task.BillingMode, string(BillingModeVideo))
-	if billingMode == string(BillingModeToken) && completionTokens > 0 && w.service.billing != nil {
-		cost := w.service.calculateVideoCost(ctx, task.Model, task.GroupID, actualResolution, videoCount, outputDuration, completionTokens, nil, false, task.VideoRateMultiplier)
+	if (billingMode == string(BillingModeToken) || billingMode == string(BillingModeVideoToken)) && completionTokens > 0 && w.service.billing != nil {
+		cost := w.service.calculateVideoCost(ctx, task.Model, task.GroupID, actualResolution, videoCount, outputDuration, completionTokens, task.InputContainsVideo, nil, false, task.VideoRateMultiplier)
 		actual = cost.ActualCost
 		billingMode = firstNonEmpty(cost.BillingMode, billingMode)
 	} else if NormalizeVideoBillingResolutionOrDefault(actualResolution) == NormalizeVideoBillingResolutionOrDefault(task.Resolution) && task.RequestedDuration > 0 && outputDuration > 0 {
 		actual = task.EstimatedCost * float64(outputDuration) / float64(task.RequestedDuration) * float64(videoCount)
 	} else if w.service.billing != nil {
-		cost := w.service.calculateVideoCost(ctx, task.Model, task.GroupID, actualResolution, videoCount, outputDuration, 0, nil, false, task.VideoRateMultiplier)
+		cost := w.service.calculateVideoCost(ctx, task.Model, task.GroupID, actualResolution, videoCount, outputDuration, 0, task.InputContainsVideo, nil, false, task.VideoRateMultiplier)
 		actual = cost.ActualCost
 		billingMode = firstNonEmpty(cost.BillingMode, billingMode)
 	}

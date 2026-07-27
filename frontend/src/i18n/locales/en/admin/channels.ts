@@ -27,6 +27,7 @@ export default {
         billingModePerRequest: 'Per Request',
         billingModeImage: 'Per Image',
         billingModeVideo: 'Video (Per Second)',
+        billingModeVideoToken: 'Video Token',
         inputPrice: 'Input',
         outputPrice: 'Output',
         cacheWritePrice: 'Cache Write',
@@ -37,7 +38,10 @@ export default {
         intervals: 'Tiered Pricing',
         unitPerMillion: 'Credits / 1M tokens',
         unitPerRequest: 'Credits / request',
-        unitPerSecond: 'Credits / s'
+        unitPerSecond: 'Credits / s',
+        defaultResolution: 'Default',
+        inputWithoutVideo: 'No video input',
+        inputWithVideo: 'Includes video input'
       }
     },
 
@@ -74,6 +78,9 @@ export default {
         negativePrice: 'Interval #{index}: {field} cannot be negative',
         unboundedLast: 'Interval #{index}: an unbounded interval (empty maximum token count) must be last',
         overlap: 'Intervals #{previousIndex} and #{currentIndex} overlap: previous upper bound ({previousMax}) is greater than current lower bound ({currentMin})',
+        invalidVideoTokenTier: 'Video token price #{index}: invalid tier label',
+        videoTokenOutputRequired: 'Video token price #{index}: output price is required',
+        duplicateVideoTokenTier: 'Video token price #{index}: duplicate tier',
         price: {
           inputPrice: 'input price',
           outputPrice: 'output price',
@@ -96,7 +103,8 @@ export default {
         token: 'Token',
         perRequest: 'Per Request',
         image: 'Image (Per Request)',
-        video: 'Video (Per Second)'
+        video: 'Video (Per Second)',
+        videoToken: 'Video Token'
       },
       form: {
         name: 'Name',
@@ -132,6 +140,12 @@ export default {
         requestTiers: 'Request Tiers',
         imageTiers: 'Image Tiers (Per Request)',
         videoResolutionTiers: 'Video Resolution Tiers',
+        videoTokenPrices: 'Output Token Prices by Resolution and Input Type',
+        inputWithoutVideo: 'Input without Video',
+        inputWithVideo: 'Input with Video',
+        defaultResolution: 'Default',
+        videoTokenFallbackHint: 'Blank resolution prices use the default price for the same input type.',
+        videoTokenPriceRequired: 'Video token billing requires at least one price',
         addTier: 'Add Tier',
         noTiersYet: 'No tiers yet. Click add to configure per-request pricing.',
         noVideoTiersYet: 'No resolution tiers. The default per-second price will be used.',

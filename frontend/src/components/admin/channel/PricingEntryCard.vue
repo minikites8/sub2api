@@ -270,6 +270,49 @@
             {{ t('admin.channels.form.noVideoTiersYet') }}
           </div>
         </div>
+
+        <!-- Video token mode -->
+        <div v-else-if="entry.billing_mode === 'video_token'" class="mt-3">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {{ t('admin.channels.form.videoTokenPrices') }}
+            </label>
+            <span class="text-xs text-gray-400">Credits / MTok</span>
+          </div>
+          <div class="mt-2 overflow-x-auto border-y border-gray-200 dark:border-dark-600">
+            <div class="grid min-w-[520px] grid-cols-[minmax(7rem,0.8fr)_minmax(10rem,1fr)_minmax(10rem,1fr)] gap-2 bg-gray-100 px-2 py-2 text-xs font-medium text-gray-500 dark:bg-dark-700 dark:text-gray-300">
+              <span>{{ t('admin.channels.form.resolution') }}</span>
+              <span>{{ t('admin.channels.form.inputWithoutVideo') }}</span>
+              <span>{{ t('admin.channels.form.inputWithVideo') }}</span>
+            </div>
+            <div
+              v-for="row in videoTokenPricingRows"
+              :key="row.key"
+              class="grid min-w-[520px] grid-cols-[minmax(7rem,0.8fr)_minmax(10rem,1fr)_minmax(10rem,1fr)] items-center gap-2 border-t border-gray-200 px-2 py-2 first:border-t-0 dark:border-dark-600"
+            >
+              <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ row.label }}</span>
+              <input
+                :value="videoTokenPrice(`${row.key}:text`)"
+                @input="updateVideoTokenPrice(`${row.key}:text`, ($event.target as HTMLInputElement).value)"
+                type="number"
+                step="any"
+                min="0"
+                class="input text-xs"
+                :placeholder="t('admin.channels.form.pricePlaceholder')"
+              />
+              <input
+                :value="videoTokenPrice(`${row.key}:video`)"
+                @input="updateVideoTokenPrice(`${row.key}:video`, ($event.target as HTMLInputElement).value)"
+                type="number"
+                step="any"
+                min="0"
+                class="input text-xs"
+                :placeholder="t('admin.channels.form.pricePlaceholder')"
+              />
+            </div>
+          </div>
+          <p class="mt-2 text-xs text-gray-400">{{ t('admin.channels.form.videoTokenFallbackHint') }}</p>
+        </div>
       </div>
     </div>
   </div>
@@ -313,6 +356,7 @@ const billingModeOptions = computed(() => {
   ]
   if (props.allowVideo) {
     options.push({ value: 'video', label: t('admin.channels.billingMode.video') })
+    options.push({ value: 'video_token', label: t('admin.channels.billingMode.videoToken') })
   }
   return options
 })
@@ -364,6 +408,37 @@ function addVideoTier() {
     cache_read_price: null, per_request_price: null,
     sort_order: intervals.length
   })
+  emit('update', { ...props.entry, intervals })
+}
+
+const videoTokenPricingRows = computed(() => [
+  { key: 'default', label: t('admin.channels.form.defaultResolution') },
+  { key: '480p', label: '480P' },
+  { key: '720p', label: '720P' },
+  { key: '1080p', label: '1080P' },
+  { key: '4k', label: '4K' },
+])
+
+function videoTokenPrice(tierLabel: string): number | string {
+  const interval = (props.entry.intervals || []).find(iv => iv.tier_label.toLowerCase() === tierLabel)
+  return interval?.output_price ?? ''
+}
+
+function updateVideoTokenPrice(tierLabel: string, value: string) {
+  const intervals = [...(props.entry.intervals || [])]
+  const index = intervals.findIndex(iv => iv.tier_label.toLowerCase() === tierLabel)
+  if (value === '') {
+    if (index >= 0) intervals.splice(index, 1)
+  } else if (index >= 0) {
+    intervals[index] = { ...intervals[index], output_price: value }
+  } else {
+    intervals.push({
+      min_tokens: 0, max_tokens: null, tier_label: tierLabel,
+      input_price: null, output_price: value, cache_write_price: null,
+      cache_read_price: null, per_request_price: null,
+      sort_order: intervals.length
+    })
+  }
   emit('update', { ...props.entry, intervals })
 }
 

@@ -56,6 +56,7 @@ export interface PublicTransitGroup {
   platform: GroupPlatform
   subscription_type?: string
   rate_multiplier: number
+  video_rate_multiplier?: number
   is_exclusive: boolean
   cache_usage: PublicTransitCacheUsage
   models: PublicTransitModel[]
@@ -96,6 +97,7 @@ export interface PublicTransitModelPrice {
   image_output_usd_per_token?: number
   per_request_usd?: number
   image_size_prices?: Record<string, number | null | undefined>
+  video_resolution_prices?: Record<string, number | null | undefined>
 }
 
 export interface PublicTransitPriceInterval {

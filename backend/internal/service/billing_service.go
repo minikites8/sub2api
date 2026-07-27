@@ -921,6 +921,7 @@ type CostInput struct {
 	RequestCount              int    // 按次计费时使用
 	SizeTier                  string // 按次/图片/视频模式的层级标签（"1K","2K","4K","720P" 等）
 	DurationSeconds           int    // 视频模式的单个视频时长（秒）
+	InputContainsVideo        bool   // video_token 模式：输入内容是否包含视频
 	RateMultiplier            float64
 	ServiceTier               string                // "priority","flex","" 等
 	Resolver                  *ModelPricingResolver // 定价解析器
@@ -968,6 +969,8 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		breakdown, err = s.calculatePerRequestCost(resolved, input)
 	case BillingModeVideo:
 		breakdown, err = s.calculateVideoSecondCost(resolved, input)
+	case BillingModeVideoToken:
+		breakdown, err = s.calculateVideoTokenCost(resolved, input)
 	default: // BillingModeToken
 		breakdown, err = s.calculateTokenCost(resolved, input)
 	}
@@ -978,6 +981,19 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		}
 	}
 	return breakdown, err
+}
+
+func (s *BillingService) calculateVideoTokenCost(resolved *ResolvedPricing, input CostInput) (*CostBreakdown, error) {
+	unitPrice, configured := input.Resolver.GetVideoTokenOutputPrice(resolved, input.SizeTier, input.InputContainsVideo)
+	if !configured {
+		return nil, fmt.Errorf("no video token pricing available for model %s, resolution %s", input.Model, input.SizeTier)
+	}
+	outputCost := float64(input.Tokens.OutputTokens) * unitPrice
+	return &CostBreakdown{
+		OutputCost: outputCost,
+		TotalCost:  outputCost,
+		ActualCost: outputCost * input.RateMultiplier,
+	}, nil
 }
 
 // calculateVideoSecondCost 使用渠道配置的分辨率每秒价格计算视频费用。
@@ -1424,7 +1440,7 @@ type ImagePriceConfig struct {
 	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
 }
 
-// VideoPriceConfig 视频生成计费配置。所有价格均为每秒单价（Credits/s）。
+// VideoPriceConfig 视频生成计费配置。所有价格均为每秒单价（USD/s）。
 type VideoPriceConfig struct {
 	Price480P  *float64 // 480p 每秒价格（nil 表示使用默认值）
 	Price720P  *float64 // 720p 每秒价格（nil 表示使用默认值）
@@ -1440,7 +1456,7 @@ const (
 	defaultGrokImagineImageQualityPrice1K = 0.05
 	defaultGrokImagineImageQualityPrice2K = 0.07
 
-	// 视频默认价以 Credits/s 表示，总价 = 每秒价 × 时长（秒）。
+	// 视频默认价以 USD/s 表示，总价 = 每秒价 × 时长（秒）。
 	defaultGrokImagineVideoPrice480P    = 0.05
 	defaultGrokImagineVideoPrice720P    = 0.07
 	defaultGrokImagineVideo15Price480P  = 0.08
@@ -1452,7 +1468,7 @@ const (
 	defaultHappyHorse11VideoPrice720P  = 0.9
 	defaultHappyHorse11VideoPrice1080P = 1.2
 
-	// Seedance 默认价格使用官方 16:9、在线推理、无输入视频示例折算为 Credits/s。
+	// Seedance 默认价格使用官方 16:9、在线推理、无输入视频示例折算为 USD/s。
 	defaultSeedance20VideoPrice480P    = 0.46
 	defaultSeedance20VideoPrice720P    = 0.99
 	defaultSeedance20VideoPrice1080P   = 2.48

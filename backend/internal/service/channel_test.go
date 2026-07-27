@@ -221,6 +221,7 @@ func TestBillingModeIsValid(t *testing.T) {
 		{"per_request", BillingModePerRequest, true},
 		{"image", BillingModeImage, true},
 		{"video", BillingModeVideo, true},
+		{"video_token", BillingModeVideoToken, true},
 		{"empty", BillingMode(""), true},
 		{"unknown", BillingMode("unknown"), false},
 		{"random", BillingMode("xyz"), false},
@@ -465,6 +466,27 @@ func TestValidateIntervals_ImageModeStillRejectsBadMaxTokens(t *testing.T) {
 	err := ValidateIntervals(intervals, BillingModeImage)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "must be > min_tokens")
+}
+
+func TestValidateIntervals_VideoTokenMode(t *testing.T) {
+	valid := []PricingInterval{
+		{TierLabel: "default:text", OutputPrice: testPtrFloat64(37e-6)},
+		{TierLabel: "720P:video", OutputPrice: testPtrFloat64(28e-6)},
+		{TierLabel: "4k:text", OutputPrice: testPtrFloat64(26e-6)},
+	}
+	require.NoError(t, ValidateIntervals(valid, BillingModeVideoToken))
+
+	missingOutput := []PricingInterval{{TierLabel: "720p:text", InputPrice: testPtrFloat64(46e-6)}}
+	require.ErrorContains(t, ValidateIntervals(missingOutput, BillingModeVideoToken), "output_price is required")
+
+	duplicate := []PricingInterval{
+		{TierLabel: "720P:text", OutputPrice: testPtrFloat64(46e-6)},
+		{TierLabel: "720:text", OutputPrice: testPtrFloat64(45e-6)},
+	}
+	require.ErrorContains(t, ValidateIntervals(duplicate, BillingModeVideoToken), "duplicate")
+
+	invalid := []PricingInterval{{TierLabel: "2k:text", OutputPrice: testPtrFloat64(1)}}
+	require.ErrorContains(t, ValidateIntervals(invalid, BillingModeVideoToken), "invalid video token tier_label")
 }
 
 func TestSupportedModels_ExactKeysAndPricing(t *testing.T) {

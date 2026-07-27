@@ -543,6 +543,7 @@ export default {
       billingModePerRequest: 'Per Request',
       billingModeImage: 'Image',
       billingModeVideo: 'Video',
+      billingModeVideoToken: 'Video Token',
       allBillingModes: 'All Billing Modes',
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',

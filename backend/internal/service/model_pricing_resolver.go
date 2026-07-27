@@ -73,7 +73,7 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 			if mode == "" {
 				mode = BillingModeToken
 			}
-			if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
+			if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo || mode == BillingModeVideoToken {
 				resolved := &ResolvedPricing{
 					Mode:           mode,
 					Source:         PricingSourceChannel,
@@ -135,7 +135,7 @@ func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupI
 	switch resolved.Mode {
 	case BillingModeToken:
 		r.applyTokenOverrides(chPricing, resolved)
-	case BillingModePerRequest, BillingModeImage, BillingModeVideo:
+	case BillingModePerRequest, BillingModeImage, BillingModeVideo, BillingModeVideoToken:
 		r.applyRequestTierOverrides(chPricing, resolved)
 	}
 }
@@ -345,6 +345,54 @@ func (r *ModelPricingResolver) GetVideoSecondPrice(resolved *ResolvedPricing, re
 		return *resolved.channelPricing.PerRequestPrice, true
 	}
 	return 0, false
+}
+
+// GetVideoTokenOutputPrice 根据实际输出分辨率和输入是否含视频获取输出 token 单价。
+// 精确分辨率档位优先，随后回退到相同输入类型的 default 档位。
+func (r *ModelPricingResolver) GetVideoTokenOutputPrice(resolved *ResolvedPricing, resolution string, inputContainsVideo bool) (float64, bool) {
+	if resolved == nil || resolved.Mode != BillingModeVideoToken {
+		return 0, false
+	}
+	inputType := "text"
+	if inputContainsVideo {
+		inputType = "video"
+	}
+	targets := []string{normalizeVideoPricingTier(resolution) + ":" + inputType, "default:" + inputType}
+	for _, target := range targets {
+		for i := range resolved.RequestTiers {
+			tier := &resolved.RequestTiers[i]
+			if normalizeVideoTokenPricingTier(tier.TierLabel) == target && tier.OutputPrice != nil {
+				return *tier.OutputPrice, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func normalizeVideoTokenPricingTier(value string) string {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(value)), ":")
+	if len(parts) != 2 {
+		return ""
+	}
+	resolution := strings.TrimSpace(parts[0])
+	if resolution != "default" {
+		resolution = normalizeVideoPricingTier(resolution)
+		switch resolution {
+		case VideoBillingResolution480P, VideoBillingResolution720P, VideoBillingResolution1080P, VideoBillingResolution4K:
+		default:
+			return ""
+		}
+	}
+	inputType := strings.TrimSpace(parts[1])
+	switch inputType {
+	case "text", "no_video", "without_video":
+		inputType = "text"
+	case "video", "with_video":
+		inputType = "video"
+	default:
+		return ""
+	}
+	return resolution + ":" + inputType
 }
 
 func normalizeVideoPricingTier(value string) string {

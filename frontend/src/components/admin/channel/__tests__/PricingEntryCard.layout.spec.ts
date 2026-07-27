@@ -91,4 +91,30 @@ describe('PricingEntryCard 布局', () => {
     expect(updates).toHaveLength(1)
     expect((updates![0][0] as PricingFormEntry).intervals[0].tier_label).toBe('720P')
   })
+
+  it('视频 Token 模式按分辨率和输入类型写入价格档位', async () => {
+    const wrapper = mount(PricingEntryCard, {
+      props: {
+        entry: { ...baseEntry(), billing_mode: 'video_token', intervals: [] },
+        platform: 'baidu_vod',
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Credits / MTok')
+    expect(wrapper.text()).toContain('admin.channels.form.inputWithoutVideo')
+    const priceInputs = wrapper.findAll('input[type="number"]')
+    expect(priceInputs).toHaveLength(10)
+    await priceInputs[0].setValue('37')
+
+    const updates = wrapper.emitted('update')
+    expect(updates).toHaveLength(1)
+    const entry = updates![0][0] as PricingFormEntry
+    expect(entry.intervals[0].tier_label).toBe('default:text')
+    expect(entry.intervals[0].output_price).toBe('37')
+  })
 })

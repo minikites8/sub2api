@@ -27,6 +27,7 @@ export default {
         billingModePerRequest: '按次',
         billingModeImage: '按图片',
         billingModeVideo: '视频（按秒）',
+        billingModeVideoToken: '视频 Token',
         inputPrice: '输入',
         outputPrice: '输出',
         cacheWritePrice: '缓存写入',
@@ -37,7 +38,10 @@ export default {
         intervals: '阶梯定价',
         unitPerMillion: 'Credits / 1M token',
         unitPerRequest: 'Credits / 次',
-        unitPerSecond: 'Credits / s'
+        unitPerSecond: 'Credits / s',
+        defaultResolution: '默认',
+        inputWithoutVideo: '输入不含视频',
+        inputWithVideo: '输入包含视频'
       }
     },
 
@@ -74,6 +78,9 @@ export default {
         negativePrice: '区间 #{index}：{field}不能为负数',
         unboundedLast: '区间 #{index}：无上限区间（最大 token 数为空）必须放在最后',
         overlap: '区间 #{previousIndex} 和 #{currentIndex} 重叠：前一个上界（{previousMax}）大于当前下界（{currentMin}）',
+        invalidVideoTokenTier: '视频 Token 价格 #{index}：档位标签无效',
+        videoTokenOutputRequired: '视频 Token 价格 #{index}：请填写输出价格',
+        duplicateVideoTokenTier: '视频 Token 价格 #{index}：档位重复',
         price: {
           inputPrice: '输入价格',
           outputPrice: '输出价格',
@@ -96,7 +103,8 @@ export default {
         token: 'Token',
         perRequest: '按次',
         image: '图片（按次）',
-        video: '视频（按秒）'
+        video: '视频（按秒）',
+        videoToken: '视频 Token'
       },
       form: {
         name: '名称',
@@ -132,6 +140,12 @@ export default {
         requestTiers: '按次计费层级',
         imageTiers: '图片计费层级（按次）',
         videoResolutionTiers: '视频分辨率计费层级',
+        videoTokenPrices: '按分辨率与输入类型设置输出 Token 价格',
+        inputWithoutVideo: '输入不含视频',
+        inputWithVideo: '输入包含视频',
+        defaultResolution: '默认',
+        videoTokenFallbackHint: '分辨率价格留空时使用对应输入类型的默认价格。',
+        videoTokenPriceRequired: '视频 Token 计费模式至少需要设置一个价格',
         addTier: '添加层级',
         noTiersYet: '暂无层级，点击添加配置按次计费价格',
         noVideoTiersYet: '暂无分辨率层级，将使用默认每秒价格',

@@ -209,6 +209,44 @@ func TestCalculateCostUnified_VideoModeBillsPerSecond(t *testing.T) {
 	require.Equal(t, string(BillingModeVideo), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_VideoTokenMode(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+	resolved := &ResolvedPricing{
+		Mode: BillingModeVideoToken,
+		RequestTiers: []PricingInterval{
+			{TierLabel: "default:text", OutputPrice: testPtrFloat64(37e-6)},
+			{TierLabel: "default:video", OutputPrice: testPtrFloat64(22e-6)},
+			{TierLabel: "720p:text", OutputPrice: testPtrFloat64(46e-6)},
+			{TierLabel: "1080p:video", OutputPrice: testPtrFloat64(31e-6)},
+			{TierLabel: "4k:text", OutputPrice: testPtrFloat64(26e-6)},
+		},
+	}
+	tests := []struct {
+		name               string
+		resolution         string
+		inputContainsVideo bool
+		want               float64
+	}{
+		{name: "720p text input", resolution: "720P", want: 4.6},
+		{name: "1080p video input", resolution: "1080p", inputContainsVideo: true, want: 3.1},
+		{name: "4k text input", resolution: "2160p", want: 2.6},
+		{name: "default video input", resolution: "480p", inputContainsVideo: true, want: 2.2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost, err := bs.CalculateCostUnified(CostInput{
+				Model: tt.name, SizeTier: tt.resolution, InputContainsVideo: tt.inputContainsVideo,
+				Tokens: UsageTokens{OutputTokens: 100_000}, RateMultiplier: 1, Resolver: resolver, Resolved: resolved,
+			})
+			require.NoError(t, err)
+			require.InDelta(t, tt.want, cost.ActualCost, 1e-12)
+			require.InDelta(t, tt.want, cost.OutputCost, 1e-12)
+			require.Equal(t, string(BillingModeVideoToken), cost.BillingMode)
+		})
+	}
+}
+
 // TestCalculateCostUnified_RateMultiplierZeroProducesZero 锁定新行为：
 // 保存时强制 > 0；若 0 仍泄漏到计费层，按 0 计费（而非历史上的 1.0）。
 func TestCalculateCostUnified_RateMultiplierZeroProducesZero(t *testing.T) {

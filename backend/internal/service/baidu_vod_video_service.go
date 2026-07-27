@@ -325,10 +325,12 @@ func (s *BaiduVODVideoService) NewTask(ctx context.Context, publicID string, api
 		billingDuration = spec.MaxDuration
 	}
 	estimatedTokens := 0
+	inputContainsVideo := false
 	if spec.Provider == BaiduVODProviderSeedance {
 		estimatedTokens = estimateSeedanceCompletionTokens(req, spec)
+		inputContainsVideo = seedanceInputContainsVideo(req, spec)
 	}
-	cost := s.calculateVideoCost(ctx, req.Model, apiKey.GroupID, resolution, 1, billingDuration, estimatedTokens, groupConfig, groupPriceConfigured, videoMultiplier)
+	cost := s.calculateVideoCost(ctx, req.Model, apiKey.GroupID, resolution, 1, billingDuration, estimatedTokens, inputContainsVideo, groupConfig, groupPriceConfigured, videoMultiplier)
 	billingMode := firstNonEmpty(cost.BillingMode, string(BillingModeVideo))
 	now := time.Now()
 	requestID := strings.TrimSpace(submitted.RequestID)
@@ -337,7 +339,7 @@ func (s *BaiduVODVideoService) NewTask(ctx context.Context, publicID string, api
 		UserID: apiKey.UserID, APIKeyID: apiKey.ID, AccountID: account.ID, GroupID: apiKey.GroupID,
 		Model: req.Model, UpstreamModel: spec.UpstreamModel, Capability: spec.Capability, Status: BaiduVODTaskStatusQueued,
 		UpstreamStatus: firstNonEmpty(strings.TrimSpace(submitted.TaskStatus), "PENDING"), Resolution: resolution, Ratio: req.Ratio,
-		RequestedDuration: req.Duration, VideoCount: 1, BillingMode: billingMode, EstimatedCost: cost.ActualCost, HoldAmount: cost.ActualCost,
+		RequestedDuration: req.Duration, InputContainsVideo: inputContainsVideo, VideoCount: 1, BillingMode: billingMode, EstimatedCost: cost.ActualCost, HoldAmount: cost.ActualCost,
 		GroupRateMultiplier: groupMultiplier, VideoRateMultiplier: videoMultiplier, AccountRateMultiplier: account.BillingRateMultiplier(),
 		RequestHash: requestHash, NextPollAt: now.Add(5 * time.Second), SubmittedAt: now, CreatedAt: now, UpdatedAt: now,
 	}
@@ -360,6 +362,7 @@ func (s *BaiduVODVideoService) calculateVideoCost(
 	videoCount int,
 	durationSeconds int,
 	completionTokens int,
+	inputContainsVideo bool,
 	groupConfig *VideoPriceConfig,
 	groupPriceConfigured bool,
 	rateMultiplier float64,
@@ -371,18 +374,19 @@ func (s *BaiduVODVideoService) calculateVideoCost(
 		return s.billing.CalculateVideoCost(model, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
 	}
 	resolved := s.pricing.Resolve(ctx, PricingInput{Model: model, GroupID: groupID})
-	if resolved != nil && (resolved.Mode == BillingModeVideo || (resolved.Mode == BillingModeToken && completionTokens > 0)) {
+	if resolved != nil && (resolved.Mode == BillingModeVideo || ((resolved.Mode == BillingModeToken || resolved.Mode == BillingModeVideoToken) && completionTokens > 0)) {
 		cost, err := s.billing.CalculateCostUnified(CostInput{
-			Ctx:             ctx,
-			Model:           model,
-			GroupID:         groupID,
-			RequestCount:    videoCount,
-			SizeTier:        resolution,
-			DurationSeconds: durationSeconds,
-			Tokens:          UsageTokens{OutputTokens: completionTokens},
-			RateMultiplier:  rateMultiplier,
-			Resolver:        s.pricing,
-			Resolved:        resolved,
+			Ctx:                ctx,
+			Model:              model,
+			GroupID:            groupID,
+			RequestCount:       videoCount,
+			SizeTier:           resolution,
+			DurationSeconds:    durationSeconds,
+			Tokens:             UsageTokens{OutputTokens: completionTokens},
+			InputContainsVideo: inputContainsVideo,
+			RateMultiplier:     rateMultiplier,
+			Resolver:           s.pricing,
+			Resolved:           resolved,
 		})
 		if err == nil {
 			return cost
@@ -472,7 +476,7 @@ func (s *BaiduVODVideoService) recordUsage(ctx context.Context, task *BaiduVODVi
 		OutputTokens: completionTokens, VideoCount: task.VideoCount, VideoResolution: &resolution, VideoDurationSeconds: &duration, TotalCost: totalCost, ActualCost: actual,
 		RateMultiplier: task.VideoRateMultiplier, AccountRateMultiplier: &accountRate, BillingType: BillingTypeBalance, RequestType: RequestTypeSync,
 		BillingMode: &billingMode, CreatedAt: now}
-	if billingMode == string(BillingModeToken) {
+	if billingMode == string(BillingModeToken) || billingMode == string(BillingModeVideoToken) {
 		log.OutputCost = totalCost
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogs, log, "service.baidu_vod_video", s.cfg)

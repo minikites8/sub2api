@@ -641,7 +641,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
+import { mTokToPerToken, perTokenToMTok, creditsToUSD, usdToCreditsValue, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
@@ -1140,7 +1140,7 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             image_input_price: mTokToPerToken(p.image_input_price),
             image_output_price: mTokToPerToken(p.image_output_price),
             priority_multiplier: p.priority_multiplier != null && p.priority_multiplier !== '' ? Number(p.priority_multiplier) : null,
-            per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
+            per_request_price: creditsToUSD(p.per_request_price),
             intervals: formIntervalsToAPI(p.intervals || [])
           }))
       })
@@ -1182,7 +1182,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         image_input_price: mTokToPerToken(entry.image_input_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
         priority_multiplier: entry.priority_multiplier != null && entry.priority_multiplier !== '' ? Number(entry.priority_multiplier) : null,
-        per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
+        per_request_price: creditsToUSD(entry.per_request_price),
         intervals: formIntervalsToAPI(entry.intervals || [])
       })
     }
@@ -1272,7 +1272,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         priority_multiplier: p.priority_multiplier,
-        per_request_price: p.per_request_price,
+        per_request_price: usdToCreditsValue(p.per_request_price),
         intervals: apiIntervalsToForm(p.intervals || [])
       } as PricingFormEntry))
 
@@ -1462,7 +1462,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         priority_multiplier: p.priority_multiplier,
-        per_request_price: p.per_request_price,
+        per_request_price: usdToCreditsValue(p.per_request_price),
         intervals: apiIntervalsToForm(p.intervals || [])
       } as PricingFormEntry))
     }
@@ -1558,7 +1558,7 @@ async function handleSubmit() {
     }
   }
 
-  // 校验 per_request/image/video 模式必须有价格 (只校验启用的平台)
+  // 校验分层计费模式必须有价格 (只校验启用的平台)
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
       if (entry.models.length === 0) continue
@@ -1566,6 +1566,10 @@ async function handleSubmit() {
           (entry.per_request_price == null || entry.per_request_price === '') &&
           (!entry.intervals || entry.intervals.length === 0)) {
         appStore.showError(t('admin.channels.form.perRequestPriceRequired'))
+        return
+      }
+      if (entry.billing_mode === 'video_token' && (!entry.intervals || entry.intervals.length === 0)) {
+        appStore.showError(t('admin.channels.form.videoTokenPriceRequired'))
         return
       }
     }

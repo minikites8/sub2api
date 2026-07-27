@@ -526,6 +526,36 @@ func TestResolve_WithChannelOverride_VideoSecondTiers(t *testing.T) {
 	require.InDelta(t, 0.5, price, 1e-12)
 }
 
+func TestResolve_WithChannelOverride_VideoTokenTiers(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"doubao-seedance-2-0-260128"},
+		BillingMode: BillingModeVideoToken,
+		Intervals: []PricingInterval{
+			{TierLabel: "default:text", OutputPrice: testPtrFloat64(37e-6)},
+			{TierLabel: "default:video", OutputPrice: testPtrFloat64(22e-6)},
+			{TierLabel: "720P:text", OutputPrice: testPtrFloat64(46e-6)},
+			{TierLabel: "1080p:video", OutputPrice: testPtrFloat64(31e-6)},
+			{TierLabel: "4K:text", OutputPrice: testPtrFloat64(0)},
+		},
+	}})
+	resolved := r.Resolve(context.Background(), PricingInput{Model: "doubao-seedance-2-0-260128", GroupID: groupIDPtr()})
+
+	require.Equal(t, BillingModeVideoToken, resolved.Mode)
+	price, configured := r.GetVideoTokenOutputPrice(resolved, "720p", false)
+	require.True(t, configured)
+	require.InDelta(t, 46e-6, price, 1e-12)
+	price, configured = r.GetVideoTokenOutputPrice(resolved, "1080P", true)
+	require.True(t, configured)
+	require.InDelta(t, 31e-6, price, 1e-12)
+	price, configured = r.GetVideoTokenOutputPrice(resolved, "480P", true)
+	require.True(t, configured)
+	require.InDelta(t, 22e-6, price, 1e-12)
+	price, configured = r.GetVideoTokenOutputPrice(resolved, "2160p", false)
+	require.True(t, configured)
+	require.Zero(t, price)
+}
+
 // ---------------------------------------------------------------------------
 // 4. Source tracking & default mode
 // ---------------------------------------------------------------------------
