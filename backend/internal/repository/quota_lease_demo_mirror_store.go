@@ -51,6 +51,10 @@ func NewQuotaLeaseDemoMirrorStore(client *dbent.Client, sqlDB *sql.DB, accountRe
 	}
 }
 
+func ProvideQuotaLeaseDemoMirrorStore(client *dbent.Client, sqlDB *sql.DB, accountRepo service.AccountRepository) service.QuotaLeaseDemoMirrorStore {
+	return NewQuotaLeaseDemoMirrorStore(client, sqlDB, accountRepo)
+}
+
 func (s *quotaLeaseDemoMirrorStore) ApplySnapshot(ctx context.Context, snapshot service.QuotaLeaseDemoMirrorSnapshot) error {
 	if s == nil || s.client == nil {
 		return nil

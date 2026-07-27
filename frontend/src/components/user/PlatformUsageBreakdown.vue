@@ -96,7 +96,8 @@ const PLATFORM_LABELS: Record<string, string> = {
   gemini: 'Gemini',
   antigravity: 'Antigravity',
   kiro: 'Kiro',
-  grok: 'Grok'
+  grok: 'Grok',
+  baidu_vod: 'Baidu Cloud VOD'
 }
 
 function platformLabel(platform: string): string {

@@ -8,8 +8,10 @@ export const imagePricingPlatforms = new Set([
 export const supportsImagePricingPlatform = (platform: string): boolean =>
   imagePricingPlatforms.has(platform);
 
+export const videoPricingPlatforms = new Set(["grok", "baidu_vod"]);
+
 export const supportsVideoPricingPlatform = (platform: string): boolean =>
-  platform === "grok";
+  videoPricingPlatforms.has(platform);
 
 export const imagePricingI18nKey = (_platform: string, key: string): string =>
   `admin.groups.imagePricing.${key}`;
@@ -49,6 +51,12 @@ const defaultVideoPricePlaceholders: Record<
     video_price_480p: "0.05",
     video_price_720p: "0.07",
     video_price_1080p: "0.25",
+  },
+  baidu_vod: {
+    video_price_480p: "",
+    video_price_720p: "0.9",
+    // HappyHorse 1.0 and 1.1 use model-specific 1080p defaults in the backend.
+    video_price_1080p: "",
   },
 };
 

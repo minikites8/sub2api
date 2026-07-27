@@ -477,6 +477,7 @@ export default {
         usageAntigravity: '用量 (Antigravity)',
         usageGrok: '用量 (Grok)',
         usageKiro: '用量 (Kiro)',
+        usageBaiduVOD: '用量 (百度云 VOD)',
         concurrency: '并发数',
         status: '状态',
         lastActive: '最后活跃时间',
@@ -829,6 +830,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        baidu_vod: '百度云 VOD',
       },
       kiroCache: {
         description: '仅对当前 Kiro 分组模拟 Anthropic Prompt Cache 用量。',

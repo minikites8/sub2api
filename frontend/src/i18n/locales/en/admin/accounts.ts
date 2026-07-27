@@ -120,6 +120,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        baiduVOD: 'Baidu Cloud VOD',
       },
       types: {
         oauth: 'OAuth',
@@ -831,6 +832,17 @@ export default {
         relayBaseUrlHint: 'External Anthropic-compatible upstream URL (e.g. https://your-relay.example.com); requests go to {base_url}/v1/messages',
         relayPriorityHint: 'Keep a low priority (larger number) so it acts as a fallback only — used when all native Kiro accounts fail'
       },
+      baiduVOD: {
+        authMode: 'Authentication Mode',
+        authModeAPIKey: 'API Key',
+        authModeAKSK: 'BCE AK/SK',
+        accessKeyId: 'Access Key ID',
+        secretAccessKey: 'Secret Access Key',
+        accessKeyIdRequired: 'Please enter an Access Key ID',
+        secretAccessKeyRequired: 'Please enter a Secret Access Key',
+        baseUrlHint: 'Defaults to the secure Baidu Cloud VOD endpoint. The host URL and URLs containing a v2/v3 Bailian prefix are accepted.',
+        apiKeyHint: 'Baidu Cloud VOD API Key sent as a Bearer token through the v3 Bailian endpoint.'
+      },
       // OAuth flow
       oauth: {
         title: 'Claude Account Authorization',
@@ -1297,6 +1309,7 @@ export default {
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       grokAccount: 'Grok Account',
+      baiduVODAccount: 'Baidu Cloud VOD Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal

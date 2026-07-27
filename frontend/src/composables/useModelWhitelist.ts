@@ -187,6 +187,17 @@ const xaiModels = [
   'grok-imagine-video-1.5'
 ]
 
+const baiduVODModels = [
+  'happyhorse-1.0-t2v',
+  'happyhorse-1.0-i2v',
+  'happyhorse-1.0-r2v',
+  'happyhorse-1.0-video-edit',
+  'happyhorse-1.1-t2v',
+  'happyhorse-1.1-i2v',
+  'happyhorse-1.1-r2v',
+  'happyhorse-1.1-video-edit'
+]
+
 // Cohere
 const cohereModels = [
   'command-a-03-2025',
@@ -267,6 +278,7 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...baiduVODModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -479,6 +491,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'meta': return metaModels
     case 'xai':
     case 'grok': return xaiModels
+    case 'baidu_vod': return baiduVODModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot': return moonshotModels

@@ -100,6 +100,7 @@ const platformLabel = computed(() => {
   if (props.platform === 'antigravity') return 'Antigravity'
   if (props.platform === 'kiro') return 'Kiro'
   if (props.platform === 'grok') return 'Grok'
+  if (props.platform === 'baidu_vod') return 'Baidu Cloud VOD'
   return 'Gemini'
 })
 
@@ -188,6 +189,9 @@ const platformClass = computed(() => {
   if (props.platform === 'grok') {
     return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
   }
+  if (props.platform === 'baidu_vod') {
+    return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-200'
+  }
   return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
 })
 
@@ -206,6 +210,9 @@ const typeClass = computed(() => {
   }
   if (props.platform === 'grok') {
     return 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'
+  }
+  if (props.platform === 'baidu_vod') {
+    return 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/30 dark:text-cyan-300'
   }
   return 'bg-gray-50 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
 })

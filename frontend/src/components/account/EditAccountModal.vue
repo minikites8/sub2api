@@ -28,6 +28,29 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <div v-if="account.platform === 'baidu_vod'">
+          <label class="input-label">{{ t('admin.accounts.baiduVOD.authMode') }}</label>
+          <div class="mt-2 flex flex-wrap gap-4">
+            <label class="flex cursor-pointer items-center">
+              <input
+                v-model="editBaiduVODAuthMode"
+                type="radio"
+                value="apikey"
+                class="mr-2 text-cyan-600 focus:ring-cyan-500"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.baiduVOD.authModeAPIKey') }}</span>
+            </label>
+            <label class="flex cursor-pointer items-center">
+              <input
+                v-model="editBaiduVODAuthMode"
+                type="radio"
+                value="aksk"
+                class="mr-2 text-cyan-600 focus:ring-cyan-500"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.baiduVOD.authModeAKSK') }}</span>
+            </label>
+          </div>
+        </div>
         <!-- Kiro 直连 AWS 账号不使用 Base URL,隐藏;Kiro 外部中转账号(已配 base_url)显示可编辑 -->
         <div v-if="account.platform !== 'kiro' || isKiroRelay">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
@@ -46,12 +69,14 @@
                       ? 'https://your-relay.example.com'
                     : account.platform === 'grok'
                       ? 'https://api.x.ai/v1'
+                      : account.platform === 'baidu_vod'
+                        ? 'https://vod.bj.baidubce.com'
                       : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
         </div>
-        <div>
+        <div v-if="account.platform !== 'baidu_vod' || editBaiduVODAuthMode === 'apikey'">
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
           <input
             v-model="editApiKey"
@@ -72,11 +97,35 @@
                     ? 'sk-...'
                     : account.platform === 'grok'
                       ? 'xai-...'
+                      : account.platform === 'baidu_vod'
+                        ? 'Baidu VOD API Key'
                       : 'sk-ant-...'
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
+        <template v-if="account.platform === 'baidu_vod' && editBaiduVODAuthMode === 'aksk'">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.baiduVOD.accessKeyId') }}</label>
+            <input
+              v-model="editBaiduVODAccessKeyId"
+              type="text"
+              class="input font-mono"
+              autocomplete="off"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.baiduVOD.secretAccessKey') }}</label>
+            <input
+              v-model="editBaiduVODSecretAccessKey"
+              type="password"
+              class="input font-mono"
+              autocomplete="new-password"
+              :placeholder="t('admin.accounts.leaveEmptyToKeep')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
+          </div>
+        </template>
 
         <div v-if="account.platform === 'kiro'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -2884,6 +2933,7 @@ const baseUrlHint = computed(() => {
   // Kiro 编辑表单仅对中转账号显示 base_url 字段(直连账号隐藏),故用中转提示文案。
   if (props.account.platform === 'kiro') return t('admin.accounts.kiro.relayBaseUrlHint')
   if (props.account.platform === 'grok') return ''
+  if (props.account.platform === 'baidu_vod') return t('admin.accounts.baiduVOD.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -2913,6 +2963,9 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editBaiduVODAuthMode = ref<'apikey' | 'aksk'>('apikey')
+const editBaiduVODAccessKeyId = ref('')
+const editBaiduVODSecretAccessKey = ref('')
 const nodeBindingNodes = ref<QuotaLeaseNode[]>([])
 const nodeBindingSelectedNodeID = ref('')
 const nodeBindingSelectedNodeIDs = ref<string[]>([])
@@ -3399,6 +3452,7 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'kiro') return ''
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
+  if (props.account?.platform === 'baidu_vod') return 'https://vod.bj.baidubce.com'
   return 'https://api.anthropic.com'
 })
 
@@ -3771,8 +3825,20 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? ''
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
+            : newAccount.platform === 'baidu_vod'
+              ? 'https://vod.bj.baidubce.com'
             : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
+
+    if (newAccount.platform === 'baidu_vod') {
+      editBaiduVODAuthMode.value = credentials.auth_mode === 'aksk' ? 'aksk' : 'apikey'
+      editBaiduVODAccessKeyId.value = (credentials.access_key_id as string) || ''
+      editBaiduVODSecretAccessKey.value = ''
+    } else {
+      editBaiduVODAuthMode.value = 'apikey'
+      editBaiduVODAccessKeyId.value = ''
+      editBaiduVODSecretAccessKey.value = ''
+    }
 
     // Load model mappings and detect mode
     if (newAccount.platform === 'kiro') {
@@ -3891,6 +3957,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  if (newAccount.platform !== 'baidu_vod') {
+    editBaiduVODAuthMode.value = 'apikey'
+    editBaiduVODAccessKeyId.value = ''
+    editBaiduVODSecretAccessKey.value = ''
+  }
 }
 
 async function loadTLSProfiles() {
@@ -4468,7 +4539,33 @@ const handleSubmit = async () => {
       // 两者都无才报错。
       const hasExistingApiKey =
         props.account.credentials_status?.has_api_key ?? Boolean(currentCredentials.api_key)
-      if (editApiKey.value.trim()) {
+      if (props.account.platform === 'baidu_vod') {
+        newCredentials.auth_mode = editBaiduVODAuthMode.value
+        if (editBaiduVODAuthMode.value === 'aksk') {
+          const hasExistingSecret =
+            props.account.credentials_status?.has_secret_access_key ?? Boolean(currentCredentials.secret_access_key)
+          if (!editBaiduVODAccessKeyId.value.trim()) {
+            appStore.showError(t('admin.accounts.baiduVOD.accessKeyIdRequired'))
+            return
+          }
+          if (!editBaiduVODSecretAccessKey.value.trim() && !hasExistingSecret) {
+            appStore.showError(t('admin.accounts.baiduVOD.secretAccessKeyRequired'))
+            return
+          }
+          newCredentials.access_key_id = editBaiduVODAccessKeyId.value.trim()
+          if (editBaiduVODSecretAccessKey.value.trim()) {
+            newCredentials.secret_access_key = editBaiduVODSecretAccessKey.value.trim()
+          }
+        } else {
+          delete newCredentials.access_key_id
+          if (editApiKey.value.trim()) {
+            newCredentials.api_key = editApiKey.value.trim()
+          } else if (!hasExistingApiKey) {
+            appStore.showError(t('admin.accounts.apiKeyIsRequired'))
+            return
+          }
+        }
+      } else if (editApiKey.value.trim()) {
         newCredentials.api_key = editApiKey.value.trim()
       } else if (!hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))

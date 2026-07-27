@@ -1425,6 +1425,11 @@ const (
 	defaultGrokImagineVideo15Price720P  = 0.14
 	defaultGrokImagineVideo15Price1080P = 0.25
 
+	defaultHappyHorse10VideoPrice720P  = 0.9
+	defaultHappyHorse10VideoPrice1080P = 1.6
+	defaultHappyHorse11VideoPrice720P  = 0.9
+	defaultHappyHorse11VideoPrice1080P = 1.2
+
 	// Codex alpha/search 网页搜索单次默认价：OpenAI 官方 web search 定价 $10/1000 次。
 	defaultWebSearchPricePerCall = 0.01
 )
@@ -1595,12 +1600,38 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 	if price, ok := getDefaultGrokImagineVideoPrice(model, resolution); ok {
 		return price
 	}
+	if price, ok := getDefaultHappyHorseVideoPrice(model, resolution); ok {
+		return price
+	}
 
 	// The bundled LiteLLM schema does not expose an output video generation price.
 	// Keep the historical model default as the fallback (interpreted as a per-second
 	// rate; today only Grok models reach video billing, so this path is a safety net),
 	// while letting group-level video prices override it independently from image prices.
 	return s.getDefaultImagePrice(model, ImageBillingSize2K)
+}
+
+func getDefaultHappyHorseVideoPrice(model, resolution string) (float64, bool) {
+	model = strings.ToLower(strings.TrimSpace(model))
+	res := NormalizeVideoBillingResolutionOrDefault(resolution)
+	switch {
+	case strings.HasPrefix(model, "happyhorse-1.1"):
+		switch res {
+		case VideoBillingResolution1080P:
+			return defaultHappyHorse11VideoPrice1080P, true
+		default:
+			return defaultHappyHorse11VideoPrice720P, true
+		}
+	case strings.HasPrefix(model, "happyhorse-1.0"):
+		switch res {
+		case VideoBillingResolution1080P:
+			return defaultHappyHorse10VideoPrice1080P, true
+		default:
+			return defaultHappyHorse10VideoPrice720P, true
+		}
+	default:
+		return 0, false
+	}
 }
 
 func getDefaultGrokImagineImagePrice(model string, imageSize string) (float64, bool) {

@@ -35,8 +35,10 @@ import (
 var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 
 const (
-	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages?beta=true"
-	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
+	testClaudeAPIURL           = "https://api.anthropic.com/v1/messages?beta=true"
+	chatgptCodexAPIURL         = "https://chatgpt.com/backend-api/codex/responses"
+	baiduVODConnectivityTaskID = "sub2api-connectivity-check"
+	baiduVODDefaultTestModel   = "happyhorse-1.1-t2v"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -229,6 +231,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testGrokAccountConnection(c, account, modelID)
 	}
 
+	if account.Platform == PlatformBaiduVOD {
+		return s.testBaiduVODAccountConnection(c, account, modelID)
+	}
+
 	if account.Platform == PlatformAntigravity {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
@@ -238,6 +244,80 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func (s *AccountTestService) testBaiduVODAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	if s.httpUpstream == nil {
+		return s.sendErrorAndEnd(c, "HTTP upstream not configured")
+	}
+
+	testModelID := strings.TrimSpace(modelID)
+	if _, ok := BaiduVODModel(testModelID); !ok {
+		testModelID = baiduVODDefaultTestModel
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+	s.sendEvent(c, s.testStartEvent(account, testModelID))
+
+	upstream := &BaiduVODVideoService{http: s.httpUpstream}
+	body, status, err := upstream.do(
+		c.Request.Context(),
+		account,
+		http.MethodGet,
+		BaiduVODTaskPath+baiduVODConnectivityTaskID,
+		nil,
+	)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Baidu VOD connectivity request failed: %s", err.Error()))
+	}
+
+	var result BaiduVODTaskResponse
+	if len(bytes.TrimSpace(body)) > 0 {
+		_ = json.Unmarshal(body, &result)
+	}
+	if baiduVODConnectivityTaskMissing(status, result.Code, result.Message) {
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
+	}
+	if status >= http.StatusBadRequest || strings.TrimSpace(result.Code) != "" {
+		if baiduVODConnectivityAuthFailed(status, result.Code, result.Message) {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Baidu VOD authentication failed (%d): %s", status, firstNonEmpty(result.Message, result.Code)))
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Baidu VOD API returned %d: %s", status, firstNonEmpty(result.Message, result.Code, "upstream request failed")))
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func baiduVODConnectivityTaskMissing(status int, code, message string) bool {
+	if status == http.StatusNotFound {
+		return true
+	}
+	value := strings.ToLower(strings.TrimSpace(code + " " + message))
+	for _, marker := range []string{"tasknotfound", "task_not_found", "task not found", "task does not exist", "task not exist", "task不存在"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func baiduVODConnectivityAuthFailed(status int, code, message string) bool {
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return true
+	}
+	value := strings.ToLower(strings.TrimSpace(code + " " + message))
+	for _, marker := range []string{"unauthorized", "forbidden", "accessdenied", "access denied", "invalidaccesskey", "invalid access key", "signature", "authentication", "invalid token", "invalidtoken"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection

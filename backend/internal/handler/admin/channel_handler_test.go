@@ -29,6 +29,10 @@ func TestChannelToResponse_NilInput(t *testing.T) {
 	require.Nil(t, channelToResponse(nil))
 }
 
+func TestPlatformToLiteLLMProvider_BaiduVODUsesDashScope(t *testing.T) {
+	require.Equal(t, "dashscope", platformToLiteLLMProvider[service.PlatformBaiduVOD])
+}
+
 func TestChannelToResponse_FullChannel(t *testing.T) {
 	now := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
 	ch := &service.Channel{

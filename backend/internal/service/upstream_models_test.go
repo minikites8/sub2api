@@ -321,6 +321,27 @@ func TestFetchUpstreamSupportedModelsParsesGrokAPIKeyResponse(t *testing.T) {
 	require.Equal(t, "Bearer xai-key", upstream.lastReq.Header.Get("Authorization"))
 }
 
+func TestFetchUpstreamSupportedModelsBaiduVODUsesRegistry(t *testing.T) {
+	t.Parallel()
+
+	models, err := (&AccountTestService{}).FetchUpstreamSupportedModels(context.Background(), &Account{
+		Platform: PlatformBaiduVOD,
+		Type:     AccountTypeAPIKey,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"happyhorse-1.0-i2v",
+		"happyhorse-1.0-r2v",
+		"happyhorse-1.0-t2v",
+		"happyhorse-1.0-video-edit",
+		"happyhorse-1.1-i2v",
+		"happyhorse-1.1-r2v",
+		"happyhorse-1.1-t2v",
+		"happyhorse-1.1-video-edit",
+	}, models)
+}
+
 func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {
 	t.Parallel()
 

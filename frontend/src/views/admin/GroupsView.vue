@@ -3931,6 +3931,7 @@ const platformOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "kiro", label: "Kiro" },
   { value: "grok", label: "Grok" },
+  { value: "baidu_vod", label: "Baidu Cloud VOD" },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -3941,6 +3942,7 @@ const platformFilterOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "kiro", label: "Kiro" },
   { value: "grok", label: "Grok" },
+  { value: "baidu_vod", label: "Baidu Cloud VOD" },
 ]);
 
 const editStatusOptions = computed(() => [

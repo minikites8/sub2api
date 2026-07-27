@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/baiduvodvideotask"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
@@ -437,6 +438,132 @@ func init() {
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
 	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{})
+	baiduvodvideotaskFields := schema.BaiduVODVideoTask{}.Fields()
+	_ = baiduvodvideotaskFields
+	// baiduvodvideotaskDescPlatform is the schema descriptor for platform field.
+	baiduvodvideotaskDescPlatform := baiduvodvideotaskFields[0].Descriptor()
+	// baiduvodvideotask.DefaultPlatform holds the default value on creation for the platform field.
+	baiduvodvideotask.DefaultPlatform = baiduvodvideotaskDescPlatform.Default.(string)
+	// baiduvodvideotask.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
+	baiduvodvideotask.PlatformValidator = baiduvodvideotaskDescPlatform.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescProvider is the schema descriptor for provider field.
+	baiduvodvideotaskDescProvider := baiduvodvideotaskFields[1].Descriptor()
+	// baiduvodvideotask.DefaultProvider holds the default value on creation for the provider field.
+	baiduvodvideotask.DefaultProvider = baiduvodvideotaskDescProvider.Default.(string)
+	// baiduvodvideotask.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	baiduvodvideotask.ProviderValidator = baiduvodvideotaskDescProvider.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescTaskID is the schema descriptor for task_id field.
+	baiduvodvideotaskDescTaskID := baiduvodvideotaskFields[2].Descriptor()
+	// baiduvodvideotask.TaskIDValidator is a validator for the "task_id" field. It is called by the builders before save.
+	baiduvodvideotask.TaskIDValidator = baiduvodvideotaskDescTaskID.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescUpstreamTaskID is the schema descriptor for upstream_task_id field.
+	baiduvodvideotaskDescUpstreamTaskID := baiduvodvideotaskFields[3].Descriptor()
+	// baiduvodvideotask.UpstreamTaskIDValidator is a validator for the "upstream_task_id" field. It is called by the builders before save.
+	baiduvodvideotask.UpstreamTaskIDValidator = baiduvodvideotaskDescUpstreamTaskID.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescUpstreamRequestID is the schema descriptor for upstream_request_id field.
+	baiduvodvideotaskDescUpstreamRequestID := baiduvodvideotaskFields[4].Descriptor()
+	// baiduvodvideotask.UpstreamRequestIDValidator is a validator for the "upstream_request_id" field. It is called by the builders before save.
+	baiduvodvideotask.UpstreamRequestIDValidator = baiduvodvideotaskDescUpstreamRequestID.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescModel is the schema descriptor for model field.
+	baiduvodvideotaskDescModel := baiduvodvideotaskFields[9].Descriptor()
+	// baiduvodvideotask.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	baiduvodvideotask.ModelValidator = baiduvodvideotaskDescModel.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescUpstreamModel is the schema descriptor for upstream_model field.
+	baiduvodvideotaskDescUpstreamModel := baiduvodvideotaskFields[10].Descriptor()
+	// baiduvodvideotask.UpstreamModelValidator is a validator for the "upstream_model" field. It is called by the builders before save.
+	baiduvodvideotask.UpstreamModelValidator = baiduvodvideotaskDescUpstreamModel.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescCapability is the schema descriptor for capability field.
+	baiduvodvideotaskDescCapability := baiduvodvideotaskFields[11].Descriptor()
+	// baiduvodvideotask.CapabilityValidator is a validator for the "capability" field. It is called by the builders before save.
+	baiduvodvideotask.CapabilityValidator = baiduvodvideotaskDescCapability.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescStatus is the schema descriptor for status field.
+	baiduvodvideotaskDescStatus := baiduvodvideotaskFields[12].Descriptor()
+	// baiduvodvideotask.DefaultStatus holds the default value on creation for the status field.
+	baiduvodvideotask.DefaultStatus = baiduvodvideotaskDescStatus.Default.(string)
+	// baiduvodvideotask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	baiduvodvideotask.StatusValidator = baiduvodvideotaskDescStatus.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescUpstreamStatus is the schema descriptor for upstream_status field.
+	baiduvodvideotaskDescUpstreamStatus := baiduvodvideotaskFields[13].Descriptor()
+	// baiduvodvideotask.DefaultUpstreamStatus holds the default value on creation for the upstream_status field.
+	baiduvodvideotask.DefaultUpstreamStatus = baiduvodvideotaskDescUpstreamStatus.Default.(string)
+	// baiduvodvideotask.UpstreamStatusValidator is a validator for the "upstream_status" field. It is called by the builders before save.
+	baiduvodvideotask.UpstreamStatusValidator = baiduvodvideotaskDescUpstreamStatus.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescResolution is the schema descriptor for resolution field.
+	baiduvodvideotaskDescResolution := baiduvodvideotaskFields[14].Descriptor()
+	// baiduvodvideotask.ResolutionValidator is a validator for the "resolution" field. It is called by the builders before save.
+	baiduvodvideotask.ResolutionValidator = baiduvodvideotaskDescResolution.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescRatio is the schema descriptor for ratio field.
+	baiduvodvideotaskDescRatio := baiduvodvideotaskFields[15].Descriptor()
+	// baiduvodvideotask.DefaultRatio holds the default value on creation for the ratio field.
+	baiduvodvideotask.DefaultRatio = baiduvodvideotaskDescRatio.Default.(string)
+	// baiduvodvideotask.RatioValidator is a validator for the "ratio" field. It is called by the builders before save.
+	baiduvodvideotask.RatioValidator = baiduvodvideotaskDescRatio.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescOutputDuration is the schema descriptor for output_duration field.
+	baiduvodvideotaskDescOutputDuration := baiduvodvideotaskFields[17].Descriptor()
+	// baiduvodvideotask.DefaultOutputDuration holds the default value on creation for the output_duration field.
+	baiduvodvideotask.DefaultOutputDuration = baiduvodvideotaskDescOutputDuration.Default.(int)
+	// baiduvodvideotaskDescInputVideoDuration is the schema descriptor for input_video_duration field.
+	baiduvodvideotaskDescInputVideoDuration := baiduvodvideotaskFields[18].Descriptor()
+	// baiduvodvideotask.DefaultInputVideoDuration holds the default value on creation for the input_video_duration field.
+	baiduvodvideotask.DefaultInputVideoDuration = baiduvodvideotaskDescInputVideoDuration.Default.(int)
+	// baiduvodvideotaskDescVideoCount is the schema descriptor for video_count field.
+	baiduvodvideotaskDescVideoCount := baiduvodvideotaskFields[19].Descriptor()
+	// baiduvodvideotask.DefaultVideoCount holds the default value on creation for the video_count field.
+	baiduvodvideotask.DefaultVideoCount = baiduvodvideotaskDescVideoCount.Default.(int)
+	// baiduvodvideotaskDescEstimatedCost is the schema descriptor for estimated_cost field.
+	baiduvodvideotaskDescEstimatedCost := baiduvodvideotaskFields[20].Descriptor()
+	// baiduvodvideotask.DefaultEstimatedCost holds the default value on creation for the estimated_cost field.
+	baiduvodvideotask.DefaultEstimatedCost = baiduvodvideotaskDescEstimatedCost.Default.(float64)
+	// baiduvodvideotaskDescHoldAmount is the schema descriptor for hold_amount field.
+	baiduvodvideotaskDescHoldAmount := baiduvodvideotaskFields[21].Descriptor()
+	// baiduvodvideotask.DefaultHoldAmount holds the default value on creation for the hold_amount field.
+	baiduvodvideotask.DefaultHoldAmount = baiduvodvideotaskDescHoldAmount.Default.(float64)
+	// baiduvodvideotaskDescGroupRateMultiplier is the schema descriptor for group_rate_multiplier field.
+	baiduvodvideotaskDescGroupRateMultiplier := baiduvodvideotaskFields[23].Descriptor()
+	// baiduvodvideotask.DefaultGroupRateMultiplier holds the default value on creation for the group_rate_multiplier field.
+	baiduvodvideotask.DefaultGroupRateMultiplier = baiduvodvideotaskDescGroupRateMultiplier.Default.(float64)
+	// baiduvodvideotaskDescVideoRateMultiplier is the schema descriptor for video_rate_multiplier field.
+	baiduvodvideotaskDescVideoRateMultiplier := baiduvodvideotaskFields[24].Descriptor()
+	// baiduvodvideotask.DefaultVideoRateMultiplier holds the default value on creation for the video_rate_multiplier field.
+	baiduvodvideotask.DefaultVideoRateMultiplier = baiduvodvideotaskDescVideoRateMultiplier.Default.(float64)
+	// baiduvodvideotaskDescAccountRateMultiplier is the schema descriptor for account_rate_multiplier field.
+	baiduvodvideotaskDescAccountRateMultiplier := baiduvodvideotaskFields[25].Descriptor()
+	// baiduvodvideotask.DefaultAccountRateMultiplier holds the default value on creation for the account_rate_multiplier field.
+	baiduvodvideotask.DefaultAccountRateMultiplier = baiduvodvideotaskDescAccountRateMultiplier.Default.(float64)
+	// baiduvodvideotaskDescRequestHash is the schema descriptor for request_hash field.
+	baiduvodvideotaskDescRequestHash := baiduvodvideotaskFields[26].Descriptor()
+	// baiduvodvideotask.RequestHashValidator is a validator for the "request_hash" field. It is called by the builders before save.
+	baiduvodvideotask.RequestHashValidator = baiduvodvideotaskDescRequestHash.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescLastErrorCode is the schema descriptor for last_error_code field.
+	baiduvodvideotaskDescLastErrorCode := baiduvodvideotaskFields[29].Descriptor()
+	// baiduvodvideotask.LastErrorCodeValidator is a validator for the "last_error_code" field. It is called by the builders before save.
+	baiduvodvideotask.LastErrorCodeValidator = baiduvodvideotaskDescLastErrorCode.Validators[0].(func(string) error)
+	// baiduvodvideotaskDescRetryCount is the schema descriptor for retry_count field.
+	baiduvodvideotaskDescRetryCount := baiduvodvideotaskFields[31].Descriptor()
+	// baiduvodvideotask.DefaultRetryCount holds the default value on creation for the retry_count field.
+	baiduvodvideotask.DefaultRetryCount = baiduvodvideotaskDescRetryCount.Default.(int)
+	// baiduvodvideotaskDescVersion is the schema descriptor for version field.
+	baiduvodvideotaskDescVersion := baiduvodvideotaskFields[32].Descriptor()
+	// baiduvodvideotask.DefaultVersion holds the default value on creation for the version field.
+	baiduvodvideotask.DefaultVersion = baiduvodvideotaskDescVersion.Default.(int)
+	// baiduvodvideotaskDescNextPollAt is the schema descriptor for next_poll_at field.
+	baiduvodvideotaskDescNextPollAt := baiduvodvideotaskFields[33].Descriptor()
+	// baiduvodvideotask.DefaultNextPollAt holds the default value on creation for the next_poll_at field.
+	baiduvodvideotask.DefaultNextPollAt = baiduvodvideotaskDescNextPollAt.Default.(func() time.Time)
+	// baiduvodvideotaskDescCreatedAt is the schema descriptor for created_at field.
+	baiduvodvideotaskDescCreatedAt := baiduvodvideotaskFields[36].Descriptor()
+	// baiduvodvideotask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	baiduvodvideotask.DefaultCreatedAt = baiduvodvideotaskDescCreatedAt.Default.(func() time.Time)
+	// baiduvodvideotaskDescUpdatedAt is the schema descriptor for updated_at field.
+	baiduvodvideotaskDescUpdatedAt := baiduvodvideotaskFields[37].Descriptor()
+	// baiduvodvideotask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	baiduvodvideotask.DefaultUpdatedAt = baiduvodvideotaskDescUpdatedAt.Default.(func() time.Time)
+	// baiduvodvideotask.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	baiduvodvideotask.UpdateDefaultUpdatedAt = baiduvodvideotaskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// baiduvodvideotaskDescSubmittedAt is the schema descriptor for submitted_at field.
+	baiduvodvideotaskDescSubmittedAt := baiduvodvideotaskFields[38].Descriptor()
+	// baiduvodvideotask.DefaultSubmittedAt holds the default value on creation for the submitted_at field.
+	baiduvodvideotask.DefaultSubmittedAt = baiduvodvideotaskDescSubmittedAt.Default.(func() time.Time)
 	batchimageeventFields := schema.BatchImageEvent{}.Fields()
 	_ = batchimageeventFields
 	// batchimageeventDescJobID is the schema descriptor for job_id field.

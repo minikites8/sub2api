@@ -205,6 +205,31 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesBaiduVODVideoPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformBaiduVOD)
+
+	for _, path := range []string{
+		"/v1/videos", "/videos",
+		"/v1/videos/generations", "/videos/generations",
+		"/v1/videos/edits", "/videos/edits",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"happyhorse-1.0-t2v","prompt":"horse"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Baidu VOD video handler", path)
+		require.NotContains(t, w.Body.String(), "not supported for this platform")
+	}
+
+	for _, path := range []string{"/v1/videos/video-123", "/videos/video-123"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Baidu VOD status handler", path)
+		require.NotContains(t, w.Body.String(), "not supported for this platform")
+	}
+}
+
 func TestGatewayRoutesGrokAllowsCLICompatibilityEntrypoints(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformGrok)
 

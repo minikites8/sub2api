@@ -435,6 +435,93 @@ var (
 			},
 		},
 	}
+	// BaiduVodVideoTasksColumns holds the columns for the "baidu_vod_video_tasks" table.
+	BaiduVodVideoTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "platform", Type: field.TypeString, Size: 32, Default: "baidu_vod"},
+		{Name: "provider", Type: field.TypeString, Size: 32, Default: "happyhorse"},
+		{Name: "task_id", Type: field.TypeString, Size: 128},
+		{Name: "upstream_task_id", Type: field.TypeString, Size: 128},
+		{Name: "upstream_request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "model", Type: field.TypeString, Size: 128},
+		{Name: "upstream_model", Type: field.TypeString, Size: 128},
+		{Name: "capability", Type: field.TypeString, Size: 32},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "queued"},
+		{Name: "upstream_status", Type: field.TypeString, Size: 32, Default: "PENDING"},
+		{Name: "resolution", Type: field.TypeString, Size: 16},
+		{Name: "ratio", Type: field.TypeString, Size: 32, Default: "16:9"},
+		{Name: "requested_duration", Type: field.TypeInt},
+		{Name: "output_duration", Type: field.TypeInt, Default: 0},
+		{Name: "input_video_duration", Type: field.TypeInt, Default: 0},
+		{Name: "video_count", Type: field.TypeInt, Default: 1},
+		{Name: "estimated_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "hold_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "actual_cost", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "group_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "video_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "account_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "request_hash", Type: field.TypeString, Size: 128},
+		{Name: "result_url", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "result_expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_error_code", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "last_error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "retry_count", Type: field.TypeInt, Default: 0},
+		{Name: "version", Type: field.TypeInt, Default: 0},
+		{Name: "next_poll_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "poll_claimed_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_polled_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "submitted_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "settled_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// BaiduVodVideoTasksTable holds the schema information for the "baidu_vod_video_tasks" table.
+	BaiduVodVideoTasksTable = &schema.Table{
+		Name:       "baidu_vod_video_tasks",
+		Columns:    BaiduVodVideoTasksColumns,
+		PrimaryKey: []*schema.Column{BaiduVodVideoTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "baiduvodvideotask_platform_task_id",
+				Unique:  true,
+				Columns: []*schema.Column{BaiduVodVideoTasksColumns[1], BaiduVodVideoTasksColumns[3]},
+			},
+			{
+				Name:    "baiduvodvideotask_platform_upstream_task_id",
+				Unique:  true,
+				Columns: []*schema.Column{BaiduVodVideoTasksColumns[1], BaiduVodVideoTasksColumns[4]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "upstream_task_id <> ''",
+				},
+			},
+			{
+				Name:    "baiduvodvideotask_user_id_api_key_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{BaiduVodVideoTasksColumns[6], BaiduVodVideoTasksColumns[7], BaiduVodVideoTasksColumns[37]},
+			},
+			{
+				Name:    "baiduvodvideotask_status_next_poll_at",
+				Unique:  false,
+				Columns: []*schema.Column{BaiduVodVideoTasksColumns[13], BaiduVodVideoTasksColumns[34]},
+			},
+			{
+				Name:    "baiduvodvideotask_account_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{BaiduVodVideoTasksColumns[8], BaiduVodVideoTasksColumns[13]},
+			},
+			{
+				Name:    "baiduvodvideotask_result_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{BaiduVodVideoTasksColumns[29]},
+			},
+		},
+	}
 	// BatchImageEventsColumns holds the columns for the "batch_image_events" table.
 	BatchImageEventsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2082,6 +2169,7 @@ var (
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
+		BaiduVodVideoTasksTable,
 		BatchImageEventsTable,
 		BatchImageItemsTable,
 		BatchImageJobsTable,
@@ -2149,6 +2237,9 @@ func init() {
 	AuthIdentityChannelsTable.ForeignKeys[0].RefTable = AuthIdentitiesTable
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
+	}
+	BaiduVodVideoTasksTable.Annotation = &entsql.Annotation{
+		Table: "baidu_vod_video_tasks",
 	}
 	BatchImageEventsTable.Annotation = &entsql.Annotation{
 		Table: "batch_image_events",

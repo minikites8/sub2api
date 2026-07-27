@@ -144,6 +144,41 @@ func TestAccountHandlerGetAvailableModels_GrokDefaultsToXAIModelsWithoutMapping(
 	require.Contains(t, ids, "grok-build-0.1")
 }
 
+func TestAccountHandlerGetAvailableModels_BaiduVODUsesHappyHorseRegistry(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       50,
+			Name:     "baidu-vod-apikey",
+			Platform: service.PlatformBaiduVOD,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/50/models", nil)
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var result struct {
+		Data []struct {
+			ID          string `json:"id"`
+			Object      string `json:"object"`
+			Type        string `json:"type"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &result))
+	require.Len(t, result.Data, 8)
+	for _, model := range result.Data {
+		require.Equal(t, "model", model.Object)
+		require.Equal(t, "model", model.Type)
+		require.Equal(t, model.ID, model.DisplayName)
+		require.Contains(t, model.ID, "happyhorse-")
+	}
+}
+
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),

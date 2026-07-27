@@ -36,6 +36,7 @@ type OpenAIGatewayHandler struct {
 	opsService               *service.OpsService
 	concurrencyHelper        *ConcurrencyHelper
 	imageLimiter             *imageConcurrencyLimiter
+	baiduVODVideoService     *service.BaiduVODVideoService
 	maxAccountSwitches       int
 	cfg                      *config.Config
 }
@@ -159,6 +160,12 @@ func NewOpenAIGatewayHandler(
 		imageLimiter:             &imageConcurrencyLimiter{},
 		maxAccountSwitches:       maxAccountSwitches,
 		cfg:                      cfg,
+	}
+}
+
+func (h *OpenAIGatewayHandler) SetBaiduVODVideoService(videoService *service.BaiduVODVideoService) {
+	if h != nil {
+		h.baiduVODVideoService = videoService
 	}
 }
 

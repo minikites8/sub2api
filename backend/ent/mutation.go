@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/baiduvodvideotask"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
@@ -72,6 +73,7 @@ const (
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
 	TypeAuthIdentityChannel           = "AuthIdentityChannel"
+	TypeBaiduVODVideoTask             = "BaiduVODVideoTask"
 	TypeBatchImageEvent               = "BatchImageEvent"
 	TypeBatchImageItem                = "BatchImageItem"
 	TypeBatchImageJob                 = "BatchImageJob"
@@ -9128,6 +9130,3310 @@ func (m *AuthIdentityChannelMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AuthIdentityChannel edge %s", name)
+}
+
+// BaiduVODVideoTaskMutation represents an operation that mutates the BaiduVODVideoTask nodes in the graph.
+type BaiduVODVideoTaskMutation struct {
+	config
+	op                         Op
+	typ                        string
+	id                         *int64
+	platform                   *string
+	provider                   *string
+	task_id                    *string
+	upstream_task_id           *string
+	upstream_request_id        *string
+	user_id                    *int64
+	adduser_id                 *int64
+	api_key_id                 *int64
+	addapi_key_id              *int64
+	account_id                 *int64
+	addaccount_id              *int64
+	group_id                   *int64
+	addgroup_id                *int64
+	model                      *string
+	upstream_model             *string
+	capability                 *string
+	status                     *string
+	upstream_status            *string
+	resolution                 *string
+	ratio                      *string
+	requested_duration         *int
+	addrequested_duration      *int
+	output_duration            *int
+	addoutput_duration         *int
+	input_video_duration       *int
+	addinput_video_duration    *int
+	video_count                *int
+	addvideo_count             *int
+	estimated_cost             *float64
+	addestimated_cost          *float64
+	hold_amount                *float64
+	addhold_amount             *float64
+	actual_cost                *float64
+	addactual_cost             *float64
+	group_rate_multiplier      *float64
+	addgroup_rate_multiplier   *float64
+	video_rate_multiplier      *float64
+	addvideo_rate_multiplier   *float64
+	account_rate_multiplier    *float64
+	addaccount_rate_multiplier *float64
+	request_hash               *string
+	result_url                 *string
+	result_expires_at          *time.Time
+	last_error_code            *string
+	last_error_message         *string
+	retry_count                *int
+	addretry_count             *int
+	version                    *int
+	addversion                 *int
+	next_poll_at               *time.Time
+	poll_claimed_until         *time.Time
+	last_polled_at             *time.Time
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	submitted_at               *time.Time
+	started_at                 *time.Time
+	finished_at                *time.Time
+	settled_at                 *time.Time
+	clearedFields              map[string]struct{}
+	done                       bool
+	oldValue                   func(context.Context) (*BaiduVODVideoTask, error)
+	predicates                 []predicate.BaiduVODVideoTask
+}
+
+var _ ent.Mutation = (*BaiduVODVideoTaskMutation)(nil)
+
+// baiduvodvideotaskOption allows management of the mutation configuration using functional options.
+type baiduvodvideotaskOption func(*BaiduVODVideoTaskMutation)
+
+// newBaiduVODVideoTaskMutation creates new mutation for the BaiduVODVideoTask entity.
+func newBaiduVODVideoTaskMutation(c config, op Op, opts ...baiduvodvideotaskOption) *BaiduVODVideoTaskMutation {
+	m := &BaiduVODVideoTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBaiduVODVideoTask,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBaiduVODVideoTaskID sets the ID field of the mutation.
+func withBaiduVODVideoTaskID(id int64) baiduvodvideotaskOption {
+	return func(m *BaiduVODVideoTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BaiduVODVideoTask
+		)
+		m.oldValue = func(ctx context.Context) (*BaiduVODVideoTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BaiduVODVideoTask.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBaiduVODVideoTask sets the old BaiduVODVideoTask of the mutation.
+func withBaiduVODVideoTask(node *BaiduVODVideoTask) baiduvodvideotaskOption {
+	return func(m *BaiduVODVideoTaskMutation) {
+		m.oldValue = func(context.Context) (*BaiduVODVideoTask, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BaiduVODVideoTaskMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BaiduVODVideoTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BaiduVODVideoTaskMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BaiduVODVideoTaskMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BaiduVODVideoTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetPlatform sets the "platform" field.
+func (m *BaiduVODVideoTaskMutation) SetPlatform(s string) {
+	m.platform = &s
+}
+
+// Platform returns the value of the "platform" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) Platform() (r string, exists bool) {
+	v := m.platform
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlatform returns the old "platform" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldPlatform(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatform is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatform requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatform: %w", err)
+	}
+	return oldValue.Platform, nil
+}
+
+// ResetPlatform resets all changes to the "platform" field.
+func (m *BaiduVODVideoTaskMutation) ResetPlatform() {
+	m.platform = nil
+}
+
+// SetProvider sets the "provider" field.
+func (m *BaiduVODVideoTaskMutation) SetProvider(s string) {
+	m.provider = &s
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) Provider() (r string, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *BaiduVODVideoTaskMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetTaskID sets the "task_id" field.
+func (m *BaiduVODVideoTaskMutation) SetTaskID(s string) {
+	m.task_id = &s
+}
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) TaskID() (r string, exists bool) {
+	v := m.task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskID returns the old "task_id" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldTaskID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+	}
+	return oldValue.TaskID, nil
+}
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *BaiduVODVideoTaskMutation) ResetTaskID() {
+	m.task_id = nil
+}
+
+// SetUpstreamTaskID sets the "upstream_task_id" field.
+func (m *BaiduVODVideoTaskMutation) SetUpstreamTaskID(s string) {
+	m.upstream_task_id = &s
+}
+
+// UpstreamTaskID returns the value of the "upstream_task_id" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) UpstreamTaskID() (r string, exists bool) {
+	v := m.upstream_task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamTaskID returns the old "upstream_task_id" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldUpstreamTaskID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamTaskID: %w", err)
+	}
+	return oldValue.UpstreamTaskID, nil
+}
+
+// ResetUpstreamTaskID resets all changes to the "upstream_task_id" field.
+func (m *BaiduVODVideoTaskMutation) ResetUpstreamTaskID() {
+	m.upstream_task_id = nil
+}
+
+// SetUpstreamRequestID sets the "upstream_request_id" field.
+func (m *BaiduVODVideoTaskMutation) SetUpstreamRequestID(s string) {
+	m.upstream_request_id = &s
+}
+
+// UpstreamRequestID returns the value of the "upstream_request_id" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) UpstreamRequestID() (r string, exists bool) {
+	v := m.upstream_request_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamRequestID returns the old "upstream_request_id" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldUpstreamRequestID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamRequestID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamRequestID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamRequestID: %w", err)
+	}
+	return oldValue.UpstreamRequestID, nil
+}
+
+// ClearUpstreamRequestID clears the value of the "upstream_request_id" field.
+func (m *BaiduVODVideoTaskMutation) ClearUpstreamRequestID() {
+	m.upstream_request_id = nil
+	m.clearedFields[baiduvodvideotask.FieldUpstreamRequestID] = struct{}{}
+}
+
+// UpstreamRequestIDCleared returns if the "upstream_request_id" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) UpstreamRequestIDCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldUpstreamRequestID]
+	return ok
+}
+
+// ResetUpstreamRequestID resets all changes to the "upstream_request_id" field.
+func (m *BaiduVODVideoTaskMutation) ResetUpstreamRequestID() {
+	m.upstream_request_id = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldUpstreamRequestID)
+}
+
+// SetUserID sets the "user_id" field.
+func (m *BaiduVODVideoTaskMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *BaiduVODVideoTaskMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *BaiduVODVideoTaskMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *BaiduVODVideoTaskMutation) SetAPIKeyID(i int64) {
+	m.api_key_id = &i
+	m.addapi_key_id = nil
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// AddAPIKeyID adds i to the "api_key_id" field.
+func (m *BaiduVODVideoTaskMutation) AddAPIKeyID(i int64) {
+	if m.addapi_key_id != nil {
+		*m.addapi_key_id += i
+	} else {
+		m.addapi_key_id = &i
+	}
+}
+
+// AddedAPIKeyID returns the value that was added to the "api_key_id" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedAPIKeyID() (r int64, exists bool) {
+	v := m.addapi_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *BaiduVODVideoTaskMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+	m.addapi_key_id = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *BaiduVODVideoTaskMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *BaiduVODVideoTaskMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *BaiduVODVideoTaskMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *BaiduVODVideoTaskMutation) SetGroupID(i int64) {
+	m.group_id = &i
+	m.addgroup_id = nil
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) GroupID() (r int64, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// AddGroupID adds i to the "group_id" field.
+func (m *BaiduVODVideoTaskMutation) AddGroupID(i int64) {
+	if m.addgroup_id != nil {
+		*m.addgroup_id += i
+	} else {
+		m.addgroup_id = &i
+	}
+}
+
+// AddedGroupID returns the value that was added to the "group_id" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedGroupID() (r int64, exists bool) {
+	v := m.addgroup_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (m *BaiduVODVideoTaskMutation) ClearGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	m.clearedFields[baiduvodvideotask.FieldGroupID] = struct{}{}
+}
+
+// GroupIDCleared returns if the "group_id" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) GroupIDCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldGroupID]
+	return ok
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *BaiduVODVideoTaskMutation) ResetGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldGroupID)
+}
+
+// SetModel sets the "model" field.
+func (m *BaiduVODVideoTaskMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *BaiduVODVideoTaskMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetUpstreamModel sets the "upstream_model" field.
+func (m *BaiduVODVideoTaskMutation) SetUpstreamModel(s string) {
+	m.upstream_model = &s
+}
+
+// UpstreamModel returns the value of the "upstream_model" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) UpstreamModel() (r string, exists bool) {
+	v := m.upstream_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamModel returns the old "upstream_model" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldUpstreamModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamModel: %w", err)
+	}
+	return oldValue.UpstreamModel, nil
+}
+
+// ResetUpstreamModel resets all changes to the "upstream_model" field.
+func (m *BaiduVODVideoTaskMutation) ResetUpstreamModel() {
+	m.upstream_model = nil
+}
+
+// SetCapability sets the "capability" field.
+func (m *BaiduVODVideoTaskMutation) SetCapability(s string) {
+	m.capability = &s
+}
+
+// Capability returns the value of the "capability" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) Capability() (r string, exists bool) {
+	v := m.capability
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCapability returns the old "capability" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldCapability(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCapability is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCapability requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCapability: %w", err)
+	}
+	return oldValue.Capability, nil
+}
+
+// ResetCapability resets all changes to the "capability" field.
+func (m *BaiduVODVideoTaskMutation) ResetCapability() {
+	m.capability = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *BaiduVODVideoTaskMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *BaiduVODVideoTaskMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetUpstreamStatus sets the "upstream_status" field.
+func (m *BaiduVODVideoTaskMutation) SetUpstreamStatus(s string) {
+	m.upstream_status = &s
+}
+
+// UpstreamStatus returns the value of the "upstream_status" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) UpstreamStatus() (r string, exists bool) {
+	v := m.upstream_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamStatus returns the old "upstream_status" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldUpstreamStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamStatus: %w", err)
+	}
+	return oldValue.UpstreamStatus, nil
+}
+
+// ResetUpstreamStatus resets all changes to the "upstream_status" field.
+func (m *BaiduVODVideoTaskMutation) ResetUpstreamStatus() {
+	m.upstream_status = nil
+}
+
+// SetResolution sets the "resolution" field.
+func (m *BaiduVODVideoTaskMutation) SetResolution(s string) {
+	m.resolution = &s
+}
+
+// Resolution returns the value of the "resolution" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) Resolution() (r string, exists bool) {
+	v := m.resolution
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResolution returns the old "resolution" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldResolution(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResolution is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResolution requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResolution: %w", err)
+	}
+	return oldValue.Resolution, nil
+}
+
+// ResetResolution resets all changes to the "resolution" field.
+func (m *BaiduVODVideoTaskMutation) ResetResolution() {
+	m.resolution = nil
+}
+
+// SetRatio sets the "ratio" field.
+func (m *BaiduVODVideoTaskMutation) SetRatio(s string) {
+	m.ratio = &s
+}
+
+// Ratio returns the value of the "ratio" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) Ratio() (r string, exists bool) {
+	v := m.ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRatio returns the old "ratio" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldRatio(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRatio is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRatio requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRatio: %w", err)
+	}
+	return oldValue.Ratio, nil
+}
+
+// ResetRatio resets all changes to the "ratio" field.
+func (m *BaiduVODVideoTaskMutation) ResetRatio() {
+	m.ratio = nil
+}
+
+// SetRequestedDuration sets the "requested_duration" field.
+func (m *BaiduVODVideoTaskMutation) SetRequestedDuration(i int) {
+	m.requested_duration = &i
+	m.addrequested_duration = nil
+}
+
+// RequestedDuration returns the value of the "requested_duration" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) RequestedDuration() (r int, exists bool) {
+	v := m.requested_duration
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestedDuration returns the old "requested_duration" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldRequestedDuration(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestedDuration is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestedDuration requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestedDuration: %w", err)
+	}
+	return oldValue.RequestedDuration, nil
+}
+
+// AddRequestedDuration adds i to the "requested_duration" field.
+func (m *BaiduVODVideoTaskMutation) AddRequestedDuration(i int) {
+	if m.addrequested_duration != nil {
+		*m.addrequested_duration += i
+	} else {
+		m.addrequested_duration = &i
+	}
+}
+
+// AddedRequestedDuration returns the value that was added to the "requested_duration" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedRequestedDuration() (r int, exists bool) {
+	v := m.addrequested_duration
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRequestedDuration resets all changes to the "requested_duration" field.
+func (m *BaiduVODVideoTaskMutation) ResetRequestedDuration() {
+	m.requested_duration = nil
+	m.addrequested_duration = nil
+}
+
+// SetOutputDuration sets the "output_duration" field.
+func (m *BaiduVODVideoTaskMutation) SetOutputDuration(i int) {
+	m.output_duration = &i
+	m.addoutput_duration = nil
+}
+
+// OutputDuration returns the value of the "output_duration" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) OutputDuration() (r int, exists bool) {
+	v := m.output_duration
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputDuration returns the old "output_duration" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldOutputDuration(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputDuration is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputDuration requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputDuration: %w", err)
+	}
+	return oldValue.OutputDuration, nil
+}
+
+// AddOutputDuration adds i to the "output_duration" field.
+func (m *BaiduVODVideoTaskMutation) AddOutputDuration(i int) {
+	if m.addoutput_duration != nil {
+		*m.addoutput_duration += i
+	} else {
+		m.addoutput_duration = &i
+	}
+}
+
+// AddedOutputDuration returns the value that was added to the "output_duration" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedOutputDuration() (r int, exists bool) {
+	v := m.addoutput_duration
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOutputDuration resets all changes to the "output_duration" field.
+func (m *BaiduVODVideoTaskMutation) ResetOutputDuration() {
+	m.output_duration = nil
+	m.addoutput_duration = nil
+}
+
+// SetInputVideoDuration sets the "input_video_duration" field.
+func (m *BaiduVODVideoTaskMutation) SetInputVideoDuration(i int) {
+	m.input_video_duration = &i
+	m.addinput_video_duration = nil
+}
+
+// InputVideoDuration returns the value of the "input_video_duration" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) InputVideoDuration() (r int, exists bool) {
+	v := m.input_video_duration
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputVideoDuration returns the old "input_video_duration" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldInputVideoDuration(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputVideoDuration is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputVideoDuration requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputVideoDuration: %w", err)
+	}
+	return oldValue.InputVideoDuration, nil
+}
+
+// AddInputVideoDuration adds i to the "input_video_duration" field.
+func (m *BaiduVODVideoTaskMutation) AddInputVideoDuration(i int) {
+	if m.addinput_video_duration != nil {
+		*m.addinput_video_duration += i
+	} else {
+		m.addinput_video_duration = &i
+	}
+}
+
+// AddedInputVideoDuration returns the value that was added to the "input_video_duration" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedInputVideoDuration() (r int, exists bool) {
+	v := m.addinput_video_duration
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetInputVideoDuration resets all changes to the "input_video_duration" field.
+func (m *BaiduVODVideoTaskMutation) ResetInputVideoDuration() {
+	m.input_video_duration = nil
+	m.addinput_video_duration = nil
+}
+
+// SetVideoCount sets the "video_count" field.
+func (m *BaiduVODVideoTaskMutation) SetVideoCount(i int) {
+	m.video_count = &i
+	m.addvideo_count = nil
+}
+
+// VideoCount returns the value of the "video_count" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) VideoCount() (r int, exists bool) {
+	v := m.video_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoCount returns the old "video_count" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldVideoCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoCount: %w", err)
+	}
+	return oldValue.VideoCount, nil
+}
+
+// AddVideoCount adds i to the "video_count" field.
+func (m *BaiduVODVideoTaskMutation) AddVideoCount(i int) {
+	if m.addvideo_count != nil {
+		*m.addvideo_count += i
+	} else {
+		m.addvideo_count = &i
+	}
+}
+
+// AddedVideoCount returns the value that was added to the "video_count" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedVideoCount() (r int, exists bool) {
+	v := m.addvideo_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVideoCount resets all changes to the "video_count" field.
+func (m *BaiduVODVideoTaskMutation) ResetVideoCount() {
+	m.video_count = nil
+	m.addvideo_count = nil
+}
+
+// SetEstimatedCost sets the "estimated_cost" field.
+func (m *BaiduVODVideoTaskMutation) SetEstimatedCost(f float64) {
+	m.estimated_cost = &f
+	m.addestimated_cost = nil
+}
+
+// EstimatedCost returns the value of the "estimated_cost" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) EstimatedCost() (r float64, exists bool) {
+	v := m.estimated_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEstimatedCost returns the old "estimated_cost" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldEstimatedCost(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEstimatedCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEstimatedCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEstimatedCost: %w", err)
+	}
+	return oldValue.EstimatedCost, nil
+}
+
+// AddEstimatedCost adds f to the "estimated_cost" field.
+func (m *BaiduVODVideoTaskMutation) AddEstimatedCost(f float64) {
+	if m.addestimated_cost != nil {
+		*m.addestimated_cost += f
+	} else {
+		m.addestimated_cost = &f
+	}
+}
+
+// AddedEstimatedCost returns the value that was added to the "estimated_cost" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedEstimatedCost() (r float64, exists bool) {
+	v := m.addestimated_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetEstimatedCost resets all changes to the "estimated_cost" field.
+func (m *BaiduVODVideoTaskMutation) ResetEstimatedCost() {
+	m.estimated_cost = nil
+	m.addestimated_cost = nil
+}
+
+// SetHoldAmount sets the "hold_amount" field.
+func (m *BaiduVODVideoTaskMutation) SetHoldAmount(f float64) {
+	m.hold_amount = &f
+	m.addhold_amount = nil
+}
+
+// HoldAmount returns the value of the "hold_amount" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) HoldAmount() (r float64, exists bool) {
+	v := m.hold_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHoldAmount returns the old "hold_amount" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldHoldAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHoldAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHoldAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHoldAmount: %w", err)
+	}
+	return oldValue.HoldAmount, nil
+}
+
+// AddHoldAmount adds f to the "hold_amount" field.
+func (m *BaiduVODVideoTaskMutation) AddHoldAmount(f float64) {
+	if m.addhold_amount != nil {
+		*m.addhold_amount += f
+	} else {
+		m.addhold_amount = &f
+	}
+}
+
+// AddedHoldAmount returns the value that was added to the "hold_amount" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedHoldAmount() (r float64, exists bool) {
+	v := m.addhold_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetHoldAmount resets all changes to the "hold_amount" field.
+func (m *BaiduVODVideoTaskMutation) ResetHoldAmount() {
+	m.hold_amount = nil
+	m.addhold_amount = nil
+}
+
+// SetActualCost sets the "actual_cost" field.
+func (m *BaiduVODVideoTaskMutation) SetActualCost(f float64) {
+	m.actual_cost = &f
+	m.addactual_cost = nil
+}
+
+// ActualCost returns the value of the "actual_cost" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) ActualCost() (r float64, exists bool) {
+	v := m.actual_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActualCost returns the old "actual_cost" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldActualCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActualCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActualCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActualCost: %w", err)
+	}
+	return oldValue.ActualCost, nil
+}
+
+// AddActualCost adds f to the "actual_cost" field.
+func (m *BaiduVODVideoTaskMutation) AddActualCost(f float64) {
+	if m.addactual_cost != nil {
+		*m.addactual_cost += f
+	} else {
+		m.addactual_cost = &f
+	}
+}
+
+// AddedActualCost returns the value that was added to the "actual_cost" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedActualCost() (r float64, exists bool) {
+	v := m.addactual_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearActualCost clears the value of the "actual_cost" field.
+func (m *BaiduVODVideoTaskMutation) ClearActualCost() {
+	m.actual_cost = nil
+	m.addactual_cost = nil
+	m.clearedFields[baiduvodvideotask.FieldActualCost] = struct{}{}
+}
+
+// ActualCostCleared returns if the "actual_cost" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) ActualCostCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldActualCost]
+	return ok
+}
+
+// ResetActualCost resets all changes to the "actual_cost" field.
+func (m *BaiduVODVideoTaskMutation) ResetActualCost() {
+	m.actual_cost = nil
+	m.addactual_cost = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldActualCost)
+}
+
+// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) SetGroupRateMultiplier(f float64) {
+	m.group_rate_multiplier = &f
+	m.addgroup_rate_multiplier = nil
+}
+
+// GroupRateMultiplier returns the value of the "group_rate_multiplier" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) GroupRateMultiplier() (r float64, exists bool) {
+	v := m.group_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupRateMultiplier returns the old "group_rate_multiplier" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldGroupRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupRateMultiplier: %w", err)
+	}
+	return oldValue.GroupRateMultiplier, nil
+}
+
+// AddGroupRateMultiplier adds f to the "group_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) AddGroupRateMultiplier(f float64) {
+	if m.addgroup_rate_multiplier != nil {
+		*m.addgroup_rate_multiplier += f
+	} else {
+		m.addgroup_rate_multiplier = &f
+	}
+}
+
+// AddedGroupRateMultiplier returns the value that was added to the "group_rate_multiplier" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedGroupRateMultiplier() (r float64, exists bool) {
+	v := m.addgroup_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetGroupRateMultiplier resets all changes to the "group_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) ResetGroupRateMultiplier() {
+	m.group_rate_multiplier = nil
+	m.addgroup_rate_multiplier = nil
+}
+
+// SetVideoRateMultiplier sets the "video_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) SetVideoRateMultiplier(f float64) {
+	m.video_rate_multiplier = &f
+	m.addvideo_rate_multiplier = nil
+}
+
+// VideoRateMultiplier returns the value of the "video_rate_multiplier" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) VideoRateMultiplier() (r float64, exists bool) {
+	v := m.video_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoRateMultiplier returns the old "video_rate_multiplier" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldVideoRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoRateMultiplier: %w", err)
+	}
+	return oldValue.VideoRateMultiplier, nil
+}
+
+// AddVideoRateMultiplier adds f to the "video_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) AddVideoRateMultiplier(f float64) {
+	if m.addvideo_rate_multiplier != nil {
+		*m.addvideo_rate_multiplier += f
+	} else {
+		m.addvideo_rate_multiplier = &f
+	}
+}
+
+// AddedVideoRateMultiplier returns the value that was added to the "video_rate_multiplier" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedVideoRateMultiplier() (r float64, exists bool) {
+	v := m.addvideo_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVideoRateMultiplier resets all changes to the "video_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) ResetVideoRateMultiplier() {
+	m.video_rate_multiplier = nil
+	m.addvideo_rate_multiplier = nil
+}
+
+// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) SetAccountRateMultiplier(f float64) {
+	m.account_rate_multiplier = &f
+	m.addaccount_rate_multiplier = nil
+}
+
+// AccountRateMultiplier returns the value of the "account_rate_multiplier" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) AccountRateMultiplier() (r float64, exists bool) {
+	v := m.account_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountRateMultiplier returns the old "account_rate_multiplier" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldAccountRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountRateMultiplier: %w", err)
+	}
+	return oldValue.AccountRateMultiplier, nil
+}
+
+// AddAccountRateMultiplier adds f to the "account_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) AddAccountRateMultiplier(f float64) {
+	if m.addaccount_rate_multiplier != nil {
+		*m.addaccount_rate_multiplier += f
+	} else {
+		m.addaccount_rate_multiplier = &f
+	}
+}
+
+// AddedAccountRateMultiplier returns the value that was added to the "account_rate_multiplier" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedAccountRateMultiplier() (r float64, exists bool) {
+	v := m.addaccount_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountRateMultiplier resets all changes to the "account_rate_multiplier" field.
+func (m *BaiduVODVideoTaskMutation) ResetAccountRateMultiplier() {
+	m.account_rate_multiplier = nil
+	m.addaccount_rate_multiplier = nil
+}
+
+// SetRequestHash sets the "request_hash" field.
+func (m *BaiduVODVideoTaskMutation) SetRequestHash(s string) {
+	m.request_hash = &s
+}
+
+// RequestHash returns the value of the "request_hash" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) RequestHash() (r string, exists bool) {
+	v := m.request_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestHash returns the old "request_hash" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldRequestHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestHash: %w", err)
+	}
+	return oldValue.RequestHash, nil
+}
+
+// ResetRequestHash resets all changes to the "request_hash" field.
+func (m *BaiduVODVideoTaskMutation) ResetRequestHash() {
+	m.request_hash = nil
+}
+
+// SetResultURL sets the "result_url" field.
+func (m *BaiduVODVideoTaskMutation) SetResultURL(s string) {
+	m.result_url = &s
+}
+
+// ResultURL returns the value of the "result_url" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) ResultURL() (r string, exists bool) {
+	v := m.result_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultURL returns the old "result_url" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldResultURL(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultURL: %w", err)
+	}
+	return oldValue.ResultURL, nil
+}
+
+// ClearResultURL clears the value of the "result_url" field.
+func (m *BaiduVODVideoTaskMutation) ClearResultURL() {
+	m.result_url = nil
+	m.clearedFields[baiduvodvideotask.FieldResultURL] = struct{}{}
+}
+
+// ResultURLCleared returns if the "result_url" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) ResultURLCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldResultURL]
+	return ok
+}
+
+// ResetResultURL resets all changes to the "result_url" field.
+func (m *BaiduVODVideoTaskMutation) ResetResultURL() {
+	m.result_url = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldResultURL)
+}
+
+// SetResultExpiresAt sets the "result_expires_at" field.
+func (m *BaiduVODVideoTaskMutation) SetResultExpiresAt(t time.Time) {
+	m.result_expires_at = &t
+}
+
+// ResultExpiresAt returns the value of the "result_expires_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) ResultExpiresAt() (r time.Time, exists bool) {
+	v := m.result_expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultExpiresAt returns the old "result_expires_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldResultExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultExpiresAt: %w", err)
+	}
+	return oldValue.ResultExpiresAt, nil
+}
+
+// ClearResultExpiresAt clears the value of the "result_expires_at" field.
+func (m *BaiduVODVideoTaskMutation) ClearResultExpiresAt() {
+	m.result_expires_at = nil
+	m.clearedFields[baiduvodvideotask.FieldResultExpiresAt] = struct{}{}
+}
+
+// ResultExpiresAtCleared returns if the "result_expires_at" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) ResultExpiresAtCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldResultExpiresAt]
+	return ok
+}
+
+// ResetResultExpiresAt resets all changes to the "result_expires_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetResultExpiresAt() {
+	m.result_expires_at = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldResultExpiresAt)
+}
+
+// SetLastErrorCode sets the "last_error_code" field.
+func (m *BaiduVODVideoTaskMutation) SetLastErrorCode(s string) {
+	m.last_error_code = &s
+}
+
+// LastErrorCode returns the value of the "last_error_code" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) LastErrorCode() (r string, exists bool) {
+	v := m.last_error_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastErrorCode returns the old "last_error_code" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldLastErrorCode(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastErrorCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastErrorCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastErrorCode: %w", err)
+	}
+	return oldValue.LastErrorCode, nil
+}
+
+// ClearLastErrorCode clears the value of the "last_error_code" field.
+func (m *BaiduVODVideoTaskMutation) ClearLastErrorCode() {
+	m.last_error_code = nil
+	m.clearedFields[baiduvodvideotask.FieldLastErrorCode] = struct{}{}
+}
+
+// LastErrorCodeCleared returns if the "last_error_code" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) LastErrorCodeCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldLastErrorCode]
+	return ok
+}
+
+// ResetLastErrorCode resets all changes to the "last_error_code" field.
+func (m *BaiduVODVideoTaskMutation) ResetLastErrorCode() {
+	m.last_error_code = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldLastErrorCode)
+}
+
+// SetLastErrorMessage sets the "last_error_message" field.
+func (m *BaiduVODVideoTaskMutation) SetLastErrorMessage(s string) {
+	m.last_error_message = &s
+}
+
+// LastErrorMessage returns the value of the "last_error_message" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) LastErrorMessage() (r string, exists bool) {
+	v := m.last_error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastErrorMessage returns the old "last_error_message" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldLastErrorMessage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastErrorMessage: %w", err)
+	}
+	return oldValue.LastErrorMessage, nil
+}
+
+// ClearLastErrorMessage clears the value of the "last_error_message" field.
+func (m *BaiduVODVideoTaskMutation) ClearLastErrorMessage() {
+	m.last_error_message = nil
+	m.clearedFields[baiduvodvideotask.FieldLastErrorMessage] = struct{}{}
+}
+
+// LastErrorMessageCleared returns if the "last_error_message" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) LastErrorMessageCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldLastErrorMessage]
+	return ok
+}
+
+// ResetLastErrorMessage resets all changes to the "last_error_message" field.
+func (m *BaiduVODVideoTaskMutation) ResetLastErrorMessage() {
+	m.last_error_message = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldLastErrorMessage)
+}
+
+// SetRetryCount sets the "retry_count" field.
+func (m *BaiduVODVideoTaskMutation) SetRetryCount(i int) {
+	m.retry_count = &i
+	m.addretry_count = nil
+}
+
+// RetryCount returns the value of the "retry_count" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) RetryCount() (r int, exists bool) {
+	v := m.retry_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRetryCount returns the old "retry_count" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldRetryCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRetryCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRetryCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRetryCount: %w", err)
+	}
+	return oldValue.RetryCount, nil
+}
+
+// AddRetryCount adds i to the "retry_count" field.
+func (m *BaiduVODVideoTaskMutation) AddRetryCount(i int) {
+	if m.addretry_count != nil {
+		*m.addretry_count += i
+	} else {
+		m.addretry_count = &i
+	}
+}
+
+// AddedRetryCount returns the value that was added to the "retry_count" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedRetryCount() (r int, exists bool) {
+	v := m.addretry_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRetryCount resets all changes to the "retry_count" field.
+func (m *BaiduVODVideoTaskMutation) ResetRetryCount() {
+	m.retry_count = nil
+	m.addretry_count = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *BaiduVODVideoTaskMutation) SetVersion(i int) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) Version() (r int, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldVersion(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *BaiduVODVideoTaskMutation) AddVersion(i int) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedVersion() (r int, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *BaiduVODVideoTaskMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetNextPollAt sets the "next_poll_at" field.
+func (m *BaiduVODVideoTaskMutation) SetNextPollAt(t time.Time) {
+	m.next_poll_at = &t
+}
+
+// NextPollAt returns the value of the "next_poll_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) NextPollAt() (r time.Time, exists bool) {
+	v := m.next_poll_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextPollAt returns the old "next_poll_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldNextPollAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextPollAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextPollAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextPollAt: %w", err)
+	}
+	return oldValue.NextPollAt, nil
+}
+
+// ResetNextPollAt resets all changes to the "next_poll_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetNextPollAt() {
+	m.next_poll_at = nil
+}
+
+// SetPollClaimedUntil sets the "poll_claimed_until" field.
+func (m *BaiduVODVideoTaskMutation) SetPollClaimedUntil(t time.Time) {
+	m.poll_claimed_until = &t
+}
+
+// PollClaimedUntil returns the value of the "poll_claimed_until" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) PollClaimedUntil() (r time.Time, exists bool) {
+	v := m.poll_claimed_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPollClaimedUntil returns the old "poll_claimed_until" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldPollClaimedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPollClaimedUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPollClaimedUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPollClaimedUntil: %w", err)
+	}
+	return oldValue.PollClaimedUntil, nil
+}
+
+// ClearPollClaimedUntil clears the value of the "poll_claimed_until" field.
+func (m *BaiduVODVideoTaskMutation) ClearPollClaimedUntil() {
+	m.poll_claimed_until = nil
+	m.clearedFields[baiduvodvideotask.FieldPollClaimedUntil] = struct{}{}
+}
+
+// PollClaimedUntilCleared returns if the "poll_claimed_until" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) PollClaimedUntilCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldPollClaimedUntil]
+	return ok
+}
+
+// ResetPollClaimedUntil resets all changes to the "poll_claimed_until" field.
+func (m *BaiduVODVideoTaskMutation) ResetPollClaimedUntil() {
+	m.poll_claimed_until = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldPollClaimedUntil)
+}
+
+// SetLastPolledAt sets the "last_polled_at" field.
+func (m *BaiduVODVideoTaskMutation) SetLastPolledAt(t time.Time) {
+	m.last_polled_at = &t
+}
+
+// LastPolledAt returns the value of the "last_polled_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) LastPolledAt() (r time.Time, exists bool) {
+	v := m.last_polled_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastPolledAt returns the old "last_polled_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldLastPolledAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastPolledAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastPolledAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastPolledAt: %w", err)
+	}
+	return oldValue.LastPolledAt, nil
+}
+
+// ClearLastPolledAt clears the value of the "last_polled_at" field.
+func (m *BaiduVODVideoTaskMutation) ClearLastPolledAt() {
+	m.last_polled_at = nil
+	m.clearedFields[baiduvodvideotask.FieldLastPolledAt] = struct{}{}
+}
+
+// LastPolledAtCleared returns if the "last_polled_at" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) LastPolledAtCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldLastPolledAt]
+	return ok
+}
+
+// ResetLastPolledAt resets all changes to the "last_polled_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetLastPolledAt() {
+	m.last_polled_at = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldLastPolledAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BaiduVODVideoTaskMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BaiduVODVideoTaskMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetSubmittedAt sets the "submitted_at" field.
+func (m *BaiduVODVideoTaskMutation) SetSubmittedAt(t time.Time) {
+	m.submitted_at = &t
+}
+
+// SubmittedAt returns the value of the "submitted_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) SubmittedAt() (r time.Time, exists bool) {
+	v := m.submitted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubmittedAt returns the old "submitted_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldSubmittedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubmittedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubmittedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubmittedAt: %w", err)
+	}
+	return oldValue.SubmittedAt, nil
+}
+
+// ResetSubmittedAt resets all changes to the "submitted_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetSubmittedAt() {
+	m.submitted_at = nil
+}
+
+// SetStartedAt sets the "started_at" field.
+func (m *BaiduVODVideoTaskMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartedAt returns the old "started_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldStartedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+	}
+	return oldValue.StartedAt, nil
+}
+
+// ClearStartedAt clears the value of the "started_at" field.
+func (m *BaiduVODVideoTaskMutation) ClearStartedAt() {
+	m.started_at = nil
+	m.clearedFields[baiduvodvideotask.FieldStartedAt] = struct{}{}
+}
+
+// StartedAtCleared returns if the "started_at" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) StartedAtCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldStartedAt]
+	return ok
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetStartedAt() {
+	m.started_at = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldStartedAt)
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *BaiduVODVideoTaskMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+}
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinishedAt returns the old "finished_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+	}
+	return oldValue.FinishedAt, nil
+}
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *BaiduVODVideoTaskMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[baiduvodvideotask.FieldFinishedAt] = struct{}{}
+}
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldFinishedAt]
+	return ok
+}
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldFinishedAt)
+}
+
+// SetSettledAt sets the "settled_at" field.
+func (m *BaiduVODVideoTaskMutation) SetSettledAt(t time.Time) {
+	m.settled_at = &t
+}
+
+// SettledAt returns the value of the "settled_at" field in the mutation.
+func (m *BaiduVODVideoTaskMutation) SettledAt() (r time.Time, exists bool) {
+	v := m.settled_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSettledAt returns the old "settled_at" field's value of the BaiduVODVideoTask entity.
+// If the BaiduVODVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BaiduVODVideoTaskMutation) OldSettledAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSettledAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSettledAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSettledAt: %w", err)
+	}
+	return oldValue.SettledAt, nil
+}
+
+// ClearSettledAt clears the value of the "settled_at" field.
+func (m *BaiduVODVideoTaskMutation) ClearSettledAt() {
+	m.settled_at = nil
+	m.clearedFields[baiduvodvideotask.FieldSettledAt] = struct{}{}
+}
+
+// SettledAtCleared returns if the "settled_at" field was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) SettledAtCleared() bool {
+	_, ok := m.clearedFields[baiduvodvideotask.FieldSettledAt]
+	return ok
+}
+
+// ResetSettledAt resets all changes to the "settled_at" field.
+func (m *BaiduVODVideoTaskMutation) ResetSettledAt() {
+	m.settled_at = nil
+	delete(m.clearedFields, baiduvodvideotask.FieldSettledAt)
+}
+
+// Where appends a list predicates to the BaiduVODVideoTaskMutation builder.
+func (m *BaiduVODVideoTaskMutation) Where(ps ...predicate.BaiduVODVideoTask) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BaiduVODVideoTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BaiduVODVideoTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BaiduVODVideoTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BaiduVODVideoTaskMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BaiduVODVideoTaskMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BaiduVODVideoTask).
+func (m *BaiduVODVideoTaskMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BaiduVODVideoTaskMutation) Fields() []string {
+	fields := make([]string, 0, 42)
+	if m.platform != nil {
+		fields = append(fields, baiduvodvideotask.FieldPlatform)
+	}
+	if m.provider != nil {
+		fields = append(fields, baiduvodvideotask.FieldProvider)
+	}
+	if m.task_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldTaskID)
+	}
+	if m.upstream_task_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldUpstreamTaskID)
+	}
+	if m.upstream_request_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldUpstreamRequestID)
+	}
+	if m.user_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldUserID)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldAPIKeyID)
+	}
+	if m.account_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldAccountID)
+	}
+	if m.group_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldGroupID)
+	}
+	if m.model != nil {
+		fields = append(fields, baiduvodvideotask.FieldModel)
+	}
+	if m.upstream_model != nil {
+		fields = append(fields, baiduvodvideotask.FieldUpstreamModel)
+	}
+	if m.capability != nil {
+		fields = append(fields, baiduvodvideotask.FieldCapability)
+	}
+	if m.status != nil {
+		fields = append(fields, baiduvodvideotask.FieldStatus)
+	}
+	if m.upstream_status != nil {
+		fields = append(fields, baiduvodvideotask.FieldUpstreamStatus)
+	}
+	if m.resolution != nil {
+		fields = append(fields, baiduvodvideotask.FieldResolution)
+	}
+	if m.ratio != nil {
+		fields = append(fields, baiduvodvideotask.FieldRatio)
+	}
+	if m.requested_duration != nil {
+		fields = append(fields, baiduvodvideotask.FieldRequestedDuration)
+	}
+	if m.output_duration != nil {
+		fields = append(fields, baiduvodvideotask.FieldOutputDuration)
+	}
+	if m.input_video_duration != nil {
+		fields = append(fields, baiduvodvideotask.FieldInputVideoDuration)
+	}
+	if m.video_count != nil {
+		fields = append(fields, baiduvodvideotask.FieldVideoCount)
+	}
+	if m.estimated_cost != nil {
+		fields = append(fields, baiduvodvideotask.FieldEstimatedCost)
+	}
+	if m.hold_amount != nil {
+		fields = append(fields, baiduvodvideotask.FieldHoldAmount)
+	}
+	if m.actual_cost != nil {
+		fields = append(fields, baiduvodvideotask.FieldActualCost)
+	}
+	if m.group_rate_multiplier != nil {
+		fields = append(fields, baiduvodvideotask.FieldGroupRateMultiplier)
+	}
+	if m.video_rate_multiplier != nil {
+		fields = append(fields, baiduvodvideotask.FieldVideoRateMultiplier)
+	}
+	if m.account_rate_multiplier != nil {
+		fields = append(fields, baiduvodvideotask.FieldAccountRateMultiplier)
+	}
+	if m.request_hash != nil {
+		fields = append(fields, baiduvodvideotask.FieldRequestHash)
+	}
+	if m.result_url != nil {
+		fields = append(fields, baiduvodvideotask.FieldResultURL)
+	}
+	if m.result_expires_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldResultExpiresAt)
+	}
+	if m.last_error_code != nil {
+		fields = append(fields, baiduvodvideotask.FieldLastErrorCode)
+	}
+	if m.last_error_message != nil {
+		fields = append(fields, baiduvodvideotask.FieldLastErrorMessage)
+	}
+	if m.retry_count != nil {
+		fields = append(fields, baiduvodvideotask.FieldRetryCount)
+	}
+	if m.version != nil {
+		fields = append(fields, baiduvodvideotask.FieldVersion)
+	}
+	if m.next_poll_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldNextPollAt)
+	}
+	if m.poll_claimed_until != nil {
+		fields = append(fields, baiduvodvideotask.FieldPollClaimedUntil)
+	}
+	if m.last_polled_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldLastPolledAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldUpdatedAt)
+	}
+	if m.submitted_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldSubmittedAt)
+	}
+	if m.started_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldStartedAt)
+	}
+	if m.finished_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldFinishedAt)
+	}
+	if m.settled_at != nil {
+		fields = append(fields, baiduvodvideotask.FieldSettledAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BaiduVODVideoTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case baiduvodvideotask.FieldPlatform:
+		return m.Platform()
+	case baiduvodvideotask.FieldProvider:
+		return m.Provider()
+	case baiduvodvideotask.FieldTaskID:
+		return m.TaskID()
+	case baiduvodvideotask.FieldUpstreamTaskID:
+		return m.UpstreamTaskID()
+	case baiduvodvideotask.FieldUpstreamRequestID:
+		return m.UpstreamRequestID()
+	case baiduvodvideotask.FieldUserID:
+		return m.UserID()
+	case baiduvodvideotask.FieldAPIKeyID:
+		return m.APIKeyID()
+	case baiduvodvideotask.FieldAccountID:
+		return m.AccountID()
+	case baiduvodvideotask.FieldGroupID:
+		return m.GroupID()
+	case baiduvodvideotask.FieldModel:
+		return m.Model()
+	case baiduvodvideotask.FieldUpstreamModel:
+		return m.UpstreamModel()
+	case baiduvodvideotask.FieldCapability:
+		return m.Capability()
+	case baiduvodvideotask.FieldStatus:
+		return m.Status()
+	case baiduvodvideotask.FieldUpstreamStatus:
+		return m.UpstreamStatus()
+	case baiduvodvideotask.FieldResolution:
+		return m.Resolution()
+	case baiduvodvideotask.FieldRatio:
+		return m.Ratio()
+	case baiduvodvideotask.FieldRequestedDuration:
+		return m.RequestedDuration()
+	case baiduvodvideotask.FieldOutputDuration:
+		return m.OutputDuration()
+	case baiduvodvideotask.FieldInputVideoDuration:
+		return m.InputVideoDuration()
+	case baiduvodvideotask.FieldVideoCount:
+		return m.VideoCount()
+	case baiduvodvideotask.FieldEstimatedCost:
+		return m.EstimatedCost()
+	case baiduvodvideotask.FieldHoldAmount:
+		return m.HoldAmount()
+	case baiduvodvideotask.FieldActualCost:
+		return m.ActualCost()
+	case baiduvodvideotask.FieldGroupRateMultiplier:
+		return m.GroupRateMultiplier()
+	case baiduvodvideotask.FieldVideoRateMultiplier:
+		return m.VideoRateMultiplier()
+	case baiduvodvideotask.FieldAccountRateMultiplier:
+		return m.AccountRateMultiplier()
+	case baiduvodvideotask.FieldRequestHash:
+		return m.RequestHash()
+	case baiduvodvideotask.FieldResultURL:
+		return m.ResultURL()
+	case baiduvodvideotask.FieldResultExpiresAt:
+		return m.ResultExpiresAt()
+	case baiduvodvideotask.FieldLastErrorCode:
+		return m.LastErrorCode()
+	case baiduvodvideotask.FieldLastErrorMessage:
+		return m.LastErrorMessage()
+	case baiduvodvideotask.FieldRetryCount:
+		return m.RetryCount()
+	case baiduvodvideotask.FieldVersion:
+		return m.Version()
+	case baiduvodvideotask.FieldNextPollAt:
+		return m.NextPollAt()
+	case baiduvodvideotask.FieldPollClaimedUntil:
+		return m.PollClaimedUntil()
+	case baiduvodvideotask.FieldLastPolledAt:
+		return m.LastPolledAt()
+	case baiduvodvideotask.FieldCreatedAt:
+		return m.CreatedAt()
+	case baiduvodvideotask.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case baiduvodvideotask.FieldSubmittedAt:
+		return m.SubmittedAt()
+	case baiduvodvideotask.FieldStartedAt:
+		return m.StartedAt()
+	case baiduvodvideotask.FieldFinishedAt:
+		return m.FinishedAt()
+	case baiduvodvideotask.FieldSettledAt:
+		return m.SettledAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BaiduVODVideoTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case baiduvodvideotask.FieldPlatform:
+		return m.OldPlatform(ctx)
+	case baiduvodvideotask.FieldProvider:
+		return m.OldProvider(ctx)
+	case baiduvodvideotask.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case baiduvodvideotask.FieldUpstreamTaskID:
+		return m.OldUpstreamTaskID(ctx)
+	case baiduvodvideotask.FieldUpstreamRequestID:
+		return m.OldUpstreamRequestID(ctx)
+	case baiduvodvideotask.FieldUserID:
+		return m.OldUserID(ctx)
+	case baiduvodvideotask.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case baiduvodvideotask.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case baiduvodvideotask.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case baiduvodvideotask.FieldModel:
+		return m.OldModel(ctx)
+	case baiduvodvideotask.FieldUpstreamModel:
+		return m.OldUpstreamModel(ctx)
+	case baiduvodvideotask.FieldCapability:
+		return m.OldCapability(ctx)
+	case baiduvodvideotask.FieldStatus:
+		return m.OldStatus(ctx)
+	case baiduvodvideotask.FieldUpstreamStatus:
+		return m.OldUpstreamStatus(ctx)
+	case baiduvodvideotask.FieldResolution:
+		return m.OldResolution(ctx)
+	case baiduvodvideotask.FieldRatio:
+		return m.OldRatio(ctx)
+	case baiduvodvideotask.FieldRequestedDuration:
+		return m.OldRequestedDuration(ctx)
+	case baiduvodvideotask.FieldOutputDuration:
+		return m.OldOutputDuration(ctx)
+	case baiduvodvideotask.FieldInputVideoDuration:
+		return m.OldInputVideoDuration(ctx)
+	case baiduvodvideotask.FieldVideoCount:
+		return m.OldVideoCount(ctx)
+	case baiduvodvideotask.FieldEstimatedCost:
+		return m.OldEstimatedCost(ctx)
+	case baiduvodvideotask.FieldHoldAmount:
+		return m.OldHoldAmount(ctx)
+	case baiduvodvideotask.FieldActualCost:
+		return m.OldActualCost(ctx)
+	case baiduvodvideotask.FieldGroupRateMultiplier:
+		return m.OldGroupRateMultiplier(ctx)
+	case baiduvodvideotask.FieldVideoRateMultiplier:
+		return m.OldVideoRateMultiplier(ctx)
+	case baiduvodvideotask.FieldAccountRateMultiplier:
+		return m.OldAccountRateMultiplier(ctx)
+	case baiduvodvideotask.FieldRequestHash:
+		return m.OldRequestHash(ctx)
+	case baiduvodvideotask.FieldResultURL:
+		return m.OldResultURL(ctx)
+	case baiduvodvideotask.FieldResultExpiresAt:
+		return m.OldResultExpiresAt(ctx)
+	case baiduvodvideotask.FieldLastErrorCode:
+		return m.OldLastErrorCode(ctx)
+	case baiduvodvideotask.FieldLastErrorMessage:
+		return m.OldLastErrorMessage(ctx)
+	case baiduvodvideotask.FieldRetryCount:
+		return m.OldRetryCount(ctx)
+	case baiduvodvideotask.FieldVersion:
+		return m.OldVersion(ctx)
+	case baiduvodvideotask.FieldNextPollAt:
+		return m.OldNextPollAt(ctx)
+	case baiduvodvideotask.FieldPollClaimedUntil:
+		return m.OldPollClaimedUntil(ctx)
+	case baiduvodvideotask.FieldLastPolledAt:
+		return m.OldLastPolledAt(ctx)
+	case baiduvodvideotask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case baiduvodvideotask.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case baiduvodvideotask.FieldSubmittedAt:
+		return m.OldSubmittedAt(ctx)
+	case baiduvodvideotask.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case baiduvodvideotask.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+	case baiduvodvideotask.FieldSettledAt:
+		return m.OldSettledAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown BaiduVODVideoTask field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BaiduVODVideoTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case baiduvodvideotask.FieldPlatform:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlatform(v)
+		return nil
+	case baiduvodvideotask.FieldProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case baiduvodvideotask.FieldTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskID(v)
+		return nil
+	case baiduvodvideotask.FieldUpstreamTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamTaskID(v)
+		return nil
+	case baiduvodvideotask.FieldUpstreamRequestID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamRequestID(v)
+		return nil
+	case baiduvodvideotask.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case baiduvodvideotask.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case baiduvodvideotask.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case baiduvodvideotask.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case baiduvodvideotask.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case baiduvodvideotask.FieldUpstreamModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamModel(v)
+		return nil
+	case baiduvodvideotask.FieldCapability:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapability(v)
+		return nil
+	case baiduvodvideotask.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case baiduvodvideotask.FieldUpstreamStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamStatus(v)
+		return nil
+	case baiduvodvideotask.FieldResolution:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResolution(v)
+		return nil
+	case baiduvodvideotask.FieldRatio:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRatio(v)
+		return nil
+	case baiduvodvideotask.FieldRequestedDuration:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestedDuration(v)
+		return nil
+	case baiduvodvideotask.FieldOutputDuration:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputDuration(v)
+		return nil
+	case baiduvodvideotask.FieldInputVideoDuration:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputVideoDuration(v)
+		return nil
+	case baiduvodvideotask.FieldVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoCount(v)
+		return nil
+	case baiduvodvideotask.FieldEstimatedCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEstimatedCost(v)
+		return nil
+	case baiduvodvideotask.FieldHoldAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHoldAmount(v)
+		return nil
+	case baiduvodvideotask.FieldActualCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActualCost(v)
+		return nil
+	case baiduvodvideotask.FieldGroupRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupRateMultiplier(v)
+		return nil
+	case baiduvodvideotask.FieldVideoRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoRateMultiplier(v)
+		return nil
+	case baiduvodvideotask.FieldAccountRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountRateMultiplier(v)
+		return nil
+	case baiduvodvideotask.FieldRequestHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestHash(v)
+		return nil
+	case baiduvodvideotask.FieldResultURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultURL(v)
+		return nil
+	case baiduvodvideotask.FieldResultExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultExpiresAt(v)
+		return nil
+	case baiduvodvideotask.FieldLastErrorCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastErrorCode(v)
+		return nil
+	case baiduvodvideotask.FieldLastErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastErrorMessage(v)
+		return nil
+	case baiduvodvideotask.FieldRetryCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRetryCount(v)
+		return nil
+	case baiduvodvideotask.FieldVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case baiduvodvideotask.FieldNextPollAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextPollAt(v)
+		return nil
+	case baiduvodvideotask.FieldPollClaimedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPollClaimedUntil(v)
+		return nil
+	case baiduvodvideotask.FieldLastPolledAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastPolledAt(v)
+		return nil
+	case baiduvodvideotask.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case baiduvodvideotask.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case baiduvodvideotask.FieldSubmittedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubmittedAt(v)
+		return nil
+	case baiduvodvideotask.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartedAt(v)
+		return nil
+	case baiduvodvideotask.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinishedAt(v)
+		return nil
+	case baiduvodvideotask.FieldSettledAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSettledAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BaiduVODVideoTask field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedFields() []string {
+	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldUserID)
+	}
+	if m.addapi_key_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldAPIKeyID)
+	}
+	if m.addaccount_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldAccountID)
+	}
+	if m.addgroup_id != nil {
+		fields = append(fields, baiduvodvideotask.FieldGroupID)
+	}
+	if m.addrequested_duration != nil {
+		fields = append(fields, baiduvodvideotask.FieldRequestedDuration)
+	}
+	if m.addoutput_duration != nil {
+		fields = append(fields, baiduvodvideotask.FieldOutputDuration)
+	}
+	if m.addinput_video_duration != nil {
+		fields = append(fields, baiduvodvideotask.FieldInputVideoDuration)
+	}
+	if m.addvideo_count != nil {
+		fields = append(fields, baiduvodvideotask.FieldVideoCount)
+	}
+	if m.addestimated_cost != nil {
+		fields = append(fields, baiduvodvideotask.FieldEstimatedCost)
+	}
+	if m.addhold_amount != nil {
+		fields = append(fields, baiduvodvideotask.FieldHoldAmount)
+	}
+	if m.addactual_cost != nil {
+		fields = append(fields, baiduvodvideotask.FieldActualCost)
+	}
+	if m.addgroup_rate_multiplier != nil {
+		fields = append(fields, baiduvodvideotask.FieldGroupRateMultiplier)
+	}
+	if m.addvideo_rate_multiplier != nil {
+		fields = append(fields, baiduvodvideotask.FieldVideoRateMultiplier)
+	}
+	if m.addaccount_rate_multiplier != nil {
+		fields = append(fields, baiduvodvideotask.FieldAccountRateMultiplier)
+	}
+	if m.addretry_count != nil {
+		fields = append(fields, baiduvodvideotask.FieldRetryCount)
+	}
+	if m.addversion != nil {
+		fields = append(fields, baiduvodvideotask.FieldVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BaiduVODVideoTaskMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case baiduvodvideotask.FieldUserID:
+		return m.AddedUserID()
+	case baiduvodvideotask.FieldAPIKeyID:
+		return m.AddedAPIKeyID()
+	case baiduvodvideotask.FieldAccountID:
+		return m.AddedAccountID()
+	case baiduvodvideotask.FieldGroupID:
+		return m.AddedGroupID()
+	case baiduvodvideotask.FieldRequestedDuration:
+		return m.AddedRequestedDuration()
+	case baiduvodvideotask.FieldOutputDuration:
+		return m.AddedOutputDuration()
+	case baiduvodvideotask.FieldInputVideoDuration:
+		return m.AddedInputVideoDuration()
+	case baiduvodvideotask.FieldVideoCount:
+		return m.AddedVideoCount()
+	case baiduvodvideotask.FieldEstimatedCost:
+		return m.AddedEstimatedCost()
+	case baiduvodvideotask.FieldHoldAmount:
+		return m.AddedHoldAmount()
+	case baiduvodvideotask.FieldActualCost:
+		return m.AddedActualCost()
+	case baiduvodvideotask.FieldGroupRateMultiplier:
+		return m.AddedGroupRateMultiplier()
+	case baiduvodvideotask.FieldVideoRateMultiplier:
+		return m.AddedVideoRateMultiplier()
+	case baiduvodvideotask.FieldAccountRateMultiplier:
+		return m.AddedAccountRateMultiplier()
+	case baiduvodvideotask.FieldRetryCount:
+		return m.AddedRetryCount()
+	case baiduvodvideotask.FieldVersion:
+		return m.AddedVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BaiduVODVideoTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case baiduvodvideotask.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case baiduvodvideotask.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyID(v)
+		return nil
+	case baiduvodvideotask.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case baiduvodvideotask.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupID(v)
+		return nil
+	case baiduvodvideotask.FieldRequestedDuration:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRequestedDuration(v)
+		return nil
+	case baiduvodvideotask.FieldOutputDuration:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOutputDuration(v)
+		return nil
+	case baiduvodvideotask.FieldInputVideoDuration:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInputVideoDuration(v)
+		return nil
+	case baiduvodvideotask.FieldVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoCount(v)
+		return nil
+	case baiduvodvideotask.FieldEstimatedCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEstimatedCost(v)
+		return nil
+	case baiduvodvideotask.FieldHoldAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddHoldAmount(v)
+		return nil
+	case baiduvodvideotask.FieldActualCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActualCost(v)
+		return nil
+	case baiduvodvideotask.FieldGroupRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupRateMultiplier(v)
+		return nil
+	case baiduvodvideotask.FieldVideoRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoRateMultiplier(v)
+		return nil
+	case baiduvodvideotask.FieldAccountRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountRateMultiplier(v)
+		return nil
+	case baiduvodvideotask.FieldRetryCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRetryCount(v)
+		return nil
+	case baiduvodvideotask.FieldVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BaiduVODVideoTask numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BaiduVODVideoTaskMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(baiduvodvideotask.FieldUpstreamRequestID) {
+		fields = append(fields, baiduvodvideotask.FieldUpstreamRequestID)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldGroupID) {
+		fields = append(fields, baiduvodvideotask.FieldGroupID)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldActualCost) {
+		fields = append(fields, baiduvodvideotask.FieldActualCost)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldResultURL) {
+		fields = append(fields, baiduvodvideotask.FieldResultURL)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldResultExpiresAt) {
+		fields = append(fields, baiduvodvideotask.FieldResultExpiresAt)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldLastErrorCode) {
+		fields = append(fields, baiduvodvideotask.FieldLastErrorCode)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldLastErrorMessage) {
+		fields = append(fields, baiduvodvideotask.FieldLastErrorMessage)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldPollClaimedUntil) {
+		fields = append(fields, baiduvodvideotask.FieldPollClaimedUntil)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldLastPolledAt) {
+		fields = append(fields, baiduvodvideotask.FieldLastPolledAt)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldStartedAt) {
+		fields = append(fields, baiduvodvideotask.FieldStartedAt)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldFinishedAt) {
+		fields = append(fields, baiduvodvideotask.FieldFinishedAt)
+	}
+	if m.FieldCleared(baiduvodvideotask.FieldSettledAt) {
+		fields = append(fields, baiduvodvideotask.FieldSettledAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BaiduVODVideoTaskMutation) ClearField(name string) error {
+	switch name {
+	case baiduvodvideotask.FieldUpstreamRequestID:
+		m.ClearUpstreamRequestID()
+		return nil
+	case baiduvodvideotask.FieldGroupID:
+		m.ClearGroupID()
+		return nil
+	case baiduvodvideotask.FieldActualCost:
+		m.ClearActualCost()
+		return nil
+	case baiduvodvideotask.FieldResultURL:
+		m.ClearResultURL()
+		return nil
+	case baiduvodvideotask.FieldResultExpiresAt:
+		m.ClearResultExpiresAt()
+		return nil
+	case baiduvodvideotask.FieldLastErrorCode:
+		m.ClearLastErrorCode()
+		return nil
+	case baiduvodvideotask.FieldLastErrorMessage:
+		m.ClearLastErrorMessage()
+		return nil
+	case baiduvodvideotask.FieldPollClaimedUntil:
+		m.ClearPollClaimedUntil()
+		return nil
+	case baiduvodvideotask.FieldLastPolledAt:
+		m.ClearLastPolledAt()
+		return nil
+	case baiduvodvideotask.FieldStartedAt:
+		m.ClearStartedAt()
+		return nil
+	case baiduvodvideotask.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+	case baiduvodvideotask.FieldSettledAt:
+		m.ClearSettledAt()
+		return nil
+	}
+	return fmt.Errorf("unknown BaiduVODVideoTask nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BaiduVODVideoTaskMutation) ResetField(name string) error {
+	switch name {
+	case baiduvodvideotask.FieldPlatform:
+		m.ResetPlatform()
+		return nil
+	case baiduvodvideotask.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case baiduvodvideotask.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case baiduvodvideotask.FieldUpstreamTaskID:
+		m.ResetUpstreamTaskID()
+		return nil
+	case baiduvodvideotask.FieldUpstreamRequestID:
+		m.ResetUpstreamRequestID()
+		return nil
+	case baiduvodvideotask.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case baiduvodvideotask.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case baiduvodvideotask.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case baiduvodvideotask.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case baiduvodvideotask.FieldModel:
+		m.ResetModel()
+		return nil
+	case baiduvodvideotask.FieldUpstreamModel:
+		m.ResetUpstreamModel()
+		return nil
+	case baiduvodvideotask.FieldCapability:
+		m.ResetCapability()
+		return nil
+	case baiduvodvideotask.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case baiduvodvideotask.FieldUpstreamStatus:
+		m.ResetUpstreamStatus()
+		return nil
+	case baiduvodvideotask.FieldResolution:
+		m.ResetResolution()
+		return nil
+	case baiduvodvideotask.FieldRatio:
+		m.ResetRatio()
+		return nil
+	case baiduvodvideotask.FieldRequestedDuration:
+		m.ResetRequestedDuration()
+		return nil
+	case baiduvodvideotask.FieldOutputDuration:
+		m.ResetOutputDuration()
+		return nil
+	case baiduvodvideotask.FieldInputVideoDuration:
+		m.ResetInputVideoDuration()
+		return nil
+	case baiduvodvideotask.FieldVideoCount:
+		m.ResetVideoCount()
+		return nil
+	case baiduvodvideotask.FieldEstimatedCost:
+		m.ResetEstimatedCost()
+		return nil
+	case baiduvodvideotask.FieldHoldAmount:
+		m.ResetHoldAmount()
+		return nil
+	case baiduvodvideotask.FieldActualCost:
+		m.ResetActualCost()
+		return nil
+	case baiduvodvideotask.FieldGroupRateMultiplier:
+		m.ResetGroupRateMultiplier()
+		return nil
+	case baiduvodvideotask.FieldVideoRateMultiplier:
+		m.ResetVideoRateMultiplier()
+		return nil
+	case baiduvodvideotask.FieldAccountRateMultiplier:
+		m.ResetAccountRateMultiplier()
+		return nil
+	case baiduvodvideotask.FieldRequestHash:
+		m.ResetRequestHash()
+		return nil
+	case baiduvodvideotask.FieldResultURL:
+		m.ResetResultURL()
+		return nil
+	case baiduvodvideotask.FieldResultExpiresAt:
+		m.ResetResultExpiresAt()
+		return nil
+	case baiduvodvideotask.FieldLastErrorCode:
+		m.ResetLastErrorCode()
+		return nil
+	case baiduvodvideotask.FieldLastErrorMessage:
+		m.ResetLastErrorMessage()
+		return nil
+	case baiduvodvideotask.FieldRetryCount:
+		m.ResetRetryCount()
+		return nil
+	case baiduvodvideotask.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case baiduvodvideotask.FieldNextPollAt:
+		m.ResetNextPollAt()
+		return nil
+	case baiduvodvideotask.FieldPollClaimedUntil:
+		m.ResetPollClaimedUntil()
+		return nil
+	case baiduvodvideotask.FieldLastPolledAt:
+		m.ResetLastPolledAt()
+		return nil
+	case baiduvodvideotask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case baiduvodvideotask.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case baiduvodvideotask.FieldSubmittedAt:
+		m.ResetSubmittedAt()
+		return nil
+	case baiduvodvideotask.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case baiduvodvideotask.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+	case baiduvodvideotask.FieldSettledAt:
+		m.ResetSettledAt()
+		return nil
+	}
+	return fmt.Errorf("unknown BaiduVODVideoTask field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BaiduVODVideoTaskMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BaiduVODVideoTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BaiduVODVideoTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BaiduVODVideoTaskMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BaiduVODVideoTaskMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown BaiduVODVideoTask unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BaiduVODVideoTaskMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown BaiduVODVideoTask edge %s", name)
 }
 
 // BatchImageEventMutation represents an operation that mutates the BatchImageEvent nodes in the graph.

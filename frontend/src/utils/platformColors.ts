@@ -5,7 +5,7 @@
  * instead of defining their own color mappings.
  */
 
-export type Platform = 'anthropic' | 'openai' | 'antigravity' | 'gemini' | 'kiro' | 'grok'
+export type Platform = 'anthropic' | 'openai' | 'antigravity' | 'gemini' | 'kiro' | 'grok' | 'baidu_vod'
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
 const BADGE: Record<Platform, string> = {
@@ -15,6 +15,7 @@ const BADGE: Record<Platform, string> = {
   gemini: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/40',
   kiro: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/40',
   grok: 'bg-zinc-800/10 text-zinc-800 border-zinc-800/30 dark:bg-zinc-500/10 dark:text-zinc-200 dark:border-zinc-500/30',
+  baidu_vod: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/30 dark:text-cyan-300 dark:border-cyan-900/40',
 }
 const BADGE_DEFAULT = 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-dark-800 dark:text-gray-300 dark:border-dark-700'
 
@@ -26,6 +27,7 @@ const BADGE_LIGHT: Record<Platform, string> = {
   gemini: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300',
   kiro: 'bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300',
   grok: 'bg-zinc-800/10 text-zinc-800 dark:bg-zinc-500/10 dark:text-zinc-200',
+  baidu_vod: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300',
 }
 
 const GROUP_BADGE: Record<Platform, string> = {
@@ -35,6 +37,7 @@ const GROUP_BADGE: Record<Platform, string> = {
   gemini: 'bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-900/40',
   kiro: 'bg-violet-50 text-violet-700 ring-1 ring-violet-100 dark:bg-violet-950/30 dark:text-violet-300 dark:ring-violet-900/40',
   grok: 'bg-zinc-50 text-zinc-800 ring-1 ring-zinc-200 dark:bg-zinc-900/40 dark:text-zinc-200 dark:ring-zinc-700',
+  baidu_vod: 'bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-200 dark:ring-cyan-900/50',
 }
 const GROUP_BADGE_DEFAULT = 'bg-gray-50 text-gray-700 ring-1 ring-gray-100 dark:bg-dark-800 dark:text-gray-300 dark:ring-dark-700'
 
@@ -45,6 +48,7 @@ const GROUP_BADGE_SUBSCRIPTION: Record<Platform, string> = {
   gemini: 'bg-blue-100 text-blue-800 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-900/50',
   kiro: 'bg-violet-100 text-violet-800 ring-1 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-200 dark:ring-violet-900/50',
   grok: 'bg-zinc-100 text-zinc-800 ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:ring-zinc-700',
+  baidu_vod: 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200 dark:bg-cyan-950/50 dark:text-cyan-100 dark:ring-cyan-900/60',
 }
 const GROUP_BADGE_SUBSCRIPTION_DEFAULT = 'bg-gray-100 text-gray-700 ring-1 ring-gray-200 dark:bg-dark-700 dark:text-gray-200 dark:ring-dark-600'
 
@@ -56,6 +60,7 @@ const BORDER: Record<Platform, string> = {
   gemini: 'border-blue-500/20 dark:border-blue-500/20',
   kiro: 'border-violet-500/20 dark:border-violet-500/20',
   grok: 'border-zinc-800/20 dark:border-zinc-500/20',
+  baidu_vod: 'border-cyan-500/20 dark:border-cyan-500/20',
 }
 const BORDER_DEFAULT = 'border-gray-200 dark:border-dark-700'
 
@@ -67,6 +72,7 @@ const ACCENT_BAR: Record<Platform, string> = {
   gemini: 'bg-gradient-to-r from-blue-400 to-blue-500',
   kiro: 'bg-gradient-to-r from-violet-500 to-fuchsia-500',
   grok: 'bg-gradient-to-r from-zinc-700 to-zinc-900',
+  baidu_vod: 'bg-gradient-to-r from-cyan-500 to-teal-500',
 }
 const ACCENT_BAR_DEFAULT = 'bg-gradient-to-r from-primary-400 to-primary-500'
 
@@ -78,6 +84,7 @@ const TEXT: Record<Platform, string> = {
   gemini: 'text-blue-600 dark:text-blue-400',
   kiro: 'text-violet-600 dark:text-violet-300',
   grok: 'text-zinc-800 dark:text-zinc-200',
+  baidu_vod: 'text-cyan-700 dark:text-cyan-300',
 }
 const TEXT_DEFAULT = 'text-primary-600 dark:text-primary-400'
 
@@ -89,6 +96,7 @@ const ICON: Record<Platform, string> = {
   gemini: 'text-blue-500 dark:text-blue-400',
   kiro: 'text-violet-500 dark:text-violet-300',
   grok: 'text-zinc-800 dark:text-zinc-200',
+  baidu_vod: 'text-cyan-600 dark:text-cyan-300',
 }
 const ICON_DEFAULT = 'text-primary-500 dark:text-primary-400'
 
@@ -100,6 +108,7 @@ const BUTTON: Record<Platform, string> = {
   gemini: 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 dark:bg-blue-500/80 dark:hover:bg-blue-500',
   kiro: 'bg-violet-600 text-white hover:bg-violet-700 active:bg-violet-800 dark:bg-violet-500/80 dark:hover:bg-violet-500',
   grok: 'bg-zinc-800 text-white hover:bg-zinc-900 active:bg-black dark:bg-zinc-700 dark:hover:bg-zinc-600',
+  baidu_vod: 'bg-cyan-600 text-white hover:bg-cyan-700 active:bg-cyan-800 dark:bg-cyan-600/80 dark:hover:bg-cyan-600',
 }
 const BUTTON_DEFAULT = 'bg-primary-500 text-white hover:bg-primary-600 dark:bg-primary-600 dark:hover:bg-primary-500'
 
@@ -111,6 +120,7 @@ const DISCOUNT: Record<Platform, string> = {
   gemini: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   kiro: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   grok: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200',
+  baidu_vod: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
 }
 const DISCOUNT_DEFAULT = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 
@@ -122,6 +132,7 @@ const GRADIENT: Record<Platform, string> = {
   gemini: 'from-blue-500 to-blue-600',
   kiro: 'from-violet-500 to-fuchsia-500',
   grok: 'from-zinc-700 to-zinc-900',
+  baidu_vod: 'from-cyan-500 to-teal-600',
 }
 const GRADIENT_DEFAULT = 'from-primary-500 to-primary-600'
 
@@ -133,6 +144,7 @@ const GRADIENT_TEXT: Record<Platform, string> = {
   gemini: 'text-blue-100',
   kiro: 'text-violet-100',
   grok: 'text-zinc-100',
+  baidu_vod: 'text-cyan-100',
 }
 const GRADIENT_TEXT_DEFAULT = 'text-primary-100'
 
@@ -143,13 +155,14 @@ const GRADIENT_SUBTEXT: Record<Platform, string> = {
   gemini: 'text-blue-200',
   kiro: 'text-violet-100',
   grok: 'text-zinc-300',
+  baidu_vod: 'text-cyan-100',
 }
 const GRADIENT_SUBTEXT_DEFAULT = 'text-primary-200'
 
 // ── Public API ──────────────────────────────────────────────────────
 
 function isPlatform(p: string): p is Platform {
-  return p === 'anthropic' || p === 'openai' || p === 'antigravity' || p === 'gemini' || p === 'kiro' || p === 'grok'
+  return p === 'anthropic' || p === 'openai' || p === 'antigravity' || p === 'gemini' || p === 'kiro' || p === 'grok' || p === 'baidu_vod'
 }
 
 export function platformBadgeClass(p: string): string {
@@ -215,6 +228,7 @@ export function platformLabel(p: string): string {
     case 'gemini': return 'Gemini'
     case 'kiro': return 'Kiro'
     case 'grok': return 'Grok'
+    case 'baidu_vod': return 'Baidu Cloud VOD'
     default: return p || 'API'
   }
 }

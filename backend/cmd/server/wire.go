@@ -89,6 +89,7 @@ func provideCleanup(
 	quotaLeaseDemoNodeWorker *service.QuotaLeaseDemoNodeWorker,
 	quotaLeaseDemoReclaimWorker *service.QuotaLeaseDemoReclaimWorker,
 	batchImageWorker *service.BatchImageWorkerRuntime,
+	baiduVODVideoWorker *service.BaiduVODVideoWorkerRuntime,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
@@ -194,6 +195,12 @@ func provideCleanup(
 			{"BatchImageWorkerRuntime", func() error {
 				if batchImageWorker != nil {
 					batchImageWorker.Stop()
+				}
+				return nil
+			}},
+			{"BaiduVODVideoWorkerRuntime", func() error {
+				if baiduVODVideoWorker != nil {
+					baiduVODVideoWorker.Stop()
 				}
 				return nil
 			}},

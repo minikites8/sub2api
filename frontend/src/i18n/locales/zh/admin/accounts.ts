@@ -284,6 +284,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        baiduVOD: '百度云 VOD',
       },
       types: {
         oauth: 'OAuth',
@@ -930,6 +931,17 @@ export default {
         relayBaseUrlHint: '外部 Anthropic 兼容上游地址（如 https://your-relay.example.com），将请求 {base_url}/v1/messages',
         relayPriorityHint: '建议保持较低优先级（数字更大），仅作兜底——原生 Kiro 账号全部异常时才启用'
       },
+      baiduVOD: {
+        authMode: '鉴权方式',
+        authModeAPIKey: 'API Key',
+        authModeAKSK: 'BCE AK/SK',
+        accessKeyId: 'Access Key ID',
+        secretAccessKey: 'Secret Access Key',
+        accessKeyIdRequired: '请输入 Access Key ID',
+        secretAccessKeyRequired: '请输入 Secret Access Key',
+        baseUrlHint: '默认使用百度云 VOD HTTPS 地址，同时兼容带 v2/v3 百炼前缀的地址。',
+        apiKeyHint: '百度云 VOD API Key，通过 v3 百炼透传端点以 Bearer Token 发送。'
+      },
       // OAuth flow
       oauth: {
         title: 'Claude 账号授权',
@@ -1385,6 +1397,7 @@ export default {
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
       grokAccount: 'Grok 账号',
+      baiduVODAccount: '百度云 VOD 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal

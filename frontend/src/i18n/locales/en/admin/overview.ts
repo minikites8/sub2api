@@ -497,6 +497,7 @@ export default {
         usageAntigravity: 'Usage (Antigravity)',
         usageGrok: 'Usage (Grok)',
         usageKiro: 'Usage (Kiro)',
+        usageBaiduVOD: 'Usage (Baidu Cloud VOD)',
         concurrency: 'Concurrency',
         status: 'Status',
         lastActive: 'Last Active',
@@ -896,6 +897,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        baidu_vod: 'Baidu Cloud VOD',
       },
       kiroCache: {
         description: 'Simulate Anthropic prompt cache usage for this Kiro group only.',

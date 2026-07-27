@@ -80,6 +80,14 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	if account == nil {
 		return nil, newUpstreamModelSyncConfigError("Account is required", nil)
 	}
+	if account.Platform == PlatformBaiduVOD {
+		specs := BaiduVODModels()
+		models := make([]string, 0, len(specs))
+		for _, spec := range specs {
+			models = append(models, spec.Model)
+		}
+		return models, nil
+	}
 
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {
 		return s.fetchAntigravityOAuthUpstreamModels(ctx, account)

@@ -122,7 +122,7 @@
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
-        <div class="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-5" data-tour="account-form-platform">
+        <div class="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-4" data-tour="account-form-platform">
           <button
             type="button"
             @click="form.platform = 'anthropic'"
@@ -224,6 +224,19 @@
           >
             <PlatformIcon platform="grok" size="sm" />
             Grok
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'baidu_vod'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'baidu_vod'
+                ? 'bg-white text-cyan-700 shadow-sm dark:bg-dark-600 dark:text-cyan-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="baidu_vod" size="sm" />
+            {{ t('admin.accounts.platforms.baiduVOD') }}
           </button>
         </div>
       </div>
@@ -1688,6 +1701,29 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity' && form.platform !== 'kiro'" class="space-y-4">
+        <div v-if="form.platform === 'baidu_vod'">
+          <label class="input-label">{{ t('admin.accounts.baiduVOD.authMode') }}</label>
+          <div class="mt-2 flex flex-wrap gap-4">
+            <label class="flex cursor-pointer items-center">
+              <input
+                v-model="baiduVODAuthMode"
+                type="radio"
+                value="apikey"
+                class="mr-2 text-cyan-600 focus:ring-cyan-500"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.baiduVOD.authModeAPIKey') }}</span>
+            </label>
+            <label class="flex cursor-pointer items-center">
+              <input
+                v-model="baiduVODAuthMode"
+                type="radio"
+                value="aksk"
+                class="mr-2 text-cyan-600 focus:ring-cyan-500"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.baiduVOD.authModeAKSK') }}</span>
+            </label>
+          </div>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -1701,12 +1737,14 @@
                   ? 'https://generativelanguage.googleapis.com'
                   : form.platform === 'grok'
                     ? 'https://api.x.ai/v1'
+                    : form.platform === 'baidu_vod'
+                      ? 'https://vod.bj.baidubce.com'
                     : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
         </div>
-        <div>
+        <div v-if="form.platform !== 'baidu_vod' || baiduVODAuthMode === 'apikey'">
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
           <input
             v-model="apiKeyValue"
@@ -1720,11 +1758,35 @@
                   ? 'AIza...'
                   : form.platform === 'grok'
                     ? 'xai-...'
+                    : form.platform === 'baidu_vod'
+                      ? 'Baidu VOD API Key'
                     : 'sk-ant-...'
             "
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
+        <template v-if="form.platform === 'baidu_vod' && baiduVODAuthMode === 'aksk'">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.baiduVOD.accessKeyId') }}</label>
+            <input
+              v-model="baiduVODAccessKeyId"
+              type="text"
+              required
+              class="input font-mono"
+              autocomplete="off"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.baiduVOD.secretAccessKey') }}</label>
+            <input
+              v-model="baiduVODSecretAccessKey"
+              type="password"
+              required
+              class="input font-mono"
+              autocomplete="new-password"
+            />
+          </div>
+        </template>
 
         <!-- Gemini API Key tier selection -->
         <div v-if="form.platform === 'gemini'">
@@ -4197,6 +4259,7 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
+  if (form.platform === 'baidu_vod') return t('admin.accounts.baiduVOD.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -4205,6 +4268,7 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'kiro') return t('admin.accounts.kiro.apiKeyHint')
   if (form.platform === 'grok') return ''
+  if (form.platform === 'baidu_vod') return t('admin.accounts.baiduVOD.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
 
@@ -4305,6 +4369,9 @@ const KIRO_RELAY_DEFAULT_PRIORITY = 100
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const baiduVODAuthMode = ref<'apikey' | 'aksk'>('apikey')
+const baiduVODAccessKeyId = ref('')
+const baiduVODSecretAccessKey = ref('')
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -4935,6 +5002,8 @@ watch(
             ? ''
             : newPlatform === 'grok'
               ? 'https://api.x.ai/v1'
+              : newPlatform === 'baidu_vod'
+                ? 'https://vod.bj.baidubce.com'
               : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
@@ -4972,6 +5041,14 @@ watch(
       form.concurrency = 1
       form.load_factor = null
     }
+    if (newPlatform === 'baidu_vod') {
+      accountCategory.value = 'apikey'
+      addMethod.value = 'oauth'
+      modelRestrictionMode.value = 'whitelist'
+      baiduVODAuthMode.value = 'apikey'
+      form.concurrency = 1
+      form.load_factor = null
+    }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
     }
@@ -4986,6 +5063,8 @@ watch(
     bedrockForceGlobal.value = false
     bedrockAuthMode.value = 'sigv4'
     bedrockApiKeyValue.value = ''
+    baiduVODAccessKeyId.value = ''
+    baiduVODSecretAccessKey.value = ''
     vertexServiceAccountJson.value = ''
     vertexProjectId.value = ''
     vertexClientEmail.value = ''
@@ -5417,6 +5496,9 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  baiduVODAuthMode.value = 'apikey'
+  baiduVODAccessKeyId.value = ''
+  baiduVODSecretAccessKey.value = ''
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -5982,7 +6064,16 @@ const handleSubmit = async () => {
   }
 
   // For apikey type, create directly
-  if (!apiKeyValue.value.trim()) {
+  if (form.platform === 'baidu_vod' && baiduVODAuthMode.value === 'aksk') {
+    if (!baiduVODAccessKeyId.value.trim()) {
+      appStore.showError(t('admin.accounts.baiduVOD.accessKeyIdRequired'))
+      return
+    }
+    if (!baiduVODSecretAccessKey.value.trim()) {
+      appStore.showError(t('admin.accounts.baiduVOD.secretAccessKeyRequired'))
+      return
+    }
+  } else if (!apiKeyValue.value.trim()) {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
@@ -5995,12 +6086,24 @@ const handleSubmit = async () => {
         ? 'https://generativelanguage.googleapis.com'
         : form.platform === 'grok'
           ? 'https://api.x.ai/v1'
+          : form.platform === 'baidu_vod'
+            ? 'https://vod.bj.baidubce.com'
           : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
-    base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
-    api_key: apiKeyValue.value.trim()
+    base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl
+  }
+  if (form.platform === 'baidu_vod') {
+    credentials.auth_mode = baiduVODAuthMode.value
+    if (baiduVODAuthMode.value === 'aksk') {
+      credentials.access_key_id = baiduVODAccessKeyId.value.trim()
+      credentials.secret_access_key = baiduVODSecretAccessKey.value.trim()
+    } else {
+      credentials.api_key = apiKeyValue.value.trim()
+    }
+  } else {
+    credentials.api_key = apiKeyValue.value.trim()
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value

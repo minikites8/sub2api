@@ -70,6 +70,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // quotaLeaseDemoNodeWorker
 		nil, // quotaLeaseDemoReclaimWorker
 		nil, // batchImageWorker
+		nil, // baiduVODVideoWorker
 		pricingSvc,
 		emailQueueSvc,
 		billingCacheSvc,

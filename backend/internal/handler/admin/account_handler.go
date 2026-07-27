@@ -2702,6 +2702,22 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	if account.Platform == service.PlatformBaiduVOD {
+		specs := service.BaiduVODModels()
+		models := make([]openai.Model, 0, len(specs))
+		for _, spec := range specs {
+			models = append(models, openai.Model{
+				ID:          spec.Model,
+				Object:      "model",
+				OwnedBy:     service.PlatformBaiduVOD,
+				Type:        "model",
+				DisplayName: spec.Model,
+			})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	// Handle Claude/Anthropic accounts
 	// For OAuth and Setup-Token accounts: return default models
 	if account.IsOAuth() {
