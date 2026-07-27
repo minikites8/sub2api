@@ -29,6 +29,104 @@ describe('model marketplace aggregation', () => {
     expect(modelDeveloper('custom-routed-model')).toBe('')
   })
 
+  it('collapses mapped aliases from one pricing entry into one marketplace item', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const videoGroup = snapshot.groups.find((group) => group.name === '百度 VOD 视频')!
+    const versionedModel = videoGroup.models.find((model) => model.standard_model === 'doubao-seedance-2-0-260128')!
+    const aliases = ['doubao-seedance-2.0', 'doubao-seedance-2.0-260128']
+    Object.assign(versionedModel, {
+      standard_model: aliases[0],
+      raw_model: aliases[1],
+      pricing_models: aliases,
+    })
+    videoGroup.models.push({
+      ...versionedModel,
+      standard_model: aliases[1],
+      raw_model: aliases[1],
+      pricing_models: aliases,
+    })
+    const tokenGroup = snapshot.groups.find((group) => group.name === 'Seedance Token 路由')!
+    Object.assign(tokenGroup.models[0], {
+      standard_model: aliases[1],
+      raw_model: aliases[1],
+      pricing_models: aliases,
+    })
+
+    const models = buildMarketplaceModels(snapshot)
+    const seedanceModels = models.filter((model) => model.name.startsWith('doubao-seedance-2.0'))
+
+    expect(seedanceModels).toHaveLength(1)
+    expect(seedanceModels[0].name).toBe(aliases[0])
+    expect(seedanceModels[0].rawModels).toEqual(aliases)
+    expect(seedanceModels[0].profiles).toHaveLength(2)
+    expect(seedanceModels[0].billingModes).toEqual(['token', 'video'])
+  })
+
+  it('collapses capability variants sharing a pricing entry without model mappings', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const videoGroup = snapshot.groups.find((group) => group.name === '百度 VOD 视频')!
+    const model = videoGroup.models.find((item) => item.standard_model === 'happyhorse-1.1-t2v')!
+    const aliases = [
+      'happyhorse-1.0-t2v',
+      'happyhorse-1.0-i2v',
+      'happyhorse-1.0-r2v',
+      'happyhorse-1.0-video-edit',
+    ]
+    Object.assign(model, {
+      standard_model: aliases[0],
+      raw_model: aliases[0],
+      pricing_models: aliases,
+    })
+    for (const alias of aliases.slice(1)) {
+      videoGroup.models.push({
+        ...model,
+        standard_model: alias,
+        raw_model: alias,
+        pricing_models: aliases,
+      })
+    }
+    videoGroup.models.sort((left, right) => left.standard_model.localeCompare(right.standard_model))
+
+    const models = buildMarketplaceModels(snapshot)
+    const happyHorseModels = models.filter((item) => item.rawModels.some((name) => aliases.includes(name)))
+
+    expect(happyHorseModels).toHaveLength(1)
+    expect(happyHorseModels[0].name).toBe(aliases[0])
+    expect(happyHorseModels[0].rawModels).toEqual([...aliases].sort())
+    expect(happyHorseModels[0].profiles).toHaveLength(1)
+    expect(happyHorseModels[0].profiles[0].model.standard_model).toBe(aliases[0])
+    expect(happyHorseModels[0].billingModes).toEqual(['video'])
+  })
+
+  it('collapses HappyHorse 1.1 capability variants from one pricing entry', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const videoGroup = snapshot.groups.find((group) => group.name === '百度 VOD 视频')!
+    const model = videoGroup.models.find((item) => item.standard_model === 'happyhorse-1.1-t2v')!
+    const aliases = [
+      'happyhorse-1.1-t2v',
+      'happyhorse-1.1-i2v',
+      'happyhorse-1.1-r2v',
+      'happyhorse-1.1-video-edit',
+    ]
+    Object.assign(model, { pricing_models: aliases })
+    for (const alias of aliases.slice(1)) {
+      videoGroup.models.push({
+        ...model,
+        standard_model: alias,
+        raw_model: alias,
+        pricing_models: aliases,
+      })
+    }
+
+    const models = buildMarketplaceModels(snapshot)
+    const happyHorseModels = models.filter((item) => item.rawModels.some((name) => aliases.includes(name)))
+
+    expect(happyHorseModels).toHaveLength(1)
+    expect(happyHorseModels[0].name).toBe(aliases[0])
+    expect(happyHorseModels[0].rawModels).toEqual([...aliases].sort())
+    expect(happyHorseModels[0].profiles).toHaveLength(1)
+  })
+
   it('applies the video multiplier to Credits per second prices', () => {
     const models = buildMarketplaceModels(createModelMarketplacePreviewSnapshot())
     const seedance = models.find((model) => model.name === 'doubao-seedance-2-0-260128')

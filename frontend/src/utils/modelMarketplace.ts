@@ -78,8 +78,92 @@ interface MonitoringIndex {
   samples: Map<string, Map<string, MarketplaceMonitorSample>>
 }
 
+interface MarketplaceIdentityIndex {
+  resolve(modelName: string): string
+  displayName(identity: string): string
+}
+
 function normalizedModelName(value: string): string {
   return value.trim().toLowerCase()
+}
+
+function pricingModelAliases(model: PublicTransitModel): string[] {
+  const aliases = new Map<string, string>()
+  for (const value of model.pricing_models || []) {
+    const name = value.trim()
+    const normalized = normalizedModelName(name)
+    if (name && !name.endsWith('*') && !aliases.has(normalized)) aliases.set(normalized, name)
+  }
+  return Array.from(aliases.values())
+}
+
+// A channel pricing row defines one marketplace identity and all callable aliases for it.
+function buildMarketplaceIdentityIndex(snapshot: PublicTransitSnapshot): MarketplaceIdentityIndex {
+  const parents = new Map<string, string>()
+
+  const ensure = (name: string): string => {
+    const normalized = normalizedModelName(name)
+    if (normalized && !parents.has(normalized)) parents.set(normalized, normalized)
+    return normalized
+  }
+  const find = (name: string): string => {
+    let current = ensure(name)
+    if (!current) return ''
+    while (parents.get(current) !== current) {
+      const parent = parents.get(current)!
+      const grandparent = parents.get(parent) || parent
+      parents.set(current, grandparent)
+      current = grandparent
+    }
+    return current
+  }
+  const union = (left: string, right: string): void => {
+    const leftRoot = find(left)
+    const rightRoot = find(right)
+    if (leftRoot && rightRoot && leftRoot !== rightRoot) parents.set(rightRoot, leftRoot)
+  }
+
+  for (const group of snapshot.groups || []) {
+    for (const model of group.models || []) {
+      ensure(model.standard_model)
+      const aliases = pricingModelAliases(model)
+      for (const alias of aliases) ensure(alias)
+      for (let index = 1; index < aliases.length; index += 1) union(aliases[0], aliases[index])
+    }
+  }
+
+  const namesByIdentity = new Map<string, string>()
+  for (const group of snapshot.groups || []) {
+    for (const model of group.models || []) {
+      const aliases = pricingModelAliases(model)
+      if (aliases.length === 0) continue
+      const identity = find(aliases[0])
+      if (!namesByIdentity.has(identity)) namesByIdentity.set(identity, aliases[0])
+    }
+  }
+  for (const group of snapshot.groups || []) {
+    for (const model of group.models || []) {
+      const identity = find(model.standard_model)
+      if (!namesByIdentity.has(identity)) namesByIdentity.set(identity, model.standard_model)
+    }
+  }
+
+  return {
+    resolve: find,
+    displayName: (identity: string) => namesByIdentity.get(identity) || identity,
+  }
+}
+
+function appendUniqueModelName(target: string[], value: string): void {
+  const name = value.trim()
+  const normalized = normalizedModelName(name)
+  if (name && !target.some((item) => normalizedModelName(item) === normalized)) target.push(name)
+}
+
+function profileIdentity(model: PublicTransitModel): string {
+  const aliases = pricingModelAliases(model)
+  if (aliases.length === 0) return normalizedModelName(model.standard_model)
+  return aliases.map(normalizedModelName).sort().join('\x00')
 }
 
 const MODEL_DEVELOPER_RULES: Array<{ pattern: RegExp; developer: string }> = [
@@ -304,22 +388,26 @@ function aggregateMonitoring(
 
 export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): MarketplaceModel[] {
   const monitoringIndex = buildMonitoringIndex(snapshot.monitoring || [])
+  const identityIndex = buildMarketplaceIdentityIndex(snapshot)
   const models = new Map<string, Omit<MarketplaceModel, 'monitoring'>>()
 
   for (const group of snapshot.groups || []) {
     for (const model of group.models || []) {
-      const id = normalizedModelName(model.standard_model)
+      const identity = identityIndex.resolve(model.standard_model)
+      const name = identityIndex.displayName(identity)
+      const id = normalizedModelName(name)
       const current = models.get(id) || {
         id,
-        name: model.standard_model,
-        developer: modelDeveloper(model.standard_model),
+        name,
+        developer: modelDeveloper(name),
         rawModels: [],
         platforms: [],
         billingModes: [],
         supportedProtocols: [],
         profiles: [],
       }
-      if (!current.rawModels.includes(model.raw_model)) current.rawModels.push(model.raw_model)
+      appendUniqueModelName(current.rawModels, model.raw_model)
+      for (const alias of pricingModelAliases(model)) appendUniqueModelName(current.rawModels, alias)
       if (!current.platforms.includes(model.platform)) current.platforms.push(model.platform)
       if (!current.billingModes.includes(model.billing_mode)) current.billingModes.push(model.billing_mode)
       if (Object.values(model.price?.video_resolution_prices || {}).some((value) => typeof value === 'number')
@@ -329,8 +417,8 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
       for (const protocol of model.supported_protocols || []) {
         if (!current.supportedProtocols.includes(protocol)) current.supportedProtocols.push(protocol)
       }
-      current.profiles.push({
-        key: `${group.platform}:${group.name}:${model.raw_model}`,
+      const profile: MarketplacePriceProfile = {
+        key: `${group.platform}:${group.name}:${profileIdentity(model)}`,
         groupName: group.name,
         platform: group.platform,
         multiplier: group.rate_multiplier,
@@ -338,7 +426,16 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
         subscriptionType: group.subscription_type,
         exclusive: group.is_exclusive,
         model,
-      })
+      }
+      const profileIndex = current.profiles.findIndex((item) => item.key === profile.key)
+      if (profileIndex < 0) {
+        current.profiles.push(profile)
+      } else if (
+        normalizedModelName(model.standard_model) === normalizedModelName(current.name)
+        && normalizedModelName(current.profiles[profileIndex].model.standard_model) !== normalizedModelName(current.name)
+      ) {
+        current.profiles[profileIndex] = profile
+      }
       models.set(id, current)
     }
   }

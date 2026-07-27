@@ -181,23 +181,25 @@ func synthesizePricingFromLiteLLM(lp *LiteLLMModelPricing, existing *ChannelMode
 		mode = BillingModeImage
 	}
 
+	pricing := ChannelModelPricing{}
+	if existing != nil {
+		pricing = existing.Clone()
+	}
+	pricing.BillingMode = mode
+
 	if mode == BillingModeImage || mode == BillingModePerRequest {
-		return &ChannelModelPricing{
-			BillingMode:      mode,
-			PerRequestPrice:  nonZeroPtr(lp.OutputCostPerImage),
-			ImageOutputPrice: nonZeroPtr(lp.OutputCostPerImageToken),
-			InputPrice:       nonZeroPtr(lp.InputCostPerToken),
-			OutputPrice:      nonZeroPtr(lp.OutputCostPerToken),
-		}
+		pricing.PerRequestPrice = nonZeroPtr(lp.OutputCostPerImage)
+		pricing.ImageOutputPrice = nonZeroPtr(lp.OutputCostPerImageToken)
+		pricing.InputPrice = nonZeroPtr(lp.InputCostPerToken)
+		pricing.OutputPrice = nonZeroPtr(lp.OutputCostPerToken)
+		return &pricing
 	}
-	return &ChannelModelPricing{
-		BillingMode:      mode,
-		InputPrice:       nonZeroPtr(lp.InputCostPerToken),
-		OutputPrice:      nonZeroPtr(lp.OutputCostPerToken),
-		CacheWritePrice:  nonZeroPtr(lp.CacheCreationInputTokenCost),
-		CacheReadPrice:   nonZeroPtr(lp.CacheReadInputTokenCost),
-		ImageOutputPrice: nonZeroPtr(lp.OutputCostPerImageToken),
-	}
+	pricing.InputPrice = nonZeroPtr(lp.InputCostPerToken)
+	pricing.OutputPrice = nonZeroPtr(lp.OutputCostPerToken)
+	pricing.CacheWritePrice = nonZeroPtr(lp.CacheCreationInputTokenCost)
+	pricing.CacheReadPrice = nonZeroPtr(lp.CacheReadInputTokenCost)
+	pricing.ImageOutputPrice = nonZeroPtr(lp.OutputCostPerImageToken)
+	return &pricing
 }
 
 func nonZeroPtr(v float64) *float64 {

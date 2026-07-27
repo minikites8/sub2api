@@ -79,6 +79,7 @@ export interface PublicTransitCacheUsageWindow {
 export interface PublicTransitModel {
   standard_model: string
   raw_model: string
+  pricing_models?: string[]
   platform: GroupPlatform
   billing_mode: string
   price_source?: string

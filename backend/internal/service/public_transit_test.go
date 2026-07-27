@@ -197,6 +197,26 @@ func TestToPublicTransitModel_NormalizesImageModeToPerRequest(t *testing.T) {
 	require.InDelta(t, 0.268, *model.Price.ImageSizePrices["4k"], 1e-12)
 }
 
+func TestToPublicTransitModel_ExportsConcretePricingModels(t *testing.T) {
+	model := toPublicTransitModel(SupportedModel{
+		Name:     "doubao-seedance-2.0",
+		Platform: PlatformBaiduVOD,
+		Pricing: &ChannelModelPricing{
+			Models: []string{
+				" doubao-seedance-2.0 ",
+				"doubao-seedance-2.0-260128",
+				"DOUBAO-SEEDANCE-2.0",
+				"doubao-seedance-*",
+			},
+		},
+	}, Group{RateMultiplier: 1})
+
+	require.Equal(t, []string{
+		"doubao-seedance-2.0",
+		"doubao-seedance-2.0-260128",
+	}, model.PricingModels)
+}
+
 func TestToPublicTransitModel_ExportsVideoResolutionPrices(t *testing.T) {
 	group := Group{
 		Platform:        PlatformBaiduVOD,

@@ -16,8 +16,27 @@ describe('ChannelStatusView video pricing', () => {
       locale: 'zh',
       messages: { zh },
     })
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const videoGroup = snapshot.groups.find((group) => group.name === '百度 VOD 视频')!
+    const happyHorse = videoGroup.models.find((model) => model.standard_model === 'happyhorse-1.1-t2v')!
+    const happyHorseAliases = [
+      'happyhorse-1.1-t2v',
+      'happyhorse-1.1-i2v',
+      'happyhorse-1.1-r2v',
+      'happyhorse-1.1-video-edit',
+    ]
+    Object.assign(happyHorse, { pricing_models: happyHorseAliases })
+    for (const alias of happyHorseAliases.slice(1)) {
+      videoGroup.models.push({
+        ...happyHorse,
+        standard_model: alias,
+        raw_model: alias,
+        pricing_models: happyHorseAliases,
+      })
+    }
+
     const wrapper = mount(ChannelStatusView, {
-      props: { previewSnapshot: createModelMarketplacePreviewSnapshot() },
+      props: { previewSnapshot: snapshot },
       global: {
         plugins: [i18n],
         stubs: {
@@ -36,6 +55,11 @@ describe('ChannelStatusView video pricing', () => {
     expect(text).toContain('252.5')
     expect(text).toContain('Credits/s')
     expect(text).toContain('Credits/1M')
+
+    const happyHorseRows = wrapper
+      .findAll('tr')
+      .filter((row) => happyHorseAliases.some((alias) => row.text().includes(alias)))
+    expect(happyHorseRows).toHaveLength(1)
 
     const seedanceRow = wrapper
       .findAll('tr')

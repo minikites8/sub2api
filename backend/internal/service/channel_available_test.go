@@ -276,6 +276,8 @@ func TestFillGlobalPricingFallback_EmptyPricingFillsFromLiteLLM(t *testing.T) {
 			Name:     "gpt-image-1",
 			Platform: "openai",
 			Pricing: &ChannelModelPricing{
+				Platform:    "openai",
+				Models:      []string{"gpt-image-1", "gpt-image-1-alias"},
 				BillingMode: BillingModeImage,
 				Intervals:   []PricingInterval{{TierLabel: "1K"}, {TierLabel: "2K"}},
 			},
@@ -286,6 +288,9 @@ func TestFillGlobalPricingFallback_EmptyPricingFillsFromLiteLLM(t *testing.T) {
 	require.Equal(t, BillingModeImage, models[0].Pricing.BillingMode)
 	require.NotNil(t, models[0].Pricing.ImageOutputPrice)
 	require.InDelta(t, 4e-5, *models[0].Pricing.ImageOutputPrice, 1e-12)
+	require.Equal(t, "openai", models[0].Pricing.Platform)
+	require.Equal(t, []string{"gpt-image-1", "gpt-image-1-alias"}, models[0].Pricing.Models)
+	require.Equal(t, []PricingInterval{{TierLabel: "1K"}, {TierLabel: "2K"}}, models[0].Pricing.Intervals)
 }
 
 func TestFillGlobalPricingFallback_KeepsExistingPrice(t *testing.T) {

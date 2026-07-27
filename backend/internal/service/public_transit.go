@@ -163,6 +163,7 @@ type PublicTransitCacheUsageWindow struct {
 type PublicTransitModel struct {
 	StandardModel     string                       `json:"standard_model"`
 	RawModel          string                       `json:"raw_model"`
+	PricingModels     []string                     `json:"pricing_models,omitempty"`
 	Platform          string                       `json:"platform"`
 	BillingMode       string                       `json:"billing_mode"`
 	PriceSource       string                       `json:"price_source"`
@@ -568,6 +569,7 @@ func toPublicTransitModel(m SupportedModel, group Group) PublicTransitModel {
 	out := PublicTransitModel{
 		StandardModel:     m.Name,
 		RawModel:          m.Name,
+		PricingModels:     publicPricingModels(m.Pricing),
 		Platform:          m.Platform,
 		BillingMode:       billingMode,
 		PriceSource:       priceSource,
@@ -580,6 +582,30 @@ func toPublicTransitModel(m SupportedModel, group Group) PublicTransitModel {
 		out.Intervals = toPublicTransitIntervals(m.Pricing.Intervals)
 	}
 	return out
+}
+
+func publicPricingModels(pricing *ChannelModelPricing) []string {
+	if pricing == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(pricing.Models))
+	models := make([]string, 0, len(pricing.Models))
+	for _, model := range pricing.Models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, wildcard := splitWildcardSuffix(model); wildcard {
+			continue
+		}
+		key := strings.ToLower(model)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		models = append(models, model)
+	}
+	return models
 }
 
 func publicBillingMode(model string, p *ChannelModelPricing) string {
