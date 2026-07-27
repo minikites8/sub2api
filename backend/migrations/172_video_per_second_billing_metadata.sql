@@ -30,9 +30,9 @@ ALTER TABLE usage_logs
         )
     ) NOT VALID;
 
--- Group video prices are per-second rates (Credits/s);
+-- Group video prices are per-second rates (USD/s), matching the xAI rate card;
 -- total cost = per-second price x duration seconds. Clarify the column docs
 -- introduced by migration 170, which read as per-video prices.
-COMMENT ON COLUMN groups.video_price_480p IS '480p 视频生成每秒单价 (Credits/s)';
-COMMENT ON COLUMN groups.video_price_720p IS '720p 视频生成每秒单价 (Credits/s)';
-COMMENT ON COLUMN groups.video_price_1080p IS '1080p 视频生成每秒单价 (Credits/s)';
+COMMENT ON COLUMN groups.video_price_480p IS '480p 视频生成每秒单价 (USD/s)，Grok 平台使用';
+COMMENT ON COLUMN groups.video_price_720p IS '720p 视频生成每秒单价 (USD/s)，Grok 平台使用';
+COMMENT ON COLUMN groups.video_price_1080p IS '1080p 视频生成每秒单价 (USD/s)，Grok 平台使用';

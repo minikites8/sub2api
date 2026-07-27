@@ -11,6 +11,6 @@ ALTER TABLE groups
 
 COMMENT ON COLUMN groups.video_rate_independent IS '视频生成是否使用独立倍率；false 表示共享分组有效倍率';
 COMMENT ON COLUMN groups.video_rate_multiplier IS '视频生成独立倍率，仅 video_rate_independent=true 时生效';
-COMMENT ON COLUMN groups.video_price_480p IS '480p 视频生成单价 (Credits)，Grok 平台使用';
-COMMENT ON COLUMN groups.video_price_720p IS '720p 视频生成单价 (Credits)，Grok 平台使用';
-COMMENT ON COLUMN groups.video_price_1080p IS '1080p 视频生成单价 (Credits)，Grok 平台使用';
+COMMENT ON COLUMN groups.video_price_480p IS '480p 视频生成单价 (USD)，Grok 平台使用';
+COMMENT ON COLUMN groups.video_price_720p IS '720p 视频生成单价 (USD)，Grok 平台使用';
+COMMENT ON COLUMN groups.video_price_1080p IS '1080p 视频生成单价 (USD)，Grok 平台使用';
