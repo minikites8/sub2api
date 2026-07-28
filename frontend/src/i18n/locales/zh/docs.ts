@@ -184,20 +184,36 @@ export default {
       },
       videoGeneration: {
         title: '视频生成',
-        description: '使用异步接口创建文生视频、单图、首尾帧、参考图或视频编辑任务，再查询生成结果。',
+        description: '使用异步接口创建文生视频、首帧图生视频、参考生视频、视频编辑或单图视频任务，再查询生成结果。',
         steps: {
           model: {
             title: '1. 选择视频模型',
-            description: 'veo-3.1 和 veo-3.1-fast 支持单图、首尾帧与单张参考图；veo-3.1-lite 支持单图与首尾帧。',
+            description: '从模型广场复制视频模型名称。下面分别展示常用的视频生成与编辑调用方式。',
             action: '查看模型'
           },
-          request: {
-            title: '2. 创建任务',
-            description: '单图使用 image 或 first_frame，尾帧使用 last_frame，参考图使用 reference_images。Veo 支持 720P、1080P、4K，时长支持 4、6、8 秒，比例支持 16:9 和 9:16。'
+          textToVideo: {
+            title: '2. 文生视频',
+            description: '使用 happyhorse-1.1-t2v 并提供 prompt。以下 5 秒 720P 请求适合首次连通性验证。'
+          },
+          firstFrameToVideo: {
+            title: '3. 图生视频（基于首帧）',
+            description: '使用 happyhorse-1.1-i2v，通过 first_frame 提供可公开访问的首帧图片 URL。'
+          },
+          referenceToVideo: {
+            title: '4. 参考生视频',
+            description: '使用 happyhorse-1.1-r2v，通过 reference_images 数组提供一个或多个参考图片 URL。'
+          },
+          videoEdit: {
+            title: '5. 视频编辑',
+            description: '使用 happyhorse-1.1-video-edit，通过 video 提供待编辑视频 URL，并可通过 image 提供参考图片。'
+          },
+          veoRequest: {
+            title: '6. 单图或首尾帧视频',
+            description: 'veo-3.1 和 veo-3.1-fast 支持单图、首尾帧与单张参考图；veo-3.1-lite 支持单图与首尾帧。分辨率支持 720P、1080P、4K，时长支持 4、6、8 秒。'
           },
           result: {
-            title: '3. 获取结果',
-            description: '使用返回的任务 ID 查询状态；完成后保存视频链接。'
+            title: '7. 获取结果',
+            description: '将创建响应中的 id 替换到查询路径。任务完成后请及时保存 video_url 指向的视频。'
           }
         }
       },

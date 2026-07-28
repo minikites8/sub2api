@@ -184,20 +184,36 @@ export default {
       },
       videoGeneration: {
         title: 'Video generation',
-        description: 'Create asynchronous text, single-image, first-and-last-frame, reference-image, or video editing tasks, then retrieve the result.',
+        description: 'Create asynchronous text-to-video, first-frame, reference-image, video editing, or single-image video tasks, then retrieve the result.',
         steps: {
           model: {
             title: '1. Choose a video model',
-            description: 'veo-3.1 and veo-3.1-fast support single-image, first-and-last-frame, and one reference image. veo-3.1-lite supports single-image and first-and-last-frame generation.',
+            description: 'Copy a video model name from the model catalog. The examples below cover common video generation and editing workflows.',
             action: 'View models'
           },
-          request: {
-            title: '2. Create a task',
-            description: 'Use image or first_frame for one image, last_frame for the final frame, and reference_images for a reference. Veo supports 720P, 1080P, and 4K; 4, 6, or 8 seconds; and 16:9 or 9:16.'
+          textToVideo: {
+            title: '2. Text to video',
+            description: 'Use happyhorse-1.1-t2v and provide a prompt. This 5-second 720P request is suitable for an initial connectivity check.'
+          },
+          firstFrameToVideo: {
+            title: '3. Image to video from a first frame',
+            description: 'Use happyhorse-1.1-i2v and provide a publicly reachable first-frame image URL through first_frame.'
+          },
+          referenceToVideo: {
+            title: '4. Reference to video',
+            description: 'Use happyhorse-1.1-r2v and provide one or more reference image URLs through reference_images.'
+          },
+          videoEdit: {
+            title: '5. Video editing',
+            description: 'Use happyhorse-1.1-video-edit, provide the source video URL through video, and optionally add a reference image through image.'
+          },
+          veoRequest: {
+            title: '6. Single-image or first-and-last-frame video',
+            description: 'veo-3.1 and veo-3.1-fast support single-image, first-and-last-frame, and one reference image. veo-3.1-lite supports single-image and first-and-last-frame generation. Available resolutions are 720P, 1080P, and 4K, with durations of 4, 6, or 8 seconds.'
           },
           result: {
-            title: '3. Get the result',
-            description: 'Check the returned task ID and save the video URL when the task completes.'
+            title: '7. Get the result',
+            description: 'Replace the path value with the id from the create response. Save the video at video_url when the task completes.'
           }
         }
       },

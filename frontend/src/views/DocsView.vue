@@ -369,7 +369,11 @@ const articleStepLayouts: Record<SectionId, ArticleStepDefinition[]> = {
   ],
   'video-generation': [
     { key: 'model', actionTo: '/models' },
-    { key: 'request' },
+    { key: 'textToVideo' },
+    { key: 'firstFrameToVideo' },
+    { key: 'referenceToVideo' },
+    { key: 'videoEdit' },
+    { key: 'veoRequest' },
     { key: 'result' }
   ],
   'model-list': [
@@ -389,74 +393,97 @@ const chatRequestCode = `curl https://api.your-code.cc/v1/chat/completions \\
     ]
   }'`
 
-const articleExamples: Partial<Record<SectionId, CodeExampleDefinition>> = {
-  overview: {
+const articleExamples: Partial<Record<SectionId, CodeExampleDefinition[]>> = {
+  overview: [{
     stepKey: 'request',
     language: 'bash',
     code: chatRequestCode
-  },
-  models: {
+  }],
+  models: [{
     stepKey: 'use',
     language: 'json',
     code: `{\n  "model": "YOUR_MODEL",\n  "messages": [\n    {"role": "user", "content": "Hello"}\n  ]\n}`
-  },
-  'api-keys': {
+  }],
+  'api-keys': [{
     stepKey: 'use',
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/models \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
-  },
-  settings: {
+  }],
+  settings: [{
     stepKey: 'request',
     language: 'typescript',
     code: `import OpenAI from 'openai'\n\nconst client = new OpenAI({\n  apiKey: 'YOUR_API_KEY',\n  baseURL: 'https://api.your-code.cc/v1'\n})\n\nconst response = await client.chat.completions.create({\n  model: 'YOUR_MODEL',\n  messages: [{ role: 'user', content: 'Hello' }]\n})\n\nconsole.log(response.choices[0].message.content)`
-  },
-  authentication: {
+  }],
+  authentication: [{
     stepKey: 'header',
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/models \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
-  },
-  'chat-completion': {
+  }],
+  'chat-completion': [{
     stepKey: 'request',
     language: 'bash',
     code: chatRequestCode
-  },
-  'image-generation': {
+  }],
+  'image-generation': [{
     stepKey: 'request',
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/images/generations \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "YOUR_IMAGE_MODEL",\n    "prompt": "A quiet mountain lake at sunrise"\n  }'`
-  },
-  'video-generation': {
-    stepKey: 'request',
+  }],
+  'video-generation': [{
+    stepKey: 'textToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "happyhorse-1.1-t2v",\n    "prompt": "A white horse running along the coast at sunset",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 5\n  }'`
+  }, {
+    stepKey: 'firstFrameToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "happyhorse-1.1-i2v",\n    "prompt": "Slowly move the camera forward while the subject blinks naturally",\n    "first_frame": "https://example.com/first-frame.jpg",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 5\n  }'`
+  }, {
+    stepKey: 'referenceToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "happyhorse-1.1-r2v",\n    "prompt": "Keep the referenced character and outfit while walking through a city street",\n    "reference_images": [\n      "https://example.com/character.jpg",\n      "https://example.com/outfit.jpg"\n    ],\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 5\n  }'`
+  }, {
+    stepKey: 'videoEdit',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos/edits \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "happyhorse-1.1-video-edit",\n    "prompt": "Dress the subject in the striped sweater from the reference image",\n    "video": "https://example.com/input.mp4",\n    "image": "https://example.com/sweater.jpg",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 5\n  }'`
+  }, {
+    stepKey: 'veoRequest',
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1-lite",\n    "prompt": "The subject turns toward the camera and smiles naturally",\n    "image": "https://example.com/first-frame.jpg",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
-  },
-  'model-list': {
+  }, {
+    stepKey: 'result',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos/video_TASK_ID \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
+  }],
+  'model-list': [{
     stepKey: 'request',
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/models \\\n  -H "Authorization: Bearer YOUR_API_KEY"`
-  }
+  }]
 }
 
 const activeArticle = computed<ArticleContent>(() => {
   const articleKey = articleKeys[activeSection.value]
-  const exampleDefinition = articleExamples[activeSection.value]
+  const exampleDefinitions = articleExamples[activeSection.value] || []
   return {
     title: t(`docsPage.articles.${articleKey}.title`),
     description: t(`docsPage.articles.${articleKey}.description`),
-    steps: articleStepLayouts[activeSection.value].map((step) => ({
-      key: step.key,
-      title: t(`docsPage.articles.${articleKey}.steps.${step.key}.title`),
-      description: t(`docsPage.articles.${articleKey}.steps.${step.key}.description`),
-      action: step.actionTo
-        ? { to: step.actionTo, label: t(`docsPage.articles.${articleKey}.steps.${step.key}.action`) }
-        : null,
-      example: exampleDefinition?.stepKey === step.key
-        ? {
-            language: exampleDefinition.language,
-            code: exampleDefinition.code.split('https://api.your-code.cc').join(apiBaseUrl.value)
-          }
-        : null
-    }))
+    steps: articleStepLayouts[activeSection.value].map((step) => {
+      const exampleDefinition = exampleDefinitions.find((example) => example.stepKey === step.key)
+      return {
+        key: step.key,
+        title: t(`docsPage.articles.${articleKey}.steps.${step.key}.title`),
+        description: t(`docsPage.articles.${articleKey}.steps.${step.key}.description`),
+        action: step.actionTo
+          ? { to: step.actionTo, label: t(`docsPage.articles.${articleKey}.steps.${step.key}.action`) }
+          : null,
+        example: exampleDefinition
+          ? {
+              language: exampleDefinition.language,
+              code: exampleDefinition.code.split('https://api.your-code.cc').join(apiBaseUrl.value)
+            }
+          : null
+      }
+    })
   }
 })
 
