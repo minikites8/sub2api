@@ -538,7 +538,7 @@ const articleExamples: Partial<Record<SectionId, CodeExampleDefinition[]>> = {
   }, {
     stepKey: 'veoTextToVideo',
     language: 'bash',
-    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1-fast",\n    "prompt": "A paper airplane flies through a quiet modern library",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1-fast-silent",\n    "prompt": "A paper airplane flies through a quiet modern library",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4\n  }'`
   }, {
     stepKey: 'veoHeadTailToVideo',
     language: 'bash',

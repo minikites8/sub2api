@@ -222,7 +222,7 @@ export default {
           },
           veoTextToVideo: {
             title: 'Veo 文生视频',
-            description: 'veo-3.1 和 veo-3.1-fast 支持纯文本生成。提供 prompt 后，接口会自动选择文生视频模式。'
+            description: 'veo-3.1 和 veo-3.1-fast 支持纯文本生成。模型名添加 -silent 后缀可自动关闭音频，例如 veo-3.1-fast-silent。'
           },
           veoHeadTailToVideo: {
             title: 'Veo 首尾帧生视频',

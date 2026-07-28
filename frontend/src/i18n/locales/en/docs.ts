@@ -222,7 +222,7 @@ export default {
           },
           veoTextToVideo: {
             title: 'Veo text to video',
-            description: 'veo-3.1 and veo-3.1-fast support prompt-only generation. A prompt-only request selects text-to-video mode automatically.'
+            description: 'veo-3.1 and veo-3.1-fast support prompt-only generation. Add the -silent suffix to any Veo model name to disable audio automatically, such as veo-3.1-fast-silent.'
           },
           veoHeadTailToVideo: {
             title: 'Veo first-and-last-frame video',

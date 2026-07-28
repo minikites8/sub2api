@@ -51,6 +51,7 @@ type BaiduVODModelSpec struct {
 	UpstreamModel     string
 	Provider          string
 	Capability        BaiduVODVideoCapability
+	ForceSilent       bool
 	CreatePath        string
 	TaskPath          string
 	Resolutions       []string
@@ -116,8 +117,19 @@ func veoModelSpec(model, upstreamModel string, allowText, allowReferences bool) 
 }
 
 func BaiduVODModel(model string) (BaiduVODModelSpec, bool) {
-	spec, ok := baiduVODModelRegistry[strings.ToLower(strings.TrimSpace(model))]
-	return spec, ok
+	model = strings.ToLower(strings.TrimSpace(model))
+	if spec, ok := baiduVODModelRegistry[model]; ok {
+		return spec, true
+	}
+	const silentSuffix = "-silent"
+	if strings.HasSuffix(model, silentSuffix) {
+		baseModel := strings.TrimSuffix(model, silentSuffix)
+		if spec, ok := baiduVODModelRegistry[baseModel]; ok && spec.Provider == BaiduVODProviderVeo {
+			spec.ForceSilent = true
+			return spec, true
+		}
+	}
+	return BaiduVODModelSpec{}, false
 }
 
 func baiduVODModelForUpstream(model string) (BaiduVODModelSpec, bool) {
@@ -812,6 +824,10 @@ func TranslateBaiduVODVideoRequest(req BaiduVODVideoRequest) (BaiduVODModelSpec,
 	spec, ok := BaiduVODModel(req.Model)
 	if !ok {
 		return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, fmt.Errorf("unsupported Baidu VOD model: %s", req.Model)
+	}
+	if spec.ForceSilent {
+		generateAudio := false
+		req.GenerateAudio = &generateAudio
 	}
 	if req.Duration == 0 {
 		req.Duration = spec.DefaultDuration

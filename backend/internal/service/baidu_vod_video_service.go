@@ -86,11 +86,15 @@ func (s *BaiduVODVideoService) SelectAccount(ctx context.Context, groupID *int64
 	if err != nil {
 		return nil, err
 	}
+	accountModel := model
+	if spec, ok := BaiduVODModel(model); ok {
+		accountModel = spec.Model
+	}
 	veoV2Only := baiduVODVeoV2Only(model)
 	eligible := make([]*Account, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Type != AccountTypeAPIKey || !account.IsSchedulableForModelWithContext(ctx, model) {
+		if account.Type != AccountTypeAPIKey || !account.IsSchedulableForModelWithContext(ctx, accountModel) || !account.IsModelSupported(accountModel) {
 			continue
 		}
 		if veoV2Only && baiduVODAccountAuthMode(account) != BaiduVODAuthModeAKSK {
@@ -498,14 +502,18 @@ func (s *BaiduVODVideoService) calculateVideoCost(
 	if s == nil || s.billing == nil {
 		return &CostBreakdown{}
 	}
-	if groupPriceConfigured || s.pricing == nil || groupID == nil {
-		return s.billing.CalculateVideoCost(model, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
+	billingModel := model
+	if spec, ok := BaiduVODModel(model); ok {
+		billingModel = spec.Model
 	}
-	resolved := s.pricing.Resolve(ctx, PricingInput{Model: model, GroupID: groupID})
+	if groupPriceConfigured || s.pricing == nil || groupID == nil {
+		return s.billing.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
+	}
+	resolved := s.pricing.Resolve(ctx, PricingInput{Model: billingModel, GroupID: groupID})
 	if resolved != nil && (resolved.Mode == BillingModeVideo || ((resolved.Mode == BillingModeToken || resolved.Mode == BillingModeVideoToken) && completionTokens > 0)) {
 		cost, err := s.billing.CalculateCostUnified(CostInput{
 			Ctx:                ctx,
-			Model:              model,
+			Model:              billingModel,
 			GroupID:            groupID,
 			RequestCount:       videoCount,
 			SizeTier:           resolution,
@@ -520,7 +528,7 @@ func (s *BaiduVODVideoService) calculateVideoCost(
 			return cost
 		}
 	}
-	return s.billing.CalculateVideoCost(model, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
+	return s.billing.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
 }
 
 func (s *BaiduVODVideoService) MarkSubmitted(ctx context.Context, taskID string, submitted BaiduVODSubmitResult) (bool, error) {

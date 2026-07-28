@@ -43,6 +43,22 @@ func TestBaiduVODModelsRegistersVideoFamilies(t *testing.T) {
 	}
 }
 
+func TestBaiduVODModelResolvesVeoSilentAliases(t *testing.T) {
+	for alias, baseModel := range map[string]string{
+		"veo-3.1-silent":      "veo-3.1",
+		"veo-3.1-fast-silent": "veo-3.1-fast",
+		"veo-3.1-lite-silent": "veo-3.1-lite",
+	} {
+		spec, ok := BaiduVODModel(alias)
+		require.True(t, ok, alias)
+		require.Equal(t, baseModel, spec.Model)
+		require.True(t, spec.ForceSilent)
+	}
+
+	_, ok := BaiduVODModel("happyhorse-1.1-t2v-silent")
+	require.False(t, ok)
+}
+
 func TestTranslateBaiduVODVideoRequestCapabilities(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -77,6 +93,34 @@ func TestTranslateBaiduVODVideoRequestValidation(t *testing.T) {
 
 	_, _, err = TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{Model: "happyhorse-1.0-t2v", Prompt: "horse", Resolution: "480P", Duration: 5})
 	require.EqualError(t, err, "model happyhorse-1.0-t2v does not support resolution 480P")
+}
+
+func TestTranslateBaiduVODVeoSilentAliasForcesAudioOff(t *testing.T) {
+	generateAudio := true
+	spec, upstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "veo-3.1-fast-silent", Prompt: "a paper airplane flies through a library",
+		Resolution: "720P", Ratio: "16:9", Duration: 4, GenerateAudio: &generateAudio,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "veo-3.1-fast", spec.Model)
+	require.Equal(t, "VE3.1F", upstream.Model)
+	require.NotNil(t, upstream.VeoInput)
+	require.NotNil(t, upstream.VeoInput.GenerateAudio)
+	require.False(t, *upstream.VeoInput.GenerateAudio)
+
+	raw, err := json.Marshal(upstream)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model": "VE3.1F",
+		"modelVE31FTaskInput": {
+			"prompt": "a paper airplane flies through a library",
+			"n": 1,
+			"aspectRatio": "16:9",
+			"durationSeconds": 4,
+			"resolution": "720p",
+			"generateAudio": false
+		}
+	}`, string(raw))
 }
 
 func TestTranslateBaiduVODSeedanceRequest(t *testing.T) {
@@ -337,6 +381,21 @@ func TestBaiduVODSelectAccountVeoUsesOnlyV2AKSK(t *testing.T) {
 	account, err = svc.SelectAccount(context.Background(), nil, "doubao-seedance-2-0-260128")
 	require.NoError(t, err)
 	require.Equal(t, apiKeyAccount.ID, account.ID)
+}
+
+func TestBaiduVODSelectAccountSilentAliasUsesBaseModelMapping(t *testing.T) {
+	account := Account{
+		ID: 14, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+		Credentials: map[string]any{
+			"auth_mode": BaiduVODAuthModeAKSK, "access_key_id": "veo-ak", "secret_access_key": "veo-sk",
+			"model_mapping": map[string]any{"veo-3.1-fast": "VE3.1F"},
+		},
+	}
+	svc := &BaiduVODVideoService{accounts: stubOpenAIAccountRepo{accounts: []Account{account}}}
+
+	selected, err := svc.SelectAccount(context.Background(), nil, "veo-3.1-fast-silent")
+	require.NoError(t, err)
+	require.Equal(t, account.ID, selected.ID)
 }
 
 func TestBaiduVODSelectAccountVeoReportsMissingV2Account(t *testing.T) {

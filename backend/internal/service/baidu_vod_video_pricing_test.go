@@ -49,6 +49,35 @@ func TestBaiduVODNewTaskUsesChannelVideoSecondPrice(t *testing.T) {
 	require.Equal(t, string(BillingModeVideo), task.BillingMode)
 }
 
+func TestBaiduVODNewSilentVeoTaskUsesBaseModelPrice(t *testing.T) {
+	resolver := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"veo-3.1-fast"},
+		BillingMode:     BillingModeVideo,
+		PerRequestPrice: testPtrFloat64(0.5),
+	}})
+	videoService := &BaiduVODVideoService{billing: NewBillingService(nil, nil), pricing: resolver}
+	groupID := groupIDPtr()
+	apiKey := &APIKey{
+		ID: 13, UserID: 23, User: &User{ID: 23}, GroupID: groupID,
+		Group: &Group{ID: *groupID, RateMultiplier: 2},
+	}
+	account := &Account{ID: 33, Platform: PlatformBaiduVOD}
+	spec, ok := BaiduVODModel("veo-3.1-fast-silent")
+	require.True(t, ok)
+
+	task, err := videoService.NewTask(
+		context.Background(), "video_veo_silent", apiKey, account,
+		BaiduVODVideoRequest{Model: "veo-3.1-fast-silent", Prompt: "video", Resolution: "720P", Ratio: "16:9", Duration: 4},
+		spec, &BaiduVODSubmitResult{TaskID: "veo-silent", TaskStatus: "queued"}, "request-hash",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "veo-3.1-fast-silent", task.Model)
+	require.Equal(t, "VE3.1F", task.UpstreamModel)
+	require.InDelta(t, 4, task.EstimatedCost, 1e-12)
+	require.Equal(t, string(BillingModeVideo), task.BillingMode)
+}
+
 func TestBaiduVODNewSeedanceTaskUsesChannelTokenPrice(t *testing.T) {
 	resolver := newResolverWithChannel(t, []ChannelModelPricing{{
 		Platform:    "anthropic",
