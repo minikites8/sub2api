@@ -23,8 +23,11 @@ const (
 	BaiduVODTaskStatusPath       = "/tasks/"
 	BaiduVODSeedanceCreatePath   = "/api/v3/contents/generations/tasks"
 	BaiduVODSeedanceTaskPath     = "/api/v3/contents/generations/tasks/"
+	BaiduVODVeoCreatePath        = "/v2/aigc/image_to_video"
+	BaiduVODVeoTaskPath          = "/v2/tasks/"
 	BaiduVODProviderHappyHorse   = "happyhorse"
 	BaiduVODProviderSeedance     = "seedance"
+	BaiduVODProviderVeo          = "veo"
 	BaiduVODProvider             = BaiduVODProviderHappyHorse
 	BaiduVODAuthModeAPIKey       = "apikey"
 	BaiduVODAuthModeAKSK         = "aksk"
@@ -56,6 +59,7 @@ type BaiduVODModelSpec struct {
 	MinDuration       int
 	MaxDuration       int
 	AllowAutoDuration bool
+	AllowReferences   bool
 }
 
 var baiduVODModelRegistry = map[string]BaiduVODModelSpec{
@@ -73,6 +77,9 @@ var baiduVODModelRegistry = map[string]BaiduVODModelSpec{
 	"doubao-seedance-1-5-pro-251215":      seedanceModelSpec("doubao-seedance-1-5-pro-251215", []string{"480P", "720P", "1080P"}, "720P", 4, 12, true),
 	"doubao-seedance-1-0-pro-250528":      seedanceModelSpec("doubao-seedance-1-0-pro-250528", []string{"480P", "720P", "1080P"}, "1080P", 2, 12, false),
 	"doubao-seedance-1-0-pro-fast-251015": seedanceModelSpec("doubao-seedance-1-0-pro-fast-251015", []string{"480P", "720P", "1080P"}, "1080P", 2, 12, false),
+	"veo-3.1":                             veoModelSpec("veo-3.1", "VE3.1", true),
+	"veo-3.1-fast":                        veoModelSpec("veo-3.1-fast", "VE3.1F", true),
+	"veo-3.1-lite":                        veoModelSpec("veo-3.1-lite", "VE3.1L", false),
 }
 
 func happyHorseModelSpec(model string, capability BaiduVODVideoCapability) BaiduVODModelSpec {
@@ -97,9 +104,31 @@ func seedanceModelSpec(model string, resolutions []string, defaultResolution str
 	}
 }
 
+func veoModelSpec(model, upstreamModel string, allowReferences bool) BaiduVODModelSpec {
+	return BaiduVODModelSpec{
+		Model: model, UpstreamModel: upstreamModel, Provider: BaiduVODProviderVeo, Capability: BaiduVODCapabilityI2V,
+		CreatePath: BaiduVODVeoCreatePath, TaskPath: BaiduVODVeoTaskPath,
+		Resolutions: []string{"720P", "1080P", "4K"}, DefaultResolution: "720P", DefaultRatio: "16:9",
+		DefaultDuration: 8, MinDuration: 4, MaxDuration: 8, AllowReferences: allowReferences,
+	}
+}
+
 func BaiduVODModel(model string) (BaiduVODModelSpec, bool) {
 	spec, ok := baiduVODModelRegistry[strings.ToLower(strings.TrimSpace(model))]
 	return spec, ok
+}
+
+func baiduVODModelForUpstream(model string) (BaiduVODModelSpec, bool) {
+	if spec, ok := BaiduVODModel(model); ok {
+		return spec, true
+	}
+	model = strings.TrimSpace(model)
+	for _, spec := range baiduVODModelRegistry {
+		if strings.EqualFold(spec.UpstreamModel, model) {
+			return spec, true
+		}
+	}
+	return BaiduVODModelSpec{}, false
 }
 
 func BaiduVODModels() []BaiduVODModelSpec {
@@ -118,39 +147,61 @@ type BaiduVODMedia struct {
 }
 
 type BaiduVODVideoRequest struct {
-	Model           string            `json:"model"`
-	Prompt          string            `json:"prompt"`
-	Seconds         int               `json:"seconds"`
-	Duration        int               `json:"duration"`
-	Size            string            `json:"size"`
-	Resolution      string            `json:"resolution"`
-	Ratio           string            `json:"ratio"`
-	Image           json.RawMessage   `json:"image"`
-	Images          []json.RawMessage `json:"images"`
-	FirstFrame      json.RawMessage   `json:"first_frame"`
-	LastFrame       json.RawMessage   `json:"last_frame"`
-	ReferenceImages []json.RawMessage `json:"reference_images"`
-	Video           json.RawMessage   `json:"video"`
-	Videos          []json.RawMessage `json:"videos"`
-	ReferenceVideos []json.RawMessage `json:"reference_videos"`
-	Audio           json.RawMessage   `json:"audio"`
-	Audios          []json.RawMessage `json:"audios"`
-	ReferenceAudios []json.RawMessage `json:"reference_audios"`
-	Media           []BaiduVODMedia   `json:"media"`
-	Content         []json.RawMessage `json:"content"`
-	GenerateAudio   *bool             `json:"generate_audio"`
-	Watermark       *bool             `json:"watermark"`
-	ReturnLastFrame *bool             `json:"return_last_frame"`
-	CallbackURL     string            `json:"callback_url"`
-	ServiceTier     string            `json:"service_tier"`
-	ExpiresAfter    *int              `json:"execution_expires_after"`
-	Draft           *bool             `json:"draft"`
-	Frames          *int              `json:"frames"`
-	Seed            *int64            `json:"seed"`
-	CameraFixed     *bool             `json:"camera_fixed"`
-	SafetyID        string            `json:"safety_identifier"`
-	Priority        *int              `json:"priority"`
-	Tools           []json.RawMessage `json:"tools"`
+	Model            string            `json:"model"`
+	Prompt           string            `json:"prompt"`
+	NegativePrompt   string            `json:"negative_prompt"`
+	Seconds          int               `json:"seconds"`
+	Duration         int               `json:"duration"`
+	N                int               `json:"n"`
+	Size             string            `json:"size"`
+	Resolution       string            `json:"resolution"`
+	Ratio            string            `json:"ratio"`
+	Image            json.RawMessage   `json:"image"`
+	Images           []json.RawMessage `json:"images"`
+	FirstFrame       json.RawMessage   `json:"first_frame"`
+	LastFrame        json.RawMessage   `json:"last_frame"`
+	ReferenceImages  []json.RawMessage `json:"reference_images"`
+	Video            json.RawMessage   `json:"video"`
+	Videos           []json.RawMessage `json:"videos"`
+	ReferenceVideos  []json.RawMessage `json:"reference_videos"`
+	Audio            json.RawMessage   `json:"audio"`
+	Audios           []json.RawMessage `json:"audios"`
+	ReferenceAudios  []json.RawMessage `json:"reference_audios"`
+	Media            []BaiduVODMedia   `json:"media"`
+	Content          []json.RawMessage `json:"content"`
+	GenerateAudio    *bool             `json:"generate_audio"`
+	Watermark        *bool             `json:"watermark"`
+	ReturnLastFrame  *bool             `json:"return_last_frame"`
+	CallbackURL      string            `json:"callback_url"`
+	ServiceTier      string            `json:"service_tier"`
+	ExpiresAfter     *int              `json:"execution_expires_after"`
+	Draft            *bool             `json:"draft"`
+	Frames           *int              `json:"frames"`
+	Seed             *int64            `json:"seed"`
+	PersonGeneration string            `json:"person_generation"`
+	CameraFixed      *bool             `json:"camera_fixed"`
+	SafetyID         string            `json:"safety_identifier"`
+	Priority         *int              `json:"priority"`
+	Tools            []json.RawMessage `json:"tools"`
+}
+
+type BaiduVODVeoImage struct {
+	ImageURL string `json:"imageUrl"`
+}
+
+type BaiduVODVeoTaskInput struct {
+	Prompt           string            `json:"prompt"`
+	Image            *BaiduVODVeoImage `json:"image,omitempty"`
+	LastFrame        *BaiduVODVeoImage `json:"lastFrame,omitempty"`
+	ReferenceImages  *BaiduVODVeoImage `json:"referenceImages,omitempty"`
+	N                int               `json:"n,omitempty"`
+	AspectRatio      string            `json:"aspectRatio,omitempty"`
+	DurationSeconds  int               `json:"durationSeconds,omitempty"`
+	Resolution       string            `json:"resolution,omitempty"`
+	NegativePrompt   string            `json:"negativePrompt,omitempty"`
+	GenerateAudio    *bool             `json:"generateAudio,omitempty"`
+	PersonGeneration string            `json:"personGeneration,omitempty"`
+	Seed             *int64            `json:"seed,omitempty"`
 }
 
 type BaiduVODUpstreamRequest struct {
@@ -165,26 +216,47 @@ type BaiduVODUpstreamRequest struct {
 		Ratio      string `json:"ratio"`
 		Duration   int    `json:"duration"`
 	} `json:"parameters"`
-	Content         []json.RawMessage `json:"-"`
-	Resolution      string            `json:"-"`
-	Ratio           string            `json:"-"`
-	Duration        int               `json:"-"`
-	GenerateAudio   *bool             `json:"-"`
-	Watermark       *bool             `json:"-"`
-	ReturnLastFrame *bool             `json:"-"`
-	CallbackURL     string            `json:"-"`
-	ServiceTier     string            `json:"-"`
-	ExpiresAfter    *int              `json:"-"`
-	Draft           *bool             `json:"-"`
-	Frames          *int              `json:"-"`
-	Seed            *int64            `json:"-"`
-	CameraFixed     *bool             `json:"-"`
-	SafetyID        string            `json:"-"`
-	Priority        *int              `json:"-"`
-	Tools           []json.RawMessage `json:"-"`
+	Content         []json.RawMessage     `json:"-"`
+	Resolution      string                `json:"-"`
+	Ratio           string                `json:"-"`
+	Duration        int                   `json:"-"`
+	GenerateAudio   *bool                 `json:"-"`
+	Watermark       *bool                 `json:"-"`
+	ReturnLastFrame *bool                 `json:"-"`
+	CallbackURL     string                `json:"-"`
+	ServiceTier     string                `json:"-"`
+	ExpiresAfter    *int                  `json:"-"`
+	Draft           *bool                 `json:"-"`
+	Frames          *int                  `json:"-"`
+	Seed            *int64                `json:"-"`
+	CameraFixed     *bool                 `json:"-"`
+	SafetyID        string                `json:"-"`
+	Priority        *int                  `json:"-"`
+	Tools           []json.RawMessage     `json:"-"`
+	VeoInput        *BaiduVODVeoTaskInput `json:"-"`
 }
 
 func (r BaiduVODUpstreamRequest) MarshalJSON() ([]byte, error) {
+	if r.Provider == BaiduVODProviderVeo {
+		type veoRequest struct {
+			Model              string                `json:"model"`
+			ModelVE31Input     *BaiduVODVeoTaskInput `json:"modelVE31TaskInput,omitempty"`
+			ModelVE31FastInput *BaiduVODVeoTaskInput `json:"modelVE31FTaskInput,omitempty"`
+			ModelVE31LiteInput *BaiduVODVeoTaskInput `json:"modelVE31LTaskInput,omitempty"`
+		}
+		payload := veoRequest{Model: r.Model}
+		switch r.Model {
+		case "VE3.1":
+			payload.ModelVE31Input = r.VeoInput
+		case "VE3.1F":
+			payload.ModelVE31FastInput = r.VeoInput
+		case "VE3.1L":
+			payload.ModelVE31LiteInput = r.VeoInput
+		default:
+			return nil, fmt.Errorf("unsupported Baidu VOD Veo upstream model: %s", r.Model)
+		}
+		return json.Marshal(payload)
+	}
 	if r.Provider != BaiduVODProviderSeedance {
 		type happyHorseRequest struct {
 			Model      string `json:"model"`
@@ -231,6 +303,8 @@ func ParseBaiduVODVideoRequest(body []byte) (BaiduVODVideoRequest, error) {
 	}
 	req.Model = strings.TrimSpace(req.Model)
 	req.Prompt = strings.TrimSpace(req.Prompt)
+	req.NegativePrompt = strings.TrimSpace(req.NegativePrompt)
+	req.PersonGeneration = strings.TrimSpace(req.PersonGeneration)
 	if req.Duration == 0 {
 		req.Duration = req.Seconds
 	}
@@ -317,7 +391,7 @@ func baiduVODURL(raw json.RawMessage) string {
 	case string:
 		return strings.TrimSpace(v)
 	case map[string]any:
-		for _, key := range []string{"url", "image_url", "uri"} {
+		for _, key := range []string{"url", "image_url", "imageUrl", "uri"} {
 			if s, ok := v[key].(string); ok && strings.TrimSpace(s) != "" {
 				return strings.TrimSpace(s)
 			}
@@ -647,6 +721,79 @@ func validateSeedanceParameters(req BaiduVODVideoRequest, spec BaiduVODModelSpec
 	return nil
 }
 
+func veoImage(raw json.RawMessage) *BaiduVODVeoImage {
+	imageURL := baiduVODURL(raw)
+	if imageURL == "" {
+		return nil
+	}
+	return &BaiduVODVeoImage{ImageURL: imageURL}
+}
+
+func veoTaskInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*BaiduVODVeoTaskInput, error) {
+	if req.Prompt == "" {
+		return nil, errors.New("prompt is required")
+	}
+	if len([]rune(req.Prompt)) > 2000 {
+		return nil, errors.New("Veo prompt must not exceed 2000 characters")
+	}
+	if len([]rune(req.NegativePrompt)) > 1000 {
+		return nil, errors.New("Veo negative_prompt must not exceed 1000 characters")
+	}
+	if req.Duration != 4 && req.Duration != 6 && req.Duration != 8 {
+		return nil, fmt.Errorf("model %s duration must be 4, 6, or 8 seconds", spec.Model)
+	}
+	if req.Ratio != "16:9" && req.Ratio != "9:16" {
+		return nil, fmt.Errorf("model %s supports 16:9 and 9:16 ratios", spec.Model)
+	}
+	if req.N != 0 && req.N != 1 {
+		return nil, errors.New("Veo currently supports n=1 through this API")
+	}
+	if req.Seed != nil && (*req.Seed < 0 || *req.Seed > int64(^uint32(0))) {
+		return nil, errors.New("Veo seed must be between 0 and 4294967295")
+	}
+	if req.PersonGeneration != "" && req.PersonGeneration != "allow_adult" && req.PersonGeneration != "disallow" {
+		return nil, errors.New("Veo person_generation must be allow_adult or disallow")
+	}
+
+	firstFrame := veoImage(req.FirstFrame)
+	if firstFrame == nil {
+		firstFrame = veoImage(req.Image)
+	}
+	lastFrame := veoImage(req.LastFrame)
+	references := req.ReferenceImages
+	if len(references) == 0 {
+		references = req.Images
+	}
+	var referenceImage *BaiduVODVeoImage
+	for _, raw := range references {
+		if image := veoImage(raw); image != nil {
+			if referenceImage != nil {
+				return nil, errors.New("Veo supports one reference image per request")
+			}
+			referenceImage = image
+		}
+	}
+	if lastFrame != nil && firstFrame == nil {
+		return nil, errors.New("Veo last_frame requires first_frame or image")
+	}
+	if referenceImage != nil && !spec.AllowReferences {
+		return nil, fmt.Errorf("model %s does not support reference images", spec.Model)
+	}
+	if referenceImage != nil && (firstFrame != nil || lastFrame != nil) {
+		return nil, errors.New("Veo reference image mode cannot include first_frame, image, or last_frame")
+	}
+	if firstFrame == nil && referenceImage == nil {
+		return nil, fmt.Errorf("model %s requires an image input", spec.Model)
+	}
+
+	return &BaiduVODVeoTaskInput{
+		Prompt: req.Prompt, Image: firstFrame, LastFrame: lastFrame, ReferenceImages: referenceImage,
+		N: 1, AspectRatio: req.Ratio, DurationSeconds: req.Duration, Resolution: strings.ToLower(req.Resolution),
+		NegativePrompt: req.NegativePrompt, GenerateAudio: req.GenerateAudio,
+		PersonGeneration: req.PersonGeneration, Seed: req.Seed,
+	}, nil
+}
+
 func TranslateBaiduVODVideoRequest(req BaiduVODVideoRequest) (BaiduVODModelSpec, BaiduVODUpstreamRequest, error) {
 	spec, ok := BaiduVODModel(req.Model)
 	if !ok {
@@ -670,6 +817,14 @@ func TranslateBaiduVODVideoRequest(req BaiduVODVideoRequest) (BaiduVODModelSpec,
 	}
 	var out BaiduVODUpstreamRequest
 	out.Provider, out.Model = spec.Provider, spec.UpstreamModel
+	if spec.Provider == BaiduVODProviderVeo {
+		input, err := veoTaskInputFor(req, spec)
+		if err != nil {
+			return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, err
+		}
+		out.VeoInput = input
+		return spec, out, nil
+	}
 	if spec.Provider == BaiduVODProviderSeedance {
 		if err := validateSeedanceParameters(req, spec); err != nil {
 			return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, err
@@ -773,6 +928,43 @@ type baiduVODSeedanceTaskResponse struct {
 	Duration   int    `json:"duration"`
 	Ratio      string `json:"ratio"`
 	Resolution string `json:"resolution"`
+}
+
+type baiduVODVeoCreateResponse struct {
+	TaskID    string `json:"taskId"`
+	RequestID string `json:"requestId"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+}
+
+type baiduVODVeoMediaInfo struct {
+	Source struct {
+		SourceURL string `json:"sourceUrl"`
+	} `json:"source"`
+	SourceMetadata struct {
+		DurationInSecond int `json:"durationInSecond"`
+		Video            struct {
+			WidthInPixel  int `json:"widthInPixel"`
+			HeightInPixel int `json:"heightInPixel"`
+		} `json:"video"`
+	} `json:"sourceMetadata"`
+}
+
+type baiduVODVeoTaskResponse struct {
+	TaskID                string `json:"taskId"`
+	Type                  string `json:"type"`
+	Status                string `json:"status"`
+	RequestID             string `json:"requestId"`
+	Code                  string `json:"code"`
+	Message               string `json:"message"`
+	VideoGenerateTaskInfo struct {
+		Status                  string  `json:"status"`
+		ErrMsg                  string  `json:"errMsg"`
+		UnitPrice               float64 `json:"unitPrice"`
+		VideoGenerateTaskOutput struct {
+			MediaBasicInfos []baiduVODVeoMediaInfo `json:"mediaBasicInfos"`
+		} `json:"videoGenerateTaskOutput"`
+	} `json:"videoGenerateTaskInfo"`
 }
 
 func baiduVODJSONCode(raw json.RawMessage) string {

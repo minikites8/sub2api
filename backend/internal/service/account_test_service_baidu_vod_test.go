@@ -58,6 +58,21 @@ func TestAccountTestServiceBaiduVODSeedanceUsesSeedanceProbe(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
 }
 
+func TestAccountTestServiceBaiduVODVeoUsesDirectProbe(t *testing.T) {
+	account := &Account{ID: 5, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
+		"auth_mode": BaiduVODAuthModeAKSK, "access_key_id": "veo-ak", "secret_access_key": "veo-sk",
+	}}
+	upstream, recorder, err := runBaiduVODAccountTestModel(t, account, "veo-3.1", &http.Response{
+		StatusCode: http.StatusNotFound,
+		Body:       io.NopCloser(strings.NewReader(`{"code":"MediaTaskNotFound","message":"task does not exist"}`)),
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "https://vod.bj.baidubce.com"+BaiduVODVeoTaskPath+baiduVODConnectivityTaskID, upstream.lastReq.URL.String())
+	require.Regexp(t, `^bce-auth-v1/veo-ak/`, upstream.lastReq.Header.Get("Authorization"))
+	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
+}
+
 func TestAccountTestServiceBaiduVODAPIKeyAcceptsMissingProbeTask(t *testing.T) {
 	account := &Account{ID: 1, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
 		"auth_mode": BaiduVODAuthModeAPIKey,

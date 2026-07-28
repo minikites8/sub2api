@@ -57,6 +57,14 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('grok-build-latest')
   })
 
+  it('视频模型列表包含 Veo 3.1 系列公开模型名', () => {
+    const models = getModelsByPlatform('baidu_vod')
+
+    expect(models).toContain('veo-3.1')
+    expect(models).toContain('veo-3.1-fast')
+    expect(models).toContain('veo-3.1-lite')
+  })
+
   it('combined 模式支持 Grok 4.5 官方别名映射', () => {
     const mapping = buildModelMappingObject(
       'combined',

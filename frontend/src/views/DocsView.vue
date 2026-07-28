@@ -428,7 +428,7 @@ const articleExamples: Partial<Record<SectionId, CodeExampleDefinition>> = {
   'video-generation': {
     stepKey: 'request',
     language: 'bash',
-    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "YOUR_VIDEO_MODEL",\n    "prompt": "Ocean waves moving at sunset"\n  }'`
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1-lite",\n    "prompt": "The subject turns toward the camera and smiles naturally",\n    "image": "https://example.com/first-frame.jpg",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
   },
   'model-list': {
     stepKey: 'request',

@@ -345,6 +345,9 @@ func TestFetchUpstreamSupportedModelsBaiduVODUsesRegistry(t *testing.T) {
 		"happyhorse-1.1-r2v",
 		"happyhorse-1.1-t2v",
 		"happyhorse-1.1-video-edit",
+		"veo-3.1",
+		"veo-3.1-fast",
+		"veo-3.1-lite",
 	}, models)
 }
 

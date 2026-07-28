@@ -184,16 +184,16 @@ export default {
       },
       videoGeneration: {
         title: '视频生成',
-        description: '提交提示词创建视频任务，再查询生成结果。',
+        description: '使用异步接口创建文生视频、单图、首尾帧、参考图或视频编辑任务，再查询生成结果。',
         steps: {
           model: {
             title: '1. 选择视频模型',
-            description: '从模型广场选择一个支持视频生成的模型。',
+            description: 'veo-3.1 和 veo-3.1-fast 支持单图、首尾帧与单张参考图；veo-3.1-lite 支持单图与首尾帧。',
             action: '查看模型'
           },
           request: {
             title: '2. 创建任务',
-            description: '替换密钥、模型名称和提示词，然后提交请求。'
+            description: '单图使用 image 或 first_frame，尾帧使用 last_frame，参考图使用 reference_images。Veo 支持 720P、1080P、4K，时长支持 4、6、8 秒，比例支持 16:9 和 9:16。'
           },
           result: {
             title: '3. 获取结果',

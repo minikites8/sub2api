@@ -184,16 +184,16 @@ export default {
       },
       videoGeneration: {
         title: 'Video generation',
-        description: 'Submit a prompt to create a video task, then retrieve the result.',
+        description: 'Create asynchronous text, single-image, first-and-last-frame, reference-image, or video editing tasks, then retrieve the result.',
         steps: {
           model: {
             title: '1. Choose a video model',
-            description: 'Select a model that supports video generation.',
+            description: 'veo-3.1 and veo-3.1-fast support single-image, first-and-last-frame, and one reference image. veo-3.1-lite supports single-image and first-and-last-frame generation.',
             action: 'View models'
           },
           request: {
             title: '2. Create a task',
-            description: 'Replace the API key, model name, and prompt, then submit the request.'
+            description: 'Use image or first_frame for one image, last_frame for the final frame, and reference_images for a reference. Veo supports 720P, 1080P, and 4K; 4, 6, or 8 seconds; and 16:9 or 9:16.'
           },
           result: {
             title: '3. Get the result',

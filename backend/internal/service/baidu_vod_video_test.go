@@ -15,7 +15,7 @@ import (
 
 func TestBaiduVODModelsRegistersVideoFamilies(t *testing.T) {
 	models := BaiduVODModels()
-	require.Len(t, models, 14)
+	require.Len(t, models, 17)
 	for _, model := range []string{
 		"happyhorse-1.0-t2v", "happyhorse-1.0-i2v", "happyhorse-1.0-r2v", "happyhorse-1.0-video-edit",
 		"happyhorse-1.1-t2v", "happyhorse-1.1-i2v", "happyhorse-1.1-r2v", "happyhorse-1.1-video-edit",
@@ -30,6 +30,14 @@ func TestBaiduVODModelsRegistersVideoFamilies(t *testing.T) {
 		spec, ok := BaiduVODModel(model)
 		require.True(t, ok, model)
 		require.Equal(t, BaiduVODProviderSeedance, spec.Provider)
+	}
+	for model, upstreamModel := range map[string]string{
+		"veo-3.1": "VE3.1", "veo-3.1-fast": "VE3.1F", "veo-3.1-lite": "VE3.1L",
+	} {
+		spec, ok := BaiduVODModel(model)
+		require.True(t, ok, model)
+		require.Equal(t, BaiduVODProviderVeo, spec.Provider)
+		require.Equal(t, upstreamModel, spec.UpstreamModel)
 	}
 }
 
@@ -123,6 +131,88 @@ func TestBaiduVODSeedanceValidation(t *testing.T) {
 	require.EqualError(t, err, "Seedance audio content requires an image or video")
 }
 
+func TestTranslateBaiduVODVeoRequest(t *testing.T) {
+	generateAudio := false
+	seed := int64(42)
+	req := BaiduVODVideoRequest{
+		Model: "veo-3.1-fast", Prompt: "camera moves forward", NegativePrompt: "blur",
+		Resolution: "4K", Ratio: "9:16", Duration: 6,
+		FirstFrame:       json.RawMessage(`{"imageUrl":"https://example.com/first.png"}`),
+		LastFrame:        json.RawMessage(`"https://example.com/last.png"`),
+		GenerateAudio:    &generateAudio,
+		PersonGeneration: "disallow",
+		Seed:             &seed,
+	}
+	spec, upstream, err := TranslateBaiduVODVideoRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, BaiduVODProviderVeo, spec.Provider)
+	require.Equal(t, "VE3.1F", upstream.Model)
+
+	raw, err := json.Marshal(upstream)
+	require.NoError(t, err)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	require.Equal(t, "VE3.1F", payload["model"])
+	require.NotContains(t, payload, "modelVE31TaskInput")
+	input := payload["modelVE31FTaskInput"].(map[string]any)
+	require.Equal(t, "camera moves forward", input["prompt"])
+	require.Equal(t, "https://example.com/first.png", input["image"].(map[string]any)["imageUrl"])
+	require.Equal(t, "https://example.com/last.png", input["lastFrame"].(map[string]any)["imageUrl"])
+	require.Equal(t, "4k", input["resolution"])
+	require.Equal(t, "9:16", input["aspectRatio"])
+	require.Equal(t, float64(6), input["durationSeconds"])
+	require.Equal(t, false, input["generateAudio"])
+	require.Equal(t, "disallow", input["personGeneration"])
+	require.Equal(t, float64(42), input["seed"])
+}
+
+func TestTranslateBaiduVODVeoReferenceAndValidation(t *testing.T) {
+	_, upstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "veo-3.1", Prompt: "preserve the character", Resolution: "1080P", Ratio: "16:9", Duration: 8,
+		ReferenceImages: []json.RawMessage{json.RawMessage(`"https://example.com/reference.png"`)},
+	})
+	require.NoError(t, err)
+	raw, err := json.Marshal(upstream)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model":"VE3.1",
+		"modelVE31TaskInput":{
+			"prompt":"preserve the character",
+			"referenceImages":{"imageUrl":"https://example.com/reference.png"},
+			"n":1,
+			"aspectRatio":"16:9",
+			"durationSeconds":8,
+			"resolution":"1080p"
+		}
+	}`, string(raw))
+
+	_, _, err = TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "veo-3.1-lite", Prompt: "video", Resolution: "720P", Ratio: "16:9", Duration: 8,
+		ReferenceImages: []json.RawMessage{json.RawMessage(`"https://example.com/reference.png"`)},
+	})
+	require.EqualError(t, err, "model veo-3.1-lite does not support reference images")
+
+	_, _, err = TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "veo-3.1", Prompt: "video", Resolution: "720P", Ratio: "16:9", Duration: 5,
+		Image: json.RawMessage(`"https://example.com/first.png"`),
+	})
+	require.EqualError(t, err, "model veo-3.1 duration must be 4, 6, or 8 seconds")
+
+	_, _, err = TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "veo-3.1", Prompt: "video", Resolution: "720P", Ratio: "1:1", Duration: 8,
+		Image: json.RawMessage(`"https://example.com/first.png"`),
+	})
+	require.EqualError(t, err, "model veo-3.1 supports 16:9 and 9:16 ratios")
+}
+
+func TestParseBaiduVODVeoDefaults(t *testing.T) {
+	req, err := ParseBaiduVODVideoRequest([]byte(`{"model":"veo-3.1-lite","prompt":"video","image":"https://example.com/first.png"}`))
+	require.NoError(t, err)
+	require.Equal(t, "720P", req.Resolution)
+	require.Equal(t, "16:9", req.Ratio)
+	require.Equal(t, 8, req.Duration)
+}
+
 func TestBaiduVODSubmitSeedanceUsesSeedanceEndpoint(t *testing.T) {
 	_, payload, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
 		Model: "doubao-seedance-2-0-260128", Prompt: "video", Resolution: "720P", Duration: 5,
@@ -144,6 +234,61 @@ func TestBaiduVODSubmitSeedanceUsesSeedanceEndpoint(t *testing.T) {
 	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/seedance"+BaiduVODSeedanceCreatePath, upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer seedance-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-DashScope-Async"))
+}
+
+func TestBaiduVODSubmitVeoUsesDirectAKSKEndpoint(t *testing.T) {
+	_, payload, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "veo-3.1-fast", Prompt: "video", Resolution: "720P", Ratio: "16:9", Duration: 4,
+		Image: json.RawMessage(`"https://example.com/first.png"`),
+	})
+	require.NoError(t, err)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"taskId":"tsk-veo-1","requestId":"req-veo-1"}`)),
+	}}
+	svc := &BaiduVODVideoService{http: upstream}
+	account := &Account{ID: 8, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
+		"auth_mode": BaiduVODAuthModeAKSK, "access_key_id": "veo-ak", "secret_access_key": "veo-sk",
+	}}
+	result, err := svc.Submit(context.Background(), account, payload)
+	require.NoError(t, err)
+	require.Equal(t, "tsk-veo-1", result.TaskID)
+	require.Equal(t, "req-veo-1", result.RequestID)
+	require.Equal(t, "https://vod.bj.baidubce.com"+BaiduVODVeoCreatePath, upstream.lastReq.URL.String())
+	require.Regexp(t, `^bce-auth-v1/veo-ak/`, upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("X-DashScope-Async"))
+}
+
+func TestBaiduVODPollVeoNormalizesTaskResult(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(`{
+			"taskId":"tsk-veo-2",
+			"type":"VIDEO_GENERATE",
+			"status":"FINISHED",
+			"videoGenerateTaskInfo":{
+				"status":"success",
+				"videoGenerateTaskOutput":{"mediaBasicInfos":[{
+					"source":{"sourceUrl":"https://example.com/veo.mp4"},
+					"sourceMetadata":{"durationInSecond":8,"video":{"widthInPixel":3840,"heightInPixel":2160}}
+				}]}
+			}
+		}`)),
+	}}
+	svc := &BaiduVODVideoService{http: upstream}
+	account := &Account{ID: 9, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
+		"auth_mode": BaiduVODAuthModeAKSK, "access_key_id": "veo-ak", "secret_access_key": "veo-sk",
+	}}
+	task := &BaiduVODVideoTask{Model: "veo-3.1", Provider: BaiduVODProviderVeo, UpstreamTaskID: "tsk-veo-2"}
+	result, err := svc.Poll(context.Background(), account, task)
+	require.NoError(t, err)
+	require.Equal(t, "SUCCEEDED", result.Output.TaskStatus)
+	require.Equal(t, "https://example.com/veo.mp4", result.Output.VideoURL)
+	require.NotNil(t, result.Usage)
+	require.Equal(t, 8, result.Usage.OutputVideoDuration)
+	require.Equal(t, "4K", result.Usage.Resolution)
+	require.Equal(t, 1, result.Usage.VideoCount)
+	require.Equal(t, "https://vod.bj.baidubce.com"+BaiduVODVeoTaskPath+"tsk-veo-2", upstream.lastReq.URL.String())
 }
 
 func TestParseBaiduVODSeedanceDefaults(t *testing.T) {
@@ -198,6 +343,16 @@ func TestBaiduVODUpstreamURLReplacesKnownAuthPrefix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, BaiduVODAuthModeAPIKey, mode)
 	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/seedance"+BaiduVODSeedanceCreatePath, got)
+
+	account.Credentials["auth_mode"] = BaiduVODAuthModeAKSK
+	got, mode, err = baiduVODUpstreamURL(account, BaiduVODProviderVeo, BaiduVODVeoCreatePath)
+	require.NoError(t, err)
+	require.Equal(t, BaiduVODAuthModeAKSK, mode)
+	require.Equal(t, "https://vod.bj.baidubce.com"+BaiduVODVeoCreatePath, got)
+
+	account.Credentials["auth_mode"] = BaiduVODAuthModeAPIKey
+	_, _, err = baiduVODUpstreamURL(account, BaiduVODProviderVeo, BaiduVODVeoCreatePath)
+	require.EqualError(t, err, "Baidu VOD Veo models require AK/SK authentication")
 }
 
 func TestParseBaiduVODVideoURLExpiry(t *testing.T) {
