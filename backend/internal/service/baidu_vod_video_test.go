@@ -38,6 +38,8 @@ func TestBaiduVODModelsRegistersVideoFamilies(t *testing.T) {
 		require.True(t, ok, model)
 		require.Equal(t, BaiduVODProviderVeo, spec.Provider)
 		require.Equal(t, upstreamModel, spec.UpstreamModel)
+		require.Equal(t, model != "veo-3.1-lite", spec.AllowText)
+		require.Equal(t, model != "veo-3.1-lite", spec.AllowReferences)
 	}
 }
 
@@ -146,7 +148,9 @@ func TestTranslateBaiduVODVeoRequest(t *testing.T) {
 	spec, upstream, err := TranslateBaiduVODVideoRequest(req)
 	require.NoError(t, err)
 	require.Equal(t, BaiduVODProviderVeo, spec.Provider)
+	require.Equal(t, BaiduVODCapabilityI2V, spec.Capability)
 	require.Equal(t, "VE3.1F", upstream.Model)
+	require.Equal(t, BaiduVODVeoModeImage, upstream.VeoMode)
 
 	raw, err := json.Marshal(upstream)
 	require.NoError(t, err)
@@ -166,12 +170,42 @@ func TestTranslateBaiduVODVeoRequest(t *testing.T) {
 	require.Equal(t, float64(42), input["seed"])
 }
 
+func TestTranslateBaiduVODVeoTextRequest(t *testing.T) {
+	generateAudio := true
+	req := BaiduVODVideoRequest{
+		Model: "veo-3.1", Prompt: "a golden dog runs through a flower field", NegativePrompt: "blur",
+		Resolution: "720P", Ratio: "16:9", Duration: 4, GenerateAudio: &generateAudio,
+	}
+	spec, upstream, err := TranslateBaiduVODVideoRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, BaiduVODCapabilityT2V, spec.Capability)
+	require.Equal(t, BaiduVODVeoTextCreatePath, spec.CreatePath)
+	require.Equal(t, BaiduVODVeoModeText, upstream.VeoMode)
+
+	raw, err := json.Marshal(upstream)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model":"VE3.1",
+		"modelVE31TaskInput":{
+			"prompt":"a golden dog runs through a flower field",
+			"n":1,
+			"aspectRatio":"16:9",
+			"durationSeconds":4,
+			"resolution":"720p",
+			"negativePrompt":"blur",
+			"generateAudio":true
+		}
+	}`, string(raw))
+}
+
 func TestTranslateBaiduVODVeoReferenceAndValidation(t *testing.T) {
-	_, upstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+	spec, upstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
 		Model: "veo-3.1", Prompt: "preserve the character", Resolution: "1080P", Ratio: "16:9", Duration: 8,
 		ReferenceImages: []json.RawMessage{json.RawMessage(`"https://example.com/reference.png"`)},
 	})
 	require.NoError(t, err)
+	require.Equal(t, BaiduVODCapabilityR2V, spec.Capability)
+	require.Equal(t, BaiduVODVeoModeImage, upstream.VeoMode)
 	raw, err := json.Marshal(upstream)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
@@ -203,6 +237,11 @@ func TestTranslateBaiduVODVeoReferenceAndValidation(t *testing.T) {
 		Image: json.RawMessage(`"https://example.com/first.png"`),
 	})
 	require.EqualError(t, err, "model veo-3.1 supports 16:9 and 9:16 ratios")
+
+	_, _, err = TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "veo-3.1-lite", Prompt: "video", Resolution: "720P", Ratio: "16:9", Duration: 4,
+	})
+	require.EqualError(t, err, "model veo-3.1-lite requires an image input")
 }
 
 func TestParseBaiduVODVeoDefaults(t *testing.T) {
@@ -257,6 +296,27 @@ func TestBaiduVODSubmitVeoUsesDirectAKSKEndpoint(t *testing.T) {
 	require.Equal(t, "https://vod.bj.baidubce.com"+BaiduVODVeoCreatePath, upstream.lastReq.URL.String())
 	require.Regexp(t, `^bce-auth-v1/veo-ak/`, upstream.lastReq.Header.Get("Authorization"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-DashScope-Async"))
+}
+
+func TestBaiduVODSubmitVeoTextUsesTextEndpoint(t *testing.T) {
+	_, payload, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "veo-3.1-fast", Prompt: "a paper airplane flies through a library",
+		Resolution: "720P", Ratio: "16:9", Duration: 4,
+	})
+	require.NoError(t, err)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"taskId":"tsk-veo-text-1","requestId":"req-veo-text-1"}`)),
+	}}
+	svc := &BaiduVODVideoService{http: upstream}
+	account := &Account{ID: 18, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
+		"auth_mode": BaiduVODAuthModeAKSK, "access_key_id": "veo-ak", "secret_access_key": "veo-sk",
+	}}
+	result, err := svc.Submit(context.Background(), account, payload)
+	require.NoError(t, err)
+	require.Equal(t, "tsk-veo-text-1", result.TaskID)
+	require.Equal(t, "https://vod.bj.baidubce.com"+BaiduVODVeoTextCreatePath, upstream.lastReq.URL.String())
+	require.Regexp(t, `^bce-auth-v1/veo-ak/`, upstream.lastReq.Header.Get("Authorization"))
 }
 
 func TestBaiduVODSelectAccountVeoUsesOnlyV2AKSK(t *testing.T) {

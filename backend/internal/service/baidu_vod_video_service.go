@@ -140,7 +140,11 @@ func (s *BaiduVODVideoService) Submit(ctx context.Context, account *Account, pay
 	if err != nil {
 		return nil, err
 	}
-	respBody, status, err := s.do(ctx, account, spec.Provider, http.MethodPost, spec.CreatePath, body)
+	createPath := spec.CreatePath
+	if spec.Provider == BaiduVODProviderVeo && payload.VeoMode == BaiduVODVeoModeText {
+		createPath = BaiduVODVeoTextCreatePath
+	}
+	respBody, status, err := s.do(ctx, account, spec.Provider, http.MethodPost, createPath, body)
 	if err != nil {
 		return nil, err
 	}
@@ -584,6 +588,9 @@ func (s *BaiduVODVideoService) recordUsage(ctx context.Context, task *BaiduVODVi
 	inbound, upstream, mediaType := "/v1/videos/generations", BaiduVODCreatePath, "video"
 	if spec, ok := BaiduVODModel(task.Model); ok {
 		upstream = spec.CreatePath
+		if spec.Provider == BaiduVODProviderVeo && task.Capability == BaiduVODCapabilityT2V {
+			upstream = BaiduVODVeoTextCreatePath
+		}
 	}
 	resolution, duration := task.Resolution, task.OutputDuration
 	if duration <= 0 {

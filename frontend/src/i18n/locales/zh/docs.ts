@@ -12,6 +12,7 @@ export default {
     closeSearch: '关闭搜索',
     navigation: '接入指南',
     apiReference: 'API 参考',
+    videoModels: '视频模型',
     docs: '文档',
     pricing: '价格',
     models: '模型广场',
@@ -187,32 +188,52 @@ export default {
         description: '使用异步接口创建文生视频、首帧图生视频、参考生视频、视频编辑或单图视频任务，再查询生成结果。',
         steps: {
           model: {
-            title: '1. 选择视频模型',
+            title: '选择视频模型',
             description: '从模型广场复制视频模型名称。下面分别展示常用的视频生成与编辑调用方式。',
             action: '查看模型'
           },
           textToVideo: {
-            title: '2. 文生视频',
+            title: '文生视频',
             description: '使用 happyhorse-1.1-t2v 并提供 prompt。以下 5 秒 720P 请求适合首次连通性验证。'
           },
           firstFrameToVideo: {
-            title: '3. 图生视频（基于首帧）',
+            title: '图生视频（基于首帧）',
             description: '使用 happyhorse-1.1-i2v，通过 first_frame 提供可公开访问的首帧图片 URL。'
           },
           referenceToVideo: {
-            title: '4. 参考生视频',
+            title: '参考生视频',
             description: '使用 happyhorse-1.1-r2v，通过 reference_images 数组提供一个或多个参考图片 URL。'
           },
           videoEdit: {
-            title: '5. 视频编辑',
+            title: '视频编辑',
             description: '使用 happyhorse-1.1-video-edit，通过 video 提供待编辑视频 URL，并可通过 image 提供参考图片。'
           },
-          veoRequest: {
-            title: '6. 单图或首尾帧视频',
-            description: 'veo-3.1 和 veo-3.1-fast 支持单图、首尾帧与单张参考图；veo-3.1-lite 支持单图与首尾帧。分辨率支持 720P、1080P、4K，时长支持 4、6、8 秒。'
+          seedanceTextToVideo: {
+            title: '文生视频（低成本）',
+            description: '使用 doubao-seedance-2-0-mini-260615 提交 prompt。以下 4 秒 480P 请求适合连通性验证。'
+          },
+          seedanceImageToVideo: {
+            title: '图生视频（基于首帧）',
+            description: '通过 first_frame 提供可公开访问的首帧图片 URL，支持 JPG、JPEG 和 PNG。'
+          },
+          seedanceReferenceVideo: {
+            title: '参考视频生成',
+            description: '通过 video 提供可公开访问的参考视频 URL，模型会参考其运动节奏和画面内容。'
+          },
+          veoTextToVideo: {
+            title: 'Veo 文生视频',
+            description: 'veo-3.1 和 veo-3.1-fast 支持纯文本生成。提供 prompt 后，接口会自动选择文生视频模式。'
+          },
+          veoHeadTailToVideo: {
+            title: 'Veo 首尾帧生视频',
+            description: '通过 image 提供首帧，通过 last_frame 提供尾帧。三个 Veo 3.1 模型均支持该模式。'
+          },
+          veoReferenceToVideo: {
+            title: 'Veo 参考生视频',
+            description: 'veo-3.1 和 veo-3.1-fast 支持单张参考图，通过 reference_images 数组提交图片 URL。'
           },
           result: {
-            title: '7. 获取结果',
+            title: '获取结果',
             description: '将创建响应中的 id 替换到查询路径。任务完成后请及时保存 video_url 指向的视频。'
           }
         }

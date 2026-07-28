@@ -12,6 +12,7 @@ export default {
     closeSearch: 'Close search',
     navigation: 'Getting started',
     apiReference: 'API reference',
+    videoModels: 'Video models',
     docs: 'Docs',
     pricing: 'Pricing',
     models: 'Models',
@@ -187,32 +188,52 @@ export default {
         description: 'Create asynchronous text-to-video, first-frame, reference-image, video editing, or single-image video tasks, then retrieve the result.',
         steps: {
           model: {
-            title: '1. Choose a video model',
+            title: 'Choose a video model',
             description: 'Copy a video model name from the model catalog. The examples below cover common video generation and editing workflows.',
             action: 'View models'
           },
           textToVideo: {
-            title: '2. Text to video',
+            title: 'Text to video',
             description: 'Use happyhorse-1.1-t2v and provide a prompt. This 5-second 720P request is suitable for an initial connectivity check.'
           },
           firstFrameToVideo: {
-            title: '3. Image to video from a first frame',
+            title: 'Image to video from a first frame',
             description: 'Use happyhorse-1.1-i2v and provide a publicly reachable first-frame image URL through first_frame.'
           },
           referenceToVideo: {
-            title: '4. Reference to video',
+            title: 'Reference to video',
             description: 'Use happyhorse-1.1-r2v and provide one or more reference image URLs through reference_images.'
           },
           videoEdit: {
-            title: '5. Video editing',
+            title: 'Video editing',
             description: 'Use happyhorse-1.1-video-edit, provide the source video URL through video, and optionally add a reference image through image.'
           },
-          veoRequest: {
-            title: '6. Single-image or first-and-last-frame video',
-            description: 'veo-3.1 and veo-3.1-fast support single-image, first-and-last-frame, and one reference image. veo-3.1-lite supports single-image and first-and-last-frame generation. Available resolutions are 720P, 1080P, and 4K, with durations of 4, 6, or 8 seconds.'
+          seedanceTextToVideo: {
+            title: 'Text to video (low cost)',
+            description: 'Use doubao-seedance-2-0-mini-260615 with a prompt. This 4-second 480P request is suitable for connectivity testing.'
+          },
+          seedanceImageToVideo: {
+            title: 'Image to video from a first frame',
+            description: 'Provide a publicly reachable JPG, JPEG, or PNG first-frame URL through first_frame.'
+          },
+          seedanceReferenceVideo: {
+            title: 'Reference-video generation',
+            description: 'Provide a publicly reachable reference video URL through video. The model follows its motion rhythm and visual content.'
+          },
+          veoTextToVideo: {
+            title: 'Veo text to video',
+            description: 'veo-3.1 and veo-3.1-fast support prompt-only generation. A prompt-only request selects text-to-video mode automatically.'
+          },
+          veoHeadTailToVideo: {
+            title: 'Veo first-and-last-frame video',
+            description: 'Provide the first frame through image and the last frame through last_frame. All three Veo 3.1 models support this mode.'
+          },
+          veoReferenceToVideo: {
+            title: 'Veo reference-image video',
+            description: 'veo-3.1 and veo-3.1-fast accept one reference image through the reference_images array.'
           },
           result: {
-            title: '7. Get the result',
+            title: 'Get the result',
             description: 'Replace the path value with the id from the create response. Save the video at video_url when the task completes.'
           }
         }

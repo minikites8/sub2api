@@ -104,39 +104,72 @@
     </aside>
 
     <main class="docs-main">
-      <div class="docs-article">
-        <header class="docs-article-header">
-          <p class="docs-eyebrow">API / {{ activeItem.label }}</p>
-          <h1>{{ activeArticle.title }}</h1>
-          <p>{{ activeArticle.description }}</p>
-        </header>
+      <div class="docs-content-layout" :class="{ 'docs-content-layout-with-models': isVideoSection }">
+        <aside
+          v-if="isVideoSection"
+          class="docs-model-nav"
+          :aria-label="t('docsPage.videoModels')"
+        >
+          <p class="docs-model-nav-label">{{ t('docsPage.videoModels') }}</p>
+          <div class="docs-model-tabs" role="tablist">
+            <button
+              v-for="model in videoDocModels"
+              :key="model.id"
+              :id="`video-doc-tab-${model.id}`"
+              type="button"
+              role="tab"
+              class="docs-model-tab"
+              :class="{ 'docs-model-tab-active': activeVideoModel === model.id }"
+              :aria-selected="activeVideoModel === model.id"
+              :tabindex="activeVideoModel === model.id ? 0 : -1"
+              @click="selectVideoModel(model.id)"
+              @keydown="handleVideoModelKeydown($event, model.id)"
+            >
+              {{ model.label }}
+            </button>
+          </div>
+        </aside>
 
-        <div class="docs-quick-start">
-          <section
-            v-for="step in activeArticle.steps"
-            :key="step.key"
-            class="docs-section docs-quick-start-section"
-            :aria-labelledby="`${activeSection}-${step.key}-heading`"
+        <div class="docs-content-column">
+          <div
+            class="docs-article"
+            :role="isVideoSection ? 'tabpanel' : undefined"
+            :aria-labelledby="isVideoSection ? `video-doc-tab-${activeVideoModel}` : undefined"
           >
-            <h2 :id="`${activeSection}-${step.key}-heading`">{{ step.title }}</h2>
-            <p>{{ step.description }}</p>
-            <router-link v-if="step.action" :to="step.action.to" class="docs-quick-start-action">
-              <span>{{ step.action.label }}</span>
-              <Icon name="arrowRight" size="sm" />
-            </router-link>
-            <CodeBlock
-              v-if="step.example"
-              :language="step.example.language"
-              :code="step.example.code"
-              :copy-label="copiedBlock === `${activeSection}-${step.key}` ? t('docsPage.copied') : t('docsPage.copy')"
-              :copied="copiedBlock === `${activeSection}-${step.key}`"
-              @copy="copyCode(`${activeSection}-${step.key}`, step.example.code)"
-            />
-          </section>
+            <header class="docs-article-header">
+              <p class="docs-eyebrow">API / {{ activeItem.label }}</p>
+              <h1>{{ activeArticle.title }}</h1>
+              <p>{{ activeArticle.description }}</p>
+            </header>
+
+            <div class="docs-quick-start">
+              <section
+                v-for="step in activeArticle.steps"
+                :key="step.key"
+                class="docs-section docs-quick-start-section"
+                :aria-labelledby="`${activeSection}-${step.key}-heading`"
+              >
+                <h2 :id="`${activeSection}-${step.key}-heading`">{{ step.title }}</h2>
+                <p>{{ step.description }}</p>
+                <router-link v-if="step.action" :to="step.action.to" class="docs-quick-start-action">
+                  <span>{{ step.action.label }}</span>
+                  <Icon name="arrowRight" size="sm" />
+                </router-link>
+                <CodeBlock
+                  v-if="step.example"
+                  :language="step.example.language"
+                  :code="step.example.code"
+                  :copy-label="copiedBlock === `${activeSection}-${step.key}` ? t('docsPage.copied') : t('docsPage.copy')"
+                  :copied="copiedBlock === `${activeSection}-${step.key}`"
+                  @copy="copyCode(`${activeSection}-${step.key}`, step.example.code)"
+                />
+              </section>
+            </div>
+          </div>
+
+          <PublicSiteFooter :description="t('docsPage.footerDescription')" theme="docs" />
         </div>
       </div>
-
-      <PublicSiteFooter :description="t('docsPage.footerDescription')" theme="docs" />
     </main>
 
     <div v-if="searchOpen" class="docs-search-overlay" role="presentation" @click.self="closeSearch">
@@ -210,6 +243,8 @@ type SectionId =
   | 'video-generation'
   | 'model-list'
 
+type VideoDocModelId = 'happyhorse' | 'seedance' | 'veo'
+
 type DocsIcon = 'grid' | 'cpu' | 'key' | 'chartBar' | 'cog' | 'lock' | 'chatBubble' | 'sparkles' | 'video' | 'document'
 
 interface NavigationItem {
@@ -249,6 +284,12 @@ interface ArticleContent {
   steps: ArticleStep[]
 }
 
+interface VideoDocModelDefinition {
+  id: VideoDocModelId
+  label: string
+  steps: ArticleStepDefinition[]
+}
+
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -279,6 +320,7 @@ const searchOpen = ref(false)
 const searchQuery = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
 const copiedBlock = ref<string | null>(null)
+const activeVideoModel = ref<VideoDocModelId>('happyhorse')
 let copyFeedbackTimer: number | undefined
 
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
@@ -313,6 +355,7 @@ const activeItem = computed<NavigationItem>(() => (
   allNavigationItems.value.find((item) => item.id === activeSection.value)
   || createNavigationItem('overview', 'grid', 'overview')
 ))
+const isVideoSection = computed(() => activeSection.value === 'video-generation')
 
 const articleKeys: Record<SectionId, string> = {
   overview: 'overview',
@@ -368,13 +411,7 @@ const articleStepLayouts: Record<SectionId, ArticleStepDefinition[]> = {
     { key: 'result' }
   ],
   'video-generation': [
-    { key: 'model', actionTo: '/models' },
-    { key: 'textToVideo' },
-    { key: 'firstFrameToVideo' },
-    { key: 'referenceToVideo' },
-    { key: 'videoEdit' },
-    { key: 'veoRequest' },
-    { key: 'result' }
+    { key: 'model', actionTo: '/models' }
   ],
   'model-list': [
     { key: 'request' },
@@ -382,6 +419,47 @@ const articleStepLayouts: Record<SectionId, ArticleStepDefinition[]> = {
     { key: 'use' }
   ]
 }
+
+const videoDocModels: readonly VideoDocModelDefinition[] = [
+  {
+    id: 'happyhorse',
+    label: 'HappyHorse 1.1',
+    steps: [
+      { key: 'model', actionTo: '/models' },
+      { key: 'textToVideo' },
+      { key: 'firstFrameToVideo' },
+      { key: 'referenceToVideo' },
+      { key: 'videoEdit' },
+      { key: 'result' }
+    ]
+  },
+  {
+    id: 'seedance',
+    label: 'Seedance 2.0',
+    steps: [
+      { key: 'model', actionTo: '/models' },
+      { key: 'seedanceTextToVideo' },
+      { key: 'seedanceImageToVideo' },
+      { key: 'seedanceReferenceVideo' },
+      { key: 'result' }
+    ]
+  },
+  {
+    id: 'veo',
+    label: 'Veo 3.1',
+    steps: [
+      { key: 'model', actionTo: '/models' },
+      { key: 'veoTextToVideo' },
+      { key: 'veoHeadTailToVideo' },
+      { key: 'veoReferenceToVideo' },
+      { key: 'result' }
+    ]
+  }
+]
+
+const activeVideoDocModel = computed(() => (
+  videoDocModels.find((model) => model.id === activeVideoModel.value) || videoDocModels[0]
+))
 
 const chatRequestCode = `curl https://api.your-code.cc/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -446,9 +524,29 @@ const articleExamples: Partial<Record<SectionId, CodeExampleDefinition[]>> = {
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/videos/edits \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "happyhorse-1.1-video-edit",\n    "prompt": "Dress the subject in the striped sweater from the reference image",\n    "video": "https://example.com/input.mp4",\n    "image": "https://example.com/sweater.jpg",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 5\n  }'`
   }, {
-    stepKey: 'veoRequest',
+    stepKey: 'seedanceTextToVideo',
     language: 'bash',
-    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1-lite",\n    "prompt": "The subject turns toward the camera and smiles naturally",\n    "image": "https://example.com/first-frame.jpg",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "doubao-seedance-2-0-mini-260615",\n    "prompt": "A paper boat drifts along a quiet stream at sunrise",\n    "resolution": "480P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
+  }, {
+    stepKey: 'seedanceImageToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "doubao-seedance-2-0-mini-260615",\n    "prompt": "The camera slowly moves forward while the flowers sway in the wind",\n    "first_frame": "https://example.com/first-frame.jpg",\n    "resolution": "480P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
+  }, {
+    stepKey: 'seedanceReferenceVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "doubao-seedance-2-0-260128",\n    "prompt": "Preserve the movement rhythm and create a cinematic city scene",\n    "video": "https://example.com/reference-video.mp4",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
+  }, {
+    stepKey: 'veoTextToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1-fast",\n    "prompt": "A paper airplane flies through a quiet modern library",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
+  }, {
+    stepKey: 'veoHeadTailToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1-lite",\n    "prompt": "The camera moves smoothly from the opening scene to the closing scene",\n    "image": "https://example.com/first-frame.jpg",\n    "last_frame": "https://example.com/last-frame.jpg",\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
+  }, {
+    stepKey: 'veoReferenceToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1",\n    "prompt": "Keep the referenced character appearance while walking through a city street",\n    "reference_images": [\n      "https://example.com/character-reference.jpg"\n    ],\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
   }, {
     stepKey: 'result',
     language: 'bash',
@@ -464,14 +562,18 @@ const articleExamples: Partial<Record<SectionId, CodeExampleDefinition[]>> = {
 const activeArticle = computed<ArticleContent>(() => {
   const articleKey = articleKeys[activeSection.value]
   const exampleDefinitions = articleExamples[activeSection.value] || []
+  const stepDefinitions = isVideoSection.value
+    ? activeVideoDocModel.value.steps
+    : articleStepLayouts[activeSection.value]
   return {
     title: t(`docsPage.articles.${articleKey}.title`),
     description: t(`docsPage.articles.${articleKey}.description`),
-    steps: articleStepLayouts[activeSection.value].map((step) => {
+    steps: stepDefinitions.map((step, index) => {
       const exampleDefinition = exampleDefinitions.find((example) => example.stepKey === step.key)
+      const translatedTitle = t(`docsPage.articles.${articleKey}.steps.${step.key}.title`)
       return {
         key: step.key,
-        title: t(`docsPage.articles.${articleKey}.steps.${step.key}.title`),
+        title: isVideoSection.value ? `${index + 1}. ${translatedTitle}` : translatedTitle,
         description: t(`docsPage.articles.${articleKey}.steps.${step.key}.description`),
         action: step.actionTo
           ? { to: step.actionTo, label: t(`docsPage.articles.${articleKey}.steps.${step.key}.action`) }
@@ -515,6 +617,29 @@ async function selectSection(id: SectionId): Promise<void> {
 async function selectSearchResult(id: SectionId): Promise<void> {
   closeSearch()
   await selectSection(id)
+}
+
+function selectVideoModel(id: VideoDocModelId): void {
+  activeVideoModel.value = id
+  copiedBlock.value = null
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+async function handleVideoModelKeydown(event: KeyboardEvent, id: VideoDocModelId): Promise<void> {
+  const currentIndex = videoDocModels.findIndex((model) => model.id === id)
+  let nextIndex = currentIndex
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % videoDocModels.length
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + videoDocModels.length) % videoDocModels.length
+  if (event.key === 'Home') nextIndex = 0
+  if (event.key === 'End') nextIndex = videoDocModels.length - 1
+  if (nextIndex === currentIndex) return
+
+  event.preventDefault()
+  const nextModel = videoDocModels[nextIndex]
+  if (!nextModel) return
+  selectVideoModel(nextModel.id)
+  await nextTick()
+  document.getElementById(`video-doc-tab-${nextModel.id}`)?.focus()
 }
 
 async function openSearch(): Promise<void> {
@@ -884,6 +1009,78 @@ onBeforeUnmount(() => {
   padding-top: 64px;
 }
 
+.docs-content-layout,
+.docs-content-column {
+  min-width: 0;
+}
+
+.docs-content-layout-with-models {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+}
+
+.docs-model-nav {
+  position: sticky;
+  z-index: 20;
+  top: 64px;
+  height: calc(100vh - 64px);
+  align-self: start;
+  overflow-y: auto;
+  border-right: 1px solid var(--docs-outline);
+  padding: 56px 18px 32px;
+  background: rgb(11 20 28 / 88%);
+  backdrop-filter: blur(10px);
+}
+
+.docs-model-nav-label {
+  margin: 0 10px 16px;
+  color: var(--docs-muted);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.docs-model-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.docs-model-tab {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: var(--docs-muted);
+  background: transparent;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.docs-model-tab:hover,
+.docs-model-tab:focus-visible {
+  color: var(--docs-text);
+  background: var(--docs-surface-high);
+  outline: none;
+}
+
+.docs-model-tab-active {
+  border-left-color: var(--docs-primary);
+  color: #f4fff3;
+  background: var(--docs-surface-high);
+  font-weight: 700;
+}
+
 .docs-article {
   width: min(100%, 1100px);
   min-height: calc(100vh - 153px);
@@ -1182,6 +1379,55 @@ onBeforeUnmount(() => {
 
 }
 
+@media (max-width: 1200px) {
+  .docs-content-layout-with-models {
+    display: block;
+  }
+
+  .docs-model-nav {
+    top: 64px;
+    display: flex;
+    width: 100%;
+    height: auto;
+    align-items: center;
+    gap: 16px;
+    overflow: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--docs-outline);
+    padding: 12px 24px;
+  }
+
+  .docs-model-nav-label {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+
+  .docs-model-tabs {
+    min-width: 0;
+    flex: 1;
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .docs-model-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .docs-model-tab {
+    width: auto;
+    min-width: max-content;
+    flex: 0 0 auto;
+    padding: 8px 12px;
+  }
+
+  .docs-model-tab-active {
+    border-left-color: transparent;
+    border-bottom-color: var(--docs-primary);
+  }
+}
+
 @media (max-width: 600px) {
   .docs-top-nav {
     gap: 10px;
@@ -1213,6 +1459,20 @@ onBeforeUnmount(() => {
   .docs-article {
     min-height: calc(100vh - 180px);
     padding: 42px 20px 54px;
+  }
+
+  .docs-model-nav {
+    gap: 10px;
+    padding: 10px 20px;
+  }
+
+  .docs-model-nav-label {
+    display: none;
+  }
+
+  .docs-model-tab {
+    padding: 8px 10px;
+    font-size: 12px;
   }
 
   .docs-article-header {

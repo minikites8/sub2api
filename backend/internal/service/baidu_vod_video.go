@@ -24,6 +24,7 @@ const (
 	BaiduVODSeedanceCreatePath   = "/api/v3/contents/generations/tasks"
 	BaiduVODSeedanceTaskPath     = "/api/v3/contents/generations/tasks/"
 	BaiduVODVeoCreatePath        = "/v2/aigc/image_to_video"
+	BaiduVODVeoTextCreatePath    = "/v2/aigc/text_to_video"
 	BaiduVODVeoTaskPath          = "/v2/tasks/"
 	BaiduVODProviderHappyHorse   = "happyhorse"
 	BaiduVODProviderSeedance     = "seedance"
@@ -59,6 +60,7 @@ type BaiduVODModelSpec struct {
 	MinDuration       int
 	MaxDuration       int
 	AllowAutoDuration bool
+	AllowText         bool
 	AllowReferences   bool
 }
 
@@ -77,9 +79,9 @@ var baiduVODModelRegistry = map[string]BaiduVODModelSpec{
 	"doubao-seedance-1-5-pro-251215":      seedanceModelSpec("doubao-seedance-1-5-pro-251215", []string{"480P", "720P", "1080P"}, "720P", 4, 12, true),
 	"doubao-seedance-1-0-pro-250528":      seedanceModelSpec("doubao-seedance-1-0-pro-250528", []string{"480P", "720P", "1080P"}, "1080P", 2, 12, false),
 	"doubao-seedance-1-0-pro-fast-251015": seedanceModelSpec("doubao-seedance-1-0-pro-fast-251015", []string{"480P", "720P", "1080P"}, "1080P", 2, 12, false),
-	"veo-3.1":                             veoModelSpec("veo-3.1", "VE3.1", true),
-	"veo-3.1-fast":                        veoModelSpec("veo-3.1-fast", "VE3.1F", true),
-	"veo-3.1-lite":                        veoModelSpec("veo-3.1-lite", "VE3.1L", false),
+	"veo-3.1":                             veoModelSpec("veo-3.1", "VE3.1", true, true),
+	"veo-3.1-fast":                        veoModelSpec("veo-3.1-fast", "VE3.1F", true, true),
+	"veo-3.1-lite":                        veoModelSpec("veo-3.1-lite", "VE3.1L", false, false),
 }
 
 func happyHorseModelSpec(model string, capability BaiduVODVideoCapability) BaiduVODModelSpec {
@@ -104,12 +106,12 @@ func seedanceModelSpec(model string, resolutions []string, defaultResolution str
 	}
 }
 
-func veoModelSpec(model, upstreamModel string, allowReferences bool) BaiduVODModelSpec {
+func veoModelSpec(model, upstreamModel string, allowText, allowReferences bool) BaiduVODModelSpec {
 	return BaiduVODModelSpec{
 		Model: model, UpstreamModel: upstreamModel, Provider: BaiduVODProviderVeo, Capability: BaiduVODCapabilityI2V,
 		CreatePath: BaiduVODVeoCreatePath, TaskPath: BaiduVODVeoTaskPath,
 		Resolutions: []string{"720P", "1080P", "4K"}, DefaultResolution: "720P", DefaultRatio: "16:9",
-		DefaultDuration: 8, MinDuration: 4, MaxDuration: 8, AllowReferences: allowReferences,
+		DefaultDuration: 8, MinDuration: 4, MaxDuration: 8, AllowText: allowText, AllowReferences: allowReferences,
 	}
 }
 
@@ -189,6 +191,13 @@ type BaiduVODVeoImage struct {
 	ImageURL string `json:"imageUrl"`
 }
 
+type BaiduVODVeoGenerationMode string
+
+const (
+	BaiduVODVeoModeImage BaiduVODVeoGenerationMode = "image_to_video"
+	BaiduVODVeoModeText  BaiduVODVeoGenerationMode = "text_to_video"
+)
+
 type BaiduVODVeoTaskInput struct {
 	Prompt           string            `json:"prompt"`
 	Image            *BaiduVODVeoImage `json:"image,omitempty"`
@@ -216,24 +225,25 @@ type BaiduVODUpstreamRequest struct {
 		Ratio      string `json:"ratio"`
 		Duration   int    `json:"duration"`
 	} `json:"parameters"`
-	Content         []json.RawMessage     `json:"-"`
-	Resolution      string                `json:"-"`
-	Ratio           string                `json:"-"`
-	Duration        int                   `json:"-"`
-	GenerateAudio   *bool                 `json:"-"`
-	Watermark       *bool                 `json:"-"`
-	ReturnLastFrame *bool                 `json:"-"`
-	CallbackURL     string                `json:"-"`
-	ServiceTier     string                `json:"-"`
-	ExpiresAfter    *int                  `json:"-"`
-	Draft           *bool                 `json:"-"`
-	Frames          *int                  `json:"-"`
-	Seed            *int64                `json:"-"`
-	CameraFixed     *bool                 `json:"-"`
-	SafetyID        string                `json:"-"`
-	Priority        *int                  `json:"-"`
-	Tools           []json.RawMessage     `json:"-"`
-	VeoInput        *BaiduVODVeoTaskInput `json:"-"`
+	Content         []json.RawMessage         `json:"-"`
+	Resolution      string                    `json:"-"`
+	Ratio           string                    `json:"-"`
+	Duration        int                       `json:"-"`
+	GenerateAudio   *bool                     `json:"-"`
+	Watermark       *bool                     `json:"-"`
+	ReturnLastFrame *bool                     `json:"-"`
+	CallbackURL     string                    `json:"-"`
+	ServiceTier     string                    `json:"-"`
+	ExpiresAfter    *int                      `json:"-"`
+	Draft           *bool                     `json:"-"`
+	Frames          *int                      `json:"-"`
+	Seed            *int64                    `json:"-"`
+	CameraFixed     *bool                     `json:"-"`
+	SafetyID        string                    `json:"-"`
+	Priority        *int                      `json:"-"`
+	Tools           []json.RawMessage         `json:"-"`
+	VeoInput        *BaiduVODVeoTaskInput     `json:"-"`
+	VeoMode         BaiduVODVeoGenerationMode `json:"-"`
 }
 
 func (r BaiduVODUpstreamRequest) MarshalJSON() ([]byte, error) {
@@ -729,30 +739,30 @@ func veoImage(raw json.RawMessage) *BaiduVODVeoImage {
 	return &BaiduVODVeoImage{ImageURL: imageURL}
 }
 
-func veoTaskInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*BaiduVODVeoTaskInput, error) {
+func veoTaskInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*BaiduVODVeoTaskInput, BaiduVODVeoGenerationMode, error) {
 	if req.Prompt == "" {
-		return nil, errors.New("prompt is required")
+		return nil, "", errors.New("prompt is required")
 	}
 	if len([]rune(req.Prompt)) > 2000 {
-		return nil, errors.New("Veo prompt must not exceed 2000 characters")
+		return nil, "", errors.New("Veo prompt must not exceed 2000 characters")
 	}
 	if len([]rune(req.NegativePrompt)) > 1000 {
-		return nil, errors.New("Veo negative_prompt must not exceed 1000 characters")
+		return nil, "", errors.New("Veo negative_prompt must not exceed 1000 characters")
 	}
 	if req.Duration != 4 && req.Duration != 6 && req.Duration != 8 {
-		return nil, fmt.Errorf("model %s duration must be 4, 6, or 8 seconds", spec.Model)
+		return nil, "", fmt.Errorf("model %s duration must be 4, 6, or 8 seconds", spec.Model)
 	}
 	if req.Ratio != "16:9" && req.Ratio != "9:16" {
-		return nil, fmt.Errorf("model %s supports 16:9 and 9:16 ratios", spec.Model)
+		return nil, "", fmt.Errorf("model %s supports 16:9 and 9:16 ratios", spec.Model)
 	}
 	if req.N != 0 && req.N != 1 {
-		return nil, errors.New("Veo currently supports n=1 through this API")
+		return nil, "", errors.New("Veo currently supports n=1 through this API")
 	}
 	if req.Seed != nil && (*req.Seed < 0 || *req.Seed > int64(^uint32(0))) {
-		return nil, errors.New("Veo seed must be between 0 and 4294967295")
+		return nil, "", errors.New("Veo seed must be between 0 and 4294967295")
 	}
 	if req.PersonGeneration != "" && req.PersonGeneration != "allow_adult" && req.PersonGeneration != "disallow" {
-		return nil, errors.New("Veo person_generation must be allow_adult or disallow")
+		return nil, "", errors.New("Veo person_generation must be allow_adult or disallow")
 	}
 
 	firstFrame := veoImage(req.FirstFrame)
@@ -768,22 +778,26 @@ func veoTaskInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*BaiduVO
 	for _, raw := range references {
 		if image := veoImage(raw); image != nil {
 			if referenceImage != nil {
-				return nil, errors.New("Veo supports one reference image per request")
+				return nil, "", errors.New("Veo supports one reference image per request")
 			}
 			referenceImage = image
 		}
 	}
 	if lastFrame != nil && firstFrame == nil {
-		return nil, errors.New("Veo last_frame requires first_frame or image")
+		return nil, "", errors.New("Veo last_frame requires first_frame or image")
 	}
 	if referenceImage != nil && !spec.AllowReferences {
-		return nil, fmt.Errorf("model %s does not support reference images", spec.Model)
+		return nil, "", fmt.Errorf("model %s does not support reference images", spec.Model)
 	}
 	if referenceImage != nil && (firstFrame != nil || lastFrame != nil) {
-		return nil, errors.New("Veo reference image mode cannot include first_frame, image, or last_frame")
+		return nil, "", errors.New("Veo reference image mode cannot include first_frame, image, or last_frame")
 	}
+	mode := BaiduVODVeoModeImage
 	if firstFrame == nil && referenceImage == nil {
-		return nil, fmt.Errorf("model %s requires an image input", spec.Model)
+		if !spec.AllowText {
+			return nil, "", fmt.Errorf("model %s requires an image input", spec.Model)
+		}
+		mode = BaiduVODVeoModeText
 	}
 
 	return &BaiduVODVeoTaskInput{
@@ -791,7 +805,7 @@ func veoTaskInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*BaiduVO
 		N: 1, AspectRatio: req.Ratio, DurationSeconds: req.Duration, Resolution: strings.ToLower(req.Resolution),
 		NegativePrompt: req.NegativePrompt, GenerateAudio: req.GenerateAudio,
 		PersonGeneration: req.PersonGeneration, Seed: req.Seed,
-	}, nil
+	}, mode, nil
 }
 
 func TranslateBaiduVODVideoRequest(req BaiduVODVideoRequest) (BaiduVODModelSpec, BaiduVODUpstreamRequest, error) {
@@ -818,11 +832,17 @@ func TranslateBaiduVODVideoRequest(req BaiduVODVideoRequest) (BaiduVODModelSpec,
 	var out BaiduVODUpstreamRequest
 	out.Provider, out.Model = spec.Provider, spec.UpstreamModel
 	if spec.Provider == BaiduVODProviderVeo {
-		input, err := veoTaskInputFor(req, spec)
+		input, mode, err := veoTaskInputFor(req, spec)
 		if err != nil {
 			return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, err
 		}
-		out.VeoInput = input
+		out.VeoInput, out.VeoMode = input, mode
+		if mode == BaiduVODVeoModeText {
+			spec.Capability = BaiduVODCapabilityT2V
+			spec.CreatePath = BaiduVODVeoTextCreatePath
+		} else if input.ReferenceImages != nil {
+			spec.Capability = BaiduVODCapabilityR2V
+		}
 		return spec, out, nil
 	}
 	if spec.Provider == BaiduVODProviderSeedance {
