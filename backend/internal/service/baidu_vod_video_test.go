@@ -259,6 +259,37 @@ func TestBaiduVODSubmitVeoUsesDirectAKSKEndpoint(t *testing.T) {
 	require.Empty(t, upstream.lastReq.Header.Get("X-DashScope-Async"))
 }
 
+func TestBaiduVODSelectAccountVeoUsesOnlyV2AKSK(t *testing.T) {
+	apiKeyAccount := Account{
+		ID: 11, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Priority: 100,
+		Credentials: map[string]any{"auth_mode": BaiduVODAuthModeAPIKey, "api_key": "v3-key"},
+	}
+	akskAccount := Account{
+		ID: 12, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Priority: 1,
+		Credentials: map[string]any{"auth_mode": BaiduVODAuthModeAKSK, "access_key_id": "veo-ak", "secret_access_key": "veo-sk"},
+	}
+	svc := &BaiduVODVideoService{accounts: stubOpenAIAccountRepo{accounts: []Account{apiKeyAccount, akskAccount}}}
+
+	account, err := svc.SelectAccount(context.Background(), nil, "veo-3.1-lite")
+	require.NoError(t, err)
+	require.Equal(t, akskAccount.ID, account.ID)
+
+	account, err = svc.SelectAccount(context.Background(), nil, "doubao-seedance-2-0-260128")
+	require.NoError(t, err)
+	require.Equal(t, apiKeyAccount.ID, account.ID)
+}
+
+func TestBaiduVODSelectAccountVeoReportsMissingV2Account(t *testing.T) {
+	apiKeyAccount := Account{
+		ID: 13, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+		Credentials: map[string]any{"auth_mode": BaiduVODAuthModeAPIKey, "api_key": "v3-key"},
+	}
+	svc := &BaiduVODVideoService{accounts: stubOpenAIAccountRepo{accounts: []Account{apiKeyAccount}}}
+
+	_, err := svc.SelectAccount(context.Background(), nil, "veo-3.1-lite")
+	require.EqualError(t, err, "no available accounts for Baidu VOD V2 AK/SK model: veo-3.1-lite")
+}
+
 func TestBaiduVODPollVeoNormalizesTaskResult(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,

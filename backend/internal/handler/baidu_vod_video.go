@@ -18,6 +18,12 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	baiduVODPublicUnavailableMessage = "Video service is temporarily unavailable"
+	baiduVODPublicFailureCode        = "video_generation_failed"
+	baiduVODPublicFailureMessage     = "Video generation failed"
+)
+
 func (h *OpenAIGatewayHandler) BaiduVODVideoCreate(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil {
@@ -30,7 +36,7 @@ func (h *OpenAIGatewayHandler) BaiduVODVideoCreate(c *gin.Context) {
 		return
 	}
 	if h.baiduVODVideoService == nil {
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Baidu VOD video service is unavailable")
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", baiduVODPublicUnavailableMessage)
 		return
 	}
 
@@ -97,8 +103,7 @@ func (h *OpenAIGatewayHandler) BaiduVODVideoCreate(c *gin.Context) {
 
 	account, err := h.baiduVODVideoService.SelectAccount(c.Request.Context(), apiKey.GroupID, request.Model)
 	if err != nil {
-		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-		h.errorResponse(c, http.StatusServiceUnavailable, "server_error", err.Error())
+		h.failBaiduVODAccountSelection(c, reqLog, request.Model, err)
 		return
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -171,13 +176,21 @@ func (h *OpenAIGatewayHandler) failBaiduVODSubmission(c *gin.Context, reqLog *za
 			status = upstreamErr.StatusCode
 		}
 	}
+	service.SetOpsUpstreamError(c, status, message, submitErr.Error())
 	if releaseErr := h.baiduVODVideoService.Release(c.Request.Context(), task); releaseErr != nil {
 		reqLog.Error("baidu_vod_video.release_after_submit_failed", zap.Error(releaseErr))
 	} else {
 		_, _ = h.baiduVODVideoService.MarkSubmissionFailed(c.Request.Context(), task.TaskID, code, message)
 	}
 	reqLog.Warn("baidu_vod_video.submit_failed", zap.Error(submitErr), zap.String("upstream_code", code))
-	h.errorResponse(c, status, "api_error", message)
+	h.errorResponse(c, http.StatusBadGateway, "api_error", baiduVODPublicUnavailableMessage)
+}
+
+func (h *OpenAIGatewayHandler) failBaiduVODAccountSelection(c *gin.Context, reqLog *zap.Logger, model string, selectionErr error) {
+	markOpsRoutingCapacityLimitedIfNoAvailable(c, selectionErr)
+	service.SetOpsUpstreamError(c, http.StatusServiceUnavailable, "Video account selection failed", selectionErr.Error())
+	reqLog.Warn("baidu_vod_video.select_account_failed", zap.String("model", model), zap.Error(selectionErr))
+	h.errorResponse(c, http.StatusServiceUnavailable, "server_error", baiduVODPublicUnavailableMessage)
 }
 
 func (h *OpenAIGatewayHandler) BaiduVODVideoStatus(c *gin.Context) {
@@ -192,7 +205,7 @@ func (h *OpenAIGatewayHandler) BaiduVODVideoStatus(c *gin.Context) {
 		return
 	}
 	if h.baiduVODVideoService == nil {
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Baidu VOD video service is unavailable")
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", baiduVODPublicUnavailableMessage)
 		return
 	}
 	task, err := h.baiduVODVideoService.GetForOwner(c.Request.Context(), subject.UserID, apiKey.ID, c.Param("request_id"))
@@ -226,7 +239,7 @@ func (h *OpenAIGatewayHandler) writeBaiduVODVideo(c *gin.Context, task *service.
 	}
 	response := gin.H{
 		"id": task.TaskID, "object": "video", "created_at": task.CreatedAt.Unix(),
-		"status": status, "progress": progress, "model": task.Model, "provider": task.Provider,
+		"status": status, "progress": progress, "model": task.Model,
 		"seconds": seconds, "size": baiduVODVideoSize(task.Resolution, task.Ratio),
 		"resolution": task.Resolution, "ratio": task.Ratio,
 	}
@@ -240,14 +253,7 @@ func (h *OpenAIGatewayHandler) writeBaiduVODVideo(c *gin.Context, task *service.
 		response["expires_at"] = task.ResultExpiresAt.Unix()
 	}
 	if task.Status == service.BaiduVODTaskStatusFailed {
-		code, message := "video_generation_failed", "Video generation failed"
-		if task.LastErrorCode != nil && strings.TrimSpace(*task.LastErrorCode) != "" {
-			code = strings.TrimSpace(*task.LastErrorCode)
-		}
-		if task.LastErrorMessage != nil && strings.TrimSpace(*task.LastErrorMessage) != "" {
-			message = strings.TrimSpace(*task.LastErrorMessage)
-		}
-		response["error"] = gin.H{"code": code, "message": message}
+		response["error"] = gin.H{"code": baiduVODPublicFailureCode, "message": baiduVODPublicFailureMessage}
 	}
 	c.JSON(http.StatusOK, response)
 }

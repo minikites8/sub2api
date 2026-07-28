@@ -86,16 +86,23 @@ func (s *BaiduVODVideoService) SelectAccount(ctx context.Context, groupID *int64
 	if err != nil {
 		return nil, err
 	}
+	veoV2Only := baiduVODVeoV2Only(model)
 	eligible := make([]*Account, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
 		if account.Type != AccountTypeAPIKey || !account.IsSchedulableForModelWithContext(ctx, model) {
 			continue
 		}
+		if veoV2Only && baiduVODAccountAuthMode(account) != BaiduVODAuthModeAKSK {
+			continue
+		}
 		eligible = append(eligible, account)
 	}
 	if len(eligible) == 0 {
-		return nil, fmt.Errorf("no available Baidu VOD accounts supporting model: %s", model)
+		if veoV2Only {
+			return nil, fmt.Errorf("no available accounts for Baidu VOD V2 AK/SK model: %s", model)
+		}
+		return nil, fmt.Errorf("no available accounts for Baidu VOD model: %s", model)
 	}
 	sort.SliceStable(eligible, func(i, j int) bool {
 		if eligible[i].Priority != eligible[j].Priority {
@@ -110,6 +117,18 @@ func (s *BaiduVODVideoService) SelectAccount(ctx context.Context, groupID *int64
 		return eligible[i].LastUsedAt.Before(*eligible[j].LastUsedAt)
 	})
 	return eligible[0], nil
+}
+
+func baiduVODVeoV2Only(model string) bool {
+	spec, ok := BaiduVODModel(model)
+	return ok && spec.Provider == BaiduVODProviderVeo
+}
+
+func baiduVODAccountAuthMode(account *Account) string {
+	if account != nil && strings.EqualFold(strings.TrimSpace(account.GetCredential("auth_mode")), BaiduVODAuthModeAKSK) {
+		return BaiduVODAuthModeAKSK
+	}
+	return BaiduVODAuthModeAPIKey
 }
 
 func (s *BaiduVODVideoService) Submit(ctx context.Context, account *Account, payload BaiduVODUpstreamRequest) (*BaiduVODSubmitResult, error) {
@@ -370,10 +389,7 @@ func (s *BaiduVODVideoService) do(ctx context.Context, account *Account, provide
 }
 
 func baiduVODUpstreamURL(account *Account, provider, suffix string) (string, string, error) {
-	authMode := strings.ToLower(strings.TrimSpace(account.GetCredential("auth_mode")))
-	if authMode != BaiduVODAuthModeAKSK {
-		authMode = BaiduVODAuthModeAPIKey
-	}
+	authMode := baiduVODAccountAuthMode(account)
 	base := strings.TrimSpace(account.GetCredential("base_url"))
 	if base == "" {
 		base = BaiduVODDefaultBaseURL
