@@ -170,7 +170,7 @@ func TestAccountHandlerGetAvailableModels_BaiduVODUsesVideoRegistry(t *testing.T
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &result))
-	require.Len(t, result.Data, 17)
+	require.Len(t, result.Data, 20)
 	ids := make([]string, 0, len(result.Data))
 	for _, model := range result.Data {
 		require.Equal(t, "model", model.Object)
@@ -184,6 +184,9 @@ func TestAccountHandlerGetAvailableModels_BaiduVODUsesVideoRegistry(t *testing.T
 	require.Contains(t, ids, "veo-3.1")
 	require.Contains(t, ids, "veo-3.1-fast")
 	require.Contains(t, ids, "veo-3.1-lite")
+	require.Contains(t, ids, "kling-v3-omni")
+	require.Contains(t, ids, "kling-video-o1")
+	require.Contains(t, ids, "kling-v3")
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {

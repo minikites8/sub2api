@@ -222,7 +222,7 @@ export default {
           },
           veoTextToVideo: {
             title: 'Veo 文生视频',
-            description: 'veo-3.1 和 veo-3.1-fast 支持纯文本生成。模型名添加 -silent 后缀可自动关闭音频，例如 veo-3.1-fast-silent。'
+            description: 'veo-3.1 和 veo-3.1-fast 支持纯文本生成。基础型号默认生成音频；模型名添加 -silent 后缀可自动关闭音频，例如 veo-3.1-fast-silent。'
           },
           veoHeadTailToVideo: {
             title: 'Veo 首尾帧生视频',
@@ -231,6 +231,22 @@ export default {
           veoReferenceToVideo: {
             title: 'Veo 参考生视频',
             description: 'veo-3.1 和 veo-3.1-fast 支持单张参考图，通过 reference_images 数组提交图片 URL。'
+          },
+          klingTextToVideo: {
+            title: 'Kling 文生视频',
+            description: '使用 kling-v3 生成 3 至 15 秒视频。mode 支持 std 和 pro，生成任务固定关闭声音。'
+          },
+          klingMultiShot: {
+            title: 'Kling 多镜头视频',
+            description: 'kling-v3 与 kling-v3-omni 支持自定义分镜。multi_prompt 最多包含 6 个分镜，分镜时长之和需等于 seconds。'
+          },
+          klingHeadTailToVideo: {
+            title: 'Kling 首尾帧生视频',
+            description: '通过 image 提供首帧，通过 last_frame 提供尾帧。kling-video-o1 支持 3 至 10 秒首尾帧生成。'
+          },
+          klingReferenceVideo: {
+            title: 'Kling 参考视频生成',
+            description: 'kling-v3-omni 通过 reference_videos 接收一段参考视频，此模式支持 3 至 10 秒输出。'
           },
           result: {
             title: '获取结果',

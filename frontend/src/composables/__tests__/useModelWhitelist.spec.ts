@@ -65,6 +65,14 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('veo-3.1-lite')
   })
 
+  it('视频模型列表包含 Kling 3 系列公开模型名', () => {
+    const models = getModelsByPlatform('baidu_vod')
+
+    expect(models).toContain('kling-v3-omni')
+    expect(models).toContain('kling-video-o1')
+    expect(models).toContain('kling-v3')
+  })
+
   it('combined 模式支持 Grok 4.5 官方别名映射', () => {
     const mapping = buildModelMappingObject(
       'combined',

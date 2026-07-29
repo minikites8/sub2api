@@ -222,7 +222,7 @@ export default {
           },
           veoTextToVideo: {
             title: 'Veo text to video',
-            description: 'veo-3.1 and veo-3.1-fast support prompt-only generation. Add the -silent suffix to any Veo model name to disable audio automatically, such as veo-3.1-fast-silent.'
+            description: 'veo-3.1 and veo-3.1-fast support prompt-only generation. Base model names generate audio by default; add the -silent suffix to disable audio automatically, such as veo-3.1-fast-silent.'
           },
           veoHeadTailToVideo: {
             title: 'Veo first-and-last-frame video',
@@ -231,6 +231,22 @@ export default {
           veoReferenceToVideo: {
             title: 'Veo reference-image video',
             description: 'veo-3.1 and veo-3.1-fast accept one reference image through the reference_images array.'
+          },
+          klingTextToVideo: {
+            title: 'Kling text to video',
+            description: 'Use kling-v3 to generate 3-15 second videos. mode supports std and pro, and generation tasks always use sound off.'
+          },
+          klingMultiShot: {
+            title: 'Kling multi-shot video',
+            description: 'kling-v3 and kling-v3-omni support custom shots. multi_prompt accepts up to 6 shots whose durations add up to seconds.'
+          },
+          klingHeadTailToVideo: {
+            title: 'Kling first-and-last-frame video',
+            description: 'Provide the first frame through image and the final frame through last_frame. kling-video-o1 supports 3-10 second first-and-last-frame generation.'
+          },
+          klingReferenceVideo: {
+            title: 'Kling reference-video generation',
+            description: 'kling-v3-omni accepts one reference video through reference_videos and supports 3-10 second output in this mode.'
           },
           result: {
             title: 'Get the result',

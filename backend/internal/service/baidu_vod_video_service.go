@@ -147,6 +147,8 @@ func (s *BaiduVODVideoService) Submit(ctx context.Context, account *Account, pay
 	createPath := spec.CreatePath
 	if spec.Provider == BaiduVODProviderVeo && payload.VeoMode == BaiduVODVeoModeText {
 		createPath = BaiduVODVeoTextCreatePath
+	} else if spec.Provider == BaiduVODProviderKling && strings.TrimSpace(payload.KlingCreatePath) != "" {
+		createPath = payload.KlingCreatePath
 	}
 	respBody, status, err := s.do(ctx, account, spec.Provider, http.MethodPost, createPath, body)
 	if err != nil {
@@ -167,6 +169,24 @@ func (s *BaiduVODVideoService) Submit(ctx context.Context, account *Account, pay
 			_ = s.accounts.UpdateLastUsed(ctx, account.ID)
 		}
 		return &BaiduVODSubmitResult{TaskID: strings.TrimSpace(response.TaskID), TaskStatus: "queued", RequestID: strings.TrimSpace(response.RequestID)}, nil
+	}
+	if spec.Provider == BaiduVODProviderKling {
+		var response baiduVODKlingCreateResponse
+		if err := json.Unmarshal(respBody, &response); err != nil {
+			return nil, fmt.Errorf("decode baidu vod Kling create response: %w", err)
+		}
+		code := baiduVODKlingErrorCode(response.Code)
+		if status >= http.StatusBadRequest || code != "" {
+			return nil, &BaiduVODUpstreamError{StatusCode: status, Code: code, Message: strings.TrimSpace(response.Message)}
+		}
+		taskID := firstNonEmpty(strings.TrimSpace(response.TaskID), strings.TrimSpace(response.TaskIDAlt))
+		if taskID == "" {
+			return nil, &BaiduVODUpstreamError{StatusCode: status, Code: "INVALID_RESPONSE", Message: "upstream response is missing taskId"}
+		}
+		if s.accounts != nil {
+			_ = s.accounts.UpdateLastUsed(ctx, account.ID)
+		}
+		return &BaiduVODSubmitResult{TaskID: taskID, TaskStatus: "queued", RequestID: firstNonEmpty(strings.TrimSpace(response.RequestID), strings.TrimSpace(response.RequestIDAlt))}, nil
 	}
 	if spec.Provider == BaiduVODProviderSeedance {
 		var response baiduVODSeedanceCreateResponse
@@ -212,8 +232,13 @@ func (s *BaiduVODVideoService) Poll(ctx context.Context, account *Account, task 
 	provider, taskPath := task.Provider, BaiduVODTaskPath
 	if spec, ok := BaiduVODModel(task.Model); ok {
 		provider, taskPath = spec.Provider, spec.TaskPath
+		if provider == BaiduVODProviderKling {
+			taskPath = baiduVODKlingTaskPath(spec, task.Capability)
+		}
 	} else if provider == BaiduVODProviderSeedance {
 		taskPath = BaiduVODSeedanceTaskPath
+	} else if provider == BaiduVODProviderKling {
+		taskPath = baiduVODKlingTaskPath(BaiduVODModelSpec{Model: task.Model}, task.Capability)
 	}
 	respBody, status, err := s.do(ctx, account, provider, http.MethodGet, taskPath+strings.TrimSpace(task.UpstreamTaskID), nil)
 	if err != nil {
@@ -228,6 +253,29 @@ func (s *BaiduVODVideoService) Poll(ctx context.Context, account *Account, task 
 			return nil, &BaiduVODUpstreamError{StatusCode: status, Code: strings.TrimSpace(response.Code), Message: strings.TrimSpace(response.Message)}
 		}
 		return normalizeBaiduVODVeoTaskResponse(response), nil
+	}
+	if provider == BaiduVODProviderKling {
+		var response baiduVODKlingTaskResponse
+		if err := json.Unmarshal(respBody, &response); err != nil {
+			return nil, fmt.Errorf("decode baidu vod Kling task response: %w", err)
+		}
+		code := firstNonEmpty(
+			baiduVODKlingErrorCode(response.Code),
+			baiduVODKlingErrorCode(response.Data.Code),
+			baiduVODKlingErrorCode(response.Output.Code),
+		)
+		taskStatus := firstNonEmpty(response.TaskStatus, response.Status, response.Data.TaskStatus, response.Data.Status, response.Output.TaskStatus, response.Output.Status)
+		if status >= http.StatusBadRequest || (code != "" && strings.TrimSpace(taskStatus) == "") {
+			message := firstNonEmpty(strings.TrimSpace(response.Message), strings.TrimSpace(response.Data.Message), strings.TrimSpace(response.Output.Message))
+			return nil, &BaiduVODUpstreamError{StatusCode: status, Code: code, Message: message}
+		}
+		var wrapper baiduVODVeoTaskResponse
+		if json.Unmarshal(respBody, &wrapper) == nil && (strings.TrimSpace(wrapper.Type) != "" || strings.TrimSpace(wrapper.VideoGenerateTaskInfo.Status) != "" || len(wrapper.VideoGenerateTaskInfo.VideoGenerateTaskOutput.MediaBasicInfos) > 0) {
+			result := normalizeBaiduVODVeoTaskResponse(wrapper)
+			result.Provider = BaiduVODProviderKling
+			return result, nil
+		}
+		return normalizeBaiduVODKlingResponse(response), nil
 	}
 	if provider == BaiduVODProviderSeedance {
 		var response baiduVODSeedanceTaskResponse
@@ -264,6 +312,135 @@ func (s *BaiduVODVideoService) Poll(ctx context.Context, account *Account, task 
 		return nil, &BaiduVODUpstreamError{StatusCode: status, Code: response.Code, Message: response.Message}
 	}
 	return &response, nil
+}
+
+func baiduVODKlingTaskPath(spec BaiduVODModelSpec, capability BaiduVODVideoCapability) string {
+	if strings.EqualFold(strings.TrimSpace(spec.Model), "kling-v3") {
+		if capability == BaiduVODCapabilityI2V {
+			return BaiduVODKlingImageTaskPath
+		}
+		return BaiduVODKlingTextTaskPath
+	}
+	return BaiduVODKlingOmniTaskPath
+}
+
+func baiduVODKlingErrorCode(raw json.RawMessage) string {
+	code := strings.TrimSpace(baiduVODJSONCode(raw))
+	switch strings.ToUpper(code) {
+	case "", "0", "200", "SUCCESS", "SUCCEED", "OK":
+		return ""
+	default:
+		return code
+	}
+}
+
+func normalizeBaiduVODKlingStatus(status string, hasOutput bool) string {
+	status = strings.ToUpper(strings.TrimSpace(status))
+	switch status {
+	case "SUCCESS", "SUCCEED", "SUCCEEDED", "COMPLETED", "COMPLETE", "DONE":
+		return "SUCCEEDED"
+	case "FAILED", "FAIL", "FAILURE", "CANCELED", "CANCELLED", "EXPIRED":
+		return "FAILED"
+	case "SUBMITTED", "CREATED", "READY", "QUEUED", "PENDING", "WAITING":
+		return "PENDING"
+	case "PROCESSING", "RUNNING", "IN_PROGRESS", "INPROGRESS", "GENERATING":
+		return "RUNNING"
+	case "FINISHED":
+		if hasOutput {
+			return "SUCCEEDED"
+		}
+		return "FAILED"
+	case "":
+		if hasOutput {
+			return "SUCCEEDED"
+		}
+		return "PENDING"
+	default:
+		return status
+	}
+}
+
+func baiduVODKlingPayloadVideo(payload baiduVODKlingTaskPayload) (string, int, int) {
+	videoURL := firstNonEmpty(payload.VideoURL, payload.VideoURLCamel, payload.TaskResult.VideoURL, payload.TaskResult.VideoURLCamel, payload.TaskResultAlt.VideoURL, payload.TaskResultAlt.VideoURLCamel)
+	duration := baiduVODKlingDuration(payload.Duration)
+	if duration == 0 {
+		duration = baiduVODKlingDuration(payload.TaskResult.Duration)
+	}
+	if duration == 0 {
+		duration = baiduVODKlingDuration(payload.TaskResultAlt.Duration)
+	}
+	videos := make([]baiduVODKlingVideoResult, 0, len(payload.Videos)+len(payload.Works)+len(payload.TaskResult.Videos)+len(payload.TaskResult.Works)+len(payload.TaskResultAlt.Videos)+len(payload.TaskResultAlt.Works))
+	videos = append(videos, payload.Videos...)
+	videos = append(videos, payload.Works...)
+	videos = append(videos, payload.TaskResult.Videos...)
+	videos = append(videos, payload.TaskResult.Works...)
+	videos = append(videos, payload.TaskResultAlt.Videos...)
+	videos = append(videos, payload.TaskResultAlt.Works...)
+	for _, video := range videos {
+		if strings.TrimSpace(videoURL) == "" {
+			videoURL = firstNonEmpty(video.URL, video.VideoURL, video.VideoURLCamel)
+		}
+		if duration == 0 {
+			duration = baiduVODKlingDuration(video.Duration)
+		}
+	}
+	count := len(videos)
+	if count == 0 && strings.TrimSpace(videoURL) != "" {
+		count = 1
+	}
+	return strings.TrimSpace(videoURL), duration, count
+}
+
+func normalizeBaiduVODKlingResponse(response baiduVODKlingTaskResponse) *BaiduVODTaskResponse {
+	top := baiduVODKlingTaskPayload{
+		TaskID: response.TaskIDSnake, TaskIDCamel: response.TaskID,
+		TaskStatus: response.TaskStatus, TaskStatusMsg: response.TaskStatusMsg, Status: response.Status,
+		Code: response.Code, Message: response.Message, VideoURL: response.VideoURL, VideoURLCamel: response.VideoURLCamel,
+		Duration: response.Duration, Resolution: response.Resolution, Mode: response.Mode, AspectRatio: response.AspectRatio,
+		TaskResult: response.TaskResult, TaskResultAlt: response.TaskResultAlt, Videos: response.Videos, Works: response.Works,
+	}
+	result := &BaiduVODTaskResponse{
+		Provider:  BaiduVODProviderKling,
+		RequestID: firstNonEmpty(response.RequestID, response.RequestIDAlt),
+	}
+	result.Output.TaskID = firstNonEmpty(response.TaskID, response.TaskIDSnake, response.Data.TaskID, response.Data.TaskIDCamel, response.Output.TaskID, response.Output.TaskIDCamel)
+	result.Output.Code = firstNonEmpty(baiduVODKlingErrorCode(response.Code), baiduVODKlingErrorCode(response.Data.Code), baiduVODKlingErrorCode(response.Output.Code))
+	result.Output.Message = firstNonEmpty(response.TaskStatusMsg, response.Data.TaskStatusMsg, response.Output.TaskStatusMsg, response.Message, response.Data.Message, response.Output.Message)
+	result.Code, result.Message = result.Output.Code, result.Output.Message
+
+	status := firstNonEmpty(response.TaskStatus, response.Status, response.Data.TaskStatus, response.Data.Status, response.Output.TaskStatus, response.Output.Status)
+	payloads := []baiduVODKlingTaskPayload{top, response.Data, response.Output}
+	usage := &BaiduVODTaskUsage{}
+	for _, payload := range payloads {
+		videoURL, duration, count := baiduVODKlingPayloadVideo(payload)
+		if result.Output.VideoURL == "" {
+			result.Output.VideoURL = videoURL
+		}
+		if usage.OutputVideoDuration == 0 && duration > 0 {
+			usage.Duration, usage.OutputVideoDuration = duration, duration
+		}
+		if count > usage.VideoCount {
+			usage.VideoCount = count
+		}
+		if usage.Resolution == "" {
+			usage.Resolution = strings.TrimSpace(payload.Resolution)
+			if usage.Resolution == "" && strings.TrimSpace(payload.Mode) != "" {
+				usage.Resolution = baiduVODKlingResolution(payload.Mode)
+			}
+		}
+		if usage.Ratio == "" {
+			usage.Ratio = strings.TrimSpace(payload.AspectRatio)
+		}
+	}
+	result.Output.TaskStatus = normalizeBaiduVODKlingStatus(status, result.Output.VideoURL != "")
+	if result.Output.TaskStatus == "FAILED" && result.Output.Code == "" {
+		result.Output.Code = "VIDEO_GENERATION_FAILED"
+		result.Code = result.Output.Code
+	}
+	if usage.VideoCount > 0 || usage.OutputVideoDuration > 0 || usage.Resolution != "" || usage.Ratio != "" {
+		result.Usage = usage
+	}
+	return result
 }
 
 func normalizeBaiduVODVeoTaskResponse(response baiduVODVeoTaskResponse) *BaiduVODTaskResponse {
@@ -410,7 +587,11 @@ func baiduVODUpstreamURL(account *Account, provider, suffix string) (string, str
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
-	for _, knownPrefix := range []string{"/v2/aigc/bailian", "/v3/aigc/bailian", "/v2/aigc/seedance", "/v3/aigc/seedance"} {
+	for _, knownPrefix := range []string{
+		"/v2/aigc/bailian", "/v3/aigc/bailian",
+		"/v2/aigc/seedance", "/v3/aigc/seedance",
+		"/v2/aigc/kl", "/v3/aigc/kl",
+	} {
 		if strings.HasSuffix(parsed.Path, knownPrefix) {
 			parsed.Path = strings.TrimSuffix(parsed.Path, knownPrefix)
 			break
@@ -426,6 +607,8 @@ func baiduVODUpstreamURL(account *Account, provider, suffix string) (string, str
 	product := "bailian"
 	if provider == BaiduVODProviderSeedance {
 		product = "seedance"
+	} else if provider == BaiduVODProviderKling {
+		product = "kl"
 	}
 	prefix := "/v3/aigc/" + product
 	if authMode == BaiduVODAuthModeAKSK {
@@ -598,6 +781,14 @@ func (s *BaiduVODVideoService) recordUsage(ctx context.Context, task *BaiduVODVi
 		upstream = spec.CreatePath
 		if spec.Provider == BaiduVODProviderVeo && task.Capability == BaiduVODCapabilityT2V {
 			upstream = BaiduVODVeoTextCreatePath
+		} else if spec.Provider == BaiduVODProviderKling {
+			if spec.Model == "kling-v3" && task.Capability == BaiduVODCapabilityI2V {
+				upstream = BaiduVODKlingImageCreatePath
+			} else if spec.Model == "kling-v3" {
+				upstream = BaiduVODKlingTextCreatePath
+			} else {
+				upstream = BaiduVODKlingOmniCreatePath
+			}
 		}
 	}
 	resolution, duration := task.Resolution, task.OutputDuration

@@ -243,7 +243,7 @@ type SectionId =
   | 'video-generation'
   | 'model-list'
 
-type VideoDocModelId = 'happyhorse' | 'seedance' | 'veo'
+type VideoDocModelId = 'happyhorse' | 'seedance' | 'veo' | 'kling'
 
 type DocsIcon = 'grid' | 'cpu' | 'key' | 'chartBar' | 'cog' | 'lock' | 'chatBubble' | 'sparkles' | 'video' | 'document'
 
@@ -454,6 +454,18 @@ const videoDocModels: readonly VideoDocModelDefinition[] = [
       { key: 'veoReferenceToVideo' },
       { key: 'result' }
     ]
+  },
+  {
+    id: 'kling',
+    label: 'Kling 3.0',
+    steps: [
+      { key: 'model', actionTo: '/models' },
+      { key: 'klingTextToVideo' },
+      { key: 'klingMultiShot' },
+      { key: 'klingHeadTailToVideo' },
+      { key: 'klingReferenceVideo' },
+      { key: 'result' }
+    ]
   }
 ]
 
@@ -547,6 +559,22 @@ const articleExamples: Partial<Record<SectionId, CodeExampleDefinition[]>> = {
     stepKey: 'veoReferenceToVideo',
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "veo-3.1",\n    "prompt": "Keep the referenced character appearance while walking through a city street",\n    "reference_images": [\n      "https://example.com/character-reference.jpg"\n    ],\n    "resolution": "720P",\n    "ratio": "16:9",\n    "seconds": 4,\n    "generate_audio": false\n  }'`
+  }, {
+    stepKey: 'klingTextToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "kling-v3",\n    "prompt": "A cat walks through a sunlit garden while the camera slowly moves forward",\n    "mode": "std",\n    "ratio": "16:9",\n    "seconds": 3\n  }'`
+  }, {
+    stepKey: 'klingMultiShot',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "kling-v3-omni",\n    "multi_shot": true,\n    "shot_type": "customize",\n    "multi_prompt": [\n      {"index": 1, "prompt": "A paper boat enters the stream", "duration": "2"},\n      {"index": 2, "prompt": "The boat passes beneath a stone bridge", "duration": "3"}\n    ],\n    "mode": "pro",\n    "ratio": "16:9",\n    "seconds": 5\n  }'`
+  }, {
+    stepKey: 'klingHeadTailToVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "kling-video-o1",\n    "prompt": "Move smoothly from the opening frame to the closing frame",\n    "image": "https://example.com/first-frame.jpg",\n    "last_frame": "https://example.com/last-frame.jpg",\n    "mode": "std",\n    "ratio": "16:9",\n    "seconds": 5\n  }'`
+  }, {
+    stepKey: 'klingReferenceVideo',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "kling-v3-omni",\n    "prompt": "Use the motion rhythm from <<<video_1>>> in a cinematic city scene",\n    "reference_videos": [\n      "https://example.com/reference.mp4"\n    ],\n    "mode": "std",\n    "ratio": "16:9",\n    "seconds": 3\n  }'`
   }, {
     stepKey: 'result',
     language: 'bash',

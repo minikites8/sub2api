@@ -204,7 +204,10 @@ const baiduVODModels = [
   'doubao-seedance-1-0-pro-fast-251015',
   'veo-3.1',
   'veo-3.1-fast',
-  'veo-3.1-lite'
+  'veo-3.1-lite',
+  'kling-v3-omni',
+  'kling-video-o1',
+  'kling-v3'
 ]
 
 // Cohere
