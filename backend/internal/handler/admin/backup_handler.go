@@ -8,15 +8,53 @@ import (
 )
 
 type BackupHandler struct {
-	backupService *service.BackupService
-	userService   *service.UserService
+	backupService       *service.BackupService
+	mediaStorageService *service.GeneratedMediaStorageService
+	userService         *service.UserService
 }
 
-func NewBackupHandler(backupService *service.BackupService, userService *service.UserService) *BackupHandler {
+func NewBackupHandler(backupService *service.BackupService, mediaStorageService *service.GeneratedMediaStorageService, userService *service.UserService) *BackupHandler {
 	return &BackupHandler{
-		backupService: backupService,
-		userService:   userService,
+		backupService:       backupService,
+		mediaStorageService: mediaStorageService,
+		userService:         userService,
 	}
+}
+
+func (h *BackupHandler) GetGeneratedMediaStorageConfig(c *gin.Context) {
+	cfg, err := h.mediaStorageService.GetConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+
+func (h *BackupHandler) UpdateGeneratedMediaStorageConfig(c *gin.Context) {
+	var req service.GeneratedMediaStorageConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	cfg, err := h.mediaStorageService.UpdateConfig(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+
+func (h *BackupHandler) TestGeneratedMediaStorageConnection(c *gin.Context) {
+	var req service.GeneratedMediaStorageConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.mediaStorageService.TestConnection(c.Request.Context(), req); err != nil {
+		response.Success(c, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	response.Success(c, gin.H{"ok": true, "message": "connection successful"})
 }
 
 // ─── S3 配置 ───

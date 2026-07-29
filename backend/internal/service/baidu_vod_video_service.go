@@ -55,6 +55,7 @@ type BaiduVODVideoService struct {
 	billing     *BillingService
 	pricing     *ModelPricingResolver
 	authCache   APIKeyAuthCacheInvalidator
+	mediaStore  GeneratedMediaArchiver
 	cfg         *config.Config
 }
 
@@ -67,9 +68,10 @@ func NewBaiduVODVideoService(
 	billing *BillingService,
 	pricing *ModelPricingResolver,
 	authCache APIKeyAuthCacheInvalidator,
+	mediaStore GeneratedMediaArchiver,
 	cfg *config.Config,
 ) *BaiduVODVideoService {
-	return &BaiduVODVideoService{tasks: tasks, accounts: accounts, billingRepo: billingRepo, usageLogs: usageLogs, http: httpUpstream, billing: billing, pricing: pricing, authCache: authCache, cfg: cfg}
+	return &BaiduVODVideoService{tasks: tasks, accounts: accounts, billingRepo: billingRepo, usageLogs: usageLogs, http: httpUpstream, billing: billing, pricing: pricing, authCache: authCache, mediaStore: mediaStore, cfg: cfg}
 }
 
 func (s *BaiduVODVideoService) SelectAccount(ctx context.Context, groupID *int64, model string) (*Account, error) {
@@ -599,6 +601,15 @@ func baiduVODUpstreamURL(account *Account, provider, suffix string) (string, str
 			parsed.Path = strings.TrimSuffix(parsed.Path, knownPrefix)
 			break
 		}
+	}
+	normalizedSuffix := "/" + strings.TrimLeft(suffix, "/")
+	if provider == BaiduVODProviderKling && strings.HasPrefix(normalizedSuffix, BaiduVODTaskStatusPath) {
+		versionPrefix := "/v3"
+		if authMode == BaiduVODAuthModeAKSK {
+			versionPrefix = "/v2"
+		}
+		parsed.Path = strings.TrimRight(parsed.Path, "/") + versionPrefix + normalizedSuffix
+		return parsed.String(), authMode, nil
 	}
 	if provider == BaiduVODProviderVeo {
 		if authMode != BaiduVODAuthModeAKSK {

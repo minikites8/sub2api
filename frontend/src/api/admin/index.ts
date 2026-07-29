@@ -37,6 +37,7 @@ import adminComplianceAPI from './compliance'
 import dailyCheckinsAPI from './dailyCheckins'
 import invoicesAPI from './invoices'
 import nodeLeasesAPI from './nodeLeases'
+import generatedMediaStorageAPI from './generatedMediaStorage'
 
 /**
  * Unified admin API object for convenient access
@@ -75,7 +76,8 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   dailyCheckins: dailyCheckinsAPI,
   invoices: invoicesAPI,
-  nodeLeases: nodeLeasesAPI
+  nodeLeases: nodeLeasesAPI,
+  generatedMediaStorage: generatedMediaStorageAPI
 }
 
 export {
@@ -112,7 +114,8 @@ export {
   adminComplianceAPI,
   dailyCheckinsAPI,
   invoicesAPI,
-  nodeLeasesAPI
+  nodeLeasesAPI,
+  generatedMediaStorageAPI
 }
 
 export default adminAPI

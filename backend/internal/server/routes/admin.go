@@ -546,6 +546,13 @@ func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	mediaStorage := admin.Group("/generated-media-storage")
+	{
+		mediaStorage.GET("/config", h.Admin.Backup.GetGeneratedMediaStorageConfig)
+		mediaStorage.PUT("/config", h.Admin.Backup.UpdateGeneratedMediaStorageConfig)
+		mediaStorage.POST("/test", h.Admin.Backup.TestGeneratedMediaStorageConnection)
+	}
+
 	backup := admin.Group("/backups")
 	{
 		// S3 存储配置

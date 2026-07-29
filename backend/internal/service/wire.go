@@ -710,6 +710,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUpstreamBillingProbeService,
 	ProvideSettingService,
 	NewDataManagementService,
+	NewGeneratedMediaStorageService,
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,
 	ProvideOpsService,

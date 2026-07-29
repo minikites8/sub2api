@@ -38,6 +38,17 @@ type baiduVODWorkerBillingRepo struct {
 	releases []*BalanceHoldCommand
 }
 
+type baiduVODWorkerMediaArchiver struct {
+	url   string
+	err   error
+	calls int
+}
+
+func (a *baiduVODWorkerMediaArchiver) Archive(_ context.Context, _, _ string, _ time.Time) (string, error) {
+	a.calls++
+	return a.url, a.err
+}
+
 func (r *baiduVODWorkerBillingRepo) CaptureBalanceHold(_ context.Context, cmd *BalanceHoldCommand) (*BalanceHoldResult, error) {
 	copy := *cmd
 	r.captures = append(r.captures, &copy)
@@ -100,6 +111,41 @@ func TestBaiduVODVideoWorkerSucceededCapturesActualUsage(t *testing.T) {
 	require.Equal(t, 2, update.VideoCount)
 	require.NotNil(t, update.ActualCost)
 	require.InDelta(t, 24, *update.ActualCost, 0.00000001)
+}
+
+func TestBaiduVODVideoWorkerStoresArchivedResultURL(t *testing.T) {
+	worker, tasks, billingRepo := newBaiduVODWorkerHarness(baiduVODWorkerResponse(http.StatusOK,
+		`{"output":{"task_status":"SUCCEEDED","video_url":"https://upstream.example.com/video.mp4?token=private"}}`), nil)
+	archiver := &baiduVODWorkerMediaArchiver{url: "https://media.example.com/videos/video-task-1.mp4"}
+	worker.service.mediaStore = archiver
+	task := newBaiduVODWorkerTask()
+	task.HoldAmount = 10
+
+	worker.processOne(context.Background(), task)
+
+	require.Equal(t, 1, archiver.calls)
+	require.Len(t, billingRepo.captures, 1)
+	require.Len(t, tasks.updates, 1)
+	require.Equal(t, BaiduVODTaskStatusCompleted, tasks.updates[0].Status)
+	require.Equal(t, "https://media.example.com/videos/video-task-1.mp4", *tasks.updates[0].ResultURL)
+	require.Nil(t, tasks.updates[0].ResultExpiresAt)
+}
+
+func TestBaiduVODVideoWorkerRetriesWhenArchivingFails(t *testing.T) {
+	worker, tasks, billingRepo := newBaiduVODWorkerHarness(baiduVODWorkerResponse(http.StatusOK,
+		`{"output":{"task_status":"SUCCEEDED","video_url":"https://upstream.example.com/video.mp4?token=private"}}`), nil)
+	worker.service.mediaStore = &baiduVODWorkerMediaArchiver{err: errors.New("storage endpoint details")}
+	task := newBaiduVODWorkerTask()
+	task.HoldAmount = 10
+
+	worker.processOne(context.Background(), task)
+
+	require.Empty(t, billingRepo.captures)
+	require.Empty(t, billingRepo.releases)
+	require.Len(t, tasks.updates, 1)
+	require.Equal(t, BaiduVODTaskStatusInProgress, tasks.updates[0].Status)
+	require.Equal(t, "RESULT_STORAGE_FAILED", *tasks.updates[0].LastErrorCode)
+	require.Equal(t, "generated video storage failed", *tasks.updates[0].LastErrorMessage)
 }
 
 func TestBaiduVODVideoWorkerPollsSeedanceTask(t *testing.T) {

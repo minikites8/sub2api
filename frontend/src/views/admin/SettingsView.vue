@@ -7554,8 +7554,13 @@
           <BackupSettings />
         </div>
 
+        <!-- Tab: Generated media storage -->
+        <div v-show="activeTab === 'mediaStorage'">
+          <GeneratedMediaStorageSettings />
+        </div>
+
         <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <div v-show="activeTab !== 'backup' && activeTab !== 'mediaStorage'" class="flex justify-end">
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -7697,6 +7702,7 @@ import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
+import GeneratedMediaStorageSettings from "@/views/admin/settings/GeneratedMediaStorageSettings.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
@@ -7772,6 +7778,7 @@ type SettingsTab =
   | "gateway"
   | "payment"
   | "email"
+  | "mediaStorage"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
@@ -7783,6 +7790,7 @@ const settingsTabs = [
   { key: "gateway" as SettingsTab, icon: "server" as const },
   { key: "payment" as SettingsTab, icon: "creditCard" as const },
   { key: "email" as SettingsTab, icon: "mail" as const },
+  { key: "mediaStorage" as SettingsTab, icon: "server" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
 

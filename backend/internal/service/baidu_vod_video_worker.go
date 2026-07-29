@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 const (
@@ -222,13 +223,25 @@ func (w *BaiduVODVideoWorker) succeed(ctx context.Context, task *BaiduVODVideoTa
 		w.fail(ctx, task, "ACTUAL_COST_EXCEEDS_HOLD", "actual video duration exceeds the reserved balance")
 		return
 	}
+	resultURL := strings.TrimSpace(response.Output.VideoURL)
+	expires := ParseBaiduVODVideoURLExpiry(resultURL)
+	if w.service.mediaStore != nil {
+		archiveCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+		archivedURL, archiveErr := w.service.mediaStore.Archive(archiveCtx, resultURL, task.TaskID, task.CreatedAt)
+		cancel()
+		if archiveErr != nil {
+			logger.LegacyPrintf("service.baidu_vod_video", "generated media archive failed task_id=%s: %v", task.TaskID, archiveErr)
+			w.retry(ctx, task, "RESULT_STORAGE_FAILED", "generated video storage failed")
+			return
+		}
+		resultURL = archivedURL
+		expires = nil
+	}
 	if err := w.service.Capture(ctx, task, actual); err != nil {
-		w.retry(ctx, task, "CAPTURE_FAILED", err.Error())
+		w.retry(ctx, task, "CAPTURE_FAILED", "video billing settlement failed")
 		return
 	}
 	finished := time.Now()
-	resultURL := strings.TrimSpace(response.Output.VideoURL)
-	expires := ParseBaiduVODVideoURLExpiry(resultURL)
 	settled := finished
 	updated, err := w.service.tasks.UpdatePoll(ctx, task.TaskID, BaiduVODVideoTaskPollUpdate{Version: task.Version, Status: BaiduVODTaskStatusCompleted,
 		UpstreamStatus: "SUCCEEDED", ResultURL: &resultURL, ResultExpiresAt: expires, OutputDuration: outputDuration,
@@ -279,9 +292,10 @@ func ProvideBaiduVODVideoWorkerRuntime(
 	billing *BillingService,
 	pricing *ModelPricingResolver,
 	authCache APIKeyAuthCacheInvalidator,
+	mediaStorage *GeneratedMediaStorageService,
 	cfg *config.Config,
 ) *BaiduVODVideoWorkerRuntime {
-	service := NewBaiduVODVideoService(tasks, accounts, billingRepo, usageLogs, httpUpstream, billing, pricing, authCache, cfg)
+	service := NewBaiduVODVideoService(tasks, accounts, billingRepo, usageLogs, httpUpstream, billing, pricing, authCache, mediaStorage, cfg)
 	runtime := &BaiduVODVideoWorkerRuntime{worker: NewBaiduVODVideoWorker(service)}
 	runtime.worker.Start()
 	return runtime

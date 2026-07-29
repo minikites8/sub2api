@@ -294,6 +294,17 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		concurrencyService,
 	)
 	baiduVODVideoTaskRepo := repository.NewBaiduVODVideoTaskRepository(entClient)
+	secretEncryptor, err := repository.NewAESEncryptor(cfg)
+	if err != nil {
+		cleanupNodeInfra(entClient, redisClient)
+		return nil, err
+	}
+	generatedMediaStorageService := service.NewGeneratedMediaStorageService(
+		settingRepo,
+		secretEncryptor,
+		repository.NewS3GeneratedMediaStoreFactory(),
+		httpUpstream,
+	)
 	baiduVODVideoWorkerRuntime := service.ProvideBaiduVODVideoWorkerRuntime(
 		baiduVODVideoTaskRepo,
 		accountRepo,
@@ -303,6 +314,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		billingService,
 		modelPricingResolver,
 		apiKeyAuthCacheInvalidator,
+		generatedMediaStorageService,
 		cfg,
 	)
 

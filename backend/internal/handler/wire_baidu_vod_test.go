@@ -10,7 +10,7 @@ import (
 
 func TestProvideOpenAIGatewayHandlerInjectsBaiduVODVideoService(t *testing.T) {
 	cfg := &config.Config{}
-	runtime := service.ProvideBaiduVODVideoWorkerRuntime(nil, nil, nil, nil, nil, nil, nil, nil, cfg)
+	runtime := service.ProvideBaiduVODVideoWorkerRuntime(nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg)
 	t.Cleanup(runtime.Stop)
 
 	h := ProvideOpenAIGatewayHandler(nil, nil, nil, nil, nil, nil, nil, nil, runtime, cfg)

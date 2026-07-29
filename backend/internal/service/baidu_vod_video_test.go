@@ -810,7 +810,7 @@ func TestBaiduVODPollKlingNormalizesNativeTaskResult(t *testing.T) {
 	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/kl"+BaiduVODKlingImageTaskPath+"tsk-kling-2", upstream.lastReq.URL.String())
 }
 
-func TestBaiduVODPollKlingActionUsesGenericTaskEndpoint(t *testing.T) {
+func TestBaiduVODPollKlingActionUsesGlobalTaskEndpoint(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Body: io.NopCloser(strings.NewReader(`{
@@ -828,7 +828,7 @@ func TestBaiduVODPollKlingActionUsesGenericTaskEndpoint(t *testing.T) {
 	result, err := svc.Poll(context.Background(), account, task)
 	require.NoError(t, err)
 	require.Equal(t, "RUNNING", result.Output.TaskStatus)
-	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/kl"+BaiduVODKlingActionTaskPath+"tsk-kling-action-2", upstream.lastReq.URL.String())
+	require.Equal(t, "https://vod.bj.baidubce.com/v3"+BaiduVODKlingActionTaskPath+"tsk-kling-action-2", upstream.lastReq.URL.String())
 }
 
 func TestParseBaiduVODSeedanceDefaults(t *testing.T) {
@@ -904,12 +904,22 @@ func TestBaiduVODUpstreamURLReplacesKnownAuthPrefix(t *testing.T) {
 	require.Equal(t, BaiduVODAuthModeAPIKey, mode)
 	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/kl"+BaiduVODKlingOmniCreatePath, got)
 
+	got, mode, err = baiduVODUpstreamURL(account, BaiduVODProviderKling, BaiduVODKlingActionTaskPath+"task-action-apikey")
+	require.NoError(t, err)
+	require.Equal(t, BaiduVODAuthModeAPIKey, mode)
+	require.Equal(t, "https://vod.bj.baidubce.com/v3"+BaiduVODKlingActionTaskPath+"task-action-apikey", got)
+
 	account.Credentials["auth_mode"] = BaiduVODAuthModeAKSK
 	account.Credentials["base_url"] = "https://vod.bj.baidubce.com/v3/aigc/kl"
 	got, mode, err = baiduVODUpstreamURL(account, BaiduVODProviderKling, BaiduVODKlingTextTaskPath+"task-2")
 	require.NoError(t, err)
 	require.Equal(t, BaiduVODAuthModeAKSK, mode)
 	require.Equal(t, "https://vod.bj.baidubce.com/v2/aigc/kl"+BaiduVODKlingTextTaskPath+"task-2", got)
+
+	got, mode, err = baiduVODUpstreamURL(account, BaiduVODProviderKling, BaiduVODKlingActionTaskPath+"task-action-aksk")
+	require.NoError(t, err)
+	require.Equal(t, BaiduVODAuthModeAKSK, mode)
+	require.Equal(t, "https://vod.bj.baidubce.com/v2"+BaiduVODKlingActionTaskPath+"task-action-aksk", got)
 
 	account.Credentials["base_url"] = "https://vod.bj.baidubce.com/v3/aigc/bailian"
 	got, mode, err = baiduVODUpstreamURL(account, BaiduVODProviderVeo, BaiduVODVeoCreatePath)
