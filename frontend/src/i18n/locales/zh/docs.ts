@@ -234,7 +234,7 @@ export default {
           },
           klingTextToVideo: {
             title: 'Kling 文生视频',
-            description: '使用 kling-v3 生成 3 至 15 秒视频。mode 支持 std 和 pro，生成任务固定关闭声音。'
+            description: '使用 kling-v3 生成 3 至 15 秒有声视频。模型名添加 -silent 后缀可关闭声音，例如 kling-v3-silent。mode 支持 std 和 pro。'
           },
           klingMultiShot: {
             title: 'Kling 多镜头视频',
@@ -246,7 +246,11 @@ export default {
           },
           klingReferenceVideo: {
             title: 'Kling 参考视频生成',
-            description: 'kling-v3-omni 通过 reference_videos 接收一段参考视频，此模式支持 3 至 10 秒输出。'
+            description: 'kling-v3-omni 通过 reference_videos 接收一段参考视频，此模式支持 3 至 10 秒输出。添加 -silent 后缀会同时关闭输出声音与参考视频原声。'
+          },
+          klingActionControl: {
+            title: 'Kling 参考动作控制',
+            description: '使用 kling-v3-action，通过 image 提供角色图片，通过 video 提供 3 至 10 秒动作视频。character_orientation=image 保持图片朝向，video 保持参考视频朝向并支持最长 30 秒。kling-v3-action-silent 会关闭参考视频原声。'
           },
           result: {
             title: '获取结果',

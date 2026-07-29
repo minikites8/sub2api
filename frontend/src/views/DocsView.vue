@@ -464,6 +464,7 @@ const videoDocModels: readonly VideoDocModelDefinition[] = [
       { key: 'klingMultiShot' },
       { key: 'klingHeadTailToVideo' },
       { key: 'klingReferenceVideo' },
+      { key: 'klingActionControl' },
       { key: 'result' }
     ]
   }
@@ -575,6 +576,22 @@ const articleExamples: Partial<Record<SectionId, CodeExampleDefinition[]>> = {
     stepKey: 'klingReferenceVideo',
     language: 'bash',
     code: `curl https://api.your-code.cc/v1/videos \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "kling-v3-omni",\n    "prompt": "Use the motion rhythm from <<<video_1>>> in a cinematic city scene",\n    "reference_videos": [\n      "https://example.com/reference.mp4"\n    ],\n    "mode": "std",\n    "ratio": "16:9",\n    "seconds": 3\n  }'`
+  }, {
+    stepKey: 'klingActionControl',
+    language: 'bash',
+    code: `curl https://api.your-code.cc/v1/videos \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kling-v3-action",
+    "prompt": "Keep the character appearance and follow the reference video motion",
+    "image": "https://example.com/character.jpg",
+    "video": "https://example.com/action.mp4",
+    "character_orientation": "image",
+    "mode": "std",
+    "resolution": "720P",
+    "seconds": 5
+  }'`
   }, {
     stepKey: 'result',
     language: 'bash',

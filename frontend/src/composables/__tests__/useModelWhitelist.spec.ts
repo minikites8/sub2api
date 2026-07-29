@@ -69,8 +69,12 @@ describe('useModelWhitelist', () => {
     const models = getModelsByPlatform('baidu_vod')
 
     expect(models).toContain('kling-v3-omni')
+    expect(models).toContain('kling-v3-omni-silent')
     expect(models).toContain('kling-video-o1')
     expect(models).toContain('kling-v3')
+    expect(models).toContain('kling-v3-silent')
+    expect(models).toContain('kling-v3-action')
+    expect(models).toContain('kling-v3-action-silent')
   })
 
   it('combined 模式支持 Grok 4.5 官方别名映射', () => {

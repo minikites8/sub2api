@@ -67,7 +67,7 @@ func TestTranslateBaiduVODKlingV3TextAndImageRequests(t *testing.T) {
 			"model_name":"kling-v3",
 			"prompt":"a cat walks through a garden",
 			"negative_prompt":"blur",
-			"sound":"off",
+			"sound":"on",
 			"mode":"pro",
 			"aspect_ratio":"16:9",
 			"duration":"3"
@@ -92,7 +92,7 @@ func TestTranslateBaiduVODKlingV3TextAndImageRequests(t *testing.T) {
 		require.NoError(t, json.Unmarshal(raw, &payload))
 		require.Equal(t, "https://example.com/first.jpg", payload["image"])
 		require.Equal(t, "https://example.com/last.jpg", payload["image_tail"])
-		require.Equal(t, "off", payload["sound"])
+		require.Equal(t, "on", payload["sound"])
 		require.NotContains(t, payload, "aspect_ratio")
 	})
 }
@@ -144,7 +144,7 @@ func TestTranslateBaiduVODKlingOmniRequest(t *testing.T) {
 	require.Equal(t, "first_frame", payload.ImageList[0].Type)
 	require.Len(t, payload.VideoList, 1)
 	require.Equal(t, "feature", payload.VideoList[0].ReferType)
-	require.Equal(t, "no", payload.VideoList[0].KeepOriginalSound)
+	require.Equal(t, "yes", payload.VideoList[0].KeepOriginalSound)
 	require.False(t, payload.WatermarkInfo.Enabled)
 }
 
@@ -197,6 +197,118 @@ func TestBaiduVODModelResolvesVeoSilentAliases(t *testing.T) {
 
 	_, ok := BaiduVODModel("happyhorse-1.1-t2v-silent")
 	require.False(t, ok)
+}
+
+func TestBaiduVODModelResolvesKlingBillingAliases(t *testing.T) {
+	for _, alias := range []string{"kling-v3-silent", "kling-v3-omni-silent"} {
+		spec, ok := BaiduVODModel(alias)
+		require.True(t, ok, alias)
+		require.True(t, spec.ForceSilent)
+		require.False(t, spec.ForceAction)
+	}
+	for _, alias := range []string{"kling-v3-action", "kling-v3-action-silent", "kling-v3-silent-action"} {
+		spec, ok := BaiduVODModel(alias)
+		require.True(t, ok, alias)
+		require.Equal(t, "kling-v3", spec.Model)
+		require.True(t, spec.ForceAction)
+		require.Equal(t, BaiduVODCapabilityAction, spec.Capability)
+		require.Equal(t, BaiduVODKlingActionCreatePath, spec.CreatePath)
+		require.Equal(t, 30, spec.MaxDuration)
+		expectedBillingModel := "kling-v3-action"
+		if spec.ForceSilent {
+			expectedBillingModel += "-silent"
+		}
+		require.Equal(t, expectedBillingModel, baiduVODBillingModel(alias, spec))
+	}
+	for _, alias := range []string{"kling-v3-omni-action", "kling-video-o1-silent", "veo-3.1-action"} {
+		_, ok := BaiduVODModel(alias)
+		require.False(t, ok, alias)
+	}
+}
+
+func TestTranslateBaiduVODKlingSilentAliases(t *testing.T) {
+	_, textUpstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "kling-v3-silent", Prompt: "a quiet garden", Mode: "std", Ratio: "16:9", Duration: 3,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "off", textUpstream.KlingInput.Sound)
+
+	_, omniUpstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "kling-v3-omni-silent", Prompt: "follow the reference", Mode: "std", Ratio: "16:9", Duration: 3,
+		ReferenceVideos: []json.RawMessage{json.RawMessage(`"https://example.com/reference.mp4"`)},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "off", omniUpstream.KlingInput.Sound)
+	var video struct {
+		KeepOriginalSound string `json:"keep_original_sound"`
+	}
+	require.NoError(t, json.Unmarshal(omniUpstream.KlingInput.VideoList[0], &video))
+	require.Equal(t, "no", video.KeepOriginalSound)
+}
+
+func TestTranslateBaiduVODKlingActionRequest(t *testing.T) {
+	watermark := false
+	spec, upstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "kling-v3-action", Prompt: "keep the character and follow the reference motion",
+		Image:                json.RawMessage(`"https://example.com/character.jpg"`),
+		Video:                json.RawMessage(`"https://example.com/action.mp4"`),
+		CharacterOrientation: "image", Mode: "std", Resolution: "720P", Ratio: "16:9", Duration: 8,
+		Watermark: &watermark,
+	})
+	require.NoError(t, err)
+	require.True(t, spec.ForceAction)
+	require.Equal(t, BaiduVODCapabilityAction, spec.Capability)
+	require.Equal(t, BaiduVODKlingActionCreatePath, upstream.KlingCreatePath)
+	require.Equal(t, BaiduVODKlingActionTaskPath, upstream.KlingTaskPath)
+	require.Nil(t, upstream.KlingInput)
+	require.NotNil(t, upstream.KlingActionInput)
+
+	raw, err := json.Marshal(upstream)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model_name":"kling-v3",
+		"prompt":"keep the character and follow the reference motion",
+		"image_url":"https://example.com/character.jpg",
+		"video_url":"https://example.com/action.mp4",
+		"keep_original_sound":"yes",
+		"character_orientation":"image",
+		"mode":"std",
+		"watermark_info":{"enabled":false}
+	}`, string(raw))
+
+	_, silentUpstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "kling-v3-action-silent", Prompt: "follow the action",
+		Image: json.RawMessage(`"https://example.com/character.jpg"`), Video: json.RawMessage(`"https://example.com/action.mp4"`),
+		CharacterOrientation: "image", Mode: "pro", Resolution: "1080P", Duration: 10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "no", silentUpstream.KlingActionInput.KeepOriginalSound)
+
+	_, optionalPromptUpstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "kling-v3-action", Image: json.RawMessage(`"https://example.com/character.jpg"`),
+		Video: json.RawMessage(`"https://example.com/action.mp4"`), Mode: "std", Resolution: "720P", Duration: 5,
+	})
+	require.NoError(t, err)
+	require.Empty(t, optionalPromptUpstream.KlingActionInput.Prompt)
+}
+
+func TestTranslateBaiduVODKlingActionValidation(t *testing.T) {
+	base := BaiduVODVideoRequest{
+		Model: "kling-v3-action", Prompt: "follow the action", Image: json.RawMessage(`"https://example.com/character.jpg"`),
+		Video: json.RawMessage(`"https://example.com/action.mp4"`), CharacterOrientation: "image", Mode: "std", Resolution: "720P", Duration: 11,
+	}
+	_, _, err := TranslateBaiduVODVideoRequest(base)
+	require.EqualError(t, err, "model kling-v3-action with character_orientation=image supports up to 10 seconds")
+
+	base.Duration = 5
+	base.Video = nil
+	_, _, err = TranslateBaiduVODVideoRequest(base)
+	require.EqualError(t, err, "model kling-v3-action requires a reference video through video or reference_videos")
+
+	base.Video = json.RawMessage(`"https://example.com/action.mp4"`)
+	base.Image = nil
+	_, _, err = TranslateBaiduVODVideoRequest(base)
+	require.EqualError(t, err, "model kling-v3-action requires image or element_list")
 }
 
 func TestTranslateBaiduVODVideoRequestCapabilities(t *testing.T) {
@@ -421,7 +533,8 @@ func TestTranslateBaiduVODVeoReferenceAndValidation(t *testing.T) {
 			"n":1,
 			"aspectRatio":"16:9",
 			"durationSeconds":8,
-			"resolution":"1080p"
+			"resolution":"1080p",
+			"generateAudio":true
 		}
 	}`, string(raw))
 
@@ -565,6 +678,26 @@ func TestBaiduVODSubmitKlingUsesAKSKImageEndpoint(t *testing.T) {
 	require.Regexp(t, `^bce-auth-v1/kling-ak/`, upstream.lastReq.Header.Get("Authorization"))
 }
 
+func TestBaiduVODSubmitKlingActionUsesMotionControlEndpoint(t *testing.T) {
+	_, payload, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model: "kling-v3-action", Prompt: "follow the action", Mode: "std", Resolution: "720P", Duration: 5,
+		Image: json.RawMessage(`"https://example.com/character.jpg"`), Video: json.RawMessage(`"https://example.com/action.mp4"`),
+	})
+	require.NoError(t, err)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"taskId":"tsk-kling-action-1"}`)),
+	}}
+	svc := &BaiduVODVideoService{http: upstream}
+	account := &Account{ID: 22, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
+		"auth_mode": BaiduVODAuthModeAPIKey, "api_key": "kling-key",
+	}}
+	result, err := svc.Submit(context.Background(), account, payload)
+	require.NoError(t, err)
+	require.Equal(t, "tsk-kling-action-1", result.TaskID)
+	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/kl"+BaiduVODKlingActionCreatePath, upstream.lastReq.URL.String())
+}
+
 func TestBaiduVODSelectAccountVeoUsesOnlyV2AKSK(t *testing.T) {
 	apiKeyAccount := Account{
 		ID: 11, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Priority: 100,
@@ -675,6 +808,27 @@ func TestBaiduVODPollKlingNormalizesNativeTaskResult(t *testing.T) {
 	require.Equal(t, "9:16", result.Usage.Ratio)
 	require.Equal(t, 1, result.Usage.VideoCount)
 	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/kl"+BaiduVODKlingImageTaskPath+"tsk-kling-2", upstream.lastReq.URL.String())
+}
+
+func TestBaiduVODPollKlingActionUsesGenericTaskEndpoint(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(`{
+			"code":0,
+			"data":{"task_id":"tsk-kling-action-2","task_status":"processing"}
+		}`)),
+	}}
+	svc := &BaiduVODVideoService{http: upstream}
+	account := &Account{ID: 23, Platform: PlatformBaiduVOD, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
+		"auth_mode": BaiduVODAuthModeAPIKey, "api_key": "kling-key",
+	}}
+	task := &BaiduVODVideoTask{
+		Model: "kling-v3-action", Provider: BaiduVODProviderKling, Capability: BaiduVODCapabilityAction, UpstreamTaskID: "tsk-kling-action-2",
+	}
+	result, err := svc.Poll(context.Background(), account, task)
+	require.NoError(t, err)
+	require.Equal(t, "RUNNING", result.Output.TaskStatus)
+	require.Equal(t, "https://vod.bj.baidubce.com/v3/aigc/kl"+BaiduVODKlingActionTaskPath+"tsk-kling-action-2", upstream.lastReq.URL.String())
 }
 
 func TestParseBaiduVODSeedanceDefaults(t *testing.T) {

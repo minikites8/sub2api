@@ -78,6 +78,50 @@ func TestBaiduVODNewSilentVeoTaskUsesBaseModelPrice(t *testing.T) {
 	require.Equal(t, string(BillingModeVideo), task.BillingMode)
 }
 
+func TestBaiduVODNewKlingActionTaskUsesExactAliasPrice(t *testing.T) {
+	resolver := newResolverWithChannel(t, []ChannelModelPricing{
+		{Platform: "anthropic", Models: []string{"kling-v3"}, BillingMode: BillingModeVideo, PerRequestPrice: testPtrFloat64(0.6)},
+		{Platform: "anthropic", Models: []string{"kling-v3-action"}, BillingMode: BillingModeVideo, PerRequestPrice: testPtrFloat64(0.9)},
+	})
+	videoService := &BaiduVODVideoService{billing: NewBillingService(nil, nil), pricing: resolver}
+	groupID := groupIDPtr()
+	apiKey := &APIKey{ID: 14, UserID: 24, User: &User{ID: 24}, GroupID: groupID, Group: &Group{ID: *groupID, RateMultiplier: 2}}
+	account := &Account{ID: 34, Platform: PlatformBaiduVOD}
+	spec, ok := BaiduVODModel("kling-v3-action")
+	require.True(t, ok)
+
+	task, err := videoService.NewTask(
+		context.Background(), "video_kling_action", apiKey, account,
+		BaiduVODVideoRequest{Model: "kling-v3-action", Prompt: "follow the action", Resolution: "720P", Ratio: "16:9", Duration: 5},
+		spec, &BaiduVODSubmitResult{TaskID: "kling-action", TaskStatus: "queued"}, "request-hash",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "kling-v3-action", task.Model)
+	require.True(t, task.InputContainsVideo)
+	require.InDelta(t, 9, task.EstimatedCost, 1e-12)
+	require.Equal(t, string(BillingModeVideo), task.BillingMode)
+}
+
+func TestBaiduVODNewKlingSilentTaskFallsBackToBasePrice(t *testing.T) {
+	resolver := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform: "anthropic", Models: []string{"kling-v3"}, BillingMode: BillingModeVideo, PerRequestPrice: testPtrFloat64(0.6),
+	}})
+	videoService := &BaiduVODVideoService{billing: NewBillingService(nil, nil), pricing: resolver}
+	groupID := groupIDPtr()
+	apiKey := &APIKey{ID: 15, UserID: 25, User: &User{ID: 25}, GroupID: groupID, Group: &Group{ID: *groupID, RateMultiplier: 2}}
+	account := &Account{ID: 35, Platform: PlatformBaiduVOD}
+	spec, ok := BaiduVODModel("kling-v3-silent")
+	require.True(t, ok)
+
+	task, err := videoService.NewTask(
+		context.Background(), "video_kling_silent", apiKey, account,
+		BaiduVODVideoRequest{Model: "kling-v3-silent", Prompt: "quiet video", Resolution: "720P", Ratio: "16:9", Duration: 5},
+		spec, &BaiduVODSubmitResult{TaskID: "kling-silent", TaskStatus: "queued"}, "request-hash",
+	)
+	require.NoError(t, err)
+	require.InDelta(t, 6, task.EstimatedCost, 1e-12)
+}
+
 func TestBaiduVODNewSeedanceTaskUsesChannelTokenPrice(t *testing.T) {
 	resolver := newResolverWithChannel(t, []ChannelModelPricing{{
 		Platform:    "anthropic",

@@ -234,7 +234,7 @@ export default {
           },
           klingTextToVideo: {
             title: 'Kling text to video',
-            description: 'Use kling-v3 to generate 3-15 second videos. mode supports std and pro, and generation tasks always use sound off.'
+            description: 'Use kling-v3 to generate 3-15 second videos with sound. Add the -silent suffix to disable sound, such as kling-v3-silent. mode supports std and pro.'
           },
           klingMultiShot: {
             title: 'Kling multi-shot video',
@@ -246,7 +246,11 @@ export default {
           },
           klingReferenceVideo: {
             title: 'Kling reference-video generation',
-            description: 'kling-v3-omni accepts one reference video through reference_videos and supports 3-10 second output in this mode.'
+            description: 'kling-v3-omni accepts one reference video through reference_videos and supports 3-10 second output in this mode. The -silent suffix disables both output sound and the reference video audio.'
+          },
+          klingActionControl: {
+            title: 'Kling motion control',
+            description: 'Use kling-v3-action with a character image in image and a 3-10 second motion reference in video. character_orientation=image preserves the image orientation; video follows the reference orientation and supports up to 30 seconds. kling-v3-action-silent disables the reference video audio.'
           },
           result: {
             title: 'Get the result',

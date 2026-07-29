@@ -17,40 +17,43 @@ import (
 )
 
 const (
-	BaiduVODDefaultBaseURL       = "https://vod.bj.baidubce.com"
-	BaiduVODCreatePath           = "/api/v1/services/aigc/video-generation/video-synthesis"
-	BaiduVODTaskPath             = "/api/v1/tasks/"
-	BaiduVODTaskStatusPath       = "/tasks/"
-	BaiduVODSeedanceCreatePath   = "/api/v3/contents/generations/tasks"
-	BaiduVODSeedanceTaskPath     = "/api/v3/contents/generations/tasks/"
-	BaiduVODVeoCreatePath        = "/v2/aigc/image_to_video"
-	BaiduVODVeoTextCreatePath    = "/v2/aigc/text_to_video"
-	BaiduVODVeoTaskPath          = "/v2/tasks/"
-	BaiduVODKlingOmniCreatePath  = "/videos/omni-video"
-	BaiduVODKlingOmniTaskPath    = "/videos/omni-video/"
-	BaiduVODKlingTextCreatePath  = "/videos/text2video"
-	BaiduVODKlingTextTaskPath    = "/videos/text2video/"
-	BaiduVODKlingImageCreatePath = "/videos/image2video"
-	BaiduVODKlingImageTaskPath   = "/videos/image2video/"
-	BaiduVODProviderHappyHorse   = "happyhorse"
-	BaiduVODProviderSeedance     = "seedance"
-	BaiduVODProviderVeo          = "veo"
-	BaiduVODProviderKling        = "kling"
-	BaiduVODProvider             = BaiduVODProviderHappyHorse
-	BaiduVODAuthModeAPIKey       = "apikey"
-	BaiduVODAuthModeAKSK         = "aksk"
-	baiduVODDefaultDuration      = 5
-	baiduVODSeedanceMaxMediaSecs = 15
+	BaiduVODDefaultBaseURL        = "https://vod.bj.baidubce.com"
+	BaiduVODCreatePath            = "/api/v1/services/aigc/video-generation/video-synthesis"
+	BaiduVODTaskPath              = "/api/v1/tasks/"
+	BaiduVODTaskStatusPath        = "/tasks/"
+	BaiduVODSeedanceCreatePath    = "/api/v3/contents/generations/tasks"
+	BaiduVODSeedanceTaskPath      = "/api/v3/contents/generations/tasks/"
+	BaiduVODVeoCreatePath         = "/v2/aigc/image_to_video"
+	BaiduVODVeoTextCreatePath     = "/v2/aigc/text_to_video"
+	BaiduVODVeoTaskPath           = "/v2/tasks/"
+	BaiduVODKlingOmniCreatePath   = "/videos/omni-video"
+	BaiduVODKlingOmniTaskPath     = "/videos/omni-video/"
+	BaiduVODKlingTextCreatePath   = "/videos/text2video"
+	BaiduVODKlingTextTaskPath     = "/videos/text2video/"
+	BaiduVODKlingImageCreatePath  = "/videos/image2video"
+	BaiduVODKlingImageTaskPath    = "/videos/image2video/"
+	BaiduVODKlingActionCreatePath = "/videos/motion-control"
+	BaiduVODKlingActionTaskPath   = BaiduVODTaskStatusPath
+	BaiduVODProviderHappyHorse    = "happyhorse"
+	BaiduVODProviderSeedance      = "seedance"
+	BaiduVODProviderVeo           = "veo"
+	BaiduVODProviderKling         = "kling"
+	BaiduVODProvider              = BaiduVODProviderHappyHorse
+	BaiduVODAuthModeAPIKey        = "apikey"
+	BaiduVODAuthModeAKSK          = "aksk"
+	baiduVODDefaultDuration       = 5
+	baiduVODSeedanceMaxMediaSecs  = 15
 )
 
 type BaiduVODVideoCapability string
 
 const (
-	BaiduVODCapabilityT2V   BaiduVODVideoCapability = "t2v"
-	BaiduVODCapabilityI2V   BaiduVODVideoCapability = "i2v"
-	BaiduVODCapabilityR2V   BaiduVODVideoCapability = "r2v"
-	BaiduVODCapabilityEdit  BaiduVODVideoCapability = "video_edit"
-	BaiduVODCapabilityMulti BaiduVODVideoCapability = "multimodal"
+	BaiduVODCapabilityT2V    BaiduVODVideoCapability = "t2v"
+	BaiduVODCapabilityI2V    BaiduVODVideoCapability = "i2v"
+	BaiduVODCapabilityR2V    BaiduVODVideoCapability = "r2v"
+	BaiduVODCapabilityEdit   BaiduVODVideoCapability = "video_edit"
+	BaiduVODCapabilityMulti  BaiduVODVideoCapability = "multimodal"
+	BaiduVODCapabilityAction BaiduVODVideoCapability = "motion_control"
 )
 
 type BaiduVODModelSpec struct {
@@ -59,6 +62,7 @@ type BaiduVODModelSpec struct {
 	Provider          string
 	Capability        BaiduVODVideoCapability
 	ForceSilent       bool
+	ForceAction       bool
 	CreatePath        string
 	TaskPath          string
 	Resolutions       []string
@@ -140,15 +144,57 @@ func BaiduVODModel(model string) (BaiduVODModelSpec, bool) {
 	if spec, ok := baiduVODModelRegistry[model]; ok {
 		return spec, true
 	}
-	const silentSuffix = "-silent"
-	if strings.HasSuffix(model, silentSuffix) {
-		baseModel := strings.TrimSuffix(model, silentSuffix)
-		if spec, ok := baiduVODModelRegistry[baseModel]; ok && spec.Provider == BaiduVODProviderVeo {
-			spec.ForceSilent = true
-			return spec, true
+	baseModel := model
+	forceSilent, forceAction := false, false
+	for {
+		switch {
+		case strings.HasSuffix(baseModel, "-silent") && !forceSilent:
+			baseModel = strings.TrimSuffix(baseModel, "-silent")
+			forceSilent = true
+		case strings.HasSuffix(baseModel, "-action") && !forceAction:
+			baseModel = strings.TrimSuffix(baseModel, "-action")
+			forceAction = true
+		default:
+			goto parsed
 		}
 	}
-	return BaiduVODModelSpec{}, false
+
+parsed:
+	spec, ok := baiduVODModelRegistry[baseModel]
+	if !ok || (!forceSilent && !forceAction) {
+		return BaiduVODModelSpec{}, false
+	}
+	if forceSilent && spec.Provider != BaiduVODProviderVeo && spec.Provider != BaiduVODProviderKling {
+		return BaiduVODModelSpec{}, false
+	}
+	if forceAction && (spec.Provider != BaiduVODProviderKling || spec.Model != "kling-v3") {
+		return BaiduVODModelSpec{}, false
+	}
+	if spec.Provider == BaiduVODProviderKling && spec.Model == "kling-video-o1" && forceSilent {
+		return BaiduVODModelSpec{}, false
+	}
+	spec.ForceSilent, spec.ForceAction = forceSilent, forceAction
+	if forceAction {
+		spec.Capability = BaiduVODCapabilityAction
+		spec.CreatePath, spec.TaskPath = BaiduVODKlingActionCreatePath, BaiduVODKlingActionTaskPath
+		spec.MaxDuration = 30
+	}
+	return spec, true
+}
+
+func baiduVODBillingModel(model string, spec BaiduVODModelSpec) string {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if spec.Provider != BaiduVODProviderKling && spec.Provider != BaiduVODProviderVeo {
+		return model
+	}
+	canonical := spec.Model
+	if spec.ForceAction {
+		canonical += "-action"
+	}
+	if spec.ForceSilent {
+		canonical += "-silent"
+	}
+	return canonical
 }
 
 func baiduVODModelForUpstream(model string) (BaiduVODModelSpec, bool) {
@@ -180,50 +226,52 @@ type BaiduVODMedia struct {
 }
 
 type BaiduVODVideoRequest struct {
-	Model            string            `json:"model"`
-	Prompt           string            `json:"prompt"`
-	NegativePrompt   string            `json:"negative_prompt"`
-	Seconds          int               `json:"seconds"`
-	Duration         int               `json:"duration"`
-	N                int               `json:"n"`
-	Size             string            `json:"size"`
-	Resolution       string            `json:"resolution"`
-	Ratio            string            `json:"ratio"`
-	Mode             string            `json:"mode"`
-	MultiShot        bool              `json:"multi_shot"`
-	ShotType         string            `json:"shot_type"`
-	MultiPrompt      []json.RawMessage `json:"multi_prompt"`
-	Image            json.RawMessage   `json:"image"`
-	Images           []json.RawMessage `json:"images"`
-	ImageList        []json.RawMessage `json:"image_list"`
-	FirstFrame       json.RawMessage   `json:"first_frame"`
-	LastFrame        json.RawMessage   `json:"last_frame"`
-	ReferenceImages  []json.RawMessage `json:"reference_images"`
-	Video            json.RawMessage   `json:"video"`
-	Videos           []json.RawMessage `json:"videos"`
-	ReferenceVideos  []json.RawMessage `json:"reference_videos"`
-	VideoList        []json.RawMessage `json:"video_list"`
-	ElementList      []json.RawMessage `json:"element_list"`
-	Audio            json.RawMessage   `json:"audio"`
-	Audios           []json.RawMessage `json:"audios"`
-	ReferenceAudios  []json.RawMessage `json:"reference_audios"`
-	Media            []BaiduVODMedia   `json:"media"`
-	Content          []json.RawMessage `json:"content"`
-	GenerateAudio    *bool             `json:"generate_audio"`
-	Watermark        *bool             `json:"watermark"`
-	ReturnLastFrame  *bool             `json:"return_last_frame"`
-	CallbackURL      string            `json:"callback_url"`
-	ServiceTier      string            `json:"service_tier"`
-	ExpiresAfter     *int              `json:"execution_expires_after"`
-	Draft            *bool             `json:"draft"`
-	Frames           *int              `json:"frames"`
-	Seed             *int64            `json:"seed"`
-	PersonGeneration string            `json:"person_generation"`
-	CameraFixed      *bool             `json:"camera_fixed"`
-	CFGScale         *float64          `json:"cfg_scale"`
-	SafetyID         string            `json:"safety_identifier"`
-	Priority         *int              `json:"priority"`
-	Tools            []json.RawMessage `json:"tools"`
+	Model                string            `json:"model"`
+	Prompt               string            `json:"prompt"`
+	NegativePrompt       string            `json:"negative_prompt"`
+	Seconds              int               `json:"seconds"`
+	Duration             int               `json:"duration"`
+	N                    int               `json:"n"`
+	Size                 string            `json:"size"`
+	Resolution           string            `json:"resolution"`
+	Ratio                string            `json:"ratio"`
+	Mode                 string            `json:"mode"`
+	CharacterOrientation string            `json:"character_orientation"`
+	KeepOriginalSound    string            `json:"keep_original_sound"`
+	MultiShot            bool              `json:"multi_shot"`
+	ShotType             string            `json:"shot_type"`
+	MultiPrompt          []json.RawMessage `json:"multi_prompt"`
+	Image                json.RawMessage   `json:"image"`
+	Images               []json.RawMessage `json:"images"`
+	ImageList            []json.RawMessage `json:"image_list"`
+	FirstFrame           json.RawMessage   `json:"first_frame"`
+	LastFrame            json.RawMessage   `json:"last_frame"`
+	ReferenceImages      []json.RawMessage `json:"reference_images"`
+	Video                json.RawMessage   `json:"video"`
+	Videos               []json.RawMessage `json:"videos"`
+	ReferenceVideos      []json.RawMessage `json:"reference_videos"`
+	VideoList            []json.RawMessage `json:"video_list"`
+	ElementList          []json.RawMessage `json:"element_list"`
+	Audio                json.RawMessage   `json:"audio"`
+	Audios               []json.RawMessage `json:"audios"`
+	ReferenceAudios      []json.RawMessage `json:"reference_audios"`
+	Media                []BaiduVODMedia   `json:"media"`
+	Content              []json.RawMessage `json:"content"`
+	GenerateAudio        *bool             `json:"generate_audio"`
+	Watermark            *bool             `json:"watermark"`
+	ReturnLastFrame      *bool             `json:"return_last_frame"`
+	CallbackURL          string            `json:"callback_url"`
+	ServiceTier          string            `json:"service_tier"`
+	ExpiresAfter         *int              `json:"execution_expires_after"`
+	Draft                *bool             `json:"draft"`
+	Frames               *int              `json:"frames"`
+	Seed                 *int64            `json:"seed"`
+	PersonGeneration     string            `json:"person_generation"`
+	CameraFixed          *bool             `json:"camera_fixed"`
+	CFGScale             *float64          `json:"cfg_scale"`
+	SafetyID             string            `json:"safety_identifier"`
+	Priority             *int              `json:"priority"`
+	Tools                []json.RawMessage `json:"tools"`
 }
 
 type BaiduVODVeoImage struct {
@@ -274,6 +322,20 @@ type BaiduVODKlingTaskInput struct {
 	CFGScale *float64 `json:"cfg_scale,omitempty"`
 }
 
+type BaiduVODKlingActionInput struct {
+	ModelName            string            `json:"model_name"`
+	Prompt               string            `json:"prompt,omitempty"`
+	ImageURL             string            `json:"image_url,omitempty"`
+	VideoURL             string            `json:"video_url"`
+	ElementList          []json.RawMessage `json:"element_list,omitempty"`
+	KeepOriginalSound    string            `json:"keep_original_sound"`
+	CharacterOrientation string            `json:"character_orientation"`
+	Mode                 string            `json:"mode"`
+	WatermarkInfo        *struct {
+		Enabled bool `json:"enabled"`
+	} `json:"watermark_info,omitempty"`
+}
+
 type BaiduVODUpstreamRequest struct {
 	Provider string `json:"-"`
 	Model    string `json:"model"`
@@ -286,32 +348,36 @@ type BaiduVODUpstreamRequest struct {
 		Ratio      string `json:"ratio"`
 		Duration   int    `json:"duration"`
 	} `json:"parameters"`
-	Content         []json.RawMessage         `json:"-"`
-	Resolution      string                    `json:"-"`
-	Ratio           string                    `json:"-"`
-	Duration        int                       `json:"-"`
-	GenerateAudio   *bool                     `json:"-"`
-	Watermark       *bool                     `json:"-"`
-	ReturnLastFrame *bool                     `json:"-"`
-	CallbackURL     string                    `json:"-"`
-	ServiceTier     string                    `json:"-"`
-	ExpiresAfter    *int                      `json:"-"`
-	Draft           *bool                     `json:"-"`
-	Frames          *int                      `json:"-"`
-	Seed            *int64                    `json:"-"`
-	CameraFixed     *bool                     `json:"-"`
-	SafetyID        string                    `json:"-"`
-	Priority        *int                      `json:"-"`
-	Tools           []json.RawMessage         `json:"-"`
-	VeoInput        *BaiduVODVeoTaskInput     `json:"-"`
-	VeoMode         BaiduVODVeoGenerationMode `json:"-"`
-	KlingInput      *BaiduVODKlingTaskInput   `json:"-"`
-	KlingCreatePath string                    `json:"-"`
-	KlingTaskPath   string                    `json:"-"`
+	Content          []json.RawMessage         `json:"-"`
+	Resolution       string                    `json:"-"`
+	Ratio            string                    `json:"-"`
+	Duration         int                       `json:"-"`
+	GenerateAudio    *bool                     `json:"-"`
+	Watermark        *bool                     `json:"-"`
+	ReturnLastFrame  *bool                     `json:"-"`
+	CallbackURL      string                    `json:"-"`
+	ServiceTier      string                    `json:"-"`
+	ExpiresAfter     *int                      `json:"-"`
+	Draft            *bool                     `json:"-"`
+	Frames           *int                      `json:"-"`
+	Seed             *int64                    `json:"-"`
+	CameraFixed      *bool                     `json:"-"`
+	SafetyID         string                    `json:"-"`
+	Priority         *int                      `json:"-"`
+	Tools            []json.RawMessage         `json:"-"`
+	VeoInput         *BaiduVODVeoTaskInput     `json:"-"`
+	VeoMode          BaiduVODVeoGenerationMode `json:"-"`
+	KlingInput       *BaiduVODKlingTaskInput   `json:"-"`
+	KlingActionInput *BaiduVODKlingActionInput `json:"-"`
+	KlingCreatePath  string                    `json:"-"`
+	KlingTaskPath    string                    `json:"-"`
 }
 
 func (r BaiduVODUpstreamRequest) MarshalJSON() ([]byte, error) {
 	if r.Provider == BaiduVODProviderKling {
+		if r.KlingActionInput != nil {
+			return json.Marshal(r.KlingActionInput)
+		}
 		if r.KlingInput == nil {
 			return nil, errors.New("Baidu VOD Kling input is required")
 		}
@@ -1010,7 +1076,7 @@ func baiduVODKlingImageCountsFor(images []json.RawMessage) baiduVODKlingImageCou
 	return counts
 }
 
-func normalizeBaiduVODKlingVideo(raw json.RawMessage, defaultReferType string) (json.RawMessage, error) {
+func normalizeBaiduVODKlingVideo(raw json.RawMessage, defaultReferType, keepOriginalSound string) (json.RawMessage, error) {
 	videoURL := baiduVODURL(raw)
 	if videoURL == "" {
 		return nil, errors.New("Kling video_list entries require video_url")
@@ -1031,15 +1097,15 @@ func normalizeBaiduVODKlingVideo(raw json.RawMessage, defaultReferType string) (
 	return json.Marshal(map[string]any{
 		"video_url":           videoURL,
 		"refer_type":          referType,
-		"keep_original_sound": "no",
+		"keep_original_sound": keepOriginalSound,
 	})
 }
 
-func appendBaiduVODKlingVideo(videos *[]json.RawMessage, raw json.RawMessage, referType string) error {
+func appendBaiduVODKlingVideo(videos *[]json.RawMessage, raw json.RawMessage, referType, keepOriginalSound string) error {
 	if len(raw) == 0 || baiduVODURL(raw) == "" {
 		return nil
 	}
-	item, err := normalizeBaiduVODKlingVideo(raw, referType)
+	item, err := normalizeBaiduVODKlingVideo(raw, referType, keepOriginalSound)
 	if err != nil {
 		return err
 	}
@@ -1047,11 +1113,11 @@ func appendBaiduVODKlingVideo(videos *[]json.RawMessage, raw json.RawMessage, re
 	return nil
 }
 
-func (r BaiduVODVideoRequest) klingVideosFor() ([]json.RawMessage, bool, error) {
+func (r BaiduVODVideoRequest) klingVideosFor(keepOriginalSound string) ([]json.RawMessage, bool, error) {
 	videos := make([]json.RawMessage, 0, len(r.VideoList)+len(r.ReferenceVideos)+len(r.Videos)+1)
 	hasBaseVideo := false
 	for _, raw := range r.VideoList {
-		item, err := normalizeBaiduVODKlingVideo(raw, "base")
+		item, err := normalizeBaiduVODKlingVideo(raw, "base", keepOriginalSound)
 		if err != nil {
 			return nil, false, err
 		}
@@ -1065,11 +1131,11 @@ func (r BaiduVODVideoRequest) klingVideosFor() ([]json.RawMessage, bool, error) 
 	if baiduVODURL(r.Video) != "" {
 		hasBaseVideo = true
 	}
-	if err := appendBaiduVODKlingVideo(&videos, r.Video, "base"); err != nil {
+	if err := appendBaiduVODKlingVideo(&videos, r.Video, "base", keepOriginalSound); err != nil {
 		return nil, false, err
 	}
 	for _, raw := range append(append([]json.RawMessage(nil), r.ReferenceVideos...), r.Videos...) {
-		if err := appendBaiduVODKlingVideo(&videos, raw, "feature"); err != nil {
+		if err := appendBaiduVODKlingVideo(&videos, raw, "feature", keepOriginalSound); err != nil {
 			return nil, false, err
 		}
 	}
@@ -1087,11 +1153,124 @@ func (r BaiduVODVideoRequest) klingVideosFor() ([]json.RawMessage, bool, error) 
 		if err != nil {
 			return nil, false, err
 		}
-		if err := appendBaiduVODKlingVideo(&videos, raw, referType); err != nil {
+		if err := appendBaiduVODKlingVideo(&videos, raw, referType, keepOriginalSound); err != nil {
 			return nil, false, err
 		}
 	}
 	return videos, hasBaseVideo, nil
+}
+
+func baiduVODKlingSoundSettings(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (string, string, error) {
+	sound, keepOriginalSound := "on", "yes"
+	if spec.Model == "kling-video-o1" {
+		sound, keepOriginalSound = "off", "no"
+	}
+	if req.GenerateAudio != nil && !*req.GenerateAudio {
+		sound = "off"
+	}
+	if value := strings.ToLower(strings.TrimSpace(req.KeepOriginalSound)); value != "" {
+		if value != "yes" && value != "no" {
+			return "", "", errors.New("Kling keep_original_sound must be yes or no")
+		}
+		keepOriginalSound = value
+	}
+	if spec.ForceSilent {
+		sound, keepOriginalSound = "off", "no"
+	}
+	return sound, keepOriginalSound, nil
+}
+
+func baiduVODKlingActionVideoURL(req BaiduVODVideoRequest) (string, error) {
+	candidates := make([]string, 0, 1+len(req.VideoList)+len(req.ReferenceVideos)+len(req.Videos))
+	appendURL := func(raw json.RawMessage) {
+		if value := baiduVODURL(raw); value != "" {
+			candidates = append(candidates, value)
+		}
+	}
+	appendURL(req.Video)
+	for _, raw := range req.VideoList {
+		appendURL(raw)
+	}
+	for _, raw := range req.ReferenceVideos {
+		appendURL(raw)
+	}
+	for _, raw := range req.Videos {
+		appendURL(raw)
+	}
+	for _, media := range req.Media {
+		kind := strings.ToLower(strings.TrimSpace(media.Type))
+		if (kind == "video" || kind == "reference_video" || kind == "video_url") && strings.TrimSpace(media.URL) != "" {
+			candidates = append(candidates, strings.TrimSpace(media.URL))
+		}
+	}
+	if len(candidates) == 0 {
+		return "", errors.New("model kling-v3-action requires a reference video through video or reference_videos")
+	}
+	if len(candidates) > 1 {
+		return "", errors.New("model kling-v3-action supports one reference video")
+	}
+	return candidates[0], nil
+}
+
+func klingActionInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*BaiduVODKlingActionInput, error) {
+	if len([]rune(req.Prompt)) > 2500 {
+		return nil, errors.New("Kling prompt must not exceed 2500 characters")
+	}
+	if req.MultiShot || strings.TrimSpace(req.ShotType) != "" || len(req.MultiPrompt) > 0 {
+		return nil, errors.New("model kling-v3-action supports single-shot requests")
+	}
+	if len(req.ElementList) > 1 {
+		return nil, errors.New("model kling-v3-action supports one reference element")
+	}
+	if err := validateBaiduVODKlingElements(req.ElementList); err != nil {
+		return nil, err
+	}
+	imageURL := baiduVODURL(req.FirstFrame)
+	if imageURL == "" {
+		imageURL = baiduVODURL(req.Image)
+	}
+	if imageURL == "" && len(req.ElementList) == 0 {
+		return nil, errors.New("model kling-v3-action requires image or element_list")
+	}
+	videoURL, err := baiduVODKlingActionVideoURL(req)
+	if err != nil {
+		return nil, err
+	}
+	orientation := strings.ToLower(strings.TrimSpace(req.CharacterOrientation))
+	if orientation == "" {
+		orientation = "image"
+		if len(req.ElementList) > 0 {
+			orientation = "video"
+		}
+	}
+	if orientation != "image" && orientation != "video" {
+		return nil, errors.New("model kling-v3-action character_orientation must be image or video")
+	}
+	if len(req.ElementList) > 0 && orientation != "video" {
+		return nil, errors.New("model kling-v3-action element_list requires character_orientation=video")
+	}
+	if orientation == "image" && req.Duration > 10 {
+		return nil, errors.New("model kling-v3-action with character_orientation=image supports up to 10 seconds")
+	}
+	mode := normalizeBaiduVODKlingMode(req.Mode, req.Resolution)
+	if mode != "std" && mode != "pro" {
+		return nil, errors.New("model kling-v3-action mode must be std or pro")
+	}
+	_, keepOriginalSound, err := baiduVODKlingSoundSettings(req, spec)
+	if err != nil {
+		return nil, err
+	}
+	input := &BaiduVODKlingActionInput{
+		ModelName: spec.UpstreamModel, Prompt: req.Prompt, ImageURL: imageURL, VideoURL: videoURL,
+		ElementList: req.ElementList, KeepOriginalSound: keepOriginalSound,
+		CharacterOrientation: orientation, Mode: mode,
+	}
+	if req.Watermark != nil {
+		input.WatermarkInfo = &struct {
+			Enabled bool `json:"enabled"`
+		}{Enabled: *req.Watermark}
+	}
+	return input, nil
 }
 
 func validateBaiduVODKlingElements(elements []json.RawMessage) error {
@@ -1194,10 +1373,14 @@ func klingTaskInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*Baidu
 	if err := validateBaiduVODKlingElements(req.ElementList); err != nil {
 		return nil, "", "", "", err
 	}
+	sound, keepOriginalSound, err := baiduVODKlingSoundSettings(req, spec)
+	if err != nil {
+		return nil, "", "", "", err
+	}
 
 	input := &BaiduVODKlingTaskInput{
 		ModelName: spec.UpstreamModel, Prompt: req.Prompt, MultiShot: req.MultiShot,
-		ElementList: req.ElementList, Sound: "off", Mode: mode, AspectRatio: req.Ratio,
+		ElementList: req.ElementList, Sound: sound, Mode: mode, AspectRatio: req.Ratio,
 		Duration: strconv.Itoa(req.Duration),
 	}
 	if req.MultiShot {
@@ -1243,7 +1426,7 @@ func klingTaskInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*Baidu
 	if err != nil {
 		return nil, "", "", "", err
 	}
-	videos, hasBaseVideo, err := req.klingVideosFor()
+	videos, hasBaseVideo, err := req.klingVideosFor(keepOriginalSound)
 	if err != nil {
 		return nil, "", "", "", err
 	}
@@ -1282,6 +1465,9 @@ func klingTaskInputFor(req BaiduVODVideoRequest, spec BaiduVODModelSpec) (*Baidu
 	}
 	if spec.Model == "kling-v3-omni" && len(videos) > 0 && req.Duration > 10 {
 		return nil, "", "", "", errors.New("model kling-v3-omni reference-video duration must be between 3 and 10 seconds")
+	}
+	if spec.Model == "kling-v3-omni" && len(videos) > 0 {
+		input.Sound = "off"
 	}
 	input.ImageList, input.VideoList = images, videos
 	capability := BaiduVODCapabilityT2V
@@ -1331,6 +1517,16 @@ func TranslateBaiduVODVideoRequest(req BaiduVODVideoRequest) (BaiduVODModelSpec,
 	var out BaiduVODUpstreamRequest
 	out.Provider, out.Model = spec.Provider, spec.UpstreamModel
 	if spec.Provider == BaiduVODProviderKling {
+		if spec.ForceAction {
+			input, err := klingActionInputFor(req, spec)
+			if err != nil {
+				return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, err
+			}
+			out.KlingActionInput = input
+			out.KlingCreatePath, out.KlingTaskPath = BaiduVODKlingActionCreatePath, BaiduVODKlingActionTaskPath
+			spec.CreatePath, spec.TaskPath, spec.Capability = BaiduVODKlingActionCreatePath, BaiduVODKlingActionTaskPath, BaiduVODCapabilityAction
+			return spec, out, nil
+		}
 		input, createPath, taskPath, capability, err := klingTaskInputFor(req, spec)
 		if err != nil {
 			return BaiduVODModelSpec{}, BaiduVODUpstreamRequest{}, err

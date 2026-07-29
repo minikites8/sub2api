@@ -315,6 +315,9 @@ func (s *BaiduVODVideoService) Poll(ctx context.Context, account *Account, task 
 }
 
 func baiduVODKlingTaskPath(spec BaiduVODModelSpec, capability BaiduVODVideoCapability) string {
+	if capability == BaiduVODCapabilityAction || spec.ForceAction {
+		return BaiduVODKlingActionTaskPath
+	}
 	if strings.EqualFold(strings.TrimSpace(spec.Model), "kling-v3") {
 		if capability == BaiduVODCapabilityI2V {
 			return BaiduVODKlingImageTaskPath
@@ -644,6 +647,8 @@ func (s *BaiduVODVideoService) NewTask(ctx context.Context, publicID string, api
 	if spec.Provider == BaiduVODProviderSeedance {
 		estimatedTokens = estimateSeedanceCompletionTokens(req, spec)
 		inputContainsVideo = seedanceInputContainsVideo(req, spec)
+	} else if spec.ForceAction {
+		inputContainsVideo = true
 	}
 	cost := s.calculateVideoCost(ctx, req.Model, apiKey.GroupID, resolution, 1, billingDuration, estimatedTokens, inputContainsVideo, groupConfig, groupPriceConfigured, videoMultiplier)
 	billingMode := firstNonEmpty(cost.BillingMode, string(BillingModeVideo))
@@ -685,14 +690,20 @@ func (s *BaiduVODVideoService) calculateVideoCost(
 	if s == nil || s.billing == nil {
 		return &CostBreakdown{}
 	}
-	billingModel := model
+	billingModel := strings.ToLower(strings.TrimSpace(model))
+	baseBillingModel := billingModel
 	if spec, ok := BaiduVODModel(model); ok {
-		billingModel = spec.Model
+		billingModel = baiduVODBillingModel(model, spec)
+		baseBillingModel = spec.Model
 	}
 	if groupPriceConfigured || s.pricing == nil || groupID == nil {
-		return s.billing.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
+		return s.billing.CalculateVideoCost(baseBillingModel, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
 	}
 	resolved := s.pricing.Resolve(ctx, PricingInput{Model: billingModel, GroupID: groupID})
+	if resolved != nil && resolved.Source != PricingSourceChannel && billingModel != baseBillingModel {
+		billingModel = baseBillingModel
+		resolved = s.pricing.Resolve(ctx, PricingInput{Model: billingModel, GroupID: groupID})
+	}
 	if resolved != nil && (resolved.Mode == BillingModeVideo || ((resolved.Mode == BillingModeToken || resolved.Mode == BillingModeVideoToken) && completionTokens > 0)) {
 		cost, err := s.billing.CalculateCostUnified(CostInput{
 			Ctx:                ctx,
@@ -782,7 +793,9 @@ func (s *BaiduVODVideoService) recordUsage(ctx context.Context, task *BaiduVODVi
 		if spec.Provider == BaiduVODProviderVeo && task.Capability == BaiduVODCapabilityT2V {
 			upstream = BaiduVODVeoTextCreatePath
 		} else if spec.Provider == BaiduVODProviderKling {
-			if spec.Model == "kling-v3" && task.Capability == BaiduVODCapabilityI2V {
+			if task.Capability == BaiduVODCapabilityAction || spec.ForceAction {
+				upstream = BaiduVODKlingActionCreatePath
+			} else if spec.Model == "kling-v3" && task.Capability == BaiduVODCapabilityI2V {
 				upstream = BaiduVODKlingImageCreatePath
 			} else if spec.Model == "kling-v3" {
 				upstream = BaiduVODKlingTextCreatePath

@@ -206,8 +206,12 @@ const baiduVODModels = [
   'veo-3.1-fast',
   'veo-3.1-lite',
   'kling-v3-omni',
+  'kling-v3-omni-silent',
   'kling-video-o1',
-  'kling-v3'
+  'kling-v3',
+  'kling-v3-silent',
+  'kling-v3-action',
+  'kling-v3-action-silent'
 ]
 
 // Cohere
