@@ -58,7 +58,7 @@
           </label>
 
           <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <select v-model="providerFilter" class="market-select" :aria-label="t('modelMarketplace.providerFilter')">
+            <select v-if="providerOptions.length > 1" v-model="providerFilter" class="market-select" :aria-label="t('modelMarketplace.providerFilter')">
               <option v-for="option in providerOptions" :key="option.value" :value="option.value">
                 {{ option.label }}
               </option>
@@ -73,11 +73,6 @@
                 {{ option.label }}
               </option>
             </select>
-            <label class="col-span-2 inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded border border-dark-700 bg-dark-950 px-3 text-xs text-dark-300 sm:col-span-1">
-              <input v-model="showProviders" type="checkbox" class="peer sr-only">
-              <span class="relative h-5 w-9 rounded-full bg-dark-700 transition peer-checked:bg-emerald-600 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
-              <span>{{ t('modelMarketplace.showProviders') }}</span>
-            </label>
             <div class="col-span-2 inline-flex h-10 items-center rounded border border-dark-700 bg-dark-950 p-1 sm:col-span-1">
               <button
                 v-for="windowOption in windows"
@@ -141,7 +136,8 @@
                     <td class="px-5 py-4">
                       <div class="flex min-w-[280px] items-start gap-3.5">
                         <div class="flex h-11 w-11 flex-none items-center justify-center rounded border border-dark-700 bg-dark-900 text-dark-200">
-                          <PlatformIcon :platform="model.platforms[0]" size="lg" />
+                          <PlatformIcon v-if="model.visiblePlatforms.length > 0" :platform="model.visiblePlatforms[0]" size="lg" />
+                          <Icon v-else name="cpu" size="lg" />
                         </div>
                         <div class="min-w-0">
                           <button type="button" class="flex max-w-[260px] items-center gap-1.5 text-left text-lg font-semibold text-white hover:text-emerald-300" @click="toggleExpanded(model.id)">
@@ -149,7 +145,7 @@
                           </button>
                           <div class="mt-1 flex items-center gap-2 font-jetbrains-mono text-xs">
                             <span class="text-dark-400">{{ model.developer || t('modelMarketplace.unknownDeveloper') }}</span>
-                            <span v-if="showProviders" class="border-l border-dark-700 pl-2 text-dark-500">{{ platformNames(model.platforms) }}</span>
+                            <span v-if="model.visiblePlatforms.length > 0" class="border-l border-dark-700 pl-2 text-dark-500">{{ platformNames(model.visiblePlatforms) }}</span>
                             <span :class="statusTextClass(model.monitoring.status)">{{ formatAvailability(model) }}</span>
                             <button type="button" class="opacity-0 transition hover:text-white group-hover:opacity-100 focus:opacity-100" :title="t('modelMarketplace.copyModelId')" @click="copyModelId(model.name)">
                               <Icon name="copy" size="xs" />
@@ -238,13 +234,14 @@
             <button type="button" class="flex w-full items-start justify-between gap-3 p-4 text-left" @click="toggleExpanded(model.id)">
               <span class="flex min-w-0 items-center gap-3.5">
                 <span class="flex h-11 w-11 flex-none items-center justify-center rounded border border-dark-700 bg-dark-900 text-dark-200">
-                  <PlatformIcon :platform="model.platforms[0]" size="lg" />
+                  <PlatformIcon v-if="model.visiblePlatforms.length > 0" :platform="model.visiblePlatforms[0]" size="lg" />
+                  <Icon v-else name="cpu" size="lg" />
                 </span>
                 <span class="min-w-0">
                   <span class="block truncate text-lg font-semibold text-white">{{ model.name }}</span>
                   <span class="mt-1 block font-jetbrains-mono text-xs text-dark-400">
                     {{ model.developer || t('modelMarketplace.unknownDeveloper') }}
-                    <template v-if="showProviders"> · {{ platformNames(model.platforms) }}</template>
+                    <template v-if="model.visiblePlatforms.length > 0"> · {{ platformNames(model.visiblePlatforms) }}</template>
                     · {{ billingModeNames(model.billingModes) }}
                   </span>
                   <span class="mt-2 flex items-center gap-2">
@@ -347,7 +344,6 @@ const loading = ref(false)
 const error = ref('')
 const search = ref('')
 const providerFilter = ref('')
-const showProviders = ref(false)
 const billingFilter = ref('')
 const statusFilter = ref('')
 const monitorWindow = ref<MarketplaceWindow>('7d')
@@ -368,7 +364,7 @@ const monitoredCount = computed(() => models.value.filter((model) => model.monit
 const monitoringCoverage = computed(() => models.value.length > 0 ? `${Math.round(monitoredCount.value / models.value.length * 100)}%` : '0%')
 
 const providerOptions = computed(() => {
-  const values = Array.from(new Set(models.value.flatMap((model) => model.platforms))).sort()
+  const values = Array.from(new Set(models.value.flatMap((model) => model.visiblePlatforms))).sort()
   return [
     { value: '', label: t('modelMarketplace.filters.allProviders') },
     ...values.map((value) => ({ value, label: platformLabel(value) })),
@@ -398,12 +394,12 @@ const filteredModels = computed(() => {
       model.name,
       model.developer,
       ...model.rawModels,
-      ...model.platforms,
+      ...model.visiblePlatforms,
       ...model.supportedProtocols,
       ...model.profiles.map((profile) => profile.groupName),
     ].join(' ').toLowerCase()
     return (!query || searchable.includes(query))
-      && (!providerFilter.value || model.platforms.some((platform) => platform === providerFilter.value))
+      && (!providerFilter.value || model.visiblePlatforms.some((platform) => platform === providerFilter.value))
       && (!billingFilter.value || model.billingModes.includes(billingFilter.value))
       && (!statusFilter.value || model.monitoring.status === statusFilter.value)
   })
@@ -737,7 +733,10 @@ const ModelPricingDetail = defineComponent({
             h('tr', {}, [label('group'), label('mode'), label('multiplier'), label('pricing')].map((text) => h('th', { class: 'px-3 py-2 font-medium' }, text))),
           ]),
           h('tbody', { class: 'divide-y divide-dark-800 font-jetbrains-mono text-xs' }, detailProps.model.profiles.map((profile) => h('tr', { class: 'text-dark-200' }, [
-            h('td', { class: 'px-3 py-3' }, [h('div', { class: 'font-sans text-xs font-medium text-white' }, profile.groupName), h('div', { class: 'mt-1 text-[11px] text-dark-400' }, platformLabel(profile.platform))]),
+            h('td', { class: 'px-3 py-3' }, [
+              h('div', { class: 'font-sans text-xs font-medium text-white' }, profile.groupName),
+              ...(profile.providerVisible ? [h('div', { class: 'mt-1 text-[11px] text-dark-400' }, platformLabel(profile.platform))] : []),
+            ]),
             h('td', { class: 'px-3 py-3' }, billingModeLabel(profile.model.billing_mode)),
             h('td', { class: 'px-3 py-3 text-emerald-300' }, profileMultiplier(profile)),
             h('td', { class: 'min-w-[300px] px-3 py-3' }, h('div', { class: 'space-y-2' }, profilePrice(profile))),

@@ -20,6 +20,7 @@ export interface MarketplacePriceProfile {
   key: string
   groupName: string
   platform: GroupPlatform
+  providerVisible: boolean
   multiplier: number
   videoMultiplier: number
   subscriptionType?: string
@@ -50,6 +51,7 @@ export interface MarketplaceModel {
   developer: string
   rawModels: string[]
   platforms: GroupPlatform[]
+  visiblePlatforms: GroupPlatform[]
   billingModes: string[]
   supportedProtocols: string[]
   profiles: MarketplacePriceProfile[]
@@ -402,6 +404,7 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
         developer: modelDeveloper(name),
         rawModels: [],
         platforms: [],
+        visiblePlatforms: [],
         billingModes: [],
         supportedProtocols: [],
         profiles: [],
@@ -409,6 +412,9 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
       appendUniqueModelName(current.rawModels, model.raw_model)
       for (const alias of pricingModelAliases(model)) appendUniqueModelName(current.rawModels, alias)
       if (!current.platforms.includes(model.platform)) current.platforms.push(model.platform)
+      if (group.provider_visible === true && !current.visiblePlatforms.includes(model.platform)) {
+        current.visiblePlatforms.push(model.platform)
+      }
       if (!current.billingModes.includes(model.billing_mode)) current.billingModes.push(model.billing_mode)
       if (Object.values(model.price?.video_resolution_prices || {}).some((value) => typeof value === 'number')
         && !current.billingModes.includes('video')) {
@@ -421,6 +427,7 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
         key: `${group.platform}:${group.name}:${profileIdentity(model)}`,
         groupName: group.name,
         platform: group.platform,
+        providerVisible: group.provider_visible === true,
         multiplier: group.rate_multiplier,
         videoMultiplier: group.video_rate_multiplier ?? group.rate_multiplier,
         subscriptionType: group.subscription_type,
@@ -445,6 +452,7 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
       ...model,
       rawModels: model.rawModels.sort(),
       platforms: model.platforms.sort(),
+      visiblePlatforms: model.visiblePlatforms.sort(),
       billingModes: model.billingModes.sort(),
       supportedProtocols: model.supportedProtocols.sort(),
       profiles: model.profiles.sort((a, b) => a.multiplier - b.multiplier || a.groupName.localeCompare(b.groupName)),

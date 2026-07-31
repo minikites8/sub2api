@@ -562,9 +562,8 @@ export default {
     publicAccess: 'PUBLIC ACCESS',
     creditRule: '1 Credit = 0.01 USD 调用额度',
     updatedAt: '快照更新 {time}',
-    searchPlaceholder: '搜索模型、开发商、供应商、协议或分组...',
-    providerFilter: '供应商筛选',
-    showProviders: '显示渠道提供商',
+    searchPlaceholder: '搜索模型、开发商、提供商、协议或分组...',
+    providerFilter: '提供商筛选',
     unknownDeveloper: '未知开发商',
     billingFilter: '计费方式筛选',
     statusFilter: '状态筛选',
@@ -585,12 +584,12 @@ export default {
     priceNote: '视频价格单位为 Credits/s，Token 价格单位为 Credits/1M tokens，均已应用对应分组倍率',
     stats: {
       models: '模型总数',
-      providers: '供应商',
+      providers: '提供商',
       operational: '运行正常',
       monitored: '监控覆盖'
     },
     filters: {
-      allProviders: '全部供应商',
+      allProviders: '全部提供商',
       allBilling: '全部计费方式',
       allStatus: '全部状态'
     },
@@ -623,7 +622,7 @@ export default {
       actions: '操作'
     },
     detail: {
-      group: '分组 / 平台',
+      group: '分组 / 提供商',
       mode: '计费方式',
       multiplier: '倍率',
       pricing: '价格',

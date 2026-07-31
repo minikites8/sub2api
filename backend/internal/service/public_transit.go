@@ -138,6 +138,7 @@ type PublicTransitBilling struct {
 type PublicTransitGroup struct {
 	Name                string                  `json:"name"`
 	Platform            string                  `json:"platform"`
+	ProviderVisible     bool                    `json:"provider_visible"`
 	SubscriptionType    string                  `json:"subscription_type,omitempty"`
 	RateMultiplier      float64                 `json:"rate_multiplier"`
 	VideoRateMultiplier float64                 `json:"video_rate_multiplier"`
@@ -468,6 +469,7 @@ func buildPublicTransitGroups(configuredGroups []Group, channels []AvailableChan
 				modelSeen[key] = make(map[string]struct{})
 				out = byKey[key]
 			}
+			out.ProviderVisible = out.ProviderVisible || g.ProviderVisible
 			for _, m := range ch.SupportedModels {
 				if m.Platform != g.Platform {
 					continue

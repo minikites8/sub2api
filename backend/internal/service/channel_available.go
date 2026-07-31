@@ -16,6 +16,7 @@ type AvailableGroupRef struct {
 	ID                 int64
 	Name               string
 	Platform           string
+	ProviderVisible    bool
 	SubscriptionType   string
 	RateMultiplier     float64
 	PeakRateEnabled    bool
@@ -82,6 +83,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		groups := make([]AvailableGroupRef, 0, len(ch.GroupIDs))
 		for _, gid := range ch.GroupIDs {
 			if ref, ok := groupByID[gid]; ok {
+				ref.ProviderVisible = ch.IsMarketplaceProviderVisible(ref.Platform)
 				groups = append(groups, ref)
 			}
 		}

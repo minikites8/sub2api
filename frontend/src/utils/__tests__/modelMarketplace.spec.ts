@@ -29,6 +29,24 @@ describe('model marketplace aggregation', () => {
     expect(modelDeveloper('custom-routed-model')).toBe('')
   })
 
+  it('aggregates only providers enabled by channel configuration', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const standard = snapshot.groups.find((group) => group.name === '标准路由')!
+    const priority = snapshot.groups.find((group) => group.name === '高速路由')!
+    standard.provider_visible = true
+    priority.provider_visible = false
+
+    const models = buildMarketplaceModels(snapshot)
+    const gpt = models.find((model) => model.name === 'gpt-4.1')!
+    const claude = models.find((model) => model.name === 'claude-sonnet-4')!
+
+    expect(gpt.platforms).toEqual(['openai'])
+    expect(gpt.visiblePlatforms).toEqual(['openai'])
+    expect(gpt.profiles.map((profile) => profile.providerVisible)).toEqual([true, false])
+    expect(claude.visiblePlatforms).toEqual([])
+    expect(claude.profiles[0].providerVisible).toBe(false)
+  })
+
   it('collapses mapped aliases from one pricing entry into one marketplace item', () => {
     const snapshot = createModelMarketplacePreviewSnapshot()
     const videoGroup = snapshot.groups.find((group) => group.name === '百度 VOD 视频')!

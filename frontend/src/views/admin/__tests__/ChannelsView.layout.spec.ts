@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { channelsList, getModelDefaultPricing, groupsGetAll, settingsGetWebSearchEmulationConfig, syncPricingModels } = vi.hoisted(() => ({
+const { channelsCreate, channelsList, getModelDefaultPricing, groupsGetAll, settingsGetWebSearchEmulationConfig, syncPricingModels } = vi.hoisted(() => ({
+  channelsCreate: vi.fn(),
   channelsList: vi.fn(),
   getModelDefaultPricing: vi.fn(),
   groupsGetAll: vi.fn(),
@@ -16,7 +17,7 @@ vi.mock('@/api/admin', () => ({
       list: vi.fn(),
     },
     channels: {
-      create: vi.fn(),
+      create: channelsCreate,
       getModelDefaultPricing,
       list: channelsList,
       remove: vi.fn(),
@@ -143,6 +144,7 @@ describe('ChannelsView 弹框布局', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     channelsList.mockResolvedValue({ items: [], total: 0 })
+    channelsCreate.mockResolvedValue({})
     getModelDefaultPricing.mockResolvedValue({ found: false })
     groupsGetAll.mockResolvedValue([])
     settingsGetWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] })
@@ -267,5 +269,65 @@ describe('ChannelsView 弹框布局', () => {
     expect(pricingCards[0].find('.pricing-input-price').text()).toBe('100')
     expect(pricingCards[1].find('.pricing-models').text()).toBe('claude-opus-4-8-thinking')
     expect(pricingCards[1].find('.pricing-input-price').text()).toBe('200')
+  })
+
+  it('保存模型广场提供商可见性的平台配置', async () => {
+    groupsGetAll.mockResolvedValue([
+      { id: 20, name: 'openai group', platform: 'openai', rate_multiplier: 1, account_count: 0 },
+    ])
+
+    const wrapper = mount(ChannelsView, {
+      global: {
+        stubs: {
+          AppLayout: SlotStub,
+          BaseDialog: BaseDialogStub,
+          ConfirmDialog: true,
+          DataTable: DataTableStub,
+          EmptyState: SlotStub,
+          Icon: true,
+          Pagination: true,
+          PlatformIcon: true,
+          PricingEntryCard: true,
+          Select: SelectStub,
+          TablePageLayout: TablePageLayoutStub,
+          Toggle: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    const createButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Create Channel'))!
+    await createButton.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('input[placeholder="Enter channel name"]').setValue('marketplace channel')
+    const platformLabel = wrapper
+      .findAll('label')
+      .find((label) => label.text().includes('openai'))!
+    await platformLabel.find('input[type="checkbox"]').setValue(true)
+    await flushPromises()
+
+    const groupLabel = wrapper
+      .findAll('label')
+      .find((label) => label.text().includes('openai group'))!
+    await groupLabel.find('input[type="checkbox"]').setValue(true)
+
+    const visibilityLabel = wrapper
+      .findAll('label')
+      .find((label) => label.text() === 'admin.channels.form.marketplaceProviderVisible')!
+    const visibilitySwitch = visibilityLabel.element.parentElement?.parentElement?.querySelector<HTMLButtonElement>('[role="switch"]')
+    expect(visibilitySwitch).toBeTruthy()
+    visibilitySwitch!.click()
+    await flushPromises()
+
+    await wrapper.get('form#channel-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(channelsCreate).toHaveBeenCalledTimes(1)
+    expect(channelsCreate.mock.calls[0][0].features_config).toEqual(expect.objectContaining({
+      marketplace_provider_visible: { openai: true },
+    }))
   })
 })

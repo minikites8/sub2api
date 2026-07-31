@@ -10,7 +10,7 @@ vi.mock('@/composables/useClipboard', () => ({
 }))
 
 describe('ChannelStatusView video pricing', () => {
-  it('renders video prices and toggles channel provider labels', async () => {
+  it('renders provider labels according to channel configuration', async () => {
     const i18n = createI18n({
       legacy: false,
       locale: 'zh',
@@ -18,6 +18,7 @@ describe('ChannelStatusView video pricing', () => {
     })
     const snapshot = createModelMarketplacePreviewSnapshot()
     const videoGroup = snapshot.groups.find((group) => group.name === '百度 VOD 视频')!
+    videoGroup.provider_visible = true
     const happyHorse = videoGroup.models.find((model) => model.standard_model === 'happyhorse-1.1-t2v')!
     const happyHorseAliases = [
       'happyhorse-1.1-t2v',
@@ -65,9 +66,12 @@ describe('ChannelStatusView video pricing', () => {
       .findAll('tr')
       .find((row) => row.text().includes('doubao-seedance-2-0-260128'))!
     expect(seedanceRow.text()).toContain('ByteDance')
-    expect(seedanceRow.text()).not.toContain('Baidu VOD')
-
-    await wrapper.get('input[type="checkbox"]').setValue(true)
     expect(seedanceRow.text()).toContain('Baidu VOD')
+
+    const gptRow = wrapper
+      .findAll('tr')
+      .find((row) => row.text().includes('gpt-4.1'))!
+    expect(gptRow.find('.border-l').exists()).toBe(false)
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
   })
 })

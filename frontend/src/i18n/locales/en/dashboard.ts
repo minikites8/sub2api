@@ -559,7 +559,6 @@ export default {
     updatedAt: 'Snapshot updated {time}',
     searchPlaceholder: 'Search models, developers, providers, protocols, or groups...',
     providerFilter: 'Provider filter',
-    showProviders: 'Show providers',
     unknownDeveloper: 'Unknown developer',
     billingFilter: 'Billing filter',
     statusFilter: 'Status filter',
@@ -618,7 +617,7 @@ export default {
       actions: 'Actions'
     },
     detail: {
-      group: 'Group / Platform',
+      group: 'Group / Provider',
       mode: 'Billing',
       multiplier: 'Rate',
       pricing: 'Pricing',

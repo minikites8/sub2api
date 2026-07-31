@@ -174,6 +174,8 @@ export default {
         defaultImagePrice: '默认图片价格（未命中层级时使用）',
         defaultVideoSecondPrice: '默认视频每秒价格（未命中分辨率层级时使用）',
         platformConfig: '平台配置',
+        marketplaceProviderVisible: '在模型广场显示提供商',
+        marketplaceProviderVisibleHint: '开启后，/models 会显示该平台对应的提供商，并加入提供商筛选。',
         webSearchEmulation: 'Web Search 模拟',
         webSearchEmulationHint: '⚠️ 开启后该渠道下所有 Anthropic 分组的账号将自动拦截 web_search 请求，请谨慎操作',
         webSearchEmulationGlobalDisabled: '请先在系统设置 → 网关 → Web Search 模拟中启用全局开关',

@@ -37,6 +37,7 @@ func TestBuildPublicTransitGroups_FiltersExclusiveGroupsAndExportsPricing(t *tes
 				ID:               10,
 				Name:             "public-pro",
 				Platform:         "anthropic",
+				ProviderVisible:  true,
 				SubscriptionType: "standard",
 				RateMultiplier:   1.25,
 			},
@@ -92,6 +93,7 @@ func TestBuildPublicTransitGroups_FiltersExclusiveGroupsAndExportsPricing(t *tes
 
 	require.Len(t, groups, 1)
 	require.Equal(t, "public-pro", groups[0].Name)
+	require.True(t, groups[0].ProviderVisible)
 	require.False(t, groups[0].IsExclusive)
 	require.InDelta(t, 1.25, groups[0].RateMultiplier, 1e-12)
 	require.Equal(t, int64(30), groups[0].CacheUsage.Last24h.CacheReadTokens)

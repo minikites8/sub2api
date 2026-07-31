@@ -54,6 +54,7 @@ export interface PublicTransitBilling {
 export interface PublicTransitGroup {
   name: string
   platform: GroupPlatform
+  provider_visible?: boolean
   subscription_type?: string
   rate_multiplier: number
   video_rate_multiplier?: number

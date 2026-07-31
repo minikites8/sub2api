@@ -326,6 +326,23 @@
               </div>
             </div>
 
+            <!-- Model marketplace provider visibility -->
+            <div class="border-t border-gray-200 pt-3 dark:border-dark-600">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.marketplaceProviderVisible') }}
+                  </label>
+                  <p class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    {{ t('admin.channels.form.marketplaceProviderVisibleHint') }}
+                  </p>
+                </div>
+                <div class="channel-dialog-toggle-control flex-shrink-0 p-1">
+                  <Toggle v-model="section.marketplace_provider_visible" />
+                </div>
+              </div>
+            </div>
+
             <!-- Web Search Emulation (supported platforms only, hidden when global disabled) -->
             <div v-if="supportsWebSearchEmulation(section.platform) && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
               <div class="flex items-center justify-between">
@@ -692,6 +709,7 @@ interface PlatformSection {
   group_ids: number[]
   model_mapping: Record<string, string>
   model_pricing: PricingFormEntry[]
+  marketplace_provider_visible: boolean
   web_search_emulation: boolean
   codex_image_generation_bridge: boolean
   bedrock_cc_compat: boolean
@@ -789,6 +807,7 @@ function addPlatformSection(platform: GroupPlatform) {
     group_ids: [],
     model_mapping: {},
     model_pricing: [],
+    marketplace_provider_visible: false,
     web_search_emulation: false,
     codex_image_generation_bridge: false,
     bedrock_cc_compat: false,
@@ -1204,6 +1223,17 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.web_search_emulation
   }
 
+  const marketplaceProviderVisible: Record<string, boolean> = {}
+  for (const section of form.platforms) {
+    if (!section.enabled) continue
+    marketplaceProviderVisible[section.platform] = !!section.marketplace_provider_visible
+  }
+  if (Object.keys(marketplaceProviderVisible).length > 0) {
+    featuresConfig.marketplace_provider_visible = marketplaceProviderVisible
+  } else {
+    delete featuresConfig.marketplace_provider_visible
+  }
+
   const codexImageGenerationBridge: Record<string, boolean> = {}
   for (const section of form.platforms) {
     if (!section.enabled) continue
@@ -1278,6 +1308,8 @@ function apiToForm(channel: Channel): PlatformSection[] {
 
     // Read web_search_emulation from features_config
     const fc = channel.features_config
+    const marketplaceProviderVisible = fc?.marketplace_provider_visible as Record<string, boolean> | undefined
+    const providerVisible = marketplaceProviderVisible?.[platform] === true
     const wsEmulation = fc?.web_search_emulation as Record<string, boolean> | undefined
     const webSearchEnabled = wsEmulation?.[platform] === true
     const codexImageGenerationBridge = fc?.codex_image_generation_bridge as Record<string, boolean> | undefined
@@ -1291,6 +1323,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       group_ids: groupIds,
       model_mapping: { ...mapping },
       model_pricing: pricing,
+      marketplace_provider_visible: providerVisible,
       web_search_emulation: webSearchEnabled,
       codex_image_generation_bridge: codexImageGenerationBridgeEnabled,
       bedrock_cc_compat: bedrockCCCompatEnabled,

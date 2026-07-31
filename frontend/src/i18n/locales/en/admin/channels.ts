@@ -174,6 +174,8 @@ export default {
         defaultImagePrice: 'Default image price (fallback when no tier matches)',
         defaultVideoSecondPrice: 'Default video price per second (fallback when no resolution tier matches)',
         platformConfig: 'Platform Configuration',
+        marketplaceProviderVisible: 'Show provider in model marketplace',
+        marketplaceProviderVisibleHint: 'When enabled, /models shows this platform as a provider and includes it in the provider filter.',
         webSearchEmulation: 'Web Search Emulation',
         webSearchEmulationHint: '⚠️ When enabled, all accounts in this channel\'s Anthropic groups will intercept web_search requests. Use with caution.',
         webSearchEmulationGlobalDisabled: 'Please enable the global switch first in Settings → Gateway → Web Search Emulation',
