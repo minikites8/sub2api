@@ -97,6 +97,7 @@ describe('PaymentStatusPanel', () => {
 
     expect(pollOrderStatus).toHaveBeenCalledWith(42)
     expect(wrapper.text()).toContain('payment.result.success')
+    expect(wrapper.text()).toContain('8,800 Credits')
     expect(wrapper.emitted('success')).toHaveLength(1)
   })
 

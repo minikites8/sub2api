@@ -136,18 +136,18 @@
                   <div class="purchase-panel-body">
                     <div class="credits-presets" :aria-label="t('payment.quickAmounts')">
                       <button
-                        v-for="preset in presetAmounts"
-                        :key="preset"
+                        v-for="preset in presetOptions"
+                        :key="preset.paymentAmount"
                         type="button"
-                        :class="{ 'credits-preset-active': validAmount === preset }"
-                        @click="selectRechargeAmount(preset)"
+                        :class="{ 'credits-preset-active': validAmount === preset.paymentAmount }"
+                        @click="selectRechargeAmount(preset.paymentAmount)"
                       >
-                        <strong>{{ preset }} CNY</strong>
-                        <span>{{ formatCredits(preset * CREDITS_PER_RMB, 0) }} Credits</span>
+                        <strong>{{ formatCredits(preset.credits, 0) }} Credits</strong>
+                        <span>{{ formatSelectedPaymentAmount(preset.paymentAmount) }}</span>
                       </button>
                     </div>
                     <label class="credits-amount-field">
-                      <span>CNY</span>
+                      <span>Credits</span>
                       <input
                         type="text"
                         inputmode="decimal"
@@ -439,7 +439,7 @@ import UserOrdersView from '@/views/user/UserOrdersView.vue'
 import RedeemView from '@/views/user/RedeemView.vue'
 import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
-import { CREDITS_PER_RMB, formatCredits, usdToCredits } from '@/utils/credit'
+import { CREDITS_PER_USD, formatCredits, usdToCredits } from '@/utils/credit'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
 
@@ -517,7 +517,7 @@ const activeSection = ref<RechargeSection>(normalizeRechargeSection(route.query.
 const checkoutMode = ref<CheckoutMode>(
   route.query.tab === 'subscription' || route.query.mode === 'subscription' ? 'subscription' : 'recharge'
 )
-const presetAmounts = [10, 50, 100, 500] as const
+const presetPaymentAmounts = [10, 50, 100, 500] as const
 const amount = ref<number | null>(null)
 const amountInputText = ref('')
 const selectedMethod = ref('')
@@ -746,6 +746,25 @@ const checkoutTabs = computed(() => {
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
+const balanceRechargeMultiplier = computed(() => {
+  const multiplier = Number(checkout.value.balance_recharge_multiplier)
+  return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
+})
+const creditsPerCny = computed(() => balanceRechargeMultiplier.value * CREDITS_PER_USD)
+
+function paymentAmountToCredits(paymentAmount: number): number {
+  return paymentAmount * creditsPerCny.value
+}
+
+function creditsToPaymentAmount(credits: number): number {
+  if (!Number.isFinite(credits) || credits <= 0 || creditsPerCny.value <= 0) return 0
+  return Number((credits / creditsPerCny.value).toFixed(8))
+}
+
+const presetOptions = computed(() => presetPaymentAmounts.map((paymentAmount) => ({
+  paymentAmount,
+  credits: paymentAmountToCredits(paymentAmount),
+})))
 // 订阅 CNY 换算汇率（1 USD = X CNY）。0 = 未配置，订阅保持 price 直付（与后端 opt-in 条件严格镜像）。
 const subscriptionUsdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate
@@ -773,9 +792,9 @@ const discountedRechargePaymentAmount = computed(() => {
 const rechargeDiscountAmount = computed(() =>
   Math.max(0, Math.round((validAmount.value - discountedRechargePaymentAmount.value) * 100) / 100)
 )
-const rechargeBonusCredits = computed(() => rechargeBonusAmount.value * CREDITS_PER_RMB)
+const rechargeBonusCredits = computed(() => rechargeBonusAmount.value * CREDITS_PER_USD)
 const rechargeCreditAmount = computed(() =>
-  (validAmount.value * CREDITS_PER_RMB) + rechargeBonusCredits.value
+  paymentAmountToCredits(validAmount.value) + rechargeBonusCredits.value
 )
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
@@ -849,28 +868,10 @@ function formatSelectedPaymentAmount(value: number): string {
   return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
 }
 
-function formatCompactPaymentAmount(value: number): string {
-  const amountText = Number.isInteger(value)
-    ? String(value)
-    : value.toFixed(2).replace(/\.?0+$/, '')
-
-  switch (selectedCurrency.value) {
-    case 'CNY':
-    case 'JPY':
-      return `${amountText}¥`
-    case 'USD':
-      return `$${amountText}`
-    case 'HKD':
-      return `HK$${amountText}`
-    default:
-      return `${amountText} ${selectedCurrency.value}`
-  }
-}
-
 const minimumAmountLabel = computed(() => {
   if (globalMinAmount.value <= 0) return ''
   return t('payment.minimumAmount', {
-    amount: formatCompactPaymentAmount(globalMinAmount.value)
+    amount: `${formatCredits(paymentAmountToCredits(globalMinAmount.value), 0)} Credits`
   })
 })
 
@@ -895,11 +896,12 @@ function handleAmountInput(event: Event) {
   }
 
   const parsed = Number.parseFloat(nextValue)
-  amount.value = Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  amount.value = Number.isFinite(parsed) && parsed > 0 ? creditsToPaymentAmount(parsed) : null
 }
 
 watch(amount, (nextAmount) => {
-  const nextText = nextAmount == null ? '' : String(nextAmount)
+  const nextCredits = nextAmount == null ? null : paymentAmountToCredits(nextAmount)
+  const nextText = nextCredits == null ? '' : String(Number(nextCredits.toFixed(2)))
   if (nextText !== amountInputText.value) {
     amountInputText.value = nextText
   }
@@ -957,8 +959,12 @@ const amountError = computed(() => {
   // Selected method can't handle this amount (but others can)
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
+    if (ml.single_min > 0 && validAmount.value < ml.single_min) {
+      return t('payment.amountTooLow', { min: `${formatCredits(paymentAmountToCredits(ml.single_min), 0)} Credits` })
+    }
+    if (ml.single_max > 0 && validAmount.value > ml.single_max) {
+      return t('payment.amountTooHigh', { max: `${formatCredits(paymentAmountToCredits(ml.single_max), 0)} Credits` })
+    }
   }
   return ''
 })

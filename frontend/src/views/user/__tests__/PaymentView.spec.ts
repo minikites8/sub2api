@@ -169,13 +169,51 @@ describe('PaymentView billing overview', () => {
 
     const text = wrapper.text()
     expect(text).toContain('payment.totalDue')
-    expect(text).toContain('100 CNY')
+    expect(text).toContain('10,000 Credits')
+    expect(text).toContain(formatPaymentAmount(100, 'CNY', 'en'))
     expect(text).not.toContain('payment.paymentAmount')
     expect(text).not.toContain('100 RMB')
     expect(text).not.toContain('100 RMB × 100')
     expect(text).not.toContain('payment.personalAccount')
     expect(text).not.toContain('payment.viewUsage')
     expect(text).not.toContain('payment.redeemPromoCode')
+  })
+
+  it('submits a Credits input as the corresponding CNY payment amount', async () => {
+    routeState.query = {}
+    createOrder.mockReset().mockResolvedValue({
+      order_id: 901,
+      amount: 1,
+      pay_amount: 1,
+      fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00.000Z',
+      payment_type: 'wxpay',
+      out_trade_no: 'sub2_credits_901',
+      qr_code: 'weixin://wxpay/bizpayurl?pr=credits-901',
+      result_type: 'order_created',
+    })
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.get('input[inputmode="decimal"]').setValue('100')
+    await wrapper.get('button.credits-purchase-button').trigger('click')
+    await flushPromises()
+
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 1,
+      order_type: 'balance',
+    }))
   })
 
   it('shows active subscription details', async () => {
@@ -764,7 +802,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     await flushPromises()
     await flushPromises()
 
-    await wrapper.get('input[inputmode="decimal"]').setValue('100')
+    await wrapper.get('input[inputmode="decimal"]').setValue('10000')
     await flushPromises()
 
     const html = wrapper.html()

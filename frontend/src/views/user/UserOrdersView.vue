@@ -61,8 +61,8 @@
             <span class="font-mono text-gray-900 dark:text-white">#{{ refundTarget.id }}</span>
           </div>
           <div class="mt-2 flex justify-between text-sm">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-            <span class="text-gray-900 dark:text-white">${{ refundTarget.amount.toFixed(2) }}</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ refundTarget.order_type === 'balance' ? t('payment.orders.creditedAmount') : t('payment.orders.amount') }}</span>
+            <span class="text-gray-900 dark:text-white">{{ formatOrderAmount(refundTarget) }}</span>
           </div>
         </div>
         <div>
@@ -88,6 +88,8 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
+import { formatPaymentAmount } from '@/components/payment/currency'
+import { formatCredits, usdToCredits } from '@/utils/credit'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -189,6 +191,11 @@ function canRequestRefund(order: PaymentOrder): boolean {
   if (order.status !== 'COMPLETED') return false
   if (!order.provider_instance_id) return false
   return refundEligibleProviders.value.has(order.provider_instance_id)
+}
+
+function formatOrderAmount(order: PaymentOrder): string {
+  if (order.order_type === 'balance') return `${formatCredits(usdToCredits(order.amount))} Credits`
+  return formatPaymentAmount(order.amount, 'USD')
 }
 
 async function loadRefundEligibility() {

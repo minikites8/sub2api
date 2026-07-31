@@ -44,8 +44,8 @@
             <span class="font-medium text-gray-900 dark:text-white">#{{ paidOrder.id }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-            <span class="font-medium text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ paidOrder.amount.toFixed(2) }}</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ paidOrder.order_type === 'balance' ? t('payment.orders.creditedAmount') : t('payment.orders.amount') }}</span>
+            <span class="font-medium text-gray-900 dark:text-white">{{ formatOrderAmount(paidOrder) }}</span>
           </div>
           <div class="flex justify-between">
             <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
@@ -81,7 +81,8 @@ import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import type { PaymentOrder } from '@/types/payment'
-import { currencySymbol } from '@/components/payment/currency'
+import { currencySymbol, formatPaymentAmount } from '@/components/payment/currency'
+import { formatCredits, usdToCredits } from '@/utils/credit'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
@@ -112,7 +113,6 @@ const expired = ref(false)
 const cancelling = ref(false)
 const success = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
-const creditedAmountSymbol = currencySymbol('USD')
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
@@ -141,6 +141,11 @@ const scanHint = computed(() => {
 
 function paymentAmountSymbol(order: PaymentOrder): string {
   return currencySymbol(order.currency)
+}
+
+function formatOrderAmount(order: PaymentOrder): string {
+  if (order.order_type === 'balance') return `${formatCredits(usdToCredits(order.amount))} Credits`
+  return formatPaymentAmount(order.amount, 'USD')
 }
 
 const countdownDisplay = computed(() => {
