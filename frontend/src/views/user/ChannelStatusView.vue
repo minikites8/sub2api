@@ -135,9 +135,11 @@
                   <tr class="market-row group bg-dark-950 transition-colors hover:bg-dark-900/70">
                     <td class="px-5 py-4">
                       <div class="flex min-w-[280px] items-start gap-3.5">
-                        <div class="flex h-11 w-11 flex-none items-center justify-center rounded border border-dark-700 bg-dark-900 text-dark-200">
-                          <PlatformIcon v-if="model.visiblePlatforms.length > 0" :platform="model.visiblePlatforms[0]" size="lg" />
-                          <Icon v-else name="cpu" size="lg" />
+                        <div
+                          class="flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded border border-dark-700 bg-white text-dark-900"
+                          :title="model.developer || t('modelMarketplace.unknownDeveloper')"
+                        >
+                          <ModelIcon :model="model.name" :developer="model.developer" size="26px" />
                         </div>
                         <div class="min-w-0">
                           <button type="button" class="flex max-w-[260px] items-center gap-1.5 text-left text-lg font-semibold text-white hover:text-emerald-300" @click="toggleExpanded(model.id)">
@@ -233,9 +235,11 @@
           <article v-for="model in filteredModels" :key="model.id" class="overflow-hidden rounded-lg border border-dark-700 bg-dark-950">
             <button type="button" class="flex w-full items-start justify-between gap-3 p-4 text-left" @click="toggleExpanded(model.id)">
               <span class="flex min-w-0 items-center gap-3.5">
-                <span class="flex h-11 w-11 flex-none items-center justify-center rounded border border-dark-700 bg-dark-900 text-dark-200">
-                  <PlatformIcon v-if="model.visiblePlatforms.length > 0" :platform="model.visiblePlatforms[0]" size="lg" />
-                  <Icon v-else name="cpu" size="lg" />
+                <span
+                  class="flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded border border-dark-700 bg-white text-dark-900"
+                  :title="model.developer || t('modelMarketplace.unknownDeveloper')"
+                >
+                  <ModelIcon :model="model.name" :developer="model.developer" size="26px" />
                 </span>
                 <span class="min-w-0">
                   <span class="block truncate text-lg font-semibold text-white">{{ model.name }}</span>
@@ -317,7 +321,7 @@ import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, type Pro
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import ModelIcon from '@/components/common/ModelIcon.vue'
 import PublicSiteFooter from '@/components/public/PublicSiteFooter.vue'
 import { getPublicTransitSnapshot, type PublicTransitModel, type PublicTransitSnapshot } from '@/api/publicTransit'
 import { useClipboard } from '@/composables/useClipboard'

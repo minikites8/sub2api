@@ -44,7 +44,7 @@ describe('ChannelStatusView video pricing', () => {
           AppLayout: { template: '<div><slot /></div>' },
           PublicSiteFooter: true,
           Icon: true,
-          PlatformIcon: true,
+          ModelIcon: true,
         },
       },
     })
@@ -67,6 +67,11 @@ describe('ChannelStatusView video pricing', () => {
       .find((row) => row.text().includes('doubao-seedance-2-0-260128'))!
     expect(seedanceRow.text()).toContain('ByteDance')
     expect(seedanceRow.text()).toContain('Baidu VOD')
+
+    const developerIcons = wrapper.findAll('model-icon-stub')
+    expect(developerIcons.some((icon) => icon.attributes('developer') === 'ByteDance')).toBe(true)
+    expect(developerIcons.some((icon) => icon.attributes('developer') === 'OpenAI')).toBe(true)
+    expect(wrapper.find('platform-icon-stub').exists()).toBe(false)
 
     const gptRow = wrapper
       .findAll('tr')
