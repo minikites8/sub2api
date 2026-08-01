@@ -86,6 +86,7 @@ type QuotaLeaseDemoService struct {
 	mu                       sync.Mutex
 	cfgMu                    sync.RWMutex
 	settingsMu               sync.RWMutex
+	generatedMediaMu         sync.RWMutex
 	remoteMu                 sync.Mutex
 	cfg                      *config.Config
 	settingService           *SettingService
@@ -94,6 +95,10 @@ type QuotaLeaseDemoService struct {
 	persistenceStore         QuotaLeaseDemoPersistenceStore
 	runtimeSettings          *QuotaLeaseDemoSettings
 	runtimeSettingsExpiresAt time.Time
+	generatedMediaStorage    *GeneratedMediaStorageService
+	remoteGeneratedMedia     *GeneratedMediaStorageConfig
+	remoteGeneratedMediaTTL  time.Time
+	remoteGeneratedMediaMax  time.Time
 	leases                   map[string]*QuotaLeaseDemoLease
 	leaseIndex               map[string]map[string]struct{}
 	events                   map[string]*QuotaLeaseDemoLedgerEvent
@@ -104,6 +109,7 @@ type QuotaLeaseDemoService struct {
 	prefetchState            map[string]*quotaLeaseDemoPrefetchState
 	clientAuthCache          map[string]*quotaLeaseDemoClientAuthCacheEntry
 	leaseRequestGroup        singleflight.Group
+	generatedMediaGroup      singleflight.Group
 	accountTasks             map[string]*QuotaLeaseDemoAccountLoginTask
 	usageProbeTasks          map[string]*QuotaLeaseDemoUsageProbeTask
 	assignedAccounts         map[int64]*QuotaLeaseDemoAssignedAccount

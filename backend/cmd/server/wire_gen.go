@@ -209,7 +209,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	dataManagementHandler := admin.NewDataManagementHandler(dataManagementService)
 	backupObjectStoreFactory := repository.NewS3BackupStoreFactory()
 	generatedMediaObjectStoreFactory := repository.NewS3GeneratedMediaStoreFactory()
-	generatedMediaStorageService := service.NewGeneratedMediaStorageService(settingRepository, secretEncryptor, generatedMediaObjectStoreFactory, httpUpstream)
+	generatedMediaStorageService := service.ProvideGeneratedMediaStorageService(settingRepository, secretEncryptor, generatedMediaObjectStoreFactory, httpUpstream, configConfig)
 	dbDumper := repository.NewPgDumper(configConfig)
 	backupService := service.ProvideBackupService(settingRepository, configConfig, secretEncryptor, backupObjectStoreFactory, dbDumper)
 	backupHandler := admin.NewBackupHandler(backupService, generatedMediaStorageService, userService)

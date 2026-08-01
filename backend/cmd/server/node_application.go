@@ -299,11 +299,12 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		cleanupNodeInfra(entClient, redisClient)
 		return nil, err
 	}
-	generatedMediaStorageService := service.NewGeneratedMediaStorageService(
+	generatedMediaStorageService := service.ProvideGeneratedMediaStorageService(
 		settingRepo,
 		secretEncryptor,
 		repository.NewS3GeneratedMediaStoreFactory(),
 		httpUpstream,
+		cfg,
 	)
 	baiduVODVideoWorkerRuntime := service.ProvideBaiduVODVideoWorkerRuntime(
 		baiduVODVideoTaskRepo,

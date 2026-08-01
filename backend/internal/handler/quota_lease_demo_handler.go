@@ -221,6 +221,26 @@ func (h *QuotaLeaseDemoHandler) GetSettings(c *gin.Context) {
 	response.Success(c, settings)
 }
 
+func (h *QuotaLeaseDemoHandler) GetGeneratedMediaStorageConfig(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	nodeID := strings.TrimSpace(c.GetHeader("X-Node-ID"))
+	nodeSecret := strings.TrimSpace(c.GetHeader("X-Node-Secret"))
+	if nodeID == "" || !h.svc.AuthenticateNode(nodeID, nodeSecret) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_node_secret"})
+		return
+	}
+	envelope, err := h.svc.EncryptGeneratedMediaStorageConfigForNode(c.Request.Context(), nodeID, nodeSecret)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	response.Success(c, envelope)
+}
+
 func (h *QuotaLeaseDemoHandler) UpdateSettings(c *gin.Context) {
 	if !h.requireEnabled(c) || !h.requireControlSecret(c) {
 		return

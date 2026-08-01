@@ -81,12 +81,20 @@ type GeneratedMediaArchiver interface {
 	Archive(ctx context.Context, sourceURL, objectID string, createdAt time.Time) (string, error)
 }
 
+// GeneratedMediaStorageConfigSource supplies a cluster-wide runtime config.
+// The handled result is false when the caller should use its local settings.
+type GeneratedMediaStorageConfigSource interface {
+	ResolveGeneratedMediaStorageConfig(ctx context.Context) (cfg *GeneratedMediaStorageConfig, handled bool, err error)
+}
+
 type GeneratedMediaStorageService struct {
 	settingRepo  SettingRepository
 	encryptor    SecretEncryptor
 	storeFactory GeneratedMediaObjectStoreFactory
 	http         HTTPUpstream
+	configSource GeneratedMediaStorageConfigSource
 
+	configSourceMu   sync.RWMutex
 	storeMu          sync.Mutex
 	store            GeneratedMediaObjectStore
 	storeFingerprint string
@@ -103,8 +111,18 @@ func NewGeneratedMediaStorageService(
 	}
 }
 
+func (s *GeneratedMediaStorageService) SetConfigSource(source GeneratedMediaStorageConfigSource) {
+	if s == nil {
+		return
+	}
+	s.configSourceMu.Lock()
+	s.configSource = source
+	s.configSourceMu.Unlock()
+	s.clearStore()
+}
+
 func (s *GeneratedMediaStorageService) GetConfig(ctx context.Context) (*GeneratedMediaStorageConfig, error) {
-	cfg, err := s.loadConfig(ctx)
+	cfg, err := s.loadLocalConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +137,7 @@ func (s *GeneratedMediaStorageService) GetConfig(ctx context.Context) (*Generate
 func (s *GeneratedMediaStorageService) UpdateConfig(ctx context.Context, cfg GeneratedMediaStorageConfig) (*GeneratedMediaStorageConfig, error) {
 	cfg.normalize()
 	if cfg.SecretAccessKey == "" {
-		old, err := s.loadConfig(ctx)
+		old, err := s.loadLocalConfig(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -168,7 +186,7 @@ func (s *GeneratedMediaStorageService) UpdateConfig(ctx context.Context, cfg Gen
 func (s *GeneratedMediaStorageService) TestConnection(ctx context.Context, cfg GeneratedMediaStorageConfig) error {
 	cfg.normalize()
 	if cfg.SecretAccessKey == "" {
-		old, err := s.loadConfig(ctx)
+		old, err := s.loadLocalConfig(ctx)
 		if err != nil {
 			return err
 		}
@@ -187,11 +205,12 @@ func (s *GeneratedMediaStorageService) TestConnection(ctx context.Context, cfg G
 }
 
 func (s *GeneratedMediaStorageService) Archive(ctx context.Context, sourceURL, objectID string, createdAt time.Time) (string, error) {
-	cfg, err := s.loadConfig(ctx)
+	cfg, err := s.resolveConfig(ctx)
 	if err != nil {
 		return "", err
 	}
 	if cfg == nil || !cfg.Enabled {
+		logger.LegacyPrintf("service.generated_media_storage", "archive skipped object_id=%s reason=disabled", objectID)
 		return strings.TrimSpace(sourceURL), nil
 	}
 	if err := cfg.validateEnabled(); err != nil {
@@ -237,10 +256,34 @@ func (s *GeneratedMediaStorageService) Archive(ctx context.Context, sourceURL, o
 	if _, err := store.Upload(ctx, key, body, contentType, resp.ContentLength); err != nil {
 		return "", fmt.Errorf("upload generated media: %w", err)
 	}
-	return generatedMediaPublicURL(cfg.PublicBaseURL, key), nil
+	publicURL := generatedMediaPublicURL(cfg.PublicBaseURL, key)
+	logger.LegacyPrintf("service.generated_media_storage", "archive completed object_id=%s object_key=%s", objectID, key)
+	return publicURL, nil
 }
 
-func (s *GeneratedMediaStorageService) loadConfig(ctx context.Context) (*GeneratedMediaStorageConfig, error) {
+func (s *GeneratedMediaStorageService) resolveConfig(ctx context.Context) (*GeneratedMediaStorageConfig, error) {
+	if s == nil {
+		return nil, nil //nolint:nilnil // an absent service config keeps the upstream URL behavior
+	}
+	s.configSourceMu.RLock()
+	source := s.configSource
+	s.configSourceMu.RUnlock()
+	if source != nil {
+		cfg, handled, err := source.ResolveGeneratedMediaStorageConfig(ctx)
+		if handled {
+			if err != nil {
+				return nil, err
+			}
+			if cfg != nil {
+				cfg.normalize()
+			}
+			return cfg, nil
+		}
+	}
+	return s.loadLocalConfig(ctx)
+}
+
+func (s *GeneratedMediaStorageService) loadLocalConfig(ctx context.Context) (*GeneratedMediaStorageConfig, error) {
 	if s == nil || s.settingRepo == nil {
 		return nil, nil //nolint:nilnil // an absent service config keeps the upstream URL behavior
 	}
@@ -263,9 +306,9 @@ func (s *GeneratedMediaStorageService) loadConfig(ctx context.Context) (*Generat
 		decrypted, decryptErr := s.encryptor.Decrypt(cfg.SecretAccessKey)
 		if decryptErr != nil {
 			logger.LegacyPrintf("service.generated_media_storage", "stored secret decryption failed: %v", decryptErr)
-		} else {
-			cfg.SecretAccessKey = decrypted
+			return nil, ErrGeneratedMediaStorageConfigCorrupt
 		}
+		cfg.SecretAccessKey = decrypted
 	}
 	return &cfg, nil
 }

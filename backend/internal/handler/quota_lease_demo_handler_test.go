@@ -367,6 +367,7 @@ func registerQuotaLeaseDemoHandlerTestRoutes(group *gin.RouterGroup, h *QuotaLea
 	group.POST("/nodes/heartbeat", h.HeartbeatNode)
 	group.GET("/nodes", h.ListNodes)
 	group.PUT("/nodes/:node_id", h.UpdateNode)
+	group.GET("/generated-media-storage/config", h.GetGeneratedMediaStorageConfig)
 	group.POST("/accounts/login-tasks", h.CreateAccountLoginTask)
 	group.GET("/accounts/login-tasks", h.ListAccountLoginTasks)
 	group.POST("/accounts/login-tasks/:task_id/complete", h.CompleteAccountLoginTask)
@@ -382,6 +383,36 @@ func registerQuotaLeaseDemoHandlerTestRoutes(group *gin.RouterGroup, h *QuotaLea
 	group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
 	group.GET("/diagnostics", h.Diagnostics)
 	group.GET("/status", h.Status)
+}
+
+func TestQuotaLeaseDemoHandlerServesEncryptedGeneratedMediaConfigToRegisteredNode(t *testing.T) {
+	router, svc := newQuotaLeaseDemoHandlerTestRouter(t)
+	svc.SetGeneratedMediaStorageService(service.NewGeneratedMediaStorageService(nil, nil, nil, nil))
+	registered, err := svc.RegisterNode(context.Background(), service.QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID: "storage-node-1", NodeSecret: "storage-node-secret", BaseURL: "https://storage-node-1.example",
+	})
+	require.NoError(t, err)
+
+	unauthorized := httptest.NewRecorder()
+	router.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/v1/node-leases/generated-media-storage/config", nil))
+	require.Equal(t, http.StatusUnauthorized, unauthorized.Code)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/node-leases/generated-media-storage/config", nil)
+	req.Header.Set("X-Node-ID", registered.Node.NodeID)
+	req.Header.Set("X-Node-Secret", registered.NodeSecret)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+	require.NotContains(t, recorder.Body.String(), registered.NodeSecret)
+
+	var body struct {
+		Data service.QuotaLeaseGeneratedMediaStorageEnvelope `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+	require.Equal(t, 1, body.Data.Version)
+	require.NotEmpty(t, body.Data.Nonce)
+	require.NotEmpty(t, body.Data.Ciphertext)
 }
 
 func quotaLeaseDemoJSONRequest(t *testing.T, method, path string, body any) *http.Request {

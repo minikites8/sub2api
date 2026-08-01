@@ -710,7 +710,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUpstreamBillingProbeService,
 	ProvideSettingService,
 	NewDataManagementService,
-	NewGeneratedMediaStorageService,
+	ProvideGeneratedMediaStorageService,
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,
 	ProvideOpsService,
@@ -772,6 +772,20 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
 )
+
+func ProvideGeneratedMediaStorageService(
+	settingRepo SettingRepository,
+	encryptor SecretEncryptor,
+	storeFactory GeneratedMediaObjectStoreFactory,
+	httpUpstream HTTPUpstream,
+	cfg *config.Config,
+) *GeneratedMediaStorageService {
+	storage := NewGeneratedMediaStorageService(settingRepo, encryptor, storeFactory, httpUpstream)
+	leaseService := GetQuotaLeaseDemoService(cfg)
+	storage.SetConfigSource(leaseService)
+	leaseService.SetGeneratedMediaStorageService(storage)
+	return storage
+}
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {

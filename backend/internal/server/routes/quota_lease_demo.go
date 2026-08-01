@@ -51,6 +51,7 @@ func registerQuotaLeaseDemoGroup(group *gin.RouterGroup, h *handler.QuotaLeaseDe
 	group.PUT("/nodes/:node_id", h.UpdateNode)
 	group.GET("/settings", h.GetSettings)
 	group.PUT("/settings", h.UpdateSettings)
+	group.GET("/generated-media-storage/config", h.GetGeneratedMediaStorageConfig)
 	group.POST("/auth/client-key", h.AuthorizeClientKey)
 	group.POST("/accounts/login-tasks", h.CreateAccountLoginTask)
 	group.GET("/accounts/login-tasks", h.ListAccountLoginTasks)
