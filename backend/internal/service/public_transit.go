@@ -348,6 +348,7 @@ func (s *PublicTransitService) Snapshot(ctx context.Context, baseURL string) (*P
 	}
 
 	groups := buildPublicTransitGroups(configuredGroups, channels, cacheUsageByGroupID, publicPricingService(s.channelService))
+	monitorItems = appendTrafficAvailabilityMonitors(groups, monitorItems)
 	completeness := buildPublicTransitCompleteness(groups, monitorItems)
 
 	station := PublicTransitStation{
@@ -978,4 +979,184 @@ func absoluteURL(baseURL, path string) string {
 		path = "/" + path
 	}
 	return baseURL + path
+}
+
+func isPublicMediaModel(model PublicTransitModel) bool {
+	for _, name := range []string{model.StandardModel, model.RawModel} {
+		normalized := strings.ToLower(strings.TrimSpace(name))
+		if isOpenAIImageGenerationModel(normalized) || isImageGenerationModel(normalized) || isGrokVideoBillingModel(normalized) {
+			return true
+		}
+		if _, ok := BaiduVODModel(normalized); ok || hasDefaultPublicVideoPricing(normalized) {
+			return true
+		}
+		if strings.Contains(normalized, "image") || strings.Contains(normalized, "imagen") || strings.Contains(normalized, "flux") || strings.Contains(normalized, "cogview") || strings.Contains(normalized, "seedream") {
+			return true
+		}
+		if strings.Contains(normalized, "video") || strings.Contains(normalized, "veo") || strings.Contains(normalized, "sora") || strings.Contains(normalized, "seedance") || strings.Contains(normalized, "kling") || strings.Contains(normalized, "hailuo") || strings.Contains(normalized, "vidu") || strings.Contains(normalized, "cogvideo") {
+			return true
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(model.BillingMode)) {
+	case string(BillingModeImage), string(BillingModeVideo), string(BillingModeVideoToken):
+		return true
+	}
+	if model.Price == nil {
+		return false
+	}
+	return len(model.Price.ImageSizePrices) > 0 || len(model.Price.VideoResolutionPrices) > 0
+}
+
+func trafficAvailabilityStatus(availability float64) string {
+	if availability >= 95 {
+		return MonitorStatusOperational
+	}
+	if availability >= 80 {
+		return MonitorStatusDegraded
+	}
+	return MonitorStatusFailed
+}
+
+func publicMonitorHasData(monitor PublicTransitMonitor) bool {
+	if (strings.TrimSpace(monitor.PrimaryStatus) != "" && strings.ToLower(strings.TrimSpace(monitor.PrimaryStatus)) != "unmonitored") || strings.TrimSpace(monitor.LastCheckedAt) != "" || len(monitor.Timeline) > 0 {
+		return true
+	}
+	for _, model := range monitor.Models {
+		if strings.TrimSpace(model.LatestStatus) != "" && strings.ToLower(strings.TrimSpace(model.LatestStatus)) != "unmonitored" {
+			return true
+		}
+	}
+	return false
+}
+
+// appendTrafficAvailabilityMonitors supplies a traffic-based fallback for
+// media models that have no explicit channel monitor coverage.
+func appendTrafficAvailabilityMonitors(groups []PublicTransitGroup, monitors []PublicTransitMonitor) []PublicTransitMonitor {
+	return appendTrafficAvailabilityMonitorsWithTracker(groups, monitors, DefaultModelAvailabilityTracker())
+}
+
+func appendTrafficAvailabilityMonitorsWithTracker(groups []PublicTransitGroup, monitors []PublicTransitMonitor, tracker *ModelAvailabilityTracker) []PublicTransitMonitor {
+	if tracker == nil {
+		return monitors
+	}
+	observations := tracker.SnapshotAll()
+	if len(observations) == 0 {
+		return monitors
+	}
+
+	explicit := make(map[string]struct{})
+	for _, monitor := range monitors {
+		if !publicMonitorHasData(monitor) {
+			continue
+		}
+		if key := strings.ToLower(strings.TrimSpace(monitor.PrimaryModel)); key != "" {
+			explicit[key] = struct{}{}
+		}
+		for _, model := range monitor.Models {
+			if key := strings.ToLower(strings.TrimSpace(model.Model)); key != "" {
+				explicit[key] = struct{}{}
+			}
+		}
+		for _, model := range monitor.ExtraModels {
+			if key := strings.ToLower(strings.TrimSpace(model.Model)); key != "" {
+				explicit[key] = struct{}{}
+			}
+		}
+	}
+
+	result := append([]PublicTransitMonitor(nil), monitors...)
+	seen := make(map[string]struct{})
+	for _, group := range groups {
+		for _, model := range group.Models {
+			if !isPublicMediaModel(model) {
+				continue
+			}
+			identity := strings.ToLower(strings.TrimSpace(model.StandardModel))
+			if identity == "" {
+				identity = strings.ToLower(strings.TrimSpace(model.RawModel))
+			}
+			if identity == "" {
+				continue
+			}
+			if _, exists := seen[identity]; exists {
+				continue
+			}
+
+			aliases := append([]string{model.StandardModel, model.RawModel}, model.PricingModels...)
+			matched := make(map[string]ModelAvailabilityObservation)
+			for _, observation := range observations {
+				observationKey := strings.ToLower(strings.TrimSpace(observation.Model))
+				for _, alias := range aliases {
+					if observationKey == strings.ToLower(strings.TrimSpace(alias)) {
+						matched[observationKey] = observation
+						break
+					}
+				}
+			}
+			if len(matched) == 0 {
+				continue
+			}
+			covered := false
+			for _, alias := range aliases {
+				if _, exists := explicit[strings.ToLower(strings.TrimSpace(alias))]; exists {
+					covered = true
+					break
+				}
+			}
+			if covered {
+				seen[identity] = struct{}{}
+				continue
+			}
+			seen[identity] = struct{}{}
+
+			var total, successful int64
+			var lastCalledAt time.Time
+			var samples []PublicTransitMonitorTimeline
+			for _, observation := range matched {
+				total += observation.TotalCalls
+				successful += observation.SuccessfulCalls
+				if observation.LastCalledAt.After(lastCalledAt) {
+					lastCalledAt = observation.LastCalledAt
+				}
+				for _, sample := range observation.Samples {
+					status := MonitorStatusFailed
+					if sample.Success {
+						status = MonitorStatusOperational
+					}
+					samples = append(samples, PublicTransitMonitorTimeline{Status: status, CheckedAt: sample.CheckedAt.Format(time.RFC3339)})
+				}
+			}
+			if total == 0 {
+				continue
+			}
+			availability := float64(successful) / float64(total) * 100
+			status := trafficAvailabilityStatus(availability)
+			sort.Slice(samples, func(i, j int) bool {
+				return samples[i].CheckedAt < samples[j].CheckedAt
+			})
+			if len(samples) > modelAvailabilitySampleLimit {
+				samples = samples[len(samples)-modelAvailabilitySampleLimit:]
+			}
+			result = append(result, PublicTransitMonitor{
+				Name:            "user-traffic:" + model.StandardModel,
+				Provider:        "user_traffic",
+				GroupName:       group.Name,
+				PrimaryModel:    model.StandardModel,
+				PrimaryStatus:   status,
+				Availability7d:  availability,
+				Availability15d: availability,
+				Availability30d: availability,
+				LastCheckedAt:   lastCalledAt.Format(time.RFC3339),
+				Models: []PublicTransitMonitorModel{{
+					Model:           model.StandardModel,
+					LatestStatus:    status,
+					Availability7d:  availability,
+					Availability15d: availability,
+					Availability30d: availability,
+				}},
+				Timeline: samples,
+			})
+		}
+	}
+	return result
 }
