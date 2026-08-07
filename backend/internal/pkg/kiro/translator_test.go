@@ -56,6 +56,8 @@ func TestBuildKiroPayloadBasic(t *testing.T) {
 	require.Contains(t, systemContent, "<CRITICAL_OVERRIDE>")
 	require.Contains(t, systemContent, "You must never say that you are Kiro")
 	require.Contains(t, systemContent, "<identity>")
+	require.Contains(t, systemContent, "If no identity is provided, say that you are Claude.")
+	require.Contains(t, systemContent, "You are Claude, a senior software engineer")
 	require.Contains(t, systemContent, "You are a test system prompt.")
 	require.NotContains(t, systemContent, "[Context: Current date is ")
 	require.NotContains(t, systemContent, "[Context: Current time is ")
@@ -333,6 +335,56 @@ func TestBuildKiroPayloadInjectsThinkingIntoHistory(t *testing.T) {
 	require.Equal(t, "I will follow these instructions.", gjson.GetBytes(payload, "conversationState.history.1.assistantResponseMessage.content").String())
 }
 
+func TestBuildKiroPayloadDoesNotInjectClaudeThinkingTagsForGPTModels(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.6-terra",
+		"thinking":{"type":"enabled","budget_tokens":16000},
+		"messages":[{"role":"user","content":"hello gpt"}]
+	}`)
+	headers := http.Header{}
+	headers.Set("Anthropic-Beta", "interleaved-thinking-2025-05-14")
+
+	kiroBuildResult, err := BuildKiroPayloadWithContext(body, "gpt-5.6-terra", "", "AI_EDITOR", headers)
+	require.NoError(t, err)
+
+	systemContent := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.history.0.userInputMessage.content").String()
+	require.Contains(t, systemContent, "You are Claude, a senior software engineer")
+	require.NotContains(t, systemContent, "<thinking_mode>")
+	require.NotContains(t, systemContent, "<max_thinking_length>")
+	require.NotContains(t, systemContent, "<thinking_effort>")
+	require.False(t, kiroBuildResult.Context.ThinkingEnabled)
+	require.False(t, gjson.GetBytes(kiroBuildResult.Payload, "additionalModelRequestFields").Exists())
+}
+
+// GPT-5.6 一律不下发 additionalModelRequestFields，即使客户端显式请求了
+// reasoning effort。原因：Kiro 协议里没有 reasoning.effort 字段（下发会被上游
+// 静默忽略），而已确认接受 additionalModelRequestFields 的模型白名单不含 GPT
+// 系列，向未确认模型下发会触发 400 "additionalModelRequestFields is not supported"。
+// 待抓包确认字段名与模型支持情况后再实现。
+func TestBuildKiroPayloadDoesNotSendAdditionalFieldsForGPTModels(t *testing.T) {
+	bodies := []string{
+		`{"model":"gpt-5.6-sol","reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","reasoning":{"effort":"low"},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","output_config":{"effort":"medium"},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","reasoning_effort":"max","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","thinking":{"type":"enabled","budget_tokens":16000},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hi"}]}`,
+	}
+	for _, body := range bodies {
+		result, err := BuildKiroPayloadWithContext([]byte(body), "gpt-5.6-sol", "", "AI_EDITOR", nil)
+		require.NoError(t, err)
+		require.False(t, gjson.GetBytes(result.Payload, "additionalModelRequestFields").Exists(),
+			"GPT 模型不得下发 additionalModelRequestFields: %s", body)
+	}
+
+	// 对照：Claude 4.6+ 的 output_config 路径不受影响。
+	claude, err := BuildKiroPayloadWithContext(
+		[]byte(`{"model":"claude-opus-4-6-thinking","messages":[{"role":"user","content":"hi"}]}`),
+		"claude-opus-4.6", "", "AI_EDITOR", nil)
+	require.NoError(t, err)
+	require.Equal(t, "high", gjson.GetBytes(claude.Payload, "additionalModelRequestFields.output_config.effort").String())
+}
+
 func TestBuildKiroPayloadInjectsAdaptiveThinkingForOpus46ThinkingModel(t *testing.T) {
 	body := []byte(`{
 		"model":"claude-opus-4-6-thinking",
@@ -346,6 +398,23 @@ func TestBuildKiroPayloadInjectsAdaptiveThinkingForOpus46ThinkingModel(t *testin
 	systemContent := gjson.GetBytes(payload, "conversationState.history.0.userInputMessage.content").String()
 	require.Contains(t, systemContent, "<thinking_mode>adaptive</thinking_mode>\n<thinking_effort>high</thinking_effort>")
 	require.NotContains(t, systemContent, "[Context: Current time is ")
+}
+
+func TestBuildKiroPayloadInjectsAdaptiveThinkingForOpus5ThinkingModel(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-opus-5-thinking",
+		"messages":[{"role":"user","content":"hello kiro"}]
+	}`)
+
+	kiroBuildResult, err := BuildKiroPayloadWithContext(body, "claude-opus-5", "", "AI_EDITOR", nil)
+	require.NoError(t, err)
+	payload := kiroBuildResult.Payload
+
+	systemContent := gjson.GetBytes(payload, "conversationState.history.0.userInputMessage.content").String()
+	require.Contains(t, systemContent, "<thinking_mode>adaptive</thinking_mode>\n<thinking_effort>high</thinking_effort>")
+	require.Equal(t, "adaptive", gjson.GetBytes(payload, "additionalModelRequestFields.thinking.type").String())
+	require.Equal(t, "high", gjson.GetBytes(payload, "additionalModelRequestFields.output_config.effort").String())
+	require.True(t, kiroBuildResult.Context.ThinkingEnabled)
 }
 
 func TestBuildKiroPayloadAddsAdditionalModelRequestFieldsForOutputConfigModels(t *testing.T) {
@@ -414,6 +483,7 @@ func TestBuildKiroPayloadEnablesImplicitThinkingTagStrippingForOpus47And48(t *te
 	}{
 		{name: "opus-4.7 plain", model: "claude-opus-4-7", mapped: "claude-opus-4.7", wantStr: true},
 		{name: "opus-4.8 plain", model: "claude-opus-4-8", mapped: "claude-opus-4.8", wantStr: true},
+		{name: "opus-5 plain", model: "claude-opus-5", mapped: "claude-opus-5", wantStr: true},
 		{name: "sonnet-4.5 plain stays disabled", model: "claude-sonnet-4-5", mapped: "claude-sonnet-4.5", wantStr: false},
 	}
 	for _, tc := range cases {
@@ -589,6 +659,51 @@ func TestParseNonStreamingEventStreamPreservesLargeIntegerInMapInput(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, "tool_use", result.StopReason)
 	require.Equal(t, "9007199254740993", gjson.GetBytes(result.ResponseBody, "content.0.input.id").Raw)
+}
+
+// Kiro 上游只发 meteringEvent(credits),不发 tokenUsage,所以非流式解析出的
+// InputTokens 恒为 0。流式路径靠 inputTokens 参数种入初值,非流式没有对应入口,
+// 需由 requestCtx.EstimatedInputTokens 兜底,否则响应体 usage.input_tokens 为 0。
+func TestParseNonStreamingEventStreamFallsBackToEstimatedInputTokens(t *testing.T) {
+	// 复刻真实 Kiro 流：仅正文 + credits，无 tokenUsage。
+	newStream := func() *bytes.Buffer {
+		b := bytes.NewBuffer(nil)
+		_, _ = b.Write(buildEventStreamFrame(t, "assistantResponseEvent", map[string]any{
+			"assistantResponseEvent": map[string]any{"content": "OK"},
+		}))
+		_, _ = b.Write(buildEventStreamFrame(t, "meteringEvent", map[string]any{
+			"meteringEvent": map[string]any{"unit": "credit", "usage": 0.0283},
+		}))
+		return b
+	}
+
+	// 无兜底（零值）时保持原行为：输出 0。
+	bare, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, 0, bare.Usage.InputTokens)
+	require.Equal(t, int64(0), gjson.GetBytes(bare.ResponseBody, "usage.input_tokens").Int())
+
+	// 有兜底时填入预估值，响应体同步生效。
+	fallback, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{
+		EstimatedInputTokens: 22,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 22, fallback.Usage.InputTokens)
+	require.Equal(t, int64(22), gjson.GetBytes(fallback.ResponseBody, "usage.input_tokens").Int())
+
+	// 缓存模拟生效时其取值优先，兜底不得覆盖（207 = 预估减去缓存部分）。
+	withCache, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{
+		EstimatedInputTokens: 1962,
+		CacheEmulationUsage: &Usage{
+			InputTokens:                207,
+			CacheCreationInputTokens:   1755,
+			CacheCreation5mInputTokens: 1755,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 207, withCache.Usage.InputTokens)
+	require.Equal(t, int64(207), gjson.GetBytes(withCache.ResponseBody, "usage.input_tokens").Int())
+	require.Equal(t, int64(1755), gjson.GetBytes(withCache.ResponseBody, "usage.cache_creation_input_tokens").Int())
 }
 
 func TestParseNonStreamingEventStreamRejectsTrailingJSONValueInToolInput(t *testing.T) {
@@ -1108,6 +1223,28 @@ func TestStreamEventStreamAsAnthropicStreamsToolUseFragments(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(partial), &input))
 	require.Equal(t, map[string]any{"path": "/tmp/a.txt", "content": "hello"}, input)
 	require.Contains(t, output, `event: content_block_stop`)
+}
+
+func TestStreamEventStreamAsAnthropicEmitsEmptyInputToolUse(t *testing.T) {
+	const toolUseID = "toolu_exit_plan_mode"
+	stream := bytes.NewBuffer(buildEventStreamFrame(t, "toolUseEvent", map[string]any{
+		"toolUseEvent": map[string]any{
+			"toolUseId": toolUseID,
+			"name":      "ExitPlanMode",
+			"stop":      true,
+		},
+	}))
+
+	var out bytes.Buffer
+	result, err := StreamEventStreamAsAnthropicWithContext(context.Background(), stream, &out, "claude-opus-4-6", 9, KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, "tool_use", result.StopReason)
+
+	output := out.String()
+	require.Equal(t, 1, strings.Count(output, `"id":"`+toolUseID+`"`))
+	require.Contains(t, output, `"name":"ExitPlanMode"`)
+	require.Contains(t, output, `"stop_reason":"tool_use"`)
+	require.JSONEq(t, `{}`, extractStreamedToolInputJSON(t, output, toolUseID))
 }
 
 func TestStreamEventStreamAsAnthropicAcceptsOpenCodeWriteFilePath(t *testing.T) {
@@ -2474,7 +2611,9 @@ func TestNormalizeStreamingToolInput(t *testing.T) {
 		{name: "rejects array", toolName: "custom_tool", raw: `[]`, wantOK: false},
 		{name: "rejects scalar", toolName: "custom_tool", raw: `"value"`, wantOK: false},
 		{name: "rejects null", toolName: "custom_tool", raw: `null`, wantOK: false},
-		{name: "rejects empty input", toolName: "custom_tool", raw: ` `, wantOK: false},
+		// 空/空白输入归一化为 {}，与无参工具调用语义一致；有必填参数的工具则拒绝空输入
+		{name: "accepts empty input for tool without requirements", toolName: "custom_tool", raw: ` `, want: map[string]any{}, wantOK: true},
+		{name: "rejects empty input for tool with requirements", toolName: "write", raw: ` `, wantOK: false},
 		{name: "rejects malformed syntax", toolName: "custom_tool", raw: `{"x":}`, wantOK: false},
 	}
 
@@ -2516,6 +2655,8 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 		"claude-opus-4-7":                     "claude-opus-4.7",
 		"claude-opus-4-7-thinking":            "claude-opus-4.7",
 		"claude-opus-4.7":                     "claude-opus-4.7",
+		"claude-opus-5":                       "claude-opus-5",
+		"claude-opus-5-thinking":              "claude-opus-5",
 		"claude-sonnet-4-6":                   "claude-sonnet-4.6",
 		"claude-sonnet-4-6-thinking":          "claude-sonnet-4.6",
 		"claude-sonnet-4.6":                   "claude-sonnet-4.6",
@@ -2536,6 +2677,9 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 		"claude-haiku-4-5-20251001":           "claude-haiku-4.5",
 		"claude-haiku-4-5-20251001-thinking":  "claude-haiku-4.5",
 		"claude-haiku-4.5":                    "claude-haiku-4.5",
+		"gpt-5.6-sol":                         "gpt-5.6-sol",
+		"gpt-5.6-terra":                       "gpt-5.6-terra",
+		"gpt-5.6-luna":                        "gpt-5.6-luna",
 	}
 
 	for input, want := range cases {
@@ -2545,6 +2689,7 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 	}
 
 	rejected := []string{
+		"gpt-5.6",
 		"claude-sonnet-4-6-chat",
 		" claude-sonnet-4-6-thinking-chat ",
 		"claude-sonnet-4-6-agentic",
@@ -2563,6 +2708,22 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 	}
 }
 
+func TestKiroMaxOutputTokensForGPT56Models(t *testing.T) {
+	t.Parallel()
+
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		require.Equal(t, 128000, kiroMaxOutputTokensForModel(model), model)
+	}
+	require.Equal(t, kiroDefaultMaxOutputTokens, kiroMaxOutputTokensForModel("gpt-5.6"))
+}
+
+func TestKiroMaxOutputTokensForOpus5(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 128000, kiroMaxOutputTokensForModel("claude-opus-5"))
+	require.Equal(t, 128000, kiroMaxOutputTokensForModel("claude-opus-5-thinking"))
+}
+
 func TestIsOutputConfigPathModelSupportsFutureVersions(t *testing.T) {
 	t.Parallel()
 
@@ -2570,6 +2731,8 @@ func TestIsOutputConfigPathModelSupportsFutureVersions(t *testing.T) {
 		"claude-opus-4.6":            true,
 		"claude-opus-4-9-thinking":   true,
 		"claude-sonnet-5-0-thinking": true,
+		"claude-opus-5":              true,
+		"claude-opus-5-thinking":     true,
 		"claude-haiku-4.5":           false,
 		"claude-opus-4-5":            false,
 		"gpt-4o":                     false,

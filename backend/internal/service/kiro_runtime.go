@@ -104,7 +104,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}
 
 	if parsed.Stream {
-		resp, _, err := s.openKiroAnthropicStreamResponse(ctx, account, parsed, body, mappedModel, originalModel, c.Request.Header, parsed.Group)
+		resp, _, err := s.openKiroAnthropicStreamResponse(ctx, account, parsed, body, mappedModel, originalModel, c.Request.Header, parsed.Group, nil)
 		if err != nil {
 			var failoverErr *UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
@@ -249,6 +249,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 
 	cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
 	requestCtx.CacheEmulationUsage = cacheUsage.toKiroUsage()
+	requestCtx.EstimatedInputTokens = inputTokens
 	parseResult, err := kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, originalModel, requestCtx)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{
@@ -280,7 +281,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}, nil
 }
 
-func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, mappedModel, requestModel string, headers http.Header, group *Group) (*http.Response, int, error) {
+func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, mappedModel, requestModel string, headers http.Header, group *Group, cachePlanOverride *kiroCacheEmulationPlan) (*http.Response, int, error) {
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, 0, err
@@ -291,14 +292,22 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 		return nil, 0, fmt.Errorf("kiro requires oauth or apikey token, got %s", tokenType)
 	}
 
+	// 客户端断开不应取消仍在收集计费用量的上游读取；detachStreamUpstreamContext
+	// 让上游请求/流式读取脱离客户端请求 ctx 的取消传播，与其它 gateway 转发路径一致。
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, true)
+	defer releaseUpstreamCtx()
+
 	inputTokens := estimateKiroInputTokens(ctx, anthropicBody)
 	if isOnlyWebSearchToolInBody(anthropicBody) {
-		cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+		plan := cachePlanOverride
+		if plan == nil {
+			plan = s.prepareKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+		}
 		pr, pw := io.Pipe()
 		headers := make(http.Header)
 		headers.Set("Content-Type", "text/event-stream")
 		go func() {
-			streamErr := s.streamKiroWebSearchAsAnthropic(ctx, account, anthropicBody, mappedModel, requestModel, token, inputTokens, headers, pw, cacheUsage)
+			streamErr := s.streamKiroWebSearchAsAnthropic(upstreamCtx, account, anthropicBody, mappedModel, requestModel, token, inputTokens, headers, pw, plan)
 			if streamErr != nil {
 				_ = pw.CloseWithError(streamErr)
 				return
@@ -312,7 +321,7 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 		}, inputTokens, nil
 	}
 
-	resp, requestCtx, err := s.executeKiroUpstreamWithParsed(ctx, account, parsed, anthropicBody, mappedModel, requestModel, token, headers)
+	resp, requestCtx, err := s.executeKiroUpstreamWithParsed(upstreamCtx, account, parsed, anthropicBody, mappedModel, requestModel, token, headers)
 	if err != nil {
 		var failoverErr *UpstreamFailoverError
 		if errors.As(err, &failoverErr) {
@@ -323,8 +332,13 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp, inputTokens, nil
 	}
-	cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
-	requestCtx.CacheEmulationUsage = cacheUsage.toKiroUsage()
+	plan := cachePlanOverride
+	if plan == nil {
+		plan = s.prepareKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+	}
+	// 请求已确认成功(2xx)，此时提交缓存前缀落盘才是安全的。
+	plan.commit()
+	requestCtx.CacheEmulationUsage = plan.result().toKiroUsage()
 
 	pr, pw := io.Pipe()
 	wrappedHeaders := resp.Header.Clone()
@@ -335,7 +349,7 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 
 	go func() {
 		defer func() { _ = resp.Body.Close() }()
-		_, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(ctx, resp.Body, pw, requestModel, inputTokens, requestCtx)
+		_, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(upstreamCtx, resp.Body, pw, requestModel, inputTokens, requestCtx)
 		if streamErr != nil {
 			_, _ = io.WriteString(pw, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"stream interrupted\"}}\n\n")
 			_ = pw.CloseWithError(streamErr)

@@ -115,7 +115,8 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		if parsed != nil {
 			group = parsed.Group
 		}
-		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group)
+		cachePlan := s.prepareKiroChatCompletionsCacheEmulationUsage(ctx, account, group, body, mappedModel, estimateKiroInputTokens(ctx, anthropicBody))
+		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
@@ -267,18 +268,19 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		// SSE 规范允许 `event:xxx`（冒号后无空格）：Kimi 等 Anthropic 兼容上游
+		// 返回紧凑格式，严格匹配 "event: " 会丢弃全部事件（#4653 同根因）。
+		if _, ok := extractOpenAISSEEventLine(line); !ok {
 			continue
 		}
 
 		if !scanner.Scan() {
 			break
 		}
-		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -298,7 +300,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 			}
 			mergeKiroCreditsFromAnthropicPayload(&usage, payload)
 			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
-				finalResp.StopReason = event.Delta.StopReason
+				finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
 			}
 		}
 		if event.Type == "content_block_start" && event.ContentBlock != nil && finalResp != nil {
@@ -333,14 +335,13 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
 
-	// Update usage from accumulated delta
-	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
-		finalResp.Usage = apicompat.AnthropicUsage{
-			InputTokens:              usage.InputTokens,
-			OutputTokens:             usage.OutputTokens,
-			CacheCreationInputTokens: usage.CacheCreationInputTokens,
-			CacheReadInputTokens:     usage.CacheReadInputTokens,
-		}
+	// Update usage from accumulated delta. 无条件赋值：纯缓存命中的响应
+	// （input/output 均为 0 但 cache read/write 非 0）不能被整体丢弃。
+	finalResp.Usage = apicompat.AnthropicUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
 	}
 
 	// Chain: Anthropic → Responses → Chat Completions
@@ -475,18 +476,18 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		// 与缓冲路径一致：接受 SSE 紧凑格式（冒号后无空格，#4653 同根因）。
+		if _, ok := extractOpenAISSEEventLine(line); !ok {
 			continue
 		}
 
 		if !scanner.Scan() {
 			break
 		}
-		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {

@@ -2,11 +2,11 @@
   <header class="app-header sticky top-0 z-30">
     <div class="flex h-14 items-center justify-between gap-4 px-4 md:px-6">
       <!-- Left: Mobile Menu Toggle + Page Title -->
-      <div class="flex items-center gap-4">
+      <div class="flex shrink-0 items-center gap-2 sm:gap-4">
         <button
           @click="toggleMobileSidebar"
           class="btn-ghost btn-icon lg:hidden"
-          aria-label="Toggle Menu"
+          :aria-label="t('common.toggleMenu')"
         >
           <Icon name="menu" size="md" />
         </button>
@@ -37,6 +37,16 @@
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
         </a>
+
+        <!-- Model Plaza Entry -->
+        <router-link
+          v-if="user && modelPlazaEnabled"
+          :to="{ path: '/model-plaza', query: { embedded: '1' } }"
+          class="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white sm:flex"
+        >
+          <Icon name="grid" size="sm" />
+          <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
+        </router-link>
 
         <!-- Language Switcher -->
         <LocaleSwitcher />
@@ -96,7 +106,7 @@
           <button
             @click="toggleDropdown"
             class="flex items-center gap-2 rounded-full p-1 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
-            aria-label="User Menu"
+            :aria-label="t('common.userMenu')"
           >
             <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gray-900 text-sm font-semibold text-white dark:bg-dark-700">
               <img
@@ -250,6 +260,7 @@ import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMi
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 
 const router = useRouter()
 const route = useRoute()
@@ -264,6 +275,7 @@ const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
+const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const hideDesktopTitle = computed(() => route.name === 'Dashboard')
 const availableBalance = computed(() => Number(user.value?.balance || 0))

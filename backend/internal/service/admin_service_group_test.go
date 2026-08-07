@@ -4,8 +4,11 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -17,10 +20,17 @@ func ptrString[T ~string](v T) *string {
 
 // groupRepoStubForAdmin 用于测试 AdminService 的 GroupRepository Stub
 type groupRepoStubForAdmin struct {
-	created *Group // 记录 Create 调用的参数
-	updated *Group // 记录 Update 调用的参数
-	getByID *Group // GetByID 返回值
-	getErr  error  // GetByID 返回的错误
+	created  *Group // 记录 Create 调用的参数
+	updated  *Group // 记录 Update 调用的参数
+	getByID  *Group // GetByID 返回值
+	getErr   error  // GetByID 返回的错误
+	createID int64
+
+	getByIDByID map[int64]*Group
+
+	deleteAccountGroupsByGroupIDFn func(groupID int64) (int64, error)
+	bindAccountsToGroupFn          func(groupID int64, accountIDs []int64) error
+	getAccountIDsByGroupIDsFn      func(groupIDs []int64) ([]int64, error)
 
 	listWithFiltersCalls       int
 	listWithFiltersParams      pagination.PaginationParams
@@ -34,6 +44,9 @@ type groupRepoStubForAdmin struct {
 }
 
 func (s *groupRepoStubForAdmin) Create(_ context.Context, g *Group) error {
+	if s.createID > 0 {
+		g.ID = s.createID
+	}
 	s.created = g
 	return nil
 }
@@ -43,16 +56,28 @@ func (s *groupRepoStubForAdmin) Update(_ context.Context, g *Group) error {
 	return nil
 }
 
-func (s *groupRepoStubForAdmin) GetByID(_ context.Context, _ int64) (*Group, error) {
+func (s *groupRepoStubForAdmin) GetByID(_ context.Context, id int64) (*Group, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
+	}
+	if s.getByIDByID != nil {
+		if group, ok := s.getByIDByID[id]; ok {
+			return group, nil
+		}
+		return nil, ErrGroupNotFound
 	}
 	return s.getByID, nil
 }
 
-func (s *groupRepoStubForAdmin) GetByIDLite(_ context.Context, _ int64) (*Group, error) {
+func (s *groupRepoStubForAdmin) GetByIDLite(_ context.Context, id int64) (*Group, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
+	}
+	if s.getByIDByID != nil {
+		if group, ok := s.getByIDByID[id]; ok {
+			return group, nil
+		}
+		return nil, ErrGroupNotFound
 	}
 	return s.getByID, nil
 }
@@ -109,19 +134,105 @@ func (s *groupRepoStubForAdmin) GetAccountCount(_ context.Context, _ int64) (int
 	panic("unexpected GetAccountCount call")
 }
 
-func (s *groupRepoStubForAdmin) DeleteAccountGroupsByGroupID(_ context.Context, _ int64) (int64, error) {
+func (s *groupRepoStubForAdmin) DeleteAccountGroupsByGroupID(_ context.Context, groupID int64) (int64, error) {
+	if s.deleteAccountGroupsByGroupIDFn != nil {
+		return s.deleteAccountGroupsByGroupIDFn(groupID)
+	}
 	panic("unexpected DeleteAccountGroupsByGroupID call")
 }
 
-func (s *groupRepoStubForAdmin) BindAccountsToGroup(_ context.Context, _ int64, _ []int64) error {
+func (s *groupRepoStubForAdmin) BindAccountsToGroup(_ context.Context, groupID int64, accountIDs []int64) error {
+	if s.bindAccountsToGroupFn != nil {
+		return s.bindAccountsToGroupFn(groupID, accountIDs)
+	}
 	panic("unexpected BindAccountsToGroup call")
 }
 
-func (s *groupRepoStubForAdmin) GetAccountIDsByGroupIDs(_ context.Context, _ []int64) ([]int64, error) {
+func (s *groupRepoStubForAdmin) GetAccountIDsByGroupIDs(_ context.Context, groupIDs []int64) ([]int64, error) {
+	if s.getAccountIDsByGroupIDsFn != nil {
+		return s.getAccountIDsByGroupIDsFn(groupIDs)
+	}
 	panic("unexpected GetAccountIDsByGroupIDs call")
 }
 
 func (s *groupRepoStubForAdmin) UpdateSortOrders(_ context.Context, _ []GroupSortOrderUpdate) error {
+	return nil
+}
+
+type compositeRouteRepoStubForAdmin struct {
+	routes    []CompositeModelRoute
+	created   *CompositeModelRoute
+	updated   *CompositeModelRoute
+	deleted   []int64
+	nextID    int64
+	listErr   error
+	createErr error
+	updateErr error
+	deleteErr error
+}
+
+func (s *compositeRouteRepoStubForAdmin) ListByGroup(_ context.Context, groupID int64, includeDisabled bool) ([]CompositeModelRoute, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	routes := make([]CompositeModelRoute, 0, len(s.routes))
+	for _, route := range s.routes {
+		if route.GroupID != groupID {
+			continue
+		}
+		if !includeDisabled && !route.Enabled {
+			continue
+		}
+		routes = append(routes, route)
+	}
+	return routes, nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) Create(_ context.Context, route *CompositeModelRoute) error {
+	if s.createErr != nil {
+		return s.createErr
+	}
+	if s.nextID > 0 {
+		route.ID = s.nextID
+	}
+	cloned := *route
+	s.created = &cloned
+	s.routes = append(s.routes, cloned)
+	return nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) Update(_ context.Context, route *CompositeModelRoute) error {
+	if s.updateErr != nil {
+		return s.updateErr
+	}
+	cloned := *route
+	s.updated = &cloned
+	for i := range s.routes {
+		if s.routes[i].ID == route.ID {
+			s.routes[i] = cloned
+			return nil
+		}
+	}
+	s.routes = append(s.routes, cloned)
+	return nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) Delete(_ context.Context, id int64) error {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	s.deleted = append(s.deleted, id)
+	return nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) DeleteByGroup(_ context.Context, groupID int64) error {
+	next := s.routes[:0]
+	for _, route := range s.routes {
+		if route.GroupID != groupID {
+			next = append(next, route)
+		}
+	}
+	s.routes = next
 	return nil
 }
 
@@ -258,7 +369,30 @@ func TestAdminService_CreateGroup_PreservesKiroRuntimeSettings(t *testing.T) {
 	require.False(t, group.KiroAutoStickyEnabled)
 	require.Equal(t, 7200, group.KiroStickySessionTTLSeconds)
 	require.InDelta(t, 0.5, group.KiroCacheEmulationRatio, 1e-12)
+	require.Equal(t, KiroCacheEmulationModeUniform, group.KiroCacheEmulationMode)
+	require.InDelta(t, 0.5, group.KiroCacheCreationEmulationRatio, 1e-12)
+	require.InDelta(t, 0.5, group.KiroCacheReadEmulationRatio, 1e-12)
 	require.Equal(t, KiroEndpointModeAuto, group.KiroEndpointMode)
+}
+
+func TestAdminService_CreateGroup_IndependentModeInheritsUniformRatio(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+	ratio := 0.4
+	mode := KiroCacheEmulationModeIndependent
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "kiro-independent",
+		Platform:                  PlatformKiro,
+		RateMultiplier:            1,
+		KiroCacheEmulationEnabled: true,
+		KiroCacheEmulationRatio:   &ratio,
+		KiroCacheEmulationMode:    &mode,
+	})
+	require.NoError(t, err)
+	require.Equal(t, KiroCacheEmulationModeIndependent, group.KiroCacheEmulationMode)
+	require.InDelta(t, 0.4, group.KiroCacheCreationEmulationRatio, 1e-12)
+	require.InDelta(t, 0.4, group.KiroCacheReadEmulationRatio, 1e-12)
 }
 
 func TestAdminService_CreateGroup_DefaultsKiroRuntimeSettings(t *testing.T) {
@@ -274,7 +408,77 @@ func TestAdminService_CreateGroup_DefaultsKiroRuntimeSettings(t *testing.T) {
 	require.True(t, group.KiroAutoStickyEnabled)
 	require.Equal(t, DefaultKiroStickySessionTTLSeconds, group.KiroStickySessionTTLSeconds)
 	require.InDelta(t, 1, group.KiroCacheEmulationRatio, 1e-12)
+	require.Equal(t, KiroCacheEmulationModeUniform, group.KiroCacheEmulationMode)
+	require.InDelta(t, 1, group.KiroCacheCreationEmulationRatio, 1e-12)
+	require.InDelta(t, 1, group.KiroCacheReadEmulationRatio, 1e-12)
 	require.Equal(t, KiroEndpointModeQ, group.KiroEndpointMode)
+}
+
+func TestAdminService_CreateGroup_PreservesExplicitZeroKiroRatios(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+	zero := 0.0
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "kiro-zero",
+		Platform:                  PlatformKiro,
+		RateMultiplier:            1,
+		KiroCacheEmulationEnabled: true,
+		KiroCacheEmulationRatio:   &zero,
+	})
+	require.NoError(t, err)
+	require.True(t, group.KiroCacheEmulationEnabled)
+	require.Zero(t, group.KiroCacheEmulationRatio)
+	require.Zero(t, group.KiroCacheCreationEmulationRatio)
+	require.Zero(t, group.KiroCacheReadEmulationRatio)
+	require.False(t, group.EffectiveKiroCacheEmulationEnabled())
+}
+
+func TestAdminService_CreateAndUpdateGroup_RejectInvalidKiroRatios(t *testing.T) {
+	invalidValues := []float64{-0.01, 1.01, math.NaN(), math.Inf(1)}
+	fields := []struct {
+		name string
+		set  func(*CreateGroupInput, *UpdateGroupInput, *float64)
+	}{
+		{
+			name: "uniform",
+			set: func(create *CreateGroupInput, update *UpdateGroupInput, value *float64) {
+				create.KiroCacheEmulationRatio = value
+				update.KiroCacheEmulationRatio = value
+			},
+		},
+		{
+			name: "creation",
+			set: func(create *CreateGroupInput, update *UpdateGroupInput, value *float64) {
+				create.KiroCacheCreationEmulationRatio = value
+				update.KiroCacheCreationEmulationRatio = value
+			},
+		},
+		{
+			name: "read",
+			set: func(create *CreateGroupInput, update *UpdateGroupInput, value *float64) {
+				create.KiroCacheReadEmulationRatio = value
+				update.KiroCacheReadEmulationRatio = value
+			},
+		},
+	}
+
+	for _, field := range fields {
+		for _, invalidValue := range invalidValues {
+			t.Run(fmt.Sprintf("%s/%v", field.name, invalidValue), func(t *testing.T) {
+				value := invalidValue
+				createInput := &CreateGroupInput{Name: "invalid", Platform: PlatformKiro, RateMultiplier: 1}
+				updateInput := &UpdateGroupInput{}
+				field.set(createInput, updateInput, &value)
+
+				_, createErr := (&adminServiceImpl{}).CreateGroup(context.Background(), createInput)
+				require.True(t, infraerrors.IsBadRequest(createErr))
+
+				_, updateErr := (&adminServiceImpl{}).UpdateGroup(context.Background(), 1, updateInput)
+				require.True(t, infraerrors.IsBadRequest(updateErr))
+			})
+		}
+	}
 }
 
 func TestAdminService_CreateGroup_DefaultsGrokMediaGenerationEnabled(t *testing.T) {
@@ -451,6 +655,130 @@ func TestAdminService_UpdateGroup_PreservesKiroRuntimeSettings(t *testing.T) {
 	require.Equal(t, 5400, group.KiroStickySessionTTLSeconds)
 	require.InDelta(t, 0.25, group.KiroCacheEmulationRatio, 1e-12)
 	require.Equal(t, KiroEndpointModeKRS, group.KiroEndpointMode)
+}
+
+func TestAdminService_UpdateGroup_SwitchToIndependentInheritsUniformRatio(t *testing.T) {
+	existingGroup := &Group{
+		ID:                        1,
+		Name:                      "existing-kiro",
+		Platform:                  PlatformKiro,
+		Status:                    StatusActive,
+		KiroCacheEmulationEnabled: true,
+		KiroCacheEmulationRatio:   0.4,
+		KiroCacheEmulationMode:    KiroCacheEmulationModeUniform,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	mode := KiroCacheEmulationModeIndependent
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{KiroCacheEmulationMode: &mode})
+	require.NoError(t, err)
+	require.Equal(t, KiroCacheEmulationModeIndependent, group.KiroCacheEmulationMode)
+	require.InDelta(t, 0.4, group.KiroCacheCreationEmulationRatio, 1e-12)
+	require.InDelta(t, 0.4, group.KiroCacheReadEmulationRatio, 1e-12)
+}
+
+func TestAdminService_UpdateGroup_SwitchToIndependentPrefersExplicitRatios(t *testing.T) {
+	existingGroup := &Group{
+		ID:                        1,
+		Name:                      "existing-kiro",
+		Platform:                  PlatformKiro,
+		Status:                    StatusActive,
+		KiroCacheEmulationEnabled: true,
+		KiroCacheEmulationRatio:   0.4,
+		KiroCacheEmulationMode:    KiroCacheEmulationModeUniform,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	mode := KiroCacheEmulationModeIndependent
+	creationRatio := 0.25
+	readRatio := 0.75
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		KiroCacheEmulationMode:          &mode,
+		KiroCacheCreationEmulationRatio: &creationRatio,
+		KiroCacheReadEmulationRatio:     &readRatio,
+	})
+	require.NoError(t, err)
+	require.Equal(t, KiroCacheEmulationModeIndependent, group.KiroCacheEmulationMode)
+	require.InDelta(t, 0.25, group.KiroCacheCreationEmulationRatio, 1e-12)
+	require.InDelta(t, 0.75, group.KiroCacheReadEmulationRatio, 1e-12)
+}
+
+func TestAdminService_UpdateGroup_UniformModeSynchronizesStoredRatios(t *testing.T) {
+	existingGroup := &Group{
+		ID:                              1,
+		Name:                            "existing-kiro",
+		Platform:                        PlatformKiro,
+		Status:                          StatusActive,
+		KiroCacheEmulationEnabled:       true,
+		KiroCacheEmulationRatio:         0.5,
+		KiroCacheEmulationMode:          KiroCacheEmulationModeUniform,
+		KiroCacheCreationEmulationRatio: 0.5,
+		KiroCacheReadEmulationRatio:     0.5,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	ratio := 0.8
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{KiroCacheEmulationRatio: &ratio})
+	require.NoError(t, err)
+	require.InDelta(t, 0.8, group.KiroCacheEmulationRatio, 1e-12)
+	require.InDelta(t, 0.8, group.KiroCacheCreationEmulationRatio, 1e-12)
+	require.InDelta(t, 0.8, group.KiroCacheReadEmulationRatio, 1e-12)
+}
+
+func TestAdminService_UpdateGroup_IndependentModePreservesExplicitZeroRatios(t *testing.T) {
+	existingGroup := &Group{
+		ID:                        1,
+		Name:                      "existing-kiro",
+		Platform:                  PlatformKiro,
+		Status:                    StatusActive,
+		KiroCacheEmulationEnabled: false,
+		KiroCacheEmulationRatio:   1,
+		KiroCacheEmulationMode:    KiroCacheEmulationModeUniform,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	enabled := true
+	mode := KiroCacheEmulationModeIndependent
+	zero := 0.0
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		KiroCacheEmulationEnabled:       &enabled,
+		KiroCacheEmulationMode:          &mode,
+		KiroCacheCreationEmulationRatio: &zero,
+		KiroCacheReadEmulationRatio:     &zero,
+	})
+	require.NoError(t, err)
+	require.True(t, group.KiroCacheEmulationEnabled)
+	require.Equal(t, KiroCacheEmulationModeIndependent, group.KiroCacheEmulationMode)
+	require.Zero(t, group.KiroCacheCreationEmulationRatio)
+	require.Zero(t, group.KiroCacheReadEmulationRatio)
+	require.False(t, group.EffectiveKiroCacheEmulationEnabled())
+}
+
+func TestAdminService_UpdateGroup_OldClientPreservesIndependentRatios(t *testing.T) {
+	existingGroup := &Group{
+		ID:                              1,
+		Name:                            "existing-kiro",
+		Platform:                        PlatformKiro,
+		Status:                          StatusActive,
+		KiroCacheEmulationEnabled:       true,
+		KiroCacheEmulationRatio:         0.5,
+		KiroCacheEmulationMode:          KiroCacheEmulationModeIndependent,
+		KiroCacheCreationEmulationRatio: 0.8,
+		KiroCacheReadEmulationRatio:     0.3,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	legacyRatio := 0.6
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{KiroCacheEmulationRatio: &legacyRatio})
+	require.NoError(t, err)
+	require.Equal(t, KiroCacheEmulationModeIndependent, group.KiroCacheEmulationMode)
+	require.InDelta(t, 0.8, group.KiroCacheCreationEmulationRatio, 1e-12)
+	require.InDelta(t, 0.3, group.KiroCacheReadEmulationRatio, 1e-12)
 }
 
 func TestAdminService_UpdateGroup_ClearsKiroRuntimeSettingsWhenPlatformChanges(t *testing.T) {
@@ -756,6 +1084,99 @@ func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testin
 	require.Equal(t, []int64{1}, invalidator.groupIDs, "分组 RPMLimit 写入 auth snapshot，变更后必须失效 API Key 认证缓存")
 }
 
+func TestAdminService_UpdateGroup_ReasoningEffortMappingsTriState(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *UpdateGroupInput
+		want  []ReasoningEffortMapping
+	}{
+		{
+			name:  "nil preserves existing mappings",
+			input: &UpdateGroupInput{},
+			want:  []ReasoningEffortMapping{{From: "max", To: "xhigh"}},
+		},
+		{
+			name: "empty array clears mappings",
+			input: func() *UpdateGroupInput {
+				empty := []ReasoningEffortMapping{}
+				return &UpdateGroupInput{ReasoningEffortMappings: &empty}
+			}(),
+			want: []ReasoningEffortMapping{},
+		},
+		{
+			name: "non empty array replaces and canonicalizes mappings",
+			input: func() *UpdateGroupInput {
+				replacement := []ReasoningEffortMapping{{From: " X-HIGH ", To: " high "}}
+				return &UpdateGroupInput{ReasoningEffortMappings: &replacement}
+			}(),
+			want: []ReasoningEffortMapping{{From: "xhigh", To: "high"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := &Group{
+				ID:                      1,
+				Name:                    "openai-group",
+				Platform:                PlatformOpenAI,
+				Status:                  StatusActive,
+				ReasoningEffortMappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"}},
+			}
+			repo := &groupRepoStubForAdmin{getByID: existing}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			_, err := svc.UpdateGroup(context.Background(), existing.ID, tt.input)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, repo.updated.ReasoningEffortMappings)
+		})
+	}
+}
+
+func TestAdminService_UpdateGroup_RejectsInvalidReasoningEffortMappings(t *testing.T) {
+	existing := &Group{
+		ID:               1,
+		Name:             "openai",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   1,
+		Status:           StatusActive,
+	}
+	repo := &groupRepoStubForInvalidRequestFallback{groups: map[int64]*Group{existing.ID: existing}}
+	svc := &adminServiceImpl{groupRepo: repo}
+	invalid := []ReasoningEffortMapping{
+		{From: "max", To: "xhigh"},
+		{From: " MAX ", To: "high"},
+	}
+
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+		ReasoningEffortMappings: &invalid,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate reasoning effort mapping source")
+	require.Nil(t, repo.updated)
+}
+
+func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t *testing.T) {
+	existing := &Group{
+		ID:                      1,
+		Name:                    "openai-group",
+		Platform:                PlatformOpenAI,
+		Status:                  StatusActive,
+		MaxReasoningEffort:      "medium",
+		ReasoningEffortMappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"}},
+	}
+	repo := &groupRepoStubForAdmin{getByID: existing}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Platform: PlatformAnthropic})
+
+	require.NoError(t, err)
+	require.Empty(t, repo.updated.MaxReasoningEffort)
+	require.Empty(t, repo.updated.ReasoningEffortMappings)
+}
+
 func TestAdminService_UpdateGroup_ClearsPeakRateWhenChangingToStandard(t *testing.T) {
 	existingGroup := &Group{
 		ID:                 1,
@@ -854,6 +1275,7 @@ func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatfo
 		Platform:              PlatformAnthropic,
 		RateMultiplier:        1.0,
 		AllowMessagesDispatch: true,
+		AllowLive:             true,
 		DefaultMappedModel:    "gpt-5.4",
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			OpusMappedModel: "gpt-5.4",
@@ -863,6 +1285,7 @@ func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatfo
 	require.NotNil(t, group)
 	require.NotNil(t, repo.created)
 	require.False(t, repo.created.AllowMessagesDispatch)
+	require.False(t, repo.created.AllowLive)
 	require.Empty(t, repo.created.DefaultMappedModel)
 	require.Equal(t, OpenAIMessagesDispatchModelConfig{}, repo.created.MessagesDispatchModelConfig)
 }
@@ -874,6 +1297,7 @@ func TestAdminService_UpdateGroup_ClearsMessagesDispatchFieldsWhenPlatformChange
 		Platform:              PlatformOpenAI,
 		Status:                StatusActive,
 		AllowMessagesDispatch: true,
+		AllowLive:             true,
 		DefaultMappedModel:    "gpt-5.4",
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			SonnetMappedModel: "gpt-5.3-codex",
@@ -890,6 +1314,7 @@ func TestAdminService_UpdateGroup_ClearsMessagesDispatchFieldsWhenPlatformChange
 	require.NotNil(t, repo.updated)
 	require.Equal(t, PlatformAnthropic, repo.updated.Platform)
 	require.False(t, repo.updated.AllowMessagesDispatch)
+	require.False(t, repo.updated.AllowLive)
 	require.Empty(t, repo.updated.DefaultMappedModel)
 	require.Equal(t, OpenAIMessagesDispatchModelConfig{}, repo.updated.MessagesDispatchModelConfig)
 }
@@ -1439,4 +1864,165 @@ func TestAdminService_UpdateGroup_InvalidRequestFallbackAllowsAntigravity(t *tes
 	require.NotNil(t, group)
 	require.NotNil(t, repo.updated)
 	require.Equal(t, fallbackID, *repo.updated.FallbackGroupIDOnInvalidRequest)
+}
+
+func TestDefaultModelsListCandidateIDs_KiroUsesKiroDefaultModels(t *testing.T) {
+	ids := defaultModelsListCandidateIDs(PlatformKiro)
+	require.Contains(t, ids, "gpt-5.6-sol")
+	require.Contains(t, ids, "gpt-5.6-terra")
+	require.Contains(t, ids, "gpt-5.6-luna")
+	require.Contains(t, ids, "claude-sonnet-4-6")
+	// Must not fall through to claude-only defaults (e.g. missing GPT family).
+	require.NotEqual(t, defaultModelsListCandidateIDs(PlatformAnthropic), ids)
+}
+
+func TestGetGroupModelsListCandidates_KiroCreateUsesKiroDefaults(t *testing.T) {
+	svc := &adminServiceImpl{}
+	ids, err := svc.GetGroupModelsListCandidates(context.Background(), 0, PlatformKiro)
+	require.NoError(t, err)
+	require.Contains(t, ids, "gpt-5.6-sol")
+	require.Contains(t, ids, "claude-opus-4-8")
+}
+
+func TestAdminService_CreateCompositeRoute_RejectsNonCompositeGroup(t *testing.T) {
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: 7, Platform: PlatformOpenAI},
+	}
+	routeRepo := &compositeRouteRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: groupRepo, compositeRouteRepo: routeRepo}
+
+	_, err := svc.CreateCompositeRoute(context.Background(), 7, CompositeRouteInput{
+		PublicModel:    "router/gpt-5",
+		TargetPlatform: PlatformOpenAI,
+		Enabled:        true,
+	})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "not a composite group")
+	require.Nil(t, routeRepo.created)
+}
+
+func TestAdminService_CreateCompositeRoute_NormalizesAndPersists(t *testing.T) {
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: 7, Platform: PlatformComposite},
+	}
+	routeRepo := &compositeRouteRepoStubForAdmin{nextID: 99}
+	svc := &adminServiceImpl{groupRepo: groupRepo, compositeRouteRepo: routeRepo}
+
+	route, err := svc.CreateCompositeRoute(context.Background(), 7, CompositeRouteInput{
+		PublicModel:    " router/gpt- ",
+		MatchType:      CompositeRouteMatchPrefix,
+		TargetPlatform: PlatformOpenAI,
+		Endpoint:       CompositeRouteEndpointResponses,
+		Enabled:        true,
+		Notes:          " route note ",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, route)
+	require.Equal(t, int64(99), route.ID)
+	require.Equal(t, "router/gpt-", route.PublicModel)
+	require.Equal(t, CompositeRouteMatchPrefix, route.MatchType)
+	require.Equal(t, PlatformOpenAI, route.TargetPlatform)
+	// prefix 路由留空 upstream_model 不再回填 public_model：留空表示透传原始请求模型。
+	require.Equal(t, "", route.UpstreamModel)
+	require.Equal(t, CompositeRouteEndpointResponses, route.Endpoint)
+	require.Equal(t, 100, route.Priority)
+	require.True(t, route.Enabled)
+	require.Equal(t, "route note", route.Notes)
+	require.Equal(t, route, routeRepo.created)
+}
+
+// TestAdminService_CreateCompositeRoute_ExactEmptyUpstreamBackfillsPublicModel 锁定
+// 保守行为：exact 路由留空 upstream_model 仍回填 public_model（持久化/展示契约不变）。
+func TestAdminService_CreateCompositeRoute_ExactEmptyUpstreamBackfillsPublicModel(t *testing.T) {
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: 7, Platform: PlatformComposite},
+	}
+	routeRepo := &compositeRouteRepoStubForAdmin{nextID: 99}
+	svc := &adminServiceImpl{groupRepo: groupRepo, compositeRouteRepo: routeRepo}
+
+	route, err := svc.CreateCompositeRoute(context.Background(), 7, CompositeRouteInput{
+		PublicModel:    "openrouter/gpt-5",
+		MatchType:      CompositeRouteMatchExact,
+		TargetPlatform: PlatformOpenAI,
+		Endpoint:       CompositeRouteEndpointResponses,
+		Enabled:        true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, route)
+	require.Equal(t, CompositeRouteMatchExact, route.MatchType)
+	require.Equal(t, "openrouter/gpt-5", route.UpstreamModel)
+}
+
+func TestAdminService_UpdateAndDeleteCompositeRouteRequireRouteOwnership(t *testing.T) {
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: 7, Platform: PlatformComposite},
+	}
+	routeRepo := &compositeRouteRepoStubForAdmin{
+		routes: []CompositeModelRoute{
+			{ID: 11, GroupID: 7, PublicModel: "router/gpt-5", TargetPlatform: PlatformOpenAI, Enabled: true},
+			{ID: 12, GroupID: 8, PublicModel: "router/other", TargetPlatform: PlatformGemini, Enabled: true},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: groupRepo, compositeRouteRepo: routeRepo}
+
+	updated, err := svc.UpdateCompositeRoute(context.Background(), 7, 11, CompositeRouteInput{
+		PublicModel:    "router/gpt-5",
+		TargetPlatform: PlatformGemini,
+		UpstreamModel:  "gemini-2.5-pro",
+		Endpoint:       CompositeRouteEndpointChatCompletions,
+		Priority:       3,
+		Enabled:        true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(11), updated.ID)
+	require.Equal(t, PlatformGemini, updated.TargetPlatform)
+	require.Equal(t, "gemini-2.5-pro", updated.UpstreamModel)
+	require.Equal(t, updated, routeRepo.updated)
+
+	err = svc.DeleteCompositeRoute(context.Background(), 7, 12)
+	require.ErrorIs(t, err, ErrCompositeRouteNotFound)
+	require.Empty(t, routeRepo.deleted)
+
+	err = svc.DeleteCompositeRoute(context.Background(), 7, 11)
+	require.NoError(t, err)
+	require.Equal(t, []int64{11}, routeRepo.deleted)
+}
+
+func TestAdminService_PreviewCompositeRouteUsesExplicitRoutes(t *testing.T) {
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: 7, Platform: PlatformComposite},
+	}
+	routeRepo := &compositeRouteRepoStubForAdmin{
+		routes: []CompositeModelRoute{
+			{
+				ID:             11,
+				GroupID:        7,
+				PublicModel:    "openrouter/claude",
+				MatchType:      CompositeRouteMatchExact,
+				TargetPlatform: PlatformAnthropic,
+				UpstreamModel:  "claude-sonnet-4-6",
+				Endpoint:       CompositeRouteEndpointMessages,
+				Priority:       100,
+				Enabled:        true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: groupRepo, compositeRouteRepo: routeRepo}
+
+	decision, err := svc.PreviewCompositeRoute(context.Background(), 7, CompositeRoutePreviewRequest{
+		Model:    "openrouter/claude",
+		Endpoint: CompositeRouteEndpointMessages,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceExplicit, decision.Source)
+	require.Equal(t, PlatformAnthropic, decision.TargetPlatform)
+	require.Equal(t, "claude-sonnet-4-6", decision.UpstreamModel)
+	require.NotNil(t, decision.Route)
+	require.Equal(t, int64(11), decision.Route.ID)
 }

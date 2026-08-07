@@ -48,6 +48,9 @@ type ChannelMonitorHistory func(*sql.Selector)
 // ChannelMonitorRequestTemplate is the predicate function for channelmonitorrequesttemplate builders.
 type ChannelMonitorRequestTemplate func(*sql.Selector)
 
+// CompositeModelRoute is the predicate function for compositemodelroute builders.
+type CompositeModelRoute func(*sql.Selector)
+
 // ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
 type ErrorPassthroughRule func(*sql.Selector)
 
@@ -77,6 +80,9 @@ type PromoCode func(*sql.Selector)
 
 // PromoCodeUsage is the predicate function for promocodeusage builders.
 type PromoCodeUsage func(*sql.Selector)
+
+// PromptRule is the predicate function for promptrule builders.
+type PromptRule func(*sql.Selector)
 
 // Proxy is the predicate function for proxy builders.
 type Proxy func(*sql.Selector)

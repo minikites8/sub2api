@@ -277,7 +277,6 @@ func TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig(t *testi
 	expired := *current
 	expired.loadedAt = time.Now().Add(-time.Second)
 	svc.runtimeSnapshot.Store(&expired)
-
 	repo.failMultiple(errors.New("database unavailable"))
 	decision, err = svc.Check(context.Background(), input)
 	require.NoError(t, err)

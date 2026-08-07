@@ -212,7 +212,7 @@ func (s *openAIRecordUsageUserRepoStub) GetByID(ctx context.Context, id int64) (
 	return &cloned, nil
 }
 
-func (s *openAIRecordUsageUserRepoStub) Update(ctx context.Context, user *User) error {
+func (s *openAIRecordUsageUserRepoStub) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	s.updateCalls++
 	s.updatedIDs = append(s.updatedIDs, user.ID)
 	if s.users == nil {
@@ -277,6 +277,14 @@ func (s *openAIRecordUsageSettingRepoStub) GetAll(ctx context.Context) (map[stri
 
 func (s *openAIRecordUsageSettingRepoStub) Delete(ctx context.Context, key string) error {
 	return nil
+}
+
+func (s *openAIRecordUsageUserRepoStub) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (s *openAIRecordUsageUserRepoStub) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
 }
 
 type openAIRecordUsageSubRepoStub struct {
@@ -1110,9 +1118,10 @@ func TestOpenAIGatewayServiceRecordUsage_GeneratesRequestIDWhenAllSourcesMissing
 	require.Equal(t, billingRepo.lastCmd.RequestID, usageRepo.lastLog.RequestID)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_BillingErrorWritesUnsettledUsageLog(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{}
-	billingRepo := &openAIRecordUsageBillingRepoStub{err: errors.New("billing tx failed")}
+	billingErr := errors.New("billing tx failed")
+	billingRepo := &openAIRecordUsageBillingRepoStub{err: billingErr}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
@@ -1132,9 +1141,16 @@ func TestOpenAIGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testi
 		Account: &Account{ID: 30048},
 	})
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, billingErr)
 	require.Equal(t, 1, billingRepo.calls)
-	require.Equal(t, 0, usageRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 8, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 4, usageRepo.lastLog.OutputTokens)
+	require.Greater(t, usageRepo.lastLog.InputCost, 0.0)
+	require.Greater(t, usageRepo.lastLog.OutputCost, 0.0)
+	require.Greater(t, usageRepo.lastLog.TotalCost, 0.0)
+	require.Zero(t, usageRepo.lastLog.ActualCost)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_UpdatesAPIKeyQuotaWhenConfigured(t *testing.T) {
@@ -1515,6 +1531,71 @@ func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelAndUpstreamModelMetad
 	require.NotNil(t, usageRepo.lastLog.GroupID)
 	require.Equal(t, int64(11), *usageRepo.lastLog.GroupID)
 	require.Equal(t, 1, userRepo.deductCalls)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_PreservesChannelMappedUpstreamModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "openai_channel_mapping_models",
+			Model:         "gpt-5.6-terra",
+			UpstreamModel: "gpt-5.6-terra",
+			Usage: OpenAIUsage{
+				InputTokens:  20,
+				OutputTokens: 10,
+			},
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 10},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      "gpt-5.6-sol",
+			ChannelMappedModel: "gpt-5.6-terra",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "gpt-5.6-sol", usageRepo.lastLog.RequestedModel)
+	require.Equal(t, "gpt-5.6-terra", usageRepo.lastLog.Model)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, "gpt-5.6-terra", *usageRepo.lastLog.UpstreamModel)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_PreservesLoopedChannelAndAccountUpstreamModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "openai_looped_mapping_models",
+			Model:         "gpt-5.6-terra",
+			UpstreamModel: "gpt-5.6-sol",
+			Usage:         OpenAIUsage{InputTokens: 20, OutputTokens: 10},
+			Duration:      time.Second,
+		},
+		APIKey:  &APIKey{ID: 10},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      "gpt-5.6-sol",
+			ChannelMappedModel: "gpt-5.6-terra",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "gpt-5.6-sol", usageRepo.lastLog.RequestedModel)
+	require.Equal(t, "gpt-5.6-terra", usageRepo.lastLog.Model)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, "gpt-5.6-sol", *usageRepo.lastLog.UpstreamModel)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel(t *testing.T) {
@@ -2609,6 +2690,79 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCoun
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 	require.InDelta(t, 0.5, cost.TotalCost, 1e-12)
 	require.InDelta(t, 0.5, cost.ActualCost, 1e-12)
+}
+
+func TestGatewayServiceCalculateRecordUsageCost_KiroGPT56UsesOpenAIFallbackInsteadOfConservativeClaudeFallback(t *testing.T) {
+	svc := &GatewayService{
+		billingService: NewBillingService(&config.Config{}, nil),
+	}
+
+	cost := svc.calculateRecordUsageCost(
+		context.Background(),
+		&ForwardResult{
+			Model: "gpt-5.6-terra",
+			Usage: ClaudeUsage{
+				InputTokens:              1000,
+				OutputTokens:             200,
+				CacheCreationInputTokens: 10,
+				CacheReadInputTokens:     50,
+				KiroCredits:              999,
+			},
+		},
+		&APIKey{},
+		"gpt-5.6-terra",
+		1.0,
+		1.0,
+		&recordUsageOpts{IsKiroAccount: true},
+	)
+
+	require.NotNil(t, cost)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+	require.InDelta(t, 1000*2e-6, cost.InputCost, 1e-12)
+	require.InDelta(t, 200*12e-6, cost.OutputCost, 1e-12)
+	require.InDelta(t, 10*2.5e-6, cost.CacheCreationCost, 1e-12)
+	require.InDelta(t, 50*0.2e-6, cost.CacheReadCost, 1e-12)
+	require.InDelta(t, cost.TotalCost, cost.ActualCost, 1e-12)
+}
+
+func TestGatewayServiceBuildRecordUsageLog_KiroCreditsDoNotOverrideActualCost(t *testing.T) {
+	svc := &GatewayService{}
+	cost := &CostBreakdown{
+		InputCost:  0.0025,
+		OutputCost: 0.003,
+		TotalCost:  0.0055,
+		ActualCost: 0.0055,
+	}
+
+	log := svc.buildRecordUsageLog(
+		context.Background(),
+		&recordUsageCoreInput{},
+		&ForwardResult{
+			Model:    "gpt-5.6-terra",
+			Duration: time.Second,
+			Usage: ClaudeUsage{
+				InputTokens:  1000,
+				OutputTokens: 200,
+				KiroCredits:  999,
+			},
+		},
+		&APIKey{ID: 1},
+		&User{ID: 2},
+		&Account{ID: 3},
+		nil,
+		"gpt-5.6-terra",
+		1.0,
+		1.0,
+		1.0,
+		BillingTypeBalance,
+		false,
+		cost,
+		nil,
+	)
+
+	require.NotNil(t, log.KiroCredits)
+	require.InDelta(t, 999, *log.KiroCredits, 1e-12)
+	require.InDelta(t, 0.0055, log.ActualCost, 1e-12)
 }
 
 func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(t *testing.T) {

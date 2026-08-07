@@ -26,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -37,6 +38,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/ent/promptrule"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
@@ -77,6 +79,7 @@ const (
 	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
 	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
+	TypeCompositeModelRoute           = "CompositeModelRoute"
 	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
@@ -87,6 +90,7 @@ const (
 	TypePendingAuthSession            = "PendingAuthSession"
 	TypePromoCode                     = "PromoCode"
 	TypePromoCodeUsage                = "PromoCodeUsage"
+	TypePromptRule                    = "PromptRule"
 	TypeProxy                         = "Proxy"
 	TypeRedeemCode                    = "RedeemCode"
 	TypeSecuritySecret                = "SecuritySecret"
@@ -19468,6 +19472,1057 @@ func (m *ChannelMonitorRequestTemplateMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ChannelMonitorRequestTemplate edge %s", name)
 }
 
+// CompositeModelRouteMutation represents an operation that mutates the CompositeModelRoute nodes in the graph.
+type CompositeModelRouteMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	created_at      *time.Time
+	updated_at      *time.Time
+	deleted_at      *time.Time
+	public_model    *string
+	match_type      *string
+	target_platform *string
+	upstream_model  *string
+	endpoint        *string
+	priority        *int
+	addpriority     *int
+	enabled         *bool
+	notes           *string
+	clearedFields   map[string]struct{}
+	group           *int64
+	clearedgroup    bool
+	done            bool
+	oldValue        func(context.Context) (*CompositeModelRoute, error)
+	predicates      []predicate.CompositeModelRoute
+}
+
+var _ ent.Mutation = (*CompositeModelRouteMutation)(nil)
+
+// compositemodelrouteOption allows management of the mutation configuration using functional options.
+type compositemodelrouteOption func(*CompositeModelRouteMutation)
+
+// newCompositeModelRouteMutation creates new mutation for the CompositeModelRoute entity.
+func newCompositeModelRouteMutation(c config, op Op, opts ...compositemodelrouteOption) *CompositeModelRouteMutation {
+	m := &CompositeModelRouteMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCompositeModelRoute,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCompositeModelRouteID sets the ID field of the mutation.
+func withCompositeModelRouteID(id int64) compositemodelrouteOption {
+	return func(m *CompositeModelRouteMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CompositeModelRoute
+		)
+		m.oldValue = func(ctx context.Context) (*CompositeModelRoute, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CompositeModelRoute.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCompositeModelRoute sets the old CompositeModelRoute of the mutation.
+func withCompositeModelRoute(node *CompositeModelRoute) compositemodelrouteOption {
+	return func(m *CompositeModelRouteMutation) {
+		m.oldValue = func(context.Context) (*CompositeModelRoute, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CompositeModelRouteMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CompositeModelRouteMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CompositeModelRouteMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CompositeModelRouteMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CompositeModelRoute.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CompositeModelRouteMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CompositeModelRouteMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CompositeModelRouteMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CompositeModelRouteMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CompositeModelRouteMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CompositeModelRouteMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *CompositeModelRouteMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *CompositeModelRouteMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *CompositeModelRouteMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[compositemodelroute.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *CompositeModelRouteMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[compositemodelroute.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *CompositeModelRouteMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, compositemodelroute.FieldDeletedAt)
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *CompositeModelRouteMutation) SetGroupID(i int64) {
+	m.group = &i
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *CompositeModelRouteMutation) GroupID() (r int64, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *CompositeModelRouteMutation) ResetGroupID() {
+	m.group = nil
+}
+
+// SetPublicModel sets the "public_model" field.
+func (m *CompositeModelRouteMutation) SetPublicModel(s string) {
+	m.public_model = &s
+}
+
+// PublicModel returns the value of the "public_model" field in the mutation.
+func (m *CompositeModelRouteMutation) PublicModel() (r string, exists bool) {
+	v := m.public_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublicModel returns the old "public_model" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldPublicModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublicModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublicModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublicModel: %w", err)
+	}
+	return oldValue.PublicModel, nil
+}
+
+// ResetPublicModel resets all changes to the "public_model" field.
+func (m *CompositeModelRouteMutation) ResetPublicModel() {
+	m.public_model = nil
+}
+
+// SetMatchType sets the "match_type" field.
+func (m *CompositeModelRouteMutation) SetMatchType(s string) {
+	m.match_type = &s
+}
+
+// MatchType returns the value of the "match_type" field in the mutation.
+func (m *CompositeModelRouteMutation) MatchType() (r string, exists bool) {
+	v := m.match_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMatchType returns the old "match_type" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldMatchType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMatchType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMatchType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMatchType: %w", err)
+	}
+	return oldValue.MatchType, nil
+}
+
+// ResetMatchType resets all changes to the "match_type" field.
+func (m *CompositeModelRouteMutation) ResetMatchType() {
+	m.match_type = nil
+}
+
+// SetTargetPlatform sets the "target_platform" field.
+func (m *CompositeModelRouteMutation) SetTargetPlatform(s string) {
+	m.target_platform = &s
+}
+
+// TargetPlatform returns the value of the "target_platform" field in the mutation.
+func (m *CompositeModelRouteMutation) TargetPlatform() (r string, exists bool) {
+	v := m.target_platform
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetPlatform returns the old "target_platform" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldTargetPlatform(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetPlatform is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetPlatform requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetPlatform: %w", err)
+	}
+	return oldValue.TargetPlatform, nil
+}
+
+// ResetTargetPlatform resets all changes to the "target_platform" field.
+func (m *CompositeModelRouteMutation) ResetTargetPlatform() {
+	m.target_platform = nil
+}
+
+// SetUpstreamModel sets the "upstream_model" field.
+func (m *CompositeModelRouteMutation) SetUpstreamModel(s string) {
+	m.upstream_model = &s
+}
+
+// UpstreamModel returns the value of the "upstream_model" field in the mutation.
+func (m *CompositeModelRouteMutation) UpstreamModel() (r string, exists bool) {
+	v := m.upstream_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamModel returns the old "upstream_model" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldUpstreamModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamModel: %w", err)
+	}
+	return oldValue.UpstreamModel, nil
+}
+
+// ResetUpstreamModel resets all changes to the "upstream_model" field.
+func (m *CompositeModelRouteMutation) ResetUpstreamModel() {
+	m.upstream_model = nil
+}
+
+// SetEndpoint sets the "endpoint" field.
+func (m *CompositeModelRouteMutation) SetEndpoint(s string) {
+	m.endpoint = &s
+}
+
+// Endpoint returns the value of the "endpoint" field in the mutation.
+func (m *CompositeModelRouteMutation) Endpoint() (r string, exists bool) {
+	v := m.endpoint
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndpoint returns the old "endpoint" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldEndpoint(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndpoint is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndpoint requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndpoint: %w", err)
+	}
+	return oldValue.Endpoint, nil
+}
+
+// ResetEndpoint resets all changes to the "endpoint" field.
+func (m *CompositeModelRouteMutation) ResetEndpoint() {
+	m.endpoint = nil
+}
+
+// SetPriority sets the "priority" field.
+func (m *CompositeModelRouteMutation) SetPriority(i int) {
+	m.priority = &i
+	m.addpriority = nil
+}
+
+// Priority returns the value of the "priority" field in the mutation.
+func (m *CompositeModelRouteMutation) Priority() (r int, exists bool) {
+	v := m.priority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPriority returns the old "priority" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldPriority(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPriority is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPriority requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPriority: %w", err)
+	}
+	return oldValue.Priority, nil
+}
+
+// AddPriority adds i to the "priority" field.
+func (m *CompositeModelRouteMutation) AddPriority(i int) {
+	if m.addpriority != nil {
+		*m.addpriority += i
+	} else {
+		m.addpriority = &i
+	}
+}
+
+// AddedPriority returns the value that was added to the "priority" field in this mutation.
+func (m *CompositeModelRouteMutation) AddedPriority() (r int, exists bool) {
+	v := m.addpriority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPriority resets all changes to the "priority" field.
+func (m *CompositeModelRouteMutation) ResetPriority() {
+	m.priority = nil
+	m.addpriority = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *CompositeModelRouteMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *CompositeModelRouteMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *CompositeModelRouteMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetNotes sets the "notes" field.
+func (m *CompositeModelRouteMutation) SetNotes(s string) {
+	m.notes = &s
+}
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *CompositeModelRouteMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotes returns the old "notes" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldNotes(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotes: %w", err)
+	}
+	return oldValue.Notes, nil
+}
+
+// ClearNotes clears the value of the "notes" field.
+func (m *CompositeModelRouteMutation) ClearNotes() {
+	m.notes = nil
+	m.clearedFields[compositemodelroute.FieldNotes] = struct{}{}
+}
+
+// NotesCleared returns if the "notes" field was cleared in this mutation.
+func (m *CompositeModelRouteMutation) NotesCleared() bool {
+	_, ok := m.clearedFields[compositemodelroute.FieldNotes]
+	return ok
+}
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *CompositeModelRouteMutation) ResetNotes() {
+	m.notes = nil
+	delete(m.clearedFields, compositemodelroute.FieldNotes)
+}
+
+// ClearGroup clears the "group" edge to the Group entity.
+func (m *CompositeModelRouteMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[compositemodelroute.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the Group entity was cleared.
+func (m *CompositeModelRouteMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *CompositeModelRouteMutation) GroupIDs() (ids []int64) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *CompositeModelRouteMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the CompositeModelRouteMutation builder.
+func (m *CompositeModelRouteMutation) Where(ps ...predicate.CompositeModelRoute) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CompositeModelRouteMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CompositeModelRouteMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CompositeModelRoute, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CompositeModelRouteMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CompositeModelRouteMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CompositeModelRoute).
+func (m *CompositeModelRouteMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CompositeModelRouteMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.created_at != nil {
+		fields = append(fields, compositemodelroute.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, compositemodelroute.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, compositemodelroute.FieldDeletedAt)
+	}
+	if m.group != nil {
+		fields = append(fields, compositemodelroute.FieldGroupID)
+	}
+	if m.public_model != nil {
+		fields = append(fields, compositemodelroute.FieldPublicModel)
+	}
+	if m.match_type != nil {
+		fields = append(fields, compositemodelroute.FieldMatchType)
+	}
+	if m.target_platform != nil {
+		fields = append(fields, compositemodelroute.FieldTargetPlatform)
+	}
+	if m.upstream_model != nil {
+		fields = append(fields, compositemodelroute.FieldUpstreamModel)
+	}
+	if m.endpoint != nil {
+		fields = append(fields, compositemodelroute.FieldEndpoint)
+	}
+	if m.priority != nil {
+		fields = append(fields, compositemodelroute.FieldPriority)
+	}
+	if m.enabled != nil {
+		fields = append(fields, compositemodelroute.FieldEnabled)
+	}
+	if m.notes != nil {
+		fields = append(fields, compositemodelroute.FieldNotes)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CompositeModelRouteMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case compositemodelroute.FieldCreatedAt:
+		return m.CreatedAt()
+	case compositemodelroute.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case compositemodelroute.FieldDeletedAt:
+		return m.DeletedAt()
+	case compositemodelroute.FieldGroupID:
+		return m.GroupID()
+	case compositemodelroute.FieldPublicModel:
+		return m.PublicModel()
+	case compositemodelroute.FieldMatchType:
+		return m.MatchType()
+	case compositemodelroute.FieldTargetPlatform:
+		return m.TargetPlatform()
+	case compositemodelroute.FieldUpstreamModel:
+		return m.UpstreamModel()
+	case compositemodelroute.FieldEndpoint:
+		return m.Endpoint()
+	case compositemodelroute.FieldPriority:
+		return m.Priority()
+	case compositemodelroute.FieldEnabled:
+		return m.Enabled()
+	case compositemodelroute.FieldNotes:
+		return m.Notes()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CompositeModelRouteMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case compositemodelroute.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case compositemodelroute.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case compositemodelroute.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case compositemodelroute.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case compositemodelroute.FieldPublicModel:
+		return m.OldPublicModel(ctx)
+	case compositemodelroute.FieldMatchType:
+		return m.OldMatchType(ctx)
+	case compositemodelroute.FieldTargetPlatform:
+		return m.OldTargetPlatform(ctx)
+	case compositemodelroute.FieldUpstreamModel:
+		return m.OldUpstreamModel(ctx)
+	case compositemodelroute.FieldEndpoint:
+		return m.OldEndpoint(ctx)
+	case compositemodelroute.FieldPriority:
+		return m.OldPriority(ctx)
+	case compositemodelroute.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case compositemodelroute.FieldNotes:
+		return m.OldNotes(ctx)
+	}
+	return nil, fmt.Errorf("unknown CompositeModelRoute field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CompositeModelRouteMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case compositemodelroute.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case compositemodelroute.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case compositemodelroute.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case compositemodelroute.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case compositemodelroute.FieldPublicModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublicModel(v)
+		return nil
+	case compositemodelroute.FieldMatchType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMatchType(v)
+		return nil
+	case compositemodelroute.FieldTargetPlatform:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetPlatform(v)
+		return nil
+	case compositemodelroute.FieldUpstreamModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamModel(v)
+		return nil
+	case compositemodelroute.FieldEndpoint:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndpoint(v)
+		return nil
+	case compositemodelroute.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPriority(v)
+		return nil
+	case compositemodelroute.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case compositemodelroute.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeModelRoute field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CompositeModelRouteMutation) AddedFields() []string {
+	var fields []string
+	if m.addpriority != nil {
+		fields = append(fields, compositemodelroute.FieldPriority)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CompositeModelRouteMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case compositemodelroute.FieldPriority:
+		return m.AddedPriority()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CompositeModelRouteMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case compositemodelroute.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPriority(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeModelRoute numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CompositeModelRouteMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(compositemodelroute.FieldDeletedAt) {
+		fields = append(fields, compositemodelroute.FieldDeletedAt)
+	}
+	if m.FieldCleared(compositemodelroute.FieldNotes) {
+		fields = append(fields, compositemodelroute.FieldNotes)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CompositeModelRouteMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CompositeModelRouteMutation) ClearField(name string) error {
+	switch name {
+	case compositemodelroute.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case compositemodelroute.FieldNotes:
+		m.ClearNotes()
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeModelRoute nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CompositeModelRouteMutation) ResetField(name string) error {
+	switch name {
+	case compositemodelroute.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case compositemodelroute.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case compositemodelroute.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case compositemodelroute.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case compositemodelroute.FieldPublicModel:
+		m.ResetPublicModel()
+		return nil
+	case compositemodelroute.FieldMatchType:
+		m.ResetMatchType()
+		return nil
+	case compositemodelroute.FieldTargetPlatform:
+		m.ResetTargetPlatform()
+		return nil
+	case compositemodelroute.FieldUpstreamModel:
+		m.ResetUpstreamModel()
+		return nil
+	case compositemodelroute.FieldEndpoint:
+		m.ResetEndpoint()
+		return nil
+	case compositemodelroute.FieldPriority:
+		m.ResetPriority()
+		return nil
+	case compositemodelroute.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case compositemodelroute.FieldNotes:
+		m.ResetNotes()
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeModelRoute field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CompositeModelRouteMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.group != nil {
+		edges = append(edges, compositemodelroute.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CompositeModelRouteMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case compositemodelroute.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CompositeModelRouteMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CompositeModelRouteMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CompositeModelRouteMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedgroup {
+		edges = append(edges, compositemodelroute.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CompositeModelRouteMutation) EdgeCleared(name string) bool {
+	switch name {
+	case compositemodelroute.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CompositeModelRouteMutation) ClearEdge(name string) error {
+	switch name {
+	case compositemodelroute.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeModelRoute unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CompositeModelRouteMutation) ResetEdge(name string) error {
+	switch name {
+	case compositemodelroute.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeModelRoute edge %s", name)
+}
+
 // ErrorPassthroughRuleMutation represents an operation that mutates the ErrorPassthroughRule nodes in the graph.
 type ErrorPassthroughRuleMutation struct {
 	config
@@ -20808,6 +21863,7 @@ type GroupMutation struct {
 	addpeak_rate_multiplier                 *float64
 	is_exclusive                            *bool
 	status                                  *string
+	duplicate_operation_id                  *string
 	platform                                *string
 	subscription_type                       *string
 	daily_limit_usd                         *float64
@@ -20857,6 +21913,7 @@ type GroupMutation struct {
 	sort_order                              *int
 	addsort_order                           *int
 	allow_messages_dispatch                 *bool
+	allow_live                              *bool
 	require_oauth_only                      *bool
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
@@ -20864,13 +21921,26 @@ type GroupMutation struct {
 	models_list_config                      *domain.GroupModelsListConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	max_reasoning_effort                    *string
+	reasoning_effort_mappings               *[]domain.ReasoningEffortMapping
+	appendreasoning_effort_mappings         []domain.ReasoningEffortMapping
 	kiro_cache_emulation_enabled            *bool
 	kiro_auto_sticky_enabled                *bool
 	kiro_sticky_session_ttl_seconds         *int
 	addkiro_sticky_session_ttl_seconds      *int
 	kiro_cache_emulation_ratio              *float64
 	addkiro_cache_emulation_ratio           *float64
+	kiro_cache_emulation_mode               *string
+	kiro_cache_creation_emulation_ratio     *float64
+	addkiro_cache_creation_emulation_ratio  *float64
+	kiro_cache_read_emulation_ratio         *float64
+	addkiro_cache_read_emulation_ratio      *float64
 	kiro_endpoint_mode                      *string
+	profit_control_enabled                  *bool
+	profit_min_margin                       *float64
+	addprofit_min_margin                    *float64
+	profit_safety_buffer                    *float64
+	addprofit_safety_buffer                 *float64
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -21489,6 +22559,55 @@ func (m *GroupMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *GroupMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetDuplicateOperationID sets the "duplicate_operation_id" field.
+func (m *GroupMutation) SetDuplicateOperationID(s string) {
+	m.duplicate_operation_id = &s
+}
+
+// DuplicateOperationID returns the value of the "duplicate_operation_id" field in the mutation.
+func (m *GroupMutation) DuplicateOperationID() (r string, exists bool) {
+	v := m.duplicate_operation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDuplicateOperationID returns the old "duplicate_operation_id" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDuplicateOperationID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDuplicateOperationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDuplicateOperationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDuplicateOperationID: %w", err)
+	}
+	return oldValue.DuplicateOperationID, nil
+}
+
+// ClearDuplicateOperationID clears the value of the "duplicate_operation_id" field.
+func (m *GroupMutation) ClearDuplicateOperationID() {
+	m.duplicate_operation_id = nil
+	m.clearedFields[group.FieldDuplicateOperationID] = struct{}{}
+}
+
+// DuplicateOperationIDCleared returns if the "duplicate_operation_id" field was cleared in this mutation.
+func (m *GroupMutation) DuplicateOperationIDCleared() bool {
+	_, ok := m.clearedFields[group.FieldDuplicateOperationID]
+	return ok
+}
+
+// ResetDuplicateOperationID resets all changes to the "duplicate_operation_id" field.
+func (m *GroupMutation) ResetDuplicateOperationID() {
+	m.duplicate_operation_id = nil
+	delete(m.clearedFields, group.FieldDuplicateOperationID)
 }
 
 // SetPlatform sets the "platform" field.
@@ -23127,6 +24246,42 @@ func (m *GroupMutation) ResetAllowMessagesDispatch() {
 	m.allow_messages_dispatch = nil
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (m *GroupMutation) SetAllowLive(b bool) {
+	m.allow_live = &b
+}
+
+// AllowLive returns the value of the "allow_live" field in the mutation.
+func (m *GroupMutation) AllowLive() (r bool, exists bool) {
+	v := m.allow_live
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowLive returns the old "allow_live" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowLive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowLive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowLive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowLive: %w", err)
+	}
+	return oldValue.AllowLive, nil
+}
+
+// ResetAllowLive resets all changes to the "allow_live" field.
+func (m *GroupMutation) ResetAllowLive() {
+	m.allow_live = nil
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (m *GroupMutation) SetRequireOauthOnly(b bool) {
 	m.require_oauth_only = &b
@@ -23363,6 +24518,93 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (m *GroupMutation) SetMaxReasoningEffort(s string) {
+	m.max_reasoning_effort = &s
+}
+
+// MaxReasoningEffort returns the value of the "max_reasoning_effort" field in the mutation.
+func (m *GroupMutation) MaxReasoningEffort() (r string, exists bool) {
+	v := m.max_reasoning_effort
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxReasoningEffort returns the old "max_reasoning_effort" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldMaxReasoningEffort(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxReasoningEffort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxReasoningEffort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxReasoningEffort: %w", err)
+	}
+	return oldValue.MaxReasoningEffort, nil
+}
+
+// ResetMaxReasoningEffort resets all changes to the "max_reasoning_effort" field.
+func (m *GroupMutation) ResetMaxReasoningEffort() {
+	m.max_reasoning_effort = nil
+}
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (m *GroupMutation) SetReasoningEffortMappings(dem []domain.ReasoningEffortMapping) {
+	m.reasoning_effort_mappings = &dem
+	m.appendreasoning_effort_mappings = nil
+}
+
+// ReasoningEffortMappings returns the value of the "reasoning_effort_mappings" field in the mutation.
+func (m *GroupMutation) ReasoningEffortMappings() (r []domain.ReasoningEffortMapping, exists bool) {
+	v := m.reasoning_effort_mappings
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReasoningEffortMappings returns the old "reasoning_effort_mappings" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldReasoningEffortMappings(ctx context.Context) (v []domain.ReasoningEffortMapping, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReasoningEffortMappings is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReasoningEffortMappings requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReasoningEffortMappings: %w", err)
+	}
+	return oldValue.ReasoningEffortMappings, nil
+}
+
+// AppendReasoningEffortMappings adds dem to the "reasoning_effort_mappings" field.
+func (m *GroupMutation) AppendReasoningEffortMappings(dem []domain.ReasoningEffortMapping) {
+	m.appendreasoning_effort_mappings = append(m.appendreasoning_effort_mappings, dem...)
+}
+
+// AppendedReasoningEffortMappings returns the list of values that were appended to the "reasoning_effort_mappings" field in this mutation.
+func (m *GroupMutation) AppendedReasoningEffortMappings() ([]domain.ReasoningEffortMapping, bool) {
+	if len(m.appendreasoning_effort_mappings) == 0 {
+		return nil, false
+	}
+	return m.appendreasoning_effort_mappings, true
+}
+
+// ResetReasoningEffortMappings resets all changes to the "reasoning_effort_mappings" field.
+func (m *GroupMutation) ResetReasoningEffortMappings() {
+	m.reasoning_effort_mappings = nil
+	m.appendreasoning_effort_mappings = nil
+}
+
 // SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
 func (m *GroupMutation) SetKiroCacheEmulationEnabled(b bool) {
 	m.kiro_cache_emulation_enabled = &b
@@ -23547,6 +24789,154 @@ func (m *GroupMutation) ResetKiroCacheEmulationRatio() {
 	m.addkiro_cache_emulation_ratio = nil
 }
 
+// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
+func (m *GroupMutation) SetKiroCacheEmulationMode(s string) {
+	m.kiro_cache_emulation_mode = &s
+}
+
+// KiroCacheEmulationMode returns the value of the "kiro_cache_emulation_mode" field in the mutation.
+func (m *GroupMutation) KiroCacheEmulationMode() (r string, exists bool) {
+	v := m.kiro_cache_emulation_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKiroCacheEmulationMode returns the old "kiro_cache_emulation_mode" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldKiroCacheEmulationMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKiroCacheEmulationMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKiroCacheEmulationMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKiroCacheEmulationMode: %w", err)
+	}
+	return oldValue.KiroCacheEmulationMode, nil
+}
+
+// ResetKiroCacheEmulationMode resets all changes to the "kiro_cache_emulation_mode" field.
+func (m *GroupMutation) ResetKiroCacheEmulationMode() {
+	m.kiro_cache_emulation_mode = nil
+}
+
+// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
+func (m *GroupMutation) SetKiroCacheCreationEmulationRatio(f float64) {
+	m.kiro_cache_creation_emulation_ratio = &f
+	m.addkiro_cache_creation_emulation_ratio = nil
+}
+
+// KiroCacheCreationEmulationRatio returns the value of the "kiro_cache_creation_emulation_ratio" field in the mutation.
+func (m *GroupMutation) KiroCacheCreationEmulationRatio() (r float64, exists bool) {
+	v := m.kiro_cache_creation_emulation_ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKiroCacheCreationEmulationRatio returns the old "kiro_cache_creation_emulation_ratio" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldKiroCacheCreationEmulationRatio(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKiroCacheCreationEmulationRatio is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKiroCacheCreationEmulationRatio requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKiroCacheCreationEmulationRatio: %w", err)
+	}
+	return oldValue.KiroCacheCreationEmulationRatio, nil
+}
+
+// AddKiroCacheCreationEmulationRatio adds f to the "kiro_cache_creation_emulation_ratio" field.
+func (m *GroupMutation) AddKiroCacheCreationEmulationRatio(f float64) {
+	if m.addkiro_cache_creation_emulation_ratio != nil {
+		*m.addkiro_cache_creation_emulation_ratio += f
+	} else {
+		m.addkiro_cache_creation_emulation_ratio = &f
+	}
+}
+
+// AddedKiroCacheCreationEmulationRatio returns the value that was added to the "kiro_cache_creation_emulation_ratio" field in this mutation.
+func (m *GroupMutation) AddedKiroCacheCreationEmulationRatio() (r float64, exists bool) {
+	v := m.addkiro_cache_creation_emulation_ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetKiroCacheCreationEmulationRatio resets all changes to the "kiro_cache_creation_emulation_ratio" field.
+func (m *GroupMutation) ResetKiroCacheCreationEmulationRatio() {
+	m.kiro_cache_creation_emulation_ratio = nil
+	m.addkiro_cache_creation_emulation_ratio = nil
+}
+
+// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
+func (m *GroupMutation) SetKiroCacheReadEmulationRatio(f float64) {
+	m.kiro_cache_read_emulation_ratio = &f
+	m.addkiro_cache_read_emulation_ratio = nil
+}
+
+// KiroCacheReadEmulationRatio returns the value of the "kiro_cache_read_emulation_ratio" field in the mutation.
+func (m *GroupMutation) KiroCacheReadEmulationRatio() (r float64, exists bool) {
+	v := m.kiro_cache_read_emulation_ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKiroCacheReadEmulationRatio returns the old "kiro_cache_read_emulation_ratio" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldKiroCacheReadEmulationRatio(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKiroCacheReadEmulationRatio is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKiroCacheReadEmulationRatio requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKiroCacheReadEmulationRatio: %w", err)
+	}
+	return oldValue.KiroCacheReadEmulationRatio, nil
+}
+
+// AddKiroCacheReadEmulationRatio adds f to the "kiro_cache_read_emulation_ratio" field.
+func (m *GroupMutation) AddKiroCacheReadEmulationRatio(f float64) {
+	if m.addkiro_cache_read_emulation_ratio != nil {
+		*m.addkiro_cache_read_emulation_ratio += f
+	} else {
+		m.addkiro_cache_read_emulation_ratio = &f
+	}
+}
+
+// AddedKiroCacheReadEmulationRatio returns the value that was added to the "kiro_cache_read_emulation_ratio" field in this mutation.
+func (m *GroupMutation) AddedKiroCacheReadEmulationRatio() (r float64, exists bool) {
+	v := m.addkiro_cache_read_emulation_ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetKiroCacheReadEmulationRatio resets all changes to the "kiro_cache_read_emulation_ratio" field.
+func (m *GroupMutation) ResetKiroCacheReadEmulationRatio() {
+	m.kiro_cache_read_emulation_ratio = nil
+	m.addkiro_cache_read_emulation_ratio = nil
+}
+
 // SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
 func (m *GroupMutation) SetKiroEndpointMode(s string) {
 	m.kiro_endpoint_mode = &s
@@ -23581,6 +24971,154 @@ func (m *GroupMutation) OldKiroEndpointMode(ctx context.Context) (v string, err 
 // ResetKiroEndpointMode resets all changes to the "kiro_endpoint_mode" field.
 func (m *GroupMutation) ResetKiroEndpointMode() {
 	m.kiro_endpoint_mode = nil
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (m *GroupMutation) SetProfitControlEnabled(b bool) {
+	m.profit_control_enabled = &b
+}
+
+// ProfitControlEnabled returns the value of the "profit_control_enabled" field in the mutation.
+func (m *GroupMutation) ProfitControlEnabled() (r bool, exists bool) {
+	v := m.profit_control_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProfitControlEnabled returns the old "profit_control_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldProfitControlEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProfitControlEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProfitControlEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProfitControlEnabled: %w", err)
+	}
+	return oldValue.ProfitControlEnabled, nil
+}
+
+// ResetProfitControlEnabled resets all changes to the "profit_control_enabled" field.
+func (m *GroupMutation) ResetProfitControlEnabled() {
+	m.profit_control_enabled = nil
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (m *GroupMutation) SetProfitMinMargin(f float64) {
+	m.profit_min_margin = &f
+	m.addprofit_min_margin = nil
+}
+
+// ProfitMinMargin returns the value of the "profit_min_margin" field in the mutation.
+func (m *GroupMutation) ProfitMinMargin() (r float64, exists bool) {
+	v := m.profit_min_margin
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProfitMinMargin returns the old "profit_min_margin" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldProfitMinMargin(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProfitMinMargin is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProfitMinMargin requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProfitMinMargin: %w", err)
+	}
+	return oldValue.ProfitMinMargin, nil
+}
+
+// AddProfitMinMargin adds f to the "profit_min_margin" field.
+func (m *GroupMutation) AddProfitMinMargin(f float64) {
+	if m.addprofit_min_margin != nil {
+		*m.addprofit_min_margin += f
+	} else {
+		m.addprofit_min_margin = &f
+	}
+}
+
+// AddedProfitMinMargin returns the value that was added to the "profit_min_margin" field in this mutation.
+func (m *GroupMutation) AddedProfitMinMargin() (r float64, exists bool) {
+	v := m.addprofit_min_margin
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetProfitMinMargin resets all changes to the "profit_min_margin" field.
+func (m *GroupMutation) ResetProfitMinMargin() {
+	m.profit_min_margin = nil
+	m.addprofit_min_margin = nil
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (m *GroupMutation) SetProfitSafetyBuffer(f float64) {
+	m.profit_safety_buffer = &f
+	m.addprofit_safety_buffer = nil
+}
+
+// ProfitSafetyBuffer returns the value of the "profit_safety_buffer" field in the mutation.
+func (m *GroupMutation) ProfitSafetyBuffer() (r float64, exists bool) {
+	v := m.profit_safety_buffer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProfitSafetyBuffer returns the old "profit_safety_buffer" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldProfitSafetyBuffer(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProfitSafetyBuffer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProfitSafetyBuffer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProfitSafetyBuffer: %w", err)
+	}
+	return oldValue.ProfitSafetyBuffer, nil
+}
+
+// AddProfitSafetyBuffer adds f to the "profit_safety_buffer" field.
+func (m *GroupMutation) AddProfitSafetyBuffer(f float64) {
+	if m.addprofit_safety_buffer != nil {
+		*m.addprofit_safety_buffer += f
+	} else {
+		m.addprofit_safety_buffer = &f
+	}
+}
+
+// AddedProfitSafetyBuffer returns the value that was added to the "profit_safety_buffer" field in this mutation.
+func (m *GroupMutation) AddedProfitSafetyBuffer() (r float64, exists bool) {
+	v := m.addprofit_safety_buffer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetProfitSafetyBuffer resets all changes to the "profit_safety_buffer" field.
+func (m *GroupMutation) ResetProfitSafetyBuffer() {
+	m.profit_safety_buffer = nil
+	m.addprofit_safety_buffer = nil
 }
 
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
@@ -23941,7 +25479,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 53)
+	fields := make([]string, 0, 63)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -23977,6 +25515,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, group.FieldStatus)
+	}
+	if m.duplicate_operation_id != nil {
+		fields = append(fields, group.FieldDuplicateOperationID)
 	}
 	if m.platform != nil {
 		fields = append(fields, group.FieldPlatform)
@@ -24068,6 +25609,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.allow_messages_dispatch != nil {
 		fields = append(fields, group.FieldAllowMessagesDispatch)
 	}
+	if m.allow_live != nil {
+		fields = append(fields, group.FieldAllowLive)
+	}
 	if m.require_oauth_only != nil {
 		fields = append(fields, group.FieldRequireOauthOnly)
 	}
@@ -24086,6 +25630,12 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.max_reasoning_effort != nil {
+		fields = append(fields, group.FieldMaxReasoningEffort)
+	}
+	if m.reasoning_effort_mappings != nil {
+		fields = append(fields, group.FieldReasoningEffortMappings)
+	}
 	if m.kiro_cache_emulation_enabled != nil {
 		fields = append(fields, group.FieldKiroCacheEmulationEnabled)
 	}
@@ -24098,8 +25648,26 @@ func (m *GroupMutation) Fields() []string {
 	if m.kiro_cache_emulation_ratio != nil {
 		fields = append(fields, group.FieldKiroCacheEmulationRatio)
 	}
+	if m.kiro_cache_emulation_mode != nil {
+		fields = append(fields, group.FieldKiroCacheEmulationMode)
+	}
+	if m.kiro_cache_creation_emulation_ratio != nil {
+		fields = append(fields, group.FieldKiroCacheCreationEmulationRatio)
+	}
+	if m.kiro_cache_read_emulation_ratio != nil {
+		fields = append(fields, group.FieldKiroCacheReadEmulationRatio)
+	}
 	if m.kiro_endpoint_mode != nil {
 		fields = append(fields, group.FieldKiroEndpointMode)
+	}
+	if m.profit_control_enabled != nil {
+		fields = append(fields, group.FieldProfitControlEnabled)
+	}
+	if m.profit_min_margin != nil {
+		fields = append(fields, group.FieldProfitMinMargin)
+	}
+	if m.profit_safety_buffer != nil {
+		fields = append(fields, group.FieldProfitSafetyBuffer)
 	}
 	return fields
 }
@@ -24133,6 +25701,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.IsExclusive()
 	case group.FieldStatus:
 		return m.Status()
+	case group.FieldDuplicateOperationID:
+		return m.DuplicateOperationID()
 	case group.FieldPlatform:
 		return m.Platform()
 	case group.FieldSubscriptionType:
@@ -24193,6 +25763,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.SortOrder()
 	case group.FieldAllowMessagesDispatch:
 		return m.AllowMessagesDispatch()
+	case group.FieldAllowLive:
+		return m.AllowLive()
 	case group.FieldRequireOauthOnly:
 		return m.RequireOauthOnly()
 	case group.FieldRequirePrivacySet:
@@ -24205,6 +25777,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelsListConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldMaxReasoningEffort:
+		return m.MaxReasoningEffort()
+	case group.FieldReasoningEffortMappings:
+		return m.ReasoningEffortMappings()
 	case group.FieldKiroCacheEmulationEnabled:
 		return m.KiroCacheEmulationEnabled()
 	case group.FieldKiroAutoStickyEnabled:
@@ -24213,8 +25789,20 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.KiroStickySessionTTLSeconds()
 	case group.FieldKiroCacheEmulationRatio:
 		return m.KiroCacheEmulationRatio()
+	case group.FieldKiroCacheEmulationMode:
+		return m.KiroCacheEmulationMode()
+	case group.FieldKiroCacheCreationEmulationRatio:
+		return m.KiroCacheCreationEmulationRatio()
+	case group.FieldKiroCacheReadEmulationRatio:
+		return m.KiroCacheReadEmulationRatio()
 	case group.FieldKiroEndpointMode:
 		return m.KiroEndpointMode()
+	case group.FieldProfitControlEnabled:
+		return m.ProfitControlEnabled()
+	case group.FieldProfitMinMargin:
+		return m.ProfitMinMargin()
+	case group.FieldProfitSafetyBuffer:
+		return m.ProfitSafetyBuffer()
 	}
 	return nil, false
 }
@@ -24248,6 +25836,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldIsExclusive(ctx)
 	case group.FieldStatus:
 		return m.OldStatus(ctx)
+	case group.FieldDuplicateOperationID:
+		return m.OldDuplicateOperationID(ctx)
 	case group.FieldPlatform:
 		return m.OldPlatform(ctx)
 	case group.FieldSubscriptionType:
@@ -24308,6 +25898,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSortOrder(ctx)
 	case group.FieldAllowMessagesDispatch:
 		return m.OldAllowMessagesDispatch(ctx)
+	case group.FieldAllowLive:
+		return m.OldAllowLive(ctx)
 	case group.FieldRequireOauthOnly:
 		return m.OldRequireOauthOnly(ctx)
 	case group.FieldRequirePrivacySet:
@@ -24320,6 +25912,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelsListConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldMaxReasoningEffort:
+		return m.OldMaxReasoningEffort(ctx)
+	case group.FieldReasoningEffortMappings:
+		return m.OldReasoningEffortMappings(ctx)
 	case group.FieldKiroCacheEmulationEnabled:
 		return m.OldKiroCacheEmulationEnabled(ctx)
 	case group.FieldKiroAutoStickyEnabled:
@@ -24328,8 +25924,20 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldKiroStickySessionTTLSeconds(ctx)
 	case group.FieldKiroCacheEmulationRatio:
 		return m.OldKiroCacheEmulationRatio(ctx)
+	case group.FieldKiroCacheEmulationMode:
+		return m.OldKiroCacheEmulationMode(ctx)
+	case group.FieldKiroCacheCreationEmulationRatio:
+		return m.OldKiroCacheCreationEmulationRatio(ctx)
+	case group.FieldKiroCacheReadEmulationRatio:
+		return m.OldKiroCacheReadEmulationRatio(ctx)
 	case group.FieldKiroEndpointMode:
 		return m.OldKiroEndpointMode(ctx)
+	case group.FieldProfitControlEnabled:
+		return m.OldProfitControlEnabled(ctx)
+	case group.FieldProfitMinMargin:
+		return m.OldProfitMinMargin(ctx)
+	case group.FieldProfitSafetyBuffer:
+		return m.OldProfitSafetyBuffer(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -24422,6 +26030,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case group.FieldDuplicateOperationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDuplicateOperationID(v)
 		return nil
 	case group.FieldPlatform:
 		v, ok := value.(string)
@@ -24633,6 +26248,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetAllowMessagesDispatch(v)
 		return nil
+	case group.FieldAllowLive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowLive(v)
+		return nil
 	case group.FieldRequireOauthOnly:
 		v, ok := value.(bool)
 		if !ok {
@@ -24675,6 +26297,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case group.FieldMaxReasoningEffort:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxReasoningEffort(v)
+		return nil
+	case group.FieldReasoningEffortMappings:
+		v, ok := value.([]domain.ReasoningEffortMapping)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReasoningEffortMappings(v)
+		return nil
 	case group.FieldKiroCacheEmulationEnabled:
 		v, ok := value.(bool)
 		if !ok {
@@ -24703,12 +26339,54 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetKiroCacheEmulationRatio(v)
 		return nil
+	case group.FieldKiroCacheEmulationMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKiroCacheEmulationMode(v)
+		return nil
+	case group.FieldKiroCacheCreationEmulationRatio:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKiroCacheCreationEmulationRatio(v)
+		return nil
+	case group.FieldKiroCacheReadEmulationRatio:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKiroCacheReadEmulationRatio(v)
+		return nil
 	case group.FieldKiroEndpointMode:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetKiroEndpointMode(v)
+		return nil
+	case group.FieldProfitControlEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProfitControlEnabled(v)
+		return nil
+	case group.FieldProfitMinMargin:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProfitMinMargin(v)
+		return nil
+	case group.FieldProfitSafetyBuffer:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProfitSafetyBuffer(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -24787,6 +26465,18 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addkiro_cache_emulation_ratio != nil {
 		fields = append(fields, group.FieldKiroCacheEmulationRatio)
 	}
+	if m.addkiro_cache_creation_emulation_ratio != nil {
+		fields = append(fields, group.FieldKiroCacheCreationEmulationRatio)
+	}
+	if m.addkiro_cache_read_emulation_ratio != nil {
+		fields = append(fields, group.FieldKiroCacheReadEmulationRatio)
+	}
+	if m.addprofit_min_margin != nil {
+		fields = append(fields, group.FieldProfitMinMargin)
+	}
+	if m.addprofit_safety_buffer != nil {
+		fields = append(fields, group.FieldProfitSafetyBuffer)
+	}
 	return fields
 }
 
@@ -24841,6 +26531,14 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedKiroStickySessionTTLSeconds()
 	case group.FieldKiroCacheEmulationRatio:
 		return m.AddedKiroCacheEmulationRatio()
+	case group.FieldKiroCacheCreationEmulationRatio:
+		return m.AddedKiroCacheCreationEmulationRatio()
+	case group.FieldKiroCacheReadEmulationRatio:
+		return m.AddedKiroCacheReadEmulationRatio()
+	case group.FieldProfitMinMargin:
+		return m.AddedProfitMinMargin()
+	case group.FieldProfitSafetyBuffer:
+		return m.AddedProfitSafetyBuffer()
 	}
 	return nil, false
 }
@@ -25011,6 +26709,34 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddKiroCacheEmulationRatio(v)
 		return nil
+	case group.FieldKiroCacheCreationEmulationRatio:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddKiroCacheCreationEmulationRatio(v)
+		return nil
+	case group.FieldKiroCacheReadEmulationRatio:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddKiroCacheReadEmulationRatio(v)
+		return nil
+	case group.FieldProfitMinMargin:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProfitMinMargin(v)
+		return nil
+	case group.FieldProfitSafetyBuffer:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProfitSafetyBuffer(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group numeric field %s", name)
 }
@@ -25024,6 +26750,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(group.FieldDescription) {
 		fields = append(fields, group.FieldDescription)
+	}
+	if m.FieldCleared(group.FieldDuplicateOperationID) {
+		fields = append(fields, group.FieldDuplicateOperationID)
 	}
 	if m.FieldCleared(group.FieldDailyLimitUsd) {
 		fields = append(fields, group.FieldDailyLimitUsd)
@@ -25083,6 +26812,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldDescription:
 		m.ClearDescription()
+		return nil
+	case group.FieldDuplicateOperationID:
+		m.ClearDuplicateOperationID()
 		return nil
 	case group.FieldDailyLimitUsd:
 		m.ClearDailyLimitUsd()
@@ -25166,6 +26898,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case group.FieldDuplicateOperationID:
+		m.ResetDuplicateOperationID()
 		return nil
 	case group.FieldPlatform:
 		m.ResetPlatform()
@@ -25257,6 +26992,9 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldAllowMessagesDispatch:
 		m.ResetAllowMessagesDispatch()
 		return nil
+	case group.FieldAllowLive:
+		m.ResetAllowLive()
+		return nil
 	case group.FieldRequireOauthOnly:
 		m.ResetRequireOauthOnly()
 		return nil
@@ -25275,6 +27013,12 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
 		return nil
+	case group.FieldMaxReasoningEffort:
+		m.ResetMaxReasoningEffort()
+		return nil
+	case group.FieldReasoningEffortMappings:
+		m.ResetReasoningEffortMappings()
+		return nil
 	case group.FieldKiroCacheEmulationEnabled:
 		m.ResetKiroCacheEmulationEnabled()
 		return nil
@@ -25287,8 +27031,26 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldKiroCacheEmulationRatio:
 		m.ResetKiroCacheEmulationRatio()
 		return nil
+	case group.FieldKiroCacheEmulationMode:
+		m.ResetKiroCacheEmulationMode()
+		return nil
+	case group.FieldKiroCacheCreationEmulationRatio:
+		m.ResetKiroCacheCreationEmulationRatio()
+		return nil
+	case group.FieldKiroCacheReadEmulationRatio:
+		m.ResetKiroCacheReadEmulationRatio()
+		return nil
 	case group.FieldKiroEndpointMode:
 		m.ResetKiroEndpointMode()
+		return nil
+	case group.FieldProfitControlEnabled:
+		m.ResetProfitControlEnabled()
+		return nil
+	case group.FieldProfitMinMargin:
+		m.ResetProfitMinMargin()
+		return nil
+	case group.FieldProfitSafetyBuffer:
+		m.ResetProfitSafetyBuffer()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -35070,6 +36832,1148 @@ func (m *PromoCodeUsageMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown PromoCodeUsage edge %s", name)
+}
+
+// PromptRuleMutation represents an operation that mutates the PromptRule nodes in the graph.
+type PromptRuleMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	created_at      *time.Time
+	updated_at      *time.Time
+	name            *string
+	description     *string
+	enabled         *bool
+	_order          *int
+	add_order       *int
+	role            *string
+	content         *string
+	action          *string
+	match_pattern   *string
+	match_mode      *string
+	group_ids       *[]int64
+	appendgroup_ids []int64
+	model_ids       *[]string
+	appendmodel_ids []string
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*PromptRule, error)
+	predicates      []predicate.PromptRule
+}
+
+var _ ent.Mutation = (*PromptRuleMutation)(nil)
+
+// promptruleOption allows management of the mutation configuration using functional options.
+type promptruleOption func(*PromptRuleMutation)
+
+// newPromptRuleMutation creates new mutation for the PromptRule entity.
+func newPromptRuleMutation(c config, op Op, opts ...promptruleOption) *PromptRuleMutation {
+	m := &PromptRuleMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePromptRule,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPromptRuleID sets the ID field of the mutation.
+func withPromptRuleID(id int64) promptruleOption {
+	return func(m *PromptRuleMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PromptRule
+		)
+		m.oldValue = func(ctx context.Context) (*PromptRule, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PromptRule.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPromptRule sets the old PromptRule of the mutation.
+func withPromptRule(node *PromptRule) promptruleOption {
+	return func(m *PromptRuleMutation) {
+		m.oldValue = func(context.Context) (*PromptRule, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PromptRuleMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PromptRuleMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PromptRuleMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PromptRuleMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PromptRule.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PromptRuleMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PromptRuleMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PromptRuleMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *PromptRuleMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *PromptRuleMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *PromptRuleMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetName sets the "name" field.
+func (m *PromptRuleMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *PromptRuleMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *PromptRuleMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *PromptRuleMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *PromptRuleMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldDescription(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ClearDescription clears the value of the "description" field.
+func (m *PromptRuleMutation) ClearDescription() {
+	m.description = nil
+	m.clearedFields[promptrule.FieldDescription] = struct{}{}
+}
+
+// DescriptionCleared returns if the "description" field was cleared in this mutation.
+func (m *PromptRuleMutation) DescriptionCleared() bool {
+	_, ok := m.clearedFields[promptrule.FieldDescription]
+	return ok
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *PromptRuleMutation) ResetDescription() {
+	m.description = nil
+	delete(m.clearedFields, promptrule.FieldDescription)
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *PromptRuleMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *PromptRuleMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *PromptRuleMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetOrder sets the "order" field.
+func (m *PromptRuleMutation) SetOrder(i int) {
+	m._order = &i
+	m.add_order = nil
+}
+
+// Order returns the value of the "order" field in the mutation.
+func (m *PromptRuleMutation) Order() (r int, exists bool) {
+	v := m._order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrder returns the old "order" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrder: %w", err)
+	}
+	return oldValue.Order, nil
+}
+
+// AddOrder adds i to the "order" field.
+func (m *PromptRuleMutation) AddOrder(i int) {
+	if m.add_order != nil {
+		*m.add_order += i
+	} else {
+		m.add_order = &i
+	}
+}
+
+// AddedOrder returns the value that was added to the "order" field in this mutation.
+func (m *PromptRuleMutation) AddedOrder() (r int, exists bool) {
+	v := m.add_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOrder resets all changes to the "order" field.
+func (m *PromptRuleMutation) ResetOrder() {
+	m._order = nil
+	m.add_order = nil
+}
+
+// SetRole sets the "role" field.
+func (m *PromptRuleMutation) SetRole(s string) {
+	m.role = &s
+}
+
+// Role returns the value of the "role" field in the mutation.
+func (m *PromptRuleMutation) Role() (r string, exists bool) {
+	v := m.role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRole returns the old "role" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldRole(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRole is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRole requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRole: %w", err)
+	}
+	return oldValue.Role, nil
+}
+
+// ResetRole resets all changes to the "role" field.
+func (m *PromptRuleMutation) ResetRole() {
+	m.role = nil
+}
+
+// SetContent sets the "content" field.
+func (m *PromptRuleMutation) SetContent(s string) {
+	m.content = &s
+}
+
+// Content returns the value of the "content" field in the mutation.
+func (m *PromptRuleMutation) Content() (r string, exists bool) {
+	v := m.content
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContent returns the old "content" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldContent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContent: %w", err)
+	}
+	return oldValue.Content, nil
+}
+
+// ResetContent resets all changes to the "content" field.
+func (m *PromptRuleMutation) ResetContent() {
+	m.content = nil
+}
+
+// SetAction sets the "action" field.
+func (m *PromptRuleMutation) SetAction(s string) {
+	m.action = &s
+}
+
+// Action returns the value of the "action" field in the mutation.
+func (m *PromptRuleMutation) Action() (r string, exists bool) {
+	v := m.action
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAction returns the old "action" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldAction(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAction: %w", err)
+	}
+	return oldValue.Action, nil
+}
+
+// ResetAction resets all changes to the "action" field.
+func (m *PromptRuleMutation) ResetAction() {
+	m.action = nil
+}
+
+// SetMatchPattern sets the "match_pattern" field.
+func (m *PromptRuleMutation) SetMatchPattern(s string) {
+	m.match_pattern = &s
+}
+
+// MatchPattern returns the value of the "match_pattern" field in the mutation.
+func (m *PromptRuleMutation) MatchPattern() (r string, exists bool) {
+	v := m.match_pattern
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMatchPattern returns the old "match_pattern" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldMatchPattern(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMatchPattern is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMatchPattern requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMatchPattern: %w", err)
+	}
+	return oldValue.MatchPattern, nil
+}
+
+// ClearMatchPattern clears the value of the "match_pattern" field.
+func (m *PromptRuleMutation) ClearMatchPattern() {
+	m.match_pattern = nil
+	m.clearedFields[promptrule.FieldMatchPattern] = struct{}{}
+}
+
+// MatchPatternCleared returns if the "match_pattern" field was cleared in this mutation.
+func (m *PromptRuleMutation) MatchPatternCleared() bool {
+	_, ok := m.clearedFields[promptrule.FieldMatchPattern]
+	return ok
+}
+
+// ResetMatchPattern resets all changes to the "match_pattern" field.
+func (m *PromptRuleMutation) ResetMatchPattern() {
+	m.match_pattern = nil
+	delete(m.clearedFields, promptrule.FieldMatchPattern)
+}
+
+// SetMatchMode sets the "match_mode" field.
+func (m *PromptRuleMutation) SetMatchMode(s string) {
+	m.match_mode = &s
+}
+
+// MatchMode returns the value of the "match_mode" field in the mutation.
+func (m *PromptRuleMutation) MatchMode() (r string, exists bool) {
+	v := m.match_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMatchMode returns the old "match_mode" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldMatchMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMatchMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMatchMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMatchMode: %w", err)
+	}
+	return oldValue.MatchMode, nil
+}
+
+// ClearMatchMode clears the value of the "match_mode" field.
+func (m *PromptRuleMutation) ClearMatchMode() {
+	m.match_mode = nil
+	m.clearedFields[promptrule.FieldMatchMode] = struct{}{}
+}
+
+// MatchModeCleared returns if the "match_mode" field was cleared in this mutation.
+func (m *PromptRuleMutation) MatchModeCleared() bool {
+	_, ok := m.clearedFields[promptrule.FieldMatchMode]
+	return ok
+}
+
+// ResetMatchMode resets all changes to the "match_mode" field.
+func (m *PromptRuleMutation) ResetMatchMode() {
+	m.match_mode = nil
+	delete(m.clearedFields, promptrule.FieldMatchMode)
+}
+
+// SetGroupIds sets the "group_ids" field.
+func (m *PromptRuleMutation) SetGroupIds(i []int64) {
+	m.group_ids = &i
+	m.appendgroup_ids = nil
+}
+
+// GroupIds returns the value of the "group_ids" field in the mutation.
+func (m *PromptRuleMutation) GroupIds() (r []int64, exists bool) {
+	v := m.group_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupIds returns the old "group_ids" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldGroupIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupIds: %w", err)
+	}
+	return oldValue.GroupIds, nil
+}
+
+// AppendGroupIds adds i to the "group_ids" field.
+func (m *PromptRuleMutation) AppendGroupIds(i []int64) {
+	m.appendgroup_ids = append(m.appendgroup_ids, i...)
+}
+
+// AppendedGroupIds returns the list of values that were appended to the "group_ids" field in this mutation.
+func (m *PromptRuleMutation) AppendedGroupIds() ([]int64, bool) {
+	if len(m.appendgroup_ids) == 0 {
+		return nil, false
+	}
+	return m.appendgroup_ids, true
+}
+
+// ClearGroupIds clears the value of the "group_ids" field.
+func (m *PromptRuleMutation) ClearGroupIds() {
+	m.group_ids = nil
+	m.appendgroup_ids = nil
+	m.clearedFields[promptrule.FieldGroupIds] = struct{}{}
+}
+
+// GroupIdsCleared returns if the "group_ids" field was cleared in this mutation.
+func (m *PromptRuleMutation) GroupIdsCleared() bool {
+	_, ok := m.clearedFields[promptrule.FieldGroupIds]
+	return ok
+}
+
+// ResetGroupIds resets all changes to the "group_ids" field.
+func (m *PromptRuleMutation) ResetGroupIds() {
+	m.group_ids = nil
+	m.appendgroup_ids = nil
+	delete(m.clearedFields, promptrule.FieldGroupIds)
+}
+
+// SetModelIds sets the "model_ids" field.
+func (m *PromptRuleMutation) SetModelIds(s []string) {
+	m.model_ids = &s
+	m.appendmodel_ids = nil
+}
+
+// ModelIds returns the value of the "model_ids" field in the mutation.
+func (m *PromptRuleMutation) ModelIds() (r []string, exists bool) {
+	v := m.model_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelIds returns the old "model_ids" field's value of the PromptRule entity.
+// If the PromptRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromptRuleMutation) OldModelIds(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelIds: %w", err)
+	}
+	return oldValue.ModelIds, nil
+}
+
+// AppendModelIds adds s to the "model_ids" field.
+func (m *PromptRuleMutation) AppendModelIds(s []string) {
+	m.appendmodel_ids = append(m.appendmodel_ids, s...)
+}
+
+// AppendedModelIds returns the list of values that were appended to the "model_ids" field in this mutation.
+func (m *PromptRuleMutation) AppendedModelIds() ([]string, bool) {
+	if len(m.appendmodel_ids) == 0 {
+		return nil, false
+	}
+	return m.appendmodel_ids, true
+}
+
+// ClearModelIds clears the value of the "model_ids" field.
+func (m *PromptRuleMutation) ClearModelIds() {
+	m.model_ids = nil
+	m.appendmodel_ids = nil
+	m.clearedFields[promptrule.FieldModelIds] = struct{}{}
+}
+
+// ModelIdsCleared returns if the "model_ids" field was cleared in this mutation.
+func (m *PromptRuleMutation) ModelIdsCleared() bool {
+	_, ok := m.clearedFields[promptrule.FieldModelIds]
+	return ok
+}
+
+// ResetModelIds resets all changes to the "model_ids" field.
+func (m *PromptRuleMutation) ResetModelIds() {
+	m.model_ids = nil
+	m.appendmodel_ids = nil
+	delete(m.clearedFields, promptrule.FieldModelIds)
+}
+
+// Where appends a list predicates to the PromptRuleMutation builder.
+func (m *PromptRuleMutation) Where(ps ...predicate.PromptRule) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PromptRuleMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PromptRuleMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PromptRule, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PromptRuleMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PromptRuleMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PromptRule).
+func (m *PromptRuleMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PromptRuleMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.created_at != nil {
+		fields = append(fields, promptrule.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, promptrule.FieldUpdatedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, promptrule.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, promptrule.FieldDescription)
+	}
+	if m.enabled != nil {
+		fields = append(fields, promptrule.FieldEnabled)
+	}
+	if m._order != nil {
+		fields = append(fields, promptrule.FieldOrder)
+	}
+	if m.role != nil {
+		fields = append(fields, promptrule.FieldRole)
+	}
+	if m.content != nil {
+		fields = append(fields, promptrule.FieldContent)
+	}
+	if m.action != nil {
+		fields = append(fields, promptrule.FieldAction)
+	}
+	if m.match_pattern != nil {
+		fields = append(fields, promptrule.FieldMatchPattern)
+	}
+	if m.match_mode != nil {
+		fields = append(fields, promptrule.FieldMatchMode)
+	}
+	if m.group_ids != nil {
+		fields = append(fields, promptrule.FieldGroupIds)
+	}
+	if m.model_ids != nil {
+		fields = append(fields, promptrule.FieldModelIds)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PromptRuleMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case promptrule.FieldCreatedAt:
+		return m.CreatedAt()
+	case promptrule.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case promptrule.FieldName:
+		return m.Name()
+	case promptrule.FieldDescription:
+		return m.Description()
+	case promptrule.FieldEnabled:
+		return m.Enabled()
+	case promptrule.FieldOrder:
+		return m.Order()
+	case promptrule.FieldRole:
+		return m.Role()
+	case promptrule.FieldContent:
+		return m.Content()
+	case promptrule.FieldAction:
+		return m.Action()
+	case promptrule.FieldMatchPattern:
+		return m.MatchPattern()
+	case promptrule.FieldMatchMode:
+		return m.MatchMode()
+	case promptrule.FieldGroupIds:
+		return m.GroupIds()
+	case promptrule.FieldModelIds:
+		return m.ModelIds()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PromptRuleMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case promptrule.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case promptrule.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case promptrule.FieldName:
+		return m.OldName(ctx)
+	case promptrule.FieldDescription:
+		return m.OldDescription(ctx)
+	case promptrule.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case promptrule.FieldOrder:
+		return m.OldOrder(ctx)
+	case promptrule.FieldRole:
+		return m.OldRole(ctx)
+	case promptrule.FieldContent:
+		return m.OldContent(ctx)
+	case promptrule.FieldAction:
+		return m.OldAction(ctx)
+	case promptrule.FieldMatchPattern:
+		return m.OldMatchPattern(ctx)
+	case promptrule.FieldMatchMode:
+		return m.OldMatchMode(ctx)
+	case promptrule.FieldGroupIds:
+		return m.OldGroupIds(ctx)
+	case promptrule.FieldModelIds:
+		return m.OldModelIds(ctx)
+	}
+	return nil, fmt.Errorf("unknown PromptRule field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PromptRuleMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case promptrule.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case promptrule.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case promptrule.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case promptrule.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case promptrule.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case promptrule.FieldOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrder(v)
+		return nil
+	case promptrule.FieldRole:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRole(v)
+		return nil
+	case promptrule.FieldContent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContent(v)
+		return nil
+	case promptrule.FieldAction:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAction(v)
+		return nil
+	case promptrule.FieldMatchPattern:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMatchPattern(v)
+		return nil
+	case promptrule.FieldMatchMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMatchMode(v)
+		return nil
+	case promptrule.FieldGroupIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupIds(v)
+		return nil
+	case promptrule.FieldModelIds:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelIds(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PromptRule field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PromptRuleMutation) AddedFields() []string {
+	var fields []string
+	if m.add_order != nil {
+		fields = append(fields, promptrule.FieldOrder)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PromptRuleMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case promptrule.FieldOrder:
+		return m.AddedOrder()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PromptRuleMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case promptrule.FieldOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOrder(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PromptRule numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PromptRuleMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(promptrule.FieldDescription) {
+		fields = append(fields, promptrule.FieldDescription)
+	}
+	if m.FieldCleared(promptrule.FieldMatchPattern) {
+		fields = append(fields, promptrule.FieldMatchPattern)
+	}
+	if m.FieldCleared(promptrule.FieldMatchMode) {
+		fields = append(fields, promptrule.FieldMatchMode)
+	}
+	if m.FieldCleared(promptrule.FieldGroupIds) {
+		fields = append(fields, promptrule.FieldGroupIds)
+	}
+	if m.FieldCleared(promptrule.FieldModelIds) {
+		fields = append(fields, promptrule.FieldModelIds)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PromptRuleMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PromptRuleMutation) ClearField(name string) error {
+	switch name {
+	case promptrule.FieldDescription:
+		m.ClearDescription()
+		return nil
+	case promptrule.FieldMatchPattern:
+		m.ClearMatchPattern()
+		return nil
+	case promptrule.FieldMatchMode:
+		m.ClearMatchMode()
+		return nil
+	case promptrule.FieldGroupIds:
+		m.ClearGroupIds()
+		return nil
+	case promptrule.FieldModelIds:
+		m.ClearModelIds()
+		return nil
+	}
+	return fmt.Errorf("unknown PromptRule nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PromptRuleMutation) ResetField(name string) error {
+	switch name {
+	case promptrule.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case promptrule.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case promptrule.FieldName:
+		m.ResetName()
+		return nil
+	case promptrule.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case promptrule.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case promptrule.FieldOrder:
+		m.ResetOrder()
+		return nil
+	case promptrule.FieldRole:
+		m.ResetRole()
+		return nil
+	case promptrule.FieldContent:
+		m.ResetContent()
+		return nil
+	case promptrule.FieldAction:
+		m.ResetAction()
+		return nil
+	case promptrule.FieldMatchPattern:
+		m.ResetMatchPattern()
+		return nil
+	case promptrule.FieldMatchMode:
+		m.ResetMatchMode()
+		return nil
+	case promptrule.FieldGroupIds:
+		m.ResetGroupIds()
+		return nil
+	case promptrule.FieldModelIds:
+		m.ResetModelIds()
+		return nil
+	}
+	return fmt.Errorf("unknown PromptRule field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PromptRuleMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PromptRuleMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PromptRuleMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PromptRuleMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PromptRuleMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PromptRuleMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PromptRuleMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PromptRule unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PromptRuleMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PromptRule edge %s", name)
 }
 
 // ProxyMutation represents an operation that mutates the Proxy nodes in the graph.

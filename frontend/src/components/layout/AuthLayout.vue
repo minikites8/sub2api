@@ -9,7 +9,7 @@
           <div
             class="auth-logo-surface mb-4 inline-flex h-14 w-14 items-center justify-center overflow-hidden"
           >
-            <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </div>
           <h1 class="mb-2 text-3xl font-semibold text-primary-700 dark:text-primary-300">
             {{ siteName }}

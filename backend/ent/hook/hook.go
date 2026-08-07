@@ -177,6 +177,18 @@ func (f ChannelMonitorRequestTemplateFunc) Mutate(ctx context.Context, m ent.Mut
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorRequestTemplateMutation", m)
 }
 
+// The CompositeModelRouteFunc type is an adapter to allow the use of ordinary
+// function as CompositeModelRoute mutator.
+type CompositeModelRouteFunc func(context.Context, *ent.CompositeModelRouteMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CompositeModelRouteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CompositeModelRouteMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CompositeModelRouteMutation", m)
+}
+
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary
 // function as ErrorPassthroughRule mutator.
 type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleMutation) (ent.Value, error)
@@ -295,6 +307,18 @@ func (f PromoCodeUsageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PromoCodeUsageMutation", m)
+}
+
+// The PromptRuleFunc type is an adapter to allow the use of ordinary
+// function as PromptRule mutator.
+type PromptRuleFunc func(context.Context, *ent.PromptRuleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PromptRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PromptRuleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PromptRuleMutation", m)
 }
 
 // The ProxyFunc type is an adapter to allow the use of ordinary

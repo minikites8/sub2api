@@ -14,7 +14,7 @@
         class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow transition-opacity hover:opacity-80"
         @click="handleMenuItemClick(homePath)"
       >
-        <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+        <img v-if="settingsLoaded" :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
       </router-link>
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
         <router-link
@@ -679,6 +679,21 @@ const PriceTagIcon = {
     )
 }
 
+const PromptIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z'
+        })
+      ]
+    )
+}
+
 const ChevronDownIcon = {
   render: () =>
     h(
@@ -836,9 +851,21 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    { path: '/admin/prompt-rules', label: t('nav.promptRules'), icon: PromptIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
-    { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
+    {
+      path: '/admin/security-audit',
+      label: t('nav.securityAudit'),
+      icon: ShieldIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      featureFlag: flagRiskControl,
+      children: [
+        { path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon },
+        { path: '/admin/prompt-audit', label: t('nav.promptAudit'), icon: ShieldIcon },
+      ],
+    },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
     {
@@ -868,7 +895,8 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
-    { path: '/admin/daily-checkins', label: t('nav.dailyCheckins'), icon: GiftIcon, hideInSimpleMode: true }
+    { path: '/admin/daily-checkins', label: t('nav.dailyCheckins'), icon: GiftIcon, hideInSimpleMode: true },
+    { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 
   const visible = applyFeatureFlags(baseItems)

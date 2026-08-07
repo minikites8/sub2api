@@ -189,6 +189,20 @@ func (_c *GroupCreate) SetNillableStatus(v *string) *GroupCreate {
 	return _c
 }
 
+// SetDuplicateOperationID sets the "duplicate_operation_id" field.
+func (_c *GroupCreate) SetDuplicateOperationID(v string) *GroupCreate {
+	_c.mutation.SetDuplicateOperationID(v)
+	return _c
+}
+
+// SetNillableDuplicateOperationID sets the "duplicate_operation_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDuplicateOperationID(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetDuplicateOperationID(*v)
+	}
+	return _c
+}
+
 // SetPlatform sets the "platform" field.
 func (_c *GroupCreate) SetPlatform(v string) *GroupCreate {
 	_c.mutation.SetPlatform(v)
@@ -593,6 +607,20 @@ func (_c *GroupCreate) SetNillableAllowMessagesDispatch(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (_c *GroupCreate) SetAllowLive(v bool) *GroupCreate {
+	_c.mutation.SetAllowLive(v)
+	return _c
+}
+
+// SetNillableAllowLive sets the "allow_live" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowLive(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowLive(*v)
+	}
+	return _c
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_c *GroupCreate) SetRequireOauthOnly(v bool) *GroupCreate {
 	_c.mutation.SetRequireOauthOnly(v)
@@ -677,6 +705,26 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (_c *GroupCreate) SetMaxReasoningEffort(v string) *GroupCreate {
+	_c.mutation.SetMaxReasoningEffort(v)
+	return _c
+}
+
+// SetNillableMaxReasoningEffort sets the "max_reasoning_effort" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableMaxReasoningEffort(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetMaxReasoningEffort(*v)
+	}
+	return _c
+}
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupCreate {
+	_c.mutation.SetReasoningEffortMappings(v)
+	return _c
+}
+
 // SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
 func (_c *GroupCreate) SetKiroCacheEmulationEnabled(v bool) *GroupCreate {
 	_c.mutation.SetKiroCacheEmulationEnabled(v)
@@ -733,6 +781,48 @@ func (_c *GroupCreate) SetNillableKiroCacheEmulationRatio(v *float64) *GroupCrea
 	return _c
 }
 
+// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
+func (_c *GroupCreate) SetKiroCacheEmulationMode(v string) *GroupCreate {
+	_c.mutation.SetKiroCacheEmulationMode(v)
+	return _c
+}
+
+// SetNillableKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableKiroCacheEmulationMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetKiroCacheEmulationMode(*v)
+	}
+	return _c
+}
+
+// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
+func (_c *GroupCreate) SetKiroCacheCreationEmulationRatio(v float64) *GroupCreate {
+	_c.mutation.SetKiroCacheCreationEmulationRatio(v)
+	return _c
+}
+
+// SetNillableKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableKiroCacheCreationEmulationRatio(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetKiroCacheCreationEmulationRatio(*v)
+	}
+	return _c
+}
+
+// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
+func (_c *GroupCreate) SetKiroCacheReadEmulationRatio(v float64) *GroupCreate {
+	_c.mutation.SetKiroCacheReadEmulationRatio(v)
+	return _c
+}
+
+// SetNillableKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableKiroCacheReadEmulationRatio(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetKiroCacheReadEmulationRatio(*v)
+	}
+	return _c
+}
+
 // SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
 func (_c *GroupCreate) SetKiroEndpointMode(v string) *GroupCreate {
 	_c.mutation.SetKiroEndpointMode(v)
@@ -743,6 +833,48 @@ func (_c *GroupCreate) SetKiroEndpointMode(v string) *GroupCreate {
 func (_c *GroupCreate) SetNillableKiroEndpointMode(v *string) *GroupCreate {
 	if v != nil {
 		_c.SetKiroEndpointMode(*v)
+	}
+	return _c
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (_c *GroupCreate) SetProfitControlEnabled(v bool) *GroupCreate {
+	_c.mutation.SetProfitControlEnabled(v)
+	return _c
+}
+
+// SetNillableProfitControlEnabled sets the "profit_control_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitControlEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetProfitControlEnabled(*v)
+	}
+	return _c
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (_c *GroupCreate) SetProfitMinMargin(v float64) *GroupCreate {
+	_c.mutation.SetProfitMinMargin(v)
+	return _c
+}
+
+// SetNillableProfitMinMargin sets the "profit_min_margin" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitMinMargin(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetProfitMinMargin(*v)
+	}
+	return _c
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (_c *GroupCreate) SetProfitSafetyBuffer(v float64) *GroupCreate {
+	_c.mutation.SetProfitSafetyBuffer(v)
+	return _c
+}
+
+// SetNillableProfitSafetyBuffer sets the "profit_safety_buffer" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitSafetyBuffer(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetProfitSafetyBuffer(*v)
 	}
 	return _c
 }
@@ -984,6 +1116,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowMessagesDispatch
 		_c.mutation.SetAllowMessagesDispatch(v)
 	}
+	if _, ok := _c.mutation.AllowLive(); !ok {
+		v := group.DefaultAllowLive
+		_c.mutation.SetAllowLive(v)
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		v := group.DefaultRequireOauthOnly
 		_c.mutation.SetRequireOauthOnly(v)
@@ -1008,6 +1144,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
+		v := group.DefaultMaxReasoningEffort
+		_c.mutation.SetMaxReasoningEffort(v)
+	}
+	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
+		v := group.DefaultReasoningEffortMappings
+		_c.mutation.SetReasoningEffortMappings(v)
+	}
 	if _, ok := _c.mutation.KiroCacheEmulationEnabled(); !ok {
 		v := group.DefaultKiroCacheEmulationEnabled
 		_c.mutation.SetKiroCacheEmulationEnabled(v)
@@ -1024,9 +1168,33 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultKiroCacheEmulationRatio
 		_c.mutation.SetKiroCacheEmulationRatio(v)
 	}
+	if _, ok := _c.mutation.KiroCacheEmulationMode(); !ok {
+		v := group.DefaultKiroCacheEmulationMode
+		_c.mutation.SetKiroCacheEmulationMode(v)
+	}
+	if _, ok := _c.mutation.KiroCacheCreationEmulationRatio(); !ok {
+		v := group.DefaultKiroCacheCreationEmulationRatio
+		_c.mutation.SetKiroCacheCreationEmulationRatio(v)
+	}
+	if _, ok := _c.mutation.KiroCacheReadEmulationRatio(); !ok {
+		v := group.DefaultKiroCacheReadEmulationRatio
+		_c.mutation.SetKiroCacheReadEmulationRatio(v)
+	}
 	if _, ok := _c.mutation.KiroEndpointMode(); !ok {
 		v := group.DefaultKiroEndpointMode
 		_c.mutation.SetKiroEndpointMode(v)
+	}
+	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
+		v := group.DefaultProfitControlEnabled
+		_c.mutation.SetProfitControlEnabled(v)
+	}
+	if _, ok := _c.mutation.ProfitMinMargin(); !ok {
+		v := group.DefaultProfitMinMargin
+		_c.mutation.SetProfitMinMargin(v)
+	}
+	if _, ok := _c.mutation.ProfitSafetyBuffer(); !ok {
+		v := group.DefaultProfitSafetyBuffer
+		_c.mutation.SetProfitSafetyBuffer(v)
 	}
 	return nil
 }
@@ -1081,6 +1249,11 @@ func (_c *GroupCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := group.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.DuplicateOperationID(); ok {
+		if err := group.DuplicateOperationIDValidator(v); err != nil {
+			return &ValidationError{Name: "duplicate_operation_id", err: fmt.Errorf(`ent: validator failed for field "Group.duplicate_operation_id": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Platform(); !ok {
@@ -1144,6 +1317,9 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
 		return &ValidationError{Name: "allow_messages_dispatch", err: errors.New(`ent: missing required field "Group.allow_messages_dispatch"`)}
 	}
+	if _, ok := _c.mutation.AllowLive(); !ok {
+		return &ValidationError{Name: "allow_live", err: errors.New(`ent: missing required field "Group.allow_live"`)}
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
 	}
@@ -1167,6 +1343,17 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
 	}
+	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
+		return &ValidationError{Name: "max_reasoning_effort", err: errors.New(`ent: missing required field "Group.max_reasoning_effort"`)}
+	}
+	if v, ok := _c.mutation.MaxReasoningEffort(); ok {
+		if err := group.MaxReasoningEffortValidator(v); err != nil {
+			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
+		return &ValidationError{Name: "reasoning_effort_mappings", err: errors.New(`ent: missing required field "Group.reasoning_effort_mappings"`)}
+	}
 	if _, ok := _c.mutation.KiroCacheEmulationEnabled(); !ok {
 		return &ValidationError{Name: "kiro_cache_emulation_enabled", err: errors.New(`ent: missing required field "Group.kiro_cache_emulation_enabled"`)}
 	}
@@ -1179,6 +1366,20 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.KiroCacheEmulationRatio(); !ok {
 		return &ValidationError{Name: "kiro_cache_emulation_ratio", err: errors.New(`ent: missing required field "Group.kiro_cache_emulation_ratio"`)}
 	}
+	if _, ok := _c.mutation.KiroCacheEmulationMode(); !ok {
+		return &ValidationError{Name: "kiro_cache_emulation_mode", err: errors.New(`ent: missing required field "Group.kiro_cache_emulation_mode"`)}
+	}
+	if v, ok := _c.mutation.KiroCacheEmulationMode(); ok {
+		if err := group.KiroCacheEmulationModeValidator(v); err != nil {
+			return &ValidationError{Name: "kiro_cache_emulation_mode", err: fmt.Errorf(`ent: validator failed for field "Group.kiro_cache_emulation_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.KiroCacheCreationEmulationRatio(); !ok {
+		return &ValidationError{Name: "kiro_cache_creation_emulation_ratio", err: errors.New(`ent: missing required field "Group.kiro_cache_creation_emulation_ratio"`)}
+	}
+	if _, ok := _c.mutation.KiroCacheReadEmulationRatio(); !ok {
+		return &ValidationError{Name: "kiro_cache_read_emulation_ratio", err: errors.New(`ent: missing required field "Group.kiro_cache_read_emulation_ratio"`)}
+	}
 	if _, ok := _c.mutation.KiroEndpointMode(); !ok {
 		return &ValidationError{Name: "kiro_endpoint_mode", err: errors.New(`ent: missing required field "Group.kiro_endpoint_mode"`)}
 	}
@@ -1186,6 +1387,15 @@ func (_c *GroupCreate) check() error {
 		if err := group.KiroEndpointModeValidator(v); err != nil {
 			return &ValidationError{Name: "kiro_endpoint_mode", err: fmt.Errorf(`ent: validator failed for field "Group.kiro_endpoint_mode": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
+		return &ValidationError{Name: "profit_control_enabled", err: errors.New(`ent: missing required field "Group.profit_control_enabled"`)}
+	}
+	if _, ok := _c.mutation.ProfitMinMargin(); !ok {
+		return &ValidationError{Name: "profit_min_margin", err: errors.New(`ent: missing required field "Group.profit_min_margin"`)}
+	}
+	if _, ok := _c.mutation.ProfitSafetyBuffer(); !ok {
+		return &ValidationError{Name: "profit_safety_buffer", err: errors.New(`ent: missing required field "Group.profit_safety_buffer"`)}
 	}
 	return nil
 }
@@ -1261,6 +1471,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.DuplicateOperationID(); ok {
+		_spec.SetField(group.FieldDuplicateOperationID, field.TypeString, value)
+		_node.DuplicateOperationID = &value
 	}
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
@@ -1382,6 +1596,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
 		_node.AllowMessagesDispatch = value
 	}
+	if value, ok := _c.mutation.AllowLive(); ok {
+		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
+		_node.AllowLive = value
+	}
 	if value, ok := _c.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
 		_node.RequireOauthOnly = value
@@ -1406,6 +1624,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
 	}
+	if value, ok := _c.mutation.MaxReasoningEffort(); ok {
+		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
+		_node.MaxReasoningEffort = value
+	}
+	if value, ok := _c.mutation.ReasoningEffortMappings(); ok {
+		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
+		_node.ReasoningEffortMappings = value
+	}
 	if value, ok := _c.mutation.KiroCacheEmulationEnabled(); ok {
 		_spec.SetField(group.FieldKiroCacheEmulationEnabled, field.TypeBool, value)
 		_node.KiroCacheEmulationEnabled = value
@@ -1422,9 +1648,33 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldKiroCacheEmulationRatio, field.TypeFloat64, value)
 		_node.KiroCacheEmulationRatio = value
 	}
+	if value, ok := _c.mutation.KiroCacheEmulationMode(); ok {
+		_spec.SetField(group.FieldKiroCacheEmulationMode, field.TypeString, value)
+		_node.KiroCacheEmulationMode = value
+	}
+	if value, ok := _c.mutation.KiroCacheCreationEmulationRatio(); ok {
+		_spec.SetField(group.FieldKiroCacheCreationEmulationRatio, field.TypeFloat64, value)
+		_node.KiroCacheCreationEmulationRatio = value
+	}
+	if value, ok := _c.mutation.KiroCacheReadEmulationRatio(); ok {
+		_spec.SetField(group.FieldKiroCacheReadEmulationRatio, field.TypeFloat64, value)
+		_node.KiroCacheReadEmulationRatio = value
+	}
 	if value, ok := _c.mutation.KiroEndpointMode(); ok {
 		_spec.SetField(group.FieldKiroEndpointMode, field.TypeString, value)
 		_node.KiroEndpointMode = value
+	}
+	if value, ok := _c.mutation.ProfitControlEnabled(); ok {
+		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
+		_node.ProfitControlEnabled = value
+	}
+	if value, ok := _c.mutation.ProfitMinMargin(); ok {
+		_spec.SetField(group.FieldProfitMinMargin, field.TypeFloat64, value)
+		_node.ProfitMinMargin = value
+	}
+	if value, ok := _c.mutation.ProfitSafetyBuffer(); ok {
+		_spec.SetField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
+		_node.ProfitSafetyBuffer = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2284,6 +2534,18 @@ func (u *GroupUpsert) UpdateAllowMessagesDispatch() *GroupUpsert {
 	return u
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (u *GroupUpsert) SetAllowLive(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowLive, v)
+	return u
+}
+
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowLive() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowLive)
+	return u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsert) SetRequireOauthOnly(v bool) *GroupUpsert {
 	u.Set(group.FieldRequireOauthOnly, v)
@@ -2362,6 +2624,30 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (u *GroupUpsert) SetMaxReasoningEffort(v string) *GroupUpsert {
+	u.Set(group.FieldMaxReasoningEffort, v)
+	return u
+}
+
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateMaxReasoningEffort() *GroupUpsert {
+	u.SetExcluded(group.FieldMaxReasoningEffort)
+	return u
+}
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (u *GroupUpsert) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsert {
+	u.Set(group.FieldReasoningEffortMappings, v)
+	return u
+}
+
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
+	u.SetExcluded(group.FieldReasoningEffortMappings)
+	return u
+}
+
 // SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
 func (u *GroupUpsert) SetKiroCacheEmulationEnabled(v bool) *GroupUpsert {
 	u.Set(group.FieldKiroCacheEmulationEnabled, v)
@@ -2422,6 +2708,54 @@ func (u *GroupUpsert) AddKiroCacheEmulationRatio(v float64) *GroupUpsert {
 	return u
 }
 
+// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
+func (u *GroupUpsert) SetKiroCacheEmulationMode(v string) *GroupUpsert {
+	u.Set(group.FieldKiroCacheEmulationMode, v)
+	return u
+}
+
+// UpdateKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateKiroCacheEmulationMode() *GroupUpsert {
+	u.SetExcluded(group.FieldKiroCacheEmulationMode)
+	return u
+}
+
+// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
+func (u *GroupUpsert) SetKiroCacheCreationEmulationRatio(v float64) *GroupUpsert {
+	u.Set(group.FieldKiroCacheCreationEmulationRatio, v)
+	return u
+}
+
+// UpdateKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateKiroCacheCreationEmulationRatio() *GroupUpsert {
+	u.SetExcluded(group.FieldKiroCacheCreationEmulationRatio)
+	return u
+}
+
+// AddKiroCacheCreationEmulationRatio adds v to the "kiro_cache_creation_emulation_ratio" field.
+func (u *GroupUpsert) AddKiroCacheCreationEmulationRatio(v float64) *GroupUpsert {
+	u.Add(group.FieldKiroCacheCreationEmulationRatio, v)
+	return u
+}
+
+// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
+func (u *GroupUpsert) SetKiroCacheReadEmulationRatio(v float64) *GroupUpsert {
+	u.Set(group.FieldKiroCacheReadEmulationRatio, v)
+	return u
+}
+
+// UpdateKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateKiroCacheReadEmulationRatio() *GroupUpsert {
+	u.SetExcluded(group.FieldKiroCacheReadEmulationRatio)
+	return u
+}
+
+// AddKiroCacheReadEmulationRatio adds v to the "kiro_cache_read_emulation_ratio" field.
+func (u *GroupUpsert) AddKiroCacheReadEmulationRatio(v float64) *GroupUpsert {
+	u.Add(group.FieldKiroCacheReadEmulationRatio, v)
+	return u
+}
+
 // SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
 func (u *GroupUpsert) SetKiroEndpointMode(v string) *GroupUpsert {
 	u.Set(group.FieldKiroEndpointMode, v)
@@ -2431,6 +2765,54 @@ func (u *GroupUpsert) SetKiroEndpointMode(v string) *GroupUpsert {
 // UpdateKiroEndpointMode sets the "kiro_endpoint_mode" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateKiroEndpointMode() *GroupUpsert {
 	u.SetExcluded(group.FieldKiroEndpointMode)
+	return u
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsert) SetProfitControlEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldProfitControlEnabled, v)
+	return u
+}
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitControlEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitControlEnabled)
+	return u
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsert) SetProfitMinMargin(v float64) *GroupUpsert {
+	u.Set(group.FieldProfitMinMargin, v)
+	return u
+}
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitMinMargin() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitMinMargin)
+	return u
+}
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsert) AddProfitMinMargin(v float64) *GroupUpsert {
+	u.Add(group.FieldProfitMinMargin, v)
+	return u
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsert) SetProfitSafetyBuffer(v float64) *GroupUpsert {
+	u.Set(group.FieldProfitSafetyBuffer, v)
+	return u
+}
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitSafetyBuffer() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitSafetyBuffer)
+	return u
+}
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsert) AddProfitSafetyBuffer(v float64) *GroupUpsert {
+	u.Add(group.FieldProfitSafetyBuffer, v)
 	return u
 }
 
@@ -2447,6 +2829,9 @@ func (u *GroupUpsertOne) UpdateNewValues() *GroupUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(group.FieldCreatedAt)
+		}
+		if _, exists := u.create.mutation.DuplicateOperationID(); exists {
+			s.SetIgnore(group.FieldDuplicateOperationID)
 		}
 	}))
 	return u
@@ -3298,6 +3683,20 @@ func (u *GroupUpsertOne) UpdateAllowMessagesDispatch() *GroupUpsertOne {
 	})
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (u *GroupUpsertOne) SetAllowLive(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowLive(v)
+	})
+}
+
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowLive() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowLive()
+	})
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsertOne) SetRequireOauthOnly(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3389,6 +3788,34 @@ func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	})
 }
 
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (u *GroupUpsertOne) SetMaxReasoningEffort(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxReasoningEffort(v)
+	})
+}
+
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateMaxReasoningEffort() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxReasoningEffort()
+	})
+}
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (u *GroupUpsertOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReasoningEffortMappings(v)
+	})
+}
+
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReasoningEffortMappings()
+	})
+}
+
 // SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
 func (u *GroupUpsertOne) SetKiroCacheEmulationEnabled(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3459,6 +3886,62 @@ func (u *GroupUpsertOne) UpdateKiroCacheEmulationRatio() *GroupUpsertOne {
 	})
 }
 
+// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
+func (u *GroupUpsertOne) SetKiroCacheEmulationMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheEmulationMode(v)
+	})
+}
+
+// UpdateKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateKiroCacheEmulationMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheEmulationMode()
+	})
+}
+
+// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
+func (u *GroupUpsertOne) SetKiroCacheCreationEmulationRatio(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheCreationEmulationRatio(v)
+	})
+}
+
+// AddKiroCacheCreationEmulationRatio adds v to the "kiro_cache_creation_emulation_ratio" field.
+func (u *GroupUpsertOne) AddKiroCacheCreationEmulationRatio(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddKiroCacheCreationEmulationRatio(v)
+	})
+}
+
+// UpdateKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateKiroCacheCreationEmulationRatio() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheCreationEmulationRatio()
+	})
+}
+
+// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
+func (u *GroupUpsertOne) SetKiroCacheReadEmulationRatio(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheReadEmulationRatio(v)
+	})
+}
+
+// AddKiroCacheReadEmulationRatio adds v to the "kiro_cache_read_emulation_ratio" field.
+func (u *GroupUpsertOne) AddKiroCacheReadEmulationRatio(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddKiroCacheReadEmulationRatio(v)
+	})
+}
+
+// UpdateKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateKiroCacheReadEmulationRatio() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheReadEmulationRatio()
+	})
+}
+
 // SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
 func (u *GroupUpsertOne) SetKiroEndpointMode(v string) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3470,6 +3953,62 @@ func (u *GroupUpsertOne) SetKiroEndpointMode(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateKiroEndpointMode() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateKiroEndpointMode()
+	})
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsertOne) SetProfitControlEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitControlEnabled(v)
+	})
+}
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitControlEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitControlEnabled()
+	})
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsertOne) SetProfitMinMargin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitMinMargin(v)
+	})
+}
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsertOne) AddProfitMinMargin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitMinMargin(v)
+	})
+}
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitMinMargin() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitMinMargin()
+	})
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsertOne) SetProfitSafetyBuffer(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitSafetyBuffer(v)
+	})
+}
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsertOne) AddProfitSafetyBuffer(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitSafetyBuffer(v)
+	})
+}
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitSafetyBuffer() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitSafetyBuffer()
 	})
 }
 
@@ -3651,6 +4190,9 @@ func (u *GroupUpsertBulk) UpdateNewValues() *GroupUpsertBulk {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(group.FieldCreatedAt)
+			}
+			if _, exists := b.mutation.DuplicateOperationID(); exists {
+				s.SetIgnore(group.FieldDuplicateOperationID)
 			}
 		}
 	}))
@@ -4503,6 +5045,20 @@ func (u *GroupUpsertBulk) UpdateAllowMessagesDispatch() *GroupUpsertBulk {
 	})
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (u *GroupUpsertBulk) SetAllowLive(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowLive(v)
+	})
+}
+
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowLive() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowLive()
+	})
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsertBulk) SetRequireOauthOnly(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4594,6 +5150,34 @@ func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	})
 }
 
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (u *GroupUpsertBulk) SetMaxReasoningEffort(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxReasoningEffort(v)
+	})
+}
+
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateMaxReasoningEffort() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxReasoningEffort()
+	})
+}
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (u *GroupUpsertBulk) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReasoningEffortMappings(v)
+	})
+}
+
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReasoningEffortMappings()
+	})
+}
+
 // SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
 func (u *GroupUpsertBulk) SetKiroCacheEmulationEnabled(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4664,6 +5248,62 @@ func (u *GroupUpsertBulk) UpdateKiroCacheEmulationRatio() *GroupUpsertBulk {
 	})
 }
 
+// SetKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field.
+func (u *GroupUpsertBulk) SetKiroCacheEmulationMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheEmulationMode(v)
+	})
+}
+
+// UpdateKiroCacheEmulationMode sets the "kiro_cache_emulation_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateKiroCacheEmulationMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheEmulationMode()
+	})
+}
+
+// SetKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field.
+func (u *GroupUpsertBulk) SetKiroCacheCreationEmulationRatio(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheCreationEmulationRatio(v)
+	})
+}
+
+// AddKiroCacheCreationEmulationRatio adds v to the "kiro_cache_creation_emulation_ratio" field.
+func (u *GroupUpsertBulk) AddKiroCacheCreationEmulationRatio(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddKiroCacheCreationEmulationRatio(v)
+	})
+}
+
+// UpdateKiroCacheCreationEmulationRatio sets the "kiro_cache_creation_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateKiroCacheCreationEmulationRatio() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheCreationEmulationRatio()
+	})
+}
+
+// SetKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field.
+func (u *GroupUpsertBulk) SetKiroCacheReadEmulationRatio(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheReadEmulationRatio(v)
+	})
+}
+
+// AddKiroCacheReadEmulationRatio adds v to the "kiro_cache_read_emulation_ratio" field.
+func (u *GroupUpsertBulk) AddKiroCacheReadEmulationRatio(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddKiroCacheReadEmulationRatio(v)
+	})
+}
+
+// UpdateKiroCacheReadEmulationRatio sets the "kiro_cache_read_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateKiroCacheReadEmulationRatio() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheReadEmulationRatio()
+	})
+}
+
 // SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
 func (u *GroupUpsertBulk) SetKiroEndpointMode(v string) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4675,6 +5315,62 @@ func (u *GroupUpsertBulk) SetKiroEndpointMode(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateKiroEndpointMode() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateKiroEndpointMode()
+	})
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsertBulk) SetProfitControlEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitControlEnabled(v)
+	})
+}
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitControlEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitControlEnabled()
+	})
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsertBulk) SetProfitMinMargin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitMinMargin(v)
+	})
+}
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsertBulk) AddProfitMinMargin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitMinMargin(v)
+	})
+}
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitMinMargin() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitMinMargin()
+	})
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsertBulk) SetProfitSafetyBuffer(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitSafetyBuffer(v)
+	})
+}
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsertBulk) AddProfitSafetyBuffer(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitSafetyBuffer(v)
+	})
+}
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitSafetyBuffer() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitSafetyBuffer()
 	})
 }
 

@@ -80,6 +80,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // billing_mode
 	"numeric",     // account_stats_cost
 	"numeric",     // kiro_credits
+	"text",        // session_id
 	"timestamptz", // created_at
 }
 
@@ -288,6 +289,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			billing_mode,
 			account_stats_cost,
 			kiro_credits,
+			session_id,
 			created_at
 		) VALUES (` + usageLogInsertValuePlaceholders() + `)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -736,6 +738,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			billing_mode,
 			account_stats_cost,
 			kiro_credits,
+			session_id,
 			created_at
 		) AS (VALUES `)
 
@@ -824,6 +827,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				billing_mode,
 				account_stats_cost,
 				kiro_credits,
+				session_id,
 				created_at
 			)
 			SELECT
@@ -883,6 +887,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				billing_mode,
 				account_stats_cost,
 				kiro_credits,
+				session_id,
 				created_at
 			FROM input
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -982,6 +987,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			kiro_credits,
+			session_id,
 			created_at
 		) AS (VALUES `)
 
@@ -1067,6 +1073,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			kiro_credits,
+			session_id,
 			created_at
 		)
 		SELECT
@@ -1126,6 +1133,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			kiro_credits,
+			session_id,
 			created_at
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1193,6 +1201,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			billing_mode,
 			account_stats_cost,
 			kiro_credits,
+			session_id,
 			created_at
 		) VALUES (` + usageLogInsertValuePlaceholders() + `)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1235,6 +1244,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	modelMappingChain := nullString(log.ModelMappingChain)
 	billingTier := nullString(log.BillingTier)
 	billingMode := nullString(log.BillingMode)
+	sessionID := nullString(log.SessionID)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -1308,6 +1318,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			billingMode,
 			log.AccountStatsCost, // account_stats_cost
 			log.KiroCredits,      // kiro_credits
+			sessionID,            // session_id
 			createdAt,
 		},
 	}

@@ -93,15 +93,12 @@ func buildGrokBillingURL(account *Account, cfg *config.Config, weekly bool) (str
 	return xai.BuildBillingURLWithValidator(account.GetGrokBaseURL(), weekly, validator)
 }
 
-func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaEndpoint, requestID string, requestInfo GrokMediaRequestInfo, forceOfficialAPI bool) (string, error) {
+func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaEndpoint, requestID string) (string, error) {
 	validator, err := grokBaseURLValidator(account, cfg)
 	if err != nil {
 		return "", err
 	}
 	baseURL := account.GetGrokMediaBaseURL()
-	if shouldUseOfficialGrokMediaAPI(account, endpoint, requestInfo) || shouldForceOfficialGrokMediaAPI(account, forceOfficialAPI) {
-		baseURL = xai.DefaultBaseURL
-	}
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations:
 		return xai.BuildImagesGenerationsURLWithValidator(baseURL, validator)
@@ -115,19 +112,13 @@ func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaE
 		return xai.BuildVideosExtensionsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointVideoStatus:
 		return xai.BuildVideoURLWithValidator(baseURL, requestID, validator)
+	case GrokMediaEndpointVideoContent:
+		videoURL, err := xai.BuildVideoURLWithValidator(baseURL, requestID, validator)
+		if err != nil {
+			return "", err
+		}
+		return videoURL + "/content", nil
 	default:
 		return "", fmt.Errorf("unsupported grok media endpoint: %s", endpoint)
 	}
-}
-
-func shouldUseOfficialGrokMediaAPI(account *Account, endpoint GrokMediaEndpoint, requestInfo GrokMediaRequestInfo) bool {
-	return account != nil &&
-		account.IsGrokOAuth() &&
-		endpoint == GrokMediaEndpointVideosGenerations &&
-		requestInfo.HasInputImage() &&
-		xai.IsOfficialBaseURL(account.GetGrokMediaBaseURL())
-}
-
-func shouldForceOfficialGrokMediaAPI(account *Account, forceOfficialAPI bool) bool {
-	return forceOfficialAPI && account != nil && account.IsGrokOAuth()
 }

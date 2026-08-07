@@ -509,7 +509,7 @@ import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { adminAPI } from '@/api/admin'
-import { formatCurrency, formatDateTime } from '@/utils/format'
+import { formatCurrency, formatDateTime, formatDateTimeLocalInput } from '@/utils/format'
 import type { CreatePromoCodeRequest, PromoCode, PromoCodeUsage, UpdatePromoCodeRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -869,7 +869,9 @@ const handleEdit = (code: PromoCode) => {
   editForm.first_recharge_discount_times = code.first_recharge_discount_times ?? 1
   editForm.max_uses = code.max_uses
   editForm.status = code.status
-  editForm.expires_at_str = code.expires_at ? new Date(code.expires_at).toISOString().slice(0, 16) : ''
+  editForm.expires_at_str = code.expires_at
+    ? formatDateTimeLocalInput(Math.floor(new Date(code.expires_at).getTime() / 1000))
+    : ''
   editForm.notes = code.notes || ''
   showEditDialog.value = true
 }

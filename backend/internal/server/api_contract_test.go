@@ -315,19 +315,23 @@ func TestAPIContracts(t *testing.T) {
 			name: "GET /api/v1/groups/available",
 			setup: func(t *testing.T, deps *contractDeps) {
 				t.Helper()
-				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count）。
+				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count），
+				// 也不得包含利润控制配置——它与同响应的 rate_multiplier 相乘即可反推上游成本上限。
 				deps.groupRepo.SetActive([]service.Group{
 					{
-						ID:                  10,
-						Name:                "Group One",
-						Description:         "desc",
-						Platform:            service.PlatformAnthropic,
-						RateMultiplier:      1.5,
-						PeakRateMultiplier:  1.0,
-						IsExclusive:         false,
-						Status:              service.StatusActive,
-						SubscriptionType:    service.SubscriptionTypeStandard,
-						ModelRoutingEnabled: true,
+						ID:                   10,
+						Name:                 "Group One",
+						Description:          "desc",
+						Platform:             service.PlatformAnthropic,
+						RateMultiplier:       1.5,
+						PeakRateMultiplier:   1.0,
+						IsExclusive:          false,
+						Status:               service.StatusActive,
+						SubscriptionType:     service.SubscriptionTypeStandard,
+						ProfitControlEnabled: true,
+						ProfitMinMargin:      0.3,
+						ProfitSafetyBuffer:   0.05,
+						ModelRoutingEnabled:  true,
 						ModelRouting: map[string][]int64{
 							"claude-3-*": []int64{101, 102},
 						},
@@ -378,15 +382,21 @@ func TestAPIContracts(t *testing.T) {
 						"video_rate_multiplier": 0,
 						"claude_code_only": false,
 						"allow_messages_dispatch": false,
+						"allow_live": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
 						"require_oauth_only": false,
 						"require_privacy_set": false,
+						"max_reasoning_effort": "",
+						"reasoning_effort_mappings": null,
 						"rpm_limit": 0,
 						"kiro_auto_sticky_enabled": false,
 						"kiro_sticky_session_ttl_seconds": 0,
 						"kiro_cache_emulation_enabled": false,
 						"kiro_cache_emulation_ratio": 0,
+						"kiro_cache_emulation_mode": "uniform",
+						"kiro_cache_creation_emulation_ratio": 0,
+						"kiro_cache_read_emulation_ratio": 0,
 						"kiro_endpoint_mode": "q",
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
@@ -717,6 +727,13 @@ func TestAPIContracts(t *testing.T) {
 						"frontend_url": "",
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"passkey_enabled": false,
+						"passkey_configured": false,
+						"passkey_rp_id": "",
+						"passkey_rp_origins": [],
+						"session_binding_enabled": false,
+						"step_up_enabled": false,
+						"audit_log_retention_days": 180,
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -736,6 +753,17 @@ func TestAPIContracts(t *testing.T) {
 					"turnstile_enabled": true,
 					"turnstile_site_key": "site-key",
 					"turnstile_secret_key_configured": true,
+					"tencent_captcha_enabled": false,
+					"tencent_captcha_app_id": "",
+					"tencent_captcha_app_secret_key_configured": false,
+					"tencent_captcha_cloud_secret_id_configured": false,
+					"tencent_captcha_cloud_secret_key_configured": false,
+					"aliyun_captcha_enabled": false,
+					"aliyun_captcha_access_key_id": "",
+					"aliyun_captcha_access_key_secret_configured": false,
+					"aliyun_captcha_scene_id": "",
+					"aliyun_captcha_prefix": "",
+					"aliyun_captcha_region": "cn",
 						"linuxdo_connect_enabled": false,
 						"linuxdo_connect_client_id": "",
 						"linuxdo_connect_client_secret_configured": false,
@@ -803,6 +831,7 @@ func TestAPIContracts(t *testing.T) {
 					"api_usage_ip_ua_risk_control_threshold": 4,
 					"api_usage_ip_ua_disable_previous_accounts": false,
 					"api_usage_ip_ua_keep_previous_accounts": 0,
+					"forwarded_client_ip_headers": [],
 					"contact_info": "support",
 					"enterprise_billing_contact_qr": "data:image/png;base64,qr-code",
 					"doc_url": "https://docs.example.com",
@@ -879,6 +908,7 @@ func TestAPIContracts(t *testing.T) {
 					"max_codex_version": "",
 					"codex_cli_only_blacklist": "",
 					"codex_cli_only_whitelist": "",
+					"compact_home_enabled": false,
 					"codex_cli_only_allow_app_server_clients": false,
 					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"allow_ungrouped_key_scheduling": false,
@@ -926,6 +956,9 @@ func TestAPIContracts(t *testing.T) {
 					"openai_advanced_scheduler_effective_weight_previous_response": "5",
 					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
+					"openai_codex_client_version":       "",
+					"openai_codex_client_version_synced": "",
+					"openai_codex_version_auto_sync_enabled": true,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -953,6 +986,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_cancel_rate_limit_unit": "",
 					"payment_cancel_rate_limit_window_mode": "",
 					"payment_alipay_force_qrcode": false,
+					"payment_alipay_mobile_precreate_deep_link": false,
 					"balance_low_notify_enabled": false,
 					"account_quota_notify_enabled": false,
 					"subscription_expiry_notify_enabled": true,
@@ -962,6 +996,9 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_enabled": true,
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
+					"model_plaza_enabled": false,
+					"model_plaza_require_auth": false,
+					"model_plaza_description": "",
 					"risk_control_enabled": false,
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
@@ -1038,6 +1075,13 @@ func TestAPIContracts(t *testing.T) {
 						"invitation_code_enabled": false,
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"passkey_enabled": false,
+						"passkey_configured": false,
+						"passkey_rp_id": "",
+						"passkey_rp_origins": [],
+						"session_binding_enabled": false,
+						"step_up_enabled": false,
+						"audit_log_retention_days": 180,
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -1057,6 +1101,17 @@ func TestAPIContracts(t *testing.T) {
 					"turnstile_enabled": false,
 					"turnstile_site_key": "",
 					"turnstile_secret_key_configured": false,
+					"tencent_captcha_enabled": false,
+					"tencent_captcha_app_id": "",
+					"tencent_captcha_app_secret_key_configured": false,
+					"tencent_captcha_cloud_secret_id_configured": false,
+					"tencent_captcha_cloud_secret_key_configured": false,
+					"aliyun_captcha_enabled": false,
+					"aliyun_captcha_access_key_id": "",
+					"aliyun_captcha_access_key_secret_configured": false,
+					"aliyun_captcha_scene_id": "",
+					"aliyun_captcha_prefix": "",
+					"aliyun_captcha_region": "cn",
 					"linuxdo_connect_enabled": false,
 					"linuxdo_connect_client_id": "",
 					"linuxdo_connect_client_secret_configured": false,
@@ -1120,6 +1175,7 @@ func TestAPIContracts(t *testing.T) {
 					"api_usage_ip_ua_risk_control_threshold": 4,
 					"api_usage_ip_ua_disable_previous_accounts": false,
 					"api_usage_ip_ua_keep_previous_accounts": 0,
+					"forwarded_client_ip_headers": [],
 					"contact_info": "",
 					"enterprise_billing_contact_qr": "",
 					"doc_url": "",
@@ -1177,6 +1233,7 @@ func TestAPIContracts(t *testing.T) {
 					"max_codex_version": "",
 					"codex_cli_only_blacklist": "",
 					"codex_cli_only_whitelist": "",
+					"compact_home_enabled": false,
 					"codex_cli_only_allow_app_server_clients": false,
 					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"web_search_emulation_enabled": false,
@@ -1212,6 +1269,9 @@ func TestAPIContracts(t *testing.T) {
 					"openai_advanced_scheduler_effective_weight_previous_response": "5",
 					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
+					"openai_codex_client_version":       "",
+					"openai_codex_client_version_synced": "",
+					"openai_codex_version_auto_sync_enabled": true,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -1237,6 +1297,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_cancel_rate_limit_unit": "",
 					"payment_cancel_rate_limit_window_mode": "",
 					"payment_alipay_force_qrcode": false,
+					"payment_alipay_mobile_precreate_deep_link": false,
 					"balance_low_notify_enabled": false,
 					"account_quota_notify_enabled": false,
 					"subscription_expiry_notify_enabled": true,
@@ -1246,6 +1307,9 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_enabled": true,
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
+					"model_plaza_enabled": false,
+					"model_plaza_require_auth": false,
+					"model_plaza_description": "",
 					"risk_control_enabled": false,
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
@@ -1411,7 +1475,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
@@ -1507,6 +1571,10 @@ func (r *stubUserRepo) Create(ctx context.Context, user *service.User) error {
 	return errors.New("not implemented")
 }
 
+func (r *stubUserRepo) CreateWithEmailAliasGuard(ctx context.Context, user *service.User) error {
+	return errors.New("not implemented")
+}
+
 func (r *stubUserRepo) GetByID(ctx context.Context, id int64) (*service.User, error) {
 	user, ok := r.users[id]
 	if !ok {
@@ -1536,7 +1604,7 @@ func (r *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error)
 	return nil, service.ErrUserNotFound
 }
 
-func (r *stubUserRepo) Update(ctx context.Context, user *service.User) error {
+func (r *stubUserRepo) Update(ctx context.Context, user *service.User, fields service.UserUpdateFields) error {
 	return errors.New("not implemented")
 }
 
@@ -1572,14 +1640,29 @@ func (r *stubUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 	return errors.New("not implemented")
 }
 
+func (r *stubUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (service.BalanceChange, error) {
+	return service.BalanceChange{}, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) SetBalance(ctx context.Context, id int64, value float64) (service.BalanceChange, error) {
+	return service.BalanceChange{}, errors.New("not implemented")
+}
+
 func (r *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	return errors.New("not implemented")
 }
 
 func (r *stubUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (r *stubUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (r *stubUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
 
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	return false, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
 	return false, errors.New("not implemented")
 }
 
@@ -1752,6 +1835,14 @@ func (stubGroupRepo) UpdateSortOrders(ctx context.Context, updates []service.Gro
 	return nil
 }
 
+func (stubGroupRepo) FindByDuplicateOperationID(ctx context.Context, operationID string) (*service.Group, error) {
+	return nil, nil
+}
+
+func (stubGroupRepo) CreateFromSource(ctx context.Context, group *service.Group, sourceGroupID int64) error {
+	return errors.New("not implemented")
+}
+
 type stubAccountRepo struct {
 	bulkUpdateIDs []int64
 }
@@ -1785,6 +1876,16 @@ func (s *stubAccountRepo) FindByExtraField(ctx context.Context, key string, valu
 }
 
 func (s *stubAccountRepo) Update(ctx context.Context, account *service.Account) error {
+	return errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) UpdateWithAccountBillingSettings(
+	ctx context.Context,
+	account *service.Account,
+	probeEnabled *bool,
+	rateSyncEnabled *bool,
+	rateMultiplier *float64,
+) error {
 	return errors.New("not implemented")
 }
 
@@ -1881,6 +1982,10 @@ func (s *stubAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context
 }
 
 func (s *stubAccountRepo) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]service.Account, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -2114,6 +2219,9 @@ func (stubUserSubscriptionRepo) Create(ctx context.Context, sub *service.UserSub
 func (stubUserSubscriptionRepo) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
+func (stubUserSubscriptionRepo) GetByIDForUpdate(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
+}
 func (stubUserSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
@@ -2263,7 +2371,7 @@ func (r *stubApiKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*serv
 	return r.GetByKey(ctx, key)
 }
 
-func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
+func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey, _ service.APIKeyUpdateFields) error {
 	if key == nil {
 		return errors.New("nil key")
 	}

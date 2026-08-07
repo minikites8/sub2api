@@ -22,36 +22,37 @@ func TestGatewayServiceCalculateTokenCost_KiroAutoUsesConservativeFallback(t *te
 	cfg.Default.RateMultiplier = 1.1
 
 	svc := NewGatewayService(
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		cfg,
-		nil,
-		nil,
-		NewBillingService(cfg, nil),
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil, // userPlatformQuotaRepo
+		nil,                         // accountRepo
+		nil,                         // groupRepo
+		nil,                         // usageLogRepo
+		nil,                         // usageBillingRepo
+		nil,                         // userRepo
+		nil,                         // userSubRepo
+		nil,                         // userGroupRateRepo
+		nil,                         // cache
+		cfg,                         // cfg
+		nil,                         // schedulerSnapshot
+		nil,                         // concurrencyService
+		NewBillingService(cfg, nil), // billingService
+		nil,                         // rateLimitService
+		nil,                         // billingCacheService
+		nil,                         // identityService
+		nil,                         // httpUpstream
+		nil,                         // deferredService
+		nil,                         // claudeTokenProvider
+		nil,                         // kiroTokenProvider
+		nil,                         // kiroCooldownStore
+		nil,                         // sessionLimitCache
+		nil,                         // rpmCache
+		nil,                         // digestStore
+		nil,                         // settingService
+		nil,                         // authCacheInvalidator
+		nil,                         // tlsFPProfileService
+		nil,                         // channelService
+		nil,                         // resolver
+		nil,                         // compositeResolver
+		nil,                         // balanceNotifyService
+		nil,                         // userPlatformQuotaRepo
 	)
 
 	result := &ForwardResult{

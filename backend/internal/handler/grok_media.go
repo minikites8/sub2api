@@ -46,6 +46,11 @@ func (h *OpenAIGatewayHandler) GrokVideoStatus(c *gin.Context) {
 	h.handleGrokMedia(c, service.GrokMediaEndpointVideoStatus, c.Param("request_id"))
 }
 
+// GrokVideoContent proxies downloadable video content through the task's upstream account.
+func (h *OpenAIGatewayHandler) GrokVideoContent(c *gin.Context) {
+	h.handleGrokMedia(c, service.GrokMediaEndpointVideoContent, c.Param("request_id"))
+}
+
 func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.GrokMediaEndpoint, requestID string) {
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
@@ -95,11 +100,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	contentType := c.GetHeader("Content-Type")
 	requestInfo := service.ParseGrokMediaRequest(contentType, body)
 	requestModel := requestInfo.Model
+	routingModel := service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
-	if endpoint == service.GrokMediaEndpointVideoStatus && strings.TrimSpace(requestID) == "" {
+	if endpoint.IsVideoLookupRequest() && strings.TrimSpace(requestID) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "request_id is required")
 		return
 	}
@@ -108,25 +114,15 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	setOpsRequestContext(c, requestModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
 
-	if endpoint == service.GrokMediaEndpointVideosGenerations {
-		reqLog.Info("grok_media.video_generation_route_input",
-			zap.Bool("has_input_image", requestInfo.HasInputImage()),
-			zap.Int("input_image_url_count", len(requestInfo.InputImageURLs)),
-			zap.Int("upload_count", len(requestInfo.Uploads)),
-			zap.String("content_type_media", grokMediaContentTypeMedia(contentType)),
-			zap.Int("body_bytes", len(body)),
-		)
-	}
-
 	if endpoint.IsGenerationRequest() {
 		if !service.GroupAllowsImageGeneration(apiKey.Group) {
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
 		}
 		if moderationBody := requestInfo.ModerationBody(); len(moderationBody) > 0 {
-			decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, moderationBody)
-			if decision != nil && decision.Blocked {
-				h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, moderationBody)
+			if decision != nil && !decision.AllowNextStage {
+				h.openAISecurityAuditError(c, decision)
 				return
 			}
 		}
@@ -169,32 +165,35 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		sessionSeed = []byte(requestID)
 	}
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionSeed)
-	if endpoint == service.GrokMediaEndpointVideoStatus {
-		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID)
-	}
-	requestCtx := c.Request.Context()
-	forwardOptions := []service.GrokMediaForwardOption{}
-	officialAPIRouteHit := false
-	if endpoint == service.GrokMediaEndpointVideoStatus {
-		officialAPIRouteHit = h.gatewayService.IsGrokMediaVideoRequestOfficialAPI(requestCtx, apiKey.GroupID, requestID)
-		reqLog.Info("grok_media.official_api_route_lookup",
-			zap.String("request_id", requestID),
-			zap.Bool("official_api_route_hit", officialAPIRouteHit),
+	boundLookupAccountID := int64(0)
+	if endpoint.IsVideoLookupRequest() {
+		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID, subject.UserID, apiKey.ID)
+		boundLookupAccountID, err = h.gatewayService.ResolveGrokMediaVideoRequestAccount(
+			c.Request.Context(), apiKey.GroupID, requestID, subject.UserID, apiKey.ID,
 		)
-		if officialAPIRouteHit {
-			forwardOptions = append(forwardOptions, service.WithGrokMediaOfficialAPI())
+		if err != nil || boundLookupAccountID <= 0 {
+			reqLog.Info("grok_media.video_lookup_owner_binding_missing", zap.Error(err))
+			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
+			return
 		}
 	}
+	// Grok 媒体（图片/视频生成与视频查询）按媒体倍率计费，不在 token 利润门
+	// 范围内：显式豁免，防止 service 层防御性装门按文本 D 误过滤媒体请求，
+	// 也防止已计费的在途视频任务因绑定账号被门排除而查询返回伪 404。
+	requestCtx := service.WithOpenAIProfitControlSuppressed(c.Request.Context())
+	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	mediaEligibilityRejected := false
 	switchCount := 0
 	maxAccountSwitches := h.maxAccountSwitches
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}
 	routingStart := time.Now()
+	requiredCapability := grokMediaRequiredCapability(endpoint)
 
 	for {
 		if failoverClientGone(c) {
@@ -205,10 +204,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			apiKey.GroupID,
 			"",
 			sessionHash,
-			requestModel,
+			routingModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportHTTPSSE,
-			"",
+			requiredCapability,
 			false,
 			false,
 			false,
@@ -223,8 +222,14 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if endpoint.IsGenerationRequest() && errors.Is(err, service.ErrNoAvailableAccounts) &&
+				(len(failedAccountIDs) == 0 || (mediaEligibilityRejected && lastFailoverErr == nil)) {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
+				return
+			}
 			if len(failedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, requestModel, service.PlatformGrok, err)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, routingModel, service.PlatformGrok)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
@@ -239,11 +244,24 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 		if selection == nil || selection.Account == nil {
-			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, requestModel, service.PlatformGrok)
+			if endpoint.IsGenerationRequest() {
+				markOpsRoutingCapacityLimited(c)
+				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
+				return
+			}
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, routingModel, service.PlatformGrok)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
 			h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
+			return
+		}
+		if boundLookupAccountID > 0 && selection.Account.ID != boundLookupAccountID {
+			reqLog.Warn("grok_media.video_lookup_bound_account_unavailable",
+				zap.Int64("bound_account_id", boundLookupAccountID),
+				zap.Int64("selected_account_id", selection.Account.ID),
+			)
+			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
 			return
 		}
 
@@ -257,11 +275,39 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 
 		account := selection.Account
+		if endpoint.IsGenerationRequest() {
+			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
+			if !eligible {
+				mediaEligibilityRejected = true
+				failedAccountIDs[account.ID] = struct{}{}
+				reqLog.Warn("grok_media.account_eligibility_rejected",
+					zap.Int64("account_id", account.ID),
+					zap.String("reason", eligibilityReason),
+					zap.Bool("probe_failed", eligibilityErr != nil),
+				)
+				if switchCount >= maxAccountSwitches {
+					markOpsRoutingCapacityLimited(c)
+					h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
+					return
+				}
+				switchCount++
+				continue
+			}
+		}
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, accountAcquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
-		if !accountAcquired {
+		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
+		if slotResult == openAISlotAcquireProfitVetoed {
+			// 媒体路径已显式豁免利润门（suppress 标记），此分支仅防御性兜底，
+			// 同样受否决上限约束。
+			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
+				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount)
+				return
+			}
+			continue
+		}
+		if slotResult != openAISlotAcquireOK {
 			return
 		}
 
@@ -274,7 +320,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType, forwardOptions...)
+			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
 		}()
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -296,13 +342,17 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					return
 				}
 				if failoverErr.ShouldReportAccountScheduleFailure() {
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestModel), false, nil)
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, grokMediaScheduleModel(account, routingModel, nil), false, nil)
 				}
 				if c.Writer.Size() != writerSizeBeforeForward {
 					h.handleFailoverExhausted(c, failoverErr, true)
 					return
 				}
 				if !failoverErr.ShouldRetryNextAccount() {
+					h.handleFailoverExhausted(c, failoverErr, false)
+					return
+				}
+				if endpoint.IsVideoLookupRequest() {
 					h.handleFailoverExhausted(c, failoverErr, false)
 					return
 				}
@@ -344,8 +394,8 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				)
 				continue
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestModel), false, nil)
-			if c.Writer.Size() == writerSizeBeforeForward {
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, grokMediaScheduleModel(account, routingModel, nil), false, nil)
+			if !service.IsResponseCommitted(c) && c.Writer.Size() == writerSizeBeforeForward {
 				h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 			}
 			reqLog.Warn("grok_media.forward_failed",
@@ -355,46 +405,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 
-		reqLog.Info("grok_media.forward_route_debug",
-			zap.Int64("account_id", account.ID),
-			zap.String("account_type", account.Type),
-			zap.String("endpoint", string(endpoint)),
-			zap.String("upstream_host", result.GrokMediaUpstreamHost),
-			zap.String("upstream_path", result.GrokMediaUpstreamPath),
-			zap.Bool("has_input_image", result.GrokMediaHasInputImage),
-			zap.Bool("force_official_api", result.GrokMediaForceOfficialAPI),
-			zap.Bool("used_official_api", result.GrokMediaOfficialAPI),
-			zap.Bool("cli_headers_applied", result.GrokMediaCLIHeadersApplied),
-			zap.Int("forward_body_bytes", result.GrokMediaBodyBytes),
-			zap.Int("forward_prompt_bytes", result.GrokMediaBodyPromptBytes),
-			zap.Bool("forward_image_field_exists", result.GrokMediaBodyImageFieldExists),
-			zap.Bool("forward_images_field_exists", result.GrokMediaBodyImagesFieldExists),
-			zap.Bool("forward_image_url_exists", result.GrokMediaBodyImageURLExists),
-			zap.String("forward_image_url_scheme", result.GrokMediaBodyImageURLScheme),
-			zap.String("forward_image_url_host", result.GrokMediaBodyImageURLHost),
-			zap.Bool("forward_image_url_is_data", result.GrokMediaBodyImageURLIsData),
-			zap.Int("forward_image_url_length", result.GrokMediaBodyImageURLLength),
-			zap.String("request_id", requestID),
-			zap.String("response_id", result.ResponseID),
-			zap.Bool("official_api_route_hit", officialAPIRouteHit),
-		)
-		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestModel), true, nil)
+		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, grokMediaScheduleModel(account, routingModel, result), true, nil)
 		if endpoint.IsGenerationRequest() && strings.TrimSpace(result.ResponseID) != "" {
-			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(requestCtx, apiKey.GroupID, result.ResponseID, account.ID); err != nil {
+			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(
+				requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, account.ID,
+			); err != nil {
 				reqLog.Warn("grok_media.bind_video_request_account_failed",
 					zap.Int64("account_id", account.ID),
 					zap.String("request_id", result.ResponseID),
 					zap.Error(err),
 				)
-			}
-			if result.GrokMediaOfficialAPI {
-				if err := h.gatewayService.BindGrokMediaVideoRequestOfficialAPI(requestCtx, apiKey.GroupID, result.ResponseID); err != nil {
-					reqLog.Warn("grok_media.bind_video_request_official_api_failed",
-						zap.Int64("account_id", account.ID),
-						zap.String("request_id", result.ResponseID),
-						zap.Error(err),
-					)
-				}
 			}
 		}
 		if shouldRecordGrokMediaUsage(endpoint, requestModel) {
@@ -408,12 +428,35 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 }
 
-func grokMediaContentTypeMedia(contentType string) string {
-	media := strings.TrimSpace(strings.Split(contentType, ";")[0])
-	if media == "" {
-		return "application/json"
+func (h *OpenAIGatewayHandler) ensureGrokMediaAccountEligibility(ctx context.Context, account *service.Account) (bool, string, error) {
+	if account == nil {
+		return false, "missing_account", errors.New("grok media account is required")
 	}
-	return media
+	eligible, reason := account.GrokMediaGenerationEligibility()
+	if eligible || reason != "billing_unobserved" {
+		return eligible, reason, nil
+	}
+	if h == nil || h.grokMediaEligibilityProber == nil {
+		return false, "billing_probe_unavailable", errors.New("grok media eligibility probe is not configured")
+	}
+	return h.grokMediaEligibilityProber.ProbeMediaEligibility(ctx, account.ID)
+}
+
+func grokMediaRequiredCapability(endpoint service.GrokMediaEndpoint) service.OpenAIEndpointCapability {
+	if endpoint.IsGenerationRequest() {
+		return service.OpenAIEndpointCapabilityGrokMediaGeneration
+	}
+	return ""
+}
+
+func grokMediaScheduleModel(account *service.Account, routingModel string, result *service.OpenAIForwardResult) string {
+	if result != nil && strings.TrimSpace(result.UpstreamModel) != "" {
+		return result.UpstreamModel
+	}
+	if account == nil {
+		return strings.TrimSpace(routingModel)
+	}
+	return account.GetMappedModel(routingModel)
 }
 
 func shouldRecordGrokMediaUsage(endpoint service.GrokMediaEndpoint, requestModel string) bool {
@@ -435,6 +478,7 @@ func recordGrokMediaUsage(
 ) {
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
+	sessionID := service.ExtractClientSessionID(c)
 	payloadForHash := body
 	if len(payloadForHash) == 0 && strings.TrimSpace(requestID) != "" {
 		payloadForHash = []byte(requestID)
@@ -442,8 +486,11 @@ func recordGrokMediaUsage(
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+	// OriginalModel 记录客户端请求的模型：composite 分组下 body 已被改写为具体模型，
+	// 公开别名需从 context 取回，与其他端点的用量归因口径一致（计费不受影响：
+	// BillingModelSource 为空不会触发来源覆盖）。
 	channelUsageFields := service.ChannelUsageFields{
-		OriginalModel:      requestModel,
+		OriginalModel:      clientRequestedModel(c, requestModel),
 		ChannelMappedModel: requestModel,
 	}
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
@@ -460,6 +507,7 @@ func recordGrokMediaUsage(
 			RequestPayloadHash: service.HashUsageRequestPayload(payloadForHash),
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
+			SessionID:          sessionID,
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
 			logger.L().With(

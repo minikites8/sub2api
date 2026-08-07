@@ -79,7 +79,7 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 			continue
 		}
 		target.Status = StatusDisabled
-		if err := s.userRepo.Update(ctx, target); err != nil {
+		if err := s.userRepo.Update(ctx, target, UserUpdateFields{Status: true}); err != nil {
 			logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control disable failed: user=%d err=%v", item.UserID, err)
 			continue
 		}

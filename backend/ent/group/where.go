@@ -115,6 +115,11 @@ func Status(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStatus, v))
 }
 
+// DuplicateOperationID applies equality check predicate on the "duplicate_operation_id" field. It's identical to DuplicateOperationIDEQ.
+func DuplicateOperationID(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
+}
+
 // Platform applies equality check predicate on the "platform" field. It's identical to PlatformEQ.
 func Platform(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPlatform, v))
@@ -255,6 +260,11 @@ func AllowMessagesDispatch(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowMessagesDispatch, v))
 }
 
+// AllowLive applies equality check predicate on the "allow_live" field. It's identical to AllowLiveEQ.
+func AllowLive(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowLive, v))
+}
+
 // RequireOauthOnly applies equality check predicate on the "require_oauth_only" field. It's identical to RequireOauthOnlyEQ.
 func RequireOauthOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequireOauthOnly, v))
@@ -273,6 +283,11 @@ func DefaultMappedModel(v string) predicate.Group {
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
+}
+
+// MaxReasoningEffort applies equality check predicate on the "max_reasoning_effort" field. It's identical to MaxReasoningEffortEQ.
+func MaxReasoningEffort(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
 }
 
 // KiroCacheEmulationEnabled applies equality check predicate on the "kiro_cache_emulation_enabled" field. It's identical to KiroCacheEmulationEnabledEQ.
@@ -295,9 +310,39 @@ func KiroCacheEmulationRatio(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldKiroCacheEmulationRatio, v))
 }
 
+// KiroCacheEmulationMode applies equality check predicate on the "kiro_cache_emulation_mode" field. It's identical to KiroCacheEmulationModeEQ.
+func KiroCacheEmulationMode(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheCreationEmulationRatio applies equality check predicate on the "kiro_cache_creation_emulation_ratio" field. It's identical to KiroCacheCreationEmulationRatioEQ.
+func KiroCacheCreationEmulationRatio(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldKiroCacheCreationEmulationRatio, v))
+}
+
+// KiroCacheReadEmulationRatio applies equality check predicate on the "kiro_cache_read_emulation_ratio" field. It's identical to KiroCacheReadEmulationRatioEQ.
+func KiroCacheReadEmulationRatio(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldKiroCacheReadEmulationRatio, v))
+}
+
 // KiroEndpointMode applies equality check predicate on the "kiro_endpoint_mode" field. It's identical to KiroEndpointModeEQ.
 func KiroEndpointMode(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldKiroEndpointMode, v))
+}
+
+// ProfitControlEnabled applies equality check predicate on the "profit_control_enabled" field. It's identical to ProfitControlEnabledEQ.
+func ProfitControlEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldProfitControlEnabled, v))
+}
+
+// ProfitMinMargin applies equality check predicate on the "profit_min_margin" field. It's identical to ProfitMinMarginEQ.
+func ProfitMinMargin(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldProfitMinMargin, v))
+}
+
+// ProfitSafetyBuffer applies equality check predicate on the "profit_safety_buffer" field. It's identical to ProfitSafetyBufferEQ.
+func ProfitSafetyBuffer(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldProfitSafetyBuffer, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
@@ -863,6 +908,81 @@ func StatusEqualFold(v string) predicate.Group {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// DuplicateOperationIDEQ applies the EQ predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDNEQ applies the NEQ predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDIn applies the In predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDuplicateOperationID, vs...))
+}
+
+// DuplicateOperationIDNotIn applies the NotIn predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDuplicateOperationID, vs...))
+}
+
+// DuplicateOperationIDGT applies the GT predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDGTE applies the GTE predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDLT applies the LT predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDLTE applies the LTE predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDContains applies the Contains predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDHasPrefix applies the HasPrefix predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDHasSuffix applies the HasSuffix predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDIsNil applies the IsNil predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldDuplicateOperationID))
+}
+
+// DuplicateOperationIDNotNil applies the NotNil predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldDuplicateOperationID))
+}
+
+// DuplicateOperationIDEqualFold applies the EqualFold predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDContainsFold applies the ContainsFold predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldDuplicateOperationID, v))
 }
 
 // PlatformEQ applies the EQ predicate on the "platform" field.
@@ -1925,6 +2045,16 @@ func AllowMessagesDispatchNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowMessagesDispatch, v))
 }
 
+// AllowLiveEQ applies the EQ predicate on the "allow_live" field.
+func AllowLiveEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowLive, v))
+}
+
+// AllowLiveNEQ applies the NEQ predicate on the "allow_live" field.
+func AllowLiveNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAllowLive, v))
+}
+
 // RequireOauthOnlyEQ applies the EQ predicate on the "require_oauth_only" field.
 func RequireOauthOnlyEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequireOauthOnly, v))
@@ -2050,6 +2180,71 @@ func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
 }
 
+// MaxReasoningEffortEQ applies the EQ predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortNEQ applies the NEQ predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortIn applies the In predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldMaxReasoningEffort, vs...))
+}
+
+// MaxReasoningEffortNotIn applies the NotIn predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldMaxReasoningEffort, vs...))
+}
+
+// MaxReasoningEffortGT applies the GT predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortGTE applies the GTE predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortLT applies the LT predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortLTE applies the LTE predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortContains applies the Contains predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortHasPrefix applies the HasPrefix predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortHasSuffix applies the HasSuffix predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortEqualFold applies the EqualFold predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortContainsFold applies the ContainsFold predicate on the "max_reasoning_effort" field.
+func MaxReasoningEffortContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldMaxReasoningEffort, v))
+}
+
 // KiroCacheEmulationEnabledEQ applies the EQ predicate on the "kiro_cache_emulation_enabled" field.
 func KiroCacheEmulationEnabledEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldKiroCacheEmulationEnabled, v))
@@ -2150,6 +2345,151 @@ func KiroCacheEmulationRatioLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldKiroCacheEmulationRatio, v))
 }
 
+// KiroCacheEmulationModeEQ applies the EQ predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeNEQ applies the NEQ predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeIn applies the In predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldKiroCacheEmulationMode, vs...))
+}
+
+// KiroCacheEmulationModeNotIn applies the NotIn predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldKiroCacheEmulationMode, vs...))
+}
+
+// KiroCacheEmulationModeGT applies the GT predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeGTE applies the GTE predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeLT applies the LT predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeLTE applies the LTE predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeContains applies the Contains predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeHasPrefix applies the HasPrefix predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeHasSuffix applies the HasSuffix predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeEqualFold applies the EqualFold predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheEmulationModeContainsFold applies the ContainsFold predicate on the "kiro_cache_emulation_mode" field.
+func KiroCacheEmulationModeContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldKiroCacheEmulationMode, v))
+}
+
+// KiroCacheCreationEmulationRatioEQ applies the EQ predicate on the "kiro_cache_creation_emulation_ratio" field.
+func KiroCacheCreationEmulationRatioEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldKiroCacheCreationEmulationRatio, v))
+}
+
+// KiroCacheCreationEmulationRatioNEQ applies the NEQ predicate on the "kiro_cache_creation_emulation_ratio" field.
+func KiroCacheCreationEmulationRatioNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldKiroCacheCreationEmulationRatio, v))
+}
+
+// KiroCacheCreationEmulationRatioIn applies the In predicate on the "kiro_cache_creation_emulation_ratio" field.
+func KiroCacheCreationEmulationRatioIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldKiroCacheCreationEmulationRatio, vs...))
+}
+
+// KiroCacheCreationEmulationRatioNotIn applies the NotIn predicate on the "kiro_cache_creation_emulation_ratio" field.
+func KiroCacheCreationEmulationRatioNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldKiroCacheCreationEmulationRatio, vs...))
+}
+
+// KiroCacheCreationEmulationRatioGT applies the GT predicate on the "kiro_cache_creation_emulation_ratio" field.
+func KiroCacheCreationEmulationRatioGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldKiroCacheCreationEmulationRatio, v))
+}
+
+// KiroCacheCreationEmulationRatioGTE applies the GTE predicate on the "kiro_cache_creation_emulation_ratio" field.
+func KiroCacheCreationEmulationRatioGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldKiroCacheCreationEmulationRatio, v))
+}
+
+// KiroCacheCreationEmulationRatioLT applies the LT predicate on the "kiro_cache_creation_emulation_ratio" field.
+func KiroCacheCreationEmulationRatioLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldKiroCacheCreationEmulationRatio, v))
+}
+
+// KiroCacheCreationEmulationRatioLTE applies the LTE predicate on the "kiro_cache_creation_emulation_ratio" field.
+func KiroCacheCreationEmulationRatioLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldKiroCacheCreationEmulationRatio, v))
+}
+
+// KiroCacheReadEmulationRatioEQ applies the EQ predicate on the "kiro_cache_read_emulation_ratio" field.
+func KiroCacheReadEmulationRatioEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldKiroCacheReadEmulationRatio, v))
+}
+
+// KiroCacheReadEmulationRatioNEQ applies the NEQ predicate on the "kiro_cache_read_emulation_ratio" field.
+func KiroCacheReadEmulationRatioNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldKiroCacheReadEmulationRatio, v))
+}
+
+// KiroCacheReadEmulationRatioIn applies the In predicate on the "kiro_cache_read_emulation_ratio" field.
+func KiroCacheReadEmulationRatioIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldKiroCacheReadEmulationRatio, vs...))
+}
+
+// KiroCacheReadEmulationRatioNotIn applies the NotIn predicate on the "kiro_cache_read_emulation_ratio" field.
+func KiroCacheReadEmulationRatioNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldKiroCacheReadEmulationRatio, vs...))
+}
+
+// KiroCacheReadEmulationRatioGT applies the GT predicate on the "kiro_cache_read_emulation_ratio" field.
+func KiroCacheReadEmulationRatioGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldKiroCacheReadEmulationRatio, v))
+}
+
+// KiroCacheReadEmulationRatioGTE applies the GTE predicate on the "kiro_cache_read_emulation_ratio" field.
+func KiroCacheReadEmulationRatioGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldKiroCacheReadEmulationRatio, v))
+}
+
+// KiroCacheReadEmulationRatioLT applies the LT predicate on the "kiro_cache_read_emulation_ratio" field.
+func KiroCacheReadEmulationRatioLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldKiroCacheReadEmulationRatio, v))
+}
+
+// KiroCacheReadEmulationRatioLTE applies the LTE predicate on the "kiro_cache_read_emulation_ratio" field.
+func KiroCacheReadEmulationRatioLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldKiroCacheReadEmulationRatio, v))
+}
+
 // KiroEndpointModeEQ applies the EQ predicate on the "kiro_endpoint_mode" field.
 func KiroEndpointModeEQ(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldKiroEndpointMode, v))
@@ -2213,6 +2553,96 @@ func KiroEndpointModeEqualFold(v string) predicate.Group {
 // KiroEndpointModeContainsFold applies the ContainsFold predicate on the "kiro_endpoint_mode" field.
 func KiroEndpointModeContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldKiroEndpointMode, v))
+}
+
+// ProfitControlEnabledEQ applies the EQ predicate on the "profit_control_enabled" field.
+func ProfitControlEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldProfitControlEnabled, v))
+}
+
+// ProfitControlEnabledNEQ applies the NEQ predicate on the "profit_control_enabled" field.
+func ProfitControlEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldProfitControlEnabled, v))
+}
+
+// ProfitMinMarginEQ applies the EQ predicate on the "profit_min_margin" field.
+func ProfitMinMarginEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldProfitMinMargin, v))
+}
+
+// ProfitMinMarginNEQ applies the NEQ predicate on the "profit_min_margin" field.
+func ProfitMinMarginNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldProfitMinMargin, v))
+}
+
+// ProfitMinMarginIn applies the In predicate on the "profit_min_margin" field.
+func ProfitMinMarginIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldProfitMinMargin, vs...))
+}
+
+// ProfitMinMarginNotIn applies the NotIn predicate on the "profit_min_margin" field.
+func ProfitMinMarginNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldProfitMinMargin, vs...))
+}
+
+// ProfitMinMarginGT applies the GT predicate on the "profit_min_margin" field.
+func ProfitMinMarginGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldProfitMinMargin, v))
+}
+
+// ProfitMinMarginGTE applies the GTE predicate on the "profit_min_margin" field.
+func ProfitMinMarginGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldProfitMinMargin, v))
+}
+
+// ProfitMinMarginLT applies the LT predicate on the "profit_min_margin" field.
+func ProfitMinMarginLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldProfitMinMargin, v))
+}
+
+// ProfitMinMarginLTE applies the LTE predicate on the "profit_min_margin" field.
+func ProfitMinMarginLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldProfitMinMargin, v))
+}
+
+// ProfitSafetyBufferEQ applies the EQ predicate on the "profit_safety_buffer" field.
+func ProfitSafetyBufferEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldProfitSafetyBuffer, v))
+}
+
+// ProfitSafetyBufferNEQ applies the NEQ predicate on the "profit_safety_buffer" field.
+func ProfitSafetyBufferNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldProfitSafetyBuffer, v))
+}
+
+// ProfitSafetyBufferIn applies the In predicate on the "profit_safety_buffer" field.
+func ProfitSafetyBufferIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldProfitSafetyBuffer, vs...))
+}
+
+// ProfitSafetyBufferNotIn applies the NotIn predicate on the "profit_safety_buffer" field.
+func ProfitSafetyBufferNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldProfitSafetyBuffer, vs...))
+}
+
+// ProfitSafetyBufferGT applies the GT predicate on the "profit_safety_buffer" field.
+func ProfitSafetyBufferGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldProfitSafetyBuffer, v))
+}
+
+// ProfitSafetyBufferGTE applies the GTE predicate on the "profit_safety_buffer" field.
+func ProfitSafetyBufferGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldProfitSafetyBuffer, v))
+}
+
+// ProfitSafetyBufferLT applies the LT predicate on the "profit_safety_buffer" field.
+func ProfitSafetyBufferLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldProfitSafetyBuffer, v))
+}
+
+// ProfitSafetyBufferLTE applies the LTE predicate on the "profit_safety_buffer" field.
+func ProfitSafetyBufferLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldProfitSafetyBuffer, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
