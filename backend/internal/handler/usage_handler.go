@@ -46,10 +46,11 @@ type userGroupStat struct {
 
 // UsageHandler handles usage-related requests
 type UsageHandler struct {
-	usageService   *service.UsageService
-	apiKeyService  *service.APIKeyService
-	opsService     *service.OpsService
-	settingService *service.SettingService
+	usageService     *service.UsageService
+	apiKeyService    *service.APIKeyService
+	opsService       *service.OpsService
+	settingService   *service.SettingService
+	asyncTaskService *service.UsageAsyncTaskService
 }
 
 // NewUsageHandler creates a new UsageHandler
@@ -65,6 +66,18 @@ func NewUsageHandler(
 		opsService:     opsService,
 		settingService: settingService,
 	}
+}
+
+func ProvideUsageHandler(
+	usageService *service.UsageService,
+	apiKeyService *service.APIKeyService,
+	opsService *service.OpsService,
+	settingService *service.SettingService,
+	asyncTaskService *service.UsageAsyncTaskService,
+) *UsageHandler {
+	handler := NewUsageHandler(usageService, apiKeyService, opsService, settingService)
+	handler.asyncTaskService = asyncTaskService
+	return handler
 }
 
 func (h *UsageHandler) UsageService() *service.UsageService {
@@ -396,7 +409,16 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UsageLogFromService(record))
+	dtoRecord := dto.UsageLogFromService(record)
+	if h.asyncTaskService != nil {
+		asyncTask, lookupErr := h.asyncTaskService.GetDetails(c.Request.Context(), record)
+		if lookupErr != nil {
+			response.ErrorFrom(c, lookupErr)
+			return
+		}
+		dtoRecord.AsyncTask = dto.UsageAsyncTaskDetailsFromService(asyncTask)
+	}
+	response.Success(c, dtoRecord)
 }
 
 // Stats handles getting usage statistics

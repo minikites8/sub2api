@@ -17,7 +17,10 @@
         <dl>
           <div v-for="item in section.items" :key="item.label">
             <dt>{{ item.label }}</dt>
-            <dd :class="{ 'usage-request-details__mono': item.monospace }">{{ item.value }}</dd>
+            <dd :class="{ 'usage-request-details__mono': item.monospace }">
+              <a v-if="item.href" :href="item.href" target="_blank" rel="noopener noreferrer">{{ item.value }}</a>
+              <span v-else>{{ item.value }}</span>
+            </dd>
           </div>
         </dl>
       </section>
@@ -40,6 +43,7 @@ type DetailIcon = 'clipboard' | 'server' | 'globe' | 'sparkles'
 interface DetailItem {
   label: string
   value: string
+  href?: string
   monospace?: boolean
 }
 
@@ -77,6 +81,7 @@ const formatDateTime = (value: string) => new Intl.DateTimeFormat(undefined, {
 
 const requestTypeLabel = (log: UsageLog) => {
   const type = resolveUsageRequestType(log)
+  if (type === 'async') return t('usage.async')
   if (type === 'cyber') return t('usage.cyber')
   if (type === 'ws_v2') return t('usage.ws')
   if (type === 'stream') return t('usage.stream')
@@ -104,6 +109,25 @@ const imageSizeSourceLabel = (source: UsageLog['image_size_source']) => {
   if (source === 'default') return t('usage.imageSizeSourceDefault')
   if (source === 'legacy') return t('usage.imageSizeSourceLegacy')
   return emptyValue
+}
+
+const safeHref = (value: string | null | undefined): string | undefined => {
+  const candidate = value?.trim()
+  if (!candidate) return undefined
+  if (candidate.startsWith('/')) return candidate
+  try {
+    const parsed = new URL(candidate)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? candidate : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const asyncTaskKindLabel = (kind: string) => {
+  if (kind === 'video') return t('usage.requestDetails.taskKindVideo')
+  if (kind === 'grok_video') return t('usage.requestDetails.taskKindGrokVideo')
+  if (kind === 'batch_image') return t('usage.requestDetails.taskKindBatchImage')
+  return kind
 }
 
 // 这个弹窗只放辅助元数据——token 和 Credit 明细在表格行上各有自己的悬浮层。
@@ -160,6 +184,39 @@ const sections = computed<DetailSection[]>(() => {
     })
   }
 
+  if (log.video_count > 0) {
+    draft.push({
+      title: t('usage.requestDetails.videoMetadata'),
+      icon: 'sparkles',
+      items: [
+        { label: t('usage.requestDetails.videoCount'), value: present(log.video_count) },
+        { label: t('usage.requestDetails.videoResolution'), value: present(log.video_resolution) },
+        { label: t('usage.requestDetails.videoDuration'), value: present(log.video_duration_seconds) },
+      ],
+    })
+  }
+
+  const asyncTask = log.async_task
+  if (asyncTask) {
+    draft.push({
+      title: t('usage.requestDetails.asyncTask'),
+      icon: 'server',
+      items: [
+        { label: t('usage.requestDetails.taskKind'), value: asyncTaskKindLabel(asyncTask.kind) },
+        { label: t('usage.requestDetails.taskId'), value: present(asyncTask.task_id), monospace: true },
+        { label: t('usage.requestDetails.taskStatus'), value: present(asyncTask.status) },
+        { label: t('usage.requestDetails.statusUrl'), value: present(asyncTask.status_url), href: safeHref(asyncTask.status_url), monospace: true },
+        ...(asyncTask.result_urls ?? []).map((url, index) => ({
+          label: t('usage.requestDetails.resultUrl', { index: index + 1 }),
+          value: url,
+          href: safeHref(url),
+          monospace: true,
+        })),
+        { label: t('usage.requestDetails.expiresAt'), value: asyncTask.expires_at ? formatDateTime(asyncTask.expires_at) : emptyValue },
+      ],
+    })
+  }
+
   return draft
     .map((section) => ({ ...section, items: section.items.filter((item) => item.value !== emptyValue) }))
     .filter((section) => section.items.length > 0)
@@ -206,6 +263,8 @@ const sections = computed<DetailSection[]>(() => {
 .usage-request-details__section dt { color: #748981; font-size: 12px; line-height: 1.45; }
 .usage-request-details__section dd { min-width: 0; overflow-wrap: anywhere; color: #eaf2ef; font-size: 12px; line-height: 1.45; }
 .usage-request-details__mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.usage-request-details__section a { color: #5ee6b2; text-decoration: underline; text-decoration-color: rgba(94, 230, 178, .4); text-underline-offset: 2px; }
+.usage-request-details__section a:hover { color: #9af3d1; text-decoration-color: currentColor; }
 
 @media (max-width: 520px) {
   .usage-request-details__section dl > div { grid-template-columns: 1fr; gap: 3px; }

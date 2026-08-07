@@ -344,6 +344,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			}
 		}
 		if shouldRecordGrokMediaUsage(endpoint, requestModel) {
+			if result.VideoCount > 0 && strings.TrimSpace(result.ResponseID) != "" {
+				result.AsyncTaskID = strings.TrimSpace(result.ResponseID)
+			}
 			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
 		}
 		reqLog.Debug("grok_media.request_completed",

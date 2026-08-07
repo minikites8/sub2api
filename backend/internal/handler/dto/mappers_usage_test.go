@@ -269,6 +269,27 @@ func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
 	require.NotContains(t, string(body), `"image_size":"2K"`)
 }
 
+func TestUsageLogFromServiceIncludesVideoMetadata(t *testing.T) {
+	t.Parallel()
+
+	resolution := "1080p"
+	duration := 8
+	log := &service.UsageLog{
+		RequestID:            "grok_video:task-1",
+		Model:                "grok-imagine-video",
+		RequestType:          service.RequestTypeAsync,
+		VideoCount:           1,
+		VideoResolution:      &resolution,
+		VideoDurationSeconds: &duration,
+	}
+
+	got := UsageLogFromService(log)
+	require.Equal(t, "async", got.RequestType)
+	require.Equal(t, 1, got.VideoCount)
+	require.Equal(t, resolution, *got.VideoResolution)
+	require.Equal(t, duration, *got.VideoDurationSeconds)
+}
+
 func f64Ptr(value float64) *float64 {
 	return &value
 }

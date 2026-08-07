@@ -828,7 +828,7 @@ func (s *BaiduVODVideoService) recordUsage(ctx context.Context, task *BaiduVODVi
 		Model: task.Model, RequestedModel: task.Model, UpstreamModel: optionalNonEqualStringPtr(task.UpstreamModel, task.Model), GroupID: task.GroupID,
 		InboundEndpoint: &inbound, UpstreamEndpoint: &upstream, ImageCount: task.VideoCount, MediaType: &mediaType,
 		OutputTokens: completionTokens, VideoCount: task.VideoCount, VideoResolution: &resolution, VideoDurationSeconds: &duration, TotalCost: totalCost, ActualCost: actual,
-		RateMultiplier: task.VideoRateMultiplier, AccountRateMultiplier: &accountRate, BillingType: BillingTypeBalance, RequestType: RequestTypeSync,
+		RateMultiplier: task.VideoRateMultiplier, AccountRateMultiplier: &accountRate, BillingType: BillingTypeBalance, RequestType: RequestTypeAsync,
 		BillingMode: &billingMode, CreatedAt: now}
 	if billingMode == string(BillingModeToken) || billingMode == string(BillingModeVideoToken) {
 		log.OutputCost = totalCost

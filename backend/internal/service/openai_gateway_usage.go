@@ -271,6 +271,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageSizeSource:     optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:  result.ImageSizeBreakdown,
 	}
+	if asyncTaskID := strings.TrimSpace(result.AsyncTaskID); asyncTaskID != "" {
+		usageLog.RequestID = GrokVideoUsageRequestID(asyncTaskID)
+		usageLog.RequestType = RequestTypeAsync
+	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if isVideoUsage {
 		usageLog.VideoCount = result.VideoCount

@@ -19,11 +19,12 @@ const (
 	RequestTypeStream       RequestType = 2
 	RequestTypeWSV2         RequestType = 3
 	RequestTypeCyberBlocked RequestType = 4 // cyber_policy 命中（透传但被上游安全策略拒绝）
+	RequestTypeAsync        RequestType = 5 // 异步媒体生成任务
 )
 
 func (t RequestType) IsValid() bool {
 	switch t {
-	case RequestTypeUnknown, RequestTypeSync, RequestTypeStream, RequestTypeWSV2, RequestTypeCyberBlocked:
+	case RequestTypeUnknown, RequestTypeSync, RequestTypeStream, RequestTypeWSV2, RequestTypeCyberBlocked, RequestTypeAsync:
 		return true
 	default:
 		return false
@@ -47,6 +48,8 @@ func (t RequestType) String() string {
 		return "ws_v2"
 	case RequestTypeCyberBlocked:
 		return "cyber"
+	case RequestTypeAsync:
+		return "async"
 	default:
 		return "unknown"
 	}
@@ -68,8 +71,10 @@ func ParseUsageRequestType(value string) (RequestType, error) {
 		return RequestTypeWSV2, nil
 	case "cyber":
 		return RequestTypeCyberBlocked, nil
+	case "async":
+		return RequestTypeAsync, nil
 	default:
-		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber")
+		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber, async")
 	}
 }
 
@@ -91,6 +96,8 @@ func ApplyLegacyRequestFields(requestType RequestType, fallbackStream bool, fall
 		return true, false
 	case RequestTypeWSV2:
 		return true, true
+	case RequestTypeAsync:
+		return false, false
 	default:
 		return fallbackStream, fallbackOpenAIWSMode
 	}

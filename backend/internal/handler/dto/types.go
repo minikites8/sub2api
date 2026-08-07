@@ -468,6 +468,15 @@ type BatchUpdateRedeemCodesRequest struct {
 	Fields BatchUpdateRedeemCodeFields `json:"fields" binding:"required"`
 }
 
+type UsageAsyncTaskDetails struct {
+	Kind       string     `json:"kind"`
+	TaskID     string     `json:"task_id"`
+	Status     string     `json:"status"`
+	StatusURL  string     `json:"status_url,omitempty"`
+	ResultURLs []string   `json:"result_urls,omitempty"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+}
+
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
 type UsageLog struct {
 	ID        int64  `json:"id"`
@@ -515,6 +524,11 @@ type UsageLog struct {
 	DurationMs   *int   `json:"duration_ms"`
 	FirstTokenMs *int   `json:"first_token_ms"`
 
+	// 视频生成字段
+	VideoCount           int     `json:"video_count"`
+	VideoResolution      *string `json:"video_resolution"`
+	VideoDurationSeconds *int    `json:"video_duration_seconds"`
+
 	// 图片生成字段
 	ImageCount         int            `json:"image_count"`
 	ImageSize          *string        `json:"image_size"`
@@ -541,10 +555,11 @@ type UsageLog struct {
 
 	CreatedAt time.Time `json:"created_at"`
 
-	User         *User             `json:"user,omitempty"`
-	APIKey       *APIKey           `json:"api_key,omitempty"`
-	Group        *Group            `json:"group,omitempty"`
-	Subscription *UserSubscription `json:"subscription,omitempty"`
+	User         *User                  `json:"user,omitempty"`
+	APIKey       *APIKey                `json:"api_key,omitempty"`
+	Group        *Group                 `json:"group,omitempty"`
+	Subscription *UserSubscription      `json:"subscription,omitempty"`
+	AsyncTask    *UsageAsyncTaskDetails `json:"async_task,omitempty"`
 }
 
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。

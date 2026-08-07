@@ -5,6 +5,7 @@ import UsageView from '../UsageView.vue'
 
 const {
   query,
+  getById,
   getStats,
   getDashboardModels,
   getDashboardSnapshotV2,
@@ -16,6 +17,7 @@ const {
   showInfo,
 } = vi.hoisted(() => ({
   query: vi.fn(),
+  getById: vi.fn(),
   getStats: vi.fn(),
   getDashboardModels: vi.fn(),
   getDashboardSnapshotV2: vi.fn(),
@@ -53,6 +55,7 @@ const messages: Record<string, string> = {
   'usage.ws': 'WS',
   'usage.stream': 'Stream',
   'usage.sync': 'Sync',
+  'usage.async': 'Async',
   'usage.exporting': 'Exporting',
   'usage.exportCsv': 'Export CSV',
   'usage.failedToLoad': 'Failed to load',
@@ -87,6 +90,19 @@ const messages: Record<string, string> = {
   'usage.requestDetails.ipAddress': 'IP Address',
   'usage.requestDetails.imageMetadata': 'Image Parameters',
   'usage.requestDetails.mediaType': 'Media Type',
+  'usage.requestDetails.asyncTask': 'Async Task',
+  'usage.requestDetails.taskKind': 'Task Type',
+  'usage.requestDetails.taskKindGrokVideo': 'Grok Video Generation',
+  'usage.requestDetails.taskId': 'Task ID',
+  'usage.requestDetails.taskStatus': 'Task Status',
+  'usage.requestDetails.statusUrl': 'Status URL',
+  'usage.requestDetails.resultUrl': 'Result URL {index}',
+  'usage.requestDetails.expiresAt': 'Result Expires At',
+  'usage.requestDetails.videoMetadata': 'Video Parameters',
+  'usage.requestDetails.videoCount': 'Video Count',
+  'usage.requestDetails.videoResolution': 'Resolution',
+  'usage.requestDetails.videoDuration': 'Duration (seconds)',
+  'usage.requestDetails.failedToLoad': 'Failed to load request details',
   'usage.analytics.firstTokenLatency': 'First token',
   'usage.analytics.totalLatency': 'Total latency',
   'admin.usage.inputCost': 'Input Cost',
@@ -100,6 +116,7 @@ const messages: Record<string, string> = {
 vi.mock('@/api', () => ({
   usageAPI: {
     query,
+    getById,
     getStats,
     getDashboardModels,
     getDashboardSnapshotV2,
@@ -191,6 +208,7 @@ function mountUsageView() {
 describe('user UsageView', () => {
   beforeEach(() => {
     query.mockReset()
+    getById.mockReset()
     getStats.mockReset()
     getDashboardModels.mockReset()
     getDashboardSnapshotV2.mockReset()
@@ -202,6 +220,7 @@ describe('user UsageView', () => {
     showInfo.mockReset()
 
     query.mockResolvedValue({ items: [usageLog], total: 1, pages: 1 })
+    getById.mockResolvedValue(usageLog)
     getStats.mockResolvedValue({
       total_requests: 1,
       total_input_tokens: 10,
@@ -260,6 +279,22 @@ describe('user UsageView', () => {
       total: 1,
       pages: 1,
     })
+    getById.mockResolvedValue({
+      ...usageLog,
+      reasoning_effort: 'high',
+      inbound_endpoint: '/v1/responses',
+      video_count: 1,
+      video_resolution: '1080p',
+      video_duration_seconds: 8,
+      async_task: {
+        kind: 'grok_video',
+        task_id: 'video-task-1',
+        status: 'submitted',
+        status_url: '/v1/videos/video-task-1',
+        result_urls: ['https://cdn.example.com/video.mp4'],
+      },
+    })
+
     const wrapper = mountUsageView()
     await flushPromises()
 
@@ -273,6 +308,11 @@ describe('user UsageView', () => {
     expect(dialog?.textContent).toContain('IP Address203.0.113.10')
     expect(dialog?.textContent).toContain('User-Agentopenai-node/4.71.1')
     expect(dialog?.textContent).toContain('Reasoning EffortHigh')
+    expect(getById).toHaveBeenCalledWith(1)
+    expect(dialog?.textContent).toContain('Video Parameters')
+    expect(dialog?.textContent).toContain('Resolution1080p')
+    expect(dialog?.textContent).toContain('Task IDvideo-task-1')
+    expect(dialog?.querySelector('a[href="https://cdn.example.com/video.mp4"]')).not.toBeNull()
     expect(dialog?.textContent).not.toContain('Billing Context')
 
     wrapper.unmount()

@@ -2428,6 +2428,7 @@ func TestOpenAIGatewayServiceRecordUsage_GrokVideoWithTokenChannelPricingKeepsVi
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
 			RequestID:            "resp_grok_video_token_channel",
+			AsyncTaskID:          "video-task-token-channel",
 			Model:                "grok-imagine-video",
 			BillingModel:         "grok-imagine-video",
 			ImageCount:           1,
@@ -2456,6 +2457,8 @@ func TestOpenAIGatewayServiceRecordUsage_GrokVideoWithTokenChannelPricingKeepsVi
 	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
 	require.Nil(t, usageRepo.lastLog.ImageSize)
 	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
+	require.Equal(t, GrokVideoUsageRequestID("video-task-token-channel"), usageRepo.lastLog.RequestID)
+	require.Equal(t, RequestTypeAsync, usageRepo.lastLog.RequestType)
 	require.Equal(t, 1, usageRepo.lastLog.VideoCount)
 	require.NotNil(t, usageRepo.lastLog.VideoResolution)
 	require.Equal(t, VideoBillingResolution720P, *usageRepo.lastLog.VideoResolution)

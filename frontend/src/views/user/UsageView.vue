@@ -230,7 +230,7 @@
     </div>
   </AppLayout>
 
-  <UsageRequestDetailsDialog :log="requestDetailsLog" @close="requestDetailsLog = null" />
+  <UsageRequestDetailsDialog :log="requestDetailsLog" @close="closeRequestDetails" />
 
   <Teleport to="body">
     <div
@@ -606,9 +606,25 @@ const closePinnedDetails = () => {
   closePinnedCreditTooltip()
 }
 
-const openRequestDetails = (log: UsageLog) => {
+let requestDetailsSeq = 0
+
+const closeRequestDetails = () => {
+  requestDetailsSeq++
+  requestDetailsLog.value = null
+}
+
+const openRequestDetails = async (log: UsageLog) => {
   closePinnedDetails()
   requestDetailsLog.value = log
+  if (previewMode) return
+
+  const seq = ++requestDetailsSeq
+  try {
+    const detail = await usageAPI.getById(log.id)
+    if (seq === requestDetailsSeq) requestDetailsLog.value = detail
+  } catch (error) {
+    if (seq === requestDetailsSeq) appStore.showError(t('usage.requestDetails.failedToLoad'))
+  }
 }
 
 const filters = ref<UsageQueryParams>({
@@ -631,6 +647,7 @@ const sortState = reactive({
 
 const requestTypeOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.usage.allTypes') },
+  { value: 'async', label: t('usage.async') },
   { value: 'ws_v2', label: t('usage.ws') },
   { value: 'stream', label: t('usage.stream') },
   { value: 'sync', label: t('usage.sync') },
@@ -910,6 +927,7 @@ const handleIpGeoBatchFailed = () => {
 
 const getRequestTypeExportText = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
+  if (requestType === 'async') return 'Async'
   if (requestType === 'cyber') return 'Cyber'
   if (requestType === 'ws_v2') return 'WS'
   if (requestType === 'stream') return 'Stream'

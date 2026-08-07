@@ -261,6 +261,7 @@ const groupOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.a
 
 const requestTypeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allTypes') },
+  { value: 'async', label: t('usage.async') },
   { value: 'ws_v2', label: t('usage.ws') },
   { value: 'stream', label: t('usage.stream') },
   { value: 'sync', label: t('usage.sync') },

@@ -1490,9 +1490,18 @@ export interface CodexSessionImportResult {
 // ==================== Usage & Redeem Types ====================
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
-export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber'
+export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber' | 'async'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
+
+export interface UsageAsyncTaskDetails {
+  kind: 'video' | 'grok_video' | 'batch_image'
+  task_id: string
+  status: string
+  status_url?: string
+  result_urls?: string[]
+  expires_at?: string | null
+}
 
 export interface UsageLog {
   id: number
@@ -1533,6 +1542,11 @@ export interface UsageLog {
   duration_ms: number | null
   first_token_ms: number | null
 
+  // 视频生成字段
+  video_count: number
+  video_resolution: string | null
+  video_duration_seconds: number | null
+
   // 图片生成字段
   image_count: number
   image_size: string | null
@@ -1562,6 +1576,7 @@ export interface UsageLog {
   api_key?: ApiKey
   group?: Group
   subscription?: UserSubscription
+  async_task?: UsageAsyncTaskDetails | null
 }
 
 export interface UsageLogAccountSummary {

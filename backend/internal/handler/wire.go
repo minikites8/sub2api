@@ -203,7 +203,7 @@ var ProviderSet = wire.NewSet(
 	NewUserHandler,
 	NewDailyCheckinHandler,
 	NewAPIKeyHandler,
-	NewUsageHandler,
+	ProvideUsageHandler,
 	NewRedeemHandler,
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,

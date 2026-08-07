@@ -655,6 +655,9 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		ImageSizeSource:           l.ImageSizeSource,
 		ImageSizeBreakdown:        l.ImageSizeBreakdown,
 		MediaType:                 l.MediaType,
+		VideoCount:                l.VideoCount,
+		VideoResolution:           l.VideoResolution,
+		VideoDurationSeconds:      l.VideoDurationSeconds,
 		UserAgent:                 l.UserAgent,
 		IPAddress:                 l.IPAddress,
 		CacheTTLOverridden:        l.CacheTTLOverridden,
@@ -695,6 +698,20 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		AccountStatsCost:      l.AccountStatsCost,
 		IPAddress:             l.IPAddress,
 		Account:               AccountSummaryFromService(l.Account),
+	}
+}
+
+func UsageAsyncTaskDetailsFromService(details *service.UsageAsyncTaskDetails) *UsageAsyncTaskDetails {
+	if details == nil {
+		return nil
+	}
+	return &UsageAsyncTaskDetails{
+		Kind:       details.Kind,
+		TaskID:     details.TaskID,
+		Status:     details.Status,
+		StatusURL:  details.StatusURL,
+		ResultURLs: append([]string(nil), details.ResultURLs...),
+		ExpiresAt:  details.ExpiresAt,
 	}
 }
 

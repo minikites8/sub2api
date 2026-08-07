@@ -14,6 +14,20 @@ const labels: Record<string, string> = {
   'usage.requestDetails.nodeId': 'Processing Node ID',
   'usage.requestDetails.imageMetadata': 'Image metadata',
   'usage.requestDetails.mediaType': 'Media Type',
+  'usage.requestDetails.asyncTask': 'Async Task',
+  'usage.requestDetails.taskKind': 'Task Type',
+  'usage.requestDetails.taskKindVideo': 'Video Generation',
+  'usage.requestDetails.taskKindGrokVideo': 'Grok Video Generation',
+  'usage.requestDetails.taskKindBatchImage': 'Batch Image Generation',
+  'usage.requestDetails.taskId': 'Task ID',
+  'usage.requestDetails.taskStatus': 'Task Status',
+  'usage.requestDetails.statusUrl': 'Status URL',
+  'usage.requestDetails.resultUrl': 'Result URL',
+  'usage.requestDetails.expiresAt': 'Result Expires At',
+  'usage.requestDetails.videoMetadata': 'Video Parameters',
+  'usage.requestDetails.videoCount': 'Video Count',
+  'usage.requestDetails.videoResolution': 'Resolution',
+  'usage.requestDetails.videoDuration': 'Duration (seconds)',
   'usage.apiKeyFilter': 'API Key',
   'usage.inboundEndpoint': 'Inbound Endpoint',
   'usage.userAgent': 'User-Agent',
@@ -22,6 +36,7 @@ const labels: Record<string, string> = {
   'usage.serviceTierStandard': 'Standard',
   'usage.type': 'Type',
   'usage.stream': 'Streaming',
+  'usage.async': 'Async',
   'usage.imageCount': 'Image Count',
   'usage.imageBillingSize': 'Billing Size',
   'usage.imageInputSize': 'Input Size',
@@ -51,6 +66,9 @@ const baseLog = {
   stream: true,
   rate_multiplier: 1,
   image_count: 0,
+  video_count: 0,
+  video_resolution: null,
+  video_duration_seconds: null,
   request_id: '',
   node_id: null,
   ip_address: null,
@@ -135,6 +153,32 @@ describe('UsageRequestDetailsDialog', () => {
     expect(withImages.text()).toContain('Size SourceOutput')
     // 图片段里没取到的尺寸同样不占位。
     expect(withImages.text()).not.toContain('Input Size')
+  })
+
+  it('shows async task result links and video metadata', () => {
+    const wrapper = mountDialog({
+      ...baseLog,
+      request_type: 'async',
+      video_count: 1,
+      video_resolution: '1080p',
+      video_duration_seconds: 8,
+      async_task: {
+        kind: 'video',
+        task_id: 'video-task-1',
+        status: 'completed',
+        status_url: '/v1/videos/video-task-1',
+        result_urls: ['https://cdn.example.com/video.mp4', 'javascript:alert(1)'],
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('TypeAsync')
+    expect(text).toContain('Video Parameters')
+    expect(text).toContain('Resolution1080p')
+    expect(text).toContain('Task IDvideo-task-1')
+    expect(wrapper.find('a[href="/v1/videos/video-task-1"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="https://cdn.example.com/video.mp4"]').exists()).toBe(true)
+    expect(wrapper.find('a[href^="javascript:"]').exists()).toBe(false)
   })
 
   it('renders nothing when no log is selected', () => {

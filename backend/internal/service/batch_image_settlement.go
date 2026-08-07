@@ -274,7 +274,7 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		RateMultiplier:        job.GroupRateMultiplier * job.BatchDiscountMultiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           BillingTypeBalance,
-		RequestType:           RequestTypeSync,
+		RequestType:           RequestTypeAsync,
 		BillingMode:           &billingMode,
 		ImageSize:             &imageSize,
 		CreatedAt:             createdAt,
