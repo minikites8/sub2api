@@ -779,9 +779,13 @@ func ProvideGeneratedMediaStorageService(
 	encryptor SecretEncryptor,
 	storeFactory GeneratedMediaObjectStoreFactory,
 	httpUpstream HTTPUpstream,
+	openAIGatewayService *OpenAIGatewayService,
 	cfg *config.Config,
 ) *GeneratedMediaStorageService {
 	storage := NewGeneratedMediaStorageService(settingRepo, encryptor, storeFactory, httpUpstream)
+	if openAIGatewayService != nil {
+		openAIGatewayService.SetGeneratedMediaImageArchiver(storage)
+	}
 	leaseService := GetQuotaLeaseDemoService(cfg)
 	storage.SetConfigSource(leaseService)
 	leaseService.SetGeneratedMediaStorageService(storage)

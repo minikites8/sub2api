@@ -214,7 +214,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	dbDumper := repository.NewPgDumper(configConfig)
 	backupService := service.ProvideBackupService(settingRepository, configConfig, secretEncryptor, backupObjectStoreFactory, dbDumper)
 	generatedMediaObjectStoreFactory := repository.NewS3GeneratedMediaStoreFactory()
-	generatedMediaStorageService := service.ProvideGeneratedMediaStorageService(settingRepository, secretEncryptor, generatedMediaObjectStoreFactory, httpUpstream, configConfig)
+	generatedMediaStorageService := service.ProvideGeneratedMediaStorageService(settingRepository, secretEncryptor, generatedMediaObjectStoreFactory, httpUpstream, openAIGatewayService, configConfig)
 	backupHandler := admin.NewBackupHandler(backupService, generatedMediaStorageService, userService)
 	oAuthHandler := admin.NewOAuthHandler(oAuthService)
 	openAIOAuthHandler := handler.ProvideAdminOpenAIOAuthHandler(openAIOAuthService, adminService, openAIQuotaService, configConfig)

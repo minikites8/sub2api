@@ -304,6 +304,7 @@ func initializeNodeApplication(cfg *config.Config, buildInfo handler.BuildInfo) 
 		secretEncryptor,
 		repository.NewS3GeneratedMediaStoreFactory(),
 		httpUpstream,
+		openAIGatewayService,
 		cfg,
 	)
 	baiduVODVideoWorkerRuntime := service.ProvideBaiduVODVideoWorkerRuntime(

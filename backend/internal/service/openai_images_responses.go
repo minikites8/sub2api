@@ -22,6 +22,7 @@ import (
 
 type openAIResponsesImageResult struct {
 	Result        string
+	ArchivedURL   string
 	RevisedPrompt string
 	OutputFormat  string
 	Size          string
@@ -275,7 +276,11 @@ func buildOpenAIImagesStreamCompletedPayload(
 	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
 	payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
 	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
-		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
+		imageURL := strings.TrimSpace(img.ArchivedURL)
+		if imageURL == "" {
+			imageURL = "data:" + openAIImageOutputMIMEType(img.OutputFormat) + ";base64," + img.Result
+		}
+		payload, _ = sjson.SetBytes(payload, "url", imageURL)
 	}
 	if img.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", img.Background)
@@ -950,7 +955,11 @@ func buildOpenAIImagesAPIResponse(
 	for _, img := range results {
 		item := []byte(`{}`)
 		if format == "url" {
-			item, _ = sjson.SetBytes(item, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
+			imageURL := strings.TrimSpace(img.ArchivedURL)
+			if imageURL == "" {
+				imageURL = "data:" + openAIImageOutputMIMEType(img.OutputFormat) + ";base64," + img.Result
+			}
+			item, _ = sjson.SetBytes(item, "url", imageURL)
 		} else {
 			item, _ = sjson.SetBytes(item, "b64_json", img.Result)
 		}
@@ -1302,6 +1311,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
 	}
 
+	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
+		requestID := ""
+		if resp != nil {
+			requestID = resp.Header.Get("x-request-id")
+		}
+		for index := range results {
+			if err := s.archiveOpenAIResponsesImageResult(c.Request.Context(), &results[index], requestID, index, createdAt); err != nil {
+				return OpenAIUsage{}, 0, nil, err
+			}
+		}
+	}
 	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
@@ -1344,6 +1364,21 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	pendingSeen := make(map[string]struct{})
 	streamMeta := openAIResponsesImageResult{Model: strings.TrimSpace(fallbackModel)}
 	var createdAt int64
+	requestID := ""
+	if resp != nil {
+		requestID = resp.Header.Get("x-request-id")
+	}
+	archiveResults := func(results []openAIResponsesImageResult) error {
+		if format != "url" {
+			return nil
+		}
+		for index := range results {
+			if err := s.archiveOpenAIResponsesImageResult(c.Request.Context(), &results[index], requestID, index, createdAt); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	clientDisconnected := false
 	lastDownstreamWriteAt := time.Now()
 	var sseData openAISSEDataAccumulator
@@ -1442,6 +1477,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataDone = true
 				return
 			}
+			if archiveErr := archiveResults(finalResults); archiveErr != nil {
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(archiveErr.Error()))
+				processDataErr = archiveErr
+				processDataDone = true
+				return
+			}
 			eventName := streamPrefix + ".completed"
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
@@ -1499,6 +1540,10 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				mergeOpenAIResponsesImageMeta(&finalResults[i], streamMeta)
 			}
 			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
+			if archiveErr := archiveResults(finalResults); archiveErr != nil {
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(archiveErr.Error()))
+				return archiveErr
+			}
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
 				if _, exists := emitted[key]; exists {

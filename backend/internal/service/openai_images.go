@@ -667,7 +667,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	imageCount := parsed.N
 	var firstTokenMs *int
 	if parsed.Stream && isEventStreamResponse(resp.Header) {
-		streamUsage, streamCount, streamSizes, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime)
+		streamUsage, streamCount, streamSizes, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime, parsed.ResponseFormat)
 		if err != nil {
 			if streamCount > 0 {
 				return &OpenAIForwardResult{
@@ -706,7 +706,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c, parsed.ResponseFormat)
 		if err != nil {
 			return nil, err
 		}
@@ -877,10 +877,20 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context, responseFormat ...string) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
+	}
+	if len(responseFormat) > 0 && strings.EqualFold(strings.TrimSpace(responseFormat[0]), "url") {
+		requestID := ""
+		if resp != nil {
+			requestID = resp.Header.Get("x-request-id")
+		}
+		body, err = s.archiveOpenAIImageResponseURLs(c.Request.Context(), body, requestID)
+		if err != nil {
+			return OpenAIUsage{}, 0, nil, err
+		}
 	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
@@ -899,6 +909,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
 	startTime time.Time,
+	responseFormat ...string,
 ) (OpenAIUsage, int, []string, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
@@ -924,6 +935,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	seenSSEData := false
 	fallbackTooLarge := false
 	var sseData openAISSEDataAccumulator
+	archiveURLs := len(responseFormat) > 0 && strings.EqualFold(strings.TrimSpace(responseFormat[0]), "url")
+	archiveRequestID := ""
+	if resp != nil {
+		archiveRequestID = resp.Header.Get("x-request-id")
+	}
+	archiveSequence := 0
+	var archiveErr error
 
 	processSSEData := func(dataBytes []byte) {
 		seenSSEData = true
@@ -938,8 +956,16 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	}
 
 	processLine := func(line []byte) {
-		if len(line) == 0 {
+		if len(line) == 0 || archiveErr != nil {
 			return
+		}
+		if archiveURLs {
+			var rewritten []byte
+			rewritten, archiveSequence, archiveErr = s.archiveOpenAIImageSSELine(c.Request.Context(), line, archiveRequestID, archiveSequence)
+			if archiveErr != nil {
+				return
+			}
+			line = rewritten
 		}
 		if firstTokenMs == nil {
 			ms := int(time.Since(startTime).Milliseconds())
@@ -990,6 +1016,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		for {
 			line, err := reader.ReadBytes('\n')
 			processLine(line)
+			if archiveErr != nil {
+				return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, archiveErr
+			}
 			if err == io.EOF {
 				break
 			}
@@ -1074,6 +1103,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 				return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, ev.err
 			}
 			processLine(ev.line)
+			if archiveErr != nil {
+				return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, archiveErr
+			}
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 			if time.Since(lastRead) < streamInterval {

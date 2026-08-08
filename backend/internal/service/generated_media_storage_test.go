@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -189,4 +190,49 @@ func TestGeneratedMediaStorageDisabledKeepsUpstreamURL(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, source, result)
 	require.Zero(t, httpClient.calls)
+}
+func TestGeneratedMediaStorageArchiveImageFromURL(t *testing.T) {
+	repo := newGeneratedMediaSettingRepo()
+	store := &generatedMediaTestStore{}
+	httpClient := &generatedMediaTestHTTP{response: &http.Response{
+		StatusCode:    http.StatusOK,
+		Header:        http.Header{"Content-Type": []string{"image/png"}},
+		Body:          io.NopCloser(strings.NewReader("png-bytes")),
+		ContentLength: int64(len("png-bytes")),
+	}}
+	storage := NewGeneratedMediaStorageService(repo, generatedMediaTestEncryptor{}, func(context.Context, *GeneratedMediaStorageConfig) (GeneratedMediaObjectStore, error) {
+		return store, nil
+	}, httpClient)
+	cfg := generatedMediaTestConfig()
+	cfg.Prefix = "images"
+	_, err := storage.UpdateConfig(context.Background(), cfg)
+	require.NoError(t, err)
+
+	result, err := storage.ArchiveImage(context.Background(), "https://upstream.example.com/result?token=private", "image-task-1", time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.Equal(t, "https://media.example.com/images/2026/08/09/image-task-1.png", result)
+	require.Equal(t, "images/2026/08/09/image-task-1.png", store.key)
+	require.Equal(t, "image/png", store.contentType)
+	require.Equal(t, "png-bytes", store.body)
+	require.Equal(t, 1, httpClient.calls)
+}
+
+func TestGeneratedMediaStorageArchiveImageFromDataURL(t *testing.T) {
+	repo := newGeneratedMediaSettingRepo()
+	store := &generatedMediaTestStore{}
+	storage := NewGeneratedMediaStorageService(repo, generatedMediaTestEncryptor{}, func(context.Context, *GeneratedMediaStorageConfig) (GeneratedMediaObjectStore, error) {
+		return store, nil
+	}, nil)
+	cfg := generatedMediaTestConfig()
+	cfg.Prefix = "images"
+	_, err := storage.UpdateConfig(context.Background(), cfg)
+	require.NoError(t, err)
+
+	source := "data:image/webp;base64," + base64.StdEncoding.EncodeToString([]byte("webp-bytes"))
+	result, err := storage.ArchiveImage(context.Background(), source, "image-task-2", time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.Equal(t, "https://media.example.com/images/2026/08/09/image-task-2.webp", result)
+	require.Equal(t, "images/2026/08/09/image-task-2.webp", store.key)
+	require.Equal(t, "image/webp", store.contentType)
+	require.Equal(t, "webp-bytes", store.body)
 }

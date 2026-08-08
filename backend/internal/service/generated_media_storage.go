@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,7 +32,7 @@ var (
 	errGeneratedMediaTooLarge             = errors.New("generated media exceeds the storage size limit")
 )
 
-// GeneratedMediaStorageConfig configures an S3-compatible destination for generated videos.
+// GeneratedMediaStorageConfig configures an S3-compatible destination for generated media.
 type GeneratedMediaStorageConfig struct {
 	Enabled          bool   `json:"enabled"`
 	Endpoint         string `json:"endpoint"`
@@ -79,6 +81,11 @@ type GeneratedMediaObjectStoreFactory func(ctx context.Context, cfg *GeneratedMe
 
 type GeneratedMediaArchiver interface {
 	Archive(ctx context.Context, sourceURL, objectID string, createdAt time.Time) (string, error)
+}
+
+// GeneratedMediaImageArchiver archives generated images to object storage.
+type GeneratedMediaImageArchiver interface {
+	ArchiveImage(ctx context.Context, sourceURL, objectID string, createdAt time.Time) (string, error)
 }
 
 // GeneratedMediaStorageConfigSource supplies a cluster-wide runtime config.
@@ -205,6 +212,21 @@ func (s *GeneratedMediaStorageService) TestConnection(ctx context.Context, cfg G
 }
 
 func (s *GeneratedMediaStorageService) Archive(ctx context.Context, sourceURL, objectID string, createdAt time.Time) (string, error) {
+	return s.archive(ctx, sourceURL, objectID, createdAt, generatedMediaKindVideo)
+}
+
+func (s *GeneratedMediaStorageService) ArchiveImage(ctx context.Context, sourceURL, objectID string, createdAt time.Time) (string, error) {
+	return s.archive(ctx, sourceURL, objectID, createdAt, generatedMediaKindImage)
+}
+
+type generatedMediaKind string
+
+const (
+	generatedMediaKindVideo generatedMediaKind = "video"
+	generatedMediaKindImage generatedMediaKind = "image"
+)
+
+func (s *GeneratedMediaStorageService) archive(ctx context.Context, sourceURL, objectID string, createdAt time.Time, kind generatedMediaKind) (string, error) {
 	cfg, err := s.resolveConfig(ctx)
 	if err != nil {
 		return "", err
@@ -216,7 +238,17 @@ func (s *GeneratedMediaStorageService) Archive(ctx context.Context, sourceURL, o
 	if err := cfg.validateEnabled(); err != nil {
 		return "", err
 	}
-	parsedSource, err := url.Parse(strings.TrimSpace(sourceURL))
+
+	store, err := s.getOrCreateStore(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
+	source := strings.TrimSpace(sourceURL)
+	if kind == generatedMediaKindImage && strings.HasPrefix(strings.ToLower(source), "data:") {
+		return s.archiveImageDataURL(ctx, store, cfg, source, objectID, createdAt)
+	}
+
+	parsedSource, err := url.Parse(source)
 	if err != nil || parsedSource.Host == "" || (parsedSource.Scheme != "http" && parsedSource.Scheme != "https") {
 		return "", errors.New("generated media source URL is invalid")
 	}
@@ -240,20 +272,50 @@ func (s *GeneratedMediaStorageService) Archive(ctx context.Context, sourceURL, o
 		return "", errGeneratedMediaTooLarge
 	}
 
-	store, err := s.getOrCreateStore(ctx, cfg)
-	if err != nil {
-		return "", err
-	}
-	key := generatedMediaObjectKey(cfg.Prefix, objectID, createdAt, parsedSource.Path)
 	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
 	if contentType == "" || contentType == "application/octet-stream" {
-		contentType = mime.TypeByExtension(path.Ext(key))
+		contentType = mime.TypeByExtension(path.Ext(parsedSource.Path))
 	}
 	if contentType == "" {
-		contentType = "video/mp4"
+		if kind == generatedMediaKindImage {
+			contentType = "image/png"
+		} else {
+			contentType = "video/mp4"
+		}
 	}
+	key := generatedMediaObjectKeyForKind(cfg.Prefix, objectID, createdAt, parsedSource.Path, contentType, kind)
 	body := &generatedMediaLimitReader{reader: resp.Body, remaining: generatedMediaMaxBytes}
 	if _, err := store.Upload(ctx, key, body, contentType, resp.ContentLength); err != nil {
+		return "", fmt.Errorf("upload generated media: %w", err)
+	}
+	publicURL := generatedMediaPublicURL(cfg.PublicBaseURL, key)
+	logger.LegacyPrintf("service.generated_media_storage", "archive completed object_id=%s object_key=%s", objectID, key)
+	return publicURL, nil
+}
+
+func (s *GeneratedMediaStorageService) archiveImageDataURL(ctx context.Context, store GeneratedMediaObjectStore, cfg *GeneratedMediaStorageConfig, source, objectID string, createdAt time.Time) (string, error) {
+	parts := strings.SplitN(source, ",", 2)
+	if len(parts) != 2 || !strings.HasSuffix(strings.ToLower(parts[0]), ";base64") {
+		return "", errors.New("generated image data URL is invalid")
+	}
+	metadata := strings.TrimPrefix(parts[0], "data:")
+	mediaType := strings.TrimSpace(strings.SplitN(metadata, ";", 2)[0])
+	if !strings.HasPrefix(strings.ToLower(mediaType), "image/") {
+		return "", errors.New("generated image data URL must contain an image")
+	}
+	encoded := strings.TrimSpace(parts[1])
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		data, err = base64.RawStdEncoding.DecodeString(encoded)
+	}
+	if err != nil {
+		return "", fmt.Errorf("decode generated image data URL: %w", err)
+	}
+	if int64(len(data)) > generatedMediaMaxBytes {
+		return "", errGeneratedMediaTooLarge
+	}
+	key := generatedMediaObjectKeyForKind(cfg.Prefix, objectID, createdAt, "", mediaType, generatedMediaKindImage)
+	if _, err := store.Upload(ctx, key, bytes.NewReader(data), mediaType, int64(len(data))); err != nil {
 		return "", fmt.Errorf("upload generated media: %w", err)
 	}
 	publicURL := generatedMediaPublicURL(cfg.PublicBaseURL, key)
@@ -341,17 +403,43 @@ func (s *GeneratedMediaStorageService) clearStore() {
 }
 
 func generatedMediaObjectKey(prefix, objectID string, createdAt time.Time, sourcePath string) string {
+	return generatedMediaObjectKeyForKind(prefix, objectID, createdAt, sourcePath, "", generatedMediaKindVideo)
+}
+
+func generatedMediaObjectKeyForKind(prefix, objectID string, createdAt time.Time, sourcePath, contentType string, kind generatedMediaKind) string {
 	if createdAt.IsZero() {
 		createdAt = time.Now()
 	}
 	extension := strings.ToLower(path.Ext(sourcePath))
-	switch extension {
-	case ".mp4", ".mov", ".webm", ".mkv":
-	default:
-		extension = ".mp4"
+	if kind == generatedMediaKindImage {
+		switch extension {
+		case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif":
+		default:
+			extension = generatedImageExtensionForContentType(contentType)
+		}
+		if extension == "" {
+			extension = ".png"
+		}
+	} else {
+		switch extension {
+		case ".mp4", ".mov", ".webm", ".mkv":
+		default:
+			extension = ".mp4"
+		}
 	}
 	objectID = sanitizeGeneratedMediaObjectID(objectID)
 	return path.Join(prefix, createdAt.Format("2006/01/02"), objectID+extension)
+}
+
+func generatedImageExtensionForContentType(contentType string) string {
+	candidates, _ := mime.ExtensionsByType(strings.TrimSpace(contentType))
+	for _, candidate := range candidates {
+		switch candidate {
+		case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif":
+			return candidate
+		}
+	}
+	return ""
 }
 
 func sanitizeGeneratedMediaObjectID(value string) string {
@@ -401,3 +489,4 @@ func (r *generatedMediaLimitReader) Read(p []byte) (int, error) {
 }
 
 var _ GeneratedMediaArchiver = (*GeneratedMediaStorageService)(nil)
+var _ GeneratedMediaImageArchiver = (*GeneratedMediaStorageService)(nil)
