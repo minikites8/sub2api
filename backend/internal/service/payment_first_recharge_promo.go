@@ -343,10 +343,7 @@ func affiliateRebateBaseAmountForOrder(o *dbent.PaymentOrder) float64 {
 	if o == nil {
 		return 0
 	}
-	if amount, ok := firstRechargePromoFallbackCreditAmount(o); ok {
-		return amount
-	}
-	return o.Amount
+	return o.PayAmount
 }
 
 func (s *PaymentService) applyFirstRechargePromoBalance(ctx context.Context, tx *dbent.Tx, o *dbent.PaymentOrder) (firstRechargePromoBalanceResult, error) {

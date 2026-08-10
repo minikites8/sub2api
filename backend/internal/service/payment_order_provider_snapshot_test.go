@@ -176,7 +176,7 @@ func TestCreateOrderInTx_WritesFirstRechargePromoSnapshot(t *testing.T) {
 	require.Equal(t, 3, plan.DiscountTimes)
 	require.Equal(t, 110.0, plan.CreditAmount)
 	require.Equal(t, 80.0, plan.PaymentAmount)
-	require.Equal(t, 100.0, affiliateRebateBaseAmountForOrder(order))
+	require.Equal(t, 80.0, affiliateRebateBaseAmountForOrder(order))
 }
 
 func TestCreateOrderInTx_BlocksSecondPendingFirstRechargePromoOrder(t *testing.T) {
