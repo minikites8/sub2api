@@ -1,6 +1,7 @@
 package service
 
 import (
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 const (
 	modelAvailabilitySampleLimit       = 90
 	modelAvailabilityTrackedModelLimit = 4096
+	modelAvailabilityEventIDLimit      = 65536
 )
 
 // ModelAvailabilitySample is one user traffic observation. It is kept in
@@ -39,20 +41,25 @@ type modelAvailabilityCounter struct {
 }
 
 // ModelAvailabilityTracker records the result of user calls by requested
-// model. The mutex keeps updates and marketplace snapshots consistent.
+// model. Event IDs make retried node sync batches idempotent.
 type ModelAvailabilityTracker struct {
-	mu     sync.RWMutex
-	models map[string]*modelAvailabilityCounter
+	mu         sync.RWMutex
+	models     map[string]*modelAvailabilityCounter
+	eventIDs   map[string]struct{}
+	eventOrder []string
 }
 
 func NewModelAvailabilityTracker() *ModelAvailabilityTracker {
-	return &ModelAvailabilityTracker{models: make(map[string]*modelAvailabilityCounter)}
+	return &ModelAvailabilityTracker{
+		models:   make(map[string]*modelAvailabilityCounter),
+		eventIDs: make(map[string]struct{}),
+	}
 }
 
 var defaultModelAvailabilityTracker = NewModelAvailabilityTracker()
 
-// DefaultModelAvailabilityTracker is shared by gateway routes and the public
-// model marketplace snapshot.
+// DefaultModelAvailabilityTracker is shared by gateway routes, node sync
+// ingestion, and the public model marketplace snapshot.
 func DefaultModelAvailabilityTracker() *ModelAvailabilityTracker {
 	return defaultModelAvailabilityTracker
 }
@@ -64,6 +71,11 @@ func normalizeAvailabilityModel(model string) string {
 // Record adds one completed user call. A completed HTTP 2xx response is a
 // successful observation; every other response contributes to the denominator.
 func (t *ModelAvailabilityTracker) Record(model string, success bool) {
+	t.RecordAt(model, success, time.Now().UTC())
+}
+
+// RecordAt adds an observation with its original completion time.
+func (t *ModelAvailabilityTracker) RecordAt(model string, success bool, checkedAt time.Time) {
 	if t == nil {
 		return
 	}
@@ -71,23 +83,74 @@ func (t *ModelAvailabilityTracker) Record(model string, success bool) {
 	if key == "" {
 		return
 	}
-	now := time.Now().UTC()
+	if checkedAt.IsZero() {
+		checkedAt = time.Now().UTC()
+	} else {
+		checkedAt = checkedAt.UTC()
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.recordLocked(key, strings.TrimSpace(model), success, checkedAt)
+}
+
+// RecordEvent adds a node-synchronized observation once. It returns true when
+// the event changed the aggregate and false when the event was already seen.
+func (t *ModelAvailabilityTracker) RecordEvent(eventID, model string, success bool, checkedAt time.Time) bool {
+	if t == nil {
+		return false
+	}
+	key := normalizeAvailabilityModel(model)
+	eventID = strings.TrimSpace(eventID)
+	if key == "" || eventID == "" {
+		return false
+	}
+	if checkedAt.IsZero() {
+		checkedAt = time.Now().UTC()
+	} else {
+		checkedAt = checkedAt.UTC()
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, exists := t.eventIDs[eventID]; exists {
+		return false
+	}
+	if len(t.models) >= modelAvailabilityTrackedModelLimit {
+		if _, exists := t.models[key]; !exists {
+			return false
+		}
+	}
+	t.eventIDs[eventID] = struct{}{}
+	t.eventOrder = append(t.eventOrder, eventID)
+	if len(t.eventOrder) > modelAvailabilityEventIDLimit {
+		oldest := t.eventOrder[0]
+		delete(t.eventIDs, oldest)
+		t.eventOrder = t.eventOrder[1:]
+	}
+	t.recordLocked(key, strings.TrimSpace(model), success, checkedAt)
+	return true
+}
+
+func (t *ModelAvailabilityTracker) recordLocked(key, model string, success bool, checkedAt time.Time) {
 	counter := t.models[key]
 	if counter == nil {
 		if len(t.models) >= modelAvailabilityTrackedModelLimit {
 			return
 		}
-		counter = &modelAvailabilityCounter{model: strings.TrimSpace(model)}
+		counter = &modelAvailabilityCounter{model: model}
 		t.models[key] = counter
 	}
 	counter.totalCalls++
 	if success {
 		counter.successfulCalls++
 	}
-	counter.lastCalledAt = now
-	counter.samples = append(counter.samples, ModelAvailabilitySample{Success: success, CheckedAt: now})
+	if counter.lastCalledAt.IsZero() || checkedAt.After(counter.lastCalledAt) {
+		counter.lastCalledAt = checkedAt
+	}
+	counter.samples = append(counter.samples, ModelAvailabilitySample{Success: success, CheckedAt: checkedAt})
+	sort.SliceStable(counter.samples, func(i, j int) bool {
+		return counter.samples[i].CheckedAt.Before(counter.samples[j].CheckedAt)
+	})
 	if len(counter.samples) > modelAvailabilitySampleLimit {
 		counter.samples = counter.samples[len(counter.samples)-modelAvailabilitySampleLimit:]
 	}

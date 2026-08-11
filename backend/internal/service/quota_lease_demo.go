@@ -106,6 +106,7 @@ type QuotaLeaseDemoService struct {
 	pendingEvents            map[string]QuotaLeaseDemoUsageEvent
 	pendingUsageLogs         map[string]QuotaLeaseDemoUsageLogSnapshot
 	pendingOpsErrorLogs      map[string]QuotaLeaseDemoOpsErrorLogSnapshot
+	pendingModelAvailability map[string]QuotaLeaseDemoModelAvailabilityEvent
 	prefetchState            map[string]*quotaLeaseDemoPrefetchState
 	clientAuthCache          map[string]*quotaLeaseDemoClientAuthCacheEntry
 	leaseRequestGroup        singleflight.Group
@@ -137,22 +138,23 @@ type QuotaLeaseDemoService struct {
 
 func NewQuotaLeaseDemoService(cfg *config.Config) *QuotaLeaseDemoService {
 	return &QuotaLeaseDemoService{
-		cfg:                 cfg,
-		leases:              make(map[string]*QuotaLeaseDemoLease),
-		leaseIndex:          make(map[string]map[string]struct{}),
-		events:              make(map[string]*QuotaLeaseDemoLedgerEvent),
-		nodes:               make(map[string]*QuotaLeaseDemoNode),
-		pendingEvents:       make(map[string]QuotaLeaseDemoUsageEvent),
-		pendingUsageLogs:    make(map[string]QuotaLeaseDemoUsageLogSnapshot),
-		pendingOpsErrorLogs: make(map[string]QuotaLeaseDemoOpsErrorLogSnapshot),
-		prefetchState:       make(map[string]*quotaLeaseDemoPrefetchState),
-		clientAuthCache:     make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
-		accountTasks:        make(map[string]*QuotaLeaseDemoAccountLoginTask),
-		usageProbeTasks:     make(map[string]*QuotaLeaseDemoUsageProbeTask),
-		assignedAccounts:    make(map[int64]*QuotaLeaseDemoAssignedAccount),
-		registrationURLs:    make(map[string]*QuotaLeaseDemoNodeRegistrationURL),
-		mirrorVersionStates: make(map[string]*quotaLeaseDemoMirrorVersionState),
-		reconcileWatermarks: make(map[string]string),
+		cfg:                      cfg,
+		leases:                   make(map[string]*QuotaLeaseDemoLease),
+		leaseIndex:               make(map[string]map[string]struct{}),
+		events:                   make(map[string]*QuotaLeaseDemoLedgerEvent),
+		nodes:                    make(map[string]*QuotaLeaseDemoNode),
+		pendingEvents:            make(map[string]QuotaLeaseDemoUsageEvent),
+		pendingUsageLogs:         make(map[string]QuotaLeaseDemoUsageLogSnapshot),
+		pendingOpsErrorLogs:      make(map[string]QuotaLeaseDemoOpsErrorLogSnapshot),
+		pendingModelAvailability: make(map[string]QuotaLeaseDemoModelAvailabilityEvent),
+		prefetchState:            make(map[string]*quotaLeaseDemoPrefetchState),
+		clientAuthCache:          make(map[string]*quotaLeaseDemoClientAuthCacheEntry),
+		accountTasks:             make(map[string]*QuotaLeaseDemoAccountLoginTask),
+		usageProbeTasks:          make(map[string]*QuotaLeaseDemoUsageProbeTask),
+		assignedAccounts:         make(map[int64]*QuotaLeaseDemoAssignedAccount),
+		registrationURLs:         make(map[string]*QuotaLeaseDemoNodeRegistrationURL),
+		mirrorVersionStates:      make(map[string]*quotaLeaseDemoMirrorVersionState),
+		reconcileWatermarks:      make(map[string]string),
 	}
 }
 
@@ -367,21 +369,22 @@ type QuotaLeaseDemoNode struct {
 }
 
 type QuotaLeaseDemoNodeSyncStatus struct {
-	MirrorReady         bool       `json:"mirror_ready"`
-	MirrorSyncedAt      *time.Time `json:"mirror_synced_at,omitempty"`
-	LastSyncStartedAt   *time.Time `json:"last_sync_started_at,omitempty"`
-	LastSyncSuccessAt   *time.Time `json:"last_sync_success_at,omitempty"`
-	LastSyncFailedAt    *time.Time `json:"last_sync_failed_at,omitempty"`
-	LastSyncError       string     `json:"last_sync_error,omitempty"`
-	LastSyncMode        string     `json:"last_sync_mode,omitempty"`
-	MirrorVersion       int64      `json:"mirror_version"`
-	SyncedGroupCount    int        `json:"synced_group_count"`
-	SyncedChannelCount  int        `json:"synced_channel_count"`
-	SyncedProxyCount    int        `json:"synced_proxy_count"`
-	SyncedAccountCount  int        `json:"synced_account_count"`
-	PendingUsageEvents  int        `json:"pending_usage_events"`
-	PendingUsageLogs    int        `json:"pending_usage_logs"`
-	PendingOpsErrorLogs int        `json:"pending_ops_error_logs"`
+	MirrorReady              bool       `json:"mirror_ready"`
+	MirrorSyncedAt           *time.Time `json:"mirror_synced_at,omitempty"`
+	LastSyncStartedAt        *time.Time `json:"last_sync_started_at,omitempty"`
+	LastSyncSuccessAt        *time.Time `json:"last_sync_success_at,omitempty"`
+	LastSyncFailedAt         *time.Time `json:"last_sync_failed_at,omitempty"`
+	LastSyncError            string     `json:"last_sync_error,omitempty"`
+	LastSyncMode             string     `json:"last_sync_mode,omitempty"`
+	MirrorVersion            int64      `json:"mirror_version"`
+	SyncedGroupCount         int        `json:"synced_group_count"`
+	SyncedChannelCount       int        `json:"synced_channel_count"`
+	SyncedProxyCount         int        `json:"synced_proxy_count"`
+	SyncedAccountCount       int        `json:"synced_account_count"`
+	PendingUsageEvents       int        `json:"pending_usage_events"`
+	PendingUsageLogs         int        `json:"pending_usage_logs"`
+	PendingOpsErrorLogs      int        `json:"pending_ops_error_logs"`
+	PendingModelAvailability int        `json:"pending_model_availability"`
 }
 
 // RegisterNode serves the inbound registration endpoint. Only the control
@@ -714,18 +717,21 @@ func (s *QuotaLeaseDemoService) RuntimeHeartbeatRequest() QuotaLeaseDemoNodeHear
 	pendingUsageEvents := len(s.pendingEvents)
 	pendingUsageLogs := len(s.pendingUsageLogs)
 	pendingOpsErrorLogs := len(s.pendingOpsErrorLogs)
+	pendingModelAvailability := len(s.pendingModelAvailability)
 	s.mu.Unlock()
 
 	syncStatus := s.nodeSyncStatusSnapshot()
 	syncStatus.PendingUsageEvents = pendingUsageEvents
 	syncStatus.PendingUsageLogs = pendingUsageLogs
 	syncStatus.PendingOpsErrorLogs = pendingOpsErrorLogs
+	syncStatus.PendingModelAvailability = pendingModelAvailability
 	req.SyncStatus = &syncStatus
 	req.Metrics = map[string]float64{
-		"active_leases":          float64(activeLeases),
-		"pending_usage_events":   float64(pendingUsageEvents),
-		"pending_usage_logs":     float64(pendingUsageLogs),
-		"pending_ops_error_logs": float64(pendingOpsErrorLogs),
+		"active_leases":              float64(activeLeases),
+		"pending_usage_events":       float64(pendingUsageEvents),
+		"pending_usage_logs":         float64(pendingUsageLogs),
+		"pending_ops_error_logs":     float64(pendingOpsErrorLogs),
+		"pending_model_availability": float64(pendingModelAvailability),
 	}
 	return req
 }

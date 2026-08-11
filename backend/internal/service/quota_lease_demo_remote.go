@@ -297,6 +297,26 @@ func (s *QuotaLeaseDemoService) postRemoteOpsErrorLogBatch(ctx context.Context, 
 	return result, nil
 }
 
+func (s *QuotaLeaseDemoService) postRemoteModelAvailabilityBatch(ctx context.Context, req QuotaLeaseDemoModelAvailabilityBatchRequest) (QuotaLeaseDemoModelAvailabilityBatchResult, error) {
+	nodeID, secret, err := s.remoteNodeAuth(ctx)
+	if err != nil {
+		return QuotaLeaseDemoModelAvailabilityBatchResult{}, err
+	}
+	if strings.TrimSpace(req.NodeID) == "" {
+		req.NodeID = nodeID
+	}
+	for i := range req.Events {
+		if strings.TrimSpace(req.Events[i].NodeID) == "" {
+			req.Events[i].NodeID = req.NodeID
+		}
+	}
+	var result QuotaLeaseDemoModelAvailabilityBatchResult
+	if err := s.doRemoteJSON(ctx, http.MethodPost, "/model-availability/batch", nodeID, secret, req, &result); err != nil {
+		return QuotaLeaseDemoModelAvailabilityBatchResult{}, err
+	}
+	return result, nil
+}
+
 func (s *QuotaLeaseDemoService) inspectCapacity(nodeID string, userID, apiKeyID int64, amount float64, now time.Time) (bool, quotaLeaseDemoCapacityProbe) {
 	probe := s.inspectCapacitySnapshot(nodeID, userID, apiKeyID, amount, now)
 	if probe.BestLeaseID == "" {
@@ -682,6 +702,29 @@ func (s *QuotaLeaseDemoService) FlushPendingOpsErrorLogs(ctx context.Context) er
 	return nil
 }
 
+func (s *QuotaLeaseDemoService) FlushPendingModelAvailability(ctx context.Context) error {
+	if s == nil || !s.remoteMode() {
+		return nil
+	}
+	events := s.pendingModelAvailabilityEvents()
+	if len(events) == 0 {
+		return nil
+	}
+	nodeID, _, err := s.remoteNodeAuth(ctx)
+	if err != nil {
+		return err
+	}
+	result, err := s.postRemoteModelAvailabilityBatch(ctx, QuotaLeaseDemoModelAvailabilityBatchRequest{
+		NodeID: nodeID,
+		Events: events,
+	})
+	if err != nil {
+		return err
+	}
+	s.removePendingModelAvailabilityResults(result)
+	return nil
+}
+
 func (s *QuotaLeaseDemoService) flushPendingUsageAsync() {
 	if s == nil || !s.remoteMode() {
 		return
@@ -712,6 +755,17 @@ func (s *QuotaLeaseDemoService) flushPendingOpsErrorLogsAsync() {
 		ctx, cancel := context.WithTimeout(context.Background(), s.RemoteTimeout())
 		defer cancel()
 		_ = s.FlushPendingOpsErrorLogs(ctx)
+	}()
+}
+
+func (s *QuotaLeaseDemoService) flushPendingModelAvailabilityAsync() {
+	if s == nil || !s.remoteMode() {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), s.RemoteTimeout())
+		defer cancel()
+		_ = s.FlushPendingModelAvailability(ctx)
 	}()
 }
 

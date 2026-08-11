@@ -16,12 +16,13 @@ import (
 )
 
 type QuotaLeaseDemoHandler struct {
-	svc            *service.QuotaLeaseDemoService
-	adminSvc       service.AdminService
-	apiKeyService  *service.APIKeyService
-	usageService   *service.UsageService
-	opsService     *service.OpsService
-	channelService *service.ChannelService
+	svc                 *service.QuotaLeaseDemoService
+	adminSvc            service.AdminService
+	apiKeyService       *service.APIKeyService
+	usageService        *service.UsageService
+	opsService          *service.OpsService
+	channelService      *service.ChannelService
+	availabilityTracker *service.ModelAvailabilityTracker
 }
 
 const (
@@ -37,11 +38,21 @@ type quotaLeaseDemoNodeAssignedAccountAdminService interface {
 }
 
 func NewQuotaLeaseDemoHandler(svc *service.QuotaLeaseDemoService, adminSvc ...service.AdminService) *QuotaLeaseDemoHandler {
-	h := &QuotaLeaseDemoHandler{svc: svc}
+	h := &QuotaLeaseDemoHandler{
+		svc:                 svc,
+		availabilityTracker: service.DefaultModelAvailabilityTracker(),
+	}
 	if len(adminSvc) > 0 {
 		h.adminSvc = adminSvc[0]
 	}
 	return h
+}
+
+func (h *QuotaLeaseDemoHandler) SetModelAvailabilityTracker(tracker *service.ModelAvailabilityTracker) {
+	if h == nil {
+		return
+	}
+	h.availabilityTracker = tracker
 }
 
 func (h *QuotaLeaseDemoHandler) SetAPIKeyService(apiKeyService *service.APIKeyService) {
@@ -1621,6 +1632,59 @@ func (h *QuotaLeaseDemoHandler) PostOpsErrorLogBatch(c *gin.Context) {
 				result.Results[i].Applied = true
 			}
 		}
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *QuotaLeaseDemoHandler) PostModelAvailabilityBatch(c *gin.Context) {
+	if !h.requireEnabled(c) {
+		return
+	}
+	if h.availabilityTracker == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "model_availability_tracker_unavailable"})
+		return
+	}
+	var req service.QuotaLeaseDemoModelAvailabilityBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	nodeID, ok := h.authenticateNodeOrControl(c, req.NodeID)
+	if !ok {
+		return
+	}
+	if nodeID != "" {
+		if req.NodeID == "" {
+			req.NodeID = nodeID
+		}
+		if req.NodeID != nodeID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "node_mismatch"})
+			return
+		}
+		for _, event := range req.Events {
+			if strings.TrimSpace(event.NodeID) != "" && strings.TrimSpace(event.NodeID) != nodeID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "node_mismatch"})
+				return
+			}
+		}
+	}
+
+	result := service.QuotaLeaseDemoModelAvailabilityBatchResult{
+		Results: make([]service.QuotaLeaseDemoModelAvailabilityResult, 0, len(req.Events)),
+	}
+	for _, event := range req.Events {
+		if strings.TrimSpace(event.NodeID) == "" {
+			event.NodeID = strings.TrimSpace(req.NodeID)
+		}
+		row := service.QuotaLeaseDemoModelAvailabilityResult{EventID: strings.TrimSpace(event.EventID)}
+		if row.EventID == "" || strings.TrimSpace(event.Model) == "" {
+			row.Error = "event_id and model are required"
+			result.Results = append(result.Results, row)
+			continue
+		}
+		row.Applied = h.availabilityTracker.RecordEvent(row.EventID, event.Model, event.Success, event.CheckedAt)
+		row.Duplicate = !row.Applied
+		result.Results = append(result.Results, row)
 	}
 	c.JSON(http.StatusOK, result)
 }

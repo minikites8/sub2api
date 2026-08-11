@@ -3,7 +3,9 @@ package handler
 import (
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -11,7 +13,7 @@ import (
 // ModelAvailabilityMiddleware records the outcome of each authenticated POST
 // gateway call after the handler has parsed and stored its requested model.
 // The marketplace filters the resulting observations to image/video models.
-func ModelAvailabilityMiddleware(tracker *service.ModelAvailabilityTracker) gin.HandlerFunc {
+func ModelAvailabilityMiddleware(tracker *service.ModelAvailabilityTracker, cfgs ...*config.Config) gin.HandlerFunc {
 	if tracker == nil {
 		tracker = service.DefaultModelAvailabilityTracker()
 	}
@@ -33,6 +35,10 @@ func ModelAvailabilityMiddleware(tracker *service.ModelAvailabilityTracker) gin.
 		if _, streamFailed := service.GetOpsStreamError(c); streamFailed {
 			success = false
 		}
-		tracker.Record(model, success)
+		checkedAt := time.Now().UTC()
+		tracker.RecordAt(model, success, checkedAt)
+		for _, cfg := range cfgs {
+			service.EnqueueQuotaLeaseDemoModelAvailability(c.Request.Context(), cfg, model, success, checkedAt)
+		}
 	}
 }

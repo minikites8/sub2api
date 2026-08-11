@@ -3,6 +3,7 @@ package service
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 func TestModelAvailabilityTrackerCalculatesSuccessRate(t *testing.T) {
@@ -23,6 +24,22 @@ func TestModelAvailabilityTrackerCalculatesSuccessRate(t *testing.T) {
 	}
 	if len(observation.Samples) != 3 {
 		t.Fatalf("samples = %d, want 3", len(observation.Samples))
+	}
+}
+
+func TestModelAvailabilityTrackerDeduplicatesSyncedEvents(t *testing.T) {
+	tracker := NewModelAvailabilityTracker()
+	checkedAt := time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC)
+	if !tracker.RecordEvent("availability:event-1", "veo-3.1", true, checkedAt) {
+		t.Fatal("first event should be applied")
+	}
+	if tracker.RecordEvent("availability:event-1", "veo-3.1", true, checkedAt) {
+		t.Fatal("duplicate event should be ignored")
+	}
+
+	observation, ok := tracker.Snapshot("veo-3.1")
+	if !ok || observation.TotalCalls != 1 || observation.SuccessfulCalls != 1 {
+		t.Fatalf("observation = %#v, ok=%v", observation, ok)
 	}
 }
 

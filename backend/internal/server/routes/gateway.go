@@ -22,7 +22,7 @@ func RegisterGatewayRoutes(
 	settingService *service.SettingService,
 	cfg *config.Config,
 ) {
-	modelAvailability := handler.ModelAvailabilityMiddleware(service.DefaultModelAvailabilityTracker())
+	modelAvailability := handler.ModelAvailabilityMiddleware(service.DefaultModelAvailabilityTracker(), cfg)
 	// The middleware reads the model set by gateway handlers after c.Next. It is
 	// safe to attach at engine level because only gateway handlers set ops_model.
 	r.Use(modelAvailability)

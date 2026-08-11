@@ -381,8 +381,65 @@ func registerQuotaLeaseDemoHandlerTestRoutes(group *gin.RouterGroup, h *QuotaLea
 	group.POST("/leases/request", h.RequestLease)
 	group.POST("/usage/batch", h.PostUsageBatch)
 	group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
+	group.POST("/model-availability/batch", h.PostModelAvailabilityBatch)
 	group.GET("/diagnostics", h.Diagnostics)
 	group.GET("/status", h.Status)
+}
+
+func TestQuotaLeaseDemoHandlerAggregatesModelAvailabilityIdempotently(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := service.NewQuotaLeaseDemoService(&config.Config{
+		Gateway: config.GatewayConfig{QuotaLeaseDemo: config.GatewayQuotaLeaseDemoConfig{
+			Enabled:    true,
+			NodeID:     "control-node",
+			NodeSecret: "control-secret",
+		}},
+	})
+	_, err := svc.RegisterNode(context.Background(), service.QuotaLeaseDemoNodeRegistrationRequest{
+		NodeID:     "media-node",
+		NodeSecret: "media-node-secret",
+	})
+	require.NoError(t, err)
+
+	tracker := service.NewModelAvailabilityTracker()
+	h := NewQuotaLeaseDemoHandler(svc)
+	h.SetModelAvailabilityTracker(tracker)
+	router := gin.New()
+	router.POST("/api/v1/node-leases/model-availability/batch", h.PostModelAvailabilityBatch)
+
+	checkedAt := time.Date(2026, 8, 11, 15, 0, 0, 0, time.UTC)
+	body := service.QuotaLeaseDemoModelAvailabilityBatchRequest{
+		NodeID: "media-node",
+		Events: []service.QuotaLeaseDemoModelAvailabilityEvent{
+			{EventID: "availability:success", NodeID: "media-node", Model: "gpt-image-2", Success: true, CheckedAt: checkedAt},
+			{EventID: "availability:failure", NodeID: "media-node", Model: "gpt-image-2", Success: false, CheckedAt: checkedAt.Add(time.Second)},
+		},
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		req := quotaLeaseDemoJSONRequest(t, http.MethodPost, "/api/v1/node-leases/model-availability/batch", body)
+		req.Header.Set("X-Node-ID", "media-node")
+		req.Header.Set("X-Node-Secret", "media-node-secret")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var result service.QuotaLeaseDemoModelAvailabilityBatchResult
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &result))
+		require.Len(t, result.Results, 2)
+		if attempt == 0 {
+			require.True(t, result.Results[0].Applied)
+			require.True(t, result.Results[1].Applied)
+		} else {
+			require.True(t, result.Results[0].Duplicate)
+			require.True(t, result.Results[1].Duplicate)
+		}
+	}
+
+	observation, ok := tracker.Snapshot("gpt-image-2")
+	require.True(t, ok)
+	require.Equal(t, int64(2), observation.TotalCalls)
+	require.Equal(t, int64(1), observation.SuccessfulCalls)
+	require.Equal(t, float64(50), observation.Availability)
 }
 
 func TestQuotaLeaseDemoHandlerServesEncryptedGeneratedMediaConfigToRegisteredNode(t *testing.T) {

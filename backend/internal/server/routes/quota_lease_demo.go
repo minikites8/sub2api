@@ -68,6 +68,7 @@ func registerQuotaLeaseDemoGroup(group *gin.RouterGroup, h *handler.QuotaLeaseDe
 	group.POST("/usage/batch", h.PostUsageBatch)
 	group.POST("/usage-logs/batch", h.PostUsageLogBatch)
 	group.POST("/ops-error-logs/batch", h.PostOpsErrorLogBatch)
+	group.POST("/model-availability/batch", h.PostModelAvailabilityBatch)
 	group.GET("/reconcile/ledger-events", h.ExportUsageLedgerEvents)
 	group.POST("/reconcile", h.ReconcileUsageLedgers)
 	group.POST("/reconcile/:node_id", h.ReconcileUsageLedgers)

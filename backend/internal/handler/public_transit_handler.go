@@ -33,7 +33,9 @@ func (h *PublicTransitHandler) Snapshot(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	c.Header("Cache-Control", "public, max-age=60")
+	// Traffic-based media availability changes after every gateway call; a
+	// browser or proxy cache would hide fresh observations from the marketplace.
+	c.Header("Cache-Control", "no-store, max-age=0")
 	c.JSON(http.StatusOK, payload)
 }
 
