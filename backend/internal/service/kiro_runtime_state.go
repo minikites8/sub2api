@@ -14,7 +14,7 @@ import (
 var errKiroCooldownStoreUnavailable = errors.New("kiro cooldown store unavailable")
 
 type KiroCooldownStore interface {
-	CheckCooldown(ctx context.Context, tokenKey string) error
+	ReserveRequest(ctx context.Context, tokenKey string) (time.Duration, error)
 	MarkSuccess(ctx context.Context, tokenKey string) error
 	Mark429(ctx context.Context, tokenKey string) (time.Duration, error)
 	MarkSuspended(ctx context.Context, tokenKey string) (time.Duration, error)
@@ -36,11 +36,27 @@ func asKiroCooldownFailoverError(err error) *UpstreamFailoverError {
 	}
 }
 
-func (s *GatewayService) checkKiroCooldown(ctx context.Context, tokenKey string) error {
+func (s *GatewayService) checkAndWaitKiroCooldown(ctx context.Context, tokenKey string) error {
 	if s == nil || s.kiroCooldownStore == nil {
 		return errKiroCooldownStoreUnavailable
 	}
-	return s.kiroCooldownStore.CheckCooldown(ctx, tokenKey)
+	waitFor, err := s.kiroCooldownStore.ReserveRequest(ctx, tokenKey)
+	if err != nil {
+		return err
+	}
+	if waitFor <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(waitFor)
+	select {
+	case <-ctx.Done():
+		if !timer.Stop() {
+			<-timer.C
+		}
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // markKiroSuccess records a successful Kiro response. Pair with markKiro429:
