@@ -1354,6 +1354,38 @@ func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email
 	return nil
 }
 
+func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email string) error {
+	if s == nil || s.settingService == nil {
+		return nil
+	}
+	whitelist := s.settingService.GetRegistrationEmailSuffixWhitelist(ctx)
+	if !IsRegistrationEmailSuffixLimited(email, whitelist) {
+		return nil
+	}
+	if !s.settingService.IsRegistrationEmailDomainQuotaEnabled(ctx) {
+		return buildEmailSuffixNotAllowedError(whitelist)
+	}
+	domain := RegistrationEmailDomain(email)
+	if domain == "" {
+		return buildEmailSuffixNotAllowedError(whitelist)
+	}
+	quotaRepo, ok := s.userRepo.(RegistrationEmailDomainRepository)
+	if !ok {
+		if s.entClient != nil {
+			return ErrServiceUnavailable
+		}
+		return nil
+	}
+	count, err := quotaRepo.CountUsersByEmailDomain(ctx, domain)
+	if err != nil {
+		return ErrServiceUnavailable
+	}
+	if count > 0 {
+		return ErrEmailDomainRegistrationLimit
+	}
+	return nil
+}
+
 func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, user *User) error {
 	if s == nil || s.userRepo == nil {
 		return ErrServiceUnavailable

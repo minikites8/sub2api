@@ -417,7 +417,17 @@ func clampChannelMonitorInterval(v int) int {
 // consumed by the runner and user-facing handlers.
 type ChannelMonitorRuntime struct {
 	Enabled                bool
+	Mode                   string
 	DefaultIntervalSeconds int
+	HideThroughput         bool
+}
+
+func (r ChannelMonitorRuntime) ActiveProbesAllowed() bool {
+	return r.Enabled && r.Mode == ChannelMonitorModeV1
+}
+
+func (r ChannelMonitorRuntime) PassiveAggregationAllowed() bool {
+	return r.Enabled && r.Mode == ChannelMonitorModeV2
 }
 
 // GetChannelMonitorRuntime reads the channel monitor feature flags directly from
@@ -425,14 +435,18 @@ type ChannelMonitorRuntime struct {
 func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime {
 	vals, err := s.settingRepo.GetMultiple(ctx, []string{
 		SettingKeyChannelMonitorEnabled,
+		SettingKeyChannelMonitorMode,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
+		SettingKeyChannelMonitorHideThroughput,
 	})
 	if err != nil {
-		return ChannelMonitorRuntime{Enabled: true, DefaultIntervalSeconds: channelMonitorIntervalFallback}
+		return ChannelMonitorRuntime{Enabled: true, Mode: defaultChannelMonitorMode, DefaultIntervalSeconds: channelMonitorIntervalFallback, HideThroughput: true}
 	}
 	return ChannelMonitorRuntime{
 		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
+		Mode:                   normalizeChannelMonitorMode(vals[SettingKeyChannelMonitorMode]),
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
+		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
 	}
 }
 
