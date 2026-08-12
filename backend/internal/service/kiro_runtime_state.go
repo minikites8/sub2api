@@ -22,6 +22,27 @@ type KiroCooldownStore interface {
 	ClearEarliestTransientCooldown(ctx context.Context, tokenKeys []string) (bool, error)
 }
 
+func (s *GatewayService) checkAndWaitKiroCooldown(ctx context.Context, tokenKey string) error {
+	if s == nil || s.kiroCooldownStore == nil {
+		return errKiroCooldownStoreUnavailable
+	}
+	waitFor, err := s.kiroCooldownStore.ReserveRequest(ctx, tokenKey)
+	if err != nil {
+		return err
+	}
+	if waitFor <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(waitFor)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func asKiroCooldownFailoverError(err error) *UpstreamFailoverError {
 	if err == nil {
 		return nil

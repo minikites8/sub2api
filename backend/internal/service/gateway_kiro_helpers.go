@@ -1,6 +1,9 @@
 package service
 
-import "github.com/tidwall/gjson"
+import (
+	"github.com/tidwall/gjson"
+	"time"
+)
 
 func kiroCreditsFromUsageGJSON(usage gjson.Result) float64 {
 	if !usage.Exists() {
@@ -10,6 +13,19 @@ func kiroCreditsFromUsageGJSON(usage gjson.Result) float64 {
 		if v := usage.Get(key); v.Exists() && v.Float() > 0 {
 			return v.Float()
 		}
+	}
+	return 0
+}
+
+func (s *GatewayService) streamKeepaliveIntervalForAccount(account *Account) time.Duration {
+	if account != nil && account.Platform == PlatformKiro {
+		if s != nil && s.cfg != nil && s.cfg.Gateway.KiroStreamKeepaliveInterval > 0 {
+			return time.Duration(s.cfg.Gateway.KiroStreamKeepaliveInterval) * time.Second
+		}
+		return defaultKiroStreamKeepalive
+	}
+	if s != nil && s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		return time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
 	}
 	return 0
 }

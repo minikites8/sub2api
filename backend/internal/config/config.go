@@ -1025,6 +1025,16 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+	Grok             GatewayGrokConfig      `mapstructure:"grok"`
+}
+
+type GatewayGrokConfig struct {
+	PasswordAuthEnabled        bool  `mapstructure:"password_auth_enabled"`
+	FreeQuotaSoftGateEnabled   bool  `mapstructure:"free_quota_soft_gate_enabled"`
+	FreeQuotaTokenLimit        int64 `mapstructure:"free_quota_token_limit"`
+	FreeQuotaSoftGatePercent   int   `mapstructure:"free_quota_soft_gate_percent"`
+	FreeQuotaWindowHours       int   `mapstructure:"free_quota_window_hours"`
+	FreeQuotaStatsCacheSeconds int   `mapstructure:"free_quota_stats_cache_seconds"`
 }
 
 type GatewayLiveConfig struct {
