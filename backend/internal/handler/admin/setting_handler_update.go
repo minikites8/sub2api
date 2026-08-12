@@ -26,6 +26,7 @@ type UpdateSettingsRequest struct {
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                     `json:"registration_email_suffix_whitelist"`
+	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"`
 	PromoCodeEnabled                    bool                         `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                         `json:"password_reset_enabled"`
 	FrontendURL                         string                       `json:"frontend_url"`
@@ -66,6 +67,7 @@ type UpdateSettingsRequest struct {
 	TencentCaptchaAppSecretKey   string `json:"tencent_captcha_app_secret_key"`
 	TencentCaptchaCloudSecretID  string `json:"tencent_captcha_cloud_secret_id"`
 	TencentCaptchaCloudSecretKey string `json:"tencent_captcha_cloud_secret_key"`
+	TencentCaptchaRegion         string `json:"tencent_captcha_region"`
 
 	// 阿里云验证码 2.0 设置
 	AliyunCaptchaEnabled         bool   `json:"aliyun_captcha_enabled"`
@@ -333,8 +335,14 @@ type UpdateSettingsRequest struct {
 	PaymentAlipayMobilePrecreateDeepLink *bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// Channel Monitor feature switch
-	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds *int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorEnabled                *bool   `json:"channel_monitor_enabled"`
+	ChannelMonitorMode                   *string `json:"channel_monitor_mode"`
+	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
+
+	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
+	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
+	GrokDefaultBaseURLMode         *string `json:"grok_default_base_url_mode"`
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
@@ -510,6 +518,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.PasskeyEnabled != nil {
 		passkeyEnabled = *req.PasskeyEnabled
 	}
+	registrationEmailDomainQuotaEnabled := previousSettings.RegistrationEmailDomainQuotaEnabled
+	if req.RegistrationEmailDomainQuotaEnabled != nil {
+		registrationEmailDomainQuotaEnabled = *req.RegistrationEmailDomainQuotaEnabled
+	}
 	if passkeyEnabled {
 		configured, _, _ := h.settingService.PasskeyConfiguration()
 		if !configured {
@@ -668,6 +680,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.AliyunCaptchaRegion != service.AliyunCaptchaRegionSGP {
 		req.AliyunCaptchaRegion = service.AliyunCaptchaRegionCN
+	}
+	if _, sent := sentFields["tencent_captcha_region"]; !sent {
+		req.TencentCaptchaRegion = previousSettings.TencentCaptchaRegion
+	}
+	if req.TencentCaptchaRegion != service.TencentCaptchaRegionINTL {
+		req.TencentCaptchaRegion = service.TencentCaptchaRegionCN
 	}
 
 	// Turnstile 参数验证
@@ -1498,6 +1516,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEnabled:                 req.RegistrationEnabled,
 		EmailVerifyEnabled:                  req.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:    req.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailDomainQuotaEnabled: registrationEmailDomainQuotaEnabled,
 		PromoCodeEnabled:                    req.PromoCodeEnabled,
 		PasswordResetEnabled:                req.PasswordResetEnabled,
 		FrontendURL:                         req.FrontendURL,
@@ -1532,6 +1551,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TencentCaptchaAppSecretKey:          req.TencentCaptchaAppSecretKey,
 		TencentCaptchaCloudSecretID:         req.TencentCaptchaCloudSecretID,
 		TencentCaptchaCloudSecretKey:        req.TencentCaptchaCloudSecretKey,
+		TencentCaptchaRegion:                req.TencentCaptchaRegion,
 		AliyunCaptchaEnabled:                req.AliyunCaptchaEnabled,
 		AliyunCaptchaAccessKeyID:            req.AliyunCaptchaAccessKeyID,
 		AliyunCaptchaAccessKeySecret:        req.AliyunCaptchaAccessKeySecret,
@@ -1877,11 +1897,41 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorEnabled
 		}(),
+		ChannelMonitorMode: func() string {
+			if req.ChannelMonitorMode != nil {
+				return *req.ChannelMonitorMode
+			}
+			return previousSettings.ChannelMonitorMode
+		}(),
 		ChannelMonitorDefaultIntervalSeconds: func() int {
 			if req.ChannelMonitorDefaultIntervalSeconds != nil {
 				return *req.ChannelMonitorDefaultIntervalSeconds
 			}
 			return previousSettings.ChannelMonitorDefaultIntervalSeconds
+		}(),
+		ChannelMonitorHideThroughput: func() bool {
+			if req.ChannelMonitorHideThroughput != nil {
+				return *req.ChannelMonitorHideThroughput
+			}
+			return previousSettings.ChannelMonitorHideThroughput
+		}(),
+		GrokDefaultTextModel: func() string {
+			if req.GrokDefaultTextModel != nil {
+				return *req.GrokDefaultTextModel
+			}
+			return previousSettings.GrokDefaultTextModel
+		}(),
+		GrokCrossClientModelMapEnabled: func() bool {
+			if req.GrokCrossClientModelMapEnabled != nil {
+				return *req.GrokCrossClientModelMapEnabled
+			}
+			return previousSettings.GrokCrossClientModelMapEnabled
+		}(),
+		GrokDefaultBaseURLMode: func() string {
+			if req.GrokDefaultBaseURLMode != nil {
+				return strings.TrimSpace(*req.GrokDefaultBaseURLMode)
+			}
+			return previousSettings.GrokDefaultBaseURLMode
 		}(),
 		AvailableChannelsEnabled: func() bool {
 			if req.AvailableChannelsEnabled != nil {
@@ -2096,6 +2146,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEnabled:                                    updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                                     updatedSettings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       updatedSettings.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailDomainQuotaEnabled:                    updatedSettings.RegistrationEmailDomainQuotaEnabled,
 		PromoCodeEnabled:                                       updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   updatedSettings.PasswordResetEnabled,
 		FrontendURL:                                            updatedSettings.FrontendURL,
@@ -2134,6 +2185,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TencentCaptchaAppSecretKeyConfigured:                   updatedSettings.TencentCaptchaAppSecretKeyConfigured,
 		TencentCaptchaCloudSecretIDConfigured:                  updatedSettings.TencentCaptchaCloudSecretIDConfigured,
 		TencentCaptchaCloudSecretKeyConfigured:                 updatedSettings.TencentCaptchaCloudSecretKeyConfigured,
+		TencentCaptchaRegion:                                   updatedSettings.TencentCaptchaRegion,
 		AliyunCaptchaEnabled:                                   updatedSettings.AliyunCaptchaEnabled,
 		AliyunCaptchaAccessKeyID:                               updatedSettings.AliyunCaptchaAccessKeyID,
 		AliyunCaptchaAccessKeySecretConfigured:                 updatedSettings.AliyunCaptchaAccessKeySecretConfigured,
@@ -2332,7 +2384,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentAlipayMobilePrecreateDeepLink:                   updatedPaymentCfg.AlipayMobilePrecreateDeepLink,
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
+		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
+
+		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 		PublicTransitEnabled:     updatedSettings.PublicTransitEnabled,
