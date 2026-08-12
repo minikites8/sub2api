@@ -133,6 +133,7 @@ const (
 	SettingKeyRegistrationEnabled                 = "registration_enabled"                      // 是否开放注册
 	SettingKeyEmailVerifyEnabled                  = "email_verify_enabled"                      // 是否开启邮件验证
 	SettingKeyRegistrationEmailSuffixWhitelist    = "registration_email_suffix_whitelist"       // 注册邮箱后缀白名单（JSON 数组）
+	SettingKeyRegistrationEmailDomainQuotaEnabled = "registration_email_domain_quota_enabled"   // 非白名单域名限量注册开关
 	SettingKeyPromoCodeEnabled                    = "promo_code_enabled"                        // 是否启用优惠码功能
 	SettingKeyPasswordResetEnabled                = "password_reset_enabled"                    // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                         = "frontend_url"                              // 前端基础URL，用于生成邮件中的重置密码链接
@@ -185,6 +186,7 @@ const (
 	SettingKeyTencentCaptchaAppSecretKey   = "tencent_captcha_app_secret_key"
 	SettingKeyTencentCaptchaCloudSecretID  = "tencent_captcha_cloud_secret_id"
 	SettingKeyTencentCaptchaCloudSecretKey = "tencent_captcha_cloud_secret_key"
+	SettingKeyTencentCaptchaRegion         = "tencent_captcha_region"
 
 	// 阿里云验证码 2.0 设置（与 Turnstile、腾讯天御互斥，同一时间仅可启用一家）
 	SettingKeyAliyunCaptchaEnabled         = "aliyun_captcha_enabled"           // 是否启用阿里云验证码
@@ -407,10 +409,18 @@ const (
 	// SettingKeyChannelMonitorEnabled is a DB-backed soft switch for the channel monitor feature.
 	// When false: runner skips scheduling and user-facing endpoints return an empty list.
 	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
+	SettingKeyChannelMonitorMode    = "channel_monitor_mode"
+	ChannelMonitorModeV1            = "v1"
+	ChannelMonitorModeV2            = "v2"
 
 	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].
 	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
+	SettingKeyChannelMonitorHideThroughput         = "channel_monitor_hide_throughput"
+
+	SettingKeyGrokDefaultTextModel           = "grok_default_text_model"
+	SettingKeyGrokCrossClientModelMapEnabled = "grok_cross_client_model_map_enabled"
+	SettingKeyGrokDefaultBaseURLMode         = "grok_default_base_url_mode"
 
 	// SettingKeyAvailableChannelsEnabled is a DB-backed soft switch for the "Available Channels"
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the

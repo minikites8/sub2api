@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"os"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -11,10 +12,19 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/kirocooldown"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
+
+func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config, redisClient *redis.Client) *GrokOAuthService {
+	svc := NewGrokOAuthService(proxyRepo, oauthClient, cfg)
+	if redisClient != nil {
+		svc = svc.WithSessionStore(xai.NewRedisSessionStore(redisClient))
+	}
+	return svc
+}
 
 // BuildInfo contains build information
 type BuildInfo struct {
@@ -786,7 +796,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
-	NewGrokOAuthService,
+	ProvideGrokOAuthService,
 	wire.Bind(new(GrokOAuthTokenService), new(*GrokOAuthService)),
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
@@ -874,6 +884,8 @@ var ProviderSet = wire.NewSet(
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
+	ProvideChannelMonitorV2Service,
+	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
 )
@@ -918,8 +930,11 @@ func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache Lead
 func ProvideChannelMonitorService(
 	repo ChannelMonitorRepository,
 	encryptor SecretEncryptor,
+	settingService *SettingService,
 ) *ChannelMonitorService {
-	return NewChannelMonitorService(repo, encryptor)
+	svc := NewChannelMonitorService(repo, encryptor)
+	svc.SetRuntimeReader(settingService)
+	return svc
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。
@@ -928,9 +943,27 @@ func ProvideChannelMonitorService(
 // settingService 用于 runner 每次 fire 读取功能开关。
 func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
 	r := NewChannelMonitorRunner(svc, settingService)
-	svc.SetScheduler(r)
+	if svc != nil {
+		svc.SetRuntimeReader(settingService)
+		svc.SetScheduler(r)
+	}
 	r.Start()
 	return r
+}
+
+func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService) *ChannelMonitorV2Service {
+	svc := NewChannelMonitorV2Service(repo)
+	svc.SetRuntimeReader(settingService)
+	return svc
+}
+
+func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.DB, settingService *SettingService) *ChannelMonitorV2Aggregator {
+	aggregator := NewChannelMonitorV2Aggregator(repo, db, settingService)
+	if os.Getenv("CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR") == "1" {
+		return aggregator
+	}
+	aggregator.Start()
+	return aggregator
 }
 
 func ProvideDailyCheckinUserRepository(userRepo UserRepository) DailyCheckinUserRepository {

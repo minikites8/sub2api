@@ -48,6 +48,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
 		ForceEmailOnThirdPartySignup:     settings.ForceEmailOnThirdPartySignup,
 		RegistrationEmailSuffixWhitelist: settings.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailDomainQuotaEnabled: settings.RegistrationEmailDomainQuotaEnabled,
 		PromoCodeEnabled:                 settings.PromoCodeEnabled,
 		PasswordResetEnabled:             settings.PasswordResetEnabled,
 		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
@@ -62,6 +63,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
 		TencentCaptchaEnabled:            settings.TencentCaptchaEnabled,
 		TencentCaptchaAppID:              settings.TencentCaptchaAppID,
+		TencentCaptchaRegion:             settings.TencentCaptchaRegion,
 		AliyunCaptchaEnabled:             settings.AliyunCaptchaEnabled,
 		AliyunCaptchaSceneID:             settings.AliyunCaptchaSceneID,
 		AliyunCaptchaPrefix:              settings.AliyunCaptchaPrefix,
@@ -103,7 +105,12 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
+		ChannelMonitorMode:                   settings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
+		GrokDefaultTextModel:                 settings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled:       settings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:               settings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
