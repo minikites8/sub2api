@@ -59,11 +59,9 @@ var AllowedQuotaPlatforms = []string{
 	PlatformGrok,
 }
 
-var AllowedSchedulingThresholdPlatforms = []string{
-	PlatformOpenAI,
-	PlatformAnthropic,
-	PlatformGrok,
-}
+var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthropic, PlatformGrok}
+
+const SettingKeyAccountSchedulingThresholds = "account_scheduling_thresholds"
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
 func IsAllowedQuotaPlatform(s string) bool {
