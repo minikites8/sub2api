@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/textproto"
 	"net/url"
 	"os"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"golang.org/x/net/http/httpguts"
 )
 
 const (
@@ -71,6 +73,7 @@ type Config struct {
 	Ops                     OpsConfig                     `mapstructure:"ops"`
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
 	Totp                    TotpConfig                    `mapstructure:"totp"`
+	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
 	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
 	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
 	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
@@ -96,6 +99,14 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
+	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+}
+
+type WebAuthnConfig struct {
+	Enabled       bool     `mapstructure:"enabled"`
+	RPDisplayName string   `mapstructure:"rp_display_name"`
+	RPID          string   `mapstructure:"rp_id"`
+	RPOrigins     []string `mapstructure:"rp_origins"`
 }
 
 type LogConfig struct {
@@ -226,6 +237,45 @@ type BatchImageConfig struct {
 	VertexOutputRetentionHours   int    `mapstructure:"vertex_output_retention_hours"`
 	VertexBatchPredictionBaseURL string `mapstructure:"vertex_batch_prediction_base_url"`
 	VertexGCSBaseURL             string `mapstructure:"vertex_gcs_base_url"`
+}
+
+type ImageStorageConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Endpoint        string `mapstructure:"endpoint"`
+	Region          string `mapstructure:"region"`
+	Bucket          string `mapstructure:"bucket"`
+	AccessKeyID     string `mapstructure:"access_key_id"`
+	SecretAccessKey string `mapstructure:"secret_access_key"`
+	Prefix          string `mapstructure:"prefix"`
+	ForcePathStyle  bool   `mapstructure:"force_path_style"`
+	PublicBaseURL   string `mapstructure:"public_base_url"`
+	PresignExpiry   int    `mapstructure:"presign_expiry_hours"`
+	MaxDownloadByte int64  `mapstructure:"max_download_bytes"`
+}
+
+func (c *ImageStorageConfig) IsConfigured() bool {
+	return c != nil && c.Bucket != "" && c.AccessKeyID != "" && c.SecretAccessKey != ""
+}
+
+func (c *ImageStorageConfig) Active() bool {
+	return c != nil && c.Enabled && c.IsConfigured()
+}
+
+func (c *ImageStorageConfig) MissingCredentialKeys() []string {
+	if c == nil {
+		return []string{"image_storage.bucket", "image_storage.access_key_id", "image_storage.secret_access_key"}
+	}
+	var missing []string
+	if c.Bucket == "" {
+		missing = append(missing, "image_storage.bucket")
+	}
+	if c.AccessKeyID == "" {
+		missing = append(missing, "image_storage.access_key_id")
+	}
+	if c.SecretAccessKey == "" {
+		missing = append(missing, "image_storage.secret_access_key")
+	}
+	return missing
 }
 
 type LinuxDoConnectConfig struct {
@@ -612,16 +662,18 @@ type PricingConfig struct {
 }
 
 type ServerConfig struct {
-	Host               string    `mapstructure:"host"`
-	Port               int       `mapstructure:"port"`
-	Mode               string    `mapstructure:"mode"`                  // debug/release
-	EnableServerTiming bool      `mapstructure:"enable_server_timing"`  // Admin UI Server-Timing response header
-	FrontendURL        string    `mapstructure:"frontend_url"`          // 前端基础 URL，用于生成邮件中的外部链接
-	ReadHeaderTimeout  int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
-	IdleTimeout        int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
-	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
-	MaxRequestBodySize int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
-	H2C                H2CConfig `mapstructure:"h2c"`                   // HTTP/2 Cleartext 配置
+	Host                     string    `mapstructure:"host"`
+	Port                     int       `mapstructure:"port"`
+	Mode                     string    `mapstructure:"mode"`                 // debug/release
+	EnableServerTiming       bool      `mapstructure:"enable_server_timing"` // Admin UI Server-Timing response header
+	FrontendURL              string    `mapstructure:"frontend_url"`         // 前端基础 URL，用于生成邮件中的外部链接
+	ReadHeaderTimeout        int       `mapstructure:"read_header_timeout"`  // 读取请求头超时（秒）
+	MaxHeaderBytes           int       `mapstructure:"max_header_bytes"`
+	IdleTimeout              int       `mapstructure:"idle_timeout"`    // 空闲连接超时（秒）
+	TrustedProxies           []string  `mapstructure:"trusted_proxies"` // 可信代理列表（CIDR/IP）
+	TrustedProxiesConfigured bool      `mapstructure:"-" json:"-" yaml:"-"`
+	MaxRequestBodySize       int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
+	H2C                      H2CConfig `mapstructure:"h2c"`                   // HTTP/2 Cleartext 配置
 }
 
 // H2CConfig HTTP/2 Cleartext 配置
@@ -640,13 +692,70 @@ type CORSConfig struct {
 }
 
 type SecurityConfig struct {
-	URLAllowlist                     URLAllowlistConfig   `mapstructure:"url_allowlist"`
-	ResponseHeaders                  ResponseHeaderConfig `mapstructure:"response_headers"`
-	CSP                              CSPConfig            `mapstructure:"csp"`
-	ProxyFallback                    ProxyFallbackConfig  `mapstructure:"proxy_fallback"`
-	ProxyProbe                       ProxyProbeConfig     `mapstructure:"proxy_probe"`
-	TrustForwardedIPForAPIKeyACL     bool                 `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
-	trustForwardedIPForAPIKeyACLLive *atomic.Bool         `mapstructure:"-"`
+	URLAllowlist                     URLAllowlistConfig                         `mapstructure:"url_allowlist"`
+	ResponseHeaders                  ResponseHeaderConfig                       `mapstructure:"response_headers"`
+	CSP                              CSPConfig                                  `mapstructure:"csp"`
+	ProxyFallback                    ProxyFallbackConfig                        `mapstructure:"proxy_fallback"`
+	ProxyProbe                       ProxyProbeConfig                           `mapstructure:"proxy_probe"`
+	TrustForwardedIPForAPIKeyACL     bool                                       `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
+	ForwardedClientIPHeaders         []string                                   `mapstructure:"forwarded_client_ip_headers" json:"forwarded_client_ip_headers" yaml:"forwarded_client_ip_headers"`
+	forwardedClientIPSettingsLive    *atomic.Pointer[ForwardedClientIPSettings] `mapstructure:"-" json:"-" yaml:"-"`
+	trustForwardedIPForAPIKeyACLLive *atomic.Bool                               `mapstructure:"-"`
+}
+
+const MaxForwardedClientIPHeaders = 16
+
+type ForwardedClientIPSettings struct {
+	TrustForwardedIP bool
+	Headers          []string
+}
+
+func NormalizeForwardedClientIPHeaders(headers []string) ([]string, error) {
+	normalized := make([]string, 0, len(headers))
+	seen := make(map[string]struct{}, len(headers))
+	for _, header := range headers {
+		header = strings.TrimSpace(header)
+		if !httpguts.ValidHeaderFieldName(header) {
+			return nil, fmt.Errorf("invalid HTTP header field name %q", header)
+		}
+		canonical := textproto.CanonicalMIMEHeaderKey(header)
+		key := strings.ToLower(canonical)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		if len(normalized) == MaxForwardedClientIPHeaders {
+			return nil, fmt.Errorf("forwarded client IP headers must contain at most %d unique names", MaxForwardedClientIPHeaders)
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, canonical)
+	}
+	return normalized, nil
+}
+
+func cloneForwardedClientIPHeaders(headers []string) []string {
+	return append([]string(nil), headers...)
+}
+
+func (c *Config) ForwardedClientIPSettings() ForwardedClientIPSettings {
+	if c == nil {
+		return ForwardedClientIPSettings{Headers: []string{}}
+	}
+	if live := c.Security.forwardedClientIPSettingsLive; live != nil {
+		if snapshot := live.Load(); snapshot != nil {
+			return ForwardedClientIPSettings{TrustForwardedIP: snapshot.TrustForwardedIP, Headers: cloneForwardedClientIPHeaders(snapshot.Headers)}
+		}
+	}
+	return ForwardedClientIPSettings{TrustForwardedIP: c.Security.TrustForwardedIPForAPIKeyACL, Headers: cloneForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)}
+}
+
+func (c *Config) SetForwardedClientIPSettings(enabled bool, headers []string) {
+	if c == nil {
+		return
+	}
+	if c.Security.forwardedClientIPSettingsLive == nil {
+		c.Security.forwardedClientIPSettingsLive = &atomic.Pointer[ForwardedClientIPSettings]{}
+	}
+	c.Security.forwardedClientIPSettingsLive.Store(&ForwardedClientIPSettings{TrustForwardedIP: enabled, Headers: cloneForwardedClientIPHeaders(headers)})
 }
 
 func (c *Config) TrustForwardedIPForAPIKeyACL() bool {
@@ -768,7 +877,8 @@ type GatewayConfig struct {
 	// 0 表示回退到 OpenAIFirstOutputTimeoutSeconds。
 	OpenAIHighEffortFirstOutputTimeoutSeconds int `mapstructure:"openai_high_effort_first_output_timeout_seconds"`
 	// 请求体最大字节数，用于网关请求体大小限制
-	MaxBodySize int64 `mapstructure:"max_body_size"`
+	MaxBodySize     int64 `mapstructure:"max_body_size"`
+	TextMaxBodySize int64 `mapstructure:"text_max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
 	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
 	// 代理探测响应体读取上限（字节）
@@ -779,7 +889,9 @@ type GatewayConfig struct {
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
 	// 用于网关未透传/改写 User-Agent 时的兼容兜底（默认关闭，避免影响其他客户端）。
-	ForceCodexCLI bool `mapstructure:"force_codex_cli"`
+	ForceCodexCLI                       bool `mapstructure:"force_codex_cli"`
+	DisableCodexIdentityEnforcement     bool `mapstructure:"disable_codex_identity_enforcement"`
+	DisableCodexOriginatorNormalization bool `mapstructure:"disable_codex_originator_normalization"`
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
@@ -797,10 +909,12 @@ type GatewayConfig struct {
 	OpenAICompactModel string `mapstructure:"openai_compact_model"`
 	// OpenAIWS: OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
+	Live     GatewayLiveConfig     `mapstructure:"live"`
 	// OpenAIScheduler: OpenAI 高级调度器粘性逃逸配置
 	OpenAIScheduler GatewayOpenAISchedulerConfig `mapstructure:"openai_scheduler"`
 	// OpenAIHTTP2: OpenAI HTTP 上游协议策略（默认启用 HTTP/2，可按代理能力回退 HTTP/1.1）
-	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
+	OpenAIHTTP2              GatewayOpenAIHTTP2Config              `mapstructure:"openai_http2"`
+	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
 
@@ -882,6 +996,17 @@ type GatewayConfig struct {
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
 	Grok             GatewayGrokConfig      `mapstructure:"grok"`
+}
+
+type GatewayLiveConfig struct {
+	MaxSessionDurationSeconds int `mapstructure:"max_session_duration_seconds"`
+}
+
+type GatewayOpenAIProxyStreamCircuitConfig struct {
+	Disabled         bool `mapstructure:"disabled"`
+	FailureThreshold int  `mapstructure:"failure_threshold"`
+	WindowSeconds    int  `mapstructure:"window_seconds"`
+	TTLSeconds       int  `mapstructure:"ttl_seconds"`
 }
 
 type GatewayGrokConfig struct {
@@ -1299,6 +1424,7 @@ func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 type RedisConfig struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
+	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
 	// 连接池与超时配置（性能优化：可配置化连接池参数）
@@ -1404,12 +1530,22 @@ type RateLimitConfig struct {
 
 // APIKeyAuthCacheConfig API Key 认证缓存配置
 type APIKeyAuthCacheConfig struct {
-	L1Size             int  `mapstructure:"l1_size"`
-	L1TTLSeconds       int  `mapstructure:"l1_ttl_seconds"`
-	L2TTLSeconds       int  `mapstructure:"l2_ttl_seconds"`
-	NegativeTTLSeconds int  `mapstructure:"negative_ttl_seconds"`
-	JitterPercent      int  `mapstructure:"jitter_percent"`
-	Singleflight       bool `mapstructure:"singleflight"`
+	L1Size             int                    `mapstructure:"l1_size"`
+	L1TTLSeconds       int                    `mapstructure:"l1_ttl_seconds"`
+	L2TTLSeconds       int                    `mapstructure:"l2_ttl_seconds"`
+	NegativeTTLSeconds int                    `mapstructure:"negative_ttl_seconds"`
+	JitterPercent      int                    `mapstructure:"jitter_percent"`
+	Singleflight       bool                   `mapstructure:"singleflight"`
+	LookupConcurrency  int                    `mapstructure:"lookup_concurrency"`
+	InvalidAbuse       InvalidAuthAbuseConfig `mapstructure:"invalid_abuse"`
+}
+
+type InvalidAuthAbuseConfig struct {
+	Enabled       bool `mapstructure:"enabled"`
+	Threshold     int  `mapstructure:"threshold"`
+	WindowSeconds int  `mapstructure:"window_seconds"`
+	BlockSeconds  int  `mapstructure:"block_seconds"`
+	Capacity      int  `mapstructure:"capacity"`
 }
 
 // SubscriptionCacheConfig 订阅认证 L1 缓存配置

@@ -209,6 +209,9 @@ type SystemSettings struct {
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
 
+	// 系统全局账号自动停调阈值（key = platform，100 = disabled）
+	AccountSchedulingThresholds map[string]int `json:"account_scheduling_thresholds"`
+
 	GrokDefaultTextModel           string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
 	GrokDefaultBaseURLMode         string `json:"grok_default_base_url_mode"`

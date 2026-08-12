@@ -14,7 +14,6 @@ import (
 var errKiroCooldownStoreUnavailable = errors.New("kiro cooldown store unavailable")
 
 type KiroCooldownStore interface {
-	ReserveRequest(ctx context.Context, tokenKey string) (time.Duration, error)
 	MarkSuccess(ctx context.Context, tokenKey string) error
 	Mark429(ctx context.Context, tokenKey string) (time.Duration, error)
 	MarkSuspended(ctx context.Context, tokenKey string) (time.Duration, error)
@@ -22,25 +21,12 @@ type KiroCooldownStore interface {
 	ClearEarliestTransientCooldown(ctx context.Context, tokenKeys []string) (bool, error)
 }
 
-func (s *GatewayService) checkAndWaitKiroCooldown(ctx context.Context, tokenKey string) error {
-	if s == nil || s.kiroCooldownStore == nil {
-		return errKiroCooldownStoreUnavailable
-	}
-	waitFor, err := s.kiroCooldownStore.ReserveRequest(ctx, tokenKey)
-	if err != nil {
-		return err
-	}
-	if waitFor <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(waitFor)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
+type kiroCooldownChecker interface {
+	CheckCooldown(ctx context.Context, tokenKey string) error
+}
+
+type kiroCooldownReserver interface {
+	ReserveRequest(ctx context.Context, tokenKey string) (time.Duration, error)
 }
 
 func asKiroCooldownFailoverError(err error) *UpstreamFailoverError {
@@ -61,12 +47,16 @@ func (s *GatewayService) checkAndWaitKiroCooldown(ctx context.Context, tokenKey 
 	if s == nil || s.kiroCooldownStore == nil {
 		return errKiroCooldownStoreUnavailable
 	}
-	waitFor, err := s.kiroCooldownStore.ReserveRequest(ctx, tokenKey)
-	if err != nil {
-		return err
+	if checker, ok := s.kiroCooldownStore.(kiroCooldownChecker); ok {
+		return checker.CheckCooldown(ctx, tokenKey)
 	}
-	if waitFor <= 0 {
-		return nil
+	reserver, ok := s.kiroCooldownStore.(kiroCooldownReserver)
+	if !ok {
+		return errKiroCooldownStoreUnavailable
+	}
+	waitFor, err := reserver.ReserveRequest(ctx, tokenKey)
+	if err != nil || waitFor <= 0 {
+		return err
 	}
 	timer := time.NewTimer(waitFor)
 	select {
@@ -78,6 +68,10 @@ func (s *GatewayService) checkAndWaitKiroCooldown(ctx context.Context, tokenKey 
 	case <-timer.C:
 		return nil
 	}
+}
+
+func (s *GatewayService) checkKiroCooldown(ctx context.Context, tokenKey string) error {
+	return s.checkAndWaitKiroCooldown(ctx, tokenKey)
 }
 
 // markKiroSuccess records a successful Kiro response. Pair with markKiro429:

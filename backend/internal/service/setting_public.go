@@ -387,7 +387,19 @@ const (
 	channelMonitorIntervalMin      = 15
 	channelMonitorIntervalMax      = 3600
 	channelMonitorIntervalFallback = 60
+	defaultChannelMonitorMode      = ChannelMonitorModeV2
 )
+
+func normalizeChannelMonitorMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case ChannelMonitorModeV1:
+		return ChannelMonitorModeV1
+	case ChannelMonitorModeV2:
+		return ChannelMonitorModeV2
+	default:
+		return defaultChannelMonitorMode
+	}
+}
 
 // parseChannelMonitorInterval parses the stored string and clamps to [15, 3600].
 // Empty / invalid input falls back to channelMonitorIntervalFallback.
