@@ -171,15 +171,6 @@ func (s *DashboardService) GetGroupStatsWithFilters(ctx context.Context, startTi
 	return stats, nil
 }
 
-// GetGroupUsageSummary returns today's/cumulative cost and rolling cache usage for all groups.
-func (s *DashboardService) GetGroupUsageSummary(ctx context.Context, todayStart, since24h, since7d time.Time) ([]usagestats.GroupUsageSummary, error) {
-	results, err := s.usageRepo.GetAllGroupUsageSummary(ctx, todayStart, since24h, since7d)
-	if err != nil {
-		return nil, fmt.Errorf("get group usage summary: %w", err)
-	}
-	return results, nil
-}
-
 type ChannelTokenCapacityWindow struct {
 	UsedTokens      int64   `json:"used_tokens"`
 	TotalTokens     int64   `json:"total_tokens"`
@@ -256,6 +247,29 @@ func finalizeChannelCapacityWindow(window *ChannelTokenCapacityWindow) {
 	if window.TotalTokens > 0 {
 		window.UsedPercent = float64(window.UsedTokens) * 100 / float64(window.TotalTokens)
 	}
+}
+
+func (s *DashboardService) GetGroupStatsWithUsageFilters(ctx context.Context, startTime, endTime time.Time, filters usagestats.UsageLogFilters) ([]usagestats.GroupStat, error) {
+	type groupStatsWithFiltersRepo interface {
+		GetGroupStatsWithUsageFilters(context.Context, time.Time, time.Time, usagestats.UsageLogFilters) ([]usagestats.GroupStat, error)
+	}
+	if repo, ok := s.usageRepo.(groupStatsWithFiltersRepo); ok {
+		stats, err := repo.GetGroupStatsWithUsageFilters(ctx, startTime, endTime, filters)
+		if err != nil {
+			return nil, fmt.Errorf("get group stats with usage filters: %w", err)
+		}
+		return stats, nil
+	}
+	return s.GetGroupStatsWithFilters(ctx, startTime, endTime, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.RequestType, filters.Stream, filters.BillingType)
+}
+
+// GetGroupUsageSummary returns today's, yesterday's, and cumulative cost for all groups.
+func (s *DashboardService) GetGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
+	results, err := s.usageRepo.GetAllGroupUsageSummary(ctx, todayStart)
+	if err != nil {
+		return nil, fmt.Errorf("get group usage summary: %w", err)
+	}
+	return results, nil
 }
 
 func (s *DashboardService) getCachedDashboardStats(ctx context.Context) (*usagestats.DashboardStats, bool, error) {
