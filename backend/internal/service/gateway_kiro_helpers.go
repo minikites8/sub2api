@@ -1,8 +1,9 @@
 package service
 
 import (
-	"github.com/tidwall/gjson"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 func kiroCreditsFromUsageGJSON(usage gjson.Result) float64 {

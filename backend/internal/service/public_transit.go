@@ -661,12 +661,20 @@ func protocolsForPlatform(platform string) []string {
 	}
 }
 
+type groupCacheUsageReader interface {
+	GetGroupCacheUsageSummary(ctx context.Context, since24h, since7d time.Time) ([]usagestats.GroupCacheUsageSummary, error)
+}
+
 func (s *PublicTransitService) publicGroupCacheUsage(ctx context.Context) (map[int64]PublicTransitCacheUsage, error) {
 	if s == nil || s.usageRepo == nil {
 		return map[int64]PublicTransitCacheUsage{}, nil
 	}
+	reader, ok := s.usageRepo.(groupCacheUsageReader)
+	if !ok {
+		return map[int64]PublicTransitCacheUsage{}, nil
+	}
 	now := time.Now().UTC()
-	rows, err := s.usageRepo.GetGroupCacheUsageSummary(ctx, now.Add(-24*time.Hour), now.Add(-7*24*time.Hour))
+	rows, err := reader.GetGroupCacheUsageSummary(ctx, now.Add(-24*time.Hour), now.Add(-7*24*time.Hour))
 	if err != nil {
 		return nil, err
 	}
