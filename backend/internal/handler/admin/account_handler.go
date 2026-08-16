@@ -195,9 +195,10 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	CurrentConcurrency int                          `json:"current_concurrency"`
-	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
-	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
+	CurrentConcurrency  int                          `json:"current_concurrency"`
+	SchedulerScore      *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
+	SchedulerScores     []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
+	OnlineTerminalCount *int                         `json:"online_terminal_count,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
@@ -220,12 +221,55 @@ type AccountSchedulerGroupScore struct {
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
+const (
+	openAIOnlineTerminalCountTimeout = 5 * time.Second
+	openAIOnlineTerminalCountWorkers = 8
+)
+
 func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromService(account)
 	if h != nil && h.ollamaCloudUsage != nil && out != nil {
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
 	return out
+}
+
+// listOpenAIOnlineTerminalCounts fetches device counts for the current page.
+// Each upstream failure is isolated so a slow or unavailable OpenAI account
+// does not prevent the rest of the account list from rendering.
+func (h *AccountHandler) listOpenAIOnlineTerminalCounts(ctx context.Context, accounts []service.Account) map[int64]int {
+	if h == nil || h.sessionService == nil || len(accounts) == 0 {
+		return nil
+	}
+
+	counts := make(map[int64]int)
+	var mu sync.Mutex
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(openAIOnlineTerminalCountWorkers)
+	for i := range accounts {
+		account := &accounts[i]
+		if !account.IsOpenAIOAuth() {
+			continue
+		}
+		accountID := account.ID
+		g.Go(func() error {
+			requestCtx, cancel := context.WithTimeout(gctx, openAIOnlineTerminalCountTimeout)
+			defer cancel()
+			sessions, err := h.sessionService.ListSessions(requestCtx, accountID)
+			if err != nil || sessions == nil {
+				return nil
+			}
+			mu.Lock()
+			counts[accountID] = len(sessions.Devices)
+			mu.Unlock()
+			return nil
+		})
+	}
+	_ = g.Wait()
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
 }
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
@@ -522,6 +566,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 	// 调度分需要跨候选池批量打分并读取负载，默认列表不计算；只有前端列可见时才显式开启。
 	includeSchedulerScore := parseBoolQueryWithDefault(c.Query("include_scheduler_score"), false)
+	includeOnlineTerminalCount := parseBoolQueryWithDefault(c.Query("include_online_terminal_count"), false)
 
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
@@ -567,6 +612,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
+	var onlineTerminalCounts map[int64]int
 	// 双重门控：用户要看该列，且当前页确实有 OpenAI 账号，才进入昂贵的候选池打分路径。
 	var schedulerScores map[int64]*AccountSchedulerScore
 	var schedulerGroupScores map[int64][]AccountSchedulerGroupScore
@@ -654,6 +700,10 @@ func (h *AccountHandler) List(c *gin.Context) {
 		_ = g.Wait()
 	}
 
+	if includeOnlineTerminalCount && h.sessionService != nil {
+		onlineTerminalCounts = h.listOpenAIOnlineTerminalCounts(c.Request.Context(), accounts)
+	}
+
 	// Build response with concurrency info
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
@@ -666,6 +716,11 @@ func (h *AccountHandler) List(c *gin.Context) {
 			CurrentConcurrency: concurrencyCounts[acc.ID],
 			SchedulerScore:     schedulerScores[acc.ID],
 			SchedulerScores:    schedulerGroupScores[acc.ID],
+		}
+		if onlineTerminalCounts != nil {
+			if count, ok := onlineTerminalCounts[acc.ID]; ok {
+				item.OnlineTerminalCount = &count
+			}
 		}
 
 		// 添加窗口费用（仅当启用时）
@@ -694,7 +749,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 
 	h.enrichShadowParents(c.Request.Context(), result)
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite, includeOnlineTerminalCount)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -712,28 +767,30 @@ func buildAccountsListETag(
 	total int64,
 	page, pageSize int,
 	platform, accountType, status, search string,
-	lite bool,
+	lite, includeOnlineTerminalCount bool,
 ) string {
 	payload := struct {
-		Total       int64                    `json:"total"`
-		Page        int                      `json:"page"`
-		PageSize    int                      `json:"page_size"`
-		Platform    string                   `json:"platform"`
-		AccountType string                   `json:"type"`
-		Status      string                   `json:"status"`
-		Search      string                   `json:"search"`
-		Lite        bool                     `json:"lite"`
-		Items       []AccountWithConcurrency `json:"items"`
+		Total                      int64                    `json:"total"`
+		Page                       int                      `json:"page"`
+		PageSize                   int                      `json:"page_size"`
+		Platform                   string                   `json:"platform"`
+		AccountType                string                   `json:"type"`
+		Status                     string                   `json:"status"`
+		Search                     string                   `json:"search"`
+		Lite                       bool                     `json:"lite"`
+		IncludeOnlineTerminalCount bool                     `json:"include_online_terminal_count"`
+		Items                      []AccountWithConcurrency `json:"items"`
 	}{
-		Total:       total,
-		Page:        page,
-		PageSize:    pageSize,
-		Platform:    platform,
-		AccountType: accountType,
-		Status:      status,
-		Search:      search,
-		Lite:        lite,
-		Items:       items,
+		Total:                      total,
+		Page:                       page,
+		PageSize:                   pageSize,
+		Platform:                   platform,
+		AccountType:                accountType,
+		Status:                     status,
+		Search:                     search,
+		Lite:                       lite,
+		IncludeOnlineTerminalCount: includeOnlineTerminalCount,
+		Items:                      items,
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

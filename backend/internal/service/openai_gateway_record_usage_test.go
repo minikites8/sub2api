@@ -184,13 +184,15 @@ func TestRecordCyberPolicyUsageLog_SkipsWhenIncomplete(t *testing.T) {
 type openAIRecordUsageUserRepoStub struct {
 	UserRepository
 
-	deductCalls int
-	deductErr   error
-	lastAmount  float64
-	lastCtxErr  error
-	users       map[int64]*User
-	updateCalls int
-	updatedIDs  []int64
+	deductCalls          int
+	deductErr            error
+	lastAmount           float64
+	lastCtxErr           error
+	deductAvailableCalls int
+	lastAvailableAmount  float64
+	users                map[int64]*User
+	updateCalls          int
+	updatedIDs           []int64
 }
 
 func (s *openAIRecordUsageUserRepoStub) DeductBalance(ctx context.Context, id int64, amount float64) error {
@@ -198,6 +200,34 @@ func (s *openAIRecordUsageUserRepoStub) DeductBalance(ctx context.Context, id in
 	s.lastAmount = amount
 	s.lastCtxErr = ctx.Err()
 	return s.deductErr
+}
+
+func (s *openAIRecordUsageUserRepoStub) DeductAvailableBalance(_ context.Context, id int64, amount float64) (float64, error) {
+	s.deductAvailableCalls++
+	s.lastAvailableAmount = amount
+	if s.deductErr != nil {
+		return 0, s.deductErr
+	}
+	if s.users == nil {
+		return amount, nil
+	}
+	user, ok := s.users[id]
+	if !ok {
+		return 0, ErrUserNotFound
+	}
+	deducted := amount
+	if user.Balance < deducted {
+		deducted = user.Balance
+	}
+	if deducted < 0 {
+		deducted = 0
+	}
+	user.Balance -= deducted
+	return deducted, nil
+}
+
+func (s *openAIRecordUsageUserRepoStub) DeductAvailableGiftBalance(ctx context.Context, id int64, amount float64) (float64, error) {
+	return s.DeductAvailableBalance(ctx, id, amount)
 }
 
 func (s *openAIRecordUsageUserRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
@@ -471,7 +501,7 @@ func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_DisablesFourthDistinctUserForSameIPAndUA(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_DeductsFourthFreeUserGiftBalanceForSameIPAndUA(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{
 		inserted: true,
 		riskQueryResult: []UsageLogUserFirstSeen{
@@ -483,10 +513,10 @@ func TestOpenAIGatewayServiceRecordUsage_DisablesFourthDistinctUserForSameIPAndU
 	}
 	userRepo := &openAIRecordUsageUserRepoStub{
 		users: map[int64]*User{
-			201: {ID: 201, Status: StatusActive},
-			202: {ID: 202, Status: StatusActive},
-			203: {ID: 203, Status: StatusActive},
-			204: {ID: 204, Status: StatusActive},
+			201: {ID: 201, Status: StatusActive, Balance: 2},
+			202: {ID: 202, Status: StatusActive, Balance: 2},
+			203: {ID: 203, Status: StatusActive, Balance: 2},
+			204: {ID: 204, Status: StatusActive, Balance: 2},
 		},
 	}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -520,8 +550,11 @@ func TestOpenAIGatewayServiceRecordUsage_DisablesFourthDistinctUserForSameIPAndU
 	require.Equal(t, 1, usageRepo.riskQueryCalls)
 	require.Equal(t, "5.6.7.8", usageRepo.riskLastIP)
 	require.Equal(t, "same-ua", usageRepo.riskLastUserAgent)
-	require.Equal(t, []int64{204}, userRepo.updatedIDs)
-	require.Equal(t, StatusDisabled, userRepo.users[204].Status)
+	require.Empty(t, userRepo.updatedIDs)
+	require.Equal(t, 1, userRepo.deductAvailableCalls)
+	require.Equal(t, 2.0, userRepo.lastAvailableAmount)
+	require.Equal(t, 0.0, userRepo.users[204].Balance)
+	require.Equal(t, StatusActive, userRepo.users[204].Status)
 	require.Equal(t, []int64{204}, cacheStub.invalidatedUserIDs)
 }
 

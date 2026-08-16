@@ -668,7 +668,7 @@ func TestGatewayServiceRecordUsage_ReasoningEffortNil(t *testing.T) {
 	require.Nil(t, usageRepo.lastLog.ReasoningEffort)
 }
 
-func TestGatewayServiceRecordUsage_DisablesFourthDistinctUserForSameIPAndUA(t *testing.T) {
+func TestGatewayServiceRecordUsage_DeductsFourthFreeUserGiftBalanceForSameIPAndUA(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{
 		inserted: true,
 		riskQueryResult: []UsageLogUserFirstSeen{
@@ -680,10 +680,10 @@ func TestGatewayServiceRecordUsage_DisablesFourthDistinctUserForSameIPAndUA(t *t
 	}
 	userRepo := &openAIRecordUsageUserRepoStub{
 		users: map[int64]*User{
-			101: {ID: 101, Status: StatusActive},
-			102: {ID: 102, Status: StatusActive},
-			103: {ID: 103, Status: StatusActive},
-			104: {ID: 104, Status: StatusActive},
+			101: {ID: 101, Status: StatusActive, Balance: 2},
+			102: {ID: 102, Status: StatusActive, Balance: 2},
+			103: {ID: 103, Status: StatusActive, Balance: 2},
+			104: {ID: 104, Status: StatusActive, Balance: 2},
 		},
 	}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -717,7 +717,62 @@ func TestGatewayServiceRecordUsage_DisablesFourthDistinctUserForSameIPAndUA(t *t
 	require.Equal(t, 1, usageRepo.riskQueryCalls)
 	require.Equal(t, "1.2.3.4", usageRepo.riskLastIP)
 	require.Equal(t, "same-ua", usageRepo.riskLastUserAgent)
-	require.Equal(t, []int64{104}, userRepo.updatedIDs)
-	require.Equal(t, StatusDisabled, userRepo.users[104].Status)
+	require.Empty(t, userRepo.updatedIDs)
+	require.Equal(t, 1, userRepo.deductAvailableCalls)
+	require.Equal(t, 2.0, userRepo.lastAvailableAmount)
+	require.Equal(t, 0.0, userRepo.users[104].Balance)
+	require.Equal(t, StatusActive, userRepo.users[104].Status)
 	require.Equal(t, []int64{104}, cacheStub.invalidatedUserIDs)
+}
+
+func TestGatewayServiceRecordUsage_SkipsPaidUserForSameIPAndUA(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{
+		inserted: true,
+		riskQueryResult: []UsageLogUserFirstSeen{
+			{UserID: 101, FirstSeen: time.Now().Add(-3 * time.Hour)},
+			{UserID: 102, FirstSeen: time.Now().Add(-2 * time.Hour)},
+			{UserID: 103, FirstSeen: time.Now().Add(-1 * time.Hour)},
+			{UserID: 104, FirstSeen: time.Now()},
+		},
+	}
+	userRepo := &openAIRecordUsageUserRepoStub{
+		users: map[int64]*User{
+			101: {ID: 101, Status: StatusActive, Balance: 2},
+			102: {ID: 102, Status: StatusActive, Balance: 2},
+			103: {ID: 103, Status: StatusActive, Balance: 2},
+			104: {ID: 104, Status: StatusActive, Balance: 2, TotalRecharged: 10},
+		},
+	}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	cacheStub := &openAIRecordUsageAuthCacheInvalidatorStub{}
+	svc.authCacheInvalidator = cacheStub
+	svc.settingService = NewSettingService(&openAIRecordUsageSettingRepoStub{values: map[string]string{
+		SettingKeyAPIUsageIPUARiskControlThreshold:    "4",
+		SettingKeyAPIUsageIPUADisablePreviousAccounts: "false",
+		SettingKeyAPIUsageIPUAKeepPreviousAccounts:    "0",
+	}}, svc.cfg)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_api_usage_paid_risk",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey:    &APIKey{ID: 502, Quota: 100},
+		User:      &User{ID: 104},
+		Account:   &Account{ID: 702},
+		UserAgent: "same-ua",
+		IPAddress: "1.2.3.4",
+	})
+
+	require.NoError(t, err)
+	require.Empty(t, userRepo.updatedIDs)
+	require.Zero(t, userRepo.deductAvailableCalls)
+	require.Equal(t, 2.0, userRepo.users[104].Balance)
+	require.Equal(t, StatusActive, userRepo.users[104].Status)
+	require.Empty(t, cacheStub.invalidatedUserIDs)
 }

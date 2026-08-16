@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type onlineTerminalSessionStub struct {
+	responses map[int64]*service.OpenAISessionsResponse
+	calls     []int64
+}
+
+func (s *onlineTerminalSessionStub) ListSessions(_ context.Context, accountID int64) (*service.OpenAISessionsResponse, error) {
+	s.calls = append(s.calls, accountID)
+	return s.responses[accountID], nil
+}
+
+func (s *onlineTerminalSessionStub) RevokeSession(_ context.Context, accountID int64, sessionID string) (*service.OpenAISessionRevokeResult, error) {
+	return &service.OpenAISessionRevokeResult{SessionID: sessionID, Revoked: true}, nil
+}
 
 func setupAccountListRouter() (*gin.Engine, *stubAdminService) {
 	gin.SetMode(gin.TestMode)
@@ -50,6 +65,66 @@ func TestAccountHandlerListIncludesCreatedAt(t *testing.T) {
 	require.NoError(t, err)
 	_, offset := parsed.Zone()
 	require.Equal(t, 0, offset)
+}
+
+func TestAccountHandlerListIncludesOnlineTerminalCountForOpenAIOAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	adminSvc := newStubAdminService()
+	adminSvc.accounts = []service.Account{
+		{ID: 101, Name: "oauth", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive},
+		{ID: 102, Name: "apikey", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive},
+		{ID: 103, Name: "anthropic", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive},
+	}
+	sessions := &onlineTerminalSessionStub{responses: map[int64]*service.OpenAISessionsResponse{
+		101: {Devices: []service.OpenAISessionDevice{{SessionID: "one"}, {SessionID: "two"}}},
+	}}
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler.sessionService = sessions
+	router.GET("/api/v1/admin/accounts", handler.List)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20&include_online_terminal_count=1", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Items []struct {
+				ID                  int64 `json:"id"`
+				OnlineTerminalCount *int  `json:"online_terminal_count"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Len(t, payload.Data.Items, 3)
+	var oauth, apiKey, anthropic *struct {
+		ID                  int64 `json:"id"`
+		OnlineTerminalCount *int  `json:"online_terminal_count"`
+	}
+	for i := range payload.Data.Items {
+		item := &payload.Data.Items[i]
+		switch item.ID {
+		case 101:
+			oauth = item
+		case 102:
+			apiKey = item
+		case 103:
+			anthropic = item
+		}
+	}
+	require.NotNil(t, oauth)
+	require.NotNil(t, oauth.OnlineTerminalCount)
+	require.Equal(t, 2, *oauth.OnlineTerminalCount)
+	require.Nil(t, apiKey.OnlineTerminalCount)
+	require.Nil(t, anthropic.OnlineTerminalCount)
+	require.Equal(t, []int64{101}, sessions.calls)
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20&include_online_terminal_count=0", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []int64{101}, sessions.calls)
 }
 
 func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {

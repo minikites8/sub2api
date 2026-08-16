@@ -142,12 +142,12 @@ const (
 	SettingKeyPasswordResetEnabled                = "password_reset_enabled"                    // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                         = "frontend_url"                              // 前端基础URL，用于生成邮件中的重置密码链接
 	SettingKeyInvitationCodeEnabled               = "invitation_code_enabled"                   // 是否启用邀请码注册
-	SettingKeySignupIPRiskControlThreshold        = "signup_ip_risk_control_threshold"          // 同一IP 24小时内触发封禁的注册次数阈值
-	SettingKeySignupIPDisablePreviousAccounts     = "signup_ip_disable_previous_accounts"       // 触发时是否同时封禁更早的同IP账号
-	SettingKeySignupIPKeepPreviousAccounts        = "signup_ip_keep_previous_accounts"          // 触发时保留的最早同IP旧账号数量
-	SettingKeyAPIUsageIPUARiskControlThreshold    = "api_usage_ip_ua_risk_control_threshold"    // 同一IP+UA 24小时内触发封禁的账号切换阈值
-	SettingKeyAPIUsageIPUADisablePreviousAccounts = "api_usage_ip_ua_disable_previous_accounts" // 触发时是否同时封禁更早的同IP+UA账号
-	SettingKeyAPIUsageIPUAKeepPreviousAccounts    = "api_usage_ip_ua_keep_previous_accounts"    // 触发时保留的最早同IP+UA旧账号数量
+	SettingKeySignupIPRiskControlThreshold        = "signup_ip_risk_control_threshold"          // 同一IP 24小时内触发赠金扣除的注册次数阈值
+	SettingKeySignupIPDisablePreviousAccounts     = "signup_ip_disable_previous_accounts"       // 触发时是否同时扣除更早的同IP账号赠金
+	SettingKeySignupIPKeepPreviousAccounts        = "signup_ip_keep_previous_accounts"          // 触发时保留的最早同IP旧账号赠金数量
+	SettingKeyAPIUsageIPUARiskControlThreshold    = "api_usage_ip_ua_risk_control_threshold"    // 同一IP+UA 24小时内触发赠金扣除的账号切换阈值
+	SettingKeyAPIUsageIPUADisablePreviousAccounts = "api_usage_ip_ua_disable_previous_accounts" // 触发时是否同时扣除更早的同IP+UA账号赠金
+	SettingKeyAPIUsageIPUAKeepPreviousAccounts    = "api_usage_ip_ua_keep_previous_accounts"    // 触发时保留的最早同IP+UA旧账号赠金数量
 	SettingKeyAffiliateEnabled                    = "affiliate_enabled"                         // 邀请返利功能总开关
 	SettingKeyAffiliateRebateRate                 = "affiliate_rebate_rate"                     // 邀请返利比例（百分比，0-100）
 	SettingKeyAffiliateRebateFreezeHours          = "affiliate_rebate_freeze_hours"             // 返利冻结期（小时，0=不冻结）

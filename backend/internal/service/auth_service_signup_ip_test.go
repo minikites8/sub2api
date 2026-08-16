@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAuthServiceRegister_DisablesSubsequentAccountsFromSameSignupIP(t *testing.T) {
+func TestAuthServiceRegister_DeductsGiftBalanceFromRiskyFreeAccounts(t *testing.T) {
 	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
 		service.SettingKeyRegistrationEnabled:             "true",
 		service.SettingKeySignupIPRiskControlThreshold:    "3",
@@ -33,9 +33,10 @@ func TestAuthServiceRegister_DisablesSubsequentAccountsFromSameSignupIP(t *testi
 	require.Equal(t, service.StatusActive, secondUser.Status)
 
 	_, thirdUser, err := svc.Register(signupCtx(), "signup-ip-third@example.com", "password")
-	require.ErrorIs(t, err, service.ErrUserNotActive)
+	require.NoError(t, err)
 	require.NotNil(t, thirdUser)
-	require.Equal(t, service.StatusDisabled, thirdUser.Status)
+	require.Equal(t, service.StatusActive, thirdUser.Status)
+	require.Zero(t, thirdUser.Balance)
 
 	storedFirstUser, err := client.User.Get(context.Background(), firstUser.ID)
 	require.NoError(t, err)
@@ -45,14 +46,16 @@ func TestAuthServiceRegister_DisablesSubsequentAccountsFromSameSignupIP(t *testi
 
 	storedSecondUser, err := client.User.Get(context.Background(), secondUser.ID)
 	require.NoError(t, err)
-	require.Equal(t, service.StatusDisabled, storedSecondUser.Status)
+	require.Equal(t, service.StatusActive, storedSecondUser.Status)
+	require.Zero(t, storedSecondUser.Balance)
 
 	storedThirdUser, err := client.User.Get(context.Background(), thirdUser.ID)
 	require.NoError(t, err)
-	require.Equal(t, service.StatusDisabled, storedThirdUser.Status)
+	require.Equal(t, service.StatusActive, storedThirdUser.Status)
+	require.Zero(t, storedThirdUser.Balance)
 }
 
-func TestAuthServiceRegister_OnlyDisablesCurrentAccountWhenConfigured(t *testing.T) {
+func TestAuthServiceRegister_DeductsOnlyCurrentGiftBalanceWhenPreviousProcessingDisabled(t *testing.T) {
 	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
 		service.SettingKeyRegistrationEnabled:             "true",
 		service.SettingKeySignupIPRiskControlThreshold:    "2",
@@ -70,9 +73,10 @@ func TestAuthServiceRegister_OnlyDisablesCurrentAccountWhenConfigured(t *testing
 	require.Equal(t, service.StatusActive, firstUser.Status)
 
 	_, secondUser, err := svc.Register(signupCtx(), "signup-ip-disable-current@example.com", "password")
-	require.ErrorIs(t, err, service.ErrUserNotActive)
+	require.NoError(t, err)
 	require.NotNil(t, secondUser)
-	require.Equal(t, service.StatusDisabled, secondUser.Status)
+	require.Equal(t, service.StatusActive, secondUser.Status)
+	require.Zero(t, secondUser.Balance)
 
 	storedFirstUser, err := client.User.Get(context.Background(), firstUser.ID)
 	require.NoError(t, err)
@@ -80,10 +84,11 @@ func TestAuthServiceRegister_OnlyDisablesCurrentAccountWhenConfigured(t *testing
 
 	storedSecondUser, err := client.User.Get(context.Background(), secondUser.ID)
 	require.NoError(t, err)
-	require.Equal(t, service.StatusDisabled, storedSecondUser.Status)
+	require.Equal(t, service.StatusActive, storedSecondUser.Status)
+	require.Zero(t, storedSecondUser.Balance)
 }
 
-func TestAuthServiceRegister_DisablesEarlierAccountsBeyondKeepCount(t *testing.T) {
+func TestAuthServiceRegister_DeductsEarlierGiftBalancesBeyondKeepCount(t *testing.T) {
 	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
 		service.SettingKeyRegistrationEnabled:             "true",
 		service.SettingKeySignupIPRiskControlThreshold:    "4",
@@ -102,9 +107,10 @@ func TestAuthServiceRegister_DisablesEarlierAccountsBeyondKeepCount(t *testing.T
 	_, thirdUser, err := svc.Register(signupCtx(), "signup-ip-disable-old@example.com", "password")
 	require.NoError(t, err)
 	_, fourthUser, err := svc.Register(signupCtx(), "signup-ip-disable-current@example.com", "password")
-	require.ErrorIs(t, err, service.ErrUserNotActive)
+	require.NoError(t, err)
 	require.NotNil(t, fourthUser)
-	require.Equal(t, service.StatusDisabled, fourthUser.Status)
+	require.Equal(t, service.StatusActive, fourthUser.Status)
+	require.Zero(t, fourthUser.Balance)
 
 	storedFirstUser, err := client.User.Get(context.Background(), firstUser.ID)
 	require.NoError(t, err)
@@ -116,9 +122,40 @@ func TestAuthServiceRegister_DisablesEarlierAccountsBeyondKeepCount(t *testing.T
 
 	storedThirdUser, err := client.User.Get(context.Background(), thirdUser.ID)
 	require.NoError(t, err)
-	require.Equal(t, service.StatusDisabled, storedThirdUser.Status)
+	require.Equal(t, service.StatusActive, storedThirdUser.Status)
+	require.Zero(t, storedThirdUser.Balance)
 
 	storedFourthUser, err := client.User.Get(context.Background(), fourthUser.ID)
 	require.NoError(t, err)
-	require.Equal(t, service.StatusDisabled, storedFourthUser.Status)
+	require.Equal(t, service.StatusActive, storedFourthUser.Status)
+	require.Zero(t, storedFourthUser.Balance)
+}
+
+func TestAuthServiceRegister_SkipsPaidAccountsForSignupIPRiskControl(t *testing.T) {
+	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
+		service.SettingKeyRegistrationEnabled:             "true",
+		service.SettingKeySignupIPRiskControlThreshold:    "2",
+		service.SettingKeySignupIPDisablePreviousAccounts: "true",
+		service.SettingKeySignupIPKeepPreviousAccounts:    "0",
+	}, nil)
+
+	signupCtx := func() context.Context {
+		return service.WithSignupIP(context.Background(), "4.3.2.1")
+	}
+
+	_, paidUser, err := svc.Register(signupCtx(), "signup-ip-paid@example.com", "password")
+	require.NoError(t, err)
+	_, err = client.User.UpdateOneID(paidUser.ID).SetTotalRecharged(10).Save(context.Background())
+	require.NoError(t, err)
+
+	_, freeUser, err := svc.Register(signupCtx(), "signup-ip-free@example.com", "password")
+	require.NoError(t, err)
+	require.Equal(t, service.StatusActive, freeUser.Status)
+	require.Zero(t, freeUser.Balance)
+
+	storedPaidUser, err := client.User.Get(context.Background(), paidUser.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.StatusActive, storedPaidUser.Status)
+	require.Equal(t, 3.5, storedPaidUser.Balance)
+	require.Equal(t, 10.0, storedPaidUser.TotalRecharged)
 }

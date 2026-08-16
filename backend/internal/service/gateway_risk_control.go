@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -63,33 +64,63 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 	}
 
 	for idx, item := range items {
-		shouldDisable := idx >= threshold-1
+		shouldDeduct := idx >= threshold-1
 		if disablePreviousAccounts && idx >= keepPreviousAccounts {
-			shouldDisable = true
+			shouldDeduct = true
 		}
-		if !shouldDisable {
+		if !shouldDeduct {
 			continue
 		}
 		target, err := s.userRepo.GetByID(ctx, item.UserID)
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control get user failed: user=%d err=%v", item.UserID, err)
+			if currentIndex == idx {
+				return
+			}
 			continue
 		}
-		if target == nil || target.Status == StatusDisabled {
+		if target == nil {
+			if currentIndex == idx {
+				return
+			}
 			continue
 		}
-		target.Status = StatusDisabled
-		if err := s.userRepo.Update(ctx, target, UserUpdateFields{Status: true}); err != nil {
-			logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control disable failed: user=%d err=%v", item.UserID, err)
-			continue
-		}
-		if s.authCacheInvalidator != nil {
-			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, item.UserID)
+		if target.TotalRecharged <= 0 && target.Balance > 0 {
+			deducted, err := deductIPRiskGiftBalance(ctx, s.userRepo, target)
+			if err != nil {
+				logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control gift balance deduction failed: user=%d err=%v", item.UserID, err)
+			} else if deducted > 0 {
+				if s.authCacheInvalidator != nil {
+					s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, item.UserID)
+				}
+				if s.billingCacheService != nil {
+					_ = s.billingCacheService.InvalidateUserBalance(ctx, item.UserID)
+				}
+			}
 		}
 		if currentIndex == idx {
 			return
 		}
 	}
+}
+
+func deductIPRiskGiftBalance(ctx context.Context, repo UserRepository, target *User) (float64, error) {
+	if repo == nil || target == nil || target.ID <= 0 || target.TotalRecharged > 0 || target.Balance <= 0 {
+		return 0, nil
+	}
+	if deductor, ok := repo.(IPRiskGiftBalanceDeductor); ok {
+		return deductor.DeductAvailableGiftBalance(ctx, target.ID, target.Balance)
+	}
+	if deductor, ok := repo.(availableBalanceDeductor); ok {
+		return deductor.DeductAvailableBalance(ctx, target.ID, target.Balance)
+	}
+	if adjuster, ok := repo.(RedeemUserAdjustmentRepository); ok {
+		if err := adjuster.ApplyRedeemBalanceAdjustment(ctx, target.ID, -target.Balance); err != nil {
+			return 0, err
+		}
+		return target.Balance, nil
+	}
+	return 0, errors.New("user repository does not support IP risk gift balance deduction")
 }
 
 func (s *OpenAIGatewayService) gatewayRiskController() *GatewayService {
@@ -100,6 +131,7 @@ func (s *OpenAIGatewayService) gatewayRiskController() *GatewayService {
 		usageLogRepo:         s.usageLogRepo,
 		userRepo:             s.userRepo,
 		settingService:       s.settingService,
+		billingCacheService:  s.billingCacheService,
 		authCacheInvalidator: s.authCacheInvalidator,
 	}
 }

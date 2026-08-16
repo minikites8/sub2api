@@ -287,6 +287,15 @@
               </div>
             </div>
           </template>
+          <template #cell-online_terminal_count="{ row }">
+            <span
+              v-if="row.online_terminal_count != null"
+              class="font-mono text-sm text-gray-700 dark:text-gray-300"
+            >
+              {{ row.online_terminal_count }}
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
           <template #cell-capacity="{ row }">
             <AccountCapacityCell :account="row" />
           </template>
@@ -1091,8 +1100,8 @@ const toggleColumn = (key: string) => {
       console.error('Failed to load account today stats after showing column:', error)
     })
   }
-  if (key === 'scheduler_score') {
-    // The server only returns scheduler scores when this column is visible, so reload the current page immediately.
+  if (key === 'scheduler_score' || key === 'online_terminal_count') {
+    // These columns are populated only when the server-side column gate is enabled.
     syncAccountListDerivedParams()
     load().catch((error) => {
       console.error('Failed to reload accounts after toggling scheduler score column:', error)
@@ -1102,10 +1111,12 @@ const toggleColumn = (key: string) => {
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key)
 const shouldIncludeSchedulerScore = () => isColumnVisible('scheduler_score')
+const shouldIncludeOnlineTerminalCount = () => isColumnVisible('online_terminal_count')
 const syncAccountListDerivedParams = () => {
   // Keep every load path, including auto-refresh and sorting, aligned with the current column visibility.
   const requestParams = params as any
   requestParams.include_scheduler_score = shouldIncludeSchedulerScore() ? '1' : '0'
+  requestParams.include_online_terminal_count = shouldIncludeOnlineTerminalCount() ? '1' : '0'
 }
 
 const {
@@ -1128,6 +1139,7 @@ const {
     group: '',
     search: '',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
+    include_online_terminal_count: shouldIncludeOnlineTerminalCount() ? '1' : '0',
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -1345,6 +1357,7 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.current_concurrency !== next.current_concurrency ||
     current.current_window_cost !== next.current_window_cost ||
     current.active_sessions !== next.active_sessions ||
+    current.online_terminal_count !== next.online_terminal_count ||
     current.schedulable !== next.schedulable ||
     current.status !== next.status ||
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
@@ -1769,6 +1782,7 @@ const allColumns = computed(() => {
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
+    { key: 'online_terminal_count', label: t('admin.accounts.columns.onlineTerminalCount'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },

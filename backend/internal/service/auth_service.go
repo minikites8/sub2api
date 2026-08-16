@@ -95,6 +95,8 @@ type AuthService struct {
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	authCacheInvalidator  APIKeyAuthCacheInvalidator
+	billingCacheService   *BillingCacheService
 }
 
 type CaptchaProof struct {
@@ -193,6 +195,11 @@ func (s *AuthService) SetTencentCaptchaService(tencentCaptchaService *TencentCap
 
 func (s *AuthService) SetAliyunCaptchaService(aliyunCaptchaService *AliyunCaptchaService) {
 	s.aliyunCaptchaService = aliyunCaptchaService
+}
+
+func (s *AuthService) SetRiskControlCacheServices(authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService) {
+	s.authCacheInvalidator = authCacheInvalidator
+	s.billingCacheService = billingCacheService
 }
 
 // Register 用户注册，返回token和用户
@@ -1479,19 +1486,34 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 	}
 
 	for idx, item := range users {
-		shouldDisable := item.ID == user.ID
+		shouldDeduct := item.ID == user.ID
 		if disablePreviousAccounts && idx != currentUserIndex && idx >= keepPreviousAccounts {
-			shouldDisable = true
+			shouldDeduct = true
 		}
-		if !shouldDisable || item.Status == StatusDisabled {
-			continue
-		}
-		if _, err := client.User.UpdateOneID(item.ID).SetStatus(StatusDisabled).Save(ctx); err != nil {
-			logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control disable failed: user=%d ip=%s err=%v", item.ID, signupIP, err)
-			continue
-		}
-		if item.ID == user.ID {
-			user.Status = StatusDisabled
+		if shouldDeduct && item.TotalRecharged <= 0 && item.Balance > 0 {
+			updated, err := client.User.Update().
+				Where(
+					dbuser.IDEQ(item.ID),
+					dbuser.TotalRechargedLTE(0),
+					dbuser.BalanceGT(0),
+				).
+				SetBalance(0).
+				Save(ctx)
+			if err != nil {
+				logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control gift balance deduction failed: user=%d ip=%s err=%v", item.ID, signupIP, err)
+				continue
+			}
+			if updated > 0 && item.ID == user.ID {
+				user.Balance = 0
+			}
+			if updated > 0 {
+				if s.authCacheInvalidator != nil {
+					s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, item.ID)
+				}
+				if s.billingCacheService != nil {
+					_ = s.billingCacheService.InvalidateUserBalance(ctx, item.ID)
+				}
+			}
 		}
 	}
 }

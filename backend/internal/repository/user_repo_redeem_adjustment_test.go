@@ -54,3 +54,27 @@ func TestApplyRedeemAdjustment_MissingUser(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrUserNotFound)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestDeductAvailableGiftBalance_UsesRechargeHistoryPredicate(t *testing.T) {
+	repo, mock := newRedeemAdjustmentRepoMock(t)
+	mock.ExpectQuery(`SELECT deducted FROM updated`).
+		WithArgs(7.0, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"deducted"}).AddRow(7.0))
+
+	deducted, err := repo.DeductAvailableGiftBalance(context.Background(), 42, 7)
+	require.NoError(t, err)
+	require.Equal(t, 7.0, deducted)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDeductAvailableGiftBalance_SkipsPaidOrMissingUser(t *testing.T) {
+	repo, mock := newRedeemAdjustmentRepoMock(t)
+	mock.ExpectQuery(`SELECT deducted FROM updated`).
+		WithArgs(7.0, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"deducted"}))
+
+	deducted, err := repo.DeductAvailableGiftBalance(context.Background(), 42, 7)
+	require.NoError(t, err)
+	require.Zero(t, deducted)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

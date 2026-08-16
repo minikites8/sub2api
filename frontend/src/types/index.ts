@@ -1293,6 +1293,7 @@ kiro_credit_unit_price_usd?: number
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+  online_terminal_count?: number | null // OpenAI OAuth 当前在线终端数
 
   // 影子账号关系（spark 维度影子）
   parent_account_id?: number | null

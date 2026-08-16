@@ -70,6 +70,8 @@ func ProvideAuthService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	affiliateService *AffiliateService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	billingCacheService *BillingCacheService,
 ) *AuthService {
 	svc := NewAuthService(
 		entClient,
@@ -88,6 +90,7 @@ func ProvideAuthService(
 	)
 	svc.SetTencentCaptchaService(tencentCaptchaService)
 	svc.SetAliyunCaptchaService(aliyunCaptchaService)
+	svc.SetRiskControlCacheServices(authCacheInvalidator, billingCacheService)
 	return svc
 }
 
