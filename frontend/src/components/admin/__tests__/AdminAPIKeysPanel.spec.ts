@@ -46,7 +46,8 @@ function key(overrides: Record<string, unknown> = {}) {
     account_defaults: {
       proxy_mode: 'none',
       codex_fingerprint_mode: 'off',
-      revoke_other_sessions: false
+      enable_account_guard: false,
+      account_guard_interval_minutes: 30
     },
     ...overrides
   }
@@ -101,7 +102,8 @@ describe('AdminAPIKeysPanel', () => {
       account_defaults: {
         proxy_mode: 'none',
         codex_fingerprint_mode: 'off',
-        revoke_other_sessions: false
+        enable_account_guard: false,
+        account_guard_interval_minutes: 30
       }
     })
     expect(wrapper.text()).toContain('admin-new-secret')
@@ -127,7 +129,8 @@ describe('AdminAPIKeysPanel', () => {
     await wrapper.find('[data-testid="edit-key"]').trigger('click')
     await chooseOption(wrapper, 'admin-api-key-proxy-mode', 'admin.settings.adminApiKey.proxyRandom')
     await chooseOption(wrapper, 'admin-api-key-fingerprint', 'admin.settings.adminApiKey.fingerprintSession')
-    await wrapper.find('#admin-api-key-revoke-sessions').setValue(true)
+    await wrapper.find('#admin-api-key-account-guard').setValue(true)
+    await wrapper.find('#admin-api-key-account-guard-interval').setValue(15)
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
@@ -137,7 +140,8 @@ describe('AdminAPIKeysPanel', () => {
       account_defaults: {
         proxy_mode: 'random',
         codex_fingerprint_mode: 'session',
-        revoke_other_sessions: true
+        enable_account_guard: true,
+        account_guard_interval_minutes: 15
       }
     })
   })

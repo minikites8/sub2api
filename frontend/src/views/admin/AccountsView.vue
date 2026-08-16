@@ -289,10 +289,11 @@
           </template>
           <template #cell-online_terminal_count="{ row }">
             <span
-              v-if="row.online_terminal_count != null"
-              class="font-mono text-sm text-gray-700 dark:text-gray-300"
+              v-if="row.online_web_terminal_count != null || row.online_codex_terminal_count != null"
+              class="space-y-0.5 font-mono text-xs text-gray-700 dark:text-gray-300"
             >
-              {{ row.online_terminal_count }}
+              <span class="block">{{ t('admin.accounts.columns.onlineWebTerminalCount') }}: {{ row.online_web_terminal_count ?? 0 }}</span>
+              <span class="block">{{ t('admin.accounts.columns.onlineCodexTerminalCount') }}: {{ row.online_codex_terminal_count ?? 0 }}</span>
             </span>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
@@ -1358,6 +1359,8 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.current_window_cost !== next.current_window_cost ||
     current.active_sessions !== next.active_sessions ||
     current.online_terminal_count !== next.online_terminal_count ||
+    current.online_web_terminal_count !== next.online_web_terminal_count ||
+    current.online_codex_terminal_count !== next.online_codex_terminal_count ||
     current.schedulable !== next.schedulable ||
     current.status !== next.status ||
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||

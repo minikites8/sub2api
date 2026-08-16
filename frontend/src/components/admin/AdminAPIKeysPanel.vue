@@ -118,9 +118,21 @@
             <Select id="admin-api-key-fingerprint" v-model="form.account_defaults.codex_fingerprint_mode" :options="fingerprintOptions" />
           </div>
           <label class="flex items-center gap-2 self-end pb-2 text-sm text-gray-700 dark:text-gray-300">
-            <input id="admin-api-key-revoke-sessions" v-model="form.account_defaults.revoke_other_sessions" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-            {{ t('admin.settings.adminApiKey.revokeOtherSessions') }}
+            <input id="admin-api-key-account-guard" v-model="form.account_defaults.enable_account_guard" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.settings.adminApiKey.enableAccountGuard') }}
           </label>
+          <div v-if="form.account_defaults.enable_account_guard">
+            <label class="input-label" for="admin-api-key-account-guard-interval">{{ t('admin.settings.adminApiKey.accountGuardInterval') }}</label>
+            <input
+              id="admin-api-key-account-guard-interval"
+              v-model.number="form.account_defaults.account_guard_interval_minutes"
+              type="number"
+              min="5"
+              max="1440"
+              class="input"
+            />
+            <p class="input-hint">{{ t('admin.settings.adminApiKey.accountGuardIntervalHint') }}</p>
+          </div>
         </div>
       </form>
 
@@ -243,6 +255,16 @@ async function saveKey() {
     error.value = t('admin.settings.adminApiKey.proxyRequired')
     return
   }
+  if (
+    form.permission === 'auto_pool' &&
+    form.account_defaults.enable_account_guard &&
+    (!Number.isInteger(form.account_defaults.account_guard_interval_minutes) ||
+      form.account_defaults.account_guard_interval_minutes < 5 ||
+      form.account_defaults.account_guard_interval_minutes > 1440)
+  ) {
+    error.value = t('admin.settings.adminApiKey.accountGuardIntervalInvalid')
+    return
+  }
   saving.value = true
   error.value = ''
   try {
@@ -270,7 +292,12 @@ async function saveKey() {
 }
 
 function defaultAccountDefaults(): AdminApiKeyAccountDefaults {
-  return { proxy_mode: 'none', codex_fingerprint_mode: 'off', revoke_other_sessions: false }
+  return {
+    proxy_mode: 'none',
+    codex_fingerprint_mode: 'off',
+    enable_account_guard: false,
+    account_guard_interval_minutes: 30
+  }
 }
 
 function resetForm() {
@@ -323,7 +350,10 @@ function defaultsSummary(key: AdminApiKey) {
     ? `${t('admin.settings.adminApiKey.proxyFixed')}: ${proxies.value.find(item => item.id === defaults.proxy_id)?.name || defaults.proxy_id || '?'}`
     : t(`admin.settings.adminApiKey.proxy${defaults.proxy_mode === 'random' ? 'Random' : 'None'}`)
   const fingerprint = t(`admin.settings.adminApiKey.fingerprint${defaults.codex_fingerprint_mode.charAt(0).toUpperCase()}${defaults.codex_fingerprint_mode.slice(1)}`)
-  return `${proxy}; ${fingerprint}${defaults.revoke_other_sessions ? `; ${t('admin.settings.adminApiKey.revokeOtherSessions')}` : ''}`
+  const guard = defaults.enable_account_guard
+    ? `; ${t('admin.settings.adminApiKey.accountGuardSummary', { minutes: defaults.account_guard_interval_minutes })}`
+    : ''
+  return `${proxy}; ${fingerprint}${guard}`
 }
 
 function createdAt(value: string | null) {

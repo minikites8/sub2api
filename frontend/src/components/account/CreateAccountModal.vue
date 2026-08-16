@@ -3501,6 +3501,50 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'openai' && form.type === 'oauth'"
+        class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.accountGuard') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.accountGuardDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="create-openai-account-guard-toggle"
+            role="switch"
+            :aria-checked="openAIAccountGuardEnabled"
+            @click="openAIAccountGuardEnabled = !openAIAccountGuardEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openAIAccountGuardEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openAIAccountGuardEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+        <div v-if="openAIAccountGuardEnabled" class="max-w-xs">
+          <label class="input-label" for="create-openai-account-guard-interval">{{ t('admin.accounts.openai.accountGuardInterval') }}</label>
+          <input
+            id="create-openai-account-guard-interval"
+            v-model.number="openAIAccountGuardIntervalMinutes"
+            type="number"
+            min="5"
+            max="1440"
+            class="input"
+          />
+          <p class="input-hint">{{ t('admin.accounts.openai.accountGuardIntervalHint') }}</p>
+        </div>
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
@@ -4432,6 +4476,8 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const openAIAccountGuardEnabled = ref(false)
+const openAIAccountGuardIntervalMinutes = ref(30)
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
@@ -5471,6 +5517,8 @@ const resetForm = () => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
+  openAIAccountGuardEnabled.value = false
+  openAIAccountGuardIntervalMinutes.value = 30
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
@@ -5576,6 +5624,14 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   } else {
     delete extra.codex_fingerprint_mode
+  }
+  if (form.type === 'oauth' && openAIAccountGuardEnabled.value) {
+    extra.openai_account_guard_enabled = true
+    extra.openai_account_guard_interval_minutes = openAIAccountGuardIntervalMinutes.value
+  } else {
+    delete extra.openai_account_guard_enabled
+    delete extra.openai_account_guard_interval_minutes
+    delete extra.openai_account_guard_last_run_at
   }
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value

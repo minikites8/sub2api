@@ -469,7 +469,6 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 			privacyAccounts = append(privacyAccounts, created)
 		}
 		h.scheduleGrokImportProbe(created)
-		scheduleAdminAPIKeySessionCleanup(ctx, h.sessionService, created)
 		result.AccountCreated++
 	}
 

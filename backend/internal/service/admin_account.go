@@ -510,9 +510,20 @@ func (s *adminServiceImpl) applyAdminAPIKeyAccountDefaults(ctx context.Context, 
 	if resolved.Platform == PlatformOpenAI {
 		if _, exists := resolved.Extra[codexFingerprintModeExtraKey]; !exists && defaults.CodexFingerprintMode != AdminAPIKeyCodexFingerprintOff {
 			if resolved.Extra == nil {
-				resolved.Extra = make(map[string]any, 1)
+				resolved.Extra = make(map[string]any, 3)
 			}
 			resolved.Extra[codexFingerprintModeExtraKey] = defaults.CodexFingerprintMode
+		}
+		if resolved.Type == AccountTypeOAuth && defaults.EnableAccountGuard {
+			if resolved.Extra == nil {
+				resolved.Extra = make(map[string]any, 2)
+			}
+			if _, exists := resolved.Extra[OpenAIAccountGuardEnabledExtraKey]; !exists {
+				resolved.Extra[OpenAIAccountGuardEnabledExtraKey] = true
+			}
+			if _, exists := resolved.Extra[OpenAIAccountGuardIntervalMinutesExtraKey]; !exists {
+				resolved.Extra[OpenAIAccountGuardIntervalMinutesExtraKey] = defaults.AccountGuardIntervalMinutes
+			}
 		}
 	}
 	return &resolved, nil
@@ -532,6 +543,11 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	accountExtra, err = normalizeOpenAIAccountGuardExtra(input.Platform, input.Type, accountExtra)
+	if err != nil {
+		return nil, err
+	}
+	delete(accountExtra, OpenAIAccountGuardLastRunAtExtraKey)
 
 	// 绑定分组
 	groupIDs := input.GroupIDs
@@ -619,6 +635,32 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		normalizedExtra, err = normalizeGrokMediaEligibilityUpdateExtra(account, input, normalizedExtra)
 		if err != nil {
+			return nil, err
+		}
+		candidateType := account.Type
+		if input.Type != "" {
+			candidateType = input.Type
+		}
+		normalizedExtra, err = normalizeOpenAIAccountGuardExtra(account.Platform, candidateType, normalizedExtra)
+		if err != nil {
+			return nil, err
+		}
+		if normalizedExtra[OpenAIAccountGuardEnabledExtraKey] == true {
+			if account.IsShadow() {
+				return nil, infraerrors.BadRequest("OPENAI_ACCOUNT_GUARD_ACCOUNT_INVALID", "account guard requires an OpenAI OAuth account")
+			}
+			if lastRun, exists := account.Extra[OpenAIAccountGuardLastRunAtExtraKey]; exists {
+				normalizedExtra[OpenAIAccountGuardLastRunAtExtraKey] = lastRun
+			} else {
+				delete(normalizedExtra, OpenAIAccountGuardLastRunAtExtraKey)
+			}
+		}
+	} else {
+		candidateType := account.Type
+		if input.Type != "" {
+			candidateType = input.Type
+		}
+		if _, err = normalizeOpenAIAccountGuardExtra(account.Platform, candidateType, account.Extra); err != nil {
 			return nil, err
 		}
 	}

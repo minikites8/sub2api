@@ -1244,7 +1244,8 @@ export interface AdminApiKeyAccountDefaults {
   proxy_mode: AdminApiKeyProxyMode;
   proxy_id?: number;
   codex_fingerprint_mode: AdminApiKeyCodexFingerprintMode;
-  revoke_other_sessions: boolean;
+  enable_account_guard: boolean;
+  account_guard_interval_minutes: number;
 }
 
 export interface AdminApiKey {

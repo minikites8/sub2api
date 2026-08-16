@@ -124,10 +124,11 @@ func TestAdminAPIKeyServicePersistsAndUpdatesAccountDefaults(t *testing.T) {
 	svc := NewSettingService(repo, nil)
 	proxyID := int64(9)
 	defaults := AdminAPIKeyAccountDefaults{
-		ProxyMode:            AdminAPIKeyProxyModeFixed,
-		ProxyID:              &proxyID,
-		CodexFingerprintMode: AdminAPIKeyCodexFingerprintSession,
-		RevokeOtherSessions:  true,
+		ProxyMode:                   AdminAPIKeyProxyModeFixed,
+		ProxyID:                     &proxyID,
+		CodexFingerprintMode:        AdminAPIKeyCodexFingerprintSession,
+		EnableAccountGuard:          true,
+		AccountGuardIntervalMinutes: 15,
 	}
 
 	created, err := svc.CreateAdminAPIKey(context.Background(), "import defaults", AdminAPIKeyPermissionAutoPool, defaults)
@@ -145,11 +146,25 @@ func TestAdminAPIKeyServicePersistsAndUpdatesAccountDefaults(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, AdminAPIKeyProxyModeRandom, updated.AccountDefaults.ProxyMode)
 	require.Equal(t, AdminAPIKeyCodexFingerprintFull, updated.AccountDefaults.CodexFingerprintMode)
-	require.False(t, updated.AccountDefaults.RevokeOtherSessions)
+	require.False(t, updated.AccountDefaults.EnableAccountGuard)
+	require.Equal(t, OpenAIAccountGuardDefaultIntervalMinutes, updated.AccountDefaults.AccountGuardIntervalMinutes)
 
 	keys, err := svc.ListAdminAPIKeys(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, updated.AccountDefaults, keys[0].AccountDefaults)
+}
+
+func TestAdminAPIKeyServiceMigratesLegacySessionCleanupDefault(t *testing.T) {
+	repo := newAdminAPIKeyTestRepo()
+	repo.data[SettingKeyAdminAPIKeys] = `[{"id":"key_legacy","name":"legacy","permission":"auto_pool","hash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","account_defaults":{"proxy_mode":"none","codex_fingerprint_mode":"off","revoke_other_sessions":true},"created_at":"2026-08-17T00:00:00Z"}]`
+	svc := NewSettingService(repo, nil)
+
+	keys, err := svc.ListAdminAPIKeys(context.Background())
+	require.NoError(t, err)
+	require.Len(t, keys, 1)
+	require.True(t, keys[0].AccountDefaults.EnableAccountGuard)
+	require.Equal(t, OpenAIAccountGuardDefaultIntervalMinutes, keys[0].AccountDefaults.AccountGuardIntervalMinutes)
+	require.False(t, keys[0].AccountDefaults.LegacyRevokeOtherSessions)
 }
 
 func TestAdminAPIKeyServiceFullPermissionAndLegacyCompatibility(t *testing.T) {

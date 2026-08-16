@@ -440,7 +440,6 @@ func (h *OpenAIOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	scheduleAdminAPIKeySessionCleanup(c.Request.Context(), h.sessionService, account)
 
 	response.Success(c, dto.AccountFromService(account))
 }
@@ -538,7 +537,6 @@ func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	scheduleAdminAPIKeySessionCleanup(c.Request.Context(), h.sessionService, account)
 
 	response.Success(c, dto.AccountFromService(account))
 }

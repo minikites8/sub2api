@@ -44,10 +44,12 @@ type AdminAPIKey struct {
 // AdminAPIKeyAccountDefaults are applied when an auto-pool key creates an
 // account and the incoming request leaves the corresponding field unset.
 type AdminAPIKeyAccountDefaults struct {
-	ProxyMode            string `json:"proxy_mode"`
-	ProxyID              *int64 `json:"proxy_id,omitempty"`
-	CodexFingerprintMode string `json:"codex_fingerprint_mode"`
-	RevokeOtherSessions  bool   `json:"revoke_other_sessions"`
+	ProxyMode                   string `json:"proxy_mode"`
+	ProxyID                     *int64 `json:"proxy_id,omitempty"`
+	CodexFingerprintMode        string `json:"codex_fingerprint_mode"`
+	EnableAccountGuard          bool   `json:"enable_account_guard"`
+	AccountGuardIntervalMinutes int    `json:"account_guard_interval_minutes"`
+	LegacyRevokeOtherSessions   bool   `json:"revoke_other_sessions,omitempty"`
 }
 
 type AdminAPIKeyAuth struct {
@@ -110,6 +112,20 @@ func normalizeAdminAPIKeyName(name string) (string, error) {
 }
 
 func normalizeAdminAPIKeyAccountDefaults(defaults AdminAPIKeyAccountDefaults) (AdminAPIKeyAccountDefaults, error) {
+	if defaults.LegacyRevokeOtherSessions {
+		defaults.EnableAccountGuard = true
+	}
+	defaults.LegacyRevokeOtherSessions = false
+	if defaults.AccountGuardIntervalMinutes == 0 {
+		defaults.AccountGuardIntervalMinutes = OpenAIAccountGuardDefaultIntervalMinutes
+	}
+	if defaults.AccountGuardIntervalMinutes < OpenAIAccountGuardMinIntervalMinutes ||
+		defaults.AccountGuardIntervalMinutes > OpenAIAccountGuardMaxIntervalMinutes {
+		return AdminAPIKeyAccountDefaults{}, infraerrors.BadRequest(
+			"ADMIN_API_KEY_ACCOUNT_GUARD_INTERVAL_INVALID",
+			fmt.Sprintf("account_guard_interval_minutes must be between %d and %d", OpenAIAccountGuardMinIntervalMinutes, OpenAIAccountGuardMaxIntervalMinutes),
+		)
+	}
 	defaults.ProxyMode = strings.ToLower(strings.TrimSpace(defaults.ProxyMode))
 	if defaults.ProxyMode == "" {
 		defaults.ProxyMode = AdminAPIKeyProxyModeNone

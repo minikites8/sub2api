@@ -77,7 +77,12 @@ func TestAccountHandlerListIncludesOnlineTerminalCountForOpenAIOAuth(t *testing.
 		{ID: 103, Name: "anthropic", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive},
 	}
 	sessions := &onlineTerminalSessionStub{responses: map[int64]*service.OpenAISessionsResponse{
-		101: {Devices: []service.OpenAISessionDevice{{SessionID: "one"}, {SessionID: "two"}}},
+		101: {Devices: []service.OpenAISessionDevice{
+			{SessionID: "web", AppSessions: []service.OpenAIAppSession{{ClientName: "ChatGPT"}}},
+			{SessionID: "codex", AppSessions: []service.OpenAIAppSession{{ClientName: "Codex CLI"}}},
+			{SessionID: "mixed", AppSessions: []service.OpenAIAppSession{{ClientName: "ChatGPT"}, {ClientName: "Codex Desktop"}}},
+			{SessionID: "unknown"},
+		}},
 	}}
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler.sessionService = sessions
@@ -91,16 +96,20 @@ func TestAccountHandlerListIncludesOnlineTerminalCountForOpenAIOAuth(t *testing.
 	var payload struct {
 		Data struct {
 			Items []struct {
-				ID                  int64 `json:"id"`
-				OnlineTerminalCount *int  `json:"online_terminal_count"`
+				ID                       int64 `json:"id"`
+				OnlineTerminalCount      *int  `json:"online_terminal_count"`
+				OnlineWebTerminalCount   *int  `json:"online_web_terminal_count"`
+				OnlineCodexTerminalCount *int  `json:"online_codex_terminal_count"`
 			} `json:"items"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	require.Len(t, payload.Data.Items, 3)
 	var oauth, apiKey, anthropic *struct {
-		ID                  int64 `json:"id"`
-		OnlineTerminalCount *int  `json:"online_terminal_count"`
+		ID                       int64 `json:"id"`
+		OnlineTerminalCount      *int  `json:"online_terminal_count"`
+		OnlineWebTerminalCount   *int  `json:"online_web_terminal_count"`
+		OnlineCodexTerminalCount *int  `json:"online_codex_terminal_count"`
 	}
 	for i := range payload.Data.Items {
 		item := &payload.Data.Items[i]
@@ -115,7 +124,11 @@ func TestAccountHandlerListIncludesOnlineTerminalCountForOpenAIOAuth(t *testing.
 	}
 	require.NotNil(t, oauth)
 	require.NotNil(t, oauth.OnlineTerminalCount)
-	require.Equal(t, 2, *oauth.OnlineTerminalCount)
+	require.NotNil(t, oauth.OnlineWebTerminalCount)
+	require.NotNil(t, oauth.OnlineCodexTerminalCount)
+	require.Equal(t, 4, *oauth.OnlineTerminalCount)
+	require.Equal(t, 3, *oauth.OnlineWebTerminalCount)
+	require.Equal(t, 2, *oauth.OnlineCodexTerminalCount)
 	require.Nil(t, apiKey.OnlineTerminalCount)
 	require.Nil(t, anthropic.OnlineTerminalCount)
 	require.Equal(t, []int64{101}, sessions.calls)

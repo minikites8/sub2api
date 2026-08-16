@@ -195,10 +195,12 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	CurrentConcurrency  int                          `json:"current_concurrency"`
-	SchedulerScore      *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
-	SchedulerScores     []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
-	OnlineTerminalCount *int                         `json:"online_terminal_count,omitempty"`
+	CurrentConcurrency       int                          `json:"current_concurrency"`
+	SchedulerScore           *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
+	SchedulerScores          []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
+	OnlineTerminalCount      *int                         `json:"online_terminal_count,omitempty"`
+	OnlineWebTerminalCount   *int                         `json:"online_web_terminal_count,omitempty"`
+	OnlineCodexTerminalCount *int                         `json:"online_codex_terminal_count,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
@@ -237,12 +239,47 @@ func (h *AccountHandler) accountResponseFromService(account *service.Account) *d
 // listOpenAIOnlineTerminalCounts fetches device counts for the current page.
 // Each upstream failure is isolated so a slow or unavailable OpenAI account
 // does not prevent the rest of the account list from rendering.
-func (h *AccountHandler) listOpenAIOnlineTerminalCounts(ctx context.Context, accounts []service.Account) map[int64]int {
+type openAIOnlineTerminalCounts struct {
+	Total int
+	Web   int
+	Codex int
+}
+
+func countOpenAIOnlineTerminals(devices []service.OpenAISessionDevice) openAIOnlineTerminalCounts {
+	counts := openAIOnlineTerminalCounts{Total: len(devices)}
+	for _, device := range devices {
+		hasWeb := false
+		hasCodex := false
+		for _, appSession := range device.AppSessions {
+			clientName := strings.TrimSpace(appSession.ClientName)
+			if clientName == "" {
+				continue
+			}
+			if strings.Contains(strings.ToLower(clientName), "codex") {
+				hasCodex = true
+			} else {
+				hasWeb = true
+			}
+		}
+		if !hasWeb && !hasCodex {
+			hasWeb = true
+		}
+		if hasWeb {
+			counts.Web++
+		}
+		if hasCodex {
+			counts.Codex++
+		}
+	}
+	return counts
+}
+
+func (h *AccountHandler) listOpenAIOnlineTerminalCounts(ctx context.Context, accounts []service.Account) map[int64]openAIOnlineTerminalCounts {
 	if h == nil || h.sessionService == nil || len(accounts) == 0 {
 		return nil
 	}
 
-	counts := make(map[int64]int)
+	counts := make(map[int64]openAIOnlineTerminalCounts)
 	var mu sync.Mutex
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(openAIOnlineTerminalCountWorkers)
@@ -260,7 +297,7 @@ func (h *AccountHandler) listOpenAIOnlineTerminalCounts(ctx context.Context, acc
 				return nil
 			}
 			mu.Lock()
-			counts[accountID] = len(sessions.Devices)
+			counts[accountID] = countOpenAIOnlineTerminals(sessions.Devices)
 			mu.Unlock()
 			return nil
 		})
@@ -612,7 +649,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
-	var onlineTerminalCounts map[int64]int
+	var onlineTerminalCounts map[int64]openAIOnlineTerminalCounts
 	// 双重门控：用户要看该列，且当前页确实有 OpenAI 账号，才进入昂贵的候选池打分路径。
 	var schedulerScores map[int64]*AccountSchedulerScore
 	var schedulerGroupScores map[int64][]AccountSchedulerGroupScore
@@ -718,8 +755,10 @@ func (h *AccountHandler) List(c *gin.Context) {
 			SchedulerScores:    schedulerGroupScores[acc.ID],
 		}
 		if onlineTerminalCounts != nil {
-			if count, ok := onlineTerminalCounts[acc.ID]; ok {
-				item.OnlineTerminalCount = &count
+			if counts, ok := onlineTerminalCounts[acc.ID]; ok {
+				item.OnlineTerminalCount = &counts.Total
+				item.OnlineWebTerminalCount = &counts.Web
+				item.OnlineCodexTerminalCount = &counts.Codex
 			}
 		}
 
@@ -968,7 +1007,6 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// 探测失败不影响账号创建响应。
 	h.scheduleOpenAIResponsesProbe(createdAccount)
 	h.scheduleGrokImportProbe(createdAccount)
-	scheduleAdminAPIKeySessionCleanup(c.Request.Context(), h.sessionService, createdAccount)
 	response.Success(c, result.Data)
 }
 
@@ -2022,7 +2060,6 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			// OpenAI APIKey 账号异步探测 /v1/responses 能力。
 			h.scheduleOpenAIResponsesProbe(account)
 			h.scheduleGrokImportProbe(account)
-			scheduleAdminAPIKeySessionCleanup(ctx, h.sessionService, account)
 			success++
 			results = append(results, gin.H{
 				"name":    item.Name,
