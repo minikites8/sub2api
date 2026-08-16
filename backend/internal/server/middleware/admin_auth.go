@@ -188,7 +188,7 @@ func adminAPIKeyAutoPoolPathAllowed(c *gin.Context) bool {
 	}
 	segment := strings.SplitN(path, "/", 2)[0]
 	switch segment {
-	case "accounts", "groups", "openai", "gemini", "antigravity", "kiro", "grok":
+	case "accounts", "groups", "proxies", "openai", "gemini", "antigravity", "kiro", "grok":
 		return true
 	case "usage":
 		return c.Request.Method == "GET"
