@@ -198,6 +198,12 @@
               </div>
             </div>
           </div>
+
+          <AdminAPIKeysPanel
+            v-if="adminApiKeyManagementAvailable"
+            :key="adminApiKeysRevision"
+            @changed="loadAdminApiKey"
+          />
         </div>
         <!-- /Tab: Security — Admin API Key -->
 
@@ -8865,6 +8871,7 @@ import type {
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
+import AdminAPIKeysPanel from "@/components/admin/AdminAPIKeysPanel.vue";
 import Select from "@/components/common/Select.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
@@ -9050,6 +9057,8 @@ const adminApiKeyExists = ref(false);
 const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
+const adminApiKeyManagementAvailable = typeof adminAPI.settings.listAdminApiKeys === "function";
+const adminApiKeysRevision = ref(0);
 const subscriptionGroups = ref<AdminGroup[]>([]);
 
 // Upstream billing probe state
@@ -11815,6 +11824,7 @@ async function createAdminApiKey() {
     adminApiKeyExists.value = true;
     adminApiKeyMasked.value =
       result.key.substring(0, 10) + "..." + result.key.slice(-4);
+    adminApiKeysRevision.value += 1;
     appStore.showSuccess(t("admin.settings.adminApiKey.keyGenerated"));
   } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t("common.error")));
@@ -11843,6 +11853,7 @@ async function confirmDeleteAdminApiKey() {
     adminApiKeyExists.value = false;
     adminApiKeyMasked.value = "";
     newAdminApiKey.value = "";
+    adminApiKeysRevision.value += 1;
     appStore.showSuccess(t("admin.settings.adminApiKey.keyDeleted"));
   } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t("common.error")));

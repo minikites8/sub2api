@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math/rand/v2"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -463,7 +464,66 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	return account, nil
 }
 
+func (s *adminServiceImpl) applyAdminAPIKeyAccountDefaults(ctx context.Context, input *CreateAccountInput) (*CreateAccountInput, error) {
+	defaults, ok := AdminAPIKeyAccountDefaultsFromContext(ctx)
+	if !ok || input == nil {
+		return input, nil
+	}
+
+	resolved := *input
+	resolved.Extra = maps.Clone(input.Extra)
+	if resolved.ProxyID == nil {
+		switch defaults.ProxyMode {
+		case AdminAPIKeyProxyModeFixed:
+			if defaults.ProxyID == nil || s.proxyRepo == nil {
+				return nil, infraerrors.BadRequest("ADMIN_API_KEY_PROXY_UNAVAILABLE", "configured proxy is unavailable")
+			}
+			proxy, err := s.proxyRepo.GetByID(ctx, *defaults.ProxyID)
+			if err != nil || proxy == nil || !proxy.IsActive() || proxy.IsExpired(time.Now()) {
+				return nil, infraerrors.BadRequest("ADMIN_API_KEY_PROXY_UNAVAILABLE", "configured proxy is unavailable")
+			}
+			proxyID := proxy.ID
+			resolved.ProxyID = &proxyID
+		case AdminAPIKeyProxyModeRandom:
+			if s.proxyRepo == nil {
+				return nil, infraerrors.BadRequest("ADMIN_API_KEY_PROXY_UNAVAILABLE", "no active proxy is available")
+			}
+			proxies, err := s.proxyRepo.ListActive(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("list active proxies for admin API key defaults: %w", err)
+			}
+			available := proxies[:0]
+			now := time.Now()
+			for i := range proxies {
+				if proxies[i].IsActive() && !proxies[i].IsExpired(now) {
+					available = append(available, proxies[i])
+				}
+			}
+			if len(available) == 0 {
+				return nil, infraerrors.BadRequest("ADMIN_API_KEY_PROXY_UNAVAILABLE", "no active proxy is available")
+			}
+			proxyID := available[rand.IntN(len(available))].ID
+			resolved.ProxyID = &proxyID
+		}
+	}
+
+	if resolved.Platform == PlatformOpenAI {
+		if _, exists := resolved.Extra[codexFingerprintModeExtraKey]; !exists && defaults.CodexFingerprintMode != AdminAPIKeyCodexFingerprintOff {
+			if resolved.Extra == nil {
+				resolved.Extra = make(map[string]any, 1)
+			}
+			resolved.Extra[codexFingerprintModeExtraKey] = defaults.CodexFingerprintMode
+		}
+	}
+	return &resolved, nil
+}
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	var err error
+	input, err = s.applyAdminAPIKeyAccountDefaults(ctx, input)
+	if err != nil {
+		return nil, err
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err

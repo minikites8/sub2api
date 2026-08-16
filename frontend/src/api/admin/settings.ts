@@ -1236,6 +1236,31 @@ export interface AdminApiKeyStatus {
   masked_key: string;
 }
 
+export type AdminApiKeyPermission = "full" | "auto_pool";
+export type AdminApiKeyProxyMode = "none" | "fixed" | "random";
+export type AdminApiKeyCodexFingerprintMode = "off" | "device" | "session" | "full";
+
+export interface AdminApiKeyAccountDefaults {
+  proxy_mode: AdminApiKeyProxyMode;
+  proxy_id?: number;
+  codex_fingerprint_mode: AdminApiKeyCodexFingerprintMode;
+  revoke_other_sessions: boolean;
+}
+
+export interface AdminApiKey {
+  id: string;
+  name: string;
+  permission: AdminApiKeyPermission;
+  masked_key: string;
+  account_defaults: AdminApiKeyAccountDefaults;
+  created_at: string | null;
+}
+
+export interface AdminApiKeyCreation {
+  key: string;
+  api_key: AdminApiKey;
+}
+
 /**
  * Get admin API key status
  * @returns Status indicating if key exists and masked version
@@ -1265,6 +1290,51 @@ export async function regenerateAdminApiKey(): Promise<{ key: string }> {
 export async function deleteAdminApiKey(): Promise<{ message: string }> {
   const { data } = await apiClient.delete<{ message: string }>(
     "/admin/settings/admin-api-key",
+  );
+  return data;
+}
+
+/** List named administrator API keys without returning their secrets. */
+export async function listAdminApiKeys(): Promise<AdminApiKey[]> {
+  const { data } = await apiClient.get<AdminApiKey[]>(
+    "/admin/settings/admin-api-keys",
+  );
+  return data;
+}
+
+/** Create a named administrator API key; the secret is returned once. */
+export async function createAdminApiKey(payload: {
+  name: string;
+  permission: AdminApiKeyPermission;
+  account_defaults: AdminApiKeyAccountDefaults;
+}): Promise<AdminApiKeyCreation> {
+  const { data } = await apiClient.post<AdminApiKeyCreation>(
+    "/admin/settings/admin-api-keys",
+    payload,
+  );
+  return data;
+}
+
+/** Update a named administrator API key and its account import defaults. */
+export async function updateAdminApiKey(
+  id: string,
+  payload: {
+    name: string;
+    permission: AdminApiKeyPermission;
+    account_defaults: AdminApiKeyAccountDefaults;
+  },
+): Promise<AdminApiKey> {
+  const { data } = await apiClient.put<AdminApiKey>(
+    `/admin/settings/admin-api-keys/${encodeURIComponent(id)}`,
+    payload,
+  );
+  return data;
+}
+
+/** Delete one named administrator API key. */
+export async function deleteAdminApiKeyById(id: string): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(
+    `/admin/settings/admin-api-keys/${encodeURIComponent(id)}`,
   );
   return data;
 }
@@ -1575,6 +1645,10 @@ export const settingsAPI = {
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,
+  listAdminApiKeys,
+  createAdminApiKey,
+  updateAdminApiKey,
+  deleteAdminApiKeyById,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,

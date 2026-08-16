@@ -362,7 +362,8 @@ const (
 	SettingKeyForceEmailOnThirdPartySignup              = "force_email_on_third_party_signup"
 
 	// 管理员 API Key
-	SettingKeyAdminAPIKey = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）
+	SettingKeyAdminAPIKey  = "admin_api_key"  // 兼容旧版全局管理员 API Key
+	SettingKeyAdminAPIKeys = "admin_api_keys" // 多管理员 API Key JSON 集合
 
 	// Gemini 配额策略（JSON）
 	SettingKeyGeminiQuotaPolicy = "gemini_quota_policy"

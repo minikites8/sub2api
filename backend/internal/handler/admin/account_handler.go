@@ -66,6 +66,7 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	sessionService          openAISessionService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -910,6 +911,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// 探测失败不影响账号创建响应。
 	h.scheduleOpenAIResponsesProbe(createdAccount)
 	h.scheduleGrokImportProbe(createdAccount)
+	scheduleAdminAPIKeySessionCleanup(c.Request.Context(), h.sessionService, createdAccount)
 	response.Success(c, result.Data)
 }
 
@@ -1963,6 +1965,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			// OpenAI APIKey 账号异步探测 /v1/responses 能力。
 			h.scheduleOpenAIResponsesProbe(account)
 			h.scheduleGrokImportProbe(account)
+			scheduleAdminAPIKeySessionCleanup(ctx, h.sessionService, account)
 			success++
 			results = append(results, gin.H{
 				"name":    item.Name,

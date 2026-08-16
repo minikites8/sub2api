@@ -2,7 +2,6 @@
 package middleware
 
 import (
-	"crypto/subtle"
 	"errors"
 	"strings"
 
@@ -50,6 +49,9 @@ func adminAuth(
 		apiKey := c.GetHeader("x-api-key")
 		if apiKey != "" {
 			if !validateAdminAPIKey(c, apiKey, settingService, userService) {
+				return
+			}
+			if !authorizeAdminAPIKeyRequest(c) {
 				return
 			}
 			c.Next()
@@ -124,14 +126,18 @@ func validateAdminAPIKey(
 	settingService *service.SettingService,
 	userService *service.UserService,
 ) bool {
-	storedKey, err := settingService.GetAdminAPIKey(c.Request.Context())
+	if settingService == nil || userService == nil {
+		AbortWithError(c, 500, "INTERNAL_ERROR", "Admin API key authentication is not configured")
+		return false
+	}
+	auth, err := settingService.ResolveAdminAPIKey(c.Request.Context(), key)
 	if err != nil {
 		AbortWithError(c, 500, "INTERNAL_ERROR", "Internal server error")
 		return false
 	}
 
 	// 未配置或不匹配，统一返回相同错误（避免信息泄露）
-	if storedKey == "" || subtle.ConstantTimeCompare([]byte(key), []byte(storedKey)) != 1 {
+	if auth == nil || auth.Permission == "" {
 		AbortWithError(c, 401, "INVALID_ADMIN_KEY", "Invalid admin API key")
 		return false
 	}
@@ -149,8 +155,54 @@ func validateAdminAPIKey(
 	})
 	c.Set(string(ContextKeyUserRole), admin.Role)
 	c.Set(ContextKeyAuthEmail, admin.Email)
+	c.Set(string(ContextKeyAdminAPIKeyPermission), auth.Permission)
+	c.Set(string(ContextKeyAdminAPIKeyID), auth.ID)
+	if auth.Permission == service.AdminAPIKeyPermissionAutoPool {
+		c.Set(string(ContextKeyAdminAPIKeyAccountDefaults), auth.AccountDefaults)
+		ctx := service.ContextWithAdminAPIKeyAccountDefaults(c.Request.Context(), auth.AccountDefaults)
+		c.Request = c.Request.WithContext(ctx)
+	}
 	c.Set("auth_method", "admin_api_key")
 	return true
+}
+
+func authorizeAdminAPIKeyRequest(c *gin.Context) bool {
+	permission := c.GetString(string(ContextKeyAdminAPIKeyPermission))
+	if permission == service.AdminAPIKeyPermissionFull {
+		return true
+	}
+	if permission == service.AdminAPIKeyPermissionAutoPool && adminAPIKeyAutoPoolPathAllowed(c) {
+		return true
+	}
+	AbortWithError(c, 403, "ADMIN_API_KEY_SCOPE_FORBIDDEN", "This admin API key is limited to account pool operations")
+	return false
+}
+
+func adminAPIKeyAutoPoolPathAllowed(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	path := c.Request.URL.Path
+	if index := strings.Index(path, "/admin/"); index >= 0 {
+		path = path[index+len("/admin/"):]
+	}
+	segment := strings.SplitN(path, "/", 2)[0]
+	switch segment {
+	case "accounts", "groups", "openai", "gemini", "antigravity", "kiro", "grok":
+		return true
+	case "usage":
+		return c.Request.Method == "GET"
+	case "dashboard":
+		return c.Request.Method == "GET" || (c.Request.Method == "POST" &&
+			(strings.HasSuffix(path, "/api-keys-usage") || strings.HasSuffix(path, "/users-usage")))
+	case "api-keys":
+		return c.Request.Method == "PUT"
+	case "users":
+		return c.Request.Method == "GET" &&
+			(strings.HasSuffix(path, "/usage") || strings.HasSuffix(path, "/api-keys"))
+	default:
+		return false
+	}
 }
 
 // validateJWTForAdmin 验证 JWT 并检查管理员权限

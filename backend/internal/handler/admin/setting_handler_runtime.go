@@ -50,6 +50,72 @@ func (h *SettingHandler) DeleteAdminAPIKey(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Admin API key deleted"})
 }
 
+// ListAdminAPIKeys lists named administrator API keys without exposing secrets.
+// GET /api/v1/admin/settings/admin-api-keys
+func (h *SettingHandler) ListAdminAPIKeys(c *gin.Context) {
+	keys, err := h.settingService.ListAdminAPIKeys(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, keys)
+}
+
+type CreateAdminAPIKeyRequest struct {
+	Name            string                             `json:"name"`
+	Permission      string                             `json:"permission"`
+	AccountDefaults service.AdminAPIKeyAccountDefaults `json:"account_defaults"`
+}
+
+// CreateAdminAPIKey creates a named administrator API key and returns the
+// secret only in this response.
+// POST /api/v1/admin/settings/admin-api-keys
+func (h *SettingHandler) CreateAdminAPIKey(c *gin.Context) {
+	var req CreateAdminAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	created, err := h.settingService.CreateAdminAPIKey(c.Request.Context(), req.Name, req.Permission, req.AccountDefaults)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, created)
+}
+
+// UpdateAdminAPIKey updates a named administrator API key.
+// PUT /api/v1/admin/settings/admin-api-keys/:id
+func (h *SettingHandler) UpdateAdminAPIKey(c *gin.Context) {
+	var req CreateAdminAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	updated, err := h.settingService.UpdateAdminAPIKey(
+		c.Request.Context(),
+		strings.TrimSpace(c.Param("id")),
+		req.Name,
+		req.Permission,
+		req.AccountDefaults,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, updated)
+}
+
+// DeleteAdminAPIKeyByID deletes one named administrator API key.
+// DELETE /api/v1/admin/settings/admin-api-keys/:id
+func (h *SettingHandler) DeleteAdminAPIKeyByID(c *gin.Context) {
+	if err := h.settingService.DeleteAdminAPIKeyByID(c.Request.Context(), strings.TrimSpace(c.Param("id"))); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "Admin API key deleted"})
+}
+
 // GetOverloadCooldownSettings 获取529过载冷却配置
 // GET /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) GetOverloadCooldownSettings(c *gin.Context) {

@@ -13,15 +13,27 @@
             · {{ t('admin.accounts.sessions.checkedAt', { time: formatFetchedAt(sessions.fetched_at) }) }}
           </span>
         </p>
-        <button
-          type="button"
-          class="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
-          :disabled="loading"
-          @click="loadSessions"
-        >
-          <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
-          {{ t('common.refresh') }}
-        </button>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <button
+            v-if="otherDevices.length > 0"
+            type="button"
+            class="btn btn-danger btn-sm inline-flex items-center gap-1.5"
+            :disabled="loading || revokingOthers || revoking.size > 0"
+            @click="requestRevokeOthers"
+          >
+            <Icon name="ban" size="sm" :class="revokingOthers ? 'animate-pulse' : ''" />
+            {{ revokingOthers ? t('admin.accounts.sessions.revokingOthers') : t('admin.accounts.sessions.revokeOthers', { count: otherDevices.length }) }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
+            :disabled="loading || revokingOthers"
+            @click="loadSessions"
+          >
+            <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
+            {{ t('common.refresh') }}
+          </button>
+        </div>
       </div>
 
       <div v-if="error" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
@@ -92,7 +104,7 @@
               v-if="device.session_id && !device.is_current_device"
               type="button"
               class="btn btn-danger btn-sm inline-flex items-center gap-1.5"
-              :disabled="revoking.has(device.session_id)"
+              :disabled="revoking.has(device.session_id) || revokingOthers"
               @click="requestRevoke(device)"
             >
               <Icon name="ban" size="sm" />
@@ -113,11 +125,22 @@
       @confirm="confirmRevoke"
       @cancel="revokeTarget = null"
     />
+
+    <ConfirmDialog
+      :show="revokeOthersPending"
+      :title="t('admin.accounts.sessions.revokeOthersTitle')"
+      :message="t('admin.accounts.sessions.revokeOthersConfirm', { count: otherDevices.length })"
+      :confirm-text="t('admin.accounts.sessions.revokeOthers', { count: otherDevices.length })"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmRevokeOthers"
+      @cancel="revokeOthersPending = false"
+    />
   </BaseDialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -139,6 +162,11 @@ const error = ref('')
 const sessions = ref<OpenAISessionsResponse | null>(null)
 const revokeTarget = ref<OpenAISessionDevice | null>(null)
 const revoking = ref(new Set<string>())
+const revokeOthersPending = ref(false)
+const revokingOthers = ref(false)
+const otherDevices = computed(() =>
+  (sessions.value?.devices ?? []).filter(device => Boolean(device.session_id) && !device.is_current_device)
+)
 
 watch(
   () => [props.show, props.account?.id] as const,
@@ -166,6 +194,11 @@ function requestRevoke(device: OpenAISessionDevice) {
   revokeTarget.value = device
 }
 
+function requestRevokeOthers() {
+  if (otherDevices.value.length === 0 || revokingOthers.value || revoking.value.size > 0) return
+  revokeOthersPending.value = true
+}
+
 async function confirmRevoke() {
   const device = revokeTarget.value
   const account = props.account
@@ -185,6 +218,41 @@ async function confirmRevoke() {
     const remaining = new Set(revoking.value)
     remaining.delete(sessionId)
     revoking.value = remaining
+  }
+}
+
+async function confirmRevokeOthers() {
+  const account = props.account
+  const targets = [...otherDevices.value]
+  revokeOthersPending.value = false
+  if (!account || targets.length === 0 || revokingOthers.value) return
+
+  revokingOthers.value = true
+  error.value = ''
+  let failedCount = 0
+  try {
+    for (const device of targets) {
+      const sessionId = device.session_id
+      if (!sessionId) continue
+      const next = new Set(revoking.value)
+      next.add(sessionId)
+      revoking.value = next
+      try {
+        await revokeOpenAISession(account.id, sessionId)
+      } catch {
+        failedCount += 1
+      } finally {
+        const remaining = new Set(revoking.value)
+        remaining.delete(sessionId)
+        revoking.value = remaining
+      }
+    }
+    await loadSessions()
+    if (failedCount > 0) {
+      error.value = t('admin.accounts.sessions.revokeOthersFailed', { count: failedCount })
+    }
+  } finally {
+    revokingOthers.value = false
   }
 }
 

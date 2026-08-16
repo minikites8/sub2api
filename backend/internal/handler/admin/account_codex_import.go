@@ -363,6 +363,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		}
 		if account != nil {
 			index.Add(*account)
+			scheduleAdminAPIKeySessionCleanup(ctx, h.sessionService, account)
 		}
 		result.Created++
 		accountID := int64(0)
