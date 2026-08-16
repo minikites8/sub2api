@@ -21,6 +21,7 @@ type OpenAIOAuthHandler struct {
 	openaiOAuthService *service.OpenAIOAuthService
 	adminService       service.AdminService
 	quotaService       openAIQuotaService
+	sessionService     openAISessionService
 	rateLimitService   openAIAccountStateRecoverer
 }
 
@@ -28,6 +29,11 @@ type openAIQuotaService interface {
 	QueryUsage(ctx context.Context, accountID int64) (*service.OpenAIQuotaUsage, error)
 	CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *service.OpenAIRateLimitResetCredits) error
 	ResetCredit(ctx context.Context, accountID int64) (*service.OpenAIQuotaResetResult, error)
+}
+
+type openAISessionService interface {
+	ListSessions(ctx context.Context, accountID int64) (*service.OpenAISessionsResponse, error)
+	RevokeSession(ctx context.Context, accountID int64, sessionID string) (*service.OpenAISessionRevokeResult, error)
 }
 
 type openAIAccountStateRecoverer interface {
@@ -88,6 +94,29 @@ func NewOpenAIOAuthHandler(
 	quotaService *service.OpenAIQuotaService,
 	rateLimitService *service.RateLimitService,
 ) *OpenAIOAuthHandler {
+	return newOpenAIOAuthHandler(openaiOAuthService, adminService, quotaService, rateLimitService, nil)
+}
+
+// NewOpenAIOAuthHandlerWithSessions adds device session management to the
+// OpenAI OAuth handler while preserving the legacy constructor for unit tests
+// and external callers that only use quota operations.
+func NewOpenAIOAuthHandlerWithSessions(
+	openaiOAuthService *service.OpenAIOAuthService,
+	adminService service.AdminService,
+	quotaService *service.OpenAIQuotaService,
+	rateLimitService *service.RateLimitService,
+	sessionService *service.OpenAISessionService,
+) *OpenAIOAuthHandler {
+	return newOpenAIOAuthHandler(openaiOAuthService, adminService, quotaService, rateLimitService, sessionService)
+}
+
+func newOpenAIOAuthHandler(
+	openaiOAuthService *service.OpenAIOAuthService,
+	adminService service.AdminService,
+	quotaService *service.OpenAIQuotaService,
+	rateLimitService *service.RateLimitService,
+	sessionService *service.OpenAISessionService,
+) *OpenAIOAuthHandler {
 	h := &OpenAIOAuthHandler{
 		openaiOAuthService: openaiOAuthService,
 		adminService:       adminService,
@@ -98,10 +127,62 @@ func NewOpenAIOAuthHandler(
 	if quotaService != nil {
 		h.quotaService = quotaService
 	}
+	if sessionService != nil {
+		h.sessionService = sessionService
+	}
 	if rateLimitService != nil {
 		h.rateLimitService = rateLimitService
 	}
 	return h
+}
+
+// ListSessions returns the ChatGPT devices currently signed into an OpenAI OAuth account.
+// GET /api/v1/admin/openai/accounts/:id/sessions
+func (h *OpenAIOAuthHandler) ListSessions(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.sessionService == nil {
+		response.BadRequest(c, "openai session service is not enabled")
+		return
+	}
+
+	sessions, err := h.sessionService.ListSessions(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, sessions)
+}
+
+// RevokeSession signs one ChatGPT device session out of an OpenAI OAuth account.
+// POST /api/v1/admin/openai/accounts/:id/sessions/revoke
+func (h *OpenAIOAuthHandler) RevokeSession(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.sessionService == nil {
+		response.BadRequest(c, "openai session service is not enabled")
+		return
+	}
+	var req struct {
+		SessionID string `json:"session_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	result, err := h.sessionService.RevokeSession(c.Request.Context(), accountID, req.SessionID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 // OpenAIGenerateAuthURLRequest represents the request for generating OpenAI auth URL

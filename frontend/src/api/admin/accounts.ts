@@ -902,6 +902,54 @@ export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResu
   return data
 }
 
+export interface OpenAIAppSession {
+  client_name?: string
+}
+
+export interface OpenAISessionDevice {
+  render_id?: string
+  display_name?: string
+  human_readable_description?: string
+  platform?: string
+  os_version?: string
+  device_model?: string
+  is_trusted_device: boolean
+  is_current_device: boolean
+  can_untrust: boolean
+  hashed_device_id?: string
+  session_id?: string
+  last_signed_in_timestamp_second: number
+  last_signed_in_city?: string
+  last_signed_in_region_code?: string
+  last_signed_in_country?: string
+  app_sessions?: OpenAIAppSession[]
+}
+
+export interface OpenAISessionsResponse {
+  show_session_manager: boolean
+  devices: OpenAISessionDevice[]
+  fetched_at: number
+}
+
+export interface OpenAISessionRevokeResult {
+  session_id: string
+  revoked: boolean
+}
+
+export async function listOpenAISessions(id: number): Promise<OpenAISessionsResponse> {
+  const { data } = await apiClient.get<OpenAISessionsResponse>(`/admin/openai/accounts/${id}/sessions`)
+  return data
+}
+
+export async function revokeOpenAISession(id: number, sessionId: string): Promise<OpenAISessionRevokeResult> {
+  const { data } = await apiClient.post<OpenAISessionRevokeResult>(
+    `/admin/openai/accounts/${id}/sessions/revoke`,
+    { session_id: sessionId },
+    { timeout: 30_000 }
+  )
+  return data
+}
+
 export interface SparkShadowCreatePayload {
   name?: string
   priority?: number
@@ -1038,6 +1086,8 @@ export const accountsAPI = {
   revertProxyFallback,
   refreshOpenAIQuota,
   resetOpenAIQuota,
+  listOpenAISessions,
+  revokeOpenAISession,
   createSparkShadow,
   getUpstreamBillingProbeSettings,
   updateUpstreamBillingProbeSettings,

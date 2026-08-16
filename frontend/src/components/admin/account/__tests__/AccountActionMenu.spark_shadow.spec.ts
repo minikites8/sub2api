@@ -153,6 +153,22 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
     wrapper.unmount()
   })
 
+  it('普通 OpenAI OAuth 母账号显示在线设备入口并触发 sessions 事件', async () => {
+    const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+
+    const sessionsBtn = getBodyButtons().find(b => b.textContent?.includes('admin.accounts.sessions.menu'))
+    expect(sessionsBtn).toBeDefined()
+    sessionsBtn!.click()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('sessions')?.[0][0]).toMatchObject({ id: account.id, platform: 'openai' })
+    wrapper.unmount()
+  })
+
   it('点击按钮触发 create-spark-shadow 事件并携带 account', async () => {
     const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {

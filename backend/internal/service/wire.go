@@ -190,6 +190,16 @@ func ProvideOpenAIQuotaService(
 	return service
 }
 
+// ProvideOpenAISessionService wires ChatGPT device session management.
+func ProvideOpenAISessionService(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	tokenProvider *OpenAITokenProvider,
+	privacyClientFactory PrivacyClientFactory,
+) *OpenAISessionService {
+	return NewOpenAISessionService(accountRepo, proxyRepo, tokenProvider, privacyClientFactory)
+}
+
 func ProvideAccountUsageService(
 	accountRepo AccountRepository,
 	usageLogRepo UsageLogRepository,
@@ -816,6 +826,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGrokTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
+	ProvideOpenAISessionService,
 	ProvideGrokQuotaService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
