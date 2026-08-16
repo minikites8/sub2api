@@ -115,6 +115,11 @@ func Priority(v int) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldPriority, v))
 }
 
+// IsFallback applies equality check predicate on the "is_fallback" field. It's identical to IsFallbackEQ.
+func IsFallback(v bool) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldIsFallback, v))
+}
+
 // RateMultiplier applies equality check predicate on the "rate_multiplier" field. It's identical to RateMultiplierEQ.
 func RateMultiplier(v float64) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldRateMultiplier, v))
@@ -803,6 +808,16 @@ func PriorityLT(v int) predicate.Account {
 // PriorityLTE applies the LTE predicate on the "priority" field.
 func PriorityLTE(v int) predicate.Account {
 	return predicate.Account(sql.FieldLTE(FieldPriority, v))
+}
+
+// IsFallbackEQ applies the EQ predicate on the "is_fallback" field.
+func IsFallbackEQ(v bool) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldIsFallback, v))
+}
+
+// IsFallbackNEQ applies the NEQ predicate on the "is_fallback" field.
+func IsFallbackNEQ(v bool) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldIsFallback, v))
 }
 
 // RateMultiplierEQ applies the EQ predicate on the "rate_multiplier" field.

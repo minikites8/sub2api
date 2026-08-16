@@ -34,6 +34,7 @@ type Account struct {
 	ProxyFallbackOriginName *string // 仅展示用
 	Concurrency             int
 	Priority                int
+	IsFallback              bool
 	// RateMultiplier 账号计费倍率（>=0，允许 0 表示该账号计费为 0）。
 	// 使用指针用于兼容旧版本调度缓存（Redis）中缺字段的情况：nil 表示按 1.0 处理。
 	RateMultiplier     *float64
@@ -207,6 +208,42 @@ func (a *Account) IsSchedulable() bool {
 		return false
 	}
 	return true
+}
+
+func preferNonFallbackAccounts(accounts []Account) []Account {
+	if len(accounts) <= 1 {
+		return accounts
+	}
+	for i := range accounts {
+		if !accounts[i].IsFallback {
+			preferred := make([]Account, 0, len(accounts))
+			for j := range accounts {
+				if !accounts[j].IsFallback {
+					preferred = append(preferred, accounts[j])
+				}
+			}
+			return preferred
+		}
+	}
+	return accounts
+}
+
+func preferNonFallbackAccountPointers(accounts []*Account) []*Account {
+	if len(accounts) <= 1 {
+		return accounts
+	}
+	for _, account := range accounts {
+		if account != nil && !account.IsFallback {
+			preferred := make([]*Account, 0, len(accounts))
+			for _, candidate := range accounts {
+				if candidate != nil && !candidate.IsFallback {
+					preferred = append(preferred, candidate)
+				}
+			}
+			return preferred
+		}
+	}
+	return accounts
 }
 
 // IsCredentialUsableForShadow 报告本账号(作为某 spark 影子的母账号)的凭据/传输是否可被影子透传使用。

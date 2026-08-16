@@ -22,9 +22,10 @@ func TestFilterSchedulerCredentialsKeepsSubscriptionPlanType(t *testing.T) {
 
 func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	account := service.Account{
-		ID:       24,
-		Platform: service.PlatformOpenAI,
-		Type:     service.AccountTypeOAuth,
+		ID:         24,
+		Platform:   service.PlatformOpenAI,
+		Type:       service.AccountTypeOAuth,
+		IsFallback: true,
 		Credentials: map[string]any{
 			"plan_type":    "plus",
 			"access_token": "secret-access-token",
@@ -34,6 +35,7 @@ func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	metadata := buildSchedulerMetadataAccount(account)
 
 	require.True(t, metadata.IsOpenAIChatGPTSubscription())
+	require.True(t, metadata.IsFallback)
 	require.Empty(t, metadata.GetCredential("access_token"))
 }
 

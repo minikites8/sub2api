@@ -330,6 +330,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 
 		if len(routingCandidates) > 0 {
+			routingCandidates = preferNonFallbackAccountPointers(routingCandidates)
 			// 1.5. 在路由账号范围内检查粘性会话
 			if sessionHash != "" && stickyAccountID > 0 {
 				slog.Debug("sticky.layer1_5_checking",
@@ -682,6 +683,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 		return nil, ErrNoAvailableAccounts
 	}
+	candidates = preferNonFallbackAccountPointers(candidates)
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
 	for _, acc := range candidates {
@@ -772,6 +774,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 }
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
+	candidates = preferNonFallbackAccountPointers(candidates)
 	ordered := append([]*Account(nil), candidates...)
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
@@ -2004,7 +2007,11 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				selected = acc
 				continue
 			}
-			if acc.Priority < selected.Priority {
+			if selected.IsFallback != acc.IsFallback {
+				if selected.IsFallback {
+					selected = acc
+				}
+			} else if acc.Priority < selected.Priority {
 				selected = acc
 			} else if acc.Priority == selected.Priority {
 				switch {
@@ -2121,7 +2128,11 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			selected = acc
 			continue
 		}
-		if acc.Priority < selected.Priority {
+		if selected.IsFallback != acc.IsFallback {
+			if selected.IsFallback {
+				selected = acc
+			}
+		} else if acc.Priority < selected.Priority {
 			selected = acc
 		} else if acc.Priority == selected.Priority {
 			switch {
@@ -2274,7 +2285,11 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				selected = acc
 				continue
 			}
-			if acc.Priority < selected.Priority {
+			if selected.IsFallback != acc.IsFallback {
+				if selected.IsFallback {
+					selected = acc
+				}
+			} else if acc.Priority < selected.Priority {
 				selected = acc
 			} else if acc.Priority == selected.Priority {
 				switch {
@@ -2392,7 +2407,11 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			selected = acc
 			continue
 		}
-		if acc.Priority < selected.Priority {
+		if selected.IsFallback != acc.IsFallback {
+			if selected.IsFallback {
+				selected = acc
+			}
+		} else if acc.Priority < selected.Priority {
 			selected = acc
 		} else if acc.Priority == selected.Priority {
 			switch {

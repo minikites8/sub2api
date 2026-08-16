@@ -556,6 +556,9 @@ func shouldClearStickySession(account *Account, requestedModel string) bool {
 	if account == nil {
 		return false
 	}
+	if account.IsFallback {
+		return true
+	}
 	if !account.IsSchedulable() {
 		return true
 	}

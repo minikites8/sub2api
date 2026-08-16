@@ -181,6 +181,20 @@ func (_c *AccountCreate) SetNillablePriority(v *int) *AccountCreate {
 	return _c
 }
 
+// SetIsFallback sets the "is_fallback" field.
+func (_c *AccountCreate) SetIsFallback(v bool) *AccountCreate {
+	_c.mutation.SetIsFallback(v)
+	return _c
+}
+
+// SetNillableIsFallback sets the "is_fallback" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableIsFallback(v *bool) *AccountCreate {
+	if v != nil {
+		_c.SetIsFallback(*v)
+	}
+	return _c
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_c *AccountCreate) SetRateMultiplier(v float64) *AccountCreate {
 	_c.mutation.SetRateMultiplier(v)
@@ -561,6 +575,10 @@ func (_c *AccountCreate) defaults() error {
 		v := account.DefaultPriority
 		_c.mutation.SetPriority(v)
 	}
+	if _, ok := _c.mutation.IsFallback(); !ok {
+		v := account.DefaultIsFallback
+		_c.mutation.SetIsFallback(v)
+	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		v := account.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
@@ -627,6 +645,9 @@ func (_c *AccountCreate) check() error {
 	}
 	if _, ok := _c.mutation.Priority(); !ok {
 		return &ValidationError{Name: "priority", err: errors.New(`ent: missing required field "Account.priority"`)}
+	}
+	if _, ok := _c.mutation.IsFallback(); !ok {
+		return &ValidationError{Name: "is_fallback", err: errors.New(`ent: missing required field "Account.is_fallback"`)}
 	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Account.rate_multiplier"`)}
@@ -736,6 +757,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Priority(); ok {
 		_spec.SetField(account.FieldPriority, field.TypeInt, value)
 		_node.Priority = value
+	}
+	if value, ok := _c.mutation.IsFallback(); ok {
+		_spec.SetField(account.FieldIsFallback, field.TypeBool, value)
+		_node.IsFallback = value
 	}
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(account.FieldRateMultiplier, field.TypeFloat64, value)
@@ -1146,6 +1171,18 @@ func (u *AccountUpsert) UpdatePriority() *AccountUpsert {
 // AddPriority adds v to the "priority" field.
 func (u *AccountUpsert) AddPriority(v int) *AccountUpsert {
 	u.Add(account.FieldPriority, v)
+	return u
+}
+
+// SetIsFallback sets the "is_fallback" field.
+func (u *AccountUpsert) SetIsFallback(v bool) *AccountUpsert {
+	u.Set(account.FieldIsFallback, v)
+	return u
+}
+
+// UpdateIsFallback sets the "is_fallback" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateIsFallback() *AccountUpsert {
+	u.SetExcluded(account.FieldIsFallback)
 	return u
 }
 
@@ -1718,6 +1755,20 @@ func (u *AccountUpsertOne) AddPriority(v int) *AccountUpsertOne {
 func (u *AccountUpsertOne) UpdatePriority() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdatePriority()
+	})
+}
+
+// SetIsFallback sets the "is_fallback" field.
+func (u *AccountUpsertOne) SetIsFallback(v bool) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetIsFallback(v)
+	})
+}
+
+// UpdateIsFallback sets the "is_fallback" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateIsFallback() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateIsFallback()
 	})
 }
 
@@ -2503,6 +2554,20 @@ func (u *AccountUpsertBulk) AddPriority(v int) *AccountUpsertBulk {
 func (u *AccountUpsertBulk) UpdatePriority() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdatePriority()
+	})
+}
+
+// SetIsFallback sets the "is_fallback" field.
+func (u *AccountUpsertBulk) SetIsFallback(v bool) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetIsFallback(v)
+	})
+}
+
+// UpdateIsFallback sets the "is_fallback" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateIsFallback() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateIsFallback()
 	})
 }
 

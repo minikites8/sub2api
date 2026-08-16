@@ -298,6 +298,7 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		ProxyID:               cloneAccountValuePointer(proxyID),
 		Concurrency:           source.Concurrency,
 		Priority:              source.Priority,
+		IsFallback:            source.IsFallback,
 		RateMultiplier:        cloneAccountValuePointer(source.RateMultiplier),
 		LoadFactor:            cloneAccountValuePointer(source.LoadFactor),
 		GroupIDs:              groupIDs,
@@ -415,6 +416,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		ProxyID:     input.ProxyID,
 		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
 		Priority:    input.Priority,
+		IsFallback:  input.IsFallback,
 		Status:      StatusActive,
 		Schedulable: true,
 	}
@@ -847,6 +849,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// 只在指针非 nil 时更新 Priority（支持设置为 0）
 	if input.Priority != nil {
 		account.Priority = *input.Priority
+	}
+	if input.IsFallback != nil {
+		account.IsFallback = *input.IsFallback
 	}
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier < 0 {

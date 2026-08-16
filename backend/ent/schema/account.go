@@ -107,6 +107,10 @@ func (Account) Fields() []ent.Field {
 		field.Int("priority").
 			Default(50),
 
+		// is_fallback: 仅在同一调度池的普通账号全部不可用时参与调度
+		field.Bool("is_fallback").
+			Default(false),
+
 		// rate_multiplier: 账号计费倍率（>=0，允许 0 表示该账号计费为 0）
 		// 仅影响账号维度计费口径，不影响用户/API Key 扣费（分组倍率）
 		field.Float("rate_multiplier").

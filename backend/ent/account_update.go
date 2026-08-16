@@ -247,6 +247,20 @@ func (_u *AccountUpdate) AddPriority(v int) *AccountUpdate {
 	return _u
 }
 
+// SetIsFallback sets the "is_fallback" field.
+func (_u *AccountUpdate) SetIsFallback(v bool) *AccountUpdate {
+	_u.mutation.SetIsFallback(v)
+	return _u
+}
+
+// SetNillableIsFallback sets the "is_fallback" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableIsFallback(v *bool) *AccountUpdate {
+	if v != nil {
+		_u.SetIsFallback(*v)
+	}
+	return _u
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_u *AccountUpdate) SetRateMultiplier(v float64) *AccountUpdate {
 	_u.mutation.ResetRateMultiplier()
@@ -862,6 +876,9 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedPriority(); ok {
 		_spec.AddField(account.FieldPriority, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.IsFallback(); ok {
+		_spec.SetField(account.FieldIsFallback, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.RateMultiplier(); ok {
 		_spec.SetField(account.FieldRateMultiplier, field.TypeFloat64, value)
 	}
@@ -1384,6 +1401,20 @@ func (_u *AccountUpdateOne) SetNillablePriority(v *int) *AccountUpdateOne {
 // AddPriority adds value to the "priority" field.
 func (_u *AccountUpdateOne) AddPriority(v int) *AccountUpdateOne {
 	_u.mutation.AddPriority(v)
+	return _u
+}
+
+// SetIsFallback sets the "is_fallback" field.
+func (_u *AccountUpdateOne) SetIsFallback(v bool) *AccountUpdateOne {
+	_u.mutation.SetIsFallback(v)
+	return _u
+}
+
+// SetNillableIsFallback sets the "is_fallback" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableIsFallback(v *bool) *AccountUpdateOne {
+	if v != nil {
+		_u.SetIsFallback(*v)
+	}
 	return _u
 }
 
@@ -2031,6 +2062,9 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.AddedPriority(); ok {
 		_spec.AddField(account.FieldPriority, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.IsFallback(); ok {
+		_spec.SetField(account.FieldIsFallback, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.RateMultiplier(); ok {
 		_spec.SetField(account.FieldRateMultiplier, field.TypeFloat64, value)

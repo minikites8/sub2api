@@ -381,6 +381,9 @@ func (s *GeminiMessagesCompatService) buildPreCheckUsageResultMap(ctx context.Co
 // isBetterGeminiAccount checks if candidate is better than current.
 // Rules: higher priority (lower value) wins; same priority: never used (OAuth > non-OAuth) > least recently used.
 func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *Account) bool {
+	if candidate.IsFallback != current.IsFallback {
+		return !candidate.IsFallback
+	}
 	// 优先级更高（数值更小）
 	if candidate.Priority < current.Priority {
 		return true
@@ -508,6 +511,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 	if len(accounts) == 0 {
 		return nil, errors.New("no available Gemini accounts")
 	}
+	accounts = preferNonFallbackAccounts(accounts)
 
 	rank := func(a *Account) int {
 		if a == nil {

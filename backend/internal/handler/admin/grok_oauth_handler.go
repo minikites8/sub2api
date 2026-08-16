@@ -271,6 +271,7 @@ func (h *GrokOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 		Name        string  `json:"name"`
 		Concurrency int     `json:"concurrency"`
 		Priority    int     `json:"priority"`
+		IsFallback  bool    `json:"is_fallback"`
 		GroupIDs    []int64 `json:"group_ids"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -306,6 +307,7 @@ func (h *GrokOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
+		IsFallback:  req.IsFallback,
 		GroupIDs:    req.GroupIDs,
 	})
 	if err != nil {
@@ -330,6 +332,7 @@ type GrokSSOToOAuthRequest struct {
 	Priority           int            `json:"priority"`
 	RateMultiplier     *float64       `json:"rate_multiplier"`
 	ExpiresAt          *int64         `json:"expires_at"`
+	IsFallback         bool           `json:"is_fallback"`
 	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
 }
 
@@ -440,6 +443,7 @@ func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req Gr
 		Concurrency:        req.Concurrency,
 		LoadFactor:         req.LoadFactor,
 		Priority:           req.Priority,
+		IsFallback:         req.IsFallback,
 		RateMultiplier:     req.RateMultiplier,
 		GroupIDs:           append([]int64(nil), req.GroupIDs...),
 		ExpiresAt:          expiresAt,

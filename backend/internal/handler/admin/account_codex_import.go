@@ -33,6 +33,7 @@ type CodexSessionImportRequest struct {
 	RateMultiplier          *float64       `json:"rate_multiplier"`
 	LoadFactor              *int           `json:"load_factor"`
 	ExpiresAt               *int64         `json:"expires_at"`
+	IsFallback              *bool          `json:"is_fallback"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	CredentialExtras        map[string]any `json:"credential_extras"`
 	Extra                   map[string]any `json:"extra"`
@@ -284,6 +285,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 				RateMultiplier:     req.RateMultiplier,
 				LoadFactor:         req.LoadFactor,
 				ExpiresAt:          effectiveExpiresAt,
+				IsFallback:         req.IsFallback,
 				AutoPauseOnExpired: autoPauseOnExpired,
 			}
 			if req.ProxyID != nil {
@@ -338,6 +340,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			ProxyID:               req.ProxyID,
 			Concurrency:           concurrency,
 			Priority:              priority,
+			IsFallback:            req.IsFallback != nil && *req.IsFallback,
 			RateMultiplier:        req.RateMultiplier,
 			LoadFactor:            req.LoadFactor,
 			GroupIDs:              req.GroupIDs,
