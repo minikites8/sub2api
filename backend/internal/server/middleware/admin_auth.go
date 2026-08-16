@@ -189,6 +189,9 @@ func adminAPIKeyAutoPoolPathAllowed(c *gin.Context) bool {
 	segment := strings.SplitN(path, "/", 2)[0]
 	switch segment {
 	case "accounts", "groups", "proxies", "openai", "gemini", "antigravity", "kiro", "grok":
+		if segment == "proxies" {
+			return adminAPIKeyAutoPoolProxyPathAllowed(c, path)
+		}
 		return true
 	case "usage":
 		return c.Request.Method == "GET"
@@ -203,6 +206,14 @@ func adminAPIKeyAutoPoolPathAllowed(c *gin.Context) bool {
 	default:
 		return false
 	}
+}
+
+func adminAPIKeyAutoPoolProxyPathAllowed(c *gin.Context, path string) bool {
+	if c.Request.Method == "GET" {
+		return true
+	}
+	return c.Request.Method == "POST" &&
+		(strings.HasSuffix(path, "/test") || strings.HasSuffix(path, "/quality-check"))
 }
 
 // validateJWTForAdmin 验证 JWT 并检查管理员权限
