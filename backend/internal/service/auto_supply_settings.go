@@ -18,16 +18,17 @@ const (
 	autoSupplyReloadInterval  = 30 * time.Second
 )
 
-// AutoSupplyGroupSettings defines one local group replenishment rule.
+// AutoSupplyGroupSettings defines one trigger group replenishment rule and its optional deployment groups.
 type AutoSupplyGroupSettings struct {
-	GroupID      int64  `json:"group_id"`
-	Product      string `json:"product"`
-	MinAvailable int    `json:"min_available"`
-	Quantity     int    `json:"quantity"`
-	Platform     string `json:"platform"`
-	AccountType  string `json:"account_type"`
-	Priority     int    `json:"priority"`
-	Concurrency  int    `json:"concurrency"`
+	GroupID        int64   `json:"group_id"`
+	DeployGroupIDs []int64 `json:"deploy_group_ids"`
+	Product        string  `json:"product"`
+	MinAvailable   int     `json:"min_available"`
+	Quantity       int     `json:"quantity"`
+	Platform       string  `json:"platform"`
+	AccountType    string  `json:"account_type"`
+	Priority       int     `json:"priority"`
+	Concurrency    int     `json:"concurrency"`
 }
 
 // AutoSupplySettings is the masked admin-facing configuration.
@@ -278,12 +279,21 @@ func normalizeAutoSupplyConfig(settings config.AutoSupplyConfig) config.AutoSupp
 		settings.Groups[index].Product = strings.TrimSpace(settings.Groups[index].Product)
 		settings.Groups[index].Platform = strings.TrimSpace(settings.Groups[index].Platform)
 		settings.Groups[index].AccountType = strings.TrimSpace(settings.Groups[index].AccountType)
+		settings.Groups[index].DeployGroupIDs = normalizeAutoSupplyDeployGroupIDs(
+			settings.Groups[index].GroupID,
+			settings.Groups[index].DeployGroupIDs,
+		)
 	}
 	return settings
 }
 
 func cloneAutoSupplyConfig(settings config.AutoSupplyConfig) config.AutoSupplyConfig {
-	settings.Groups = append([]config.AutoSupplyGroupConfig(nil), settings.Groups...)
+	groups := make([]config.AutoSupplyGroupConfig, len(settings.Groups))
+	for index, group := range settings.Groups {
+		group.DeployGroupIDs = append([]int64(nil), group.DeployGroupIDs...)
+		groups[index] = group
+	}
+	settings.Groups = groups
 	return settings
 }
 
@@ -291,7 +301,8 @@ func autoSupplyConfigFromStored(stored *autoSupplyStoredSettings, token string) 
 	groups := make([]config.AutoSupplyGroupConfig, 0, len(stored.Groups))
 	for _, group := range stored.Groups {
 		groups = append(groups, config.AutoSupplyGroupConfig{
-			GroupID: group.GroupID, Product: group.Product, MinAvailable: group.MinAvailable,
+			GroupID: group.GroupID, DeployGroupIDs: append([]int64(nil), group.DeployGroupIDs...),
+			Product: group.Product, MinAvailable: group.MinAvailable,
 			Quantity: group.Quantity, Platform: group.Platform, AccountType: group.AccountType,
 			Priority: group.Priority, Concurrency: group.Concurrency,
 		})
@@ -305,14 +316,20 @@ func autoSupplyConfigFromStored(stored *autoSupplyStoredSettings, token string) 
 
 func autoSupplyGroupSettingsFromConfig(group config.AutoSupplyGroupConfig) AutoSupplyGroupSettings {
 	return AutoSupplyGroupSettings{
-		GroupID: group.GroupID, Product: group.Product, MinAvailable: group.MinAvailable,
+		GroupID: group.GroupID, DeployGroupIDs: append([]int64{}, group.DeployGroupIDs...),
+		Product: group.Product, MinAvailable: group.MinAvailable,
 		Quantity: group.Quantity, Platform: group.Platform, AccountType: group.AccountType,
 		Priority: group.Priority, Concurrency: group.Concurrency,
 	}
 }
 
 func cloneAutoSupplyGroupSettings(groups []AutoSupplyGroupSettings) []AutoSupplyGroupSettings {
-	return append([]AutoSupplyGroupSettings(nil), groups...)
+	cloned := make([]AutoSupplyGroupSettings, len(groups))
+	for index, group := range groups {
+		group.DeployGroupIDs = append([]int64(nil), group.DeployGroupIDs...)
+		cloned[index] = group
+	}
+	return cloned
 }
 
 func normalizeAutoSupplySettingsUpdate(input *AutoSupplySettingsUpdate) {
@@ -322,6 +339,10 @@ func normalizeAutoSupplySettingsUpdate(input *AutoSupplySettingsUpdate) {
 		input.Groups[index].Product = strings.TrimSpace(input.Groups[index].Product)
 		input.Groups[index].Platform = strings.TrimSpace(input.Groups[index].Platform)
 		input.Groups[index].AccountType = strings.TrimSpace(input.Groups[index].AccountType)
+		input.Groups[index].DeployGroupIDs = normalizeAutoSupplyDeployGroupIDs(
+			input.Groups[index].GroupID,
+			input.Groups[index].DeployGroupIDs,
+		)
 	}
 }
 
@@ -361,6 +382,14 @@ func validateAutoSupplySettings(input AutoSupplySettingsUpdate, effectiveToken s
 		if group.GroupID <= 0 {
 			return fmt.Errorf("groups[%d].group_id must be positive", index)
 		}
+		if len(group.DeployGroupIDs) > 100 {
+			return fmt.Errorf("groups[%d].deploy_group_ids must contain at most 100 groups", index)
+		}
+		for targetIndex, targetID := range group.DeployGroupIDs {
+			if targetID <= 0 {
+				return fmt.Errorf("groups[%d].deploy_group_ids[%d] must be positive", index, targetIndex)
+			}
+		}
 		if _, exists := seen[group.GroupID]; exists {
 			return fmt.Errorf("groups[%d].group_id is duplicated", index)
 		}
@@ -393,4 +422,23 @@ func validateAutoSupplySettings(input AutoSupplySettingsUpdate, effectiveToken s
 		}
 	}
 	return nil
+}
+
+func normalizeAutoSupplyDeployGroupIDs(triggerGroupID int64, values []int64) []int64 {
+	if len(values) == 0 {
+		return []int64{}
+	}
+	seen := make(map[int64]struct{}, len(values))
+	result := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value == triggerGroupID {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }

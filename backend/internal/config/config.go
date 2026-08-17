@@ -1480,16 +1480,17 @@ type AutoSupplyConfig struct {
 	Groups                []AutoSupplyGroupConfig `mapstructure:"groups"`
 }
 
-// AutoSupplyGroupConfig maps one local group to an upstream product.
+// AutoSupplyGroupConfig monitors one local group and optionally deploys imported accounts to additional groups.
 type AutoSupplyGroupConfig struct {
-	GroupID      int64  `mapstructure:"group_id"`
-	Product      string `mapstructure:"product"`
-	MinAvailable int    `mapstructure:"min_available"`
-	Quantity     int    `mapstructure:"quantity"`
-	Platform     string `mapstructure:"platform"`
-	AccountType  string `mapstructure:"account_type"`
-	Priority     int    `mapstructure:"priority"`
-	Concurrency  int    `mapstructure:"concurrency"`
+	GroupID        int64   `mapstructure:"group_id"`
+	DeployGroupIDs []int64 `mapstructure:"deploy_group_ids"`
+	Product        string  `mapstructure:"product"`
+	MinAvailable   int     `mapstructure:"min_available"`
+	Quantity       int     `mapstructure:"quantity"`
+	Platform       string  `mapstructure:"platform"`
+	AccountType    string  `mapstructure:"account_type"`
+	Priority       int     `mapstructure:"priority"`
+	Concurrency    int     `mapstructure:"concurrency"`
 }
 
 type OpsCleanupConfig struct {
@@ -2571,6 +2572,14 @@ func (c *Config) Validate() error {
 		for index, group := range c.AutoSupply.Groups {
 			if group.GroupID <= 0 {
 				return fmt.Errorf("auto_supply.groups[%d].group_id must be positive", index)
+			}
+			if len(group.DeployGroupIDs) > 100 {
+				return fmt.Errorf("auto_supply.groups[%d].deploy_group_ids must contain at most 100 groups", index)
+			}
+			for targetIndex, targetID := range group.DeployGroupIDs {
+				if targetID <= 0 {
+					return fmt.Errorf("auto_supply.groups[%d].deploy_group_ids[%d] must be positive", index, targetIndex)
+				}
 			}
 			if group.MinAvailable < 0 {
 				return fmt.Errorf("auto_supply.groups[%d].min_available must be non-negative", index)

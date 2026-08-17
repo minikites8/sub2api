@@ -198,9 +198,10 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 		CustomerToken:     "customer-secret",
 		MaxQuantityPerRun: 5,
 		Groups: []config.AutoSupplyGroupConfig{{
-			GroupID:      42,
-			MinAvailable: 1,
-			Product:      "oauth_30d",
+			GroupID:        42,
+			DeployGroupIDs: []int64{7, 42, 8, 7},
+			MinAvailable:   1,
+			Product:        "oauth_30d",
 		}},
 	}
 	svc := NewAutoSupplyService(repo, admin, cfg)
@@ -211,7 +212,7 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 
 	svc.RunOnce(context.Background())
 	require.NotNil(t, admin.input)
-	require.Equal(t, []int64{42}, admin.input.GroupIDs)
+	require.Equal(t, []int64{42, 7, 8}, admin.input.GroupIDs)
 	require.Equal(t, AccountTypeOAuth, admin.input.Type)
 	require.Equal(t, PlatformOpenAI, admin.input.Platform)
 	require.Equal(t, "order-1:0", admin.input.Extra[autoSupplyOrderMarkerKey])
@@ -272,7 +273,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 		RequestTimeoutSeconds: 15,
 		MaxQuantityPerRun:     8,
 		Groups: []AutoSupplyGroupSettings{{
-			GroupID: 42, Product: "oauth_30d", MinAvailable: 3, Quantity: 4,
+			GroupID: 42, DeployGroupIDs: []int64{7, 7, 8}, Product: "oauth_30d", MinAvailable: 3, Quantity: 4,
 			Platform: PlatformOpenAI, AccountType: AccountTypeOAuth, Priority: 5, Concurrency: 2,
 		}},
 	})
@@ -280,6 +281,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.True(t, updated.CustomerTokenConfigured)
 	require.True(t, updated.EncryptionKeyConfigured)
 	require.Equal(t, "https://supplier.example", updated.BaseURL)
+	require.Equal(t, []int64{7, 8}, updated.Groups[0].DeployGroupIDs)
 	raw := repo.values[SettingKeyAutoSupplySettings]
 	require.NotContains(t, raw, "customer-secret")
 	require.Contains(t, raw, "customer_token_encrypted")
@@ -287,6 +289,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	runtimeSettings := svc.currentAutoSupplyConfig()
 	require.Equal(t, "customer-secret", runtimeSettings.CustomerToken)
 	require.Equal(t, 60, runtimeSettings.IntervalSeconds)
+	require.Equal(t, []int64{7, 8}, runtimeSettings.Groups[0].DeployGroupIDs)
 	select {
 	case <-svc.wakeCh:
 	default:
@@ -300,7 +303,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 		RequestTimeoutSeconds: 20,
 		MaxQuantityPerRun:     10,
 		Groups: []AutoSupplyGroupSettings{{
-			GroupID: 42, Product: "oauth_30d", MinAvailable: 5, Quantity: 5,
+			GroupID: 42, DeployGroupIDs: []int64{7, 8}, Product: "oauth_30d", MinAvailable: 5, Quantity: 5,
 		}},
 	})
 	require.NoError(t, err)
@@ -313,6 +316,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, settings.CustomerTokenConfigured)
 	require.Equal(t, 90, settings.IntervalSeconds)
+	require.Equal(t, []int64{7, 8}, settings.Groups[0].DeployGroupIDs)
 	require.Equal(t, "customer-secret", reloaded.currentAutoSupplyConfig().CustomerToken)
 }
 
@@ -349,4 +353,22 @@ func TestAutoSupplySettingsRejectInvalidEnabledConfiguration(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "interval_seconds")
+}
+
+func TestAutoSupplySettingsRejectInvalidDeployGroupID(t *testing.T) {
+	repo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
+	svc := NewAutoSupplyService(nil, nil, &config.Config{})
+	svc.SetSettingsDependencies(repo, autoSupplyTestEncryptor{})
+
+	_, err := svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		BaseURL:               "https://supplier.example",
+		IntervalSeconds:       30,
+		RequestTimeoutSeconds: 20,
+		MaxQuantityPerRun:     10,
+		Groups: []AutoSupplyGroupSettings{{
+			GroupID: 42, DeployGroupIDs: []int64{-1}, Product: "oauth_30d",
+		}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "deploy_group_ids")
 }

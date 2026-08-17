@@ -413,6 +413,7 @@ func (s *AutoSupplyService) importBundle(ctx context.Context, group *Group, grou
 	if accountType == "" {
 		accountType = autoSupplyDefaultType
 	}
+	deploymentGroupIDs := autoSupplyDeploymentGroupIDs(group.ID, groupCfg.DeployGroupIDs)
 	imported := 0
 	failed := 0
 	for index, raw := range bundle.Accounts {
@@ -479,7 +480,7 @@ func (s *AutoSupplyService) importBundle(ctx context.Context, group *Group, grou
 			Priority:              priority,
 			IsFallback:            item.IsFallback,
 			RateMultiplier:        item.RateMultiplier,
-			GroupIDs:              []int64{group.ID},
+			GroupIDs:              append([]int64(nil), deploymentGroupIDs...),
 			ExpiresAt:             expiresAt,
 			AutoPauseOnExpired:    item.AutoPauseOnExpired,
 			SkipDefaultGroupBind:  true,
@@ -495,6 +496,22 @@ func (s *AutoSupplyService) importBundle(ctx context.Context, group *Group, grou
 		return fmt.Errorf("imported %d accounts, %d accounts failed", imported, failed)
 	}
 	return nil
+}
+
+func autoSupplyDeploymentGroupIDs(triggerGroupID int64, deployGroupIDs []int64) []int64 {
+	result := make([]int64, 0, len(deployGroupIDs)+1)
+	seen := make(map[int64]struct{}, len(deployGroupIDs)+1)
+	for _, groupID := range append([]int64{triggerGroupID}, deployGroupIDs...) {
+		if groupID <= 0 {
+			continue
+		}
+		if _, exists := seen[groupID]; exists {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		result = append(result, groupID)
+	}
+	return result
 }
 
 func decodeAutoSupplyAccount(raw json.RawMessage) (*autoSupplyAccount, error) {

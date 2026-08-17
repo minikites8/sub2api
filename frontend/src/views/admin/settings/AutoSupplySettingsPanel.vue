@@ -11,7 +11,7 @@
               {{ t("admin.settings.autoSupply.description") }}
             </p>
           </div>
-          <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label class="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300">
             <Toggle v-model="form.enabled" />
             <span>{{ t("admin.settings.autoSupply.enabled") }}</span>
           </label>
@@ -28,28 +28,28 @@
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <label class="block md:col-span-2">
-            <span class="form-label">{{ t("admin.settings.autoSupply.baseUrl") }}</span>
+            <span class="input-label">{{ t("admin.settings.autoSupply.baseUrl") }}</span>
             <input
               v-model.trim="form.base_url"
               type="url"
-              class="form-input mt-1 w-full"
+              class="input mt-1 w-full"
               :placeholder="t('admin.settings.autoSupply.baseUrlPlaceholder')"
               autocomplete="url"
             />
           </label>
 
           <label class="block md:col-span-2">
-            <span class="form-label">{{ t("admin.settings.autoSupply.customerToken") }}</span>
+            <span class="input-label">{{ t("admin.settings.autoSupply.customerToken") }}</span>
             <input
               v-model="form.customer_token"
               type="password"
-              class="form-input mt-1 w-full"
+              class="input mt-1 w-full"
               :placeholder="form.customer_token_configured
                 ? t('admin.settings.autoSupply.customerTokenConfiguredPlaceholder')
                 : t('admin.settings.autoSupply.customerTokenPlaceholder')"
               autocomplete="new-password"
             />
-            <span class="form-hint mt-1 block">
+            <span class="input-hint mt-1 block">
               {{ form.customer_token_configured
                 ? t("admin.settings.autoSupply.customerTokenConfiguredHint")
                 : t("admin.settings.autoSupply.customerTokenHint") }}
@@ -57,21 +57,21 @@
           </label>
 
           <label class="block">
-            <span class="form-label">{{ t("admin.settings.autoSupply.interval") }}</span>
-            <input v-model.number="form.interval_seconds" type="number" min="5" max="86400" class="form-input mt-1 w-full" />
-            <span class="form-hint mt-1 block">{{ t("admin.settings.autoSupply.intervalHint") }}</span>
+            <span class="input-label">{{ t("admin.settings.autoSupply.interval") }}</span>
+            <input v-model.number="form.interval_seconds" type="number" min="5" max="86400" class="input mt-1 w-full" />
+            <span class="input-hint mt-1 block">{{ t("admin.settings.autoSupply.intervalHint") }}</span>
           </label>
 
           <label class="block">
-            <span class="form-label">{{ t("admin.settings.autoSupply.timeout") }}</span>
-            <input v-model.number="form.request_timeout_seconds" type="number" min="1" max="300" class="form-input mt-1 w-full" />
-            <span class="form-hint mt-1 block">{{ t("admin.settings.autoSupply.timeoutHint") }}</span>
+            <span class="input-label">{{ t("admin.settings.autoSupply.timeout") }}</span>
+            <input v-model.number="form.request_timeout_seconds" type="number" min="1" max="300" class="input mt-1 w-full" />
+            <span class="input-hint mt-1 block">{{ t("admin.settings.autoSupply.timeoutHint") }}</span>
           </label>
 
           <label class="block">
-            <span class="form-label">{{ t("admin.settings.autoSupply.maxQuantity") }}</span>
-            <input v-model.number="form.max_quantity_per_run" type="number" min="1" max="1000" class="form-input mt-1 w-full" />
-            <span class="form-hint mt-1 block">{{ t("admin.settings.autoSupply.maxQuantityHint") }}</span>
+            <span class="input-label">{{ t("admin.settings.autoSupply.maxQuantity") }}</span>
+            <input v-model.number="form.max_quantity_per_run" type="number" min="1" max="1000" class="input mt-1 w-full" />
+            <span class="input-hint mt-1 block">{{ t("admin.settings.autoSupply.maxQuantityHint") }}</span>
           </label>
         </div>
       </div>
@@ -110,36 +110,45 @@
 
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label class="block sm:col-span-2 lg:col-span-2">
-              <span class="form-label">{{ t("admin.settings.autoSupply.group") }}</span>
-              <Select v-model="rule.group_id" class="mt-1" :options="groupOptions" :placeholder="t('admin.settings.autoSupply.groupPlaceholder')" searchable="auto" />
+              <span class="input-label">{{ t("admin.settings.autoSupply.group") }}</span>
+              <Select v-model="rule.group_id" class="mt-1" :options="groupOptions" :placeholder="t('admin.settings.autoSupply.groupPlaceholder')" searchable="auto" @change="handleTriggerGroupChange(rule)" />
             </label>
+            <div class="sm:col-span-2 lg:col-span-2">
+              <GroupSelector
+                v-model="rule.deploy_group_ids"
+                :groups="deployableGroups(rule)"
+                :label="t('admin.settings.autoSupply.deployGroups')"
+                searchable="auto"
+              />
+              <p class="input-hint">{{ t("admin.settings.autoSupply.deployGroupsHint") }}</p>
+            </div>
             <label class="block sm:col-span-2 lg:col-span-2">
-              <span class="form-label">{{ t("admin.settings.autoSupply.product") }}</span>
-              <input v-model.trim="rule.product" type="text" class="form-input mt-1 w-full" />
+              <span class="input-label">{{ t("admin.settings.autoSupply.product") }}</span>
+              <input v-model.trim="rule.product" type="text" class="input mt-1 w-full" />
             </label>
             <label class="block">
-              <span class="form-label">{{ t("admin.settings.autoSupply.minAvailable") }}</span>
-              <input v-model.number="rule.min_available" type="number" min="0" class="form-input mt-1 w-full" />
+              <span class="input-label">{{ t("admin.settings.autoSupply.minAvailable") }}</span>
+              <input v-model.number="rule.min_available" type="number" min="0" class="input mt-1 w-full" />
             </label>
             <label class="block">
-              <span class="form-label">{{ t("admin.settings.autoSupply.quantity") }}</span>
-              <input v-model.number="rule.quantity" type="number" min="0" class="form-input mt-1 w-full" />
+              <span class="input-label">{{ t("admin.settings.autoSupply.quantity") }}</span>
+              <input v-model.number="rule.quantity" type="number" min="0" class="input mt-1 w-full" />
             </label>
             <label class="block">
-              <span class="form-label">{{ t("admin.settings.autoSupply.platform") }}</span>
+              <span class="input-label">{{ t("admin.settings.autoSupply.platform") }}</span>
               <Select v-model="rule.platform" class="mt-1" :options="platformOptions" :placeholder="t('admin.settings.autoSupply.inheritGroupValue')" />
             </label>
             <label class="block">
-              <span class="form-label">{{ t("admin.settings.autoSupply.accountType") }}</span>
+              <span class="input-label">{{ t("admin.settings.autoSupply.accountType") }}</span>
               <Select v-model="rule.account_type" class="mt-1" :options="accountTypeOptions" :placeholder="t('admin.settings.autoSupply.defaultAccountType')" />
             </label>
             <label class="block">
-              <span class="form-label">{{ t("admin.settings.autoSupply.priority") }}</span>
-              <input v-model.number="rule.priority" type="number" min="0" class="form-input mt-1 w-full" />
+              <span class="input-label">{{ t("admin.settings.autoSupply.priority") }}</span>
+              <input v-model.number="rule.priority" type="number" min="0" class="input mt-1 w-full" />
             </label>
             <label class="block">
-              <span class="form-label">{{ t("admin.settings.autoSupply.concurrency") }}</span>
-              <input v-model.number="rule.concurrency" type="number" min="0" class="form-input mt-1 w-full" />
+              <span class="input-label">{{ t("admin.settings.autoSupply.concurrency") }}</span>
+              <input v-model.number="rule.concurrency" type="number" min="0" class="input mt-1 w-full" />
             </label>
           </div>
         </div>
@@ -166,6 +175,7 @@ import type { AdminGroup } from "@/types";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
 import Toggle from "@/components/common/Toggle.vue";
+import GroupSelector from "@/components/common/GroupSelector.vue";
 import { useAppStore } from "@/stores";
 import { extractApiErrorMessage } from "@/utils/apiError";
 
@@ -210,7 +220,7 @@ const groupOptions = computed(() => {
 
 function ruleKey(rule: AutoSupplyGroupSettings, index: number): string { return `${index}-${rule.group_id}`; }
 function emptyRule(groupId = 0): AutoSupplyGroupSettings {
-  return { group_id: groupId, product: "oauth_30d", min_available: 1, quantity: 1, platform: "", account_type: "", priority: 0, concurrency: 0 };
+  return { group_id: groupId, deploy_group_ids: [], product: "oauth_30d", min_available: 1, quantity: 1, platform: "", account_type: "", priority: 0, concurrency: 0 };
 }
 function addRule(): void {
   const used = new Set(form.groups.map((rule) => rule.group_id));
@@ -218,8 +228,18 @@ function addRule(): void {
   form.groups.push(emptyRule(first?.id ?? 0));
 }
 function removeRule(index: number): void { form.groups.splice(index, 1); }
+function deployableGroups(rule: AutoSupplyGroupSettings): AdminGroup[] {
+  return groups.value.filter((group) => group.id !== rule.group_id);
+}
+function handleTriggerGroupChange(rule: AutoSupplyGroupSettings): void {
+  rule.deploy_group_ids = rule.deploy_group_ids.filter((groupId) => groupId !== rule.group_id);
+}
 function applySettings(settings: AutoSupplySettings): void {
-  Object.assign(form, { ...settings, groups: settings.groups.map((rule) => ({ ...rule })), customer_token: "" });
+  Object.assign(form, {
+    ...settings,
+    groups: settings.groups.map((rule) => ({ ...rule, deploy_group_ids: [...(rule.deploy_group_ids ?? [])] })),
+    customer_token: "",
+  });
 }
 function validate(): boolean {
   validationError.value = "";
@@ -228,7 +248,7 @@ function validate(): boolean {
   if (form.request_timeout_seconds < 1 || form.request_timeout_seconds > 300) { validationError.value = t("admin.settings.autoSupply.timeoutInvalid"); return false; }
   if (form.max_quantity_per_run < 1 || form.max_quantity_per_run > 1000) { validationError.value = t("admin.settings.autoSupply.maxQuantityInvalid"); return false; }
   if (form.enabled && form.groups.length === 0) { validationError.value = t("admin.settings.autoSupply.rulesRequired"); return false; }
-  if (form.groups.some((rule) => rule.group_id <= 0 || !rule.product.trim())) { validationError.value = t("admin.settings.autoSupply.ruleInvalid"); return false; }
+  if (form.groups.some((rule) => rule.group_id <= 0 || !rule.product.trim() || rule.deploy_group_ids.some((id) => id <= 0))) { validationError.value = t("admin.settings.autoSupply.ruleInvalid"); return false; }
   return true;
 }
 async function saveSettings(): Promise<void> {

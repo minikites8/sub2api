@@ -1052,6 +1052,8 @@ auto_supply:
   groups:
     # Replace 123 with the local group ID. Group platform is used when omitted.
     - group_id: 123
+      # Imported accounts are bound to the trigger group and these additional groups.
+      deploy_group_ids: [456, 789]
       product: "oauth_30d"
       min_available: 2
       quantity: 2

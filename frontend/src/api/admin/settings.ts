@@ -1371,6 +1371,7 @@ export async function updateOverloadCooldownSettings(
 
 export interface AutoSupplyGroupSettings {
   group_id: number;
+  deploy_group_ids: number[];
   product: string;
   min_available: number;
   quantity: number;

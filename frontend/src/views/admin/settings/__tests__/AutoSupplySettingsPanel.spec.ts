@@ -20,6 +20,22 @@ vi.mock("@/api", () => ({ adminAPI: { groups: { getAll: getGroups } } }));
 vi.mock("@/stores", () => ({ useAppStore: () => ({ showError, showSuccess }) }));
 vi.mock("@/utils/apiError", () => ({ extractApiErrorMessage: () => "error" }));
 vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
+vi.mock("@/components/common/GroupSelector.vue", async () => {
+  const { defineComponent: defineMockComponent, h: renderMock } = await import("vue");
+  return {
+    default: defineMockComponent({
+      props: { modelValue: { type: Array, default: () => [] } },
+      emits: ["update:modelValue"],
+      setup(props, { emit }) {
+        return () => renderMock("button", {
+          type: "button",
+          class: "group-selector-stub",
+          onClick: () => emit("update:modelValue", [...(props.modelValue as number[]), 9]),
+        }, (props.modelValue as number[]).join(","));
+      },
+    }),
+  };
+});
 
 import AutoSupplySettingsPanel from "../AutoSupplySettingsPanel.vue";
 
@@ -54,14 +70,18 @@ const baseSettings = {
   interval_seconds: 30,
   request_timeout_seconds: 20,
   max_quantity_per_run: 10,
-  groups: [{ group_id: 7, product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0 }],
+  groups: [{ group_id: 7, deploy_group_ids: [8], product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0 }],
 };
 
 describe("AutoSupplySettingsPanel", () => {
   beforeEach(() => {
     getSettings.mockResolvedValue({ ...baseSettings });
     updateSettings.mockImplementation(async (payload) => ({ ...baseSettings, ...payload, customer_token_configured: true }));
-    getGroups.mockResolvedValue([{ id: 7, name: "OpenAI", platform: "openai", status: "active" }]);
+    getGroups.mockResolvedValue([
+      { id: 7, name: "OpenAI", platform: "openai", status: "active" },
+      { id: 8, name: "Shared", platform: "openai", status: "active" },
+      { id: 9, name: "Overflow", platform: "openai", status: "active" },
+    ]);
     showError.mockReset();
     showSuccess.mockReset();
   });
@@ -74,6 +94,8 @@ describe("AutoSupplySettingsPanel", () => {
     expect(token.exists()).toBe(true);
     expect((token.element as HTMLInputElement).value).toBe("");
     expect(token.attributes("placeholder")).toContain("customerTokenConfiguredPlaceholder");
+    expect(wrapper.get('input[type="url"]').classes()).toContain("input");
+    expect(wrapper.find(".form-input").exists()).toBe(false);
   });
 
   it("adds and removes rules and saves the visible values", async () => {
@@ -85,6 +107,7 @@ describe("AutoSupplySettingsPanel", () => {
     expect(wrapper.findAll('input[type="text"]').length).toBe(2);
     const removeButtons = wrapper.findAll('button[title="admin.settings.autoSupply.removeRule"]');
     await removeButtons[1]?.trigger("click");
+    await wrapper.get(".group-selector-stub").trigger("click");
 
     const saveButton = wrapper.findAll("button").find((button) => button.text().includes("save"));
     await saveButton?.trigger("click");
@@ -94,7 +117,7 @@ describe("AutoSupplySettingsPanel", () => {
       enabled: true,
       base_url: "https://supplier.example",
       customer_token: undefined,
-      groups: [expect.objectContaining({ group_id: 7 })],
+      groups: [expect.objectContaining({ group_id: 7, deploy_group_ids: [8, 9] })],
     }));
     expect(showSuccess).toHaveBeenCalled();
   });
