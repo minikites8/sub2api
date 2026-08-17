@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,77 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+type autoSupplyMemorySettingRepo struct {
+	values map[string]string
+}
+
+func (r *autoSupplyMemorySettingRepo) Get(_ context.Context, key string) (*Setting, error) {
+	value, ok := r.values[key]
+	if !ok {
+		return nil, ErrSettingNotFound
+	}
+	return &Setting{Key: key, Value: value}, nil
+}
+
+func (r *autoSupplyMemorySettingRepo) GetValue(ctx context.Context, key string) (string, error) {
+	setting, err := r.Get(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	return setting.Value, nil
+}
+
+func (r *autoSupplyMemorySettingRepo) Set(_ context.Context, key, value string) error {
+	if r.values == nil {
+		r.values = make(map[string]string)
+	}
+	r.values[key] = value
+	return nil
+}
+
+func (r *autoSupplyMemorySettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	result := make(map[string]string)
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			result[key] = value
+		}
+	}
+	return result, nil
+}
+
+func (r *autoSupplyMemorySettingRepo) SetMultiple(ctx context.Context, settings map[string]string) error {
+	for key, value := range settings {
+		if err := r.Set(ctx, key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *autoSupplyMemorySettingRepo) GetAll(_ context.Context) (map[string]string, error) {
+	result := make(map[string]string, len(r.values))
+	for key, value := range r.values {
+		result[key] = value
+	}
+	return result, nil
+}
+
+func (r *autoSupplyMemorySettingRepo) Delete(_ context.Context, key string) error {
+	delete(r.values, key)
+	return nil
+}
+
+type autoSupplyTestEncryptor struct{}
+
+func (autoSupplyTestEncryptor) Encrypt(plaintext string) (string, error) {
+	return base64.StdEncoding.EncodeToString([]byte(plaintext)), nil
+}
+
+func (autoSupplyTestEncryptor) Decrypt(ciphertext string) (string, error) {
+	plaintext, err := base64.StdEncoding.DecodeString(ciphertext)
+	return string(plaintext), err
+}
 
 type autoSupplyAccountRepoStub struct {
 	AccountRepository
@@ -183,4 +255,98 @@ func TestDecodeAutoSupplyAccountAndExpiry(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, expiresAt)
 	require.Equal(t, int64(1770000000), *expiresAt)
+}
+
+func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
+	repo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
+	cfg := &config.Config{}
+	cfg.Totp.EncryptionKeyConfigured = true
+	svc := NewAutoSupplyService(nil, nil, cfg)
+	svc.SetSettingsDependencies(repo, autoSupplyTestEncryptor{})
+
+	updated, err := svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		Enabled:               true,
+		BaseURL:               "https://supplier.example/",
+		CustomerToken:         "customer-secret",
+		IntervalSeconds:       60,
+		RequestTimeoutSeconds: 15,
+		MaxQuantityPerRun:     8,
+		Groups: []AutoSupplyGroupSettings{{
+			GroupID: 42, Product: "oauth_30d", MinAvailable: 3, Quantity: 4,
+			Platform: PlatformOpenAI, AccountType: AccountTypeOAuth, Priority: 5, Concurrency: 2,
+		}},
+	})
+	require.NoError(t, err)
+	require.True(t, updated.CustomerTokenConfigured)
+	require.True(t, updated.EncryptionKeyConfigured)
+	require.Equal(t, "https://supplier.example", updated.BaseURL)
+	raw := repo.values[SettingKeyAutoSupplySettings]
+	require.NotContains(t, raw, "customer-secret")
+	require.Contains(t, raw, "customer_token_encrypted")
+
+	runtimeSettings := svc.currentAutoSupplyConfig()
+	require.Equal(t, "customer-secret", runtimeSettings.CustomerToken)
+	require.Equal(t, 60, runtimeSettings.IntervalSeconds)
+	select {
+	case <-svc.wakeCh:
+	default:
+		t.Fatal("settings update did not wake worker")
+	}
+
+	updated, err = svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		Enabled:               true,
+		BaseURL:               "https://supplier.example",
+		IntervalSeconds:       90,
+		RequestTimeoutSeconds: 20,
+		MaxQuantityPerRun:     10,
+		Groups: []AutoSupplyGroupSettings{{
+			GroupID: 42, Product: "oauth_30d", MinAvailable: 5, Quantity: 5,
+		}},
+	})
+	require.NoError(t, err)
+	require.True(t, updated.CustomerTokenConfigured)
+	require.Equal(t, "customer-secret", svc.currentAutoSupplyConfig().CustomerToken)
+
+	reloaded := NewAutoSupplyService(nil, nil, cfg)
+	reloaded.SetSettingsDependencies(repo, autoSupplyTestEncryptor{})
+	settings, err := reloaded.GetSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.CustomerTokenConfigured)
+	require.Equal(t, 90, settings.IntervalSeconds)
+	require.Equal(t, "customer-secret", reloaded.currentAutoSupplyConfig().CustomerToken)
+}
+
+func TestAutoSupplySettingsRequireConfiguredEncryptionKeyForNewToken(t *testing.T) {
+	repo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
+	svc := NewAutoSupplyService(nil, nil, &config.Config{})
+	svc.SetSettingsDependencies(repo, autoSupplyTestEncryptor{})
+
+	_, err := svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		BaseURL:               "https://supplier.example",
+		CustomerToken:         "new-secret",
+		IntervalSeconds:       30,
+		RequestTimeoutSeconds: 20,
+		MaxQuantityPerRun:     10,
+	})
+	require.ErrorIs(t, err, ErrSecretEncryptionKeyNotConfigured)
+	require.Empty(t, repo.values)
+}
+
+func TestAutoSupplySettingsRejectInvalidEnabledConfiguration(t *testing.T) {
+	repo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
+	cfg := &config.Config{}
+	cfg.Totp.EncryptionKeyConfigured = true
+	svc := NewAutoSupplyService(nil, nil, cfg)
+	svc.SetSettingsDependencies(repo, autoSupplyTestEncryptor{})
+
+	_, err := svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		Enabled:               true,
+		BaseURL:               "https://supplier.example",
+		CustomerToken:         "customer-secret",
+		IntervalSeconds:       1,
+		RequestTimeoutSeconds: 20,
+		MaxQuantityPerRun:     10,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "interval_seconds")
 }

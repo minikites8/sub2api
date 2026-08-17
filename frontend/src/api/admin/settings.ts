@@ -1367,6 +1367,57 @@ export async function updateOverloadCooldownSettings(
   return data;
 }
 
+// ==================== Automatic Account Supply Settings ====================
+
+export interface AutoSupplyGroupSettings {
+  group_id: number;
+  product: string;
+  min_available: number;
+  quantity: number;
+  platform: string;
+  account_type: string;
+  priority: number;
+  concurrency: number;
+}
+
+export interface AutoSupplySettings {
+  enabled: boolean;
+  base_url: string;
+  customer_token_configured: boolean;
+  encryption_key_configured: boolean;
+  interval_seconds: number;
+  request_timeout_seconds: number;
+  max_quantity_per_run: number;
+  groups: AutoSupplyGroupSettings[];
+}
+
+export interface UpdateAutoSupplySettingsRequest {
+  enabled: boolean;
+  base_url: string;
+  customer_token?: string;
+  interval_seconds: number;
+  request_timeout_seconds: number;
+  max_quantity_per_run: number;
+  groups: AutoSupplyGroupSettings[];
+}
+
+export async function getAutoSupplySettings(): Promise<AutoSupplySettings> {
+  const { data } = await apiClient.get<AutoSupplySettings>(
+    "/admin/settings/auto-supply",
+  );
+  return data;
+}
+
+export async function updateAutoSupplySettings(
+  settings: UpdateAutoSupplySettingsRequest,
+): Promise<AutoSupplySettings> {
+  const { data } = await apiClient.put<AutoSupplySettings>(
+    "/admin/settings/auto-supply",
+    settings,
+  );
+  return data;
+}
+
 // ==================== 429 Rate Limit Cooldown Settings ====================
 
 export interface RateLimit429CooldownSettings {
@@ -1652,6 +1703,8 @@ export const settingsAPI = {
   deleteAdminApiKeyById,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
+  getAutoSupplySettings,
+  updateAutoSupplySettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
   getPanelRateLimitSettings,

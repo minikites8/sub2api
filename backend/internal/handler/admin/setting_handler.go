@@ -62,6 +62,7 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	autoSupplyService        *service.AutoSupplyService
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -96,6 +97,11 @@ func (h *SettingHandler) SetAliyunCaptchaService(aliyunCaptchaService *service.A
 func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userService *service.UserService) {
 	h.totpService = totpService
 	h.userService = userService
+}
+
+// SetAutoSupplyService attaches the runtime-backed automatic supply settings.
+func (h *SettingHandler) SetAutoSupplyService(autoSupplyService *service.AutoSupplyService) {
+	h.autoSupplyService = autoSupplyService
 }
 
 // GetSettings 获取所有系统设置

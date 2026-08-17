@@ -34,6 +34,14 @@ type AutoSupplyService struct {
 	admin       AutoSupplyAdmin
 	cfg         *config.Config
 	client      *http.Client
+	settingRepo SettingRepository
+	encryptor   SecretEncryptor
+
+	settingsMu      sync.RWMutex
+	runtimeSettings config.AutoSupplyConfig
+	settingsVersion string
+	wakeCh          chan struct{}
+	startOnce       sync.Once
 
 	mu       sync.Mutex
 	runMu    sync.Mutex
@@ -101,17 +109,21 @@ type autoSupplyAccount struct {
 // NewAutoSupplyService creates the replenishment worker. The worker remains
 // inert until auto_supply.enabled and a customer token are configured.
 func NewAutoSupplyService(accountRepo AccountRepository, admin AutoSupplyAdmin, cfg *config.Config) *AutoSupplyService {
-	timeout := 20 * time.Second
-	if cfg != nil && cfg.AutoSupply.RequestTimeoutSeconds > 0 {
-		timeout = time.Duration(cfg.AutoSupply.RequestTimeoutSeconds) * time.Second
+	runtimeSettings := config.AutoSupplyConfig{}
+	if cfg != nil {
+		runtimeSettings = cfg.AutoSupply
 	}
+	runtimeSettings = normalizeAutoSupplyConfig(runtimeSettings)
 	return &AutoSupplyService{
-		accountRepo: accountRepo,
-		admin:       admin,
-		cfg:         cfg,
-		client:      &http.Client{Timeout: timeout},
-		orders:      make(map[int64]*autoSupplyOrder),
-		stopCh:      make(chan struct{}),
+		accountRepo:     accountRepo,
+		admin:           admin,
+		cfg:             cfg,
+		client:          &http.Client{},
+		runtimeSettings: runtimeSettings,
+		settingsVersion: autoSupplyFallbackVersion,
+		wakeCh:          make(chan struct{}, 1),
+		orders:          make(map[int64]*autoSupplyOrder),
+		stopCh:          make(chan struct{}),
 	}
 }
 
@@ -120,31 +132,55 @@ func (s *AutoSupplyService) Start() {
 	if s == nil {
 		return
 	}
-	if !s.enabled() {
-		if s.cfg != nil && s.cfg.AutoSupply.Enabled {
-			slog.Warn("auto_supply_disabled", "reason", "missing customer token, base URL, or group configuration")
+	s.startOnce.Do(func() {
+		if _, err := s.reloadRuntimeSettings(context.Background()); err != nil {
+			slog.Warn("auto_supply_settings_load_failed", "error", err)
 		}
-		return
-	}
-	interval := 30 * time.Second
-	if s.cfg.AutoSupply.IntervalSeconds > 0 {
-		interval = time.Duration(s.cfg.AutoSupply.IntervalSeconds) * time.Second
-	}
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.RunOnce(context.Background())
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
+		s.wg.Add(1)
+		go s.run()
+	})
+}
+
+func (s *AutoSupplyService) run() {
+	defer s.wg.Done()
+	reloadTicker := time.NewTicker(autoSupplyReloadInterval)
+	defer reloadTicker.Stop()
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+
+	resetTimer := func() {
+		if !timer.Stop() {
 			select {
-			case <-ticker.C:
-				s.RunOnce(context.Background())
-			case <-s.stopCh:
-				return
+			case <-timer.C:
+			default:
 			}
 		}
-	}()
+		settings := s.currentAutoSupplyConfig()
+		timer.Reset(time.Duration(settings.IntervalSeconds) * time.Second)
+	}
+
+	for {
+		select {
+		case <-timer.C:
+			s.RunOnce(context.Background())
+			resetTimer()
+		case <-s.wakeCh:
+			s.RunOnce(context.Background())
+			resetTimer()
+		case <-reloadTicker.C:
+			changed, err := s.reloadRuntimeSettings(context.Background())
+			if err != nil {
+				slog.Warn("auto_supply_settings_reload_failed", "error", err)
+				continue
+			}
+			if changed {
+				s.RunOnce(context.Background())
+				resetTimer()
+			}
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 // Stop stops the worker and waits for an in-flight scan to finish.
@@ -159,7 +195,11 @@ func (s *AutoSupplyService) Stop() {
 // RunOnce performs one bounded scan. It is exported for operational checks
 // and unit tests; scheduled execution calls the same method.
 func (s *AutoSupplyService) RunOnce(ctx context.Context) {
-	if s == nil || !s.enabled() || s.accountRepo == nil || s.admin == nil {
+	if s == nil || s.accountRepo == nil || s.admin == nil {
+		return
+	}
+	settings := s.currentAutoSupplyConfig()
+	if !autoSupplyEnabled(settings) {
 		return
 	}
 	if ctx == nil {
@@ -171,30 +211,23 @@ func (s *AutoSupplyService) RunOnce(ctx context.Context) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 
-	for _, groupCfg := range s.cfg.AutoSupply.Groups {
+	for _, groupCfg := range settings.Groups {
 		if groupCfg.GroupID <= 0 {
 			continue
 		}
 		groupCtx := ctx
 		cancel := func() {}
-		if timeoutSeconds := s.cfg.AutoSupply.RequestTimeoutSeconds; timeoutSeconds > 0 {
+		if timeoutSeconds := settings.RequestTimeoutSeconds; timeoutSeconds > 0 {
 			groupCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
 		}
-		if err := s.replenishGroup(groupCtx, groupCfg); err != nil {
+		if err := s.replenishGroup(groupCtx, settings, groupCfg); err != nil {
 			slog.Warn("auto_supply_group_failed", "group_id", groupCfg.GroupID, "error", err)
 		}
 		cancel()
 	}
 }
 
-func (s *AutoSupplyService) enabled() bool {
-	return s.cfg != nil && s.cfg.AutoSupply.Enabled &&
-		strings.TrimSpace(s.cfg.AutoSupply.BaseURL) != "" &&
-		strings.TrimSpace(s.cfg.AutoSupply.CustomerToken) != "" &&
-		len(s.cfg.AutoSupply.Groups) > 0
-}
-
-func (s *AutoSupplyService) replenishGroup(ctx context.Context, groupCfg config.AutoSupplyGroupConfig) error {
+func (s *AutoSupplyService) replenishGroup(ctx context.Context, settings config.AutoSupplyConfig, groupCfg config.AutoSupplyGroupConfig) error {
 	group, err := s.admin.GetGroup(ctx, groupCfg.GroupID)
 	if err != nil {
 		return fmt.Errorf("load group: %w", err)
@@ -224,7 +257,7 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, groupCfg config.
 	}
 
 	if order := s.getActiveOrder(group.ID); order != nil {
-		return s.pollAndImport(ctx, group, groupCfg, order, platform)
+		return s.pollAndImport(ctx, settings, group, groupCfg, order, platform)
 	}
 
 	quantity := groupCfg.Quantity
@@ -234,18 +267,18 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, groupCfg config.
 	if quantity <= 0 {
 		quantity = 1
 	}
-	if maximum := s.cfg.AutoSupply.MaxQuantityPerRun; maximum > 0 && quantity > maximum {
+	if maximum := settings.MaxQuantityPerRun; maximum > 0 && quantity > maximum {
 		quantity = maximum
 	}
 	product := strings.TrimSpace(groupCfg.Product)
 	if product == "" {
 		product = autoSupplyDefaultProduct
 	}
-	if _, err := s.getInventory(ctx, product, quantity); err != nil {
+	if _, err := s.getInventory(ctx, settings, product, quantity); err != nil {
 		return err
 	}
 
-	orderID, err := s.createOrder(ctx, group.ID, product, quantity)
+	orderID, err := s.createOrder(ctx, settings, group.ID, product, quantity)
 	if err != nil {
 		return err
 	}
@@ -255,14 +288,14 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, groupCfg config.
 	return nil
 }
 
-func (s *AutoSupplyService) pollAndImport(ctx context.Context, group *Group, groupCfg config.AutoSupplyGroupConfig, order *autoSupplyOrder, platform string) error {
-	state, err := s.getOrder(ctx, order.ID)
+func (s *AutoSupplyService) pollAndImport(ctx context.Context, settings config.AutoSupplyConfig, group *Group, groupCfg config.AutoSupplyGroupConfig, order *autoSupplyOrder, platform string) error {
+	state, err := s.getOrder(ctx, settings, order.ID)
 	if err != nil {
 		return err
 	}
 	switch normalizeAutoSupplyState(state.Status, state.State) {
 	case "completed":
-		bundle, err := s.downloadBundle(ctx, order.ID)
+		bundle, err := s.downloadBundle(ctx, settings, order.ID)
 		if err != nil {
 			return err
 		}
@@ -299,8 +332,8 @@ func normalizeAutoSupplyState(status, state string) string {
 	}
 }
 
-func (s *AutoSupplyService) getInventory(ctx context.Context, product string, quantity int) (*autoSupplyInventoryResponse, error) {
-	endpoint, err := s.buildEndpoint("/api/customer/inventory")
+func (s *AutoSupplyService) getInventory(ctx context.Context, settings config.AutoSupplyConfig, product string, quantity int) (*autoSupplyInventoryResponse, error) {
+	endpoint, err := s.buildEndpoint(settings, "/api/customer/inventory")
 	if err != nil {
 		return nil, err
 	}
@@ -309,14 +342,14 @@ func (s *AutoSupplyService) getInventory(ctx context.Context, product string, qu
 	query.Set("quantity", strconv.Itoa(quantity))
 	endpoint.RawQuery = query.Encode()
 	var response autoSupplyInventoryResponse
-	if err := s.doJSON(ctx, http.MethodGet, endpoint.String(), nil, "", &response); err != nil {
+	if err := s.doJSON(ctx, settings, http.MethodGet, endpoint.String(), nil, "", &response); err != nil {
 		return nil, fmt.Errorf("query inventory: %w", err)
 	}
 	return &response, nil
 }
 
-func (s *AutoSupplyService) createOrder(ctx context.Context, groupID int64, product string, quantity int) (string, error) {
-	endpoint, err := s.buildEndpoint("/api/customer/pickup/orders")
+func (s *AutoSupplyService) createOrder(ctx context.Context, settings config.AutoSupplyConfig, groupID int64, product string, quantity int) (string, error) {
+	endpoint, err := s.buildEndpoint(settings, "/api/customer/pickup/orders")
 	if err != nil {
 		return "", err
 	}
@@ -328,7 +361,7 @@ func (s *AutoSupplyService) createOrder(ctx context.Context, groupID int64, prod
 	// after the previous bucket has been fulfilled.
 	idempotencyKey := fmt.Sprintf("sub2api-auto-supply-g%d-%d", groupID, time.Now().UTC().Unix()/3600)
 	var response autoSupplyOrderResponse
-	if err := s.doJSON(ctx, http.MethodPost, endpoint.String(), body, idempotencyKey, &response); err != nil {
+	if err := s.doJSON(ctx, settings, http.MethodPost, endpoint.String(), body, idempotencyKey, &response); err != nil {
 		return "", fmt.Errorf("create pickup order: %w", err)
 	}
 	orderID := strings.TrimSpace(response.OrderID)
@@ -341,27 +374,27 @@ func (s *AutoSupplyService) createOrder(ctx context.Context, groupID int64, prod
 	return orderID, nil
 }
 
-func (s *AutoSupplyService) getOrder(ctx context.Context, orderID string) (*autoSupplyOrderStatus, error) {
-	endpoint, err := s.buildEndpoint("/api/customer/pickup/orders/" + url.PathEscape(orderID))
+func (s *AutoSupplyService) getOrder(ctx context.Context, settings config.AutoSupplyConfig, orderID string) (*autoSupplyOrderStatus, error) {
+	endpoint, err := s.buildEndpoint(settings, "/api/customer/pickup/orders/"+url.PathEscape(orderID))
 	if err != nil {
 		return nil, err
 	}
 	var response autoSupplyOrderStatus
-	if err := s.doJSON(ctx, http.MethodGet, endpoint.String(), nil, "", &response); err != nil {
+	if err := s.doJSON(ctx, settings, http.MethodGet, endpoint.String(), nil, "", &response); err != nil {
 		return nil, fmt.Errorf("query pickup order: %w", err)
 	}
 	return &response, nil
 }
 
-func (s *AutoSupplyService) downloadBundle(ctx context.Context, orderID string) (*autoSupplyBundle, error) {
-	endpoint, err := s.buildEndpoint("/api/customer/pickup/orders/" + url.PathEscape(orderID) + "/download")
+func (s *AutoSupplyService) downloadBundle(ctx context.Context, settings config.AutoSupplyConfig, orderID string) (*autoSupplyBundle, error) {
+	endpoint, err := s.buildEndpoint(settings, "/api/customer/pickup/orders/"+url.PathEscape(orderID)+"/download")
 	if err != nil {
 		return nil, err
 	}
 	query := endpoint.Query()
 	query.Set("format", "sub2")
 	endpoint.RawQuery = query.Encode()
-	data, err := s.doBytes(ctx, http.MethodGet, endpoint.String(), nil, "")
+	data, err := s.doBytes(ctx, settings, http.MethodGet, endpoint.String(), nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("download pickup bundle: %w", err)
 	}
@@ -552,8 +585,8 @@ func parseAutoSupplyUnix(raw json.RawMessage) (*int64, error) {
 	return &value, nil
 }
 
-func (s *AutoSupplyService) buildEndpoint(path string) (*url.URL, error) {
-	base := strings.TrimRight(strings.TrimSpace(s.cfg.AutoSupply.BaseURL), "/")
+func (s *AutoSupplyService) buildEndpoint(settings config.AutoSupplyConfig, path string) (*url.URL, error) {
+	base := strings.TrimRight(strings.TrimSpace(settings.BaseURL), "/")
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, errors.New("auto supply base_url must be an absolute URL")
@@ -572,8 +605,8 @@ func (s *AutoSupplyService) buildEndpoint(path string) (*url.URL, error) {
 	return parsed, nil
 }
 
-func (s *AutoSupplyService) doJSON(ctx context.Context, method, endpoint string, body []byte, idempotencyKey string, target any) error {
-	data, err := s.doBytes(ctx, method, endpoint, body, idempotencyKey)
+func (s *AutoSupplyService) doJSON(ctx context.Context, settings config.AutoSupplyConfig, method, endpoint string, body []byte, idempotencyKey string, target any) error {
+	data, err := s.doBytes(ctx, settings, method, endpoint, body, idempotencyKey)
 	if err != nil {
 		return err
 	}
@@ -583,13 +616,13 @@ func (s *AutoSupplyService) doJSON(ctx context.Context, method, endpoint string,
 	return nil
 }
 
-func (s *AutoSupplyService) doBytes(ctx context.Context, method, endpoint string, body []byte, idempotencyKey string) ([]byte, error) {
+func (s *AutoSupplyService) doBytes(ctx context.Context, settings config.AutoSupplyConfig, method, endpoint string, body []byte, idempotencyKey string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("X-Customer-Token", strings.TrimSpace(s.cfg.AutoSupply.CustomerToken))
+	request.Header.Set("X-Customer-Token", strings.TrimSpace(settings.CustomerToken))
 	if len(body) > 0 {
 		request.Header.Set("Content-Type", "application/json")
 	}

@@ -1,0 +1,101 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, h } from "vue";
+import { flushPromises, mount } from "@vue/test-utils";
+
+const { getSettings, updateSettings, getGroups, showError, showSuccess } = vi.hoisted(() => ({
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+  getGroups: vi.fn(),
+  showError: vi.fn(),
+  showSuccess: vi.fn(),
+}));
+
+vi.mock("@/api/admin/settings", () => ({
+  settingsAPI: {
+    getAutoSupplySettings: getSettings,
+    updateAutoSupplySettings: updateSettings,
+  },
+}));
+vi.mock("@/api", () => ({ adminAPI: { groups: { getAll: getGroups } } }));
+vi.mock("@/stores", () => ({ useAppStore: () => ({ showError, showSuccess }) }));
+vi.mock("@/utils/apiError", () => ({ extractApiErrorMessage: () => "error" }));
+vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
+
+import AutoSupplySettingsPanel from "../AutoSupplySettingsPanel.vue";
+
+const ToggleStub = defineComponent({
+  props: { modelValue: { type: Boolean, default: false } },
+  emits: ["update:modelValue"],
+  setup(props, { emit }) {
+    return () => h("input", {
+      type: "checkbox",
+      checked: props.modelValue,
+      onChange: (event: Event) => emit("update:modelValue", (event.target as HTMLInputElement).checked),
+    });
+  },
+});
+
+const SelectStub = defineComponent({
+  props: { modelValue: { type: [String, Number], default: "" }, options: { type: Array, default: () => [] } },
+  emits: ["update:modelValue"],
+  setup(props, { emit }) {
+    return () => h("select", {
+      value: props.modelValue,
+      onChange: (event: Event) => emit("update:modelValue", (event.target as HTMLSelectElement).value),
+    }, (props.options as Array<{ value: string | number; label: string }>).map((option) => h("option", { value: option.value }, option.label)));
+  },
+});
+
+const baseSettings = {
+  enabled: true,
+  base_url: "https://supplier.example",
+  customer_token_configured: true,
+  encryption_key_configured: true,
+  interval_seconds: 30,
+  request_timeout_seconds: 20,
+  max_quantity_per_run: 10,
+  groups: [{ group_id: 7, product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0 }],
+};
+
+describe("AutoSupplySettingsPanel", () => {
+  beforeEach(() => {
+    getSettings.mockResolvedValue({ ...baseSettings });
+    updateSettings.mockImplementation(async (payload) => ({ ...baseSettings, ...payload, customer_token_configured: true }));
+    getGroups.mockResolvedValue([{ id: 7, name: "OpenAI", platform: "openai", status: "active" }]);
+    showError.mockReset();
+    showSuccess.mockReset();
+  });
+
+  it("loads with a blank token field while showing configured state", async () => {
+    const wrapper = mount(AutoSupplySettingsPanel, { global: { stubs: { Toggle: ToggleStub, Select: SelectStub, Icon: true } } });
+    await flushPromises();
+
+    const token = wrapper.find('input[type="password"]');
+    expect(token.exists()).toBe(true);
+    expect((token.element as HTMLInputElement).value).toBe("");
+    expect(token.attributes("placeholder")).toContain("customerTokenConfiguredPlaceholder");
+  });
+
+  it("adds and removes rules and saves the visible values", async () => {
+    const wrapper = mount(AutoSupplySettingsPanel, { global: { stubs: { Toggle: ToggleStub, Select: SelectStub, Icon: true } } });
+    await flushPromises();
+
+    const addButton = wrapper.findAll("button").find((button) => button.text().includes("addRule"));
+    await addButton?.trigger("click");
+    expect(wrapper.findAll('input[type="text"]').length).toBe(2);
+    const removeButtons = wrapper.findAll('button[title="admin.settings.autoSupply.removeRule"]');
+    await removeButtons[1]?.trigger("click");
+
+    const saveButton = wrapper.findAll("button").find((button) => button.text().includes("save"));
+    await saveButton?.trigger("click");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: true,
+      base_url: "https://supplier.example",
+      customer_token: undefined,
+      groups: [expect.objectContaining({ group_id: 7 })],
+    }));
+    expect(showSuccess).toHaveBeenCalled();
+  });
+});
