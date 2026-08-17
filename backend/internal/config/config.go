@@ -71,6 +71,7 @@ type Config struct {
 	Database                DatabaseConfig                `mapstructure:"database"`
 	Redis                   RedisConfig                   `mapstructure:"redis"`
 	Ops                     OpsConfig                     `mapstructure:"ops"`
+	AutoSupply              AutoSupplyConfig              `mapstructure:"auto_supply"`
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
 	Totp                    TotpConfig                    `mapstructure:"totp"`
 	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
@@ -1466,6 +1467,31 @@ type OpsConfig struct {
 	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
 }
 
+// AutoSupplyConfig controls server-side replenishment from a customer-token
+// account supplier. Credentials stay in server configuration and are never
+// exposed through the admin API.
+type AutoSupplyConfig struct {
+	Enabled               bool                    `mapstructure:"enabled"`
+	BaseURL               string                  `mapstructure:"base_url"`
+	CustomerToken         string                  `mapstructure:"customer_token" json:"-" yaml:"-"`
+	IntervalSeconds       int                     `mapstructure:"interval_seconds"`
+	RequestTimeoutSeconds int                     `mapstructure:"request_timeout_seconds"`
+	MaxQuantityPerRun     int                     `mapstructure:"max_quantity_per_run"`
+	Groups                []AutoSupplyGroupConfig `mapstructure:"groups"`
+}
+
+// AutoSupplyGroupConfig maps one local group to an upstream product.
+type AutoSupplyGroupConfig struct {
+	GroupID      int64  `mapstructure:"group_id"`
+	Product      string `mapstructure:"product"`
+	MinAvailable int    `mapstructure:"min_available"`
+	Quantity     int    `mapstructure:"quantity"`
+	Platform     string `mapstructure:"platform"`
+	AccountType  string `mapstructure:"account_type"`
+	Priority     int    `mapstructure:"priority"`
+	Concurrency  int    `mapstructure:"concurrency"`
+}
+
 type OpsCleanupConfig struct {
 	Enabled  bool   `mapstructure:"enabled"`
 	Schedule string `mapstructure:"schedule"`
@@ -1692,6 +1718,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if err := viper.BindEnv("server.enable_server_timing", "ENABLE_SERVER_TIMING"); err != nil {
 		return nil, fmt.Errorf("bind ENABLE_SERVER_TIMING: %w", err)
 	}
+	if err := viper.BindEnv("auto_supply.customer_token", "AUTO_SUPPLY_CUSTOMER_TOKEN"); err != nil {
+		return nil, fmt.Errorf("bind AUTO_SUPPLY_CUSTOMER_TOKEN: %w", err)
+	}
+	if err := viper.BindEnv("auto_supply.base_url", "AUTO_SUPPLY_BASE_URL"); err != nil {
+		return nil, fmt.Errorf("bind AUTO_SUPPLY_BASE_URL: %w", err)
+	}
 
 	// 默认值
 	setDefaults()
@@ -1770,6 +1802,13 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
+	cfg.AutoSupply.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.AutoSupply.BaseURL), "/")
+	cfg.AutoSupply.CustomerToken = strings.TrimSpace(cfg.AutoSupply.CustomerToken)
+	for i := range cfg.AutoSupply.Groups {
+		cfg.AutoSupply.Groups[i].Product = strings.TrimSpace(cfg.AutoSupply.Groups[i].Product)
+		cfg.AutoSupply.Groups[i].Platform = strings.TrimSpace(cfg.AutoSupply.Groups[i].Platform)
+		cfg.AutoSupply.Groups[i].AccountType = strings.TrimSpace(cfg.AutoSupply.Groups[i].AccountType)
+	}
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 		if err != nil {
@@ -2078,6 +2117,16 @@ func setDefaults() {
 	// Retention days: vNext defaults to 30 days across ops datasets.
 	viper.SetDefault("ops.cleanup.error_log_retention_days", 30)
 	viper.SetDefault("ops.cleanup.minute_metrics_retention_days", 30)
+
+	// Automatic account replenishment. The customer token is intentionally empty
+	// by default and should be supplied through AUTO_SUPPLY_CUSTOMER_TOKEN.
+	viper.SetDefault("auto_supply.enabled", false)
+	viper.SetDefault("auto_supply.base_url", "https://bugteam.team")
+	viper.SetDefault("auto_supply.customer_token", "")
+	viper.SetDefault("auto_supply.interval_seconds", 30)
+	viper.SetDefault("auto_supply.request_timeout_seconds", 20)
+	viper.SetDefault("auto_supply.max_quantity_per_run", 10)
+	viper.SetDefault("auto_supply.groups", []AutoSupplyGroupConfig{})
 	viper.SetDefault("ops.cleanup.hourly_metrics_retention_days", 30)
 	viper.SetDefault("ops.aggregation.enabled", true)
 	viper.SetDefault("ops.metrics_collector_cache.enabled", true)
@@ -2491,6 +2540,45 @@ func (c *Config) Validate() error {
 	}
 	if c.JWT.ExpireHour > 24 {
 		slog.Warn("jwt.expire_hour is high; consider shorter expiration for security", "expire_hour", c.JWT.ExpireHour)
+	}
+	if c.AutoSupply.Enabled {
+		if strings.TrimSpace(c.AutoSupply.CustomerToken) == "" {
+			return fmt.Errorf("auto_supply.customer_token is required when auto_supply is enabled")
+		}
+		if c.AutoSupply.IntervalSeconds <= 0 {
+			return fmt.Errorf("auto_supply.interval_seconds must be positive when auto_supply is enabled")
+		}
+		if c.AutoSupply.RequestTimeoutSeconds <= 0 {
+			return fmt.Errorf("auto_supply.request_timeout_seconds must be positive when auto_supply is enabled")
+		}
+		if c.AutoSupply.MaxQuantityPerRun <= 0 {
+			return fmt.Errorf("auto_supply.max_quantity_per_run must be positive when auto_supply is enabled")
+		}
+		baseURL := strings.TrimSpace(c.AutoSupply.BaseURL)
+		parsed, err := url.Parse(baseURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+			return fmt.Errorf("auto_supply.base_url must be an absolute URL without userinfo")
+		}
+		if parsed.Scheme != "https" {
+			host := strings.ToLower(parsed.Hostname())
+			if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+				return fmt.Errorf("auto_supply.base_url must use HTTPS")
+			}
+		}
+		if len(c.AutoSupply.Groups) == 0 {
+			return fmt.Errorf("auto_supply.groups must contain at least one group when auto_supply is enabled")
+		}
+		for index, group := range c.AutoSupply.Groups {
+			if group.GroupID <= 0 {
+				return fmt.Errorf("auto_supply.groups[%d].group_id must be positive", index)
+			}
+			if group.MinAvailable < 0 {
+				return fmt.Errorf("auto_supply.groups[%d].min_available must be non-negative", index)
+			}
+			if group.Quantity < 0 {
+				return fmt.Errorf("auto_supply.groups[%d].quantity must be non-negative", index)
+			}
+		}
 	}
 	// JWT Refresh Token配置验证
 	if c.JWT.AccessTokenExpireMinutes < 0 {

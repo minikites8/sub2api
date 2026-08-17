@@ -88,6 +88,7 @@ func provideCleanup(
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
+	autoSupply *service.AutoSupplyService,
 	openAIAccountGuard *service.OpenAIAccountGuardService,
 	codexVersionSync *service.OpenAICodexVersionSyncService,
 	proxyExpiry *service.ProxyExpiryService,
@@ -238,6 +239,12 @@ func provideCleanup(
 			}},
 			{"AccountExpiryService", func() error {
 				accountExpiry.Stop()
+				return nil
+			}},
+			{"AutoSupplyService", func() error {
+				if autoSupply != nil {
+					autoSupply.Stop()
+				}
 				return nil
 			}},
 			{"OpenAIAccountGuardService", func() error {

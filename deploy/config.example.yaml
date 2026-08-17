@@ -1036,6 +1036,31 @@ ops:
   enabled: true
 
 # =============================================================================
+# Automatic Account Supply (Optional)
+# 自动供号（可选）
+# =============================================================================
+# The worker checks configured groups and imports completed Sub2 bundles from
+# the supplier. Keep the customer token in the environment whenever possible:
+# AUTO_SUPPLY_CUSTOMER_TOKEN=cfk_...
+auto_supply:
+  enabled: false
+  base_url: "https://bugteam.team"
+  customer_token: ""
+  interval_seconds: 30
+  request_timeout_seconds: 20
+  max_quantity_per_run: 10
+  groups:
+    # Replace 123 with the local group ID. Group platform is used when omitted.
+    - group_id: 123
+      product: "oauth_30d"
+      min_available: 2
+      quantity: 2
+      platform: "openai"
+      account_type: "oauth"
+      priority: 0
+      concurrency: 0
+
+# =============================================================================
 # JWT Configuration
 # JWT 配置
 # =============================================================================
