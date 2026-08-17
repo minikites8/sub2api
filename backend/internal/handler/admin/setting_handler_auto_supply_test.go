@@ -74,6 +74,17 @@ func TestGetAutoSupplySettingsMasksToken(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"customer_token_configured":true`)
 }
 
+func TestGetAutoSupplyOrders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/auto-supply/orders", nil)
+
+	newAutoSupplySettingHandler().GetAutoSupplyOrders(c)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"data":[]`)
+}
+
 func TestUpdateAutoSupplySettingsValidatesInput(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	payload, err := json.Marshal(service.AutoSupplySettingsUpdate{

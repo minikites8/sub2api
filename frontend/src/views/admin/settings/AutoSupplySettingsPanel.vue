@@ -192,6 +192,69 @@
         </div>
       </div>
     </section>
+
+    <section class="card">
+      <div class="flex items-center justify-between gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+        <div>
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+            {{ t("admin.settings.autoSupply.ordersTitle") }}
+          </h3>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {{ t("admin.settings.autoSupply.ordersDescription") }}
+          </p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" :disabled="ordersLoading" @click="loadOrders">
+          <Icon name="refresh" size="sm" :class="{ 'animate-spin': ordersLoading }" />
+          <span>{{ t("admin.settings.autoSupply.refreshOrders") }}</span>
+        </button>
+      </div>
+
+      <div class="p-6">
+        <div v-if="ordersLoading && orders.length === 0" class="flex items-center gap-2 py-5 text-sm text-gray-500 dark:text-gray-400">
+          <Icon name="refresh" size="sm" class="animate-spin" />
+          {{ t("admin.settings.autoSupply.loadingOrders") }}
+        </div>
+        <div v-else-if="orders.length === 0" class="rounded border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
+          {{ t("admin.settings.autoSupply.noOrders") }}
+        </div>
+        <div v-else class="overflow-x-auto">
+          <table class="min-w-full text-left text-sm">
+            <thead class="border-b border-gray-200 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+              <tr>
+                <th class="whitespace-nowrap px-3 py-2 font-medium">{{ t("admin.settings.autoSupply.orderId") }}</th>
+                <th class="whitespace-nowrap px-3 py-2 font-medium">{{ t("admin.settings.autoSupply.orderGroup") }}</th>
+                <th class="whitespace-nowrap px-3 py-2 font-medium">{{ t("admin.settings.autoSupply.orderProduct") }}</th>
+                <th class="whitespace-nowrap px-3 py-2 font-medium">{{ t("admin.settings.autoSupply.orderQuantity") }}</th>
+                <th class="whitespace-nowrap px-3 py-2 font-medium">{{ t("admin.settings.autoSupply.orderStatus") }}</th>
+                <th class="whitespace-nowrap px-3 py-2 font-medium">{{ t("admin.settings.autoSupply.orderCreatedAt") }}</th>
+                <th class="whitespace-nowrap px-3 py-2 font-medium">{{ t("admin.settings.autoSupply.orderUpdatedAt") }}</th>
+                <th class="px-3 py-2 font-medium">{{ t("admin.settings.autoSupply.orderError") }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="order in orders" :key="order.id" class="align-top">
+                <td class="max-w-48 px-3 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">
+                  <span class="block truncate" :title="order.id">{{ order.id }}</span>
+                </td>
+                <td class="whitespace-nowrap px-3 py-3 text-gray-700 dark:text-gray-300">{{ orderGroupLabel(order.group_id) }}</td>
+                <td class="whitespace-nowrap px-3 py-3 text-gray-700 dark:text-gray-300">{{ order.product }}</td>
+                <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ order.quantity }}</td>
+                <td class="px-3 py-3">
+                  <span class="inline-flex whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium" :class="orderStatusClass(order.status)">
+                    {{ orderStatusLabel(order.status) }}
+                  </span>
+                </td>
+                <td class="whitespace-nowrap px-3 py-3 text-xs text-gray-500 dark:text-gray-400">{{ formatOrderTime(order.created_at) }}</td>
+                <td class="whitespace-nowrap px-3 py-3 text-xs text-gray-500 dark:text-gray-400">{{ formatOrderTime(order.updated_at) }}</td>
+                <td class="max-w-72 px-3 py-3 text-xs text-red-600 dark:text-red-400">
+                  <span class="block truncate" :title="order.error || ''">{{ order.error || "-" }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -199,7 +262,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
-import { settingsAPI, type AutoSupplyGroupSettings, type AutoSupplySettings } from "@/api/admin/settings";
+import { settingsAPI, type AutoSupplyGroupSettings, type AutoSupplyOrder, type AutoSupplySettings } from "@/api/admin/settings";
 import { getAll as getAllProxies } from "@/api/admin/proxies";
 import type { AdminGroup } from "@/types";
 import Icon from "@/components/icons/Icon.vue";
@@ -208,13 +271,16 @@ import Toggle from "@/components/common/Toggle.vue";
 import GroupSelector from "@/components/common/GroupSelector.vue";
 import { useAppStore } from "@/stores";
 import { extractApiErrorMessage } from "@/utils/apiError";
+import { formatDateTime } from "@/utils/format";
 
 const { t } = useI18n();
 const appStore = useAppStore();
 const loading = ref(true);
 const saving = ref(false);
+const ordersLoading = ref(false);
 const validationError = ref("");
 const groups = ref<AdminGroup[]>([]);
+const orders = ref<AutoSupplyOrder[]>([]);
 const proxies = ref<Array<{ id: number; name: string; host: string; port: number }>>([]);
 type FormState = AutoSupplySettings & { customer_token: string };
 const form = reactive<FormState>({
@@ -349,5 +415,46 @@ async function load(): Promise<void> {
     appStore.showError(extractApiErrorMessage(error, t("admin.settings.autoSupply.loadFailed")));
   } finally { loading.value = false; }
 }
-onMounted(load);
+async function loadOrders(): Promise<void> {
+  ordersLoading.value = true;
+  try {
+    orders.value = await settingsAPI.getAutoSupplyOrders();
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.autoSupply.ordersLoadFailed")));
+  } finally {
+    ordersLoading.value = false;
+  }
+}
+function orderGroupLabel(groupId: number): string {
+  const group = groups.value.find((item) => item.id === groupId);
+  return group ? `${group.name} (#${groupId})` : `#${groupId}`;
+}
+function orderStatusLabel(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  const known = ["pending", "queued", "processing", "importing", "completed", "failed", "import_failed", "cancelled", "expired", "rejected"];
+  return known.includes(normalized) ? t(`admin.settings.autoSupply.orderStatus_${normalized}`) : status;
+}
+function orderStatusClass(status: string): string {
+  switch (status.trim().toLowerCase()) {
+    case "completed":
+      return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+    case "failed":
+    case "import_failed":
+    case "rejected":
+      return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+    case "expired":
+    case "cancelled":
+      return "bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300";
+    default:
+      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+  }
+}
+function formatOrderTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : formatDateTime(date);
+}
+onMounted(() => {
+  void load();
+  void loadOrders();
+});
 </script>

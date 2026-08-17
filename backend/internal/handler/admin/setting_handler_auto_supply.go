@@ -21,6 +21,21 @@ func (h *SettingHandler) GetAutoSupplySettings(c *gin.Context) {
 	response.Success(c, settings)
 }
 
+// GetAutoSupplyOrders returns the latest automatic replenishment orders.
+// GET /api/v1/admin/settings/auto-supply/orders
+func (h *SettingHandler) GetAutoSupplyOrders(c *gin.Context) {
+	if h.autoSupplyService == nil {
+		response.InternalError(c, "Automatic supply service is unavailable")
+		return
+	}
+	orders, err := h.autoSupplyService.ListOrders(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, orders)
+}
+
 // UpdateAutoSupplySettings persists and immediately applies automatic account supply settings.
 // PUT /api/v1/admin/settings/auto-supply
 func (h *SettingHandler) UpdateAutoSupplySettings(c *gin.Context) {

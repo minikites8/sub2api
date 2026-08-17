@@ -215,10 +215,17 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 		}},
 	}
 	svc := NewAutoSupplyService(repo, admin, cfg)
+	historyRepo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
+	svc.SetSettingsDependencies(historyRepo, nil)
 
 	svc.RunOnce(context.Background())
 	require.Empty(t, admin.input)
 	require.NotEmpty(t, idempotencyKey)
+	orders, err := svc.ListOrders(context.Background())
+	require.NoError(t, err)
+	require.Len(t, orders, 1)
+	require.Equal(t, "order-1", orders[0].ID)
+	require.Equal(t, "pending", orders[0].Status)
 
 	svc.RunOnce(context.Background())
 	require.NotNil(t, admin.input)
@@ -233,6 +240,11 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 	require.Equal(t, AdminAPIKeyCodexFingerprintSession, admin.defaults.CodexFingerprintMode)
 	require.True(t, admin.defaults.EnableAccountGuard)
 	require.Equal(t, 45, admin.defaults.AccountGuardIntervalMinutes)
+	orders, err = svc.ListOrders(context.Background())
+	require.NoError(t, err)
+	require.Len(t, orders, 1)
+	require.Equal(t, "completed", orders[0].Status)
+	require.Empty(t, orders[0].Error)
 
 	// A completed import raises local capacity and prevents another order.
 	svc.RunOnce(context.Background())

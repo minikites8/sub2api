@@ -43,13 +43,14 @@ type AutoSupplyService struct {
 	wakeCh          chan struct{}
 	startOnce       sync.Once
 
-	mu       sync.Mutex
-	runMu    sync.Mutex
-	orders   map[int64]*autoSupplyOrder
-	stopCh   chan struct{}
-	stopOnce sync.Once
-	wg       sync.WaitGroup
-	retryAt  time.Time
+	mu             sync.Mutex
+	runMu          sync.Mutex
+	orderHistoryMu sync.Mutex
+	orders         map[int64]*autoSupplyOrder
+	stopCh         chan struct{}
+	stopOnce       sync.Once
+	wg             sync.WaitGroup
+	retryAt        time.Time
 }
 
 // AutoSupplyAdmin is the small slice of admin operations needed by the worker.
@@ -61,10 +62,14 @@ type AutoSupplyAdmin interface {
 }
 
 type autoSupplyOrder struct {
-	ID       string
-	GroupID  int64
-	Product  string
-	Quantity int
+	ID        string
+	GroupID   int64
+	Product   string
+	Quantity  int
+	Status    string
+	LastError string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type autoSupplyInventoryResponse struct {
@@ -282,8 +287,14 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, settings config.
 	if err != nil {
 		return err
 	}
-	order := &autoSupplyOrder{ID: orderID, GroupID: group.ID, Product: product, Quantity: quantity}
+	order := &autoSupplyOrder{
+		ID: orderID, GroupID: group.ID, Product: product, Quantity: quantity,
+		Status: "pending", CreatedAt: time.Now().UTC(),
+	}
 	s.setOrder(group.ID, order)
+	if err := s.recordOrder(ctx, order, order.Status, ""); err != nil {
+		slog.Warn("auto_supply_order_history_save_failed", "group_id", group.ID, "order_id", orderID, "error", err)
+	}
 	slog.Info("auto_supply_order_created", "group_id", group.ID, "quantity", quantity, "order_id", orderID)
 	return nil
 }
@@ -293,20 +304,44 @@ func (s *AutoSupplyService) pollAndImport(ctx context.Context, settings config.A
 	if err != nil {
 		return err
 	}
-	switch normalizeAutoSupplyState(state.Status, state.State) {
+	status := normalizeAutoSupplyState(state.Status, state.State)
+	if status == "" {
+		status = "pending"
+	}
+	recordedStatus := status
+	if status == "completed" {
+		recordedStatus = "importing"
+	}
+	if err := s.recordOrder(ctx, order, recordedStatus, ""); err != nil {
+		slog.Warn("auto_supply_order_history_save_failed", "group_id", group.ID, "order_id", order.ID, "error", err)
+	}
+	switch status {
 	case "completed":
 		bundle, err := s.downloadBundle(ctx, settings, order.ID)
 		if err != nil {
+			if historyErr := s.recordOrder(ctx, order, "import_failed", err.Error()); historyErr != nil {
+				slog.Warn("auto_supply_order_history_save_failed", "group_id", group.ID, "order_id", order.ID, "error", historyErr)
+			}
 			return err
 		}
 		if err := s.importBundle(ctx, group, groupCfg, order.ID, bundle, platform); err != nil {
+			if historyErr := s.recordOrder(ctx, order, "import_failed", err.Error()); historyErr != nil {
+				slog.Warn("auto_supply_order_history_save_failed", "group_id", group.ID, "order_id", order.ID, "error", historyErr)
+			}
 			return err
+		}
+		if err := s.recordOrder(ctx, order, "completed", ""); err != nil {
+			slog.Warn("auto_supply_order_history_save_failed", "group_id", group.ID, "order_id", order.ID, "error", err)
 		}
 		s.clearOrder(group.ID)
 		slog.Info("auto_supply_order_imported", "group_id", group.ID, "order_id", order.ID)
 	case "failed", "cancelled", "expired", "rejected":
+		orderError := fmt.Sprintf("upstream order ended with state %s", status)
+		if err := s.recordOrder(ctx, order, status, orderError); err != nil {
+			slog.Warn("auto_supply_order_history_save_failed", "group_id", group.ID, "order_id", order.ID, "error", err)
+		}
 		s.clearOrder(group.ID)
-		return fmt.Errorf("upstream order %s ended with state %s", order.ID, normalizeAutoSupplyState(state.Status, state.State))
+		return fmt.Errorf("upstream order %s ended with state %s", order.ID, status)
 	}
 	return nil
 }

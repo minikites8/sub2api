@@ -1407,6 +1407,17 @@ export interface UpdateAutoSupplySettingsRequest {
   groups: AutoSupplyGroupSettings[];
 }
 
+export interface AutoSupplyOrder {
+  id: string;
+  group_id: number;
+  product: string;
+  quantity: number;
+  status: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export async function getAutoSupplySettings(): Promise<AutoSupplySettings> {
   const { data } = await apiClient.get<AutoSupplySettings>(
     "/admin/settings/auto-supply",
@@ -1420,6 +1431,13 @@ export async function updateAutoSupplySettings(
   const { data } = await apiClient.put<AutoSupplySettings>(
     "/admin/settings/auto-supply",
     settings,
+  );
+  return data;
+}
+
+export async function getAutoSupplyOrders(): Promise<AutoSupplyOrder[]> {
+  const { data } = await apiClient.get<AutoSupplyOrder[]>(
+    "/admin/settings/auto-supply/orders",
   );
   return data;
 }
@@ -1711,6 +1729,7 @@ export const settingsAPI = {
   updateOverloadCooldownSettings,
   getAutoSupplySettings,
   updateAutoSupplySettings,
+  getAutoSupplyOrders,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
   getPanelRateLimitSettings,

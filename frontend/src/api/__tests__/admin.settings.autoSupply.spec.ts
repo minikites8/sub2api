@@ -41,4 +41,12 @@ describe("automatic supply settings API", () => {
 
     expect(put).toHaveBeenCalledWith("/admin/settings/auto-supply", payload);
   });
+
+  it("uses the dedicated admin endpoint for order history", async () => {
+    get.mockResolvedValue({ data: [] });
+
+    await settingsAPI.getAutoSupplyOrders();
+
+    expect(get).toHaveBeenCalledWith("/admin/settings/auto-supply/orders");
+  });
 });

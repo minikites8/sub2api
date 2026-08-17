@@ -64,6 +64,7 @@ var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthr
 const (
 	SettingKeyAccountSchedulingThresholds = "account_scheduling_thresholds"
 	SettingKeyAutoSupplySettings          = "auto_supply_settings"
+	SettingKeyAutoSupplyOrders            = "auto_supply_orders"
 )
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。

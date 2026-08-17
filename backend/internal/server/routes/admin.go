@@ -594,6 +594,7 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.PUT("/rate-limit-429-cooldown", h.Admin.Setting.UpdateRateLimit429CooldownSettings)
 		// 自动补号配置
 		adminSettings.GET("/auto-supply", h.Admin.Setting.GetAutoSupplySettings)
+		adminSettings.GET("/auto-supply/orders", h.Admin.Setting.GetAutoSupplyOrders)
 		adminSettings.PUT("/auto-supply", h.Admin.Setting.UpdateAutoSupplySettings)
 		// 面板 API 限流配置
 		adminSettings.GET("/panel-rate-limit", h.Admin.Setting.GetPanelRateLimitSettings)
