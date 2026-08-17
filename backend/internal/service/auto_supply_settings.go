@@ -20,15 +20,20 @@ const (
 
 // AutoSupplyGroupSettings defines one trigger group replenishment rule and its optional deployment groups.
 type AutoSupplyGroupSettings struct {
-	GroupID        int64   `json:"group_id"`
-	DeployGroupIDs []int64 `json:"deploy_group_ids"`
-	Product        string  `json:"product"`
-	MinAvailable   int     `json:"min_available"`
-	Quantity       int     `json:"quantity"`
-	Platform       string  `json:"platform"`
-	AccountType    string  `json:"account_type"`
-	Priority       int     `json:"priority"`
-	Concurrency    int     `json:"concurrency"`
+	GroupID                     int64   `json:"group_id"`
+	DeployGroupIDs              []int64 `json:"deploy_group_ids"`
+	Product                     string  `json:"product"`
+	MinAvailable                int     `json:"min_available"`
+	Quantity                    int     `json:"quantity"`
+	Platform                    string  `json:"platform"`
+	AccountType                 string  `json:"account_type"`
+	Priority                    int     `json:"priority"`
+	Concurrency                 int     `json:"concurrency"`
+	ProxyMode                   string  `json:"proxy_mode"`
+	ProxyID                     *int64  `json:"proxy_id,omitempty"`
+	CodexFingerprintMode        string  `json:"codex_fingerprint_mode"`
+	EnableAccountGuard          bool    `json:"enable_account_guard"`
+	AccountGuardIntervalMinutes int     `json:"account_guard_interval_minutes"`
 }
 
 // AutoSupplySettings is the masked admin-facing configuration.
@@ -279,6 +284,14 @@ func normalizeAutoSupplyConfig(settings config.AutoSupplyConfig) config.AutoSupp
 		settings.Groups[index].Product = strings.TrimSpace(settings.Groups[index].Product)
 		settings.Groups[index].Platform = strings.TrimSpace(settings.Groups[index].Platform)
 		settings.Groups[index].AccountType = strings.TrimSpace(settings.Groups[index].AccountType)
+		settings.Groups[index].ProxyMode = normalizeAutoSupplyProxyMode(settings.Groups[index].ProxyMode)
+		if settings.Groups[index].ProxyMode != "specified" {
+			settings.Groups[index].ProxyID = nil
+		}
+		settings.Groups[index].CodexFingerprintMode = normalizeAutoSupplyFingerprintMode(settings.Groups[index].CodexFingerprintMode)
+		if settings.Groups[index].AccountGuardIntervalMinutes <= 0 {
+			settings.Groups[index].AccountGuardIntervalMinutes = OpenAIAccountGuardDefaultIntervalMinutes
+		}
 		settings.Groups[index].DeployGroupIDs = normalizeAutoSupplyDeployGroupIDs(
 			settings.Groups[index].GroupID,
 			settings.Groups[index].DeployGroupIDs,
@@ -291,6 +304,7 @@ func cloneAutoSupplyConfig(settings config.AutoSupplyConfig) config.AutoSupplyCo
 	groups := make([]config.AutoSupplyGroupConfig, len(settings.Groups))
 	for index, group := range settings.Groups {
 		group.DeployGroupIDs = append([]int64(nil), group.DeployGroupIDs...)
+		group.ProxyID = cloneInt64Pointer(group.ProxyID)
 		groups[index] = group
 	}
 	settings.Groups = groups
@@ -305,6 +319,10 @@ func autoSupplyConfigFromStored(stored *autoSupplyStoredSettings, token string) 
 			Product: group.Product, MinAvailable: group.MinAvailable,
 			Quantity: group.Quantity, Platform: group.Platform, AccountType: group.AccountType,
 			Priority: group.Priority, Concurrency: group.Concurrency,
+			ProxyMode: group.ProxyMode, ProxyID: cloneInt64Pointer(group.ProxyID),
+			CodexFingerprintMode:        group.CodexFingerprintMode,
+			EnableAccountGuard:          group.EnableAccountGuard,
+			AccountGuardIntervalMinutes: group.AccountGuardIntervalMinutes,
 		})
 	}
 	return normalizeAutoSupplyConfig(config.AutoSupplyConfig{
@@ -320,6 +338,10 @@ func autoSupplyGroupSettingsFromConfig(group config.AutoSupplyGroupConfig) AutoS
 		Product: group.Product, MinAvailable: group.MinAvailable,
 		Quantity: group.Quantity, Platform: group.Platform, AccountType: group.AccountType,
 		Priority: group.Priority, Concurrency: group.Concurrency,
+		ProxyMode: group.ProxyMode, ProxyID: cloneInt64Pointer(group.ProxyID),
+		CodexFingerprintMode:        group.CodexFingerprintMode,
+		EnableAccountGuard:          group.EnableAccountGuard,
+		AccountGuardIntervalMinutes: group.AccountGuardIntervalMinutes,
 	}
 }
 
@@ -327,6 +349,7 @@ func cloneAutoSupplyGroupSettings(groups []AutoSupplyGroupSettings) []AutoSupply
 	cloned := make([]AutoSupplyGroupSettings, len(groups))
 	for index, group := range groups {
 		group.DeployGroupIDs = append([]int64(nil), group.DeployGroupIDs...)
+		group.ProxyID = cloneInt64Pointer(group.ProxyID)
 		cloned[index] = group
 	}
 	return cloned
@@ -339,6 +362,14 @@ func normalizeAutoSupplySettingsUpdate(input *AutoSupplySettingsUpdate) {
 		input.Groups[index].Product = strings.TrimSpace(input.Groups[index].Product)
 		input.Groups[index].Platform = strings.TrimSpace(input.Groups[index].Platform)
 		input.Groups[index].AccountType = strings.TrimSpace(input.Groups[index].AccountType)
+		input.Groups[index].ProxyMode = normalizeAutoSupplyProxyMode(input.Groups[index].ProxyMode)
+		if input.Groups[index].ProxyMode != "specified" {
+			input.Groups[index].ProxyID = nil
+		}
+		input.Groups[index].CodexFingerprintMode = normalizeAutoSupplyFingerprintMode(input.Groups[index].CodexFingerprintMode)
+		if input.Groups[index].AccountGuardIntervalMinutes <= 0 {
+			input.Groups[index].AccountGuardIntervalMinutes = OpenAIAccountGuardDefaultIntervalMinutes
+		}
 		input.Groups[index].DeployGroupIDs = normalizeAutoSupplyDeployGroupIDs(
 			input.Groups[index].GroupID,
 			input.Groups[index].DeployGroupIDs,
@@ -389,6 +420,22 @@ func validateAutoSupplySettings(input AutoSupplySettingsUpdate, effectiveToken s
 			if targetID <= 0 {
 				return fmt.Errorf("groups[%d].deploy_group_ids[%d] must be positive", index, targetIndex)
 			}
+		}
+		if group.ProxyMode == "specified" && (group.ProxyID == nil || *group.ProxyID <= 0) {
+			return fmt.Errorf("groups[%d].proxy_id is required for specified proxy mode", index)
+		}
+		if group.ProxyMode != "none" && group.ProxyMode != "specified" && group.ProxyMode != "random" {
+			return fmt.Errorf("groups[%d].proxy_mode must be none, specified, or random", index)
+		}
+		if group.CodexFingerprintMode != AdminAPIKeyCodexFingerprintOff &&
+			group.CodexFingerprintMode != AdminAPIKeyCodexFingerprintDevice &&
+			group.CodexFingerprintMode != AdminAPIKeyCodexFingerprintSession &&
+			group.CodexFingerprintMode != AdminAPIKeyCodexFingerprintFull {
+			return fmt.Errorf("groups[%d].codex_fingerprint_mode is invalid", index)
+		}
+		if group.AccountGuardIntervalMinutes < OpenAIAccountGuardMinIntervalMinutes ||
+			group.AccountGuardIntervalMinutes > OpenAIAccountGuardMaxIntervalMinutes {
+			return fmt.Errorf("groups[%d].account_guard_interval_minutes must be between %d and %d", index, OpenAIAccountGuardMinIntervalMinutes, OpenAIAccountGuardMaxIntervalMinutes)
 		}
 		if _, exists := seen[group.GroupID]; exists {
 			return fmt.Errorf("groups[%d].group_id is duplicated", index)
@@ -441,4 +488,23 @@ func normalizeAutoSupplyDeployGroupIDs(triggerGroupID int64, values []int64) []i
 		result = append(result, value)
 	}
 	return result
+}
+
+func normalizeAutoSupplyProxyMode(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "none"
+	}
+	if value == AdminAPIKeyProxyModeFixed {
+		return "specified"
+	}
+	return value
+}
+
+func normalizeAutoSupplyFingerprintMode(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return AdminAPIKeyCodexFingerprintOff
+	}
+	return value
 }

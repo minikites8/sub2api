@@ -119,9 +119,10 @@ func (r *autoSupplyAccountRepoStub) FindByExtraField(_ context.Context, key stri
 }
 
 type autoSupplyAdminStub struct {
-	repo  *autoSupplyAccountRepoStub
-	group *Group
-	input *CreateAccountInput
+	repo     *autoSupplyAccountRepoStub
+	group    *Group
+	input    *CreateAccountInput
+	defaults *AdminAPIKeyAccountDefaults
 }
 
 func (a *autoSupplyAdminStub) GetGroup(_ context.Context, id int64) (*Group, error) {
@@ -131,8 +132,12 @@ func (a *autoSupplyAdminStub) GetGroup(_ context.Context, id int64) (*Group, err
 	return nil, ErrGroupNotFound
 }
 
-func (a *autoSupplyAdminStub) CreateAccount(_ context.Context, input *CreateAccountInput) (*Account, error) {
+func (a *autoSupplyAdminStub) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	a.input = input
+	if defaults, ok := AdminAPIKeyAccountDefaultsFromContext(ctx); ok {
+		copy := defaults
+		a.defaults = &copy
+	}
 	account := Account{
 		ID:          int64(len(a.repo.accounts) + 1),
 		Name:        input.Name,
@@ -198,10 +203,15 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 		CustomerToken:     "customer-secret",
 		MaxQuantityPerRun: 5,
 		Groups: []config.AutoSupplyGroupConfig{{
-			GroupID:        42,
-			DeployGroupIDs: []int64{7, 42, 8, 7},
-			MinAvailable:   1,
-			Product:        "oauth_30d",
+			GroupID:                     42,
+			DeployGroupIDs:              []int64{7, 42, 8, 7},
+			MinAvailable:                1,
+			Product:                     "oauth_30d",
+			ProxyMode:                   "specified",
+			ProxyID:                     func() *int64 { value := int64(11); return &value }(),
+			CodexFingerprintMode:        AdminAPIKeyCodexFingerprintSession,
+			EnableAccountGuard:          true,
+			AccountGuardIntervalMinutes: 45,
 		}},
 	}
 	svc := NewAutoSupplyService(repo, admin, cfg)
@@ -216,6 +226,13 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 	require.Equal(t, AccountTypeOAuth, admin.input.Type)
 	require.Equal(t, PlatformOpenAI, admin.input.Platform)
 	require.Equal(t, "order-1:0", admin.input.Extra[autoSupplyOrderMarkerKey])
+	require.NotNil(t, admin.defaults)
+	require.Equal(t, AdminAPIKeyProxyModeFixed, admin.defaults.ProxyMode)
+	require.NotNil(t, admin.defaults.ProxyID)
+	require.Equal(t, int64(11), *admin.defaults.ProxyID)
+	require.Equal(t, AdminAPIKeyCodexFingerprintSession, admin.defaults.CodexFingerprintMode)
+	require.True(t, admin.defaults.EnableAccountGuard)
+	require.Equal(t, 45, admin.defaults.AccountGuardIntervalMinutes)
 
 	// A completed import raises local capacity and prevents another order.
 	svc.RunOnce(context.Background())
@@ -275,6 +292,9 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 		Groups: []AutoSupplyGroupSettings{{
 			GroupID: 42, DeployGroupIDs: []int64{7, 7, 8}, Product: "oauth_30d", MinAvailable: 3, Quantity: 4,
 			Platform: PlatformOpenAI, AccountType: AccountTypeOAuth, Priority: 5, Concurrency: 2,
+			ProxyMode: "specified", ProxyID: func() *int64 { value := int64(11); return &value }(),
+			CodexFingerprintMode: AdminAPIKeyCodexFingerprintSession,
+			EnableAccountGuard:   true, AccountGuardIntervalMinutes: 45,
 		}},
 	})
 	require.NoError(t, err)
@@ -282,6 +302,12 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.True(t, updated.EncryptionKeyConfigured)
 	require.Equal(t, "https://supplier.example", updated.BaseURL)
 	require.Equal(t, []int64{7, 8}, updated.Groups[0].DeployGroupIDs)
+	require.Equal(t, "specified", updated.Groups[0].ProxyMode)
+	require.NotNil(t, updated.Groups[0].ProxyID)
+	require.Equal(t, int64(11), *updated.Groups[0].ProxyID)
+	require.Equal(t, AdminAPIKeyCodexFingerprintSession, updated.Groups[0].CodexFingerprintMode)
+	require.True(t, updated.Groups[0].EnableAccountGuard)
+	require.Equal(t, 45, updated.Groups[0].AccountGuardIntervalMinutes)
 	raw := repo.values[SettingKeyAutoSupplySettings]
 	require.NotContains(t, raw, "customer-secret")
 	require.Contains(t, raw, "customer_token_encrypted")
@@ -371,4 +397,41 @@ func TestAutoSupplySettingsRejectInvalidDeployGroupID(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "deploy_group_ids")
+}
+
+func TestAutoSupplySettingsRejectInvalidAccountDefaults(t *testing.T) {
+	repo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
+	cfg := &config.Config{}
+	cfg.Totp.EncryptionKeyConfigured = true
+	svc := NewAutoSupplyService(nil, nil, cfg)
+	svc.SetSettingsDependencies(repo, autoSupplyTestEncryptor{})
+
+	_, err := svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		BaseURL: "https://supplier.example", IntervalSeconds: 30, RequestTimeoutSeconds: 20, MaxQuantityPerRun: 10,
+		Groups: []AutoSupplyGroupSettings{{
+			GroupID: 42, Product: "oauth_30d", ProxyMode: "specified",
+		}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "proxy_id")
+
+	proxyID := int64(7)
+	_, err = svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		BaseURL: "https://supplier.example", IntervalSeconds: 30, RequestTimeoutSeconds: 20, MaxQuantityPerRun: 10,
+		Groups: []AutoSupplyGroupSettings{{
+			GroupID: 42, Product: "oauth_30d", ProxyMode: "specified", ProxyID: &proxyID,
+			CodexFingerprintMode: "invalid",
+		}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "codex_fingerprint_mode")
+
+	_, err = svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		BaseURL: "https://supplier.example", IntervalSeconds: 30, RequestTimeoutSeconds: 20, MaxQuantityPerRun: 10,
+		Groups: []AutoSupplyGroupSettings{{
+			GroupID: 42, Product: "oauth_30d", AccountGuardIntervalMinutes: 1441,
+		}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "account_guard_interval_minutes")
 }

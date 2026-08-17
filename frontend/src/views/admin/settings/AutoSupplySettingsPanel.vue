@@ -150,6 +150,35 @@
               <span class="input-label">{{ t("admin.settings.autoSupply.concurrency") }}</span>
               <input v-model.number="rule.concurrency" type="number" min="0" class="input mt-1 w-full" />
             </label>
+            <label class="block">
+              <span class="input-label">{{ t("admin.settings.autoSupply.proxyMode") }}</span>
+              <Select v-model="rule.proxy_mode" class="mt-1" :options="proxyModeOptions" />
+            </label>
+            <label v-if="rule.proxy_mode === 'specified'" class="block">
+              <span class="input-label">{{ t("admin.settings.autoSupply.proxy") }}</span>
+              <Select
+                v-model="rule.proxy_id"
+                class="mt-1"
+                :options="proxyOptions"
+                :placeholder="t('admin.settings.autoSupply.proxyPlaceholder')"
+                searchable="auto"
+              />
+            </label>
+            <label class="block">
+              <span class="input-label">{{ t("admin.settings.autoSupply.oauthConvergence") }}</span>
+              <Select v-model="rule.codex_fingerprint_mode" class="mt-1" :options="fingerprintOptions" />
+            </label>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 pb-2 text-sm text-gray-700 dark:text-gray-300">
+                <input v-model="rule.enable_account_guard" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                {{ t("admin.settings.autoSupply.enableAccountGuard") }}
+              </label>
+            </div>
+            <label v-if="rule.enable_account_guard" class="block">
+              <span class="input-label">{{ t("admin.settings.autoSupply.accountGuardInterval") }}</span>
+              <input v-model.number="rule.account_guard_interval_minutes" type="number" min="5" max="1440" class="input mt-1 w-full" />
+              <span class="input-hint mt-1 block">{{ t("admin.settings.autoSupply.accountGuardIntervalHint") }}</span>
+            </label>
           </div>
         </div>
 
@@ -171,6 +200,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import { settingsAPI, type AutoSupplyGroupSettings, type AutoSupplySettings } from "@/api/admin/settings";
+import { getAll as getAllProxies } from "@/api/admin/proxies";
 import type { AdminGroup } from "@/types";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
@@ -185,6 +215,7 @@ const loading = ref(true);
 const saving = ref(false);
 const validationError = ref("");
 const groups = ref<AdminGroup[]>([]);
+const proxies = ref<Array<{ id: number; name: string; host: string; port: number }>>([]);
 type FormState = AutoSupplySettings & { customer_token: string };
 const form = reactive<FormState>({
   enabled: false,
@@ -202,6 +233,21 @@ const platformOptions = computed(() => [
   { value: "", label: t("admin.settings.autoSupply.inheritGroupValue") },
   ...["openai", "anthropic", "gemini", "antigravity", "kiro", "grok"].map((value) => ({ value, label: value })),
 ]);
+const proxyModeOptions = computed(() => [
+  { value: "none", label: t("admin.settings.autoSupply.proxyNone") },
+  { value: "specified", label: t("admin.settings.autoSupply.proxySpecified") },
+  { value: "random", label: t("admin.settings.autoSupply.proxyRandom") },
+]);
+const fingerprintOptions = computed(() => [
+  { value: "off", label: t("admin.settings.autoSupply.oauthConvergenceOff") },
+  { value: "device", label: t("admin.settings.autoSupply.oauthConvergenceDevice") },
+  { value: "session", label: t("admin.settings.autoSupply.oauthConvergenceSession") },
+  { value: "full", label: t("admin.settings.autoSupply.oauthConvergenceFull") },
+]);
+const proxyOptions = computed(() => proxies.value.map((proxy) => ({
+  value: proxy.id,
+  label: `${proxy.name} (${proxy.host}:${proxy.port})`,
+})));
 const accountTypeOptions = computed(() => [
   { value: "", label: t("admin.settings.autoSupply.defaultAccountType") },
   { value: "oauth", label: "OAuth" },
@@ -220,7 +266,22 @@ const groupOptions = computed(() => {
 
 function ruleKey(rule: AutoSupplyGroupSettings, index: number): string { return `${index}-${rule.group_id}`; }
 function emptyRule(groupId = 0): AutoSupplyGroupSettings {
-  return { group_id: groupId, deploy_group_ids: [], product: "oauth_30d", min_available: 1, quantity: 1, platform: "", account_type: "", priority: 0, concurrency: 0 };
+  return {
+    group_id: groupId,
+    deploy_group_ids: [],
+    product: "oauth_30d",
+    min_available: 1,
+    quantity: 1,
+    platform: "",
+    account_type: "",
+    priority: 0,
+    concurrency: 0,
+    proxy_mode: "none",
+    proxy_id: null,
+    codex_fingerprint_mode: "off",
+    enable_account_guard: false,
+    account_guard_interval_minutes: 30,
+  };
 }
 function addRule(): void {
   const used = new Set(form.groups.map((rule) => rule.group_id));
@@ -237,7 +298,12 @@ function handleTriggerGroupChange(rule: AutoSupplyGroupSettings): void {
 function applySettings(settings: AutoSupplySettings): void {
   Object.assign(form, {
     ...settings,
-    groups: settings.groups.map((rule) => ({ ...rule, deploy_group_ids: [...(rule.deploy_group_ids ?? [])] })),
+    groups: settings.groups.map((rule) => ({
+      ...emptyRule(rule.group_id),
+      ...rule,
+      deploy_group_ids: [...(rule.deploy_group_ids ?? [])],
+      proxy_id: rule.proxy_id ?? null,
+    })),
     customer_token: "",
   });
 }
@@ -249,6 +315,8 @@ function validate(): boolean {
   if (form.max_quantity_per_run < 1 || form.max_quantity_per_run > 1000) { validationError.value = t("admin.settings.autoSupply.maxQuantityInvalid"); return false; }
   if (form.enabled && form.groups.length === 0) { validationError.value = t("admin.settings.autoSupply.rulesRequired"); return false; }
   if (form.groups.some((rule) => rule.group_id <= 0 || !rule.product.trim() || rule.deploy_group_ids.some((id) => id <= 0))) { validationError.value = t("admin.settings.autoSupply.ruleInvalid"); return false; }
+  if (form.groups.some((rule) => rule.proxy_mode === "specified" && !rule.proxy_id)) { validationError.value = t("admin.settings.autoSupply.proxyRequired"); return false; }
+  if (form.groups.some((rule) => rule.enable_account_guard && (!Number.isInteger(rule.account_guard_interval_minutes) || rule.account_guard_interval_minutes < 5 || rule.account_guard_interval_minutes > 1440))) { validationError.value = t("admin.settings.autoSupply.accountGuardIntervalInvalid"); return false; }
   return true;
 }
 async function saveSettings(): Promise<void> {
@@ -271,6 +339,11 @@ async function load(): Promise<void> {
   try {
     const [settings, allGroups] = await Promise.all([settingsAPI.getAutoSupplySettings(), adminAPI.groups.getAll()]);
     groups.value = allGroups.filter((group) => group.status === "active");
+    try {
+      proxies.value = (await getAllProxies()).filter((proxy) => proxy.status === "active");
+    } catch {
+      proxies.value = [];
+    }
     applySettings(settings);
   } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t("admin.settings.autoSupply.loadFailed")));

@@ -1482,15 +1482,20 @@ type AutoSupplyConfig struct {
 
 // AutoSupplyGroupConfig monitors one local group and optionally deploys imported accounts to additional groups.
 type AutoSupplyGroupConfig struct {
-	GroupID        int64   `mapstructure:"group_id"`
-	DeployGroupIDs []int64 `mapstructure:"deploy_group_ids"`
-	Product        string  `mapstructure:"product"`
-	MinAvailable   int     `mapstructure:"min_available"`
-	Quantity       int     `mapstructure:"quantity"`
-	Platform       string  `mapstructure:"platform"`
-	AccountType    string  `mapstructure:"account_type"`
-	Priority       int     `mapstructure:"priority"`
-	Concurrency    int     `mapstructure:"concurrency"`
+	GroupID                     int64   `mapstructure:"group_id"`
+	DeployGroupIDs              []int64 `mapstructure:"deploy_group_ids"`
+	Product                     string  `mapstructure:"product"`
+	MinAvailable                int     `mapstructure:"min_available"`
+	Quantity                    int     `mapstructure:"quantity"`
+	Platform                    string  `mapstructure:"platform"`
+	AccountType                 string  `mapstructure:"account_type"`
+	Priority                    int     `mapstructure:"priority"`
+	Concurrency                 int     `mapstructure:"concurrency"`
+	ProxyMode                   string  `mapstructure:"proxy_mode"`
+	ProxyID                     *int64  `mapstructure:"proxy_id"`
+	CodexFingerprintMode        string  `mapstructure:"codex_fingerprint_mode"`
+	EnableAccountGuard          bool    `mapstructure:"enable_account_guard"`
+	AccountGuardIntervalMinutes int     `mapstructure:"account_guard_interval_minutes"`
 }
 
 type OpsCleanupConfig struct {

@@ -1379,6 +1379,11 @@ export interface AutoSupplyGroupSettings {
   account_type: string;
   priority: number;
   concurrency: number;
+  proxy_mode: 'none' | 'specified' | 'random';
+  proxy_id?: number | null;
+  codex_fingerprint_mode: 'off' | 'device' | 'session' | 'full';
+  enable_account_guard: boolean;
+  account_guard_interval_minutes: number;
 }
 
 export interface AutoSupplySettings {

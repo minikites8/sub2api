@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 
-const { getSettings, updateSettings, getGroups, showError, showSuccess } = vi.hoisted(() => ({
+const { getSettings, updateSettings, getGroups, getProxies, showError, showSuccess } = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   getGroups: vi.fn(),
+  getProxies: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }));
@@ -17,6 +18,7 @@ vi.mock("@/api/admin/settings", () => ({
   },
 }));
 vi.mock("@/api", () => ({ adminAPI: { groups: { getAll: getGroups } } }));
+vi.mock("@/api/admin/proxies", () => ({ getAll: getProxies }));
 vi.mock("@/stores", () => ({ useAppStore: () => ({ showError, showSuccess }) }));
 vi.mock("@/utils/apiError", () => ({ extractApiErrorMessage: () => "error" }));
 vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
@@ -70,7 +72,7 @@ const baseSettings = {
   interval_seconds: 30,
   request_timeout_seconds: 20,
   max_quantity_per_run: 10,
-  groups: [{ group_id: 7, deploy_group_ids: [8], product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0 }],
+  groups: [{ group_id: 7, deploy_group_ids: [8], product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0, proxy_mode: "none", proxy_id: null, codex_fingerprint_mode: "off", enable_account_guard: false, account_guard_interval_minutes: 30 }],
 };
 
 describe("AutoSupplySettingsPanel", () => {
@@ -82,6 +84,7 @@ describe("AutoSupplySettingsPanel", () => {
       { id: 8, name: "Shared", platform: "openai", status: "active" },
       { id: 9, name: "Overflow", platform: "openai", status: "active" },
     ]);
+    getProxies.mockResolvedValue([{ id: 3, name: "Primary", host: "proxy.example", port: 8080, status: "active" }]);
     showError.mockReset();
     showSuccess.mockReset();
   });
@@ -120,5 +123,20 @@ describe("AutoSupplySettingsPanel", () => {
       groups: [expect.objectContaining({ group_id: 7, deploy_group_ids: [8, 9] })],
     }));
     expect(showSuccess).toHaveBeenCalled();
+  });
+
+  it("shows proxy, OAuth convergence, and account guard controls for a rule", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettings,
+      groups: [{ ...baseSettings.groups[0], proxy_mode: "specified", proxy_id: 3, codex_fingerprint_mode: "session", enable_account_guard: true, account_guard_interval_minutes: 45 }],
+    });
+    const wrapper = mount(AutoSupplySettingsPanel, { global: { stubs: { Toggle: ToggleStub, Select: SelectStub, Icon: true } } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.proxyMode");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.oauthConvergence");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.enableAccountGuard");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.accountGuardInterval");
+    expect(wrapper.text()).toContain("Primary (proxy.example:8080)");
   });
 });

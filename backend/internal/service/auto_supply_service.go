@@ -469,7 +469,8 @@ func (s *AutoSupplyService) importBundle(ctx context.Context, group *Group, grou
 		if concurrency == 0 {
 			concurrency = groupCfg.Concurrency
 		}
-		_, err = s.admin.CreateAccount(ctx, &CreateAccountInput{
+		accountCtx := ContextWithAdminAPIKeyAccountDefaults(ctx, autoSupplyAccountDefaults(groupCfg))
+		_, err = s.admin.CreateAccount(accountCtx, &CreateAccountInput{
 			Name:                  name,
 			Notes:                 item.Notes,
 			Platform:              itemPlatform,
@@ -496,6 +497,23 @@ func (s *AutoSupplyService) importBundle(ctx context.Context, group *Group, grou
 		return fmt.Errorf("imported %d accounts, %d accounts failed", imported, failed)
 	}
 	return nil
+}
+
+func autoSupplyAccountDefaults(group config.AutoSupplyGroupConfig) AdminAPIKeyAccountDefaults {
+	proxyMode := strings.ToLower(strings.TrimSpace(group.ProxyMode))
+	if proxyMode == "specified" {
+		proxyMode = AdminAPIKeyProxyModeFixed
+	}
+	if proxyMode != AdminAPIKeyProxyModeFixed && proxyMode != AdminAPIKeyProxyModeRandom {
+		proxyMode = AdminAPIKeyProxyModeNone
+	}
+	return AdminAPIKeyAccountDefaults{
+		ProxyMode:                   proxyMode,
+		ProxyID:                     cloneInt64Pointer(group.ProxyID),
+		CodexFingerprintMode:        strings.ToLower(strings.TrimSpace(group.CodexFingerprintMode)),
+		EnableAccountGuard:          group.EnableAccountGuard,
+		AccountGuardIntervalMinutes: group.AccountGuardIntervalMinutes,
+	}
 }
 
 func autoSupplyDeploymentGroupIDs(triggerGroupID int64, deployGroupIDs []int64) []int64 {
