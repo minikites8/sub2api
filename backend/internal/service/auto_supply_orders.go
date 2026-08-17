@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +36,7 @@ func (s *AutoSupplyService) ListOrders(ctx context.Context) ([]AutoSupplyOrderRe
 }
 
 func (s *AutoSupplyService) recordOrder(ctx context.Context, order *autoSupplyOrder, status, orderError string) error {
-	if s == nil || s.settingRepo == nil || order == nil || strings.TrimSpace(order.ID) == "" {
+	if s == nil || order == nil || strings.TrimSpace(order.ID) == "" {
 		return nil
 	}
 	now := time.Now().UTC()
@@ -48,6 +49,12 @@ func (s *AutoSupplyService) recordOrder(ctx context.Context, order *autoSupplyOr
 	}
 	order.LastError = strings.TrimSpace(orderError)
 	order.UpdatedAt = now
+	if isAutoSupplyTerminalOrderStatus(order.Status) {
+		s.rememberTerminalOrder(order.GroupID, order.ID)
+	}
+	if s.settingRepo == nil {
+		return nil
+	}
 
 	record := AutoSupplyOrderRecord{
 		ID: order.ID, GroupID: order.GroupID, Product: order.Product, Quantity: order.Quantity,
@@ -107,4 +114,68 @@ func (s *AutoSupplyService) loadOrderHistory(ctx context.Context) ([]AutoSupplyO
 		records = records[:autoSupplyOrderHistoryLimit]
 	}
 	return records, nil
+}
+
+func isAutoSupplyTerminalOrderStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "failed", "import_failed", "cancelled", "expired", "rejected":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *AutoSupplyService) rememberTerminalOrder(groupID int64, orderID string) {
+	if s == nil || groupID <= 0 || strings.TrimSpace(orderID) == "" {
+		return
+	}
+	s.mu.Lock()
+	if s.lastTerminalOrderIDs == nil {
+		s.lastTerminalOrderIDs = make(map[int64]string)
+	}
+	s.lastTerminalOrderIDs[groupID] = strings.TrimSpace(orderID)
+	s.mu.Unlock()
+}
+
+func (s *AutoSupplyService) latestOrderForGroup(ctx context.Context, groupID int64) (*AutoSupplyOrderRecord, error) {
+	records, err := s.ListOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for index := range records {
+		if records[index].GroupID == groupID {
+			record := records[index]
+			return &record, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *AutoSupplyService) restoreActiveOrder(ctx context.Context, groupID int64) (*autoSupplyOrder, error) {
+	record, err := s.latestOrderForGroup(ctx, groupID)
+	if err != nil || record == nil || isAutoSupplyTerminalOrderStatus(record.Status) {
+		return nil, err
+	}
+	return &autoSupplyOrder{
+		ID: record.ID, GroupID: record.GroupID, Product: record.Product, Quantity: record.Quantity,
+		Status: record.Status, LastError: record.Error, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+	}, nil
+}
+
+func (s *AutoSupplyService) nextOrderIdempotencyKey(ctx context.Context, groupID int64) (string, error) {
+	record, err := s.latestOrderForGroup(ctx, groupID)
+	if err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	previousOrderID := strings.TrimSpace(s.lastTerminalOrderIDs[groupID])
+	s.mu.Unlock()
+	if previousOrderID == "" && record != nil && isAutoSupplyTerminalOrderStatus(record.Status) {
+		previousOrderID = strings.TrimSpace(record.ID)
+	}
+	if previousOrderID == "" {
+		return fmt.Sprintf("sub2api-auto-supply-g%d-initial", groupID), nil
+	}
+	digest := sha256.Sum256([]byte(previousOrderID))
+	return fmt.Sprintf("sub2api-auto-supply-g%d-after-%x", groupID, digest[:8]), nil
 }

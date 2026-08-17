@@ -27,8 +27,8 @@ const (
 )
 
 // AutoSupplyService replenishes configured groups from the customer-token
-// account supplier. It keeps order state in memory while using an hourly
-// idempotency key so a process restart cannot create a duplicate order.
+// account supplier. Active and terminal order history anchors each order's
+// idempotency key so retries and process restarts resume the same cycle.
 type AutoSupplyService struct {
 	accountRepo AccountRepository
 	admin       AutoSupplyAdmin
@@ -43,14 +43,15 @@ type AutoSupplyService struct {
 	wakeCh          chan struct{}
 	startOnce       sync.Once
 
-	mu             sync.Mutex
-	runMu          sync.Mutex
-	orderHistoryMu sync.Mutex
-	orders         map[int64]*autoSupplyOrder
-	stopCh         chan struct{}
-	stopOnce       sync.Once
-	wg             sync.WaitGroup
-	retryAt        time.Time
+	mu                   sync.Mutex
+	runMu                sync.Mutex
+	orderHistoryMu       sync.Mutex
+	orders               map[int64]*autoSupplyOrder
+	lastTerminalOrderIDs map[int64]string
+	stopCh               chan struct{}
+	stopOnce             sync.Once
+	wg                   sync.WaitGroup
+	retryAt              time.Time
 }
 
 // AutoSupplyAdmin is the small slice of admin operations needed by the worker.
@@ -120,15 +121,16 @@ func NewAutoSupplyService(accountRepo AccountRepository, admin AutoSupplyAdmin, 
 	}
 	runtimeSettings = normalizeAutoSupplyConfig(runtimeSettings)
 	return &AutoSupplyService{
-		accountRepo:     accountRepo,
-		admin:           admin,
-		cfg:             cfg,
-		client:          &http.Client{},
-		runtimeSettings: runtimeSettings,
-		settingsVersion: autoSupplyFallbackVersion,
-		wakeCh:          make(chan struct{}, 1),
-		orders:          make(map[int64]*autoSupplyOrder),
-		stopCh:          make(chan struct{}),
+		accountRepo:          accountRepo,
+		admin:                admin,
+		cfg:                  cfg,
+		client:               &http.Client{},
+		runtimeSettings:      runtimeSettings,
+		settingsVersion:      autoSupplyFallbackVersion,
+		wakeCh:               make(chan struct{}, 1),
+		orders:               make(map[int64]*autoSupplyOrder),
+		lastTerminalOrderIDs: make(map[int64]string),
+		stopCh:               make(chan struct{}),
 	}
 }
 
@@ -264,6 +266,14 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, settings config.
 	if order := s.getActiveOrder(group.ID); order != nil {
 		return s.pollAndImport(ctx, settings, group, groupCfg, order, platform)
 	}
+	order, err := s.restoreActiveOrder(ctx, group.ID)
+	if err != nil {
+		return fmt.Errorf("restore active pickup order: %w", err)
+	}
+	if order != nil {
+		s.setOrder(group.ID, order)
+		return s.pollAndImport(ctx, settings, group, groupCfg, order, platform)
+	}
 
 	quantity := groupCfg.Quantity
 	if quantity <= 0 {
@@ -287,7 +297,7 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, settings config.
 	if err != nil {
 		return err
 	}
-	order := &autoSupplyOrder{
+	order = &autoSupplyOrder{
 		ID: orderID, GroupID: group.ID, Product: product, Quantity: quantity,
 		Status: "pending", CreatedAt: time.Now().UTC(),
 	}
@@ -392,9 +402,10 @@ func (s *AutoSupplyService) createOrder(ctx context.Context, settings config.Aut
 	if err != nil {
 		return "", err
 	}
-	// The hour bucket is stable across restarts and still permits a new order
-	// after the previous bucket has been fulfilled.
-	idempotencyKey := fmt.Sprintf("sub2api-auto-supply-g%d-%d", groupID, time.Now().UTC().Unix()/3600)
+	idempotencyKey, err := s.nextOrderIdempotencyKey(ctx, groupID)
+	if err != nil {
+		return "", fmt.Errorf("build pickup order idempotency key: %w", err)
+	}
 	var response autoSupplyOrderResponse
 	if err := s.doJSON(ctx, settings, http.MethodPost, endpoint.String(), body, idempotencyKey, &response); err != nil {
 		return "", fmt.Errorf("create pickup order: %w", err)

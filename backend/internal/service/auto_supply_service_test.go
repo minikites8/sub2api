@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -249,6 +251,97 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 	// A completed import raises local capacity and prevents another order.
 	svc.RunOnce(context.Background())
 	require.Len(t, repo.accounts, 1)
+}
+
+func TestAutoSupplyServiceRotatesIdempotencyKeyAfterCompletedOrder(t *testing.T) {
+	var idempotencyKeys []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/customer/inventory":
+			_, _ = w.Write([]byte(`{"available":0,"missing":1,"needs_production":true}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/customer/pickup/orders":
+			idempotencyKeys = append(idempotencyKeys, r.Header.Get("Idempotency-Key"))
+			w.WriteHeader(http.StatusCreated)
+			_, _ = fmt.Fprintf(w, `{"order_id":"order-%d","status":"pending"}`, len(idempotencyKeys))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/download"):
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"upstream","platform":"openai","type":"oauth","credentials":{"access_token":"access","refresh_token":"refresh"}}]}`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/customer/pickup/orders/order-"):
+			_, _ = w.Write([]byte(`{"status":"completed"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	repo := &autoSupplyAccountRepoStub{}
+	admin := &autoSupplyAdminStub{repo: repo, group: &Group{ID: 30, Name: "OpenAI", Platform: PlatformOpenAI}}
+	cfg := &config.Config{}
+	cfg.AutoSupply = config.AutoSupplyConfig{
+		Enabled: true, BaseURL: server.URL, CustomerToken: "customer-secret", MaxQuantityPerRun: 5,
+		Groups: []config.AutoSupplyGroupConfig{{GroupID: 30, MinAvailable: 1, Quantity: 1, Product: "team_1h"}},
+	}
+	svc := NewAutoSupplyService(repo, admin, cfg)
+	historyRepo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
+	svc.SetSettingsDependencies(historyRepo, nil)
+
+	svc.RunOnce(context.Background())
+	svc.RunOnce(context.Background())
+	require.Len(t, repo.accounts, 1)
+	repo.accounts[0].Schedulable = false
+	reloaded := NewAutoSupplyService(repo, admin, cfg)
+	reloaded.SetSettingsDependencies(historyRepo, nil)
+	reloaded.RunOnce(context.Background())
+
+	require.Len(t, idempotencyKeys, 2)
+	require.NotEqual(t, idempotencyKeys[0], idempotencyKeys[1])
+	orders, err := reloaded.ListOrders(context.Background())
+	require.NoError(t, err)
+	require.Len(t, orders, 2)
+	require.Equal(t, "order-2", orders[0].ID)
+	require.Equal(t, "pending", orders[0].Status)
+}
+
+func TestAutoSupplyServiceRestoresPersistedActiveOrder(t *testing.T) {
+	postCalls := 0
+	statusCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/customer/pickup/orders":
+			postCalls++
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"order_id":"new-order","status":"pending"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/customer/pickup/orders/persisted-order":
+			statusCalls++
+			_, _ = w.Write([]byte(`{"order_id":"persisted-order","status":"pending"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	createdAt := time.Date(2026, 8, 18, 6, 0, 0, 0, time.UTC)
+	history, err := json.Marshal([]AutoSupplyOrderRecord{{
+		ID: "persisted-order", GroupID: 30, Product: "team_1h", Quantity: 1,
+		Status: "pending", CreatedAt: createdAt, UpdatedAt: createdAt,
+	}})
+	require.NoError(t, err)
+	historyRepo := &autoSupplyMemorySettingRepo{values: map[string]string{SettingKeyAutoSupplyOrders: string(history)}}
+	repo := &autoSupplyAccountRepoStub{}
+	admin := &autoSupplyAdminStub{repo: repo, group: &Group{ID: 30, Name: "OpenAI", Platform: PlatformOpenAI}}
+	cfg := &config.Config{}
+	cfg.AutoSupply = config.AutoSupplyConfig{
+		Enabled: true, BaseURL: server.URL, CustomerToken: "customer-secret",
+		Groups: []config.AutoSupplyGroupConfig{{GroupID: 30, MinAvailable: 1, Quantity: 1, Product: "team_1h"}},
+	}
+	svc := NewAutoSupplyService(repo, admin, cfg)
+	svc.SetSettingsDependencies(historyRepo, nil)
+
+	svc.RunOnce(context.Background())
+	require.Zero(t, postCalls)
+	require.Equal(t, 1, statusCalls)
+	require.Equal(t, "persisted-order", svc.getActiveOrder(30).ID)
 }
 
 func TestNormalizeAutoSupplyState(t *testing.T) {
