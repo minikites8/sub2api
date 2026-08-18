@@ -76,8 +76,8 @@ const baseSettings = {
   request_timeout_seconds: 20,
   max_quantity_per_run: 10,
   usage_forecast_enabled: true,
-  usage_lookback_hours: 6,
-  usage_forecast_hours: 2,
+  usage_lookback_minutes: 360,
+  usage_forecast_minutes: 120,
   usage_safety_factor: 1.25,
   usage_min_samples: 20,
   groups: [{ group_id: 7, deploy_group_ids: [8], product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0, openai_ws_mode: "ctx_pool", proxy_mode: "none", proxy_id: null, codex_fingerprint_mode: "off", enable_account_guard: false, account_guard_interval_minutes: 30 }],
@@ -130,8 +130,8 @@ describe("AutoSupplySettingsPanel", () => {
       base_url: "https://supplier.example",
       customer_token: undefined,
       usage_forecast_enabled: true,
-      usage_lookback_hours: 6,
-      usage_forecast_hours: 2,
+      usage_lookback_minutes: 360,
+      usage_forecast_minutes: 120,
       usage_safety_factor: 1.25,
       usage_min_samples: 20,
       groups: [expect.objectContaining({ group_id: 7, deploy_group_ids: [8, 9] })],
@@ -144,8 +144,8 @@ describe("AutoSupplySettingsPanel", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("admin.settings.autoSupply.usageForecast");
-    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageLookbackHours");
-    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageForecastHours");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageLookbackMinutes");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageForecastMinutes");
     expect(wrapper.text()).toContain("admin.settings.autoSupply.usageSafetyFactor");
     expect(wrapper.text()).toContain("admin.settings.autoSupply.usageMinSamples");
   });

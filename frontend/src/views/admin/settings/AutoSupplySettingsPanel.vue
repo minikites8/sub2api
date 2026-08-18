@@ -84,12 +84,12 @@
             </div>
             <div v-if="form.usage_forecast_enabled" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <label class="block">
-                <span class="input-label">{{ t("admin.settings.autoSupply.usageLookbackHours") }}</span>
-                <input v-model.number="form.usage_lookback_hours" type="number" min="2" max="168" class="input mt-1 w-full" />
+                <span class="input-label">{{ t("admin.settings.autoSupply.usageLookbackMinutes") }}</span>
+                <input v-model.number="form.usage_lookback_minutes" type="number" min="2" max="10080" class="input mt-1 w-full" />
               </label>
               <label class="block">
-                <span class="input-label">{{ t("admin.settings.autoSupply.usageForecastHours") }}</span>
-                <input v-model.number="form.usage_forecast_hours" type="number" min="1" max="168" class="input mt-1 w-full" />
+                <span class="input-label">{{ t("admin.settings.autoSupply.usageForecastMinutes") }}</span>
+                <input v-model.number="form.usage_forecast_minutes" type="number" min="1" max="10080" class="input mt-1 w-full" />
               </label>
               <label class="block">
                 <span class="input-label">{{ t("admin.settings.autoSupply.usageSafetyFactor") }}</span>
@@ -327,8 +327,8 @@ const form = reactive<FormState>({
   request_timeout_seconds: 20,
   max_quantity_per_run: 10,
   usage_forecast_enabled: false,
-  usage_lookback_hours: 6,
-  usage_forecast_hours: 2,
+  usage_lookback_minutes: 360,
+  usage_forecast_minutes: 120,
   usage_safety_factor: 1.25,
   usage_min_samples: 20,
   groups: [],
@@ -429,8 +429,8 @@ function validate(): boolean {
   if (form.interval_seconds < 5 || form.interval_seconds > 86400) { validationError.value = t("admin.settings.autoSupply.intervalInvalid"); return false; }
   if (form.request_timeout_seconds < 1 || form.request_timeout_seconds > 300) { validationError.value = t("admin.settings.autoSupply.timeoutInvalid"); return false; }
   if (form.max_quantity_per_run < 1 || form.max_quantity_per_run > 1000) { validationError.value = t("admin.settings.autoSupply.maxQuantityInvalid"); return false; }
-  if (!Number.isInteger(form.usage_lookback_hours) || form.usage_lookback_hours < 2 || form.usage_lookback_hours > 168) { validationError.value = t("admin.settings.autoSupply.usageLookbackInvalid"); return false; }
-  if (!Number.isInteger(form.usage_forecast_hours) || form.usage_forecast_hours < 1 || form.usage_forecast_hours > 168) { validationError.value = t("admin.settings.autoSupply.usageForecastHoursInvalid"); return false; }
+  if (!Number.isInteger(form.usage_lookback_minutes) || form.usage_lookback_minutes < 2 || form.usage_lookback_minutes > 10080) { validationError.value = t("admin.settings.autoSupply.usageLookbackInvalid"); return false; }
+  if (!Number.isInteger(form.usage_forecast_minutes) || form.usage_forecast_minutes < 1 || form.usage_forecast_minutes > 10080) { validationError.value = t("admin.settings.autoSupply.usageForecastMinutesInvalid"); return false; }
   if (!Number.isFinite(form.usage_safety_factor) || form.usage_safety_factor < 1 || form.usage_safety_factor > 10) { validationError.value = t("admin.settings.autoSupply.usageSafetyFactorInvalid"); return false; }
   if (!Number.isInteger(form.usage_min_samples) || form.usage_min_samples < 1 || form.usage_min_samples > 100000) { validationError.value = t("admin.settings.autoSupply.usageMinSamplesInvalid"); return false; }
   if (form.enabled && form.groups.length === 0) { validationError.value = t("admin.settings.autoSupply.rulesRequired"); return false; }
@@ -447,8 +447,8 @@ async function saveSettings(): Promise<void> {
       enabled: form.enabled, base_url: form.base_url.trim(), customer_token: form.customer_token.trim() || undefined,
       interval_seconds: form.interval_seconds, request_timeout_seconds: form.request_timeout_seconds,
       max_quantity_per_run: form.max_quantity_per_run,
-      usage_forecast_enabled: form.usage_forecast_enabled, usage_lookback_hours: form.usage_lookback_hours,
-      usage_forecast_hours: form.usage_forecast_hours, usage_safety_factor: form.usage_safety_factor,
+      usage_forecast_enabled: form.usage_forecast_enabled, usage_lookback_minutes: form.usage_lookback_minutes,
+      usage_forecast_minutes: form.usage_forecast_minutes, usage_safety_factor: form.usage_safety_factor,
       usage_min_samples: form.usage_min_samples, groups: form.groups.map((rule) => ({ ...rule })),
     });
     applySettings(saved);

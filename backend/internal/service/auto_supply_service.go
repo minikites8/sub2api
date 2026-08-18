@@ -343,7 +343,7 @@ func (s *AutoSupplyService) usageForecastTarget(ctx context.Context, settings co
 	if accountConcurrency <= 0 {
 		return 0, nil
 	}
-	lookback := time.Duration(settings.UsageLookbackHours) * time.Hour
+	lookback := time.Duration(settings.UsageLookbackMinutes) * time.Minute
 	startTime := now.Add(-lookback)
 	midpoint := startTime.Add(lookback / 2)
 	window, err := s.usageRepo.GetAutoSupplyUsageWindow(ctx, groupCfg.GroupID, startTime, midpoint, now)
@@ -353,15 +353,15 @@ func (s *AutoSupplyService) usageForecastTarget(ctx context.Context, settings co
 	if window.Previous.Samples+window.Recent.Samples < int64(settings.UsageMinSamples) {
 		return 0, nil
 	}
-	halfWindowHours := lookback.Hours() / 2
-	halfWindowMs := halfWindowHours * float64(time.Hour/time.Millisecond)
+	halfWindowMinutes := lookback.Minutes() / 2
+	halfWindowMs := halfWindowMinutes * float64(time.Minute/time.Millisecond)
 	previousConcurrency := float64(window.Previous.TotalDurationMs) / halfWindowMs
 	recentConcurrency := float64(window.Recent.TotalDurationMs) / halfWindowMs
-	growthPerHour := (recentConcurrency - previousConcurrency) / halfWindowHours
-	if growthPerHour < 0 {
-		growthPerHour = 0
+	growthPerMinute := (recentConcurrency - previousConcurrency) / halfWindowMinutes
+	if growthPerMinute < 0 {
+		growthPerMinute = 0
 	}
-	forecastConcurrency := recentConcurrency + growthPerHour*float64(settings.UsageForecastHours)
+	forecastConcurrency := recentConcurrency + growthPerMinute*float64(settings.UsageForecastMinutes)
 	forecastConcurrency *= settings.UsageSafetyFactor
 	if forecastConcurrency <= 0 {
 		return 0, nil

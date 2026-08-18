@@ -1478,11 +1478,13 @@ type AutoSupplyConfig struct {
 	RequestTimeoutSeconds int                     `mapstructure:"request_timeout_seconds"`
 	MaxQuantityPerRun     int                     `mapstructure:"max_quantity_per_run"`
 	UsageForecastEnabled  bool                    `mapstructure:"usage_forecast_enabled"`
-	UsageLookbackHours    int                     `mapstructure:"usage_lookback_hours"`
-	UsageForecastHours    int                     `mapstructure:"usage_forecast_hours"`
+	UsageLookbackMinutes  int                     `mapstructure:"usage_lookback_minutes"`
+	UsageForecastMinutes  int                     `mapstructure:"usage_forecast_minutes"`
 	UsageSafetyFactor     float64                 `mapstructure:"usage_safety_factor"`
 	UsageMinSamples       int                     `mapstructure:"usage_min_samples"`
 	Groups                []AutoSupplyGroupConfig `mapstructure:"groups"`
+	UsageLookbackHours    int                     `mapstructure:"usage_lookback_hours"` // Deprecated: use UsageLookbackMinutes.
+	UsageForecastHours    int                     `mapstructure:"usage_forecast_hours"` // Deprecated: use UsageForecastMinutes.
 }
 
 // AutoSupplyGroupConfig monitors one local group and optionally deploys imported accounts to additional groups.
@@ -2139,8 +2141,6 @@ func setDefaults() {
 	viper.SetDefault("auto_supply.request_timeout_seconds", 20)
 	viper.SetDefault("auto_supply.max_quantity_per_run", 10)
 	viper.SetDefault("auto_supply.usage_forecast_enabled", false)
-	viper.SetDefault("auto_supply.usage_lookback_hours", 6)
-	viper.SetDefault("auto_supply.usage_forecast_hours", 2)
 	viper.SetDefault("auto_supply.usage_safety_factor", 1.25)
 	viper.SetDefault("auto_supply.usage_min_samples", 20)
 	viper.SetDefault("auto_supply.groups", []AutoSupplyGroupConfig{})
@@ -2570,6 +2570,34 @@ func (c *Config) Validate() error {
 		}
 		if c.AutoSupply.MaxQuantityPerRun <= 0 {
 			return fmt.Errorf("auto_supply.max_quantity_per_run must be positive when auto_supply is enabled")
+		}
+		if c.AutoSupply.UsageForecastEnabled {
+			lookbackMinutes := c.AutoSupply.UsageLookbackMinutes
+			if lookbackMinutes <= 0 && c.AutoSupply.UsageLookbackHours > 0 {
+				if c.AutoSupply.UsageLookbackHours > 168 {
+					return fmt.Errorf("auto_supply.usage_lookback_hours must be at most 168")
+				}
+				lookbackMinutes = c.AutoSupply.UsageLookbackHours * 60
+			}
+			if lookbackMinutes <= 0 {
+				lookbackMinutes = 360
+			}
+			if lookbackMinutes < 2 || lookbackMinutes > 10080 {
+				return fmt.Errorf("auto_supply.usage_lookback_minutes must be between 2 and 10080")
+			}
+			forecastMinutes := c.AutoSupply.UsageForecastMinutes
+			if forecastMinutes <= 0 && c.AutoSupply.UsageForecastHours > 0 {
+				if c.AutoSupply.UsageForecastHours > 168 {
+					return fmt.Errorf("auto_supply.usage_forecast_hours must be at most 168")
+				}
+				forecastMinutes = c.AutoSupply.UsageForecastHours * 60
+			}
+			if forecastMinutes <= 0 {
+				forecastMinutes = 120
+			}
+			if forecastMinutes < 1 || forecastMinutes > 10080 {
+				return fmt.Errorf("auto_supply.usage_forecast_minutes must be between 1 and 10080")
+			}
 		}
 		baseURL := strings.TrimSpace(c.AutoSupply.BaseURL)
 		parsed, err := url.Parse(baseURL)

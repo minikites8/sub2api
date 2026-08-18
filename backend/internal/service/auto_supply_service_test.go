@@ -296,7 +296,7 @@ func TestAutoSupplyUsageForecastCreatesOrderBeforeFixedThreshold(t *testing.T) {
 	admin := &autoSupplyAdminStub{repo: repo, group: &Group{ID: 42, Name: "OpenAI", Platform: PlatformOpenAI}}
 	cfg := &config.Config{AutoSupply: config.AutoSupplyConfig{
 		Enabled: true, BaseURL: server.URL, CustomerToken: "customer-secret", MaxQuantityPerRun: 10,
-		UsageForecastEnabled: true, UsageLookbackHours: 4, UsageForecastHours: 2,
+		UsageForecastEnabled: true, UsageLookbackMinutes: 240, UsageForecastMinutes: 120,
 		UsageSafetyFactor: 1.25, UsageMinSamples: 20,
 		Groups: []config.AutoSupplyGroupConfig{{GroupID: 42, MinAvailable: 2, Quantity: 1, Product: "oauth_30d", Concurrency: 2}},
 	}}
@@ -311,7 +311,7 @@ func TestAutoSupplyUsageForecastCreatesOrderBeforeFixedThreshold(t *testing.T) {
 
 func TestAutoSupplyUsageForecastTarget(t *testing.T) {
 	settings := config.AutoSupplyConfig{
-		UsageLookbackHours: 4, UsageForecastHours: 2,
+		UsageLookbackMinutes: 240, UsageForecastMinutes: 120,
 		UsageSafetyFactor: 1.25, UsageMinSamples: 20,
 	}
 	usageRepo := &autoSupplyUsageRepoStub{window: AutoSupplyUsageWindow{
@@ -534,8 +534,8 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 		RequestTimeoutSeconds: 15,
 		MaxQuantityPerRun:     8,
 		UsageForecastEnabled:  true,
-		UsageLookbackHours:    12,
-		UsageForecastHours:    3,
+		UsageLookbackMinutes:  720,
+		UsageForecastMinutes:  180,
 		UsageSafetyFactor:     1.5,
 		UsageMinSamples:       50,
 		Groups: []AutoSupplyGroupSettings{{
@@ -560,19 +560,23 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.True(t, updated.Groups[0].EnableAccountGuard)
 	require.Equal(t, 45, updated.Groups[0].AccountGuardIntervalMinutes)
 	require.True(t, updated.UsageForecastEnabled)
-	require.Equal(t, 12, updated.UsageLookbackHours)
-	require.Equal(t, 3, updated.UsageForecastHours)
+	require.Equal(t, 720, updated.UsageLookbackMinutes)
+	require.Equal(t, 180, updated.UsageForecastMinutes)
 	require.Equal(t, 1.5, updated.UsageSafetyFactor)
 	require.Equal(t, 50, updated.UsageMinSamples)
 	raw := repo.values[SettingKeyAutoSupplySettings]
 	require.NotContains(t, raw, "customer-secret")
 	require.Contains(t, raw, "customer_token_encrypted")
+	require.Contains(t, raw, `"usage_lookback_minutes":720`)
+	require.Contains(t, raw, `"usage_forecast_minutes":180`)
+	require.NotContains(t, raw, "usage_lookback_hours")
+	require.NotContains(t, raw, "usage_forecast_hours")
 
 	runtimeSettings := svc.currentAutoSupplyConfig()
 	require.Equal(t, "customer-secret", runtimeSettings.CustomerToken)
 	require.Equal(t, 60, runtimeSettings.IntervalSeconds)
 	require.True(t, runtimeSettings.UsageForecastEnabled)
-	require.Equal(t, 12, runtimeSettings.UsageLookbackHours)
+	require.Equal(t, 720, runtimeSettings.UsageLookbackMinutes)
 	require.Equal(t, []int64{7, 8}, runtimeSettings.Groups[0].DeployGroupIDs)
 	require.Equal(t, OpenAIWSIngressModeHTTPBridge, runtimeSettings.Groups[0].OpenAIWSMode)
 	select {
@@ -601,7 +605,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, settings.CustomerTokenConfigured)
 	require.Equal(t, 90, settings.IntervalSeconds)
-	require.Equal(t, autoSupplyDefaultLookbackHours, settings.UsageLookbackHours)
+	require.Equal(t, autoSupplyDefaultLookbackMinutes, settings.UsageLookbackMinutes)
 	require.Equal(t, []int64{7, 8}, settings.Groups[0].DeployGroupIDs)
 	require.Equal(t, "customer-secret", reloaded.currentAutoSupplyConfig().CustomerToken)
 }
@@ -712,8 +716,26 @@ func TestAutoSupplySettingsRejectInvalidUsageForecast(t *testing.T) {
 
 	_, err := svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
 		BaseURL: "https://supplier.example", IntervalSeconds: 30, RequestTimeoutSeconds: 20, MaxQuantityPerRun: 10,
-		UsageLookbackHours: 1, UsageForecastHours: 2, UsageSafetyFactor: 1.25, UsageMinSamples: 20,
+		UsageLookbackMinutes: 1, UsageForecastMinutes: 120, UsageSafetyFactor: 1.25, UsageMinSamples: 20,
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "usage_lookback_hours")
+	require.Contains(t, err.Error(), "usage_lookback_minutes")
+}
+
+func TestAutoSupplySettingsConvertsLegacyHoursToMinutes(t *testing.T) {
+	repo := &autoSupplyMemorySettingRepo{values: map[string]string{
+		SettingKeyAutoSupplySettings: `{"enabled":false,"base_url":"https://supplier.example","interval_seconds":30,"request_timeout_seconds":20,"max_quantity_per_run":10,"usage_lookback_hours":6,"usage_forecast_hours":2,"usage_safety_factor":1.25,"usage_min_samples":20,"groups":[]}`,
+	}}
+	svc := NewAutoSupplyService(nil, nil, &config.Config{})
+	svc.SetSettingsDependencies(repo, autoSupplyTestEncryptor{})
+
+	settings, err := svc.GetSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 360, settings.UsageLookbackMinutes)
+	require.Equal(t, 120, settings.UsageForecastMinutes)
+
+	input := AutoSupplySettingsUpdate{UsageLookbackHours: 3, UsageForecastHours: 1}
+	normalizeAutoSupplySettingsUpdate(&input)
+	require.Equal(t, 180, input.UsageLookbackMinutes)
+	require.Equal(t, 60, input.UsageForecastMinutes)
 }
