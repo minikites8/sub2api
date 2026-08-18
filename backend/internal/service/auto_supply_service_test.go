@@ -189,7 +189,7 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 			if got := r.URL.Query().Get("format"); got != "sub2" {
 				t.Errorf("download format = %q, want sub2", got)
 			}
-			_, _ = w.Write([]byte(`{"accounts":[{"name":"upstream-1","platform":"openai","type":"oauth","credentials":{"access_token":"access","refresh_token":"refresh"}}]}`))
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"upstream-1","platform":"openai","type":"oauth","credentials":{"access_token":"access","refresh_token":"refresh"},"extra":{"responses_websockets_v2_enabled":true,"openai_ws_enabled":true},"concurrency":10}]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -209,6 +209,8 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 			DeployGroupIDs:              []int64{7, 42, 8, 7},
 			MinAvailable:                1,
 			Product:                     "oauth_30d",
+			Concurrency:                 4,
+			OpenAIWSMode:                OpenAIWSIngressModePassthrough,
 			ProxyMode:                   "specified",
 			ProxyID:                     func() *int64 { value := int64(11); return &value }(),
 			CodexFingerprintMode:        AdminAPIKeyCodexFingerprintSession,
@@ -234,7 +236,12 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 	require.Equal(t, []int64{42, 7, 8}, admin.input.GroupIDs)
 	require.Equal(t, AccountTypeOAuth, admin.input.Type)
 	require.Equal(t, PlatformOpenAI, admin.input.Platform)
+	require.Equal(t, 4, admin.input.Concurrency)
 	require.Equal(t, "order-1:0", admin.input.Extra[autoSupplyOrderMarkerKey])
+	require.Equal(t, OpenAIWSIngressModePassthrough, admin.input.Extra["openai_oauth_responses_websockets_v2_mode"])
+	require.Equal(t, true, admin.input.Extra["openai_oauth_responses_websockets_v2_enabled"])
+	require.NotContains(t, admin.input.Extra, "responses_websockets_v2_enabled")
+	require.NotContains(t, admin.input.Extra, "openai_ws_enabled")
 	require.NotNil(t, admin.defaults)
 	require.Equal(t, AdminAPIKeyProxyModeFixed, admin.defaults.ProxyMode)
 	require.NotNil(t, admin.defaults.ProxyID)
@@ -380,6 +387,36 @@ func TestDecodeAutoSupplyAccountAndExpiry(t *testing.T) {
 	require.Equal(t, int64(1770000000), *expiresAt)
 }
 
+func TestApplyAutoSupplyOpenAIWSModeByAccountType(t *testing.T) {
+	tests := []struct {
+		name        string
+		accountType string
+		mode        string
+		modeKey     string
+		enabledKey  string
+		enabled     bool
+	}{
+		{
+			name: "oauth context pool", accountType: AccountTypeOAuth, mode: OpenAIWSIngressModeCtxPool,
+			modeKey: "openai_oauth_responses_websockets_v2_mode", enabledKey: "openai_oauth_responses_websockets_v2_enabled", enabled: true,
+		},
+		{
+			name: "api key off", accountType: AccountTypeAPIKey, mode: OpenAIWSIngressModeOff,
+			modeKey: "openai_apikey_responses_websockets_v2_mode", enabledKey: "openai_apikey_responses_websockets_v2_enabled", enabled: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			extra := map[string]any{"responses_websockets_v2_enabled": true, "openai_ws_enabled": true}
+			applyAutoSupplyOpenAIWSMode(extra, PlatformOpenAI, test.accountType, test.mode)
+			require.Equal(t, test.mode, extra[test.modeKey])
+			require.Equal(t, test.enabled, extra[test.enabledKey])
+			require.NotContains(t, extra, "responses_websockets_v2_enabled")
+			require.NotContains(t, extra, "openai_ws_enabled")
+		})
+	}
+}
+
 func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	repo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
 	cfg := &config.Config{}
@@ -397,7 +434,8 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 		Groups: []AutoSupplyGroupSettings{{
 			GroupID: 42, DeployGroupIDs: []int64{7, 7, 8}, Product: "oauth_30d", MinAvailable: 3, Quantity: 4,
 			Platform: PlatformOpenAI, AccountType: AccountTypeOAuth, Priority: 5, Concurrency: 2,
-			ProxyMode: "specified", ProxyID: func() *int64 { value := int64(11); return &value }(),
+			OpenAIWSMode: OpenAIWSIngressModeHTTPBridge,
+			ProxyMode:    "specified", ProxyID: func() *int64 { value := int64(11); return &value }(),
 			CodexFingerprintMode: AdminAPIKeyCodexFingerprintSession,
 			EnableAccountGuard:   true, AccountGuardIntervalMinutes: 45,
 		}},
@@ -411,6 +449,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.NotNil(t, updated.Groups[0].ProxyID)
 	require.Equal(t, int64(11), *updated.Groups[0].ProxyID)
 	require.Equal(t, AdminAPIKeyCodexFingerprintSession, updated.Groups[0].CodexFingerprintMode)
+	require.Equal(t, OpenAIWSIngressModeHTTPBridge, updated.Groups[0].OpenAIWSMode)
 	require.True(t, updated.Groups[0].EnableAccountGuard)
 	require.Equal(t, 45, updated.Groups[0].AccountGuardIntervalMinutes)
 	raw := repo.values[SettingKeyAutoSupplySettings]
@@ -421,6 +460,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.Equal(t, "customer-secret", runtimeSettings.CustomerToken)
 	require.Equal(t, 60, runtimeSettings.IntervalSeconds)
 	require.Equal(t, []int64{7, 8}, runtimeSettings.Groups[0].DeployGroupIDs)
+	require.Equal(t, OpenAIWSIngressModeHTTPBridge, runtimeSettings.Groups[0].OpenAIWSMode)
 	select {
 	case <-svc.wakeCh:
 	default:
@@ -539,4 +579,13 @@ func TestAutoSupplySettingsRejectInvalidAccountDefaults(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "account_guard_interval_minutes")
+
+	_, err = svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		BaseURL: "https://supplier.example", IntervalSeconds: 30, RequestTimeoutSeconds: 20, MaxQuantityPerRun: 10,
+		Groups: []AutoSupplyGroupSettings{{
+			GroupID: 42, Product: "oauth_30d", OpenAIWSMode: "invalid",
+		}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "openai_ws_mode")
 }

@@ -29,6 +29,7 @@ type AutoSupplyGroupSettings struct {
 	AccountType                 string  `json:"account_type"`
 	Priority                    int     `json:"priority"`
 	Concurrency                 int     `json:"concurrency"`
+	OpenAIWSMode                string  `json:"openai_ws_mode"`
 	ProxyMode                   string  `json:"proxy_mode"`
 	ProxyID                     *int64  `json:"proxy_id,omitempty"`
 	CodexFingerprintMode        string  `json:"codex_fingerprint_mode"`
@@ -284,6 +285,7 @@ func normalizeAutoSupplyConfig(settings config.AutoSupplyConfig) config.AutoSupp
 		settings.Groups[index].Product = strings.TrimSpace(settings.Groups[index].Product)
 		settings.Groups[index].Platform = strings.TrimSpace(settings.Groups[index].Platform)
 		settings.Groups[index].AccountType = strings.TrimSpace(settings.Groups[index].AccountType)
+		settings.Groups[index].OpenAIWSMode = normalizeAutoSupplyOpenAIWSMode(settings.Groups[index].OpenAIWSMode)
 		settings.Groups[index].ProxyMode = normalizeAutoSupplyProxyMode(settings.Groups[index].ProxyMode)
 		if settings.Groups[index].ProxyMode != "specified" {
 			settings.Groups[index].ProxyID = nil
@@ -319,7 +321,8 @@ func autoSupplyConfigFromStored(stored *autoSupplyStoredSettings, token string) 
 			Product: group.Product, MinAvailable: group.MinAvailable,
 			Quantity: group.Quantity, Platform: group.Platform, AccountType: group.AccountType,
 			Priority: group.Priority, Concurrency: group.Concurrency,
-			ProxyMode: group.ProxyMode, ProxyID: cloneInt64Pointer(group.ProxyID),
+			OpenAIWSMode: group.OpenAIWSMode,
+			ProxyMode:    group.ProxyMode, ProxyID: cloneInt64Pointer(group.ProxyID),
 			CodexFingerprintMode:        group.CodexFingerprintMode,
 			EnableAccountGuard:          group.EnableAccountGuard,
 			AccountGuardIntervalMinutes: group.AccountGuardIntervalMinutes,
@@ -338,7 +341,8 @@ func autoSupplyGroupSettingsFromConfig(group config.AutoSupplyGroupConfig) AutoS
 		Product: group.Product, MinAvailable: group.MinAvailable,
 		Quantity: group.Quantity, Platform: group.Platform, AccountType: group.AccountType,
 		Priority: group.Priority, Concurrency: group.Concurrency,
-		ProxyMode: group.ProxyMode, ProxyID: cloneInt64Pointer(group.ProxyID),
+		OpenAIWSMode: group.OpenAIWSMode,
+		ProxyMode:    group.ProxyMode, ProxyID: cloneInt64Pointer(group.ProxyID),
 		CodexFingerprintMode:        group.CodexFingerprintMode,
 		EnableAccountGuard:          group.EnableAccountGuard,
 		AccountGuardIntervalMinutes: group.AccountGuardIntervalMinutes,
@@ -362,6 +366,7 @@ func normalizeAutoSupplySettingsUpdate(input *AutoSupplySettingsUpdate) {
 		input.Groups[index].Product = strings.TrimSpace(input.Groups[index].Product)
 		input.Groups[index].Platform = strings.TrimSpace(input.Groups[index].Platform)
 		input.Groups[index].AccountType = strings.TrimSpace(input.Groups[index].AccountType)
+		input.Groups[index].OpenAIWSMode = normalizeAutoSupplyOpenAIWSMode(input.Groups[index].OpenAIWSMode)
 		input.Groups[index].ProxyMode = normalizeAutoSupplyProxyMode(input.Groups[index].ProxyMode)
 		if input.Groups[index].ProxyMode != "specified" {
 			input.Groups[index].ProxyID = nil
@@ -456,6 +461,10 @@ func validateAutoSupplySettings(input AutoSupplySettingsUpdate, effectiveToken s
 		if group.Concurrency < 0 || group.Concurrency > 1000 {
 			return fmt.Errorf("groups[%d].concurrency must be between 0 and 1000", index)
 		}
+		if group.OpenAIWSMode != "off" && group.OpenAIWSMode != "ctx_pool" &&
+			group.OpenAIWSMode != "passthrough" && group.OpenAIWSMode != "http_bridge" {
+			return fmt.Errorf("groups[%d].openai_ws_mode must be off, ctx_pool, passthrough, or http_bridge", index)
+		}
 	}
 	if input.Enabled {
 		if input.BaseURL == "" {
@@ -469,6 +478,14 @@ func validateAutoSupplySettings(input AutoSupplySettingsUpdate, effectiveToken s
 		}
 	}
 	return nil
+}
+
+func normalizeAutoSupplyOpenAIWSMode(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return "off"
+	}
+	return mode
 }
 
 func normalizeAutoSupplyDeployGroupIDs(triggerGroupID int64, values []int64) []int64 {

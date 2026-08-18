@@ -1379,6 +1379,7 @@ export interface AutoSupplyGroupSettings {
   account_type: string;
   priority: number;
   concurrency: number;
+  openai_ws_mode: 'off' | 'ctx_pool' | 'passthrough' | 'http_bridge';
   proxy_mode: 'none' | 'specified' | 'random';
   proxy_id?: number | null;
   codex_fingerprint_mode: 'off' | 'device' | 'session' | 'full';

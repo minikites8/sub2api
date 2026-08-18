@@ -75,7 +75,7 @@ const baseSettings = {
   interval_seconds: 30,
   request_timeout_seconds: 20,
   max_quantity_per_run: 10,
-  groups: [{ group_id: 7, deploy_group_ids: [8], product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0, proxy_mode: "none", proxy_id: null, codex_fingerprint_mode: "off", enable_account_guard: false, account_guard_interval_minutes: 30 }],
+  groups: [{ group_id: 7, deploy_group_ids: [8], product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0, openai_ws_mode: "ctx_pool", proxy_mode: "none", proxy_id: null, codex_fingerprint_mode: "off", enable_account_guard: false, account_guard_interval_minutes: 30 }],
 };
 
 describe("AutoSupplySettingsPanel", () => {
@@ -139,6 +139,8 @@ describe("AutoSupplySettingsPanel", () => {
 
     expect(wrapper.text()).toContain("admin.settings.autoSupply.proxyMode");
     expect(wrapper.text()).toContain("admin.settings.autoSupply.oauthConvergence");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.openAIWSMode");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.openAIWSModeCtxPool");
     expect(wrapper.text()).toContain("admin.settings.autoSupply.enableAccountGuard");
     expect(wrapper.text()).toContain("admin.settings.autoSupply.accountGuardInterval");
     expect(wrapper.text()).toContain("Primary (proxy.example:8080)");

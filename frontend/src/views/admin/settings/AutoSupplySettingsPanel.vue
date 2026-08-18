@@ -149,6 +149,12 @@
             <label class="block">
               <span class="input-label">{{ t("admin.settings.autoSupply.concurrency") }}</span>
               <input v-model.number="rule.concurrency" type="number" min="0" class="input mt-1 w-full" />
+              <span class="input-hint mt-1 block">{{ t("admin.settings.autoSupply.concurrencyHint") }}</span>
+            </label>
+            <label v-if="isOpenAIRule(rule)" class="block">
+              <span class="input-label">{{ t("admin.settings.autoSupply.openAIWSMode") }}</span>
+              <Select v-model="rule.openai_ws_mode" class="mt-1" :options="openAIWSModeOptions" />
+              <span class="input-hint mt-1 block">{{ t("admin.settings.autoSupply.openAIWSModeHint") }}</span>
             </label>
             <label class="block">
               <span class="input-label">{{ t("admin.settings.autoSupply.proxyMode") }}</span>
@@ -310,6 +316,12 @@ const fingerprintOptions = computed(() => [
   { value: "session", label: t("admin.settings.autoSupply.oauthConvergenceSession") },
   { value: "full", label: t("admin.settings.autoSupply.oauthConvergenceFull") },
 ]);
+const openAIWSModeOptions = computed(() => [
+  { value: "off", label: t("admin.settings.autoSupply.openAIWSModeOff") },
+  { value: "ctx_pool", label: t("admin.settings.autoSupply.openAIWSModeCtxPool") },
+  { value: "passthrough", label: t("admin.settings.autoSupply.openAIWSModePassthrough") },
+  { value: "http_bridge", label: t("admin.settings.autoSupply.openAIWSModeHTTPBridge") },
+]);
 const proxyOptions = computed(() => proxies.value.map((proxy) => ({
   value: proxy.id,
   label: `${proxy.name} (${proxy.host}:${proxy.port})`,
@@ -342,6 +354,7 @@ function emptyRule(groupId = 0): AutoSupplyGroupSettings {
     account_type: "",
     priority: 0,
     concurrency: 0,
+    openai_ws_mode: "off",
     proxy_mode: "none",
     proxy_id: null,
     codex_fingerprint_mode: "off",
@@ -360,6 +373,10 @@ function deployableGroups(rule: AutoSupplyGroupSettings): AdminGroup[] {
 }
 function handleTriggerGroupChange(rule: AutoSupplyGroupSettings): void {
   rule.deploy_group_ids = rule.deploy_group_ids.filter((groupId) => groupId !== rule.group_id);
+}
+function isOpenAIRule(rule: AutoSupplyGroupSettings): boolean {
+  const platform = rule.platform || groups.value.find((group) => group.id === rule.group_id)?.platform || "";
+  return platform.toLowerCase() === "openai";
 }
 function applySettings(settings: AutoSupplySettings): void {
   Object.assign(form, {

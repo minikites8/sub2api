@@ -1491,6 +1491,7 @@ type AutoSupplyGroupConfig struct {
 	AccountType                 string  `mapstructure:"account_type"`
 	Priority                    int     `mapstructure:"priority"`
 	Concurrency                 int     `mapstructure:"concurrency"`
+	OpenAIWSMode                string  `mapstructure:"openai_ws_mode"`
 	ProxyMode                   string  `mapstructure:"proxy_mode"`
 	ProxyID                     *int64  `mapstructure:"proxy_id"`
 	CodexFingerprintMode        string  `mapstructure:"codex_fingerprint_mode"`
@@ -2591,6 +2592,10 @@ func (c *Config) Validate() error {
 			}
 			if group.Quantity < 0 {
 				return fmt.Errorf("auto_supply.groups[%d].quantity must be non-negative", index)
+			}
+			wsMode := strings.ToLower(strings.TrimSpace(group.OpenAIWSMode))
+			if wsMode != "" && wsMode != "off" && wsMode != "ctx_pool" && wsMode != "passthrough" && wsMode != "http_bridge" {
+				return fmt.Errorf("auto_supply.groups[%d].openai_ws_mode must be off, ctx_pool, passthrough, or http_bridge", index)
 			}
 		}
 	}

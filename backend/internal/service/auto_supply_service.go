@@ -511,10 +511,11 @@ func (s *AutoSupplyService) importBundle(ctx context.Context, group *Group, grou
 		if priority == 0 {
 			priority = groupCfg.Priority
 		}
-		concurrency := item.Concurrency
-		if concurrency == 0 {
-			concurrency = groupCfg.Concurrency
+		concurrency := groupCfg.Concurrency
+		if concurrency <= 0 {
+			concurrency = item.Concurrency
 		}
+		applyAutoSupplyOpenAIWSMode(extra, itemPlatform, itemType, groupCfg.OpenAIWSMode)
 		accountCtx := ContextWithAdminAPIKeyAccountDefaults(ctx, autoSupplyAccountDefaults(groupCfg))
 		_, err = s.admin.CreateAccount(accountCtx, &CreateAccountInput{
 			Name:                  name,
@@ -633,6 +634,26 @@ func cloneAutoSupplyMap(input map[string]any) map[string]any {
 		output[key] = value
 	}
 	return output
+}
+
+func applyAutoSupplyOpenAIWSMode(extra map[string]any, platform, accountType, mode string) {
+	if extra == nil || strings.ToLower(strings.TrimSpace(platform)) != PlatformOpenAI {
+		return
+	}
+	mode = normalizeAutoSupplyOpenAIWSMode(mode)
+	enabled := mode != OpenAIWSIngressModeOff
+	switch strings.ToLower(strings.TrimSpace(accountType)) {
+	case AccountTypeOAuth:
+		extra["openai_oauth_responses_websockets_v2_mode"] = mode
+		extra["openai_oauth_responses_websockets_v2_enabled"] = enabled
+	case AccountTypeAPIKey:
+		extra["openai_apikey_responses_websockets_v2_mode"] = mode
+		extra["openai_apikey_responses_websockets_v2_enabled"] = enabled
+	default:
+		return
+	}
+	delete(extra, "responses_websockets_v2_enabled")
+	delete(extra, "openai_ws_enabled")
 }
 
 func parseAutoSupplyUnix(raw json.RawMessage) (*int64, error) {

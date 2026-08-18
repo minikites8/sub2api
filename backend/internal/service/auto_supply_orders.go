@@ -66,6 +66,12 @@ func (s *AutoSupplyService) recordOrder(ctx context.Context, order *autoSupplyOr
 	if err != nil {
 		return err
 	}
+	for _, existing := range records {
+		if !record.UpdatedAt.After(existing.UpdatedAt) {
+			record.UpdatedAt = existing.UpdatedAt.Add(time.Nanosecond)
+			order.UpdatedAt = record.UpdatedAt
+		}
+	}
 	replaced := false
 	for index := range records {
 		if records[index].ID == record.ID {
