@@ -73,6 +73,34 @@
             <input v-model.number="form.max_quantity_per_run" type="number" min="1" max="1000" class="input mt-1 w-full" />
             <span class="input-hint mt-1 block">{{ t("admin.settings.autoSupply.maxQuantityHint") }}</span>
           </label>
+
+          <div class="border-t border-gray-100 pt-4 md:col-span-2 dark:border-dark-700">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <span class="input-label">{{ t("admin.settings.autoSupply.usageForecast") }}</span>
+                <p class="input-hint mt-1">{{ t("admin.settings.autoSupply.usageForecastHint") }}</p>
+              </div>
+              <Toggle v-model="form.usage_forecast_enabled" />
+            </div>
+            <div v-if="form.usage_forecast_enabled" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <label class="block">
+                <span class="input-label">{{ t("admin.settings.autoSupply.usageLookbackHours") }}</span>
+                <input v-model.number="form.usage_lookback_hours" type="number" min="2" max="168" class="input mt-1 w-full" />
+              </label>
+              <label class="block">
+                <span class="input-label">{{ t("admin.settings.autoSupply.usageForecastHours") }}</span>
+                <input v-model.number="form.usage_forecast_hours" type="number" min="1" max="168" class="input mt-1 w-full" />
+              </label>
+              <label class="block">
+                <span class="input-label">{{ t("admin.settings.autoSupply.usageSafetyFactor") }}</span>
+                <input v-model.number="form.usage_safety_factor" type="number" min="1" max="10" step="0.05" class="input mt-1 w-full" />
+              </label>
+              <label class="block">
+                <span class="input-label">{{ t("admin.settings.autoSupply.usageMinSamples") }}</span>
+                <input v-model.number="form.usage_min_samples" type="number" min="1" max="100000" class="input mt-1 w-full" />
+              </label>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -298,6 +326,11 @@ const form = reactive<FormState>({
   interval_seconds: 30,
   request_timeout_seconds: 20,
   max_quantity_per_run: 10,
+  usage_forecast_enabled: false,
+  usage_lookback_hours: 6,
+  usage_forecast_hours: 2,
+  usage_safety_factor: 1.25,
+  usage_min_samples: 20,
   groups: [],
 });
 
@@ -396,6 +429,10 @@ function validate(): boolean {
   if (form.interval_seconds < 5 || form.interval_seconds > 86400) { validationError.value = t("admin.settings.autoSupply.intervalInvalid"); return false; }
   if (form.request_timeout_seconds < 1 || form.request_timeout_seconds > 300) { validationError.value = t("admin.settings.autoSupply.timeoutInvalid"); return false; }
   if (form.max_quantity_per_run < 1 || form.max_quantity_per_run > 1000) { validationError.value = t("admin.settings.autoSupply.maxQuantityInvalid"); return false; }
+  if (!Number.isInteger(form.usage_lookback_hours) || form.usage_lookback_hours < 2 || form.usage_lookback_hours > 168) { validationError.value = t("admin.settings.autoSupply.usageLookbackInvalid"); return false; }
+  if (!Number.isInteger(form.usage_forecast_hours) || form.usage_forecast_hours < 1 || form.usage_forecast_hours > 168) { validationError.value = t("admin.settings.autoSupply.usageForecastHoursInvalid"); return false; }
+  if (!Number.isFinite(form.usage_safety_factor) || form.usage_safety_factor < 1 || form.usage_safety_factor > 10) { validationError.value = t("admin.settings.autoSupply.usageSafetyFactorInvalid"); return false; }
+  if (!Number.isInteger(form.usage_min_samples) || form.usage_min_samples < 1 || form.usage_min_samples > 100000) { validationError.value = t("admin.settings.autoSupply.usageMinSamplesInvalid"); return false; }
   if (form.enabled && form.groups.length === 0) { validationError.value = t("admin.settings.autoSupply.rulesRequired"); return false; }
   if (form.groups.some((rule) => rule.group_id <= 0 || !rule.product.trim() || rule.deploy_group_ids.some((id) => id <= 0))) { validationError.value = t("admin.settings.autoSupply.ruleInvalid"); return false; }
   if (form.groups.some((rule) => rule.proxy_mode === "specified" && !rule.proxy_id)) { validationError.value = t("admin.settings.autoSupply.proxyRequired"); return false; }
@@ -409,7 +446,10 @@ async function saveSettings(): Promise<void> {
     const saved = await settingsAPI.updateAutoSupplySettings({
       enabled: form.enabled, base_url: form.base_url.trim(), customer_token: form.customer_token.trim() || undefined,
       interval_seconds: form.interval_seconds, request_timeout_seconds: form.request_timeout_seconds,
-      max_quantity_per_run: form.max_quantity_per_run, groups: form.groups.map((rule) => ({ ...rule })),
+      max_quantity_per_run: form.max_quantity_per_run,
+      usage_forecast_enabled: form.usage_forecast_enabled, usage_lookback_hours: form.usage_lookback_hours,
+      usage_forecast_hours: form.usage_forecast_hours, usage_safety_factor: form.usage_safety_factor,
+      usage_min_samples: form.usage_min_samples, groups: form.groups.map((rule) => ({ ...rule })),
     });
     applySettings(saved);
     appStore.showSuccess(t("admin.settings.autoSupply.saved"));

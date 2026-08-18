@@ -14,8 +14,12 @@ import (
 )
 
 const (
-	autoSupplyFallbackVersion = "config-fallback"
-	autoSupplyReloadInterval  = 30 * time.Second
+	autoSupplyFallbackVersion            = "config-fallback"
+	autoSupplyReloadInterval             = 30 * time.Second
+	autoSupplyDefaultLookbackHours       = 6
+	autoSupplyDefaultForecastHours       = 2
+	autoSupplyDefaultUsageSafetyFactor   = 1.25
+	autoSupplyDefaultUsageMinimumSamples = 20
 )
 
 // AutoSupplyGroupSettings defines one trigger group replenishment rule and its optional deployment groups.
@@ -46,6 +50,11 @@ type AutoSupplySettings struct {
 	IntervalSeconds         int                       `json:"interval_seconds"`
 	RequestTimeoutSeconds   int                       `json:"request_timeout_seconds"`
 	MaxQuantityPerRun       int                       `json:"max_quantity_per_run"`
+	UsageForecastEnabled    bool                      `json:"usage_forecast_enabled"`
+	UsageLookbackHours      int                       `json:"usage_lookback_hours"`
+	UsageForecastHours      int                       `json:"usage_forecast_hours"`
+	UsageSafetyFactor       float64                   `json:"usage_safety_factor"`
+	UsageMinSamples         int                       `json:"usage_min_samples"`
 	Groups                  []AutoSupplyGroupSettings `json:"groups"`
 }
 
@@ -58,6 +67,11 @@ type AutoSupplySettingsUpdate struct {
 	IntervalSeconds       int                       `json:"interval_seconds"`
 	RequestTimeoutSeconds int                       `json:"request_timeout_seconds"`
 	MaxQuantityPerRun     int                       `json:"max_quantity_per_run"`
+	UsageForecastEnabled  bool                      `json:"usage_forecast_enabled"`
+	UsageLookbackHours    int                       `json:"usage_lookback_hours"`
+	UsageForecastHours    int                       `json:"usage_forecast_hours"`
+	UsageSafetyFactor     float64                   `json:"usage_safety_factor"`
+	UsageMinSamples       int                       `json:"usage_min_samples"`
 	Groups                []AutoSupplyGroupSettings `json:"groups"`
 }
 
@@ -68,6 +82,11 @@ type autoSupplyStoredSettings struct {
 	IntervalSeconds        int                       `json:"interval_seconds"`
 	RequestTimeoutSeconds  int                       `json:"request_timeout_seconds"`
 	MaxQuantityPerRun      int                       `json:"max_quantity_per_run"`
+	UsageForecastEnabled   bool                      `json:"usage_forecast_enabled"`
+	UsageLookbackHours     int                       `json:"usage_lookback_hours"`
+	UsageForecastHours     int                       `json:"usage_forecast_hours"`
+	UsageSafetyFactor      float64                   `json:"usage_safety_factor"`
+	UsageMinSamples        int                       `json:"usage_min_samples"`
 	Groups                 []AutoSupplyGroupSettings `json:"groups"`
 }
 
@@ -140,6 +159,11 @@ func (s *AutoSupplyService) UpdateSettings(ctx context.Context, input AutoSupply
 		IntervalSeconds:        input.IntervalSeconds,
 		RequestTimeoutSeconds:  input.RequestTimeoutSeconds,
 		MaxQuantityPerRun:      input.MaxQuantityPerRun,
+		UsageForecastEnabled:   input.UsageForecastEnabled,
+		UsageLookbackHours:     input.UsageLookbackHours,
+		UsageForecastHours:     input.UsageForecastHours,
+		UsageSafetyFactor:      input.UsageSafetyFactor,
+		UsageMinSamples:        input.UsageMinSamples,
 		Groups:                 cloneAutoSupplyGroupSettings(input.Groups),
 	}
 	raw, err := json.Marshal(stored)
@@ -231,6 +255,11 @@ func (s *AutoSupplyService) adminSettingsFromConfig(settings config.AutoSupplyCo
 		IntervalSeconds:         settings.IntervalSeconds,
 		RequestTimeoutSeconds:   settings.RequestTimeoutSeconds,
 		MaxQuantityPerRun:       settings.MaxQuantityPerRun,
+		UsageForecastEnabled:    settings.UsageForecastEnabled,
+		UsageLookbackHours:      settings.UsageLookbackHours,
+		UsageForecastHours:      settings.UsageForecastHours,
+		UsageSafetyFactor:       settings.UsageSafetyFactor,
+		UsageMinSamples:         settings.UsageMinSamples,
 		Groups:                  groups,
 	}
 }
@@ -279,6 +308,18 @@ func normalizeAutoSupplyConfig(settings config.AutoSupplyConfig) config.AutoSupp
 	}
 	if settings.MaxQuantityPerRun <= 0 {
 		settings.MaxQuantityPerRun = 10
+	}
+	if settings.UsageLookbackHours <= 0 {
+		settings.UsageLookbackHours = autoSupplyDefaultLookbackHours
+	}
+	if settings.UsageForecastHours <= 0 {
+		settings.UsageForecastHours = autoSupplyDefaultForecastHours
+	}
+	if settings.UsageSafetyFactor <= 0 {
+		settings.UsageSafetyFactor = autoSupplyDefaultUsageSafetyFactor
+	}
+	if settings.UsageMinSamples <= 0 {
+		settings.UsageMinSamples = autoSupplyDefaultUsageMinimumSamples
 	}
 	settings.Groups = cloneAutoSupplyConfig(settings).Groups
 	for index := range settings.Groups {
@@ -331,7 +372,13 @@ func autoSupplyConfigFromStored(stored *autoSupplyStoredSettings, token string) 
 	return normalizeAutoSupplyConfig(config.AutoSupplyConfig{
 		Enabled: stored.Enabled, BaseURL: stored.BaseURL, CustomerToken: token,
 		IntervalSeconds: stored.IntervalSeconds, RequestTimeoutSeconds: stored.RequestTimeoutSeconds,
-		MaxQuantityPerRun: stored.MaxQuantityPerRun, Groups: groups,
+		MaxQuantityPerRun:    stored.MaxQuantityPerRun,
+		UsageForecastEnabled: stored.UsageForecastEnabled,
+		UsageLookbackHours:   stored.UsageLookbackHours,
+		UsageForecastHours:   stored.UsageForecastHours,
+		UsageSafetyFactor:    stored.UsageSafetyFactor,
+		UsageMinSamples:      stored.UsageMinSamples,
+		Groups:               groups,
 	})
 }
 
@@ -362,6 +409,18 @@ func cloneAutoSupplyGroupSettings(groups []AutoSupplyGroupSettings) []AutoSupply
 func normalizeAutoSupplySettingsUpdate(input *AutoSupplySettingsUpdate) {
 	input.BaseURL = strings.TrimRight(strings.TrimSpace(input.BaseURL), "/")
 	input.CustomerToken = strings.TrimSpace(input.CustomerToken)
+	if input.UsageLookbackHours <= 0 {
+		input.UsageLookbackHours = autoSupplyDefaultLookbackHours
+	}
+	if input.UsageForecastHours <= 0 {
+		input.UsageForecastHours = autoSupplyDefaultForecastHours
+	}
+	if input.UsageSafetyFactor <= 0 {
+		input.UsageSafetyFactor = autoSupplyDefaultUsageSafetyFactor
+	}
+	if input.UsageMinSamples <= 0 {
+		input.UsageMinSamples = autoSupplyDefaultUsageMinimumSamples
+	}
 	for index := range input.Groups {
 		input.Groups[index].Product = strings.TrimSpace(input.Groups[index].Product)
 		input.Groups[index].Platform = strings.TrimSpace(input.Groups[index].Platform)
@@ -409,6 +468,18 @@ func validateAutoSupplySettings(input AutoSupplySettingsUpdate, effectiveToken s
 	}
 	if input.MaxQuantityPerRun < 1 || input.MaxQuantityPerRun > 1000 {
 		return errors.New("max_quantity_per_run must be between 1 and 1000")
+	}
+	if input.UsageLookbackHours < 2 || input.UsageLookbackHours > 168 {
+		return errors.New("usage_lookback_hours must be between 2 and 168")
+	}
+	if input.UsageForecastHours < 1 || input.UsageForecastHours > 168 {
+		return errors.New("usage_forecast_hours must be between 1 and 168")
+	}
+	if input.UsageSafetyFactor < 1 || input.UsageSafetyFactor > 10 {
+		return errors.New("usage_safety_factor must be between 1 and 10")
+	}
+	if input.UsageMinSamples < 1 || input.UsageMinSamples > 100000 {
+		return errors.New("usage_min_samples must be between 1 and 100000")
 	}
 	if len(input.Groups) > 100 {
 		return errors.New("groups must contain at most 100 rules")

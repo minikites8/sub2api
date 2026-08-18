@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -89,6 +90,17 @@ func (autoSupplyTestEncryptor) Decrypt(ciphertext string) (string, error) {
 type autoSupplyAccountRepoStub struct {
 	AccountRepository
 	accounts []Account
+}
+
+type autoSupplyUsageRepoStub struct {
+	window AutoSupplyUsageWindow
+	err    error
+	calls  int
+}
+
+func (r *autoSupplyUsageRepoStub) GetAutoSupplyUsageWindow(_ context.Context, _ int64, _, _, _ time.Time) (AutoSupplyUsageWindow, error) {
+	r.calls++
+	return r.window, r.err
 }
 
 func (r *autoSupplyAccountRepoStub) ListSchedulableByGroupIDAndPlatform(_ context.Context, groupID int64, platform string) ([]Account, error) {
@@ -258,6 +270,96 @@ func TestAutoSupplyServiceCreatesAndImportsOrder(t *testing.T) {
 	// A completed import raises local capacity and prevents another order.
 	svc.RunOnce(context.Background())
 	require.Len(t, repo.accounts, 1)
+}
+
+func TestAutoSupplyUsageForecastCreatesOrderBeforeFixedThreshold(t *testing.T) {
+	orderCreated := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/customer/inventory":
+			_, _ = w.Write([]byte(`{"available":10,"missing":0,"needs_production":false}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/customer/pickup/orders":
+			orderCreated = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"order_id":"forecast-order","status":"pending"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	repo := &autoSupplyAccountRepoStub{accounts: []Account{
+		{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, GroupIDs: []int64{42}, Concurrency: 2},
+		{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, GroupIDs: []int64{42}, Concurrency: 2},
+	}}
+	admin := &autoSupplyAdminStub{repo: repo, group: &Group{ID: 42, Name: "OpenAI", Platform: PlatformOpenAI}}
+	cfg := &config.Config{AutoSupply: config.AutoSupplyConfig{
+		Enabled: true, BaseURL: server.URL, CustomerToken: "customer-secret", MaxQuantityPerRun: 10,
+		UsageForecastEnabled: true, UsageLookbackHours: 4, UsageForecastHours: 2,
+		UsageSafetyFactor: 1.25, UsageMinSamples: 20,
+		Groups: []config.AutoSupplyGroupConfig{{GroupID: 42, MinAvailable: 2, Quantity: 1, Product: "oauth_30d", Concurrency: 2}},
+	}}
+	svc := NewAutoSupplyService(repo, admin, cfg)
+	svc.SetUsageRepository(&autoSupplyUsageRepoStub{window: AutoSupplyUsageWindow{
+		Previous: AutoSupplyUsageSample{Samples: 10, TotalDurationMs: 14_400_000},
+		Recent:   AutoSupplyUsageSample{Samples: 10, TotalDurationMs: 28_800_000},
+	}})
+	svc.RunOnce(context.Background())
+	require.True(t, orderCreated)
+}
+
+func TestAutoSupplyUsageForecastTarget(t *testing.T) {
+	settings := config.AutoSupplyConfig{
+		UsageLookbackHours: 4, UsageForecastHours: 2,
+		UsageSafetyFactor: 1.25, UsageMinSamples: 20,
+	}
+	usageRepo := &autoSupplyUsageRepoStub{window: AutoSupplyUsageWindow{
+		Previous: AutoSupplyUsageSample{Samples: 10, TotalDurationMs: 14_400_000},
+		Recent:   AutoSupplyUsageSample{Samples: 10, TotalDurationMs: 28_800_000},
+	}}
+	svc := NewAutoSupplyService(nil, nil, &config.Config{})
+	svc.SetUsageRepository(usageRepo)
+
+	target, err := svc.usageForecastTarget(context.Background(), settings, config.AutoSupplyGroupConfig{GroupID: 42, Concurrency: 2}, nil, time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.Equal(t, 4, target)
+	require.Equal(t, 1, usageRepo.calls)
+
+	usageRepo.window = AutoSupplyUsageWindow{
+		Previous: AutoSupplyUsageSample{Samples: 10, TotalDurationMs: 72_000_000},
+		Recent:   AutoSupplyUsageSample{Samples: 10, TotalDurationMs: 72_000_000},
+	}
+	settings.UsageSafetyFactor = 1
+	target, err = svc.usageForecastTarget(context.Background(), settings, config.AutoSupplyGroupConfig{GroupID: 42}, []Account{{Concurrency: 4}, {Concurrency: 6}}, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, 2, target)
+
+	usageRepo.window.Previous.Samples = 1
+	usageRepo.window.Recent.Samples = 1
+	target, err = svc.usageForecastTarget(context.Background(), settings, config.AutoSupplyGroupConfig{GroupID: 42}, []Account{{Concurrency: 4}, {Concurrency: 6}}, time.Now())
+	require.NoError(t, err)
+	require.Zero(t, target)
+}
+
+func TestAutoSupplyUsageForecastErrorUsesFixedThreshold(t *testing.T) {
+	repo := &autoSupplyAccountRepoStub{accounts: []Account{
+		{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, GroupIDs: []int64{42}, Concurrency: 2},
+	}}
+	admin := &autoSupplyAdminStub{repo: repo, group: &Group{ID: 42, Name: "OpenAI", Platform: PlatformOpenAI}}
+	usageRepo := &autoSupplyUsageRepoStub{err: errors.New("usage unavailable")}
+	svc := NewAutoSupplyService(repo, admin, &config.Config{})
+	svc.SetUsageRepository(usageRepo)
+	settings := normalizeAutoSupplyConfig(config.AutoSupplyConfig{UsageForecastEnabled: true})
+
+	err := svc.replenishGroup(context.Background(), settings, config.AutoSupplyGroupConfig{GroupID: 42, MinAvailable: 1, Product: "oauth_30d"})
+	require.NoError(t, err)
+	require.Equal(t, 1, usageRepo.calls)
+
+	settings.UsageForecastEnabled = false
+	err = svc.replenishGroup(context.Background(), settings, config.AutoSupplyGroupConfig{GroupID: 42, MinAvailable: 1, Product: "oauth_30d"})
+	require.NoError(t, err)
+	require.Equal(t, 1, usageRepo.calls)
 }
 
 func TestAutoSupplyServiceRotatesIdempotencyKeyAfterCompletedOrder(t *testing.T) {
@@ -431,6 +533,11 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 		IntervalSeconds:       60,
 		RequestTimeoutSeconds: 15,
 		MaxQuantityPerRun:     8,
+		UsageForecastEnabled:  true,
+		UsageLookbackHours:    12,
+		UsageForecastHours:    3,
+		UsageSafetyFactor:     1.5,
+		UsageMinSamples:       50,
 		Groups: []AutoSupplyGroupSettings{{
 			GroupID: 42, DeployGroupIDs: []int64{7, 7, 8}, Product: "oauth_30d", MinAvailable: 3, Quantity: 4,
 			Platform: PlatformOpenAI, AccountType: AccountTypeOAuth, Priority: 5, Concurrency: 2,
@@ -452,6 +559,11 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.Equal(t, OpenAIWSIngressModeHTTPBridge, updated.Groups[0].OpenAIWSMode)
 	require.True(t, updated.Groups[0].EnableAccountGuard)
 	require.Equal(t, 45, updated.Groups[0].AccountGuardIntervalMinutes)
+	require.True(t, updated.UsageForecastEnabled)
+	require.Equal(t, 12, updated.UsageLookbackHours)
+	require.Equal(t, 3, updated.UsageForecastHours)
+	require.Equal(t, 1.5, updated.UsageSafetyFactor)
+	require.Equal(t, 50, updated.UsageMinSamples)
 	raw := repo.values[SettingKeyAutoSupplySettings]
 	require.NotContains(t, raw, "customer-secret")
 	require.Contains(t, raw, "customer_token_encrypted")
@@ -459,6 +571,8 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	runtimeSettings := svc.currentAutoSupplyConfig()
 	require.Equal(t, "customer-secret", runtimeSettings.CustomerToken)
 	require.Equal(t, 60, runtimeSettings.IntervalSeconds)
+	require.True(t, runtimeSettings.UsageForecastEnabled)
+	require.Equal(t, 12, runtimeSettings.UsageLookbackHours)
 	require.Equal(t, []int64{7, 8}, runtimeSettings.Groups[0].DeployGroupIDs)
 	require.Equal(t, OpenAIWSIngressModeHTTPBridge, runtimeSettings.Groups[0].OpenAIWSMode)
 	select {
@@ -487,6 +601,7 @@ func TestAutoSupplySettingsPersistEncryptedAndApplyImmediately(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, settings.CustomerTokenConfigured)
 	require.Equal(t, 90, settings.IntervalSeconds)
+	require.Equal(t, autoSupplyDefaultLookbackHours, settings.UsageLookbackHours)
 	require.Equal(t, []int64{7, 8}, settings.Groups[0].DeployGroupIDs)
 	require.Equal(t, "customer-secret", reloaded.currentAutoSupplyConfig().CustomerToken)
 }
@@ -588,4 +703,17 @@ func TestAutoSupplySettingsRejectInvalidAccountDefaults(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "openai_ws_mode")
+}
+
+func TestAutoSupplySettingsRejectInvalidUsageForecast(t *testing.T) {
+	repo := &autoSupplyMemorySettingRepo{values: make(map[string]string)}
+	svc := NewAutoSupplyService(nil, nil, &config.Config{})
+	svc.SetSettingsDependencies(repo, autoSupplyTestEncryptor{})
+
+	_, err := svc.UpdateSettings(context.Background(), AutoSupplySettingsUpdate{
+		BaseURL: "https://supplier.example", IntervalSeconds: 30, RequestTimeoutSeconds: 20, MaxQuantityPerRun: 10,
+		UsageLookbackHours: 1, UsageForecastHours: 2, UsageSafetyFactor: 1.25, UsageMinSamples: 20,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "usage_lookback_hours")
 }

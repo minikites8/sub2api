@@ -1395,6 +1395,11 @@ export interface AutoSupplySettings {
   interval_seconds: number;
   request_timeout_seconds: number;
   max_quantity_per_run: number;
+  usage_forecast_enabled: boolean;
+  usage_lookback_hours: number;
+  usage_forecast_hours: number;
+  usage_safety_factor: number;
+  usage_min_samples: number;
   groups: AutoSupplyGroupSettings[];
 }
 
@@ -1405,6 +1410,11 @@ export interface UpdateAutoSupplySettingsRequest {
   interval_seconds: number;
   request_timeout_seconds: number;
   max_quantity_per_run: number;
+  usage_forecast_enabled: boolean;
+  usage_lookback_hours: number;
+  usage_forecast_hours: number;
+  usage_safety_factor: number;
+  usage_min_samples: number;
   groups: AutoSupplyGroupSettings[];
 }
 

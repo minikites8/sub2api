@@ -1477,6 +1477,11 @@ type AutoSupplyConfig struct {
 	IntervalSeconds       int                     `mapstructure:"interval_seconds"`
 	RequestTimeoutSeconds int                     `mapstructure:"request_timeout_seconds"`
 	MaxQuantityPerRun     int                     `mapstructure:"max_quantity_per_run"`
+	UsageForecastEnabled  bool                    `mapstructure:"usage_forecast_enabled"`
+	UsageLookbackHours    int                     `mapstructure:"usage_lookback_hours"`
+	UsageForecastHours    int                     `mapstructure:"usage_forecast_hours"`
+	UsageSafetyFactor     float64                 `mapstructure:"usage_safety_factor"`
+	UsageMinSamples       int                     `mapstructure:"usage_min_samples"`
 	Groups                []AutoSupplyGroupConfig `mapstructure:"groups"`
 }
 
@@ -2133,6 +2138,11 @@ func setDefaults() {
 	viper.SetDefault("auto_supply.interval_seconds", 30)
 	viper.SetDefault("auto_supply.request_timeout_seconds", 20)
 	viper.SetDefault("auto_supply.max_quantity_per_run", 10)
+	viper.SetDefault("auto_supply.usage_forecast_enabled", false)
+	viper.SetDefault("auto_supply.usage_lookback_hours", 6)
+	viper.SetDefault("auto_supply.usage_forecast_hours", 2)
+	viper.SetDefault("auto_supply.usage_safety_factor", 1.25)
+	viper.SetDefault("auto_supply.usage_min_samples", 20)
 	viper.SetDefault("auto_supply.groups", []AutoSupplyGroupConfig{})
 	viper.SetDefault("ops.cleanup.hourly_metrics_retention_days", 30)
 	viper.SetDefault("ops.aggregation.enabled", true)

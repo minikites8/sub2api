@@ -33,6 +33,11 @@ describe("automatic supply settings API", () => {
       interval_seconds: 30,
       request_timeout_seconds: 20,
       max_quantity_per_run: 10,
+      usage_forecast_enabled: false,
+      usage_lookback_hours: 6,
+      usage_forecast_hours: 2,
+      usage_safety_factor: 1.25,
+      usage_min_samples: 20,
       groups: [],
     };
     put.mockResolvedValue({ data: { enabled: true, customer_token_configured: true } });

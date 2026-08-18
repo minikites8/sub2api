@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -36,6 +37,7 @@ type AutoSupplyService struct {
 	client      *http.Client
 	settingRepo SettingRepository
 	encryptor   SecretEncryptor
+	usageRepo   AutoSupplyUsageRepository
 
 	settingsMu      sync.RWMutex
 	runtimeSettings config.AutoSupplyConfig
@@ -60,6 +62,20 @@ type AutoSupplyService struct {
 type AutoSupplyAdmin interface {
 	GetGroup(ctx context.Context, id int64) (*Group, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
+}
+
+type AutoSupplyUsageSample struct {
+	Samples         int64
+	TotalDurationMs int64
+}
+
+type AutoSupplyUsageWindow struct {
+	Previous AutoSupplyUsageSample
+	Recent   AutoSupplyUsageSample
+}
+
+type AutoSupplyUsageRepository interface {
+	GetAutoSupplyUsageWindow(ctx context.Context, groupID int64, startTime, midpoint, endTime time.Time) (AutoSupplyUsageWindow, error)
 }
 
 type autoSupplyOrder struct {
@@ -131,6 +147,12 @@ func NewAutoSupplyService(accountRepo AccountRepository, admin AutoSupplyAdmin, 
 		orders:               make(map[int64]*autoSupplyOrder),
 		lastTerminalOrderIDs: make(map[int64]string),
 		stopCh:               make(chan struct{}),
+	}
+}
+
+func (s *AutoSupplyService) SetUsageRepository(usageRepo AutoSupplyUsageRepository) {
+	if s != nil {
+		s.usageRepo = usageRepo
 	}
 }
 
@@ -258,11 +280,15 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, settings config.
 	if minimum < 0 {
 		minimum = 0
 	}
-	if len(accounts) >= minimum {
-		s.clearOrder(group.ID)
-		return nil
+	target := minimum
+	if settings.UsageForecastEnabled && s.usageRepo != nil {
+		forecastTarget, forecastErr := s.usageForecastTarget(ctx, settings, groupCfg, accounts, time.Now().UTC())
+		if forecastErr != nil {
+			slog.Warn("auto_supply_usage_forecast_failed", "group_id", group.ID, "error", forecastErr)
+		} else if forecastTarget > target {
+			target = forecastTarget
+		}
 	}
-
 	if order := s.getActiveOrder(group.ID); order != nil {
 		return s.pollAndImport(ctx, settings, group, groupCfg, order, platform)
 	}
@@ -274,10 +300,13 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, settings config.
 		s.setOrder(group.ID, order)
 		return s.pollAndImport(ctx, settings, group, groupCfg, order, platform)
 	}
+	if len(accounts) >= target {
+		return nil
+	}
 
 	quantity := groupCfg.Quantity
 	if quantity <= 0 {
-		quantity = minimum - len(accounts)
+		quantity = target - len(accounts)
 	}
 	if quantity <= 0 {
 		quantity = 1
@@ -305,8 +334,55 @@ func (s *AutoSupplyService) replenishGroup(ctx context.Context, settings config.
 	if err := s.recordOrder(ctx, order, order.Status, ""); err != nil {
 		slog.Warn("auto_supply_order_history_save_failed", "group_id", group.ID, "order_id", orderID, "error", err)
 	}
-	slog.Info("auto_supply_order_created", "group_id", group.ID, "quantity", quantity, "order_id", orderID)
+	slog.Info("auto_supply_order_created", "group_id", group.ID, "available", len(accounts), "target", target, "quantity", quantity, "order_id", orderID)
 	return nil
+}
+
+func (s *AutoSupplyService) usageForecastTarget(ctx context.Context, settings config.AutoSupplyConfig, groupCfg config.AutoSupplyGroupConfig, accounts []Account, now time.Time) (int, error) {
+	accountConcurrency := autoSupplyForecastAccountConcurrency(groupCfg, accounts)
+	if accountConcurrency <= 0 {
+		return 0, nil
+	}
+	lookback := time.Duration(settings.UsageLookbackHours) * time.Hour
+	startTime := now.Add(-lookback)
+	midpoint := startTime.Add(lookback / 2)
+	window, err := s.usageRepo.GetAutoSupplyUsageWindow(ctx, groupCfg.GroupID, startTime, midpoint, now)
+	if err != nil {
+		return 0, err
+	}
+	if window.Previous.Samples+window.Recent.Samples < int64(settings.UsageMinSamples) {
+		return 0, nil
+	}
+	halfWindowHours := lookback.Hours() / 2
+	halfWindowMs := halfWindowHours * float64(time.Hour/time.Millisecond)
+	previousConcurrency := float64(window.Previous.TotalDurationMs) / halfWindowMs
+	recentConcurrency := float64(window.Recent.TotalDurationMs) / halfWindowMs
+	growthPerHour := (recentConcurrency - previousConcurrency) / halfWindowHours
+	if growthPerHour < 0 {
+		growthPerHour = 0
+	}
+	forecastConcurrency := recentConcurrency + growthPerHour*float64(settings.UsageForecastHours)
+	forecastConcurrency *= settings.UsageSafetyFactor
+	if forecastConcurrency <= 0 {
+		return 0, nil
+	}
+	return int(math.Ceil(forecastConcurrency / accountConcurrency)), nil
+}
+
+func autoSupplyForecastAccountConcurrency(groupCfg config.AutoSupplyGroupConfig, accounts []Account) float64 {
+	if groupCfg.Concurrency > 0 {
+		return float64(groupCfg.Concurrency)
+	}
+	total := 0
+	count := 0
+	for _, account := range accounts {
+		total += account.EffectiveLoadFactor()
+		count++
+	}
+	if count == 0 {
+		return 0
+	}
+	return float64(total) / float64(count)
 }
 
 func (s *AutoSupplyService) pollAndImport(ctx context.Context, settings config.AutoSupplyConfig, group *Group, groupCfg config.AutoSupplyGroupConfig, order *autoSupplyOrder, platform string) error {

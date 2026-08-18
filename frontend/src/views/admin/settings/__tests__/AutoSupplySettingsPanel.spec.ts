@@ -75,6 +75,11 @@ const baseSettings = {
   interval_seconds: 30,
   request_timeout_seconds: 20,
   max_quantity_per_run: 10,
+  usage_forecast_enabled: true,
+  usage_lookback_hours: 6,
+  usage_forecast_hours: 2,
+  usage_safety_factor: 1.25,
+  usage_min_samples: 20,
   groups: [{ group_id: 7, deploy_group_ids: [8], product: "oauth_30d", min_available: 2, quantity: 3, platform: "", account_type: "", priority: 0, concurrency: 0, openai_ws_mode: "ctx_pool", proxy_mode: "none", proxy_id: null, codex_fingerprint_mode: "off", enable_account_guard: false, account_guard_interval_minutes: 30 }],
 };
 
@@ -124,9 +129,25 @@ describe("AutoSupplySettingsPanel", () => {
       enabled: true,
       base_url: "https://supplier.example",
       customer_token: undefined,
+      usage_forecast_enabled: true,
+      usage_lookback_hours: 6,
+      usage_forecast_hours: 2,
+      usage_safety_factor: 1.25,
+      usage_min_samples: 20,
       groups: [expect.objectContaining({ group_id: 7, deploy_group_ids: [8, 9] })],
     }));
     expect(showSuccess).toHaveBeenCalled();
+  });
+
+  it("shows usage forecast controls", async () => {
+    const wrapper = mount(AutoSupplySettingsPanel, { global: { stubs: { Toggle: ToggleStub, Select: SelectStub, Icon: true } } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageForecast");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageLookbackHours");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageForecastHours");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageSafetyFactor");
+    expect(wrapper.text()).toContain("admin.settings.autoSupply.usageMinSamples");
   });
 
   it("shows proxy, OAuth convergence, and account guard controls for a rule", async () => {

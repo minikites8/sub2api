@@ -239,7 +239,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	registry := payment.ProvideRegistry()
 	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
 	paymentService := service.ProvidePaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, affiliateService, promoCodeRepository, notificationEmailService)
-	autoSupplyService := service.ProvideAutoSupplyService(accountRepository, adminService, configConfig, settingRepository, secretEncryptor)
+	autoSupplyService := service.ProvideAutoSupplyService(accountRepository, adminService, configConfig, settingRepository, secretEncryptor, usageLogRepository)
 	settingHandler := handler.ProvideAdminSettingHandler(settingService, emailService, turnstileService, aliyunCaptchaService, opsService, paymentConfigService, paymentService, userAttributeService, notificationEmailService, totpService, userService, autoSupplyService)
 	opsHandler := admin.NewOpsHandler(opsService)
 	updateCache := repository.NewUpdateCache(redisClient)

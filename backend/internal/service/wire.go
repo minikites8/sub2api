@@ -360,9 +360,12 @@ func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpirySe
 
 // ProvideAutoSupplyService creates and starts the configured account
 // replenishment worker.
-func ProvideAutoSupplyService(accountRepo AccountRepository, admin AdminService, cfg *config.Config, settingRepo SettingRepository, encryptor SecretEncryptor) *AutoSupplyService {
+func ProvideAutoSupplyService(accountRepo AccountRepository, admin AdminService, cfg *config.Config, settingRepo SettingRepository, encryptor SecretEncryptor, usageLogRepo UsageLogRepository) *AutoSupplyService {
 	svc := NewAutoSupplyService(accountRepo, admin, cfg)
 	svc.SetSettingsDependencies(settingRepo, encryptor)
+	if usageRepo, ok := usageLogRepo.(AutoSupplyUsageRepository); ok {
+		svc.SetUsageRepository(usageRepo)
+	}
 	svc.Start()
 	return svc
 }

@@ -1049,6 +1049,12 @@ auto_supply:
   interval_seconds: 30
   request_timeout_seconds: 20
   max_quantity_per_run: 10
+  # Forecast account demand from request duration and recent growth.
+  usage_forecast_enabled: false
+  usage_lookback_hours: 6
+  usage_forecast_hours: 2
+  usage_safety_factor: 1.25
+  usage_min_samples: 20
   groups:
     # Replace 123 with the local group ID. Group platform is used when omitted.
     - group_id: 123
