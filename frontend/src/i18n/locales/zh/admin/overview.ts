@@ -888,6 +888,9 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        kimi: 'Kimi',
+        zhipu: 'Zhipu GLM',
+        deepseek: 'DeepSeek',
         composite: 'Composite',
       },
       kiroCache: {

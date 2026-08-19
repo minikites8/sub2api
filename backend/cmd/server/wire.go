@@ -90,6 +90,7 @@ func provideCleanup(
 	accountExpiry *service.AccountExpiryService,
 	autoSupply *service.AutoSupplyService,
 	openAIAccountGuard *service.OpenAIAccountGuardService,
+	cnProviderBalanceCheck *service.CNProviderBalanceCheckService,
 	codexVersionSync *service.OpenAICodexVersionSyncService,
 	proxyExpiry *service.ProxyExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
@@ -249,6 +250,12 @@ func provideCleanup(
 			}},
 			{"OpenAIAccountGuardService", func() error {
 				openAIAccountGuard.Stop()
+				return nil
+			}},
+			{"CNProviderBalanceCheckService", func() error {
+				if cnProviderBalanceCheck != nil {
+					cnProviderBalanceCheck.Stop()
+				}
 				return nil
 			}},
 			{"OpenAICodexVersionSyncService", func() error {

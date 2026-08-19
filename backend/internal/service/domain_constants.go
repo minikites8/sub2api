@@ -44,6 +44,9 @@ const (
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformKiro        = domain.PlatformKiro
 	PlatformGrok        = domain.PlatformGrok
+	PlatformKimi        = domain.PlatformKimi
+	PlatformZhipu       = domain.PlatformZhipu
+	PlatformDeepseek    = domain.PlatformDeepseek
 	PlatformComposite   = domain.PlatformComposite
 )
 
@@ -57,9 +60,41 @@ var AllowedQuotaPlatforms = []string{
 	PlatformAntigravity,
 	PlatformKiro,
 	PlatformGrok,
+	PlatformKimi,
+	PlatformZhipu,
+	PlatformDeepseek,
 }
 
-var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthropic, PlatformGrok}
+var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu}
+
+const (
+	AccountModePayG   = domain.AccountModePayG
+	AccountModeCoding = domain.AccountModeCoding
+	APIProtocolChatCompletions = domain.APIProtocolChatCompletions
+	APIProtocolAnthropic       = domain.APIProtocolAnthropic
+	APIProtocolResponses       = domain.APIProtocolResponses
+)
+
+const (
+	DefaultKimiPayGBaseURL    = "https://api.moonshot.cn/v1"
+	DefaultKimiCodingBaseURL  = "https://api.kimi.com/coding/v1"
+	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
+	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
+	DefaultDeepseekBaseURL   = "https://api.deepseek.com"
+	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
+	DefaultZhipuAnthropicBaseURL       = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL    = "https://api.deepseek.com/anthropic"
+)
+
+func IsCNProvider(platform string) bool {
+	switch platform {
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		return true
+	default:
+		return false
+	}
+}
 
 const (
 	SettingKeyAccountSchedulingThresholds = "account_scheduling_thresholds"
@@ -426,6 +461,7 @@ const (
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].
 	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
 	SettingKeyChannelMonitorHideThroughput         = "channel_monitor_hide_throughput"
+	SettingKeyChannelMonitorShowQuota              = "channel_monitor_show_quota"
 
 	SettingKeyGrokDefaultTextModel           = "grok_default_text_model"
 	SettingKeyGrokCrossClientModelMapEnabled = "grok_cross_client_model_map_enabled"

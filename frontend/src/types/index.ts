@@ -305,6 +305,8 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   /** When true, user monitor hides RPM/TPM so scale cannot be reverse-estimated. */
   channel_monitor_hide_throughput?: boolean
+  /** When true, user monitor shows account quota/balance snapshots (default off). */
+  channel_monitor_show_quota?: boolean
   available_channels_enabled: boolean
   public_transit_enabled: boolean
   public_transit_page_enabled: boolean
@@ -564,7 +566,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -945,7 +947,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok' | 'kimi' | 'zhipu' | 'deepseek'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1352,13 +1354,6 @@ export interface KiroCreditProgress {
   expiry_date?: string | null
 }
 
-export interface KiroOverageInfo {
-  current_overages: number
-  overage_charges: number
-  currency_code?: string
-  currency_symbol?: string
-}
-
 export interface GrokQuotaWindow {
   limit?: number | null
   remaining?: number | null
@@ -1441,10 +1436,8 @@ export interface AccountUsageInfo {
   kiro_subscription_name?: string | null
   kiro_subscription_type?: string | null
   kiro_reset_at?: string | null
-  kiro_overages_enabled?: boolean
   kiro_credit?: KiroCreditProgress | null
   kiro_bonus?: KiroCreditProgress | null
-  kiro_overage?: KiroOverageInfo | null
   kiro_quota_state?: string | null
   kiro_quota_reason?: string | null
   kiro_quota_reset_at?: string | null

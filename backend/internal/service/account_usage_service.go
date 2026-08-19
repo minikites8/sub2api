@@ -204,14 +204,6 @@ type KiroCreditProgress struct {
 	ExpiryDate     *time.Time `json:"expiry_date,omitempty"`
 }
 
-// KiroOverageInfo 表示 Kiro 账号的 overage 状态。
-type KiroOverageInfo struct {
-	CurrentOverages float64 `json:"current_overages"`
-	OverageCharges  float64 `json:"overage_charges"`
-	CurrencyCode    string  `json:"currency_code,omitempty"`
-	CurrencySymbol  string  `json:"currency_symbol,omitempty"`
-}
-
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	Source             string         `json:"source,omitempty"`               // "passive" or "active"
@@ -258,14 +250,12 @@ type UsageInfo struct {
 	// Antigravity AI Credits 余额
 	AICredits []AICredit `json:"ai_credits,omitempty"`
 
-	// Kiro Credits 额度与 overage 信息
+	// Kiro Credits 额度信息
 	KiroSubscriptionName string              `json:"kiro_subscription_name,omitempty"`
 	KiroSubscriptionType string              `json:"kiro_subscription_type,omitempty"`
 	KiroResetAt          *time.Time          `json:"kiro_reset_at,omitempty"`
-	KiroOveragesEnabled  bool                `json:"kiro_overages_enabled,omitempty"`
 	KiroCredit           *KiroCreditProgress `json:"kiro_credit,omitempty"`
 	KiroBonus            *KiroCreditProgress `json:"kiro_bonus,omitempty"`
-	KiroOverage          *KiroOverageInfo    `json:"kiro_overage,omitempty"`
 	KiroQuotaState       string              `json:"kiro_quota_state,omitempty"`
 	KiroQuotaReason      string              `json:"kiro_quota_reason,omitempty"`
 	KiroQuotaResetAt     *time.Time          `json:"kiro_quota_reset_at,omitempty"`
@@ -909,7 +899,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if accessToken == "" && !account.IsOpenAIAgentIdentity() {
 		return nil, fmt.Errorf("no access token available")
 	}
-	modelID := openaipkg.DefaultTestModel
+	modelID := openaipkg.CodexUsageProbeModel
 	payload := createOpenAITestPayload(modelID, true)
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -939,9 +929,10 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	}
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("Originator", openaipkg.CodexDefaultOriginator)
-	req.Header.Set("Version", openAICodexProbeVersion)
-	req.Header.Set("User-Agent", codexCLIUserAgent)
+	canonical := resolveCodexOutboundIdentity("")
+	req.Header.Set("Originator", canonical.originator)
+	req.Header.Set("Version", canonical.version)
+	req.Header.Set("User-Agent", canonical.userAgent)
 	if s.identityCache != nil {
 		if fp, fpErr := s.identityCache.GetFingerprint(reqCtx, account.ID); fpErr == nil && fp != nil && strings.TrimSpace(fp.UserAgent) != "" {
 			req.Header.Set("User-Agent", strings.TrimSpace(fp.UserAgent))

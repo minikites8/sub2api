@@ -310,7 +310,25 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	promoCode = strings.TrimSpace(promoCode)
-	if err := s.createUserWithRegistrationPromo(ctx, user, promoCode); err != nil {
+	if invitationRedeemCode != nil {
+		if err := s.createUserAndClaimInvitation(ctx, user, invitationRedeemCode); err != nil {
+			switch {
+			case errors.Is(err, ErrEmailExists):
+				return "", nil, ErrEmailExists
+			case errors.Is(err, ErrEmailDomainRegistrationLimit):
+				return "", nil, ErrEmailDomainRegistrationLimit
+			case errors.Is(err, ErrInvitationCodeInvalid):
+				return "", nil, ErrInvitationCodeInvalid
+			default:
+				return "", nil, ErrServiceUnavailable
+			}
+		}
+		if promoCode != "" {
+			if err := s.promoService.ApplyPromoCode(ctx, user.ID, promoCode); err != nil {
+				return "", nil, err
+			}
+		}
+	} else if err := s.createUserWithRegistrationPromo(ctx, user, promoCode); err != nil {
 		return "", nil, err
 	}
 	s.applySignupIPRiskControl(ctx, user)
@@ -335,14 +353,6 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 				// 邀请返利码绑定失败不影响注册，只记录日志
 				logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", user.ID, err)
 			}
-		}
-	}
-
-	// 标记邀请码为已使用（如果使用了邀请码）
-	if invitationRedeemCode != nil {
-		if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
-			// 邀请码标记失败不影响注册，只记录日志
-			logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
 		}
 	}
 
@@ -1419,6 +1429,39 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 		return s.userRepo.CreateWithEmailAliasGuard(ctx, user)
 	}
 	return quotaRepo.CreateWithEmailAliasGuardAndDomainLimit(ctx, user, domain)
+}
+
+// createUserAndClaimInvitation atomically creates a user and consumes a one-time invitation.
+func (s *AuthService) createUserAndClaimInvitation(ctx context.Context, user *User, invitation *RedeemCode) error {
+	createAndClaim := func(execCtx context.Context) error {
+		if err := s.createUserWithRegistrationEmailGuard(execCtx, user); err != nil {
+			return err
+		}
+		if invitation == nil {
+			return nil
+		}
+		if err := s.redeemRepo.Use(execCtx, invitation.ID, user.ID); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Invitation code %s was already claimed: %v", invitation.Code, err)
+			return ErrInvitationCodeInvalid
+		}
+		return nil
+	}
+
+	if invitation == nil || s.entClient == nil {
+		return createAndClaim(ctx)
+	}
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return ErrServiceUnavailable
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := createAndClaim(dbent.NewTxContext(ctx, tx)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return ErrServiceUnavailable
+	}
+	return nil
 }
 
 func buildEmailSuffixNotAllowedError(whitelist []string) error {

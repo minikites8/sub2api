@@ -995,8 +995,9 @@ type GatewayConfig struct {
 
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
-	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
-	Grok             GatewayGrokConfig      `mapstructure:"grok"`
+	UserMessageQueue UserMessageQueueConfig   `mapstructure:"user_message_queue"`
+	Grok             GatewayGrokConfig        `mapstructure:"grok"`
+	CNProviders      GatewayCNProvidersConfig `mapstructure:"cn_providers"`
 }
 
 type GatewayLiveConfig struct {
@@ -1017,6 +1018,13 @@ type GatewayGrokConfig struct {
 	FreeQuotaSoftGatePercent   int   `mapstructure:"free_quota_soft_gate_percent"`
 	FreeQuotaWindowHours       int   `mapstructure:"free_quota_window_hours"`
 	FreeQuotaStatsCacheSeconds int   `mapstructure:"free_quota_stats_cache_seconds"`
+}
+
+// GatewayCNProvidersConfig configures periodic balance checks for domestic providers.
+type GatewayCNProvidersConfig struct {
+	BalanceCheckEnabled         bool    `mapstructure:"balance_check_enabled"`
+	BalanceThreshold            float64 `mapstructure:"balance_threshold"`
+	BalanceCheckIntervalMinutes int     `mapstructure:"balance_check_interval_minutes"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -2321,6 +2329,19 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)
 	viper.SetDefault("gateway.openai_http2.fallback_ttl_seconds", 600)
+	viper.SetDefault("gateway.openai_proxy_stream_circuit.disabled", false)
+	viper.SetDefault("gateway.openai_proxy_stream_circuit.failure_threshold", 2)
+	viper.SetDefault("gateway.openai_proxy_stream_circuit.window_seconds", 60)
+	viper.SetDefault("gateway.openai_proxy_stream_circuit.ttl_seconds", 600)
+	viper.SetDefault("gateway.grok.free_quota_soft_gate_enabled", true)
+	viper.SetDefault("gateway.grok.password_auth_enabled", false)
+	viper.SetDefault("gateway.grok.free_quota_token_limit", int64(500_000))
+	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)
+	viper.SetDefault("gateway.grok.free_quota_window_hours", 24)
+	viper.SetDefault("gateway.grok.free_quota_stats_cache_seconds", 60)
+	viper.SetDefault("gateway.cn_providers.balance_check_enabled", true)
+	viper.SetDefault("gateway.cn_providers.balance_threshold", 0.5)
+	viper.SetDefault("gateway.cn_providers.balance_check_interval_minutes", 10)
 	viper.SetDefault("gateway.image_concurrency.enabled", false)
 	viper.SetDefault("gateway.image_concurrency.max_concurrent_requests", 0)
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)

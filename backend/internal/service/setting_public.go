@@ -232,6 +232,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorMode,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyChannelMonitorHideThroughput,
+		SettingKeyChannelMonitorShowQuota,
 		SettingKeyGrokDefaultTextModel,
 		SettingKeyGrokCrossClientModelMapEnabled,
 		SettingKeyGrokDefaultBaseURLMode,
@@ -362,6 +363,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorMode:                   normalizeChannelMonitorMode(settings[SettingKeyChannelMonitorMode]),
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		ChannelMonitorHideThroughput:         !isFalseSettingValue(settings[SettingKeyChannelMonitorHideThroughput]),
+		ChannelMonitorShowQuota:              settings[SettingKeyChannelMonitorShowQuota] == "true",
 		GrokDefaultTextModel:                 firstNonEmpty(strings.TrimSpace(settings[SettingKeyGrokDefaultTextModel]), "grok-4.5"),
 		GrokCrossClientModelMapEnabled:       !isFalseSettingValue(settings[SettingKeyGrokCrossClientModelMapEnabled]),
 		GrokDefaultBaseURLMode:               normalizeGrokDefaultBaseURLMode(settings[SettingKeyGrokDefaultBaseURLMode]),
@@ -432,6 +434,7 @@ type ChannelMonitorRuntime struct {
 	Mode                   string
 	DefaultIntervalSeconds int
 	HideThroughput         bool
+	ShowQuota              bool
 }
 
 func (r ChannelMonitorRuntime) ActiveProbesAllowed() bool {
@@ -450,6 +453,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		SettingKeyChannelMonitorMode,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyChannelMonitorHideThroughput,
+		SettingKeyChannelMonitorShowQuota,
 	})
 	if err != nil {
 		return ChannelMonitorRuntime{Enabled: true, Mode: defaultChannelMonitorMode, DefaultIntervalSeconds: channelMonitorIntervalFallback, HideThroughput: true}
@@ -459,6 +463,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		Mode:                   normalizeChannelMonitorMode(vals[SettingKeyChannelMonitorMode]),
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
+		ShowQuota:              vals[SettingKeyChannelMonitorShowQuota] == "true",
 	}
 }
 
@@ -600,6 +605,7 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
+	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 	GrokDefaultTextModel                 string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled       bool   `json:"grok_cross_client_model_map_enabled"`
 	GrokDefaultBaseURLMode               string `json:"grok_default_base_url_mode"`
@@ -685,6 +691,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorMode:                   settings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
+		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
 		GrokDefaultTextModel:                 settings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled:       settings.GrokCrossClientModelMapEnabled,
 		GrokDefaultBaseURLMode:               settings.GrokDefaultBaseURLMode,

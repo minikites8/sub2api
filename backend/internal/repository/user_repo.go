@@ -33,7 +33,6 @@ type userRepository struct {
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
-var _ service.IPRiskGiftBalanceDeductor = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -71,26 +70,31 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
 	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
+	//
+	// 注意：ent 的 Client.Tx 不感知上下文中的事务（只检查 driver 类型），
+	// 因此必须显式检查 TxFromContext：当调用方已开启外部事务（如注册时的
+	// “建用户 + 占用邀请码”原子事务），直接复用其 client，由调用方统一提交/回滚，
+	// 否则用户写入会落入独立事务并自行提交，导致外层事务无法回滚（孤儿用户）。
 	var txClient *dbent.Client
 	txCtx := ctx
-	tx := dbent.TxFromContext(ctx)
-	if tx != nil {
-		txClient = tx.Client()
+	var ownedTx *dbent.Tx
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		txClient = existingTx.Client()
 	} else {
-		var err error
-		tx, err = r.client.Tx(ctx)
-		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-			return err
-		}
-		if errors.Is(err, dbent.ErrTxStarted) {
+		tx, err := r.client.Tx(ctx)
+		switch {
+		case errors.Is(err, dbent.ErrTxStarted):
+			// r.client 本身已是事务绑定 client（client 注入式事务，如集成测试
+			// 夹具 tx.Client()）：直接复用，提交/回滚由 client 的持有方负责。
 			txClient = r.client
-		} else {
+		case err != nil:
+			return err
+		default:
+			ownedTx = tx
+			defer func() { _ = ownedTx.Rollback() }()
 			txClient = tx.Client()
 			txCtx = dbent.NewTxContext(ctx, tx)
 		}
-	}
-	if tx != nil && dbent.TxFromContext(ctx) == nil {
-		defer func() { _ = tx.Rollback() }()
 	}
 
 	lockKeys := []string{normalizedEmailUniquenessLockKey(userIn.Email)}
@@ -138,7 +142,6 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 
 	created, err := txClient.User.Create().
 		SetEmail(userIn.Email).
-		SetNillableSignupIP(userIn.SignupIP).
 		SetUsername(userIn.Username).
 		SetNotes(userIn.Notes).
 		SetPasswordHash(userIn.PasswordHash).
@@ -162,8 +165,8 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		return err
 	}
 
-	if tx != nil && dbent.TxFromContext(ctx) == nil {
-		if err := tx.Commit(); err != nil {
+	if ownedTx != nil {
+		if err := ownedTx.Commit(); err != nil {
 			return err
 		}
 	}
@@ -930,49 +933,6 @@ func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, a
 	return deducted, rows.Err()
 }
 
-// DeductAvailableGiftBalance atomically deducts available balance only while
-// the user has no recharge history. A concurrent paid recharge makes the
-// predicate fail and leaves the balance untouched.
-func (r *userRepository) DeductAvailableGiftBalance(ctx context.Context, id int64, amount float64) (deducted float64, err error) {
-	if amount < 0 {
-		return 0, fmt.Errorf("deduction amount must be nonnegative")
-	}
-	const updateSQL = `
-		WITH target AS (
-			SELECT id, balance
-			FROM users
-			WHERE id = $2 AND deleted_at IS NULL AND total_recharged <= 0
-			FOR UPDATE
-		), updated AS (
-			UPDATE users AS u
-			SET balance = target.balance - LEAST($1, GREATEST(target.balance, 0)), updated_at = NOW()
-			FROM target
-			WHERE u.id = target.id AND u.deleted_at IS NULL
-			RETURNING target.balance - u.balance AS deducted
-		)
-		SELECT deducted FROM updated
-	`
-	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx, updateSQL, amount, id)
-	if err != nil {
-		return 0, err
-	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
-	if !rows.Next() {
-		if rowsErr := rows.Err(); rowsErr != nil {
-			return 0, rowsErr
-		}
-		return 0, nil
-	}
-	if err := rows.Scan(&deducted); err != nil {
-		return 0, err
-	}
-	return deducted, rows.Err()
-}
-
 // AdjustBalance 原子地把 delta 累加到余额上，结果为负时整条语句不生效。
 // 相比"读余额 → 算新值 → 整行写回"，这里把读与写压进同一条 UPDATE，
 // 并发的计费扣款不会被旧快照覆盖。
@@ -1501,7 +1461,6 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 		return
 	}
 	dst.ID = src.ID
-	dst.SignupIP = src.SignupIP
 	dst.SignupSource = src.SignupSource
 	dst.LastLoginAt = src.LastLoginAt
 	dst.LastActiveAt = src.LastActiveAt

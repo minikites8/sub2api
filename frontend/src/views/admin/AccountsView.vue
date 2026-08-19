@@ -269,7 +269,6 @@
                   :type="row.type"
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
-                  :overages-enabled="isKiroOveragesEnabled(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at"
                 />
@@ -1383,16 +1382,11 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
   )
 }
 
-const isKiroOveragesEnabled = (account: Account) => {
-  return account.platform === 'kiro' && account.credentials?.kiro_overages_enabled === true
-}
-
-const handleKiroUsageMeta = (account: Account, meta: { plan_type?: string; kiro_overages_enabled: boolean }) => {
+const handleKiroUsageMeta = (account: Account, meta: { plan_type?: string }) => {
   if (account.platform !== 'kiro') return
   account.credentials = {
     ...(account.credentials || {}),
-    ...(meta.plan_type ? { plan_type: meta.plan_type } : {}),
-    kiro_overages_enabled: meta.kiro_overages_enabled
+    ...(meta.plan_type ? { plan_type: meta.plan_type } : {})
   }
 }
 
@@ -2573,12 +2567,19 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
-  try {
-    const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
-    proxies.value = p
-    groups.value = g
-  } catch (error) {
-    console.error('Failed to load proxies/groups:', error)
+  const [proxiesResult, groupsResult] = await Promise.allSettled([
+    adminAPI.proxies.getAll(),
+    adminAPI.groups.getAll()
+  ])
+  if (proxiesResult.status === 'fulfilled') {
+    proxies.value = proxiesResult.value
+  } else {
+    console.error('Failed to load proxies:', proxiesResult.reason)
+  }
+  if (groupsResult.status === 'fulfilled') {
+    groups.value = groupsResult.value
+  } else {
+    console.error('Failed to load groups:', groupsResult.reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)

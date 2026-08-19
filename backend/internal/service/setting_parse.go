@@ -123,25 +123,12 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoEmailPath:              "",
 		SettingKeyOIDCConnectUserInfoIDPath:                 "",
 		SettingKeyOIDCConnectUserInfoUsernamePath:           "",
-		SettingKeySignupIPRiskControlThreshold:              strconv.Itoa(defaultSignupIPRiskControlThreshold),
-		SettingKeySignupIPDisablePreviousAccounts:           strconv.FormatBool(defaultSignupIPDisablePreviousAccounts),
-		SettingKeySignupIPKeepPreviousAccounts:              strconv.Itoa(defaultSignupIPKeepPreviousAccounts),
-		SettingKeyAPIUsageIPUARiskControlThreshold:          strconv.Itoa(defaultAPIUsageIPUARiskControlThreshold),
-		SettingKeyAPIUsageIPUADisablePreviousAccounts:       strconv.FormatBool(defaultAPIUsageIPUADisablePreviousAccounts),
-		SettingKeyAPIUsageIPUAKeepPreviousAccounts:          strconv.Itoa(defaultAPIUsageIPUAKeepPreviousAccounts),
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
-		SettingKeyDailyCheckinEnabled:                       strconv.FormatBool(s.defaultDailyCheckinSettings().Enabled),
-		SettingKeyDailyCheckinAdsEnabled:                    strconv.FormatBool(s.defaultDailyCheckinSettings().AdsEnabled),
-		SettingKeyDailyCheckinDailyTotalLimit:               strconv.FormatFloat(s.defaultDailyCheckinSettings().DailyTotalLimit, 'f', 8, 64),
-		SettingKeyDailyCheckinMinReward:                     strconv.FormatFloat(s.defaultDailyCheckinSettings().MinReward, 'f', 8, 64),
-		SettingKeyDailyCheckinMaxReward:                     strconv.FormatFloat(s.defaultDailyCheckinSettings().MaxReward, 'f', 8, 64),
-		SettingKeyDailyCheckinMinRechargeAmount:             strconv.FormatFloat(s.defaultDailyCheckinSettings().MinRechargeAmount, 'f', 8, 64),
-		SettingKeyDailyCheckinRewardTiers:                   formatDailyCheckinRewardTiersSetting(s.defaultDailyCheckinSettings().RewardTiers),
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",
@@ -203,8 +190,12 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyChannelMonitorMode:                   ChannelMonitorModeV1,
 		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
 		SettingKeyChannelMonitorHideThroughput:         "true",
-		SettingKeyGrokDefaultTextModel:                 "grok-4.5",
-		SettingKeyGrokCrossClientModelMapEnabled:       "true",
+		SettingKeyChannelMonitorShowQuota:              "false",
+
+		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
+		SettingKeyGrokDefaultTextModel:           "grok-4.5",
+		SettingKeyGrokCrossClientModelMapEnabled: "true",
+		SettingKeyGrokDefaultBaseURLMode:         GrokDefaultBaseURLModeCLI,
 
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
@@ -324,20 +315,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		EmailVerifyEnabled:                     emailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:       ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
 		RegistrationEmailDomainQuotaEnabled:    settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
-		PromoCodeEnabled:                       settings[SettingKeyPromoCodeEnabled] != "false",
+		PromoCodeEnabled:                       settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
 		PasswordResetEnabled:                   emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
 		FrontendURL:                            settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:                  settings[SettingKeyInvitationCodeEnabled] == "true",
-		SignupIPRiskControlThreshold:           parseSignupIPRiskControlThreshold(settings[SettingKeySignupIPRiskControlThreshold]),
-		SignupIPDisablePreviousAccounts:        parseSignupIPDisablePreviousAccounts(settings[SettingKeySignupIPDisablePreviousAccounts]),
-		SignupIPKeepPreviousAccounts:           parseSignupIPKeepPreviousAccounts(settings[SettingKeySignupIPKeepPreviousAccounts]),
-		APIUsageIPUARiskControlThreshold:       parseAPIUsageIPUARiskControlThreshold(settings[SettingKeyAPIUsageIPUARiskControlThreshold]),
-		APIUsageIPUADisablePreviousAccounts:    parseAPIUsageIPUADisablePreviousAccounts(settings[SettingKeyAPIUsageIPUADisablePreviousAccounts]),
-		APIUsageIPUAKeepPreviousAccounts:       parseAPIUsageIPUAKeepPreviousAccounts(settings[SettingKeyAPIUsageIPUAKeepPreviousAccounts]),
 		TotpEnabled:                            settings[SettingKeyTotpEnabled] == "true",
 		PasskeyEnabled:                         s.passkeySettingEnabled(settings),
-		SessionBindingEnabled:                  settings[SettingKeySessionBindingEnabled] == "true",
-		StepUpEnabled:                          settings[SettingKeyStepUpEnabled] == "true",
+		SessionBindingEnabled:                  settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭
+		StepUpEnabled:                          settings[SettingKeyStepUpEnabled] == "true",         // 默认关闭
 		AuditLogRetentionDays:                  parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
 		LoginAgreementEnabled:                  settings[SettingKeyLoginAgreementEnabled] == "true",
 		LoginAgreementMode:                     normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
@@ -371,7 +356,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SiteSubtitle:                           s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
 		APIBaseURL:                             settings[SettingKeyAPIBaseURL],
 		ContactInfo:                            settings[SettingKeyContactInfo],
-		EnterpriseBillingContactQR:             settings[SettingKeyEnterpriseBillingContactQR],
 		DocURL:                                 settings[SettingKeyDocURL],
 		HomeContent:                            settings[SettingKeyHomeContent],
 		CompactHomeEnabled:                     settings[SettingKeyCompactHomeEnabled] == "true",
@@ -814,11 +798,20 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ChannelMonitorDefaultIntervalSeconds = parseChannelMonitorInterval(
 		settings[SettingKeyChannelMonitorDefaultIntervalSeconds],
 	)
+	// 默认隐藏吞吐（迁移 206 的隐私默认）：未配置时必须与 setting_public.go 的
+	// 公开读取路径给出同一个值，否则管理端看到“未隐藏”而用户端实际已隐藏。
 	result.ChannelMonitorHideThroughput = !isFalseSettingValue(settings[SettingKeyChannelMonitorHideThroughput])
+	// 配额展示默认关闭且 fail-closed：仅字面 "true" 视为开启
+	// （与 setting_public.go 公开读取路径保持一致）。
+	result.ChannelMonitorShowQuota = settings[SettingKeyChannelMonitorShowQuota] == "true"
+
+	// Grok default mapping policy
 	result.GrokDefaultTextModel = strings.TrimSpace(settings[SettingKeyGrokDefaultTextModel])
 	if result.GrokDefaultTextModel == "" {
 		result.GrokDefaultTextModel = "grok-4.5"
 	}
+	// Default true (missing/empty → enabled) so Claude/Codex→Grok mapping keeps working.
+	// Operators can set false to disable silent cross-client rewrite.
 	result.GrokCrossClientModelMapEnabled = !isFalseSettingValue(settings[SettingKeyGrokCrossClientModelMapEnabled])
 	result.GrokDefaultBaseURLMode = normalizeGrokDefaultBaseURLMode(settings[SettingKeyGrokDefaultBaseURLMode])
 
@@ -966,6 +959,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 			slog.Warn("[Setting] parseSettings: unmarshal default_platform_quotas failed", "error", err)
 		} else {
 			result.DefaultPlatformQuotas = parsed
+		}
+	}
+	result.AccountSchedulingThresholds = defaultAccountSchedulingThresholds()
+	if raw := strings.TrimSpace(settings[SettingKeyAccountSchedulingThresholds]); raw != "" {
+		if thresholds, err := parseAccountSchedulingThresholdsSetting(raw); err != nil {
+			slog.Warn("[Setting] parseSettings: unmarshal account_scheduling_thresholds failed", "error", err)
+		} else {
+			result.AccountSchedulingThresholds = thresholds
 		}
 	}
 
