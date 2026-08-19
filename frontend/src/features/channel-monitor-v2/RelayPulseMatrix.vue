@@ -181,9 +181,9 @@ import {
   formatLatencyPrivacy,
   formatMonitorMs,
   formatMonitorPercent,
-  formatMonitorSuccessRateFromError,
   formatMonitorThroughput,
   formatMonitorTokensPerSecond,
+  resolveMonitorSuccessRate,
   tokensPerSecondFromTpm,
   healthModeScore,
   healthScoreClass,
@@ -364,7 +364,7 @@ function successRate(metrics: MonitorMetric): string {
   const noCount = metrics.request_count <= 0
   const noTP = (metrics.rpm || 0) <= 0 && (metrics.tpm || 0) <= 0
   if (noCount && noTP && props.showThroughput) return '-'
-  return formatMonitorSuccessRateFromError(metrics.error_rate)
+  return formatMonitorPercent(resolveMonitorSuccessRate(metrics.success_rate, metrics.error_rate))
 }
 
 function formatScore(health: MonitorHealth): string {

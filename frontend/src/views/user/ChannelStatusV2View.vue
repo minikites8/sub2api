@@ -202,7 +202,7 @@
       >
         <MetricCell
           :label="t('channelMonitorV2.metrics.successRate')"
-          :value="formatPercent(1 - snapshot.metrics.error_rate)"
+          :value="successPercent(snapshot.metrics)"
           :detail="t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(snapshot.metrics.error_rate) })"
           :state="snapshot.health.error_rate"
         />
@@ -318,7 +318,7 @@
                     </div>
                   </td>
                   <td>
-                    <span class="block">{{ formatPercent(1 - row.metrics.error_rate) }}</span>
+                    <span class="block">{{ successPercent(row.metrics) }}</span>
                     <small class="text-xs text-gray-400">{{ t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(row.metrics.error_rate) }) }}</small>
                   </td>
                   <td>
@@ -419,7 +419,7 @@
                     </strong>
                   </td>
                   <td>
-                    <span class="block">{{ formatPercent(1 - row.metrics.error_rate) }}</span>
+                    <span class="block">{{ successPercent(row.metrics) }}</span>
                     <small class="text-xs text-gray-400">{{ t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(row.metrics.error_rate) }) }}</small>
                   </td>
                   <td>
@@ -495,6 +495,7 @@ import {
   formatMonitorPercent,
   formatMonitorThroughput,
   formatMonitorTokensPerSecond,
+  resolveMonitorSuccessRate,
   tokensPerSecondFromTpm,
   healthScoreClass,
   monitorErrorCategoryLabel,
@@ -831,6 +832,9 @@ function exactTps(tpm: number | null | undefined) {
 }
 function formatPercent(value: number) {
   return formatMonitorPercent(value)
+}
+function successPercent(metrics: { success_rate: number; error_rate: number }) {
+  return formatPercent(resolveMonitorSuccessRate(metrics.success_rate, metrics.error_rate))
 }
 function formatMs(value: number | null) {
   return formatMonitorMs(value)

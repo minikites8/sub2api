@@ -12,6 +12,7 @@ import {
   formatMonitorTokensPerSecond,
   healthScoreClass,
   healthStateClass,
+  resolveMonitorSuccessRate,
   scoreToBand,
   tokensPerSecondFromTpm,
 } from '../monitorFormat'
@@ -76,6 +77,11 @@ describe('monitorFormat accuracy', () => {
     expect(formatMonitorSuccessRateFromError(0)).toBe('100.0%')
   })
 
+  it('prefers the true success rate and supports older payloads', () => {
+    expect(resolveMonitorSuccessRate(0.8, 0.1)).toBe(0.8)
+    expect(resolveMonitorSuccessRate(undefined, 0.1)).toBe(0.9)
+  })
+
   it('maps continuous scores to multi-stop bands', () => {
     expect(scoreToBand(100)).toBe('score10')
     expect(scoreToBand(95)).toBe('score10')
@@ -93,12 +99,13 @@ describe('monitorFormat accuracy', () => {
       cache: 'warning',
       score: 52,
       error_rate_score: 40,
+      success_rate_score: 90,
       ttft_score: 100,
       cache_score: 50,
       minimum_sample: 20,
     }
     expect(healthScoreClass(health, 'overall', 10)).toBe('health-score5')
-    expect(healthScoreClass(health, 'success', 10)).toBe('health-score4')
+    expect(healthScoreClass(health, 'success', 10)).toBe('health-score9')
     expect(healthScoreClass(health, 'ttft', 10)).toBe('health-score10')
     expect(healthScoreClass(health, 'cache', 10)).toBe('health-score5')
     // Redacted user payloads have request_count=0 but keep score fields.

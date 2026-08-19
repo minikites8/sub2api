@@ -77,6 +77,17 @@ export function formatMonitorSuccessRateFromError(errorRate: number): string {
   return formatMonitorPercent(1 - (errorRate || 0))
 }
 
+/** Prefer the backend's true success/request ratio; support older payloads. */
+export function resolveMonitorSuccessRate(
+  successRate: number | null | undefined,
+  errorRate: number,
+): number {
+  const value = successRate == null || !Number.isFinite(Number(successRate))
+    ? 1 - (errorRate || 0)
+    : Number(successRate)
+  return Math.max(0, Math.min(1, value))
+}
+
 /**
  * Map continuous 0–100 score to 11 fine bands for multi-stop green→yellow→red.
  * score10 = best (green), score0 = worst (red).
@@ -97,7 +108,7 @@ export function healthModeScore(
   mode: HealthDisplayMode,
 ): number | null {
   if (mode === 'success') {
-    return health.error_rate_score ?? null
+    return health.success_rate_score ?? health.error_rate_score ?? null
   }
   if (mode === 'ttft') {
     return health.ttft_score ?? null

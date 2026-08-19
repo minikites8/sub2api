@@ -41,6 +41,7 @@ export interface MonitorMetric {
   rpm: number
   tpm: number
   error_rate: number
+  success_rate: number
   cache_rate: number
   cache_rate_numerator: number
   cache_rate_denominator: number
@@ -58,6 +59,7 @@ export interface MonitorHealth {
   /** 0–100 blended score when samples are sufficient. */
   score?: number | null
   error_rate_score?: number | null
+  success_rate_score?: number | null
   ttft_score?: number | null
   cache_score?: number | null
   minimum_sample: number
