@@ -2986,6 +2986,43 @@ func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesExplicitAPIKeyBetaH
 	require.Equal(t, "api-key-specific-beta", req.Header.Get("OpenAI-Beta"), "OAuth-only backport must not alter API-key passthrough headers")
 }
 
+func TestOpenAIBuildUpstreamRequestOpenAIPassthroughStripsLegacyPromptCacheRetention(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+		},
+	}}
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "sk-api-key",
+		},
+	}
+	body := []byte(`{"model":"gpt-5.6-sol","prompt_cache_key":"session-1","prompt_cache_retention":"24h","input":[]}`)
+
+	req, err := svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, body, "token")
+	require.NoError(t, err)
+	upstreamBody, err := io.ReadAll(req.Body)
+	require.NoError(t, err)
+	require.Equal(t, "session-1", gjson.GetBytes(upstreamBody, "prompt_cache_key").String())
+	require.False(t, gjson.GetBytes(upstreamBody, "prompt_cache_retention").Exists())
+}
+
+func TestStripOpenAIPromptCacheRetentionKeepsLegacyModelsCompatible(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","prompt_cache_key":"session-1","prompt_cache_retention":"24h"}`)
+
+	normalized, changed, err := stripOpenAIPromptCacheRetention(body, "gpt-5.5")
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, body, normalized)
+}
+
 func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

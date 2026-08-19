@@ -483,6 +483,13 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 	// DeepSeek 原生 Responses 端点为无状态实现（见 normalizeDeepSeekResponsesRequestBody）。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
+	if account.Platform == PlatformOpenAI {
+		sanitizedBody, _, err := stripOpenAIPromptCacheRetention(body, gjson.GetBytes(body, "model").String())
+		if err != nil {
+			return nil, err
+		}
+		body = sanitizedBody
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {

@@ -813,6 +813,20 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	return normalized, changed, nil
 }
 
+// stripOpenAIPromptCacheRetention removes the deprecated cache retention field
+// for GPT-5.6 Responses requests. OpenAI documents prompt_cache_options for
+// GPT-5.6 and later, while older models still use prompt_cache_retention.
+func stripOpenAIPromptCacheRetention(body []byte, model string) ([]byte, bool, error) {
+	if len(body) == 0 || !isOpenAIGPT56Model(model) || !gjson.GetBytes(body, "prompt_cache_retention").Exists() {
+		return body, false, nil
+	}
+	normalized, err := sjson.DeleteBytes(body, "prompt_cache_retention")
+	if err != nil {
+		return body, false, fmt.Errorf("strip prompt_cache_retention: %w", err)
+	}
+	return normalized, true, nil
+}
+
 func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
 	if !isOpenAICodexModel(reqModel) {
 		return ""

@@ -132,6 +132,23 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			originalModel = reqModel
 		}
 	}
+	if account.Platform == PlatformOpenAI {
+		effectiveModel := strings.TrimSpace(account.GetMappedModel(reqModel))
+		if effectiveModel == "" {
+			effectiveModel = reqModel
+		}
+		sanitizedBody, changed, sanitizeErr := stripOpenAIPromptCacheRetention(body, effectiveModel)
+		if sanitizeErr != nil {
+			return nil, sanitizeErr
+		}
+		if changed {
+			body = sanitizedBody
+			originalBody = sanitizedBody
+			requestView = newOpenAIRequestView(sanitizedBody)
+			reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
+			originalModel = reqModel
+		}
+	}
 
 	compatMessagesBridge := isOpenAICompatMessagesBridgeBody(body)
 	setOpenAICompatMessagesBridgeContext(c, compatMessagesBridge)
