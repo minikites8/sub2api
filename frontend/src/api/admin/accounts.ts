@@ -686,6 +686,18 @@ export interface YeTeamRedeemResult {
   import_errors?: Array<{ kind: string; name?: string; proxy_key?: string; message: string }>
 }
 
+export interface YeTeamAccountOptions {
+  group_ids?: number[]
+  concurrency?: number
+  priority?: number
+  proxy_mode?: 'none' | 'specified' | 'random'
+  proxy_id?: number
+  codex_fingerprint_mode?: 'off' | 'device' | 'session' | 'full'
+  enable_account_guard?: boolean
+  account_guard_interval_minutes?: number
+  openai_ws_mode?: 'off' | 'ctx_pool' | 'passthrough' | 'http_bridge'
+}
+
 const yeTeamOperationKeys = new Map<string, string>()
 
 export async function redeemYeTeam(payload: {
@@ -693,6 +705,7 @@ export async function redeemYeTeam(payload: {
   target_id?: string
   client_request_id?: string
   skip_default_group_bind?: boolean
+  account_options?: YeTeamAccountOptions
 }): Promise<YeTeamRedeemResult> {
   const cardCode = payload.card_code.trim()
   const requestID = payload.client_request_id || yeTeamOperationKeys.get(cardCode) ||

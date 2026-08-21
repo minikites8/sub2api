@@ -319,6 +319,55 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
 }
 
+func TestImportDataAppliesAccountOptions(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	bodyPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{{
+				"name":        "ye-account",
+				"platform":    service.PlatformOpenAI,
+				"type":        service.AccountTypeOAuth,
+				"credentials": map[string]any{"access_token": "token"},
+				"concurrency": 3,
+				"priority":    50,
+			}},
+		},
+		"skip_default_group_bind": true,
+		"account_options": map[string]any{
+			"group_ids":                      []int64{11, 12},
+			"concurrency":                    8,
+			"priority":                       7,
+			"proxy_mode":                     "random",
+			"codex_fingerprint_mode":         "session",
+			"enable_account_guard":           true,
+			"account_guard_interval_minutes": 45,
+			"openai_ws_mode":                 "ctx_pool",
+		},
+	}
+	body, err := json.Marshal(bodyPayload)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdAccounts, 1)
+	created := adminSvc.createdAccounts[0]
+	require.Equal(t, []int64{11, 12}, created.GroupIDs)
+	require.Equal(t, 8, created.Concurrency)
+	require.Equal(t, 7, created.Priority)
+	require.Equal(t, "ctx_pool", created.Extra["openai_oauth_responses_websockets_v2_mode"])
+	require.Len(t, adminSvc.createdAccountDefaults, 1)
+	require.Equal(t, service.AdminAPIKeyProxyModeRandom, adminSvc.createdAccountDefaults[0].ProxyMode)
+	require.Equal(t, service.AdminAPIKeyCodexFingerprintSession, adminSvc.createdAccountDefaults[0].CodexFingerprintMode)
+	require.True(t, adminSvc.createdAccountDefaults[0].EnableAccountGuard)
+	require.Equal(t, 45, adminSvc.createdAccountDefaults[0].AccountGuardIntervalMinutes)
+}
+
 func TestImportDataRejectsKiroAccountManagerJSON(t *testing.T) {
 	router, adminSvc := setupAccountDataRouter()
 

@@ -24,6 +24,7 @@ type stubAdminService struct {
 	boundAuthIdentity                   *service.AdminBindAuthIdentityInput
 	boundAuthIdentityFor                int64
 	createdAccounts                     []*service.CreateAccountInput
+	createdAccountDefaults              []service.AdminAPIKeyAccountDefaults
 	createdProxies                      []*service.CreateProxyInput
 	updatedProxyIDs                     []int64
 	updatedProxies                      []*service.UpdateProxyInput
@@ -487,6 +488,9 @@ func (s *stubAdminService) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 func (s *stubAdminService) CreateAccount(ctx context.Context, input *service.CreateAccountInput) (*service.Account, error) {
 	s.mu.Lock()
 	s.createdAccounts = append(s.createdAccounts, input)
+	if defaults, ok := service.AdminAPIKeyAccountDefaultsFromContext(ctx); ok {
+		s.createdAccountDefaults = append(s.createdAccountDefaults, defaults)
+	}
 	s.mu.Unlock()
 	if s.createAccountErr != nil {
 		return nil, s.createAccountErr

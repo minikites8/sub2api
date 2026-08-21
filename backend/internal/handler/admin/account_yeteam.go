@@ -12,10 +12,11 @@ import (
 )
 
 type YeTeamRedeemRequest struct {
-	CardCode             string `json:"card_code" binding:"required"`
-	TargetID             string `json:"target_id,omitempty"`
-	ClientRequestID      string `json:"client_request_id,omitempty"`
-	SkipDefaultGroupBind *bool  `json:"skip_default_group_bind,omitempty"`
+	CardCode             string                `json:"card_code" binding:"required"`
+	TargetID             string                `json:"target_id,omitempty"`
+	ClientRequestID      string                `json:"client_request_id,omitempty"`
+	SkipDefaultGroupBind *bool                 `json:"skip_default_group_bind,omitempty"`
+	AccountOptions       *AccountImportOptions `json:"account_options,omitempty"`
 }
 
 type YeTeamRedeemResponse struct {
@@ -145,7 +146,16 @@ func (h *AccountHandler) RedeemYeTeam(c *gin.Context) {
 		}
 		payload.Accounts[i].Extra["ye_team_card_code"] = req.CardCode
 	}
-	result, err := h.importData(ctx, DataImportRequest{Data: normalized, SkipDefaultGroupBind: &skip}, payload)
+	var accountOptions *AccountImportOptions
+	if req.AccountOptions != nil {
+		options := *req.AccountOptions
+		options.GroupIDs = append([]int64(nil), req.AccountOptions.GroupIDs...)
+		// CDK redemption is an explicit admin action, matching auto-supply's
+		// trusted deployment path for mixed-channel group bindings.
+		options.SkipMixedChannelCheck = true
+		accountOptions = &options
+	}
+	result, err := h.importData(ctx, DataImportRequest{Data: normalized, SkipDefaultGroupBind: &skip, AccountOptions: accountOptions}, payload)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

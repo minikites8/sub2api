@@ -732,6 +732,13 @@ func applyAutoSupplyOpenAIWSMode(extra map[string]any, platform, accountType, mo
 	delete(extra, "openai_ws_enabled")
 }
 
+// ApplyOpenAIWSModeExtra applies the configured OpenAI responses WebSocket mode
+// to an account extra map. It is shared by automatic supply and one-shot
+// account imports so both paths persist the same settings.
+func ApplyOpenAIWSModeExtra(extra map[string]any, platform, accountType, mode string) {
+	applyAutoSupplyOpenAIWSMode(extra, platform, accountType, mode)
+}
+
 func parseAutoSupplyUnix(raw json.RawMessage) (*int64, error) {
 	if len(bytes.TrimSpace(raw)) == 0 || string(bytes.TrimSpace(raw)) == "null" {
 		return nil, nil

@@ -78,8 +78,24 @@ type DataAccount struct {
 }
 
 type DataImportRequest struct {
-	Data                 json.RawMessage `json:"data"`
-	SkipDefaultGroupBind *bool           `json:"skip_default_group_bind"`
+	Data                 json.RawMessage       `json:"data"`
+	SkipDefaultGroupBind *bool                 `json:"skip_default_group_bind"`
+	AccountOptions       *AccountImportOptions `json:"account_options,omitempty"`
+}
+
+// AccountImportOptions applies the same account defaults used by the
+// automatic supply importer to every account in a one-shot import.
+type AccountImportOptions struct {
+	GroupIDs                    []int64 `json:"group_ids,omitempty"`
+	Concurrency                 *int    `json:"concurrency,omitempty"`
+	Priority                    *int    `json:"priority,omitempty"`
+	ProxyMode                   string  `json:"proxy_mode,omitempty"`
+	ProxyID                     *int64  `json:"proxy_id,omitempty"`
+	CodexFingerprintMode        string  `json:"codex_fingerprint_mode,omitempty"`
+	EnableAccountGuard          bool    `json:"enable_account_guard,omitempty"`
+	AccountGuardIntervalMinutes int     `json:"account_guard_interval_minutes,omitempty"`
+	OpenAIWSMode                string  `json:"openai_ws_mode,omitempty"`
+	SkipMixedChannelCheck       bool    `json:"-"`
 }
 
 type DataImportResult struct {
@@ -257,6 +273,13 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 	skipDefaultGroupBind := true
 	if req.SkipDefaultGroupBind != nil {
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
+	}
+	accountCtx := ctx
+	if req.AccountOptions != nil {
+		if err := validateAccountImportOptions(req.AccountOptions); err != nil {
+			return DataImportResult{}, err
+		}
+		accountCtx = service.ContextWithAdminAPIKeyAccountDefaults(ctx, accountImportAccountDefaults(req.AccountOptions))
 	}
 
 	result := DataImportResult{}
@@ -439,25 +462,46 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 
 		enrichCredentialsFromIDToken(&item)
 
-		accountInput := &service.CreateAccountInput{
-			Name:                 item.Name,
-			Notes:                item.Notes,
-			Platform:             item.Platform,
-			Type:                 item.Type,
-			Credentials:          item.Credentials,
-			Extra:                item.Extra,
-			ProxyID:              proxyID,
-			Concurrency:          item.Concurrency,
-			Priority:             item.Priority,
-			IsFallback:           item.IsFallback,
-			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
-			ExpiresAt:            item.ExpiresAt,
-			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+		accountExtra := item.Extra
+		if req.AccountOptions != nil && strings.TrimSpace(req.AccountOptions.OpenAIWSMode) != "" {
+			accountExtra = cloneImportExtra(item.Extra)
+			service.ApplyOpenAIWSModeExtra(accountExtra, item.Platform, item.Type, req.AccountOptions.OpenAIWSMode)
+		}
+		concurrency := item.Concurrency
+		priority := item.Priority
+		groupIDs := []int64(nil)
+		if req.AccountOptions != nil {
+			groupIDs = append([]int64(nil), req.AccountOptions.GroupIDs...)
+			if req.AccountOptions.Concurrency != nil && *req.AccountOptions.Concurrency > 0 {
+				concurrency = *req.AccountOptions.Concurrency
+			}
+			if req.AccountOptions.Priority != nil && *req.AccountOptions.Priority > 0 {
+				priority = *req.AccountOptions.Priority
+			}
+			// The selected ye.team import mode controls the proxy for all imported accounts.
+			proxyID = nil
 		}
 
-		created, err := h.adminService.CreateAccount(ctx, accountInput)
+		accountInput := &service.CreateAccountInput{
+			Name:                  item.Name,
+			Notes:                 item.Notes,
+			Platform:              item.Platform,
+			Type:                  item.Type,
+			Credentials:           item.Credentials,
+			Extra:                 accountExtra,
+			ProxyID:               proxyID,
+			Concurrency:           concurrency,
+			Priority:              priority,
+			IsFallback:            item.IsFallback,
+			RateMultiplier:        item.RateMultiplier,
+			GroupIDs:              groupIDs,
+			ExpiresAt:             item.ExpiresAt,
+			AutoPauseOnExpired:    item.AutoPauseOnExpired,
+			SkipDefaultGroupBind:  skipDefaultGroupBind,
+			SkipMixedChannelCheck: req.AccountOptions != nil && req.AccountOptions.SkipMixedChannelCheck,
+		}
+
+		created, err := h.adminService.CreateAccount(accountCtx, accountInput)
 		if err != nil {
 			result.AccountFailed++
 			result.Errors = append(result.Errors, DataImportError{
@@ -493,6 +537,97 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 	}
 
 	return result, nil
+}
+
+func validateAccountImportOptions(options *AccountImportOptions) error {
+	if options == nil {
+		return nil
+	}
+	if len(options.GroupIDs) > 100 {
+		return fmt.Errorf("account_options.group_ids must contain at most 100 groups")
+	}
+	for _, groupID := range options.GroupIDs {
+		if groupID <= 0 {
+			return fmt.Errorf("account_options.group_ids must contain positive IDs")
+		}
+	}
+	if options.Concurrency != nil && *options.Concurrency < 0 {
+		return fmt.Errorf("account_options.concurrency must be non-negative")
+	}
+	if options.Priority != nil && *options.Priority < 0 {
+		return fmt.Errorf("account_options.priority must be non-negative")
+	}
+	switch strings.ToLower(strings.TrimSpace(options.ProxyMode)) {
+	case "", "none", "random":
+	case "specified":
+		if options.ProxyID == nil || *options.ProxyID <= 0 {
+			return fmt.Errorf("account_options.proxy_id is required for specified proxy mode")
+		}
+	default:
+		return fmt.Errorf("account_options.proxy_mode must be none, specified, or random")
+	}
+	switch strings.ToLower(strings.TrimSpace(options.CodexFingerprintMode)) {
+	case "", service.AdminAPIKeyCodexFingerprintOff, service.AdminAPIKeyCodexFingerprintDevice,
+		service.AdminAPIKeyCodexFingerprintSession, service.AdminAPIKeyCodexFingerprintFull:
+	default:
+		return fmt.Errorf("account_options.codex_fingerprint_mode must be off, device, session, or full")
+	}
+	if options.EnableAccountGuard {
+		interval := options.AccountGuardIntervalMinutes
+		if interval == 0 {
+			interval = service.OpenAIAccountGuardDefaultIntervalMinutes
+		}
+		if interval < service.OpenAIAccountGuardMinIntervalMinutes || interval > service.OpenAIAccountGuardMaxIntervalMinutes {
+			return fmt.Errorf("account_options.account_guard_interval_minutes must be between %d and %d", service.OpenAIAccountGuardMinIntervalMinutes, service.OpenAIAccountGuardMaxIntervalMinutes)
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(options.OpenAIWSMode)) {
+	case "", "off", "ctx_pool", "passthrough", "http_bridge":
+	default:
+		return fmt.Errorf("account_options.openai_ws_mode must be off, ctx_pool, passthrough, or http_bridge")
+	}
+	return nil
+}
+
+func accountImportAccountDefaults(options *AccountImportOptions) service.AdminAPIKeyAccountDefaults {
+	proxyMode := strings.ToLower(strings.TrimSpace(options.ProxyMode))
+	if proxyMode == "specified" {
+		proxyMode = service.AdminAPIKeyProxyModeFixed
+	}
+	if proxyMode == "" {
+		proxyMode = service.AdminAPIKeyProxyModeNone
+	}
+	interval := options.AccountGuardIntervalMinutes
+	if interval == 0 {
+		interval = service.OpenAIAccountGuardDefaultIntervalMinutes
+	}
+	fingerprintMode := strings.ToLower(strings.TrimSpace(options.CodexFingerprintMode))
+	if fingerprintMode == "" {
+		fingerprintMode = service.AdminAPIKeyCodexFingerprintOff
+	}
+	return service.AdminAPIKeyAccountDefaults{
+		ProxyMode:                   proxyMode,
+		ProxyID:                     cloneImportInt64Pointer(options.ProxyID),
+		CodexFingerprintMode:        fingerprintMode,
+		EnableAccountGuard:          options.EnableAccountGuard,
+		AccountGuardIntervalMinutes: interval,
+	}
+}
+
+func cloneImportInt64Pointer(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	copyValue := *value
+	return &copyValue
+}
+
+func cloneImportExtra(input map[string]any) map[string]any {
+	output := make(map[string]any, len(input)+2)
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }
 
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {
