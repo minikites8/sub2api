@@ -1351,8 +1351,8 @@ update:
 # ye.team CDK account supply
 # =============================================================================
 # RedeemYeTeam uses the ye.team card code API and imports a sub2api account
-# package. Auto refresh only runs for OpenAI accounts whose name or metadata
-# contains an RCL-* card code.
+# package. Auto refresh runs for OpenAI accounts whose metadata contains an
+# RCL-* or team-* card code. RCL-* codes in the account name are also supported.
 ye_team:
   enabled: false
   base_url: "https://ye.team"

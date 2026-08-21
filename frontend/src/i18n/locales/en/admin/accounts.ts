@@ -48,7 +48,7 @@ export default {
       yeTeamHint: 'Submit a CDK to redeem an account package from ye.team and import it on the server.',
       yeTeamWarning: 'CDKs are single-use credentials. Confirm the ye.team integration is enabled on the server.',
       yeTeamCardCode: 'CDK',
-      yeTeamCardCodePlaceholder: 'e.g. RCL-xxxx',
+      yeTeamCardCodePlaceholder: 'e.g. RCL-xxxx or team-xxxx',
       yeTeamSubmit: 'Redeem and import',
       yeTeamSubmitting: 'Redeeming, please wait...',
       yeTeamResult: 'Order {order_no}: {account_created} accounts created, {account_failed} failed',

@@ -10,7 +10,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 )
 
-var yeTeamCardCodePattern = regexp.MustCompile(`(?i)(RCL-[A-Z0-9][A-Z0-9-]{3,})`)
+var (
+	yeTeamRCLCardCodePattern  = regexp.MustCompile(`(?i)(RCL-[A-Z0-9][A-Z0-9-]{3,})`)
+	yeTeamTeamCardCodePattern = regexp.MustCompile(`(?i)(team-[A-Z0-9][A-Z0-9-]{3,})`)
+)
 
 // SetYeTeamClient attaches the optional external reclaim integration after
 // normal service construction, preserving existing test constructors.
@@ -91,7 +94,7 @@ func yeTeamCardCode(account *Account) string {
 			}
 		}
 	}
-	matches := yeTeamCardCodePattern.FindAllString(account.Name, -1)
+	matches := yeTeamRCLCardCodePattern.FindAllString(account.Name, -1)
 	if len(matches) == 0 {
 		return ""
 	}
@@ -103,10 +106,12 @@ func normalizeYeTeamCardCode(value string) string {
 	if value == "" {
 		return ""
 	}
-	if !yeTeamCardCodePattern.MatchString(value) {
-		return ""
+	for _, pattern := range []*regexp.Regexp{yeTeamRCLCardCodePattern, yeTeamTeamCardCodePattern} {
+		if pattern.MatchString(value) {
+			return strings.ToUpper(pattern.FindString(value))
+		}
 	}
-	return strings.ToUpper(yeTeamCardCodePattern.FindString(value))
+	return ""
 }
 
 // Keep the mutexes local to the gateway service so independent test services

@@ -48,7 +48,7 @@ export default {
       yeTeamHint: '提交 CDK 后由服务端向 ye.team 兑换账号包并自动导入。',
       yeTeamWarning: 'CDK 属于一次性兑换凭据，请确认服务地址已启用 ye.team 集成。',
       yeTeamCardCode: 'CDK',
-      yeTeamCardCodePlaceholder: '例如 RCL-xxxx',
+      yeTeamCardCodePlaceholder: '例如 RCL-xxxx 或 team-xxxx',
       yeTeamSubmit: '提交并导入',
       yeTeamSubmitting: '兑换中，请稍候...',
       yeTeamResult: '订单 {order_no}：创建账号 {account_created}，失败 {account_failed}',
