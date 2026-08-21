@@ -58,7 +58,7 @@ func TestClientRedeemRequestAndDownload(t *testing.T) {
 			_, _ = w.Write([]byte(`{"data":{"order_no":"ord-1","status":"completed","download_token":"tok"}}`))
 		case "/api/redeem/orders/ord-1":
 			orderStatusAuth = r.Header.Get("Authorization")
-			_, _ = w.Write([]byte(`{"data":{"order_no":"ord-1","status":"completed","download_token":"tok"}}`))
+			_, _ = w.Write([]byte(`{"data":{"status":"completed"}}`))
 		case "/api/redeem/orders/ord-1/download":
 			_, _ = w.Write([]byte(`{"accounts":[]}`))
 		default:
@@ -74,8 +74,12 @@ func TestClientRedeemRequestAndDownload(t *testing.T) {
 	if err != nil || order.OrderNo != "ord-1" {
 		t.Fatalf("order=%#v err=%v", order, err)
 	}
-	if _, err := client.PollUntilDone(context.Background(), order.OrderNo, order.DownloadToken); err != nil {
+	finalOrder, err := client.PollUntilDone(context.Background(), order.OrderNo, order.DownloadToken)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if finalOrder.OrderNo != "ord-1" || finalOrder.DownloadToken != "tok" {
+		t.Fatalf("final order = %#v", finalOrder)
 	}
 	if orderStatusAuth != "Bearer tok" {
 		t.Fatalf("order status authorization = %q", orderStatusAuth)

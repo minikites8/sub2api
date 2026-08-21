@@ -114,7 +114,16 @@ func (h *AccountHandler) RedeemYeTeam(c *gin.Context) {
 		token = nestedOrderString(finalOrder.Raw, "download_token", "downloadToken", "token")
 	}
 	if token == "" {
-		response.ErrorFrom(c, errors.New("ye.team order did not include download_token"))
+		token = strings.TrimSpace(order.DownloadToken)
+	}
+	if token == "" {
+		token = strings.TrimSpace(order.Token)
+	}
+	if token == "" {
+		token = nestedOrderString(order.Raw, "download_token", "downloadToken", "token")
+	}
+	if token == "" {
+		response.Error(c, http.StatusBadGateway, "ye.team order completed without a download token")
 		return
 	}
 	accountJSON, err := h.yeTeam.Download(ctx, finalOrder.OrderNo, token)

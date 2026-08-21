@@ -521,14 +521,25 @@ func (c *Client) BatchReclaim(ctx context.Context, req ReclaimRequest) (BatchRec
 
 // PollUntilDone waits for an order and returns the terminal order metadata.
 func (c *Client) PollUntilDone(ctx context.Context, orderNo string, downloadToken ...string) (Order, error) {
-	if strings.TrimSpace(orderNo) == "" {
+	orderNo = strings.TrimSpace(orderNo)
+	if orderNo == "" {
 		return Order{}, errors.New("ye.team order number is empty")
+	}
+	initialDownloadToken := ""
+	if len(downloadToken) > 0 {
+		initialDownloadToken = strings.TrimSpace(downloadToken[0])
 	}
 	deadline := time.Now().Add(c.maxPollDuration)
 	for {
 		order, err := c.OrderStatus(ctx, orderNo, downloadToken...)
 		if err != nil {
 			return Order{}, err
+		}
+		if order.OrderNo == "" {
+			order.OrderNo = orderNo
+		}
+		if order.DownloadToken == "" {
+			order.DownloadToken = initialDownloadToken
 		}
 		status := strings.ToLower(strings.TrimSpace(order.Status))
 		switch status {
