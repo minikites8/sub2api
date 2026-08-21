@@ -1348,6 +1348,20 @@ update:
   proxy_url: ""
 
 # =============================================================================
+# ye.team CDK account supply
+# =============================================================================
+# RedeemYeTeam uses the ye.team card code API and imports a sub2api account
+# package. Auto refresh only runs for OpenAI accounts whose name or metadata
+# contains an RCL-* card code.
+ye_team:
+  enabled: false
+  base_url: "https://ye.team"
+  auto_refresh_401: false
+  timeout_seconds: 60
+  poll_interval_seconds: 12
+  max_poll_seconds: 600
+
+# =============================================================================
 # Image Storage (异步图片任务结果对象存储)
 # =============================================================================
 # 长耗时生图套 Cloudflare 会 524 超时，异步图片任务接口（/v1/images/generations/async

@@ -3,8 +3,10 @@ package handler
 import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"time"
 
 	"github.com/google/wire"
 )
@@ -51,9 +53,11 @@ func ProvideAdminHandlers(
 	auditLogHandler *admin.AuditLogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
+	yeTeamClient *yeteam.Client,
 ) *AdminHandlers {
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	accountHandler.SetYeTeamClient(yeTeamClient)
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,
@@ -136,6 +140,7 @@ func ProvideOpenAIGatewayHandler(
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
+	gatewayService.SetYeTeamClient(ProvideYeTeamClient(cfg))
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, promptRuleService, contentModerationService, opsService, cfg)
 	h.securityAuditCoordinator = coordinator
@@ -235,6 +240,7 @@ func ProvideHandlers(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	ProvideYeTeamClient,
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
@@ -303,3 +309,19 @@ var ProviderSet = wire.NewSet(
 	ProvideAdminHandlers,
 	ProvideHandlers,
 )
+
+// ProvideYeTeamClient adapts application configuration to the small external
+// client package so tests can continue constructing handlers with nil deps.
+func ProvideYeTeamClient(cfg *config.Config) *yeteam.Client {
+	if cfg == nil {
+		return yeteam.NewClient(yeteam.Config{})
+	}
+	return yeteam.NewClient(yeteam.Config{
+		Enabled:         cfg.YeTeam.Enabled,
+		BaseURL:         cfg.YeTeam.BaseURL,
+		AutoRefresh401:  cfg.YeTeam.AutoRefresh401,
+		Timeout:         time.Duration(cfg.YeTeam.TimeoutSeconds) * time.Second,
+		PollInterval:    time.Duration(cfg.YeTeam.PollIntervalSeconds) * time.Second,
+		MaxPollDuration: time.Duration(cfg.YeTeam.MaxPollSeconds) * time.Second,
+	})
+}

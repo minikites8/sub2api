@@ -962,6 +962,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					Message:            upstreamMsg,
 					Detail:             upstreamDetail,
 				})
+				if resp.StatusCode == http.StatusUnauthorized && s.reclaimOpenAIAccount401(ctx, account) {
+					return nil, &UpstreamFailoverError{
+						StatusCode:             resp.StatusCode,
+						ResponseBody:           respBody,
+						ResponseHeaders:        resp.Header.Clone(),
+						RetryableOnSameAccount: true,
+						NextAccountAction:      NextAccountRetry,
+						Stage:                  GatewayFailureStageAccountAuth,
+						Scope:                  GatewayFailureScopeAccount,
+						Reason:                 GatewayFailureReason("ye_team_reclaim"),
+					}
+				}
 
 				shouldDisable := s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
 				return nil, newOpenAIUpstreamFailoverError(

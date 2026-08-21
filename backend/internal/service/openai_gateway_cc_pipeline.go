@@ -121,6 +121,18 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 	})
+	if resp.StatusCode == http.StatusUnauthorized && s.reclaimOpenAIAccount401(ctx, account) {
+		return &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           respBody,
+			ResponseHeaders:        resp.Header.Clone(),
+			RetryableOnSameAccount: true,
+			NextAccountAction:      NextAccountRetry,
+			Stage:                  GatewayFailureStageAccountAuth,
+			Scope:                  GatewayFailureScopeAccount,
+			Reason:                 GatewayFailureReason("ye_team_reclaim"),
+		}
+	}
 	shouldDisable := tempUnscheduled
 	if account.Platform != PlatformGrok && !tempUnscheduled {
 		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)

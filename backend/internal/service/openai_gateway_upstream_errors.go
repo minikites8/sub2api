@@ -463,6 +463,21 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		reqModel, _, _ = extractOpenAIRequestMetaFromBody(requestBody)
 		reqModel = canonicalOpenAIAccountSchedulingModel(account, reqModel)
 	}
+	// A ye.team-backed OpenAI account can reclaim a replacement credential
+	// after an upstream 401. The failover loop retries the same account with
+	// the persisted credentials; unsuccessful reclaim follows the normal path.
+	if resp.StatusCode == http.StatusUnauthorized && s.reclaimOpenAIAccount401(ctx, account) {
+		return nil, &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           body,
+			ResponseHeaders:        resp.Header.Clone(),
+			RetryableOnSameAccount: true,
+			NextAccountAction:      NextAccountRetry,
+			Stage:                  GatewayFailureStageAccountAuth,
+			Scope:                  GatewayFailureScopeAccount,
+			Reason:                 GatewayFailureReason("ye_team_reclaim"),
+		}
+	}
 	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, reqModel)
 	kind := "http_error"
 	if shouldDisable {
@@ -655,6 +670,18 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	var modelForCooldown string
 	if len(requestedModel) > 0 {
 		modelForCooldown = requestedModel[0]
+	}
+	if resp.StatusCode == http.StatusUnauthorized && s.reclaimOpenAIAccount401(c.Request.Context(), account) {
+		return nil, &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           body,
+			ResponseHeaders:        resp.Header.Clone(),
+			RetryableOnSameAccount: true,
+			NextAccountAction:      NextAccountRetry,
+			Stage:                  GatewayFailureStageAccountAuth,
+			Scope:                  GatewayFailureScopeAccount,
+			Reason:                 GatewayFailureReason("ye_team_reclaim"),
+		}
 	}
 	shouldDisable := s.handleOpenAIAccountUpstreamError(
 		c.Request.Context(), account, resp.StatusCode, resp.Header, body, modelForCooldown,

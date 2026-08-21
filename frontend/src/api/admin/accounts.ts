@@ -677,6 +677,43 @@ export async function importData(payload: {
   return data
 }
 
+export interface YeTeamRedeemResult {
+  order_no: string
+  status?: string
+  action?: string
+  account_created: number
+  account_failed: number
+  import_errors?: Array<{ kind: string; name?: string; proxy_key?: string; message: string }>
+}
+
+const yeTeamOperationKeys = new Map<string, string>()
+
+export async function redeemYeTeam(payload: {
+  card_code: string
+  target_id?: string
+  client_request_id?: string
+  skip_default_group_bind?: boolean
+}): Promise<YeTeamRedeemResult> {
+  const cardCode = payload.card_code.trim()
+  const requestID = payload.client_request_id || yeTeamOperationKeys.get(cardCode) ||
+    (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  yeTeamOperationKeys.set(cardCode, requestID)
+  try {
+    const { data } = await apiClient.post<YeTeamRedeemResult>('/admin/accounts/ye-team/redeem', {
+      ...payload,
+      client_request_id: requestID
+    }, {
+      timeout: 660000,
+      headers: { 'Idempotency-Key': requestID }
+    })
+    yeTeamOperationKeys.delete(cardCode)
+    return data
+  } catch (error) {
+    // Preserve the request ID so a retry can replay a completed ye.team order.
+    throw error
+  }
+}
+
 export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
   const { data } = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload, {
     timeout: 120000 // 120s timeout for large session imports
@@ -1080,6 +1117,7 @@ export const accountsAPI = {
   syncFromCrs,
   exportData,
   importData,
+  redeemYeTeam,
   importCodexSession,
   createOpenAICodexPAT,
   getAntigravityDefaultModelMapping,

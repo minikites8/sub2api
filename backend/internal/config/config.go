@@ -101,6 +101,17 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	YeTeam                  YeTeamConfig                  `mapstructure:"ye_team"`
+}
+
+// YeTeamConfig controls CDK redemption and optional 401 credential reclaim.
+type YeTeamConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	BaseURL             string `mapstructure:"base_url"`
+	AutoRefresh401      bool   `mapstructure:"auto_refresh_401"`
+	TimeoutSeconds      int    `mapstructure:"timeout_seconds"`
+	PollIntervalSeconds int    `mapstructure:"poll_interval_seconds"`
+	MaxPollSeconds      int    `mapstructure:"max_poll_seconds"`
 }
 
 type WebAuthnConfig struct {
@@ -1912,6 +1923,14 @@ func setDefaults() {
 	viper.SetDefault("server.frontend_url", "")
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
 	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
+
+	// ye.team CDK account supply integration
+	viper.SetDefault("ye_team.enabled", false)
+	viper.SetDefault("ye_team.base_url", "https://ye.team")
+	viper.SetDefault("ye_team.auto_refresh_401", false)
+	viper.SetDefault("ye_team.timeout_seconds", 60)
+	viper.SetDefault("ye_team.poll_interval_seconds", 12)
+	viper.SetDefault("ye_team.max_poll_seconds", 600)
 	viper.SetDefault("server.trusted_proxies", []string{})
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
 	// H2C 默认配置
