@@ -340,6 +340,7 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
+	YeTeamEnabled                        *bool   `json:"ye_team_enabled"`
 
 	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
@@ -1922,6 +1923,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorShowQuota
 		}(),
+		YeTeamEnabled: func() bool {
+			if req.YeTeamEnabled != nil {
+				return *req.YeTeamEnabled
+			}
+			return previousSettings.YeTeamEnabled
+		}(),
 		GrokDefaultTextModel: func() string {
 			if req.GrokDefaultTextModel != nil {
 				return *req.GrokDefaultTextModel
@@ -2069,6 +2076,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if h.opsService != nil {
 		h.opsService.SetMonitoringEnabled(settings.OpsMonitoringEnabled)
+	}
+	if h.yeTeam != nil {
+		h.yeTeam.SetEnabled(settings.YeTeamEnabled)
 	}
 
 	// Update OpenAI fast policy (stored under dedicated key, only when provided).
@@ -2395,6 +2405,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              updatedSettings.ChannelMonitorShowQuota,
+		YeTeamEnabled:                        updatedSettings.YeTeamEnabled,
 
 		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,

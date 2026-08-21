@@ -210,6 +210,9 @@ type SystemSettings struct {
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 
+	// ye.team CDK account supply and 401 reclaim integration.
+	YeTeamEnabled bool `json:"ye_team_enabled"`
+
 	// 系统全局账号自动停调阈值（key = platform，100 = disabled）
 	AccountSchedulingThresholds map[string]int `json:"account_scheduling_thresholds"`
 

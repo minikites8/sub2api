@@ -144,6 +144,12 @@ export default {
           showQuotaHint:
             '开启后，配额模式的渠道监控会在用户端渠道状态页展示关联账号的用量滚动窗口/余额。默认关闭；管理员始终可见。',
         },
+        yeTeam: {
+          title: 'ye.team 账号集成',
+          description: '通过 ye.team 提交 CDK 获取新账号，并支持 OpenAI 账号 401 后自动找回凭据。',
+          enabled: '启用 ye.team 集成',
+          enabledHint: '开关立即生效，关闭后 CDK 导入和 401 自动找回都会暂停；配置与账号数据继续保留。',
+        },
         availableChannels: {
           title: '可用渠道',
           description: '向已登录用户展示他们能访问的渠道、模型和定价聚合视图。默认关闭。',

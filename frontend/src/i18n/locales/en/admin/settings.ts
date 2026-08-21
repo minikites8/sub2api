@@ -144,6 +144,12 @@ export default {
           showQuotaHint:
             'When on, quota-mode channel monitors expose the linked account usage windows/balance on the user Channel Status page. Disabled by default; admins always see it.',
         },
+        yeTeam: {
+          title: 'ye.team account integration',
+          description: 'Submit CDKs to ye.team for new accounts and reclaim OpenAI credentials automatically after a 401 response.',
+          enabled: 'Enable ye.team integration',
+          enabledHint: 'The switch applies immediately. Disabling pauses CDK imports and automatic 401 reclaim while preserving configuration and accounts.',
+        },
         availableChannels: {
           title: 'Available Channels',
           description: 'Show logged-in users an aggregate view of the channels, models and pricing they can access. Disabled by default.',

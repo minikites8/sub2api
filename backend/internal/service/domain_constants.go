@@ -455,6 +455,7 @@ const (
 	// When false: runner skips scheduling and user-facing endpoints return an empty list.
 	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
 	SettingKeyChannelMonitorMode    = "channel_monitor_mode"
+	SettingKeyYeTeamEnabled         = "ye_team_enabled"
 	ChannelMonitorModeV1            = "v1"
 	ChannelMonitorModeV2            = "v2"
 

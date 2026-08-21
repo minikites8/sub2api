@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -31,7 +32,7 @@ type Client struct {
 	httpClient      *http.Client
 	pollInterval    time.Duration
 	maxPollDuration time.Duration
-	enabled         bool
+	enabled         atomic.Bool
 	autoRefresh401  bool
 }
 
@@ -52,18 +53,31 @@ func NewClient(cfg Config) *Client {
 	if maxPoll <= 0 {
 		maxPoll = 10 * time.Minute
 	}
-	return &Client{
+	client := &Client{
 		baseURL:         base,
 		httpClient:      &http.Client{Timeout: timeout},
 		pollInterval:    poll,
 		maxPollDuration: maxPoll,
-		enabled:         cfg.Enabled,
 		autoRefresh401:  cfg.AutoRefresh401,
+	}
+	client.enabled.Store(cfg.Enabled)
+	return client
+}
+
+func (c *Client) Enabled() bool {
+	return c != nil && c.enabled.Load()
+}
+
+// SetEnabled updates the runtime integration switch shared by all ye.team callers.
+func (c *Client) SetEnabled(enabled bool) {
+	if c != nil {
+		c.enabled.Store(enabled)
 	}
 }
 
-func (c *Client) Enabled() bool               { return c != nil && c.enabled }
-func (c *Client) AutoRefresh401Enabled() bool { return c != nil && c.enabled && c.autoRefresh401 }
+func (c *Client) AutoRefresh401Enabled() bool {
+	return c != nil && c.enabled.Load() && c.autoRefresh401
+}
 
 type PreviewRequest struct {
 	CardCode string `json:"card_code"`

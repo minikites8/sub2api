@@ -313,6 +313,7 @@ type SystemSettings struct {
 	ChannelMonitorDefaultIntervalSeconds int            `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         bool           `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool           `json:"channel_monitor_show_quota"`
+	YeTeamEnabled                        bool           `json:"ye_team_enabled"`
 	AccountSchedulingThresholds          map[string]int `json:"account_scheduling_thresholds"`
 
 	GrokDefaultTextModel           string `json:"grok_default_text_model"`

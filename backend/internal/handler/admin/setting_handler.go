@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -63,6 +64,7 @@ type SettingHandler struct {
 	totpService              *service.TotpService
 	userService              *service.UserService
 	autoSupplyService        *service.AutoSupplyService
+	yeTeam                   *yeteam.Client
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -102,6 +104,11 @@ func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userSer
 // SetAutoSupplyService attaches the runtime-backed automatic supply settings.
 func (h *SettingHandler) SetAutoSupplyService(autoSupplyService *service.AutoSupplyService) {
 	h.autoSupplyService = autoSupplyService
+}
+
+// SetYeTeamClient attaches the shared client used by imports and 401 reclaim.
+func (h *SettingHandler) SetYeTeamClient(client *yeteam.Client) {
+	h.yeTeam = client
 }
 
 // GetSettings 获取所有系统设置
@@ -388,6 +395,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
+		YeTeamEnabled:                        settings.YeTeamEnabled,
 
 		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,

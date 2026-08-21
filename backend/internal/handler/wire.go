@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"context"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"time"
 
 	"github.com/google/wire"
 )
@@ -139,8 +141,9 @@ func ProvideOpenAIGatewayHandler(
 	grokQuotaService *service.GrokQuotaService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
+	yeTeamClient *yeteam.Client,
 ) *OpenAIGatewayHandler {
-	gatewayService.SetYeTeamClient(ProvideYeTeamClient(cfg))
+	gatewayService.SetYeTeamClient(yeTeamClient)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, promptRuleService, contentModerationService, opsService, cfg)
 	h.securityAuditCoordinator = coordinator
@@ -172,12 +175,13 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 }
 
 // ProvideAdminSettingHandler creates admin.SettingHandler with notification template APIs.
-func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, aliyunCaptchaService *service.AliyunCaptchaService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService, totpService *service.TotpService, userService *service.UserService, autoSupplyService *service.AutoSupplyService) *admin.SettingHandler {
+func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, aliyunCaptchaService *service.AliyunCaptchaService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService, totpService *service.TotpService, userService *service.UserService, autoSupplyService *service.AutoSupplyService, yeTeamClient *yeteam.Client) *admin.SettingHandler {
 	h := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, paymentConfigService, paymentService, userAttributeService)
 	h.SetNotificationEmailService(notificationEmailService)
 	h.SetAliyunCaptchaService(aliyunCaptchaService)
 	h.SetStepUpDeps(totpService, userService)
 	h.SetAutoSupplyService(autoSupplyService)
+	h.SetYeTeamClient(yeTeamClient)
 	return h
 }
 
@@ -312,11 +316,12 @@ var ProviderSet = wire.NewSet(
 
 // ProvideYeTeamClient adapts application configuration to the small external
 // client package so tests can continue constructing handlers with nil deps.
-func ProvideYeTeamClient(cfg *config.Config) *yeteam.Client {
+func ProvideYeTeamClient(cfg *config.Config, settingService *service.SettingService) *yeteam.Client {
+	client := yeteam.NewClient(yeteam.Config{})
 	if cfg == nil {
-		return yeteam.NewClient(yeteam.Config{})
+		return client
 	}
-	return yeteam.NewClient(yeteam.Config{
+	client = yeteam.NewClient(yeteam.Config{
 		Enabled:         cfg.YeTeam.Enabled,
 		BaseURL:         cfg.YeTeam.BaseURL,
 		AutoRefresh401:  cfg.YeTeam.AutoRefresh401,
@@ -324,4 +329,10 @@ func ProvideYeTeamClient(cfg *config.Config) *yeteam.Client {
 		PollInterval:    time.Duration(cfg.YeTeam.PollIntervalSeconds) * time.Second,
 		MaxPollDuration: time.Duration(cfg.YeTeam.MaxPollSeconds) * time.Second,
 	})
+	if settingService != nil {
+		if settings, err := settingService.GetAllSettings(context.Background()); err == nil {
+			client.SetEnabled(settings.YeTeamEnabled)
+		}
+	}
+	return client
 }

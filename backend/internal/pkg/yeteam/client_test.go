@@ -30,6 +30,21 @@ func TestNormalizeAccountPayload(t *testing.T) {
 	}
 }
 
+func TestClientRuntimeEnabledToggle(t *testing.T) {
+	client := NewClient(Config{Enabled: false, AutoRefresh401: true})
+	if client.Enabled() || client.AutoRefresh401Enabled() {
+		t.Fatal("client should start disabled")
+	}
+	client.SetEnabled(true)
+	if !client.Enabled() || !client.AutoRefresh401Enabled() {
+		t.Fatal("client should be enabled after runtime update")
+	}
+	client.SetEnabled(false)
+	if client.Enabled() || client.AutoRefresh401Enabled() {
+		t.Fatal("client should be disabled after runtime update")
+	}
+}
+
 func TestClientRedeemRequestAndDownload(t *testing.T) {
 	var paths []string
 	var orderStatusAuth string

@@ -7213,6 +7213,30 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.yeTeam.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.yeTeam.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.yeTeam.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.yeTeam.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.ye_team_enabled" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.availableChannels.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -9986,6 +10010,8 @@ const form = reactive<SettingsForm>({
   model_plaza_description: '',
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
+  // ye.team CDK account supply and 401 reclaim integration
+  ye_team_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
@@ -11666,6 +11692,8 @@ async function saveSettings() {
       model_plaza_description: form.model_plaza_description,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
+      // ye.team CDK account supply and 401 reclaim integration
+      ye_team_enabled: form.ye_team_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
     };
 

@@ -52,6 +52,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("marshal default forwarded client IP headers: %w", err)
 	}
+	yeTeamEnabled := false
+	if s != nil && s.cfg != nil {
+		yeTeamEnabled = s.cfg.YeTeam.Enabled
+	}
 
 	// 初始化默认设置
 	defaults := map[string]string{
@@ -191,6 +195,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
 		SettingKeyChannelMonitorHideThroughput:         "true",
 		SettingKeyChannelMonitorShowQuota:              "false",
+		SettingKeyYeTeamEnabled:                        strconv.FormatBool(yeTeamEnabled),
 
 		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
 		SettingKeyGrokDefaultTextModel:           "grok-4.5",
@@ -804,6 +809,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// 配额展示默认关闭且 fail-closed：仅字面 "true" 视为开启
 	// （与 setting_public.go 公开读取路径保持一致）。
 	result.ChannelMonitorShowQuota = settings[SettingKeyChannelMonitorShowQuota] == "true"
+	result.YeTeamEnabled = settings[SettingKeyYeTeamEnabled] == "true"
+	if _, configured := settings[SettingKeyYeTeamEnabled]; !configured && s != nil && s.cfg != nil {
+		result.YeTeamEnabled = s.cfg.YeTeam.Enabled
+	}
 
 	// Grok default mapping policy
 	result.GrokDefaultTextModel = strings.TrimSpace(settings[SettingKeyGrokDefaultTextModel])
