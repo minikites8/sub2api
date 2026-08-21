@@ -1,6 +1,43 @@
 <template>
   <AppLayout>
     <section class="md3-dashboard">
+      <div
+        v-if="riskControlWarningVisible && riskControlRecord"
+        class="md3-risk-warning"
+        role="alert"
+        data-testid="risk-control-warning"
+      >
+        <span class="md3-risk-warning-icon" aria-hidden="true">
+          <Icon name="exclamationTriangle" size="md" :stroke-width="2" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="md3-risk-warning-heading">
+            <p>{{ t('dashboard.riskControl.title') }}</p>
+            <time :datetime="riskControlRecord.used_at || riskControlRecord.created_at">
+              {{ formatDateTime(riskControlRecord.used_at || riskControlRecord.created_at) }}
+            </time>
+          </div>
+          <p class="md3-risk-warning-message">
+            {{ t('dashboard.riskControl.description', { amount: formatCurrency(Math.abs(riskControlRecord.value)) }) }}
+          </p>
+          <p v-if="riskControlRecord.notes" class="md3-risk-warning-reason">
+            {{ t('dashboard.riskControl.reason', { reason: riskControlRecord.notes }) }}
+          </p>
+          <router-link to="/redeem" class="md3-risk-warning-link">
+            {{ t('dashboard.riskControl.viewHistory') }}
+            <Icon name="arrowRight" size="xs" :stroke-width="2" />
+          </router-link>
+        </div>
+        <button
+          type="button"
+          class="md3-risk-warning-close"
+          :aria-label="t('dashboard.riskControl.dismiss')"
+          :title="t('dashboard.riskControl.dismiss')"
+          @click="dismissRiskControlWarning"
+        >
+          <Icon name="x" size="sm" :stroke-width="2" />
+        </button>
+      </div>
       <header class="md3-dashboard-header">
         <div class="min-w-0">
           <p class="md3-dashboard-kicker">{{ t('nav.dashboard') }}</p>
@@ -182,6 +219,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores'
 import { usageAPI, type UserDashboardStats as UserStatsType } from '@/api/usage'
+import { redeemAPI, type RedeemHistoryItem } from '@/api/redeem'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserDashboardStats from '@/components/user/dashboard/UserDashboardStats.vue'
@@ -194,6 +232,7 @@ import type { TrendDataPoint, ModelStat, DailyCheckinStatus } from '@/types'
 import { getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isDailyCheckinRechargeEligible } from '@/utils/dailyCheckin'
+import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -213,6 +252,8 @@ const showDailyCheckinDialog = ref(false)
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref('')
 const turnstileError = ref('')
+const riskControlRecord = ref<RedeemHistoryItem | null>(null)
+const riskControlDismissed = ref(false)
 
 const formatLD = (d: Date) => d.toISOString().split('T')[0]
 const startDate = ref(formatLD(new Date(Date.now() - 6 * 86400000)))
@@ -220,6 +261,13 @@ const endDate = ref(formatLD(new Date()))
 const granularity = ref('day')
 
 const formatCurrency = (value: number) => `$${Number(value || 0).toFixed(2)}`
+
+const riskControlWarningKey = computed(() => {
+  const userId = user.value?.id
+  const recordId = riskControlRecord.value?.id
+  return userId && recordId ? `dashboard-risk-warning:${userId}:${recordId}` : ''
+})
+const riskControlWarningVisible = computed(() => Boolean(riskControlRecord.value && !riskControlDismissed.value))
 
 const turnstileSiteKey = computed(() => appStore.cachedPublicSettings?.turnstile_site_key || '')
 const turnstileReady = computed(() => Boolean(appStore.cachedPublicSettings?.turnstile_enabled && turnstileSiteKey.value))
@@ -307,6 +355,40 @@ const loadDailyCheckin = async () => {
   }
 }
 
+const loadRiskControlWarning = async () => {
+  try {
+    const history = await redeemAPI.getHistory()
+    const latestRiskRecord = history.find((item) => item.type === 'risk_control_balance') || null
+    riskControlRecord.value = latestRiskRecord
+    riskControlDismissed.value = latestRiskRecord
+      ? readRiskControlDismissed(`dashboard-risk-warning:${user.value?.id}:${latestRiskRecord.id}`)
+      : false
+  } catch (error) {
+    console.warn('Failed to load risk control warning:', error)
+    riskControlRecord.value = null
+    riskControlDismissed.value = false
+  }
+}
+
+const dismissRiskControlWarning = () => {
+  if (riskControlWarningKey.value) {
+    try {
+      window.localStorage.setItem(riskControlWarningKey.value, '1')
+    } catch {
+      // A blocked storage provider should not prevent dismissing the banner.
+    }
+  }
+  riskControlDismissed.value = true
+}
+
+const readRiskControlDismissed = (key: string) => {
+  try {
+    return window.localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
+
 const loadPublicSettings = async () => {
   publicSettingsLoading.value = true
   try {
@@ -321,6 +403,7 @@ const refreshAll = () => {
   loadCharts()
   loadDailyCheckin()
   loadPublicSettings()
+  loadRiskControlWarning()
 }
 
 const resetTurnstile = () => {
@@ -400,6 +483,101 @@ onMounted(() => {
 .md3-dashboard {
   display: grid;
   gap: 16px;
+}
+
+.md3-risk-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--md-warning) 42%, var(--md-outline-variant));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--md-warning) 9%, var(--md-surface));
+  padding: 14px 16px;
+}
+
+.md3-risk-warning-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--md-warning);
+  background: color-mix(in srgb, var(--md-warning) 18%, transparent);
+}
+
+.md3-risk-warning-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--md-on-surface);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.md3-risk-warning-heading time {
+  flex: 0 0 auto;
+  color: var(--md-on-surface-variant);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.md3-risk-warning-message,
+.md3-risk-warning-reason {
+  margin-top: 4px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.md3-risk-warning-reason {
+  overflow-wrap: anywhere;
+}
+
+.md3-risk-warning-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--md-warning);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.md3-risk-warning-link:hover {
+  text-decoration: underline;
+}
+
+.md3-risk-warning-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -4px -6px 0 0;
+  border-radius: 8px;
+  color: var(--md-on-surface-variant);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.md3-risk-warning-close:hover {
+  color: var(--md-on-surface);
+  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
+}
+
+@media (max-width: 640px) {
+  .md3-risk-warning {
+    padding: 12px;
+  }
+
+  .md3-risk-warning-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
 }
 
 .md3-dashboard-header {

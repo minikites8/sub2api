@@ -56,7 +56,14 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值'
+    addBalanceWithCode: '使用兑换码充值',
+    riskControl: {
+      title: '风控系统警告',
+      description: '系统检测到当前账户触发了风险控制规则，已扣除赠金余额 {amount}。',
+      reason: '处理原因：{reason}',
+      viewHistory: '查看余额记录',
+      dismiss: '关闭风控警告'
+    }
   },
 
   // Groups (shared)
@@ -694,6 +701,8 @@ export default {
     balanceAddedAffiliate: '余额充值（返利转入）',
     balanceAddedAdmin: '余额充值（管理员）',
     balanceDeductedAdmin: '余额扣除（管理员）',
+    balanceDeductedRiskControl: '余额扣除（风控系统）',
+    riskControlAdjustment: '风控系统调整',
     concurrencyAddedRedeem: '并发增加（兑换）',
     concurrencyAddedAdmin: '并发增加（管理员）',
     concurrencyReducedAdmin: '并发减少（管理员）',

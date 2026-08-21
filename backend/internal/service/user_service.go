@@ -203,6 +203,12 @@ type IPRiskGiftBalanceDeductor interface {
 	DeductAvailableGiftBalance(ctx context.Context, id int64, amount float64) (float64, error)
 }
 
+// RiskControlBalanceRecorder records a balance deduction performed by an
+// automated risk-control rule in the shared balance history.
+type RiskControlBalanceRecorder interface {
+	RecordRiskControlBalanceDeduction(ctx context.Context, userID int64, amount float64, notes string) error
+}
+
 type UserAuthIdentityRecord struct {
 	ProviderType    string
 	ProviderKey     string

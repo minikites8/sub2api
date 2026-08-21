@@ -1550,6 +1550,11 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 				user.Balance = 0
 			}
 			if updated > 0 {
+				if recorder, ok := s.userRepo.(RiskControlBalanceRecorder); ok {
+					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.ID, item.Balance, "注册 IP 风控扣除赠金"); err != nil {
+						logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control history record failed: user=%d ip=%s err=%v", item.ID, signupIP, err)
+					}
+				}
 				if s.authCacheInvalidator != nil {
 					s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, item.ID)
 				}

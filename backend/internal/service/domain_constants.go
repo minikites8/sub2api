@@ -68,23 +68,23 @@ var AllowedQuotaPlatforms = []string{
 var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu}
 
 const (
-	AccountModePayG   = domain.AccountModePayG
-	AccountModeCoding = domain.AccountModeCoding
+	AccountModePayG            = domain.AccountModePayG
+	AccountModeCoding          = domain.AccountModeCoding
 	APIProtocolChatCompletions = domain.APIProtocolChatCompletions
 	APIProtocolAnthropic       = domain.APIProtocolAnthropic
 	APIProtocolResponses       = domain.APIProtocolResponses
 )
 
 const (
-	DefaultKimiPayGBaseURL    = "https://api.moonshot.cn/v1"
-	DefaultKimiCodingBaseURL  = "https://api.kimi.com/coding/v1"
-	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
-	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
-	DefaultDeepseekBaseURL   = "https://api.deepseek.com"
+	DefaultKimiPayGBaseURL            = "https://api.moonshot.cn/v1"
+	DefaultKimiCodingBaseURL          = "https://api.kimi.com/coding/v1"
+	DefaultZhipuPayGBaseURL           = "https://open.bigmodel.cn/api/paas/v4"
+	DefaultZhipuCodingBaseURL         = "https://open.bigmodel.cn/api/coding/paas/v4"
+	DefaultDeepseekBaseURL            = "https://api.deepseek.com"
 	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
 	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
-	DefaultZhipuAnthropicBaseURL       = "https://open.bigmodel.cn/api/anthropic"
-	DefaultDeepseekAnthropicBaseURL    = "https://api.deepseek.com/anthropic"
+	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
 )
 
 func IsCNProvider(platform string) bool {
@@ -139,8 +139,9 @@ const (
 
 // Admin adjustment type constants
 const (
-	AdjustmentTypeAdminBalance     = domain.AdjustmentTypeAdminBalance     // 管理员调整余额
-	AdjustmentTypeAdminConcurrency = domain.AdjustmentTypeAdminConcurrency // 管理员调整并发数
+	AdjustmentTypeAdminBalance       = domain.AdjustmentTypeAdminBalance       // 管理员调整余额
+	AdjustmentTypeAdminConcurrency   = domain.AdjustmentTypeAdminConcurrency   // 管理员调整并发数
+	AdjustmentTypeRiskControlBalance = domain.AdjustmentTypeRiskControlBalance // 风控系统扣除余额
 )
 
 // Group subscription type constants

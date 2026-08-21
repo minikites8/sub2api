@@ -33,6 +33,7 @@ type userRepository struct {
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
+var _ service.RiskControlBalanceRecorder = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -862,6 +863,34 @@ func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id in
 	return nil
 }
 
+// RecordRiskControlBalanceDeduction writes an already-applied risk-control
+// deduction into redeem_codes so user and admin history views share it.
+func (r *userRepository) RecordRiskControlBalanceDeduction(ctx context.Context, userID int64, amount float64, notes string) error {
+	if userID <= 0 || amount <= 0 {
+		return nil
+	}
+	code, err := service.GenerateRedeemCode()
+	if err != nil {
+		return err
+	}
+	usedAt := time.Now().UTC()
+	created, err := clientFromContext(ctx, r.client).RedeemCode.Create().
+		SetCode(code).
+		SetType(service.AdjustmentTypeRiskControlBalance).
+		SetValue(-amount).
+		SetStatus(service.StatusUsed).
+		SetNillableUsedBy(&userID).
+		SetNillableUsedAt(&usedAt).
+		SetNotes(strings.TrimSpace(notes)).
+		SetValidityDays(0).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	_ = created
+	return nil
+}
+
 // DeductBalance 扣除用户余额
 // 透支策略：允许余额变为负数，确保当前请求能够完成
 // 中间件会阻止余额 <= 0 的用户发起后续请求
@@ -927,6 +956,48 @@ func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, a
 			return 0, rowsErr
 		}
 		return 0, service.ErrUserNotFound
+	}
+	if err := rows.Scan(&deducted); err != nil {
+		return 0, err
+	}
+	return deducted, rows.Err()
+}
+
+// DeductAvailableGiftBalance atomically deducts balance while the user has no
+// recharge history. A concurrent paid recharge makes the predicate fail.
+func (r *userRepository) DeductAvailableGiftBalance(ctx context.Context, id int64, amount float64) (deducted float64, err error) {
+	if amount < 0 {
+		return 0, fmt.Errorf("deduction amount must be nonnegative")
+	}
+	const updateSQL = `
+		WITH target AS (
+			SELECT id, balance
+			FROM users
+			WHERE id = $2 AND deleted_at IS NULL AND total_recharged <= 0
+			FOR UPDATE
+		), updated AS (
+			UPDATE users AS u
+			SET balance = target.balance - LEAST($1, GREATEST(target.balance, 0)), updated_at = NOW()
+			FROM target
+			WHERE u.id = target.id AND u.deleted_at IS NULL
+			RETURNING target.balance - u.balance AS deducted
+		)
+		SELECT deducted FROM updated
+	`
+	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx, updateSQL, amount, id)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+	if !rows.Next() {
+		if rowsErr := rows.Err(); rowsErr != nil {
+			return 0, rowsErr
+		}
+		return 0, nil
 	}
 	if err := rows.Scan(&deducted); err != nil {
 		return 0, err

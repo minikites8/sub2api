@@ -204,9 +204,10 @@
                 <strong :class="`redeem-history-value-${getHistoryTone(item)}`">
                   {{ formatHistoryValue(item) }}
                 </strong>
-                <span v-if="!isAdminAdjustment(item.type)" class="redeem-history-code">
+                <span v-if="!isAdminAdjustment(item.type) && !isRiskControlType(item.type)" class="redeem-history-code">
                   {{ item.code.slice(0, 8) }}...
                 </span>
+                <span v-else-if="isRiskControlType(item.type)">{{ t('redeem.riskControlAdjustment') }}</span>
                 <span v-else>{{ t('redeem.adminAdjustment') }}</span>
                 <span v-if="item.notes" class="redeem-history-notes" :title="item.notes">
                   {{ item.notes }}
@@ -268,7 +269,7 @@ const contactInfo = ref('')
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
-  return type === 'balance' || type === 'admin_balance'
+  return type === 'balance' || type === 'admin_balance' || type === 'risk_control_balance'
 }
 
 const isSubscriptionType = (type: string) => {
@@ -278,6 +279,8 @@ const isSubscriptionType = (type: string) => {
 const isAdminAdjustment = (type: string) => {
   return type === 'admin_balance' || type === 'admin_concurrency'
 }
+
+const isRiskControlType = (type: string) => type === 'risk_control_balance'
 
 type HistoryIcon = 'dollar' | 'badge' | 'bolt'
 type HistoryTone = 'positive' | 'negative' | 'subscription' | 'concurrency'
@@ -310,6 +313,8 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
     return t('redeem.balanceAddedRedeem')
   } else if (item.type === 'admin_balance') {
     return item.value >= 0 ? t('redeem.balanceAddedAdmin') : t('redeem.balanceDeductedAdmin')
+  } else if (item.type === 'risk_control_balance') {
+    return t('redeem.balanceDeductedRiskControl')
   } else if (item.type === 'concurrency') {
     return t('redeem.concurrencyAddedRedeem')
   } else if (item.type === 'admin_concurrency') {

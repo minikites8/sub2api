@@ -56,7 +56,14 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code'
+    addBalanceWithCode: 'Add balance with a code',
+    riskControl: {
+      title: 'Risk Control Warning',
+      description: 'This account triggered a risk-control rule. Gift balance deducted: {amount}.',
+      reason: 'Reason: {reason}',
+      viewHistory: 'View balance history',
+      dismiss: 'Dismiss risk-control warning'
+    }
   },
 
   // Groups (shared)
@@ -689,6 +696,8 @@ export default {
     balanceAddedAffiliate: 'Balance Added (Affiliate Transfer)',
     balanceAddedAdmin: 'Balance Added (Admin)',
     balanceDeductedAdmin: 'Balance Deducted (Admin)',
+    balanceDeductedRiskControl: 'Balance Deducted (Risk Control)',
+    riskControlAdjustment: 'Risk Control Adjustment',
     concurrencyAddedRedeem: 'Concurrency Added (Redeem)',
     concurrencyAddedAdmin: 'Concurrency Added (Admin)',
     concurrencyReducedAdmin: 'Concurrency Reduced (Admin)',

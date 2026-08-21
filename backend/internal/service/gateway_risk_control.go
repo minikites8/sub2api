@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -90,6 +91,11 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 			if err != nil {
 				logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control gift balance deduction failed: user=%d err=%v", item.UserID, err)
 			} else if deducted > 0 {
+				if recorder, ok := s.userRepo.(RiskControlBalanceRecorder); ok {
+					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.UserID, deducted, fmt.Sprintf("API IP+UA 风控扣除赠金（IP: %s）", ipAddress)); err != nil {
+						logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control history record failed: user=%d ip=%s ua=%s err=%v", item.UserID, ipAddress, userAgent, err)
+					}
+				}
 				if s.authCacheInvalidator != nil {
 					s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, item.UserID)
 				}

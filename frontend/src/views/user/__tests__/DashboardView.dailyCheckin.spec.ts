@@ -13,6 +13,7 @@ const getByDateRange = vi.hoisted(() => vi.fn())
 const getMyPlatformQuotas = vi.hoisted(() => vi.fn())
 const getDailyCheckinStatus = vi.hoisted(() => vi.fn())
 const claimDailyCheckin = vi.hoisted(() => vi.fn())
+const getHistory = vi.hoisted(() => vi.fn())
 const fetchPublicSettings = vi.hoisted(() => vi.fn())
 const showError = vi.hoisted(() => vi.fn())
 const showSuccess = vi.hoisted(() => vi.fn())
@@ -42,7 +43,12 @@ vi.mock('vue-i18n', async () => {
     'dashboard.dailyCheckin.exhaustedHint': '今日签到额度已发完',
     'dashboard.dailyCheckin.rechargeRequired': '需要充值',
     'dashboard.dailyCheckin.rechargeRequiredHint': '达到累计充值要求后即可签到',
-    'dashboard.dailyCheckin.goRecharge': '去充值'
+    'dashboard.dailyCheckin.goRecharge': '去充值',
+    'dashboard.riskControl.title': '风控系统警告',
+    'dashboard.riskControl.description': '已扣除赠金余额 {amount}',
+    'dashboard.riskControl.reason': '处理原因：{reason}',
+    'dashboard.riskControl.viewHistory': '查看余额记录',
+    'dashboard.riskControl.dismiss': '关闭风控警告'
   }
 
   return {
@@ -93,6 +99,12 @@ vi.mock('@/api/user', () => ({
   getMyPlatformQuotas,
   getDailyCheckinStatus,
   claimDailyCheckin
+}))
+
+vi.mock('@/api/redeem', () => ({
+  redeemAPI: {
+    getHistory
+  }
 }))
 
 vi.mock('@/utils/apiError', () => ({
@@ -155,7 +167,8 @@ async function mountDashboard(status: DailyCheckinStatus) {
         TurnstileWidget: true,
         GoogleAdSenseAd: GoogleAdSenseAdStub,
         BaseDialog: BaseDialogStub,
-        Icon: IconStub
+        Icon: IconStub,
+        'router-link': { template: '<a><slot /></a>' }
       }
     }
   })
@@ -196,7 +209,9 @@ describe('DashboardView daily check-in UI', () => {
     getDashboardModels.mockResolvedValue({ models: [] })
     getByDateRange.mockResolvedValue({ items: [] })
     getMyPlatformQuotas.mockResolvedValue({ platform_quotas: [] })
+    getHistory.mockResolvedValue([])
     fetchPublicSettings.mockResolvedValue(undefined)
+    window.localStorage.clear()
   })
 
   it('keeps the entry button as daily check-in when recharge is required', async () => {
@@ -244,5 +259,31 @@ describe('DashboardView daily check-in UI', () => {
     await flushPromises()
 
     expect(disabledWrapper.find('[data-testid="adsense-ad"]').exists()).toBe(false)
+  })
+
+  it('shows the latest risk-control balance warning and supports dismissal', async () => {
+    getHistory.mockResolvedValue([
+      {
+        id: 42,
+        code: 'risk-record',
+        type: 'risk_control_balance',
+        value: -3.5,
+        status: 'used',
+        used_at: '2026-06-22T10:00:00Z',
+        created_at: '2026-06-22T10:00:00Z',
+        notes: 'API IP+UA 风控扣除赠金（IP: 192.0.2.1）'
+      }
+    ])
+
+    const wrapper = await mountDashboard(statusFixture())
+    const warning = wrapper.get('[data-testid="risk-control-warning"]')
+
+    expect(warning.text()).toContain('风控系统警告')
+    expect(warning.text()).toContain('$3.50')
+    expect(warning.text()).toContain('API IP+UA 风控扣除赠金')
+
+    await warning.get('button').trigger('click')
+    expect(wrapper.find('[data-testid="risk-control-warning"]').exists()).toBe(false)
+    expect(window.localStorage.getItem('dashboard-risk-warning:1:42')).toBe('1')
   })
 })
