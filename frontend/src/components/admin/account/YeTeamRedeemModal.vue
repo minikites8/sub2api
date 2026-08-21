@@ -102,13 +102,17 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'redeemed'): void }>()
 const props = defineProps<{ show: boolean }>()
 const { t } = useI18n()
 const appStore = useAppStore()
+const YE_TEAM_OPTIONS_STORAGE_KEY = 'sub2api:admin:ye-team-import-options'
+
+type YeTeamOptionsState = Required<Omit<YeTeamAccountOptions, 'proxy_id'>> & { proxy_id?: number }
+
 const cardCode = ref('')
 const loading = ref(false)
 const optionsLoading = ref(false)
 const result = ref<YeTeamRedeemResult | null>(null)
 const groups = ref<AdminGroup[]>([])
 const proxies = ref<Proxy[]>([])
-const options = reactive<Required<Omit<YeTeamAccountOptions, 'proxy_id'>> & { proxy_id?: number }>({
+const defaultOptions: YeTeamOptionsState = {
   group_ids: [],
   concurrency: 0,
   priority: 0,
@@ -118,7 +122,8 @@ const options = reactive<Required<Omit<YeTeamAccountOptions, 'proxy_id'>> & { pr
   enable_account_guard: false,
   account_guard_interval_minutes: 30,
   openai_ws_mode: 'off'
-})
+}
+const options = reactive<YeTeamOptionsState>({ ...defaultOptions, group_ids: [] })
 
 const proxyModeOptions = computed(() => [
   { value: 'none', label: t('admin.accounts.yeTeamProxyNone') },
@@ -142,26 +147,67 @@ const proxyOptions = computed(() => proxies.value.map(proxy => ({
   label: `${proxy.name} (${proxy.host}:${proxy.port})`
 })))
 
+const resetOptions = () => {
+  Object.assign(options, {
+    ...defaultOptions,
+    group_ids: []
+  })
+}
+
+const restoreOptions = () => {
+  resetOptions()
+  try {
+    const raw = localStorage.getItem(YE_TEAM_OPTIONS_STORAGE_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw) as Partial<YeTeamOptionsState>
+    if (Array.isArray(saved.group_ids)) {
+      options.group_ids = saved.group_ids.filter((id): id is number => Number.isInteger(id) && id > 0)
+    }
+    if (typeof saved.concurrency === 'number' && Number.isFinite(saved.concurrency) && saved.concurrency >= 0) {
+      options.concurrency = Math.floor(saved.concurrency)
+    }
+    if (typeof saved.priority === 'number' && Number.isFinite(saved.priority) && saved.priority >= 0) {
+      options.priority = Math.floor(saved.priority)
+    }
+    if (saved.proxy_mode === 'none' || saved.proxy_mode === 'specified' || saved.proxy_mode === 'random') {
+      options.proxy_mode = saved.proxy_mode
+    }
+    if (typeof saved.proxy_id === 'number' && Number.isInteger(saved.proxy_id) && saved.proxy_id > 0) {
+      options.proxy_id = saved.proxy_id
+    }
+    if (saved.codex_fingerprint_mode === 'off' || saved.codex_fingerprint_mode === 'device' || saved.codex_fingerprint_mode === 'session' || saved.codex_fingerprint_mode === 'full') {
+      options.codex_fingerprint_mode = saved.codex_fingerprint_mode
+    }
+    if (typeof saved.enable_account_guard === 'boolean') {
+      options.enable_account_guard = saved.enable_account_guard
+    }
+    if (typeof saved.account_guard_interval_minutes === 'number' && Number.isFinite(saved.account_guard_interval_minutes)) {
+      options.account_guard_interval_minutes = Math.min(1440, Math.max(5, Math.floor(saved.account_guard_interval_minutes)))
+    }
+    if (saved.openai_ws_mode === 'off' || saved.openai_ws_mode === 'ctx_pool' || saved.openai_ws_mode === 'passthrough' || saved.openai_ws_mode === 'http_bridge') {
+      options.openai_ws_mode = saved.openai_ws_mode
+    }
+  } catch {
+    // Ignore malformed or unavailable browser storage and keep defaults.
+  }
+}
+
+watch(options, (value) => {
+  try {
+    localStorage.setItem(YE_TEAM_OPTIONS_STORAGE_KEY, JSON.stringify(value))
+  } catch {
+    // Browser storage can be disabled or full; the dialog remains usable.
+  }
+}, { deep: true })
+
 watch(() => props.show, (open) => {
   if (open) {
     cardCode.value = ''
     result.value = null
-    resetOptions()
+    restoreOptions()
     void loadOptions()
   }
 })
-
-const resetOptions = () => {
-  options.group_ids = []
-  options.concurrency = 0
-  options.priority = 0
-  options.proxy_mode = 'none'
-  options.proxy_id = undefined
-  options.codex_fingerprint_mode = 'off'
-  options.enable_account_guard = false
-  options.account_guard_interval_minutes = 30
-  options.openai_ws_mode = 'off'
-}
 
 const loadOptions = async () => {
   optionsLoading.value = true
@@ -180,7 +226,10 @@ const loadOptions = async () => {
 }
 
 onMounted(() => {
-  if (props.show) void loadOptions()
+  if (props.show) {
+    restoreOptions()
+    void loadOptions()
+  }
 })
 
 const handleClose = () => {
