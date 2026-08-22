@@ -438,6 +438,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyChannelMonitorHideThroughput] = strconv.FormatBool(settings.ChannelMonitorHideThroughput)
 	updates[SettingKeyChannelMonitorShowQuota] = strconv.FormatBool(settings.ChannelMonitorShowQuota)
 	updates[SettingKeyYeTeamEnabled] = strconv.FormatBool(settings.YeTeamEnabled)
+	updates[SettingKeyYeTeamAutoRefresh401] = strconv.FormatBool(settings.YeTeamAutoRefresh401)
 
 	// Grok model mapping policy
 	if v := strings.TrimSpace(settings.GrokDefaultTextModel); v != "" {

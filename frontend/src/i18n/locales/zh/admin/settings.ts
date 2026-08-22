@@ -149,6 +149,8 @@ export default {
           description: '通过 ye.team 提交 CDK 获取新账号，并支持 OpenAI 账号 401 后自动找回凭据。',
           enabled: '启用 ye.team 集成',
           enabledHint: '开关立即生效，关闭后 CDK 导入和 401 自动找回都会暂停；配置与账号数据继续保留。',
+          autoRefresh401: '401 自动刷新凭据',
+          autoRefresh401Hint: 'OpenAI 账号返回 401 时，使用账号绑定的 ye.team CDK 获取新凭据并重试请求。',
         },
         availableChannels: {
           title: '可用渠道',

@@ -743,6 +743,7 @@ export interface SystemSettings {
 
   // ye.team CDK account supply and 401 reclaim integration
   ye_team_enabled: boolean;
+  ye_team_auto_refresh_401: boolean;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
@@ -1055,6 +1056,7 @@ export interface UpdateSettingsRequest {
 
   // ye.team CDK account supply and 401 reclaim integration
   ye_team_enabled?: boolean;
+  ye_team_auto_refresh_401?: boolean;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;

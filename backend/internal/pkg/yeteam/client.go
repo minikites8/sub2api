@@ -33,7 +33,7 @@ type Client struct {
 	pollInterval    time.Duration
 	maxPollDuration time.Duration
 	enabled         atomic.Bool
-	autoRefresh401  bool
+	autoRefresh401  atomic.Bool
 }
 
 func NewClient(cfg Config) *Client {
@@ -58,9 +58,9 @@ func NewClient(cfg Config) *Client {
 		httpClient:      &http.Client{Timeout: timeout},
 		pollInterval:    poll,
 		maxPollDuration: maxPoll,
-		autoRefresh401:  cfg.AutoRefresh401,
 	}
 	client.enabled.Store(cfg.Enabled)
+	client.autoRefresh401.Store(cfg.AutoRefresh401)
 	return client
 }
 
@@ -76,7 +76,14 @@ func (c *Client) SetEnabled(enabled bool) {
 }
 
 func (c *Client) AutoRefresh401Enabled() bool {
-	return c != nil && c.enabled.Load() && c.autoRefresh401
+	return c != nil && c.enabled.Load() && c.autoRefresh401.Load()
+}
+
+// SetAutoRefresh401 updates the runtime 401 credential reclaim switch.
+func (c *Client) SetAutoRefresh401(enabled bool) {
+	if c != nil {
+		c.autoRefresh401.Store(enabled)
+	}
 }
 
 type PreviewRequest struct {

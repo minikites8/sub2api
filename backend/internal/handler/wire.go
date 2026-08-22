@@ -332,6 +332,7 @@ func ProvideYeTeamClient(cfg *config.Config, settingService *service.SettingServ
 	if settingService != nil {
 		if settings, err := settingService.GetAllSettings(context.Background()); err == nil {
 			client.SetEnabled(settings.YeTeamEnabled)
+			client.SetAutoRefresh401(settings.YeTeamAutoRefresh401)
 		}
 	}
 	return client

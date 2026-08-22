@@ -43,6 +43,10 @@ services:
       - RUN_MODE=${RUN_MODE:-standard}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
 
+      # ye.team integration defaults; normal operation can be managed in the admin UI
+      - YE_TEAM_ENABLED=${YE_TEAM_ENABLED:-false}
+      - YE_TEAM_AUTO_REFRESH_401=${YE_TEAM_AUTO_REFRESH_401:-false}
+
       # =======================================================================
       # Database Configuration (PostgreSQL) - Required
       # =======================================================================

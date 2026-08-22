@@ -456,6 +456,7 @@ const (
 	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
 	SettingKeyChannelMonitorMode    = "channel_monitor_mode"
 	SettingKeyYeTeamEnabled         = "ye_team_enabled"
+	SettingKeyYeTeamAutoRefresh401  = "ye_team_auto_refresh_401"
 	ChannelMonitorModeV1            = "v1"
 	ChannelMonitorModeV2            = "v2"
 

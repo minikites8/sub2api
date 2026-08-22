@@ -149,6 +149,8 @@ export default {
           description: 'Submit CDKs to ye.team for new accounts and reclaim OpenAI credentials automatically after a 401 response.',
           enabled: 'Enable ye.team integration',
           enabledHint: 'The switch applies immediately. Disabling pauses CDK imports and automatic 401 reclaim while preserving configuration and accounts.',
+          autoRefresh401: 'Automatic 401 credential refresh',
+          autoRefresh401Hint: 'When an OpenAI account returns 401, use its linked ye.team CDK to obtain fresh credentials and retry the request.',
         },
         availableChannels: {
           title: 'Available Channels',

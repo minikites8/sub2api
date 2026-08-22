@@ -341,6 +341,7 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
 	YeTeamEnabled                        *bool   `json:"ye_team_enabled"`
+	YeTeamAutoRefresh401                 *bool   `json:"ye_team_auto_refresh_401"`
 
 	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
@@ -1929,6 +1930,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.YeTeamEnabled
 		}(),
+		YeTeamAutoRefresh401: func() bool {
+			if req.YeTeamAutoRefresh401 != nil {
+				return *req.YeTeamAutoRefresh401
+			}
+			return previousSettings.YeTeamAutoRefresh401
+		}(),
 		GrokDefaultTextModel: func() string {
 			if req.GrokDefaultTextModel != nil {
 				return *req.GrokDefaultTextModel
@@ -2079,6 +2086,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if h.yeTeam != nil {
 		h.yeTeam.SetEnabled(settings.YeTeamEnabled)
+		h.yeTeam.SetAutoRefresh401(settings.YeTeamAutoRefresh401)
 	}
 
 	// Update OpenAI fast policy (stored under dedicated key, only when provided).
@@ -2406,6 +2414,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              updatedSettings.ChannelMonitorShowQuota,
 		YeTeamEnabled:                        updatedSettings.YeTeamEnabled,
+		YeTeamAutoRefresh401:                 updatedSettings.YeTeamAutoRefresh401,
 
 		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,

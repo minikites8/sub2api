@@ -53,8 +53,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		return fmt.Errorf("marshal default forwarded client IP headers: %w", err)
 	}
 	yeTeamEnabled := false
+	yeTeamAutoRefresh401 := false
 	if s != nil && s.cfg != nil {
 		yeTeamEnabled = s.cfg.YeTeam.Enabled
+		yeTeamAutoRefresh401 = s.cfg.YeTeam.AutoRefresh401
 	}
 
 	// 初始化默认设置
@@ -196,6 +198,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyChannelMonitorHideThroughput:         "true",
 		SettingKeyChannelMonitorShowQuota:              "false",
 		SettingKeyYeTeamEnabled:                        strconv.FormatBool(yeTeamEnabled),
+		SettingKeyYeTeamAutoRefresh401:                 strconv.FormatBool(yeTeamAutoRefresh401),
 
 		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
 		SettingKeyGrokDefaultTextModel:           "grok-4.5",
@@ -812,6 +815,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.YeTeamEnabled = settings[SettingKeyYeTeamEnabled] == "true"
 	if _, configured := settings[SettingKeyYeTeamEnabled]; !configured && s != nil && s.cfg != nil {
 		result.YeTeamEnabled = s.cfg.YeTeam.Enabled
+	}
+	result.YeTeamAutoRefresh401 = settings[SettingKeyYeTeamAutoRefresh401] == "true"
+	if _, configured := settings[SettingKeyYeTeamAutoRefresh401]; !configured && s != nil && s.cfg != nil {
+		result.YeTeamAutoRefresh401 = s.cfg.YeTeam.AutoRefresh401
 	}
 
 	// Grok default mapping policy

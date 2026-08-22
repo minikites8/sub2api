@@ -621,6 +621,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.YeTeamEnabled != after.YeTeamEnabled {
 		changed = append(changed, "ye_team_enabled")
 	}
+	if before.YeTeamAutoRefresh401 != after.YeTeamAutoRefresh401 {
+		changed = append(changed, "ye_team_auto_refresh_401")
+	}
 	if before.CyberSessionBlockEnabled != after.CyberSessionBlockEnabled {
 		changed = append(changed, "cyber_session_block_enabled")
 	}
