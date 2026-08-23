@@ -20,9 +20,6 @@
           <p class="md3-risk-warning-message">
             {{ t('dashboard.riskControl.description', { amount: formatCurrency(Math.abs(riskControlRecord.value)) }) }}
           </p>
-          <p v-if="riskControlRecord.notes" class="md3-risk-warning-reason">
-            {{ t('dashboard.riskControl.reason', { reason: riskControlRecord.notes }) }}
-          </p>
           <router-link to="/redeem" class="md3-risk-warning-link">
             {{ t('dashboard.riskControl.viewHistory') }}
             <Icon name="arrowRight" size="xs" :stroke-width="2" />

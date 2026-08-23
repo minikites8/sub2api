@@ -280,7 +280,8 @@ describe('DashboardView daily check-in UI', () => {
 
     expect(warning.text()).toContain('风控系统警告')
     expect(warning.text()).toContain('$3.50')
-    expect(warning.text()).toContain('API IP+UA 风控扣除赠金')
+    expect(warning.text()).not.toContain('API IP+UA 风控扣除赠金')
+    expect(warning.text()).not.toContain('192.0.2.1')
 
     await warning.get('button').trigger('click')
     expect(wrapper.find('[data-testid="risk-control-warning"]').exists()).toBe(false)

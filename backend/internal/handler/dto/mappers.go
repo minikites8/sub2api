@@ -603,9 +603,13 @@ func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
 	if rc == nil {
 		return nil
 	}
+	notes := rc.Notes
+	if rc.Type == service.AdjustmentTypeRiskControlBalance {
+		notes = ""
+	}
 	return &AdminRedeemCode{
 		RedeemCode: redeemCodeFromServiceBase(rc),
-		Notes:      rc.Notes,
+		Notes:      notes,
 	}
 }
 
@@ -629,8 +633,10 @@ func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 		out.Status = service.StatusExpired
 	}
 
-	// Include adjustment reasons that are safe and useful in the user's history.
-	if (rc.Type == "admin_balance" || rc.Type == "admin_concurrency" || rc.Type == service.AdjustmentTypeRiskControlBalance) && rc.Notes != "" {
+	// Administrator-entered adjustment reasons are safe and useful to users.
+	// Risk-control notes remain internal because they may expose detection rules,
+	// client IPs, user agents, and thresholds.
+	if (rc.Type == "admin_balance" || rc.Type == "admin_concurrency") && rc.Notes != "" {
 		out.Notes = &rc.Notes
 	}
 

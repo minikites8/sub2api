@@ -209,7 +209,7 @@
                 </span>
                 <span v-else-if="isRiskControlType(item.type)">{{ t('redeem.riskControlAdjustment') }}</span>
                 <span v-else>{{ t('redeem.adminAdjustment') }}</span>
-                <span v-if="item.notes" class="redeem-history-notes" :title="item.notes">
+                <span v-if="item.notes && !isRiskControlType(item.type)" class="redeem-history-notes" :title="item.notes">
                   {{ item.notes }}
                 </span>
               </div>

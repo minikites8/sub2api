@@ -114,7 +114,7 @@
                 </p>
                 <!-- Notes (admin adjustment reason) -->
                 <p
-                  v-if="item.notes"
+                  v-if="item.notes && !isRiskControlType(item.type)"
                   class="mt-0.5 text-xs text-gray-500 dark:text-dark-400"
                   :title="item.notes"
                 >
