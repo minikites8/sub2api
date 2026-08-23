@@ -144,6 +144,7 @@ type AccountTestService struct {
 	kiroTokenProvider         *KiroTokenProvider
 	grokTokenProvider         *GrokTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
+	openAIGatewayService      *OpenAIGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	settingService            *SettingService
@@ -155,10 +156,57 @@ type AccountTestService struct {
 	grokWSDialer openAIWSClientDialer
 }
 
+type openAIAccountTestYeTeamRetryContextKey struct{}
+
 func (s *AccountTestService) SetSettingService(settingService *SettingService) {
 	if s != nil {
 		s.settingService = settingService
 	}
+}
+
+func openAIAccountTestYeTeamRetryWasTried(ctx context.Context) bool {
+	tried, _ := ctx.Value(openAIAccountTestYeTeamRetryContextKey{}).(bool)
+	return tried
+}
+
+func (s *AccountTestService) tryRefreshOpenAIAccount401(c *gin.Context, account, credentialAccount *Account) bool {
+	if s == nil || c == nil || c.Request == nil || account == nil || credentialAccount == nil || s.openAIGatewayService == nil {
+		return false
+	}
+	ctx := c.Request.Context()
+	if openAIAccountTestYeTeamRetryWasTried(ctx) {
+		return false
+	}
+	ctx = context.WithValue(ctx, openAIAccountTestYeTeamRetryContextKey{}, true)
+	c.Request = c.Request.WithContext(ctx)
+
+	s.sendEvent(c, TestEvent{Type: "status", Text: "检测到 401，正在通过 ye.team 刷新凭据"})
+	if !s.openAIGatewayService.reclaimOpenAIAccount401(ctx, credentialAccount) {
+		return false
+	}
+
+	recovered := map[int64]*Account{
+		credentialAccount.ID: credentialAccount,
+		account.ID:           account,
+	}
+	for id, recoveredAccount := range recovered {
+		if recoveredAccount.Status != StatusError {
+			continue
+		}
+		if s.accountRepo != nil {
+			if err := s.accountRepo.SetSchedulable(ctx, id, true); err != nil {
+				log.Printf("failed to restore account scheduling after ye.team refresh: account=%d err=%v", id, err)
+			}
+			if err := s.accountRepo.ClearError(ctx, id); err != nil {
+				log.Printf("failed to clear account error after ye.team refresh: account=%d err=%v", id, err)
+			}
+		}
+		recoveredAccount.Status = StatusActive
+		recoveredAccount.ErrorMessage = ""
+		recoveredAccount.Schedulable = true
+	}
+	s.sendEvent(c, TestEvent{Type: "status", Text: "ye.team 凭据刷新成功，正在重试连接"})
+	return true
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -952,7 +1000,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
-		// 401 Unauthorized: 标记账号为永久错误
+		if resp.StatusCode == http.StatusUnauthorized && s.tryRefreshOpenAIAccount401(c, account, credentialAccount) {
+			return s.testOpenAIAccountConnection(c, account, modelID, prompt, mode)
+		}
+		// 401 Unauthorized: ye.team 刷新未完成时标记账号为永久错误
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
@@ -2140,6 +2191,9 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
+		if resp.StatusCode == http.StatusUnauthorized && s.tryRefreshOpenAIAccount401(c, account, account) {
+			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, account.GetOpenAIApiKey())
+		}
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Chat Completions authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
@@ -2301,6 +2355,9 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusUnauthorized && s.tryRefreshOpenAIAccount401(c, account, credentialAccount) {
+			return s.testOpenAICompactConnection(c, account, testModelID)
+		}
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
@@ -3047,6 +3104,9 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusUnauthorized && s.tryRefreshOpenAIAccount401(c, account, account) {
+			return s.testOpenAIImageAPIKey(c, c.Request.Context(), account, modelID, prompt)
+		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
@@ -3172,6 +3232,9 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 		body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
+		if resp.StatusCode == http.StatusUnauthorized && s.tryRefreshOpenAIAccount401(c, account, credentialAccount) {
+			return s.testOpenAIImageOAuth(c, c.Request.Context(), account, modelID, prompt)
+		}
 		message := strings.TrimSpace(extractUpstreamErrorMessage(body))
 		if message == "" {
 			message = fmt.Sprintf("Responses API returned %d", resp.StatusCode)
