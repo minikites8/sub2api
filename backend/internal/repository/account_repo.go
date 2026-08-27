@@ -66,6 +66,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
 	"codex_usage_updated_at":     {},
+	"codex_has_5h_limit":         {},
 	"grok_billing_snapshot":      {},
 	"session_window_utilization": {},
 }

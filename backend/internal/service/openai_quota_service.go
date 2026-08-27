@@ -595,6 +595,8 @@ func buildCodexSparkWindowExtraUpdates(usage *OpenAIQuotaUsage, now time.Time) m
 	}
 
 	updates := make(map[string]any)
+	updates["codex_has_5h_limit"] = normalized.Used5hPercent != nil ||
+		normalized.Reset5hSeconds != nil || normalized.Window5hMinutes != nil
 	if normalized.Used5hPercent != nil {
 		updates["codex_5h_used_percent"] = *normalized.Used5hPercent
 	}

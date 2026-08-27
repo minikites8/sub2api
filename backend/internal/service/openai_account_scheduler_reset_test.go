@@ -39,6 +39,120 @@ func openAIPlanScores(plan openAIAccountLoadPlan) map[int64]float64 {
 	return scores
 }
 
+func TestOpenAIOAuthQuotaScheduleTier_Prefers5hAndRecognizesWeeklyOnly(t *testing.T) {
+	fiveHour := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{"codex_has_5h_limit": true},
+	}
+	weeklyOnly := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_has_5h_limit":      false,
+			"codex_5h_used_percent":   1.0, // stale data from an earlier snapshot
+			"codex_7d_window_minutes": 10080,
+		},
+	}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	require.Equal(t, openAIOAuthQuotaScheduleTierFiveHour, openAIOAuthQuotaScheduleTierFor(fiveHour))
+	require.Equal(t, openAIOAuthQuotaScheduleTierWeeklyOnly, openAIOAuthQuotaScheduleTierFor(weeklyOnly))
+	require.Equal(t, openAIOAuthQuotaScheduleTierNeutral, openAIOAuthQuotaScheduleTierFor(apiKey))
+	require.Less(t, compareOpenAIOAuthQuotaScheduleTier(fiveHour, weeklyOnly), 0)
+}
+
+func TestBuildOpenAISelectionOrder_QuotaTierPrecedesSchedulerScore(t *testing.T) {
+	scheduler := &defaultOpenAIAccountScheduler{}
+	weeklyOnly := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_has_5h_limit":      false,
+			"codex_7d_window_minutes": 10080,
+		},
+	}
+	fiveHour := &Account{
+		ID:       2,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{"codex_has_5h_limit": true},
+	}
+	plan := openAIAccountLoadPlan{
+		candidates: []openAIAccountCandidateScore{
+			{account: weeklyOnly, loadInfo: &AccountLoadInfo{}, score: 100},
+			{account: fiveHour, loadInfo: &AccountLoadInfo{}, score: 1},
+		},
+		topK: 1,
+	}
+
+	order := scheduler.buildOpenAISelectionOrder(OpenAIAccountScheduleRequest{Platform: PlatformOpenAI}, plan)
+	require.Len(t, order, 2)
+	require.Equal(t, int64(2), order[0].account.ID)
+	require.Equal(t, int64(1), order[1].account.ID)
+}
+
+func TestOpenAIGatewayService_SelectBestAccount_QuotaTierPrecedesPriority(t *testing.T) {
+	accounts := []Account{
+		{
+			ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true, Priority: 10,
+			Extra: map[string]any{"codex_has_5h_limit": true},
+		},
+		{
+			ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true, Priority: 0,
+			Extra: map[string]any{
+				"codex_has_5h_limit":      false,
+				"codex_7d_window_minutes": 10080,
+			},
+		},
+	}
+
+	selected, _, _ := (&OpenAIGatewayService{}).selectBestAccount(
+		context.Background(), nil, PlatformOpenAI, accounts, "gpt-5.1", nil, false, "", false,
+	)
+	require.NotNil(t, selected)
+	require.Equal(t, int64(1), selected.ID)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithLoadAwareness_QuotaTierPrecedesPriority(t *testing.T) {
+	accounts := []Account{
+		{
+			ID: 11, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true, Priority: 10,
+			Extra: map[string]any{"codex_has_5h_limit": true},
+		},
+		{
+			ID: 12, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true, Priority: 0,
+			Extra: map[string]any{
+				"codex_has_5h_limit":      false,
+				"codex_7d_window_minutes": 10080,
+			},
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	selection, err := svc.selectAccountWithLoadAwareness(
+		context.Background(), nil, PlatformOpenAI, "", "gpt-5.1", nil, false, "", false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(11), selection.Account.ID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 // Reset 权重 > 0 时，会话窗口最早重置的账号应获得更高分。
 func TestBuildOpenAIAccountLoadPlan_ResetWeightPrefersSoonestReset(t *testing.T) {
 	now := time.Now()

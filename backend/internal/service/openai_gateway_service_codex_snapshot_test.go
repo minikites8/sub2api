@@ -96,6 +96,9 @@ func TestBuildCodexUsageExtraUpdates_UsesSnapshotUpdatedAt(t *testing.T) {
 	if got := updates["codex_usage_updated_at"]; got != "2026-02-16T10:00:00Z" {
 		t.Fatalf("codex_usage_updated_at = %v, want %s", got, "2026-02-16T10:00:00Z")
 	}
+	if got := updates["codex_has_5h_limit"]; got != true {
+		t.Fatalf("codex_has_5h_limit = %v, want true", got)
+	}
 	if got := updates["codex_5h_reset_at"]; got != "2026-02-16T11:00:00Z" {
 		t.Fatalf("codex_5h_reset_at = %v, want %s", got, "2026-02-16T11:00:00Z")
 	}
@@ -215,6 +218,9 @@ func TestBuildCodexUsageExtraUpdates_WithoutNormalizedWindowFields(t *testing.T)
 
 	if got := updates["codex_usage_updated_at"]; got != "2026-02-20T09:15:00Z" {
 		t.Fatalf("codex_usage_updated_at = %v, want %s", got, "2026-02-20T09:15:00Z")
+	}
+	if got := updates["codex_has_5h_limit"]; got != false {
+		t.Fatalf("codex_has_5h_limit = %v, want false", got)
 	}
 	if _, ok := updates["codex_5h_reset_at"]; ok {
 		t.Fatalf("did not expect codex_5h_reset_at in updates: %v", updates["codex_5h_reset_at"])

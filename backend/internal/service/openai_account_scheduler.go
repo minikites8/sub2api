@@ -649,6 +649,9 @@ func (h *openAIAccountCandidateHeap) Pop() any {
 }
 
 func isOpenAIAccountCandidateBetter(left openAIAccountCandidateScore, right openAIAccountCandidateScore) bool {
+	if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(left.account, right.account); quotaCmp != 0 {
+		return quotaCmp < 0
+	}
 	if left.score != right.score {
 		return left.score > right.score
 	}
@@ -1057,6 +1060,21 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		})
 		return append(primary, overflow...)
 	}
+	buildSelectionOrderByQuotaTier := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+		if NormalizeOpenAICompatiblePlatform(req.Platform) != PlatformOpenAI {
+			return buildSelectionOrder(pool)
+		}
+		buckets := [3][]openAIAccountCandidateScore{}
+		for _, candidate := range pool {
+			tier := openAIOAuthQuotaScheduleTierFor(candidate.account)
+			buckets[tier] = append(buckets[tier], candidate)
+		}
+		ordered := make([]openAIAccountCandidateScore, 0, len(pool))
+		for _, bucket := range buckets {
+			ordered = append(ordered, buildSelectionOrder(bucket)...)
+		}
+		return ordered
+	}
 
 	if req.RequireCompact {
 		supported := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
@@ -1070,15 +1088,15 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 			}
 		}
 		selectionOrder := make([]openAIAccountCandidateScore, 0, len(plan.allCandidates))
-		selectionOrder = append(selectionOrder, buildSelectionOrder(supported)...)
-		selectionOrder = append(selectionOrder, buildSelectionOrder(unknown)...)
+		selectionOrder = append(selectionOrder, buildSelectionOrderByQuotaTier(supported)...)
+		selectionOrder = append(selectionOrder, buildSelectionOrderByQuotaTier(unknown)...)
 		if len(plan.staleSnapshotCompactRetry) > 0 && s.service.schedulerSnapshot != nil {
 			selectionOrder = append(selectionOrder, sortOpenAICompactRetryCandidates(plan.staleSnapshotCompactRetry)...)
 		}
 		return selectionOrder
 	}
 
-	return buildSelectionOrder(plan.candidates)
+	return buildSelectionOrderByQuotaTier(plan.candidates)
 }
 
 func sortOpenAICompactRetryCandidates(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {

@@ -914,12 +914,105 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		if requireCompact && compactTiers[a.ID] != compactTiers[b.ID] {
 			return compactTiers[a.ID] > compactTiers[b.ID]
 		}
+		if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(a, b); quotaCmp != 0 {
+			return quotaCmp < 0
+		}
 		if rateCmp := rateOrder.compare(a, b); rateCmp != 0 {
 			return rateCmp < 0
 		}
 		return s.isBetterAccount(a, b)
 	})
 	return eligible[0], compactBlocked, filterStats
+}
+
+type openAIOAuthQuotaScheduleTier uint8
+
+const (
+	openAIOAuthQuotaScheduleTierFiveHour openAIOAuthQuotaScheduleTier = iota
+	openAIOAuthQuotaScheduleTierNeutral
+	openAIOAuthQuotaScheduleTierWeeklyOnly
+)
+
+// compareOpenAIOAuthQuotaScheduleTier gives OAuth accounts with a current 5h
+// window the first scheduling tier and OAuth accounts with a weekly-only
+// snapshot the last tier. API keys and accounts without a recognized snapshot
+// stay in the neutral tier.
+func compareOpenAIOAuthQuotaScheduleTier(a, b *Account) int {
+	left := openAIOAuthQuotaScheduleTierFor(a)
+	right := openAIOAuthQuotaScheduleTierFor(b)
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
+}
+
+func openAIOAuthQuotaScheduleTierFor(account *Account) openAIOAuthQuotaScheduleTier {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return openAIOAuthQuotaScheduleTierNeutral
+	}
+	if marker, present := openAIQuota5hMarker(account.Extra); present {
+		if marker {
+			return openAIOAuthQuotaScheduleTierFiveHour
+		}
+		if hasOpenAICodexQuotaWindow(account.Extra, "7d") {
+			return openAIOAuthQuotaScheduleTierWeeklyOnly
+		}
+		return openAIOAuthQuotaScheduleTierNeutral
+	}
+	if hasOpenAICodexQuotaWindow(account.Extra, "5h") {
+		return openAIOAuthQuotaScheduleTierFiveHour
+	}
+	if hasOpenAICodexQuotaWindow(account.Extra, "7d") {
+		return openAIOAuthQuotaScheduleTierWeeklyOnly
+	}
+	return openAIOAuthQuotaScheduleTierNeutral
+}
+
+func openAIQuota5hMarker(extra map[string]any) (bool, bool) {
+	value, ok := extra["codex_has_5h_limit"]
+	if !ok || value == nil {
+		return false, false
+	}
+	switch v := value.(type) {
+	case bool:
+		return v, true
+	case string:
+		text := strings.TrimSpace(v)
+		if strings.EqualFold(text, "true") {
+			return true, true
+		}
+		if strings.EqualFold(text, "false") {
+			return false, true
+		}
+		return false, false
+	default:
+		return false, false
+	}
+}
+
+func hasOpenAICodexQuotaWindow(extra map[string]any, window string) bool {
+	if len(extra) == 0 {
+		return false
+	}
+	for _, key := range []string{
+		"codex_" + window + "_window_minutes",
+		"codex_" + window + "_used_percent",
+		"codex_" + window + "_reset_after_seconds",
+		"codex_" + window + "_reset_at",
+	} {
+		value, ok := extra[key]
+		if !ok || value == nil {
+			continue
+		}
+		if text, ok := value.(string); ok && strings.TrimSpace(text) == "" {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // isBetterAccount 判断 candidate 是否比 current 更优。
@@ -1156,6 +1249,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 		sort.SliceStable(available, func(i, j int) bool {
 			a, b := available[i], available[j]
+			if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(a.account, b.account); quotaCmp != 0 {
+				return quotaCmp < 0
+			}
 			if a.account.Priority != b.account.Priority {
 				return a.account.Priority < b.account.Priority
 			}
@@ -1176,6 +1272,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		shuffleWithinSortGroups(available)
 		if rateOrder.enabled {
 			sort.SliceStable(available, func(i, j int) bool {
+				if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(available[i].account, available[j].account); quotaCmp != 0 {
+					return quotaCmp < 0
+				}
 				return rateOrder.compare(available[i].account, available[j].account) < 0
 			})
 		}
@@ -1232,6 +1331,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		sortAccountsByPriorityAndLastUsed(ordered, false)
 		if rateOrder.enabled {
 			sort.SliceStable(ordered, func(i, j int) bool {
+				if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(ordered[i], ordered[j]); quotaCmp != 0 {
+					return quotaCmp < 0
+				}
 				return rateOrder.compare(ordered[i], ordered[j]) < 0
 			})
 		}
@@ -1282,6 +1384,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	sortAccountsByPriorityAndLastUsed(candidates, false)
 	if rateOrder.enabled {
 		sort.SliceStable(candidates, func(i, j int) bool {
+			if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(candidates[i], candidates[j]); quotaCmp != 0 {
+				return quotaCmp < 0
+			}
 			return rateOrder.compare(candidates[i], candidates[j]) < 0
 		})
 	}

@@ -1773,6 +1773,9 @@ func shuffleWithinSortGroups(accounts []accountWithLoad) {
 
 // sameAccountWithLoadGroup 判断两个 accountWithLoad 是否属于同一排序组
 func sameAccountWithLoadGroup(a, b accountWithLoad) bool {
+	if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(a.account, b.account); quotaCmp != 0 {
+		return false
+	}
 	if a.account.Priority != b.account.Priority {
 		return false
 	}
