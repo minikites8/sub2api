@@ -220,35 +220,7 @@ func NormalizeAccountPayload(data []byte) ([]byte, error) {
 type ReclaimRequest struct {
 	CardCodes []string `json:"card_codes"`
 	Mode      string   `json:"mode,omitempty"`
-	QueryOnly bool     `json:"query_only,omitempty"`
-}
-
-type HealthCheckResult struct {
-	OK            bool             `json:"ok"`
-	NeedReclaim   int              `json:"need_reclaim"`
-	Healthy       int              `json:"healthy"`
-	CannotReclaim int              `json:"cannot_reclaim"`
-	Unknown       int              `json:"unknown"`
-	Total         int              `json:"total"`
-	NotLoadable   int              `json:"not_loadable"`
-	Credentials   []map[string]any `json:"credentials,omitempty"`
-	Error         string           `json:"error,omitempty"`
-	Raw           map[string]any   `json:"-"`
-}
-
-func (r *HealthCheckResult) UnmarshalJSON(data []byte) error {
-	type alias HealthCheckResult
-	var decoded alias
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	*r = HealthCheckResult(decoded)
-	r.Raw = raw
-	return nil
+	QueryOnly bool     `json:"query_only"`
 }
 
 type ReclaimTask struct {
@@ -313,22 +285,12 @@ type AccountCredentials struct {
 	Extra       map[string]any
 }
 
-// Reclaim401Packages runs the documented health-check and batch-cards flow,
-// then downloads every completed task that exposes a download token.
+// Reclaim401Packages submits and polls the batch-cards flow, then downloads
+// every completed task that exposes a download token.
 func (c *Client) Reclaim401Packages(ctx context.Context, cardCode string) ([][]byte, error) {
 	cardCode = strings.TrimSpace(cardCode)
 	if cardCode == "" {
 		return nil, errors.New("ye.team reclaim card code is empty")
-	}
-	health, err := c.HealthCheck(ctx, ReclaimRequest{CardCodes: []string{cardCode}})
-	if err != nil {
-		return nil, err
-	}
-	if !health.OK {
-		if strings.TrimSpace(health.Error) == "" {
-			health.Error = "ye.team health check failed"
-		}
-		return nil, errors.New(health.Error)
 	}
 	request := ReclaimRequest{CardCodes: []string{cardCode}, Mode: "401"}
 	initial, err := c.BatchReclaim(ctx, request)
@@ -374,6 +336,7 @@ func (c *Client) Reclaim401(ctx context.Context, cardCode string) ([]byte, error
 
 func (c *Client) pollReclaimUntilDone(ctx context.Context, request ReclaimRequest) (BatchReclaimResult, error) {
 	deadline := time.Now().Add(c.maxPollDuration)
+	request.Mode = ""
 	request.QueryOnly = true
 	for {
 		current, err := c.BatchReclaim(ctx, request)
@@ -512,12 +475,6 @@ func (c *Client) OrderStatus(ctx context.Context, orderNo string, downloadToken 
 func (c *Client) Download(ctx context.Context, orderNo, token string) ([]byte, error) {
 	path := "/api/redeem/orders/" + url.PathEscape(strings.TrimSpace(orderNo)) + "/download?token=" + url.QueryEscape(strings.TrimSpace(token))
 	return c.doBytes(ctx, http.MethodGet, path, nil)
-}
-
-func (c *Client) HealthCheck(ctx context.Context, req ReclaimRequest) (HealthCheckResult, error) {
-	var out HealthCheckResult
-	err := c.doJSON(ctx, http.MethodPost, "/api/redeem/reclaim/health-check", req, &out)
-	return out, err
 }
 
 func (c *Client) BatchReclaim(ctx context.Context, req ReclaimRequest) (BatchReclaimResult, error) {

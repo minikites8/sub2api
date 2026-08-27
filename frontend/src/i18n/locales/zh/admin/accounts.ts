@@ -972,6 +972,11 @@ export default {
       fallbackAccount: '后备账号',
       fallbackAccountDesc: '仅在当前调度池的普通账号全部不可用时接收请求；普通账号恢复后，新请求会自动回流。',
       fallbackAccountBadge: '后备',
+	  yeTeamRefresh: {
+	    notRefreshed: 'ye.team 未刷新',
+	    refreshed: 'ye.team 已刷新',
+	    failed: 'ye.team 刷新失败'
+	  },
 	  autoPause5hThreshold: '5h 用量阈值(%)',
 	  autoPause7dThreshold: '7d 用量阈值(%)',
 	  autoPauseThresholdHint: '留空或填 0 表示使用全局默认阈值（在运维设置中配置）；填具体值则覆盖全局默认。达到阈值后仅在调度时跳过账号，不修改 schedulable。',

@@ -261,6 +261,7 @@
               >
                 {{ accountDisplayEmail(row) }}
               </span>
+              <YeTeamRefreshBadge :account="row" />
             </div>
           </template>
           <template #cell-notes="{ value }">
@@ -574,6 +575,7 @@ import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActions
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import YeTeamRedeemModal from '@/components/admin/account/YeTeamRedeemModal.vue'
+import YeTeamRefreshBadge from '@/components/admin/account/YeTeamRefreshBadge.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'

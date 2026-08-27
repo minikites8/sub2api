@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -14,6 +15,18 @@ import (
 var (
 	yeTeamRCLCardCodePattern  = regexp.MustCompile(`(?i)(RCL-[A-Z0-9][A-Z0-9-]{3,})`)
 	yeTeamTeamCardCodePattern = regexp.MustCompile(`(?i)(team-[A-Z0-9][A-Z0-9-]{3,})`)
+)
+
+const yeTeamAutoReclaimTimeout = 15 * time.Minute
+const yeTeamRefreshStatusPersistTimeout = 5 * time.Second
+
+const (
+	yeTeamLastRefreshStatusKey = "ye_team_last_refresh_status"
+	yeTeamLastRefreshAtKey     = "ye_team_last_refresh_at"
+	yeTeamLastRefreshErrorKey  = "ye_team_last_refresh_error"
+	yeTeamRefreshStatusSuccess = "success"
+	yeTeamRefreshStatusFailed  = "failed"
+	yeTeamRefreshErrorMaxRunes = 300
 )
 
 // SetYeTeamClient attaches the optional external reclaim integration after
@@ -32,6 +45,11 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount401(ctx context.Context, acco
 	if cardCode == "" || s.accountRepo == nil {
 		return false
 	}
+	// A reclaim repairs shared account state and must finish after the initiating
+	// browser/SSE request disconnects. Keep request values for logging and apply
+	// an independent bound to the external polling workflow.
+	reclaimCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), yeTeamAutoReclaimTimeout)
+	defer cancel()
 	beforeCredential := account.GetCredential("access_token")
 	if beforeCredential == "" {
 		beforeCredential = account.GetCredential("api_key")
@@ -44,16 +62,15 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount401(ctx context.Context, acco
 		currentCredential = account.GetCredential("api_key")
 	}
 	if beforeCredential != "" && currentCredential != "" && beforeCredential != currentCredential {
-		if err := s.invalidateOpenAITokenCache(ctx, account); err != nil {
-			slog.Warn("ye_team_auto_reclaim_cache_invalidate_failed", "account_id", account.ID, "error", err)
-			return false
+		if err := s.invalidateOpenAITokenCache(reclaimCtx, account); err != nil {
+			return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err)
 		}
+		s.recordYeTeamReclaimResult(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, nil)
 		return true
 	}
-	packages, err := s.yeTeam.Reclaim401Packages(ctx, cardCode)
+	packages, err := s.yeTeam.Reclaim401Packages(reclaimCtx, cardCode)
 	if err != nil {
-		slog.Warn("ye_team_auto_reclaim_failed", "account_id", account.ID, "error", err)
-		return false
+		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_failed", err)
 	}
 	hints := []string{account.Name, account.GetCredential("email"), account.GetChatGPTAccountID()}
 	var matched yeteam.AccountCredentials
@@ -65,40 +82,69 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount401(ctx context.Context, acco
 		}
 	}
 	if matchErr != nil {
-		slog.Warn("ye_team_auto_reclaim_match_failed", "account_id", account.ID, "error", matchErr)
-		return false
+		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_match_failed", matchErr)
 	}
 	matched.Credentials = shallowCopyMap(matched.Credentials)
 	matched.Credentials["_token_version"] = nextYeTeamCredentialVersion(account)
 	replacementCredential := strings.TrimSpace(credentialFromMap(matched.Credentials))
 	if replacementCredential == "" {
-		slog.Warn("ye_team_auto_reclaim_credential_missing", "account_id", account.ID)
-		return false
+		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_credential_missing", errors.New("ye.team replacement credentials did not include access_token or api_key"))
 	}
 	if beforeCredential != "" && replacementCredential == beforeCredential {
-		slog.Warn("ye_team_auto_reclaim_credential_unchanged", "account_id", account.ID)
-		return false
+		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_credential_unchanged", errors.New("ye.team returned the current credential without a replacement"))
 	}
-	if err := persistAccountCredentials(ctx, s.accountRepo, account, matched.Credentials); err != nil {
-		slog.Warn("ye_team_auto_reclaim_persist_failed", "account_id", account.ID, "error", err)
-		return false
+	if err := persistAccountCredentials(reclaimCtx, s.accountRepo, account, matched.Credentials); err != nil {
+		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_persist_failed", err)
 	}
-	if err := s.invalidateOpenAITokenCache(ctx, account); err != nil {
-		slog.Warn("ye_team_auto_reclaim_cache_invalidate_failed", "account_id", account.ID, "error", err)
-		return false
+	if err := s.invalidateOpenAITokenCache(reclaimCtx, account); err != nil {
+		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err)
 	}
-	if len(matched.Extra) > 0 {
-		if err := s.accountRepo.UpdateExtra(ctx, account.ID, matched.Extra); err == nil {
-			if account.Extra == nil {
-				account.Extra = make(map[string]any, len(matched.Extra))
-			}
-			for key, value := range matched.Extra {
-				account.Extra[key] = value
-			}
-		}
-	}
+	s.recordYeTeamReclaimResult(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, matched.Extra)
 	slog.Info("ye_team_auto_reclaim_succeeded", "account_id", account.ID, "credential_changed", true, "token_cache_invalidated", true)
 	return true
+}
+
+func (s *OpenAIGatewayService) failYeTeamReclaim(ctx context.Context, account *Account, event string, err error) bool {
+	slog.Warn(event, "account_id", account.ID, "error", err)
+	s.recordYeTeamReclaimResult(ctx, account, yeTeamRefreshStatusFailed, err, nil)
+	return false
+}
+
+func (s *OpenAIGatewayService) recordYeTeamReclaimResult(ctx context.Context, account *Account, status string, reclaimErr error, extra map[string]any) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+	updates := shallowCopyMap(extra)
+	if updates == nil {
+		updates = make(map[string]any, 3)
+	}
+	updates[yeTeamLastRefreshStatusKey] = status
+	updates[yeTeamLastRefreshAtKey] = time.Now().UTC().Format(time.RFC3339)
+	updates[yeTeamLastRefreshErrorKey] = compactYeTeamRefreshError(reclaimErr)
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), yeTeamRefreshStatusPersistTimeout)
+	defer cancel()
+	if err := s.accountRepo.UpdateExtra(persistCtx, account.ID, updates); err != nil {
+		slog.Warn("ye_team_auto_reclaim_status_persist_failed", "account_id", account.ID, "status", status, "error", err)
+		return
+	}
+	if account.Extra == nil {
+		account.Extra = make(map[string]any, len(updates))
+	}
+	for key, value := range updates {
+		account.Extra[key] = value
+	}
+}
+
+func compactYeTeamRefreshError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.Join(strings.Fields(err.Error()), " ")
+	runes := []rune(message)
+	if len(runes) <= yeTeamRefreshErrorMaxRunes {
+		return message
+	}
+	return string(runes[:yeTeamRefreshErrorMaxRunes]) + "..."
 }
 
 func (s *OpenAIGatewayService) invalidateOpenAITokenCache(ctx context.Context, account *Account) error {

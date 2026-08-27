@@ -23,6 +23,7 @@ type yeTeamAccountTestRepo struct {
 	setErrorID         int64
 	setErrorMsg        string
 	updatedCredentials map[string]any
+	updatedExtra       map[string]any
 	setSchedulableID   int64
 	setSchedulable     bool
 	restoreOperations  []string
@@ -45,6 +46,16 @@ func (r *yeTeamAccountTestRepo) UpdateCredentials(_ context.Context, _ int64, cr
 	return nil
 }
 
+func (r *yeTeamAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	if r.updatedExtra == nil {
+		r.updatedExtra = make(map[string]any, len(updates))
+	}
+	for key, value := range updates {
+		r.updatedExtra[key] = value
+	}
+	return nil
+}
+
 func (r *yeTeamAccountTestRepo) SetSchedulable(_ context.Context, id int64, schedulable bool) error {
 	r.setSchedulableID = id
 	r.setSchedulable = schedulable
@@ -55,6 +66,7 @@ func (r *yeTeamAccountTestRepo) SetSchedulable(_ context.Context, id int64, sche
 type yeTeamAccountTestUpstream struct {
 	responses []*http.Response
 	requests  []*http.Request
+	onRequest func(call int)
 }
 
 func (u *yeTeamAccountTestUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
@@ -63,6 +75,9 @@ func (u *yeTeamAccountTestUpstream) Do(_ *http.Request, _ string, _ int64, _ int
 
 func (u *yeTeamAccountTestUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
 	u.requests = append(u.requests, req)
+	if u.onRequest != nil {
+		u.onRequest(len(u.requests))
+	}
 	if len(u.responses) == 0 {
 		return nil, fmt.Errorf("no mocked response")
 	}
@@ -85,11 +100,11 @@ func newYeTeamAccountTestServer(t *testing.T) (*httptest.Server, *yeTeamAccountT
 		switch r.URL.Path {
 		case "/api/redeem/reclaim/health-check":
 			state.healthCalls.Add(1)
-			_, _ = w.Write([]byte(`{"ok":true,"need_reclaim":1,"healthy":0}`))
+			w.WriteHeader(http.StatusInternalServerError)
 		case "/api/redeem/reclaim/batch-cards":
 			call := state.batchCalls.Add(1)
 			if call == 1 {
-				_, _ = w.Write([]byte(`{"ok":true,"queued":1,"already_running":0,"cards":[]}`))
+				_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":1,"cards":[{"card_code":"TEAM-TEST-401","tasks":[{"order_no":"ord-401","resource_uid":"acct-1","status":"pending"}]}]}`))
 				return
 			}
 			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST-401","tasks":[{"order_no":"ord-401","resource_uid":"acct-1","status":"done","download_token":"tok-401"}]}]}`))
@@ -163,10 +178,13 @@ func TestAccountTestServiceYeTeam401RefreshesAndRetries(t *testing.T) {
 	require.Len(t, upstream.requests, 2)
 	require.Equal(t, "Bearer old-token", upstream.requests[0].Header.Get("Authorization"))
 	require.Equal(t, "Bearer new-token", upstream.requests[1].Header.Get("Authorization"))
-	require.Equal(t, int32(1), state.healthCalls.Load())
+	require.Zero(t, state.healthCalls.Load())
 	require.Equal(t, int32(2), state.batchCalls.Load())
 	require.Equal(t, int32(1), state.downloadCalls.Load())
 	require.Equal(t, "new-token", repo.updatedCredentials["access_token"])
+	require.Equal(t, yeTeamRefreshStatusSuccess, repo.updatedExtra[yeTeamLastRefreshStatusKey])
+	require.NotEmpty(t, repo.updatedExtra[yeTeamLastRefreshAtKey])
+	require.Empty(t, repo.updatedExtra[yeTeamLastRefreshErrorKey])
 	require.Zero(t, repo.setErrorID)
 	require.Equal(t, account.ID, repo.clearedErrorID)
 	require.Equal(t, account.ID, repo.setSchedulableID)
@@ -190,9 +208,36 @@ func TestAccountTestServiceYeTeam401RefreshRetriesOnce(t *testing.T) {
 	err := svc.testOpenAIAccountConnection(c, account, "gpt-5.4", "", "")
 	require.Error(t, err)
 	require.Len(t, upstream.requests, 2)
-	require.Equal(t, int32(1), state.healthCalls.Load())
+	require.Zero(t, state.healthCalls.Load())
 	require.Equal(t, int32(2), state.batchCalls.Load())
 	require.Equal(t, int32(1), state.downloadCalls.Load())
 	require.Equal(t, account.ID, repo.setErrorID)
 	require.Contains(t, repo.setErrorMsg, "replacement rejected")
+}
+
+func TestAccountTestServiceYeTeam401RefreshSurvivesRequestCancellation(t *testing.T) {
+	c, _ := newYeTeamAccountTestContext()
+	requestCtx, cancelRequest := context.WithCancel(c.Request.Context())
+	c.Request = c.Request.WithContext(requestCtx)
+	svc, repo, upstream, state := newYeTeamAccountTestService(t,
+		newYeTeamAccountTestResponse(http.StatusUnauthorized, `{"error":"expired token"}`),
+		newYeTeamAccountTestResponse(http.StatusOK, "data: {\"type\":\"response.completed\"}\n\n"),
+	)
+	upstream.onRequest = func(call int) {
+		if call == 1 {
+			cancelRequest()
+		}
+	}
+	account := newYeTeamRefreshAccount(83)
+
+	err := svc.testOpenAIAccountConnection(c, account, "gpt-5.4", "", "")
+	require.NoError(t, err)
+	require.ErrorIs(t, requestCtx.Err(), context.Canceled)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "Bearer old-token", upstream.requests[0].Header.Get("Authorization"))
+	require.Equal(t, "Bearer new-token", upstream.requests[1].Header.Get("Authorization"))
+	require.Equal(t, "new-token", repo.updatedCredentials["access_token"])
+	require.Equal(t, yeTeamRefreshStatusSuccess, repo.updatedExtra[yeTeamLastRefreshStatusKey])
+	require.Zero(t, state.healthCalls.Load())
+	require.Equal(t, int32(1), state.downloadCalls.Load())
 }

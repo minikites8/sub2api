@@ -1193,6 +1193,10 @@ kiro_credit_unit_price_usd?: number
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    ye_team_card_code?: string
+    ye_team_last_refresh_status?: 'success' | 'failed'
+    ye_team_last_refresh_at?: string
+    ye_team_last_refresh_error?: string
     codex_reset_credit_snapshot?: {
       available_count?: number
       credits?: { expires_at?: string }[]

@@ -93,17 +93,31 @@ func TestClientRedeemRequestAndDownload(t *testing.T) {
 }
 
 func TestReclaim401PackagesUsesTaskDownloadTokens(t *testing.T) {
+	type reclaimBody struct {
+		CardCodes []string `json:"card_codes"`
+		Mode      *string  `json:"mode"`
+		QueryOnly *bool    `json:"query_only"`
+	}
+	healthCalls := 0
 	batchCalls := 0
+	batchRequests := make([]reclaimBody, 0, 2)
 	downloadToken := ""
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/redeem/reclaim/health-check":
-			_, _ = w.Write([]byte(`{"ok":true,"need_reclaim":1,"healthy":0}`))
+			healthCalls++
+			w.WriteHeader(http.StatusInternalServerError)
 		case "/api/redeem/reclaim/batch-cards":
 			batchCalls++
+			var body reclaimBody
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			batchRequests = append(batchRequests, body)
 			if batchCalls == 1 {
-				_, _ = w.Write([]byte(`{"ok":true,"queued":1,"already_running":1,"cards":[]}`))
+				_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":1,"cards":[{"card_code":"RCL-ABCD","tasks":[{"order_no":"ord-401","resource_uid":"acct-1","status":"pending"}]}]}`))
 				return
 			}
 			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"RCL-ABCD","tasks":[{"order_no":"ord-401","resource_uid":"acct-1","status":"done","download_token":"tok-401"}]}]}`))
@@ -125,5 +139,20 @@ func TestReclaim401PackagesUsesTaskDownloadTokens(t *testing.T) {
 	}
 	if downloadToken != "tok-401" {
 		t.Fatalf("download token = %q", downloadToken)
+	}
+	if healthCalls != 0 || batchCalls != 2 {
+		t.Fatalf("health calls = %d, batch calls = %d", healthCalls, batchCalls)
+	}
+	if len(batchRequests) != 2 {
+		t.Fatalf("batch requests = %d", len(batchRequests))
+	}
+	if len(batchRequests[0].CardCodes) != 1 || batchRequests[0].CardCodes[0] != "RCL-ABCD" ||
+		batchRequests[0].Mode == nil || *batchRequests[0].Mode != "401" ||
+		batchRequests[0].QueryOnly == nil || *batchRequests[0].QueryOnly {
+		t.Fatalf("submit request = %#v", batchRequests[0])
+	}
+	if len(batchRequests[1].CardCodes) != 1 || batchRequests[1].CardCodes[0] != "RCL-ABCD" ||
+		batchRequests[1].Mode != nil || batchRequests[1].QueryOnly == nil || !*batchRequests[1].QueryOnly {
+		t.Fatalf("poll request = %#v", batchRequests[1])
 	}
 }

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -112,6 +114,29 @@ func TestYeTeamReclaimInvalidatesCachedOpenAIToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "new-token", after)
 	require.Equal(t, "new-token", cache.tokens[cacheKey])
-	require.Equal(t, int32(1), state.healthCalls.Load())
+	require.Zero(t, state.healthCalls.Load())
 	require.Equal(t, int32(1), state.downloadCalls.Load())
+}
+
+func TestYeTeamReclaimPersistsFailureStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":"reclaim service unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+
+	account := newYeTeamRefreshAccount(84)
+	repo := &yeTeamTokenAccountRepo{account: account}
+	gateway := &OpenAIGatewayService{accountRepo: repo}
+	gateway.SetYeTeamClient(yeteam.NewClient(yeteam.Config{
+		Enabled:        true,
+		AutoRefresh401: true,
+		BaseURL:        server.URL,
+		Timeout:        time.Second,
+	}))
+
+	require.False(t, gateway.reclaimOpenAIAccount401(context.Background(), account))
+	require.Equal(t, yeTeamRefreshStatusFailed, repo.updatedExtra[yeTeamLastRefreshStatusKey])
+	require.NotEmpty(t, repo.updatedExtra[yeTeamLastRefreshAtKey])
+	require.Contains(t, repo.updatedExtra[yeTeamLastRefreshErrorKey], "reclaim service unavailable")
+	require.Equal(t, yeTeamRefreshStatusFailed, account.Extra[yeTeamLastRefreshStatusKey])
 }

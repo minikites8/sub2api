@@ -903,6 +903,11 @@ export default {
       fallbackAccount: 'Fallback account',
       fallbackAccountDesc: 'Receives requests when every regular account in the scheduling pool is unavailable. New requests return to regular accounts after recovery.',
       fallbackAccountBadge: 'Fallback',
+	  yeTeamRefresh: {
+	    notRefreshed: 'ye.team not refreshed',
+	    refreshed: 'ye.team refreshed',
+	    failed: 'ye.team refresh failed'
+	  },
 	  autoPause5hThreshold: '5h Usage Threshold (%)',
 	  autoPause7dThreshold: '7d Usage Threshold (%)',
 	  autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
