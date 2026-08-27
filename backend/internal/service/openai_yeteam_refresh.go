@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 )
@@ -43,6 +44,10 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount401(ctx context.Context, acco
 		currentCredential = account.GetCredential("api_key")
 	}
 	if beforeCredential != "" && currentCredential != "" && beforeCredential != currentCredential {
+		if err := s.invalidateOpenAITokenCache(ctx, account); err != nil {
+			slog.Warn("ye_team_auto_reclaim_cache_invalidate_failed", "account_id", account.ID, "error", err)
+			return false
+		}
 		return true
 	}
 	packages, err := s.yeTeam.Reclaim401Packages(ctx, cardCode)
@@ -63,8 +68,23 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount401(ctx context.Context, acco
 		slog.Warn("ye_team_auto_reclaim_match_failed", "account_id", account.ID, "error", matchErr)
 		return false
 	}
+	matched.Credentials = shallowCopyMap(matched.Credentials)
+	matched.Credentials["_token_version"] = nextYeTeamCredentialVersion(account)
+	replacementCredential := strings.TrimSpace(credentialFromMap(matched.Credentials))
+	if replacementCredential == "" {
+		slog.Warn("ye_team_auto_reclaim_credential_missing", "account_id", account.ID)
+		return false
+	}
+	if beforeCredential != "" && replacementCredential == beforeCredential {
+		slog.Warn("ye_team_auto_reclaim_credential_unchanged", "account_id", account.ID)
+		return false
+	}
 	if err := persistAccountCredentials(ctx, s.accountRepo, account, matched.Credentials); err != nil {
 		slog.Warn("ye_team_auto_reclaim_persist_failed", "account_id", account.ID, "error", err)
+		return false
+	}
+	if err := s.invalidateOpenAITokenCache(ctx, account); err != nil {
+		slog.Warn("ye_team_auto_reclaim_cache_invalidate_failed", "account_id", account.ID, "error", err)
 		return false
 	}
 	if len(matched.Extra) > 0 {
@@ -77,8 +97,34 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount401(ctx context.Context, acco
 			}
 		}
 	}
-	slog.Info("ye_team_auto_reclaim_succeeded", "account_id", account.ID)
+	slog.Info("ye_team_auto_reclaim_succeeded", "account_id", account.ID, "credential_changed", true, "token_cache_invalidated", true)
 	return true
+}
+
+func (s *OpenAIGatewayService) invalidateOpenAITokenCache(ctx context.Context, account *Account) error {
+	if s == nil || s.openAITokenProvider == nil {
+		return nil
+	}
+	return s.openAITokenProvider.invalidateAccessToken(ctx, account)
+}
+
+func credentialFromMap(credentials map[string]any) string {
+	for _, key := range []string{"access_token", "api_key"} {
+		if value, ok := credentials[key].(string); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func nextYeTeamCredentialVersion(account *Account) int64 {
+	version := time.Now().UnixMilli()
+	if account != nil {
+		if current := account.GetCredentialAsInt64("_token_version"); version <= current {
+			return current + 1
+		}
+	}
+	return version
 }
 
 func yeTeamCardCode(account *Account) string {

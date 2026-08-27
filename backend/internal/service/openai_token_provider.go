@@ -130,6 +130,15 @@ func (p *OpenAITokenProvider) ensureMetrics() {
 	}
 }
 
+// invalidateAccessToken removes the cached token after credentials are
+// replaced by an external recovery flow such as ye.team reclaim.
+func (p *OpenAITokenProvider) invalidateAccessToken(ctx context.Context, account *Account) error {
+	if p == nil || p.tokenCache == nil || account == nil {
+		return nil
+	}
+	return p.tokenCache.DeleteAccessToken(ctx, OpenAITokenCacheKey(account))
+}
+
 // GetAccessToken returns a valid access_token.
 func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
 	p.ensureMetrics()
