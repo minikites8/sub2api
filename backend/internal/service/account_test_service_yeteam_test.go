@@ -215,6 +215,29 @@ func TestAccountTestServiceYeTeam401RefreshRetriesOnce(t *testing.T) {
 	require.Contains(t, repo.setErrorMsg, "replacement rejected")
 }
 
+func TestAccountTestServiceYeTeam401AcceptsHealthyUnchangedCredential(t *testing.T) {
+	c, recorder := newYeTeamAccountTestContext()
+	success := newYeTeamAccountTestResponse(http.StatusOK, "data: {\"type\":\"response.completed\"}\n\n")
+	svc, repo, upstream, state := newYeTeamAccountTestService(t,
+		newYeTeamAccountTestResponse(http.StatusUnauthorized, `{"error":"expired token"}`),
+		success,
+	)
+	account := newYeTeamRefreshAccount(85)
+	account.Credentials["access_token"] = "new-token"
+
+	err := svc.testOpenAIAccountConnection(c, account, "gpt-5.4", "", "")
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "Bearer new-token", upstream.requests[0].Header.Get("Authorization"))
+	require.Equal(t, "Bearer new-token", upstream.requests[1].Header.Get("Authorization"))
+	require.Zero(t, state.healthCalls.Load())
+	require.Equal(t, int32(2), state.batchCalls.Load())
+	require.Equal(t, int32(1), state.downloadCalls.Load())
+	require.Equal(t, yeTeamRefreshStatusSuccess, repo.updatedExtra[yeTeamLastRefreshStatusKey])
+	require.Empty(t, repo.updatedExtra[yeTeamLastRefreshErrorKey])
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+}
+
 func TestAccountTestServiceYeTeam401RefreshSurvivesRequestCancellation(t *testing.T) {
 	c, _ := newYeTeamAccountTestContext()
 	requestCtx, cancelRequest := context.WithCancel(c.Request.Context())

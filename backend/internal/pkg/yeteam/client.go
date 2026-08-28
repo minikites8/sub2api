@@ -375,7 +375,7 @@ func (c *Client) Reclaim401Packages(ctx context.Context, cardCode string) ([][]b
 		return nil, errors.New(initial.Error)
 	}
 	final := initial
-	if initial.Queued > 0 || initial.AlreadyRunning > 0 {
+	if initial.Queued > 0 || initial.AlreadyRunning > 0 || len(collectBatchDownloadItems(initial)) == 0 {
 		final, err = c.pollReclaimUntilDone(ctx, request)
 		if err != nil {
 			return nil, err

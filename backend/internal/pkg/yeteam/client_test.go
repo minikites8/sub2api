@@ -182,3 +182,35 @@ func TestCollectBatchDownloadItemsKeepsInitialTokenWhenPollOmitsIt(t *testing.T)
 		t.Fatalf("items = %#v", items)
 	}
 }
+
+func TestReclaim401PackagesQueriesTerminalResponseUntilTokenIsAvailable(t *testing.T) {
+	batchCalls := 0
+	batchDownloadCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/redeem/reclaim/batch-cards":
+			batchCalls++
+			if batchCalls == 1 {
+				_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"done"}]}]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"done","download_token":"tok-1"}]}]}`))
+		case "/api/redeem/batch-download":
+			batchDownloadCalls++
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"token"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{Enabled: true, BaseURL: server.URL, Timeout: time.Second, PollInterval: time.Millisecond})
+	packages, err := client.Reclaim401Packages(context.Background(), "TEAM-TEST")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packages) != 1 || batchCalls != 2 || batchDownloadCalls != 1 {
+		t.Fatalf("packages=%d batch_calls=%d batch_download_calls=%d", len(packages), batchCalls, batchDownloadCalls)
+	}
+}

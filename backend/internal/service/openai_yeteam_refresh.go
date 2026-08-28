@@ -91,7 +91,12 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount401(ctx context.Context, acco
 		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_credential_missing", errors.New("ye.team replacement credentials did not include access_token or api_key"))
 	}
 	if beforeCredential != "" && replacementCredential == beforeCredential {
-		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_credential_unchanged", errors.New("ye.team returned the current credential without a replacement"))
+		if err := s.invalidateOpenAITokenCache(reclaimCtx, account); err != nil {
+			return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err)
+		}
+		s.recordYeTeamReclaimResult(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, matched.Extra)
+		slog.Info("ye_team_auto_reclaim_succeeded", "account_id", account.ID, "credential_changed", false, "token_cache_invalidated", true)
+		return true
 	}
 	if err := persistAccountCredentials(reclaimCtx, s.accountRepo, account, matched.Credentials); err != nil {
 		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_persist_failed", err)
