@@ -108,7 +108,7 @@ func newYeTeamAccountTestServer(t *testing.T) (*httptest.Server, *yeTeamAccountT
 				return
 			}
 			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST-401","tasks":[{"order_no":"ord-401","resource_uid":"acct-1","status":"done","download_token":"tok-401"}]}]}`))
-		case "/api/redeem/orders/ord-401/download":
+		case "/api/redeem/batch-download":
 			state.downloadCalls.Add(1)
 			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"new-token","chatgpt_account_id":"acct-1"}}]}`))
 		default:

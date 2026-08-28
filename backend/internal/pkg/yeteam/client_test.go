@@ -101,7 +101,8 @@ func TestReclaim401PackagesUsesTaskDownloadTokens(t *testing.T) {
 	healthCalls := 0
 	batchCalls := 0
 	batchRequests := make([]reclaimBody, 0, 2)
-	downloadToken := ""
+	var batchDownloadRequest BatchDownloadRequest
+	batchDownloadCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -116,13 +117,13 @@ func TestReclaim401PackagesUsesTaskDownloadTokens(t *testing.T) {
 				return
 			}
 			batchRequests = append(batchRequests, body)
-			if batchCalls == 1 {
-				_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":1,"cards":[{"card_code":"RCL-ABCD","tasks":[{"order_no":"ord-401","resource_uid":"acct-1","status":"pending"}]}]}`))
+			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"RCL-ABCD","card_status":"ok","tasks":[{"order_no":"ord-401","resource_uid":"acct-1","status":"done","download_token":"tok-401","no_action":true,"message":"凭据正常，无需找回"}]}]}`))
+		case "/api/redeem/batch-download":
+			batchDownloadCalls++
+			if err := json.NewDecoder(r.Body).Decode(&batchDownloadRequest); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"RCL-ABCD","tasks":[{"order_no":"ord-401","resource_uid":"acct-1","status":"done","download_token":"tok-401"}]}]}`))
-		case "/api/redeem/orders/ord-401/download":
-			downloadToken = r.URL.Query().Get("token")
 			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"new-token"}}]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -137,22 +138,23 @@ func TestReclaim401PackagesUsesTaskDownloadTokens(t *testing.T) {
 	if len(packages) != 1 || !json.Valid(packages[0]) {
 		t.Fatalf("packages = %d", len(packages))
 	}
-	if downloadToken != "tok-401" {
-		t.Fatalf("download token = %q", downloadToken)
+	if batchDownloadCalls != 1 {
+		t.Fatalf("batch download calls = %d", batchDownloadCalls)
 	}
-	if healthCalls != 0 || batchCalls != 2 {
+	if batchDownloadRequest.ExportMode != "multi_account_json" || len(batchDownloadRequest.Items) != 1 ||
+		batchDownloadRequest.Items[0].OrderNo != "ord-401" || batchDownloadRequest.Items[0].DownloadToken != "tok-401" ||
+		batchDownloadRequest.Summary == nil || len(batchDownloadRequest.Summary) != 0 {
+		t.Fatalf("batch download request = %#v", batchDownloadRequest)
+	}
+	if healthCalls != 0 || batchCalls != 1 {
 		t.Fatalf("health calls = %d, batch calls = %d", healthCalls, batchCalls)
 	}
-	if len(batchRequests) != 2 {
+	if len(batchRequests) != 1 {
 		t.Fatalf("batch requests = %d", len(batchRequests))
 	}
 	if len(batchRequests[0].CardCodes) != 1 || batchRequests[0].CardCodes[0] != "RCL-ABCD" ||
 		batchRequests[0].Mode == nil || *batchRequests[0].Mode != "401" ||
 		batchRequests[0].QueryOnly == nil || *batchRequests[0].QueryOnly {
 		t.Fatalf("submit request = %#v", batchRequests[0])
-	}
-	if len(batchRequests[1].CardCodes) != 1 || batchRequests[1].CardCodes[0] != "RCL-ABCD" ||
-		batchRequests[1].Mode != nil || batchRequests[1].QueryOnly == nil || !*batchRequests[1].QueryOnly {
-		t.Fatalf("poll request = %#v", batchRequests[1])
 	}
 }

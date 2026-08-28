@@ -255,6 +255,17 @@ type BatchReclaimResult struct {
 	Raw            map[string]any `json:"-"`
 }
 
+type BatchDownloadItem struct {
+	OrderNo       string `json:"order_no"`
+	DownloadToken string `json:"download_token"`
+}
+
+type BatchDownloadRequest struct {
+	ExportMode string              `json:"export_mode"`
+	Items      []BatchDownloadItem `json:"items"`
+	Summary    []any               `json:"summary"`
+}
+
 func (r *BatchReclaimResult) UnmarshalJSON(data []byte) error {
 	type alias BatchReclaimResult
 	var decoded alias
@@ -303,25 +314,50 @@ func (c *Client) Reclaim401Packages(ctx context.Context, cardCode string) ([][]b
 		}
 		return nil, errors.New(initial.Error)
 	}
-	final, err := c.pollReclaimUntilDone(ctx, request)
+	final := initial
+	if initial.Queued > 0 || initial.AlreadyRunning > 0 {
+		final, err = c.pollReclaimUntilDone(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+	}
+	items := collectBatchDownloadItems(initial, final)
+	if len(items) == 0 {
+		return nil, errors.New("ye.team reclaim completed without downloadable account packages")
+	}
+	data, err := c.BatchDownload(ctx, BatchDownloadRequest{
+		ExportMode: "multi_account_json",
+		Items:      items,
+		Summary:    []any{},
+	})
 	if err != nil {
 		return nil, err
 	}
-	var packages [][]byte
-	for _, task := range final.AllTasks {
-		if strings.ToLower(strings.TrimSpace(task.Status)) != "done" || task.OrderNo == "" || task.DownloadToken == "" {
-			continue
+	return [][]byte{data}, nil
+}
+
+func collectBatchDownloadItems(results ...BatchReclaimResult) []BatchDownloadItem {
+	items := make([]BatchDownloadItem, 0)
+	indexes := make(map[string]int)
+	for _, result := range results {
+		for _, task := range result.AllTasks {
+			if strings.ToLower(strings.TrimSpace(task.Status)) != "done" {
+				continue
+			}
+			orderNo := strings.TrimSpace(task.OrderNo)
+			token := strings.TrimSpace(task.DownloadToken)
+			if orderNo == "" || token == "" {
+				continue
+			}
+			if index, ok := indexes[orderNo]; ok {
+				items[index].DownloadToken = token
+				continue
+			}
+			indexes[orderNo] = len(items)
+			items = append(items, BatchDownloadItem{OrderNo: orderNo, DownloadToken: token})
 		}
-		data, downloadErr := c.Download(ctx, task.OrderNo, task.DownloadToken)
-		if downloadErr != nil {
-			continue
-		}
-		packages = append(packages, data)
 	}
-	if len(packages) == 0 {
-		return nil, errors.New("ye.team reclaim completed without downloadable account packages")
-	}
-	return packages, nil
+	return items
 }
 
 // Reclaim401 preserves the single-package helper for callers that only need
@@ -475,6 +511,19 @@ func (c *Client) OrderStatus(ctx context.Context, orderNo string, downloadToken 
 func (c *Client) Download(ctx context.Context, orderNo, token string) ([]byte, error) {
 	path := "/api/redeem/orders/" + url.PathEscape(strings.TrimSpace(orderNo)) + "/download?token=" + url.QueryEscape(strings.TrimSpace(token))
 	return c.doBytes(ctx, http.MethodGet, path, nil)
+}
+
+func (c *Client) BatchDownload(ctx context.Context, req BatchDownloadRequest) ([]byte, error) {
+	if strings.TrimSpace(req.ExportMode) == "" {
+		req.ExportMode = "multi_account_json"
+	}
+	if len(req.Items) == 0 {
+		return nil, errors.New("ye.team batch download items are empty")
+	}
+	if req.Summary == nil {
+		req.Summary = []any{}
+	}
+	return c.doBytes(ctx, http.MethodPost, "/api/redeem/batch-download", req)
 }
 
 func (c *Client) BatchReclaim(ctx context.Context, req ReclaimRequest) (BatchReclaimResult, error) {
