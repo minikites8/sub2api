@@ -21,6 +21,9 @@ type Group struct {
 	Description    string
 	Platform       string
 	RateMultiplier float64
+	// ModelRateMultipliers overrides the group multiplier for exact model names.
+	// Keys are matched case-insensitively after trimming whitespace.
+	ModelRateMultipliers map[string]float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool
@@ -145,6 +148,56 @@ type Group struct {
 	AccountCount            int64
 	ActiveAccountCount      int64
 	RateLimitedAccountCount int64
+}
+
+// RateMultiplierForModel returns the configured model-specific multiplier when
+// present, otherwise the group's default multiplier. User-level overrides are
+// applied by the gateway after this group-level value is resolved.
+func (g *Group) RateMultiplierForModel(model string) float64 {
+	return g.RateMultiplierForModels(model)
+}
+
+// RateMultiplierForModels resolves the first configured override among the
+// supplied billing-model candidates, preserving alias fallback semantics.
+func (g *Group) RateMultiplierForModels(models ...string) float64 {
+	if g == nil {
+		return 1
+	}
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		for configuredModel, multiplier := range g.ModelRateMultipliers {
+			if strings.EqualFold(strings.TrimSpace(configuredModel), model) {
+				if multiplier >= 0 && !math.IsNaN(multiplier) && !math.IsInf(multiplier, 0) {
+					return multiplier
+				}
+			}
+		}
+	}
+	return g.RateMultiplier
+}
+
+// NormalizeModelRateMultipliers trims model names, canonicalizes their keys,
+// and validates non-negative finite multipliers before persistence.
+func NormalizeModelRateMultipliers(input map[string]float64) (map[string]float64, error) {
+	out := make(map[string]float64, len(input))
+	for model, multiplier := range input {
+		originalModel := model
+		model = strings.ToLower(strings.TrimSpace(model))
+		if model == "" {
+			return nil, errors.New("model_rate_multipliers contains an empty model name")
+		}
+		if multiplier < 0 || math.IsNaN(multiplier) || math.IsInf(multiplier, 0) {
+			return nil, fmt.Errorf("model_rate_multipliers[%q] must be a finite number >= 0", model)
+		}
+		if _, exists := out[model]; exists {
+			return nil, fmt.Errorf("model_rate_multipliers contains duplicate model name %q", strings.TrimSpace(originalModel))
+		}
+		out[model] = multiplier
+	}
+	return out, nil
 }
 
 func (g *Group) EffectiveKiroCacheEmulationEnabled() bool {
