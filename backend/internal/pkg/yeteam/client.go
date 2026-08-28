@@ -234,6 +234,26 @@ type ReclaimTask struct {
 	DownloadError string `json:"download_error"`
 }
 
+func (t *ReclaimTask) UnmarshalJSON(data []byte) error {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	t.CardCode = nestedString(raw, "card_code", "cardCode")
+	t.OrderNo = nestedString(raw, "order_no", "orderNo", "order")
+	t.ResourceUID = nestedString(raw, "resource_uid", "resourceUid")
+	t.Status = nestedString(raw, "status", "state")
+	t.Message = nestedString(raw, "message", "detail", "error")
+	t.DownloadToken = nestedString(raw, "download_token", "downloadToken", "token")
+	t.DownloadError = nestedString(raw, "download_error", "downloadError")
+	if value, ok := raw["no_action"].(bool); ok {
+		t.NoAction = value
+	} else if value, ok := raw["noAction"].(bool); ok {
+		t.NoAction = value
+	}
+	return nil
+}
+
 type ReclaimCard struct {
 	CardCode string        `json:"card_code"`
 	Tasks    []ReclaimTask `json:"tasks"`
@@ -278,6 +298,9 @@ func (r *BatchReclaimResult) UnmarshalJSON(data []byte) error {
 	}
 	*r = BatchReclaimResult(decoded)
 	r.Raw = raw
+	if len(r.Cards) == 0 {
+		r.Cards = reclaimCardsAlias(raw["card_codes"])
+	}
 	for cardIndex := range r.Cards {
 		for taskIndex := range r.Cards[cardIndex].Tasks {
 			task := &r.Cards[cardIndex].Tasks[taskIndex]
@@ -288,6 +311,43 @@ func (r *BatchReclaimResult) UnmarshalJSON(data []byte) error {
 		}
 	}
 	return nil
+}
+
+func reclaimCardsAlias(value any) []ReclaimCard {
+	if value == nil {
+		return nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var cards []ReclaimCard
+	if err := json.Unmarshal(data, &cards); err == nil {
+		return cards
+	}
+	objects, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	cards = make([]ReclaimCard, 0, len(objects))
+	for cardCode, object := range objects {
+		cardData, ok := object.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, exists := cardData["card_code"]; !exists {
+			cardData["card_code"] = cardCode
+		}
+		data, err := json.Marshal(cardData)
+		if err != nil {
+			continue
+		}
+		var card ReclaimCard
+		if json.Unmarshal(data, &card) == nil {
+			cards = append(cards, card)
+		}
+	}
+	return cards
 }
 
 type AccountCredentials struct {
@@ -323,7 +383,7 @@ func (c *Client) Reclaim401Packages(ctx context.Context, cardCode string) ([][]b
 	}
 	items := collectBatchDownloadItems(initial, final)
 	if len(items) == 0 {
-		return nil, errors.New("ye.team reclaim completed without downloadable account packages")
+		return nil, fmt.Errorf("ye.team reclaim completed without downloadable account packages (cards=%d tasks=%d done=%d)", len(final.Cards), len(final.AllTasks), final.Done)
 	}
 	data, err := c.BatchDownload(ctx, BatchDownloadRequest{
 		ExportMode: "multi_account_json",
@@ -341,7 +401,7 @@ func collectBatchDownloadItems(results ...BatchReclaimResult) []BatchDownloadIte
 	indexes := make(map[string]int)
 	for _, result := range results {
 		for _, task := range result.AllTasks {
-			if strings.ToLower(strings.TrimSpace(task.Status)) != "done" {
+			if !isReclaimTaskDone(task.Status) {
 				continue
 			}
 			orderNo := strings.TrimSpace(task.OrderNo)
@@ -358,6 +418,15 @@ func collectBatchDownloadItems(results ...BatchReclaimResult) []BatchDownloadIte
 		}
 	}
 	return items
+}
+
+func isReclaimTaskDone(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "done", "completed", "complete", "success", "succeeded", "finished":
+		return true
+	default:
+		return false
+	}
 }
 
 // Reclaim401 preserves the single-package helper for callers that only need

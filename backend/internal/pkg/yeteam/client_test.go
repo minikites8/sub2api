@@ -158,3 +158,27 @@ func TestReclaim401PackagesUsesTaskDownloadTokens(t *testing.T) {
 		t.Fatalf("submit request = %#v", batchRequests[0])
 	}
 }
+
+func TestBatchReclaimResultAcceptsCardCodesAliasAndCamelCaseTaskFields(t *testing.T) {
+	var result BatchReclaimResult
+	err := json.Unmarshal([]byte(`{"ok":true,"done":1,"card_codes":{"TEAM-TEST":{"card_status":"ok","tasks":[{"orderNo":"ord-1","downloadToken":"tok-1","status":"completed","resourceUid":"acct-1"}]}}}`), &result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Cards) != 1 || len(result.AllTasks) != 1 {
+		t.Fatalf("cards=%#v tasks=%#v", result.Cards, result.AllTasks)
+	}
+	task := result.AllTasks[0]
+	if task.CardCode != "TEAM-TEST" || task.OrderNo != "ord-1" || task.DownloadToken != "tok-1" || task.Status != "completed" {
+		t.Fatalf("task=%#v", task)
+	}
+}
+
+func TestCollectBatchDownloadItemsKeepsInitialTokenWhenPollOmitsIt(t *testing.T) {
+	initial := BatchReclaimResult{AllTasks: []ReclaimTask{{OrderNo: "ord-1", DownloadToken: "tok-1", Status: "done"}}}
+	final := BatchReclaimResult{AllTasks: []ReclaimTask{{OrderNo: "ord-1", Status: "completed"}}}
+	items := collectBatchDownloadItems(initial, final)
+	if len(items) != 1 || items[0].OrderNo != "ord-1" || items[0].DownloadToken != "tok-1" {
+		t.Fatalf("items = %#v", items)
+	}
+}
