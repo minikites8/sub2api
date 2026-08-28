@@ -1021,39 +1021,6 @@ func openAIFastPolicyUserMatches(ruleUserIDs []int64, userID int64) bool {
 	return false
 }
 
-func applyGroupOpenAIServiceTierPolicy(ctx context.Context, body []byte) ([]byte, error) {
-	if len(body) == 0 || ctx == nil {
-		return body, nil
-	}
-	group, ok := ctx.Value(ctxkey.Group).(*Group)
-	if !ok || !IsGroupContextValid(group) || group.Platform != PlatformOpenAI {
-		return body, nil
-	}
-	mode, tier, err := NormalizeOpenAIServiceTierConfig(group.Platform, group.OpenAIServiceTierMode, group.OpenAIServiceTier)
-	if err != nil {
-		return body, fmt.Errorf("invalid group openai service_tier policy: %w", err)
-	}
-	switch mode {
-	case OpenAIServiceTierModeSet:
-		updated, setErr := sjson.SetBytes(body, "service_tier", tier)
-		if setErr != nil {
-			return body, fmt.Errorf("set group service_tier on body: %w", setErr)
-		}
-		return updated, nil
-	case OpenAIServiceTierModeClear:
-		if !gjson.GetBytes(body, "service_tier").Exists() {
-			return body, nil
-		}
-		updated, deleteErr := sjson.DeleteBytes(body, "service_tier")
-		if deleteErr != nil {
-			return body, fmt.Errorf("clear group service_tier from body: %w", deleteErr)
-		}
-		return updated, nil
-	default:
-		return body, nil
-	}
-}
-
 // openAIFastPolicyCtxKey 是 context 中预取的 OpenAIFastPolicySettings 缓存
 // 键，仅用于 WebSocket 长会话内多帧复用同一份策略快照，避免每帧 DB 命中。
 //
@@ -1098,11 +1065,6 @@ func openAIFastPolicySettingsFromContext(ctx context.Context) *OpenAIFastPolicyS
 func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, account *Account, model string, body []byte) ([]byte, error) {
 	if len(body) == 0 {
 		return body, nil
-	}
-	var err error
-	body, err = applyGroupOpenAIServiceTierPolicy(ctx, body)
-	if err != nil {
-		return body, err
 	}
 	rawTier := gjson.GetBytes(body, "service_tier").String()
 	if rawTier == "" {
@@ -1214,11 +1176,6 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	// upstream reject it rather than guessing at our layer.
 	if frameType != "response.create" {
 		return frame, nil, nil
-	}
-	var err error
-	frame, err = applyGroupOpenAIServiceTierPolicy(ctx, frame)
-	if err != nil {
-		return frame, nil, err
 	}
 	rawTier := gjson.GetBytes(frame, "service_tier").String()
 	if rawTier == "" {
