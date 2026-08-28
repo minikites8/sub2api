@@ -108,6 +108,10 @@ type Group struct {
 	DefaultMappedModel          string
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            GroupModelsListConfig
+	// OpenAI service_tier request policy. The policy applies to every request
+	// routed through an OpenAI group, including WebSocket response.create frames.
+	OpenAIServiceTierMode string
+	OpenAIServiceTier     string
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）。
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
@@ -148,6 +152,44 @@ type Group struct {
 	AccountCount            int64
 	ActiveAccountCount      int64
 	RateLimitedAccountCount int64
+}
+
+const (
+	OpenAIServiceTierModePassthrough = "passthrough"
+	OpenAIServiceTierModeSet         = "set"
+	OpenAIServiceTierModeClear       = "clear"
+)
+
+// NormalizeOpenAIServiceTierConfig validates and canonicalizes the group
+// service_tier policy. OpenAI currently documents priority, flex, auto,
+// default, and scale values; fast remains accepted as a client alias.
+func NormalizeOpenAIServiceTierConfig(platform, mode, tier string) (string, string, error) {
+	if platform != PlatformOpenAI {
+		return OpenAIServiceTierModePassthrough, "", nil
+	}
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = OpenAIServiceTierModePassthrough
+	}
+	switch mode {
+	case OpenAIServiceTierModePassthrough:
+		return mode, "", nil
+	case OpenAIServiceTierModeClear:
+		return mode, "", nil
+	case OpenAIServiceTierModeSet:
+		tier = strings.ToLower(strings.TrimSpace(tier))
+		if tier == "fast" {
+			tier = "priority"
+		}
+		switch tier {
+		case "priority", "flex", "auto", "default", "scale":
+			return mode, tier, nil
+		default:
+			return "", "", fmt.Errorf("openai_service_tier must be one of priority, flex, auto, default, scale")
+		}
+	default:
+		return "", "", fmt.Errorf("openai_service_tier_mode must be one of passthrough, set, clear")
+	}
 }
 
 // RateMultiplierForModel returns the configured model-specific multiplier when

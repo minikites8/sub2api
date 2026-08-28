@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
@@ -11,10 +12,16 @@ import (
 // token requests. This keeps media, metadata, and models-list paths outside
 // the profit-control surface by construction.
 func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+	return s.withGatewayProfitControlGateForModel(ctx, groupID, "")
+}
+
+func (s *GatewayService) withGatewayProfitControlGateForModel(ctx context.Context, groupID *int64, requestedModel string) context.Context {
 	if _, ok := gatewayTokenRequestPricingAtFromContext(ctx); !ok || groupID == nil || *groupID <= 0 {
 		return ctx
 	}
-	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil && existing.groupID == *groupID {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil && existing.groupID == *groupID &&
+		(requestedModel == "" || strings.EqualFold(existing.model, requestedModel)) {
 		return ctx
 	}
 
@@ -37,9 +44,9 @@ func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, group
 		}
 	}
 
-	downstream := billingGroup.RateMultiplier
+	downstream := billingGroup.RateMultiplierForModel(requestedModel)
 	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
-		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
+		downstream = s.ResolveUserGroupRateMultiplierForModel(ctx, userID, billingGroup.ID, requestedModel, downstream)
 	}
 	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
 	threshold := clampProfitControlThreshold(downstream * (1 - group.ProfitMinMargin - group.ProfitSafetyBuffer))
@@ -47,6 +54,7 @@ func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, group
 	gate := &openAIProfitControlGate{
 		groupID:   group.ID,
 		platform:  group.Platform,
+		model:     requestedModel,
 		threshold: threshold,
 		pricingAt: pricingAt,
 	}

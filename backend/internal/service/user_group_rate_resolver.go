@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -42,11 +43,22 @@ func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache
 }
 
 func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
+	return r.ResolveForModel(ctx, userID, groupID, "", groupDefaultMultiplier)
+}
+
+// ResolveForModel resolves a user/group override with a cache key scoped to
+// the billing model. The model dimension matters when a group supplies
+// different defaults for different models and no user override exists.
+func (r *userGroupRateResolver) ResolveForModel(ctx context.Context, userID, groupID int64, model string, groupDefaultMultiplier float64) float64 {
 	if r == nil || userID <= 0 || groupID <= 0 {
 		return groupDefaultMultiplier
 	}
 
+	model = strings.ToLower(strings.TrimSpace(model))
 	key := fmt.Sprintf("%d:%d", userID, groupID)
+	if model != "" {
+		key += ":" + model
+	}
 	if r.cache != nil {
 		if cached, ok := r.cache.Get(key); ok {
 			if multiplier, castOK := cached.(float64); castOK {

@@ -118,6 +118,18 @@ func (_u *GroupUpdate) AddRateMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (_u *GroupUpdate) SetModelRateMultipliers(v map[string]float64) *GroupUpdate {
+	_u.mutation.SetModelRateMultipliers(v)
+	return _u
+}
+
+// ClearModelRateMultipliers clears the value of the "model_rate_multipliers" field.
+func (_u *GroupUpdate) ClearModelRateMultipliers() *GroupUpdate {
+	_u.mutation.ClearModelRateMultipliers()
+	return _u
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_u *GroupUpdate) SetPeakRateEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetPeakRateEnabled(v)
@@ -1059,6 +1071,34 @@ func (_u *GroupUpdate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _u
 }
 
+// SetOpenaiServiceTierMode sets the "openai_service_tier_mode" field.
+func (_u *GroupUpdate) SetOpenaiServiceTierMode(v string) *GroupUpdate {
+	_u.mutation.SetOpenaiServiceTierMode(v)
+	return _u
+}
+
+// SetNillableOpenaiServiceTierMode sets the "openai_service_tier_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableOpenaiServiceTierMode(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetOpenaiServiceTierMode(*v)
+	}
+	return _u
+}
+
+// SetOpenaiServiceTier sets the "openai_service_tier" field.
+func (_u *GroupUpdate) SetOpenaiServiceTier(v string) *GroupUpdate {
+	_u.mutation.SetOpenaiServiceTier(v)
+	return _u
+}
+
+// SetNillableOpenaiServiceTier sets the "openai_service_tier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableOpenaiServiceTier(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetOpenaiServiceTier(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1622,6 +1662,16 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.OpenaiServiceTierMode(); ok {
+		if err := group.OpenaiServiceTierModeValidator(v); err != nil {
+			return &ValidationError{Name: "openai_service_tier_mode", err: fmt.Errorf(`ent: validator failed for field "Group.openai_service_tier_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.OpenaiServiceTier(); ok {
+		if err := group.OpenaiServiceTierValidator(v); err != nil {
+			return &ValidationError{Name: "openai_service_tier", err: fmt.Errorf(`ent: validator failed for field "Group.openai_service_tier": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
@@ -1675,6 +1725,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(group.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.ModelRateMultipliers(); ok {
+		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
+	}
+	if _u.mutation.ModelRateMultipliersCleared() {
+		_spec.ClearField(group.FieldModelRateMultipliers, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -1961,6 +2017,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.OpenaiServiceTierMode(); ok {
+		_spec.SetField(group.FieldOpenaiServiceTierMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OpenaiServiceTier(); ok {
+		_spec.SetField(group.FieldOpenaiServiceTier, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2422,6 +2484,18 @@ func (_u *GroupUpdateOne) SetNillableRateMultiplier(v *float64) *GroupUpdateOne 
 // AddRateMultiplier adds value to the "rate_multiplier" field.
 func (_u *GroupUpdateOne) AddRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.AddRateMultiplier(v)
+	return _u
+}
+
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (_u *GroupUpdateOne) SetModelRateMultipliers(v map[string]float64) *GroupUpdateOne {
+	_u.mutation.SetModelRateMultipliers(v)
+	return _u
+}
+
+// ClearModelRateMultipliers clears the value of the "model_rate_multipliers" field.
+func (_u *GroupUpdateOne) ClearModelRateMultipliers() *GroupUpdateOne {
+	_u.mutation.ClearModelRateMultipliers()
 	return _u
 }
 
@@ -3366,6 +3440,34 @@ func (_u *GroupUpdateOne) SetNillableModelsListConfig(v *domain.GroupModelsListC
 	return _u
 }
 
+// SetOpenaiServiceTierMode sets the "openai_service_tier_mode" field.
+func (_u *GroupUpdateOne) SetOpenaiServiceTierMode(v string) *GroupUpdateOne {
+	_u.mutation.SetOpenaiServiceTierMode(v)
+	return _u
+}
+
+// SetNillableOpenaiServiceTierMode sets the "openai_service_tier_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableOpenaiServiceTierMode(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetOpenaiServiceTierMode(*v)
+	}
+	return _u
+}
+
+// SetOpenaiServiceTier sets the "openai_service_tier" field.
+func (_u *GroupUpdateOne) SetOpenaiServiceTier(v string) *GroupUpdateOne {
+	_u.mutation.SetOpenaiServiceTier(v)
+	return _u
+}
+
+// SetNillableOpenaiServiceTier sets the "openai_service_tier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableOpenaiServiceTier(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetOpenaiServiceTier(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -3942,6 +4044,16 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.OpenaiServiceTierMode(); ok {
+		if err := group.OpenaiServiceTierModeValidator(v); err != nil {
+			return &ValidationError{Name: "openai_service_tier_mode", err: fmt.Errorf(`ent: validator failed for field "Group.openai_service_tier_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.OpenaiServiceTier(); ok {
+		if err := group.OpenaiServiceTierValidator(v); err != nil {
+			return &ValidationError{Name: "openai_service_tier", err: fmt.Errorf(`ent: validator failed for field "Group.openai_service_tier": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
@@ -4012,6 +4124,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(group.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.ModelRateMultipliers(); ok {
+		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
+	}
+	if _u.mutation.ModelRateMultipliersCleared() {
+		_spec.ClearField(group.FieldModelRateMultipliers, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -4298,6 +4416,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.OpenaiServiceTierMode(); ok {
+		_spec.SetField(group.FieldOpenaiServiceTierMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OpenaiServiceTier(); ok {
+		_spec.SetField(group.FieldOpenaiServiceTier, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)

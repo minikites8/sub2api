@@ -451,6 +451,14 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err != nil {
 		return nil, err
 	}
+	modelRateMultipliers, err := NormalizeModelRateMultipliers(input.ModelRateMultipliers)
+	if err != nil {
+		return nil, err
+	}
+	openAIServiceTierMode, openAIServiceTier, err := NormalizeOpenAIServiceTierConfig(platform, input.OpenAIServiceTierMode, input.OpenAIServiceTier)
+	if err != nil {
+		return nil, err
+	}
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
@@ -625,6 +633,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Description:                     input.Description,
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
+		ModelRateMultipliers:            modelRateMultipliers,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -673,6 +682,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
+		OpenAIServiceTierMode:           openAIServiceTierMode,
+		OpenAIServiceTier:               openAIServiceTier,
 		RPMLimit:                        input.RPMLimit,
 		MaxReasoningEffort:              maxReasoningEffort,
 		ReasoningEffortMappings:         reasoningEffortMappings,
@@ -847,6 +858,27 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 		group.RateMultiplier = *input.RateMultiplier
 	}
+	if input.ModelRateMultipliers != nil {
+		modelRateMultipliers, normalizeErr := NormalizeModelRateMultipliers(input.ModelRateMultipliers)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		group.ModelRateMultipliers = modelRateMultipliers
+	}
+	openAIServiceTierMode := group.OpenAIServiceTierMode
+	openAIServiceTier := group.OpenAIServiceTier
+	if input.OpenAIServiceTierMode != nil {
+		openAIServiceTierMode = *input.OpenAIServiceTierMode
+	}
+	if input.OpenAIServiceTier != nil {
+		openAIServiceTier = *input.OpenAIServiceTier
+	}
+	openAIServiceTierMode, openAIServiceTier, err = NormalizeOpenAIServiceTierConfig(group.Platform, openAIServiceTierMode, openAIServiceTier)
+	if err != nil {
+		return nil, err
+	}
+	group.OpenAIServiceTierMode = openAIServiceTierMode
+	group.OpenAIServiceTier = openAIServiceTier
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive
 	}

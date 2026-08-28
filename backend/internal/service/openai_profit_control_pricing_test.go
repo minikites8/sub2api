@@ -46,6 +46,33 @@ func TestProfitControl_RequestPricingContext(t *testing.T) {
 	})
 }
 
+func TestProfitControl_ModelMultiplierChangesGateThreshold(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	groupID := int64(610)
+	group := profitControlTestGroup(groupID, 0.25, 0)
+	group.RateMultiplier = 1.0
+	group.ModelRateMultipliers = map[string]float64{"gpt-cheap": 0.4}
+	ctx := profitControlTestCtx(group)
+	ctx = svc.withOpenAIProfitControlGateForModel(ctx, &groupID, "GPT-CHEAP")
+	gate, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
+	require.True(t, ok)
+	require.Equal(t, "GPT-CHEAP", gate.model)
+	require.InDelta(t, 0.3, gate.threshold, 1e-12)
+
+	accountRate := 0.5
+	account := &Account{ID: 610, RateMultiplier: &accountRate}
+	vetoed, reason := OpenAIProfitControlVeto(ctx, account)
+	require.True(t, vetoed)
+	require.Equal(t, openAIProfitFilterReasonThreshold, reason)
+
+	defaultCtx := svc.withOpenAIProfitControlGate(profitControlTestCtx(group), &groupID)
+	defaultGate, ok := defaultCtx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
+	require.True(t, ok)
+	require.InDelta(t, 0.75, defaultGate.threshold, 1e-12)
+	vetoed, _ = OpenAIProfitControlVeto(defaultCtx, account)
+	require.False(t, vetoed)
+}
+
 // failover 重入复用同一门：请求中途分组配置变化不得改变本请求阈值。
 func TestProfitControl_GateReuseKeepsThresholdAcrossFailover(t *testing.T) {
 	svc := &OpenAIGatewayService{}

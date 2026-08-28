@@ -13,6 +13,10 @@ import (
 )
 
 func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
+	return s.getUserGroupRateMultiplierForModel(ctx, userID, groupID, "", groupDefaultMultiplier)
+}
+
+func (s *GatewayService) getUserGroupRateMultiplierForModel(ctx context.Context, userID, groupID int64, model string, groupDefaultMultiplier float64) float64 {
 	if s == nil {
 		return groupDefaultMultiplier
 	}
@@ -26,12 +30,18 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 			"service.gateway",
 		)
 	}
-	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
+	return resolver.ResolveForModel(ctx, userID, groupID, model, groupDefaultMultiplier)
 }
 
 // ResolveUserGroupRateMultiplier resolves the same cached multiplier used by usage billing.
 func (s *GatewayService) ResolveUserGroupRateMultiplier(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
 	return s.getUserGroupRateMultiplier(ctx, userID, groupID, groupDefaultMultiplier)
+}
+
+// ResolveUserGroupRateMultiplierForModel resolves a user/group override using
+// a model-scoped cache entry so model-specific group defaults remain isolated.
+func (s *GatewayService) ResolveUserGroupRateMultiplierForModel(ctx context.Context, userID, groupID int64, model string, groupDefaultMultiplier float64) float64 {
+	return s.getUserGroupRateMultiplierForModel(ctx, userID, groupID, model, groupDefaultMultiplier)
 }
 
 // RecordUsageInput 记录使用量的输入参数。
@@ -797,22 +807,15 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
-	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
-	multiplier := 1.0
+	// 获取系统默认费率倍数；分组倍率在确定计费模型后解析，支持模型级覆盖。
+	baseMultiplier := 1.0
 	if s.cfg != nil {
-		multiplier = s.cfg.Default.RateMultiplier
+		baseMultiplier = s.cfg.Default.RateMultiplier
 	}
-	if apiKey.GroupID != nil && apiKey.Group != nil {
-		groupDefault := apiKey.Group.RateMultiplier
-		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
-	}
-	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
-	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
 	pricingAt := input.PricingAt
 	if pricingAt.IsZero() {
 		pricingAt = timezone.Now()
 	}
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, pricingAt)
 
 	// 确定计费模型
 	concreteBillingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -833,6 +836,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 通用兜底（与 OpenAI 路径的 usageBillingModelCandidates 语义对齐）：
 	// 选定模型查不到任何价格时回退到实际转发的具体模型。已定价流量不受影响。
 	billingModel = s.billableModelWithFallback(ctx, apiKey, billingModel, result.UpstreamModel, result.Model)
+	if apiKey.GroupID != nil && apiKey.Group != nil {
+		groupDefault := apiKey.Group.RateMultiplierForModel(billingModel)
+		baseMultiplier = s.ResolveUserGroupRateMultiplierForModel(ctx, user.ID, *apiKey.GroupID, billingModel, groupDefault)
+	}
+	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, pricingAt)
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model
@@ -854,12 +863,20 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		result.ImageCount > 0 || result.AudioUsage != nil || result.SearchCount > 0,
 	); responseModel != "" && !strings.EqualFold(responseModel, strings.TrimSpace(billingModel)) {
 		if identified, responseChannelPriced := s.hasIdentifiedResponseModelPricing(ctx, responseModel, apiKey); identified {
-			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, multiplier, imageMultiplier, pricingAt, opts)
+			responseBaseMultiplier := baseMultiplier
+			if apiKey.GroupID != nil && apiKey.Group != nil {
+				responseBaseMultiplier = s.ResolveUserGroupRateMultiplierForModel(ctx, user.ID, *apiKey.GroupID, responseModel, apiKey.Group.RateMultiplierForModel(responseModel))
+			}
+			responseMultiplier, responseImageMultiplier := computePeakAwareMultipliers(apiKey, responseBaseMultiplier, pricingAt)
+			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, responseMultiplier, responseImageMultiplier, pricingAt, opts)
 			baselineChannelPriced := s.resolveChannelPricing(ctx, billingModel, apiKey) != nil
 			if responseModelBillingAdoptable(cost, responseCost, baselineChannelPriced, responseChannelPriced) {
 				// billingModel 到此为止只是定价查表的入参，后续流程只消费 cost，
 				// 因此这里不改写它，改由日志记录实际生效的计费基准。
 				logResponseModelBillingApplied("service.gateway", account, result.RequestID, billingModel, responseModel, cost, responseCost)
+				multiplier = responseMultiplier
+				imageMultiplier = responseImageMultiplier
+				baseMultiplier = responseBaseMultiplier
 				cost = responseCost
 			}
 		}

@@ -305,6 +305,16 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// OpenaiServiceTierMode applies equality check predicate on the "openai_service_tier_mode" field. It's identical to OpenaiServiceTierModeEQ.
+func OpenaiServiceTierMode(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTier applies equality check predicate on the "openai_service_tier" field. It's identical to OpenaiServiceTierEQ.
+func OpenaiServiceTier(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOpenaiServiceTier, v))
+}
+
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
@@ -678,6 +688,16 @@ func RateMultiplierLT(v float64) predicate.Group {
 // RateMultiplierLTE applies the LTE predicate on the "rate_multiplier" field.
 func RateMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRateMultiplier, v))
+}
+
+// ModelRateMultipliersIsNil applies the IsNil predicate on the "model_rate_multipliers" field.
+func ModelRateMultipliersIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldModelRateMultipliers))
+}
+
+// ModelRateMultipliersNotNil applies the NotNil predicate on the "model_rate_multipliers" field.
+func ModelRateMultipliersNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldModelRateMultipliers))
 }
 
 // PeakRateEnabledEQ applies the EQ predicate on the "peak_rate_enabled" field.
@@ -2393,6 +2413,136 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// OpenaiServiceTierModeEQ applies the EQ predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeNEQ applies the NEQ predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeIn applies the In predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldOpenaiServiceTierMode, vs...))
+}
+
+// OpenaiServiceTierModeNotIn applies the NotIn predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldOpenaiServiceTierMode, vs...))
+}
+
+// OpenaiServiceTierModeGT applies the GT predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeGTE applies the GTE predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeLT applies the LT predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeLTE applies the LTE predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeContains applies the Contains predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeHasPrefix applies the HasPrefix predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeHasSuffix applies the HasSuffix predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeEqualFold applies the EqualFold predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierModeContainsFold applies the ContainsFold predicate on the "openai_service_tier_mode" field.
+func OpenaiServiceTierModeContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldOpenaiServiceTierMode, v))
+}
+
+// OpenaiServiceTierEQ applies the EQ predicate on the "openai_service_tier" field.
+func OpenaiServiceTierEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierNEQ applies the NEQ predicate on the "openai_service_tier" field.
+func OpenaiServiceTierNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierIn applies the In predicate on the "openai_service_tier" field.
+func OpenaiServiceTierIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldOpenaiServiceTier, vs...))
+}
+
+// OpenaiServiceTierNotIn applies the NotIn predicate on the "openai_service_tier" field.
+func OpenaiServiceTierNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldOpenaiServiceTier, vs...))
+}
+
+// OpenaiServiceTierGT applies the GT predicate on the "openai_service_tier" field.
+func OpenaiServiceTierGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierGTE applies the GTE predicate on the "openai_service_tier" field.
+func OpenaiServiceTierGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierLT applies the LT predicate on the "openai_service_tier" field.
+func OpenaiServiceTierLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierLTE applies the LTE predicate on the "openai_service_tier" field.
+func OpenaiServiceTierLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierContains applies the Contains predicate on the "openai_service_tier" field.
+func OpenaiServiceTierContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierHasPrefix applies the HasPrefix predicate on the "openai_service_tier" field.
+func OpenaiServiceTierHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierHasSuffix applies the HasSuffix predicate on the "openai_service_tier" field.
+func OpenaiServiceTierHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierEqualFold applies the EqualFold predicate on the "openai_service_tier" field.
+func OpenaiServiceTierEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldOpenaiServiceTier, v))
+}
+
+// OpenaiServiceTierContainsFold applies the ContainsFold predicate on the "openai_service_tier" field.
+func OpenaiServiceTierContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldOpenaiServiceTier, v))
 }
 
 // RpmLimitEQ applies the EQ predicate on the "rpm_limit" field.

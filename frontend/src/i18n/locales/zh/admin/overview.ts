@@ -881,6 +881,15 @@ export default {
           '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       },
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+      modelRateMultiplierLabel: '模型专属倍率',
+      addModelRateMultiplier: '添加模型',
+      modelRateMultiplierModelPlaceholder: '模型名称，如 gpt-4.1',
+      modelRateMultiplierValuePlaceholder: '倍率',
+      deleteModelRateMultiplier: '删除模型倍率',
+      modelRateMultiplierHint: '模型名称精确匹配后使用此倍率，其他模型使用分组倍率。',
+      modelRateMultiplierModelRequired: '请填写每条模型专属倍率的模型名称。',
+      modelRateMultiplierInvalid: '模型专属倍率必须是大于或等于 0 的有限数字。',
+      modelRateMultiplierDuplicate: '同一个模型只能配置一条专属倍率。',
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',
@@ -1173,6 +1182,17 @@ export default {
         unsupportedTitle: '当前服务端不支持 Live',
         unsupportedMessage: '当前 Sub2API 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
         enableAnyway: '仍然开启'
+      },
+      openaiServiceTier: {
+        title: 'OpenAI service_tier 策略',
+        mode: '请求 service_tier',
+        value: '指定值',
+        passthrough: '透传客户端值',
+        set: '设置指定值',
+        clear: '清除 service_tier',
+        priority: 'priority（Fast）',
+        flex: 'flex',
+        hint: '对本分组的每个 OpenAI 请求生效；设置指定值会覆盖客户端值。'
       },
       invalidRequestFallback: {
         title: '无效请求兜底分组',

@@ -1,790 +1,1564 @@
-<template>
-  <AppLayout>
-    <section class="model-marketplace mx-auto w-full max-w-[1440px] pb-10">
-      <header class="mb-6 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-3">
-            <h1 class="text-3xl font-bold tracking-normal text-gray-950 dark:text-white md:text-4xl">
-              {{ t('modelMarketplace.title') }}
-            </h1>
-            <span
-              v-if="snapshot?.schema_version"
-              class="rounded-full border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-1 font-jetbrains-mono text-xs text-emerald-300"
-            >
-              v{{ snapshot.schema_version }}
-            </span>
-          </div>
-          <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-jetbrains-mono text-xs text-gray-500 dark:text-dark-400">
-            <span class="inline-flex items-center gap-1.5">
-              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {{ t('modelMarketplace.publicAccess') }}
-            </span>
-            <span>{{ t('modelMarketplace.priceUnit') }}</span>
-            <span v-if="snapshot">{{ t('modelMarketplace.updatedAt', { time: formatDate(snapshot.generated_at) }) }}</span>
-          </div>
-        </div>
+package service
 
-        <div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-dark-700 bg-dark-700 sm:grid-cols-4 xl:min-w-[520px]">
-          <div class="bg-dark-900 px-4 py-3">
-            <div class="font-jetbrains-mono text-xs uppercase text-dark-400">{{ t('modelMarketplace.stats.models') }}</div>
-            <div class="mt-1 text-xl font-semibold text-white">{{ models.length }}</div>
-          </div>
-          <div class="bg-dark-900 px-4 py-3">
-            <div class="font-jetbrains-mono text-xs uppercase text-dark-400">{{ t('modelMarketplace.stats.providers') }}</div>
-            <div class="mt-1 text-xl font-semibold text-white">{{ providerOptions.length - 1 }}</div>
-          </div>
-          <div class="bg-dark-900 px-4 py-3">
-            <div class="font-jetbrains-mono text-xs uppercase text-dark-400">{{ t('modelMarketplace.stats.operational') }}</div>
-            <div class="mt-1 text-xl font-semibold text-emerald-300">{{ operationalCount }}</div>
-          </div>
-          <div class="bg-dark-900 px-4 py-3">
-            <div class="font-jetbrains-mono text-xs uppercase text-dark-400">{{ t('modelMarketplace.stats.monitored') }}</div>
-            <div class="mt-1 text-xl font-semibold text-white">{{ monitoringCoverage }}</div>
-          </div>
-        </div>
-      </header>
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
 
-      <div class="mb-5 rounded-lg border border-dark-700 bg-dark-900/80 p-3">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <label class="relative block min-w-0 flex-1 lg:max-w-md">
-            <span class="sr-only">{{ t('modelMarketplace.searchPlaceholder') }}</span>
-            <Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
-            <input
-              v-model.trim="search"
-              type="search"
-              class="h-10 w-full rounded border border-dark-700 bg-dark-950 pl-9 pr-3 font-jetbrains-mono text-sm text-white outline-none transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
-              :placeholder="t('modelMarketplace.searchPlaceholder')"
-            >
-          </label>
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
+)
 
-          <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <select v-if="providerOptions.length > 1" v-model="providerFilter" class="market-select" :aria-label="t('modelMarketplace.providerFilter')">
-              <option v-for="option in providerOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-            <select v-model="billingFilter" class="market-select" :aria-label="t('modelMarketplace.billingFilter')">
-              <option v-for="option in billingOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-            <select v-model="statusFilter" class="market-select" :aria-label="t('modelMarketplace.statusFilter')">
-              <option v-for="option in statusOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-            <div class="col-span-2 inline-flex h-10 items-center rounded border border-dark-700 bg-dark-950 p-1 sm:col-span-1">
-              <button
-                v-for="windowOption in windows"
-                :key="windowOption"
-                type="button"
-                class="h-8 min-w-12 rounded px-2 font-jetbrains-mono text-xs transition"
-                :class="monitorWindow === windowOption ? 'bg-dark-700 text-emerald-300' : 'text-dark-400 hover:text-white'"
-                @click="monitorWindow = windowOption"
-              >
-                {{ monitorWindowLabel(windowOption) }}
-              </button>
-            </div>
-            <button
-              type="button"
-              class="col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded border border-dark-700 bg-dark-950 px-3 text-sm text-dark-200 transition hover:border-emerald-500/60 hover:text-white disabled:cursor-wait disabled:opacity-60 sm:col-span-1 sm:w-10 sm:px-0"
-              :disabled="loading"
-              :title="t('modelMarketplace.refresh')"
-              @click="loadSnapshot"
-            >
-              <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
-              <span class="sm:hidden">{{ t('modelMarketplace.refresh') }}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="error" class="rounded-lg border border-red-500/30 bg-red-950/20 p-5 text-sm text-red-200">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <span>{{ error }}</span>
-          <button type="button" class="btn btn-secondary" @click="loadSnapshot">{{ t('modelMarketplace.retry') }}</button>
-        </div>
-      </div>
-
-      <div v-else-if="loading && !snapshot" class="space-y-2" aria-live="polite">
-        <div v-for="index in 6" :key="index" class="h-[92px] animate-pulse rounded-lg border border-dark-800 bg-dark-900" />
-      </div>
-
-      <div v-else-if="filteredModels.length === 0" class="rounded-lg border border-dark-700 bg-dark-900 px-6 py-16 text-center">
-        <Icon name="cpu" size="xl" class="mx-auto text-dark-400" />
-        <h2 class="mt-4 text-lg font-semibold text-white">{{ t('modelMarketplace.empty.title') }}</h2>
-        <p class="mt-2 text-sm text-dark-400">{{ t('modelMarketplace.empty.description') }}</p>
-      </div>
-
-      <template v-else>
-        <div class="hidden overflow-hidden rounded-lg border border-dark-700 bg-dark-950 md:block">
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[960px] border-collapse text-left">
-              <thead class="border-b border-dark-700 bg-dark-900">
-                <tr class="font-jetbrains-mono text-xs uppercase text-dark-400">
-                  <th class="px-5 py-3 font-semibold">{{ t('modelMarketplace.columns.model') }}</th>
-                  <th class="px-4 py-3 font-semibold">{{ t('modelMarketplace.columns.billing') }}</th>
-                  <th class="px-4 py-3 font-semibold">{{ t('modelMarketplace.columns.pricing') }}</th>
-                  <th class="px-4 py-3 font-semibold">{{ t('modelMarketplace.columns.groups') }}</th>
-                  <th class="px-4 py-3 font-semibold">{{ t('modelMarketplace.columns.latency') }}</th>
-                  <th class="w-14 px-3 py-3"><span class="sr-only">{{ t('modelMarketplace.columns.actions') }}</span></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-dark-800">
-                <template v-for="model in filteredModels" :key="model.id">
-                  <tr class="market-row group bg-dark-950 transition-colors hover:bg-dark-900/70">
-                    <td class="px-5 py-4">
-                      <div class="flex min-w-[280px] items-start gap-3.5">
-                        <div
-                          class="flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded border border-dark-700 bg-white text-dark-900"
-                          :title="model.developer || t('modelMarketplace.unknownDeveloper')"
-                        >
-                          <ModelIcon :model="model.name" :developer="model.developer" size="26px" />
-                        </div>
-                        <div class="min-w-0">
-                          <button type="button" class="flex max-w-[260px] items-center gap-1.5 text-left text-lg font-semibold text-white hover:text-emerald-300" @click="toggleExpanded(model.id)">
-                            <span class="truncate">{{ model.name }}</span>
-                          </button>
-                          <div class="mt-1 flex items-center gap-2 font-jetbrains-mono text-xs">
-                            <span class="text-dark-400">{{ model.developer || t('modelMarketplace.unknownDeveloper') }}</span>
-                            <span v-if="model.visiblePlatforms.length > 0" class="border-l border-dark-700 pl-2 text-dark-500">{{ platformNames(model.visiblePlatforms) }}</span>
-                            <span :class="statusTextClass(activeMonitoring(model).status)">{{ formatAvailability(model) }}</span>
-                            <button type="button" class="opacity-0 transition hover:text-white group-hover:opacity-100 focus:opacity-100" :title="t('modelMarketplace.copyModelId')" @click="copyModelId(model.name)">
-                              <Icon name="copy" size="xs" />
-                            </button>
-                          </div>
-                          <div
-                            class="mt-2 flex gap-[2px]"
-                            :aria-label="monitorAriaLabel(model)"
-                          >
-                            <span
-                              v-for="sample in monitorSquares(model)"
-                              :key="sample.key"
-                              class="h-[5px] w-[5px] flex-none rounded-[1px]"
-                              :class="statusSquareClass(sample.status)"
-                              :title="sample.title"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td class="px-4 py-4">
-                      <div class="flex flex-wrap gap-1.5">
-                        <span v-for="mode in model.billingModes" :key="mode" class="rounded border border-dark-700 bg-dark-900 px-2 py-1 font-jetbrains-mono text-xs text-dark-200">
-                          {{ billingModeLabel(mode) }}
-                        </span>
-                      </div>
-                    </td>
-                    <td class="min-w-[340px] px-4 py-4">
-                      <div class="space-y-2 font-jetbrains-mono text-xs">
-                        <div v-if="hasTokenPrices(model)" class="flex flex-wrap gap-x-3 gap-y-1 text-dark-200">
-                          <span class="text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.units.token') }}</span>
-                          <span><span class="text-dark-400">IN</span> {{ tokenPriceRange(model, 'input_usd_per_token') }}</span>
-                          <span><span class="text-dark-400">OUT</span> {{ tokenPriceRange(model, 'output_usd_per_token') }}</span>
-                          <span v-if="hasCachePrices(model)"><span class="text-dark-400">W/R</span> {{ tokenPriceRange(model, 'cache_write_usd_per_token') }} / {{ tokenPriceRange(model, 'cache_read_usd_per_token') }}</span>
-                        </div>
-                        <div v-if="!hasTokenPrices(model)" class="text-dark-200">
-                          {{ requestPriceRange(model) }}
-                        </div>
-                      </div>
-                    </td>
-                    <td class="px-4 py-4">
-                      <div class="text-sm font-medium text-white">{{ model.profiles.length }}</div>
-                      <div class="mt-1 font-jetbrains-mono text-xs text-dark-400">{{ multiplierRange(model) }}</div>
-                    </td>
-                    <td class="px-4 py-4">
-                      <div class="font-jetbrains-mono text-xs text-white">{{ formatLatency(model.monitoring.latestLatencyMs) }}</div>
-                      <div v-if="model.monitoring.avgLatency7dMs != null" class="mt-1 text-xs text-dark-400">
-                        {{ t('modelMarketplace.avg7d') }} {{ formatLatency(model.monitoring.avgLatency7dMs) }}
-                      </div>
-                    </td>
-                    <td class="px-3 py-4 text-right">
-                      <button
-                        type="button"
-                        class="inline-flex h-8 w-8 items-center justify-center rounded text-dark-400 transition hover:bg-dark-800 hover:text-white"
-                        :title="expanded.has(model.id) ? t('modelMarketplace.collapse') : t('modelMarketplace.details')"
-                        @click="toggleExpanded(model.id)"
-                      >
-                        <Icon name="chevronDown" size="sm" class="transition-transform" :class="expanded.has(model.id) ? 'rotate-180' : ''" />
-                      </button>
-                    </td>
-                  </tr>
-                  <tr v-if="expanded.has(model.id)" class="bg-dark-950">
-                    <td colspan="6" class="px-5 py-5">
-                      <ModelPricingDetail :model="model" />
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="space-y-3 md:hidden">
-          <article v-for="model in filteredModels" :key="model.id" class="overflow-hidden rounded-lg border border-dark-700 bg-dark-950">
-            <button type="button" class="flex w-full items-start justify-between gap-3 p-4 text-left" @click="toggleExpanded(model.id)">
-              <span class="flex min-w-0 items-center gap-3.5">
-                <span
-                  class="flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded border border-dark-700 bg-white text-dark-900"
-                  :title="model.developer || t('modelMarketplace.unknownDeveloper')"
-                >
-                  <ModelIcon :model="model.name" :developer="model.developer" size="26px" />
-                </span>
-                <span class="min-w-0">
-                  <span class="block truncate text-lg font-semibold text-white">{{ model.name }}</span>
-                  <span class="mt-1 block font-jetbrains-mono text-xs text-dark-400">
-                    {{ model.developer || t('modelMarketplace.unknownDeveloper') }}
-                    <template v-if="model.visiblePlatforms.length > 0"> · {{ platformNames(model.visiblePlatforms) }}</template>
-                    · {{ billingModeNames(model.billingModes) }}
-                  </span>
-                  <span class="mt-2 flex items-center gap-2">
-                    <span class="font-jetbrains-mono text-xs" :class="statusTextClass(activeMonitoring(model).status)">{{ formatAvailability(model) }}</span>
-                    <span
-                      class="flex gap-[2px]"
-                      :aria-label="monitorAriaLabel(model)"
-                    >
-                      <span
-                        v-for="sample in monitorSquares(model)"
-                        :key="sample.key"
-                        class="h-[5px] w-[5px] flex-none rounded-[1px]"
-                        :class="statusSquareClass(sample.status)"
-                        :title="sample.title"
-                      />
-                    </span>
-                  </span>
-                </span>
-              </span>
-              <Icon name="chevronDown" size="sm" class="mt-2 flex-none text-dark-400 transition-transform" :class="expanded.has(model.id) ? 'rotate-180' : ''" />
-            </button>
-            <div class="grid grid-cols-2 gap-px border-y border-dark-800 bg-dark-800">
-              <div class="col-span-2 bg-dark-950 p-3">
-                <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.pricing') }}</div>
-                <div class="mt-2 space-y-2 font-jetbrains-mono text-xs">
-                  <div v-if="hasTokenPrices(model)" class="flex flex-wrap gap-x-3 gap-y-1 text-white">
-                    <span><span class="text-dark-400">IN</span> {{ tokenPriceRange(model, 'input_usd_per_token') }}</span>
-                    <span><span class="text-dark-400">OUT</span> {{ tokenPriceRange(model, 'output_usd_per_token') }}</span>
-                    <span class="text-dark-400">{{ t('modelMarketplace.units.token') }}</span>
-                  </div>
-                  <div v-if="!hasTokenPrices(model)" class="text-white">
-                    {{ requestPriceRange(model) }}
-                  </div>
-                </div>
-              </div>
-              <div class="bg-dark-950 p-3">
-                <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.groups') }}</div>
-                <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ model.profiles.length }} · {{ multiplierRange(model) }}</div>
-              </div>
-              <div class="bg-dark-950 p-3">
-                <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.latency') }}</div>
-                <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ formatLatency(model.monitoring.latestLatencyMs) }}</div>
-              </div>
-            </div>
-            <div v-if="expanded.has(model.id)" class="p-4">
-              <ModelPricingDetail :model="model" compact />
-            </div>
-          </article>
-        </div>
-
-        <div class="mt-4 flex flex-col gap-2 text-xs text-dark-400 sm:flex-row sm:items-center sm:justify-between">
-          <span>{{ t('modelMarketplace.showing', { shown: filteredModels.length, total: models.length }) }}</span>
-          <span>{{ t('modelMarketplace.priceNote') }}</span>
-        </div>
-      </template>
-    </section>
-    <PublicSiteFooter :description="t('home.footer.allRightsReserved')" theme="models" />
-  </AppLayout>
-</template>
-
-<script setup lang="ts">
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, type PropType } from 'vue'
-import { useI18n } from 'vue-i18n'
-import AppLayout from '@/components/layout/AppLayout.vue'
-import Icon from '@/components/icons/Icon.vue'
-import ModelIcon from '@/components/common/ModelIcon.vue'
-import PublicSiteFooter from '@/components/public/PublicSiteFooter.vue'
-import { getPublicTransitSnapshot, type PublicTransitModel, type PublicTransitSnapshot } from '@/api/publicTransit'
-import { useClipboard } from '@/composables/useClipboard'
-import {
-  availabilityForWindow,
-  applyGroupMultiplier,
-  buildMarketplaceModels,
-  effectiveTokenPrices,
-  hasTokenPricing,
-  monitoringForWindow,
-  type MarketplaceModel,
-  type MarketplaceMonitoring,
-  type MarketplaceMonitoringWindow,
-  type MarketplaceStatus,
-  type MarketplaceWindow,
-  type TokenPriceField,
-} from '@/utils/modelMarketplace'
-
-const props = defineProps<{ previewSnapshot?: PublicTransitSnapshot }>()
-const { t } = useI18n()
-const { copyToClipboard } = useClipboard()
-
-const snapshot = ref<PublicTransitSnapshot | null>(props.previewSnapshot || null)
-const loading = ref(false)
-const error = ref('')
-const search = ref('')
-const providerFilter = ref('')
-const billingFilter = ref('')
-const statusFilter = ref('')
-const monitorWindow = ref<MarketplaceWindow>('90m')
-const expanded = ref(new Set<string>())
-const windows: MarketplaceWindow[] = ['90m', '12h', '1d', '15d']
-const MONITOR_SAMPLE_COUNT = 24
-let abortController: AbortController | null = null
-
-interface MonitorSquare {
-  key: string
-  status: MarketplaceStatus
-  title: string
+func (s *OpenAIGatewayService) validateUpstreamBaseURL(raw string) (string, error) {
+	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
+		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		if err != nil {
+			return "", fmt.Errorf("invalid base_url: %w", err)
+		}
+		return normalized, nil
+	}
+	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist: true,
+		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+	})
+	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+	}
+	return normalized, nil
 }
 
-const models = computed(() => snapshot.value ? buildMarketplaceModels(snapshot.value) : [])
-const operationalCount = computed(() => models.value.filter((model) => model.monitoring.status === 'operational').length)
-const monitoredCount = computed(() => models.value.filter((model) => model.monitoring.status !== 'unmonitored').length)
-const monitoringCoverage = computed(() => models.value.length > 0 ? `${Math.round(monitoredCount.value / models.value.length * 100)}%` : '0%')
-
-function monitorWindowLabel(window: MarketplaceWindow): string {
-  return window === '90m' ? '90min' : window
+// buildOpenAIResponsesURL 组装 OpenAI Responses 端点。
+// - base 以 /v1 结尾：追加 /responses
+// - base 以其他版本段结尾（如 /v4）：追加 /responses
+// - base 已是 /responses：原样返回
+// - 其他情况：追加 /v1/responses
+func buildOpenAIResponsesURL(base string) string {
+	return buildOpenAIEndpointURL(base, "/v1/responses")
 }
 
-const providerOptions = computed(() => {
-  const values = Array.from(new Set(models.value.flatMap((model) => model.visiblePlatforms))).sort()
-  return [
-    { value: '', label: t('modelMarketplace.filters.allProviders') },
-    ...values.map((value) => ({ value, label: platformLabel(value) })),
-  ]
-})
-
-const billingOptions = computed(() => [
-  { value: '', label: t('modelMarketplace.filters.allBilling') },
-  { value: 'token', label: t('modelMarketplace.billing.token') },
-  { value: 'per_request', label: t('modelMarketplace.billing.perRequest') },
-])
-
-const statusOptions = computed(() => [
-  { value: '', label: t('modelMarketplace.filters.allStatus') },
-  { value: 'operational', label: t('modelMarketplace.status.operational') },
-  { value: 'degraded', label: t('modelMarketplace.status.degraded') },
-  { value: 'unavailable', label: t('modelMarketplace.status.unavailable') },
-  { value: 'unmonitored', label: t('modelMarketplace.status.unmonitored') },
-])
-
-const filteredModels = computed(() => {
-  const query = search.value.toLowerCase()
-  return models.value.filter((model) => {
-    const searchable = [
-      model.name,
-      model.developer,
-      ...model.rawModels,
-      ...model.visiblePlatforms,
-      ...model.supportedProtocols,
-      ...model.profiles.map((profile) => profile.groupName),
-    ].join(' ').toLowerCase()
-    return (!query || searchable.includes(query))
-      && (!providerFilter.value || model.visiblePlatforms.some((platform) => platform === providerFilter.value))
-      && (!billingFilter.value || model.billingModes.includes(billingFilter.value))
-      && (!statusFilter.value || model.monitoring.status === statusFilter.value)
-  })
-})
-
-function platformLabel(platform: string): string {
-  const labels: Record<string, string> = {
-    anthropic: 'Anthropic',
-    openai: 'OpenAI',
-    gemini: 'Google Gemini',
-    antigravity: 'Antigravity',
-    kiro: 'Kiro',
-    grok: 'xAI',
-    baidu_vod: 'Baidu VOD',
-  }
-  return labels[platform] || platform
+// buildOpenAIResponsesURLForPlatform 组装 Responses 端点（平台感知）。
+// DeepSeek 官方 Responses 端点为 /responses（无 /v1 前缀，适配 Codex）；
+// 其余平台维持 /v1/responses。
+func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
+	if platform == PlatformDeepseek {
+		return buildOpenAIEndpointURL(base, "/responses")
+	}
+	return buildOpenAIResponsesURL(base)
 }
 
-function platformNames(platforms: string[]): string {
-  return platforms.map(platformLabel).join(' / ')
+// normalizeDeepSeekResponsesRequestBody 适配 DeepSeek 无状态 Responses 端点：
+// 强制 store=false 并清除 previous_response_id（官方 /responses 不支持服务端
+// 状态存储，携带这些字段会被拒绝）。非 deepseek responses 协议账号原样返回。
+func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte {
+	if account == nil || account.Platform != PlatformDeepseek || account.GetAPIProtocol() != APIProtocolResponses {
+		return body
+	}
+	normalized, err := sjson.SetBytes(body, "store", false)
+	if err != nil {
+		return body
+	}
+	if stripped, err := sjson.DeleteBytes(normalized, "previous_response_id"); err == nil {
+		normalized = stripped
+	}
+	return normalized
 }
 
-function billingModeLabel(mode: string): string {
-  if (mode === 'token') return t('modelMarketplace.billing.token')
-  if (mode === 'per_request') return t('modelMarketplace.billing.perRequest')
-  return mode
+func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+
+	inputValue, has := reqBody["input"]
+	if !has {
+		return false
+	}
+
+	switch input := inputValue.(type) {
+	case []any:
+		filtered := input[:0]
+		changed := false
+		for _, item := range input {
+			nextItem, itemChanged, keep := sanitizeEncryptedReasoningInputItem(item)
+			if itemChanged {
+				changed = true
+			}
+			if !keep {
+				continue
+			}
+			filtered = append(filtered, nextItem)
+		}
+		if !changed {
+			return false
+		}
+		if len(filtered) == 0 {
+			delete(reqBody, "input")
+			return true
+		}
+		reqBody["input"] = filtered
+		return true
+	case []map[string]any:
+		filtered := input[:0]
+		changed := false
+		for _, item := range input {
+			nextItem, itemChanged, keep := sanitizeEncryptedReasoningInputItem(item)
+			if itemChanged {
+				changed = true
+			}
+			if !keep {
+				continue
+			}
+			nextMap, ok := nextItem.(map[string]any)
+			if !ok {
+				filtered = append(filtered, item)
+				continue
+			}
+			filtered = append(filtered, nextMap)
+		}
+		if !changed {
+			return false
+		}
+		if len(filtered) == 0 {
+			delete(reqBody, "input")
+			return true
+		}
+		reqBody["input"] = filtered
+		return true
+	case map[string]any:
+		nextItem, changed, keep := sanitizeEncryptedReasoningInputItem(input)
+		if !changed {
+			return false
+		}
+		if !keep {
+			delete(reqBody, "input")
+			return true
+		}
+		nextMap, ok := nextItem.(map[string]any)
+		if !ok {
+			return false
+		}
+		reqBody["input"] = nextMap
+		return true
+	default:
+		return false
+	}
 }
 
-function billingModeNames(modes: string[]): string {
-  return modes.map(billingModeLabel).join(' / ')
+func sanitizeEncryptedReasoningInputItem(item any) (next any, changed bool, keep bool) {
+	inputItem, ok := item.(map[string]any)
+	if !ok {
+		return item, false, true
+	}
+
+	itemType, _ := inputItem["type"].(string)
+	switch strings.TrimSpace(itemType) {
+	case "compaction", "compaction_summary":
+		if _, encrypted := inputItem["encrypted_content"]; encrypted {
+			return nil, true, false
+		}
+		return item, false, true
+	case "reasoning":
+	default:
+		return item, false, true
+	}
+
+	if _, has := inputItem["encrypted_content"]; has {
+		delete(inputItem, "encrypted_content")
+		changed = true
+	}
+
+	// xAI 422: "content": null 导致 untagged enum 反序列化失败
+	if v, has := inputItem["content"]; has && v == nil {
+		delete(inputItem, "content")
+		changed = true
+	}
+
+	if !changed {
+		return item, false, true
+	}
+	if len(inputItem) == 1 {
+		return nil, true, false
+	}
+	return inputItem, true, true
 }
 
-function statusLabel(status: MarketplaceStatus): string {
-  return t(`modelMarketplace.status.${status}`)
+// SanitizeOpenAICrossModeFailoverReasoning derives a failover attempt body from
+// the canonical request body by dropping provider-specific encrypted reasoning
+// input items in full (encrypted_content plus the coupled id/summary shape).
+//
+// This is the proactive counterpart to the reactive same-account
+// invalid_encrypted_content recovery in Forward: when a failover switches from an
+// OpenAI passthrough account (which forwards upstream-native encrypted reasoning,
+// e.g. Kiro) to a non-passthrough account (e.g. Bedrock Mantle) that rejects the
+// provider-specific reasoning IDs/shape, the whole reasoning item must go before
+// the request reaches the new upstream. Unlike trimOpenAIEncryptedReasoningItems,
+// which only strips the encrypted_content / null-content fields while preserving
+// the reasoning item's id and summary, this drops the entire item.
+//
+// The input slice is treated as immutable and is never mutated; a distinct slice
+// is returned only when changed is true.
+func SanitizeOpenAICrossModeFailoverReasoning(body []byte) (sanitized []byte, changed bool, err error) {
+	if len(body) == 0 {
+		return body, false, nil
+	}
+	if !gjson.GetBytes(body, "input").Exists() {
+		return body, false, nil
+	}
+	var decoded map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return body, false, fmt.Errorf("decode cross-mode failover body: %w", err)
+	}
+	if !dropOpenAIEncryptedReasoningInputItems(decoded) {
+		return body, false, nil
+	}
+	out, marshalErr := marshalOpenAIUpstreamJSON(decoded)
+	if marshalErr != nil {
+		return body, false, fmt.Errorf("serialize cross-mode failover body: %w", marshalErr)
+	}
+	return out, true, nil
 }
 
-function statusTextClass(status: MarketplaceStatus): string {
-  if (status === 'operational') return 'text-emerald-300'
-  if (status === 'degraded') return 'text-amber-300'
-  if (status === 'unavailable') return 'text-red-300'
-  return 'text-dark-400'
+// dropOpenAIEncryptedReasoningInputItems removes reasoning input items that carry
+// provider-specific encrypted_content in full — including their coupled id and
+// summary — and reports whether anything changed. Contrast with
+// trimOpenAIEncryptedReasoningItems, which only strips fields while keeping the
+// reasoning item skeleton.
+func dropOpenAIEncryptedReasoningInputItems(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+	inputValue, has := reqBody["input"]
+	if !has {
+		return false
+	}
+	switch input := inputValue.(type) {
+	case []any:
+		filtered := input[:0]
+		changed := false
+		for _, item := range input {
+			if isOpenAIEncryptedReasoningInputItem(item) {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		if !changed {
+			return false
+		}
+		if len(filtered) == 0 {
+			delete(reqBody, "input")
+			return true
+		}
+		reqBody["input"] = filtered
+		return true
+	case []map[string]any:
+		filtered := input[:0]
+		changed := false
+		for _, item := range input {
+			if isOpenAIEncryptedReasoningInputItem(item) {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		if !changed {
+			return false
+		}
+		if len(filtered) == 0 {
+			delete(reqBody, "input")
+			return true
+		}
+		reqBody["input"] = filtered
+		return true
+	case map[string]any:
+		if isOpenAIEncryptedReasoningInputItem(input) {
+			delete(reqBody, "input")
+			return true
+		}
+		return false
+	default:
+		return false
+	}
 }
 
-function statusSquareClass(status: MarketplaceStatus): string {
-  if (status === 'operational') return 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.45)]'
-  if (status === 'degraded') return 'bg-amber-400'
-  if (status === 'unavailable') return 'bg-red-400'
-  return 'bg-dark-700'
+func isOpenAIEncryptedReasoningInputItem(item any) bool {
+	inputItem, ok := item.(map[string]any)
+	if !ok {
+		return false
+	}
+	if itemType, _ := inputItem["type"].(string); strings.TrimSpace(itemType) != "reasoning" {
+		return false
+	}
+	_, has := inputItem["encrypted_content"]
+	return has
 }
 
-function formatNumber(value: number, maximumFractionDigits = 3): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(value)
+// IsOpenAIResponsesCompactPath reports whether the request targets the legacy
+// /responses/compact endpoint, including its forwardable subpaths.
+func IsOpenAIResponsesCompactPath(c *gin.Context) bool {
+	return isOpenAIResponsesCompactPath(c)
 }
 
-function formatUsdPrice(value: number): string {
-  if (value >= 1000) return `$${formatNumber(value, 2)}`
-  if (value >= 1) return `$${formatNumber(value, 3)}`
-  return `$${formatNumber(value, 6)}`
+func OpenAICompactSessionSeedKeyForTest() string {
+	return openAICompactSessionSeedKey
 }
 
-function tokenPriceRange(model: MarketplaceModel, field: TokenPriceField): string {
-  const values = effectiveTokenPrices(model, field)
-  if (values.length === 0) return '-'
-  const minimum = values[0]
-  const maximum = values.at(-1) ?? minimum
-  return minimum === maximum ? formatUsdPrice(minimum) : `${formatUsdPrice(minimum)}-${formatUsdPrice(maximum)}`
+func NormalizeOpenAICompactRequestBodyForTest(body []byte) ([]byte, bool, error) {
+	return normalizeOpenAICompactRequestBody(body)
 }
 
-function priceRange(values: number[]): string {
-  if (values.length === 0) return '-'
-  const minimum = values[0]
-  const maximum = values.at(-1) ?? minimum
-  return minimum === maximum ? formatUsdPrice(minimum) : `${formatUsdPrice(minimum)}-${formatUsdPrice(maximum)}`
+func isOpenAIResponsesCompactPath(c *gin.Context) bool {
+	suffix := strings.TrimSpace(openAIResponsesRequestPathSuffix(c))
+	return suffix == "/compact" || strings.HasPrefix(suffix, "/compact/")
 }
 
-function hasTokenPrices(model: MarketplaceModel): boolean {
-  return hasTokenPricing(model)
+func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return body, false, nil
+	}
+
+	normalized := []byte(`{}`)
+	// Keep the current Codex /compact schema while still dropping request-scoped
+	// fields such as prompt_cache_key, store, and stream.
+	for _, field := range []string{
+		"model",
+		"input",
+		"instructions",
+		"tools",
+		"parallel_tool_calls",
+		"reasoning",
+		"service_tier",
+		"text",
+		"previous_response_id",
+	} {
+		value := gjson.GetBytes(body, field)
+		if !value.Exists() {
+			continue
+		}
+		next, err := sjson.SetRawBytes(normalized, field, []byte(value.Raw))
+		if err != nil {
+			return body, false, fmt.Errorf("normalize compact body %s: %w", field, err)
+		}
+		normalized = next
+	}
+
+	if bytes.Equal(bytes.TrimSpace(body), bytes.TrimSpace(normalized)) {
+		return body, false, nil
+	}
+	return normalized, true, nil
 }
 
-function hasCachePrices(model: MarketplaceModel): boolean {
-  return effectiveTokenPrices(model, 'cache_write_usd_per_token').length > 0
-    || effectiveTokenPrices(model, 'cache_read_usd_per_token').length > 0
+func normalizeOpenAICodexCompactReasoningEffortForAccount(c *gin.Context, account *Account, body []byte) ([]byte, bool, error) {
+	if account == nil || !account.IsOpenAIOAuth() || !isOpenAIResponsesCompactPath(c) {
+		return body, false, nil
+	}
+
+	requestedModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	effectiveModel := account.GetMappedModel(requestedModel)
+	return normalizeOpenAICodexCompactReasoningEffort(body, effectiveModel)
 }
 
-function requestPriceRange(model: MarketplaceModel): string {
-  const values = model.profiles.flatMap((profile) => {
-    const prices = [
-      profile.model.price?.per_request_usd,
-      ...Object.values(profile.model.price?.image_size_prices || {}),
-    ].filter((value): value is number => value != null && Number.isFinite(value))
-    return prices.map((value) => applyGroupMultiplier(value, profile.multiplier))
-  })
-  return priceRange(Array.from(new Set(values)).sort((a, b) => a - b))
+func normalizeOpenAICodexCompactReasoningEffort(body []byte, effectiveModel string) ([]byte, bool, error) {
+	if !isOpenAIGPT56Model(effectiveModel) ||
+		!strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String()), "max") {
+		return body, false, nil
+	}
+
+	// Codex Ultra 在客户端编排层会下发 max；ChatGPT compact 端点目前只接受到
+	// xhigh。这里只降级 OpenAI OAuth 的 GPT-5.6 compact 子请求，普通 Responses、
+	// API Key 请求和其他平台的 OAuth 请求保留 max。
+	normalized, err := sjson.SetBytes(body, "reasoning.effort", "xhigh")
+	if err != nil {
+		return body, false, fmt.Errorf("normalize codex compact reasoning effort: %w", err)
+	}
+	return normalized, true, nil
 }
 
-function formatMultiplier(value: number): string {
-  return `${formatNumber(value, 3)}x`
+func resolveOpenAICompactSessionID(c *gin.Context) string {
+	if c != nil {
+		if sessionID := strings.TrimSpace(c.GetHeader("session_id")); sessionID != "" {
+			return sessionID
+		}
+		if conversationID := strings.TrimSpace(c.GetHeader("conversation_id")); conversationID != "" {
+			return conversationID
+		}
+		if seed, ok := c.Get(openAICompactSessionSeedKey); ok {
+			if seedStr, ok := seed.(string); ok && strings.TrimSpace(seedStr) != "" {
+				return strings.TrimSpace(seedStr)
+			}
+		}
+	}
+	return uuid.NewString()
 }
 
-function multiplierRange(model: MarketplaceModel): string {
-  const values = Array.from(new Set(model.profiles.flatMap((profile) => {
-    return [profile.multiplier]
-  }))).sort((a, b) => a - b)
-  const minimum = values[0]
-  const maximum = values.at(-1) ?? minimum
-  return minimum === maximum ? formatMultiplier(minimum) : `${formatMultiplier(minimum)}-${formatMultiplier(maximum)}`
+// openAIResponsesRequestPathSuffix 返回可拼接到上游 /responses URL 后面的子路径。
+// 不可转发的子路径返回空串（退化为裸 /responses）；真正的拒绝由入口守卫
+// IsForwardableOpenAIResponsesRequestPath 负责。这样即便将来新增路由漏挂守卫，
+// 拼进上游 URL 的也只会是合规片段。
+func openAIResponsesRequestPathSuffix(c *gin.Context) string {
+	suffix, ok := sanitizedUpstreamPathSuffix(rawOpenAIResponsesRequestPathSuffix(c))
+	if !ok {
+		return ""
+	}
+	return suffix
 }
 
-function formatAvailability(model: MarketplaceModel): string {
-  const value = availabilityForWindow(model.monitoring, monitorWindow.value)
-  return value == null ? '-' : `${value.toFixed(2)}%`
+// IsForwardableOpenAIResponsesRequestPath 判断入站请求携带的 /responses 子路径
+// 是否可以安全转发。路由层用它在鉴权后、调度前直接拒绝畸形子路径。
+func IsForwardableOpenAIResponsesRequestPath(c *gin.Context) bool {
+	_, ok := sanitizedUpstreamPathSuffix(rawOpenAIResponsesRequestPathSuffix(c))
+	return ok
 }
 
-function activeMonitoring(model: MarketplaceModel) {
-  return monitoringForWindow(model.monitoring, monitorWindow.value)
+// rawOpenAIResponsesRequestPathSuffix 仅做提取，不做任何安全判断。
+func rawOpenAIResponsesRequestPathSuffix(c *gin.Context) string {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return ""
+	}
+	normalizedPath := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
+	if normalizedPath == "" {
+		return ""
+	}
+	idx := strings.LastIndex(normalizedPath, "/responses")
+	if idx < 0 {
+		return ""
+	}
+	suffix := normalizedPath[idx+len("/responses"):]
+	if suffix == "" || suffix == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(suffix, "/") {
+		return ""
+	}
+	return suffix
 }
 
-function monitorAriaLabel(model: MarketplaceModel): string {
-  const monitoring = activeMonitoring(model)
-  return `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${formatAvailability(model)}`
+func appendOpenAIResponsesRequestPathSuffix(baseURL, suffix string) string {
+	trimmedBase := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	// 兜底：调用方漏了校验时，这里也不会把不合规的片段拼进上游 URL。
+	trimmedSuffix, ok := sanitizedUpstreamPathSuffix(suffix)
+	if !ok || trimmedBase == "" || trimmedSuffix == "" {
+		return trimmedBase
+	}
+	return trimmedBase + trimmedSuffix
 }
 
-function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
-  return monitorSquaresForMonitoring(activeMonitoring(model))
+func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {
+	// 使用 gjson/sjson 精确替换 model 字段，避免全量 JSON 反序列化
+	if m := gjson.GetBytes(body, "model"); m.Exists() && m.Str == fromModel {
+		newBody, err := sjson.SetBytes(body, "model", toModel)
+		if err != nil {
+			return body
+		}
+		return newBody
+	}
+	return body
 }
 
-function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): MonitorSquare[] {
-  const actual = monitoring.samples.slice(-MONITOR_SAMPLE_COUNT).map((sample, index) => ({
-    key: `actual-${sample.checkedAt}-${index}`,
-    status: sample.status,
-    title: t('modelMarketplace.checkTooltip', {
-      time: formatDateTime(sample.checkedAt),
-      status: statusLabel(sample.status),
-    }),
-  }))
-  if (actual.length > 0) {
-    const padding = Array.from({ length: MONITOR_SAMPLE_COUNT - actual.length }, (_, index) => ({
-      key: `empty-${index}`,
-      status: 'unmonitored' as const,
-      title: t('modelMarketplace.noCheckData'),
-    }))
-    return [...padding, ...actual]
-  }
+func getOpenAIReasoningEffortFromReqBody(reqBody map[string]any, requestedModel string) (value string, present bool) {
+	if reqBody == nil {
+		return "", false
+	}
 
-  const availability = monitoring.availability
-  if (availability == null) {
-    const squares = Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => ({
-      key: `empty-${index}`,
-      status: 'unmonitored' as MarketplaceStatus,
-      title: t('modelMarketplace.noCheckData'),
-    }))
-    if (monitoring.status !== 'unmonitored') {
-      squares[MONITOR_SAMPLE_COUNT - 1] = {
-        key: 'latest-status',
-        status: monitoring.status,
-        title: t('modelMarketplace.latestStatusTooltip', { status: statusLabel(monitoring.status) }),
-      }
-    }
-    return squares
-  }
+	// Primary: reasoning.effort
+	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
+		if effort, ok := reasoning["effort"].(string); ok {
+			return normalizeOpenAIReasoningEffortForModel(effort, requestedModel), true
+		}
+	}
 
-  let issueCount = Math.round((100 - Math.max(0, Math.min(100, availability))) / 100 * MONITOR_SAMPLE_COUNT)
-  if (monitoring.status === 'degraded' || monitoring.status === 'unavailable') {
-    issueCount = Math.max(1, issueCount)
-  }
-  const issueStatus: MarketplaceStatus = monitoring.status === 'unavailable' ? 'unavailable' : 'degraded'
-  return Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => {
-    const status: MarketplaceStatus = index >= MONITOR_SAMPLE_COUNT - issueCount ? issueStatus : 'operational'
-    return {
-      key: `estimate-${index}`,
-      status,
-      title: t('modelMarketplace.estimateTooltip', {
-        window: monitorWindow.value,
-        status: statusLabel(status),
-      }),
-    }
-  })
+	// Fallback: some clients may use a flat field.
+	if effort, ok := reqBody["reasoning_effort"].(string); ok {
+		return normalizeOpenAIReasoningEffortForModel(effort, requestedModel), true
+	}
+
+	return "", false
 }
 
-function emptyMonitoring(): MarketplaceMonitoring {
-  return { status: 'unmonitored', samples: [] }
+func deriveOpenAIReasoningEffortFromModel(model string) string {
+	if strings.TrimSpace(model) == "" {
+		return ""
+	}
+
+	modelID := strings.TrimSpace(model)
+	if strings.Contains(modelID, "/") {
+		parts := strings.Split(modelID, "/")
+		modelID = parts[len(parts)-1]
+	}
+
+	parts := strings.FieldsFunc(strings.ToLower(modelID), func(r rune) bool {
+		switch r {
+		case '-', '_', ' ':
+			return true
+		default:
+			return false
+		}
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return normalizeOpenAIReasoningEffortForModel(parts[len(parts)-1], modelID)
 }
 
-function formatLatency(value?: number): string {
-  return value != null && Number.isFinite(value) && value > 0 ? `${formatNumber(value, 0)} ms` : '-'
+// deriveOpenAIReasoningEffortFromModelCandidates 依次对每个候选模型做后缀推导，
+// 返回第一个非空结果。
+func deriveOpenAIReasoningEffortFromModelCandidates(models []string) string {
+	for _, model := range models {
+		if value := deriveOpenAIReasoningEffortFromModel(model); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return new Intl.DateTimeFormat(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date)
+type openAIRequestView struct {
+	body               []byte
+	Model              string
+	Stream             bool
+	PromptCacheKey     string
+	PreviousResponseID string
+	ServiceTier        string
+	ReasoningEffort    string
+	patches            []openAIRequestPatch
+	patchesDisabled    bool
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return new Intl.DateTimeFormat(undefined, {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(date)
+type openAIRequestPatch struct {
+	path   string
+	delete bool
+	value  any
 }
 
-function toggleExpanded(id: string) {
-  const next = new Set(expanded.value)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  expanded.value = next
+func newOpenAIRequestView(body []byte) openAIRequestView {
+	if len(body) == 0 {
+		return openAIRequestView{}
+	}
+
+	const (
+		modelField uint8 = 1 << iota
+		streamField
+		promptCacheKeyField
+		previousResponseIDField
+		serviceTierField
+		reasoningField
+		allRequestViewFields = modelField | streamField | promptCacheKeyField |
+			previousResponseIDField | serviceTierField | reasoningField
+	)
+
+	view := openAIRequestView{body: body}
+	var seen uint8
+	// parseRawJSONView reads body without copying; view keeps body alive for extracted strings.
+	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
+		switch key.Str {
+		case "model":
+			if seen&modelField == 0 {
+				view.Model = strings.TrimSpace(value.String())
+				seen |= modelField
+			}
+		case "stream":
+			if seen&streamField == 0 {
+				view.Stream = value.Bool()
+				seen |= streamField
+			}
+		case "prompt_cache_key":
+			if seen&promptCacheKeyField == 0 {
+				view.PromptCacheKey = strings.TrimSpace(value.String())
+				seen |= promptCacheKeyField
+			}
+		case "previous_response_id":
+			if seen&previousResponseIDField == 0 {
+				view.PreviousResponseID = strings.TrimSpace(value.String())
+				seen |= previousResponseIDField
+			}
+		case "service_tier":
+			if seen&serviceTierField == 0 {
+				view.ServiceTier = strings.TrimSpace(value.String())
+				seen |= serviceTierField
+			}
+		case "reasoning":
+			if seen&reasoningField == 0 {
+				view.ReasoningEffort = strings.TrimSpace(value.Get("effort").String())
+				seen |= reasoningField
+			}
+		}
+		return seen != allRequestViewFields
+	})
+	return view
 }
 
-async function copyModelId(model: string) {
-  await copyToClipboard(model, t('modelMarketplace.modelIdCopied'))
+// Decode 保留阶段一既有 full-map 行为；后续阶段会把调用点下沉到复杂分支。
+func (v openAIRequestView) Decode(c *gin.Context) (map[string]any, error) {
+	return getOpenAIRequestBodyMap(c, v.body)
 }
 
-async function loadSnapshot() {
-  if (props.previewSnapshot) {
-    snapshot.value = props.previewSnapshot
-    error.value = ''
-    return
-  }
-  abortController?.abort()
-  const controller = new AbortController()
-  abortController = controller
-  loading.value = true
-  error.value = ''
-  try {
-    snapshot.value = await getPublicTransitSnapshot({ signal: controller.signal })
-  } catch (err: unknown) {
-    const requestError = err as { name?: string; code?: string; message?: string }
-    if (requestError.name === 'AbortError' || requestError.code === 'ERR_CANCELED') return
-    error.value = requestError.message || t('modelMarketplace.loadError')
-  } finally {
-    if (abortController === controller) {
-      loading.value = false
-      abortController = null
-    }
-  }
+func (v *openAIRequestView) MarkPatchSet(path string, value any) {
+	if v == nil || v.patchesDisabled {
+		return
+	}
+	path = strings.TrimSpace(path)
+	if !isSimpleOpenAIRequestPatchPath(path) {
+		v.DisablePatches()
+		return
+	}
+	v.patches = append(v.patches, openAIRequestPatch{path: path, value: value})
 }
 
-const ModelPricingDetail = defineComponent({
-  name: 'ModelPricingDetail',
-  props: {
-    model: { type: Object as PropType<MarketplaceModel>, required: true },
-    compact: { type: Boolean, default: false },
-  },
-  setup(detailProps) {
-    const money = (value?: number, multiplier = 1, perMillion = true) => {
-      if (value == null || !Number.isFinite(value)) return '-'
-      return formatUsdPrice(applyGroupMultiplier(perMillion ? value * 1_000_000 : value, multiplier))
-    }
-    const imagePrices = (model: PublicTransitModel, multiplier: number) => {
-      const entries = Object.entries(model.price?.image_size_prices || {}).filter((entry): entry is [string, number] => typeof entry[1] === 'number')
-      return entries.map(([size, value]) => `${size.toUpperCase()} ${money(value, multiplier, false)}`).join(' · ') || '-'
-    }
-    const requestAndImagePrices = (model: PublicTransitModel, multiplier: number) => {
-      const values: string[] = []
-      if (model.price?.per_request_usd != null) values.push(`${money(model.price.per_request_usd, multiplier, false)} / req`)
-      const sizes = imagePrices(model, multiplier)
-      if (sizes !== '-') values.push(sizes)
-      return values.join(' · ') || '-'
-    }
-    const profileMultiplier = (profile: MarketplaceModel['profiles'][number]) => {
-      return formatMultiplier(profile.multiplier)
-    }
-    const profilePrice = (profile: MarketplaceModel['profiles'][number]) => {
-      const rows = []
-      const token = [
-        [label('input'), profile.model.price?.input_usd_per_token],
-        [label('output'), profile.model.price?.output_usd_per_token],
-        [label('cacheWrite'), profile.model.price?.cache_write_usd_per_token],
-        [label('cacheRead'), profile.model.price?.cache_read_usd_per_token],
-      ].filter((entry): entry is [string, number] => typeof entry[1] === 'number')
-      if (token.length > 0) {
-        rows.push(h('div', { class: 'flex flex-wrap gap-x-3 gap-y-1' }, token.map(([name, value]) => h('span', {}, [
-          h('span', { class: 'text-dark-400' }, `${name} `),
-          money(value, profile.multiplier),
-        ]))))
-      }
-      const request = requestAndImagePrices(profile.model, profile.multiplier)
-      if (request !== '-') rows.push(h('div', {}, request))
-      return rows.length > 0 ? rows : '-'
-    }
-    const profileMonitoring = (profile: MarketplaceModel['profiles'][number]) => {
-      if (!profile.monitoringEnabled) return []
-      const monitoring = monitoringForWindow(profile.monitoring || emptyMonitoring(), monitorWindow.value)
-      const availability = monitoring.availability == null ? '-' : `${monitoring.availability.toFixed(2)}%`
-      return [h('div', { class: 'mt-2 flex items-center gap-2' }, [
-        h('span', { class: 'shrink-0 text-[10px] text-dark-400' }, `${t('modelMarketplace.passiveMonitoring')} ${availability}`),
-        h('div', {
-          class: 'flex gap-[2px]',
-          'aria-label': `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${availability}`,
-        }, monitorSquaresForMonitoring(monitoring).map((sample) => h('span', {
-          key: sample.key,
-          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample.status)}`,
-          title: sample.title,
-        }))),
-      ])]
-    }
-    const tierRange = (minimum: number, maximum?: number) => maximum == null ? `${formatNumber(minimum, 0)}+` : `${formatNumber(minimum, 0)}-${formatNumber(maximum, 0)}`
-    const label = (key: string) => t(`modelMarketplace.detail.${key}`)
-    return () => h('div', { class: 'space-y-5' }, [
-      h('div', { class: 'flex flex-wrap gap-2' }, [
-        ...detailProps.model.rawModels.map((rawModel) => h('span', { class: 'rounded border border-dark-800 px-2 py-1 font-jetbrains-mono text-xs text-dark-400' }, rawModel)),
-      ]),
-      h('div', { class: 'overflow-x-auto rounded border border-dark-800' }, [
-        h('table', { class: `w-full border-collapse text-left ${detailProps.compact ? 'min-w-[560px]' : 'min-w-[640px]'}` }, [
-          h('thead', { class: 'bg-dark-900 font-jetbrains-mono text-[11px] uppercase text-dark-400' }, [
-            h('tr', {}, [label('group'), label('mode'), label('multiplier'), label('pricing')].map((text) => h('th', { class: 'px-3 py-2 font-medium' }, text))),
-          ]),
-          h('tbody', { class: 'divide-y divide-dark-800 font-jetbrains-mono text-xs' }, detailProps.model.profiles.map((profile) => h('tr', { class: 'text-dark-200' }, [
-            h('td', { class: 'px-3 py-3' }, [
-              h('div', { class: 'font-sans text-xs font-medium text-white' }, profile.groupName),
-              ...(profile.providerVisible ? [h('div', { class: 'mt-1 text-[11px] text-dark-400' }, platformLabel(profile.platform))] : []),
-              ...profileMonitoring(profile),
-            ]),
-            h('td', { class: 'px-3 py-3' }, billingModeLabel(profile.model.billing_mode)),
-            h('td', { class: 'px-3 py-3 text-emerald-300' }, profileMultiplier(profile)),
-            h('td', { class: 'min-w-[300px] px-3 py-3' }, h('div', { class: 'space-y-2' }, profilePrice(profile))),
-          ]))),
-        ]),
-      ]),
-      ...detailProps.model.profiles.flatMap((profile) => (profile.model.intervals || []).length > 0
-        ? [h('div', { class: 'rounded border border-dark-800 bg-dark-900/50 p-3' }, [
-            h('div', { class: 'mb-2 text-xs font-medium text-white' }, `${profile.groupName} · ${label('tierPricing')}`),
-            h('div', { class: 'grid gap-2 sm:grid-cols-2 xl:grid-cols-3' }, (profile.model.intervals || []).map((interval) => h('div', { class: 'rounded border border-dark-800 bg-dark-950 p-3 font-jetbrains-mono text-xs text-dark-300' }, [
-              h('div', { class: 'mb-2 text-white' }, interval.tier_label || tierRange(interval.min_tokens, interval.max_tokens)),
-              h('div', {}, `${label('tokenRange')}: ${tierRange(interval.min_tokens, interval.max_tokens)}`),
-              h('div', { class: 'mt-1' }, `${label('input')}: ${money(interval.input_usd_per_token, profile.multiplier)} · ${label('output')}: ${money(interval.output_usd_per_token, profile.multiplier)}`),
-            ]))),
-          ])]
-        : []),
-      h('div', { class: 'font-jetbrains-mono text-xs text-dark-400' }, t('modelMarketplace.detail.unitNote')),
-    ])
-  },
-})
-
-onMounted(() => {
-  if (!props.previewSnapshot) void loadSnapshot()
-})
-
-onBeforeUnmount(() => abortController?.abort())
-</script>
-
-<style scoped>
-.model-marketplace {
-  min-height: calc(100vh - 8rem);
-  color: var(--md-on-surface);
+func (v *openAIRequestView) MarkPatchDelete(path string) {
+	if v == nil || v.patchesDisabled {
+		return
+	}
+	path = strings.TrimSpace(path)
+	if !isSimpleOpenAIRequestPatchPath(path) {
+		v.DisablePatches()
+		return
+	}
+	v.patches = append(v.patches, openAIRequestPatch{path: path, delete: true})
 }
 
-/* Keep the marketplace palette attached to the active theme tokens. */
-.model-marketplace :deep(.bg-dark-950) { background-color: var(--md-app-bg) !important; }
-.model-marketplace :deep(.bg-dark-900) { background-color: var(--md-surface) !important; }
-.model-marketplace :deep(.bg-dark-900\/80) { background-color: color-mix(in srgb, var(--md-surface) 80%, transparent) !important; }
-.model-marketplace :deep(.bg-dark-900\/70) { background-color: color-mix(in srgb, var(--md-surface) 70%, transparent) !important; }
-.model-marketplace :deep(.bg-dark-950\/20) { background-color: color-mix(in srgb, var(--md-app-bg) 80%, transparent) !important; }
-.model-marketplace :deep(.bg-dark-800) { background-color: var(--md-surface-container) !important; }
-.model-marketplace :deep(.bg-dark-700) { background-color: var(--md-surface-container-high) !important; }
-.model-marketplace :deep(.border-dark-700),
-.model-marketplace :deep(.border-dark-800),
-.model-marketplace :deep(.divide-dark-800) { border-color: var(--md-outline-variant) !important; }
-.model-marketplace :deep(.text-white),
-.model-marketplace :deep(.text-gray-950),
-.model-marketplace :deep(.text-dark-200),
-.model-marketplace :deep(.text-dark-300),
-.model-marketplace :deep(.text-dark-900) { color: var(--md-on-surface) !important; }
-.model-marketplace :deep(.text-dark-400),
-.model-marketplace :deep(.text-dark-500),
-.model-marketplace :deep(.text-gray-500) { color: var(--md-on-surface-variant) !important; }
-.model-marketplace :deep(.text-emerald-300) { color: var(--md-success) !important; }
-.model-marketplace :deep(.text-red-200),
-.model-marketplace :deep(.text-red-300) { color: var(--md-error) !important; }
-
-.market-select {
-  height: 2.5rem;
-  min-width: 0;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 0.25rem;
-  background: var(--md-surface);
-  padding: 0 2rem 0 0.75rem;
-  color: var(--md-on-surface);
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.75rem;
-  outline: none;
+func isSimpleOpenAIRequestPatchPath(path string) bool {
+	if path == "" || strings.ContainsRune(path, '\\') {
+		return false
+	}
+	for _, part := range strings.Split(path, ".") {
+		if strings.TrimSpace(part) == "" {
+			return false
+		}
+	}
+	return true
 }
 
-.market-select:focus {
-  border-color: rgb(16 185 129);
-  box-shadow: 0 0 0 1px rgb(16 185 129 / 0.3);
+func (v *openAIRequestView) DisablePatches() {
+	if v == nil {
+		return
+	}
+	v.patchesDisabled = true
+	v.patches = nil
 }
 
-.market-row:hover {
-  box-shadow: inset 2px 0 0 rgb(52 211 153);
+func (v openAIRequestView) HasPatches() bool {
+	return !v.patchesDisabled && len(v.patches) > 0
 }
 
-@media (max-width: 639px) {
-  .market-select {
-    width: 100%;
-  }
+func (v openAIRequestView) ApplyPatches() ([]byte, error) {
+	if v.patchesDisabled || len(v.patches) == 0 {
+		return nil, errors.New("openai request patches disabled")
+	}
+	body := v.body
+	for _, patch := range v.patches {
+		var err error
+		if patch.delete {
+			body, err = sjson.DeleteBytes(body, patch.path)
+		} else {
+			body, err = sjson.SetBytes(body, patch.path, patch.value)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return body, nil
 }
-</style>
+
+func setOpenAIRequestMapPath(reqBody map[string]any, path string, value any) {
+	path = strings.TrimSpace(path)
+	if reqBody == nil || path == "" {
+		return
+	}
+	parts := strings.Split(path, ".")
+	current := reqBody
+	for _, part := range parts[:len(parts)-1] {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return
+		}
+		next, _ := current[part].(map[string]any)
+		if next == nil {
+			next = map[string]any{}
+			current[part] = next
+		}
+		current = next
+	}
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if last != "" {
+		current[last] = value
+	}
+}
+
+func deleteOpenAIRequestMapPath(reqBody map[string]any, path string) {
+	path = strings.TrimSpace(path)
+	if reqBody == nil || path == "" {
+		return
+	}
+	parts := strings.Split(path, ".")
+	current := reqBody
+	for _, part := range parts[:len(parts)-1] {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return
+		}
+		next, _ := current[part].(map[string]any)
+		if next == nil {
+			return
+		}
+		current = next
+	}
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if last != "" {
+		delete(current, last)
+	}
+}
+
+func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, promptCacheKey string) {
+	view := newOpenAIRequestView(body)
+	return view.Model, view.Stream, view.PromptCacheKey
+}
+
+// normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
+// 1) 删除 ChatGPT internal API 不支持的顶层 Responses 参数
+// 2) store=false 3) 非 compact 保持 stream=true；compact 强制 stream=false
+func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return body, false, nil
+	}
+
+	normalized := body
+	changed := false
+
+	for _, field := range openAIChatGPTInternalUnsupportedFields {
+		if value := gjson.GetBytes(normalized, field); !value.Exists() {
+			continue
+		}
+		next, err := sjson.DeleteBytes(normalized, field)
+		if err != nil {
+			return body, false, fmt.Errorf("normalize passthrough body delete %s: %w", field, err)
+		}
+		normalized = next
+		changed = true
+	}
+
+	if inputResult := gjson.GetBytes(normalized, "input"); inputResult.Exists() {
+		switch {
+		case inputResult.Type == gjson.String:
+			text := inputResult.String()
+			var inputValue any
+			if strings.TrimSpace(text) != "" {
+				inputValue = []any{map[string]any{
+					"type": "message", "role": "user", "content": text,
+				}}
+			} else {
+				inputValue = []any{}
+			}
+			next, err := sjson.SetBytes(normalized, "input", inputValue)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body input string: %w", err)
+			}
+			normalized = next
+			changed = true
+		case inputResult.Type == gjson.JSON && !inputResult.IsArray():
+			next, err := sjson.SetRawBytes(normalized, "input", []byte("["+inputResult.Raw+"]"))
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body input object: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+	}
+
+	if compact {
+		if store := gjson.GetBytes(normalized, "store"); store.Exists() {
+			next, err := sjson.DeleteBytes(normalized, "store")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body delete store: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+		if stream := gjson.GetBytes(normalized, "stream"); stream.Exists() {
+			next, err := sjson.DeleteBytes(normalized, "stream")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body delete stream: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+	} else {
+		if store := gjson.GetBytes(normalized, "store"); !store.Exists() || store.Type != gjson.False {
+			next, err := sjson.SetBytes(normalized, "store", false)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body store=false: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+		if stream := gjson.GetBytes(normalized, "stream"); !stream.Exists() || stream.Type != gjson.True {
+			next, err := sjson.SetBytes(normalized, "stream", true)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body stream=true: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+	}
+
+	return normalized, changed, nil
+}
+
+// stripOpenAIPromptCacheRetention removes the deprecated cache retention field
+// for GPT-5.6 Responses requests. OpenAI documents prompt_cache_options for
+// GPT-5.6 and later, while older models still use prompt_cache_retention.
+func stripOpenAIPromptCacheRetention(body []byte, model string) ([]byte, bool, error) {
+	if len(body) == 0 || !isOpenAIGPT56Model(model) || !gjson.GetBytes(body, "prompt_cache_retention").Exists() {
+		return body, false, nil
+	}
+	normalized, err := sjson.DeleteBytes(body, "prompt_cache_retention")
+	if err != nil {
+		return body, false, fmt.Errorf("strip prompt_cache_retention: %w", err)
+	}
+	return normalized, true, nil
+}
+
+func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
+	if !isOpenAICodexModel(reqModel) {
+		return ""
+	}
+
+	instructions := gjson.GetBytes(body, "instructions")
+	if !instructions.Exists() {
+		return ""
+	}
+	if instructions.Type != gjson.String {
+		return "instructions_not_string"
+	}
+	if strings.TrimSpace(instructions.String()) == "" {
+		return "instructions_empty"
+	}
+	return ""
+}
+
+func isOpenAICodexModel(model string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "codex")
+}
+
+// extractOpenAIReasoningEffortFromBody 按优先级传入模型候选（如 upstreamModel,
+// billingModel, originalModel）：显式 effort 的模型归一化（max 保留判定）用第一个
+// 非空候选；body 未携带 effort 时的模型后缀推导依次尝试每个候选——OAuth 的
+// normalizeCodexModel 会剥掉 upstreamModel 的 effort 后缀，只有原始模型名还留着。
+func extractOpenAIReasoningEffortFromBody(body []byte, modelCandidates ...string) *string {
+	reasoningEffort := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
+	if reasoningEffort == "" {
+		reasoningEffort = strings.TrimSpace(gjson.GetBytes(body, "reasoning_effort").String())
+	}
+	if reasoningEffort != "" {
+		normalized := normalizeOpenAIReasoningEffortForModel(reasoningEffort, firstNonEmpty(modelCandidates...))
+		if normalized == "" {
+			return nil
+		}
+		return &normalized
+	}
+
+	value := deriveOpenAIReasoningEffortFromModelCandidates(modelCandidates)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func extractOpenAIServiceTier(reqBody map[string]any) *string {
+	if reqBody == nil {
+		return nil
+	}
+	raw, ok := reqBody["service_tier"].(string)
+	if !ok {
+		return nil
+	}
+	return normalizeOpenAIServiceTier(raw)
+}
+
+func extractOpenAIServiceTierFromBody(body []byte) *string {
+	if len(body) == 0 {
+		return nil
+	}
+	return normalizeOpenAIServiceTier(gjson.GetBytes(body, "service_tier").String())
+}
+
+func normalizeOpenAIServiceTier(raw string) *string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return nil
+	}
+	if value == "fast" {
+		value = "priority"
+	}
+	// 放过 OpenAI 官方文档定义的所有合法 tier 值：priority/flex/auto/default/scale。
+	// 对 Codex 客户端零影响（Codex 只发 priority 或 flex，见 codex-rs/core/src/client.rs），
+	// 但能让直连 OpenAI SDK 的用户透传 auto/default/scale 以便抓包/调试。
+	// 真未知值仍返回 nil，由 normalizeResponsesBodyServiceTier 从 body 中删除。
+	switch value {
+	case "priority", "flex", "auto", "default", "scale":
+		return &value
+	default:
+		return nil
+	}
+}
+
+// OpenAIFastBlockedError indicates a request was rejected by the OpenAI fast
+// policy (action=block). Mirrors BetaBlockedError on the Claude side.
+type OpenAIFastBlockedError struct {
+	Message string
+}
+
+func (e *OpenAIFastBlockedError) Error() string { return e.Message }
+
+// evaluateOpenAIFastPolicy returns the action and error message that should be
+// applied for a request with the given account/model/service_tier. When the
+// policy service is unavailable or no rule matches, it returns
+// (BetaPolicyActionPass, "") so callers can short-circuit safely.
+//
+// Matching rules:
+//   - Scope filters by account type (all / oauth / apikey / bedrock)
+//   - UserIDs, when present, filters by the trusted Sub2API user that owns the API key
+//   - ServiceTier must be empty (= any), "all", or equal the normalized tier
+//   - ModelWhitelist narrows the rule to specific models; FallbackAction
+//     handles the non-matching case (default: pass)
+//   - User-specific rules take precedence over global rules; each group keeps
+//     the configured first-match order
+//
+// 与 Claude BetaPolicy 的差异（保留首条匹配 short-circuit）：
+//   - BetaPolicy 处理的是 anthropic-beta header 中的 token 集合，不同
+//     规则可能针对不同 token，filter 需要累加成 set；block 则 first-match。
+//   - OpenAI fast policy 操作的是单个字段 service_tier：filter 即删字段，
+//     没有可累加的对象。一次请求只携带一个 service_tier，规则的 tier
+//     维度天然互斥；同一 (scope, tier) 下若多条规则的 model whitelist
+//     发生重叠，admin 可通过规则顺序明确意图。因此采用 first-match 而
+//     非 BetaPolicy 那样的"block 覆盖 filter 覆盖 pass"语义。
+func (s *OpenAIGatewayService) evaluateOpenAIFastPolicy(ctx context.Context, account *Account, model, serviceTier string) (action, errMsg string) {
+	if s == nil || s.settingService == nil {
+		return BetaPolicyActionPass, ""
+	}
+	tier := strings.ToLower(strings.TrimSpace(serviceTier))
+	if tier == "" {
+		return BetaPolicyActionPass, ""
+	}
+	settings := openAIFastPolicySettingsFromContext(ctx)
+	if settings == nil {
+		fetched, err := s.settingService.GetOpenAIFastPolicySettings(ctx)
+		if err != nil || fetched == nil {
+			return BetaPolicyActionPass, ""
+		}
+		settings = fetched
+	}
+	return evaluateOpenAIFastPolicyWithSettings(settings, openAIFastPolicyUserID(ctx), account, model, tier)
+}
+
+// evaluateOpenAIFastPolicyWithSettings is the pure-function core extracted so
+// long-lived sessions (e.g. WS) can prefetch settings once and avoid hitting
+// the settingService on every frame. See WSSession entry and
+// openAIFastPolicySettingsFromContext for the caching glue.
+func evaluateOpenAIFastPolicyWithSettings(settings *OpenAIFastPolicySettings, userID int64, account *Account, model, tier string) (action, errMsg string) {
+	if settings == nil {
+		return BetaPolicyActionPass, ""
+	}
+	isOAuth := account != nil && account.IsOAuth()
+	isBedrock := account != nil && account.IsBedrock()
+
+	// 用户专属规则先于全局规则。规则组内仍按配置顺序首条命中，允许
+	// 管理员为某位用户配置例外，而不被先出现的全局规则覆盖。
+	for _, userScoped := range []bool{true, false} {
+		for _, rule := range settings.Rules {
+			if (len(rule.UserIDs) > 0) != userScoped || !openAIFastPolicyUserMatches(rule.UserIDs, userID) {
+				continue
+			}
+			if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
+				continue
+			}
+			ruleTier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
+			if ruleTier != "" && ruleTier != OpenAIFastTierAny && ruleTier != tier {
+				continue
+			}
+			eff := BetaPolicyRule{
+				Action:               rule.Action,
+				ErrorMessage:         rule.ErrorMessage,
+				ModelWhitelist:       rule.ModelWhitelist,
+				FallbackAction:       rule.FallbackAction,
+				FallbackErrorMessage: rule.FallbackErrorMessage,
+			}
+			return resolveRuleAction(eff, model)
+		}
+	}
+	return BetaPolicyActionPass, ""
+}
+
+func openAIFastPolicyUserID(ctx context.Context) int64 {
+	if ctx == nil {
+		return 0
+	}
+	userID, _ := ctx.Value(ctxkey.UserID).(int64)
+	if userID <= 0 {
+		return 0
+	}
+	return userID
+}
+
+func openAIFastPolicyUserMatches(ruleUserIDs []int64, userID int64) bool {
+	if len(ruleUserIDs) == 0 {
+		return true
+	}
+	for _, ruleUserID := range ruleUserIDs {
+		if ruleUserID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func applyGroupOpenAIServiceTierPolicy(ctx context.Context, body []byte) ([]byte, error) {
+	if len(body) == 0 || ctx == nil {
+		return body, nil
+	}
+	group, ok := ctx.Value(ctxkey.Group).(*Group)
+	if !ok || !IsGroupContextValid(group) || group.Platform != PlatformOpenAI {
+		return body, nil
+	}
+	mode, tier, err := NormalizeOpenAIServiceTierConfig(group.Platform, group.OpenAIServiceTierMode, group.OpenAIServiceTier)
+	if err != nil {
+		return body, fmt.Errorf("invalid group openai service_tier policy: %w", err)
+	}
+	switch mode {
+	case OpenAIServiceTierModeSet:
+		updated, setErr := sjson.SetBytes(body, "service_tier", tier)
+		if setErr != nil {
+			return body, fmt.Errorf("set group service_tier on body: %w", setErr)
+		}
+		return updated, nil
+	case OpenAIServiceTierModeClear:
+		if !gjson.GetBytes(body, "service_tier").Exists() {
+			return body, nil
+		}
+		updated, deleteErr := sjson.DeleteBytes(body, "service_tier")
+		if deleteErr != nil {
+			return body, fmt.Errorf("clear group service_tier from body: %w", deleteErr)
+		}
+		return updated, nil
+	default:
+		return body, nil
+	}
+}
+
+// openAIFastPolicyCtxKey 是 context 中预取的 OpenAIFastPolicySettings 缓存
+// 键，仅用于 WebSocket 长会话内多帧复用同一份策略快照，避免每帧 DB 命中。
+//
+// Trade-off：策略变更不会影响当前 WS session（只影响新 session）。这是
+// 有意为之 —— 对长会话来说，"策略一致性"比"立刻生效"更重要，且 Claude
+// BetaPolicy 的 gin.Context 缓存也是同样取舍。需要 hot-reload 时管理员
+// 可以通过踢断 session 强制刷新。
+type openAIFastPolicyCtxKeyType struct{}
+
+var openAIFastPolicyCtxKey = openAIFastPolicyCtxKeyType{}
+
+// withOpenAIFastPolicyContext 将一份 settings 快照绑定到 context，供该 ctx
+// 衍生 goroutine 中的 evaluateOpenAIFastPolicy 复用。
+func withOpenAIFastPolicyContext(ctx context.Context, settings *OpenAIFastPolicySettings) context.Context {
+	if ctx == nil || settings == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, openAIFastPolicyCtxKey, settings)
+}
+
+func openAIFastPolicySettingsFromContext(ctx context.Context) *OpenAIFastPolicySettings {
+	if ctx == nil {
+		return nil
+	}
+	if v, ok := ctx.Value(openAIFastPolicyCtxKey).(*OpenAIFastPolicySettings); ok {
+		return v
+	}
+	return nil
+}
+
+// applyOpenAIFastPolicyToBody applies the OpenAI fast policy to a raw request
+// body. When action=filter it removes the service_tier field; when
+// action=block it returns (body, *OpenAIFastBlockedError). On pass it
+// normalizes the service_tier value (e.g. client alias "fast" → "priority").
+// action=force_priority rewrites any matched known tier to "priority".
+//
+// Rationale for normalize-on-pass: chat-completions / messages 入口在调用本
+// 函数之前已经通过 normalizeResponsesBodyServiceTier 把 service_tier 归一化
+// 到了上游可识别值；passthrough（OpenAI 自动透传） / native /responses 等
+// 入口没有这一前置步骤，pass 路径下若不在此处归一化，"fast" 就会被原样
+// 透传到 OpenAI 上游导致 400/拒绝。把归一化收敛到本函数，所有入口行为一致。
+func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, account *Account, model string, body []byte) ([]byte, error) {
+	if len(body) == 0 {
+		return body, nil
+	}
+	var err error
+	body, err = applyGroupOpenAIServiceTierPolicy(ctx, body)
+	if err != nil {
+		return body, err
+	}
+	rawTier := gjson.GetBytes(body, "service_tier").String()
+	if rawTier == "" {
+		return body, nil
+	}
+	normTier := normalizedOpenAIServiceTierValue(rawTier)
+	if normTier == "" {
+		return body, nil
+	}
+	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
+	switch action {
+	case BetaPolicyActionBlock:
+		msg := errMsg
+		if msg == "" {
+			msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, model)
+		}
+		return body, &OpenAIFastBlockedError{Message: msg}
+	case BetaPolicyActionFilter:
+		trimmed, err := sjson.DeleteBytes(body, "service_tier")
+		if err != nil {
+			return body, fmt.Errorf("strip service_tier from body: %w", err)
+		}
+		return trimmed, nil
+	case OpenAIFastPolicyActionForcePriority:
+		updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
+		if err != nil {
+			return body, fmt.Errorf("force service_tier priority on body: %w", err)
+		}
+		return updated, nil
+	default:
+		// pass：把别名（如 "fast"）写回为规范值（"priority"）。
+		if normTier == rawTier {
+			return body, nil
+		}
+		updated, err := sjson.SetBytes(body, "service_tier", normTier)
+		if err != nil {
+			return body, fmt.Errorf("normalize service_tier on pass: %w", err)
+		}
+		return updated, nil
+	}
+}
+
+// writeOpenAIFastPolicyBlockedResponse writes a 403 JSON response for a
+// request blocked by the OpenAI fast policy.
+func writeOpenAIFastPolicyBlockedResponse(c *gin.Context, err *OpenAIFastBlockedError) {
+	if c == nil || err == nil {
+		return
+	}
+	MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+	// body-signal compact 心跳可能已把响应头提交为 200（长排队后才进入
+	// Forward），此时以 response.failed 终止事件回传；未提交时先停拍再写
+	// JSON，保持原状态码语义（#3887）。
+	if StopOpenAICompactSSEKeepaliveCommitted(c) {
+		writeOpenAICompactSSEFailureMessage(c, http.StatusForbidden, "permission_error", err.Message)
+		return
+	}
+	c.JSON(http.StatusForbidden, gin.H{
+		"error": gin.H{
+			"type":    "permission_error",
+			"message": err.Message,
+		},
+	})
+}
+
+// applyOpenAIFastPolicyToWSResponseCreate evaluates the OpenAI fast policy
+// against a single client→upstream WebSocket frame whose top-level
+// "type"=="response.create". It mirrors the HTTP-side
+// applyOpenAIFastPolicyToBody contract but operates on a Realtime/Responses
+// WS payload:
+//
+//   - pass: keeps service_tier, normalizing aliases such as "fast" to "priority"
+//   - filter: returns a copy with top-level service_tier removed
+//   - force_priority: keeps service_tier and rewrites it to "priority"
+//   - block: returns (frame, *OpenAIFastBlockedError)
+//
+// Only frames whose "type" field strictly equals "response.create" are
+// inspected/mutated. Any other frame type — including the empty string —
+// passes through untouched. The OpenAI Realtime client-event spec requires
+// "type" to be set, so an empty type is treated as a malformed frame we do
+// not police; the upstream is the source of truth for rejecting it.
+//
+// service_tier lives at the top level of response.create — same as the
+// Responses HTTP body shape (see openai_gateway_chat_completions.go:304 +
+// extractOpenAIServiceTierFromBody at line 5593, and the test fixture at
+// openai_ws_forwarder_ingress_session_test.go:402). We therefore only need
+// to inspect / strip the top-level field; there is no nested form in the
+// schema today.
+//
+// The caller is responsible for choosing the upstream model passed in —
+// this helper does not re-derive it.
+func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
+	ctx context.Context,
+	account *Account,
+	model string,
+	frame []byte,
+) ([]byte, *OpenAIFastBlockedError, error) {
+	if len(frame) == 0 {
+		return frame, nil, nil
+	}
+	if !gjson.ValidBytes(frame) {
+		return frame, nil, nil
+	}
+	frameType := strings.TrimSpace(gjson.GetBytes(frame, "type").String())
+	// Strict match: only response.create is policy-checked. Empty / other
+	// types pass through untouched so we never accidentally strip fields
+	// from response.cancel, conversation.item.create, or any future
+	// client-event the spec adds. The Realtime spec requires "type" on
+	// every client event, so an empty type is malformed input — let the
+	// upstream reject it rather than guessing at our layer.
+	if frameType != "response.create" {
+		return frame, nil, nil
+	}
+	var err error
+	frame, err = applyGroupOpenAIServiceTierPolicy(ctx, frame)
+	if err != nil {
+		return frame, nil, err
+	}
+	rawTier := gjson.GetBytes(frame, "service_tier").String()
+	if rawTier == "" {
+		return frame, nil, nil
+	}
+	normTier := normalizedOpenAIServiceTierValue(rawTier)
+	if normTier == "" {
+		return frame, nil, nil
+	}
+	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
+	switch action {
+	case BetaPolicyActionBlock:
+		msg := errMsg
+		if msg == "" {
+			msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, model)
+		}
+		return frame, &OpenAIFastBlockedError{Message: msg}, nil
+	case BetaPolicyActionFilter:
+		trimmed, err := sjson.DeleteBytes(frame, "service_tier")
+		if err != nil {
+			return frame, nil, fmt.Errorf("strip service_tier from ws frame: %w", err)
+		}
+		return trimmed, nil, nil
+	case OpenAIFastPolicyActionForcePriority:
+		updated, err := sjson.SetBytes(frame, "service_tier", OpenAIFastTierPriority)
+		if err != nil {
+			return frame, nil, fmt.Errorf("force service_tier priority in ws frame: %w", err)
+		}
+		return updated, nil, nil
+	default:
+		if normTier == rawTier {
+			return frame, nil, nil
+		}
+		updated, err := sjson.SetBytes(frame, "service_tier", normTier)
+		if err != nil {
+			return frame, nil, fmt.Errorf("normalize service_tier in ws frame: %w", err)
+		}
+		return updated, nil, nil
+	}
+}
+
+// newOpenAIFastPolicyWSEventID returns a Realtime-style event_id for a
+// server-emitted error event. Matches the loose "evt_<rand>" convention used
+// by upstream Realtime servers; the exact value is not load-bearing and is
+// only required for client-side log correlation. We reuse the existing
+// google/uuid dependency rather than pulling a new one.
+func newOpenAIFastPolicyWSEventID() string {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		// Extremely unlikely; fall back to a fixed prefix so the field is
+		// still non-empty and the schema stays self-consistent.
+		return "evt_openai_fast_policy"
+	}
+	// Strip dashes so it visually matches "evt_<hex>" rather than UUID v4
+	// canonical form, mirroring what real Realtime traces look like.
+	return "evt_" + strings.ReplaceAll(id.String(), "-", "")
+}
+
+// buildOpenAIFastPolicyBlockedWSEvent renders an OpenAI Realtime/Responses
+// style "error" event payload for a request blocked by the OpenAI fast
+// policy. The shape mirrors Realtime error events as observed in upstream
+// traces and per the spec's server "error" event:
+//
+//	{
+//	  "event_id": "evt_<random>",
+//	  "type": "error",
+//	  "error": {
+//	    "type": "invalid_request_error",
+//	    "code": "policy_violation",
+//	    "message": "..."
+//	  }
+//	}
+//
+// event_id lets clients correlate the rejection in their logs; "code" gives
+// programmatic clients a stable identifier (HTTP-side equivalent is the
+// 403 permission_error JSON body).
+func buildOpenAIFastPolicyBlockedWSEvent(err *OpenAIFastBlockedError) []byte {
+	if err == nil {
+		return nil
+	}
+	eventID := newOpenAIFastPolicyWSEventID()
+	payload, mErr := json.Marshal(map[string]any{
+		"event_id": eventID,
+		"type":     "error",
+		"error": map[string]any{
+			"type":    "invalid_request_error",
+			"code":    "policy_violation",
+			"message": err.Message,
+		},
+	})
+	if mErr != nil {
+		// Fallback to a minimal hand-rolled payload; Marshal of the literal
+		// shape above should never fail in practice.
+		return []byte(`{"event_id":"` + eventID + `","type":"error","error":{"type":"invalid_request_error","code":"policy_violation","message":"openai fast policy blocked this request"}}`)
+	}
+	return payload
+}
+
+func openAIRequestBodyMayContainImageInput(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	input := gjson.GetBytes(body, "input")
+	messages := gjson.GetBytes(body, "messages.#-1")
+	return openAIJSONValueMayContainImageInput(input) || openAIJSONValueMayContainImageInput(messages)
+}
+
+func openAIJSONValueMayContainImageInput(value gjson.Result) bool {
+	if !value.Exists() {
+		return false
+	}
+	if value.IsArray() {
+		found := false
+		value.ForEach(func(_, item gjson.Result) bool {
+			if openAIJSONValueMayContainImageInput(item) {
+				found = true
+				return false
+			}
+			return true
+		})
+		return found
+	}
+	if value.IsObject() {
+		if strings.TrimSpace(value.Get("type").String()) == "input_image" || value.Get("image_url").Exists() {
+			return true
+		}
+		return openAIJSONValueMayContainImageInput(value.Get("content"))
+	}
+	return false
+}
+
+func openAIRequestBodyMayContainEmptyBase64InputImage(body []byte) bool {
+	if len(body) == 0 || !openAIRequestBodyMayContainInputImageToken(body) {
+		return false
+	}
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() {
+		return false
+	}
+	return openAIJSONValueMayContainEmptyBase64InputImage(input)
+}
+
+func openAIRequestBodyMayContainInputImageToken(body []byte) bool {
+	if bytes.Contains(body, []byte("input_image")) {
+		return true
+	}
+	// JSON 字符串任意字符都可能被 unicode escape，遇到 \u 时交给 gjson 解码后的结构扫描兜底。
+	return bytes.Contains(body, []byte("\\u"))
+}
+
+func openAIJSONValueMayContainEmptyBase64InputImage(value gjson.Result) bool {
+	if !value.Exists() {
+		return false
+	}
+	if value.IsArray() {
+		found := false
+		value.ForEach(func(_, item gjson.Result) bool {
+			if openAIJSONValueMayContainEmptyBase64InputImage(item) {
+				found = true
+				return false
+			}
+			return true
+		})
+		return found
+	}
+	if value.IsObject() {
+		if strings.TrimSpace(value.Get("type").String()) == "input_image" && isEmptyBase64DataURI(value.Get("image_url").String()) {
+			return true
+		}
+		return openAIJSONValueMayContainEmptyBase64InputImage(value.Get("content"))
+	}
+	return false
+}
+
+func sanitizeEmptyBase64InputImagesInOpenAIBody(body []byte) ([]byte, bool, error) {
+	if !openAIRequestBodyMayContainEmptyBase64InputImage(body) {
+		return body, false, nil
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return body, false, fmt.Errorf("sanitize request body: %w", err)
+	}
+	if !sanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(reqBody) {
+		return body, false, nil
+	}
+	normalized, err := marshalOpenAIUpstreamJSON(reqBody)
+	if err != nil {
+		return body, false, fmt.Errorf("serialize sanitized request body: %w", err)
+	}
+	return normalized, true, nil
+}
+
+func sanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(reqBody map[string]any) bool {
+	if reqBody == nil {
+		return false
+	}
+	input, ok := reqBody["input"]
+	if !ok {
+		return false
+	}
+	normalizedInput, changed := sanitizeEmptyBase64InputImagesInOpenAIInput(input)
+	if !changed {
+		return false
+	}
+	reqBody["input"] = normalizedInput
+	return true
+}
+
+func sanitizeEmptyBase64InputImagesInOpenAIInput(input any) (any, bool) {
+	items, ok := input.([]any)
+	if !ok {
+		return input, false
+	}
+
+	normalizedItems := make([]any, 0, len(items))
+	changed := false
+	for _, item := range items {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			normalizedItems = append(normalizedItems, item)
+			continue
+		}
+		if shouldDropEmptyBase64InputImagePart(itemMap) {
+			changed = true
+			continue
+		}
+		content, ok := itemMap["content"]
+		if !ok {
+			normalizedItems = append(normalizedItems, itemMap)
+			continue
+		}
+		parts, ok := content.([]any)
+		if !ok {
+			normalizedItems = append(normalizedItems, itemMap)
+			continue
+		}
+
+		normalizedParts := make([]any, 0, len(parts))
+		itemChanged := false
+		for _, part := range parts {
+			if shouldDropEmptyBase64InputImagePart(part) {
+				changed = true
+				itemChanged = true
+				continue
+			}
+			normalizedParts = append(normalizedParts, part)
+		}
+		if itemChanged {
+			if len(normalizedParts) == 0 {
+				continue
+			}
+			itemMap["content"] = normalizedParts
+		}
+		normalizedItems = append(normalizedItems, itemMap)
+	}
+	if !changed {
+		return input, false
+	}
+	return normalizedItems, true
+}
+
+func shouldDropEmptyBase64InputImagePart(part any) bool {
+	partMap, ok := part.(map[string]any)
+	if !ok {
+		return false
+	}
+	typeValue, _ := partMap["type"].(string)
+	if strings.TrimSpace(typeValue) != "input_image" {
+		return false
+	}
+	imageURL, _ := partMap["image_url"].(string)
+	return isEmptyBase64DataURI(imageURL)
+}
+
+func isEmptyBase64DataURI(raw string) bool {
+	if !strings.HasPrefix(raw, "data:") {
+		return false
+	}
+	rest := strings.TrimPrefix(raw, "data:")
+	semicolonIdx := strings.Index(rest, ";")
+	if semicolonIdx < 0 {
+		return false
+	}
+	rest = rest[semicolonIdx+1:]
+	if !strings.HasPrefix(rest, "base64,") {
+		return false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(rest, "base64,")) == ""
+}
+
+func getOpenAIRequestBodyMap(_ *gin.Context, body []byte) (map[string]any, error) {
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return nil, fmt.Errorf("parse request: %w", err)
+	}
+	return reqBody, nil
+}
+
+// extractOpenAIReasoningEffort 的模型候选语义同 extractOpenAIReasoningEffortFromBody。
+func extractOpenAIReasoningEffort(reqBody map[string]any, modelCandidates ...string) *string {
+	if value, present := getOpenAIReasoningEffortFromReqBody(reqBody, firstNonEmpty(modelCandidates...)); present {
+		if value == "" {
+			return nil
+		}
+		return &value
+	}
+
+	value := deriveOpenAIReasoningEffortFromModelCandidates(modelCandidates)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func normalizeOpenAIReasoningEffort(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return ""
+	}
+
+	// Normalize separators for "x-high"/"x_high" variants.
+	value = strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
+
+	switch value {
+	case "none", "minimal":
+		return ""
+	case "low", "medium", "high":
+		return value
+	case "xhigh", "extrahigh", "max":
+		return "xhigh"
+	default:
+		// Only store known effort levels for now to keep UI consistent.
+		return ""
+	}
+}
+
+func normalizeOpenAIReasoningEffortForModel(raw, model string) string {
+	if strings.EqualFold(strings.TrimSpace(raw), "max") && isOpenAIGPT56Model(model) {
+		return "max"
+	}
+	return normalizeOpenAIReasoningEffort(raw)
+}

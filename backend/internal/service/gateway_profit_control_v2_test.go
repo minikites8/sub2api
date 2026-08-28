@@ -76,6 +76,20 @@ func TestGatewayProfitControlInstallsForFivePlatformsOnlyOnTokenRequests(t *test
 	}
 }
 
+func TestGatewayProfitControl_ModelMultiplierChangesGateThreshold(t *testing.T) {
+	group := gatewayProfitTestGroup(110, PlatformAnthropic)
+	group.RateMultiplier = 0.8
+	group.ProfitMinMargin = 0.25
+	group.ModelRateMultipliers = map[string]float64{"claude-fast": 0.4}
+	groupID := group.ID
+	svc := &GatewayService{}
+	ctx := svc.withGatewayProfitControlGateForModel(gatewayProfitTestContext(group), &groupID, "CLAUDE-FAST")
+	gate, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
+	require.True(t, ok)
+	require.Equal(t, "CLAUDE-FAST", gate.model)
+	require.InDelta(t, 0.3, gate.threshold, 1e-12)
+}
+
 func TestGatewayProfitControlCompositeBillingUsesScheduledMemberConfig(t *testing.T) {
 	billingGroup := &Group{
 		ID:               201,

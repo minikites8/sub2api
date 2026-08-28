@@ -63,6 +63,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -119,6 +120,9 @@ type openAIProfitControlGate struct {
 	// groupID 是门配置来源的被调度分组；请求内按分组复用（failover 阈值稳定），
 	// composite 等跨分组调度切换分组时重新解析。
 	groupID int64
+	// model is the requested model used to resolve the billing group's
+	// model-specific multiplier. Empty means the group default multiplier.
+	model string
 	// platform 是利润配置所在分组的平台，用于按平台观测门是否真实生效。
 	platform string
 	// threshold = D(pricingAt) × (1 − margin − buffer)，账号倍率必须 <= 它。
@@ -159,7 +163,11 @@ func (s *OpenAIGatewayService) WithOpenAITurnPricingContext(ctx context.Context,
 		gid := existing.groupID
 		groupID = &gid
 	}
-	gate := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	model := ""
+	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil {
+		model = existing.model
+	}
+	gate := s.resolveOpenAIProfitControlGateForModel(ctx, groupID, model)
 	if gate == nil {
 		// 分组已关门（或配置读取失败 fail-open）：清除旧 turn 的门，后续 turn
 		// 按无门放行，与 HTTP 路径的开关语义一致。
@@ -192,15 +200,23 @@ func OpenAIPricingAtFromContext(ctx context.Context) time.Time {
 // （门不存在，全部否决点自动放行，既有行为零变化）。ctx 已有同分组门时直接
 // 复用：同一请求的全部 failover 重入共享同一阈值。
 func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+	return s.withOpenAIProfitControlGateForModel(ctx, groupID, "")
+}
+
+// withOpenAIProfitControlGateForModel installs a gate using the requested
+// model's group multiplier. An empty model preserves the group default.
+func (s *OpenAIGatewayService) withOpenAIProfitControlGateForModel(ctx context.Context, groupID *int64, requestedModel string) context.Context {
 	if _, suppressed := ctx.Value(openAIProfitControlSuppressCtxKey{}).(struct{}); suppressed {
 		return ctx
 	}
+	requestedModel = strings.TrimSpace(requestedModel)
 	if groupID != nil {
-		if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil && existing.groupID == *groupID {
+		if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil && existing.groupID == *groupID &&
+			(requestedModel == "" || strings.EqualFold(existing.model, requestedModel)) {
 			return ctx
 		}
 	}
-	gate := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	gate := s.resolveOpenAIProfitControlGateForModel(ctx, groupID, requestedModel)
 	if gate == nil {
 		// 被调度分组无门（未启用/非 openai/配置读取失败）而 ctx 带着其他分组的
 		// 请求门时清除之：门配置取被调度分组，父分组阈值不得泄漏到成员分组
@@ -215,6 +231,10 @@ func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, 
 }
 
 func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Context, groupID *int64) *openAIProfitControlGate {
+	return s.resolveOpenAIProfitControlGateForModel(ctx, groupID, "")
+}
+
+func (s *OpenAIGatewayService) resolveOpenAIProfitControlGateForModel(ctx context.Context, groupID *int64, requestedModel string) *openAIProfitControlGate {
 	if s == nil || groupID == nil || *groupID <= 0 {
 		return nil
 	}
@@ -253,9 +273,9 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) {
 		billingGroup = ctxGroup
 	}
-	downstream := billingGroup.RateMultiplier
+	downstream := billingGroup.RateMultiplierForModel(requestedModel)
 	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
-		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
+		downstream = s.ResolveUserGroupRateMultiplierForModel(ctx, userID, billingGroup.ID, requestedModel, downstream)
 	}
 	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
 
@@ -264,6 +284,7 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	return &openAIProfitControlGate{
 		groupID:   *groupID,
 		platform:  group.Platform,
+		model:     strings.TrimSpace(requestedModel),
 		threshold: threshold,
 		pricingAt: pricingAt,
 	}

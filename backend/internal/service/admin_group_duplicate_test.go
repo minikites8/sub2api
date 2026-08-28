@@ -265,6 +265,24 @@ func TestCloneGroupForDuplicateCopiesKiroCacheConfiguration(t *testing.T) {
 	require.Equal(t, KiroEndpointModeAuto, duplicate.KiroEndpointMode)
 }
 
+func TestCloneGroupForDuplicateCopiesOpenAIServiceTierPolicy(t *testing.T) {
+	source := &Group{
+		ID:                    21,
+		Platform:              PlatformOpenAI,
+		OpenAIServiceTierMode: OpenAIServiceTierModeSet,
+		OpenAIServiceTier:     OpenAIFastTierFlex,
+		ModelRateMultipliers:  map[string]float64{"gpt-5.5": 0.8},
+	}
+
+	duplicate := cloneGroupForDuplicate(source, "operation")
+	require.Equal(t, source.OpenAIServiceTierMode, duplicate.OpenAIServiceTierMode)
+	require.Equal(t, source.OpenAIServiceTier, duplicate.OpenAIServiceTier)
+	require.Equal(t, source.ModelRateMultipliers, duplicate.ModelRateMultipliers)
+
+	duplicate.ModelRateMultipliers["gpt-5.5"] = 1.2
+	require.Equal(t, 0.8, source.ModelRateMultipliers["gpt-5.5"])
+}
+
 func TestDuplicateGroupRecoversSameOperationAndScopesByAdmin(t *testing.T) {
 	source := &Group{ID: 9, Name: "team", Platform: PlatformAnthropic, Status: StatusActive}
 	repo := newDuplicateGroupRepoStub(source)

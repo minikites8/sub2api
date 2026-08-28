@@ -28,6 +28,8 @@ const (
 	FieldDescription = "description"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
+	// FieldModelRateMultipliers holds the string denoting the model_rate_multipliers field in the database.
+	FieldModelRateMultipliers = "model_rate_multipliers"
 	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
 	FieldPeakRateEnabled = "peak_rate_enabled"
 	// FieldPeakStart holds the string denoting the peak_start field in the database.
@@ -128,6 +130,10 @@ const (
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldModelsListConfig holds the string denoting the models_list_config field in the database.
 	FieldModelsListConfig = "models_list_config"
+	// FieldOpenaiServiceTierMode holds the string denoting the openai_service_tier_mode field in the database.
+	FieldOpenaiServiceTierMode = "openai_service_tier_mode"
+	// FieldOpenaiServiceTier holds the string denoting the openai_service_tier field in the database.
+	FieldOpenaiServiceTier = "openai_service_tier"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
@@ -237,6 +243,7 @@ var Columns = []string{
 	FieldName,
 	FieldDescription,
 	FieldRateMultiplier,
+	FieldModelRateMultipliers,
 	FieldPeakRateEnabled,
 	FieldPeakStart,
 	FieldPeakEnd,
@@ -287,6 +294,8 @@ var Columns = []string{
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
+	FieldOpenaiServiceTierMode,
+	FieldOpenaiServiceTier,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
 	FieldReasoningEffortMappings,
@@ -422,6 +431,14 @@ var (
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultModelsListConfig holds the default value on creation for the "models_list_config" field.
 	DefaultModelsListConfig domain.GroupModelsListConfig
+	// DefaultOpenaiServiceTierMode holds the default value on creation for the "openai_service_tier_mode" field.
+	DefaultOpenaiServiceTierMode string
+	// OpenaiServiceTierModeValidator is a validator for the "openai_service_tier_mode" field. It is called by the builders before save.
+	OpenaiServiceTierModeValidator func(string) error
+	// DefaultOpenaiServiceTier holds the default value on creation for the "openai_service_tier" field.
+	DefaultOpenaiServiceTier string
+	// OpenaiServiceTierValidator is a validator for the "openai_service_tier" field. It is called by the builders before save.
+	OpenaiServiceTierValidator func(string) error
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
@@ -714,6 +731,16 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByOpenaiServiceTierMode orders the results by the openai_service_tier_mode field.
+func ByOpenaiServiceTierMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOpenaiServiceTierMode, opts...).ToFunc()
+}
+
+// ByOpenaiServiceTier orders the results by the openai_service_tier field.
+func ByOpenaiServiceTier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOpenaiServiceTier, opts...).ToFunc()
 }
 
 // ByRpmLimit orders the results by the rpm_limit field.

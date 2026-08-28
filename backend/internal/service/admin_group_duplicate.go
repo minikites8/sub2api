@@ -99,6 +99,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		Description:                     source.Description,
 		Platform:                        source.Platform,
 		RateMultiplier:                  source.RateMultiplier,
+		ModelRateMultipliers:            cloneGroupRateMultipliers(source.ModelRateMultipliers),
 		PeakRateEnabled:                 source.PeakRateEnabled,
 		PeakStart:                       source.PeakStart,
 		PeakEnd:                         source.PeakEnd,
@@ -152,6 +153,8 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 			Enabled: source.ModelsListConfig.Enabled,
 			Models:  append([]string(nil), source.ModelsListConfig.Models...),
 		},
+		OpenAIServiceTierMode:           source.OpenAIServiceTierMode,
+		OpenAIServiceTier:               source.OpenAIServiceTier,
 		RPMLimit:                        source.RPMLimit,
 		MaxReasoningEffort:              source.MaxReasoningEffort,
 		ReasoningEffortMappings:         append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
@@ -164,6 +167,17 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		KiroCacheReadEmulationRatio:     source.KiroCacheReadEmulationRatio,
 		KiroEndpointMode:                source.KiroEndpointMode,
 	}
+}
+
+func cloneGroupRateMultipliers(value map[string]float64) map[string]float64 {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]float64, len(value))
+	for model, multiplier := range value {
+		cloned[model] = multiplier
+	}
+	return cloned
 }
 
 // RecoverDuplicateGroup performs a read-only lookup for a copy that was already

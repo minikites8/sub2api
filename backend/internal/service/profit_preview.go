@@ -56,6 +56,10 @@ type ProfitPreviewAccountVerdict struct {
 	RejectedUnderMinD bool `json:"rejected_under_min_d,omitempty"`
 	// SupportedModels 为该账号支持的主力模型子集。
 	SupportedModels []string `json:"supported_models,omitempty"`
+	// ClassesByModel and RejectedUnderMinDByModel expose the model-specific
+	// admission result when a group overrides its default multiplier per model.
+	ClassesByModel           map[string]string `json:"classes_by_model,omitempty"`
+	RejectedUnderMinDByModel map[string]bool   `json:"rejected_under_min_d_by_model,omitempty"`
 }
 
 // ProfitPreviewGroupReport 是单分组的预演报告。
@@ -73,9 +77,13 @@ type ProfitPreviewGroupReport struct {
 	ThresholdDefault float64 `json:"threshold_default"`
 	ThresholdMinD    float64 `json:"threshold_min_d"`
 	// RemainingByModel 仅表示利润门准入账号数，不模拟健康、冷却、限流或槽位。
-	RemainingByModel     map[string]int                `json:"profit_admitted_by_model"`
-	RemainingByModelMinD map[string]int                `json:"profit_admitted_by_model_min_d"`
-	Verdicts             []ProfitPreviewAccountVerdict `json:"verdicts"`
+	RemainingByModel        map[string]int                `json:"profit_admitted_by_model"`
+	RemainingByModelMinD    map[string]int                `json:"profit_admitted_by_model_min_d"`
+	DefaultDByModel         map[string]float64            `json:"default_d_by_model,omitempty"`
+	MinEffectiveDByModel    map[string]float64            `json:"min_effective_d_by_model,omitempty"`
+	ThresholdDefaultByModel map[string]float64            `json:"threshold_default_by_model,omitempty"`
+	ThresholdMinDByModel    map[string]float64            `json:"threshold_min_d_by_model,omitempty"`
+	Verdicts                []ProfitPreviewAccountVerdict `json:"verdicts"`
 }
 
 // PreviewProfitAdmission 对五大平台分组推演利润门准入结果。未启用的分组仅在
@@ -89,13 +97,17 @@ func PreviewProfitAdmission(inputs []ProfitPreviewGroupInput, evalAt time.Time) 
 		group := in.Group
 		effectiveGate := (group.ProfitControlEnabled || in.AssumeEnabled) && profitControlPlatformSupported(group.Platform)
 		report := ProfitPreviewGroupReport{
-			GroupID:              group.ID,
-			GroupName:            group.Name,
-			Platform:             group.Platform,
-			EffectiveGate:        effectiveGate,
-			AssumedEnabled:       in.AssumeEnabled && !group.ProfitControlEnabled && effectiveGate,
-			RemainingByModel:     make(map[string]int, len(in.Models)),
-			RemainingByModelMinD: make(map[string]int, len(in.Models)),
+			GroupID:                 group.ID,
+			GroupName:               group.Name,
+			Platform:                group.Platform,
+			EffectiveGate:           effectiveGate,
+			AssumedEnabled:          in.AssumeEnabled && !group.ProfitControlEnabled && effectiveGate,
+			RemainingByModel:        make(map[string]int, len(in.Models)),
+			RemainingByModelMinD:    make(map[string]int, len(in.Models)),
+			DefaultDByModel:         make(map[string]float64, len(in.Models)),
+			MinEffectiveDByModel:    make(map[string]float64, len(in.Models)),
+			ThresholdDefaultByModel: make(map[string]float64, len(in.Models)),
+			ThresholdMinDByModel:    make(map[string]float64, len(in.Models)),
 		}
 		for _, model := range in.Models {
 			report.RemainingByModel[model] = 0
@@ -121,23 +133,58 @@ func PreviewProfitAdmission(inputs []ProfitPreviewGroupInput, evalAt time.Time) 
 		report.MinEffectiveD = minD
 		report.ThresholdDefault = thresholdDefault
 		report.ThresholdMinD = thresholdMinD
+		for _, model := range in.Models {
+			modelRate := group.RateMultiplierForModel(model)
+			modelDefaultD := modelRate * peak
+			modelMinRate := modelRate
+			for _, override := range in.UserOverrides {
+				if math.IsNaN(override) || math.IsInf(override, 0) || override < 0 {
+					continue
+				}
+				if override < modelMinRate {
+					modelMinRate = override
+				}
+			}
+			modelMinD := modelMinRate * peak
+			report.DefaultDByModel[model] = modelDefaultD
+			report.MinEffectiveDByModel[model] = modelMinD
+			report.ThresholdDefaultByModel[model] = clampProfitControlThreshold(modelDefaultD * (1 - deduction))
+			report.ThresholdMinDByModel[model] = clampProfitControlThreshold(modelMinD * (1 - deduction))
+		}
 
 		for _, account := range in.Accounts {
 			if account == nil {
 				continue
 			}
 			verdict := previewAccountProfitAdmission(account, effectiveGate, thresholdDefault, thresholdMinD, evalAt)
-			admittedDefault := verdict.Class == ProfitPreviewClassAdmitted
-			admittedMinD := admittedDefault && !verdict.RejectedUnderMinD
+			verdict.ClassesByModel = make(map[string]string, len(in.Models))
+			verdict.RejectedUnderMinDByModel = make(map[string]bool, len(in.Models))
 			for _, model := range in.Models {
 				if !account.IsModelSupported(model) {
 					continue
 				}
 				verdict.SupportedModels = append(verdict.SupportedModels, model)
-				if admittedDefault {
+				modelThreshold := report.ThresholdDefaultByModel[model]
+				modelMinThreshold := report.ThresholdMinDByModel[model]
+				modelClass := verdict.Class
+				modelRejectedUnderMinD := verdict.RejectedUnderMinD
+				if effectiveGate {
+					switch {
+					case verdict.AccountRate == nil:
+						modelClass = ProfitPreviewClassRejectedInvalidRate
+					case profitControlOverThreshold(*verdict.AccountRate, modelThreshold):
+						modelClass = ProfitPreviewClassRejectedThreshold
+					default:
+						modelClass = ProfitPreviewClassAdmitted
+						modelRejectedUnderMinD = profitControlOverThreshold(*verdict.AccountRate, modelMinThreshold)
+					}
+				}
+				verdict.ClassesByModel[model] = modelClass
+				verdict.RejectedUnderMinDByModel[model] = modelRejectedUnderMinD
+				if modelClass == ProfitPreviewClassAdmitted {
 					report.RemainingByModel[model]++
 				}
-				if admittedMinD {
+				if modelClass == ProfitPreviewClassAdmitted && !modelRejectedUnderMinD {
 					report.RemainingByModelMinD[model]++
 				}
 			}

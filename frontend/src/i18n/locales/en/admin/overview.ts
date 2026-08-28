@@ -899,6 +899,15 @@ export default {
       groupUpdatedSuccess: 'Group updated successfully',
       groupDeletedSuccess: 'Group deleted successfully',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
+      modelRateMultiplierLabel: 'Model-specific multipliers',
+      addModelRateMultiplier: 'Add model',
+      modelRateMultiplierModelPlaceholder: 'Model name, e.g. gpt-4.1',
+      modelRateMultiplierValuePlaceholder: 'Multiplier',
+      deleteModelRateMultiplier: 'Delete model multiplier',
+      modelRateMultiplierHint: 'Exact model matches use this multiplier. Other models use the group multiplier.',
+      modelRateMultiplierModelRequired: 'Enter a model name for each model-specific multiplier.',
+      modelRateMultiplierInvalid: 'Model-specific multipliers must be finite numbers greater than or equal to 0.',
+      modelRateMultiplierDuplicate: 'Each model can have only one model-specific multiplier.',
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {
         title: 'What is an exclusive group?',
@@ -1175,6 +1184,17 @@ export default {
         unsupportedTitle: 'Current server does not support Live',
         unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
         enableAnyway: 'Enable anyway'
+      },
+      openaiServiceTier: {
+        title: 'OpenAI service_tier policy',
+        mode: 'Request service_tier',
+        value: 'Configured value',
+        passthrough: 'Pass through client value',
+        set: 'Set configured value',
+        clear: 'Clear service_tier',
+        priority: 'priority (Fast)',
+        flex: 'flex',
+        hint: 'Applies to every OpenAI request in this group; set mode overrides the client value.'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',

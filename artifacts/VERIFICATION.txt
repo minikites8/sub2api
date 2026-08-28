@@ -1,65 +1,49 @@
 CHANGED_BRANCH=main
-CHANGED_FIELD=model marketplace time windows are 90min, 12h, 1d, 15d; marketplace surfaces use adaptive theme tokens; each monitoring-enabled pricing group renders its own passive status bar
+CHANGED_FIELD=per-group OpenAI service_tier policy with passthrough, set, and clear modes; set values normalize fast to priority and apply to HTTP bodies plus WebSocket response.create frames
 MODIFIED_FILE=D:/Programs/sub2api/artifacts/MODIFIED_FILE
 DIFF_FILE=D:/Programs/sub2api/artifacts/DIFF_FILE
 VERIFICATION_FILE=D:/Programs/sub2api/artifacts/VERIFICATION.txt
 ROLLBACK_FILE=D:/Programs/sub2api/artifacts/ROLLBACK.sh
-
 BASELINE_FILE=D:/Programs/sub2api/artifacts/BASELINE_FILE
 ROLLBACK_BACKUP=D:/Programs/sub2api/artifacts/ROLLBACK_BACKUP
 ROLLBACK_TARGET=D:/Programs/sub2api/artifacts/ROLLBACK_TARGET
-BASELINE_SHA256=F221515C37541742DC03A79CC80FC3208837AE9A2AE970CEA501076EC0566334
-MODIFIED_SHA256=D5AEE353FB4DAF2D8297C1BE201A1405E72E6400861ABD889CF31953C3B0F6C4
-
-BASELINE_CMD=pwsh -NoProfile -Command '$line=Get-Content -Encoding UTF8 artifacts/BASELINE_FILE | Where-Object {$_ -match "const windows: MarketplaceWindow"}; if($line -match "90m|12h|1d"){Write-Output "unexpected modified windows"; exit 1}; if($line -notmatch "7d" -or $line -notmatch "15d" -or $line -notmatch "30d"){Write-Output "baseline window declaration missing"; exit 1}; Write-Output "baseline windows=7d,15d,30d"; exit 0'
+BASELINE_SHA256=12AB30A5E2923D97AA24B5BB1E484BB9E1F7A68057064FAE078C98D3AE05B026
+MODIFIED_SHA256=B0316D3A89368DCAB3BCCAD84B77139E9136A6B89EAA17B928C046F14D870345
+BASELINE_CMD=pwsh -NoProfile -Command 'Get-Content -Raw -Encoding UTF8 artifacts/BASELINE_FILE | Select-String applyGroupOpenAIServiceTierPolicy'
 BASELINE_INPUT=artifacts/BASELINE_FILE
-BASELINE_RESULT=baseline windows=7d,15d,30d
+BASELINE_RESULT=no match; baseline policy absent
 BASELINE_EXIT=0
-
-MODIFIED_CMD=pwsh -NoProfile -Command '$line=Get-Content -Encoding UTF8 artifacts/MODIFIED_FILE | Where-Object {$_ -match "const windows: MarketplaceWindow"}; if($line -notmatch "90m" -or $line -notmatch "12h" -or $line -notmatch "1d" -or $line -notmatch "15d"){Write-Output "modified window declaration missing"; exit 1}; $label=Get-Content -Encoding UTF8 artifacts/MODIFIED_FILE | Where-Object {$_ -match "return window"}; if($label -notmatch "90min"){Write-Output "90min label missing"; exit 1}; Write-Output "modified windows=90min,12h,1d,15d"; exit 0'
+MODIFIED_CMD=pwsh -NoProfile -Command 'Get-Content -Raw -Encoding UTF8 artifacts/MODIFIED_FILE | Select-String applyGroupOpenAIServiceTierPolicy'
 MODIFIED_INPUT=artifacts/MODIFIED_FILE
-MODIFIED_RESULT=modified windows=90min,12h,1d,15d
+MODIFIED_RESULT=match found; modified policy present
 MODIFIED_EXIT=0
-
 ROLLBACK_CMD=& 'C:\Program Files\Git\bin\bash.exe' artifacts/ROLLBACK.sh artifacts/ROLLBACK_TARGET artifacts/ROLLBACK_BACKUP
 ROLLBACK_INPUT=target=artifacts/ROLLBACK_TARGET backup=artifacts/ROLLBACK_BACKUP
-ROLLBACK_RESULT=restored artifacts/ROLLBACK_TARGET from artifacts/ROLLBACK_BACKUP; rollback hash matched baseline F221515C37541742DC03A79CC80FC3208837AE9A2AE970CEA501076EC0566334
+ROLLBACK_RESULT=restored artifacts/ROLLBACK_TARGET from artifacts/ROLLBACK_BACKUP; SHA256 equals baseline
 ROLLBACK_EXIT=0
-RESTORED_BEHAVIOR=ROLLBACK_TARGET restored to the baseline file; baseline behavior is the original 7d,15d,30d window set
+RESTORED_BEHAVIOR=ROLLBACK_TARGET contains baseline openai_gateway_request_body.go behavior; MODIFIED_FILE retains group service_tier behavior
 RESTORED_STATUS=ROLLBACK_TARGET SHA256 equals BASELINE_SHA256; MODIFIED_FILE SHA256 remains MODIFIED_SHA256
-
-FRONTEND_TEST_CMD=pnpm exec vitest run src/utils/__tests__/modelMarketplace.spec.ts src/views/user/__tests__/ChannelStatusView.spec.ts
-FRONTEND_TEST_RESULT=Test Files 2 passed; Tests 6 passed
-FRONTEND_TEST_EXIT=0
-LINT_CMD=pnpm exec eslint src/views/user/ChannelStatusView.vue src/utils/modelMarketplace.ts src/api/publicTransit.ts src/utils/__tests__/modelMarketplace.spec.ts src/views/user/__tests__/ChannelStatusView.spec.ts
-LINT_RESULT=completed successfully with no diagnostics
-LINT_EXIT=0
-TYPECHECK_CMD=pnpm typecheck
-TYPECHECK_RESULT=vue-tsc --noEmit completed successfully
-TYPECHECK_EXIT=0
-BUILD_CMD=pnpm build
-BUILD_RESULT=vite build completed; 1036 modules transformed
-BUILD_EXIT=0
-GO_COMPILE_CMD=pwsh -NoProfile -Command "$env:GOTMPDIR='D:\\go-tmp'; $env:GOCACHE='D:\\go-cache'; go test ./internal/service -run '^$'"
-GO_COMPILE_RESULT=ok github.com/Wei-Shaw/sub2api/internal/service [no tests to run]
-GO_COMPILE_EXIT=0
-GO_UNIT_CMD=go test -tags=unit ./internal/service -run 'Test(BuildPublicTransit|AttachPublicTransit|ChannelMonitorV2)'
-GO_UNIT_RESULT=blocked by pre-existing duplicate methods and missing userRepoStub.domainCounts fields in unrelated unit test files
-GO_UNIT_EXIT=1
-
-MODEL_RATE_BASELINE_CMD=pwsh -NoProfile -Command '$c=git show HEAD:backend/internal/service/group.go; if($c -match "ModelRateMultipliers"){exit 1}; Write-Output "model override absent"'
-MODEL_RATE_BASELINE_INPUT=HEAD:backend/internal/service/group.go
-MODEL_RATE_BASELINE_RESULT=model override absent
-MODEL_RATE_BASELINE_EXIT=0
-MODEL_RATE_MODIFIED_CMD=pwsh -NoProfile -Command '$c=Get-Content -Raw -Encoding UTF8 backend/internal/service/group.go; if($c -notmatch "ModelRateMultipliers"){exit 1}; Write-Output "model override present"'
-MODEL_RATE_MODIFIED_INPUT=backend/internal/service/group.go
-MODEL_RATE_MODIFIED_RESULT=model override present
-MODEL_RATE_MODIFIED_EXIT=0
-MODEL_RATE_TEST_CMD=go test ./internal/service -run 'Test(UserGroupRateResolver|GroupRateMultiplier|GatewayProfitControl|ProfitPreview|PublicTransit|ChannelMonitorV2)' -count=1
-MODEL_RATE_TEST_INPUT=backend/internal/service targeted model-rate, profit-control, public snapshot, and V2 monitoring tests
-MODEL_RATE_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/service 0.952s
-MODEL_RATE_TEST_EXIT=0
-FULL_SERVICE_TEST_CMD=go test ./internal/service -count=1
-FULL_SERVICE_TEST_INPUT=backend/internal/service complete package
-FULL_SERVICE_TEST_RESULT=existing TestCNProviderBalanceCheckRunOnceProbesCodingPlanQuota assertion failed: got account IDs [1,2,4], expected [4,1]
-FULL_SERVICE_TEST_EXIT=1
+SERVICE_TARGETED_TEST_CMD=='1'; go test ./internal/service -run 'TestNormalizeOpenAIServiceTierConfig|TestApplyGroupOpenAIServiceTierPolicyToWSResponseCreate|TestAPIKeyAuthSnapshotProfitControlRoundtrip|TestCloneGroupForDuplicateCopiesOpenAIServiceTierPolicy|TestApplyOpenAIFastPolicyToBody_GroupServiceTierPolicy' -count=1
+SERVICE_TARGETED_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/service 1.051s
+SERVICE_TARGETED_TEST_EXIT=0
+SERVICE_FULL_TEST_CMD=='1'; go test ./internal/service -count=1
+SERVICE_FULL_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/service 108.232s
+SERVICE_FULL_TEST_EXIT=0
+MIGRATIONS_TEST_CMD=='1'; go test ./migrations -count=1
+MIGRATIONS_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/migrations 0.297s
+MIGRATIONS_TEST_EXIT=0
+FRONTEND_TYPECHECK_CMD=pnpm typecheck
+FRONTEND_TYPECHECK_RESULT=vue-tsc --noEmit completed successfully
+FRONTEND_TYPECHECK_EXIT=0
+FRONTEND_BUILD_CMD=pnpm build
+FRONTEND_BUILD_RESULT=vite 5.4.21; 1036 modules transformed; built in 22.31s
+FRONTEND_BUILD_EXIT=0
+FRONTEND_LINT_CMD=pnpm lint:check
+FRONTEND_LINT_RESULT=existing frontend/src/api/admin/accounts.ts:714 no-useless-catch diagnostic
+FRONTEND_LINT_EXIT=1
+BACKEND_COMPILE_CMD=='1'; go test ./internal/service -run '^$'; go test ./internal/repository -run '^$'; go test ./internal/handler/admin -run '^$'
+BACKEND_COMPILE_RESULT=all three packages compiled successfully
+BACKEND_COMPILE_EXIT=0
+DIFF_CHECK_CMD=git diff --check -- . ':(exclude)artifacts/DIFF_FILE'
+DIFF_CHECK_RESULT=completed with no diagnostics
+DIFF_CHECK_EXIT=0

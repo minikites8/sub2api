@@ -196,6 +196,32 @@ func TestApplyOpenAIFastPolicyToBody_DefaultPassesPriorityAndFast(t *testing.T) 
 	require.Equal(t, string(body), string(updated))
 }
 
+func TestApplyOpenAIFastPolicyToBody_GroupServiceTierPolicy(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	baseGroup := func(mode, tier string) context.Context {
+		group := &Group{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true,
+			OpenAIServiceTierMode: mode, OpenAIServiceTier: tier}
+		return context.WithValue(context.Background(), ctxkey.Group, group)
+	}
+
+	updated, err := svc.applyOpenAIFastPolicyToBody(baseGroup(OpenAIServiceTierModeSet, OpenAIFastTierFlex), account, "gpt-5.5", []byte(`{"model":"gpt-5.5"}`))
+	require.NoError(t, err)
+	require.Equal(t, OpenAIFastTierFlex, gjson.GetBytes(updated, "service_tier").String())
+
+	updated, err = svc.applyOpenAIFastPolicyToBody(baseGroup(OpenAIServiceTierModeSet, OpenAIFastTierPriority), account, "gpt-5.5", []byte(`{"service_tier":"flex"}`))
+	require.NoError(t, err)
+	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
+
+	updated, err = svc.applyOpenAIFastPolicyToBody(baseGroup(OpenAIServiceTierModeClear, ""), account, "gpt-5.5", []byte(`{"service_tier":"priority"}`))
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
+
+	updated, err = svc.applyOpenAIFastPolicyToBody(baseGroup(OpenAIServiceTierModePassthrough, ""), account, "gpt-5.5", []byte(`{"service_tier":"flex"}`))
+	require.NoError(t, err)
+	require.Equal(t, OpenAIFastTierFlex, gjson.GetBytes(updated, "service_tier").String())
+}
+
 func TestApplyOpenAIFastPolicyToBody_ExplicitFilterRemovesField(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

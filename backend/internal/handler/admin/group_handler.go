@@ -100,6 +100,7 @@ type CreateGroupRequest struct {
 	Description               string                        `json:"description"`
 	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok kimi zhipu deepseek composite"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
+	ModelRateMultipliers      map[string]float64            `json:"model_rate_multipliers"`
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD             optionalLimitField            `json:"daily_limit_usd"`
@@ -152,6 +153,8 @@ type CreateGroupRequest struct {
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
+	OpenAIServiceTierMode       string                                    `json:"openai_service_tier_mode"`
+	OpenAIServiceTier           string                                    `json:"openai_service_tier"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
 	// OpenAI/Codex 请求推理强度上限，空字符串表示不限制。
@@ -177,6 +180,7 @@ type UpdateGroupRequest struct {
 	Description               *string                        `json:"description"`
 	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok kimi zhipu deepseek composite"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
+	ModelRateMultipliers      map[string]float64             `json:"model_rate_multipliers"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
 	SubscriptionType          string                         `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -230,6 +234,8 @@ type UpdateGroupRequest struct {
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
+	OpenAIServiceTierMode       *string                                    `json:"openai_service_tier_mode"`
+	OpenAIServiceTier           *string                                    `json:"openai_service_tier"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
 	// OpenAI/Codex 请求推理强度上限；空字符串清除，nil 不修改。
@@ -543,6 +549,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Description:                     req.Description,
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
+		ModelRateMultipliers:            req.ModelRateMultipliers,
 		IsExclusive:                     req.IsExclusive,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
@@ -591,6 +598,8 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
+		OpenAIServiceTierMode:           req.OpenAIServiceTierMode,
+		OpenAIServiceTier:               req.OpenAIServiceTier,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
@@ -679,6 +688,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Description:                     req.Description,
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
+		ModelRateMultipliers:            req.ModelRateMultipliers,
 		IsExclusive:                     req.IsExclusive,
 		Status:                          req.Status,
 		SubscriptionType:                req.SubscriptionType,
@@ -728,6 +738,8 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
+		OpenAIServiceTierMode:           req.OpenAIServiceTierMode,
+		OpenAIServiceTier:               req.OpenAIServiceTier,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,

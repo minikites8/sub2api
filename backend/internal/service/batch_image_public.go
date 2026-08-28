@@ -1012,7 +1012,7 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 		if !group.AllowBatchImageGeneration {
 			return nil, ErrBatchImageGroupDisabled
 		}
-		groupDefaultMultiplier := group.RateMultiplier
+		groupDefaultMultiplier := group.RateMultiplierForModel(req.Model)
 		if groupDefaultMultiplier < 0 {
 			groupDefaultMultiplier = 0
 		}

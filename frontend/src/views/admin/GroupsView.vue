@@ -623,6 +623,22 @@
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
         </div>
+        <div class="lg:col-span-2">
+          <div class="mb-1.5 flex items-center justify-between">
+            <label class="input-label">{{ t("admin.groups.modelRateMultiplierLabel") }}</label>
+            <button type="button" class="btn btn-secondary btn-sm" @click="addModelRateMultiplier(createForm)">
+              <Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.addModelRateMultiplier") }}
+            </button>
+          </div>
+          <div v-if="createForm.model_rate_multiplier_entries.length" class="space-y-2">
+            <div v-for="(entry, index) in createForm.model_rate_multiplier_entries" :key="index" class="flex items-center gap-2">
+              <input v-model.trim="entry.model" type="text" class="input flex-1" :placeholder="t('admin.groups.modelRateMultiplierModelPlaceholder')" />
+              <input v-model.number="entry.multiplier" type="number" min="0" step="0.001" class="input w-32" :placeholder="t('admin.groups.modelRateMultiplierValuePlaceholder')" />
+              <button type="button" class="btn btn-secondary" :title="t('admin.groups.deleteModelRateMultiplier')" @click="removeModelRateMultiplier(createForm, index)"><Icon name="trash" size="sm" /></button>
+            </div>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.modelRateMultiplierHint") }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
@@ -1727,6 +1743,26 @@
           </p>
         </div>
 
+        <div
+          v-if="createForm.platform === 'openai'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiServiceTier.title") }}
+          </h4>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiServiceTier.mode") }}</label>
+              <Select v-model="createForm.openai_service_tier_mode" :options="openaiServiceTierModeOptions" />
+            </div>
+            <div v-if="createForm.openai_service_tier_mode === 'set'">
+              <label class="input-label">{{ t("admin.groups.openaiServiceTier.value") }}</label>
+              <Select v-model="createForm.openai_service_tier" :options="openaiServiceTierOptions" />
+            </div>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.openaiServiceTier.hint") }}</p>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -2436,6 +2472,22 @@
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div class="lg:col-span-2">
+          <div class="mb-1.5 flex items-center justify-between">
+            <label class="input-label">{{ t("admin.groups.modelRateMultiplierLabel") }}</label>
+            <button type="button" class="btn btn-secondary btn-sm" @click="addModelRateMultiplier(editForm)">
+              <Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.addModelRateMultiplier") }}
+            </button>
+          </div>
+          <div v-if="editForm.model_rate_multiplier_entries.length" class="space-y-2">
+            <div v-for="(entry, index) in editForm.model_rate_multiplier_entries" :key="index" class="flex items-center gap-2">
+              <input v-model.trim="entry.model" type="text" class="input flex-1" :placeholder="t('admin.groups.modelRateMultiplierModelPlaceholder')" />
+              <input v-model.number="entry.multiplier" type="number" min="0" step="0.001" class="input w-32" :placeholder="t('admin.groups.modelRateMultiplierValuePlaceholder')" />
+              <button type="button" class="btn btn-secondary" :title="t('admin.groups.deleteModelRateMultiplier')" @click="removeModelRateMultiplier(editForm, index)"><Icon name="trash" size="sm" /></button>
+            </div>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.modelRateMultiplierHint") }}</p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -3537,6 +3589,26 @@
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiLive.hint") }}
           </p>
+        </div>
+
+        <div
+          v-if="editForm.platform === 'openai'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiServiceTier.title") }}
+          </h4>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiServiceTier.mode") }}</label>
+              <Select v-model="editForm.openai_service_tier_mode" :options="openaiServiceTierModeOptions" />
+            </div>
+            <div v-if="editForm.openai_service_tier_mode === 'set'">
+              <label class="input-label">{{ t("admin.groups.openaiServiceTier.value") }}</label>
+              <Select v-model="editForm.openai_service_tier" :options="openaiServiceTierOptions" />
+            </div>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.openaiServiceTier.hint") }}</p>
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -4719,6 +4791,35 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   time_pricing: createDefaultTimePricingForm(),
 });
 
+type ModelRateMultiplierEntry = { model: string; multiplier: number | string };
+type GroupRateMultiplierForm = { model_rate_multiplier_entries: ModelRateMultiplierEntry[] };
+const addModelRateMultiplier = (form: GroupRateMultiplierForm) => form.model_rate_multiplier_entries.push({ model: "", multiplier: 1 });
+const removeModelRateMultiplier = (form: GroupRateMultiplierForm, index: number) => form.model_rate_multiplier_entries.splice(index, 1);
+const validateModelRateMultipliers = (entries: ModelRateMultiplierEntry[]): string | null => {
+  const models = new Set<string>();
+  for (const entry of entries) {
+    const model = entry.model.trim().toLowerCase();
+    if (!model) return "admin.groups.modelRateMultiplierModelRequired";
+    if (entry.multiplier === "" || !Number.isFinite(Number(entry.multiplier)) || Number(entry.multiplier) < 0) {
+      return "admin.groups.modelRateMultiplierInvalid";
+    }
+    if (models.has(model)) return "admin.groups.modelRateMultiplierDuplicate";
+    models.add(model);
+  }
+  return null;
+};
+const modelRateMultipliersToAPI = (entries: ModelRateMultiplierEntry[]): Record<string, number> => {
+  const result: Record<string, number> = {};
+  for (const entry of entries) {
+    const model = entry.model.trim();
+    const multiplier = Number(entry.multiplier);
+    if (model && Number.isFinite(multiplier) && multiplier >= 0) result[model] = multiplier;
+  }
+  return result;
+};
+const modelRateMultipliersFromAPI = (values?: Record<string, number>): ModelRateMultiplierEntry[] =>
+  Object.entries(values || {}).map(([model, multiplier]) => ({ model, multiplier }));
+
 const addGroupPricing = (entries: PricingFormEntry[]) =>
   entries.push(emptyGroupPricing());
 
@@ -4954,6 +5055,20 @@ const platformOptions = computed(() => [
   { value: "zhipu", label: "Zhipu GLM" },
   { value: "deepseek", label: "DeepSeek" },
   { value: "composite", label: "Composite" },
+]);
+
+const openaiServiceTierModeOptions = computed(() => [
+  { value: "passthrough", label: t("admin.groups.openaiServiceTier.passthrough") },
+  { value: "set", label: t("admin.groups.openaiServiceTier.set") },
+  { value: "clear", label: t("admin.groups.openaiServiceTier.clear") },
+]);
+
+const openaiServiceTierOptions = computed(() => [
+  { value: "priority", label: t("admin.groups.openaiServiceTier.priority") },
+  { value: "flex", label: t("admin.groups.openaiServiceTier.flex") },
+  { value: "auto", label: "auto" },
+  { value: "default", label: "default" },
+  { value: "scale", label: "scale" },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -5284,6 +5399,7 @@ const createForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  model_rate_multiplier_entries: [] as ModelRateMultiplierEntry[],
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5330,6 +5446,8 @@ const createForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
+  openai_service_tier_mode: "passthrough" as "passthrough" | "set" | "clear",
+  openai_service_tier: "priority",
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
@@ -5653,6 +5771,7 @@ const editForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  model_rate_multiplier_entries: [] as ModelRateMultiplierEntry[],
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5700,6 +5819,8 @@ const editForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
+  openai_service_tier_mode: "passthrough" as "passthrough" | "set" | "clear",
+  openai_service_tier: "priority",
   default_mapped_model: '',
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
@@ -6131,6 +6252,7 @@ const closeCreateModal = () => {
   createForm.description = "";
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
+  createForm.model_rate_multiplier_entries = [];
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -6170,6 +6292,8 @@ const closeCreateModal = () => {
   createForm.fallback_group_id_on_invalid_request = null;
   resetMessagesDispatchFormState(createForm);
   createForm.allow_live = false;
+  createForm.openai_service_tier_mode = "passthrough";
+  createForm.openai_service_tier = "priority";
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
@@ -6274,10 +6398,16 @@ const handleCreateGroup = async () => {
   if (!validateProfitControlForm(createForm)) {
     return;
   }
+  const modelRateError = validateModelRateMultipliers(createForm.model_rate_multiplier_entries);
+  if (modelRateError) {
+    appStore.showError(t(modelRateError));
+    return;
+  }
   submitting.value = true;
   try {
     const {
       video_model_prices: _createFormVideoModelPrices,
+      model_rate_multiplier_entries: _createFormModelRateMultiplierEntries,
       ...createGroupForm
     } = createForm;
     const videoModelPrices = serializeVideoModelPrices(
@@ -6286,6 +6416,7 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createGroupForm,
+      model_rate_multipliers: modelRateMultipliersToAPI(createForm.model_rate_multiplier_entries),
       model_pricing: groupPricingToAPI(
         createForm.model_pricing,
         createForm.platform,
@@ -6420,6 +6551,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.description = group.description || "";
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
+  editForm.model_rate_multiplier_entries = modelRateMultipliersFromAPI(group.model_rate_multipliers);
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
@@ -6475,6 +6607,8 @@ const handleEdit = async (group: AdminGroup) => {
     group.allow_messages_dispatch ||
     messagesDispatchFormState.allow_messages_dispatch;
   editForm.allow_live = group.allow_live ?? false;
+  editForm.openai_service_tier_mode = group.openai_service_tier_mode ?? "passthrough";
+  editForm.openai_service_tier = group.openai_service_tier ?? "priority";
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
   editForm.haiku_mapped_model = messagesDispatchFormState.haiku_mapped_model;
@@ -6531,6 +6665,7 @@ const closeEditModal = () => {
   showEditModal.value = false;
   editingGroup.value = null;
   editForm.max_reasoning_effort = "";
+  editForm.model_rate_multiplier_entries = [];
   editForm.reasoning_effort_mappings = [];
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
@@ -6557,6 +6692,8 @@ const closeEditModal = () => {
   editForm.audio_stt_price_per_hour = null;
   resetMessagesDispatchFormState(editForm);
   editForm.allow_live = false;
+  editForm.openai_service_tier_mode = "passthrough";
+  editForm.openai_service_tier = "priority";
   resetModelsListState(editModelsListState);
 };
 
@@ -6576,12 +6713,22 @@ const handleUpdateGroup = async () => {
   if (!validateProfitControlForm(editForm)) {
     return;
   }
+  const modelRateError = validateModelRateMultipliers(editForm.model_rate_multiplier_entries);
+  if (modelRateError) {
+    appStore.showError(t(modelRateError));
+    return;
+  }
 
   submitting.value = true;
   try {
+    const {
+      model_rate_multiplier_entries: _editFormModelRateMultiplierEntries,
+      ...editGroupForm
+    } = editForm;
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
-      ...editForm,
+      ...editGroupForm,
+      model_rate_multipliers: modelRateMultipliersToAPI(editForm.model_rate_multiplier_entries),
       model_pricing: groupPricingToAPI(
         editForm.model_pricing,
         editForm.platform,

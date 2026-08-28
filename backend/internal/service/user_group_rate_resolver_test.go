@@ -81,3 +81,18 @@ func TestGatewayServiceGetUserGroupRateMultiplier_FallbacksAndUsesExistingResolv
 	require.Equal(t, rate, got)
 	require.Equal(t, 1, repo.calls)
 }
+
+func TestUserGroupRateResolverResolveForModel_IsolatesGroupDefaults(t *testing.T) {
+	rate := (*float64)(nil)
+	repo := &userGroupRateResolverRepoStub{rate: rate}
+	resolver := newUserGroupRateResolver(repo, gocache.New(time.Minute, time.Minute), time.Minute, nil, "service.test")
+
+	require.Equal(t, 0.8, resolver.ResolveForModel(context.Background(), 101, 202, "gpt-4.1", 0.8))
+	require.Equal(t, 1.4, resolver.ResolveForModel(context.Background(), 101, 202, "claude-sonnet-4", 1.4))
+	require.Equal(t, 2, repo.calls)
+
+	// Repeating either model uses its own cached result and preserves its default.
+	require.Equal(t, 0.8, resolver.ResolveForModel(context.Background(), 101, 202, "GPT-4.1", 9.9))
+	require.Equal(t, 1.4, resolver.ResolveForModel(context.Background(), 101, 202, "claude-sonnet-4", 9.9))
+	require.Equal(t, 2, repo.calls)
+}

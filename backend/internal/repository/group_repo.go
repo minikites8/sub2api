@@ -62,11 +62,22 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
 	}
+	modelRateMultipliers, err := service.NormalizeModelRateMultipliers(groupIn.ModelRateMultipliers)
+	if err != nil {
+		return fmt.Errorf("normalize group model rate multipliers: %w", err)
+	}
+	openAIServiceTierMode, openAIServiceTier, err := service.NormalizeOpenAIServiceTierConfig(
+		groupIn.Platform, groupIn.OpenAIServiceTierMode, groupIn.OpenAIServiceTier,
+	)
+	if err != nil {
+		return fmt.Errorf("normalize group openai service_tier policy: %w", err)
+	}
 	builder := client.Group.Create().
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
+		SetModelRateMultipliers(modelRateMultipliers).
 		SetSortOrder(groupIn.SortOrder).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
@@ -109,6 +120,8 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
+		SetOpenaiServiceTierMode(openAIServiceTierMode).
+		SetOpenaiServiceTier(openAIServiceTier).
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
@@ -255,11 +268,22 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
 	}
+	modelRateMultipliers, err := service.NormalizeModelRateMultipliers(groupIn.ModelRateMultipliers)
+	if err != nil {
+		return fmt.Errorf("normalize group model rate multipliers: %w", err)
+	}
+	openAIServiceTierMode, openAIServiceTier, err := service.NormalizeOpenAIServiceTierConfig(
+		groupIn.Platform, groupIn.OpenAIServiceTierMode, groupIn.OpenAIServiceTier,
+	)
+	if err != nil {
+		return fmt.Errorf("normalize group openai service_tier policy: %w", err)
+	}
 	builder := r.client.Group.UpdateOneID(groupIn.ID).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
+		SetModelRateMultipliers(modelRateMultipliers).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
@@ -294,6 +318,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
+		SetOpenaiServiceTierMode(openAIServiceTierMode).
+		SetOpenaiServiceTier(openAIServiceTier).
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).

@@ -75,6 +75,34 @@ func TestPreviewProfitAdmissionUsesAccountRatesAndPreinitializesModels(t *testin
 	require.True(t, present, "全部账号均不支持时也必须显式保留 0，供 CLI 发出警告")
 }
 
+func TestPreviewProfitAdmissionUsesModelMultipliers(t *testing.T) {
+	now := time.Now()
+	group := profitControlTestGroup(52, 0.25, 0)
+	group.RateMultiplier = 1.0
+	group.ModelRateMultipliers = map[string]float64{"gpt-cheap": 0.4}
+	rate := 0.5
+	account := &Account{
+		ID:             520,
+		Name:           "shared",
+		Platform:       PlatformOpenAI,
+		RateMultiplier: &rate,
+		Credentials:    map[string]any{"model_mapping": map[string]any{"gpt-cheap": "gpt-cheap", "gpt-full": "gpt-full"}},
+	}
+	report := PreviewProfitAdmission([]ProfitPreviewGroupInput{{
+		Group:    group,
+		Accounts: []*Account{account},
+		Models:   []string{"gpt-cheap", "gpt-full"},
+	}}, now)[0]
+	require.InDelta(t, 0.4, report.DefaultDByModel["gpt-cheap"], 1e-12)
+	require.InDelta(t, 1.0, report.DefaultDByModel["gpt-full"], 1e-12)
+	require.InDelta(t, 0.3, report.ThresholdDefaultByModel["gpt-cheap"], 1e-12)
+	require.InDelta(t, 0.75, report.ThresholdDefaultByModel["gpt-full"], 1e-12)
+	require.Equal(t, 0, report.RemainingByModel["gpt-cheap"])
+	require.Equal(t, 1, report.RemainingByModel["gpt-full"])
+	require.Equal(t, ProfitPreviewClassRejectedThreshold, report.Verdicts[0].ClassesByModel["gpt-cheap"])
+	require.Equal(t, ProfitPreviewClassAdmitted, report.Verdicts[0].ClassesByModel["gpt-full"])
+}
+
 func TestPreviewProfitAdmissionAssumeEnabled(t *testing.T) {
 	now := time.Now()
 	group := profitControlTestGroup(51, 0, 0)

@@ -216,6 +216,7 @@ type CreateGroupInput struct {
 	Description               string
 	Platform                  string
 	RateMultiplier            float64
+	ModelRateMultipliers      map[string]float64
 	IsExclusive               bool
 	SubscriptionType          string   // standard/subscription
 	DailyLimitUSD             *float64 // 日限额 (USD)
@@ -271,6 +272,8 @@ type CreateGroupInput struct {
 	RequirePrivacySet           bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            GroupModelsListConfig
+	OpenAIServiceTierMode       string
+	OpenAIServiceTier           string
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
 	// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
@@ -298,7 +301,8 @@ type UpdateGroupInput struct {
 	Name                      string
 	Description               *string
 	Platform                  string
-	RateMultiplier            *float64 // 使用指针以支持设置为0
+	RateMultiplier            *float64           // 使用指针以支持设置为0
+	ModelRateMultipliers      map[string]float64 // nil 表示不修改，空 map 表示清除
 	IsExclusive               *bool
 	Status                    string
 	SubscriptionType          string   // standard/subscription
@@ -355,6 +359,8 @@ type UpdateGroupInput struct {
 	RequirePrivacySet           *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            *GroupModelsListConfig
+	OpenAIServiceTierMode       *string
+	OpenAIServiceTier           *string
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
 	// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。

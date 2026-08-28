@@ -47,6 +47,10 @@ func (Group) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
+		field.JSON("model_rate_multipliers", map[string]float64{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("按模型覆盖分组倍率；模型名大小写不敏感精确匹配"),
 		// 高峰时段倍率（added by migration 158）
 		field.Bool("peak_rate_enabled").
 			Default(false).
@@ -260,6 +264,14 @@ func (Group) Fields() []ent.Field {
 			Default(domain.GroupModelsListConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("自定义 /v1/models 展示列表配置；仅影响模型列表响应，不影响调度"),
+		field.String("openai_service_tier_mode").
+			MaxLen(20).
+			Default("passthrough").
+			Comment("OpenAI 分组 service_tier 策略：passthrough/set/clear"),
+		field.String("openai_service_tier").
+			MaxLen(20).
+			Default("").
+			Comment("OpenAI 分组强制 service_tier 值；仅 set 模式生效"),
 
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").

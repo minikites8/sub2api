@@ -106,6 +106,12 @@ func (_c *GroupCreate) SetNillableRateMultiplier(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (_c *GroupCreate) SetModelRateMultipliers(v map[string]float64) *GroupCreate {
+	_c.mutation.SetModelRateMultipliers(v)
+	return _c
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_c *GroupCreate) SetPeakRateEnabled(v bool) *GroupCreate {
 	_c.mutation.SetPeakRateEnabled(v)
@@ -774,6 +780,34 @@ func (_c *GroupCreate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _c
 }
 
+// SetOpenaiServiceTierMode sets the "openai_service_tier_mode" field.
+func (_c *GroupCreate) SetOpenaiServiceTierMode(v string) *GroupCreate {
+	_c.mutation.SetOpenaiServiceTierMode(v)
+	return _c
+}
+
+// SetNillableOpenaiServiceTierMode sets the "openai_service_tier_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableOpenaiServiceTierMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetOpenaiServiceTierMode(*v)
+	}
+	return _c
+}
+
+// SetOpenaiServiceTier sets the "openai_service_tier" field.
+func (_c *GroupCreate) SetOpenaiServiceTier(v string) *GroupCreate {
+	_c.mutation.SetOpenaiServiceTier(v)
+	return _c
+}
+
+// SetNillableOpenaiServiceTier sets the "openai_service_tier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableOpenaiServiceTier(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetOpenaiServiceTier(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -1227,6 +1261,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultModelsListConfig
 		_c.mutation.SetModelsListConfig(v)
 	}
+	if _, ok := _c.mutation.OpenaiServiceTierMode(); !ok {
+		v := group.DefaultOpenaiServiceTierMode
+		_c.mutation.SetOpenaiServiceTierMode(v)
+	}
+	if _, ok := _c.mutation.OpenaiServiceTier(); !ok {
+		v := group.DefaultOpenaiServiceTier
+		_c.mutation.SetOpenaiServiceTier(v)
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
@@ -1450,6 +1492,22 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.ModelsListConfig(); !ok {
 		return &ValidationError{Name: "models_list_config", err: errors.New(`ent: missing required field "Group.models_list_config"`)}
 	}
+	if _, ok := _c.mutation.OpenaiServiceTierMode(); !ok {
+		return &ValidationError{Name: "openai_service_tier_mode", err: errors.New(`ent: missing required field "Group.openai_service_tier_mode"`)}
+	}
+	if v, ok := _c.mutation.OpenaiServiceTierMode(); ok {
+		if err := group.OpenaiServiceTierModeValidator(v); err != nil {
+			return &ValidationError{Name: "openai_service_tier_mode", err: fmt.Errorf(`ent: validator failed for field "Group.openai_service_tier_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.OpenaiServiceTier(); !ok {
+		return &ValidationError{Name: "openai_service_tier", err: errors.New(`ent: missing required field "Group.openai_service_tier"`)}
+	}
+	if v, ok := _c.mutation.OpenaiServiceTier(); ok {
+		if err := group.OpenaiServiceTierValidator(v); err != nil {
+			return &ValidationError{Name: "openai_service_tier", err: fmt.Errorf(`ent: validator failed for field "Group.openai_service_tier": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
 	}
@@ -1557,6 +1615,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
+	}
+	if value, ok := _c.mutation.ModelRateMultipliers(); ok {
+		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
+		_node.ModelRateMultipliers = value
 	}
 	if value, ok := _c.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -1757,6 +1819,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
 		_node.ModelsListConfig = value
+	}
+	if value, ok := _c.mutation.OpenaiServiceTierMode(); ok {
+		_spec.SetField(group.FieldOpenaiServiceTierMode, field.TypeString, value)
+		_node.OpenaiServiceTierMode = value
+	}
+	if value, ok := _c.mutation.OpenaiServiceTier(); ok {
+		_spec.SetField(group.FieldOpenaiServiceTier, field.TypeString, value)
+		_node.OpenaiServiceTier = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2045,6 +2115,24 @@ func (u *GroupUpsert) UpdateRateMultiplier() *GroupUpsert {
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *GroupUpsert) AddRateMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldRateMultiplier, v)
+	return u
+}
+
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (u *GroupUpsert) SetModelRateMultipliers(v map[string]float64) *GroupUpsert {
+	u.Set(group.FieldModelRateMultipliers, v)
+	return u
+}
+
+// UpdateModelRateMultipliers sets the "model_rate_multipliers" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateModelRateMultipliers() *GroupUpsert {
+	u.SetExcluded(group.FieldModelRateMultipliers)
+	return u
+}
+
+// ClearModelRateMultipliers clears the value of the "model_rate_multipliers" field.
+func (u *GroupUpsert) ClearModelRateMultipliers() *GroupUpsert {
+	u.SetNull(group.FieldModelRateMultipliers)
 	return u
 }
 
@@ -2888,6 +2976,30 @@ func (u *GroupUpsert) UpdateModelsListConfig() *GroupUpsert {
 	return u
 }
 
+// SetOpenaiServiceTierMode sets the "openai_service_tier_mode" field.
+func (u *GroupUpsert) SetOpenaiServiceTierMode(v string) *GroupUpsert {
+	u.Set(group.FieldOpenaiServiceTierMode, v)
+	return u
+}
+
+// UpdateOpenaiServiceTierMode sets the "openai_service_tier_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateOpenaiServiceTierMode() *GroupUpsert {
+	u.SetExcluded(group.FieldOpenaiServiceTierMode)
+	return u
+}
+
+// SetOpenaiServiceTier sets the "openai_service_tier" field.
+func (u *GroupUpsert) SetOpenaiServiceTier(v string) *GroupUpsert {
+	u.Set(group.FieldOpenaiServiceTier, v)
+	return u
+}
+
+// UpdateOpenaiServiceTier sets the "openai_service_tier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateOpenaiServiceTier() *GroupUpsert {
+	u.SetExcluded(group.FieldOpenaiServiceTier)
+	return u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (u *GroupUpsert) SetRpmLimit(v int) *GroupUpsert {
 	u.Set(group.FieldRpmLimit, v)
@@ -3234,6 +3346,27 @@ func (u *GroupUpsertOne) AddRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (u *GroupUpsertOne) SetModelRateMultipliers(v map[string]float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelRateMultipliers(v)
+	})
+}
+
+// UpdateModelRateMultipliers sets the "model_rate_multipliers" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateModelRateMultipliers() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelRateMultipliers()
+	})
+}
+
+// ClearModelRateMultipliers clears the value of the "model_rate_multipliers" field.
+func (u *GroupUpsertOne) ClearModelRateMultipliers() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearModelRateMultipliers()
 	})
 }
 
@@ -4217,6 +4350,34 @@ func (u *GroupUpsertOne) UpdateModelsListConfig() *GroupUpsertOne {
 	})
 }
 
+// SetOpenaiServiceTierMode sets the "openai_service_tier_mode" field.
+func (u *GroupUpsertOne) SetOpenaiServiceTierMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOpenaiServiceTierMode(v)
+	})
+}
+
+// UpdateOpenaiServiceTierMode sets the "openai_service_tier_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateOpenaiServiceTierMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOpenaiServiceTierMode()
+	})
+}
+
+// SetOpenaiServiceTier sets the "openai_service_tier" field.
+func (u *GroupUpsertOne) SetOpenaiServiceTier(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOpenaiServiceTier(v)
+	})
+}
+
+// UpdateOpenaiServiceTier sets the "openai_service_tier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateOpenaiServiceTier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOpenaiServiceTier()
+	})
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (u *GroupUpsertOne) SetRpmLimit(v int) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -4764,6 +4925,27 @@ func (u *GroupUpsertBulk) AddRateMultiplier(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (u *GroupUpsertBulk) SetModelRateMultipliers(v map[string]float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelRateMultipliers(v)
+	})
+}
+
+// UpdateModelRateMultipliers sets the "model_rate_multipliers" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateModelRateMultipliers() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelRateMultipliers()
+	})
+}
+
+// ClearModelRateMultipliers clears the value of the "model_rate_multipliers" field.
+func (u *GroupUpsertBulk) ClearModelRateMultipliers() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearModelRateMultipliers()
 	})
 }
 
@@ -5744,6 +5926,34 @@ func (u *GroupUpsertBulk) SetModelsListConfig(v domain.GroupModelsListConfig) *G
 func (u *GroupUpsertBulk) UpdateModelsListConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelsListConfig()
+	})
+}
+
+// SetOpenaiServiceTierMode sets the "openai_service_tier_mode" field.
+func (u *GroupUpsertBulk) SetOpenaiServiceTierMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOpenaiServiceTierMode(v)
+	})
+}
+
+// UpdateOpenaiServiceTierMode sets the "openai_service_tier_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateOpenaiServiceTierMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOpenaiServiceTierMode()
+	})
+}
+
+// SetOpenaiServiceTier sets the "openai_service_tier" field.
+func (u *GroupUpsertBulk) SetOpenaiServiceTier(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOpenaiServiceTier(v)
+	})
+}
+
+// UpdateOpenaiServiceTier sets the "openai_service_tier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateOpenaiServiceTier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOpenaiServiceTier()
 	})
 }
 

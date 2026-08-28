@@ -22144,6 +22144,7 @@ type GroupMutation struct {
 	description                             *string
 	rate_multiplier                         *float64
 	addrate_multiplier                      *float64
+	model_rate_multipliers                  *map[string]float64
 	peak_rate_enabled                       *bool
 	peak_start                              *string
 	peak_end                                *string
@@ -22219,6 +22220,8 @@ type GroupMutation struct {
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	models_list_config                      *domain.GroupModelsListConfig
+	openai_service_tier_mode                *string
+	openai_service_tier                     *string
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	max_reasoning_effort                    *string
@@ -22623,6 +22626,55 @@ func (m *GroupMutation) AddedRateMultiplier() (r float64, exists bool) {
 func (m *GroupMutation) ResetRateMultiplier() {
 	m.rate_multiplier = nil
 	m.addrate_multiplier = nil
+}
+
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (m *GroupMutation) SetModelRateMultipliers(value map[string]float64) {
+	m.model_rate_multipliers = &value
+}
+
+// ModelRateMultipliers returns the value of the "model_rate_multipliers" field in the mutation.
+func (m *GroupMutation) ModelRateMultipliers() (r map[string]float64, exists bool) {
+	v := m.model_rate_multipliers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelRateMultipliers returns the old "model_rate_multipliers" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldModelRateMultipliers(ctx context.Context) (v map[string]float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelRateMultipliers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelRateMultipliers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelRateMultipliers: %w", err)
+	}
+	return oldValue.ModelRateMultipliers, nil
+}
+
+// ClearModelRateMultipliers clears the value of the "model_rate_multipliers" field.
+func (m *GroupMutation) ClearModelRateMultipliers() {
+	m.model_rate_multipliers = nil
+	m.clearedFields[group.FieldModelRateMultipliers] = struct{}{}
+}
+
+// ModelRateMultipliersCleared returns if the "model_rate_multipliers" field was cleared in this mutation.
+func (m *GroupMutation) ModelRateMultipliersCleared() bool {
+	_, ok := m.clearedFields[group.FieldModelRateMultipliers]
+	return ok
+}
+
+// ResetModelRateMultipliers resets all changes to the "model_rate_multipliers" field.
+func (m *GroupMutation) ResetModelRateMultipliers() {
+	m.model_rate_multipliers = nil
+	delete(m.clearedFields, group.FieldModelRateMultipliers)
 }
 
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
@@ -25192,6 +25244,78 @@ func (m *GroupMutation) ResetModelsListConfig() {
 	m.models_list_config = nil
 }
 
+// SetOpenaiServiceTierMode sets the "openai_service_tier_mode" field.
+func (m *GroupMutation) SetOpenaiServiceTierMode(s string) {
+	m.openai_service_tier_mode = &s
+}
+
+// OpenaiServiceTierMode returns the value of the "openai_service_tier_mode" field in the mutation.
+func (m *GroupMutation) OpenaiServiceTierMode() (r string, exists bool) {
+	v := m.openai_service_tier_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpenaiServiceTierMode returns the old "openai_service_tier_mode" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldOpenaiServiceTierMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpenaiServiceTierMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpenaiServiceTierMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpenaiServiceTierMode: %w", err)
+	}
+	return oldValue.OpenaiServiceTierMode, nil
+}
+
+// ResetOpenaiServiceTierMode resets all changes to the "openai_service_tier_mode" field.
+func (m *GroupMutation) ResetOpenaiServiceTierMode() {
+	m.openai_service_tier_mode = nil
+}
+
+// SetOpenaiServiceTier sets the "openai_service_tier" field.
+func (m *GroupMutation) SetOpenaiServiceTier(s string) {
+	m.openai_service_tier = &s
+}
+
+// OpenaiServiceTier returns the value of the "openai_service_tier" field in the mutation.
+func (m *GroupMutation) OpenaiServiceTier() (r string, exists bool) {
+	v := m.openai_service_tier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpenaiServiceTier returns the old "openai_service_tier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldOpenaiServiceTier(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpenaiServiceTier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpenaiServiceTier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpenaiServiceTier: %w", err)
+	}
+	return oldValue.OpenaiServiceTier, nil
+}
+
+// ResetOpenaiServiceTier resets all changes to the "openai_service_tier" field.
+func (m *GroupMutation) ResetOpenaiServiceTier() {
+	m.openai_service_tier = nil
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (m *GroupMutation) SetRpmLimit(i int) {
 	m.rpm_limit = &i
@@ -26209,7 +26333,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 70)
+	fields := make([]string, 0, 73)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26227,6 +26351,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
+	}
+	if m.model_rate_multipliers != nil {
+		fields = append(fields, group.FieldModelRateMultipliers)
 	}
 	if m.peak_rate_enabled != nil {
 		fields = append(fields, group.FieldPeakRateEnabled)
@@ -26378,6 +26505,12 @@ func (m *GroupMutation) Fields() []string {
 	if m.models_list_config != nil {
 		fields = append(fields, group.FieldModelsListConfig)
 	}
+	if m.openai_service_tier_mode != nil {
+		fields = append(fields, group.FieldOpenaiServiceTierMode)
+	}
+	if m.openai_service_tier != nil {
+		fields = append(fields, group.FieldOpenaiServiceTier)
+	}
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
@@ -26440,6 +26573,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case group.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case group.FieldModelRateMultipliers:
+		return m.ModelRateMultipliers()
 	case group.FieldPeakRateEnabled:
 		return m.PeakRateEnabled()
 	case group.FieldPeakStart:
@@ -26540,6 +26675,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldModelsListConfig:
 		return m.ModelsListConfig()
+	case group.FieldOpenaiServiceTierMode:
+		return m.OpenaiServiceTierMode()
+	case group.FieldOpenaiServiceTier:
+		return m.OpenaiServiceTier()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
 	case group.FieldMaxReasoningEffort:
@@ -26589,6 +26728,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDescription(ctx)
 	case group.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case group.FieldModelRateMultipliers:
+		return m.OldModelRateMultipliers(ctx)
 	case group.FieldPeakRateEnabled:
 		return m.OldPeakRateEnabled(ctx)
 	case group.FieldPeakStart:
@@ -26689,6 +26830,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldModelsListConfig:
 		return m.OldModelsListConfig(ctx)
+	case group.FieldOpenaiServiceTierMode:
+		return m.OldOpenaiServiceTierMode(ctx)
+	case group.FieldOpenaiServiceTier:
+		return m.OldOpenaiServiceTier(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
 	case group.FieldMaxReasoningEffort:
@@ -26767,6 +26912,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRateMultiplier(v)
+		return nil
+	case group.FieldModelRateMultipliers:
+		v, ok := value.(map[string]float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelRateMultipliers(v)
 		return nil
 	case group.FieldPeakRateEnabled:
 		v, ok := value.(bool)
@@ -27117,6 +27269,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelsListConfig(v)
+		return nil
+	case group.FieldOpenaiServiceTierMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenaiServiceTierMode(v)
+		return nil
+	case group.FieldOpenaiServiceTier:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenaiServiceTier(v)
 		return nil
 	case group.FieldRpmLimit:
 		v, ok := value.(int)
@@ -27627,6 +27793,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldDescription) {
 		fields = append(fields, group.FieldDescription)
 	}
+	if m.FieldCleared(group.FieldModelRateMultipliers) {
+		fields = append(fields, group.FieldModelRateMultipliers)
+	}
 	if m.FieldCleared(group.FieldDuplicateOperationID) {
 		fields = append(fields, group.FieldDuplicateOperationID)
 	}
@@ -27706,6 +27875,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldDescription:
 		m.ClearDescription()
+		return nil
+	case group.FieldModelRateMultipliers:
+		m.ClearModelRateMultipliers()
 		return nil
 	case group.FieldDuplicateOperationID:
 		m.ClearDuplicateOperationID()
@@ -27792,6 +27964,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRateMultiplier:
 		m.ResetRateMultiplier()
+		return nil
+	case group.FieldModelRateMultipliers:
+		m.ResetModelRateMultipliers()
 		return nil
 	case group.FieldPeakRateEnabled:
 		m.ResetPeakRateEnabled()
@@ -27942,6 +28117,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldModelsListConfig:
 		m.ResetModelsListConfig()
+		return nil
+	case group.FieldOpenaiServiceTierMode:
+		m.ResetOpenaiServiceTierMode()
+		return nil
+	case group.FieldOpenaiServiceTier:
+		m.ResetOpenaiServiceTier()
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
