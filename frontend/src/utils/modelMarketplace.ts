@@ -2,13 +2,14 @@ import type {
   PublicTransitModel,
   PublicTransitModelPrice,
   PublicTransitMonitor,
+  PublicTransitMonitorWindow,
   PublicTransitPriceInterval,
   PublicTransitSnapshot,
 } from '@/api/publicTransit'
 import type { GroupPlatform } from '@/types'
 
 export type MarketplaceStatus = 'operational' | 'degraded' | 'unavailable' | 'unmonitored'
-export type MarketplaceWindow = '7d' | '15d' | '30d'
+export type MarketplaceWindow = '90m' | '12h' | '1d' | '15d' | '7d' | '30d'
 export type TokenPriceField =
   | 'input_usd_per_token'
   | 'output_usd_per_token'
@@ -23,7 +24,18 @@ export interface MarketplacePriceProfile {
   multiplier: number
   subscriptionType?: string
   exclusive: boolean
+  monitoringEnabled: boolean
+  monitoring?: MarketplaceMonitoring
   model: PublicTransitModel
+}
+
+export interface MarketplaceMonitoringWindow {
+  status: MarketplaceStatus
+  availability?: number
+  latestLatencyMs?: number
+  avgLatencyMs?: number
+  lastCheckedAt?: string
+  samples: MarketplaceMonitorSample[]
 }
 
 export interface MarketplaceMonitoring {
@@ -35,6 +47,7 @@ export interface MarketplaceMonitoring {
   avgLatency7dMs?: number
   lastCheckedAt?: string
   samples: MarketplaceMonitorSample[]
+  windows?: Partial<Record<MarketplaceWindow, MarketplaceMonitoringWindow>>
 }
 
 export interface MarketplaceMonitorSample {
@@ -64,6 +77,7 @@ interface MonitorObservation {
   latestLatencyMs?: number
   avgLatency7dMs?: number
   lastCheckedAt?: string
+  windows?: Partial<Record<MarketplaceWindow, MarketplaceMonitoringWindow>>
 }
 
 interface MonitoringIndex {
@@ -301,6 +315,7 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
       latestLatencyMs: monitor.latest_duration_p50_ms,
       avgLatency7dMs: monitor.duration_p50_7d_ms,
       lastCheckedAt: monitor.data_through,
+      windows: Object.fromEntries(Object.entries(monitor.windows || {}).map(([key, value]) => [key, publicMonitorWindow(value)])),
     })
 
     for (const point of monitor.buckets || []) {
@@ -313,6 +328,21 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
   }
 
   return { observations, samples }
+}
+
+function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMonitoringWindow {
+  return {
+    status: normalizeStatus(window.status),
+    availability: window.availability,
+    latestLatencyMs: window.latest_duration_p50_ms,
+    avgLatencyMs: window.duration_p50_ms,
+    lastCheckedAt: window.data_through,
+    samples: (window.buckets || []).map((sample) => ({
+      status: normalizeStatus(sample.status),
+      checkedAt: sample.bucket_start,
+      latencyMs: sample.duration_p50_ms,
+    })),
+  }
 }
 
 function aggregateMonitoring(
@@ -341,6 +371,29 @@ function aggregateMonitoring(
     .slice(-90)
   if (values.length === 0) return { status: 'unmonitored', samples }
 
+  const windows: Partial<Record<MarketplaceWindow, MarketplaceMonitoringWindow>> = {}
+  for (const window of ['90m', '12h', '1d', '15d'] as MarketplaceWindow[]) {
+    const windowValues = values.flatMap((item) => item.windows?.[window] ? [item.windows[window]!] : [])
+    if (windowValues.length === 0) continue
+    const windowSamples = new Map<string, MarketplaceMonitorSample>()
+    for (const item of windowValues) {
+      for (const sample of item.samples) {
+        const existing = windowSamples.get(sample.checkedAt)
+        if (!existing || statusSeverity(sample.status) > statusSeverity(existing.status) || (existing.status === sample.status && (sample.latencyMs ?? 0) > (existing.latencyMs ?? 0))) {
+          windowSamples.set(sample.checkedAt, sample)
+        }
+      }
+    }
+    windows[window] = {
+      status: aggregateStatus(windowValues),
+      availability: minimum(windowValues.map((item) => item.availability)),
+      latestLatencyMs: maximum(windowValues.map((item) => item.latestLatencyMs)),
+      avgLatencyMs: maximum(windowValues.map((item) => item.avgLatencyMs)),
+      lastCheckedAt: windowValues.map((item) => item.lastCheckedAt).filter((value): value is string => Boolean(value)).sort().at(-1),
+      samples: Array.from(windowSamples.values()).sort((a, b) => a.checkedAt.localeCompare(b.checkedAt)).slice(-90),
+    }
+  }
+
   const checkedAt = values
     .map((item) => item.lastCheckedAt)
     .filter((value): value is string => Boolean(value))
@@ -356,6 +409,7 @@ function aggregateMonitoring(
     avgLatency7dMs: maximum(values.map((item) => item.avgLatency7dMs)),
     lastCheckedAt: checkedAt,
     samples,
+    windows,
   }
 }
 
@@ -365,6 +419,7 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
   const models = new Map<string, Omit<MarketplaceModel, 'monitoring'>>()
 
   for (const group of snapshot.groups || []) {
+    const groupMonitoringIndex = buildMonitoringIndex(group.monitoring || [])
     for (const model of group.models || []) {
       const identity = identityIndex.resolve(model.standard_model)
       const name = identityIndex.displayName(identity)
@@ -395,9 +450,13 @@ export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): Marketp
         groupName: group.name,
         platform: group.platform,
         providerVisible: group.provider_visible === true,
-        multiplier: group.rate_multiplier,
+        multiplier: model.rate_multiplier ?? group.rate_multiplier,
         subscriptionType: group.subscription_type,
         exclusive: group.is_exclusive,
+        monitoringEnabled: group.monitoring_enabled === true,
+        monitoring: group.monitoring_enabled === true
+          ? aggregateMonitoring([model.standard_model, model.raw_model, ...pricingModelAliases(model)], groupMonitoringIndex)
+          : undefined,
         model,
       }
       const profileIndex = current.profiles.findIndex((item) => item.key === profile.key)
@@ -431,9 +490,33 @@ export function availabilityForWindow(
   monitoring: MarketplaceMonitoring,
   window: MarketplaceWindow,
 ): number | undefined {
-  if (window === '15d') return monitoring.availability15d
-  if (window === '30d') return monitoring.availability30d
+  const current = monitoring.windows?.[window]
+  if (current) return current.availability
+  if (window === '15d' || window === '30d') return window === '15d' ? monitoring.availability15d : monitoring.availability30d
   return monitoring.availability7d
+}
+
+export function monitoringForWindow(
+  monitoring: MarketplaceMonitoring,
+  window: MarketplaceWindow,
+): MarketplaceMonitoringWindow {
+  const current = monitoring.windows?.[window]
+  if (current) return current
+  return {
+    status: monitoring.status,
+    availability: availabilityForWindow(monitoring, window),
+    latestLatencyMs: monitoring.latestLatencyMs,
+    avgLatencyMs: monitoring.avgLatency7dMs,
+    lastCheckedAt: monitoring.lastCheckedAt,
+    samples: monitoring.samples,
+  }
+}
+
+export function monitorSamplesForWindow(
+  monitoring: MarketplaceMonitoring,
+  window: MarketplaceWindow,
+): MarketplaceMonitorSample[] {
+  return monitoringForWindow(monitoring, window).samples
 }
 
 export function applyGroupMultiplier(value: number, multiplier = 1): number {

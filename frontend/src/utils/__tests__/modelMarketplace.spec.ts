@@ -54,4 +54,37 @@ describe('model marketplace aggregation', () => {
     expect(availabilityForWindow(gemini.monitoring, '30d')).toBe(98.61)
     expect(hasTokenPricing(gpt)).toBe(true)
   })
+
+  it('keeps passive monitoring isolated per enabled pricing group and window', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const group = snapshot.groups[0]
+    const now = snapshot.generated_at
+    group.monitoring_enabled = true
+    group.monitoring = [{
+      platform: 'openai',
+      model: 'gpt-4.1',
+      status: 'operational',
+      availability_7d: 99,
+      availability_15d: 99,
+      availability_30d: 99,
+      coverage_complete: true,
+      buckets: [],
+      windows: {
+        '90m': {
+          status: 'degraded',
+          availability: 97.5,
+          coverage_complete: true,
+          buckets: [{ bucket_start: now, status: 'degraded', success_rate: 97.5 }],
+        },
+      },
+    }]
+
+    const gpt = buildMarketplaceModels(snapshot).find((model) => model.name === 'gpt-4.1')!
+    const monitoredProfile = gpt.profiles.find((profile) => profile.groupName === group.name)!
+    const otherProfile = gpt.profiles.find((profile) => profile.groupName !== group.name)!
+
+    expect(monitoredProfile.monitoringEnabled).toBe(true)
+    expect(availabilityForWindow(monitoredProfile.monitoring!, '90m')).toBe(97.5)
+    expect(otherProfile.monitoringEnabled).toBe(false)
+  })
 })

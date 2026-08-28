@@ -584,7 +584,7 @@ export default {
     searchPlaceholder: '搜索模型、开发者、平台、协议或分组...', providerFilter: '平台筛选', unknownDeveloper: '未知开发者',
     billingFilter: '计费筛选', statusFilter: '状态筛选', refresh: '刷新数据', retry: '重试', loadError: '模型广场数据加载失败',
     copyModelId: '复制模型 ID', modelIdCopied: '模型 ID 已复制', details: '查看价格详情', collapse: '收起价格详情', avg7d: '7 天平均',
-    recentChecks: '最近检查', checkTooltip: '{time} · {status}', estimateTooltip: '{window} 可用性 · {status}', latestStatusTooltip: '最新状态 · {status}', noCheckData: '暂无检查记录',
+    recentChecks: '最近检查', passiveMonitoring: '被动', checkTooltip: '{time} · {status}', estimateTooltip: '{window} 可用性 · {status}', latestStatusTooltip: '最新状态 · {status}', noCheckData: '暂无检查记录',
     showing: '显示 {shown} / {total} 个模型', priceNote: 'Token 价格按 $/1M tokens；按次价格按 $/请求；已计入适用分组倍率。',
     stats: { models: '模型', providers: '平台', operational: '运行正常', monitored: '已监控' },
     filters: { allProviders: '全部平台', allBilling: '全部计费类型', allStatus: '全部状态' },

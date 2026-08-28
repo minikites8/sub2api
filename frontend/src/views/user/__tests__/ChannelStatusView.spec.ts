@@ -30,5 +30,6 @@ describe('ChannelStatusView model marketplace', () => {
     expect(text).toContain('OpenAI')
     expect(text).toContain('$2')
     expect(text).toMatch(/不可用|modelMarketplace\.status\.unavailable/)
+    expect(wrapper.findAll('button').map((button) => button.text())).toEqual(expect.arrayContaining(['90min', '12h', '1d', '15d']))
   })
 })

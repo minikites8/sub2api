@@ -18,7 +18,10 @@ func TestBuildPublicTransitGroups_FiltersExclusiveGroupsAndExportsPricing(t *tes
 			Platform:         "anthropic",
 			SubscriptionType: "standard",
 			RateMultiplier:   1.25,
-			Status:           StatusActive,
+			ModelRateMultipliers: map[string]float64{
+				"claude-sonnet-4": 0.9,
+			},
+			Status: StatusActive,
 		},
 		{
 			ID:             11,
@@ -105,6 +108,7 @@ func TestBuildPublicTransitGroups_FiltersExclusiveGroupsAndExportsPricing(t *tes
 
 	model := groups[0].Models[0]
 	require.Equal(t, "claude-sonnet-4", model.StandardModel)
+	require.InDelta(t, 0.9, model.RateMultiplier, 1e-12)
 	require.Equal(t, "anthropic", model.Platform)
 	require.Equal(t, string(BillingModeToken), model.BillingMode)
 	require.Equal(t, ModelPriceSourceCustom, model.PriceSource)
@@ -165,6 +169,26 @@ func TestBuildPublicTransitV2Monitors_MapsHealthWindowsAndBuckets(t *testing.T) 
 	require.Equal(t, &latestLatency, monitors[0].LatestDurationP50Ms)
 	require.Equal(t, "unavailable", monitors[0].Buckets[0].Status)
 	require.True(t, monitors[0].CoverageComplete)
+}
+
+func TestAttachPublicTransitGroupMonitoring_OnlyEnabledGroupsReceiveBars(t *testing.T) {
+	groups := []PublicTransitGroup{
+		{ID: 7, Name: "public", Platform: "openai"},
+		{ID: 8, Name: "other", Platform: "openai"},
+	}
+	monitors := []PublicTransitMonitor{{GroupID: 7, Platform: "openai", Model: "gpt-5.5", Status: "operational"}}
+	cfg := &ChannelMonitorV2Config{
+		Enabled:   true,
+		Platforms: []ChannelMonitorV2PlatformConfig{{Platform: "openai", Enabled: true}},
+		GroupIDs:  []int64{7},
+	}
+
+	attachPublicTransitGroupMonitoring(groups, monitors, cfg)
+
+	require.True(t, groups[0].MonitoringEnabled)
+	require.Len(t, groups[0].Monitoring, 1)
+	require.False(t, groups[1].MonitoringEnabled)
+	require.Empty(t, groups[1].Monitoring)
 }
 
 func TestBuildPublicTransitGroups_ExportsConfiguredGroupsWithoutAvailableChannels(t *testing.T) {

@@ -430,6 +430,8 @@ func (s *ChannelMonitorV2Service) ParseFilter(rangeValue string, platforms, mode
 	switch strings.TrimSpace(rangeValue) {
 	case "", "90m":
 		rangeValue, window, bucket = "90m", 90*time.Minute, 5*time.Minute
+	case "12h":
+		window, bucket = 12*time.Hour, 30*time.Minute
 	case "24h":
 		window, bucket = 24*time.Hour, time.Hour
 	case "7d":

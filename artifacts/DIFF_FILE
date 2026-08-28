@@ -1,0 +1,223 @@
+diff --git a/artifacts/BASELINE_FILE b/artifacts/MODIFIED_FILE
+index 80e35e456..a813444f2 100644
+--- a/artifacts/BASELINE_FILE
++++ b/artifacts/MODIFIED_FILE
+@@ -82,7 +82,7 @@
+                 :class="monitorWindow === windowOption ? 'bg-dark-700 text-emerald-300' : 'text-dark-400 hover:text-white'"
+                 @click="monitorWindow = windowOption"
+               >
+-                {{ windowOption }}
++                {{ monitorWindowLabel(windowOption) }}
+               </button>
+             </div>
+             <button
+@@ -148,14 +148,14 @@
+                           <div class="mt-1 flex items-center gap-2 font-jetbrains-mono text-xs">
+                             <span class="text-dark-400">{{ model.developer || t('modelMarketplace.unknownDeveloper') }}</span>
+                             <span v-if="model.visiblePlatforms.length > 0" class="border-l border-dark-700 pl-2 text-dark-500">{{ platformNames(model.visiblePlatforms) }}</span>
+-                            <span :class="statusTextClass(model.monitoring.status)">{{ formatAvailability(model) }}</span>
++                            <span :class="statusTextClass(activeMonitoring(model).status)">{{ formatAvailability(model) }}</span>
+                             <button type="button" class="opacity-0 transition hover:text-white group-hover:opacity-100 focus:opacity-100" :title="t('modelMarketplace.copyModelId')" @click="copyModelId(model.name)">
+                               <Icon name="copy" size="xs" />
+                             </button>
+                           </div>
+                           <div
+                             class="mt-2 flex gap-[2px]"
+-                            :aria-label="`${t('modelMarketplace.recentChecks')}: ${statusLabel(model.monitoring.status)} ${formatAvailability(model)}`"
++                            :aria-label="monitorAriaLabel(model)"
+                           >
+                             <span
+                               v-for="sample in monitorSquares(model)"
+@@ -238,10 +238,10 @@
+                     · {{ billingModeNames(model.billingModes) }}
+                   </span>
+                   <span class="mt-2 flex items-center gap-2">
+-                    <span class="font-jetbrains-mono text-xs" :class="statusTextClass(model.monitoring.status)">{{ formatAvailability(model) }}</span>
++                    <span class="font-jetbrains-mono text-xs" :class="statusTextClass(activeMonitoring(model).status)">{{ formatAvailability(model) }}</span>
+                     <span
+                       class="flex gap-[2px]"
+-                      :aria-label="`${t('modelMarketplace.recentChecks')}: ${statusLabel(model.monitoring.status)} ${formatAvailability(model)}`"
++                      :aria-label="monitorAriaLabel(model)"
+                     >
+                       <span
+                         v-for="sample in monitorSquares(model)"
+@@ -310,7 +310,10 @@ import {
+   buildMarketplaceModels,
+   effectiveTokenPrices,
+   hasTokenPricing,
++  monitoringForWindow,
+   type MarketplaceModel,
++  type MarketplaceMonitoring,
++  type MarketplaceMonitoringWindow,
+   type MarketplaceStatus,
+   type MarketplaceWindow,
+   type TokenPriceField,
+@@ -327,9 +330,9 @@ const search = ref('')
+ const providerFilter = ref('')
+ const billingFilter = ref('')
+ const statusFilter = ref('')
+-const monitorWindow = ref<MarketplaceWindow>('7d')
++const monitorWindow = ref<MarketplaceWindow>('90m')
+ const expanded = ref(new Set<string>())
+-const windows: MarketplaceWindow[] = ['7d', '15d', '30d']
++const windows: MarketplaceWindow[] = ['90m', '12h', '1d', '15d']
+ const MONITOR_SAMPLE_COUNT = 24
+ let abortController: AbortController | null = null
+
+@@ -344,6 +347,10 @@ const operationalCount = computed(() => models.value.filter((model) => model.mon
+ const monitoredCount = computed(() => models.value.filter((model) => model.monitoring.status !== 'unmonitored').length)
+ const monitoringCoverage = computed(() => models.value.length > 0 ? `${Math.round(monitoredCount.value / models.value.length * 100)}%` : '0%')
+
++function monitorWindowLabel(window: MarketplaceWindow): string {
++  return window === '90m' ? '90min' : window
++}
++
+ const providerOptions = computed(() => {
+   const values = Array.from(new Set(models.value.flatMap((model) => model.visiblePlatforms))).sort()
+   return [
+@@ -492,8 +499,21 @@ function formatAvailability(model: MarketplaceModel): string {
+   return value == null ? '-' : `${value.toFixed(2)}%`
+ }
+
++function activeMonitoring(model: MarketplaceModel) {
++  return monitoringForWindow(model.monitoring, monitorWindow.value)
++}
++
++function monitorAriaLabel(model: MarketplaceModel): string {
++  const monitoring = activeMonitoring(model)
++  return `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${formatAvailability(model)}`
++}
++
+ function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
+-  const actual = model.monitoring.samples.slice(-MONITOR_SAMPLE_COUNT).map((sample, index) => ({
++  return monitorSquaresForMonitoring(activeMonitoring(model))
++}
++
++function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): MonitorSquare[] {
++  const actual = monitoring.samples.slice(-MONITOR_SAMPLE_COUNT).map((sample, index) => ({
+     key: `actual-${sample.checkedAt}-${index}`,
+     status: sample.status,
+     title: t('modelMarketplace.checkTooltip', {
+@@ -510,28 +530,28 @@ function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
+     return [...padding, ...actual]
+   }
+
+-  const availability = availabilityForWindow(model.monitoring, monitorWindow.value)
++  const availability = monitoring.availability
+   if (availability == null) {
+     const squares = Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => ({
+       key: `empty-${index}`,
+       status: 'unmonitored' as MarketplaceStatus,
+       title: t('modelMarketplace.noCheckData'),
+     }))
+-    if (model.monitoring.status !== 'unmonitored') {
++    if (monitoring.status !== 'unmonitored') {
+       squares[MONITOR_SAMPLE_COUNT - 1] = {
+         key: 'latest-status',
+-        status: model.monitoring.status,
+-        title: t('modelMarketplace.latestStatusTooltip', { status: statusLabel(model.monitoring.status) }),
++        status: monitoring.status,
++        title: t('modelMarketplace.latestStatusTooltip', { status: statusLabel(monitoring.status) }),
+       }
+     }
+     return squares
+   }
+
+   let issueCount = Math.round((100 - Math.max(0, Math.min(100, availability))) / 100 * MONITOR_SAMPLE_COUNT)
+-  if (model.monitoring.status === 'degraded' || model.monitoring.status === 'unavailable') {
++  if (monitoring.status === 'degraded' || monitoring.status === 'unavailable') {
+     issueCount = Math.max(1, issueCount)
+   }
+-  const issueStatus: MarketplaceStatus = model.monitoring.status === 'unavailable' ? 'unavailable' : 'degraded'
++  const issueStatus: MarketplaceStatus = monitoring.status === 'unavailable' ? 'unavailable' : 'degraded'
+   return Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => {
+     const status: MarketplaceStatus = index >= MONITOR_SAMPLE_COUNT - issueCount ? issueStatus : 'operational'
+     return {
+@@ -545,6 +565,10 @@ function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
+   })
+ }
+
++function emptyMonitoring(): MarketplaceMonitoring {
++  return { status: 'unmonitored', samples: [] }
++}
++
+ function formatLatency(value?: number): string {
+   return value != null && Number.isFinite(value) && value > 0 ? `${formatNumber(value, 0)} ms` : '-'
+ }
+@@ -646,6 +670,22 @@ const ModelPricingDetail = defineComponent({
+       if (request !== '-') rows.push(h('div', {}, request))
+       return rows.length > 0 ? rows : '-'
+     }
++    const profileMonitoring = (profile: MarketplaceModel['profiles'][number]) => {
++      if (!profile.monitoringEnabled) return []
++      const monitoring = monitoringForWindow(profile.monitoring || emptyMonitoring(), monitorWindow.value)
++      const availability = monitoring.availability == null ? '-' : `${monitoring.availability.toFixed(2)}%`
++      return [h('div', { class: 'mt-2 flex items-center gap-2' }, [
++        h('span', { class: 'shrink-0 text-[10px] text-dark-400' }, `${t('modelMarketplace.passiveMonitoring')} ${availability}`),
++        h('div', {
++          class: 'flex gap-[2px]',
++          'aria-label': `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${availability}`,
++        }, monitorSquaresForMonitoring(monitoring).map((sample) => h('span', {
++          key: sample.key,
++          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample.status)}`,
++          title: sample.title,
++        }))),
++      ])]
++    }
+     const tierRange = (minimum: number, maximum?: number) => maximum == null ? `${formatNumber(minimum, 0)}+` : `${formatNumber(minimum, 0)}-${formatNumber(maximum, 0)}`
+     const label = (key: string) => t(`modelMarketplace.detail.${key}`)
+     return () => h('div', { class: 'space-y-5' }, [
+@@ -661,6 +701,7 @@ const ModelPricingDetail = defineComponent({
+             h('td', { class: 'px-3 py-3' }, [
+               h('div', { class: 'font-sans text-xs font-medium text-white' }, profile.groupName),
+               ...(profile.providerVisible ? [h('div', { class: 'mt-1 text-[11px] text-dark-400' }, platformLabel(profile.platform))] : []),
++              ...profileMonitoring(profile),
+             ]),
+             h('td', { class: 'px-3 py-3' }, billingModeLabel(profile.model.billing_mode)),
+             h('td', { class: 'px-3 py-3 text-emerald-300' }, profileMultiplier(profile)),
+@@ -691,14 +732,42 @@ onBeforeUnmount(() => abortController?.abort())
+ </script>
+
+ <style scoped>
++.model-marketplace {
++  min-height: calc(100vh - 8rem);
++  color: var(--md-on-surface);
++}
++
++/* Keep the marketplace palette attached to the active theme tokens. */
++.model-marketplace :deep(.bg-dark-950) { background-color: var(--md-app-bg) !important; }
++.model-marketplace :deep(.bg-dark-900) { background-color: var(--md-surface) !important; }
++.model-marketplace :deep(.bg-dark-900\/80) { background-color: color-mix(in srgb, var(--md-surface) 80%, transparent) !important; }
++.model-marketplace :deep(.bg-dark-900\/70) { background-color: color-mix(in srgb, var(--md-surface) 70%, transparent) !important; }
++.model-marketplace :deep(.bg-dark-950\/20) { background-color: color-mix(in srgb, var(--md-app-bg) 80%, transparent) !important; }
++.model-marketplace :deep(.bg-dark-800) { background-color: var(--md-surface-container) !important; }
++.model-marketplace :deep(.bg-dark-700) { background-color: var(--md-surface-container-high) !important; }
++.model-marketplace :deep(.border-dark-700),
++.model-marketplace :deep(.border-dark-800),
++.model-marketplace :deep(.divide-dark-800) { border-color: var(--md-outline-variant) !important; }
++.model-marketplace :deep(.text-white),
++.model-marketplace :deep(.text-gray-950),
++.model-marketplace :deep(.text-dark-200),
++.model-marketplace :deep(.text-dark-300),
++.model-marketplace :deep(.text-dark-900) { color: var(--md-on-surface) !important; }
++.model-marketplace :deep(.text-dark-400),
++.model-marketplace :deep(.text-dark-500),
++.model-marketplace :deep(.text-gray-500) { color: var(--md-on-surface-variant) !important; }
++.model-marketplace :deep(.text-emerald-300) { color: var(--md-success) !important; }
++.model-marketplace :deep(.text-red-200),
++.model-marketplace :deep(.text-red-300) { color: var(--md-error) !important; }
++
+ .market-select {
+   height: 2.5rem;
+   min-width: 0;
+-  border: 1px solid rgb(55 65 81);
++  border: 1px solid var(--md-outline-variant);
+   border-radius: 0.25rem;
+-  background: var(--md-app-bg);
++  background: var(--md-surface);
+   padding: 0 2rem 0 0.75rem;
+-  color: rgb(229 231 235);
++  color: var(--md-on-surface);
+   font-family: 'JetBrains Mono', ui-monospace, monospace;
+   font-size: 0.75rem;
+   outline: none;

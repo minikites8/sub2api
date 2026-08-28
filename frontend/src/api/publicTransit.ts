@@ -52,12 +52,15 @@ export interface PublicTransitBilling {
 }
 
 export interface PublicTransitGroup {
+  id?: number
   name: string
   platform: GroupPlatform
   provider_visible?: boolean
   subscription_type?: string
   rate_multiplier: number
   is_exclusive: boolean
+  monitoring_enabled?: boolean
+  monitoring?: PublicTransitMonitor[]
   cache_usage: PublicTransitCacheUsage
   models: PublicTransitModel[]
 }
@@ -79,6 +82,7 @@ export interface PublicTransitCacheUsageWindow {
 export interface PublicTransitModel {
   standard_model: string
   raw_model: string
+  rate_multiplier?: number
   pricing_models?: string[]
   platform: GroupPlatform
   billing_mode: string
@@ -118,14 +122,31 @@ export interface PublicTransitModelSource {
 }
 
 export interface PublicTransitMonitor {
+  group_id?: number
+  group_name?: string
   platform: GroupPlatform
   model: string
   status: 'operational' | 'degraded' | 'unavailable' | 'unmonitored'
+  availability_90m?: number
+  availability_12h?: number
+  availability_1d?: number
   availability_7d: number
   availability_15d: number
   availability_30d: number
   ttft_p50_7d_ms?: number
   duration_p50_7d_ms?: number
+  latest_duration_p50_ms?: number
+  data_through?: string
+  coverage_complete: boolean
+  buckets: PublicTransitMonitorTimeline[]
+  windows?: Partial<Record<'90m' | '12h' | '1d' | '15d', PublicTransitMonitorWindow>>
+}
+
+export interface PublicTransitMonitorWindow {
+  status: 'operational' | 'degraded' | 'unavailable' | 'unmonitored'
+  availability: number
+  ttft_p50_ms?: number
+  duration_p50_ms?: number
   latest_duration_p50_ms?: number
   data_through?: string
   coverage_complete: boolean

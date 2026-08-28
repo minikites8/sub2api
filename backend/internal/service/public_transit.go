@@ -137,14 +137,17 @@ type PublicTransitBilling struct {
 }
 
 type PublicTransitGroup struct {
-	Name             string                  `json:"name"`
-	Platform         string                  `json:"platform"`
-	ProviderVisible  bool                    `json:"provider_visible"`
-	SubscriptionType string                  `json:"subscription_type,omitempty"`
-	RateMultiplier   float64                 `json:"rate_multiplier"`
-	IsExclusive      bool                    `json:"is_exclusive"`
-	CacheUsage       PublicTransitCacheUsage `json:"cache_usage"`
-	Models           []PublicTransitModel    `json:"models"`
+	ID                int64                   `json:"-"`
+	Name              string                  `json:"name"`
+	Platform          string                  `json:"platform"`
+	ProviderVisible   bool                    `json:"provider_visible"`
+	SubscriptionType  string                  `json:"subscription_type,omitempty"`
+	RateMultiplier    float64                 `json:"rate_multiplier"`
+	IsExclusive       bool                    `json:"is_exclusive"`
+	MonitoringEnabled bool                    `json:"monitoring_enabled"`
+	Monitoring        []PublicTransitMonitor  `json:"monitoring,omitempty"`
+	CacheUsage        PublicTransitCacheUsage `json:"cache_usage"`
+	Models            []PublicTransitModel    `json:"models"`
 }
 
 type PublicTransitCacheUsage struct {
@@ -164,6 +167,7 @@ type PublicTransitCacheUsageWindow struct {
 type PublicTransitModel struct {
 	StandardModel     string                       `json:"standard_model"`
 	RawModel          string                       `json:"raw_model"`
+	RateMultiplier    float64                      `json:"rate_multiplier"`
 	PricingModels     []string                     `json:"pricing_models,omitempty"`
 	Platform          string                       `json:"platform"`
 	BillingMode       string                       `json:"billing_mode"`
@@ -203,14 +207,27 @@ type PublicTransitModelSource struct {
 }
 
 type PublicTransitMonitor struct {
-	Platform            string                         `json:"platform"`
-	Model               string                         `json:"model"`
+	GroupID             int64                                 `json:"-"`
+	Platform            string                                `json:"platform"`
+	Model               string                                `json:"model"`
+	Status              string                                `json:"status"`
+	Availability7d      float64                               `json:"availability_7d"`
+	Availability15d     float64                               `json:"availability_15d"`
+	Availability30d     float64                               `json:"availability_30d"`
+	TTFTP50_7dMs        *int64                                `json:"ttft_p50_7d_ms,omitempty"`
+	DurationP50_7dMs    *int64                                `json:"duration_p50_7d_ms,omitempty"`
+	LatestDurationP50Ms *int64                                `json:"latest_duration_p50_ms,omitempty"`
+	DataThrough         string                                `json:"data_through,omitempty"`
+	CoverageComplete    bool                                  `json:"coverage_complete"`
+	Buckets             []PublicTransitMonitorTimeline        `json:"buckets"`
+	Windows             map[string]PublicTransitMonitorWindow `json:"windows,omitempty"`
+}
+
+type PublicTransitMonitorWindow struct {
 	Status              string                         `json:"status"`
-	Availability7d      float64                        `json:"availability_7d"`
-	Availability15d     float64                        `json:"availability_15d"`
-	Availability30d     float64                        `json:"availability_30d"`
-	TTFTP50_7dMs        *int64                         `json:"ttft_p50_7d_ms,omitempty"`
-	DurationP50_7dMs    *int64                         `json:"duration_p50_7d_ms,omitempty"`
+	Availability        float64                        `json:"availability"`
+	TTFTP50Ms           *int64                         `json:"ttft_p50_ms,omitempty"`
+	DurationP50Ms       *int64                         `json:"duration_p50_ms,omitempty"`
 	LatestDurationP50Ms *int64                         `json:"latest_duration_p50_ms,omitempty"`
 	DataThrough         string                         `json:"data_through,omitempty"`
 	CoverageComplete    bool                           `json:"coverage_complete"`
@@ -309,10 +326,20 @@ func (s *PublicTransitService) Snapshot(ctx context.Context, baseURL string) (*P
 	}
 
 	var monitorItems []PublicTransitMonitor
-	if s.settingService.GetChannelMonitorRuntime(ctx).PassiveAggregationAllowed() {
-		monitorItems, err = s.publicV2Monitors(ctx)
+	var groupMonitorItems []PublicTransitMonitor
+	var monitorConfig *ChannelMonitorV2Config
+	if s.settingService.GetChannelMonitorRuntime(ctx).PassiveAggregationAllowed() && s.monitorService != nil {
+		monitorConfig, err = s.monitorService.GetConfig(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("load public v2 monitor config: %w", err)
+		}
+		monitorItems, err = s.publicV2Monitors(ctx, ChannelMonitorV2GroupByPlatformModel)
 		if err != nil {
 			return nil, fmt.Errorf("load public v2 monitors: %w", err)
+		}
+		groupMonitorItems, err = s.publicV2Monitors(ctx, ChannelMonitorV2GroupByPlatformGroupModel)
+		if err != nil {
+			return nil, fmt.Errorf("load public v2 group monitors: %w", err)
 		}
 	}
 
@@ -324,6 +351,7 @@ func (s *PublicTransitService) Snapshot(ctx context.Context, baseURL string) (*P
 	}
 
 	groups := buildPublicTransitGroups(configuredGroups, channels, cacheUsageByGroupID, publicPricingService(s.channelService))
+	attachPublicTransitGroupMonitoring(groups, groupMonitorItems, monitorConfig)
 	completeness := buildPublicTransitCompleteness(groups, monitorItems)
 
 	station := PublicTransitStation{
@@ -400,6 +428,7 @@ func buildPublicTransitGroups(configuredGroups []Group, channels []AvailableChan
 		key := groupKey{id: g.ID, name: g.Name, platform: g.Platform}
 		groupByKey[key] = g
 		byKey[key] = &PublicTransitGroup{
+			ID:               g.ID,
 			Name:             g.Name,
 			Platform:         g.Platform,
 			ProviderVisible:  false,
@@ -433,6 +462,7 @@ func buildPublicTransitGroups(configuredGroups []Group, channels []AvailableChan
 					Status:           StatusActive,
 				}
 				byKey[key] = &PublicTransitGroup{
+					ID:               g.ID,
 					Name:             g.Name,
 					Platform:         g.Platform,
 					ProviderVisible:  g.ProviderVisible,
@@ -512,6 +542,41 @@ func buildPublicTransitGroups(configuredGroups []Group, channels []AvailableChan
 	return groups
 }
 
+func attachPublicTransitGroupMonitoring(groups []PublicTransitGroup, monitors []PublicTransitMonitor, cfg *ChannelMonitorV2Config) {
+	if cfg == nil || !cfg.Enabled {
+		return
+	}
+	enabledPlatforms := make(map[string]struct{})
+	for _, platform := range cfg.Platforms {
+		if platform.Enabled {
+			enabledPlatforms[strings.ToLower(strings.TrimSpace(platform.Platform))] = struct{}{}
+		}
+	}
+	enabledGroups := make(map[int64]struct{}, len(cfg.GroupIDs))
+	for _, groupID := range cfg.GroupIDs {
+		enabledGroups[groupID] = struct{}{}
+	}
+	monitorsByGroup := make(map[int64][]PublicTransitMonitor)
+	for _, monitor := range monitors {
+		if monitor.GroupID > 0 {
+			monitorsByGroup[monitor.GroupID] = append(monitorsByGroup[monitor.GroupID], monitor)
+		}
+	}
+	for i := range groups {
+		group := &groups[i]
+		if _, ok := enabledPlatforms[strings.ToLower(strings.TrimSpace(group.Platform))]; !ok {
+			continue
+		}
+		if len(enabledGroups) > 0 {
+			if _, ok := enabledGroups[group.ID]; !ok {
+				continue
+			}
+		}
+		group.MonitoringEnabled = true
+		group.Monitoring = monitorsByGroup[group.ID]
+	}
+}
+
 func publicPricingService(channelService *ChannelService) *PricingService {
 	if channelService == nil {
 		return nil
@@ -579,6 +644,7 @@ func toPublicTransitModel(m SupportedModel, group Group) PublicTransitModel {
 	out := PublicTransitModel{
 		StandardModel:     m.Name,
 		RawModel:          m.Name,
+		RateMultiplier:    group.RateMultiplierForModel(m.Name),
 		PricingModels:     publicPricingModels(m.Pricing),
 		Platform:          m.Platform,
 		BillingMode:       billingMode,
@@ -751,33 +817,30 @@ func publicCacheUsageWindow(period string, src usagestats.GroupCacheUsageWindow)
 	}
 }
 
-func (s *PublicTransitService) publicV2Monitors(ctx context.Context) ([]PublicTransitMonitor, error) {
+func (s *PublicTransitService) publicV2Monitors(ctx context.Context, groupBy ChannelMonitorV2GroupBy) ([]PublicTransitMonitor, error) {
 	if s == nil || s.monitorService == nil {
 		return []PublicTransitMonitor{}, nil
 	}
-	filter7d, err := s.monitorService.ParseFilter("7d", nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	filter30d, err := s.monitorService.ParseFilter("30d", nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	matrix7d, err := s.monitorService.Matrix(ctx, filter7d, ChannelMonitorV2GroupByPlatformModel, false)
-	if err != nil {
-		if errors.Is(err, ErrChannelMonitorDisabled) {
-			return []PublicTransitMonitor{}, nil
+	matrices := make(map[string]*ChannelMonitorV2Matrix)
+	for _, rangeValue := range []string{"90m", "12h", "24h", "7d", "30d"} {
+		filter, err := s.monitorService.ParseFilter(rangeValue, nil, nil, nil)
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
-	}
-	matrix30d, err := s.monitorService.Matrix(ctx, filter30d, ChannelMonitorV2GroupByPlatformModel, false)
-	if err != nil {
-		if errors.Is(err, ErrChannelMonitorDisabled) {
-			return []PublicTransitMonitor{}, nil
+		// Keep absolute counts internally so derived windows (notably 15d) use
+		// weighted success rates. The public DTO only exports normalized rates.
+		matrix, err := s.monitorService.Matrix(ctx, filter, groupBy, true)
+		if err != nil {
+			if errors.Is(err, ErrChannelMonitorDisabled) {
+				return []PublicTransitMonitor{}, nil
+			}
+			return nil, err
 		}
-		return nil, err
+		matrices[rangeValue] = matrix
 	}
-	return buildPublicTransitV2Monitors(matrix7d, matrix30d), nil
+	monitors := buildPublicTransitV2Monitors(matrices["7d"], matrices["30d"])
+	attachPublicTransitMonitorWindows(monitors, matrices)
+	return monitors, nil
 }
 
 func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) []PublicTransitMonitor {
@@ -787,7 +850,7 @@ func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) [
 	rows30d := make(map[string]ChannelMonitorV2MatrixRow)
 	if matrix30d != nil {
 		for _, row := range matrix30d.Items {
-			rows30d[publicMonitorKey(row.Platform, row.Model)] = row
+			rows30d[publicMonitorRowKey(row)] = row
 		}
 	}
 	out := make([]PublicTransitMonitor, 0, len(matrix7d.Items))
@@ -795,7 +858,7 @@ func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) [
 		if row7d.Model == ChannelMonitorV2OtherModel {
 			continue
 		}
-		row30d, has30d := rows30d[publicMonitorKey(row7d.Platform, row7d.Model)]
+		row30d, has30d := rows30d[publicMonitorRowKey(row7d)]
 		availability30d := row7d.Metrics.SuccessRate * 100
 		availability15d := row7d.Metrics.SuccessRate * 100
 		if has30d {
@@ -825,6 +888,9 @@ func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) [
 			CoverageComplete: matrix7d.Coverage.CoverageComplete,
 			Buckets:          buckets,
 		}
+		if row7d.GroupID != nil {
+			item.GroupID = *row7d.GroupID
+		}
 		for i := len(row7d.Buckets) - 1; i >= 0; i-- {
 			if row7d.Buckets[i].Metrics.Duration.P50Ms != nil {
 				item.LatestDurationP50Ms = row7d.Buckets[i].Metrics.Duration.P50Ms
@@ -842,8 +908,106 @@ func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) [
 	return out
 }
 
-func publicMonitorKey(platform, model string) string {
-	return strings.ToLower(strings.TrimSpace(platform)) + "\x00" + strings.ToLower(strings.TrimSpace(model))
+func attachPublicTransitMonitorWindows(monitors []PublicTransitMonitor, matrices map[string]*ChannelMonitorV2Matrix) {
+	rowsByRange := make(map[string]map[string]ChannelMonitorV2MatrixRow, len(matrices))
+	for rangeValue, matrix := range matrices {
+		rows := make(map[string]ChannelMonitorV2MatrixRow)
+		if matrix != nil {
+			for _, row := range matrix.Items {
+				rows[publicMonitorRowKey(row)] = row
+			}
+		}
+		rowsByRange[rangeValue] = rows
+	}
+	for i := range monitors {
+		monitor := &monitors[i]
+		monitor.Windows = make(map[string]PublicTransitMonitorWindow, 4)
+		key := publicMonitorKey(monitor.Platform, monitor.GroupID, monitor.Model)
+		for _, window := range []struct {
+			name       string
+			rangeValue string
+			duration   time.Duration
+		}{
+			{name: "90m", rangeValue: "90m"},
+			{name: "12h", rangeValue: "12h"},
+			{name: "1d", rangeValue: "24h"},
+			{name: "15d", rangeValue: "30d", duration: 15 * 24 * time.Hour},
+		} {
+			row, ok := rowsByRange[window.rangeValue][key]
+			matrix := matrices[window.rangeValue]
+			if !ok || matrix == nil {
+				continue
+			}
+			monitor.Windows[window.name] = publicTransitMonitorWindow(row, matrix.Coverage, window.duration)
+		}
+	}
+}
+
+func publicTransitMonitorWindow(row ChannelMonitorV2MatrixRow, coverage ChannelMonitorV2Coverage, duration time.Duration) PublicTransitMonitorWindow {
+	buckets := row.Buckets
+	availability := row.Metrics.SuccessRate * 100
+	status := publicMonitorStatus(row.Health.Overall)
+	if duration > 0 {
+		start := coverage.RequestedEnd.Add(-duration)
+		availability = successRateSince(row.Buckets, start)
+		filtered := make([]ChannelMonitorV2TrendPoint, 0, len(row.Buckets))
+		for _, bucket := range row.Buckets {
+			if !bucket.BucketStart.Before(start) {
+				filtered = append(filtered, bucket)
+			}
+		}
+		buckets = filtered
+		status = publicMonitorStatusForBuckets(filtered)
+	}
+	timeline := make([]PublicTransitMonitorTimeline, 0, len(buckets))
+	var latestDuration *int64
+	for _, bucket := range buckets {
+		timeline = append(timeline, PublicTransitMonitorTimeline{
+			BucketStart:   bucket.BucketStart.UTC().Format(time.RFC3339),
+			Status:        publicMonitorStatus(bucket.Health.Overall),
+			SuccessRate:   bucket.Metrics.SuccessRate * 100,
+			TTFTP50Ms:     bucket.Metrics.TTFT.P50Ms,
+			DurationP50Ms: bucket.Metrics.Duration.P50Ms,
+		})
+		if bucket.Metrics.Duration.P50Ms != nil {
+			latestDuration = bucket.Metrics.Duration.P50Ms
+		}
+	}
+	return PublicTransitMonitorWindow{
+		Status:              status,
+		Availability:        availability,
+		TTFTP50Ms:           row.Metrics.TTFT.P50Ms,
+		DurationP50Ms:       row.Metrics.Duration.P50Ms,
+		LatestDurationP50Ms: latestDuration,
+		DataThrough:         coverage.DataThrough.UTC().Format(time.RFC3339),
+		CoverageComplete:    coverage.CoverageComplete,
+		Buckets:             timeline,
+	}
+}
+
+func publicMonitorStatusForBuckets(buckets []ChannelMonitorV2TrendPoint) string {
+	status := "unmonitored"
+	severity := 0
+	for _, bucket := range buckets {
+		candidate := publicMonitorStatus(bucket.Health.Overall)
+		candidateSeverity := map[string]int{"operational": 1, "degraded": 2, "unavailable": 3}[candidate]
+		if candidateSeverity > severity {
+			status, severity = candidate, candidateSeverity
+		}
+	}
+	return status
+}
+
+func publicMonitorRowKey(row ChannelMonitorV2MatrixRow) string {
+	groupID := int64(0)
+	if row.GroupID != nil {
+		groupID = *row.GroupID
+	}
+	return publicMonitorKey(row.Platform, groupID, row.Model)
+}
+
+func publicMonitorKey(platform string, groupID int64, model string) string {
+	return strings.ToLower(strings.TrimSpace(platform)) + fmt.Sprintf("\x00%d\x00", groupID) + strings.ToLower(strings.TrimSpace(model))
 }
 
 func publicMonitorStatus(health string) string {
