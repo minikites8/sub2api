@@ -376,6 +376,9 @@ func (c *Client) Reclaim401Packages(ctx context.Context, cardCode string) ([][]b
 	}
 	final := initial
 	if initial.Queued > 0 || initial.AlreadyRunning > 0 || len(collectBatchDownloadItems(initial)) == 0 {
+		if err := reclaimTerminalError(initial); err != nil {
+			return nil, err
+		}
 		final, err = c.pollReclaimUntilDone(ctx, request)
 		if err != nil {
 			return nil, err
@@ -454,8 +457,14 @@ func (c *Client) pollReclaimUntilDone(ctx context.Context, request ReclaimReques
 			}
 			return current, errors.New(current.Error)
 		}
-		if current.Queued == 0 && current.AlreadyRunning == 0 {
+		// ye.team can briefly return an empty terminal-looking snapshot while it
+		// restores task metadata. A download token is the authoritative signal
+		// that the batch result is ready for the next step.
+		if len(collectBatchDownloadItems(current)) > 0 {
 			return current, nil
+		}
+		if err := reclaimTerminalError(current); err != nil {
+			return current, err
 		}
 		if time.Now().After(deadline) {
 			return current, fmt.Errorf("ye.team reclaim polling timed out: %s", strings.Join(request.CardCodes, ","))
@@ -468,6 +477,29 @@ func (c *Client) pollReclaimUntilDone(ctx context.Context, request ReclaimReques
 		case <-timer.C:
 		}
 	}
+}
+
+func reclaimTerminalError(result BatchReclaimResult) error {
+	for _, task := range result.AllTasks {
+		switch strings.ToLower(strings.TrimSpace(task.Status)) {
+		case "failed", "error", "cancelled", "canceled", "expired":
+			message := strings.TrimSpace(task.Message)
+			if message == "" {
+				message = "ye.team reclaim task failed with status " + strings.ToLower(strings.TrimSpace(task.Status))
+			}
+			return errors.New(message)
+		}
+	}
+	if result.Failed > 0 {
+		return errors.New("ye.team reclaim task failed")
+	}
+	if result.Unreclaimable > 0 {
+		return errors.New("ye.team reclaim task is unreclaimable")
+	}
+	if result.NotOwned > 0 {
+		return errors.New("ye.team reclaim card is not owned")
+	}
+	return nil
 }
 
 // FindAccountCredentials selects an account from a downloaded package. A

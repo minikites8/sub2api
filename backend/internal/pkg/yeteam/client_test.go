@@ -191,8 +191,12 @@ func TestReclaim401PackagesQueriesTerminalResponseUntilTokenIsAvailable(t *testi
 		switch r.URL.Path {
 		case "/api/redeem/reclaim/batch-cards":
 			batchCalls++
-			if batchCalls == 1 {
+			switch batchCalls {
+			case 1:
 				_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"done"}]}]}`))
+				return
+			case 2:
+				_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":0,"cards":[{"card_code":"TEAM-TEST","card_status":"ok","tasks":[]}]}`))
 				return
 			}
 			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"done","download_token":"tok-1"}]}]}`))
@@ -210,7 +214,25 @@ func TestReclaim401PackagesQueriesTerminalResponseUntilTokenIsAvailable(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(packages) != 1 || batchCalls != 2 || batchDownloadCalls != 1 {
+	if len(packages) != 1 || batchCalls != 3 || batchDownloadCalls != 1 {
 		t.Fatalf("packages=%d batch_calls=%d batch_download_calls=%d", len(packages), batchCalls, batchDownloadCalls)
+	}
+}
+
+func TestReclaim401PackagesStopsOnFailedTask(t *testing.T) {
+	batchCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		batchCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":0,"failed":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"failed","message":"upstream rejected"}]}]}`))
+	}))
+	defer server.Close()
+	client := NewClient(Config{Enabled: true, BaseURL: server.URL, Timeout: time.Second, PollInterval: time.Millisecond, MaxPollDuration: time.Second})
+	_, err := client.Reclaim401Packages(context.Background(), "TEAM-TEST")
+	if err == nil || err.Error() != "upstream rejected" {
+		t.Fatalf("err = %v", err)
+	}
+	if batchCalls != 1 {
+		t.Fatalf("batch calls = %d", batchCalls)
 	}
 }
