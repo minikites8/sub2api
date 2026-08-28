@@ -239,8 +239,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyPublicTransitEnabled,
 		SettingKeyPublicTransitPageEnabled,
-		SettingKeyModelPlazaEnabled,
-		SettingKeyModelPlazaRequireAuth,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
@@ -372,9 +370,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PublicTransitEnabled:     !isFalseSettingValue(settings[SettingKeyPublicTransitEnabled]),
 		PublicTransitPageEnabled: publicTransitPageEnabledFromSettings(settings),
 
-		ModelPlazaEnabled:     settings[SettingKeyModelPlazaEnabled] == "true",
-		ModelPlazaRequireAuth: settings[SettingKeyModelPlazaRequireAuth] == "true",
-
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
@@ -486,33 +481,6 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	}
 }
 
-// ModelPlazaRuntime is the lightweight view of the model-plaza feature consumed
-// by the public plaza handler.
-type ModelPlazaRuntime struct {
-	Enabled     bool
-	RequireAuth bool
-	Description string
-}
-
-// GetModelPlazaRuntime reads the model-plaza feature switches directly from the
-// settings store. Fail-closed: on error returns Enabled=false, matching the
-// opt-in default (unknown ↔ disabled).
-func (s *SettingService) GetModelPlazaRuntime(ctx context.Context) ModelPlazaRuntime {
-	vals, err := s.settingRepo.GetMultiple(ctx, []string{
-		SettingKeyModelPlazaEnabled,
-		SettingKeyModelPlazaRequireAuth,
-		SettingKeyModelPlazaDescription,
-	})
-	if err != nil {
-		return ModelPlazaRuntime{Enabled: false}
-	}
-	return ModelPlazaRuntime{
-		Enabled:     vals[SettingKeyModelPlazaEnabled] == "true",
-		RequireAuth: vals[SettingKeyModelPlazaRequireAuth] == "true",
-		Description: vals[SettingKeyModelPlazaDescription],
-	}
-}
-
 // IsUserErrorViewAllowed reads the user-facing error-requests visibility switch
 // directly from the settings store. Fail-closed: on error returns false (opt-in default).
 func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
@@ -612,8 +580,6 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled             bool   `json:"available_channels_enabled"`
 	PublicTransitEnabled                 bool   `json:"public_transit_enabled"`
 	PublicTransitPageEnabled             bool   `json:"public_transit_page_enabled"`
-	ModelPlazaEnabled                    bool   `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth                bool   `json:"model_plaza_require_auth"`
 	AffiliateEnabled                     bool   `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool   `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests           bool   `json:"allow_user_view_error_requests"`
@@ -698,8 +664,6 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		PublicTransitEnabled:                 settings.PublicTransitEnabled,
 		PublicTransitPageEnabled:             settings.PublicTransitPageEnabled,
-		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,

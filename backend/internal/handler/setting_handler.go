@@ -117,8 +117,6 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		PublicTransitEnabled:     settings.PublicTransitEnabled,
 		PublicTransitPageEnabled: settings.PublicTransitPageEnabled,
-		ModelPlazaEnabled:        settings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth:    settings.ModelPlazaRequireAuth,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 

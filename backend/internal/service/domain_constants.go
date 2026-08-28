@@ -482,15 +482,6 @@ const (
 	// SettingKeyPublicTransitPageEnabled controls the optional visual public page.
 	SettingKeyPublicTransitPageEnabled = "public_transit_page_enabled"
 
-	// SettingKeyModelPlazaEnabled controls the public group/model pricing showcase.
-	SettingKeyModelPlazaEnabled = "model_plaza_enabled"
-
-	// SettingKeyModelPlazaRequireAuth controls whether the Model Plaza page requires login.
-	SettingKeyModelPlazaRequireAuth = "model_plaza_require_auth"
-
-	// SettingKeyModelPlazaDescription stores the Markdown blurb rendered above the plaza.
-	SettingKeyModelPlazaDescription = "model_plaza_description"
-
 	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
 	// for probing remote Sub2API API-key billing metadata.
 	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"

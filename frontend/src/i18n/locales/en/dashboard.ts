@@ -572,52 +572,22 @@ export default {
     }
   },
 
-  // Model Plaza (public group/model pricing showcase)
-  modelPlaza: {
-    title: 'Model Plaza',
-    description: 'Browse available models and pricing by group',
-    loading: 'Loading...',
-    empty: 'No groups to display',
-    loadFailed: 'Failed to load model plaza',
-    noSearchResult: 'No matching models',
-    anonymousHint: 'Sign in to see your exclusive groups and personal rates',
-    filters: {
-      platformLabel: 'Platform',
-      groupLabel: 'Group',
-      rateLabel: 'Rate',
-      modelLabel: 'Model',
-      searchPlaceholder: 'Search models',
-      all: 'All'
-    },
-    badges: {
-      exclusive: 'Exclusive',
-      subscription: 'Subscription'
-    },
-    detail: {
-      noModels: 'No models configured for this group',
-      noPricing: 'Pricing not configured',
-      peakNote: 'Peak hours {window}: billing rate ×{multiplier}'
-    },
-    table: {
-      model: 'Model',
-      input: 'Input',
-      output: 'Output',
-      cache: 'Cache',
-      cacheWrite: 'Write',
-      cacheRead: 'Read',
-      paidPrice: 'Your Price (Discounted)',
-      officialPrice: 'Official Price',
-      rate: 'Rate',
-      unitPerMillion: '$ / 1M tokens',
-      perUnitRequest: '/ request',
-      perUnitImage: '/ image',
-      perRequest: 'Per request',
-      perImage: 'Per image'
-    },
-    nav: {
-      login: 'Sign In',
-      backToDashboard: 'Back to Console'
-    }
+  modelMarketplace: {
+    title: 'Model Marketplace', description: 'Find available models, compare complete pricing profiles, and inspect public reliability data.',
+    publicAccess: 'PUBLIC ACCESS', priceUnit: 'Prices shown in USD ($)', updatedAt: 'Snapshot updated {time}',
+    searchPlaceholder: 'Search models, developers, providers, protocols, or groups...', providerFilter: 'Provider filter', unknownDeveloper: 'Unknown developer',
+    billingFilter: 'Billing filter', statusFilter: 'Status filter', refresh: 'Refresh data', retry: 'Try again', loadError: 'Failed to load model marketplace data',
+    copyModelId: 'Copy model ID', modelIdCopied: 'Model ID copied', details: 'View pricing details', collapse: 'Collapse pricing details', avg7d: '7d average',
+    recentChecks: 'Recent checks', checkTooltip: '{time} · {status}', estimateTooltip: '{window} availability · {status}', latestStatusTooltip: 'Latest status · {status}', noCheckData: 'No check record',
+    showing: 'Showing {shown} of {total} models', priceNote: 'Token prices use $/1M tokens; request prices use $/request; applicable group rates are included.',
+    stats: { models: 'Models', providers: 'Providers', operational: 'Operational', monitored: 'Monitored' },
+    filters: { allProviders: 'All providers', allBilling: 'All billing types', allStatus: 'All statuses' },
+    billing: { token: 'Per Token', perRequest: 'Per Request / Image' },
+    units: { token: '$/1M tokens' },
+    status: { operational: 'Operational', degraded: 'Degraded', unavailable: 'Unavailable', unmonitored: 'Unmonitored' },
+    columns: { model: 'Model', billing: 'Billing', pricing: 'Pricing', groups: 'Groups / Rate', latency: 'Latest Latency', actions: 'Actions' },
+    detail: { group: 'Group / Provider', mode: 'Billing', multiplier: 'Rate', pricing: 'Pricing', input: 'Input', output: 'Output', cacheWrite: 'Cache Write', cacheRead: 'Cache Read', requestImage: 'Request / Image', source: 'Price Source', tierPricing: 'Tier Pricing', tokenRange: 'Token Range', unitNote: 'Prices include the applicable group rate. Token: $/1M tokens; request and image: $/request.' },
+    empty: { title: 'No matching models', description: 'Adjust the search term or filters to see other models.' }
   },
 
   affiliate: {

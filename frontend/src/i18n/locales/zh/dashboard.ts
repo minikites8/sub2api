@@ -577,52 +577,23 @@ export default {
     }
   },
 
-  // Model Plaza (public group/model pricing showcase)
-  modelPlaza: {
+  modelMarketplace: {
     title: '模型广场',
-    description: '按分组浏览可用模型与价格',
-    loading: '加载中...',
-    empty: '暂无可展示的分组',
-    loadFailed: '加载模型广场失败',
-    noSearchResult: '没有匹配的模型',
-    anonymousHint: '登录后可查看你的专属分组与专属倍率',
-    filters: {
-      platformLabel: '平台',
-      groupLabel: '分组',
-      rateLabel: '倍率',
-      modelLabel: '模型',
-      searchPlaceholder: '搜索模型名称',
-      all: '全部'
-    },
-    badges: {
-      exclusive: '专属分组',
-      subscription: '订阅'
-    },
-    detail: {
-      noModels: '该分组暂未配置模型',
-      noPricing: '未配置定价',
-      peakNote: '高峰时段 {window} 计费倍率 ×{multiplier}'
-    },
-    table: {
-      model: '模型',
-      input: '输入',
-      output: '输出',
-      cache: '缓存',
-      cacheWrite: '写入',
-      cacheRead: '读取',
-      paidPrice: '实付价格(折后)',
-      officialPrice: '官方价格',
-      rate: '折扣倍率',
-      unitPerMillion: '$ / 1M token',
-      perUnitRequest: '/ 次',
-      perUnitImage: '/ 张',
-      perRequest: '按次计费',
-      perImage: '按图片计费'
-    },
-    nav: {
-      login: '登录',
-      backToDashboard: '回到后台'
-    }
+    description: '查找可用模型，比较完整价格并查看公开稳定性数据。',
+    publicAccess: '公开访问', priceUnit: '价格单位：美元（$）', updatedAt: '快照更新于 {time}',
+    searchPlaceholder: '搜索模型、开发者、平台、协议或分组...', providerFilter: '平台筛选', unknownDeveloper: '未知开发者',
+    billingFilter: '计费筛选', statusFilter: '状态筛选', refresh: '刷新数据', retry: '重试', loadError: '模型广场数据加载失败',
+    copyModelId: '复制模型 ID', modelIdCopied: '模型 ID 已复制', details: '查看价格详情', collapse: '收起价格详情', avg7d: '7 天平均',
+    recentChecks: '最近检查', checkTooltip: '{time} · {status}', estimateTooltip: '{window} 可用性 · {status}', latestStatusTooltip: '最新状态 · {status}', noCheckData: '暂无检查记录',
+    showing: '显示 {shown} / {total} 个模型', priceNote: 'Token 价格按 $/1M tokens；按次价格按 $/请求；已计入适用分组倍率。',
+    stats: { models: '模型', providers: '平台', operational: '运行正常', monitored: '已监控' },
+    filters: { allProviders: '全部平台', allBilling: '全部计费类型', allStatus: '全部状态' },
+    billing: { token: '按 Token', perRequest: '按次 / 图片' },
+    units: { token: '$/1M tokens' },
+    status: { operational: '运行正常', degraded: '性能下降', unavailable: '不可用', unmonitored: '未监控' },
+    columns: { model: '模型', billing: '计费', pricing: '价格', groups: '分组 / 倍率', latency: '最新延迟', actions: '操作' },
+    detail: { group: '分组 / 平台', mode: '计费', multiplier: '倍率', pricing: '价格', input: '输入', output: '输出', cacheWrite: '缓存写入', cacheRead: '缓存读取', requestImage: '请求 / 图片', source: '价格来源', tierPricing: '阶梯价格', tokenRange: 'Token 区间', unitNote: '价格已计入适用分组倍率。Token：$/1M tokens；请求与图片：$/请求。' },
+    empty: { title: '没有匹配的模型', description: '调整搜索词或筛选条件以查看其他模型。' }
   },
 
   affiliate: {

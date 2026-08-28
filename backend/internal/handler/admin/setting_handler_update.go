@@ -352,11 +352,6 @@ type UpdateSettingsRequest struct {
 	PublicTransitEnabled     *bool `json:"public_transit_enabled"`
 	PublicTransitPageEnabled *bool `json:"public_transit_page_enabled"`
 
-	// Model Plaza feature switches + description
-	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
-	ModelPlazaDescription *string `json:"model_plaza_description"`
-
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
@@ -1972,24 +1967,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.PublicTransitPageEnabled
 		}(),
-		ModelPlazaEnabled: func() bool {
-			if req.ModelPlazaEnabled != nil {
-				return *req.ModelPlazaEnabled
-			}
-			return previousSettings.ModelPlazaEnabled
-		}(),
-		ModelPlazaRequireAuth: func() bool {
-			if req.ModelPlazaRequireAuth != nil {
-				return *req.ModelPlazaRequireAuth
-			}
-			return previousSettings.ModelPlazaRequireAuth
-		}(),
-		ModelPlazaDescription: func() string {
-			if req.ModelPlazaDescription != nil {
-				return *req.ModelPlazaDescription
-			}
-			return previousSettings.ModelPlazaDescription
-		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -2423,10 +2400,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 		PublicTransitEnabled:     updatedSettings.PublicTransitEnabled,
 		PublicTransitPageEnabled: updatedSettings.PublicTransitPageEnabled,
-
-		ModelPlazaEnabled:     updatedSettings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth: updatedSettings.ModelPlazaRequireAuth,
-		ModelPlazaDescription: updatedSettings.ModelPlazaDescription,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 

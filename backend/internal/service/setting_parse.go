@@ -210,11 +210,6 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyPublicTransitEnabled:     "true",
 		SettingKeyPublicTransitPageEnabled: "false",
 
-		// Model plaza feature (default disabled; opt-in, public unless require_auth)
-		SettingKeyModelPlazaEnabled:     "false",
-		SettingKeyModelPlazaRequireAuth: "false",
-		SettingKeyModelPlazaDescription: "",
-
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
 		SettingKeyAffiliateAdminRechargeEnabled: strconv.FormatBool(AdminRechargeRebateEnabledDefault),
@@ -835,11 +830,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
 	result.PublicTransitEnabled = !isFalseSettingValue(settings[SettingKeyPublicTransitEnabled])
 	result.PublicTransitPageEnabled = publicTransitPageEnabledFromSettings(settings)
-
-	// Model plaza feature (default: disabled; strict true)
-	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
-	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"
-	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

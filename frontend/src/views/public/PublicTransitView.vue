@@ -375,13 +375,7 @@ const platformOptions = computed<SelectOption[]>(() => [
   ...platforms.value.map((platform) => ({ value: platform, label: platform })),
 ])
 const monitorByGroup = computed(() => {
-  const out = new Map<string, PublicTransitMonitor>()
-  for (const item of snapshot.value?.monitoring || []) {
-    if (!item.group_name) continue
-    out.set(groupKey({ name: item.group_name, platform: item.provider } as PublicTransitGroup), item)
-    out.set(item.group_name.toLowerCase(), item)
-  }
-  return out
+  return snapshot.value?.monitoring || []
 })
 const filteredGroups = computed(() => {
   const q = search.value.toLowerCase()
@@ -639,65 +633,51 @@ function toggleGroup(key: string) {
 }
 
 function monitorSummaryForGroup(group: PublicTransitGroup) {
-  const item = monitorByGroup.value.get(groupKey(group)) || monitorByGroup.value.get(group.name.toLowerCase())
+  const modelNames = new Set((group.models || []).flatMap((model) => [model.standard_model, model.raw_model, ...(model.pricing_models || [])].map((name) => name.toLowerCase())))
+  const item = monitorByGroup.value.find((candidate) => candidate.platform === group.platform && modelNames.has(candidate.model.toLowerCase()))
   if (!item) return null
   return {
-    status: normalizeStatus(item.primary_status),
-    model: item.primary_model,
+    status: normalizeStatus(item.status),
+    model: item.model,
   }
 }
 
 function publicMonitorToUserView(item: PublicTransitMonitor, id: number): UserMonitorView {
   return {
     id,
-    name: item.name,
-    provider: normalizeProvider(item.provider),
-    group_name: item.group_name || '',
-    primary_model: item.primary_model,
-    primary_status: normalizeStatus(item.primary_status),
-    primary_latency_ms: item.latest_latency_ms ?? null,
-    primary_ping_latency_ms: item.latest_ping_latency_ms ?? null,
+    name: `${platformLabel(item.platform)} / ${item.model}`,
+    provider: normalizeProvider(item.platform),
+    group_name: '',
+    primary_model: item.model,
+    primary_status: normalizeStatus(item.status),
+    primary_latency_ms: item.latest_duration_p50_ms ?? item.duration_p50_7d_ms ?? null,
+    primary_ping_latency_ms: null,
     availability_7d: item.availability_7d,
-    extra_models: (item.extra_models || []).map((m) => ({
-      model: m.model,
-      status: normalizeStatus(m.status),
-      latency_ms: m.latency_ms ?? null,
-    })),
-    timeline: (item.timeline || []).map((point) => ({
+    extra_models: [],
+    timeline: (item.buckets || []).map((point) => ({
       status: normalizeStatus(point.status),
-      latency_ms: point.latency_ms ?? null,
-      ping_latency_ms: point.ping_latency_ms ?? null,
-      checked_at: point.checked_at,
+      latency_ms: point.duration_p50_ms ?? null,
+      ping_latency_ms: null,
+      checked_at: point.bucket_start,
     })),
   }
 }
 
 function publicMonitorToUserDetail(item: PublicTransitMonitor, id: number): UserMonitorDetail {
-  const models = item.models?.length
-    ? item.models
-    : [{
-        model: item.primary_model,
-        latest_status: item.primary_status,
-        latest_latency_ms: item.latest_latency_ms,
-        availability_7d: item.availability_7d,
-        availability_15d: item.availability_15d,
-        availability_30d: item.availability_30d,
-        avg_latency_7d_ms: item.avg_latency_7d_ms,
-      }]
   return {
     id,
-    name: item.name,
-    provider: normalizeProvider(item.provider),
-    group_name: item.group_name || '',
-    models: models.map((m) => ({
-      model: m.model,
-      latest_status: normalizeStatus(m.latest_status),
-      latest_latency_ms: m.latest_latency_ms ?? null,
-      availability_7d: m.availability_7d,
-      availability_15d: m.availability_15d,
-      availability_30d: m.availability_30d,
-      avg_latency_7d_ms: m.avg_latency_7d_ms ?? null,
-    })),
+    name: `${platformLabel(item.platform)} / ${item.model}`,
+    provider: normalizeProvider(item.platform),
+    group_name: '',
+    models: [{
+      model: item.model,
+      latest_status: normalizeStatus(item.status),
+      latest_latency_ms: item.latest_duration_p50_ms ?? item.duration_p50_7d_ms ?? null,
+      availability_7d: item.availability_7d,
+      availability_15d: item.availability_15d,
+      availability_30d: item.availability_30d,
+      avg_latency_7d_ms: item.duration_p50_7d_ms ?? null,
+    }],
   }
 }
 

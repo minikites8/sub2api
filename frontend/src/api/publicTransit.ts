@@ -54,6 +54,7 @@ export interface PublicTransitBilling {
 export interface PublicTransitGroup {
   name: string
   platform: GroupPlatform
+  provider_visible?: boolean
   subscription_type?: string
   rate_multiplier: number
   is_exclusive: boolean
@@ -78,6 +79,7 @@ export interface PublicTransitCacheUsageWindow {
 export interface PublicTransitModel {
   standard_model: string
   raw_model: string
+  pricing_models?: string[]
   platform: GroupPlatform
   billing_mode: string
   price_source?: string
@@ -116,44 +118,26 @@ export interface PublicTransitModelSource {
 }
 
 export interface PublicTransitMonitor {
-  name: string
-  provider: string
-  group_name?: string
-  primary_model: string
-  primary_status: string
+  platform: GroupPlatform
+  model: string
+  status: 'operational' | 'degraded' | 'unavailable' | 'unmonitored'
   availability_7d: number
   availability_15d: number
   availability_30d: number
-  avg_latency_7d_ms?: number
-  latest_latency_ms?: number
-  latest_ping_latency_ms?: number
-  last_checked_at?: string
-  extra_models: PublicTransitExtraModelStatus[]
-  models: PublicTransitMonitorModel[]
-  timeline: PublicTransitMonitorTimeline[]
-}
-
-export interface PublicTransitExtraModelStatus {
-  model: string
-  status: string
-  latency_ms?: number
-}
-
-export interface PublicTransitMonitorModel {
-  model: string
-  latest_status: string
-  latest_latency_ms?: number
-  availability_7d: number
-  availability_15d: number
-  availability_30d: number
-  avg_latency_7d_ms?: number
+  ttft_p50_7d_ms?: number
+  duration_p50_7d_ms?: number
+  latest_duration_p50_ms?: number
+  data_through?: string
+  coverage_complete: boolean
+  buckets: PublicTransitMonitorTimeline[]
 }
 
 export interface PublicTransitMonitorTimeline {
+  bucket_start: string
   status: string
-  latency_ms?: number
-  ping_latency_ms?: number
-  checked_at: string
+  success_rate: number
+  ttft_p50_ms?: number
+  duration_p50_ms?: number
 }
 
 export interface PublicTransitCacheDisclosure {

@@ -736,7 +736,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
-    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+    { path: '/models', label: t('nav.channelStatus'), icon: SignalIcon },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
@@ -790,7 +790,7 @@ function buildSelfNavGroups(items: NavItem[], options: { includeOverview: boolea
     },
     {
       title: `${prefix}${groupTitle('API 与用量', 'API & Usage')}`,
-      items: pickItems(items, ['/keys', '/usage', '/available-channels', '/monitor'])
+      items: pickItems(items, ['/keys', '/usage', '/available-channels', '/models'])
     },
     {
       title: `${prefix}${groupTitle('订阅与余额', 'Billing')}`,

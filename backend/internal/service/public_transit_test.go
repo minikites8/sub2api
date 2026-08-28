@@ -4,6 +4,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,7 @@ func TestBuildPublicTransitGroups_FiltersExclusiveGroupsAndExportsPricing(t *tes
 				ID:               10,
 				Name:             "public-pro",
 				Platform:         "anthropic",
+				ProviderVisible:  true,
 				SubscriptionType: "standard",
 				RateMultiplier:   1.25,
 			},
@@ -92,6 +94,7 @@ func TestBuildPublicTransitGroups_FiltersExclusiveGroupsAndExportsPricing(t *tes
 
 	require.Len(t, groups, 1)
 	require.Equal(t, "public-pro", groups[0].Name)
+	require.True(t, groups[0].ProviderVisible)
 	require.False(t, groups[0].IsExclusive)
 	require.InDelta(t, 1.25, groups[0].RateMultiplier, 1e-12)
 	require.Equal(t, int64(30), groups[0].CacheUsage.Last24h.CacheReadTokens)
@@ -106,10 +109,62 @@ func TestBuildPublicTransitGroups_FiltersExclusiveGroupsAndExportsPricing(t *tes
 	require.Equal(t, string(BillingModeToken), model.BillingMode)
 	require.Equal(t, ModelPriceSourceCustom, model.PriceSource)
 	require.Equal(t, ModelCatalogSourceChannel, model.CatalogSource)
+	require.Equal(t, []string{"claude-sonnet-4"}, model.PricingModels)
 	require.NotNil(t, model.Price)
 	require.InDelta(t, 3e-6, *model.Price.InputUSDPerToken, 1e-12)
 	require.InDelta(t, 1.5e-5, *model.Price.OutputUSDPerToken, 1e-12)
 	require.True(t, hasCachePricing(groups))
+}
+
+func TestBuildPublicTransitV2Monitors_MapsHealthWindowsAndBuckets(t *testing.T) {
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	latency7d := int64(840)
+	latestLatency := int64(720)
+	matrix7d := &ChannelMonitorV2Matrix{
+		Coverage: ChannelMonitorV2Coverage{DataThrough: now, CoverageComplete: true},
+		Items: []ChannelMonitorV2MatrixRow{{
+			Platform: "openai",
+			Model:    "gpt-5.5",
+			Metrics: ChannelMonitorV2Metric{
+				RequestCount: 100,
+				SuccessRate:  0.99,
+				Duration:     ChannelMonitorV2Latency{P50Ms: &latency7d},
+			},
+			Health: ChannelMonitorV2Health{Overall: "warning"},
+			Buckets: []ChannelMonitorV2TrendPoint{{
+				BucketStart: now.Add(-time.Hour),
+				Metrics: ChannelMonitorV2Metric{
+					RequestCount: 10,
+					SuccessRate:  0.90,
+					Duration:     ChannelMonitorV2Latency{P50Ms: &latestLatency},
+				},
+				Health: ChannelMonitorV2Health{Overall: "critical"},
+			}},
+		}},
+	}
+	matrix30d := &ChannelMonitorV2Matrix{
+		Coverage: ChannelMonitorV2Coverage{RequestedEnd: now},
+		Items: []ChannelMonitorV2MatrixRow{{
+			Platform: "openai",
+			Model:    "gpt-5.5",
+			Metrics:  ChannelMonitorV2Metric{RequestCount: 400, SuccessRate: 0.975},
+			Buckets: []ChannelMonitorV2TrendPoint{
+				{BucketStart: now.Add(-20 * 24 * time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 100, SuccessRequests: 50}},
+				{BucketStart: now.Add(-10 * 24 * time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 100, SuccessRequests: 98}},
+			},
+		}},
+	}
+
+	monitors := buildPublicTransitV2Monitors(matrix7d, matrix30d)
+
+	require.Len(t, monitors, 1)
+	require.Equal(t, "degraded", monitors[0].Status)
+	require.InDelta(t, 99, monitors[0].Availability7d, 1e-12)
+	require.InDelta(t, 98, monitors[0].Availability15d, 1e-12)
+	require.InDelta(t, 97.5, monitors[0].Availability30d, 1e-12)
+	require.Equal(t, &latestLatency, monitors[0].LatestDurationP50Ms)
+	require.Equal(t, "unavailable", monitors[0].Buckets[0].Status)
+	require.True(t, monitors[0].CoverageComplete)
 }
 
 func TestBuildPublicTransitGroups_ExportsConfiguredGroupsWithoutAvailableChannels(t *testing.T) {
@@ -168,6 +223,33 @@ func TestBuildPublicTransitGroups_ExportsEnabledGroupModelsList(t *testing.T) {
 	require.Equal(t, "gpt-5.5", groups[0].Models[0].StandardModel)
 	require.Equal(t, ModelCatalogSourceGroupModelsList, groups[0].Models[0].CatalogSource)
 	require.Equal(t, ModelPriceSourceUnknown, groups[0].Models[0].PriceSource)
+}
+
+func TestBuildPublicTransitGroups_FiltersVideoModelsFromPublicSnapshot(t *testing.T) {
+	videoPrice := 0.02
+	groups := buildPublicTransitGroups([]Group{
+		{
+			ID:       1,
+			Name:     "public-media",
+			Platform: "openai",
+			Status:   StatusActive,
+			ModelsListConfig: GroupModelsListConfig{
+				Enabled: true,
+				Models:  []string{"gpt-4.1", "sora-2"},
+			},
+		},
+	}, []AvailableChannel{{
+		Status: StatusActive,
+		Groups: []AvailableGroupRef{{ID: 1, Name: "public-media", Platform: "openai"}},
+		SupportedModels: []SupportedModel{
+			{Name: "grok-imagine-video", Platform: "openai", Pricing: &ChannelModelPricing{BillingMode: BillingModeVideo, PerRequestPrice: &videoPrice}},
+			{Name: "gpt-4.1", Platform: "openai", Pricing: &ChannelModelPricing{BillingMode: BillingModeToken}},
+		},
+	}}, nil, nil)
+
+	require.Len(t, groups, 1)
+	require.Len(t, groups[0].Models, 1)
+	require.Equal(t, "gpt-4.1", groups[0].Models[0].StandardModel)
 }
 
 func TestToPublicTransitModel_NormalizesImageModeToPerRequest(t *testing.T) {

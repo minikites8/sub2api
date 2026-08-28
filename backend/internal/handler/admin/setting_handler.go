@@ -406,10 +406,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PublicTransitEnabled:     settings.PublicTransitEnabled,
 		PublicTransitPageEnabled: settings.PublicTransitPageEnabled,
 
-		ModelPlazaEnabled:     settings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth: settings.ModelPlazaRequireAuth,
-		ModelPlazaDescription: settings.ModelPlazaDescription,
-
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		AccountSchedulingThresholds: settings.AccountSchedulingThresholds,
