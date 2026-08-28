@@ -7,6 +7,7 @@ import {
   effectiveTokenPrices,
   hasTokenPricing,
   modelDeveloper,
+  monitoringForWindow,
 } from '@/utils/modelMarketplace'
 
 describe('model marketplace aggregation', () => {
@@ -86,5 +87,31 @@ describe('model marketplace aggregation', () => {
     expect(monitoredProfile.monitoringEnabled).toBe(true)
     expect(availabilityForWindow(monitoredProfile.monitoring!, '90m')).toBe(97.5)
     expect(otherProfile.monitoringEnabled).toBe(false)
+  })
+
+  it('treats a window with no requests as unknown instead of zero availability', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+    monitor.windows = {
+      '90m': {
+        status: 'unmonitored',
+        availability: 0,
+        coverage_complete: true,
+        buckets: [],
+      },
+    }
+
+    const model = buildMarketplaceModels(snapshot).find((item) => item.name === 'gpt-4.1')!
+    const window = monitoringForWindow(model.monitoring, '90m')
+
+    expect(window.status).toBe('unmonitored')
+    expect(window.availability).toBeUndefined()
+    expect(availabilityForWindow(model.monitoring, '90m')).toBeUndefined()
+  })
+
+  it('keeps passive timeline success rates for V2-style color scoring', () => {
+    const model = buildMarketplaceModels(createModelMarketplacePreviewSnapshot()).find((item) => item.name === 'gpt-4.1')!
+
+    expect(model.monitoring.samples[0].successRate).toBe(100)
   })
 })

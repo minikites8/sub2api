@@ -54,6 +54,7 @@ export interface MarketplaceMonitorSample {
   status: MarketplaceStatus
   checkedAt: string
   latencyMs?: number
+  successRate?: number
 }
 
 export interface MarketplaceModel {
@@ -323,6 +324,7 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
         status: normalizeStatus(point.status),
         checkedAt: point.bucket_start,
         latencyMs: point.duration_p50_ms,
+        successRate: point.success_rate,
       })
     }
   }
@@ -341,6 +343,7 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
       status: normalizeStatus(sample.status),
       checkedAt: sample.bucket_start,
       latencyMs: sample.duration_p50_ms,
+      successRate: sample.success_rate,
     })),
   }
 }
@@ -491,7 +494,8 @@ export function availabilityForWindow(
   window: MarketplaceWindow,
 ): number | undefined {
   const current = monitoring.windows?.[window]
-  if (current) return current.availability
+  if (current) return current.status === 'unmonitored' ? undefined : current.availability
+  if (monitoring.status === 'unmonitored') return undefined
   if (window === '15d' || window === '30d') return window === '15d' ? monitoring.availability15d : monitoring.availability30d
   return monitoring.availability7d
 }
@@ -501,7 +505,9 @@ export function monitoringForWindow(
   window: MarketplaceWindow,
 ): MarketplaceMonitoringWindow {
   const current = monitoring.windows?.[window]
-  if (current) return current
+  if (current) {
+    return current.status === 'unmonitored' ? { ...current, availability: undefined } : current
+  }
   return {
     status: monitoring.status,
     availability: availabilityForWindow(monitoring, window),

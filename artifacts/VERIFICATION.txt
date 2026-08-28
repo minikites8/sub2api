@@ -1,5 +1,5 @@
 CHANGED_BRANCH=main
-CHANGED_FIELD=per-group OpenAI service_tier policy with passthrough, set, and clear modes; set values normalize fast to priority and apply to HTTP bodies plus WebSocket response.create frames
+CHANGED_FIELD=model marketplace passive monitoring: V2 unknown handling for zero-request windows, success-rate samples, and 11-stop green-to-yellow-to-red health colors
 MODIFIED_FILE=D:/Programs/sub2api/artifacts/MODIFIED_FILE
 DIFF_FILE=D:/Programs/sub2api/artifacts/DIFF_FILE
 VERIFICATION_FILE=D:/Programs/sub2api/artifacts/VERIFICATION.txt
@@ -7,43 +7,35 @@ ROLLBACK_FILE=D:/Programs/sub2api/artifacts/ROLLBACK.sh
 BASELINE_FILE=D:/Programs/sub2api/artifacts/BASELINE_FILE
 ROLLBACK_BACKUP=D:/Programs/sub2api/artifacts/ROLLBACK_BACKUP
 ROLLBACK_TARGET=D:/Programs/sub2api/artifacts/ROLLBACK_TARGET
-BASELINE_SHA256=12AB30A5E2923D97AA24B5BB1E484BB9E1F7A68057064FAE078C98D3AE05B026
-MODIFIED_SHA256=B0316D3A89368DCAB3BCCAD84B77139E9136A6B89EAA17B928C046F14D870345
-BASELINE_CMD=pwsh -NoProfile -Command 'Get-Content -Raw -Encoding UTF8 artifacts/BASELINE_FILE | Select-String applyGroupOpenAIServiceTierPolicy'
+BASELINE_SHA256=618D05E520157E31B10F84D0B4C84FF862CDFFA55CCE66FFAF8C70129D6C1C3E
+MODIFIED_SHA256=1A329520E4D643F0526C867B3090115E6A5597CCDF53673D33601DEE2B1F3C5A
+BASELINE_CMD=pwsh -NoProfile -Command "$content = Get-Content -Raw -Encoding UTF8 artifacts/BASELINE_FILE; if ($content -match 'health-score10') { 'baseline palette present' } else { 'baseline palette absent' }"
 BASELINE_INPUT=artifacts/BASELINE_FILE
-BASELINE_RESULT=no match; baseline policy absent
+BASELINE_RESULT=baseline palette absent
 BASELINE_EXIT=0
-MODIFIED_CMD=pwsh -NoProfile -Command 'Get-Content -Raw -Encoding UTF8 artifacts/MODIFIED_FILE | Select-String applyGroupOpenAIServiceTierPolicy'
+MODIFIED_CMD=pwsh -NoProfile -Command "$content = Get-Content -Raw -Encoding UTF8 artifacts/MODIFIED_FILE; if ($content -match 'health-score10' -and $content -match 'health-unknown') { 'modified V2 palette and unknown state present' } else { 'modified markers missing'; exit 1 }"
 MODIFIED_INPUT=artifacts/MODIFIED_FILE
-MODIFIED_RESULT=match found; modified policy present
+MODIFIED_RESULT=modified V2 palette and unknown state present
 MODIFIED_EXIT=0
-ROLLBACK_CMD=& 'C:\Program Files\Git\bin\bash.exe' artifacts/ROLLBACK.sh artifacts/ROLLBACK_TARGET artifacts/ROLLBACK_BACKUP
+ROLLBACK_CMD=& 'C:\Program Files\Git\bin\bash.exe' artifacts/ROLLBACK.sh artifacts/ROLLBACK_TARGET artifacts/ROLLBACK_BACKUP; $baseline = (Get-FileHash artifacts/BASELINE_FILE -Algorithm SHA256).Hash; $target = (Get-FileHash artifacts/ROLLBACK_TARGET -Algorithm SHA256).Hash; $modified = (Get-FileHash artifacts/MODIFIED_FILE -Algorithm SHA256).Hash; "ROLLBACK_TARGET_SHA256=$target"; "BASELINE_SHA256=$baseline"; "MODIFIED_FILE_SHA256=$modified"; if ($target -eq $baseline) { 'restored behavior/status: baseline source restored' } else { exit 1 }
 ROLLBACK_INPUT=target=artifacts/ROLLBACK_TARGET backup=artifacts/ROLLBACK_BACKUP
-ROLLBACK_RESULT=restored artifacts/ROLLBACK_TARGET from artifacts/ROLLBACK_BACKUP; SHA256 equals baseline
+ROLLBACK_RESULT=restored artifacts/ROLLBACK_TARGET from artifacts/ROLLBACK_BACKUP; ROLLBACK_TARGET_SHA256=618D05E520157E31B10F84D0B4C84FF862CDFFA55CCE66FFAF8C70129D6C1C3E; MODIFIED_FILE_SHA256=1A329520E4D643F0526C867B3090115E6A5597CCDF53673D33601DEE2B1F3C5A
 ROLLBACK_EXIT=0
-RESTORED_BEHAVIOR=ROLLBACK_TARGET contains baseline openai_gateway_request_body.go behavior; MODIFIED_FILE retains group service_tier behavior
+RESTORED_BEHAVIOR=ROLLBACK_TARGET restored baseline ChannelStatusView.vue behavior; MODIFIED_FILE retains V2 passive palette and unknown-window behavior
 RESTORED_STATUS=ROLLBACK_TARGET SHA256 equals BASELINE_SHA256; MODIFIED_FILE SHA256 remains MODIFIED_SHA256
-SERVICE_TARGETED_TEST_CMD=='1'; go test ./internal/service -run 'TestNormalizeOpenAIServiceTierConfig|TestApplyGroupOpenAIServiceTierPolicyToWSResponseCreate|TestAPIKeyAuthSnapshotProfitControlRoundtrip|TestCloneGroupForDuplicateCopiesOpenAIServiceTierPolicy|TestApplyOpenAIFastPolicyToBody_GroupServiceTierPolicy' -count=1
-SERVICE_TARGETED_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/service 1.051s
-SERVICE_TARGETED_TEST_EXIT=0
-SERVICE_FULL_TEST_CMD=='1'; go test ./internal/service -count=1
-SERVICE_FULL_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/service 108.232s
-SERVICE_FULL_TEST_EXIT=0
-MIGRATIONS_TEST_CMD=='1'; go test ./migrations -count=1
-MIGRATIONS_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/migrations 0.297s
-MIGRATIONS_TEST_EXIT=0
+FRONTEND_TARGETED_TEST_CMD=pnpm exec vitest run src/utils/__tests__/modelMarketplace.spec.ts src/views/user/__tests__/ChannelStatusView.spec.ts --reporter=dot
+FRONTEND_TARGETED_TEST_INPUT=frontend/src/utils/__tests__/modelMarketplace.spec.ts; frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
+FRONTEND_TARGETED_TEST_RESULT=Test Files 2 passed; Tests 10 passed
+FRONTEND_TARGETED_TEST_EXIT=0
 FRONTEND_TYPECHECK_CMD=pnpm typecheck
 FRONTEND_TYPECHECK_RESULT=vue-tsc --noEmit completed successfully
 FRONTEND_TYPECHECK_EXIT=0
 FRONTEND_BUILD_CMD=pnpm build
-FRONTEND_BUILD_RESULT=vite 5.4.21; 1036 modules transformed; built in 22.31s
+FRONTEND_BUILD_RESULT=vite 5.4.21; 1037 modules transformed; built in 26.81s
 FRONTEND_BUILD_EXIT=0
 FRONTEND_LINT_CMD=pnpm lint:check
-FRONTEND_LINT_RESULT=existing frontend/src/api/admin/accounts.ts:714 no-useless-catch diagnostic
+FRONTEND_LINT_RESULT=eslint reports no-useless-catch at frontend/src/api/admin/accounts.ts:714
 FRONTEND_LINT_EXIT=1
-BACKEND_COMPILE_CMD=='1'; go test ./internal/service -run '^$'; go test ./internal/repository -run '^$'; go test ./internal/handler/admin -run '^$'
-BACKEND_COMPILE_RESULT=all three packages compiled successfully
-BACKEND_COMPILE_EXIT=0
 DIFF_CHECK_CMD=git diff --check -- . ':(exclude)artifacts/DIFF_FILE'
 DIFF_CHECK_RESULT=completed with no diagnostics
 DIFF_CHECK_EXIT=0
