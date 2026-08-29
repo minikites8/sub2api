@@ -1,5 +1,5 @@
 CHANGED_BRANCH=main
-CHANGED_FIELD=model marketplace status data: V2 metrics.has_requests/success_rate/duration and health.overall/score across 90m/12h/1d/15d
+CHANGED_FIELD=model marketplace: adaptive V2 bucket counts and HTML document routing for /models
 SOURCE_FILE=D:/Programs/sub2api/frontend/src/views/user/ChannelStatusView.vue
 MODIFIED_FILE=D:/Programs/sub2api/artifacts/MODIFIED_FILE
 DIFF_FILE=D:/Programs/sub2api/artifacts/DIFF_FILE
@@ -8,55 +8,55 @@ ROLLBACK_FILE=D:/Programs/sub2api/artifacts/ROLLBACK.sh
 BASELINE_FILE=D:/Programs/sub2api/artifacts/BASELINE_FILE
 ROLLBACK_BACKUP=D:/Programs/sub2api/artifacts/ROLLBACK_BACKUP
 ROLLBACK_TARGET=D:/Programs/sub2api/artifacts/ROLLBACK_TARGET
-BASELINE_SHA256=1A329520E4D643F0526C867B3090115E6A5597CCDF53673D33601DEE2B1F3C5A
-MODIFIED_SHA256=36286BA4F0CD8675B6FCC3A01A805B466296181BD354F3F83907FF800419FD16
+BASELINE_SHA256=36286BA4F0CD8675B6FCC3A01A805B466296181BD354F3F83907FF800419FD16
+MODIFIED_SHA256=81A4EB6CB55796174D6EEAE4E3F3057C54CAAB7373071F62C9FCEE6124AE6ED3
 
-BASELINE_CMD=$content = Get-Content -LiteralPath 'artifacts/BASELINE_FILE' -Raw -Encoding UTF8; if ($content -match 'statusSquareClass\(sample\.status, sample\.successRate\)' -and $content -notmatch 'sample\.healthScore, sample\.hasRequests') { Write-Output 'BASELINE: legacy availability drives marketplace status colors'; exit 0 }; Write-Output 'BASELINE: unexpected source'; exit 1
+BASELINE_CMD=$content = Get-Content -LiteralPath 'artifacts/BASELINE_FILE' -Raw -Encoding UTF8; if ($content -match 'const MONITOR_SAMPLE_COUNT = 24' -and $content -notmatch "'90m': 18") { Write-Output 'BASELINE: every monitoring window uses 24 display cells'; exit 0 }; Write-Output 'BASELINE: unexpected source'; exit 1
 BASELINE_INPUT=artifacts/BASELINE_FILE
-BASELINE_OUTPUT=BASELINE: legacy availability drives marketplace status colors
-BASELINE_RESULT=baseline behavior confirmed
+BASELINE_OUTPUT=BASELINE: every monitoring window uses 24 display cells
+BASELINE_RESULT=fixed 24-cell behavior confirmed
 BASELINE_EXIT=0
 
-MODIFIED_CMD=$content = Get-Content -LiteralPath 'artifacts/MODIFIED_FILE' -Raw -Encoding UTF8; if ($content -match 'statusSquareClass\(sample\.status, sample\.healthScore, sample\.hasRequests\)' -and $content -match 'activeMonitoring\(model\)\.status') { Write-Output 'MODIFIED: V2 health and traffic metrics drive marketplace status data'; exit 0 }; Write-Output 'MODIFIED: expected V2 source missing'; exit 1
+MODIFIED_CMD=$content = Get-Content -LiteralPath 'artifacts/MODIFIED_FILE' -Raw -Encoding UTF8; if ($content -match "'90m': 18" -and $content -match "'12h': 24" -and $content -match "'1d': 24" -and $content -match "'15d': 30") { Write-Output 'MODIFIED: display cells match V2 bucket counts for every marketplace window'; exit 0 }; Write-Output 'MODIFIED: expected adaptive bucket mapping missing'; exit 1
 MODIFIED_INPUT=artifacts/MODIFIED_FILE
-MODIFIED_OUTPUT=MODIFIED: V2 health and traffic metrics drive marketplace status data
-MODIFIED_RESULT=modified V2 behavior confirmed
+MODIFIED_OUTPUT=MODIFIED: display cells match V2 bucket counts for every marketplace window
+MODIFIED_RESULT=adaptive V2 bucket behavior confirmed
 MODIFIED_EXIT=0
 
-ROLLBACK_CMD=& 'C:\Program Files\Git\bin\bash.exe' artifacts/ROLLBACK.sh artifacts/ROLLBACK_TARGET artifacts/ROLLBACK_BACKUP; $scriptExit = $LASTEXITCODE; $baseline = (Get-FileHash -LiteralPath artifacts/BASELINE_FILE -Algorithm SHA256).Hash; $target = (Get-FileHash -LiteralPath artifacts/ROLLBACK_TARGET -Algorithm SHA256).Hash; $modified = (Get-FileHash -LiteralPath artifacts/MODIFIED_FILE -Algorithm SHA256).Hash; Write-Output "ROLLBACK_TARGET_SHA256=$target"; Write-Output "BASELINE_SHA256=$baseline"; Write-Output "MODIFIED_FILE_SHA256=$modified"; if ($scriptExit -eq 0 -and $target -eq $baseline -and $modified -ne $baseline) { Write-Output 'ROLLBACK: baseline behavior restored; modified V2 behavior retained'; exit 0 }; exit 1
+ROLLBACK_CMD=& 'C:\Program Files\Git\bin\bash.exe' artifacts/ROLLBACK.sh artifacts/ROLLBACK_TARGET artifacts/ROLLBACK_BACKUP; $scriptExit = $LASTEXITCODE; $baseline = (Get-FileHash -LiteralPath artifacts/BASELINE_FILE -Algorithm SHA256).Hash; $target = (Get-FileHash -LiteralPath artifacts/ROLLBACK_TARGET -Algorithm SHA256).Hash; $modified = (Get-FileHash -LiteralPath artifacts/MODIFIED_FILE -Algorithm SHA256).Hash; Write-Output "ROLLBACK_TARGET_SHA256=$target"; Write-Output "BASELINE_SHA256=$baseline"; Write-Output "MODIFIED_FILE_SHA256=$modified"; if ($scriptExit -eq 0 -and $target -eq $baseline -and $modified -ne $baseline) { Write-Output 'ROLLBACK: fixed-cell baseline restored; adaptive V2 bucket behavior retained'; exit 0 }; exit 1
 ROLLBACK_INPUT=target=artifacts/ROLLBACK_TARGET backup=artifacts/ROLLBACK_BACKUP
 ROLLBACK_OUTPUT=restored artifacts/ROLLBACK_TARGET from artifacts/ROLLBACK_BACKUP
-ROLLBACK_OUTPUT=ROLLBACK_TARGET_SHA256=1A329520E4D643F0526C867B3090115E6A5597CCDF53673D33601DEE2B1F3C5A
-ROLLBACK_OUTPUT=BASELINE_SHA256=1A329520E4D643F0526C867B3090115E6A5597CCDF53673D33601DEE2B1F3C5A
-ROLLBACK_OUTPUT=MODIFIED_FILE_SHA256=36286BA4F0CD8675B6FCC3A01A805B466296181BD354F3F83907FF800419FD16
-ROLLBACK_OUTPUT=ROLLBACK: baseline behavior restored; modified V2 behavior retained
-ROLLBACK_RESULT=rollback target restored to baseline while MODIFIED_FILE retained V2 behavior
+ROLLBACK_OUTPUT=ROLLBACK_TARGET_SHA256=36286BA4F0CD8675B6FCC3A01A805B466296181BD354F3F83907FF800419FD16
+ROLLBACK_OUTPUT=BASELINE_SHA256=36286BA4F0CD8675B6FCC3A01A805B466296181BD354F3F83907FF800419FD16
+ROLLBACK_OUTPUT=MODIFIED_FILE_SHA256=81A4EB6CB55796174D6EEAE4E3F3057C54CAAB7373071F62C9FCEE6124AE6ED3
+ROLLBACK_OUTPUT=ROLLBACK: fixed-cell baseline restored; adaptive V2 bucket behavior retained
+ROLLBACK_RESULT=rollback target restored to fixed 24-cell baseline while MODIFIED_FILE retained adaptive V2 bucket behavior
 ROLLBACK_EXIT=0
-RESTORED_BEHAVIOR=ROLLBACK_TARGET uses the original marketplace availability-based status colors
+RESTORED_BEHAVIOR=ROLLBACK_TARGET uses the original fixed 24-cell monitoring timeline
 RESTORED_STATUS=ROLLBACK_TARGET_SHA256 equals BASELINE_SHA256; MODIFIED_FILE_SHA256 remains MODIFIED_SHA256
 
-FRONTEND_TEST_CMD=pnpm exec vitest run src/utils/__tests__/modelMarketplace.spec.ts src/views/user/__tests__/ChannelStatusView.spec.ts src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts --reporter=dot --silent
-FRONTEND_TEST_INPUT=frontend/src/utils/__tests__/modelMarketplace.spec.ts; frontend/src/views/user/__tests__/ChannelStatusView.spec.ts; frontend/src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts
-FRONTEND_TEST_RESULT=Test Files 3 passed; Tests 26 passed; Duration 4.32s
+FRONTEND_TEST_CMD=pnpm exec vitest run src/views/user/__tests__/ChannelStatusView.spec.ts src/utils/__tests__/modelMarketplace.spec.ts --reporter=dot --silent
+FRONTEND_TEST_INPUT=frontend/src/views/user/__tests__/ChannelStatusView.spec.ts; frontend/src/utils/__tests__/modelMarketplace.spec.ts
+FRONTEND_TEST_RESULT=Test Files 2 passed; Tests 14 passed; Duration 5.53s
 FRONTEND_TEST_EXIT=0
 FRONTEND_TYPECHECK_CMD=pnpm typecheck
 FRONTEND_TYPECHECK_RESULT=vue-tsc --noEmit completed successfully
 FRONTEND_TYPECHECK_EXIT=0
 FRONTEND_BUILD_CMD=pnpm build
-FRONTEND_BUILD_RESULT=Vite 5.4.21; 1037 modules transformed; built in 27.98s
+FRONTEND_BUILD_RESULT=Vite 5.4.21; 1037 modules transformed; built in 33.54s
 FRONTEND_BUILD_EXIT=0
-FRONTEND_CHANGED_LINT_CMD=pnpm exec eslint src/api/publicTransit.ts src/i18n/locales/en/dashboard.ts src/i18n/locales/zh/dashboard.ts src/utils/modelMarketplace.ts src/utils/__tests__/modelMarketplace.spec.ts src/views/user/ChannelStatusView.vue src/views/user/__tests__/ChannelStatusView.spec.ts
-FRONTEND_CHANGED_LINT_RESULT=completed with no diagnostics
-FRONTEND_CHANGED_LINT_EXIT=0
-BACKEND_TEST_CMD=go test ./internal/service -count=1
-BACKEND_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/service 111.116s
-BACKEND_TEST_EXIT=0
-GOFMT_CMD=gofmt -d internal/service/channel_monitor_v2.go internal/service/channel_monitor_v2_test.go internal/service/public_transit.go internal/service/public_transit_test.go
+FRONTEND_LINT_CMD=pnpm exec eslint src/views/user/ChannelStatusView.vue src/views/user/__tests__/ChannelStatusView.spec.ts
+FRONTEND_LINT_RESULT=completed with no diagnostics
+FRONTEND_LINT_EXIT=0
+EMBED_TEST_CMD=go test -tags embed ./internal/web -count=1
+EMBED_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/web 1.374s
+EMBED_TEST_EXIT=0
+GOFMT_CMD=gofmt -d internal/web/embed_on.go internal/web/embed_test.go
 GOFMT_RESULT=gofmt: clean
 GOFMT_EXIT=0
-DARWIN_BUILD_CMD=$env:GOTMPDIR='D:\Programs\sub2api\backend\.tmp\codex-go-tmp'; $env:GOOS='darwin'; $env:GOARCH='amd64'; $env:CGO_ENABLED='0'; go build -trimpath -o .tmp/codex-build/sub2api-darwin-amd64 ./cmd/server
-DARWIN_BUILD_INPUT=backend/cmd/server; GOOS=darwin; GOARCH=amd64; CGO_ENABLED=0
-DARWIN_BUILD_RESULT=darwin_amd64 build ok size=163938912 sha256=B611C649B573B84BF87D1DC09E91CDB6C6205DE9E59F4243EAD44DA99A3DF8C2
+DARWIN_BUILD_CMD=$env:GOTMPDIR='D:\Programs\sub2api\backend\.tmp\codex-go-tmp'; $env:GOOS='darwin'; $env:GOARCH='amd64'; $env:CGO_ENABLED='0'; go build -tags=embed -trimpath -ldflags='-s -w' -o .tmp/codex-build/sub2api-darwin-amd64-embed ./cmd/server
+DARWIN_BUILD_INPUT=backend/cmd/server; tags=embed; GOOS=darwin; GOARCH=amd64; CGO_ENABLED=0
+DARWIN_BUILD_RESULT=darwin_amd64_embed build ok size=127984224 sha256=61D4C5BB54E4439E3CCCEA650FAC4E206E3AA26820409686E8F84F6610F969BF
 DARWIN_BUILD_EXIT=0
 DIFF_CHECK_CMD=git diff --check -- . ':(exclude)artifacts/DIFF_FILE'
 DIFF_CHECK_RESULT=completed with no diagnostics

@@ -1,145 +1,82 @@
 diff --git a/frontend/src/views/user/ChannelStatusView.vue b/frontend/src/views/user/ChannelStatusView.vue
-index ee01deab4..e92a0d659 100644
+index e92a0d659..c1f764602 100644
 --- a/frontend/src/views/user/ChannelStatusView.vue
 +++ b/frontend/src/views/user/ChannelStatusView.vue
-@@ -161,7 +161,7 @@
-                               v-for="sample in monitorSquares(model)"
-                               :key="sample.key"
-                               class="h-[5px] w-[5px] flex-none rounded-[1px]"
--                              :class="statusSquareClass(sample.status, sample.successRate)"
-+                              :class="statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)"
-                               :title="sample.title"
-                             />
+@@ -154,7 +154,7 @@
+                             </button>
                            </div>
-@@ -193,9 +193,9 @@
-                       <div class="mt-1 font-jetbrains-mono text-xs text-dark-400">{{ multiplierRange(model) }}</div>
-                     </td>
-                     <td class="px-4 py-4">
--                      <div class="font-jetbrains-mono text-xs text-white">{{ formatLatency(model.monitoring.latestLatencyMs) }}</div>
--                      <div v-if="model.monitoring.avgLatency7dMs != null" class="mt-1 text-xs text-dark-400">
--                        {{ t('modelMarketplace.avg7d') }} {{ formatLatency(model.monitoring.avgLatency7dMs) }}
-+                      <div class="font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).latestLatencyMs) }}</div>
-+                      <div v-if="activeMonitoring(model).avgLatencyMs != null" class="mt-1 text-xs text-dark-400">
-+                        {{ t('modelMarketplace.windowAverage', { window: monitorWindowLabel(monitorWindow) }) }} {{ formatLatency(activeMonitoring(model).avgLatencyMs) }}
-                       </div>
-                     </td>
-                     <td class="px-3 py-4 text-right">
-@@ -247,7 +247,7 @@
-                         v-for="sample in monitorSquares(model)"
-                         :key="sample.key"
-                         class="h-[5px] w-[5px] flex-none rounded-[1px]"
--                        :class="statusSquareClass(sample.status, sample.successRate)"
-+                        :class="statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)"
-                         :title="sample.title"
-                       />
-                     </span>
-@@ -276,7 +276,7 @@
-               </div>
-               <div class="bg-dark-950 p-3">
-                 <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.latency') }}</div>
--                <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ formatLatency(model.monitoring.latestLatencyMs) }}</div>
-+                <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).latestLatencyMs) }}</div>
-               </div>
-             </div>
-             <div v-if="expanded.has(model.id)" class="p-4">
-@@ -341,12 +341,16 @@ interface MonitorSquare {
-   key: string
-   status: MarketplaceStatus
-   title: string
--  successRate?: number
-+  hasRequests?: boolean
-+  healthScore?: number
+                           <div
+-                            class="mt-2 flex gap-[2px]"
++                            class="monitor-track mt-2 flex gap-[2px]"
+                             :aria-label="monitorAriaLabel(model)"
+                           >
+                             <span
+@@ -240,7 +240,7 @@
+                   <span class="mt-2 flex items-center gap-2">
+                     <span class="font-jetbrains-mono text-xs" :class="statusTextClass(activeMonitoring(model).status)">{{ formatAvailability(model) }}</span>
+                     <span
+-                      class="flex gap-[2px]"
++                      class="monitor-track flex gap-[2px]"
+                       :aria-label="monitorAriaLabel(model)"
+                     >
+                       <span
+@@ -334,7 +334,14 @@ const statusFilter = ref('')
+ const monitorWindow = ref<MarketplaceWindow>('90m')
+ const expanded = ref(new Set<string>())
+ const windows: MarketplaceWindow[] = ['90m', '12h', '1d', '15d']
+-const MONITOR_SAMPLE_COUNT = 24
++const MONITOR_SAMPLE_COUNTS: Record<MarketplaceWindow, number> = {
++  '90m': 18,
++  '12h': 24,
++  '1d': 24,
++  '7d': 14,
++  '15d': 30,
++  '30d': 30,
++}
+ let abortController: AbortController | null = null
+ 
+ interface MonitorSquare {
+@@ -520,7 +527,8 @@ function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
  }
  
- const models = computed(() => snapshot.value ? buildMarketplaceModels(snapshot.value) : [])
--const operationalCount = computed(() => models.value.filter((model) => model.monitoring.status === 'operational').length)
--const monitoredCount = computed(() => models.value.filter((model) => model.monitoring.status !== 'unmonitored').length)
-+const operationalCount = computed(() => models.value.filter((model) => activeMonitoring(model).status === 'operational').length)
-+const monitoredCount = computed(() => models.value.filter((model) => {
-+  const monitoring = activeMonitoring(model)
-+  return monitoring.hasRequests ?? monitoring.status !== 'unmonitored'
-+}).length)
- const monitoringCoverage = computed(() => models.value.length > 0 ? `${Math.round(monitoredCount.value / models.value.length * 100)}%` : '0%')
- 
- function monitorWindowLabel(window: MarketplaceWindow): string {
-@@ -389,7 +393,7 @@ const filteredModels = computed(() => {
-     return (!query || searchable.includes(query))
-       && (!providerFilter.value || model.visiblePlatforms.some((platform) => platform === providerFilter.value))
-       && (!billingFilter.value || model.billingModes.includes(billingFilter.value))
--      && (!statusFilter.value || model.monitoring.status === statusFilter.value)
-+      && (!statusFilter.value || activeMonitoring(model).status === statusFilter.value)
-   })
- })
- 
-@@ -431,14 +435,11 @@ function statusTextClass(status: MarketplaceStatus): string {
-   return 'text-dark-400'
- }
- 
--function statusSquareClass(status: MarketplaceStatus, successRate?: number): string {
-+function statusSquareClass(status: MarketplaceStatus, healthScore?: number, hasRequests?: boolean): string {
-+  if (hasRequests === false) return 'health-unknown'
-+  if (healthScore != null && Number.isFinite(healthScore)) return `health-${scoreToBand(healthScore)}`
-   if (status === 'unmonitored') return 'health-unknown'
-   if (status === 'unavailable') return 'health-score0'
--  if (successRate != null && Number.isFinite(successRate)) {
--    const score = Math.max(0, Math.min(100, successRate))
--    const band = scoreToBand(status === 'degraded' ? Math.min(score, 60) : score)
--    return `health-${band}`
--  }
-   return status === 'degraded' ? 'health-score5' : 'health-score10'
- }
- 
-@@ -522,7 +523,8 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
-   const actual = monitoring.samples.slice(-MONITOR_SAMPLE_COUNT).map((sample, index) => ({
+ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): MonitorSquare[] {
+-  const actual = monitoring.samples.slice(-MONITOR_SAMPLE_COUNT).map((sample, index) => ({
++  const sampleCount = MONITOR_SAMPLE_COUNTS[monitorWindow.value]
++  const actual = monitoring.samples.slice(-sampleCount).map((sample, index) => ({
      key: `actual-${sample.checkedAt}-${index}`,
      status: sample.status,
--    successRate: sample.successRate,
-+    hasRequests: sample.hasRequests,
-+    healthScore: sample.healthScore,
-     title: t('modelMarketplace.checkTooltip', {
-       time: formatDateTime(sample.checkedAt),
-       status: statusLabel(sample.status),
-@@ -537,8 +539,7 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
-     return [...padding, ...actual]
+     hasRequests: sample.hasRequests,
+@@ -531,7 +539,7 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
+     }),
+   }))
+   if (actual.length > 0) {
+-    const padding = Array.from({ length: MONITOR_SAMPLE_COUNT - actual.length }, (_, index) => ({
++    const padding = Array.from({ length: sampleCount - actual.length }, (_, index) => ({
+       key: `empty-${index}`,
+       status: 'unmonitored' as const,
+       title: t('modelMarketplace.noCheckData'),
+@@ -540,13 +548,13 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
    }
  
--  const availability = monitoring.availability
--  if (availability == null) {
-+  if (monitoring.hasRequests === false || monitoring.availability == null) {
-     const squares = Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => ({
+   if (monitoring.hasRequests === false || monitoring.availability == null) {
+-    const squares = Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => ({
++    const squares = Array.from({ length: sampleCount }, (_, index) => ({
        key: `empty-${index}`,
        status: 'unmonitored' as MarketplaceStatus,
-@@ -554,20 +555,15 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
+       title: t('modelMarketplace.noCheckData'),
+     }))
+     if (monitoring.status !== 'unmonitored') {
+-      squares[MONITOR_SAMPLE_COUNT - 1] = {
++      squares[sampleCount - 1] = {
+         key: 'latest-status',
+         status: monitoring.status,
+         title: t('modelMarketplace.latestStatusTooltip', { status: statusLabel(monitoring.status) }),
+@@ -555,7 +563,7 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
      return squares
    }
  
--  let issueCount = Math.round((100 - Math.max(0, Math.min(100, availability))) / 100 * MONITOR_SAMPLE_COUNT)
--  if (monitoring.status === 'degraded' || monitoring.status === 'unavailable') {
--    issueCount = Math.max(1, issueCount)
--  }
--  const issueStatus: MarketplaceStatus = monitoring.status === 'unavailable' ? 'unavailable' : 'degraded'
-   return Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => {
--    const status: MarketplaceStatus = index >= MONITOR_SAMPLE_COUNT - issueCount ? issueStatus : 'operational'
+-  return Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => {
++  return Array.from({ length: sampleCount }, (_, index) => {
      return {
        key: `estimate-${index}`,
--      status,
--      successRate: availability,
-+      status: monitoring.status,
-+      hasRequests: monitoring.hasRequests,
-+      healthScore: monitoring.healthScore,
-       title: t('modelMarketplace.estimateTooltip', {
-         window: monitorWindow.value,
--        status: statusLabel(status),
-+        status: statusLabel(monitoring.status),
-       }),
-     }
-   })
-@@ -689,7 +685,7 @@ const ModelPricingDetail = defineComponent({
-           'aria-label': `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${availability}`,
-         }, monitorSquaresForMonitoring(monitoring).map((sample) => h('span', {
-           key: sample.key,
--          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample.status, sample.successRate)}`,
-+          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)}`,
-           title: sample.title,
-         }))),
-       ])]
+       status: monitoring.status,
