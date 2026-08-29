@@ -3095,6 +3095,7 @@ export default {
         group: 'Group',
         user: 'User',
         apiKey: 'API Key',
+        account: 'Account',
         endpoint: 'Endpoint',
         result: 'Result',
         highest: 'Highest',

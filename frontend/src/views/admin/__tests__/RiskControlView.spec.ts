@@ -317,6 +317,69 @@ describe('admin RiskControlView', () => {
     expect(wrapper.text()).toContain('2 / 32,768')
   })
 
+  it('shows the routed upstream account in audit records', async () => {
+    listLogs.mockResolvedValue({
+      items: [{
+        id: 101,
+        request_id: 'req-routed',
+        user_id: 1,
+        user_email: 'user@example.com',
+        api_key_id: 2,
+        api_key_name: 'primary-key',
+        account_id: 42,
+        account_name: 'upstream-account',
+        group_id: 3,
+        group_name: 'openai',
+        endpoint: '/v1/responses',
+        provider: 'openai',
+        model: 'gpt-5.5',
+        mode: 'observe',
+        action: 'allow',
+        flagged: false,
+        highest_category: '',
+        highest_score: 0,
+        matched_keyword: '',
+        category_scores: {},
+        threshold_snapshot: {},
+        input_excerpt: 'hello',
+        upstream_latency_ms: 120,
+        error: '',
+        violation_count: 0,
+        auto_banned: false,
+        email_sent: false,
+        user_status: 'active',
+        queue_delay_ms: 3,
+        created_at: '2026-08-29T18:06:50Z',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.riskControl.table.account')
+    const accountCell = wrapper.get('[data-test="risk-control-account-101"]')
+    expect(accountCell.text()).toContain('upstream-account')
+    expect(accountCell.text()).toContain('ID 42')
+  })
+
   it('shows pre-block synchronous moderation metrics separately from worker queue', async () => {
     getStatus.mockResolvedValue({
       ...runtimeStatus(),

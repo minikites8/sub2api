@@ -95,11 +95,31 @@ func (r *contentModerationRepository) ListLogs(ctx context.Context, filter servi
 	rows, err := r.db.QueryContext(ctx, `
 SELECT
     l.id, l.request_id, l.user_id, l.user_email, l.api_key_id, l.api_key_name, l.group_id, l.group_name,
+    routed.account_id, COALESCE(a.name, ''),
     l.endpoint, l.provider, l.model, l.mode, l.action, l.flagged, l.highest_category, l.highest_score,
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
     l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at
 FROM content_moderation_logs l
-LEFT JOIN users u ON u.id = l.user_id `+whereSQL+`
+LEFT JOIN users u ON u.id = l.user_id
+LEFT JOIN LATERAL (
+    SELECT route.account_id
+    FROM (
+        SELECT ul.account_id, ul.created_at, 0 AS source_priority
+        FROM usage_logs ul
+        WHERE ul.request_id = l.request_id
+          AND ul.account_id IS NOT NULL
+          AND (l.api_key_id IS NULL OR ul.api_key_id = l.api_key_id)
+        UNION ALL
+        SELECT o.account_id, o.created_at, 1 AS source_priority
+        FROM ops_error_logs o
+        WHERE o.request_id = l.request_id
+          AND o.account_id IS NOT NULL
+          AND (l.api_key_id IS NULL OR o.api_key_id = l.api_key_id)
+    ) route
+    ORDER BY route.source_priority, route.created_at DESC
+    LIMIT 1
+) routed ON TRUE
+LEFT JOIN accounts a ON a.id = routed.account_id `+whereSQL+`
 ORDER BY l.created_at DESC, l.id DESC
 LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 		queryArgs...,
@@ -112,7 +132,7 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 	items := make([]service.ContentModerationLog, 0)
 	for rows.Next() {
 		var item service.ContentModerationLog
-		var userID, apiKeyID, groupID, latency, queueDelay sql.NullInt64
+		var userID, apiKeyID, accountID, groupID, latency, queueDelay sql.NullInt64
 		var scoresRaw, thresholdsRaw []byte
 		if err := rows.Scan(
 			&item.ID,
@@ -123,6 +143,8 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 			&item.APIKeyName,
 			&groupID,
 			&item.GroupName,
+			&accountID,
+			&item.AccountName,
 			&item.Endpoint,
 			&item.Provider,
 			&item.Model,
@@ -153,6 +175,10 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 		if apiKeyID.Valid {
 			v := apiKeyID.Int64
 			item.APIKeyID = &v
+		}
+		if accountID.Valid {
+			v := accountID.Int64
+			item.AccountID = &v
 		}
 		if groupID.Valid {
 			v := groupID.Int64
