@@ -578,7 +578,7 @@ export default {
     searchPlaceholder: 'Search models, developers, providers, protocols, or groups...', providerFilter: 'Provider filter', unknownDeveloper: 'Unknown developer',
     billingFilter: 'Billing filter', statusFilter: 'Status filter', refresh: 'Refresh data', retry: 'Try again', loadError: 'Failed to load model marketplace data',
     copyModelId: 'Copy model ID', modelIdCopied: 'Model ID copied', details: 'View pricing details', collapse: 'Collapse pricing details', avg7d: '7d average', windowAverage: '{window} average',
-    recentChecks: 'Recent checks', passiveMonitoring: 'Passive', checkTooltip: '{time} · {status}', estimateTooltip: '{window} availability · {status}', latestStatusTooltip: 'Latest status · {status}', noCheckData: 'No check record',
+    recentChecks: 'Recent checks', passiveMonitoring: 'Passive', checkTooltip: '{time} · {status}', estimateTooltip: '{window} availability · {status}', latestStatusTooltip: 'Latest status · {status}', noCheckData: 'No check record', noTraffic: 'No traffic', insufficientSamples: 'Insufficient samples',
     showing: 'Showing {shown} of {total} models', priceNote: 'Token prices use $/1M tokens; request prices use $/request; applicable group rates are included.',
     stats: { models: 'Models', providers: 'Providers', operational: 'Operational', monitored: 'Monitored' },
     filters: { allProviders: 'All providers', allBilling: 'All billing types', allStatus: 'All statuses' },

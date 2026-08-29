@@ -2,6 +2,7 @@ import type {
   PublicTransitModel,
   PublicTransitModelPrice,
   PublicTransitMonitor,
+  PublicTransitMonitorHealth,
   PublicTransitMonitorWindow,
   PublicTransitPriceInterval,
   PublicTransitSnapshot,
@@ -32,6 +33,7 @@ export interface MarketplacePriceProfile {
 export interface MarketplaceMonitoringWindow {
   status: MarketplaceStatus
   hasRequests?: boolean
+  health?: PublicTransitMonitorHealth
   availability?: number
   healthScore?: number
   latestLatencyMs?: number
@@ -43,6 +45,7 @@ export interface MarketplaceMonitoringWindow {
 export interface MarketplaceMonitoring {
   status: MarketplaceStatus
   hasRequests?: boolean
+  health?: PublicTransitMonitorHealth
   healthScore?: number
   availability7d?: number
   availability15d?: number
@@ -57,6 +60,7 @@ export interface MarketplaceMonitoring {
 export interface MarketplaceMonitorSample {
   status: MarketplaceStatus
   hasRequests?: boolean
+  health?: PublicTransitMonitorHealth
   healthScore?: number
   checkedAt: string
   latencyMs?: number
@@ -79,6 +83,7 @@ export interface MarketplaceModel {
 interface MonitorObservation {
   status: string
   hasRequests?: boolean
+  health?: PublicTransitMonitorHealth
   healthScore?: number
   availability7d?: number
   availability15d?: number
@@ -270,6 +275,19 @@ function aggregateStatus(observations: MonitorObservation[]): MarketplaceStatus 
   return 'unmonitored'
 }
 
+function weakestObservation<T extends { status: string; healthScore?: number }>(observations: T[]): T | undefined {
+  return observations.reduce<T | undefined>((weakest, candidate) => {
+    if (!weakest) return candidate
+    const severityDelta = statusSeverity(normalizeStatus(candidate.status)) - statusSeverity(normalizeStatus(weakest.status))
+    if (severityDelta > 0) return candidate
+    if (severityDelta < 0) return weakest
+    if (candidate.healthScore != null && (weakest.healthScore == null || candidate.healthScore < weakest.healthScore)) {
+      return candidate
+    }
+    return weakest
+  }, undefined)
+}
+
 function monitorHasRequests(value: { status: string; hasRequests?: boolean }): boolean {
   return value.hasRequests ?? normalizeStatus(value.status) !== 'unmonitored'
 }
@@ -359,6 +377,7 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
     registerObservation(observations, monitor.model, {
       status: monitor.health?.overall || monitor.status,
       hasRequests: monitor.metrics?.has_requests,
+      health: monitor.health,
       healthScore: monitor.health?.score ?? undefined,
       availability7d: publicMonitorAvailability(monitor.status, monitor.availability_7d, monitor.metrics),
       availability15d: monitor.availability_15d,
@@ -373,6 +392,7 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
       registerSample(samples, monitor.model, {
         status: publicMonitorStatus(point.status, point.health?.overall),
         hasRequests: point.metrics?.has_requests,
+        health: point.health,
         healthScore: point.health?.score ?? undefined,
         checkedAt: point.bucket_start,
         latencyMs: publicMonitorLatency(point.duration_p50_ms, point.metrics),
@@ -388,6 +408,7 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
   return {
     status: publicMonitorStatus(window.status, window.health?.overall),
     hasRequests: window.metrics?.has_requests,
+    health: window.health,
     healthScore: window.health?.score ?? undefined,
     availability: publicMonitorAvailability(window.status, window.availability, window.metrics),
     latestLatencyMs: publicMonitorLatency(window.latest_duration_p50_ms, window.metrics),
@@ -396,6 +417,7 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
     samples: (window.buckets || []).map((sample) => ({
       status: publicMonitorStatus(sample.status, sample.health?.overall),
       hasRequests: sample.metrics?.has_requests,
+      health: sample.health,
       healthScore: sample.health?.score ?? undefined,
       checkedAt: sample.bucket_start,
       latencyMs: publicMonitorLatency(sample.duration_p50_ms, sample.metrics),
@@ -431,6 +453,7 @@ function aggregateMonitoring(
     const windowValues = values.flatMap((item) => item.windows?.[window] ? [item.windows[window]!] : [])
     if (windowValues.length === 0) continue
     const activeWindowValues = monitoredObservations(windowValues)
+    const weakestWindow = weakestObservation(activeWindowValues)
     const windowSamples = new Map<string, MarketplaceMonitorSample>()
     for (const item of windowValues) {
       for (const sample of item.samples) {
@@ -441,6 +464,7 @@ function aggregateMonitoring(
     windows[window] = {
       status: activeWindowValues.length > 0 ? aggregateStatus(activeWindowValues) : 'unmonitored',
       hasRequests: activeWindowValues.length > 0,
+      health: weakestWindow?.health,
       healthScore: minimum(activeWindowValues.map((item) => item.healthScore)),
       availability: minimum(activeWindowValues.map((item) => item.availability)),
       latestLatencyMs: maximum(activeWindowValues.map((item) => item.latestLatencyMs)),
@@ -457,9 +481,11 @@ function aggregateMonitoring(
     .at(-1)
 
   const activeValues = monitoredObservations(values)
+  const weakest = weakestObservation(activeValues)
   return {
     status: activeValues.length > 0 ? aggregateStatus(activeValues) : 'unmonitored',
     hasRequests: activeValues.length > 0,
+    health: weakest?.health,
     healthScore: minimum(activeValues.map((item) => item.healthScore)),
     availability7d: minimum(activeValues.map((item) => item.availability7d)),
     availability15d: minimum(activeValues.map((item) => item.availability15d)),
@@ -567,6 +593,7 @@ export function monitoringForWindow(
   return {
     status: monitoring.status,
     hasRequests: monitoring.hasRequests,
+    health: monitoring.health,
     healthScore: monitoring.healthScore,
     availability: availabilityForWindow(monitoring, window),
     latestLatencyMs: monitoring.latestLatencyMs,

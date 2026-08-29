@@ -161,7 +161,8 @@
                               v-for="sample in monitorSquares(model)"
                               :key="sample.key"
                               class="h-[5px] w-[5px] flex-none rounded-[1px]"
-                              :class="statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)"
+                              :class="statusSquareClass(sample)"
+                              :data-monitor-state="monitorSquareState(sample)"
                               :title="sample.title"
                             />
                           </div>
@@ -247,7 +248,8 @@
                         v-for="sample in monitorSquares(model)"
                         :key="sample.key"
                         class="h-[5px] w-[5px] flex-none rounded-[1px]"
-                        :class="statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)"
+                        :class="statusSquareClass(sample)"
+                        :data-monitor-state="monitorSquareState(sample)"
                         :title="sample.title"
                       />
                     </span>
@@ -302,7 +304,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import PublicSiteFooter from '@/components/public/PublicSiteFooter.vue'
-import { getPublicTransitSnapshot, type PublicTransitModel, type PublicTransitSnapshot } from '@/api/publicTransit'
+import { getPublicTransitSnapshot, type PublicTransitModel, type PublicTransitMonitorHealth, type PublicTransitSnapshot } from '@/api/publicTransit'
 import { useClipboard } from '@/composables/useClipboard'
 import {
   availabilityForWindow,
@@ -318,7 +320,7 @@ import {
   type MarketplaceWindow,
   type TokenPriceField,
 } from '@/utils/modelMarketplace'
-import { scoreToBand } from '@/features/channel-monitor-v2/monitorFormat'
+import { healthScoreClass } from '@/features/channel-monitor-v2/monitorFormat'
 
 const props = defineProps<{ previewSnapshot?: PublicTransitSnapshot }>()
 const { t } = useI18n()
@@ -349,6 +351,7 @@ interface MonitorSquare {
   status: MarketplaceStatus
   title: string
   hasRequests?: boolean
+  health?: PublicTransitMonitorHealth
   healthScore?: number
 }
 
@@ -435,6 +438,22 @@ function statusLabel(status: MarketplaceStatus): string {
   return t(`modelMarketplace.status.${status}`)
 }
 
+function passiveStatusLabel(status: MarketplaceStatus, hasRequests?: boolean, health?: PublicTransitMonitorHealth): string {
+  if (hasRequests === false) return t('modelMarketplace.noTraffic')
+  if (hasRequests === true && health?.overall === 'unknown') {
+    return t('modelMarketplace.insufficientSamples')
+  }
+  return statusLabel(status)
+}
+
+function monitorSquareState(sample: Pick<MonitorSquare, 'status' | 'hasRequests' | 'health'>): string {
+  if (sample.hasRequests === false) return 'no-traffic'
+  if (sample.hasRequests === true && sample.health?.overall === 'unknown') {
+    return 'insufficient-samples'
+  }
+  return sample.status
+}
+
 function statusTextClass(status: MarketplaceStatus): string {
   if (status === 'operational') return 'text-emerald-300'
   if (status === 'degraded') return 'text-amber-300'
@@ -442,12 +461,11 @@ function statusTextClass(status: MarketplaceStatus): string {
   return 'text-dark-400'
 }
 
-function statusSquareClass(status: MarketplaceStatus, healthScore?: number, hasRequests?: boolean): string {
-  if (hasRequests === false) return 'health-unknown'
-  if (healthScore != null && Number.isFinite(healthScore)) return `health-${scoreToBand(healthScore)}`
-  if (status === 'unmonitored') return 'health-unknown'
-  if (status === 'unavailable') return 'health-score0'
-  return status === 'degraded' ? 'health-score5' : 'health-score10'
+function statusSquareClass(sample: Pick<MonitorSquare, 'status' | 'hasRequests' | 'health'>): string {
+  if (sample.health) return healthScoreClass(sample.health, 'overall', sample.hasRequests === false ? 0 : 1)
+  if (sample.hasRequests === false || sample.status === 'unmonitored') return 'health-unknown'
+  if (sample.status === 'unavailable') return 'health-score0'
+  return sample.status === 'degraded' ? 'health-score5' : 'health-score10'
 }
 
 function formatNumber(value: number, maximumFractionDigits = 3): string {
@@ -519,7 +537,7 @@ function activeMonitoring(model: MarketplaceModel) {
 
 function monitorAriaLabel(model: MarketplaceModel): string {
   const monitoring = activeMonitoring(model)
-  return `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${formatAvailability(model)}`
+  return `${t('modelMarketplace.recentChecks')}: ${passiveStatusLabel(monitoring.status, monitoring.hasRequests, monitoring.health)} ${formatAvailability(model)}`
 }
 
 function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
@@ -532,10 +550,11 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
     key: `actual-${sample.checkedAt}-${index}`,
     status: sample.status,
     hasRequests: sample.hasRequests,
+    health: sample.health,
     healthScore: sample.healthScore,
     title: t('modelMarketplace.checkTooltip', {
       time: formatDateTime(sample.checkedAt),
-      status: statusLabel(sample.status),
+      status: passiveStatusLabel(sample.status, sample.hasRequests, sample.health),
     }),
   }))
   if (actual.length > 0) {
@@ -548,16 +567,23 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
   }
 
   if (monitoring.hasRequests === false || monitoring.availability == null) {
-    const squares = Array.from({ length: sampleCount }, (_, index) => ({
+    const hasRequests = monitoring.hasRequests === false ? false : undefined
+    const squares: MonitorSquare[] = Array.from({ length: sampleCount }, (_, index) => ({
       key: `empty-${index}`,
       status: 'unmonitored' as MarketplaceStatus,
-      title: t('modelMarketplace.noCheckData'),
+      hasRequests,
+      title: hasRequests === false ? t('modelMarketplace.noTraffic') : t('modelMarketplace.noCheckData'),
     }))
     if (monitoring.status !== 'unmonitored') {
       squares[sampleCount - 1] = {
         key: 'latest-status',
         status: monitoring.status,
-        title: t('modelMarketplace.latestStatusTooltip', { status: statusLabel(monitoring.status) }),
+        hasRequests: monitoring.hasRequests,
+        health: monitoring.health,
+        healthScore: monitoring.healthScore,
+        title: t('modelMarketplace.latestStatusTooltip', {
+          status: passiveStatusLabel(monitoring.status, monitoring.hasRequests, monitoring.health),
+        }),
       }
     }
     return squares
@@ -568,10 +594,11 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
       key: `estimate-${index}`,
       status: monitoring.status,
       hasRequests: monitoring.hasRequests,
+      health: monitoring.health,
       healthScore: monitoring.healthScore,
       title: t('modelMarketplace.estimateTooltip', {
         window: monitorWindow.value,
-        status: statusLabel(monitoring.status),
+        status: passiveStatusLabel(monitoring.status, monitoring.hasRequests, monitoring.health),
       }),
     }
   })
@@ -690,10 +717,11 @@ const ModelPricingDetail = defineComponent({
         h('span', { class: 'shrink-0 text-[10px] text-dark-400' }, `${t('modelMarketplace.passiveMonitoring')} ${availability}`),
         h('div', {
           class: 'flex gap-[2px]',
-          'aria-label': `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${availability}`,
+          'aria-label': `${t('modelMarketplace.recentChecks')}: ${passiveStatusLabel(monitoring.status, monitoring.hasRequests, monitoring.health)} ${availability}`,
         }, monitorSquaresForMonitoring(monitoring).map((sample) => h('span', {
           key: sample.key,
-          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)}`,
+          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample)}`,
+          'data-monitor-state': monitorSquareState(sample),
           title: sample.title,
         }))),
       ])]

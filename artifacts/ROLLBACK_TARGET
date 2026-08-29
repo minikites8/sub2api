@@ -154,7 +154,7 @@
                             </button>
                           </div>
                           <div
-                            class="mt-2 flex gap-[2px]"
+                            class="monitor-track mt-2 flex gap-[2px]"
                             :aria-label="monitorAriaLabel(model)"
                           >
                             <span
@@ -240,7 +240,7 @@
                   <span class="mt-2 flex items-center gap-2">
                     <span class="font-jetbrains-mono text-xs" :class="statusTextClass(activeMonitoring(model).status)">{{ formatAvailability(model) }}</span>
                     <span
-                      class="flex gap-[2px]"
+                      class="monitor-track flex gap-[2px]"
                       :aria-label="monitorAriaLabel(model)"
                     >
                       <span
@@ -334,7 +334,14 @@ const statusFilter = ref('')
 const monitorWindow = ref<MarketplaceWindow>('90m')
 const expanded = ref(new Set<string>())
 const windows: MarketplaceWindow[] = ['90m', '12h', '1d', '15d']
-const MONITOR_SAMPLE_COUNT = 24
+const MONITOR_SAMPLE_COUNTS: Record<MarketplaceWindow, number> = {
+  '90m': 18,
+  '12h': 24,
+  '1d': 24,
+  '7d': 14,
+  '15d': 30,
+  '30d': 30,
+}
 let abortController: AbortController | null = null
 
 interface MonitorSquare {
@@ -520,7 +527,8 @@ function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
 }
 
 function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): MonitorSquare[] {
-  const actual = monitoring.samples.slice(-MONITOR_SAMPLE_COUNT).map((sample, index) => ({
+  const sampleCount = MONITOR_SAMPLE_COUNTS[monitorWindow.value]
+  const actual = monitoring.samples.slice(-sampleCount).map((sample, index) => ({
     key: `actual-${sample.checkedAt}-${index}`,
     status: sample.status,
     hasRequests: sample.hasRequests,
@@ -531,7 +539,7 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
     }),
   }))
   if (actual.length > 0) {
-    const padding = Array.from({ length: MONITOR_SAMPLE_COUNT - actual.length }, (_, index) => ({
+    const padding = Array.from({ length: sampleCount - actual.length }, (_, index) => ({
       key: `empty-${index}`,
       status: 'unmonitored' as const,
       title: t('modelMarketplace.noCheckData'),
@@ -540,13 +548,13 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
   }
 
   if (monitoring.hasRequests === false || monitoring.availability == null) {
-    const squares = Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => ({
+    const squares = Array.from({ length: sampleCount }, (_, index) => ({
       key: `empty-${index}`,
       status: 'unmonitored' as MarketplaceStatus,
       title: t('modelMarketplace.noCheckData'),
     }))
     if (monitoring.status !== 'unmonitored') {
-      squares[MONITOR_SAMPLE_COUNT - 1] = {
+      squares[sampleCount - 1] = {
         key: 'latest-status',
         status: monitoring.status,
         title: t('modelMarketplace.latestStatusTooltip', { status: statusLabel(monitoring.status) }),
@@ -555,7 +563,7 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
     return squares
   }
 
-  return Array.from({ length: MONITOR_SAMPLE_COUNT }, (_, index) => {
+  return Array.from({ length: sampleCount }, (_, index) => {
     return {
       key: `estimate-${index}`,
       status: monitoring.status,

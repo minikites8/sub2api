@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { MonitorHealth } from '@/api/channelMonitorV2'
 import type { GroupPlatform } from '@/types'
 
 function buildRootUrl(path: string): string {
@@ -183,18 +184,7 @@ export interface PublicTransitMonitorLatency {
   avg_ms?: number | null
 }
 
-export interface PublicTransitMonitorHealth {
-  overall: string
-  error_rate: string
-  ttft: string
-  cache: string
-  score?: number | null
-  error_rate_score?: number | null
-  success_rate_score?: number | null
-  ttft_score?: number | null
-  cache_score?: number | null
-  minimum_sample: number
-}
+export type PublicTransitMonitorHealth = Omit<MonitorHealth, 'thresholds'>
 
 export interface PublicTransitCacheDisclosure {
   supported: boolean

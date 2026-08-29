@@ -122,7 +122,74 @@ describe('ChannelStatusView model marketplace', () => {
     })
 
     expect(wrapper.findAll('.health-unknown').length).toBeGreaterThanOrEqual(24)
+    const noTrafficSquares = wrapper.findAll('[data-monitor-state="no-traffic"]')
+    expect(noTrafficSquares.length).toBeGreaterThan(0)
+    expect(noTrafficSquares.every((square) => square.classes().includes('health-unknown'))).toBe(true)
     expect(wrapper.text()).not.toContain('0.00%')
+  })
+
+  it('labels V2 traffic below the health sample threshold as insufficient samples', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+    monitor.windows = {
+      '90m': {
+        status: 'unmonitored',
+        availability: 95,
+        coverage_complete: true,
+        metrics: {
+          has_requests: true,
+          success_rate: 0.95,
+          error_rate: 0.05,
+          cache_rate: 0,
+          ttft: {},
+          duration: {},
+        },
+        health: {
+          overall: 'unknown',
+          error_rate: 'unknown',
+          ttft: 'unknown',
+          cache: 'unknown',
+          minimum_sample: 50,
+        },
+        buckets: [{
+          bucket_start: snapshot.generated_at,
+          status: 'unmonitored',
+          success_rate: 95,
+          metrics: {
+            has_requests: true,
+            success_rate: 0.95,
+            error_rate: 0.05,
+            cache_rate: 0,
+            ttft: {},
+            duration: {},
+          },
+          health: {
+            overall: 'unknown',
+            error_rate: 'unknown',
+            ttft: 'unknown',
+            cache: 'unknown',
+            minimum_sample: 50,
+          },
+        }],
+      },
+    }
+    const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh } })
+    const wrapper = mount(ChannelStatusView, {
+      props: { previewSnapshot: snapshot },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          PublicSiteFooter: true,
+          Icon: true,
+          ModelIcon: true,
+        },
+      },
+    })
+
+    const insufficientSamples = wrapper.findAll('[data-monitor-state="insufficient-samples"]')
+    expect(insufficientSamples.length).toBeGreaterThan(0)
+    expect(insufficientSamples.every((square) => square.classes().includes('health-unknown'))).toBe(true)
   })
 
   it('uses the V2 green-to-red score bands for timeline health scores', () => {
