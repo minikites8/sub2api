@@ -201,7 +201,7 @@ describe('model marketplace aggregation', () => {
     expect(monitoringForWindow(monitoring, '90m').samples[0].successRate).toBe(95)
   })
 
-  it('uses V2 metrics and health when legacy status fields disagree', () => {
+  it('uses the V2 filtered error rate when raw success rate includes ignored errors', () => {
     const snapshot = createModelMarketplacePreviewSnapshot()
     const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
     monitor.windows = {
@@ -212,10 +212,10 @@ describe('model marketplace aggregation', () => {
         coverage_complete: true,
         metrics: {
           has_requests: true,
-          success_rate: 0.95,
+          success_rate: 0.2624,
           error_rate: 0.05,
           cache_rate: 0,
-          ttft: { p50_ms: 200 },
+          ttft: { p50_ms: 200, avg_ms: 250 },
           duration: { p50_ms: 800, avg_ms: 900 },
         },
         health: {
@@ -238,7 +238,7 @@ describe('model marketplace aggregation', () => {
     expect(window.hasRequests).toBe(true)
     expect(window.availability).toBe(95)
     expect(window.healthScore).toBe(90)
-    expect(window.latestLatencyMs).toBe(800)
-    expect(window.avgLatencyMs).toBe(900)
+    expect(window.ttftP50Ms).toBe(200)
+    expect(window.ttftAvgMs).toBe(250)
   })
 })

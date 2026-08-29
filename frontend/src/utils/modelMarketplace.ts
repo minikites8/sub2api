@@ -36,8 +36,8 @@ export interface MarketplaceMonitoringWindow {
   health?: PublicTransitMonitorHealth
   availability?: number
   healthScore?: number
-  latestLatencyMs?: number
-  avgLatencyMs?: number
+  ttftP50Ms?: number
+  ttftAvgMs?: number
   lastCheckedAt?: string
   samples: MarketplaceMonitorSample[]
 }
@@ -50,8 +50,8 @@ export interface MarketplaceMonitoring {
   availability7d?: number
   availability15d?: number
   availability30d?: number
-  latestLatencyMs?: number
-  avgLatency7dMs?: number
+  ttftP50Ms?: number
+  ttftAvg7dMs?: number
   lastCheckedAt?: string
   samples: MarketplaceMonitorSample[]
   windows?: Partial<Record<MarketplaceWindow, MarketplaceMonitoringWindow>>
@@ -63,7 +63,7 @@ export interface MarketplaceMonitorSample {
   health?: PublicTransitMonitorHealth
   healthScore?: number
   checkedAt: string
-  latencyMs?: number
+  ttftMs?: number
   successRate?: number
 }
 
@@ -88,8 +88,8 @@ interface MonitorObservation {
   availability7d?: number
   availability15d?: number
   availability30d?: number
-  latestLatencyMs?: number
-  avgLatency7dMs?: number
+  ttftP50Ms?: number
+  ttftAvg7dMs?: number
   lastCheckedAt?: string
   windows?: Partial<Record<MarketplaceWindow, MarketplaceMonitoringWindow>>
 }
@@ -303,17 +303,20 @@ function publicMonitorStatus(status: string, healthOverall?: string): Marketplac
 function publicMonitorAvailability(
   status: string,
   availability: number | undefined,
-  metrics?: { has_requests: boolean; success_rate: number },
+  metrics?: { has_requests: boolean; error_rate: number },
 ): number | undefined {
-  if (metrics) return metrics.has_requests ? metrics.success_rate * 100 : undefined
+  if (metrics) {
+    if (!metrics.has_requests) return undefined
+    return Math.max(0, Math.min(100, (1 - metrics.error_rate) * 100))
+  }
   return normalizeStatus(status) === 'unmonitored' ? undefined : availability
 }
 
-function publicMonitorLatency(
+function publicMonitorTTFT(
   fallback: number | undefined,
-  metrics?: { duration: { p50_ms?: number | null } },
+  metrics?: { ttft: { p50_ms?: number | null } },
 ): number | undefined {
-  return metrics?.duration.p50_ms ?? fallback
+  return metrics?.ttft.p50_ms ?? fallback
 }
 
 function observationKey(item: MonitorObservation): string {
@@ -324,8 +327,8 @@ function observationKey(item: MonitorObservation): string {
     item.availability7d,
     item.availability15d,
     item.availability30d,
-    item.latestLatencyMs,
-    item.avgLatency7dMs,
+    item.ttftP50Ms,
+    item.ttftAvg7dMs,
     item.lastCheckedAt,
   ].join(':')
 }
@@ -366,7 +369,7 @@ function shouldReplaceMonitorSample(
     return candidate.healthScore < existing.healthScore
   }
   if (candidate.healthScore != null && existing.healthScore == null) return true
-  return (candidate.latencyMs ?? 0) > (existing.latencyMs ?? 0)
+  return (candidate.ttftMs ?? 0) > (existing.ttftMs ?? 0)
 }
 
 function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex {
@@ -382,8 +385,8 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
       availability7d: publicMonitorAvailability(monitor.status, monitor.availability_7d, monitor.metrics),
       availability15d: monitor.availability_15d,
       availability30d: monitor.availability_30d,
-      latestLatencyMs: publicMonitorLatency(monitor.latest_duration_p50_ms, monitor.metrics),
-      avgLatency7dMs: monitor.metrics?.duration.avg_ms ?? monitor.duration_p50_7d_ms,
+      ttftP50Ms: publicMonitorTTFT(monitor.ttft_p50_7d_ms, monitor.metrics),
+      ttftAvg7dMs: monitor.metrics?.ttft.avg_ms ?? undefined,
       lastCheckedAt: monitor.data_through,
       windows: Object.fromEntries(Object.entries(monitor.windows || {}).map(([key, value]) => [key, publicMonitorWindow(value)])),
     })
@@ -395,7 +398,7 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
         health: point.health,
         healthScore: point.health?.score ?? undefined,
         checkedAt: point.bucket_start,
-        latencyMs: publicMonitorLatency(point.duration_p50_ms, point.metrics),
+        ttftMs: publicMonitorTTFT(point.ttft_p50_ms, point.metrics),
         successRate: publicMonitorAvailability(point.status, point.success_rate, point.metrics),
       })
     }
@@ -411,8 +414,8 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
     health: window.health,
     healthScore: window.health?.score ?? undefined,
     availability: publicMonitorAvailability(window.status, window.availability, window.metrics),
-    latestLatencyMs: publicMonitorLatency(window.latest_duration_p50_ms, window.metrics),
-    avgLatencyMs: window.metrics?.duration.avg_ms ?? window.duration_p50_ms,
+    ttftP50Ms: publicMonitorTTFT(window.ttft_p50_ms, window.metrics),
+    ttftAvgMs: window.metrics?.ttft.avg_ms ?? undefined,
     lastCheckedAt: window.data_through,
     samples: (window.buckets || []).map((sample) => ({
       status: publicMonitorStatus(sample.status, sample.health?.overall),
@@ -420,7 +423,7 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
       health: sample.health,
       healthScore: sample.health?.score ?? undefined,
       checkedAt: sample.bucket_start,
-      latencyMs: publicMonitorLatency(sample.duration_p50_ms, sample.metrics),
+      ttftMs: publicMonitorTTFT(sample.ttft_p50_ms, sample.metrics),
       successRate: publicMonitorAvailability(sample.status, sample.success_rate, sample.metrics),
     })),
   }
@@ -467,8 +470,8 @@ function aggregateMonitoring(
       health: weakestWindow?.health,
       healthScore: minimum(activeWindowValues.map((item) => item.healthScore)),
       availability: minimum(activeWindowValues.map((item) => item.availability)),
-      latestLatencyMs: maximum(activeWindowValues.map((item) => item.latestLatencyMs)),
-      avgLatencyMs: maximum(activeWindowValues.map((item) => item.avgLatencyMs)),
+      ttftP50Ms: maximum(activeWindowValues.map((item) => item.ttftP50Ms)),
+      ttftAvgMs: maximum(activeWindowValues.map((item) => item.ttftAvgMs)),
       lastCheckedAt: windowValues.map((item) => item.lastCheckedAt).filter((value): value is string => Boolean(value)).sort().at(-1),
       samples: Array.from(windowSamples.values()).sort((a, b) => a.checkedAt.localeCompare(b.checkedAt)).slice(-90),
     }
@@ -490,8 +493,8 @@ function aggregateMonitoring(
     availability7d: minimum(activeValues.map((item) => item.availability7d)),
     availability15d: minimum(activeValues.map((item) => item.availability15d)),
     availability30d: minimum(activeValues.map((item) => item.availability30d)),
-    latestLatencyMs: maximum(activeValues.map((item) => item.latestLatencyMs)),
-    avgLatency7dMs: maximum(activeValues.map((item) => item.avgLatency7dMs)),
+    ttftP50Ms: maximum(activeValues.map((item) => item.ttftP50Ms)),
+    ttftAvg7dMs: maximum(activeValues.map((item) => item.ttftAvg7dMs)),
     lastCheckedAt: checkedAt,
     samples,
     windows,
@@ -596,8 +599,8 @@ export function monitoringForWindow(
     health: monitoring.health,
     healthScore: monitoring.healthScore,
     availability: availabilityForWindow(monitoring, window),
-    latestLatencyMs: monitoring.latestLatencyMs,
-    avgLatencyMs: monitoring.avgLatency7dMs,
+    ttftP50Ms: monitoring.ttftP50Ms,
+    ttftAvgMs: monitoring.ttftAvg7dMs,
     lastCheckedAt: monitoring.lastCheckedAt,
     samples: monitoring.samples,
   }

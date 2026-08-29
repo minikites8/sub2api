@@ -1,7 +1,7 @@
 CHANGED_BRANCH=main
-CHANGED_FIELD=model marketplace: V2 channel-monitor health data, labels, and score colors
-SOURCE_FILE=D:/Programs/sub2api/frontend/src/views/user/ChannelStatusView.vue
-SOURCE_GIT_BLOB=c1f7646021ae49ceb2bff18cb2022aa67e75f239
+CHANGED_FIELD=model marketplace: original V2 ignored-error availability and first-token latency
+SOURCE_FILE=D:/Programs/sub2api/frontend/src/utils/modelMarketplace.ts
+SOURCE_GIT_BLOB=a330e99ace6da487911deec6934bae9def92a5e7
 MODIFIED_FILE=D:/Programs/sub2api/artifacts/MODIFIED_FILE
 DIFF_FILE=D:/Programs/sub2api/artifacts/DIFF_FILE
 VERIFICATION_FILE=D:/Programs/sub2api/artifacts/VERIFICATION.txt
@@ -9,47 +9,56 @@ ROLLBACK_FILE=D:/Programs/sub2api/artifacts/ROLLBACK.sh
 BASELINE_FILE=D:/Programs/sub2api/artifacts/BASELINE_FILE
 ROLLBACK_BACKUP=D:/Programs/sub2api/artifacts/ROLLBACK_BACKUP
 ROLLBACK_TARGET=D:/Programs/sub2api/artifacts/ROLLBACK_TARGET
-BASELINE_SHA256=81A4EB6CB55796174D6EEAE4E3F3057C54CAAB7373071F62C9FCEE6124AE6ED3
-MODIFIED_SHA256=31ACF7CF47436384E525D1C9DA44CA893E0AA2A400767C622000D25F969B7D07
-DIFF_SHA256=0F03D41CB15152FB53D9409B12203DEF3A5BB10D36F4C6A926188C7A0D652361
+BASELINE_SHA256=BCF6F615E03F2739424584BF69437D7E8C73469A1A192D4BF46252722197FAE9
+MODIFIED_SHA256=04541570172EAFFF12A78689F9D696DB5E85E07E5EAABFD471D3B430CE1000E9
+DIFF_SHA256=ADD02C1BE7E818CC077151046DFD9F6F0C0E015EF2B0841F1D2E410F4F275AB8
 
-BASELINE_CMD=$content = Get-Content -LiteralPath 'artifacts/BASELINE_FILE' -Raw -Encoding UTF8; if ($content -match 'scoreToBand' -and $content -match 'statusSquareClass\(status:' -and $content -notmatch 'statusSquareClass\(sample\)') { Write-Output 'BASELINE: marketplace colors use the local score and status arguments'; exit 0 }; Write-Output 'BASELINE: unexpected source'; exit 1
+BASELINE_CMD=$content = Get-Content -LiteralPath 'artifacts/BASELINE_FILE' -Raw -Encoding UTF8; if ($content -match 'metrics\.success_rate \* 100' -and $content -match 'publicMonitorLatency' -and $content -match 'latestLatencyMs') { Write-Output 'BASELINE: raw success rate and total-duration latency feed the marketplace'; exit 0 }; Write-Output 'BASELINE: unexpected source'; exit 1
 BASELINE_INPUT=artifacts/BASELINE_FILE
-BASELINE_OUTPUT=BASELINE: marketplace colors use the local score and status arguments
-BASELINE_RESULT=local marketplace score/status rendering confirmed
+BASELINE_OUTPUT=BASELINE: raw success rate and total-duration latency feed the marketplace
+BASELINE_RESULT=raw success-rate percentage and total-duration latency mapping confirmed
 BASELINE_EXIT=0
 
-MODIFIED_CMD=$content = Get-Content -LiteralPath 'artifacts/MODIFIED_FILE' -Raw -Encoding UTF8; if ($content -match "healthScoreClass\(sample.health, 'overall'" -and $content -match 'statusSquareClass\(sample\)' -and $content -match "'insufficient-samples'" -and $content -match "'no-traffic'") { Write-Output 'MODIFIED: marketplace colors and empty states consume V2 health data'; exit 0 }; Write-Output 'MODIFIED: expected V2 health display missing'; exit 1
+MODIFIED_CMD=$content = Get-Content -LiteralPath 'artifacts/MODIFIED_FILE' -Raw -Encoding UTF8; if ($content -match '\(1 - metrics\.error_rate\) \* 100' -and $content -match 'publicMonitorTTFT' -and $content -match 'ttftP50Ms') { Write-Output 'MODIFIED: original V2 filtered availability and first-token latency feed the marketplace'; exit 0 }; Write-Output 'MODIFIED: expected V2 display mapping missing'; exit 1
 MODIFIED_INPUT=artifacts/MODIFIED_FILE
-MODIFIED_OUTPUT=MODIFIED: marketplace colors and empty states consume V2 health data
-MODIFIED_RESULT=V2 health-score rendering and empty-state labels confirmed
+MODIFIED_OUTPUT=MODIFIED: original V2 filtered availability and first-token latency feed the marketplace
+MODIFIED_RESULT=ignored-error availability and TTFT P50/AVG mapping confirmed
 MODIFIED_EXIT=0
 
-ROLLBACK_CMD=Copy-Item -LiteralPath 'artifacts/MODIFIED_FILE' -Destination 'artifacts/ROLLBACK_TARGET' -Force; & 'C:\Program Files\Git\bin\bash.exe' artifacts/ROLLBACK.sh artifacts/ROLLBACK_TARGET artifacts/ROLLBACK_BACKUP; $scriptExit = $LASTEXITCODE; $baseline = (Get-FileHash -LiteralPath artifacts/BASELINE_FILE -Algorithm SHA256).Hash; $target = (Get-FileHash -LiteralPath artifacts/ROLLBACK_TARGET -Algorithm SHA256).Hash; $modified = (Get-FileHash -LiteralPath artifacts/MODIFIED_FILE -Algorithm SHA256).Hash; Write-Output "ROLLBACK_TARGET_SHA256=$target"; Write-Output "BASELINE_SHA256=$baseline"; Write-Output "MODIFIED_FILE_SHA256=$modified"; if ($scriptExit -eq 0 -and $target -eq $baseline -and $modified -ne $baseline) { Write-Output 'ROLLBACK: baseline display restored; V2 health display retained in MODIFIED_FILE'; exit 0 }; exit 1
+ROLLBACK_CMD=Copy-Item -LiteralPath 'artifacts/MODIFIED_FILE' -Destination 'artifacts/ROLLBACK_TARGET' -Force; & 'C:\Program Files\Git\bin\bash.exe' artifacts/ROLLBACK.sh artifacts/ROLLBACK_TARGET artifacts/ROLLBACK_BACKUP; $scriptExit = $LASTEXITCODE; $baseline = (Get-FileHash -LiteralPath artifacts/BASELINE_FILE -Algorithm SHA256).Hash; $target = (Get-FileHash -LiteralPath artifacts/ROLLBACK_TARGET -Algorithm SHA256).Hash; $modified = (Get-FileHash -LiteralPath artifacts/MODIFIED_FILE -Algorithm SHA256).Hash; Write-Output "ROLLBACK_TARGET_SHA256=$target"; Write-Output "BASELINE_SHA256=$baseline"; Write-Output "MODIFIED_FILE_SHA256=$modified"; if ($scriptExit -eq 0 -and $target -eq $baseline -and $modified -ne $baseline) { Write-Output 'ROLLBACK: raw-success and duration baseline restored; V2 display retained in MODIFIED_FILE'; exit 0 }; exit 1
 ROLLBACK_INPUT=target=artifacts/ROLLBACK_TARGET backup=artifacts/ROLLBACK_BACKUP
 ROLLBACK_OUTPUT=restored artifacts/ROLLBACK_TARGET from artifacts/ROLLBACK_BACKUP
-ROLLBACK_OUTPUT=ROLLBACK_TARGET_SHA256=81A4EB6CB55796174D6EEAE4E3F3057C54CAAB7373071F62C9FCEE6124AE6ED3
-ROLLBACK_OUTPUT=BASELINE_SHA256=81A4EB6CB55796174D6EEAE4E3F3057C54CAAB7373071F62C9FCEE6124AE6ED3
-ROLLBACK_OUTPUT=MODIFIED_FILE_SHA256=31ACF7CF47436384E525D1C9DA44CA893E0AA2A400767C622000D25F969B7D07
-ROLLBACK_OUTPUT=ROLLBACK: baseline display restored; V2 health display retained in MODIFIED_FILE
-ROLLBACK_RESULT=ROLLBACK_TARGET restored to baseline while MODIFIED_FILE retained V2 health display behavior
+ROLLBACK_OUTPUT=ROLLBACK_TARGET_SHA256=BCF6F615E03F2739424584BF69437D7E8C73469A1A192D4BF46252722197FAE9
+ROLLBACK_OUTPUT=BASELINE_SHA256=BCF6F615E03F2739424584BF69437D7E8C73469A1A192D4BF46252722197FAE9
+ROLLBACK_OUTPUT=MODIFIED_FILE_SHA256=04541570172EAFFF12A78689F9D696DB5E85E07E5EAABFD471D3B430CE1000E9
+ROLLBACK_OUTPUT=ROLLBACK: raw-success and duration baseline restored; V2 display retained in MODIFIED_FILE
+ROLLBACK_RESULT=ROLLBACK_TARGET restored to baseline while MODIFIED_FILE retained original V2 availability and TTFT behavior
 ROLLBACK_EXIT=0
-RESTORED_BEHAVIOR=ROLLBACK_TARGET uses the original local score/status rendering
+RESTORED_BEHAVIOR=ROLLBACK_TARGET uses raw success rate and total-duration latency fields
 RESTORED_STATUS=ROLLBACK_TARGET_SHA256 equals BASELINE_SHA256; MODIFIED_FILE_SHA256 remains MODIFIED_SHA256
 
-FRONTEND_TEST_CMD=pnpm exec vitest run src/views/user/__tests__/ChannelStatusView.spec.ts src/utils/__tests__/modelMarketplace.spec.ts src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts --reporter=dot --silent
-FRONTEND_TEST_INPUT=frontend/src/views/user/__tests__/ChannelStatusView.spec.ts; frontend/src/utils/__tests__/modelMarketplace.spec.ts; frontend/src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts
-FRONTEND_TEST_RESULT=Test Files 3 passed; Tests 28 passed; Duration 6.05s
+FRONTEND_TEST_CMD=pnpm exec vitest run src/utils/__tests__/modelMarketplace.spec.ts src/views/user/__tests__/ChannelStatusView.spec.ts src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts --reporter=dot --silent
+FRONTEND_TEST_INPUT=frontend/src/utils/__tests__/modelMarketplace.spec.ts; frontend/src/views/user/__tests__/ChannelStatusView.spec.ts; frontend/src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts
+FRONTEND_TEST_RESULT=Test Files 3 passed; Tests 28 passed; Duration 19.34s
 FRONTEND_TEST_EXIT=0
 FRONTEND_TYPECHECK_CMD=pnpm typecheck
 FRONTEND_TYPECHECK_RESULT=vue-tsc --noEmit completed successfully
 FRONTEND_TYPECHECK_EXIT=0
-FRONTEND_LINT_CMD=pnpm exec eslint src/api/publicTransit.ts src/i18n/locales/en/dashboard.ts src/i18n/locales/zh/dashboard.ts src/utils/modelMarketplace.ts src/views/user/ChannelStatusView.vue src/views/user/__tests__/ChannelStatusView.spec.ts
+FRONTEND_LINT_CMD=pnpm exec eslint src/utils/modelMarketplace.ts src/utils/__tests__/modelMarketplace.spec.ts src/views/user/ChannelStatusView.vue src/views/user/__tests__/ChannelStatusView.spec.ts src/i18n/locales/zh/dashboard.ts src/i18n/locales/en/dashboard.ts
 FRONTEND_LINT_RESULT=completed with no diagnostics
 FRONTEND_LINT_EXIT=0
 FRONTEND_BUILD_CMD=pnpm build
-FRONTEND_BUILD_RESULT=Vite 5.4.21; 1037 modules transformed; built in 35.64s
+FRONTEND_BUILD_RESULT=Vite 5.4.21; 1037 modules transformed; built in 1m 21s
 FRONTEND_BUILD_EXIT=0
+SERVICE_TEST_CMD=New-Item -ItemType Directory -Force -Path '.tmp/codex-go-tmp' | Out-Null; $env:GOTMPDIR=(Resolve-Path '.tmp/codex-go-tmp').Path; go test ./internal/service -run '^TestChannelMonitorV2ErrorTaxonomyPriority$' -count=1
+SERVICE_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/service 3.862s
+SERVICE_TEST_EXIT=0
+REPOSITORY_TEST_CMD=go test ./internal/repository -run "Test.*ChannelMonitorV2.*(Error|Ignored|Taxonomy)" -count=1
+REPOSITORY_TEST_RESULT=ok github.com/Wei-Shaw/sub2api/internal/repository 4.284s
+REPOSITORY_TEST_EXIT=0
+GOFMT_CMD=gofmt -d internal/service/channel_monitor_v2_test.go
+GOFMT_RESULT=completed with no differences
+GOFMT_EXIT=0
 DIFF_CHECK_CMD=git diff --check -- . ':(exclude)artifacts/DIFF_FILE'
 DIFF_CHECK_RESULT=completed with no diagnostics
 DIFF_CHECK_EXIT=0

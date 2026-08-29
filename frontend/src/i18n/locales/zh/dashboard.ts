@@ -591,7 +591,7 @@ export default {
     billing: { token: '按 Token', perRequest: '按次 / 图片' },
     units: { token: '$/1M tokens' },
     status: { operational: '运行正常', degraded: '性能下降', unavailable: '不可用', unmonitored: '未监控' },
-    columns: { model: '模型', billing: '计费', pricing: '价格', groups: '分组 / 倍率', latency: '最新延迟', actions: '操作' },
+    columns: { model: '模型', billing: '计费', pricing: '价格', groups: '分组 / 倍率', latency: '首字延迟', actions: '操作' },
     detail: { group: '分组 / 平台', mode: '计费', multiplier: '倍率', pricing: '价格', input: '输入', output: '输出', cacheWrite: '缓存写入', cacheRead: '缓存读取', requestImage: '请求 / 图片', source: '价格来源', tierPricing: '阶梯价格', tokenRange: 'Token 区间', unitNote: '价格已计入适用分组倍率。Token：$/1M tokens；请求与图片：$/请求。' },
     empty: { title: '没有匹配的模型', description: '调整搜索词或筛选条件以查看其他模型。' }
   },

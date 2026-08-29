@@ -1,436 +1,304 @@
-diff --git a/frontend/src/api/publicTransit.ts b/frontend/src/api/publicTransit.ts
-index 2f3776cf4..6472a698d 100644
---- a/frontend/src/api/publicTransit.ts
-+++ b/frontend/src/api/publicTransit.ts
-@@ -1,4 +1,5 @@
- import axios from 'axios'
-+import type { MonitorHealth } from '@/api/channelMonitorV2'
- import type { GroupPlatform } from '@/types'
- 
- function buildRootUrl(path: string): string {
-@@ -183,18 +184,7 @@ export interface PublicTransitMonitorLatency {
-   avg_ms?: number | null
- }
- 
--export interface PublicTransitMonitorHealth {
--  overall: string
--  error_rate: string
--  ttft: string
--  cache: string
--  score?: number | null
--  error_rate_score?: number | null
--  success_rate_score?: number | null
--  ttft_score?: number | null
--  cache_score?: number | null
--  minimum_sample: number
--}
-+export type PublicTransitMonitorHealth = Omit<MonitorHealth, 'thresholds'>
- 
- export interface PublicTransitCacheDisclosure {
-   supported: boolean
+diff --git a/backend/internal/service/channel_monitor_v2_test.go b/backend/internal/service/channel_monitor_v2_test.go
+index 412cb9650..8f99ce777 100644
+--- a/backend/internal/service/channel_monitor_v2_test.go
++++ b/backend/internal/service/channel_monitor_v2_test.go
+@@ -199,6 +199,7 @@ func TestChannelMonitorV2ErrorTaxonomyPriority(t *testing.T) {
+ 		{"context", ChannelMonitorV2ErrorInput{Message: "maximum prompt length exceeded"}, "context_limit"},
+ 		{"unsupported", ChannelMonitorV2ErrorInput{Message: "not supported by any configured account"}, "model_unsupported"},
+ 		{"pool", ChannelMonitorV2ErrorInput{Message: "No available accounts"}, "account_pool_unavailable"},
++		{"429 rate limit", ChannelMonitorV2ErrorInput{StatusCode: 429, Message: "user requests-per-minute limit exceeded"}, "rate_or_capacity"},
+ 		{"timeout", ChannelMonitorV2ErrorInput{Message: "error code: 524"}, "timeout"},
+ 		{"upstream", ChannelMonitorV2ErrorInput{ErrorOwner: "provider", StatusCode: 502, UpstreamStatusCode: 502}, "upstream_5xx"},
+ 		{"other", ChannelMonitorV2ErrorInput{StatusCode: 400, Message: "unknown"}, "other"},
 diff --git a/frontend/src/i18n/locales/en/dashboard.ts b/frontend/src/i18n/locales/en/dashboard.ts
-index 43cdda126..ad548c434 100644
+index ad548c434..52ea7ba19 100644
 --- a/frontend/src/i18n/locales/en/dashboard.ts
 +++ b/frontend/src/i18n/locales/en/dashboard.ts
-@@ -578,7 +578,7 @@ export default {
-     searchPlaceholder: 'Search models, developers, providers, protocols, or groups...', providerFilter: 'Provider filter', unknownDeveloper: 'Unknown developer',
-     billingFilter: 'Billing filter', statusFilter: 'Status filter', refresh: 'Refresh data', retry: 'Try again', loadError: 'Failed to load model marketplace data',
-     copyModelId: 'Copy model ID', modelIdCopied: 'Model ID copied', details: 'View pricing details', collapse: 'Collapse pricing details', avg7d: '7d average', windowAverage: '{window} average',
--    recentChecks: 'Recent checks', passiveMonitoring: 'Passive', checkTooltip: '{time} · {status}', estimateTooltip: '{window} availability · {status}', latestStatusTooltip: 'Latest status · {status}', noCheckData: 'No check record',
-+    recentChecks: 'Recent checks', passiveMonitoring: 'Passive', checkTooltip: '{time} · {status}', estimateTooltip: '{window} availability · {status}', latestStatusTooltip: 'Latest status · {status}', noCheckData: 'No check record', noTraffic: 'No traffic', insufficientSamples: 'Insufficient samples',
-     showing: 'Showing {shown} of {total} models', priceNote: 'Token prices use $/1M tokens; request prices use $/request; applicable group rates are included.',
-     stats: { models: 'Models', providers: 'Providers', operational: 'Operational', monitored: 'Monitored' },
-     filters: { allProviders: 'All providers', allBilling: 'All billing types', allStatus: 'All statuses' },
+@@ -585,7 +585,7 @@ export default {
+     billing: { token: 'Per Token', perRequest: 'Per Request / Image' },
+     units: { token: '$/1M tokens' },
+     status: { operational: 'Operational', degraded: 'Degraded', unavailable: 'Unavailable', unmonitored: 'Unmonitored' },
+-    columns: { model: 'Model', billing: 'Billing', pricing: 'Pricing', groups: 'Groups / Rate', latency: 'Latest Latency', actions: 'Actions' },
++    columns: { model: 'Model', billing: 'Billing', pricing: 'Pricing', groups: 'Groups / Rate', latency: 'First Token Latency', actions: 'Actions' },
+     detail: { group: 'Group / Provider', mode: 'Billing', multiplier: 'Rate', pricing: 'Pricing', input: 'Input', output: 'Output', cacheWrite: 'Cache Write', cacheRead: 'Cache Read', requestImage: 'Request / Image', source: 'Price Source', tierPricing: 'Tier Pricing', tokenRange: 'Token Range', unitNote: 'Prices include the applicable group rate. Token: $/1M tokens; request and image: $/request.' },
+     empty: { title: 'No matching models', description: 'Adjust the search term or filters to see other models.' }
+   },
 diff --git a/frontend/src/i18n/locales/zh/dashboard.ts b/frontend/src/i18n/locales/zh/dashboard.ts
-index 241ce4966..f0bad0036 100644
+index f0bad0036..d308eb51e 100644
 --- a/frontend/src/i18n/locales/zh/dashboard.ts
 +++ b/frontend/src/i18n/locales/zh/dashboard.ts
-@@ -584,7 +584,7 @@ export default {
-     searchPlaceholder: '搜索模型、开发者、平台、协议或分组...', providerFilter: '平台筛选', unknownDeveloper: '未知开发者',
-     billingFilter: '计费筛选', statusFilter: '状态筛选', refresh: '刷新数据', retry: '重试', loadError: '模型广场数据加载失败',
-     copyModelId: '复制模型 ID', modelIdCopied: '模型 ID 已复制', details: '查看价格详情', collapse: '收起价格详情', avg7d: '7 天平均', windowAverage: '{window} 平均',
--    recentChecks: '最近检查', passiveMonitoring: '被动', checkTooltip: '{time} · {status}', estimateTooltip: '{window} 可用性 · {status}', latestStatusTooltip: '最新状态 · {status}', noCheckData: '暂无检查记录',
-+    recentChecks: '最近检查', passiveMonitoring: '被动', checkTooltip: '{time} · {status}', estimateTooltip: '{window} 可用性 · {status}', latestStatusTooltip: '最新状态 · {status}', noCheckData: '暂无检查记录', noTraffic: '无流量', insufficientSamples: '样本不足',
-     showing: '显示 {shown} / {total} 个模型', priceNote: 'Token 价格按 $/1M tokens；按次价格按 $/请求；已计入适用分组倍率。',
-     stats: { models: '模型', providers: '平台', operational: '运行正常', monitored: '已监控' },
-     filters: { allProviders: '全部平台', allBilling: '全部计费类型', allStatus: '全部状态' },
-diff --git a/frontend/src/utils/modelMarketplace.ts b/frontend/src/utils/modelMarketplace.ts
-index fc5c68650..a330e99ac 100644
---- a/frontend/src/utils/modelMarketplace.ts
-+++ b/frontend/src/utils/modelMarketplace.ts
-@@ -2,6 +2,7 @@ import type {
-   PublicTransitModel,
-   PublicTransitModelPrice,
-   PublicTransitMonitor,
-+  PublicTransitMonitorHealth,
-   PublicTransitMonitorWindow,
-   PublicTransitPriceInterval,
-   PublicTransitSnapshot,
-@@ -32,6 +33,7 @@ export interface MarketplacePriceProfile {
- export interface MarketplaceMonitoringWindow {
-   status: MarketplaceStatus
-   hasRequests?: boolean
-+  health?: PublicTransitMonitorHealth
-   availability?: number
-   healthScore?: number
-   latestLatencyMs?: number
-@@ -43,6 +45,7 @@ export interface MarketplaceMonitoringWindow {
- export interface MarketplaceMonitoring {
-   status: MarketplaceStatus
-   hasRequests?: boolean
-+  health?: PublicTransitMonitorHealth
-   healthScore?: number
-   availability7d?: number
-   availability15d?: number
-@@ -57,6 +60,7 @@ export interface MarketplaceMonitoring {
- export interface MarketplaceMonitorSample {
-   status: MarketplaceStatus
-   hasRequests?: boolean
-+  health?: PublicTransitMonitorHealth
-   healthScore?: number
-   checkedAt: string
-   latencyMs?: number
-@@ -79,6 +83,7 @@ export interface MarketplaceModel {
- interface MonitorObservation {
-   status: string
-   hasRequests?: boolean
-+  health?: PublicTransitMonitorHealth
-   healthScore?: number
-   availability7d?: number
-   availability15d?: number
-@@ -270,6 +275,19 @@ function aggregateStatus(observations: MonitorObservation[]): MarketplaceStatus
-   return 'unmonitored'
- }
- 
-+function weakestObservation<T extends { status: string; healthScore?: number }>(observations: T[]): T | undefined {
-+  return observations.reduce<T | undefined>((weakest, candidate) => {
-+    if (!weakest) return candidate
-+    const severityDelta = statusSeverity(normalizeStatus(candidate.status)) - statusSeverity(normalizeStatus(weakest.status))
-+    if (severityDelta > 0) return candidate
-+    if (severityDelta < 0) return weakest
-+    if (candidate.healthScore != null && (weakest.healthScore == null || candidate.healthScore < weakest.healthScore)) {
-+      return candidate
-+    }
-+    return weakest
-+  }, undefined)
-+}
-+
- function monitorHasRequests(value: { status: string; hasRequests?: boolean }): boolean {
-   return value.hasRequests ?? normalizeStatus(value.status) !== 'unmonitored'
- }
-@@ -359,6 +377,7 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
-     registerObservation(observations, monitor.model, {
-       status: monitor.health?.overall || monitor.status,
-       hasRequests: monitor.metrics?.has_requests,
-+      health: monitor.health,
-       healthScore: monitor.health?.score ?? undefined,
-       availability7d: publicMonitorAvailability(monitor.status, monitor.availability_7d, monitor.metrics),
-       availability15d: monitor.availability_15d,
-@@ -373,6 +392,7 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
-       registerSample(samples, monitor.model, {
-         status: publicMonitorStatus(point.status, point.health?.overall),
-         hasRequests: point.metrics?.has_requests,
-+        health: point.health,
-         healthScore: point.health?.score ?? undefined,
-         checkedAt: point.bucket_start,
-         latencyMs: publicMonitorLatency(point.duration_p50_ms, point.metrics),
-@@ -388,6 +408,7 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
-   return {
-     status: publicMonitorStatus(window.status, window.health?.overall),
-     hasRequests: window.metrics?.has_requests,
-+    health: window.health,
-     healthScore: window.health?.score ?? undefined,
-     availability: publicMonitorAvailability(window.status, window.availability, window.metrics),
-     latestLatencyMs: publicMonitorLatency(window.latest_duration_p50_ms, window.metrics),
-@@ -396,6 +417,7 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
-     samples: (window.buckets || []).map((sample) => ({
-       status: publicMonitorStatus(sample.status, sample.health?.overall),
-       hasRequests: sample.metrics?.has_requests,
-+      health: sample.health,
-       healthScore: sample.health?.score ?? undefined,
-       checkedAt: sample.bucket_start,
-       latencyMs: publicMonitorLatency(sample.duration_p50_ms, sample.metrics),
-@@ -431,6 +453,7 @@ function aggregateMonitoring(
-     const windowValues = values.flatMap((item) => item.windows?.[window] ? [item.windows[window]!] : [])
-     if (windowValues.length === 0) continue
-     const activeWindowValues = monitoredObservations(windowValues)
-+    const weakestWindow = weakestObservation(activeWindowValues)
-     const windowSamples = new Map<string, MarketplaceMonitorSample>()
-     for (const item of windowValues) {
-       for (const sample of item.samples) {
-@@ -441,6 +464,7 @@ function aggregateMonitoring(
-     windows[window] = {
-       status: activeWindowValues.length > 0 ? aggregateStatus(activeWindowValues) : 'unmonitored',
-       hasRequests: activeWindowValues.length > 0,
-+      health: weakestWindow?.health,
-       healthScore: minimum(activeWindowValues.map((item) => item.healthScore)),
-       availability: minimum(activeWindowValues.map((item) => item.availability)),
-       latestLatencyMs: maximum(activeWindowValues.map((item) => item.latestLatencyMs)),
-@@ -457,9 +481,11 @@ function aggregateMonitoring(
-     .at(-1)
- 
-   const activeValues = monitoredObservations(values)
-+  const weakest = weakestObservation(activeValues)
-   return {
-     status: activeValues.length > 0 ? aggregateStatus(activeValues) : 'unmonitored',
-     hasRequests: activeValues.length > 0,
-+    health: weakest?.health,
-     healthScore: minimum(activeValues.map((item) => item.healthScore)),
-     availability7d: minimum(activeValues.map((item) => item.availability7d)),
-     availability15d: minimum(activeValues.map((item) => item.availability15d)),
-@@ -567,6 +593,7 @@ export function monitoringForWindow(
-   return {
-     status: monitoring.status,
-     hasRequests: monitoring.hasRequests,
-+    health: monitoring.health,
-     healthScore: monitoring.healthScore,
-     availability: availabilityForWindow(monitoring, window),
-     latestLatencyMs: monitoring.latestLatencyMs,
-diff --git a/frontend/src/views/user/ChannelStatusView.vue b/frontend/src/views/user/ChannelStatusView.vue
-index c1f764602..2abfb0eda 100644
---- a/frontend/src/views/user/ChannelStatusView.vue
-+++ b/frontend/src/views/user/ChannelStatusView.vue
-@@ -161,7 +161,8 @@
-                               v-for="sample in monitorSquares(model)"
-                               :key="sample.key"
-                               class="h-[5px] w-[5px] flex-none rounded-[1px]"
--                              :class="statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)"
-+                              :class="statusSquareClass(sample)"
-+                              :data-monitor-state="monitorSquareState(sample)"
-                               :title="sample.title"
-                             />
-                           </div>
-@@ -247,7 +248,8 @@
-                         v-for="sample in monitorSquares(model)"
-                         :key="sample.key"
-                         class="h-[5px] w-[5px] flex-none rounded-[1px]"
--                        :class="statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)"
-+                        :class="statusSquareClass(sample)"
-+                        :data-monitor-state="monitorSquareState(sample)"
-                         :title="sample.title"
-                       />
-                     </span>
-@@ -302,7 +304,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
- import Icon from '@/components/icons/Icon.vue'
- import ModelIcon from '@/components/common/ModelIcon.vue'
- import PublicSiteFooter from '@/components/public/PublicSiteFooter.vue'
--import { getPublicTransitSnapshot, type PublicTransitModel, type PublicTransitSnapshot } from '@/api/publicTransit'
-+import { getPublicTransitSnapshot, type PublicTransitModel, type PublicTransitMonitorHealth, type PublicTransitSnapshot } from '@/api/publicTransit'
- import { useClipboard } from '@/composables/useClipboard'
- import {
-   availabilityForWindow,
-@@ -318,7 +320,7 @@ import {
-   type MarketplaceWindow,
-   type TokenPriceField,
- } from '@/utils/modelMarketplace'
--import { scoreToBand } from '@/features/channel-monitor-v2/monitorFormat'
-+import { healthScoreClass } from '@/features/channel-monitor-v2/monitorFormat'
- 
- const props = defineProps<{ previewSnapshot?: PublicTransitSnapshot }>()
- const { t } = useI18n()
-@@ -349,6 +351,7 @@ interface MonitorSquare {
-   status: MarketplaceStatus
-   title: string
-   hasRequests?: boolean
-+  health?: PublicTransitMonitorHealth
-   healthScore?: number
- }
- 
-@@ -435,6 +438,22 @@ function statusLabel(status: MarketplaceStatus): string {
-   return t(`modelMarketplace.status.${status}`)
- }
- 
-+function passiveStatusLabel(status: MarketplaceStatus, hasRequests?: boolean, health?: PublicTransitMonitorHealth): string {
-+  if (hasRequests === false) return t('modelMarketplace.noTraffic')
-+  if (hasRequests === true && health?.overall === 'unknown') {
-+    return t('modelMarketplace.insufficientSamples')
-+  }
-+  return statusLabel(status)
-+}
-+
-+function monitorSquareState(sample: Pick<MonitorSquare, 'status' | 'hasRequests' | 'health'>): string {
-+  if (sample.hasRequests === false) return 'no-traffic'
-+  if (sample.hasRequests === true && sample.health?.overall === 'unknown') {
-+    return 'insufficient-samples'
-+  }
-+  return sample.status
-+}
-+
- function statusTextClass(status: MarketplaceStatus): string {
-   if (status === 'operational') return 'text-emerald-300'
-   if (status === 'degraded') return 'text-amber-300'
-@@ -442,12 +461,11 @@ function statusTextClass(status: MarketplaceStatus): string {
-   return 'text-dark-400'
- }
- 
--function statusSquareClass(status: MarketplaceStatus, healthScore?: number, hasRequests?: boolean): string {
--  if (hasRequests === false) return 'health-unknown'
--  if (healthScore != null && Number.isFinite(healthScore)) return `health-${scoreToBand(healthScore)}`
--  if (status === 'unmonitored') return 'health-unknown'
--  if (status === 'unavailable') return 'health-score0'
--  return status === 'degraded' ? 'health-score5' : 'health-score10'
-+function statusSquareClass(sample: Pick<MonitorSquare, 'status' | 'hasRequests' | 'health'>): string {
-+  if (sample.health) return healthScoreClass(sample.health, 'overall', sample.hasRequests === false ? 0 : 1)
-+  if (sample.hasRequests === false || sample.status === 'unmonitored') return 'health-unknown'
-+  if (sample.status === 'unavailable') return 'health-score0'
-+  return sample.status === 'degraded' ? 'health-score5' : 'health-score10'
- }
- 
- function formatNumber(value: number, maximumFractionDigits = 3): string {
-@@ -519,7 +537,7 @@ function activeMonitoring(model: MarketplaceModel) {
- 
- function monitorAriaLabel(model: MarketplaceModel): string {
-   const monitoring = activeMonitoring(model)
--  return `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${formatAvailability(model)}`
-+  return `${t('modelMarketplace.recentChecks')}: ${passiveStatusLabel(monitoring.status, monitoring.hasRequests, monitoring.health)} ${formatAvailability(model)}`
- }
- 
- function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
-@@ -532,10 +550,11 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
-     key: `actual-${sample.checkedAt}-${index}`,
-     status: sample.status,
-     hasRequests: sample.hasRequests,
-+    health: sample.health,
-     healthScore: sample.healthScore,
-     title: t('modelMarketplace.checkTooltip', {
-       time: formatDateTime(sample.checkedAt),
--      status: statusLabel(sample.status),
-+      status: passiveStatusLabel(sample.status, sample.hasRequests, sample.health),
-     }),
-   }))
-   if (actual.length > 0) {
-@@ -548,16 +567,23 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
-   }
- 
-   if (monitoring.hasRequests === false || monitoring.availability == null) {
--    const squares = Array.from({ length: sampleCount }, (_, index) => ({
-+    const hasRequests = monitoring.hasRequests === false ? false : undefined
-+    const squares: MonitorSquare[] = Array.from({ length: sampleCount }, (_, index) => ({
-       key: `empty-${index}`,
-       status: 'unmonitored' as MarketplaceStatus,
--      title: t('modelMarketplace.noCheckData'),
-+      hasRequests,
-+      title: hasRequests === false ? t('modelMarketplace.noTraffic') : t('modelMarketplace.noCheckData'),
-     }))
-     if (monitoring.status !== 'unmonitored') {
-       squares[sampleCount - 1] = {
-         key: 'latest-status',
-         status: monitoring.status,
--        title: t('modelMarketplace.latestStatusTooltip', { status: statusLabel(monitoring.status) }),
-+        hasRequests: monitoring.hasRequests,
-+        health: monitoring.health,
-+        healthScore: monitoring.healthScore,
-+        title: t('modelMarketplace.latestStatusTooltip', {
-+          status: passiveStatusLabel(monitoring.status, monitoring.hasRequests, monitoring.health),
-+        }),
-       }
-     }
-     return squares
-@@ -568,10 +594,11 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
-       key: `estimate-${index}`,
-       status: monitoring.status,
-       hasRequests: monitoring.hasRequests,
-+      health: monitoring.health,
-       healthScore: monitoring.healthScore,
-       title: t('modelMarketplace.estimateTooltip', {
-         window: monitorWindow.value,
--        status: statusLabel(monitoring.status),
-+        status: passiveStatusLabel(monitoring.status, monitoring.hasRequests, monitoring.health),
-       }),
-     }
-   })
-@@ -690,10 +717,11 @@ const ModelPricingDetail = defineComponent({
-         h('span', { class: 'shrink-0 text-[10px] text-dark-400' }, `${t('modelMarketplace.passiveMonitoring')} ${availability}`),
-         h('div', {
-           class: 'flex gap-[2px]',
--          'aria-label': `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${availability}`,
-+          'aria-label': `${t('modelMarketplace.recentChecks')}: ${passiveStatusLabel(monitoring.status, monitoring.hasRequests, monitoring.health)} ${availability}`,
-         }, monitorSquaresForMonitoring(monitoring).map((sample) => h('span', {
-           key: sample.key,
--          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample.status, sample.healthScore, sample.hasRequests)}`,
-+          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample)}`,
-+          'data-monitor-state': monitorSquareState(sample),
-           title: sample.title,
-         }))),
-       ])]
-diff --git a/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts b/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
-index ccdf2af10..8d0fbb4de 100644
---- a/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
-+++ b/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
-@@ -122,9 +122,76 @@ describe('ChannelStatusView model marketplace', () => {
-     })
- 
-     expect(wrapper.findAll('.health-unknown').length).toBeGreaterThanOrEqual(24)
-+    const noTrafficSquares = wrapper.findAll('[data-monitor-state="no-traffic"]')
-+    expect(noTrafficSquares.length).toBeGreaterThan(0)
-+    expect(noTrafficSquares.every((square) => square.classes().includes('health-unknown'))).toBe(true)
-     expect(wrapper.text()).not.toContain('0.00%')
+@@ -591,7 +591,7 @@ export default {
+     billing: { token: '按 Token', perRequest: '按次 / 图片' },
+     units: { token: '$/1M tokens' },
+     status: { operational: '运行正常', degraded: '性能下降', unavailable: '不可用', unmonitored: '未监控' },
+-    columns: { model: '模型', billing: '计费', pricing: '价格', groups: '分组 / 倍率', latency: '最新延迟', actions: '操作' },
++    columns: { model: '模型', billing: '计费', pricing: '价格', groups: '分组 / 倍率', latency: '首字延迟', actions: '操作' },
+     detail: { group: '分组 / 平台', mode: '计费', multiplier: '倍率', pricing: '价格', input: '输入', output: '输出', cacheWrite: '缓存写入', cacheRead: '缓存读取', requestImage: '请求 / 图片', source: '价格来源', tierPricing: '阶梯价格', tokenRange: 'Token 区间', unitNote: '价格已计入适用分组倍率。Token：$/1M tokens；请求与图片：$/请求。' },
+     empty: { title: '没有匹配的模型', description: '调整搜索词或筛选条件以查看其他模型。' }
+   },
+diff --git a/frontend/src/utils/__tests__/modelMarketplace.spec.ts b/frontend/src/utils/__tests__/modelMarketplace.spec.ts
+index 86424384d..63ca770f8 100644
+--- a/frontend/src/utils/__tests__/modelMarketplace.spec.ts
++++ b/frontend/src/utils/__tests__/modelMarketplace.spec.ts
+@@ -201,7 +201,7 @@ describe('model marketplace aggregation', () => {
+     expect(monitoringForWindow(monitoring, '90m').samples[0].successRate).toBe(95)
    })
  
-+  it('labels V2 traffic below the health sample threshold as insufficient samples', () => {
-+    const snapshot = createModelMarketplacePreviewSnapshot()
-+    const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
-+    monitor.windows = {
-+      '90m': {
-+        status: 'unmonitored',
-+        availability: 95,
-+        coverage_complete: true,
-+        metrics: {
-+          has_requests: true,
-+          success_rate: 0.95,
-+          error_rate: 0.05,
-+          cache_rate: 0,
-+          ttft: {},
-+          duration: {},
-+        },
-+        health: {
-+          overall: 'unknown',
-+          error_rate: 'unknown',
-+          ttft: 'unknown',
-+          cache: 'unknown',
-+          minimum_sample: 50,
-+        },
-+        buckets: [{
-+          bucket_start: snapshot.generated_at,
-+          status: 'unmonitored',
-+          success_rate: 95,
-+          metrics: {
-+            has_requests: true,
-+            success_rate: 0.95,
-+            error_rate: 0.05,
-+            cache_rate: 0,
-+            ttft: {},
-+            duration: {},
-+          },
-+          health: {
-+            overall: 'unknown',
-+            error_rate: 'unknown',
-+            ttft: 'unknown',
-+            cache: 'unknown',
-+            minimum_sample: 50,
-+          },
-+        }],
-+      },
-+    }
-+    const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh } })
-+    const wrapper = mount(ChannelStatusView, {
-+      props: { previewSnapshot: snapshot },
-+      global: {
-+        plugins: [i18n],
-+        stubs: {
-+          AppLayout: { template: '<div><slot /></div>' },
-+          PublicSiteFooter: true,
-+          Icon: true,
-+          ModelIcon: true,
-+        },
-+      },
-+    })
-+
-+    const insufficientSamples = wrapper.findAll('[data-monitor-state="insufficient-samples"]')
-+    expect(insufficientSamples.length).toBeGreaterThan(0)
-+    expect(insufficientSamples.every((square) => square.classes().includes('health-unknown'))).toBe(true)
-+  })
-+
-   it('uses the V2 green-to-red score bands for timeline health scores', () => {
+-  it('uses V2 metrics and health when legacy status fields disagree', () => {
++  it('uses the V2 filtered error rate when raw success rate includes ignored errors', () => {
      const snapshot = createModelMarketplacePreviewSnapshot()
      const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+     monitor.windows = {
+@@ -212,10 +212,10 @@ describe('model marketplace aggregation', () => {
+         coverage_complete: true,
+         metrics: {
+           has_requests: true,
+-          success_rate: 0.95,
++          success_rate: 0.2624,
+           error_rate: 0.05,
+           cache_rate: 0,
+-          ttft: { p50_ms: 200 },
++          ttft: { p50_ms: 200, avg_ms: 250 },
+           duration: { p50_ms: 800, avg_ms: 900 },
+         },
+         health: {
+@@ -238,7 +238,7 @@ describe('model marketplace aggregation', () => {
+     expect(window.hasRequests).toBe(true)
+     expect(window.availability).toBe(95)
+     expect(window.healthScore).toBe(90)
+-    expect(window.latestLatencyMs).toBe(800)
+-    expect(window.avgLatencyMs).toBe(900)
++    expect(window.ttftP50Ms).toBe(200)
++    expect(window.ttftAvgMs).toBe(250)
+   })
+ })
+diff --git a/frontend/src/utils/modelMarketplace.ts b/frontend/src/utils/modelMarketplace.ts
+index a330e99ac..3ec1eada2 100644
+--- a/frontend/src/utils/modelMarketplace.ts
++++ b/frontend/src/utils/modelMarketplace.ts
+@@ -36,8 +36,8 @@ export interface MarketplaceMonitoringWindow {
+   health?: PublicTransitMonitorHealth
+   availability?: number
+   healthScore?: number
+-  latestLatencyMs?: number
+-  avgLatencyMs?: number
++  ttftP50Ms?: number
++  ttftAvgMs?: number
+   lastCheckedAt?: string
+   samples: MarketplaceMonitorSample[]
+ }
+@@ -50,8 +50,8 @@ export interface MarketplaceMonitoring {
+   availability7d?: number
+   availability15d?: number
+   availability30d?: number
+-  latestLatencyMs?: number
+-  avgLatency7dMs?: number
++  ttftP50Ms?: number
++  ttftAvg7dMs?: number
+   lastCheckedAt?: string
+   samples: MarketplaceMonitorSample[]
+   windows?: Partial<Record<MarketplaceWindow, MarketplaceMonitoringWindow>>
+@@ -63,7 +63,7 @@ export interface MarketplaceMonitorSample {
+   health?: PublicTransitMonitorHealth
+   healthScore?: number
+   checkedAt: string
+-  latencyMs?: number
++  ttftMs?: number
+   successRate?: number
+ }
+ 
+@@ -88,8 +88,8 @@ interface MonitorObservation {
+   availability7d?: number
+   availability15d?: number
+   availability30d?: number
+-  latestLatencyMs?: number
+-  avgLatency7dMs?: number
++  ttftP50Ms?: number
++  ttftAvg7dMs?: number
+   lastCheckedAt?: string
+   windows?: Partial<Record<MarketplaceWindow, MarketplaceMonitoringWindow>>
+ }
+@@ -303,17 +303,20 @@ function publicMonitorStatus(status: string, healthOverall?: string): Marketplac
+ function publicMonitorAvailability(
+   status: string,
+   availability: number | undefined,
+-  metrics?: { has_requests: boolean; success_rate: number },
++  metrics?: { has_requests: boolean; error_rate: number },
+ ): number | undefined {
+-  if (metrics) return metrics.has_requests ? metrics.success_rate * 100 : undefined
++  if (metrics) {
++    if (!metrics.has_requests) return undefined
++    return Math.max(0, Math.min(100, (1 - metrics.error_rate) * 100))
++  }
+   return normalizeStatus(status) === 'unmonitored' ? undefined : availability
+ }
+ 
+-function publicMonitorLatency(
++function publicMonitorTTFT(
+   fallback: number | undefined,
+-  metrics?: { duration: { p50_ms?: number | null } },
++  metrics?: { ttft: { p50_ms?: number | null } },
+ ): number | undefined {
+-  return metrics?.duration.p50_ms ?? fallback
++  return metrics?.ttft.p50_ms ?? fallback
+ }
+ 
+ function observationKey(item: MonitorObservation): string {
+@@ -324,8 +327,8 @@ function observationKey(item: MonitorObservation): string {
+     item.availability7d,
+     item.availability15d,
+     item.availability30d,
+-    item.latestLatencyMs,
+-    item.avgLatency7dMs,
++    item.ttftP50Ms,
++    item.ttftAvg7dMs,
+     item.lastCheckedAt,
+   ].join(':')
+ }
+@@ -366,7 +369,7 @@ function shouldReplaceMonitorSample(
+     return candidate.healthScore < existing.healthScore
+   }
+   if (candidate.healthScore != null && existing.healthScore == null) return true
+-  return (candidate.latencyMs ?? 0) > (existing.latencyMs ?? 0)
++  return (candidate.ttftMs ?? 0) > (existing.ttftMs ?? 0)
+ }
+ 
+ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex {
+@@ -382,8 +385,8 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
+       availability7d: publicMonitorAvailability(monitor.status, monitor.availability_7d, monitor.metrics),
+       availability15d: monitor.availability_15d,
+       availability30d: monitor.availability_30d,
+-      latestLatencyMs: publicMonitorLatency(monitor.latest_duration_p50_ms, monitor.metrics),
+-      avgLatency7dMs: monitor.metrics?.duration.avg_ms ?? monitor.duration_p50_7d_ms,
++      ttftP50Ms: publicMonitorTTFT(monitor.ttft_p50_7d_ms, monitor.metrics),
++      ttftAvg7dMs: monitor.metrics?.ttft.avg_ms ?? undefined,
+       lastCheckedAt: monitor.data_through,
+       windows: Object.fromEntries(Object.entries(monitor.windows || {}).map(([key, value]) => [key, publicMonitorWindow(value)])),
+     })
+@@ -395,7 +398,7 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
+         health: point.health,
+         healthScore: point.health?.score ?? undefined,
+         checkedAt: point.bucket_start,
+-        latencyMs: publicMonitorLatency(point.duration_p50_ms, point.metrics),
++        ttftMs: publicMonitorTTFT(point.ttft_p50_ms, point.metrics),
+         successRate: publicMonitorAvailability(point.status, point.success_rate, point.metrics),
+       })
+     }
+@@ -411,8 +414,8 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
+     health: window.health,
+     healthScore: window.health?.score ?? undefined,
+     availability: publicMonitorAvailability(window.status, window.availability, window.metrics),
+-    latestLatencyMs: publicMonitorLatency(window.latest_duration_p50_ms, window.metrics),
+-    avgLatencyMs: window.metrics?.duration.avg_ms ?? window.duration_p50_ms,
++    ttftP50Ms: publicMonitorTTFT(window.ttft_p50_ms, window.metrics),
++    ttftAvgMs: window.metrics?.ttft.avg_ms ?? undefined,
+     lastCheckedAt: window.data_through,
+     samples: (window.buckets || []).map((sample) => ({
+       status: publicMonitorStatus(sample.status, sample.health?.overall),
+@@ -420,7 +423,7 @@ function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMon
+       health: sample.health,
+       healthScore: sample.health?.score ?? undefined,
+       checkedAt: sample.bucket_start,
+-      latencyMs: publicMonitorLatency(sample.duration_p50_ms, sample.metrics),
++      ttftMs: publicMonitorTTFT(sample.ttft_p50_ms, sample.metrics),
+       successRate: publicMonitorAvailability(sample.status, sample.success_rate, sample.metrics),
+     })),
+   }
+@@ -467,8 +470,8 @@ function aggregateMonitoring(
+       health: weakestWindow?.health,
+       healthScore: minimum(activeWindowValues.map((item) => item.healthScore)),
+       availability: minimum(activeWindowValues.map((item) => item.availability)),
+-      latestLatencyMs: maximum(activeWindowValues.map((item) => item.latestLatencyMs)),
+-      avgLatencyMs: maximum(activeWindowValues.map((item) => item.avgLatencyMs)),
++      ttftP50Ms: maximum(activeWindowValues.map((item) => item.ttftP50Ms)),
++      ttftAvgMs: maximum(activeWindowValues.map((item) => item.ttftAvgMs)),
+       lastCheckedAt: windowValues.map((item) => item.lastCheckedAt).filter((value): value is string => Boolean(value)).sort().at(-1),
+       samples: Array.from(windowSamples.values()).sort((a, b) => a.checkedAt.localeCompare(b.checkedAt)).slice(-90),
+     }
+@@ -490,8 +493,8 @@ function aggregateMonitoring(
+     availability7d: minimum(activeValues.map((item) => item.availability7d)),
+     availability15d: minimum(activeValues.map((item) => item.availability15d)),
+     availability30d: minimum(activeValues.map((item) => item.availability30d)),
+-    latestLatencyMs: maximum(activeValues.map((item) => item.latestLatencyMs)),
+-    avgLatency7dMs: maximum(activeValues.map((item) => item.avgLatency7dMs)),
++    ttftP50Ms: maximum(activeValues.map((item) => item.ttftP50Ms)),
++    ttftAvg7dMs: maximum(activeValues.map((item) => item.ttftAvg7dMs)),
+     lastCheckedAt: checkedAt,
+     samples,
+     windows,
+@@ -596,8 +599,8 @@ export function monitoringForWindow(
+     health: monitoring.health,
+     healthScore: monitoring.healthScore,
+     availability: availabilityForWindow(monitoring, window),
+-    latestLatencyMs: monitoring.latestLatencyMs,
+-    avgLatencyMs: monitoring.avgLatency7dMs,
++    ttftP50Ms: monitoring.ttftP50Ms,
++    ttftAvgMs: monitoring.ttftAvg7dMs,
+     lastCheckedAt: monitoring.lastCheckedAt,
+     samples: monitoring.samples,
+   }
+diff --git a/frontend/src/views/user/ChannelStatusView.vue b/frontend/src/views/user/ChannelStatusView.vue
+index 2abfb0eda..e7aa5c42d 100644
+--- a/frontend/src/views/user/ChannelStatusView.vue
++++ b/frontend/src/views/user/ChannelStatusView.vue
+@@ -194,9 +194,9 @@
+                       <div class="mt-1 font-jetbrains-mono text-xs text-dark-400">{{ multiplierRange(model) }}</div>
+                     </td>
+                     <td class="px-4 py-4">
+-                      <div class="font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).latestLatencyMs) }}</div>
+-                      <div v-if="activeMonitoring(model).avgLatencyMs != null" class="mt-1 text-xs text-dark-400">
+-                        {{ t('modelMarketplace.windowAverage', { window: monitorWindowLabel(monitorWindow) }) }} {{ formatLatency(activeMonitoring(model).avgLatencyMs) }}
++                      <div class="font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).ttftP50Ms) }}</div>
++                      <div v-if="activeMonitoring(model).ttftAvgMs != null" class="mt-1 text-xs text-dark-400">
++                        {{ t('modelMarketplace.windowAverage', { window: monitorWindowLabel(monitorWindow) }) }} {{ formatLatency(activeMonitoring(model).ttftAvgMs) }}
+                       </div>
+                     </td>
+                     <td class="px-3 py-4 text-right">
+@@ -278,7 +278,7 @@
+               </div>
+               <div class="bg-dark-950 p-3">
+                 <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.latency') }}</div>
+-                <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).latestLatencyMs) }}</div>
++                <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).ttftP50Ms) }}</div>
+               </div>
+             </div>
+             <div v-if="expanded.has(model.id)" class="p-4">
+diff --git a/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts b/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
+index 8d0fbb4de..0651f3a88 100644
+--- a/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
++++ b/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
+@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
+ import { createI18n } from 'vue-i18n'
+ import { describe, expect, it, vi } from 'vitest'
+ import zh from '@/i18n/locales/zh'
++import zhDashboard from '@/i18n/locales/zh/dashboard'
+ import { createModelMarketplacePreviewSnapshot } from '@/mocks/modelMarketplacePreview'
+ import ChannelStatusView from '@/views/user/ChannelStatusView.vue'
+ 
+@@ -29,6 +30,8 @@ describe('ChannelStatusView model marketplace', () => {
+     expect(text).toContain('gpt-4.1')
+     expect(text).toContain('OpenAI')
+     expect(text).toContain('$2')
++    expect(text).toContain('220 ms')
++    expect(zhDashboard.modelMarketplace.columns.latency).toBe('首字延迟')
+     expect(text).toMatch(/不可用|modelMarketplace\.status\.unavailable/)
+     expect(wrapper.findAll('button').map((button) => button.text())).toEqual(expect.arrayContaining(['90min', '12h', '1d', '15d']))
+   })
+@@ -231,7 +234,7 @@ describe('ChannelStatusView model marketplace', () => {
+     expect(wrapper.findAll('.health-score10').length).toBeGreaterThan(0)
+   })
+ 
+-  it('shows V2 success rate when the legacy availability field is zero', () => {
++  it('shows V2 filtered availability when raw success rate includes ignored errors', () => {
+     const snapshot = createModelMarketplacePreviewSnapshot()
+     const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+     monitor.windows = {
+@@ -241,7 +244,7 @@ describe('ChannelStatusView model marketplace', () => {
+         coverage_complete: true,
+         metrics: {
+           has_requests: true,
+-          success_rate: 0.95,
++          success_rate: 0.2624,
+           error_rate: 0.05,
+           cache_rate: 0,
+           ttft: { p50_ms: 200 },

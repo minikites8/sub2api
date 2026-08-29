@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import { describe, expect, it, vi } from 'vitest'
 import zh from '@/i18n/locales/zh'
+import zhDashboard from '@/i18n/locales/zh/dashboard'
 import { createModelMarketplacePreviewSnapshot } from '@/mocks/modelMarketplacePreview'
 import ChannelStatusView from '@/views/user/ChannelStatusView.vue'
 
@@ -29,6 +30,8 @@ describe('ChannelStatusView model marketplace', () => {
     expect(text).toContain('gpt-4.1')
     expect(text).toContain('OpenAI')
     expect(text).toContain('$2')
+    expect(text).toContain('220 ms')
+    expect(zhDashboard.modelMarketplace.columns.latency).toBe('首字延迟')
     expect(text).toMatch(/不可用|modelMarketplace\.status\.unavailable/)
     expect(wrapper.findAll('button').map((button) => button.text())).toEqual(expect.arrayContaining(['90min', '12h', '1d', '15d']))
   })
@@ -231,7 +234,7 @@ describe('ChannelStatusView model marketplace', () => {
     expect(wrapper.findAll('.health-score10').length).toBeGreaterThan(0)
   })
 
-  it('shows V2 success rate when the legacy availability field is zero', () => {
+  it('shows V2 filtered availability when raw success rate includes ignored errors', () => {
     const snapshot = createModelMarketplacePreviewSnapshot()
     const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
     monitor.windows = {
@@ -241,7 +244,7 @@ describe('ChannelStatusView model marketplace', () => {
         coverage_complete: true,
         metrics: {
           has_requests: true,
-          success_rate: 0.95,
+          success_rate: 0.2624,
           error_rate: 0.05,
           cache_rate: 0,
           ttft: { p50_ms: 200 },

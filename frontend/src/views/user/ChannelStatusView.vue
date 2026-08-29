@@ -194,9 +194,9 @@
                       <div class="mt-1 font-jetbrains-mono text-xs text-dark-400">{{ multiplierRange(model) }}</div>
                     </td>
                     <td class="px-4 py-4">
-                      <div class="font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).latestLatencyMs) }}</div>
-                      <div v-if="activeMonitoring(model).avgLatencyMs != null" class="mt-1 text-xs text-dark-400">
-                        {{ t('modelMarketplace.windowAverage', { window: monitorWindowLabel(monitorWindow) }) }} {{ formatLatency(activeMonitoring(model).avgLatencyMs) }}
+                      <div class="font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).ttftP50Ms) }}</div>
+                      <div v-if="activeMonitoring(model).ttftAvgMs != null" class="mt-1 text-xs text-dark-400">
+                        {{ t('modelMarketplace.windowAverage', { window: monitorWindowLabel(monitorWindow) }) }} {{ formatLatency(activeMonitoring(model).ttftAvgMs) }}
                       </div>
                     </td>
                     <td class="px-3 py-4 text-right">
@@ -278,7 +278,7 @@
               </div>
               <div class="bg-dark-950 p-3">
                 <div class="font-jetbrains-mono text-[11px] uppercase text-dark-400">{{ t('modelMarketplace.columns.latency') }}</div>
-                <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).latestLatencyMs) }}</div>
+                <div class="mt-1 font-jetbrains-mono text-xs text-white">{{ formatLatency(activeMonitoring(model).ttftP50Ms) }}</div>
               </div>
             </div>
             <div v-if="expanded.has(model.id)" class="p-4">

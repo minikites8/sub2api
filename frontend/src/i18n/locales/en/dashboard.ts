@@ -585,7 +585,7 @@ export default {
     billing: { token: 'Per Token', perRequest: 'Per Request / Image' },
     units: { token: '$/1M tokens' },
     status: { operational: 'Operational', degraded: 'Degraded', unavailable: 'Unavailable', unmonitored: 'Unmonitored' },
-    columns: { model: 'Model', billing: 'Billing', pricing: 'Pricing', groups: 'Groups / Rate', latency: 'Latest Latency', actions: 'Actions' },
+    columns: { model: 'Model', billing: 'Billing', pricing: 'Pricing', groups: 'Groups / Rate', latency: 'First Token Latency', actions: 'Actions' },
     detail: { group: 'Group / Provider', mode: 'Billing', multiplier: 'Rate', pricing: 'Pricing', input: 'Input', output: 'Output', cacheWrite: 'Cache Write', cacheRead: 'Cache Read', requestImage: 'Request / Image', source: 'Price Source', tierPricing: 'Tier Pricing', tokenRange: 'Token Range', unitNote: 'Prices include the applicable group rate. Token: $/1M tokens; request and image: $/request.' },
     empty: { title: 'No matching models', description: 'Adjust the search term or filters to see other models.' }
   },

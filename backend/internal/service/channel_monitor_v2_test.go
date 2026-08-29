@@ -199,6 +199,7 @@ func TestChannelMonitorV2ErrorTaxonomyPriority(t *testing.T) {
 		{"context", ChannelMonitorV2ErrorInput{Message: "maximum prompt length exceeded"}, "context_limit"},
 		{"unsupported", ChannelMonitorV2ErrorInput{Message: "not supported by any configured account"}, "model_unsupported"},
 		{"pool", ChannelMonitorV2ErrorInput{Message: "No available accounts"}, "account_pool_unavailable"},
+		{"429 rate limit", ChannelMonitorV2ErrorInput{StatusCode: 429, Message: "user requests-per-minute limit exceeded"}, "rate_or_capacity"},
 		{"timeout", ChannelMonitorV2ErrorInput{Message: "error code: 524"}, "timeout"},
 		{"upstream", ChannelMonitorV2ErrorInput{ErrorOwner: "provider", StatusCode: 502, UpstreamStatusCode: 502}, "upstream_5xx"},
 		{"other", ChannelMonitorV2ErrorInput{StatusCode: 400, Message: "unknown"}, "other"},
