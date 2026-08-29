@@ -1,0 +1,284 @@
+diff --git a/backend/internal/service/openai_gateway_chat_completions.go b/backend/internal/service/openai_gateway_chat_completions.go
+index 93c9eb7a7..42353eaf0 100644
+--- a/backend/internal/service/openai_gateway_chat_completions.go
++++ b/backend/internal/service/openai_gateway_chat_completions.go
+@@ -255,6 +255,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
+ 		return nil, policyErr
+ 	}
+ 	responsesBody = updatedBody
++	serviceTier := extractOpenAIServiceTierFromBody(responsesBody)
+ 
+ 	// 5. Get access token
+ 	token, _, err := s.GetAccessToken(ctx, account)
+@@ -330,12 +331,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
+ 		return nil, handleErr
+ 	}
+ 
+-	// Propagate ServiceTier and ReasoningEffort to result for billing
++	// Propagate final request metadata to the result used by billing.
+ 	if handleErr == nil && result != nil {
+-		if responsesReq.ServiceTier != "" {
+-			st := responsesReq.ServiceTier
+-			result.ServiceTier = &st
+-		}
++		result.ServiceTier = serviceTier
+ 		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
+ 			re := responsesReq.Reasoning.Effort
+ 			result.ReasoningEffort = &re
+diff --git a/backend/internal/service/openai_gateway_chat_completions_raw.go b/backend/internal/service/openai_gateway_chat_completions_raw.go
+index 34c281b28..a008f953b 100644
+--- a/backend/internal/service/openai_gateway_chat_completions_raw.go
++++ b/backend/internal/service/openai_gateway_chat_completions_raw.go
+@@ -69,9 +69,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
+ 	}
+ 	clientStream := gjson.GetBytes(body, "stream").Bool()
+ 
+-	// 1b. Extract service tier from the raw body before any transformation.
+-	serviceTier := extractOpenAIServiceTierFromBody(body)
+-
+ 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
+ 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
+ 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+@@ -105,6 +102,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
+ 		return nil, policyErr
+ 	}
+ 	upstreamBody = updatedBody
++	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
+ 
+ 	// Grok Composer does not accept image_url parts directly, but Grok Build
+ 	// can describe the images first. Bridge only this exact failure mode.
+diff --git a/backend/internal/service/openai_gateway_forward.go b/backend/internal/service/openai_gateway_forward.go
+index 1c1da15c8..3273004e8 100644
+--- a/backend/internal/service/openai_gateway_forward.go
++++ b/backend/internal/service/openai_gateway_forward.go
+@@ -99,6 +99,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
+ 			return nil, err
+ 		}
+ 	}
++	// Apply the group-level service_tier override before constructing the request
++	// view. The native Responses hot path evaluates the global fast policy from
++	// requestView below, so the group value must be present in that same final
++	// request state for upstream forwarding and billing metadata to agree.
++	if account.Platform == PlatformOpenAI {
++		body, err = applyGroupOpenAIServiceTierPolicy(ctx, body)
++		if err != nil {
++			return nil, err
++		}
++	}
+ 
+ 	originalBody := body
+ 	requestView := newOpenAIRequestView(body)
+diff --git a/backend/internal/service/openai_gateway_messages.go b/backend/internal/service/openai_gateway_messages.go
+index 1edb08087..ecd829155 100644
+--- a/backend/internal/service/openai_gateway_messages.go
++++ b/backend/internal/service/openai_gateway_messages.go
+@@ -286,6 +286,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
+ 		return nil, policyErr
+ 	}
+ 	responsesBody = updatedBody
++	serviceTier := extractOpenAIServiceTierFromBody(responsesBody)
+ 	grokCacheIdentity := ""
+ 	if account.Platform == PlatformGrok {
+ 		grokIntentBody := responsesBody
+@@ -487,7 +488,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
+ 		return nil, handleErr
+ 	}
+ 
+-	// Propagate ServiceTier and ReasoningEffort to result for billing
++	// Propagate final request metadata to the result used by billing.
+ 	if handleErr == nil && result != nil {
+ 		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
+ 			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
+@@ -495,10 +496,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
+ 		if promptCacheKey != "" && anthropicDigestChain != "" {
+ 			s.bindOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain, promptCacheKey, anthropicMatchedDigestChain)
+ 		}
+-		if responsesReq.ServiceTier != "" {
+-			st := responsesReq.ServiceTier
+-			result.ServiceTier = &st
+-		}
++		result.ServiceTier = serviceTier
+ 		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
+ 			re := responsesReq.Reasoning.Effort
+ 			result.ReasoningEffort = &re
+diff --git a/backend/internal/service/openai_gateway_responses_chat_fallback.go b/backend/internal/service/openai_gateway_responses_chat_fallback.go
+index 1082b020d..5ee2d40e5 100644
+--- a/backend/internal/service/openai_gateway_responses_chat_fallback.go
++++ b/backend/internal/service/openai_gateway_responses_chat_fallback.go
+@@ -38,7 +38,6 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
+ 	}
+ 
+ 	clientStream := responsesReq.Stream
+-	serviceTier := extractOpenAIServiceTierFromBody(body)
+ 	// custom 工具（如 codex 的 exec）降级为 function 工具转发，回程需按名字还原为
+ 	// custom_tool_call 项，先记下名字集合；tool_search 工具同理，回程还原为
+ 	// tool_search_call 项；namespace 子工具（如 MCP 工具）摊平转发，回程按映射还原
+@@ -80,9 +79,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
+ 		}
+ 		return nil, err
+ 	}
+-	if serviceTier == nil {
+-		serviceTier = extractOpenAIServiceTierFromBody(chatBody)
+-	}
++	serviceTier := extractOpenAIServiceTierFromBody(chatBody)
+ 
+ 	logger.L().Debug("openai responses: forwarding via raw chat completions",
+ 		zap.Int64("account_id", account.ID),
+diff --git a/backend/internal/service/openai_service_tier_test.go b/backend/internal/service/openai_service_tier_test.go
+index 94fdd52ed..621a8078f 100644
+--- a/backend/internal/service/openai_service_tier_test.go
++++ b/backend/internal/service/openai_service_tier_test.go
+@@ -2,9 +2,15 @@ package service
+ 
+ import (
+ 	"context"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
+ 	"testing"
+ 
++	"github.com/Wei-Shaw/sub2api/internal/config"
+ 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
++	"github.com/gin-gonic/gin"
+ 	"github.com/stretchr/testify/require"
+ 	"github.com/tidwall/gjson"
+ )
+@@ -78,3 +84,40 @@ func TestApplyGroupOpenAIServiceTierPolicyToWSResponseCreate(t *testing.T) {
+ 	require.Nil(t, blocked)
+ 	require.Equal(t, OpenAIFastTierFlex, gjson.GetBytes(passFrame, "service_tier").String())
+ }
++
++func TestOpenAIGatewayServiceForward_GroupServiceTierSetPropagatesToUsage(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++
++	upstream := &httpUpstreamRecorder{resp: &http.Response{
++		StatusCode: http.StatusOK,
++		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_group_service_tier"}},
++		Body: io.NopCloser(strings.NewReader(
++			`data: {"type":"response.completed","response":{"id":"resp_group_service_tier","object":"response","model":"gpt-5.5","status":"completed","output":[],"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4}}}` + "\n\n",
++		)),
++	}}
++	cfg := &config.Config{}
++	cfg.Security.URLAllowlist.Enabled = false
++	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
++	account := &Account{
++		ID: 901, Name: "oauth-service-tier", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
++		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"},
++		Status:      StatusActive, Schedulable: true,
++	}
++	group := &Group{
++		ID: 902, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true,
++		OpenAIServiceTierMode: OpenAIServiceTierModeSet, OpenAIServiceTier: OpenAIFastTierPriority,
++	}
++	ctx := context.WithValue(context.Background(), ctxkey.Group, group)
++	recorder := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(recorder)
++	body := []byte(`{"model":"gpt-5.5","stream":true,"input":"hello"}`)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(body)))
++	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
++
++	result, err := svc.Forward(ctx, c, account, body)
++	require.NoError(t, err)
++	require.NotNil(t, result)
++	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(upstream.lastBody, "service_tier").String())
++	require.NotNil(t, result.ServiceTier)
++	require.Equal(t, OpenAIFastTierPriority, *result.ServiceTier)
++}
+diff --git a/frontend/src/components/admin/usage/UsageTable.vue b/frontend/src/components/admin/usage/UsageTable.vue
+index f093ced82..05f557d7f 100644
+--- a/frontend/src/components/admin/usage/UsageTable.vue
++++ b/frontend/src/components/admin/usage/UsageTable.vue
+@@ -224,12 +224,20 @@
+                 : LATENCY_BAR_CLASSES[durationSeverity(row.duration_ms ?? 0)]"
+               aria-hidden="true"
+             ></span>
+-            <div class="grid grid-cols-[max-content_max-content] items-baseline gap-x-2 gap-y-0.5 text-xs">
+-              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
+-              <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
+-              <span v-else class="text-gray-400 dark:text-gray-500">-</span>
+-              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
+-              <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
++            <div data-testid="usage-latency-content" class="space-y-1">
++              <div class="flex items-center gap-2 text-xs">
++                <span class="text-gray-400 dark:text-gray-500">{{ t('usage.serviceTier') }}</span>
++                <span class="font-medium text-gray-700 dark:text-gray-300">
++                  {{ getUsageServiceTierLabel(row.service_tier, t) }}
++                </span>
++              </div>
++              <div class="grid grid-cols-[max-content_max-content] items-baseline gap-x-2 gap-y-0.5 text-xs">
++                <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
++                <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
++                <span v-else class="text-gray-400 dark:text-gray-500">-</span>
++                <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
++                <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
++              </div>
+             </div>
+           </div>
+         </template>
+diff --git a/frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts b/frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts
+index a967df5ba..037178ab9 100644
+--- a/frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts
++++ b/frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts
+@@ -32,6 +32,8 @@ const messages: Record<string, string> = {
+   'usage.serviceTierPriority': 'Fast',
+   'usage.serviceTierFlex': 'Flex',
+   'usage.serviceTierStandard': 'Standard',
++  'usage.latencyFirstToken': 'First token',
++  'usage.latencyDuration': 'Total',
+   'usage.rate': 'Rate',
+   'usage.accountMultiplier': 'Account rate',
+   'usage.original': 'Original',
+@@ -87,6 +89,7 @@ const DataTableStub = {
+         <slot name="cell-billing_mode" :row="row" />
+         <slot name="cell-tokens" :row="row" />
+         <slot name="cell-cost" :row="row" />
++        <slot name="cell-latency" :row="row" />
+         <slot name="cell-request_id" :row="row" />
+       </div>
+     </div>
+@@ -421,6 +424,44 @@ describe('admin UsageTable tooltip', () => {
+   })
+ })
+ 
++describe('admin UsageTable latency column', () => {
++  it.each([
++    { service_tier: 'priority', label: 'Fast' },
++    { service_tier: 'flex', label: 'Flex' },
++    { service_tier: null, label: 'Standard' },
++  ])('shows the request service tier above latency values for $service_tier', ({ service_tier, label }) => {
++    const wrapper = mount(UsageTable, {
++      props: {
++        data: [{
++          ...baseImageRow,
++          request_id: `req-latency-${service_tier ?? 'default'}`,
++          service_tier,
++          first_token_ms: 3600,
++          duration_ms: 6930,
++        }],
++        loading: false,
++        columns: [],
++      },
++      global: {
++        stubs: {
++          DataTable: DataTableStub,
++          EmptyState: true,
++          Icon: true,
++          Teleport: true,
++        },
++      },
++    })
++
++    const text = wrapper.get('[data-testid="usage-latency-content"]').text()
++    expect(text).toContain('Service tier')
++    expect(text).toContain(label)
++    expect(text).toContain('First token')
++    expect(text).toContain('3.60s')
++    expect(text).toContain('6.93s')
++    expect(text.indexOf(label)).toBeLessThan(text.indexOf('First token'))
++  })
++})
++
+ describe('admin UsageTable request ID column', () => {
+   beforeEach(() => {
+     appStoreMocks.showSuccess.mockReset()

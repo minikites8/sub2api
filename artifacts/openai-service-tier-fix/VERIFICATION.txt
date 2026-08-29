@@ -1,0 +1,98 @@
+BRANCH: main
+CHANGED FIELD: OpenAI group service_tier propagation to upstream request body, billing metadata, and usage latency-column display
+REQUEST MODES: passthrough / set / clear
+RESULT: Group set priority (Fast) reaches native Responses and compatibility request bodies; usage records retain the final request service_tier; the usage table displays Fast, Flex, or Standard above first-token and total latency.
+
+ARTIFACTS
+MODIFIED_FILE: D:\Programs\sub2api\artifacts\openai-service-tier-fix\MODIFIED_FILE
+DIFF_FILE: D:\Programs\sub2api\artifacts\openai-service-tier-fix\DIFF_FILE
+VERIFICATION.txt: D:\Programs\sub2api\artifacts\openai-service-tier-fix\VERIFICATION.txt
+ROLLBACK.sh: D:\Programs\sub2api\artifacts\openai-service-tier-fix\ROLLBACK.sh
+
+HASHES
+BASE HEAD commit: c0d48c4104df5772bdc11a3eeaad336e99bf618f
+BASE openai_gateway_forward.go blob: 1c1da15c8ed2922ecc91dee9dde901814930abb8
+BASE openai_gateway_forward.go SHA256 (git show byte stream): 8B795D6BF198AA833051679BCE500105FAD7B9F69E34C873507566519388A272
+MODIFIED openai_gateway_forward.go SHA256: 9261B7BC099FDDF240CFD890D42F5AC630D436FDF48E4EB73E2E23C256F8CF93
+MODIFIED_FILE SHA256: 9261B7BC099FDDF240CFD890D42F5AC630D436FDF48E4EB73E2E23C256F8CF93
+DIFF_FILE SHA256: 3E4580DC5DD378F14BF4881940CE7C824A2A7FAD1FC00C3D2B4830A1E5DDEF8A
+
+BASELINE
+Command: $env:GOMAXPROCS='1'; $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.tmp\gotmp'; go test -p 1 ./internal/service -run 'TestApplyOpenAIFastPolicyToBody_GroupServiceTierPolicy|TestApplyGroupOpenAIServiceTierPolicyToWSResponseCreate' -count=1
+Working directory: D:\Programs\sub2api\.tmp\openai-service-tier-baseline\backend (detached HEAD c0d48c410)
+Input: existing group service_tier policy tests before request-path propagation changes
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  3.945s
+Exit status: 0
+
+Command: pnpm exec vitest run src/components/admin/usage/__tests__/UsageTable.spec.ts
+Working directory: D:\Programs\sub2api\.tmp\openai-service-tier-baseline\frontend (detached HEAD c0d48c410)
+Input: baseline UsageTable component suite before latency-column service tier display
+Literal result: Test Files 1 passed (1); Tests 18 passed (18); Duration 3.89s
+Exit status: 0
+
+MODIFIED
+Command: $env:GOMAXPROCS='1'; $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.tmp\gotmp'; go test -p 1 ./internal/service -run 'TestOpenAIGatewayServiceForward_GroupServiceTierSetPropagatesToUsage|TestApplyOpenAIFastPolicyToBody_GroupServiceTierPolicy|TestApplyGroupOpenAIServiceTierPolicyToWSResponseCreate' -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: group set priority, native Responses forwarding, final upstream body, and billing result metadata
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  1.976s
+Exit status: 0
+
+Command: $env:GOMAXPROCS='1'; $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.tmp\gotmp'; go test -p 1 ./internal/service -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: complete modified OpenAI gateway service package
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  118.645s
+Exit status: 0
+
+Command: pnpm exec vitest run src/components/admin/usage/__tests__/UsageTable.spec.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: modified UsageTable with service tier above first-token and total latency; priority, flex, and default rows
+Literal result: Test Files 1 passed (1); Tests 21 passed (21); Duration 3.72s
+Exit status: 0
+
+Command: pnpm typecheck
+Working directory: D:\Programs\sub2api\frontend
+Input: complete frontend TypeScript project
+Literal output: > sub2api-frontend@1.0.0 typecheck D:\Programs\sub2api\frontend; > vue-tsc --noEmit
+Exit status: 0
+
+Command: pnpm exec eslint src/components/admin/usage/UsageTable.vue src/components/admin/usage/__tests__/UsageTable.spec.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: modified UsageTable source and component test
+Literal output: <empty>
+Exit status: 0
+
+Command: pnpm lint:check
+Working directory: D:\Programs\sub2api\frontend
+Input: complete frontend lint suite
+Literal output: D:\Programs\sub2api\frontend\src\api\admin\accounts.ts; 714:3 error Unnecessary try/catch wrapper no-useless-catch; 1 problem (1 error, 0 warnings)
+Exit status: 1
+Status: existing issue outside the changed service_tier files; targeted lint passes.
+
+ROLLBACK
+Command: & 'C:\Program Files\Git\bin\bash.exe' 'D:/Programs/sub2api/artifacts/openai-service-tier-fix/ROLLBACK.sh' 'D:/Programs/sub2api/.tmp/openai-service-tier-rollback-copy'
+Input: independent detached-HEAD worktree with all eight modified backend and frontend files copied into their modified state
+Literal output:
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/service/openai_gateway_chat_completions.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/service/openai_gateway_chat_completions_raw.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/service/openai_gateway_forward.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/service/openai_gateway_messages.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/service/openai_gateway_responses_chat_fallback.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/service/openai_service_tier_test.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file frontend/src/components/admin/usage/UsageTable.vue
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts
+ROLLBACK_OK root=D:/Programs/sub2api/.tmp/openai-service-tier-rollback-copy
+Exit status: 0
+
+Command: git -C D:\Programs\sub2api\.tmp\openai-service-tier-rollback-copy diff --exit-code -- <eight modified paths>
+Input: rollback worktree after ROLLBACK.sh
+Literal output: <empty>; RESTORED_DIFF_EXIT=0
+Exit status: 0
+Restored behavior/status: the rollback worktree matches all eight HEAD files; the main working tree and MODIFIED_FILE retain the changed service_tier implementation.

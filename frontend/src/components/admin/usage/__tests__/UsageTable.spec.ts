@@ -32,6 +32,8 @@ const messages: Record<string, string> = {
   'usage.serviceTierPriority': 'Fast',
   'usage.serviceTierFlex': 'Flex',
   'usage.serviceTierStandard': 'Standard',
+  'usage.latencyFirstToken': 'First token',
+  'usage.latencyDuration': 'Total',
   'usage.rate': 'Rate',
   'usage.accountMultiplier': 'Account rate',
   'usage.original': 'Original',
@@ -87,6 +89,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-latency" :row="row" />
         <slot name="cell-request_id" :row="row" />
       </div>
     </div>
@@ -418,6 +421,44 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Per-image price')
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
+  })
+})
+
+describe('admin UsageTable latency column', () => {
+  it.each([
+    { service_tier: 'priority', label: 'Fast' },
+    { service_tier: 'flex', label: 'Flex' },
+    { service_tier: null, label: 'Standard' },
+  ])('shows the request service tier above latency values for $service_tier', ({ service_tier, label }) => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: `req-latency-${service_tier ?? 'default'}`,
+          service_tier,
+          first_token_ms: 3600,
+          duration_ms: 6930,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.get('[data-testid="usage-latency-content"]').text()
+    expect(text).toContain('Service tier')
+    expect(text).toContain(label)
+    expect(text).toContain('First token')
+    expect(text).toContain('3.60s')
+    expect(text).toContain('6.93s')
+    expect(text.indexOf(label)).toBeLessThan(text.indexOf('First token'))
   })
 })
 
