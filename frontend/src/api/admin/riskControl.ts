@@ -14,6 +14,7 @@ export interface ContentModerationConfig {
   mode: ModerationMode
   base_url: string
   model: string
+  group_model_overrides: Record<string, string>
   proxy_id: number | null
   api_key_configured: boolean
   api_key_masked: string
@@ -93,6 +94,7 @@ export interface UpdateContentModerationConfig {
   mode?: ModerationMode
   base_url?: string
   model?: string
+  group_model_overrides?: Record<string, string>
   // undefined 不修改；0 清除（直连）；>0 指定代理
   proxy_id?: number
   api_key?: string

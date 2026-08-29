@@ -763,6 +763,41 @@
             <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700">
               <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div>
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.groupModels') }}</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupModelsHint', { model: configForm.model }) }}</p>
+                </div>
+                <span class="inline-flex w-fit rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+                  {{ t('admin.riskControl.groupModelOverrideCount', { count: groupModelOverrideCount }) }}
+                </span>
+              </div>
+
+              <div v-if="configurableModelGroups.length > 0" class="divide-y divide-gray-100 dark:divide-dark-700">
+                <div
+                  v-for="group in configurableModelGroups"
+                  :key="group.id"
+                  class="grid gap-3 py-3 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)] md:items-center"
+                >
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ group.name }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ group.platform }}</p>
+                  </div>
+                  <input
+                    :data-test="`group-model-${group.id}`"
+                    :value="configForm.group_model_overrides[String(group.id)] || ''"
+                    type="text"
+                    class="input"
+                    :aria-label="t('admin.riskControl.groupModelAriaLabel', { group: group.name })"
+                    :placeholder="t('admin.riskControl.groupModelPlaceholder', { model: configForm.model })"
+                    @input="setGroupModelOverride(group.id, $event)"
+                  />
+                </div>
+              </div>
+              <p v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupModelsEmpty') }}</p>
+            </div>
+
+            <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+              <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.modelFilter') }}</h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.modelFilterHint') }}</p>
                 </div>
@@ -1249,6 +1284,7 @@ const configForm = reactive({
   sample_rate: 100,
   all_groups: true,
   group_ids: [] as number[],
+  group_model_overrides: {} as Record<string, string>,
   record_non_hits: false,
   worker_count: 4,
   queue_size: 32768,
@@ -1418,6 +1454,14 @@ const groupFilterOptions = computed<SelectOption[]>(() => [
 ])
 
 const selectedGroupCount = computed(() => String(configForm.group_ids.length))
+
+const configurableModelGroups = computed(() => {
+  if (configForm.all_groups) return groups.value
+  const selected = new Set(configForm.group_ids)
+  return groups.value.filter((group) => selected.has(group.id))
+})
+
+const groupModelOverrideCount = computed(() => Object.values(buildGroupModelOverridesPayload()).length)
 
 const modelFilterModelCount = computed(() => configForm.model_filter_models.length)
 
@@ -1727,6 +1771,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.sample_rate = config.sample_rate ?? 100
   configForm.all_groups = config.all_groups
   configForm.group_ids = Array.isArray(config.group_ids) ? [...config.group_ids] : []
+  configForm.group_model_overrides = normalizeGroupModelOverrides(config.group_model_overrides)
   configForm.record_non_hits = config.record_non_hits
   configForm.worker_count = config.worker_count || 4
   configForm.queue_size = config.queue_size || 32768
@@ -1812,6 +1857,7 @@ async function saveConfig() {
       sample_rate: Number(configForm.sample_rate) || 0,
       all_groups: configForm.all_groups,
       group_ids: configForm.all_groups ? [] : [...configForm.group_ids],
+      group_model_overrides: buildGroupModelOverridesPayload(),
       record_non_hits: configForm.record_non_hits,
       clear_api_key: configForm.clear_api_key,
       worker_count: Number(configForm.worker_count) || 4,
@@ -2126,6 +2172,15 @@ function isGroupSelected(groupID: number): boolean {
   return configForm.group_ids.includes(groupID)
 }
 
+function setGroupModelOverride(groupID: number, event: Event) {
+  const model = (event.target as HTMLInputElement).value
+  if (model.trim()) {
+    configForm.group_model_overrides[String(groupID)] = model
+    return
+  }
+  delete configForm.group_model_overrides[String(groupID)]
+}
+
 function modeLabel(mode: ModerationMode): string {
   const found = modeOptions.value.find((option) => option.value === mode)
   return found?.label ?? mode
@@ -2295,6 +2350,26 @@ function buildModelFilterPayload(): ContentModerationModelFilter {
     type,
     models: normalizeModelNames(configForm.model_filter_models),
   }
+}
+
+function normalizeGroupModelOverrides(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const out: Record<string, string> = {}
+  for (const [rawGroupID, rawModel] of Object.entries(value)) {
+    const groupID = Number(rawGroupID)
+    const model = String(rawModel ?? '').trim()
+    if (!Number.isInteger(groupID) || groupID <= 0 || !model) continue
+    out[String(groupID)] = model
+  }
+  return out
+}
+
+function buildGroupModelOverridesPayload(): Record<string, string> {
+  const availableGroupIDs = new Set(configurableModelGroups.value.map((group) => String(group.id)))
+  const normalized = normalizeGroupModelOverrides(configForm.group_model_overrides)
+  return Object.fromEntries(
+    Object.entries(normalized).filter(([groupID]) => availableGroupIDs.has(groupID))
+  )
 }
 
 function riskThresholdsFromConfig(thresholds: Record<string, number> | null | undefined): Record<string, number> {

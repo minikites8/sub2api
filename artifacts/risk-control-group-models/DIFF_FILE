@@ -1,0 +1,665 @@
+diff --git a/backend/internal/handler/admin/content_moderation_handler.go b/backend/internal/handler/admin/content_moderation_handler.go
+index cafcaeec4..c27cd92ee 100644
+--- a/backend/internal/handler/admin/content_moderation_handler.go
++++ b/backend/internal/handler/admin/content_moderation_handler.go
+@@ -20,10 +20,11 @@ func NewContentModerationHandler(svc *service.ContentModerationService) *Content
+ }
+ 
+ type contentModerationConfigRequest struct {
+-	Enabled *bool   `json:"enabled"`
+-	Mode    *string `json:"mode"`
+-	BaseURL *string `json:"base_url"`
+-	Model   *string `json:"model"`
++	Enabled             *bool             `json:"enabled"`
++	Mode                *string           `json:"mode"`
++	BaseURL             *string           `json:"base_url"`
++	Model               *string           `json:"model"`
++	GroupModelOverrides *map[int64]string `json:"group_model_overrides"`
+ 	// 审计请求使用的代理服务器：null 不修改；0 清除（直连）；>0 指定代理。
+ 	ProxyID              *int64              `json:"proxy_id"`
+ 	APIKey               *string             `json:"api_key"`
+@@ -91,6 +92,7 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
+ 		Mode:                           req.Mode,
+ 		BaseURL:                        req.BaseURL,
+ 		Model:                          req.Model,
++		GroupModelOverrides:            req.GroupModelOverrides,
+ 		ProxyID:                        req.ProxyID,
+ 		APIKey:                         req.APIKey,
+ 		APIKeys:                        req.APIKeys,
+diff --git a/backend/internal/service/content_moderation.go b/backend/internal/service/content_moderation.go
+index 9934f9e76..328b83c9f 100644
+--- a/backend/internal/service/content_moderation.go
++++ b/backend/internal/service/content_moderation.go
+@@ -143,6 +143,9 @@ type ContentModerationConfig struct {
+ 	Mode    string `json:"mode"`
+ 	BaseURL string `json:"base_url"`
+ 	Model   string `json:"model"`
++	// GroupModelOverrides maps a group ID to the moderation model used for that group.
++	// Empty or missing entries fall back to Model.
++	GroupModelOverrides map[int64]string `json:"group_model_overrides"`
+ 	// ProxyID 指定审计请求使用的代理服务器（IP管理-代理服务器），nil 表示直连。
+ 	ProxyID              *int64                       `json:"proxy_id,omitempty"`
+ 	APIKey               string                       `json:"api_key,omitempty"`
+@@ -179,6 +182,7 @@ type ContentModerationConfigView struct {
+ 	Mode                           string                          `json:"mode"`
+ 	BaseURL                        string                          `json:"base_url"`
+ 	Model                          string                          `json:"model"`
++	GroupModelOverrides            map[int64]string                `json:"group_model_overrides"`
+ 	ProxyID                        *int64                          `json:"proxy_id"`
+ 	APIKeyConfigured               bool                            `json:"api_key_configured"`
+ 	APIKeyMasked                   string                          `json:"api_key_masked"`
+@@ -266,10 +270,11 @@ type ContentModerationTestAuditResult struct {
+ }
+ 
+ type UpdateContentModerationConfigInput struct {
+-	Enabled *bool   `json:"enabled"`
+-	Mode    *string `json:"mode"`
+-	BaseURL *string `json:"base_url"`
+-	Model   *string `json:"model"`
++	Enabled             *bool             `json:"enabled"`
++	Mode                *string           `json:"mode"`
++	BaseURL             *string           `json:"base_url"`
++	Model               *string           `json:"model"`
++	GroupModelOverrides *map[int64]string `json:"group_model_overrides"`
+ 	// ProxyID nil 表示不修改；<=0 表示清除代理（恢复直连）；>0 表示指定代理。
+ 	ProxyID                        *int64                        `json:"proxy_id"`
+ 	APIKey                         *string                       `json:"api_key"`
+@@ -630,6 +635,9 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
+ 	if input.Model != nil {
+ 		cfg.Model = strings.TrimSpace(*input.Model)
+ 	}
++	if input.GroupModelOverrides != nil {
++		cfg.GroupModelOverrides = normalizeContentModerationGroupModelOverrides(*input.GroupModelOverrides)
++	}
+ 	if input.ProxyID != nil {
+ 		if *input.ProxyID > 0 {
+ 			id := *input.ProxyID
+@@ -856,6 +864,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
+ 		"provider", input.Provider,
+ 		"protocol", input.Protocol,
+ 		"model", input.Model,
++		"moderation_model", cfg.modelForGroup(input.GroupID),
+ 		"enabled", cfg.Enabled,
+ 		"mode", cfg.Mode,
+ 		"all_groups", cfg.AllGroups,
+@@ -1043,7 +1052,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
+ 		return allow, nil
+ 	}
+ 
+-	return s.checkSync(ctx, input, cfg, content, hashText, nil, true), nil
++	return s.checkSync(ctx, input, cfg.forGroup(input.GroupID), content, hashText, nil, true), nil
+ }
+ 
+ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string, queueDelay *int, allowBlock bool) *ContentModerationDecision {
+@@ -1271,7 +1280,7 @@ func (s *ContentModerationService) worker(id int) {
+ 			s.asyncActive.Add(1)
+ 			defer s.asyncActive.Add(-1)
+ 			queueDelay := int(time.Since(task.enqueuedAt).Milliseconds())
+-			_ = s.checkSync(ctx, task.input, cfg, task.content, task.inputHash, &queueDelay, false)
++			_ = s.checkSync(ctx, task.input, cfg.forGroup(task.input.GroupID), task.content, task.inputHash, &queueDelay, false)
+ 			s.asyncProcessed.Add(1)
+ 		}()
+ 	}
+@@ -1681,6 +1690,13 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
+ 			}
+ 		}
+ 	}
++	if len(cfg.GroupModelOverrides) > 0 && s.groupRepo != nil {
++		for groupID := range cfg.GroupModelOverrides {
++			if _, err := s.groupRepo.GetByIDLite(ctx, groupID); err != nil {
++				return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_GROUP_MODEL", fmt.Sprintf("监控模型分组不存在: %d", groupID))
++			}
++		}
++	}
+ 	return nil
+ }
+ 
+@@ -2084,6 +2100,7 @@ func defaultContentModerationConfig() *ContentModerationConfig {
+ 		Mode:                 ContentModerationModePreBlock,
+ 		BaseURL:              defaultContentModerationBaseURL,
+ 		Model:                defaultContentModerationModel,
++		GroupModelOverrides:  map[int64]string{},
+ 		TimeoutMS:            defaultContentModerationTimeoutMS,
+ 		SampleRate:           100,
+ 		AllGroups:            true,
+@@ -2120,6 +2137,7 @@ func cloneContentModerationConfig(cfg *ContentModerationConfig) *ContentModerati
+ 	clone.ProxyID = cloneInt64Ptr(cfg.ProxyID)
+ 	clone.APIKeys = append([]string(nil), cfg.APIKeys...)
+ 	clone.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
++	clone.GroupModelOverrides = cloneContentModerationGroupModelOverrides(cfg.GroupModelOverrides)
+ 	clone.BlockedKeywords = append([]string(nil), cfg.BlockedKeywords...)
+ 	clone.Thresholds = cloneFloatMap(cfg.Thresholds)
+ 	clone.ModelFilter = ContentModerationModelFilter{
+@@ -2147,6 +2165,7 @@ func (cfg *ContentModerationConfig) normalize() {
+ 		cfg.Model = defaultContentModerationModel
+ 	}
+ 	cfg.Model = strings.TrimSpace(cfg.Model)
++	cfg.GroupModelOverrides = normalizeContentModerationGroupModelOverrides(cfg.GroupModelOverrides)
+ 	if cfg.ProxyID != nil && *cfg.ProxyID <= 0 {
+ 		cfg.ProxyID = nil
+ 	}
+@@ -2242,6 +2261,27 @@ func (cfg *ContentModerationConfig) includesModel(model string) bool {
+ 	}
+ }
+ 
++func (cfg *ContentModerationConfig) modelForGroup(groupID *int64) string {
++	if cfg == nil {
++		return ""
++	}
++	if groupID != nil {
++		if model, ok := cfg.GroupModelOverrides[*groupID]; ok && strings.TrimSpace(model) != "" {
++			return strings.TrimSpace(model)
++		}
++	}
++	return cfg.Model
++}
++
++func (cfg *ContentModerationConfig) forGroup(groupID *int64) *ContentModerationConfig {
++	if cfg == nil {
++		return nil
++	}
++	clone := cloneContentModerationConfig(cfg)
++	clone.Model = cfg.modelForGroup(groupID)
++	return clone
++}
++
+ func contentModerationLogGroupID(groupID *int64) int64 {
+ 	if groupID == nil {
+ 		return 0
+@@ -2413,6 +2453,7 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
+ 		Mode:                           cfg.Mode,
+ 		BaseURL:                        cfg.BaseURL,
+ 		Model:                          cfg.Model,
++		GroupModelOverrides:            cloneContentModerationGroupModelOverrides(cfg.GroupModelOverrides),
+ 		ProxyID:                        cloneInt64Ptr(cfg.ProxyID),
+ 		APIKeyConfigured:               len(keys) > 0,
+ 		APIKeyMasked:                   apiKeyMasked,
+@@ -2837,6 +2878,35 @@ func normalizeContentModerationModelNames(models []string) []string {
+ 	return out
+ }
+ 
++func normalizeContentModerationGroupModelOverrides(overrides map[int64]string) map[int64]string {
++	if len(overrides) == 0 {
++		return map[int64]string{}
++	}
++	out := make(map[int64]string, len(overrides))
++	for groupID, rawModel := range overrides {
++		if groupID <= 0 {
++			continue
++		}
++		model := trimRunes(strings.TrimSpace(rawModel), maxContentModerationModelFilterRunes)
++		if model == "" {
++			continue
++		}
++		out[groupID] = model
++	}
++	return out
++}
++
++func cloneContentModerationGroupModelOverrides(overrides map[int64]string) map[int64]string {
++	if len(overrides) == 0 {
++		return map[int64]string{}
++	}
++	out := make(map[int64]string, len(overrides))
++	for groupID, model := range overrides {
++		out[groupID] = model
++	}
++	return out
++}
++
+ func contentModerationModelListContains(models []string, model string) bool {
+ 	model = strings.ToLower(strings.TrimSpace(model))
+ 	if model == "" {
+diff --git a/backend/internal/service/content_moderation_test.go b/backend/internal/service/content_moderation_test.go
+index 1cacc6747..8f1fdcada 100644
+--- a/backend/internal/service/content_moderation_test.go
++++ b/backend/internal/service/content_moderation_test.go
+@@ -768,6 +768,115 @@ func TestContentModerationCheck_ModelFilterUsesRequestedModelNotBodyModel(t *tes
+ 	require.Equal(t, "gpt-5.5", logs[0].Model)
+ }
+ 
++func TestContentModerationCheck_UsesGroupModerationModelOverrideAndGlobalFallback(t *testing.T) {
++	receivedModels := make([]string, 0, 2)
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		var payload moderationAPIRequest
++		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
++			http.Error(w, err.Error(), http.StatusBadRequest)
++			return
++		}
++		receivedModels = append(receivedModels, payload.Model)
++		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{
++			CategoryScores: map[string]float64{"sexual": 0.1},
++		}}})
++	}))
++	defer server.Close()
++
++	cfg := defaultContentModerationConfig()
++	cfg.Enabled = true
++	cfg.Mode = ContentModerationModePreBlock
++	cfg.BaseURL = server.URL
++	cfg.Model = "moderation-global"
++	cfg.GroupModelOverrides = map[int64]string{42: "moderation-group-42"}
++	cfg.APIKeys = []string{"sk-test"}
++	rawCfg, err := json.Marshal(cfg)
++	require.NoError(t, err)
++
++	svc := NewContentModerationService(
++		&contentModerationTestSettingRepo{values: map[string]string{
++			SettingKeyRiskControlEnabled:      "true",
++			SettingKeyContentModerationConfig: string(rawCfg),
++		}},
++		&contentModerationTestRepo{},
++		&contentModerationTestHashCache{},
++		nil,
++		nil,
++		nil,
++		nil,
++		nil,
++	)
++
++	for _, groupID := range []int64{42, 43} {
++		decision, checkErr := svc.Check(context.Background(), ContentModerationCheckInput{
++			GroupID:  &groupID,
++			Model:    "client-model",
++			Protocol: ContentModerationProtocolOpenAIChat,
++			Body:     []byte(`{"messages":[{"role":"user","content":"clean prompt"}]}`),
++		})
++		require.NoError(t, checkErr)
++		require.True(t, decision.Allowed)
++	}
++
++	require.Equal(t, []string{"moderation-group-42", "moderation-global"}, receivedModels)
++}
++
++func TestContentModerationCheck_AsyncUsesGroupModerationModelOverride(t *testing.T) {
++	receivedModel := make(chan string, 1)
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		var payload moderationAPIRequest
++		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
++			http.Error(w, err.Error(), http.StatusBadRequest)
++			return
++		}
++		receivedModel <- payload.Model
++		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{
++			CategoryScores: map[string]float64{"sexual": 0.1},
++		}}})
++	}))
++	defer server.Close()
++
++	cfg := defaultContentModerationConfig()
++	cfg.Enabled = true
++	cfg.Mode = ContentModerationModeObserve
++	cfg.BaseURL = server.URL
++	cfg.Model = "moderation-global"
++	cfg.GroupModelOverrides = map[int64]string{42: "moderation-group-42"}
++	cfg.APIKeys = []string{"sk-test"}
++	rawCfg, err := json.Marshal(cfg)
++	require.NoError(t, err)
++
++	svc := NewContentModerationService(
++		&contentModerationTestSettingRepo{values: map[string]string{
++			SettingKeyRiskControlEnabled:      "true",
++			SettingKeyContentModerationConfig: string(rawCfg),
++		}},
++		&contentModerationTestRepo{},
++		&contentModerationTestHashCache{},
++		nil,
++		nil,
++		nil,
++		nil,
++		nil,
++	)
++	groupID := int64(42)
++	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
++		GroupID:  &groupID,
++		Model:    "client-model",
++		Protocol: ContentModerationProtocolOpenAIChat,
++		Body:     []byte(`{"messages":[{"role":"user","content":"clean prompt"}]}`),
++	})
++	require.NoError(t, err)
++	require.True(t, decision.Allowed)
++
++	select {
++	case model := <-receivedModel:
++		require.Equal(t, "moderation-group-42", model)
++	case <-time.After(2 * time.Second):
++		t.Fatal("timed out waiting for asynchronous moderation request")
++	}
++}
++
+ func defaultContentModerationModelFilterTestConfig() *ContentModerationConfig {
+ 	cfg := defaultContentModerationConfig()
+ 	cfg.Enabled = true
+@@ -883,6 +992,37 @@ func TestContentModerationUpdateConfig_SavesCustomThresholds(t *testing.T) {
+ 	require.NotContains(t, saved.Thresholds, "unknown")
+ }
+ 
++func TestContentModerationUpdateConfig_SavesNormalizedGroupModelOverrides(t *testing.T) {
++	cfg := defaultContentModerationConfig()
++	rawCfg, err := json.Marshal(cfg)
++	require.NoError(t, err)
++
++	repo := &contentModerationTestSettingRepo{values: map[string]string{
++		SettingKeyContentModerationConfig: string(rawCfg),
++	}}
++	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil, nil)
++	overrides := map[int64]string{
++		42: " moderation-group-42 ",
++		43: "",
++		0:  "ignored",
++	}
++
++	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
++		GroupModelOverrides: &overrides,
++	})
++
++	require.NoError(t, err)
++	require.Equal(t, map[int64]string{42: "moderation-group-42"}, view.GroupModelOverrides)
++
++	var saved ContentModerationConfig
++	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyContentModerationConfig]), &saved))
++	require.Equal(t, map[int64]string{42: "moderation-group-42"}, saved.GroupModelOverrides)
++	group42 := int64(42)
++	group43 := int64(43)
++	require.Equal(t, "moderation-group-42", saved.modelForGroup(&group42))
++	require.Equal(t, defaultContentModerationModel, saved.modelForGroup(&group43))
++}
++
+ func TestExtractContentModerationInput_AnthropicImageSourceOnlyParticipatesInMemory(t *testing.T) {
+ 	body := []byte(`{
+ 		"messages": [
+diff --git a/frontend/src/api/admin/riskControl.ts b/frontend/src/api/admin/riskControl.ts
+index 60f2af0fd..db4dfad29 100644
+--- a/frontend/src/api/admin/riskControl.ts
++++ b/frontend/src/api/admin/riskControl.ts
+@@ -14,6 +14,7 @@ export interface ContentModerationConfig {
+   mode: ModerationMode
+   base_url: string
+   model: string
++  group_model_overrides: Record<string, string>
+   proxy_id: number | null
+   api_key_configured: boolean
+   api_key_masked: string
+@@ -93,6 +94,7 @@ export interface UpdateContentModerationConfig {
+   mode?: ModerationMode
+   base_url?: string
+   model?: string
++  group_model_overrides?: Record<string, string>
+   // undefined 不修改；0 清除（直连）；>0 指定代理
+   proxy_id?: number
+   api_key?: string
+diff --git a/frontend/src/i18n/locales/en/admin/channels.ts b/frontend/src/i18n/locales/en/admin/channels.ts
+index 288f9d20d..e96e7304f 100644
+--- a/frontend/src/i18n/locales/en/admin/channels.ts
++++ b/frontend/src/i18n/locales/en/admin/channels.ts
+@@ -361,6 +361,12 @@ export default {
+       selectedGroups: 'Selected Groups',
+       searchGroups: 'Search group name or platform',
+       noGroups: 'No groups available',
++      groupModels: 'Group moderation models',
++      groupModelsHint: 'Choose a moderation model for each audited group. Empty values use the global model {model}.',
++      groupModelAriaLabel: 'Moderation model for {group}',
++      groupModelPlaceholder: 'Use global model: {model}',
++      groupModelOverrideCount: '{count} group overrides',
++      groupModelsEmpty: 'Select audit groups to configure their moderation models.',
+       modelFilter: 'Model scope',
+       modelFilterHint: 'Moderate by the client-requested model name; channel model mappings do not change this match.',
+       modelFilterAll: 'All models',
+diff --git a/frontend/src/i18n/locales/zh/admin/channels.ts b/frontend/src/i18n/locales/zh/admin/channels.ts
+index eba956db9..01954534e 100644
+--- a/frontend/src/i18n/locales/zh/admin/channels.ts
++++ b/frontend/src/i18n/locales/zh/admin/channels.ts
+@@ -361,6 +361,12 @@ export default {
+       selectedGroups: '指定分组',
+       searchGroups: '搜索分组名称或平台',
+       noGroups: '暂无可用分组',
++      groupModels: '分组监控模型',
++      groupModelsHint: '为每个审计分组指定监控模型，留空时使用全局模型 {model}。',
++      groupModelAriaLabel: '{group} 的监控模型',
++      groupModelPlaceholder: '使用全局模型：{model}',
++      groupModelOverrideCount: '已覆盖 {count} 个分组',
++      groupModelsEmpty: '选择审计分组后即可配置对应的监控模型。',
+       modelFilter: '模型范围',
+       modelFilterHint: '按客户端请求的模型名决定是否执行内容审计，模型映射后仍以请求模型判断。',
+       modelFilterAll: '所有模型',
+diff --git a/frontend/src/views/admin/RiskControlView.vue b/frontend/src/views/admin/RiskControlView.vue
+index e928724aa..6c5f1c760 100644
+--- a/frontend/src/views/admin/RiskControlView.vue
++++ b/frontend/src/views/admin/RiskControlView.vue
+@@ -760,6 +760,41 @@
+               </div>
+             </div>
+ 
++            <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700">
++              <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
++                <div>
++                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.groupModels') }}</h3>
++                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupModelsHint', { model: configForm.model }) }}</p>
++                </div>
++                <span class="inline-flex w-fit rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
++                  {{ t('admin.riskControl.groupModelOverrideCount', { count: groupModelOverrideCount }) }}
++                </span>
++              </div>
++
++              <div v-if="configurableModelGroups.length > 0" class="divide-y divide-gray-100 dark:divide-dark-700">
++                <div
++                  v-for="group in configurableModelGroups"
++                  :key="group.id"
++                  class="grid gap-3 py-3 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)] md:items-center"
++                >
++                  <div class="min-w-0">
++                    <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ group.name }}</p>
++                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ group.platform }}</p>
++                  </div>
++                  <input
++                    :data-test="`group-model-${group.id}`"
++                    :value="configForm.group_model_overrides[String(group.id)] || ''"
++                    type="text"
++                    class="input"
++                    :aria-label="t('admin.riskControl.groupModelAriaLabel', { group: group.name })"
++                    :placeholder="t('admin.riskControl.groupModelPlaceholder', { model: configForm.model })"
++                    @input="setGroupModelOverride(group.id, $event)"
++                  />
++                </div>
++              </div>
++              <p v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupModelsEmpty') }}</p>
++            </div>
++
+             <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+               <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                 <div>
+@@ -1249,6 +1284,7 @@ const configForm = reactive({
+   sample_rate: 100,
+   all_groups: true,
+   group_ids: [] as number[],
++  group_model_overrides: {} as Record<string, string>,
+   record_non_hits: false,
+   worker_count: 4,
+   queue_size: 32768,
+@@ -1419,6 +1455,14 @@ const groupFilterOptions = computed<SelectOption[]>(() => [
+ 
+ const selectedGroupCount = computed(() => String(configForm.group_ids.length))
+ 
++const configurableModelGroups = computed(() => {
++  if (configForm.all_groups) return groups.value
++  const selected = new Set(configForm.group_ids)
++  return groups.value.filter((group) => selected.has(group.id))
++})
++
++const groupModelOverrideCount = computed(() => Object.values(buildGroupModelOverridesPayload()).length)
++
+ const modelFilterModelCount = computed(() => configForm.model_filter_models.length)
+ 
+ const modelFilterSummary = computed(() => {
+@@ -1727,6 +1771,7 @@ function applyConfig(config: ContentModerationConfig) {
+   configForm.sample_rate = config.sample_rate ?? 100
+   configForm.all_groups = config.all_groups
+   configForm.group_ids = Array.isArray(config.group_ids) ? [...config.group_ids] : []
++  configForm.group_model_overrides = normalizeGroupModelOverrides(config.group_model_overrides)
+   configForm.record_non_hits = config.record_non_hits
+   configForm.worker_count = config.worker_count || 4
+   configForm.queue_size = config.queue_size || 32768
+@@ -1812,6 +1857,7 @@ async function saveConfig() {
+       sample_rate: Number(configForm.sample_rate) || 0,
+       all_groups: configForm.all_groups,
+       group_ids: configForm.all_groups ? [] : [...configForm.group_ids],
++      group_model_overrides: buildGroupModelOverridesPayload(),
+       record_non_hits: configForm.record_non_hits,
+       clear_api_key: configForm.clear_api_key,
+       worker_count: Number(configForm.worker_count) || 4,
+@@ -2126,6 +2172,15 @@ function isGroupSelected(groupID: number): boolean {
+   return configForm.group_ids.includes(groupID)
+ }
+ 
++function setGroupModelOverride(groupID: number, event: Event) {
++  const model = (event.target as HTMLInputElement).value
++  if (model.trim()) {
++    configForm.group_model_overrides[String(groupID)] = model
++    return
++  }
++  delete configForm.group_model_overrides[String(groupID)]
++}
++
+ function modeLabel(mode: ModerationMode): string {
+   const found = modeOptions.value.find((option) => option.value === mode)
+   return found?.label ?? mode
+@@ -2297,6 +2352,26 @@ function buildModelFilterPayload(): ContentModerationModelFilter {
+   }
+ }
+ 
++function normalizeGroupModelOverrides(value: unknown): Record<string, string> {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
++  const out: Record<string, string> = {}
++  for (const [rawGroupID, rawModel] of Object.entries(value)) {
++    const groupID = Number(rawGroupID)
++    const model = String(rawModel ?? '').trim()
++    if (!Number.isInteger(groupID) || groupID <= 0 || !model) continue
++    out[String(groupID)] = model
++  }
++  return out
++}
++
++function buildGroupModelOverridesPayload(): Record<string, string> {
++  const availableGroupIDs = new Set(configurableModelGroups.value.map((group) => String(group.id)))
++  const normalized = normalizeGroupModelOverrides(configForm.group_model_overrides)
++  return Object.fromEntries(
++    Object.entries(normalized).filter(([groupID]) => availableGroupIDs.has(groupID))
++  )
++}
++
+ function riskThresholdsFromConfig(thresholds: Record<string, number> | null | undefined): Record<string, number> {
+   const out: Record<string, number> = { ...riskThresholdDefaults }
+   for (const category of riskThresholdCategories) {
+diff --git a/frontend/src/views/admin/__tests__/RiskControlView.spec.ts b/frontend/src/views/admin/__tests__/RiskControlView.spec.ts
+index b8d980ca9..895e9f525 100644
+--- a/frontend/src/views/admin/__tests__/RiskControlView.spec.ts
++++ b/frontend/src/views/admin/__tests__/RiskControlView.spec.ts
+@@ -78,6 +78,7 @@ const baseConfig = (): ContentModerationConfig => ({
+   mode: 'pre_block',
+   base_url: 'https://api.openai.com',
+   model: 'omni-moderation-latest',
++  group_model_overrides: {},
+   proxy_id: null,
+   api_key_configured: false,
+   api_key_masked: '',
+@@ -111,6 +112,7 @@ const baseConfig = (): ContentModerationConfig => ({
+     type: 'all',
+     models: [],
+   },
++  cyber_policy_exclude_from_ban_count: false,
+ })
+ 
+ const runtimeStatus = () => ({
+@@ -251,6 +253,92 @@ describe('admin RiskControlView', () => {
+     expect(showError).not.toHaveBeenCalled()
+   })
+ 
++  it('renders and saves moderation model overrides for all groups', async () => {
++    getConfig.mockResolvedValue({
++      ...baseConfig(),
++      group_model_overrides: { '2': 'moderation-saved' },
++    })
++    getGroups.mockResolvedValue([
++      { id: 1, name: 'OpenAI group', platform: 'openai' },
++      { id: 2, name: 'Gemini group', platform: 'gemini' },
++    ])
++    const wrapper = mount(RiskControlView, {
++      global: {
++        stubs: {
++          AppLayout: AppLayoutStub,
++          BaseDialog: BaseDialogStub,
++          Icon: true,
++          Select: true,
++          Toggle: true,
++          Pagination: true,
++          ModelWhitelistSelector: ModelWhitelistSelectorStub,
++          ProxySelector: true,
++        },
++      },
++    })
++
++    await flushPromises()
++    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
++    await findButtonByText(wrapper, 'admin.riskControl.tabs.scope').trigger('click')
++
++    expect(wrapper.get('[data-test="group-model-2"]').element).toHaveProperty('value', 'moderation-saved')
++    await wrapper.get('[data-test="group-model-1"]').setValue(' moderation-openai ')
++    await wrapper.get('[data-test="group-model-2"]').setValue('')
++    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
++    await flushPromises()
++
++    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
++      group_model_overrides: {
++        '1': 'moderation-openai',
++      },
++    }))
++  })
++
++  it('shows and saves model overrides for selected audit groups', async () => {
++    getConfig.mockResolvedValue({
++      ...baseConfig(),
++      all_groups: false,
++      group_ids: [2],
++      group_model_overrides: {
++        '1': 'stale-model',
++        '2': 'moderation-gemini',
++      },
++    })
++    getGroups.mockResolvedValue([
++      { id: 1, name: 'OpenAI group', platform: 'openai' },
++      { id: 2, name: 'Gemini group', platform: 'gemini' },
++    ])
++    const wrapper = mount(RiskControlView, {
++      global: {
++        stubs: {
++          AppLayout: AppLayoutStub,
++          BaseDialog: BaseDialogStub,
++          Icon: true,
++          Select: true,
++          Toggle: true,
++          Pagination: true,
++          ModelWhitelistSelector: ModelWhitelistSelectorStub,
++          ProxySelector: true,
++        },
++      },
++    })
++
++    await flushPromises()
++    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
++    await findButtonByText(wrapper, 'admin.riskControl.tabs.scope').trigger('click')
++
++    expect(wrapper.find('[data-test="group-model-1"]').exists()).toBe(false)
++    expect(wrapper.get('[data-test="group-model-2"]').element).toHaveProperty('value', 'moderation-gemini')
++    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
++    await flushPromises()
++
++    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
++      group_model_overrides: {
++        '2': 'moderation-gemini',
++      },
++    }))
++  })
++
+   it('submits edited risk control thresholds when saving moderation config', async () => {
+     const wrapper = mount(RiskControlView, {
+       global: {

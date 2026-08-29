@@ -768,6 +768,115 @@ func TestContentModerationCheck_ModelFilterUsesRequestedModelNotBodyModel(t *tes
 	require.Equal(t, "gpt-5.5", logs[0].Model)
 }
 
+func TestContentModerationCheck_UsesGroupModerationModelOverrideAndGlobalFallback(t *testing.T) {
+	receivedModels := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload moderationAPIRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		receivedModels = append(receivedModels, payload.Model)
+		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{
+			CategoryScores: map[string]float64{"sexual": 0.1},
+		}}})
+	}))
+	defer server.Close()
+
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModePreBlock
+	cfg.BaseURL = server.URL
+	cfg.Model = "moderation-global"
+	cfg.GroupModelOverrides = map[int64]string{42: "moderation-group-42"}
+	cfg.APIKeys = []string{"sk-test"}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		&contentModerationTestRepo{},
+		&contentModerationTestHashCache{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	for _, groupID := range []int64{42, 43} {
+		decision, checkErr := svc.Check(context.Background(), ContentModerationCheckInput{
+			GroupID:  &groupID,
+			Model:    "client-model",
+			Protocol: ContentModerationProtocolOpenAIChat,
+			Body:     []byte(`{"messages":[{"role":"user","content":"clean prompt"}]}`),
+		})
+		require.NoError(t, checkErr)
+		require.True(t, decision.Allowed)
+	}
+
+	require.Equal(t, []string{"moderation-group-42", "moderation-global"}, receivedModels)
+}
+
+func TestContentModerationCheck_AsyncUsesGroupModerationModelOverride(t *testing.T) {
+	receivedModel := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload moderationAPIRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		receivedModel <- payload.Model
+		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{
+			CategoryScores: map[string]float64{"sexual": 0.1},
+		}}})
+	}))
+	defer server.Close()
+
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModeObserve
+	cfg.BaseURL = server.URL
+	cfg.Model = "moderation-global"
+	cfg.GroupModelOverrides = map[int64]string{42: "moderation-group-42"}
+	cfg.APIKeys = []string{"sk-test"}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		&contentModerationTestRepo{},
+		&contentModerationTestHashCache{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	groupID := int64(42)
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		GroupID:  &groupID,
+		Model:    "client-model",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"clean prompt"}]}`),
+	})
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+
+	select {
+	case model := <-receivedModel:
+		require.Equal(t, "moderation-group-42", model)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for asynchronous moderation request")
+	}
+}
+
 func defaultContentModerationModelFilterTestConfig() *ContentModerationConfig {
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
@@ -881,6 +990,37 @@ func TestContentModerationUpdateConfig_SavesCustomThresholds(t *testing.T) {
 	require.Equal(t, 0.72, saved.Thresholds["sexual"])
 	require.Equal(t, 1.0, saved.Thresholds["harassment"])
 	require.NotContains(t, saved.Thresholds, "unknown")
+}
+
+func TestContentModerationUpdateConfig_SavesNormalizedGroupModelOverrides(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	repo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil, nil)
+	overrides := map[int64]string{
+		42: " moderation-group-42 ",
+		43: "",
+		0:  "ignored",
+	}
+
+	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
+		GroupModelOverrides: &overrides,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, map[int64]string{42: "moderation-group-42"}, view.GroupModelOverrides)
+
+	var saved ContentModerationConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyContentModerationConfig]), &saved))
+	require.Equal(t, map[int64]string{42: "moderation-group-42"}, saved.GroupModelOverrides)
+	group42 := int64(42)
+	group43 := int64(43)
+	require.Equal(t, "moderation-group-42", saved.modelForGroup(&group42))
+	require.Equal(t, defaultContentModerationModel, saved.modelForGroup(&group43))
 }
 
 func TestExtractContentModerationInput_AnthropicImageSourceOnlyParticipatesInMemory(t *testing.T) {

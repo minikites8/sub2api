@@ -78,6 +78,7 @@ const baseConfig = (): ContentModerationConfig => ({
   mode: 'pre_block',
   base_url: 'https://api.openai.com',
   model: 'omni-moderation-latest',
+  group_model_overrides: {},
   proxy_id: null,
   api_key_configured: false,
   api_key_masked: '',
@@ -111,6 +112,7 @@ const baseConfig = (): ContentModerationConfig => ({
     type: 'all',
     models: [],
   },
+  cyber_policy_exclude_from_ban_count: false,
 })
 
 const runtimeStatus = () => ({
@@ -249,6 +251,92 @@ describe('admin RiskControlView', () => {
       },
     }))
     expect(showError).not.toHaveBeenCalled()
+  })
+
+  it('renders and saves moderation model overrides for all groups', async () => {
+    getConfig.mockResolvedValue({
+      ...baseConfig(),
+      group_model_overrides: { '2': 'moderation-saved' },
+    })
+    getGroups.mockResolvedValue([
+      { id: 1, name: 'OpenAI group', platform: 'openai' },
+      { id: 2, name: 'Gemini group', platform: 'gemini' },
+    ])
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    await findButtonByText(wrapper, 'admin.riskControl.tabs.scope').trigger('click')
+
+    expect(wrapper.get('[data-test="group-model-2"]').element).toHaveProperty('value', 'moderation-saved')
+    await wrapper.get('[data-test="group-model-1"]').setValue(' moderation-openai ')
+    await wrapper.get('[data-test="group-model-2"]').setValue('')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      group_model_overrides: {
+        '1': 'moderation-openai',
+      },
+    }))
+  })
+
+  it('shows and saves model overrides for selected audit groups', async () => {
+    getConfig.mockResolvedValue({
+      ...baseConfig(),
+      all_groups: false,
+      group_ids: [2],
+      group_model_overrides: {
+        '1': 'stale-model',
+        '2': 'moderation-gemini',
+      },
+    })
+    getGroups.mockResolvedValue([
+      { id: 1, name: 'OpenAI group', platform: 'openai' },
+      { id: 2, name: 'Gemini group', platform: 'gemini' },
+    ])
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    await findButtonByText(wrapper, 'admin.riskControl.tabs.scope').trigger('click')
+
+    expect(wrapper.find('[data-test="group-model-1"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="group-model-2"]').element).toHaveProperty('value', 'moderation-gemini')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      group_model_overrides: {
+        '2': 'moderation-gemini',
+      },
+    }))
   })
 
   it('submits edited risk control thresholds when saving moderation config', async () => {

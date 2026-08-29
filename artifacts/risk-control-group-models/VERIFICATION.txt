@@ -1,0 +1,87 @@
+BRANCH: main
+CHANGED FIELD: ContentModerationConfig.GroupModelOverrides / group_model_overrides
+JSON FIELD: group_model_overrides
+UI RESULT: Risk Control settings show a moderation-model input for each audited group; blank values use the global model.
+RUNTIME RULE: A request group override selects the moderation API model in synchronous pre-block and asynchronous observe flows; missing overrides use the global model.
+
+ARTIFACTS
+MODIFIED_FILE: D:\Programs\sub2api\artifacts\risk-control-group-models\MODIFIED_FILE
+DIFF_FILE: D:\Programs\sub2api\artifacts\risk-control-group-models\DIFF_FILE
+VERIFICATION.txt: D:\Programs\sub2api\artifacts\risk-control-group-models\VERIFICATION.txt
+ROLLBACK.sh: D:\Programs\sub2api\artifacts\risk-control-group-models\ROLLBACK.sh
+
+HASHES
+BASE HEAD commit: 54fb5afe36323fc75b18e5a8a90553d20afefca2
+ORIGINAL content_moderation.go SHA256: 9934F9E7661F333EF0C380F22C3E5CDFB3B87F97
+MODIFIED_FILE SHA256: F93D6FB90B16AC43661C0EF136CD7054F58E67F2461D8331C15A934132146C60
+DIFF_FILE SHA256: CE5683A547DF209D0E8F5BE3555AAFF36ABE47B24C1ACD663F70EB4FEB5386D5
+
+BASELINE
+Command: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.tmp\go-tmp'; go test ./internal/service -run '^TestContentModerationCheck_ModelFilterAllAuditsEveryModel$' -count=1
+Working directory: D:\Programs\sub2api\.tmp\risk-control-group-models-baseline\backend
+Input: HEAD source before group model overrides
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  4.026s
+Exit status: 0
+
+MODIFIED
+Command: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.tmp\go-tmp'; go test ./internal/service -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: group model override configuration, synchronous fallback, and asynchronous worker behavior
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  115.118s
+Exit status: 0
+
+Command: go test ./internal/handler/admin -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: admin configuration request mapping
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/handler/admin  2.608s
+Exit status: 0
+
+Command: pnpm exec vitest run src/views/admin/__tests__/RiskControlView.spec.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: group model override rendering and save payload
+Literal result: Test Files 1 passed (1); Tests 7 passed (7); Duration 5.37s
+Exit status: 0
+
+Command: pnpm typecheck
+Working directory: D:\Programs\sub2api\frontend
+Input: modified frontend
+Literal output: > sub2api-frontend@1.0.0 typecheck; > vue-tsc --noEmit
+Exit status: 0
+
+Command: pnpm exec eslint src/api/admin/riskControl.ts src/views/admin/RiskControlView.vue src/views/admin/__tests__/RiskControlView.spec.ts src/i18n/locales/en/admin/channels.ts src/i18n/locales/zh/admin/channels.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: modified frontend files
+Literal output: <empty>
+Exit status: 0
+
+ROLLBACK
+Command: bash D:/Programs/sub2api/artifacts/risk-control-group-models/ROLLBACK.sh D:/Programs/sub2api/.tmp/risk-control-group-models-rollback-test-2
+Input: independent copy of all eight modified files at the modified state
+Literal output:
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/handler/admin/content_moderation_handler.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/service/content_moderation.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file backend/internal/service/content_moderation_test.go
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file frontend/src/api/admin/riskControl.ts
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file frontend/src/i18n/locales/en/admin/channels.ts
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file frontend/src/i18n/locales/zh/admin/channels.ts
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file frontend/src/views/admin/RiskControlView.vue
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file frontend/src/views/admin/__tests__/RiskControlView.spec.ts
+ROLLBACK_OK root=D:/Programs/sub2api/.tmp/risk-control-group-models-rollback-test-2
+Exit status: 0
+
+Command: compare SHA256 for every rolled-back file with git show HEAD:<path>
+Literal output: ROLLBACK_MISMATCH_COUNT=0
+Exit status: 0
+Restored behavior/status: copied Go config has no GroupModelOverrides field, copied Vue view has no group-model controls, and all eight copied files match their original HEAD blobs.
+
+NOTES
+Full frontend lint currently reports an existing no-useless-catch error at frontend/src/api/admin/accounts.ts:714; the changed frontend files lint cleanly.
+Browser verification reached the local login page at http://127.0.0.1:3000/admin/risk-control; authenticated settings access was unavailable, so behavior was verified through the seven component tests and typecheck.
