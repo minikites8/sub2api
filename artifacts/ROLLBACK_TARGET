@@ -161,7 +161,7 @@
                               v-for="sample in monitorSquares(model)"
                               :key="sample.key"
                               class="h-[5px] w-[5px] flex-none rounded-[1px]"
-                              :class="statusSquareClass(sample.status)"
+                              :class="statusSquareClass(sample.status, sample.successRate)"
                               :title="sample.title"
                             />
                           </div>
@@ -247,7 +247,7 @@
                         v-for="sample in monitorSquares(model)"
                         :key="sample.key"
                         class="h-[5px] w-[5px] flex-none rounded-[1px]"
-                        :class="statusSquareClass(sample.status)"
+                        :class="statusSquareClass(sample.status, sample.successRate)"
                         :title="sample.title"
                       />
                     </span>
@@ -318,6 +318,7 @@ import {
   type MarketplaceWindow,
   type TokenPriceField,
 } from '@/utils/modelMarketplace'
+import { scoreToBand } from '@/features/channel-monitor-v2/monitorFormat'
 
 const props = defineProps<{ previewSnapshot?: PublicTransitSnapshot }>()
 const { t } = useI18n()
@@ -340,6 +341,7 @@ interface MonitorSquare {
   key: string
   status: MarketplaceStatus
   title: string
+  successRate?: number
 }
 
 const models = computed(() => snapshot.value ? buildMarketplaceModels(snapshot.value) : [])
@@ -429,11 +431,15 @@ function statusTextClass(status: MarketplaceStatus): string {
   return 'text-dark-400'
 }
 
-function statusSquareClass(status: MarketplaceStatus): string {
-  if (status === 'operational') return 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.45)]'
-  if (status === 'degraded') return 'bg-amber-400'
-  if (status === 'unavailable') return 'bg-red-400'
-  return 'bg-dark-700'
+function statusSquareClass(status: MarketplaceStatus, successRate?: number): string {
+  if (status === 'unmonitored') return 'health-unknown'
+  if (status === 'unavailable') return 'health-score0'
+  if (successRate != null && Number.isFinite(successRate)) {
+    const score = Math.max(0, Math.min(100, successRate))
+    const band = scoreToBand(status === 'degraded' ? Math.min(score, 60) : score)
+    return `health-${band}`
+  }
+  return status === 'degraded' ? 'health-score5' : 'health-score10'
 }
 
 function formatNumber(value: number, maximumFractionDigits = 3): string {
@@ -516,6 +522,7 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
   const actual = monitoring.samples.slice(-MONITOR_SAMPLE_COUNT).map((sample, index) => ({
     key: `actual-${sample.checkedAt}-${index}`,
     status: sample.status,
+    successRate: sample.successRate,
     title: t('modelMarketplace.checkTooltip', {
       time: formatDateTime(sample.checkedAt),
       status: statusLabel(sample.status),
@@ -557,6 +564,7 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
     return {
       key: `estimate-${index}`,
       status,
+      successRate: availability,
       title: t('modelMarketplace.estimateTooltip', {
         window: monitorWindow.value,
         status: statusLabel(status),
@@ -681,7 +689,7 @@ const ModelPricingDetail = defineComponent({
           'aria-label': `${t('modelMarketplace.recentChecks')}: ${statusLabel(monitoring.status)} ${availability}`,
         }, monitorSquaresForMonitoring(monitoring).map((sample) => h('span', {
           key: sample.key,
-          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample.status)}`,
+          class: `h-[5px] w-[5px] flex-none rounded-[1px] ${statusSquareClass(sample.status, sample.successRate)}`,
           title: sample.title,
         }))),
       ])]
@@ -781,6 +789,20 @@ onBeforeUnmount(() => abortController?.abort())
 .market-row:hover {
   box-shadow: inset 2px 0 0 rgb(52 211 153);
 }
+
+/* Match channel-monitor-v2's 11-stop passive health palette. */
+.model-marketplace :deep(.health-score10) { background: #16a34a; }
+.model-marketplace :deep(.health-score9)  { background: #22c55e; }
+.model-marketplace :deep(.health-score8)  { background: #4ade80; }
+.model-marketplace :deep(.health-score7)  { background: #a3e635; }
+.model-marketplace :deep(.health-score6)  { background: #facc15; }
+.model-marketplace :deep(.health-score5)  { background: #fbbf24; }
+.model-marketplace :deep(.health-score4)  { background: #f59e0b; }
+.model-marketplace :deep(.health-score3)  { background: #f97316; }
+.model-marketplace :deep(.health-score2)  { background: #fb7185; }
+.model-marketplace :deep(.health-score1)  { background: #f87171; }
+.model-marketplace :deep(.health-score0)  { background: rgb(239, 67, 67); }
+.model-marketplace :deep(.health-unknown)  { background: #9ca3af; }
 
 @media (max-width: 639px) {
   .market-select {

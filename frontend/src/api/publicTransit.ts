@@ -138,6 +138,8 @@ export interface PublicTransitMonitor {
   latest_duration_p50_ms?: number
   data_through?: string
   coverage_complete: boolean
+  metrics?: PublicTransitMonitorMetric
+  health?: PublicTransitMonitorHealth
   buckets: PublicTransitMonitorTimeline[]
   windows?: Partial<Record<'90m' | '12h' | '1d' | '15d', PublicTransitMonitorWindow>>
 }
@@ -150,6 +152,8 @@ export interface PublicTransitMonitorWindow {
   latest_duration_p50_ms?: number
   data_through?: string
   coverage_complete: boolean
+  metrics?: PublicTransitMonitorMetric
+  health?: PublicTransitMonitorHealth
   buckets: PublicTransitMonitorTimeline[]
 }
 
@@ -159,6 +163,37 @@ export interface PublicTransitMonitorTimeline {
   success_rate: number
   ttft_p50_ms?: number
   duration_p50_ms?: number
+  metrics?: PublicTransitMonitorMetric
+  health?: PublicTransitMonitorHealth
+}
+
+export interface PublicTransitMonitorMetric {
+  has_requests: boolean
+  success_rate: number
+  error_rate: number
+  cache_rate: number
+  ttft: PublicTransitMonitorLatency
+  duration: PublicTransitMonitorLatency
+}
+
+export interface PublicTransitMonitorLatency {
+  p50_ms?: number | null
+  p90_ms?: number | null
+  p95_ms?: number | null
+  avg_ms?: number | null
+}
+
+export interface PublicTransitMonitorHealth {
+  overall: string
+  error_rate: string
+  ttft: string
+  cache: string
+  score?: number | null
+  error_rate_score?: number | null
+  success_rate_score?: number | null
+  ttft_score?: number | null
+  cache_score?: number | null
+  minimum_sample: number
 }
 
 export interface PublicTransitCacheDisclosure {

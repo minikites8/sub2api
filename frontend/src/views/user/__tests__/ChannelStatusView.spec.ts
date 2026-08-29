@@ -38,9 +38,24 @@ describe('ChannelStatusView model marketplace', () => {
     const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
     monitor.windows = {
       '90m': {
-        status: 'unmonitored',
+        status: 'operational',
         availability: 0,
         coverage_complete: true,
+        metrics: {
+          has_requests: false,
+          success_rate: 0,
+          error_rate: 0,
+          cache_rate: 0,
+          ttft: {},
+          duration: {},
+        },
+        health: {
+          overall: 'unknown',
+          error_rate: 'unknown',
+          ttft: 'unknown',
+          cache: 'unknown',
+          minimum_sample: 50,
+        },
         buckets: [],
       },
     }
@@ -62,10 +77,27 @@ describe('ChannelStatusView model marketplace', () => {
     expect(wrapper.text()).not.toContain('0.00%')
   })
 
-  it('uses the V2 green-to-red score bands for timeline success rates', () => {
+  it('uses the V2 green-to-red score bands for timeline health scores', () => {
     const snapshot = createModelMarketplacePreviewSnapshot()
     const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
     monitor.buckets[0].success_rate = 50
+    monitor.buckets[0].metrics = {
+      has_requests: true,
+      success_rate: 0.5,
+      error_rate: 0.5,
+      cache_rate: 0,
+      ttft: { p50_ms: 200 },
+      duration: { p50_ms: 800 },
+    }
+    monitor.buckets[0].health = {
+      overall: 'warning',
+      error_rate: 'warning',
+      ttft: 'healthy',
+      cache: 'unknown',
+      score: 50,
+      success_rate_score: 50,
+      minimum_sample: 10,
+    }
     const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh } })
     const wrapper = mount(ChannelStatusView, {
       props: { previewSnapshot: snapshot },
@@ -82,5 +114,51 @@ describe('ChannelStatusView model marketplace', () => {
 
     expect(wrapper.findAll('.health-score5').length).toBeGreaterThan(0)
     expect(wrapper.findAll('.health-score10').length).toBeGreaterThan(0)
+  })
+
+  it('shows V2 success rate when the legacy availability field is zero', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+    monitor.windows = {
+      '90m': {
+        status: 'operational',
+        availability: 0,
+        coverage_complete: true,
+        metrics: {
+          has_requests: true,
+          success_rate: 0.95,
+          error_rate: 0.05,
+          cache_rate: 0,
+          ttft: { p50_ms: 200 },
+          duration: { p50_ms: 800, avg_ms: 900 },
+        },
+        health: {
+          overall: 'healthy',
+          error_rate: 'healthy',
+          ttft: 'healthy',
+          cache: 'unknown',
+          score: 90,
+          success_rate_score: 95,
+          minimum_sample: 50,
+        },
+        buckets: [],
+      },
+    }
+    const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh } })
+    const wrapper = mount(ChannelStatusView, {
+      props: { previewSnapshot: snapshot },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          PublicSiteFooter: true,
+          Icon: true,
+          ModelIcon: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('95.00%')
+    expect(wrapper.findAll('.health-score9').length).toBeGreaterThan(0)
   })
 })

@@ -94,9 +94,24 @@ describe('model marketplace aggregation', () => {
     const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
     monitor.windows = {
       '90m': {
-        status: 'unmonitored',
+        status: 'operational',
         availability: 0,
         coverage_complete: true,
+        metrics: {
+          has_requests: false,
+          success_rate: 0,
+          error_rate: 0,
+          cache_rate: 0,
+          ttft: {},
+          duration: {},
+        },
+        health: {
+          overall: 'unknown',
+          error_rate: 'unknown',
+          ttft: 'unknown',
+          cache: 'unknown',
+          minimum_sample: 50,
+        },
         buckets: [],
       },
     }
@@ -113,5 +128,117 @@ describe('model marketplace aggregation', () => {
     const model = buildMarketplaceModels(createModelMarketplacePreviewSnapshot()).find((item) => item.name === 'gpt-4.1')!
 
     expect(model.monitoring.samples[0].successRate).toBe(100)
+  })
+
+  it('excludes no-request aliases from V2 availability aggregation', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const group = snapshot.groups[0]
+    group.monitoring_enabled = true
+    group.monitoring = [
+      {
+        platform: 'openai',
+        model: 'gpt-4.1',
+        status: 'unmonitored',
+        availability_7d: 0,
+        availability_15d: 0,
+        availability_30d: 0,
+        coverage_complete: true,
+        buckets: [],
+        windows: {
+          '90m': {
+            status: 'operational',
+            availability: 0,
+            coverage_complete: true,
+            metrics: {
+              has_requests: false,
+              success_rate: 0,
+              error_rate: 0,
+              cache_rate: 0,
+              ttft: {},
+              duration: {},
+            },
+            health: {
+              overall: 'unknown',
+              error_rate: 'unknown',
+              ttft: 'unknown',
+              cache: 'unknown',
+              minimum_sample: 50,
+            },
+            buckets: [],
+          },
+        },
+      },
+      {
+        platform: 'openai',
+        model: 'gpt-4.1-2025-04-14',
+        status: 'operational',
+        availability_7d: 98,
+        availability_15d: 97,
+        availability_30d: 96,
+        coverage_complete: true,
+        buckets: [],
+        windows: {
+          '90m': {
+            status: 'operational',
+            availability: 95,
+            coverage_complete: true,
+            buckets: [{
+              bucket_start: snapshot.generated_at,
+              status: 'operational',
+              success_rate: 95,
+            }],
+          },
+        },
+      },
+    ]
+
+    const model = buildMarketplaceModels(snapshot).find((item) => item.name === 'gpt-4.1')!
+    const monitoring = model.profiles.find((profile) => profile.groupName === group.name)!.monitoring!
+
+    expect(monitoring.status).toBe('operational')
+    expect(monitoring.availability7d).toBe(98)
+    expect(monitoringForWindow(monitoring, '90m').availability).toBe(95)
+    expect(monitoringForWindow(monitoring, '90m').samples[0].successRate).toBe(95)
+  })
+
+  it('uses V2 metrics and health when legacy status fields disagree', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+    monitor.windows = {
+      '90m': {
+        status: 'operational',
+        availability: 0,
+        latest_duration_p50_ms: 123,
+        coverage_complete: true,
+        metrics: {
+          has_requests: true,
+          success_rate: 0.95,
+          error_rate: 0.05,
+          cache_rate: 0,
+          ttft: { p50_ms: 200 },
+          duration: { p50_ms: 800, avg_ms: 900 },
+        },
+        health: {
+          overall: 'healthy',
+          error_rate: 'healthy',
+          ttft: 'healthy',
+          cache: 'unknown',
+          score: 90,
+          success_rate_score: 95,
+          minimum_sample: 50,
+        },
+        buckets: [],
+      },
+    }
+
+    const model = buildMarketplaceModels(snapshot).find((item) => item.name === 'gpt-4.1')!
+    const window = monitoringForWindow(model.monitoring, '90m')
+
+    expect(window.status).toBe('operational')
+    expect(window.hasRequests).toBe(true)
+    expect(window.availability).toBe(95)
+    expect(window.healthScore).toBe(90)
+    expect(window.latestLatencyMs).toBe(800)
+    expect(window.avgLatencyMs).toBe(900)
   })
 })

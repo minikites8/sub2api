@@ -158,8 +158,17 @@ func TestBuildPublicTransitV2Monitors_MapsHealthWindowsAndBuckets(t *testing.T) 
 			},
 		}},
 	}
+	matrix15d := &ChannelMonitorV2Matrix{
+		Coverage: ChannelMonitorV2Coverage{RequestedEnd: now},
+		Items: []ChannelMonitorV2MatrixRow{{
+			Platform: "openai",
+			Model:    "gpt-5.5",
+			Metrics:  ChannelMonitorV2Metric{RequestCount: 100, SuccessRequests: 98, SuccessRate: 0.98},
+			Health:   ChannelMonitorV2Health{Overall: "healthy", Score: testPtrFloat64(98), SuccessRateScore: testPtrFloat64(98)},
+		}},
+	}
 
-	monitors := buildPublicTransitV2Monitors(matrix7d, matrix30d)
+	monitors := buildPublicTransitV2Monitors(matrix7d, matrix15d, matrix30d)
 
 	require.Len(t, monitors, 1)
 	require.Equal(t, "degraded", monitors[0].Status)
@@ -168,7 +177,17 @@ func TestBuildPublicTransitV2Monitors_MapsHealthWindowsAndBuckets(t *testing.T) 
 	require.InDelta(t, 97.5, monitors[0].Availability30d, 1e-12)
 	require.Equal(t, &latestLatency, monitors[0].LatestDurationP50Ms)
 	require.Equal(t, "unavailable", monitors[0].Buckets[0].Status)
+	require.True(t, monitors[0].Metrics.HasRequests)
+	require.InDelta(t, 0.99, monitors[0].Metrics.SuccessRate, 1e-12)
+	require.Equal(t, "warning", monitors[0].Health.Overall)
+	require.True(t, monitors[0].Buckets[0].Metrics.HasRequests)
 	require.True(t, monitors[0].CoverageComplete)
+
+	window := publicTransitMonitorWindow(matrix15d.Items[0], matrix15d.Coverage)
+	require.True(t, window.Metrics.HasRequests)
+	require.InDelta(t, 0.98, window.Metrics.SuccessRate, 1e-12)
+	require.Equal(t, "healthy", window.Health.Overall)
+	require.InDelta(t, 98, *window.Health.Score, 1e-12)
 }
 
 func TestAttachPublicTransitGroupMonitoring_OnlyEnabledGroupsReceiveBars(t *testing.T) {

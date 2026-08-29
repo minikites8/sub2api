@@ -31,7 +31,9 @@ export interface MarketplacePriceProfile {
 
 export interface MarketplaceMonitoringWindow {
   status: MarketplaceStatus
+  hasRequests?: boolean
   availability?: number
+  healthScore?: number
   latestLatencyMs?: number
   avgLatencyMs?: number
   lastCheckedAt?: string
@@ -40,6 +42,8 @@ export interface MarketplaceMonitoringWindow {
 
 export interface MarketplaceMonitoring {
   status: MarketplaceStatus
+  hasRequests?: boolean
+  healthScore?: number
   availability7d?: number
   availability15d?: number
   availability30d?: number
@@ -52,6 +56,8 @@ export interface MarketplaceMonitoring {
 
 export interface MarketplaceMonitorSample {
   status: MarketplaceStatus
+  hasRequests?: boolean
+  healthScore?: number
   checkedAt: string
   latencyMs?: number
   successRate?: number
@@ -72,6 +78,8 @@ export interface MarketplaceModel {
 
 interface MonitorObservation {
   status: string
+  hasRequests?: boolean
+  healthScore?: number
   availability7d?: number
   availability15d?: number
   availability30d?: number
@@ -262,9 +270,39 @@ function aggregateStatus(observations: MonitorObservation[]): MarketplaceStatus 
   return 'unmonitored'
 }
 
+function monitorHasRequests(value: { status: string; hasRequests?: boolean }): boolean {
+  return value.hasRequests ?? normalizeStatus(value.status) !== 'unmonitored'
+}
+
+function monitoredObservations<T extends { status: string; hasRequests?: boolean }>(observations: T[]): T[] {
+  return observations.filter(monitorHasRequests)
+}
+
+function publicMonitorStatus(status: string, healthOverall?: string): MarketplaceStatus {
+  return normalizeStatus(healthOverall || status)
+}
+
+function publicMonitorAvailability(
+  status: string,
+  availability: number | undefined,
+  metrics?: { has_requests: boolean; success_rate: number },
+): number | undefined {
+  if (metrics) return metrics.has_requests ? metrics.success_rate * 100 : undefined
+  return normalizeStatus(status) === 'unmonitored' ? undefined : availability
+}
+
+function publicMonitorLatency(
+  fallback: number | undefined,
+  metrics?: { duration: { p50_ms?: number | null } },
+): number | undefined {
+  return metrics?.duration.p50_ms ?? fallback
+}
+
 function observationKey(item: MonitorObservation): string {
   return [
     item.status,
+    item.hasRequests,
+    item.healthScore,
     item.availability7d,
     item.availability15d,
     item.availability30d,
@@ -295,12 +333,22 @@ function registerSample(
   if (!key || !sample.checkedAt) return
   const samples = target.get(key) || new Map<string, MarketplaceMonitorSample>()
   const existing = samples.get(sample.checkedAt)
-  if (!existing || statusSeverity(sample.status) > statusSeverity(existing.status)) {
-    samples.set(sample.checkedAt, sample)
-  } else if (existing.status === sample.status && (sample.latencyMs ?? 0) > (existing.latencyMs ?? 0)) {
-    samples.set(sample.checkedAt, sample)
-  }
+  if (!existing || shouldReplaceMonitorSample(existing, sample)) samples.set(sample.checkedAt, sample)
   target.set(key, samples)
+}
+
+function shouldReplaceMonitorSample(
+  existing: MarketplaceMonitorSample,
+  candidate: MarketplaceMonitorSample,
+): boolean {
+  if (monitorHasRequests(candidate) !== monitorHasRequests(existing)) return monitorHasRequests(candidate)
+  const severityDelta = statusSeverity(candidate.status) - statusSeverity(existing.status)
+  if (severityDelta !== 0) return severityDelta > 0
+  if (candidate.healthScore != null && existing.healthScore != null && candidate.healthScore !== existing.healthScore) {
+    return candidate.healthScore < existing.healthScore
+  }
+  if (candidate.healthScore != null && existing.healthScore == null) return true
+  return (candidate.latencyMs ?? 0) > (existing.latencyMs ?? 0)
 }
 
 function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex {
@@ -309,22 +357,26 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
 
   for (const monitor of monitors) {
     registerObservation(observations, monitor.model, {
-      status: monitor.status,
-      availability7d: monitor.availability_7d,
+      status: monitor.health?.overall || monitor.status,
+      hasRequests: monitor.metrics?.has_requests,
+      healthScore: monitor.health?.score ?? undefined,
+      availability7d: publicMonitorAvailability(monitor.status, monitor.availability_7d, monitor.metrics),
       availability15d: monitor.availability_15d,
       availability30d: monitor.availability_30d,
-      latestLatencyMs: monitor.latest_duration_p50_ms,
-      avgLatency7dMs: monitor.duration_p50_7d_ms,
+      latestLatencyMs: publicMonitorLatency(monitor.latest_duration_p50_ms, monitor.metrics),
+      avgLatency7dMs: monitor.metrics?.duration.avg_ms ?? monitor.duration_p50_7d_ms,
       lastCheckedAt: monitor.data_through,
       windows: Object.fromEntries(Object.entries(monitor.windows || {}).map(([key, value]) => [key, publicMonitorWindow(value)])),
     })
 
     for (const point of monitor.buckets || []) {
       registerSample(samples, monitor.model, {
-        status: normalizeStatus(point.status),
+        status: publicMonitorStatus(point.status, point.health?.overall),
+        hasRequests: point.metrics?.has_requests,
+        healthScore: point.health?.score ?? undefined,
         checkedAt: point.bucket_start,
-        latencyMs: point.duration_p50_ms,
-        successRate: point.success_rate,
+        latencyMs: publicMonitorLatency(point.duration_p50_ms, point.metrics),
+        successRate: publicMonitorAvailability(point.status, point.success_rate, point.metrics),
       })
     }
   }
@@ -334,16 +386,20 @@ function buildMonitoringIndex(monitors: PublicTransitMonitor[]): MonitoringIndex
 
 function publicMonitorWindow(window: PublicTransitMonitorWindow): MarketplaceMonitoringWindow {
   return {
-    status: normalizeStatus(window.status),
-    availability: window.availability,
-    latestLatencyMs: window.latest_duration_p50_ms,
-    avgLatencyMs: window.duration_p50_ms,
+    status: publicMonitorStatus(window.status, window.health?.overall),
+    hasRequests: window.metrics?.has_requests,
+    healthScore: window.health?.score ?? undefined,
+    availability: publicMonitorAvailability(window.status, window.availability, window.metrics),
+    latestLatencyMs: publicMonitorLatency(window.latest_duration_p50_ms, window.metrics),
+    avgLatencyMs: window.metrics?.duration.avg_ms ?? window.duration_p50_ms,
     lastCheckedAt: window.data_through,
     samples: (window.buckets || []).map((sample) => ({
-      status: normalizeStatus(sample.status),
+      status: publicMonitorStatus(sample.status, sample.health?.overall),
+      hasRequests: sample.metrics?.has_requests,
+      healthScore: sample.health?.score ?? undefined,
       checkedAt: sample.bucket_start,
-      latencyMs: sample.duration_p50_ms,
-      successRate: sample.success_rate,
+      latencyMs: publicMonitorLatency(sample.duration_p50_ms, sample.metrics),
+      successRate: publicMonitorAvailability(sample.status, sample.success_rate, sample.metrics),
     })),
   }
 }
@@ -361,11 +417,7 @@ function aggregateMonitoring(
     const samples = index.samples.get(key)
     for (const sample of samples?.values() || []) {
       const existing = sampleByTime.get(sample.checkedAt)
-      if (!existing || statusSeverity(sample.status) > statusSeverity(existing.status)) {
-        sampleByTime.set(sample.checkedAt, sample)
-      } else if (existing.status === sample.status && (sample.latencyMs ?? 0) > (existing.latencyMs ?? 0)) {
-        sampleByTime.set(sample.checkedAt, sample)
-      }
+      if (!existing || shouldReplaceMonitorSample(existing, sample)) sampleByTime.set(sample.checkedAt, sample)
     }
   }
   const values = Array.from(unique.values())
@@ -378,20 +430,21 @@ function aggregateMonitoring(
   for (const window of ['90m', '12h', '1d', '15d'] as MarketplaceWindow[]) {
     const windowValues = values.flatMap((item) => item.windows?.[window] ? [item.windows[window]!] : [])
     if (windowValues.length === 0) continue
+    const activeWindowValues = monitoredObservations(windowValues)
     const windowSamples = new Map<string, MarketplaceMonitorSample>()
     for (const item of windowValues) {
       for (const sample of item.samples) {
         const existing = windowSamples.get(sample.checkedAt)
-        if (!existing || statusSeverity(sample.status) > statusSeverity(existing.status) || (existing.status === sample.status && (sample.latencyMs ?? 0) > (existing.latencyMs ?? 0))) {
-          windowSamples.set(sample.checkedAt, sample)
-        }
+        if (!existing || shouldReplaceMonitorSample(existing, sample)) windowSamples.set(sample.checkedAt, sample)
       }
     }
     windows[window] = {
-      status: aggregateStatus(windowValues),
-      availability: minimum(windowValues.map((item) => item.availability)),
-      latestLatencyMs: maximum(windowValues.map((item) => item.latestLatencyMs)),
-      avgLatencyMs: maximum(windowValues.map((item) => item.avgLatencyMs)),
+      status: activeWindowValues.length > 0 ? aggregateStatus(activeWindowValues) : 'unmonitored',
+      hasRequests: activeWindowValues.length > 0,
+      healthScore: minimum(activeWindowValues.map((item) => item.healthScore)),
+      availability: minimum(activeWindowValues.map((item) => item.availability)),
+      latestLatencyMs: maximum(activeWindowValues.map((item) => item.latestLatencyMs)),
+      avgLatencyMs: maximum(activeWindowValues.map((item) => item.avgLatencyMs)),
       lastCheckedAt: windowValues.map((item) => item.lastCheckedAt).filter((value): value is string => Boolean(value)).sort().at(-1),
       samples: Array.from(windowSamples.values()).sort((a, b) => a.checkedAt.localeCompare(b.checkedAt)).slice(-90),
     }
@@ -403,13 +456,16 @@ function aggregateMonitoring(
     .sort()
     .at(-1)
 
+  const activeValues = monitoredObservations(values)
   return {
-    status: aggregateStatus(values),
-    availability7d: minimum(values.map((item) => item.availability7d)),
-    availability15d: minimum(values.map((item) => item.availability15d)),
-    availability30d: minimum(values.map((item) => item.availability30d)),
-    latestLatencyMs: maximum(values.map((item) => item.latestLatencyMs)),
-    avgLatency7dMs: maximum(values.map((item) => item.avgLatency7dMs)),
+    status: activeValues.length > 0 ? aggregateStatus(activeValues) : 'unmonitored',
+    hasRequests: activeValues.length > 0,
+    healthScore: minimum(activeValues.map((item) => item.healthScore)),
+    availability7d: minimum(activeValues.map((item) => item.availability7d)),
+    availability15d: minimum(activeValues.map((item) => item.availability15d)),
+    availability30d: minimum(activeValues.map((item) => item.availability30d)),
+    latestLatencyMs: maximum(activeValues.map((item) => item.latestLatencyMs)),
+    avgLatency7dMs: maximum(activeValues.map((item) => item.avgLatency7dMs)),
     lastCheckedAt: checkedAt,
     samples,
     windows,
@@ -494,8 +550,8 @@ export function availabilityForWindow(
   window: MarketplaceWindow,
 ): number | undefined {
   const current = monitoring.windows?.[window]
-  if (current) return current.status === 'unmonitored' ? undefined : current.availability
-  if (monitoring.status === 'unmonitored') return undefined
+  if (current) return monitorHasRequests(current) ? current.availability : undefined
+  if (monitoring.hasRequests === false || (monitoring.hasRequests == null && monitoring.status === 'unmonitored')) return undefined
   if (window === '15d' || window === '30d') return window === '15d' ? monitoring.availability15d : monitoring.availability30d
   return monitoring.availability7d
 }
@@ -506,10 +562,12 @@ export function monitoringForWindow(
 ): MarketplaceMonitoringWindow {
   const current = monitoring.windows?.[window]
   if (current) {
-    return current.status === 'unmonitored' ? { ...current, availability: undefined } : current
+    return monitorHasRequests(current) ? current : { ...current, availability: undefined }
   }
   return {
     status: monitoring.status,
+    hasRequests: monitoring.hasRequests,
+    healthScore: monitoring.healthScore,
     availability: availabilityForWindow(monitoring, window),
     latestLatencyMs: monitoring.latestLatencyMs,
     avgLatencyMs: monitoring.avgLatency7dMs,

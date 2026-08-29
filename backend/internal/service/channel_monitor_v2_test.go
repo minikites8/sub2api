@@ -135,8 +135,10 @@ func TestChannelMonitorV2ParseFilterDefaultsAndBuckets(t *testing.T) {
 	filter, err = svc.ParseFilter("30d", nil, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, 24*time.Hour, filter.Bucket)
-	_, err = svc.ParseFilter("15d", nil, nil, nil)
-	require.ErrorIs(t, err, ErrChannelMonitorV2InvalidRange)
+	filter, err = svc.ParseFilter("15d", nil, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, 12*time.Hour, filter.Bucket)
+	require.Equal(t, 15*24*time.Hour, filter.End.Sub(filter.Start))
 }
 
 func TestParseChannelMonitorV2GroupBy(t *testing.T) {

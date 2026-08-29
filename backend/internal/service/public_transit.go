@@ -219,6 +219,8 @@ type PublicTransitMonitor struct {
 	LatestDurationP50Ms *int64                                `json:"latest_duration_p50_ms,omitempty"`
 	DataThrough         string                                `json:"data_through,omitempty"`
 	CoverageComplete    bool                                  `json:"coverage_complete"`
+	Metrics             PublicTransitMonitorMetric            `json:"metrics"`
+	Health              PublicTransitMonitorHealth            `json:"health"`
 	Buckets             []PublicTransitMonitorTimeline        `json:"buckets"`
 	Windows             map[string]PublicTransitMonitorWindow `json:"windows,omitempty"`
 }
@@ -231,15 +233,48 @@ type PublicTransitMonitorWindow struct {
 	LatestDurationP50Ms *int64                         `json:"latest_duration_p50_ms,omitempty"`
 	DataThrough         string                         `json:"data_through,omitempty"`
 	CoverageComplete    bool                           `json:"coverage_complete"`
+	Metrics             PublicTransitMonitorMetric     `json:"metrics"`
+	Health              PublicTransitMonitorHealth     `json:"health"`
 	Buckets             []PublicTransitMonitorTimeline `json:"buckets"`
 }
 
 type PublicTransitMonitorTimeline struct {
-	BucketStart   string  `json:"bucket_start"`
-	Status        string  `json:"status"`
-	SuccessRate   float64 `json:"success_rate"`
-	TTFTP50Ms     *int64  `json:"ttft_p50_ms,omitempty"`
-	DurationP50Ms *int64  `json:"duration_p50_ms,omitempty"`
+	BucketStart   string                     `json:"bucket_start"`
+	Status        string                     `json:"status"`
+	SuccessRate   float64                    `json:"success_rate"`
+	TTFTP50Ms     *int64                     `json:"ttft_p50_ms,omitempty"`
+	DurationP50Ms *int64                     `json:"duration_p50_ms,omitempty"`
+	Metrics       PublicTransitMonitorMetric `json:"metrics"`
+	Health        PublicTransitMonitorHealth `json:"health"`
+}
+
+type PublicTransitMonitorMetric struct {
+	HasRequests bool                        `json:"has_requests"`
+	SuccessRate float64                     `json:"success_rate"`
+	ErrorRate   float64                     `json:"error_rate"`
+	CacheRate   float64                     `json:"cache_rate"`
+	TTFT        PublicTransitMonitorLatency `json:"ttft"`
+	Duration    PublicTransitMonitorLatency `json:"duration"`
+}
+
+type PublicTransitMonitorLatency struct {
+	P50Ms *int64   `json:"p50_ms,omitempty"`
+	P90Ms *int64   `json:"p90_ms,omitempty"`
+	P95Ms *int64   `json:"p95_ms,omitempty"`
+	AvgMs *float64 `json:"avg_ms,omitempty"`
+}
+
+type PublicTransitMonitorHealth struct {
+	Overall          string   `json:"overall"`
+	ErrorRate        string   `json:"error_rate"`
+	TTFT             string   `json:"ttft"`
+	Cache            string   `json:"cache"`
+	Score            *float64 `json:"score,omitempty"`
+	ErrorRateScore   *float64 `json:"error_rate_score,omitempty"`
+	SuccessRateScore *float64 `json:"success_rate_score,omitempty"`
+	TTFTScore        *float64 `json:"ttft_score,omitempty"`
+	CacheScore       *float64 `json:"cache_score,omitempty"`
+	MinimumSample    int64    `json:"minimum_sample"`
 }
 
 type PublicTransitCacheDisclosure struct {
@@ -822,13 +857,13 @@ func (s *PublicTransitService) publicV2Monitors(ctx context.Context, groupBy Cha
 		return []PublicTransitMonitor{}, nil
 	}
 	matrices := make(map[string]*ChannelMonitorV2Matrix)
-	for _, rangeValue := range []string{"90m", "12h", "24h", "7d", "30d"} {
+	for _, rangeValue := range []string{"90m", "12h", "24h", "7d", "15d", "30d"} {
 		filter, err := s.monitorService.ParseFilter(rangeValue, nil, nil, nil)
 		if err != nil {
 			return nil, err
 		}
-		// Keep absolute counts internally so derived windows (notably 15d) use
-		// weighted success rates. The public DTO only exports normalized rates.
+		// Keep absolute counts internally to distinguish zero-traffic windows.
+		// The public DTO only exports a boolean traffic signal and normalized metrics.
 		matrix, err := s.monitorService.Matrix(ctx, filter, groupBy, true)
 		if err != nil {
 			if errors.Is(err, ErrChannelMonitorDisabled) {
@@ -838,12 +873,12 @@ func (s *PublicTransitService) publicV2Monitors(ctx context.Context, groupBy Cha
 		}
 		matrices[rangeValue] = matrix
 	}
-	monitors := buildPublicTransitV2Monitors(matrices["7d"], matrices["30d"])
+	monitors := buildPublicTransitV2Monitors(matrices["7d"], matrices["15d"], matrices["30d"])
 	attachPublicTransitMonitorWindows(monitors, matrices)
 	return monitors, nil
 }
 
-func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) []PublicTransitMonitor {
+func buildPublicTransitV2Monitors(matrix7d, matrix15d, matrix30d *ChannelMonitorV2Matrix) []PublicTransitMonitor {
 	if matrix7d == nil {
 		return []PublicTransitMonitor{}
 	}
@@ -851,6 +886,12 @@ func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) [
 	if matrix30d != nil {
 		for _, row := range matrix30d.Items {
 			rows30d[publicMonitorRowKey(row)] = row
+		}
+	}
+	rows15d := make(map[string]ChannelMonitorV2MatrixRow)
+	if matrix15d != nil {
+		for _, row := range matrix15d.Items {
+			rows15d[publicMonitorRowKey(row)] = row
 		}
 	}
 	out := make([]PublicTransitMonitor, 0, len(matrix7d.Items))
@@ -861,9 +902,11 @@ func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) [
 		row30d, has30d := rows30d[publicMonitorRowKey(row7d)]
 		availability30d := row7d.Metrics.SuccessRate * 100
 		availability15d := row7d.Metrics.SuccessRate * 100
+		if row15d, ok := rows15d[publicMonitorRowKey(row7d)]; ok {
+			availability15d = row15d.Metrics.SuccessRate * 100
+		}
 		if has30d {
 			availability30d = row30d.Metrics.SuccessRate * 100
-			availability15d = successRateSince(row30d.Buckets, matrix30d.Coverage.RequestedEnd.Add(-15*24*time.Hour))
 		}
 		buckets := make([]PublicTransitMonitorTimeline, 0, len(row7d.Buckets))
 		for _, bucket := range row7d.Buckets {
@@ -873,6 +916,8 @@ func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) [
 				SuccessRate:   bucket.Metrics.SuccessRate * 100,
 				TTFTP50Ms:     bucket.Metrics.TTFT.P50Ms,
 				DurationP50Ms: bucket.Metrics.Duration.P50Ms,
+				Metrics:       publicTransitMonitorMetric(bucket.Metrics),
+				Health:        publicTransitMonitorHealth(bucket.Health),
 			})
 		}
 		item := PublicTransitMonitor{
@@ -886,6 +931,8 @@ func buildPublicTransitV2Monitors(matrix7d, matrix30d *ChannelMonitorV2Matrix) [
 			DurationP50_7dMs: row7d.Metrics.Duration.P50Ms,
 			DataThrough:      matrix7d.Coverage.DataThrough.UTC().Format(time.RFC3339),
 			CoverageComplete: matrix7d.Coverage.CoverageComplete,
+			Metrics:          publicTransitMonitorMetric(row7d.Metrics),
+			Health:           publicTransitMonitorHealth(row7d.Health),
 			Buckets:          buckets,
 		}
 		if row7d.GroupID != nil {
@@ -926,39 +973,26 @@ func attachPublicTransitMonitorWindows(monitors []PublicTransitMonitor, matrices
 		for _, window := range []struct {
 			name       string
 			rangeValue string
-			duration   time.Duration
 		}{
 			{name: "90m", rangeValue: "90m"},
 			{name: "12h", rangeValue: "12h"},
 			{name: "1d", rangeValue: "24h"},
-			{name: "15d", rangeValue: "30d", duration: 15 * 24 * time.Hour},
+			{name: "15d", rangeValue: "15d"},
 		} {
 			row, ok := rowsByRange[window.rangeValue][key]
 			matrix := matrices[window.rangeValue]
 			if !ok || matrix == nil {
 				continue
 			}
-			monitor.Windows[window.name] = publicTransitMonitorWindow(row, matrix.Coverage, window.duration)
+			monitor.Windows[window.name] = publicTransitMonitorWindow(row, matrix.Coverage)
 		}
 	}
 }
 
-func publicTransitMonitorWindow(row ChannelMonitorV2MatrixRow, coverage ChannelMonitorV2Coverage, duration time.Duration) PublicTransitMonitorWindow {
+func publicTransitMonitorWindow(row ChannelMonitorV2MatrixRow, coverage ChannelMonitorV2Coverage) PublicTransitMonitorWindow {
 	buckets := row.Buckets
 	availability := row.Metrics.SuccessRate * 100
 	status := publicMonitorStatus(row.Health.Overall)
-	if duration > 0 {
-		start := coverage.RequestedEnd.Add(-duration)
-		availability = successRateSince(row.Buckets, start)
-		filtered := make([]ChannelMonitorV2TrendPoint, 0, len(row.Buckets))
-		for _, bucket := range row.Buckets {
-			if !bucket.BucketStart.Before(start) {
-				filtered = append(filtered, bucket)
-			}
-		}
-		buckets = filtered
-		status = publicMonitorStatusForBuckets(filtered)
-	}
 	timeline := make([]PublicTransitMonitorTimeline, 0, len(buckets))
 	var latestDuration *int64
 	for _, bucket := range buckets {
@@ -968,6 +1002,8 @@ func publicTransitMonitorWindow(row ChannelMonitorV2MatrixRow, coverage ChannelM
 			SuccessRate:   bucket.Metrics.SuccessRate * 100,
 			TTFTP50Ms:     bucket.Metrics.TTFT.P50Ms,
 			DurationP50Ms: bucket.Metrics.Duration.P50Ms,
+			Metrics:       publicTransitMonitorMetric(bucket.Metrics),
+			Health:        publicTransitMonitorHealth(bucket.Health),
 		})
 		if bucket.Metrics.Duration.P50Ms != nil {
 			latestDuration = bucket.Metrics.Duration.P50Ms
@@ -981,21 +1017,45 @@ func publicTransitMonitorWindow(row ChannelMonitorV2MatrixRow, coverage ChannelM
 		LatestDurationP50Ms: latestDuration,
 		DataThrough:         coverage.DataThrough.UTC().Format(time.RFC3339),
 		CoverageComplete:    coverage.CoverageComplete,
+		Metrics:             publicTransitMonitorMetric(row.Metrics),
+		Health:              publicTransitMonitorHealth(row.Health),
 		Buckets:             timeline,
 	}
 }
 
-func publicMonitorStatusForBuckets(buckets []ChannelMonitorV2TrendPoint) string {
-	status := "unmonitored"
-	severity := 0
-	for _, bucket := range buckets {
-		candidate := publicMonitorStatus(bucket.Health.Overall)
-		candidateSeverity := map[string]int{"operational": 1, "degraded": 2, "unavailable": 3}[candidate]
-		if candidateSeverity > severity {
-			status, severity = candidate, candidateSeverity
-		}
+func publicTransitMonitorMetric(metrics ChannelMonitorV2Metric) PublicTransitMonitorMetric {
+	return PublicTransitMonitorMetric{
+		HasRequests: metrics.RequestCount > 0,
+		SuccessRate: metrics.SuccessRate,
+		ErrorRate:   metrics.ErrorRate,
+		CacheRate:   metrics.CacheRate,
+		TTFT:        publicTransitMonitorLatency(metrics.TTFT),
+		Duration:    publicTransitMonitorLatency(metrics.Duration),
 	}
-	return status
+}
+
+func publicTransitMonitorLatency(latency ChannelMonitorV2Latency) PublicTransitMonitorLatency {
+	return PublicTransitMonitorLatency{
+		P50Ms: latency.P50Ms,
+		P90Ms: latency.P90Ms,
+		P95Ms: latency.P95Ms,
+		AvgMs: latency.AvgMs,
+	}
+}
+
+func publicTransitMonitorHealth(health ChannelMonitorV2Health) PublicTransitMonitorHealth {
+	return PublicTransitMonitorHealth{
+		Overall:          health.Overall,
+		ErrorRate:        health.ErrorRate,
+		TTFT:             health.TTFT,
+		Cache:            health.Cache,
+		Score:            health.Score,
+		ErrorRateScore:   health.ErrorRateScore,
+		SuccessRateScore: health.SuccessRateScore,
+		TTFTScore:        health.TTFTScore,
+		CacheScore:       health.CacheScore,
+		MinimumSample:    health.MinimumSample,
+	}
 }
 
 func publicMonitorRowKey(row ChannelMonitorV2MatrixRow) string {
@@ -1021,21 +1081,6 @@ func publicMonitorStatus(health string) string {
 	default:
 		return "unmonitored"
 	}
-}
-
-func successRateSince(buckets []ChannelMonitorV2TrendPoint, start time.Time) float64 {
-	var success, total int64
-	for _, bucket := range buckets {
-		if bucket.BucketStart.Before(start) {
-			continue
-		}
-		success += bucket.Metrics.SuccessRequests
-		total += bucket.Metrics.RequestCount
-	}
-	if total == 0 {
-		return 0
-	}
-	return float64(success) / float64(total) * 100
 }
 
 func buildPublicTransitCompleteness(groups []PublicTransitGroup, monitors []PublicTransitMonitor) PublicTransitCompleteness {
