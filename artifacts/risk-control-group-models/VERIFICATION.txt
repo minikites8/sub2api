@@ -24,9 +24,15 @@ Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  4.026s
 Exit status: 0
 
 MODIFIED
-Command: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.tmp\go-tmp'; go test ./internal/service -count=1
+Command: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.tmp\go-tmp'; go test ./internal/service -run 'TestContentModeration(Check_(UsesGroupModerationModelOverrideAndGlobalFallback|AsyncUsesGroupModerationModelOverride)|UpdateConfig_SavesNormalizedGroupModelOverrides)$' -count=1
 Working directory: D:\Programs\sub2api\backend
 Input: group model override configuration, synchronous fallback, and asynchronous worker behavior
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  3.936s
+Exit status: 0
+
+Command: go test ./internal/service -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: complete modified content moderation service package
 Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  115.118s
 Exit status: 0
 
@@ -55,7 +61,7 @@ Literal output: <empty>
 Exit status: 0
 
 ROLLBACK
-Command: bash D:/Programs/sub2api/artifacts/risk-control-group-models/ROLLBACK.sh D:/Programs/sub2api/.tmp/risk-control-group-models-rollback-test-2
+Command: & 'C:\Program Files\Git\bin\bash.exe' 'D:/Programs/sub2api/artifacts/risk-control-group-models/ROLLBACK.sh' 'D:/Programs/sub2api/.tmp/risk-control-group-models-rollback-test-2'
 Input: independent copy of all eight modified files at the modified state
 Literal output:
 (Stripping trailing CRs from patch; use --binary to disable.)
