@@ -405,3 +405,70 @@ func TestImportDataRejectsKiroAccountManagerJSON(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "unsupported data format")
 	require.Len(t, adminSvc.createdAccounts, 0)
 }
+
+func TestReimportCredentialsReplacesOnlyCredentialObject(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.getAccountResult = &service.Account{
+		ID:          21,
+		Name:        "existing",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "old", "refresh_token": "old-refresh"},
+		Extra:       map[string]any{"privacy_mode": "private"},
+		Status:      service.StatusDisabled,
+		Concurrency: 9,
+		Priority:    42,
+	}
+
+	bodyPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{{
+				"name":        "new-export-name",
+				"platform":    service.PlatformOpenAI,
+				"type":        service.AccountTypeOAuth,
+				"credentials": map[string]any{"access_token": "new", "refresh_token": "new-refresh", "password": "discard"},
+			}},
+		},
+	}
+	body, err := json.Marshal(bodyPayload)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/21/reimport-credentials", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.POST("/api/v1/admin/accounts/:id/reimport-credentials", NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).ReimportCredentials)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, adminSvc.lastUpdateAccountInput)
+	require.True(t, adminSvc.lastUpdateAccountInput.ReplaceCredentials)
+	require.Empty(t, adminSvc.lastUpdateAccountInput.Type)
+	require.Nil(t, adminSvc.lastUpdateAccountInput.Extra)
+	require.Equal(t, "new", adminSvc.lastUpdateAccountInput.Credentials["access_token"])
+	require.Equal(t, "new-refresh", adminSvc.lastUpdateAccountInput.Credentials["refresh_token"])
+	require.NotContains(t, adminSvc.lastUpdateAccountInput.Credentials, "password")
+}
+
+func TestReimportCredentialsRejectsIdentityMismatch(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.getAccountResult = &service.Account{ID: 21, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth}
+	bodyPayload := map[string]any{
+		"data": map[string]any{
+			"proxies":  []map[string]any{},
+			"accounts": []map[string]any{{"name": "other", "platform": service.PlatformAnthropic, "type": service.AccountTypeOAuth, "credentials": map[string]any{"access_token": "x"}}},
+		},
+	}
+	body, err := json.Marshal(bodyPayload)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/21/reimport-credentials", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.POST("/api/v1/admin/accounts/:id/reimport-credentials", NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).ReimportCredentials)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "ACCOUNT_IDENTITY_MISMATCH")
+	require.Nil(t, adminSvc.lastUpdateAccountInput)
+}

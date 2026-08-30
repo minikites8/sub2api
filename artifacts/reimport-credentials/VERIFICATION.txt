@@ -1,0 +1,72 @@
+BRANCH: main
+CHANGED FIELD: existing account credentials via POST /admin/accounts/:id/reimport-credentials
+PRESERVED FIELDS: name, notes, platform, type, extra, proxy, groups, concurrency, priority, fallback, rate multiplier, status, expiry, and runtime settings
+RULE: sub2api JSON must contain exactly one account with matching platform/type; only credentials are replaced
+
+ARTIFACTS
+MODIFIED_FILE: D:\Programs\sub2api\artifacts\reimport-credentials\MODIFIED_FILE
+DIFF_FILE: D:\Programs\sub2api\artifacts\reimport-credentials\DIFF_FILE
+VERIFICATION.txt: D:\Programs\sub2api\artifacts\reimport-credentials\VERIFICATION.txt
+ROLLBACK.sh: D:\Programs\sub2api\artifacts\reimport-credentials\ROLLBACK.sh
+
+HASHES
+BASELINE frontend/src/api/admin/accounts.ts SHA256: 129017D5B04CA3FA57B3D332872E43F7FF2A71C1D173584A2A902EFBB149AD9A
+MODIFIED_FILE frontend/src/api/admin/accounts.ts SHA256: C92C8B3EA4CE2DE6D1B4A68BAC11A5DA4283E01895DA9AE92B48D0CC3FB1CD7E
+
+BASELINE
+Command: go test ./internal/handler/admin -run 'TestImportData' -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: existing full account data import behavior
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/handler/admin  0.084s
+Exit status: 0
+
+Command: pnpm exec vitest run src/__tests__/integration/data-import.spec.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: existing full account data import modal workflow
+Literal result: Test Files 1 passed (1); Tests 6 passed (6); Duration 2.02s
+Exit status: 0
+
+MODIFIED
+Command: go test ./internal/handler/admin -run 'Test(ReimportCredentials|ImportData)' -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: single-account sub2api JSON identity validation and credential-only update request
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/handler/admin  1.585s
+Exit status: 0
+
+Command: pnpm exec vitest run src/__tests__/integration/data-import.spec.ts src/__tests__/integration/reimport-credentials.spec.ts src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: existing import, new re-import modal, and shadow-account menu visibility
+Literal result: Test Files 3 passed (3); Tests 20 passed (20); Duration 3.02s
+Exit status: 0
+
+Command: pnpm typecheck
+Working directory: D:\Programs\sub2api\frontend
+Input: complete re-import frontend integration
+Literal output: > sub2api-frontend@1.0.0 typecheck pnpm; exit status 0
+Exit status: 0
+
+Command: pnpm exec eslint src/api/admin/accounts.ts src/components/admin/account/ReimportCredentialsModal.vue src/components/admin/account/AccountActionMenu.vue src/views/admin/AccountsView.vue src/__tests__/integration/reimport-credentials.spec.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: touched re-import API, modal, menu, view, and test files
+Literal output: empty
+Exit status: 0
+
+Command: git diff --check
+Working directory: D:\Programs\sub2api
+Input: all re-import source changes
+Literal output: empty
+Exit status: 0
+
+ROLLBACK
+Command: artifacts/reimport-credentials/ROLLBACK.sh /d/Programs/sub2api/.tmp/reimport-credentials-rollback-test
+Input: independent copy of 14 changed tracked/untracked source files
+Literal output: ROLLBACK_OK root=/d/Programs/sub2api/.tmp/reimport-credentials-rollback-test
+Exit status: 0
+
+Command: compare git hash-object for every rolled-back tracked file with git rev-parse HEAD:<path>
+Literal output: ROLLBACK_MISMATCH_COUNT=0
+Exit status: 0
+Restored behavior/status: all 12 tracked copied files match HEAD; both newly added frontend files were removed from the rollback copy; working source remains modified.
+
+ADDITIONAL
+The unit-tagged service test TestUpdateAccount_ReplaceCredentialsDropsStaleKeys is included with existing unit credential tests. The repository's full unit-tagged package currently reports pre-existing duplicate Kiro helper methods and missing userRepoStub.domainCounts fields during compilation.

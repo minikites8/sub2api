@@ -1516,6 +1516,82 @@ type ApplyOAuthCredentialsRequest struct {
 	Extra       map[string]any `json:"extra"`
 }
 
+// ReimportCredentialsRequest accepts a standard sub2api data export and
+// replaces only the selected account's credentials.
+type ReimportCredentialsRequest struct {
+	Data json.RawMessage `json:"data"`
+}
+
+// ReimportCredentials imports credentials for an existing account while
+// preserving all account configuration fields.
+// POST /api/v1/admin/accounts/:id/reimport-credentials
+func (h *AccountHandler) ReimportCredentials(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	var req ReimportCredentialsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	payload, err := parseDataImportPayload(req.Data)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := validateDataHeader(payload); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if len(payload.Accounts) != 1 {
+		response.BadRequest(c, "re-import requires exactly one account in the sub2api JSON")
+		return
+	}
+
+	existing, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil || existing == nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	if existing.IsCredentialShadow() {
+		response.ErrorFrom(c, infraerrors.BadRequest("SPARK_SHADOW_NO_CREDENTIALS", "spark shadow accounts do not hold auth credentials"))
+		return
+	}
+
+	item := payload.Accounts[0]
+	if err := validateDataAccount(item); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if item.Platform != existing.Platform || item.Type != existing.Type {
+		response.ErrorFrom(c, infraerrors.BadRequest("ACCOUNT_IDENTITY_MISMATCH", "imported account platform and type must match the selected account"))
+		return
+	}
+
+	enrichCredentialsFromIDToken(&item)
+	credentials := service.SanitizeStoredCredentials(existing.Platform, item.Credentials)
+	updated, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+		Credentials:        credentials,
+		ReplaceCredentials: true,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if h.tokenCacheInvalidator != nil && updated != nil && updated.IsOAuth() {
+		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), updated); invalidateErr != nil {
+			slog.Warn("reimport_credentials.invalidate_token_failed", "account_id", accountID, "err", invalidateErr)
+		}
+	}
+
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updated))
+}
+
 // ApplyOAuthCredentials 将"重新授权"得到的新凭据原子落库。
 // POST /api/v1/admin/accounts/:id/apply-oauth-credentials
 //

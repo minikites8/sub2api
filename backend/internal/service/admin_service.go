@@ -418,10 +418,13 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
-	Name                  string
-	Notes                 *string
-	Type                  string // Account type: oauth, setup-token, apikey
-	Credentials           map[string]any
+	Name        string
+	Notes       *string
+	Type        string // Account type: oauth, setup-token, apikey
+	Credentials map[string]any
+	// ReplaceCredentials makes a credential re-import authoritative for the
+	// credential object while leaving every other account setting untouched.
+	ReplaceCredentials    bool
 	Extra                 map[string]any
 	ProxyID               *int64
 	Concurrency           *int // 使用指针区分"未提供"和"设置为0"

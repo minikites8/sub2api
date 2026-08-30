@@ -115,3 +115,43 @@ func TestUpdateAccount_EmptyCredentialsSkipsUpdate(t *testing.T) {
 	require.Equal(t, "rt-existing", repo.account.Credentials["refresh_token"], "空 credentials 不应触碰已有 token")
 	require.Equal(t, "renamed", repo.account.Name)
 }
+
+func TestUpdateAccount_ReplaceCredentialsDropsStaleKeys(t *testing.T) {
+	accountID := int64(205)
+	repo := &updateAccountCredsRepoStub{
+		account: &Account{
+			ID:       accountID,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Status:   StatusDisabled,
+			Name:     "configured-name",
+			Credentials: map[string]any{
+				"access_token":  "old-access",
+				"refresh_token": "old-refresh",
+				"stale_key":     "remove-me",
+			},
+			Extra:       map[string]any{"privacy_mode": "private"},
+			Concurrency: 7,
+			Priority:    33,
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Credentials: map[string]any{
+			"access_token":  "new-access",
+			"refresh_token": "new-refresh",
+		},
+		ReplaceCredentials: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.Equal(t, "new-access", repo.account.Credentials["access_token"])
+	require.Equal(t, "new-refresh", repo.account.Credentials["refresh_token"])
+	require.NotContains(t, repo.account.Credentials, "stale_key")
+	require.Equal(t, "configured-name", repo.account.Name)
+	require.Equal(t, 7, repo.account.Concurrency)
+	require.Equal(t, 33, repo.account.Priority)
+	require.Equal(t, "private", repo.account.Extra["privacy_mode"])
+}

@@ -1,0 +1,790 @@
+diff --git a/backend/internal/handler/admin/account_data_handler_test.go b/backend/internal/handler/admin/account_data_handler_test.go
+index 673209940..b2e7fff85 100644
+--- a/backend/internal/handler/admin/account_data_handler_test.go
++++ b/backend/internal/handler/admin/account_data_handler_test.go
+@@ -405,3 +405,70 @@ func TestImportDataRejectsKiroAccountManagerJSON(t *testing.T) {
+ 	require.Contains(t, rec.Body.String(), "unsupported data format")
+ 	require.Len(t, adminSvc.createdAccounts, 0)
+ }
++
++func TestReimportCredentialsReplacesOnlyCredentialObject(t *testing.T) {
++	router, adminSvc := setupAccountDataRouter()
++	adminSvc.getAccountResult = &service.Account{
++		ID:          21,
++		Name:        "existing",
++		Platform:    service.PlatformOpenAI,
++		Type:        service.AccountTypeOAuth,
++		Credentials: map[string]any{"access_token": "old", "refresh_token": "old-refresh"},
++		Extra:       map[string]any{"privacy_mode": "private"},
++		Status:      service.StatusDisabled,
++		Concurrency: 9,
++		Priority:    42,
++	}
++
++	bodyPayload := map[string]any{
++		"data": map[string]any{
++			"type":    dataType,
++			"version": dataVersion,
++			"proxies": []map[string]any{},
++			"accounts": []map[string]any{{
++				"name":        "new-export-name",
++				"platform":    service.PlatformOpenAI,
++				"type":        service.AccountTypeOAuth,
++				"credentials": map[string]any{"access_token": "new", "refresh_token": "new-refresh", "password": "discard"},
++			}},
++		},
++	}
++	body, err := json.Marshal(bodyPayload)
++	require.NoError(t, err)
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/21/reimport-credentials", bytes.NewReader(body))
++	req.Header.Set("Content-Type", "application/json")
++	router.POST("/api/v1/admin/accounts/:id/reimport-credentials", NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).ReimportCredentials)
++	router.ServeHTTP(rec, req)
++
++	require.Equal(t, http.StatusOK, rec.Code)
++	require.NotNil(t, adminSvc.lastUpdateAccountInput)
++	require.True(t, adminSvc.lastUpdateAccountInput.ReplaceCredentials)
++	require.Empty(t, adminSvc.lastUpdateAccountInput.Type)
++	require.Nil(t, adminSvc.lastUpdateAccountInput.Extra)
++	require.Equal(t, "new", adminSvc.lastUpdateAccountInput.Credentials["access_token"])
++	require.Equal(t, "new-refresh", adminSvc.lastUpdateAccountInput.Credentials["refresh_token"])
++	require.NotContains(t, adminSvc.lastUpdateAccountInput.Credentials, "password")
++}
++
++func TestReimportCredentialsRejectsIdentityMismatch(t *testing.T) {
++	router, adminSvc := setupAccountDataRouter()
++	adminSvc.getAccountResult = &service.Account{ID: 21, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth}
++	bodyPayload := map[string]any{
++		"data": map[string]any{
++			"proxies":  []map[string]any{},
++			"accounts": []map[string]any{{"name": "other", "platform": service.PlatformAnthropic, "type": service.AccountTypeOAuth, "credentials": map[string]any{"access_token": "x"}}},
++		},
++	}
++	body, err := json.Marshal(bodyPayload)
++	require.NoError(t, err)
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/21/reimport-credentials", bytes.NewReader(body))
++	req.Header.Set("Content-Type", "application/json")
++	router.POST("/api/v1/admin/accounts/:id/reimport-credentials", NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).ReimportCredentials)
++	router.ServeHTTP(rec, req)
++
++	require.Equal(t, http.StatusBadRequest, rec.Code)
++	require.Contains(t, rec.Body.String(), "ACCOUNT_IDENTITY_MISMATCH")
++	require.Nil(t, adminSvc.lastUpdateAccountInput)
++}
+diff --git a/backend/internal/handler/admin/account_handler.go b/backend/internal/handler/admin/account_handler.go
+index d77bdeda5..8818d2da3 100644
+--- a/backend/internal/handler/admin/account_handler.go
++++ b/backend/internal/handler/admin/account_handler.go
+@@ -1516,6 +1516,82 @@ type ApplyOAuthCredentialsRequest struct {
+ 	Extra       map[string]any `json:"extra"`
+ }
+ 
++// ReimportCredentialsRequest accepts a standard sub2api data export and
++// replaces only the selected account's credentials.
++type ReimportCredentialsRequest struct {
++	Data json.RawMessage `json:"data"`
++}
++
++// ReimportCredentials imports credentials for an existing account while
++// preserving all account configuration fields.
++// POST /api/v1/admin/accounts/:id/reimport-credentials
++func (h *AccountHandler) ReimportCredentials(c *gin.Context) {
++	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
++	if err != nil || accountID <= 0 {
++		response.BadRequest(c, "Invalid account ID")
++		return
++	}
++
++	var req ReimportCredentialsRequest
++	if err := c.ShouldBindJSON(&req); err != nil {
++		response.BadRequest(c, "Invalid request: "+err.Error())
++		return
++	}
++
++	payload, err := parseDataImportPayload(req.Data)
++	if err != nil {
++		response.BadRequest(c, err.Error())
++		return
++	}
++	if err := validateDataHeader(payload); err != nil {
++		response.BadRequest(c, err.Error())
++		return
++	}
++	if len(payload.Accounts) != 1 {
++		response.BadRequest(c, "re-import requires exactly one account in the sub2api JSON")
++		return
++	}
++
++	existing, err := h.adminService.GetAccount(c.Request.Context(), accountID)
++	if err != nil || existing == nil {
++		response.NotFound(c, "Account not found")
++		return
++	}
++	if existing.IsCredentialShadow() {
++		response.ErrorFrom(c, infraerrors.BadRequest("SPARK_SHADOW_NO_CREDENTIALS", "spark shadow accounts do not hold auth credentials"))
++		return
++	}
++
++	item := payload.Accounts[0]
++	if err := validateDataAccount(item); err != nil {
++		response.BadRequest(c, err.Error())
++		return
++	}
++	if item.Platform != existing.Platform || item.Type != existing.Type {
++		response.ErrorFrom(c, infraerrors.BadRequest("ACCOUNT_IDENTITY_MISMATCH", "imported account platform and type must match the selected account"))
++		return
++	}
++
++	enrichCredentialsFromIDToken(&item)
++	credentials := service.SanitizeStoredCredentials(existing.Platform, item.Credentials)
++	updated, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
++		Credentials:        credentials,
++		ReplaceCredentials: true,
++	})
++	if err != nil {
++		response.ErrorFrom(c, err)
++		return
++	}
++
++	if h.tokenCacheInvalidator != nil && updated != nil && updated.IsOAuth() {
++		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), updated); invalidateErr != nil {
++			slog.Warn("reimport_credentials.invalidate_token_failed", "account_id", accountID, "err", invalidateErr)
++		}
++	}
++
++	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updated))
++}
++
+ // ApplyOAuthCredentials 将"重新授权"得到的新凭据原子落库。
+ // POST /api/v1/admin/accounts/:id/apply-oauth-credentials
+ //
+diff --git a/backend/internal/server/routes/admin.go b/backend/internal/server/routes/admin.go
+index 0dcf07594..fa5a1738f 100644
+--- a/backend/internal/server/routes/admin.go
++++ b/backend/internal/server/routes/admin.go
+@@ -398,6 +398,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
+ 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
+ 		accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
+ 		accounts.POST("/:id/apply-oauth-credentials", h.Admin.Account.ApplyOAuthCredentials)
++		accounts.POST("/:id/reimport-credentials", h.Admin.Account.ReimportCredentials)
+ 		accounts.POST("/:id/set-privacy", h.Admin.Account.SetPrivacy)
+ 		accounts.POST("/:id/refresh-tier", h.Admin.Account.RefreshTier)
+ 		accounts.GET("/:id/stats", h.Admin.Account.GetStats)
+diff --git a/backend/internal/service/admin_account.go b/backend/internal/service/admin_account.go
+index 8a5bc9062..5340226fa 100644
+--- a/backend/internal/service/admin_account.go
++++ b/backend/internal/service/admin_account.go
+@@ -715,7 +715,15 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
+ 	} else if len(input.Credentials) > 0 {
+ 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
+ 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
+-		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
++		if input.ReplaceCredentials {
++			clonedCredentials, cloneErr := cloneAccountJSONMap(input.Credentials)
++			if cloneErr != nil {
++				return nil, fmt.Errorf("clone account credentials: %w", cloneErr)
++			}
++			account.Credentials = clonedCredentials
++		} else {
++			account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
++		}
+ 		// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
+ 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
+ 			return nil, err
+diff --git a/backend/internal/service/admin_service.go b/backend/internal/service/admin_service.go
+index 422ffa5b0..3378920a2 100644
+--- a/backend/internal/service/admin_service.go
++++ b/backend/internal/service/admin_service.go
+@@ -418,10 +418,13 @@ type ShadowOptions struct {
+ }
+ 
+ type UpdateAccountInput struct {
+-	Name                  string
+-	Notes                 *string
+-	Type                  string // Account type: oauth, setup-token, apikey
+-	Credentials           map[string]any
++	Name        string
++	Notes       *string
++	Type        string // Account type: oauth, setup-token, apikey
++	Credentials map[string]any
++	// ReplaceCredentials makes a credential re-import authoritative for the
++	// credential object while leaving every other account setting untouched.
++	ReplaceCredentials    bool
+ 	Extra                 map[string]any
+ 	ProxyID               *int64
+ 	Concurrency           *int // 使用指针区分"未提供"和"设置为0"
+diff --git a/backend/internal/service/admin_service_credentials_merge_test.go b/backend/internal/service/admin_service_credentials_merge_test.go
+index 8250db281..abcd08351 100644
+--- a/backend/internal/service/admin_service_credentials_merge_test.go
++++ b/backend/internal/service/admin_service_credentials_merge_test.go
+@@ -115,3 +115,43 @@ func TestUpdateAccount_EmptyCredentialsSkipsUpdate(t *testing.T) {
+ 	require.Equal(t, "rt-existing", repo.account.Credentials["refresh_token"], "空 credentials 不应触碰已有 token")
+ 	require.Equal(t, "renamed", repo.account.Name)
+ }
++
++func TestUpdateAccount_ReplaceCredentialsDropsStaleKeys(t *testing.T) {
++	accountID := int64(205)
++	repo := &updateAccountCredsRepoStub{
++		account: &Account{
++			ID:       accountID,
++			Platform: PlatformOpenAI,
++			Type:     AccountTypeOAuth,
++			Status:   StatusDisabled,
++			Name:     "configured-name",
++			Credentials: map[string]any{
++				"access_token":  "old-access",
++				"refresh_token": "old-refresh",
++				"stale_key":     "remove-me",
++			},
++			Extra:       map[string]any{"privacy_mode": "private"},
++			Concurrency: 7,
++			Priority:    33,
++		},
++	}
++	svc := &adminServiceImpl{accountRepo: repo}
++
++	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
++		Credentials: map[string]any{
++			"access_token":  "new-access",
++			"refresh_token": "new-refresh",
++		},
++		ReplaceCredentials: true,
++	})
++
++	require.NoError(t, err)
++	require.NotNil(t, updated)
++	require.Equal(t, "new-access", repo.account.Credentials["access_token"])
++	require.Equal(t, "new-refresh", repo.account.Credentials["refresh_token"])
++	require.NotContains(t, repo.account.Credentials, "stale_key")
++	require.Equal(t, "configured-name", repo.account.Name)
++	require.Equal(t, 7, repo.account.Concurrency)
++	require.Equal(t, 33, repo.account.Priority)
++	require.Equal(t, "private", repo.account.Extra["privacy_mode"])
++}
+diff --git a/frontend/src/api/admin/accounts.ts b/frontend/src/api/admin/accounts.ts
+index 3056694ae..0a5b2b005 100644
+--- a/frontend/src/api/admin/accounts.ts
++++ b/frontend/src/api/admin/accounts.ts
+@@ -677,6 +677,17 @@ export async function importData(payload: {
+   return data
+ }
+ 
++/**
++ * Replace credentials on an existing account from a single-account sub2api
++ * data export. The server preserves all other account settings.
++ */
++export async function reimportCredentials(id: number, dataPayload: unknown): Promise<Account> {
++  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/reimport-credentials`, {
++    data: dataPayload
++  })
++  return data
++}
++
+ export interface YeTeamRedeemResult {
+   order_no: string
+   status?: string
+@@ -711,20 +722,15 @@ export async function redeemYeTeam(payload: {
+   const requestID = payload.client_request_id || yeTeamOperationKeys.get(cardCode) ||
+     (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+   yeTeamOperationKeys.set(cardCode, requestID)
+-  try {
+-    const { data } = await apiClient.post<YeTeamRedeemResult>('/admin/accounts/ye-team/redeem', {
+-      ...payload,
+-      client_request_id: requestID
+-    }, {
+-      timeout: 660000,
+-      headers: { 'Idempotency-Key': requestID }
+-    })
+-    yeTeamOperationKeys.delete(cardCode)
+-    return data
+-  } catch (error) {
+-    // Preserve the request ID so a retry can replay a completed ye.team order.
+-    throw error
+-  }
++  const { data } = await apiClient.post<YeTeamRedeemResult>('/admin/accounts/ye-team/redeem', {
++    ...payload,
++    client_request_id: requestID
++  }, {
++    timeout: 660000,
++    headers: { 'Idempotency-Key': requestID }
++  })
++  yeTeamOperationKeys.delete(cardCode)
++  return data
+ }
+ 
+ export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
+@@ -1130,6 +1136,7 @@ export const accountsAPI = {
+   syncFromCrs,
+   exportData,
+   importData,
++  reimportCredentials,
+   redeemYeTeam,
+   importCodexSession,
+   createOpenAICodexPAT,
+diff --git a/frontend/src/components/admin/account/AccountActionMenu.vue b/frontend/src/components/admin/account/AccountActionMenu.vue
+index c0dbbc7f5..caa3eac9d 100644
+--- a/frontend/src/components/admin/account/AccountActionMenu.vue
++++ b/frontend/src/components/admin/account/AccountActionMenu.vue
+@@ -26,6 +26,10 @@
+               <Icon name="copy" size="sm" class="text-sky-500" />
+               {{ t('admin.accounts.duplicateAccount') }}
+             </button>
++            <button v-if="!isShadow" @click="$emit('reimport', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700">
++              <Icon name="upload" size="sm" />
++              {{ t('admin.accounts.reimportCredentials') }}
++            </button>
+             <!-- 影子账号不持凭据:重授权/刷新 token 对其无效(后端拒绝),故隐藏(外审 G4)。 -->
+             <template v-if="(account.type === 'oauth' || account.type === 'setup-token') && !isShadow">
+               <button @click="$emit('reauth', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-blue-600 hover:bg-gray-100 dark:hover:bg-dark-700">
+@@ -72,7 +76,7 @@ import { Icon } from '@/components/icons'
+ import type { Account } from '@/types'
+ 
+ const props = defineProps<{ show: boolean; account: Account | null; position: { top: number; left: number } | null }>()
+-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'sessions'])
++const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reimport', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'sessions'])
+ const { t } = useI18n()
+ const canDuplicate = computed(() => {
+   if (!props.account || props.account.parent_account_id != null) return false
+diff --git a/frontend/src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts b/frontend/src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts
+index bdadb41b3..97aca6c27 100644
+--- a/frontend/src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts
++++ b/frontend/src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts
+@@ -137,6 +137,7 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
+     const body = getBodyText()
+     expect(body).not.toContain('admin.accounts.reAuthorize')
+     expect(body).not.toContain('admin.accounts.refreshToken')
++    expect(body).not.toContain('admin.accounts.reimportCredentials')
+     expect(body).not.toContain('admin.accounts.setPrivacy')
+     wrapper.unmount()
+   })
+@@ -149,6 +150,7 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
+     })
+     const body = getBodyText()
+     expect(body).toContain('admin.accounts.reAuthorize')
++    expect(body).toContain('admin.accounts.reimportCredentials')
+     expect(body).toContain('admin.accounts.setPrivacy')
+     wrapper.unmount()
+   })
+diff --git a/frontend/src/i18n/locales/en/admin/accounts.ts b/frontend/src/i18n/locales/en/admin/accounts.ts
+index fbd080c3f..36c81b1b6 100644
+--- a/frontend/src/i18n/locales/en/admin/accounts.ts
++++ b/frontend/src/i18n/locales/en/admin/accounts.ts
+@@ -44,6 +44,20 @@ export default {
+       dataImportErrors: 'Error Details',
+       dataImportSuccess: 'Import completed: accounts {account_created}, failed {account_failed}',
+       dataImportCompletedWithErrors: 'Import completed with errors: account failed {account_failed}, proxy failed {proxy_failed}',
++      reimportCredentials: 'Re-import Credentials',
++      reimportCredentialsTitle: 'Re-import Account Credentials',
++      reimportCredentialsHint: 'Choose a new sub2api JSON file containing this account.',
++      reimportCredentialsWarning: 'This updates credentials only. Groups, proxy, status, quota, concurrency, and other settings stay unchanged.',
++      reimportCredentialsFile: 'Credential file',
++      reimportCredentialsButton: 'Update Credentials',
++      reimportCredentialsImporting: 'Updating...',
++      reimportCredentialsSelectFile: 'Please select a JSON file',
++      reimportCredentialsParseFailed: 'Failed to parse the JSON file',
++      reimportCredentialsInvalidFile: 'Please select a valid sub2api JSON file',
++      reimportCredentialsSingleAccount: 'The file must contain exactly one account',
++      reimportCredentialsIdentityMismatch: 'The imported platform and account type do not match the selected account',
++      reimportCredentialsSuccess: 'Account credentials updated successfully',
++      reimportCredentialsFailed: 'Failed to update account credentials',
+       yeTeamTitle: 'Redeem ye.team CDK',
+       yeTeamHint: 'Submit a CDK to redeem an account package from ye.team and import it on the server.',
+       yeTeamWarning: 'CDKs are single-use credentials. Confirm the ye.team integration is enabled on the server.',
+diff --git a/frontend/src/i18n/locales/zh/admin/accounts.ts b/frontend/src/i18n/locales/zh/admin/accounts.ts
+index 9087f31e3..fa477d8b7 100644
+--- a/frontend/src/i18n/locales/zh/admin/accounts.ts
++++ b/frontend/src/i18n/locales/zh/admin/accounts.ts
+@@ -44,6 +44,20 @@ export default {
+       dataImportErrors: '失败详情',
+       dataImportSuccess: '导入完成：账号 {account_created}，失败 {account_failed}',
+       dataImportCompletedWithErrors: '导入完成但有错误：账号失败 {account_failed}，代理失败 {proxy_failed}',
++      reimportCredentials: '重新导入凭证',
++      reimportCredentialsTitle: '重新导入账号凭证',
++      reimportCredentialsHint: '选择包含该账号的新 sub2api JSON 文件。',
++      reimportCredentialsWarning: '本操作仅更新账号凭证，分组、代理、状态、额度、并发和其他设置保持不变。',
++      reimportCredentialsFile: '凭证文件',
++      reimportCredentialsButton: '更新凭证',
++      reimportCredentialsImporting: '更新中...',
++      reimportCredentialsSelectFile: '请选择 JSON 文件',
++      reimportCredentialsParseFailed: 'JSON 文件解析失败',
++      reimportCredentialsInvalidFile: '请选择有效的 sub2api JSON 文件',
++      reimportCredentialsSingleAccount: '文件必须包含且只包含一个账号',
++      reimportCredentialsIdentityMismatch: '文件中的平台和账号类型与当前账号不匹配',
++      reimportCredentialsSuccess: '账号凭证更新成功',
++      reimportCredentialsFailed: '账号凭证更新失败',
+       yeTeamTitle: '从 ye.team 提交 CDK',
+       yeTeamHint: '提交 CDK 后由服务端向 ye.team 兑换账号包并自动导入。',
+       yeTeamWarning: 'CDK 属于一次性兑换凭据，请确认服务地址已启用 ye.team 集成。',
+diff --git a/frontend/src/views/admin/AccountsView.vue b/frontend/src/views/admin/AccountsView.vue
+index b172f4e99..b09f9bcfb 100644
+--- a/frontend/src/views/admin/AccountsView.vue
++++ b/frontend/src/views/admin/AccountsView.vue
+@@ -488,11 +488,12 @@
+     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
+     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
+     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
++    <ReimportCredentialsModal :show="showReimport" :account="reimportAcc" @close="closeReimportModal" @reimported="handleAccountUpdated" />
+     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
+     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
+     <OpenAISessionsModal :show="showOpenAISessions" :account="sessionsAcc" @close="closeOpenAISessions" />
+     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
+-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" />
++    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reimport="handleReimport" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" />
+     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
+     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
+     <YeTeamRedeemModal :show="showYeTeamRedeem" @close="showYeTeamRedeem = false" @redeemed="handleYeTeamRedeemed" />
+@@ -577,6 +578,7 @@ import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
+ import YeTeamRedeemModal from '@/components/admin/account/YeTeamRedeemModal.vue'
+ import YeTeamRefreshBadge from '@/components/admin/account/YeTeamRefreshBadge.vue'
+ import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
++import ReimportCredentialsModal from '@/components/admin/account/ReimportCredentialsModal.vue'
+ import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
+ import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
+ import OpenAISessionsModal from '@/components/admin/account/OpenAISessionsModal.vue'
+@@ -666,6 +668,7 @@ const showTempUnsched = ref(false)
+ const showDeleteDialog = ref(false)
+ const showCreateShadowDialog = ref(false)
+ const showReAuth = ref(false)
++const showReimport = ref(false)
+ const showTest = ref(false)
+ const showStats = ref(false)
+ const showOpenAISessions = ref(false)
+@@ -676,6 +679,7 @@ const tempUnschedAcc = ref<Account | null>(null)
+ const deletingAcc = ref<Account | null>(null)
+ const creatingShadowAcc = ref<Account | null>(null)
+ const reAuthAcc = ref<Account | null>(null)
++const reimportAcc = ref<Account | null>(null)
+ const testingAcc = ref<Account | null>(null)
+ const statsAcc = ref<Account | null>(null)
+ const sessionsAcc = ref<Account | null>(null)
+@@ -1351,6 +1355,7 @@ const isAnyModalOpen = computed(() => {
+     showTempUnsched.value ||
+     showDeleteDialog.value ||
+     showReAuth.value ||
++    showReimport.value ||
+     showTest.value ||
+     showStats.value ||
+     showSchedulePanel.value ||
+@@ -1846,7 +1851,7 @@ const openMenu = (a: Account, e: MouseEvent) => {
+   if (target) {
+     const rect = target.getBoundingClientRect()
+     const menuWidth = 200
+-    const menuHeight = 280
++    const menuHeight = 320
+     const padding = 8
+     const viewportWidth = window.innerWidth
+     const viewportHeight = window.innerHeight
+@@ -2370,6 +2375,7 @@ const accountExportStepUp = useStepUp()
+ const closeTestModal = () => { showTest.value = false; testingAcc.value = null }
+ const closeStatsModal = () => { showStats.value = false; statsAcc.value = null }
+ const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null }
++const closeReimportModal = () => { showReimport.value = false; reimportAcc.value = null }
+ const handleTest = (a: Account) => { testingAcc.value = a; showTest.value = true }
+ const handleViewStats = (a: Account) => { statsAcc.value = a; showStats.value = true }
+ const handleSchedule = async (a: Account) => {
+@@ -2385,6 +2391,7 @@ const handleSchedule = async (a: Account) => {
+ }
+ const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
+ const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
++const handleReimport = (a: Account) => { reimportAcc.value = a; showReimport.value = true }
+ const handleOpenAISessions = (a: Account) => { sessionsAcc.value = a; showOpenAISessions.value = true }
+ const closeOpenAISessions = () => { showOpenAISessions.value = false; sessionsAcc.value = null }
+ const duplicatingAccountIDs = new Set<number>()
+
+diff --git a/frontend/src/components/admin/account/ReimportCredentialsModal.vue b/frontend/src/components/admin/account/ReimportCredentialsModal.vue
+new file mode 100644
+index 000000000..e7eefce38
+--- /dev/null
++++ b/frontend/src/components/admin/account/ReimportCredentialsModal.vue
+@@ -0,0 +1,175 @@
++<template>
++  <BaseDialog
++    :show="show"
++    :title="t('admin.accounts.reimportCredentialsTitle')"
++    width="normal"
++    close-on-click-outside
++    @close="handleClose"
++  >
++    <form id="reimport-credentials-form" class="space-y-4" @submit.prevent="handleImport">
++      <div v-if="account" class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
++        <div class="text-sm font-medium text-gray-900 dark:text-white">{{ account.name }}</div>
++        <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
++          {{ account.platform }} / {{ account.type }}
++        </div>
++      </div>
++      <div class="text-sm text-gray-600 dark:text-dark-300">
++        {{ t('admin.accounts.reimportCredentialsHint') }}
++      </div>
++      <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
++        {{ t('admin.accounts.reimportCredentialsWarning') }}
++      </div>
++
++      <div>
++        <label class="input-label">{{ t('admin.accounts.reimportCredentialsFile') }}</label>
++        <div class="flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 dark:border-dark-600 dark:bg-dark-800">
++          <div class="min-w-0 truncate text-sm text-gray-700 dark:text-dark-200" :title="selectedFile?.name">
++            {{ selectedFile?.name || t('admin.accounts.reimportCredentialsSelectFile') }}
++          </div>
++          <button type="button" class="btn btn-secondary shrink-0" @click="openFilePicker">
++            {{ t('common.chooseFile') }}
++          </button>
++        </div>
++        <input
++          ref="fileInput"
++          type="file"
++          class="hidden"
++          accept="application/json,.json"
++          @change="handleFileChange"
++        />
++      </div>
++
++      <div v-if="errorMessage" class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
++        {{ errorMessage }}
++      </div>
++    </form>
++
++    <template #footer>
++      <div class="flex justify-end gap-3">
++        <button class="btn btn-secondary" type="button" :disabled="importing" @click="handleClose">
++          {{ t('common.cancel') }}
++        </button>
++        <button
++          class="btn btn-primary"
++          type="submit"
++          form="reimport-credentials-form"
++          :disabled="importing || !selectedFile"
++        >
++          {{ importing ? t('admin.accounts.reimportCredentialsImporting') : t('admin.accounts.reimportCredentialsButton') }}
++        </button>
++      </div>
++    </template>
++  </BaseDialog>
++</template>
++
++<script setup lang="ts">
++import { ref, watch } from 'vue'
++import { useI18n } from 'vue-i18n'
++import BaseDialog from '@/components/common/BaseDialog.vue'
++import { adminAPI } from '@/api/admin'
++import { useAppStore } from '@/stores/app'
++import type { Account, AdminDataPayload } from '@/types'
++
++defineOptions({ name: 'ReimportCredentialsModal' })
++
++const props = defineProps<{ show: boolean; account: Account | null }>()
++const emit = defineEmits<{
++  (event: 'close'): void
++  (event: 'reimported', account: Account): void
++}>()
++
++const { t } = useI18n()
++const appStore = useAppStore()
++const fileInput = ref<HTMLInputElement | null>(null)
++const selectedFile = ref<File | null>(null)
++const importing = ref(false)
++const errorMessage = ref('')
++
++watch(
++  () => props.show,
++  (open) => {
++    if (open) {
++      selectedFile.value = null
++      importing.value = false
++      errorMessage.value = ''
++      if (fileInput.value) fileInput.value.value = ''
++    }
++  }
++)
++
++const openFilePicker = () => fileInput.value?.click()
++
++const handleFileChange = (event: Event) => {
++  const input = event.target as HTMLInputElement
++  const file = input.files?.[0] || null
++  input.value = ''
++  if (!file) return
++  if (!file.name.toLowerCase().endsWith('.json') && file.type !== 'application/json') {
++    errorMessage.value = t('admin.accounts.reimportCredentialsInvalidFile')
++    selectedFile.value = null
++    return
++  }
++  selectedFile.value = file
++  errorMessage.value = ''
++}
++
++const readFileAsText = async (file: File): Promise<string> => {
++  if (typeof file.text === 'function') return file.text()
++  const buffer = await file.arrayBuffer()
++  return new TextDecoder().decode(buffer)
++}
++
++const isDataPayload = (value: unknown): value is AdminDataPayload => {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
++  const candidate = value as Record<string, unknown>
++  if (candidate.type !== undefined && candidate.type !== '' && !['sub2api-data', 'sub2api-bundle'].includes(String(candidate.type))) return false
++  if (candidate.version !== undefined && candidate.version !== 0 && candidate.version !== 1) return false
++  return Array.isArray(candidate.proxies) && Array.isArray(candidate.accounts)
++}
++
++const handleClose = () => {
++  if (importing.value) return
++  emit('close')
++}
++
++const handleImport = async () => {
++  if (!props.account || !selectedFile.value) {
++    errorMessage.value = t('admin.accounts.reimportCredentialsSelectFile')
++    return
++  }
++
++  importing.value = true
++  errorMessage.value = ''
++  try {
++    let parsed: unknown
++    try {
++      parsed = JSON.parse(await readFileAsText(selectedFile.value))
++    } catch {
++      errorMessage.value = t('admin.accounts.reimportCredentialsParseFailed')
++      return
++    }
++    if (!isDataPayload(parsed)) {
++      errorMessage.value = t('admin.accounts.reimportCredentialsInvalidFile')
++      return
++    }
++    if (parsed.accounts.length !== 1) {
++      errorMessage.value = t('admin.accounts.reimportCredentialsSingleAccount')
++      return
++    }
++    const imported = parsed.accounts[0]
++    if (imported.platform !== props.account.platform || imported.type !== props.account.type) {
++      errorMessage.value = t('admin.accounts.reimportCredentialsIdentityMismatch')
++      return
++    }
++
++    const updated = await adminAPI.accounts.reimportCredentials(props.account.id, parsed)
++    appStore.showSuccess(t('admin.accounts.reimportCredentialsSuccess'))
++    emit('reimported', updated)
++    emit('close')
++  } catch (error: any) {
++    errorMessage.value = error?.response?.data?.message || error?.message || t('admin.accounts.reimportCredentialsFailed')
++  } finally {
++    importing.value = false
++  }
++}
++</script>
+
+diff --git a/frontend/src/__tests__/integration/reimport-credentials.spec.ts b/frontend/src/__tests__/integration/reimport-credentials.spec.ts
+new file mode 100644
+index 000000000..2943fae57
+--- /dev/null
++++ b/frontend/src/__tests__/integration/reimport-credentials.spec.ts
+@@ -0,0 +1,107 @@
++import { describe, expect, it, vi, beforeEach } from 'vitest'
++import { flushPromises, mount } from '@vue/test-utils'
++import ReimportCredentialsModal from '@/components/admin/account/ReimportCredentialsModal.vue'
++
++const showError = vi.fn()
++const showSuccess = vi.fn()
++
++vi.mock('@/stores/app', () => ({
++  useAppStore: () => ({ showError, showSuccess })
++}))
++
++vi.mock('@/api/admin', () => ({
++  adminAPI: {
++    accounts: {
++      reimportCredentials: vi.fn()
++    }
++  }
++}))
++
++vi.mock('vue-i18n', () => ({
++  useI18n: () => ({ t: (key: string) => key })
++}))
++
++const account = {
++  id: 21,
++  name: 'existing',
++  platform: 'openai',
++  type: 'oauth',
++  status: 'active',
++  starts_at: '',
++  daily_usage_usd: 0,
++  weekly_usage_usd: 0,
++  monthly_usage_usd: 0,
++  daily_window_start: null,
++  weekly_window_start: null,
++  monthly_window_start: null,
++  created_at: '',
++  updated_at: '',
++  expires_at: null
++} as any
++
++const makeJsonFile = (content: string) => {
++  const file = new File([content], 'sub2api.json', { type: 'application/json' })
++  Object.defineProperty(file, 'text', { value: () => Promise.resolve(content) })
++  return file
++}
++
++const setInputFiles = (element: Element, files: File[]) => {
++  Object.defineProperty(element, 'files', { value: files, configurable: true })
++}
++
++const mountModal = () => mount(ReimportCredentialsModal, {
++  props: { show: true, account },
++  global: { stubs: { BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' } } }
++})
++
++describe('ReimportCredentialsModal', () => {
++  beforeEach(async () => {
++    showError.mockReset()
++    showSuccess.mockReset()
++    const { adminAPI } = await import('@/api/admin')
++    vi.mocked(adminAPI.accounts.reimportCredentials).mockReset()
++  })
++
++  it('requires one account and forwards only the selected export payload', async () => {
++    const { adminAPI } = await import('@/api/admin')
++    const updated = { ...account, credentials: { access_token: 'new' } }
++    vi.mocked(adminAPI.accounts.reimportCredentials).mockResolvedValue(updated)
++    const wrapper = mountModal()
++    const input = wrapper.find('input[type="file"]')
++    const payload = {
++      type: 'sub2api-data',
++      version: 1,
++      proxies: [],
++      accounts: [{ name: 'exported', platform: 'openai', type: 'oauth', credentials: { access_token: 'new' } }]
++    }
++    setInputFiles(input.element, [makeJsonFile(JSON.stringify(payload))])
++
++    await input.trigger('change')
++    await wrapper.find('form').trigger('submit')
++    await flushPromises()
++
++    expect(adminAPI.accounts.reimportCredentials).toHaveBeenCalledWith(21, payload)
++    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.reimportCredentialsSuccess')
++    expect(wrapper.emitted('reimported')).toHaveLength(1)
++  })
++
++  it('rejects a file containing multiple accounts before calling the API', async () => {
++    const { adminAPI } = await import('@/api/admin')
++    const wrapper = mountModal()
++    const input = wrapper.find('input[type="file"]')
++    setInputFiles(input.element, [makeJsonFile(JSON.stringify({
++      proxies: [],
++      accounts: [
++        { name: 'one', platform: 'openai', type: 'oauth', credentials: { access_token: '1' } },
++        { name: 'two', platform: 'openai', type: 'oauth', credentials: { access_token: '2' } }
++      ]
++    }))])
++
++    await input.trigger('change')
++    await wrapper.find('form').trigger('submit')
++    await flushPromises()
++
++    expect(adminAPI.accounts.reimportCredentials).not.toHaveBeenCalled()
++    expect(wrapper.text()).toContain('admin.accounts.reimportCredentialsSingleAccount')
++  })
++})
