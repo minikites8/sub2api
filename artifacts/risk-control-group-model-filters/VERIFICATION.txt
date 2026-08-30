@@ -1,0 +1,79 @@
+BRANCH: main
+CHANGED FIELD: ContentModerationConfig.GroupModelFilters / group_model_filters
+SEMANTICS: A non-empty group_model_filters entry selects client-requested models monitored within that group. Empty or missing entries use the global model_filter. GroupModelOverrides remains the moderation API model, including the Omni moderation model.
+
+ARTIFACTS
+MODIFIED_FILE: D:\Programs\sub2api\artifacts\risk-control-group-model-filters\MODIFIED_FILE
+DIFF_FILE: D:\Programs\sub2api\artifacts\risk-control-group-model-filters\DIFF_FILE
+VERIFICATION.txt: D:\Programs\sub2api\artifacts\risk-control-group-model-filters\VERIFICATION.txt
+ROLLBACK.sh: D:\Programs\sub2api\artifacts\risk-control-group-model-filters\ROLLBACK.sh
+
+HASHES
+BASE HEAD commit: 822b2762a
+ORIGINAL backend/internal/service/content_moderation.go blob: e6815a76767d95bc77c2c667551f7d8374e3080d
+MODIFIED_FILE SHA256: 1A792C9920E43985519A07CE4B7821F2D37E6EE0F928D2BEB825BC67A1F59568
+DIFF_FILE SHA256: 3E491AAAF10FA3B8213AA5110C12C6D9757C4B7150A9FCDE16E3A65F71608053
+
+BASELINE
+Command: $env:GOTMPDIR='D:\Programs\sub2api\.tmp\go-tmp-baseline'; $env:GOCACHE='D:\Programs\sub2api\.tmp\go-cache-baseline'; go test ./internal/service -run '^TestContentModerationCheck_ModelFilterUsesRequestedModelNotBodyModel$' -count=1
+Working directory: D:\Programs\sub2api\.tmp\risk-control-group-model-filters-baseline\backend
+Input: HEAD source before group_model_filters
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  2.294s
+Exit status: 0
+
+MODIFIED
+Command: $env:GOTMPDIR='D:\tmp\sub2api-gotmp'; $env:GOCACHE='D:\tmp\sub2api-gocache'; go test ./internal/service -run 'TestContentModeration(Check_GroupModelFilterOverridesGlobalFilter|Check_AsyncUsesGroupModelFilterForRequestedModel|UpdateConfig_SavesNormalizedGroupModelFilters)$' -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: group-specific override of global requested-model filtering, asynchronous filtering, and normalized persistence
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  2.636s
+Exit status: 0
+
+Command: $env:GOTMPDIR='D:\tmp\sub2api-gotmp'; $env:GOCACHE='D:\tmp\sub2api-gocache'; go test ./internal/service -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: complete modified content moderation service package
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/service  113.170s
+Exit status: 0
+
+Command: go test ./internal/handler/admin -run 'Test' -count=1
+Working directory: D:\Programs\sub2api\backend
+Input: admin configuration request forwarding
+Literal output: ok  github.com/Wei-Shaw/sub2api/internal/handler/admin  2.842s
+Exit status: 0
+
+Command: pnpm exec vitest run src/views/admin/__tests__/RiskControlView.spec.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: rendering and saving group moderation API models separately from group monitored request models
+Literal output: Test Files 1 passed (1); Tests 8 passed (8); Duration 4.24s
+Exit status: 0
+
+Command: pnpm typecheck
+Working directory: D:\Programs\sub2api\frontend
+Input: modified frontend type contracts and RiskControlView bindings
+Literal output:
+> sub2api-frontend@1.0.0 typecheck D:\Programs\sub2api\frontend
+> vue-tsc --noEmit
+Exit status: 0
+
+Command: pnpm exec eslint src/api/admin/riskControl.ts src/views/admin/RiskControlView.vue src/views/admin/__tests__/RiskControlView.spec.ts src/i18n/locales/en/admin/channels.ts src/i18n/locales/zh/admin/channels.ts
+Working directory: D:\Programs\sub2api\frontend
+Input: changed frontend files
+Literal output: <empty>
+Exit status: 0
+
+ROLLBACK
+Command: & 'C:\Program Files\Git\bin\bash.exe' 'D:/Programs/sub2api/artifacts/risk-control-group-model-filters/ROLLBACK.sh' 'D:/tmp/risk-control-group-model-filters-rollback'
+Input: independent copy of all eight modified files at the modified state
+Literal output: patching file backend/internal/handler/admin/content_moderation_handler.go; patching file backend/internal/service/content_moderation.go; patching file backend/internal/service/content_moderation_test.go; patching file frontend/src/api/admin/riskControl.ts; patching file frontend/src/i18n/locales/en/admin/channels.ts; patching file frontend/src/i18n/locales/zh/admin/channels.ts; patching file frontend/src/views/admin/RiskControlView.vue; patching file frontend/src/views/admin/__tests__/RiskControlView.spec.ts; ROLLBACK_OK root=D:\tmp\risk-control-group-model-filters-rollback
+Exit status: 0
+Restored behavior/status: all eight rolled-back files match their HEAD blobs; group_model_filters and group monitor controls are absent in the restored copy, while the original workspace MODIFIED_FILE remains changed.
+
+ROLLBACK HASH CHECK
+backend/internal/handler/admin/content_moderation_handler.go: match
+backend/internal/service/content_moderation.go: match
+backend/internal/service/content_moderation_test.go: match
+frontend/src/api/admin/riskControl.ts: match
+frontend/src/i18n/locales/en/admin/channels.ts: match
+frontend/src/i18n/locales/zh/admin/channels.ts: match
+frontend/src/views/admin/RiskControlView.vue: match
+frontend/src/views/admin/__tests__/RiskControlView.spec.ts: match
+ROLLBACK_MISMATCH_COUNT=0
