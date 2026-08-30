@@ -110,6 +110,11 @@ func Status(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldStatus, v))
 }
 
+// DisabledUntil applies equality check predicate on the "disabled_until" field. It's identical to DisabledUntilEQ.
+func DisabledUntil(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldDisabledUntil, v))
+}
+
 // Username applies equality check predicate on the "username" field. It's identical to UsernameEQ.
 func Username(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldUsername, v))
@@ -763,6 +768,56 @@ func StatusEqualFold(v string) predicate.User {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// DisabledUntilEQ applies the EQ predicate on the "disabled_until" field.
+func DisabledUntilEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldDisabledUntil, v))
+}
+
+// DisabledUntilNEQ applies the NEQ predicate on the "disabled_until" field.
+func DisabledUntilNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldDisabledUntil, v))
+}
+
+// DisabledUntilIn applies the In predicate on the "disabled_until" field.
+func DisabledUntilIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldDisabledUntil, vs...))
+}
+
+// DisabledUntilNotIn applies the NotIn predicate on the "disabled_until" field.
+func DisabledUntilNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldDisabledUntil, vs...))
+}
+
+// DisabledUntilGT applies the GT predicate on the "disabled_until" field.
+func DisabledUntilGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldDisabledUntil, v))
+}
+
+// DisabledUntilGTE applies the GTE predicate on the "disabled_until" field.
+func DisabledUntilGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldDisabledUntil, v))
+}
+
+// DisabledUntilLT applies the LT predicate on the "disabled_until" field.
+func DisabledUntilLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldDisabledUntil, v))
+}
+
+// DisabledUntilLTE applies the LTE predicate on the "disabled_until" field.
+func DisabledUntilLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldDisabledUntil, v))
+}
+
+// DisabledUntilIsNil applies the IsNil predicate on the "disabled_until" field.
+func DisabledUntilIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldDisabledUntil))
+}
+
+// DisabledUntilNotNil applies the NotNil predicate on the "disabled_until" field.
+func DisabledUntilNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldDisabledUntil))
 }
 
 // UsernameEQ applies the EQ predicate on the "username" field.

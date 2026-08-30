@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -160,8 +161,11 @@ type contentModerationTestHashCache struct {
 }
 
 type contentModerationTestUserRepo struct {
-	user    *User
-	updated []User
+	user        *User
+	updated     []User
+	banned      map[int64]struct{}
+	expirations map[int64]time.Time
+	groupBans   [][2]int64
 }
 
 func (r *contentModerationTestUserRepo) Create(ctx context.Context, user *User) error {
@@ -196,6 +200,36 @@ func (r *contentModerationTestUserRepo) Update(ctx context.Context, user *User, 
 	r.updated = append(r.updated, clone)
 	r.user = &clone
 	return nil
+}
+
+func (r *contentModerationTestUserRepo) BanGroupForUser(ctx context.Context, userID, groupID int64, expiresAt *time.Time) error {
+	if r.banned == nil {
+		r.banned = make(map[int64]struct{})
+	}
+	r.banned[groupID] = struct{}{}
+	if expiresAt != nil {
+		if r.expirations == nil {
+			r.expirations = make(map[int64]time.Time)
+		}
+		r.expirations[groupID] = *expiresAt
+	}
+	r.groupBans = append(r.groupBans, [2]int64{userID, groupID})
+	return nil
+}
+
+func (r *contentModerationTestUserRepo) UnbanGroupForUser(ctx context.Context, userID, groupID int64) error {
+	delete(r.banned, groupID)
+	delete(r.expirations, groupID)
+	return nil
+}
+
+func (r *contentModerationTestUserRepo) ListBannedGroupIDs(ctx context.Context, userID int64) ([]int64, map[int64]time.Time, error) {
+	ids := make([]int64, 0, len(r.banned))
+	for id := range r.banned {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, r.expirations, nil
 }
 
 func (r *contentModerationTestUserRepo) Delete(ctx context.Context, id int64) error {
@@ -1722,6 +1756,59 @@ func TestContentModerationAutoBanDisablesRegularUserAtThreshold(t *testing.T) {
 	require.Equal(t, StatusDisabled, userRepo.user.Status)
 	require.Equal(t, []int64{userID}, invalidator.userIDs)
 }
+
+func TestContentModerationAutoBanGroupLeavesUserActive(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.BanType = ContentModerationBanTypeGroup
+	cfg.BanDurationHours = 2
+	cfg.BanThreshold = 1
+	cfg.ViolationWindowHours = 24
+	userID, groupID := int64(1001), int64(42)
+	repo := &contentModerationTestRepo{}
+	userRepo := &contentModerationTestUserRepo{user: &User{ID: userID, Role: RoleUser, Status: StatusActive}}
+	invalidator := &contentModerationTestAuthCacheInvalidator{}
+	svc := NewContentModerationService(nil, repo, nil, nil, userRepo, nil, invalidator, nil)
+	log := newContentModerationFlaggedLog(userID)
+	log.GroupID = &groupID
+
+	svc.persistContentModerationLog(context.Background(), cfg, log, "", false, true)
+
+	recorded := requireContentModerationLogCount(t, repo, 1)
+	require.True(t, recorded[0].AutoBanned)
+	require.Equal(t, StatusActive, userRepo.user.Status)
+	require.Equal(t, map[int64]struct{}{groupID: {}}, userRepo.banned)
+	require.WithinDuration(t, time.Now().Add(2*time.Hour), userRepo.expirations[groupID], 5*time.Second)
+	groupBannedUser := &User{BannedGroupIDs: []int64{groupID}, BannedGroupExpirations: userRepo.expirations}
+	require.True(t, groupBannedUser.IsGroupBanned(groupID))
+	groupBannedUser.BannedGroupExpirations[groupID] = time.Now().Add(-time.Second)
+	require.False(t, groupBannedUser.IsGroupBanned(groupID))
+	require.Equal(t, []int64{userID}, invalidator.userIDs)
+
+	result, err := svc.UnbanGroup(context.Background(), userID, groupID)
+	require.NoError(t, err)
+	require.Equal(t, groupID, result.GroupID)
+	require.Empty(t, userRepo.banned)
+}
+
+func TestContentModerationAutoBanUserSetsExpiry(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.BanDurationHours = 1
+	cfg.BanThreshold = 1
+	userID := int64(1002)
+	repo := &contentModerationTestRepo{}
+	userRepo := &contentModerationTestUserRepo{user: &User{ID: userID, Role: RoleUser, Status: StatusActive}}
+	svc := NewContentModerationService(nil, repo, nil, nil, userRepo, nil, nil, nil)
+	svc.persistContentModerationLog(context.Background(), cfg, newContentModerationFlaggedLog(userID), "", false, true)
+
+	require.Equal(t, StatusDisabled, userRepo.user.Status)
+	require.NotNil(t, userRepo.user.DisabledUntil)
+	require.WithinDuration(t, time.Now().Add(time.Hour), *userRepo.user.DisabledUntil, 5*time.Second)
+	require.False(t, userRepo.user.IsActive())
+	userRepo.user.DisabledUntil = contentModerationPtrTime(time.Now().Add(-time.Second))
+	require.True(t, userRepo.user.IsActive())
+}
+
+func contentModerationPtrTime(value time.Time) *time.Time { return &value }
 
 func TestContentModerationAdminBelowBanThresholdRecordsViolationOnly(t *testing.T) {
 	cfg := defaultContentModerationConfig()

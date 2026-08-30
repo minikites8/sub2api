@@ -231,6 +231,33 @@ WHERE user_id = $1
 	return count, nil
 }
 
+func (r *contentModerationRepository) CountFlaggedByUserAndGroupSince(ctx context.Context, userID, groupID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
+	if userID <= 0 || groupID <= 0 {
+		return 0, nil
+	}
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+WITH last_auto_ban AS (
+    SELECT MAX(created_at) AS at
+    FROM content_moderation_logs
+    WHERE user_id = $1 AND group_id = $2 AND auto_banned = TRUE
+)
+SELECT COUNT(*)
+FROM content_moderation_logs
+WHERE user_id = $1
+  AND group_id = $2
+  AND flagged = TRUE
+  AND action <> 'hash_block'
+  AND ($4::bool IS FALSE OR action <> 'cyber_policy')
+  AND created_at >= $3
+  AND created_at > COALESCE((SELECT at FROM last_auto_ban), '-infinity'::timestamptz)
+`, userID, groupID, since, excludeCyberPolicy).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count user group content moderation flagged logs: %w", err)
+	}
+	return count, nil
+}
+
 func (r *contentModerationRepository) UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE content_moderation_logs SET email_sent = $1 WHERE id = $2`, sent, id)
 	if err != nil {

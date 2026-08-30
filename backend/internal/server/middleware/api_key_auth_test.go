@@ -384,6 +384,26 @@ func TestAPIKeyAuthRejectsExclusiveGroupWhenUserNoLongerAllowed(t *testing.T) {
 	require.Contains(t, w.Body.String(), "GROUP_NOT_ALLOWED")
 }
 
+func TestAPIKeyAuthRejectsUserBannedFromGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	group := &service.Group{ID: 303, Name: "restricted", Status: service.StatusActive, Hydrated: true}
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 10, Concurrency: 3, BannedGroupIDs: []int64{group.ID}}
+	apiKey := &service.APIKey{ID: 100, UserID: user.ID, Key: "test-key", Status: service.StatusActive, User: user, Group: group, GroupID: &group.ID}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+		clone := *apiKey
+		return &clone, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	router := newAuthTestRouter(service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "GROUP_BANNED")
+}
+
 func TestAPIKeyAuthOverwritesInvalidContextGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

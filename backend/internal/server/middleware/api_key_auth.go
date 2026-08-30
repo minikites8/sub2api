@@ -414,6 +414,12 @@ func abortIfAPIKeyGroupUnavailable(c *gin.Context, apiKey *service.APIKey) bool 
 }
 
 func abortIfAPIKeyGroupNotAllowed(c *gin.Context, apiKey *service.APIKey) bool {
+	if validateAPIKeyGroupBanned(apiKey) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
+		MarkIngressRejected(c, IngressRejectGroupBanned)
+		AbortWithError(c, 403, "GROUP_BANNED", "当前用户已被封禁，无法使用此分组")
+		return true
+	}
 	if validateAPIKeyGroupAllowed(apiKey) {
 		return false
 	}
@@ -421,6 +427,10 @@ func abortIfAPIKeyGroupNotAllowed(c *gin.Context, apiKey *service.APIKey) bool {
 	MarkIngressRejected(c, IngressRejectGroupNotAllowed)
 	AbortWithError(c, 403, "GROUP_NOT_ALLOWED", "API Key 所属专属分组不再允许当前用户使用")
 	return true
+}
+
+func validateAPIKeyGroupBanned(apiKey *service.APIKey) bool {
+	return apiKey != nil && apiKey.GroupID != nil && apiKey.User != nil && apiKey.User.IsGroupBanned(*apiKey.GroupID)
 }
 
 func validateAPIKeyGroupAllowed(apiKey *service.APIKey) bool {

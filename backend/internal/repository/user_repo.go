@@ -34,6 +34,7 @@ type userRepository struct {
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
 var _ service.RiskControlBalanceRecorder = (*userRepository)(nil)
+var _ service.UserGroupBanRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -151,6 +152,7 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
+		SetNillableDisabledUntil(userIn.DisabledUntil).
 		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
@@ -191,6 +193,16 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	banned, expirations, err := r.loadBannedGroups(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := banned[id]; ok {
+		out.BannedGroupIDs = v
+	}
+	if v, ok := expirations[id]; ok {
+		out.BannedGroupExpirations = v
+	}
 	return out, nil
 }
 
@@ -207,6 +219,16 @@ func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*
 	}
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
+	}
+	banned, expirations, err := r.loadBannedGroups(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := banned[id]; ok {
+		out.BannedGroupIDs = v
+	}
+	if v, ok := expirations[id]; ok {
+		out.BannedGroupExpirations = v
 	}
 	return out, nil
 }
@@ -234,6 +256,16 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	}
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
+	}
+	banned, expirations, err := r.loadBannedGroups(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := banned[m.ID]; ok {
+		out.BannedGroupIDs = v
+	}
+	if v, ok := expirations[m.ID]; ok {
+		out.BannedGroupExpirations = v
 	}
 	return out, nil
 }
@@ -317,6 +349,13 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 	}
 	if fields.Status {
 		updateOp = updateOp.SetStatus(userIn.Status)
+	}
+	if fields.DisabledUntil {
+		if userIn.DisabledUntil == nil {
+			updateOp = updateOp.ClearDisabledUntil()
+		} else {
+			updateOp = updateOp.SetDisabledUntil(*userIn.DisabledUntil)
+		}
 	}
 	if fields.BalanceNotifySettings {
 		updateOp = updateOp.
@@ -638,6 +677,18 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	for id, u := range userMap {
 		if groups, ok := allowedGroupsByUser[id]; ok {
 			u.AllowedGroups = groups
+		}
+	}
+	bannedGroupsByUser, bannedExpirationsByUser, err := r.loadBannedGroups(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		if groups, ok := bannedGroupsByUser[id]; ok {
+			u.BannedGroupIDs = groups
+		}
+		if expirations, ok := bannedExpirationsByUser[id]; ok {
+			u.BannedGroupExpirations = expirations
 		}
 	}
 
@@ -1421,6 +1472,63 @@ func (r *userRepository) RemoveGroupFromUserAllowedGroups(ctx context.Context, u
 	return err
 }
 
+// BanGroupForUser records a user-scoped ban for a group. The operation is
+// idempotent so repeated moderation hits do not create duplicate rows.
+func (r *userRepository) BanGroupForUser(ctx context.Context, userID, groupID int64, expiresAt *time.Time) error {
+	if userID <= 0 || groupID <= 0 || r.sql == nil {
+		return nil
+	}
+	var expiry any
+	if expiresAt != nil {
+		expiry = *expiresAt
+	}
+	_, err := r.sql.ExecContext(ctx, `
+INSERT INTO user_banned_groups (user_id, group_id, expires_at)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id, group_id) DO UPDATE SET expires_at = EXCLUDED.expires_at`, userID, groupID, expiry)
+	return err
+}
+
+// UnbanGroupForUser removes only the requested user-group ban.
+func (r *userRepository) UnbanGroupForUser(ctx context.Context, userID, groupID int64) error {
+	if userID <= 0 || groupID <= 0 || r.sql == nil {
+		return nil
+	}
+	_, err := r.sql.ExecContext(ctx, `DELETE FROM user_banned_groups WHERE user_id = $1 AND group_id = $2`, userID, groupID)
+	return err
+}
+
+func (r *userRepository) ListBannedGroupIDs(ctx context.Context, userID int64) ([]int64, map[int64]time.Time, error) {
+	if userID <= 0 || r.sql == nil {
+		return []int64{}, nil, nil
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT group_id, expires_at FROM user_banned_groups WHERE user_id = $1 ORDER BY group_id`, userID)
+	if err != nil {
+		if isMissingUserBannedGroupsTable(err) {
+			return []int64{}, nil, nil
+		}
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]int64, 0)
+	expirations := make(map[int64]time.Time)
+	for rows.Next() {
+		var groupID int64
+		var expiresAt *time.Time
+		if err := rows.Scan(&groupID, &expiresAt); err != nil {
+			return nil, nil, err
+		}
+		result = append(result, groupID)
+		if expiresAt != nil {
+			expirations[groupID] = *expiresAt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return result, expirations, nil
+}
+
 func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, error) {
 	m, err := r.client.User.Query().
 		Where(
@@ -1440,6 +1548,16 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	}
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
+	}
+	banned, expirations, err := r.loadBannedGroups(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := banned[m.ID]; ok {
+		out.BannedGroupIDs = v
+	}
+	if v, ok := expirations[m.ID]; ok {
+		out.BannedGroupExpirations = v
 	}
 	return out, nil
 }
@@ -1466,6 +1584,53 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 	}
 
 	return out, nil
+}
+
+func (r *userRepository) loadBannedGroups(ctx context.Context, userIDs []int64) (map[int64][]int64, map[int64]map[int64]time.Time, error) {
+	out := make(map[int64][]int64, len(userIDs))
+	expirations := make(map[int64]map[int64]time.Time, len(userIDs))
+	if len(userIDs) == 0 || r.sql == nil {
+		return out, expirations, nil
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT user_id, group_id, expires_at
+FROM user_banned_groups
+WHERE user_id = ANY($1)
+ORDER BY user_id, group_id`, pq.Array(userIDs))
+	if err != nil {
+		if isMissingUserBannedGroupsTable(err) {
+			return out, expirations, nil
+		}
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var userID, groupID int64
+		var expiresAt *time.Time
+		if err := rows.Scan(&userID, &groupID, &expiresAt); err != nil {
+			return nil, nil, err
+		}
+		out[userID] = append(out[userID], groupID)
+		if expiresAt != nil {
+			if expirations[userID] == nil {
+				expirations[userID] = make(map[int64]time.Time)
+			}
+			expirations[userID][groupID] = *expiresAt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return out, expirations, nil
+}
+
+func isMissingUserBannedGroupsTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "user_banned_groups") &&
+		(strings.Contains(message, "no such table") || strings.Contains(message, "does not exist"))
 }
 
 // syncUserAllowedGroupsWithClient 在 ent client/事务内同步用户允许分组：
@@ -1534,6 +1699,7 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 	}
 	dst.ID = src.ID
 	dst.SignupIP = src.SignupIP
+	dst.DisabledUntil = src.DisabledUntil
 	dst.SignupSource = src.SignupSource
 	dst.LastLoginAt = src.LastLoginAt
 	dst.LastActiveAt = src.LastActiveAt

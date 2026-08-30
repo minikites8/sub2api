@@ -205,6 +205,26 @@ func (_u *UserUpdate) SetNillableStatus(v *string) *UserUpdate {
 	return _u
 }
 
+// SetDisabledUntil sets the "disabled_until" field.
+func (_u *UserUpdate) SetDisabledUntil(v time.Time) *UserUpdate {
+	_u.mutation.SetDisabledUntil(v)
+	return _u
+}
+
+// SetNillableDisabledUntil sets the "disabled_until" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableDisabledUntil(v *time.Time) *UserUpdate {
+	if v != nil {
+		_u.SetDisabledUntil(*v)
+	}
+	return _u
+}
+
+// ClearDisabledUntil clears the value of the "disabled_until" field.
+func (_u *UserUpdate) ClearDisabledUntil() *UserUpdate {
+	_u.mutation.ClearDisabledUntil()
+	return _u
+}
+
 // SetUsername sets the "username" field.
 func (_u *UserUpdate) SetUsername(v string) *UserUpdate {
 	_u.mutation.SetUsername(v)
@@ -1064,6 +1084,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.DisabledUntil(); ok {
+		_spec.SetField(user.FieldDisabledUntil, field.TypeTime, value)
+	}
+	if _u.mutation.DisabledUntilCleared() {
+		_spec.ClearField(user.FieldDisabledUntil, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
 	}
@@ -1909,6 +1935,26 @@ func (_u *UserUpdateOne) SetNillableStatus(v *string) *UserUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetDisabledUntil sets the "disabled_until" field.
+func (_u *UserUpdateOne) SetDisabledUntil(v time.Time) *UserUpdateOne {
+	_u.mutation.SetDisabledUntil(v)
+	return _u
+}
+
+// SetNillableDisabledUntil sets the "disabled_until" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableDisabledUntil(v *time.Time) *UserUpdateOne {
+	if v != nil {
+		_u.SetDisabledUntil(*v)
+	}
+	return _u
+}
+
+// ClearDisabledUntil clears the value of the "disabled_until" field.
+func (_u *UserUpdateOne) ClearDisabledUntil() *UserUpdateOne {
+	_u.mutation.ClearDisabledUntil()
 	return _u
 }
 
@@ -2800,6 +2846,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DisabledUntil(); ok {
+		_spec.SetField(user.FieldDisabledUntil, field.TypeTime, value)
+	}
+	if _u.mutation.DisabledUntilCleared() {
+		_spec.ClearField(user.FieldDisabledUntil, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)

@@ -41,6 +41,12 @@ const (
 	ContentModerationActionError        = "error"
 	ContentModerationActionCyberPolicy  = "cyber_policy" // cyber_policy 硬阻断的风控日志 action（封号计数排除按此值过滤）
 
+	ContentModerationBanTypeUser  = "user"
+	ContentModerationBanTypeGroup = "group"
+
+	defaultContentModerationBanDurationHours = 0
+	maxContentModerationBanDurationHours     = 8760
+
 	contentModerationKeywordCategory = "keyword"
 
 	ContentModerationKeywordModeKeywordOnly   = "keyword_only"
@@ -162,6 +168,8 @@ type ContentModerationConfig struct {
 	BlockMessage         string                       `json:"block_message"`
 	EmailOnHit           bool                         `json:"email_on_hit"`
 	AutoBanEnabled       bool                         `json:"auto_ban_enabled"`
+	BanType              string                       `json:"ban_type"`
+	BanDurationHours     int                          `json:"ban_duration_hours"`
 	BanThreshold         int                          `json:"ban_threshold"`
 	ViolationWindowHours int                          `json:"violation_window_hours"`
 	RetryCount           int                          `json:"retry_count"`
@@ -201,6 +209,8 @@ type ContentModerationConfigView struct {
 	BlockMessage                   string                          `json:"block_message"`
 	EmailOnHit                     bool                            `json:"email_on_hit"`
 	AutoBanEnabled                 bool                            `json:"auto_ban_enabled"`
+	BanType                        string                          `json:"ban_type"`
+	BanDurationHours               int                             `json:"ban_duration_hours"`
 	BanThreshold                   int                             `json:"ban_threshold"`
 	ViolationWindowHours           int                             `json:"violation_window_hours"`
 	RetryCount                     int                             `json:"retry_count"`
@@ -294,6 +304,8 @@ type UpdateContentModerationConfigInput struct {
 	BlockMessage                   *string                       `json:"block_message"`
 	EmailOnHit                     *bool                         `json:"email_on_hit"`
 	AutoBanEnabled                 *bool                         `json:"auto_ban_enabled"`
+	BanType                        *string                       `json:"ban_type"`
+	BanDurationHours               *int                          `json:"ban_duration_hours"`
 	BanThreshold                   *int                          `json:"ban_threshold"`
 	ViolationWindowHours           *int                          `json:"violation_window_hours"`
 	RetryCount                     *int                          `json:"retry_count"`
@@ -476,6 +488,11 @@ type ContentModerationUnbanUserResult struct {
 	Status string `json:"status"`
 }
 
+type ContentModerationUnbanGroupResult struct {
+	UserID  int64 `json:"user_id"`
+	GroupID int64 `json:"group_id"`
+}
+
 type ContentModerationDeleteHashResult struct {
 	InputHash string `json:"input_hash"`
 	Deleted   bool   `json:"deleted"`
@@ -494,6 +511,10 @@ type ContentModerationRepository interface {
 	CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error)
 	// UpdateLogEmailSent 回写邮件发送结果（F7：CreateLog 先行后补 EmailSent）。
 	UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error
+}
+
+type ContentModerationGroupViolationCounter interface {
+	CountFlaggedByUserAndGroupSince(ctx context.Context, userID, groupID int64, since time.Time, excludeCyberPolicy bool) (int, error)
 }
 
 type ContentModerationHashCache interface {
@@ -669,6 +690,12 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.AutoBanEnabled != nil {
 		cfg.AutoBanEnabled = *input.AutoBanEnabled
+	}
+	if input.BanType != nil {
+		cfg.BanType = strings.TrimSpace(strings.ToLower(*input.BanType))
+	}
+	if input.BanDurationHours != nil {
+		cfg.BanDurationHours = *input.BanDurationHours
 	}
 	if input.BanThreshold != nil {
 		cfg.BanThreshold = *input.BanThreshold
@@ -1336,9 +1363,10 @@ func (s *ContentModerationService) UnbanUser(ctx context.Context, userID int64) 
 		}
 		return nil, fmt.Errorf("get content moderation unban user: %w", err)
 	}
-	if user.Status != StatusActive {
+	if user.Status != StatusActive || user.DisabledUntil != nil {
 		user.Status = StatusActive
-		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {
+		user.DisabledUntil = nil
+		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true, DisabledUntil: true}); err != nil {
 			return nil, fmt.Errorf("update content moderation unban user: %w", err)
 		}
 	}
@@ -1349,6 +1377,34 @@ func (s *ContentModerationService) UnbanUser(ctx context.Context, userID int64) 
 		UserID: userID,
 		Status: StatusActive,
 	}, nil
+}
+
+// UnbanGroup removes a user's group-scoped ban while preserving user status
+// and bans on other groups.
+func (s *ContentModerationService) UnbanGroup(ctx context.Context, userID, groupID int64) (*ContentModerationUnbanGroupResult, error) {
+	if s == nil || s.userRepo == nil {
+		return nil, infraerrors.InternalServer("CONTENT_MODERATION_USER_REPOSITORY_UNAVAILABLE", "用户仓储不可用")
+	}
+	if userID <= 0 || groupID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_GROUP_BAN_TARGET", "用户 ID 或分组 ID 无效")
+	}
+	if _, err := s.userRepo.GetByID(ctx, userID); err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, infraerrors.NotFound("USER_NOT_FOUND", "用户不存在")
+		}
+		return nil, fmt.Errorf("get content moderation group unban user: %w", err)
+	}
+	repo, ok := s.userRepo.(UserGroupBanRepository)
+	if !ok {
+		return nil, infraerrors.InternalServer("CONTENT_MODERATION_GROUP_BAN_UNAVAILABLE", "分组封禁仓储不可用")
+	}
+	if err := repo.UnbanGroupForUser(ctx, userID, groupID); err != nil {
+		return nil, fmt.Errorf("update content moderation group ban: %w", err)
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	return &ContentModerationUnbanGroupResult{UserID: userID, GroupID: groupID}, nil
 }
 
 func (s *ContentModerationService) DeleteFlaggedInputHash(ctx context.Context, inputHash string) (*ContentModerationDeleteHashResult, error) {
@@ -1669,6 +1725,14 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 	default:
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_MODE", "内容审计模式无效")
 	}
+	switch cfg.BanType {
+	case ContentModerationBanTypeUser, ContentModerationBanTypeGroup:
+	default:
+		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BAN_TYPE", "封禁类型必须是 user 或 group")
+	}
+	if cfg.BanDurationHours < 0 || cfg.BanDurationHours > maxContentModerationBanDurationHours {
+		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BAN_DURATION", "封禁时长必须在 0-8760 小时之间")
+	}
 	if _, err := url.ParseRequestURI(cfg.BaseURL); err != nil {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BASE_URL", "OpenAI Base URL 无效")
 	}
@@ -1933,7 +1997,18 @@ func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Co
 	count := 1
 	if s.repo != nil && cfg.ViolationWindowHours > 0 {
 		since := time.Now().Add(-time.Duration(cfg.ViolationWindowHours) * time.Hour)
-		if n, err := s.repo.CountFlaggedByUserSince(ctx, *log.UserID, since, cfg.CyberPolicyExcludeFromBanCount); err == nil {
+		var n int
+		var err error
+		if cfg.BanType == ContentModerationBanTypeGroup && log.GroupID != nil {
+			if counter, ok := s.repo.(ContentModerationGroupViolationCounter); ok {
+				n, err = counter.CountFlaggedByUserAndGroupSince(ctx, *log.UserID, *log.GroupID, since, cfg.CyberPolicyExcludeFromBanCount)
+			} else {
+				n, err = s.repo.CountFlaggedByUserSince(ctx, *log.UserID, since, cfg.CyberPolicyExcludeFromBanCount)
+			}
+		} else {
+			n, err = s.repo.CountFlaggedByUserSince(ctx, *log.UserID, since, cfg.CyberPolicyExcludeFromBanCount)
+		}
+		if err == nil {
 			count = n + 1
 		}
 	}
@@ -1950,16 +2025,47 @@ func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Co
 			// TODO: Disable the triggering API key instead when API key mutation is available here.
 			return false
 		}
-		if user.Status != StatusDisabled {
-			user.Status = StatusDisabled
-			if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {
-				slog.Warn("content_moderation.ban_update_user_failed", "user_id", *log.UserID, "error", err)
+		if cfg.BanType == ContentModerationBanTypeGroup {
+			if log.GroupID == nil || *log.GroupID <= 0 {
+				slog.Warn("content_moderation.group_ban_missing_group", "user_id", *log.UserID)
+				return false
+			}
+			banRepo, ok := s.userRepo.(UserGroupBanRepository)
+			if !ok {
+				slog.Warn("content_moderation.group_ban_repository_unavailable", "user_id", *log.UserID, "group_id", *log.GroupID)
+				return false
+			}
+			var expiresAt *time.Time
+			if cfg.BanDurationHours > 0 {
+				t := time.Now().Add(time.Duration(cfg.BanDurationHours) * time.Hour)
+				expiresAt = &t
+			}
+			if err := banRepo.BanGroupForUser(ctx, *log.UserID, *log.GroupID, expiresAt); err != nil {
+				slog.Warn("content_moderation.ban_group_failed", "user_id", *log.UserID, "group_id", *log.GroupID, "error", err)
 				return false
 			}
 			if s.authCacheInvalidator != nil {
 				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, *log.UserID)
 			}
 			autoBanJustApplied = true
+		} else {
+			if user.Status != StatusDisabled || cfg.BanDurationHours > 0 {
+				user.Status = StatusDisabled
+				if cfg.BanDurationHours > 0 {
+					t := time.Now().Add(time.Duration(cfg.BanDurationHours) * time.Hour)
+					user.DisabledUntil = &t
+				} else {
+					user.DisabledUntil = nil
+				}
+				if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true, DisabledUntil: true}); err != nil {
+					slog.Warn("content_moderation.ban_update_user_failed", "user_id", *log.UserID, "error", err)
+					return false
+				}
+				if s.authCacheInvalidator != nil {
+					s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, *log.UserID)
+				}
+				autoBanJustApplied = true
+			}
 		}
 		log.AutoBanned = true
 	}
@@ -1981,7 +2087,7 @@ func (s *ContentModerationService) sendFlaggedNotificationSideEffects(ctx contex
 			emailSent = true
 		}
 	}
-	if autoBanJustApplied {
+	if autoBanJustApplied && cfg.BanType == ContentModerationBanTypeUser {
 		if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
 			slog.Warn("content_moderation.ban_email_failed", "user_id", *log.UserID, "email", log.UserEmail, "error", err)
 		} else {
@@ -2113,6 +2219,8 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 		BlockMessage:         defaultContentModerationBlockMessage,
 		EmailOnHit:           true,
 		AutoBanEnabled:       true,
+		BanType:              ContentModerationBanTypeUser,
+		BanDurationHours:     defaultContentModerationBanDurationHours,
 		BanThreshold:         defaultContentModerationBanThreshold,
 		ViolationWindowHours: defaultContentModerationViolationWindowHours,
 		RetryCount:           defaultContentModerationRetryCount,
@@ -2156,6 +2264,16 @@ func (cfg *ContentModerationConfig) normalize() {
 	}
 	if cfg.Mode == "" {
 		cfg.Mode = ContentModerationModePreBlock
+	}
+	cfg.BanType = strings.ToLower(strings.TrimSpace(cfg.BanType))
+	if cfg.BanType == "" {
+		cfg.BanType = ContentModerationBanTypeUser
+	}
+	if cfg.BanDurationHours < 0 {
+		cfg.BanDurationHours = defaultContentModerationBanDurationHours
+	}
+	if cfg.BanDurationHours > maxContentModerationBanDurationHours {
+		cfg.BanDurationHours = maxContentModerationBanDurationHours
 	}
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = defaultContentModerationBaseURL
@@ -2472,6 +2590,8 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		BlockMessage:                   cfg.BlockMessage,
 		EmailOnHit:                     cfg.EmailOnHit,
 		AutoBanEnabled:                 cfg.AutoBanEnabled,
+		BanType:                        cfg.BanType,
+		BanDurationHours:               cfg.BanDurationHours,
 		BanThreshold:                   cfg.BanThreshold,
 		ViolationWindowHours:           cfg.ViolationWindowHours,
 		RetryCount:                     cfg.RetryCount,
@@ -3126,7 +3246,7 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		} else {
 			emailSent = true
 		}
-		if autoBanned {
+		if autoBanned && cfg.BanType == ContentModerationBanTypeUser {
 			if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
 				slog.Warn("content_moderation.cyber_ban_email_failed", "user_id", in.UserID, "error", err)
 			} else {

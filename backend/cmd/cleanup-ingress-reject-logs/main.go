@@ -162,6 +162,8 @@ func historicalIngressRejectReason(item candidate) (string, bool) {
 		return "group_disabled", true
 	case "GROUP_NOT_ALLOWED":
 		return "group_forbidden", true
+	case "GROUP_BANNED":
+		return "group_banned", true
 	case "ACCESS_DENIED":
 		return "ip_acl_denied", true
 	case "api_key_in_query_deprecated":
@@ -184,6 +186,8 @@ func historicalIngressRejectReason(item candidate) (string, bool) {
 		return "group_disabled", true
 	case normalized == "API Key 所属专属分组不再允许当前用户使用":
 		return "group_forbidden", true
+	case normalized == "当前用户已被封禁，无法使用此分组":
+		return "group_banned", true
 	case normalized == "API Key is not assigned to any group and cannot be used. Please contact the administrator to assign it to a group.":
 		return "group_unassigned", true
 	case strings.HasPrefix(normalized, "Access denied. Your IP is "):

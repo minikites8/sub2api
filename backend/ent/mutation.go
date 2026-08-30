@@ -50358,6 +50358,7 @@ type UserMutation struct {
 	concurrency                   *int
 	addconcurrency                *int
 	status                        *string
+	disabled_until                *time.Time
 	username                      *string
 	notes                         *string
 	totp_secret_encrypted         *string
@@ -50998,6 +50999,55 @@ func (m *UserMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *UserMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetDisabledUntil sets the "disabled_until" field.
+func (m *UserMutation) SetDisabledUntil(t time.Time) {
+	m.disabled_until = &t
+}
+
+// DisabledUntil returns the value of the "disabled_until" field in the mutation.
+func (m *UserMutation) DisabledUntil() (r time.Time, exists bool) {
+	v := m.disabled_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisabledUntil returns the old "disabled_until" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldDisabledUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisabledUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisabledUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisabledUntil: %w", err)
+	}
+	return oldValue.DisabledUntil, nil
+}
+
+// ClearDisabledUntil clears the value of the "disabled_until" field.
+func (m *UserMutation) ClearDisabledUntil() {
+	m.disabled_until = nil
+	m.clearedFields[user.FieldDisabledUntil] = struct{}{}
+}
+
+// DisabledUntilCleared returns if the "disabled_until" field was cleared in this mutation.
+func (m *UserMutation) DisabledUntilCleared() bool {
+	_, ok := m.clearedFields[user.FieldDisabledUntil]
+	return ok
+}
+
+// ResetDisabledUntil resets all changes to the "disabled_until" field.
+func (m *UserMutation) ResetDisabledUntil() {
+	m.disabled_until = nil
+	delete(m.clearedFields, user.FieldDisabledUntil)
 }
 
 // SetUsername sets the "username" field.
@@ -52366,7 +52416,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -52399,6 +52449,9 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, user.FieldStatus)
+	}
+	if m.disabled_until != nil {
+		fields = append(fields, user.FieldDisabledUntil)
 	}
 	if m.username != nil {
 		fields = append(fields, user.FieldUsername)
@@ -52472,6 +52525,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Concurrency()
 	case user.FieldStatus:
 		return m.Status()
+	case user.FieldDisabledUntil:
+		return m.DisabledUntil()
 	case user.FieldUsername:
 		return m.Username()
 	case user.FieldNotes:
@@ -52531,6 +52586,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldConcurrency(ctx)
 	case user.FieldStatus:
 		return m.OldStatus(ctx)
+	case user.FieldDisabledUntil:
+		return m.OldDisabledUntil(ctx)
 	case user.FieldUsername:
 		return m.OldUsername(ctx)
 	case user.FieldNotes:
@@ -52644,6 +52701,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case user.FieldDisabledUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisabledUntil(v)
 		return nil
 	case user.FieldUsername:
 		v, ok := value.(string)
@@ -52854,6 +52918,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldSignupIP) {
 		fields = append(fields, user.FieldSignupIP)
 	}
+	if m.FieldCleared(user.FieldDisabledUntil) {
+		fields = append(fields, user.FieldDisabledUntil)
+	}
 	if m.FieldCleared(user.FieldTotpSecretEncrypted) {
 		fields = append(fields, user.FieldTotpSecretEncrypted)
 	}
@@ -52888,6 +52955,9 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldSignupIP:
 		m.ClearSignupIP()
+		return nil
+	case user.FieldDisabledUntil:
+		m.ClearDisabledUntil()
 		return nil
 	case user.FieldTotpSecretEncrypted:
 		m.ClearTotpSecretEncrypted()
@@ -52944,6 +53014,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case user.FieldDisabledUntil:
+		m.ResetDisabledUntil()
 		return nil
 	case user.FieldUsername:
 		m.ResetUsername()

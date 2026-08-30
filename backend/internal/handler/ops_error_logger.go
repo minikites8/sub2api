@@ -58,6 +58,7 @@ const (
 	opsCodeAPIKeyQueryDeprecated = "api_key_in_query_deprecated"
 	opsCodeGroupDeleted          = "GROUP_DELETED"
 	opsCodeGroupDisabled         = "GROUP_DISABLED"
+	opsCodeGroupBanned           = "GROUP_BANNED"
 )
 
 const (
@@ -1596,7 +1597,8 @@ func isOpsClientAuthError(code string, msg string) bool {
 		opsCodeUserNotFound,
 		opsCodeUserInactive,
 		opsCodeGroupDeleted,
-		opsCodeGroupDisabled:
+		opsCodeGroupDisabled,
+		opsCodeGroupBanned:
 		return true
 	}
 	return strings.Contains(msg, "invalid api key") ||
@@ -1606,6 +1608,7 @@ func isOpsClientAuthError(code string, msg string) bool {
 		strings.Contains(msg, "user account is not active") ||
 		strings.Contains(msg, "api key 所属分组已删除") ||
 		strings.Contains(msg, "api key 所属分组已停用") ||
+		strings.Contains(msg, "当前用户已被封禁，无法使用此分组") ||
 		strings.Contains(msg, "api key is not assigned to any group")
 }
 

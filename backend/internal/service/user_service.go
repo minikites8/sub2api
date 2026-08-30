@@ -96,17 +96,18 @@ type UserListFilters struct {
 // 注意这里没有 balance / total_recharged：余额只能经由 AdjustBalance、
 // SetBalance、UpdateBalance、DeductBalance 等原子接口修改，Update 永远不碰它们。
 type UserUpdateFields struct {
-	Email        bool
-	Username     bool
-	Notes        bool
-	PasswordHash bool
-	Role         bool
-	Status       bool
-	Concurrency  bool
-	RPMLimit     bool
-	SignupSource bool
-	LastLoginAt  bool
-	LastActiveAt bool
+	Email         bool
+	Username      bool
+	Notes         bool
+	PasswordHash  bool
+	Role          bool
+	Status        bool
+	DisabledUntil bool
+	Concurrency   bool
+	RPMLimit      bool
+	SignupSource  bool
+	LastLoginAt   bool
+	LastActiveAt  bool
 	// BalanceNotifySettings 覆盖 balance_notify_enabled / _threshold_type / _threshold。
 	BalanceNotifySettings bool
 	// BalanceNotifyExtraEmails 与上一项分开，避免"改通知阈值"覆盖并发的"加通知邮箱"。
@@ -179,6 +180,15 @@ type UserRepository interface {
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error
+}
+
+// UserGroupBanRepository provides the optional persistence used by the risk
+// control group-ban policy. Keeping it separate preserves compatibility with
+// lightweight UserRepository test doubles and alternate implementations.
+type UserGroupBanRepository interface {
+	BanGroupForUser(ctx context.Context, userID, groupID int64, expiresAt *time.Time) error
+	UnbanGroupForUser(ctx context.Context, userID, groupID int64) error
+	ListBannedGroupIDs(ctx context.Context, userID int64) ([]int64, map[int64]time.Time, error)
 }
 
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
@@ -1205,8 +1215,9 @@ func (s *UserService) UpdateStatus(ctx context.Context, userID int64, status str
 	}
 
 	user.Status = status
+	user.DisabledUntil = nil
 
-	if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {
+	if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true, DisabledUntil: true}); err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}
 	if s.authCacheInvalidator != nil {

@@ -44,6 +44,8 @@ type contentModerationConfigRequest struct {
 	BlockMessage         *string             `json:"block_message"`
 	EmailOnHit           *bool               `json:"email_on_hit"`
 	AutoBanEnabled       *bool               `json:"auto_ban_enabled"`
+	BanType              *string             `json:"ban_type"`
+	BanDurationHours     *int                `json:"ban_duration_hours"`
 	BanThreshold         *int                `json:"ban_threshold"`
 	ViolationWindowHours *int                `json:"violation_window_hours"`
 	// cyber_policy 命中是否排除出自动封号计数；前端 RiskControlView 已发送该字段，
@@ -111,6 +113,8 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		BlockMessage:                   req.BlockMessage,
 		EmailOnHit:                     req.EmailOnHit,
 		AutoBanEnabled:                 req.AutoBanEnabled,
+		BanType:                        req.BanType,
+		BanDurationHours:               req.BanDurationHours,
 		BanThreshold:                   req.BanThreshold,
 		ViolationWindowHours:           req.ViolationWindowHours,
 		CyberPolicyExcludeFromBanCount: req.CyberPolicyExcludeFromBanCount,
@@ -211,6 +215,20 @@ func (h *ContentModerationHandler) UnbanUser(c *gin.Context) {
 	userID, err := strconv.ParseInt(strings.TrimSpace(c.Param("user_id")), 10, 64)
 	if err != nil || userID <= 0 {
 		response.BadRequest(c, "Invalid user_id")
+		return
+	}
+	if raw := strings.TrimSpace(c.Query("group_id")); raw != "" {
+		groupID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || groupID <= 0 {
+			response.BadRequest(c, "Invalid group_id")
+			return
+		}
+		result, unbanErr := h.service.UnbanGroup(c.Request.Context(), userID, groupID)
+		if unbanErr != nil {
+			response.ErrorFrom(c, unbanErr)
+			return
+		}
+		response.Success(c, result)
 		return
 	}
 	result, err := h.service.UnbanUser(c.Request.Context(), userID)

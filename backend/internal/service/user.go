@@ -23,8 +23,13 @@ type User struct {
 	FrozenBalance  float64
 	Concurrency    int
 	Status         string
+	DisabledUntil  *time.Time
 	AllowedGroups  []int64
-	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
+	// BannedGroupIDs contains groups this user cannot access. The ban is scoped
+	// to the user and leaves access to other groups intact.
+	BannedGroupIDs         []int64
+	BannedGroupExpirations map[int64]time.Time
+	TokenVersion           int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool
@@ -70,7 +75,10 @@ func (u *User) IsAdmin() bool {
 }
 
 func (u *User) IsActive() bool {
-	return u.Status == StatusActive
+	if u.Status == StatusActive {
+		return true
+	}
+	return u.Status == StatusDisabled && u.DisabledUntil != nil && !time.Now().Before(*u.DisabledUntil)
 }
 
 // CanBindGroup checks whether a user can bind to a given group.
@@ -78,6 +86,9 @@ func (u *User) IsActive() bool {
 // - Public groups (non-exclusive): all users can bind
 // - Exclusive groups: only users with the group in AllowedGroups can bind
 func (u *User) CanBindGroup(groupID int64, isExclusive bool) bool {
+	if u.IsGroupBanned(groupID) {
+		return false
+	}
 	// 公开分组（非专属）：所有用户都可以绑定
 	if !isExclusive {
 		return true
@@ -85,6 +96,22 @@ func (u *User) CanBindGroup(groupID int64, isExclusive bool) bool {
 	// 专属分组：需要在 AllowedGroups 中
 	for _, id := range u.AllowedGroups {
 		if id == groupID {
+			return true
+		}
+	}
+	return false
+}
+
+// IsGroupBanned reports whether this user is blocked from a group.
+func (u *User) IsGroupBanned(groupID int64) bool {
+	if u == nil || groupID <= 0 {
+		return false
+	}
+	for _, id := range u.BannedGroupIDs {
+		if id == groupID {
+			if until, ok := u.BannedGroupExpirations[groupID]; ok && !until.IsZero() && !time.Now().Before(until) {
+				return false
+			}
 			return true
 		}
 	}

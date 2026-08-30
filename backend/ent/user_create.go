@@ -172,6 +172,20 @@ func (_c *UserCreate) SetNillableStatus(v *string) *UserCreate {
 	return _c
 }
 
+// SetDisabledUntil sets the "disabled_until" field.
+func (_c *UserCreate) SetDisabledUntil(v time.Time) *UserCreate {
+	_c.mutation.SetDisabledUntil(v)
+	return _c
+}
+
+// SetNillableDisabledUntil sets the "disabled_until" field if the given value is not nil.
+func (_c *UserCreate) SetNillableDisabledUntil(v *time.Time) *UserCreate {
+	if v != nil {
+		_c.SetDisabledUntil(*v)
+	}
+	return _c
+}
+
 // SetUsername sets the "username" field.
 func (_c *UserCreate) SetUsername(v string) *UserCreate {
 	_c.mutation.SetUsername(v)
@@ -835,6 +849,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
 		_node.Status = value
 	}
+	if value, ok := _c.mutation.DisabledUntil(); ok {
+		_spec.SetField(user.FieldDisabledUntil, field.TypeTime, value)
+		_node.DisabledUntil = &value
+	}
 	if value, ok := _c.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
 		_node.Username = value
@@ -1305,6 +1323,24 @@ func (u *UserUpsert) UpdateStatus() *UserUpsert {
 	return u
 }
 
+// SetDisabledUntil sets the "disabled_until" field.
+func (u *UserUpsert) SetDisabledUntil(v time.Time) *UserUpsert {
+	u.Set(user.FieldDisabledUntil, v)
+	return u
+}
+
+// UpdateDisabledUntil sets the "disabled_until" field to the value that was provided on create.
+func (u *UserUpsert) UpdateDisabledUntil() *UserUpsert {
+	u.SetExcluded(user.FieldDisabledUntil)
+	return u
+}
+
+// ClearDisabledUntil clears the value of the "disabled_until" field.
+func (u *UserUpsert) ClearDisabledUntil() *UserUpsert {
+	u.SetNull(user.FieldDisabledUntil)
+	return u
+}
+
 // SetUsername sets the "username" field.
 func (u *UserUpsert) SetUsername(v string) *UserUpsert {
 	u.Set(user.FieldUsername, v)
@@ -1738,6 +1774,27 @@ func (u *UserUpsertOne) SetStatus(v string) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateStatus() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetDisabledUntil sets the "disabled_until" field.
+func (u *UserUpsertOne) SetDisabledUntil(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetDisabledUntil(v)
+	})
+}
+
+// UpdateDisabledUntil sets the "disabled_until" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateDisabledUntil() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateDisabledUntil()
+	})
+}
+
+// ClearDisabledUntil clears the value of the "disabled_until" field.
+func (u *UserUpsertOne) ClearDisabledUntil() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearDisabledUntil()
 	})
 }
 
@@ -2376,6 +2433,27 @@ func (u *UserUpsertBulk) SetStatus(v string) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateStatus() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetDisabledUntil sets the "disabled_until" field.
+func (u *UserUpsertBulk) SetDisabledUntil(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetDisabledUntil(v)
+	})
+}
+
+// UpdateDisabledUntil sets the "disabled_until" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateDisabledUntil() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateDisabledUntil()
+	})
+}
+
+// ClearDisabledUntil clears the value of the "disabled_until" field.
+func (u *UserUpsertBulk) ClearDisabledUntil() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearDisabledUntil()
 	})
 }
 

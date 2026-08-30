@@ -61,6 +61,10 @@ func (User) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.Time("disabled_until").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
 		// Optional profile fields (added later; default '' in DB migration)
 		field.String("username").

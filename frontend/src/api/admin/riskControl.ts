@@ -1,6 +1,7 @@
 import { apiClient } from '../client'
 
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
+export type ContentModerationBanType = 'user' | 'group'
 export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
 export type ContentModerationModelFilterType = 'all' | 'include' | 'exclude'
 
@@ -33,6 +34,8 @@ export interface ContentModerationConfig {
   block_message: string
   email_on_hit: boolean
   auto_ban_enabled: boolean
+  ban_type: ContentModerationBanType
+  ban_duration_hours: number
   ban_threshold: number
   violation_window_hours: number
   retry_count: number
@@ -114,6 +117,8 @@ export interface UpdateContentModerationConfig {
   block_message?: string
   email_on_hit?: boolean
   auto_ban_enabled?: boolean
+  ban_type?: ContentModerationBanType
+  ban_duration_hours?: number
   ban_threshold?: number
   violation_window_hours?: number
   retry_count?: number
@@ -229,6 +234,11 @@ export interface ContentModerationUnbanUserResponse {
   status: string
 }
 
+export interface ContentModerationUnbanGroupResponse {
+  user_id: number
+  group_id: number
+}
+
 export interface DeleteFlaggedHashResponse {
   input_hash: string
   deleted: boolean
@@ -278,6 +288,13 @@ export async function unbanUser(userID: number): Promise<ContentModerationUnbanU
   return data
 }
 
+export async function unbanGroup(userID: number, groupID: number): Promise<ContentModerationUnbanGroupResponse> {
+  const { data } = await apiClient.post<ContentModerationUnbanGroupResponse>(
+    `/admin/risk-control/users/${userID}/unban?group_id=${groupID}`
+  )
+  return data
+}
+
 export async function deleteFlaggedHash(inputHash: string): Promise<DeleteFlaggedHashResponse> {
   const { data } = await apiClient.delete<DeleteFlaggedHashResponse>('/admin/risk-control/hashes', {
     data: { input_hash: inputHash },
@@ -297,6 +314,7 @@ export const riskControlAPI = {
   testAPIKeys,
   listLogs,
   unbanUser,
+  unbanGroup,
   deleteFlaggedHash,
   clearFlaggedHashes,
 }

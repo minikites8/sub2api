@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 24 // v24: per-group OpenAI service_tier policy
+const apiKeyAuthSnapshotVersion = 26 // v26: timed user/group bans
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -353,10 +353,13 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		User: APIKeyAuthUserSnapshot{
 			ID:                         apiKey.User.ID,
 			Status:                     apiKey.User.Status,
+			DisabledUntil:              apiKey.User.DisabledUntil,
 			Role:                       apiKey.User.Role,
 			Balance:                    apiKey.User.Balance,
 			Concurrency:                apiKey.User.Concurrency,
 			AllowedGroups:              apiKey.User.AllowedGroups,
+			BannedGroupIDs:             append([]int64(nil), apiKey.User.BannedGroupIDs...),
+			BannedGroupExpirations:     apiKey.User.BannedGroupExpirations,
 			Email:                      apiKey.User.Email,
 			Username:                   apiKey.User.Username,
 			BalanceNotifyEnabled:       apiKey.User.BalanceNotifyEnabled,
@@ -366,6 +369,12 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			TotalRecharged:             apiKey.User.TotalRecharged,
 			RPMLimit:                   apiKey.User.RPMLimit,
 		},
+	}
+	if banRepo, ok := s.userRepo.(UserGroupBanRepository); ok && apiKey.User != nil {
+		if banned, expirations, err := banRepo.ListBannedGroupIDs(ctx, apiKey.User.ID); err == nil {
+			snapshot.User.BannedGroupIDs = banned
+			snapshot.User.BannedGroupExpirations = expirations
+		}
 	}
 
 	// 填充 (user, group) RPM override —— snapshot 构建时查一次 DB，后续请求零 DB 往返。
@@ -474,10 +483,13 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		User: &User{
 			ID:                         snapshot.User.ID,
 			Status:                     snapshot.User.Status,
+			DisabledUntil:              snapshot.User.DisabledUntil,
 			Role:                       snapshot.User.Role,
 			Balance:                    snapshot.User.Balance,
 			Concurrency:                snapshot.User.Concurrency,
 			AllowedGroups:              snapshot.User.AllowedGroups,
+			BannedGroupIDs:             snapshot.User.BannedGroupIDs,
+			BannedGroupExpirations:     snapshot.User.BannedGroupExpirations,
 			Email:                      snapshot.User.Email,
 			Username:                   snapshot.User.Username,
 			BalanceNotifyEnabled:       snapshot.User.BalanceNotifyEnabled,

@@ -336,11 +336,11 @@
                         v-if="canUnbanRow(row)"
                         type="button"
                         class="mt-2 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
-                        :disabled="unbanningUserID === row.user_id"
+                        :disabled="unbanningKey === unbanRowKey(row)"
                         @click="unbanUser(row)"
                       >
-                        <Icon name="checkCircle" size="xs" :class="unbanningUserID === row.user_id ? 'animate-spin' : ''" />
-                        {{ unbanningUserID === row.user_id ? t('common.processing') : t('admin.riskControl.unbanUser') }}
+                        <Icon name="checkCircle" size="xs" :class="unbanningKey === unbanRowKey(row) ? 'animate-spin' : ''" />
+                        {{ unbanningKey === unbanRowKey(row) ? t('common.processing') : unbanLabel() }}
                       </button>
                     </td>
                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
@@ -929,6 +929,16 @@
                 </div>
                 <Toggle v-model="configForm.auto_ban_enabled" />
               </div>
+              <div>
+                <label class="input-label">{{ t('admin.riskControl.banType') }}</label>
+                <Select v-model="configForm.ban_type" :options="banTypeOptions" />
+                <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.banTypeHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.riskControl.banDurationHours') }}</label>
+                <input v-model.number="configForm.ban_duration_hours" type="number" min="0" max="8760" class="input" />
+                <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.banDurationHint') }}</p>
+              </div>
               <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
                 <div>
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberPolicyExcludeBan') }}</p>
@@ -1175,6 +1185,7 @@ import { adminAPI } from '@/api/admin'
 import type {
   ContentModerationAPIKeyLoad,
   ContentModerationAPIKeyStatus,
+  ContentModerationBanType,
   ContentModerationConfig,
   ContentModerationLog,
   ContentModerationModelFilter,
@@ -1247,7 +1258,7 @@ const logsLoading = ref(false)
 const statusLoading = ref(false)
 const apiKeyTesting = ref(false)
 const hashActionLoading = ref(false)
-const unbanningUserID = ref<number | null>(null)
+const unbanningKey = ref<string | null>(null)
 const settingsOpen = ref(false)
 const activeSettingsTab = ref<SettingsTab>('basic')
 const groupSearch = ref('')
@@ -1292,6 +1303,8 @@ const configForm = reactive({
   block_message: defaultBlockMessage(),
   email_on_hit: true,
   auto_ban_enabled: true,
+  ban_type: 'user' as ContentModerationBanType,
+  ban_duration_hours: 0,
   cyber_policy_exclude_from_ban_count: false,
   ban_threshold: 10,
   violation_window_hours: 720,
@@ -1335,6 +1348,11 @@ const modeOptions = computed<SelectOption[]>(() => [
   { value: 'pre_block', label: t('admin.riskControl.modePreBlock') },
   { value: 'observe', label: t('admin.riskControl.modeObserve') },
   { value: 'off', label: t('admin.riskControl.modeOff') },
+])
+
+const banTypeOptions = computed<SelectOption[]>(() => [
+  { value: 'user', label: t('admin.riskControl.banTypeUser') },
+  { value: 'group', label: t('admin.riskControl.banTypeGroup') },
 ])
 
 const keywordBlockingModeOptions = computed<Array<{ value: KeywordBlockingMode; label: string; description: string }>>(() => [
@@ -1779,6 +1797,8 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.block_message = config.block_message || defaultBlockMessage()
   configForm.email_on_hit = config.email_on_hit ?? true
   configForm.auto_ban_enabled = config.auto_ban_enabled ?? true
+  configForm.ban_type = config.ban_type === 'group' ? 'group' : 'user'
+  configForm.ban_duration_hours = Math.min(Math.max(Number(config.ban_duration_hours) || 0, 0), 8760)
   configForm.cyber_policy_exclude_from_ban_count = config.cyber_policy_exclude_from_ban_count ?? false
   configForm.ban_threshold = config.ban_threshold || 10
   configForm.violation_window_hours = config.violation_window_hours || 720
@@ -1866,6 +1886,8 @@ async function saveConfig() {
       block_message: configForm.block_message || defaultBlockMessage(),
       email_on_hit: configForm.email_on_hit,
       auto_ban_enabled: configForm.auto_ban_enabled,
+      ban_type: configForm.ban_type,
+      ban_duration_hours: Math.min(Math.max(Number(configForm.ban_duration_hours) || 0, 0), 8760),
       cyber_policy_exclude_from_ban_count: configForm.cyber_policy_exclude_from_ban_count,
       ban_threshold: Number(configForm.ban_threshold) || 10,
       violation_window_hours: Number(configForm.violation_window_hours) || 720,
@@ -1930,7 +1952,19 @@ async function loadLogs() {
 }
 
 function canUnbanRow(row: ContentModerationLog): boolean {
-  return Boolean(row.auto_banned && row.user_id && row.user_status === 'disabled')
+  if (!row.auto_banned || !row.user_id) return false
+  if (configForm.ban_type === 'group') return Boolean(row.group_id)
+  return row.user_status === 'disabled'
+}
+
+function unbanRowKey(row: ContentModerationLog): string {
+  return `${row.user_id ?? 0}:${configForm.ban_type === 'group' ? row.group_id ?? 0 : 'user'}`
+}
+
+function unbanLabel(): string {
+  return configForm.ban_type === 'group'
+    ? t('admin.riskControl.unbanGroup')
+    : t('admin.riskControl.unbanUser')
 }
 
 function inputSummaryText(row: ContentModerationLog): string {
@@ -1946,19 +1980,21 @@ function closeInputDetail() {
 }
 
 async function unbanUser(row: ContentModerationLog) {
-  if (!row.user_id || unbanningUserID.value !== null) return
-  unbanningUserID.value = row.user_id
+  if (!row.user_id || unbanningKey.value !== null) return
+  unbanningKey.value = unbanRowKey(row)
   try {
-    const result = await adminAPI.riskControl.unbanUser(row.user_id)
-    logs.value = logs.value.map((item) => {
-      if (item.user_id !== row.user_id) return item
-      return { ...item, user_status: result.status }
-    })
-    appStore.showSuccess(t('admin.riskControl.unbanSuccess'))
+    if (configForm.ban_type === 'group' && row.group_id) {
+      await adminAPI.riskControl.unbanGroup(row.user_id, row.group_id)
+      appStore.showSuccess(t('admin.riskControl.unbanGroupSuccess'))
+    } else {
+      const result = await adminAPI.riskControl.unbanUser(row.user_id)
+      logs.value = logs.value.map((item) => item.user_id === row.user_id ? { ...item, user_status: result.status } : item)
+      appStore.showSuccess(t('admin.riskControl.unbanSuccess'))
+    }
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.unbanFailed')))
   } finally {
-    unbanningUserID.value = null
+    unbanningKey.value = null
   }
 }
 

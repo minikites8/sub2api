@@ -37,6 +37,8 @@ const (
 	FieldConcurrency = "concurrency"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldDisabledUntil holds the string denoting the disabled_until field in the database.
+	FieldDisabledUntil = "disabled_until"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
 	// FieldNotes holds the string denoting the notes field in the database.
@@ -207,6 +209,7 @@ var Columns = []string{
 	FieldFrozenBalance,
 	FieldConcurrency,
 	FieldStatus,
+	FieldDisabledUntil,
 	FieldUsername,
 	FieldNotes,
 	FieldTotpSecretEncrypted,
@@ -358,6 +361,11 @@ func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByDisabledUntil orders the results by the disabled_until field.
+func ByDisabledUntil(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisabledUntil, opts...).ToFunc()
 }
 
 // ByUsername orders the results by the username field.

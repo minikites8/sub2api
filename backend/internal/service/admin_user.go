@@ -245,6 +245,8 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if input.Status != "" {
 		user.Status = input.Status
 		fields.Status = true
+		user.DisabledUntil = nil
+		fields.DisabledUntil = true
 	}
 
 	// 角色变更(admin/user);空字符串表示不修改。
