@@ -79,6 +79,7 @@ const baseConfig = (): ContentModerationConfig => ({
   base_url: 'https://api.openai.com',
   model: 'omni-moderation-latest',
   group_model_overrides: {},
+  group_model_filters: {},
   proxy_id: null,
   api_key_configured: false,
   api_key_masked: '',
@@ -335,6 +336,52 @@ describe('admin RiskControlView', () => {
     expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
       group_model_overrides: {
         '2': 'moderation-gemini',
+      },
+    }))
+  })
+
+  it('renders and saves monitored request models separately from moderation API models', async () => {
+    getConfig.mockResolvedValue({
+      ...baseConfig(),
+      group_model_overrides: { '2': 'moderation-gemini' },
+      group_model_filters: { '2': ['gemini-2.5-pro'] },
+    })
+    getGroups.mockResolvedValue([
+      { id: 1, name: 'OpenAI group', platform: 'openai' },
+      { id: 2, name: 'Gemini group', platform: 'gemini' },
+    ])
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    await findButtonByText(wrapper, 'admin.riskControl.tabs.scope').trigger('click')
+
+    expect(wrapper.get('[data-test="group-model-2"]').element).toHaveProperty('value', 'moderation-gemini')
+    expect(wrapper.get('[data-test="group-monitor-models-2"] input').element).toHaveProperty('value', 'gemini-2.5-pro')
+    await wrapper.get('[data-test="group-monitor-models-1"] input').setValue('gpt-5.5, gpt-5.4')
+    await wrapper.get('[data-test="group-monitor-models-2"] input').setValue('')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      group_model_overrides: {
+        '2': 'moderation-gemini',
+      },
+      group_model_filters: {
+        '1': ['gpt-5.5', 'gpt-5.4'],
       },
     }))
   })

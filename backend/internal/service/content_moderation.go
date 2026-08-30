@@ -149,9 +149,12 @@ type ContentModerationConfig struct {
 	Mode    string `json:"mode"`
 	BaseURL string `json:"base_url"`
 	Model   string `json:"model"`
-	// GroupModelOverrides maps a group ID to the moderation model used for that group.
-	// Empty or missing entries fall back to Model.
+	// GroupModelOverrides maps a group ID to the moderation API model used for
+	// that group's audit requests. Empty or missing entries fall back to Model.
 	GroupModelOverrides map[int64]string `json:"group_model_overrides"`
+	// GroupModelFilters maps a group ID to the user-requested model names that
+	// should be monitored. Empty or missing entries fall back to ModelFilter.
+	GroupModelFilters map[int64][]string `json:"group_model_filters"`
 	// ProxyID 指定审计请求使用的代理服务器（IP管理-代理服务器），nil 表示直连。
 	ProxyID              *int64                       `json:"proxy_id,omitempty"`
 	APIKey               string                       `json:"api_key,omitempty"`
@@ -191,6 +194,7 @@ type ContentModerationConfigView struct {
 	BaseURL                        string                          `json:"base_url"`
 	Model                          string                          `json:"model"`
 	GroupModelOverrides            map[int64]string                `json:"group_model_overrides"`
+	GroupModelFilters              map[int64][]string              `json:"group_model_filters"`
 	ProxyID                        *int64                          `json:"proxy_id"`
 	APIKeyConfigured               bool                            `json:"api_key_configured"`
 	APIKeyMasked                   string                          `json:"api_key_masked"`
@@ -280,11 +284,12 @@ type ContentModerationTestAuditResult struct {
 }
 
 type UpdateContentModerationConfigInput struct {
-	Enabled             *bool             `json:"enabled"`
-	Mode                *string           `json:"mode"`
-	BaseURL             *string           `json:"base_url"`
-	Model               *string           `json:"model"`
-	GroupModelOverrides *map[int64]string `json:"group_model_overrides"`
+	Enabled             *bool               `json:"enabled"`
+	Mode                *string             `json:"mode"`
+	BaseURL             *string             `json:"base_url"`
+	Model               *string             `json:"model"`
+	GroupModelOverrides *map[int64]string   `json:"group_model_overrides"`
+	GroupModelFilters   *map[int64][]string `json:"group_model_filters"`
 	// ProxyID nil 表示不修改；<=0 表示清除代理（恢复直连）；>0 表示指定代理。
 	ProxyID                        *int64                        `json:"proxy_id"`
 	APIKey                         *string                       `json:"api_key"`
@@ -659,6 +664,9 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	if input.GroupModelOverrides != nil {
 		cfg.GroupModelOverrides = normalizeContentModerationGroupModelOverrides(*input.GroupModelOverrides)
 	}
+	if input.GroupModelFilters != nil {
+		cfg.GroupModelFilters = normalizeContentModerationGroupModelFilters(*input.GroupModelFilters)
+	}
 	if input.ProxyID != nil {
 		if *input.ProxyID > 0 {
 			id := *input.ProxyID
@@ -881,7 +889,8 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 	}
 	cfg := runtimeSnapshot.config
 	inGroupScope := cfg.includesGroup(input.GroupID)
-	inModelScope := cfg.includesModel(input.Model)
+	inModelScope := cfg.includesModelForGroup(input.GroupID, input.Model)
+	effectiveModelFilter := cfg.modelFilterForGroup(input.GroupID)
 	slog.Info("content_moderation.config_loaded",
 		"user_id", input.UserID,
 		"api_key_id", input.APIKeyID,
@@ -897,8 +906,8 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 		"all_groups", cfg.AllGroups,
 		"configured_group_ids", cfg.GroupIDs,
 		"in_group_scope", inGroupScope,
-		"model_filter_type", cfg.ModelFilter.Type,
-		"configured_models", cfg.ModelFilter.Models,
+		"model_filter_type", effectiveModelFilter.Type,
+		"configured_models", effectiveModelFilter.Models,
 		"in_model_scope", inModelScope,
 		"sample_rate", cfg.SampleRate,
 		"api_key_count", len(cfg.apiKeys()),
@@ -943,8 +952,8 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			"endpoint", input.Endpoint,
 			"protocol", input.Protocol,
 			"model", input.Model,
-			"model_filter_type", cfg.ModelFilter.Type,
-			"configured_models", cfg.ModelFilter.Models)
+			"model_filter_type", effectiveModelFilter.Type,
+			"configured_models", effectiveModelFilter.Models)
 		return allow, nil
 	}
 	content := ExtractContentModerationInput(input.Protocol, input.Body)
@@ -1301,7 +1310,7 @@ func (s *ContentModerationService) worker(id int) {
 			if !cfg.includesGroup(task.input.GroupID) {
 				return
 			}
-			if !cfg.includesModel(task.input.Model) {
+			if !cfg.includesModelForGroup(task.input.GroupID, task.input.Model) {
 				return
 			}
 			s.asyncActive.Add(1)
@@ -1761,6 +1770,13 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 			}
 		}
 	}
+	if len(cfg.GroupModelFilters) > 0 && s.groupRepo != nil {
+		for groupID := range cfg.GroupModelFilters {
+			if _, err := s.groupRepo.GetByIDLite(ctx, groupID); err != nil {
+				return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_GROUP_FILTER", fmt.Sprintf("监控模型分组不存在: %d", groupID))
+			}
+		}
+	}
 	return nil
 }
 
@@ -2207,6 +2223,7 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 		BaseURL:              defaultContentModerationBaseURL,
 		Model:                defaultContentModerationModel,
 		GroupModelOverrides:  map[int64]string{},
+		GroupModelFilters:    map[int64][]string{},
 		TimeoutMS:            defaultContentModerationTimeoutMS,
 		SampleRate:           100,
 		AllGroups:            true,
@@ -2246,6 +2263,7 @@ func cloneContentModerationConfig(cfg *ContentModerationConfig) *ContentModerati
 	clone.APIKeys = append([]string(nil), cfg.APIKeys...)
 	clone.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	clone.GroupModelOverrides = cloneContentModerationGroupModelOverrides(cfg.GroupModelOverrides)
+	clone.GroupModelFilters = cloneContentModerationGroupModelFilters(cfg.GroupModelFilters)
 	clone.BlockedKeywords = append([]string(nil), cfg.BlockedKeywords...)
 	clone.Thresholds = cloneFloatMap(cfg.Thresholds)
 	clone.ModelFilter = ContentModerationModelFilter{
@@ -2284,6 +2302,7 @@ func (cfg *ContentModerationConfig) normalize() {
 	}
 	cfg.Model = strings.TrimSpace(cfg.Model)
 	cfg.GroupModelOverrides = normalizeContentModerationGroupModelOverrides(cfg.GroupModelOverrides)
+	cfg.GroupModelFilters = normalizeContentModerationGroupModelFilters(cfg.GroupModelFilters)
 	if cfg.ProxyID != nil && *cfg.ProxyID <= 0 {
 		cfg.ProxyID = nil
 	}
@@ -2377,6 +2396,38 @@ func (cfg *ContentModerationConfig) includesModel(model string) bool {
 	default:
 		return true
 	}
+}
+
+// includesModelForGroup applies a group-specific user-request model allowlist
+// when configured, then falls back to the global include/exclude filter.
+func (cfg *ContentModerationConfig) includesModelForGroup(groupID *int64, model string) bool {
+	if cfg == nil {
+		return true
+	}
+	filter := cfg.modelFilterForGroup(groupID)
+	switch filter.Type {
+	case ContentModerationModelFilterInclude:
+		return contentModerationModelListContains(filter.Models, model)
+	case ContentModerationModelFilterExclude:
+		return !contentModerationModelListContains(filter.Models, model)
+	default:
+		return true
+	}
+}
+
+func (cfg *ContentModerationConfig) modelFilterForGroup(groupID *int64) ContentModerationModelFilter {
+	if cfg == nil {
+		return ContentModerationModelFilter{Type: ContentModerationModelFilterAll}
+	}
+	if groupID != nil {
+		if models, ok := cfg.GroupModelFilters[*groupID]; ok && len(models) > 0 {
+			return ContentModerationModelFilter{
+				Type:   ContentModerationModelFilterInclude,
+				Models: append([]string(nil), models...),
+			}
+		}
+	}
+	return normalizeContentModerationModelFilter(cfg.ModelFilter)
 }
 
 func (cfg *ContentModerationConfig) modelForGroup(groupID *int64) string {
@@ -2572,6 +2623,7 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		BaseURL:                        cfg.BaseURL,
 		Model:                          cfg.Model,
 		GroupModelOverrides:            cloneContentModerationGroupModelOverrides(cfg.GroupModelOverrides),
+		GroupModelFilters:              cloneContentModerationGroupModelFilters(cfg.GroupModelFilters),
 		ProxyID:                        cloneInt64Ptr(cfg.ProxyID),
 		APIKeyConfigured:               len(keys) > 0,
 		APIKeyMasked:                   apiKeyMasked,
@@ -3023,6 +3075,35 @@ func cloneContentModerationGroupModelOverrides(overrides map[int64]string) map[i
 	out := make(map[int64]string, len(overrides))
 	for groupID, model := range overrides {
 		out[groupID] = model
+	}
+	return out
+}
+
+func normalizeContentModerationGroupModelFilters(filters map[int64][]string) map[int64][]string {
+	if len(filters) == 0 {
+		return map[int64][]string{}
+	}
+	out := make(map[int64][]string, len(filters))
+	for groupID, models := range filters {
+		if groupID <= 0 {
+			continue
+		}
+		normalized := normalizeContentModerationModelNames(models)
+		if len(normalized) == 0 {
+			continue
+		}
+		out[groupID] = normalized
+	}
+	return out
+}
+
+func cloneContentModerationGroupModelFilters(filters map[int64][]string) map[int64][]string {
+	if len(filters) == 0 {
+		return map[int64][]string{}
+	}
+	out := make(map[int64][]string, len(filters))
+	for groupID, models := range filters {
+		out[groupID] = append([]string(nil), models...)
 	}
 	return out
 }

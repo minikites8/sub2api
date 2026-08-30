@@ -763,11 +763,11 @@
             <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700">
               <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.groupModels') }}</h3>
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.moderationGroupModels') }}</h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupModelsHint', { model: configForm.model }) }}</p>
                 </div>
                 <span class="inline-flex w-fit rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
-                  {{ t('admin.riskControl.groupModelOverrideCount', { count: groupModelOverrideCount }) }}
+                  {{ t('admin.riskControl.moderationGroupModelOverrideCount', { count: groupModelOverrideCount }) }}
                 </span>
               </div>
 
@@ -790,6 +790,41 @@
                     :placeholder="t('admin.riskControl.groupModelPlaceholder', { model: configForm.model })"
                     @input="setGroupModelOverride(group.id, $event)"
                   />
+                </div>
+              </div>
+               <p v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupModelsEmpty') }}</p>
+            </div>
+
+            <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+              <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.groupMonitorModels') }}</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupMonitorModelsHint') }}</p>
+                </div>
+                <span class="inline-flex w-fit rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+                  {{ t('admin.riskControl.groupMonitorModelCount', { count: groupMonitorModelCount }) }}
+                </span>
+              </div>
+
+              <div v-if="configurableModelGroups.length > 0" class="space-y-4">
+                <div
+                  v-for="group in configurableModelGroups"
+                  :key="`monitor-${group.id}`"
+                  class="grid gap-3 border-b border-gray-100 pb-4 last:border-b-0 last:pb-0 dark:border-dark-700 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)] md:items-start"
+                >
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ group.name }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ group.platform }}</p>
+                  </div>
+                  <div :data-test="`group-monitor-models-${group.id}`">
+                    <ModelWhitelistSelector
+                      :model-value="configForm.group_model_filters[String(group.id)] || []"
+                      :platform="group.platform"
+                      :show-sync-actions="false"
+                      @update:model-value="setGroupMonitorModels(group.id, $event)"
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupMonitorModelsPlaceholder') }}</p>
+                  </div>
                 </div>
               </div>
               <p v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.groupModelsEmpty') }}</p>
@@ -1296,6 +1331,7 @@ const configForm = reactive({
   all_groups: true,
   group_ids: [] as number[],
   group_model_overrides: {} as Record<string, string>,
+  group_model_filters: {} as Record<string, string[]>,
   record_non_hits: false,
   worker_count: 4,
   queue_size: 32768,
@@ -1480,6 +1516,8 @@ const configurableModelGroups = computed(() => {
 })
 
 const groupModelOverrideCount = computed(() => Object.values(buildGroupModelOverridesPayload()).length)
+
+const groupMonitorModelCount = computed(() => Object.values(buildGroupModelFiltersPayload()).length)
 
 const modelFilterModelCount = computed(() => configForm.model_filter_models.length)
 
@@ -1790,6 +1828,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.all_groups = config.all_groups
   configForm.group_ids = Array.isArray(config.group_ids) ? [...config.group_ids] : []
   configForm.group_model_overrides = normalizeGroupModelOverrides(config.group_model_overrides)
+  configForm.group_model_filters = normalizeGroupModelFilters(config.group_model_filters)
   configForm.record_non_hits = config.record_non_hits
   configForm.worker_count = config.worker_count || 4
   configForm.queue_size = config.queue_size || 32768
@@ -1878,6 +1917,7 @@ async function saveConfig() {
       all_groups: configForm.all_groups,
       group_ids: configForm.all_groups ? [] : [...configForm.group_ids],
       group_model_overrides: buildGroupModelOverridesPayload(),
+      group_model_filters: buildGroupModelFiltersPayload(),
       record_non_hits: configForm.record_non_hits,
       clear_api_key: configForm.clear_api_key,
       worker_count: Number(configForm.worker_count) || 4,
@@ -2217,6 +2257,15 @@ function setGroupModelOverride(groupID: number, event: Event) {
   delete configForm.group_model_overrides[String(groupID)]
 }
 
+function setGroupMonitorModels(groupID: number, models: string[]) {
+  const normalized = normalizeModelNames(models)
+  if (normalized.length > 0) {
+    configForm.group_model_filters[String(groupID)] = normalized
+  } else {
+    delete configForm.group_model_filters[String(groupID)]
+  }
+}
+
 function modeLabel(mode: ModerationMode): string {
   const found = modeOptions.value.find((option) => option.value === mode)
   return found?.label ?? mode
@@ -2403,6 +2452,26 @@ function normalizeGroupModelOverrides(value: unknown): Record<string, string> {
 function buildGroupModelOverridesPayload(): Record<string, string> {
   const availableGroupIDs = new Set(configurableModelGroups.value.map((group) => String(group.id)))
   const normalized = normalizeGroupModelOverrides(configForm.group_model_overrides)
+  return Object.fromEntries(
+    Object.entries(normalized).filter(([groupID]) => availableGroupIDs.has(groupID))
+  )
+}
+
+function normalizeGroupModelFilters(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const out: Record<string, string[]> = {}
+  for (const [rawGroupID, rawModels] of Object.entries(value)) {
+    const groupID = Number(rawGroupID)
+    if (!Number.isInteger(groupID) || groupID <= 0) continue
+    const models = normalizeModelNames(rawModels)
+    if (models.length > 0) out[String(groupID)] = models
+  }
+  return out
+}
+
+function buildGroupModelFiltersPayload(): Record<string, string[]> {
+  const availableGroupIDs = new Set(configurableModelGroups.value.map((group) => String(group.id)))
+  const normalized = normalizeGroupModelFilters(configForm.group_model_filters)
   return Object.fromEntries(
     Object.entries(normalized).filter(([groupID]) => availableGroupIDs.has(groupID))
   )
