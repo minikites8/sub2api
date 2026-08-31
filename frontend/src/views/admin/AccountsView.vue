@@ -488,12 +488,11 @@
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
-    <ReimportCredentialsModal :show="showReimport" :account="reimportAcc" @close="closeReimportModal" @reimported="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <OpenAISessionsModal :show="showOpenAISessions" :account="sessionsAcc" @close="closeOpenAISessions" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reimport="handleReimport" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <YeTeamRedeemModal :show="showYeTeamRedeem" @close="showYeTeamRedeem = false" @redeemed="handleYeTeamRedeemed" />
@@ -578,7 +577,6 @@ import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import YeTeamRedeemModal from '@/components/admin/account/YeTeamRedeemModal.vue'
 import YeTeamRefreshBadge from '@/components/admin/account/YeTeamRefreshBadge.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
-import ReimportCredentialsModal from '@/components/admin/account/ReimportCredentialsModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import OpenAISessionsModal from '@/components/admin/account/OpenAISessionsModal.vue'
@@ -668,7 +666,6 @@ const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
 const showCreateShadowDialog = ref(false)
 const showReAuth = ref(false)
-const showReimport = ref(false)
 const showTest = ref(false)
 const showStats = ref(false)
 const showOpenAISessions = ref(false)
@@ -679,7 +676,6 @@ const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
 const creatingShadowAcc = ref<Account | null>(null)
 const reAuthAcc = ref<Account | null>(null)
-const reimportAcc = ref<Account | null>(null)
 const testingAcc = ref<Account | null>(null)
 const statsAcc = ref<Account | null>(null)
 const sessionsAcc = ref<Account | null>(null)
@@ -1355,7 +1351,6 @@ const isAnyModalOpen = computed(() => {
     showTempUnsched.value ||
     showDeleteDialog.value ||
     showReAuth.value ||
-    showReimport.value ||
     showTest.value ||
     showStats.value ||
     showSchedulePanel.value ||
@@ -2375,7 +2370,6 @@ const accountExportStepUp = useStepUp()
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null }
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null }
 const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null }
-const closeReimportModal = () => { showReimport.value = false; reimportAcc.value = null }
 const handleTest = (a: Account) => { testingAcc.value = a; showTest.value = true }
 const handleViewStats = (a: Account) => { statsAcc.value = a; showStats.value = true }
 const handleSchedule = async (a: Account) => {
@@ -2391,7 +2385,6 @@ const handleSchedule = async (a: Account) => {
 }
 const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
-const handleReimport = (a: Account) => { reimportAcc.value = a; showReimport.value = true }
 const handleOpenAISessions = (a: Account) => { sessionsAcc.value = a; showOpenAISessions.value = true }
 const closeOpenAISessions = () => { showOpenAISessions.value = false; sessionsAcc.value = null }
 const duplicatingAccountIDs = new Set<number>()

@@ -2,8 +2,9 @@ import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { generateKiroIDCAuthUrlMock } = vi.hoisted(() => ({
+const { generateKiroIDCAuthUrlMock, reimportCredentialsMock } = vi.hoisted(() => ({
   generateKiroIDCAuthUrlMock: vi.fn(),
+  reimportCredentialsMock: vi.fn(),
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -20,6 +21,7 @@ vi.mock('@/api/admin', () => ({
     },
     accounts: {
       applyOAuthCredentials: vi.fn(),
+      reimportCredentials: reimportCredentialsMock,
     },
   },
 }))
@@ -149,6 +151,41 @@ describe('ReAuthAccountModal Kiro regions', () => {
       start_url: 'https://view.awsapps.com/start',
       region: 'eu-west-1',
     })
+  })
+})
+
+describe('ReAuthAccountModal credential import', () => {
+  it('uses the unified reauthorize dialog for non-OAuth accounts', async () => {
+    const account = {
+      id: 44,
+      name: 'API key account',
+      platform: 'anthropic',
+      type: 'apikey',
+      credentials: { api_key: 'old', model_mapping: { claude: 'claude-sonnet' } },
+      extra: {},
+      proxy_id: null,
+    }
+    const payload = {
+      type: 'sub2api-data',
+      version: 1,
+      proxies: [],
+      accounts: [{ name: 'exported', platform: 'anthropic', type: 'apikey', credentials: { api_key: 'new' } }],
+    }
+    reimportCredentialsMock.mockResolvedValue({ ...account, credentials: { api_key: 'new' } })
+    const wrapper = mountModal(account)
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const input = wrapper.get('input[type="file"]')
+    const file = new File([JSON.stringify(payload)], 'sub2api.json', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: () => Promise.resolve(JSON.stringify(payload)) })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+    await wrapper.get('button.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(reimportCredentialsMock).toHaveBeenCalledWith(44, payload)
+    expect(wrapper.emitted('reauthorized')).toHaveLength(1)
   })
 })
 

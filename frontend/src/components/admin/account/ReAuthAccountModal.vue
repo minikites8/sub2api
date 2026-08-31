@@ -1,7 +1,7 @@
 <template>
   <BaseDialog
     :show="show"
-    :title="t('admin.accounts.reAuthorizeAccount')"
+    :title="credentialImportMode ? t('admin.accounts.reimportCredentialsTitle') : t('admin.accounts.reAuthorizeAccount')"
     :width="isKiro ? 'wide' : 'normal'"
     @close="handleClose"
   >
@@ -47,6 +47,52 @@
         </div>
       </div>
 
+      <div v-if="showModeSwitch" class="flex gap-2 border-b border-gray-200 pb-3 dark:border-dark-600">
+        <button
+          type="button"
+          class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+          :class="!credentialImportMode ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'"
+          @click="setCredentialMode('reauth')"
+        >
+          <Icon name="link" size="sm" />
+          {{ t('admin.accounts.reAuthorize') }}
+        </button>
+        <button
+          type="button"
+          class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+          :class="credentialImportMode ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'"
+          @click="setCredentialMode('import')"
+        >
+          <Icon name="upload" size="sm" />
+          {{ t('admin.accounts.reimportCredentials') }}
+        </button>
+      </div>
+
+      <div v-if="credentialImportMode" class="space-y-4">
+        <div class="text-sm text-gray-600 dark:text-dark-300">
+          {{ t('admin.accounts.reimportCredentialsHint') }}
+        </div>
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20">
+          {{ t('admin.accounts.reimportCredentialsWarning') }}
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.reimportCredentialsFile') }}</label>
+          <div class="flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 dark:border-dark-600 dark:bg-dark-800">
+            <div class="min-w-0 truncate text-sm text-gray-700 dark:text-dark-200" :title="selectedFile?.name">
+              {{ selectedFile?.name || t('admin.accounts.reimportCredentialsSelectFile') }}
+            </div>
+            <button type="button" class="btn btn-secondary shrink-0" @click="openFilePicker">
+              {{ t('common.chooseFile') }}
+            </button>
+          </div>
+          <input ref="fileInput" type="file" class="hidden" accept="application/json,.json" @change="handleFileChange" />
+        </div>
+        <div v-if="importErrorMessage" class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+          {{ importErrorMessage }}
+        </div>
+      </div>
+
+      <template v-if="!credentialImportMode">
       <fieldset v-if="isAnthropic" class="border-0 p-0">
         <legend class="input-label">{{ t('admin.accounts.oauth.authMethod') }}</legend>
         <div class="mt-2 flex gap-4">
@@ -367,6 +413,7 @@
         @validate-refresh-token="handleGrokValidateRefreshToken"
         @import-sso="handleGrokImportSSO"
       />
+      </template>
     </div>
 
     <template #footer>
@@ -375,7 +422,16 @@
           {{ t('common.cancel') }}
         </button>
         <button
-          v-if="isKiroImportMode"
+          v-if="credentialImportMode"
+          type="button"
+          :disabled="importing || !selectedFile"
+          class="btn btn-primary"
+          @click="handleCredentialImport"
+        >
+          {{ importing ? t('admin.accounts.reimportCredentialsImporting') : t('admin.accounts.reimportCredentialsButton') }}
+        </button>
+        <button
+          v-else-if="isKiroImportMode"
           type="button"
           :disabled="currentLoading || !kiroTokenJson.trim() || (kiroImportNeedsDeviceRegistration && !kiroDeviceRegistrationJson.trim())"
           class="btn btn-primary"
@@ -441,7 +497,7 @@ import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useKiroOAuth } from '@/composables/useKiroOAuth'
 import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useAppStore } from '@/stores/app'
-import type { Account, AccountPlatform } from '@/types'
+import type { Account, AccountPlatform, AdminDataPayload } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
 
@@ -478,6 +534,11 @@ const kiroOAuth = useKiroOAuth()
 const grokOAuth = useGrokOAuth()
 
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
+const credentialMode = ref<'reauth' | 'import'>('reauth')
+const selectedFile = ref<File | null>(null)
+const importing = ref(false)
+const importErrorMessage = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
 
 const addMethod = ref<AddMethod>('oauth')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_assist')
@@ -510,6 +571,9 @@ const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isKiro = computed(() => props.account?.platform === 'kiro')
 const isGrok = computed(() => props.account?.platform === 'grok')
+const canReauthorize = computed(() => props.account?.type === 'oauth' || props.account?.type === 'setup-token')
+const showModeSwitch = computed(() => canReauthorize.value)
+const credentialImportMode = computed(() => credentialMode.value === 'import' || !canReauthorize.value)
 
 const oauthPlatform = computed<AccountPlatform>(() => {
   if (isOpenAI.value) return 'openai'
@@ -607,6 +671,12 @@ watch(
       return
     }
 
+    credentialMode.value = canReauthorize.value ? 'reauth' : 'import'
+    selectedFile.value = null
+    importing.value = false
+    importErrorMessage.value = ''
+    if (fileInput.value) fileInput.value.value = ''
+
     if (isAnthropic.value && (props.account.type === 'oauth' || props.account.type === 'setup-token')) {
       addMethod.value = props.account.type as AddMethod
     }
@@ -640,6 +710,84 @@ watch(
   }
 )
 
+const setCredentialMode = (mode: 'reauth' | 'import') => {
+  credentialMode.value = mode
+  selectedFile.value = null
+  importErrorMessage.value = ''
+  if (fileInput.value) fileInput.value.value = ''
+}
+
+const openFilePicker = () => fileInput.value?.click()
+
+const handleFileChange = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  input.value = ''
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.json') && file.type !== 'application/json') {
+    importErrorMessage.value = t('admin.accounts.reimportCredentialsInvalidFile')
+    selectedFile.value = null
+    return
+  }
+  selectedFile.value = file
+  importErrorMessage.value = ''
+}
+
+const readFileAsText = async (file: File): Promise<string> => {
+  if (typeof file.text === 'function') return file.text()
+  const buffer = await file.arrayBuffer()
+  return new TextDecoder().decode(buffer)
+}
+
+const isDataPayload = (value: unknown): value is AdminDataPayload => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const candidate = value as Record<string, unknown>
+  if (candidate.type !== undefined && candidate.type !== '' && !['sub2api-data', 'sub2api-bundle'].includes(String(candidate.type))) return false
+  if (candidate.version !== undefined && candidate.version !== 0 && candidate.version !== 1) return false
+  return Array.isArray(candidate.proxies) && Array.isArray(candidate.accounts)
+}
+
+const handleCredentialImport = async () => {
+  if (!props.account || !selectedFile.value) {
+    importErrorMessage.value = t('admin.accounts.reimportCredentialsSelectFile')
+    return
+  }
+
+  importing.value = true
+  importErrorMessage.value = ''
+  try {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(await readFileAsText(selectedFile.value))
+    } catch {
+      importErrorMessage.value = t('admin.accounts.reimportCredentialsParseFailed')
+      return
+    }
+    if (!isDataPayload(parsed)) {
+      importErrorMessage.value = t('admin.accounts.reimportCredentialsInvalidFile')
+      return
+    }
+    if (parsed.accounts.length !== 1) {
+      importErrorMessage.value = t('admin.accounts.reimportCredentialsSingleAccount')
+      return
+    }
+    const imported = parsed.accounts[0]
+    if (imported.platform !== props.account.platform || imported.type !== props.account.type) {
+      importErrorMessage.value = t('admin.accounts.reimportCredentialsIdentityMismatch')
+      return
+    }
+
+    const updated = await adminAPI.accounts.reimportCredentials(props.account.id, parsed)
+    appStore.showSuccess(t('admin.accounts.reimportCredentialsSuccess'))
+    emit('reauthorized', updated)
+    handleClose()
+  } catch (error: any) {
+    importErrorMessage.value = error?.response?.data?.message || error?.message || t('admin.accounts.reimportCredentialsFailed')
+  } finally {
+    importing.value = false
+  }
+}
+
 // resolveKiroImportProvider 按现有账号凭证的 provider 归一化到五值之一(不分大小写)。
 // provider 恒为 Google/Github/BuilderId/Enterprise/ExternalIdp 之一;异常兜底为 Google。
 const resolveKiroImportProvider = (
@@ -660,6 +808,11 @@ const resolveKiroImportProvider = (
 }
 
 const resetState = () => {
+  credentialMode.value = 'reauth'
+  selectedFile.value = null
+  importing.value = false
+  importErrorMessage.value = ''
+  if (fileInput.value) fileInput.value.value = ''
   addMethod.value = 'oauth'
   geminiOAuthType.value = 'code_assist'
   kiroAccountType.value = 'oauth'

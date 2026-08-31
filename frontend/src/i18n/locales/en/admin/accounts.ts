@@ -47,7 +47,7 @@ export default {
       reimportCredentials: 'Re-import Credentials',
       reimportCredentialsTitle: 'Re-import Account Credentials',
       reimportCredentialsHint: 'Choose a new sub2api JSON file containing this account.',
-      reimportCredentialsWarning: 'This updates credentials only. Groups, proxy, status, quota, concurrency, and other settings stay unchanged.',
+      reimportCredentialsWarning: 'This updates credentials only. Model mappings, groups, proxy, status, quota, concurrency, and other settings stay unchanged.',
       reimportCredentialsFile: 'Credential file',
       reimportCredentialsButton: 'Update Credentials',
       reimportCredentialsImporting: 'Updating...',

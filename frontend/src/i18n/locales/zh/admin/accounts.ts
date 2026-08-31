@@ -47,7 +47,7 @@ export default {
       reimportCredentials: '重新导入凭证',
       reimportCredentialsTitle: '重新导入账号凭证',
       reimportCredentialsHint: '选择包含该账号的新 sub2api JSON 文件。',
-      reimportCredentialsWarning: '本操作仅更新账号凭证，分组、代理、状态、额度、并发和其他设置保持不变。',
+      reimportCredentialsWarning: '本操作仅更新账号凭证，模型映射、分组、代理、状态、额度、并发和其他设置保持不变。',
       reimportCredentialsFile: '凭证文件',
       reimportCredentialsButton: '更新凭证',
       reimportCredentialsImporting: '更新中...',

@@ -413,7 +413,11 @@ func TestReimportCredentialsReplacesOnlyCredentialObject(t *testing.T) {
 		Name:        "existing",
 		Platform:    service.PlatformOpenAI,
 		Type:        service.AccountTypeOAuth,
-		Credentials: map[string]any{"access_token": "old", "refresh_token": "old-refresh"},
+		Credentials: map[string]any{
+			"access_token": "old",
+			"refresh_token": "old-refresh",
+			"model_mapping": map[string]any{"gpt-4": "gpt-4o"},
+		},
 		Extra:       map[string]any{"privacy_mode": "private"},
 		Status:      service.StatusDisabled,
 		Concurrency: 9,
@@ -429,7 +433,12 @@ func TestReimportCredentialsReplacesOnlyCredentialObject(t *testing.T) {
 				"name":        "new-export-name",
 				"platform":    service.PlatformOpenAI,
 				"type":        service.AccountTypeOAuth,
-				"credentials": map[string]any{"access_token": "new", "refresh_token": "new-refresh", "password": "discard"},
+				"credentials": map[string]any{
+					"access_token":  "new",
+					"refresh_token": "new-refresh",
+					"model_mapping": map[string]any{"gpt-4": "changed-model"},
+					"password":      "discard",
+				},
 			}},
 		},
 	}
@@ -449,6 +458,7 @@ func TestReimportCredentialsReplacesOnlyCredentialObject(t *testing.T) {
 	require.Equal(t, "new", adminSvc.lastUpdateAccountInput.Credentials["access_token"])
 	require.Equal(t, "new-refresh", adminSvc.lastUpdateAccountInput.Credentials["refresh_token"])
 	require.NotContains(t, adminSvc.lastUpdateAccountInput.Credentials, "password")
+	require.Equal(t, map[string]any{"gpt-4": "gpt-4o"}, adminSvc.lastUpdateAccountInput.Credentials["model_mapping"])
 }
 
 func TestReimportCredentialsRejectsIdentityMismatch(t *testing.T) {

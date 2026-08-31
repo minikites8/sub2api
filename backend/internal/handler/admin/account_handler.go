@@ -1574,6 +1574,16 @@ func (h *AccountHandler) ReimportCredentials(c *gin.Context) {
 
 	enrichCredentialsFromIDToken(&item)
 	credentials := service.SanitizeStoredCredentials(existing.Platform, item.Credentials)
+	// Re-import updates authentication data while preserving account-level model
+	// configuration. Model mappings live inside credentials for API-key and some
+	// OAuth accounts, so an exported file must not overwrite the current mapping.
+	for _, key := range []string{"model_mapping", "compact_model_mapping"} {
+		if value, ok := existing.Credentials[key]; ok {
+			credentials[key] = value
+		} else {
+			delete(credentials, key)
+		}
+	}
 	updated, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 		Credentials:        credentials,
 		ReplaceCredentials: true,
