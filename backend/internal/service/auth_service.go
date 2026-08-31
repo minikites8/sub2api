@@ -64,6 +64,7 @@ const (
 type authContextKey string
 
 const authContextKeySignupIP authContextKey = "auth_signup_ip"
+const authContextKeyRiskSignals authContextKey = "auth_risk_signals"
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
@@ -104,6 +105,17 @@ type CaptchaProof struct {
 	TurnstileToken string
 	TencentTicket  string
 	TencentRandstr string
+}
+
+// RiskSignals contains request attributes used by anti-abuse scoring.
+type RiskSignals struct {
+	IPAddress           string
+	Email               string
+	UserAgent           string
+	BrowserFingerprints []string
+	IPReputationScore   int
+	JA3                 string
+	JA4                 string
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -159,6 +171,41 @@ func WithSignupIP(ctx context.Context, signupIP string) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, authContextKeySignupIP, signupIP)
+}
+
+func WithRiskSignals(ctx context.Context, signals RiskSignals) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	signals.IPAddress = strings.TrimSpace(signals.IPAddress)
+	signals.Email = strings.TrimSpace(signals.Email)
+	signals.UserAgent = strings.TrimSpace(signals.UserAgent)
+	signals.JA3 = normalizeTransportFingerprint(signals.JA3, 128)
+	signals.JA4 = normalizeTransportFingerprint(signals.JA4, 256)
+	signals.BrowserFingerprints = NormalizeBrowserFingerprints(signals.BrowserFingerprints)
+	if signals.IPAddress != "" {
+		ctx = context.WithValue(ctx, authContextKeySignupIP, signals.IPAddress)
+	}
+	return context.WithValue(ctx, authContextKeyRiskSignals, signals)
+}
+
+func riskSignalsFromContext(ctx context.Context) RiskSignals {
+	if ctx == nil {
+		return RiskSignals{}
+	}
+	if signals, ok := ctx.Value(authContextKeyRiskSignals).(RiskSignals); ok {
+		return signals
+	}
+	return RiskSignals{IPAddress: signupIPValueFromContext(ctx)}
+}
+
+func RiskSignalsFromContext(ctx context.Context) RiskSignals { return riskSignalsFromContext(ctx) }
+
+func signupIPValueFromContext(ctx context.Context) string {
+	if raw, ok := ctx.Value(authContextKeySignupIP).(string); ok {
+		return strings.TrimSpace(raw)
+	}
+	return ""
 }
 
 func signupIPFromContext(ctx context.Context) *string {
@@ -1505,6 +1552,52 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 		logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control query failed: user=%d ip=%s err=%v", user.ID, signupIP, err)
 		return
 	}
+	signals := riskSignalsFromContext(ctx)
+	signals.IPAddress = signupIP
+	if signals.Email == "" {
+		signals.Email = user.Email
+	}
+	if s.settingService != nil {
+		signals.IPReputationScore = s.settingService.LookupConfiguredIPReputation(ctx, signupIP)
+	}
+	fingerprintVelocity := 0
+	tlsVelocity := 0
+	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && len(signals.BrowserFingerprints) > 0 {
+		if count, queryErr := store.CountUsersByFingerprintHashes(ctx, HashBrowserFingerprints(signals.BrowserFingerprints), windowStart); queryErr == nil {
+			fingerprintVelocity = count
+		}
+	}
+	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && (signals.JA3 != "" || signals.JA4 != "") {
+		if count, queryErr := store.CountUsersByTransportFingerprints(ctx, signals.JA3, signals.JA4, windowStart); queryErr == nil {
+			tlsVelocity = maxInt(0, count-1)
+		}
+	}
+	emailVelocity := 0
+	if _, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(signals.Email)), "@"); ok && domain != "" {
+		if count, countErr := client.User.Query().Where(dbuser.EmailHasSuffix("@"+domain), dbuser.CreatedAtGTE(windowStart)).Count(ctx); countErr == nil {
+			emailVelocity = maxInt(0, count-1)
+		}
+	}
+	policy := DefaultAntiAbusePolicy()
+	if s.settingService != nil {
+		policy = s.settingService.GetAntiAbusePolicy(ctx)
+	}
+	assessment := EvaluateAntiAbuseWithTLS(signals, maxInt(0, len(users)-1), fingerprintVelocity, emailVelocity, tlsVelocity, policy)
+	antiAbuseStore, _ := s.userRepo.(AntiAbuseSignalStore)
+	antiAbuseEvents, _ := s.userRepo.(AntiAbuseEventStore)
+	RecordAntiAbuseAssessment(ctx, antiAbuseEvents, "registration", &user.ID, user.Email, signals, assessment)
+	if antiAbuseStore != nil && len(signals.BrowserFingerprints) > 0 {
+		store := antiAbuseStore
+		if storeErr := store.StoreSignupRiskSignals(ctx, user.ID, signals.BrowserFingerprints, assessment); storeErr != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] anti-abuse fingerprint persistence failed: user=%d err=%v", user.ID, storeErr)
+		}
+	}
+	if antiAbuseStore != nil && (signals.JA3 != "" || signals.JA4 != "") {
+		store := antiAbuseStore
+		if storeErr := store.StoreTransportFingerprints(ctx, user.ID, signals.JA3, signals.JA4, assessment); storeErr != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] anti-abuse transport fingerprint persistence failed: user=%d err=%v", user.ID, storeErr)
+		}
+	}
 	threshold := defaultSignupIPRiskControlThreshold
 	disablePreviousAccounts := defaultSignupIPDisablePreviousAccounts
 	keepPreviousAccounts := defaultSignupIPKeepPreviousAccounts
@@ -1513,7 +1606,7 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 		disablePreviousAccounts = s.settingService.GetSignupIPDisablePreviousAccounts(ctx)
 		keepPreviousAccounts = s.settingService.GetSignupIPKeepPreviousAccounts(ctx)
 	}
-	if len(users) < threshold {
+	if assessment.Action != AntiAbuseActionRestrict && len(users) < threshold {
 		return
 	}
 	if keepPreviousAccounts < 0 {
@@ -1550,8 +1643,10 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 				user.Balance = 0
 			}
 			if updated > 0 {
+				RecordAntiAbuseDeduction(ctx, antiAbuseEvents, "registration_gift_deduction", &item.ID, item.Email, signals, assessment, item.Balance)
 				if recorder, ok := s.userRepo.(RiskControlBalanceRecorder); ok {
-					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.ID, item.Balance, "注册 IP 风控扣除赠金"); err != nil {
+					note := fmt.Sprintf("多维反滥用风控扣除赠金（score=%d factors=%v）", assessment.Score, assessment.Factors)
+					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.ID, item.Balance, note); err != nil {
 						logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control history record failed: user=%d ip=%s err=%v", item.ID, signupIP, err)
 					}
 				}

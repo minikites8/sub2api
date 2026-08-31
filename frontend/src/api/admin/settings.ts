@@ -409,6 +409,15 @@ export interface SystemSettings {
   api_usage_ip_ua_risk_control_threshold: number;
   api_usage_ip_ua_disable_previous_accounts: boolean;
   api_usage_ip_ua_keep_previous_accounts: number;
+  anti_abuse_enabled: boolean;
+  anti_abuse_score_threshold: number;
+  anti_abuse_fingerprint_weight: number;
+  anti_abuse_ip_weight: number;
+  anti_abuse_email_weight: number;
+  anti_abuse_user_agent_weight: number;
+  anti_abuse_tls_fingerprint_weight: number;
+  anti_abuse_ip_reputation_endpoint: string;
+  anti_abuse_ip_reputation_api_key_configured: boolean;
   totp_enabled: boolean; // TOTP 双因素认证
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
   passkey_enabled: boolean;
@@ -763,6 +772,15 @@ export interface UpdateSettingsRequest {
   api_usage_ip_ua_risk_control_threshold?: number;
   api_usage_ip_ua_disable_previous_accounts?: boolean;
   api_usage_ip_ua_keep_previous_accounts?: number;
+  anti_abuse_enabled?: boolean;
+  anti_abuse_score_threshold?: number;
+  anti_abuse_fingerprint_weight?: number;
+  anti_abuse_ip_weight?: number;
+  anti_abuse_email_weight?: number;
+  anti_abuse_user_agent_weight?: number;
+  anti_abuse_tls_fingerprint_weight?: number;
+  anti_abuse_ip_reputation_endpoint?: string;
+  anti_abuse_ip_reputation_api_key?: string;
   totp_enabled?: boolean; // TOTP 双因素认证
   passkey_enabled?: boolean;
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定

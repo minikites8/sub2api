@@ -151,3 +151,41 @@ func TestRequestSessionBindingPrefersInjectedBinding(t *testing.T) {
 
 	require.Equal(t, 200, w.Code)
 }
+
+func TestSessionBindingContextOnlyAcceptsTransportFingerprintsFromTrustedProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, tc := range []struct {
+		name       string
+		remoteAddr string
+		wantJA3    string
+		wantJA4    string
+	}{
+		{name: "trusted proxy", remoteAddr: "127.0.0.1:54321", wantJA3: strings.Repeat("a", 32), wantJA4: "t13d1714h1_5b57614c22b0_7baf387fc6ff"},
+		{name: "untrusted peer", remoteAddr: "9.9.9.9:54321"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Server.TrustedProxiesConfigured = true
+			cfg.Server.TrustedProxies = []string{"127.0.0.1/32"}
+
+			r := gin.New()
+			require.NoError(t, r.SetTrustedProxies(cfg.Server.TrustedProxies))
+			r.Use(SessionBindingContext(cfg))
+			r.GET("/t", func(c *gin.Context) {
+				signals := service.RiskSignalsFromContext(c.Request.Context())
+				require.Equal(t, tc.wantJA3, signals.JA3)
+				require.Equal(t, tc.wantJA4, signals.JA4)
+				c.Status(200)
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/t", nil)
+			req.RemoteAddr = tc.remoteAddr
+			req.Header.Set("X-JA3", strings.Repeat("a", 32))
+			req.Header.Set("X-JA4", "t13d1714h1_5b57614c22b0_7baf387fc6ff")
+			r.ServeHTTP(w, req)
+			require.Equal(t, 200, w.Code)
+		})
+	}
+}

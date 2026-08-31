@@ -14,6 +14,7 @@ import {
 } from './adminUIRequest'
 import { refreshAuthTokens } from './tokenRefresh'
 import { getAPIBaseURL } from './url'
+import { getBrowserFingerprints } from '@/utils/browserFingerprint'
 export { buildApiUrl, buildGatewayUrl } from './url'
 
 // ==================== Axios Instance Configuration ====================
@@ -39,7 +40,7 @@ const getUserTimezone = (): string => {
 }
 
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  async (config: InternalAxiosRequestConfig) => {
     // Attach token from localStorage
     const token = localStorage.getItem('auth_token')
     if (token && config.headers) {
@@ -49,6 +50,8 @@ apiClient.interceptors.request.use(
     // Attach locale for backend translations
     if (config.headers) {
       config.headers['Accept-Language'] = getLocale()
+      const fingerprints = await getBrowserFingerprints()
+      if (fingerprints.length > 0) config.headers['X-Browser-Fingerprints'] = JSON.stringify(fingerprints)
     }
 
     // Attach timezone for all GET requests (backend may use it for default date ranges)

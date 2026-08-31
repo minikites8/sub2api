@@ -192,6 +192,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAPIUsageIPUARiskControlThreshold] = strconv.Itoa(settings.APIUsageIPUARiskControlThreshold)
 	updates[SettingKeyAPIUsageIPUADisablePreviousAccounts] = strconv.FormatBool(settings.APIUsageIPUADisablePreviousAccounts)
 	updates[SettingKeyAPIUsageIPUAKeepPreviousAccounts] = strconv.Itoa(settings.APIUsageIPUAKeepPreviousAccounts)
+	updates[SettingKeyAntiAbuseEnabled] = strconv.FormatBool(settings.AntiAbuseEnabled)
+	updates[SettingKeyAntiAbuseScoreThreshold] = strconv.Itoa(parsePositiveInt(strconv.Itoa(settings.AntiAbuseScoreThreshold), defaultAntiAbuseScoreThreshold))
+	updates[SettingKeyAntiAbuseFingerprintWeight] = strconv.Itoa(parsePositiveInt(strconv.Itoa(settings.AntiAbuseFingerprintWeight), defaultAntiAbuseFingerprintWeight))
+	updates[SettingKeyAntiAbuseIPWeight] = strconv.Itoa(parsePositiveInt(strconv.Itoa(settings.AntiAbuseIPWeight), defaultAntiAbuseIPWeight))
+	updates[SettingKeyAntiAbuseEmailWeight] = strconv.Itoa(parsePositiveInt(strconv.Itoa(settings.AntiAbuseEmailWeight), defaultAntiAbuseEmailWeight))
+	updates[SettingKeyAntiAbuseUserAgentWeight] = strconv.Itoa(parsePositiveInt(strconv.Itoa(settings.AntiAbuseUserAgentWeight), defaultAntiAbuseUserAgentWeight))
+	updates[SettingKeyAntiAbuseTLSFingerprintWeight] = strconv.Itoa(parsePositiveInt(strconv.Itoa(settings.AntiAbuseTLSFingerprintWeight), defaultAntiAbuseTLSFingerprintWeight))
+	updates[SettingKeyAntiAbuseIPReputationEndpoint] = strings.TrimSpace(settings.AntiAbuseIPReputationEndpoint)
+	updates[SettingKeyAntiAbuseIPReputationAPIKey] = settings.AntiAbuseIPReputationAPIKey
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
 	updates[SettingKeyPasskeyEnabled] = strconv.FormatBool(settings.PasskeyEnabled)
 	updates[SettingKeySessionBindingEnabled] = strconv.FormatBool(settings.SessionBindingEnabled)
@@ -699,6 +708,11 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if settings == nil {
 		return
 	}
+	s.antiAbuseRuntimeSF.Forget("anti_abuse_runtime")
+	s.antiAbuseRuntimeCache.Store(&cachedAntiAbuseRuntime{
+		policy:   AntiAbusePolicy{Enabled: settings.AntiAbuseEnabled, ScoreThreshold: parsePositiveInt(strconv.Itoa(settings.AntiAbuseScoreThreshold), defaultAntiAbuseScoreThreshold), FingerprintWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseFingerprintWeight), defaultAntiAbuseFingerprintWeight), IPWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseIPWeight), defaultAntiAbuseIPWeight), EmailWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseEmailWeight), defaultAntiAbuseEmailWeight), UserAgentWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseUserAgentWeight), defaultAntiAbuseUserAgentWeight), TLSFingerprintWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseTLSFingerprintWeight), defaultAntiAbuseTLSFingerprintWeight)},
+		endpoint: strings.TrimSpace(settings.AntiAbuseIPReputationEndpoint), apiKey: strings.TrimSpace(settings.AntiAbuseIPReputationAPIKey), expiresAt: time.Now().Add(antiAbuseRuntimeCacheTTL).UnixNano(),
+	})
 
 	// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 	versionBoundsSF.Forget("version_bounds")

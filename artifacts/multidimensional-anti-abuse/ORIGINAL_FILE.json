@@ -1,0 +1,5 @@
+{
+  "mode": "ip_ua",
+  "registration_signal": "ip",
+  "usage_signal": "ip_plus_user_agent"
+}

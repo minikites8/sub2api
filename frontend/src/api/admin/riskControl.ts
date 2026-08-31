@@ -231,6 +231,68 @@ export interface ContentModerationLogsResponse {
   pages: number
 }
 
+export interface AntiAbuseEvent {
+  id: number
+  user_id?: number | null
+  user_email: string
+  event_type: string
+  action: 'allow' | 'review' | 'restrict' | string
+  score: number
+  factors: Record<string, number>
+  reasons: string[]
+  ip_address: string
+  email: string
+  user_agent: string
+  fingerprint_hash_count: number
+  ja3_hash?: string
+  ja4_hash?: string
+  gift_balance_deducted: number
+  created_at: string
+}
+
+export interface ListAntiAbuseEventsParams {
+  page?: number
+  page_size?: number
+  event_type?: string
+  action?: string
+  search?: string
+  from?: string
+  to?: string
+  deductions_only?: boolean
+}
+
+export interface AntiAbuseEventsResponse {
+  items: AntiAbuseEvent[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
+export interface AntiAbuseConfig {
+  enabled: boolean
+  score_threshold: number
+  fingerprint_weight: number
+  ip_weight: number
+  email_weight: number
+  user_agent_weight: number
+  tls_fingerprint_weight: number
+  ip_reputation_endpoint: string
+  ip_reputation_api_key_configured: boolean
+}
+
+export interface UpdateAntiAbuseConfig {
+  enabled: boolean
+  score_threshold: number
+  fingerprint_weight: number
+  ip_weight: number
+  email_weight: number
+  user_agent_weight: number
+  tls_fingerprint_weight: number
+  ip_reputation_endpoint: string
+  ip_reputation_api_key?: string
+}
+
 export interface ContentModerationUnbanUserResponse {
   user_id: number
   status: string
@@ -283,6 +345,23 @@ export async function listLogs(
   return data
 }
 
+export async function listAntiAbuseEvents(
+  params: ListAntiAbuseEventsParams = {}
+): Promise<AntiAbuseEventsResponse> {
+  const { data } = await apiClient.get<AntiAbuseEventsResponse>('/admin/risk-control/anti-abuse/events', { params })
+  return data
+}
+
+export async function getAntiAbuseConfig(): Promise<AntiAbuseConfig> {
+  const { data } = await apiClient.get<AntiAbuseConfig>('/admin/risk-control/anti-abuse/config')
+  return data
+}
+
+export async function updateAntiAbuseConfig(payload: UpdateAntiAbuseConfig): Promise<AntiAbuseConfig> {
+  const { data } = await apiClient.put<AntiAbuseConfig>('/admin/risk-control/anti-abuse/config', payload)
+  return data
+}
+
 export async function unbanUser(userID: number): Promise<ContentModerationUnbanUserResponse> {
   const { data } = await apiClient.post<ContentModerationUnbanUserResponse>(
     `/admin/risk-control/users/${userID}/unban`
@@ -315,6 +394,9 @@ export const riskControlAPI = {
   getStatus,
   testAPIKeys,
   listLogs,
+  listAntiAbuseEvents,
+  getAntiAbuseConfig,
+  updateAntiAbuseConfig,
   unbanUser,
   unbanGroup,
   deleteFlaggedHash,

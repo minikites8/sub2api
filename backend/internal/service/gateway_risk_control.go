@@ -49,7 +49,41 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 		logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control query failed: user=%d ip=%s ua=%s err=%v", userID, ipAddress, userAgent, err)
 		return
 	}
-	if len(items) < threshold {
+	target, targetErr := s.userRepo.GetByID(ctx, userID)
+	if targetErr != nil || target == nil {
+		return
+	}
+	signals := RiskSignals{IPAddress: ipAddress, Email: target.Email, UserAgent: userAgent}
+	contextSignals := RiskSignalsFromContext(ctx)
+	signals.BrowserFingerprints = contextSignals.BrowserFingerprints
+	signals.JA3 = contextSignals.JA3
+	signals.JA4 = contextSignals.JA4
+	if s.settingService != nil {
+		signals.IPReputationScore = s.settingService.LookupConfiguredIPReputation(ctx, ipAddress)
+	}
+	fingerprintVelocity := 0
+	tlsVelocity := 0
+	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok {
+		if hashes, readErr := store.GetUserFingerprints(ctx, userID); readErr == nil && len(hashes) > 0 {
+			if count, countErr := store.CountUsersByFingerprintHashes(ctx, hashes, time.Now().Add(-24*time.Hour)); countErr == nil {
+				fingerprintVelocity = maxInt(0, count-1)
+			}
+		}
+		if count, countErr := store.CountUsersByTransportFingerprints(ctx, signals.JA3, signals.JA4, time.Now().Add(-24*time.Hour)); countErr == nil {
+			tlsVelocity = maxInt(0, count-1)
+		}
+	}
+	policy := DefaultAntiAbusePolicy()
+	if s.settingService != nil {
+		policy = s.settingService.GetAntiAbusePolicy(ctx)
+	}
+	assessment := EvaluateAntiAbuseWithTLS(signals, maxInt(0, len(items)-1), fingerprintVelocity, 0, tlsVelocity, policy)
+	antiAbuseEvents, _ := s.userRepo.(AntiAbuseEventStore)
+	RecordAntiAbuseAssessment(ctx, antiAbuseEvents, "gateway", &userID, target.Email, signals, assessment)
+	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && (signals.JA3 != "" || signals.JA4 != "") {
+		_ = store.StoreTransportFingerprints(ctx, userID, signals.JA3, signals.JA4, assessment)
+	}
+	if assessment.Action != AntiAbuseActionRestrict && len(items) < threshold {
 		return
 	}
 
@@ -91,8 +125,9 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 			if err != nil {
 				logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control gift balance deduction failed: user=%d err=%v", item.UserID, err)
 			} else if deducted > 0 {
+				RecordAntiAbuseDeduction(ctx, antiAbuseEvents, "gateway_gift_deduction", &item.UserID, target.Email, signals, assessment, deducted)
 				if recorder, ok := s.userRepo.(RiskControlBalanceRecorder); ok {
-					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.UserID, deducted, fmt.Sprintf("API IP+UA 风控扣除赠金（IP: %s）", ipAddress)); err != nil {
+					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.UserID, deducted, fmt.Sprintf("API 多维反滥用风控扣除赠金（score=%d factors=%v）", assessment.Score, assessment.Factors)); err != nil {
 						logger.LegacyPrintf("service.gateway", "api usage ip+ua risk control history record failed: user=%d ip=%s ua=%s err=%v", item.UserID, ipAddress, userAgent, err)
 					}
 				}

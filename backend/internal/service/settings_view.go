@@ -12,29 +12,39 @@ func firstNonEmpty(values ...string) string {
 }
 
 type SystemSettings struct {
-	RegistrationEnabled                 bool
-	EmailVerifyEnabled                  bool
-	RegistrationEmailSuffixWhitelist    []string
-	RegistrationEmailDomainQuotaEnabled bool
-	PromoCodeEnabled                    bool
-	PasswordResetEnabled                bool
-	FrontendURL                         string
-	InvitationCodeEnabled               bool
-	SignupIPRiskControlThreshold        int
-	SignupIPDisablePreviousAccounts     bool
-	SignupIPKeepPreviousAccounts        int
-	APIUsageIPUARiskControlThreshold    int
-	APIUsageIPUADisablePreviousAccounts bool
-	APIUsageIPUAKeepPreviousAccounts    int
-	TotpEnabled                         bool
-	PasskeyEnabled                      bool
-	SessionBindingEnabled               bool
-	StepUpEnabled                       bool
-	AuditLogRetentionDays               int
-	LoginAgreementEnabled               bool
-	LoginAgreementMode                  string
-	LoginAgreementUpdatedAt             string
-	LoginAgreementDocuments             []LoginAgreementDocument
+	RegistrationEnabled                   bool
+	EmailVerifyEnabled                    bool
+	RegistrationEmailSuffixWhitelist      []string
+	RegistrationEmailDomainQuotaEnabled   bool
+	PromoCodeEnabled                      bool
+	PasswordResetEnabled                  bool
+	FrontendURL                           string
+	InvitationCodeEnabled                 bool
+	SignupIPRiskControlThreshold          int
+	SignupIPDisablePreviousAccounts       bool
+	SignupIPKeepPreviousAccounts          int
+	APIUsageIPUARiskControlThreshold      int
+	APIUsageIPUADisablePreviousAccounts   bool
+	APIUsageIPUAKeepPreviousAccounts      int
+	AntiAbuseEnabled                      bool
+	AntiAbuseScoreThreshold               int
+	AntiAbuseFingerprintWeight            int
+	AntiAbuseIPWeight                     int
+	AntiAbuseEmailWeight                  int
+	AntiAbuseUserAgentWeight              int
+	AntiAbuseTLSFingerprintWeight         int
+	AntiAbuseIPReputationEndpoint         string
+	AntiAbuseIPReputationAPIKey           string
+	AntiAbuseIPReputationAPIKeyConfigured bool
+	TotpEnabled                           bool
+	PasskeyEnabled                        bool
+	SessionBindingEnabled                 bool
+	StepUpEnabled                         bool
+	AuditLogRetentionDays                 int
+	LoginAgreementEnabled                 bool
+	LoginAgreementMode                    string
+	LoginAgreementUpdatedAt               string
+	LoginAgreementDocuments               []LoginAgreementDocument
 
 	SMTPHost               string
 	SMTPPort               int

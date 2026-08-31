@@ -37,6 +37,15 @@ type UpdateSettingsRequest struct {
 	APIUsageIPUARiskControlThreshold    *int                         `json:"api_usage_ip_ua_risk_control_threshold"`
 	APIUsageIPUADisablePreviousAccounts *bool                        `json:"api_usage_ip_ua_disable_previous_accounts"`
 	APIUsageIPUAKeepPreviousAccounts    *int                         `json:"api_usage_ip_ua_keep_previous_accounts"`
+	AntiAbuseEnabled                    *bool                        `json:"anti_abuse_enabled"`
+	AntiAbuseScoreThreshold             *int                         `json:"anti_abuse_score_threshold"`
+	AntiAbuseFingerprintWeight          *int                         `json:"anti_abuse_fingerprint_weight"`
+	AntiAbuseIPWeight                   *int                         `json:"anti_abuse_ip_weight"`
+	AntiAbuseEmailWeight                *int                         `json:"anti_abuse_email_weight"`
+	AntiAbuseUserAgentWeight            *int                         `json:"anti_abuse_user_agent_weight"`
+	AntiAbuseTLSFingerprintWeight       *int                         `json:"anti_abuse_tls_fingerprint_weight"`
+	AntiAbuseIPReputationEndpoint       *string                      `json:"anti_abuse_ip_reputation_endpoint"`
+	AntiAbuseIPReputationAPIKey         *string                      `json:"anti_abuse_ip_reputation_api_key"`
 	TotpEnabled                         bool                         `json:"totp_enabled"` // TOTP 双因素认证
 	PasskeyEnabled                      *bool                        `json:"passkey_enabled"`
 	SessionBindingEnabled               *bool                        `json:"session_binding_enabled"`
@@ -571,6 +580,23 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.APIUsageIPUAKeepPreviousAccounts != nil && *req.APIUsageIPUAKeepPreviousAccounts < 0 {
 		value := 0
 		req.APIUsageIPUAKeepPreviousAccounts = &value
+	}
+	if req.AntiAbuseScoreThreshold != nil && *req.AntiAbuseScoreThreshold < 1 {
+		value := service.DefaultAntiAbusePolicy().ScoreThreshold
+		req.AntiAbuseScoreThreshold = &value
+	}
+	if req.AntiAbuseIPReputationEndpoint != nil && strings.TrimSpace(*req.AntiAbuseIPReputationEndpoint) != "" {
+		endpoint := strings.TrimSpace(*req.AntiAbuseIPReputationEndpoint)
+		if err := config.ValidateAbsoluteHTTPURL(endpoint); err != nil {
+			response.BadRequest(c, "anti_abuse_ip_reputation_endpoint must be an absolute HTTP(S) URL")
+			return
+		}
+		req.AntiAbuseIPReputationEndpoint = &endpoint
+	}
+	for _, item := range []*int{req.AntiAbuseFingerprintWeight, req.AntiAbuseIPWeight, req.AntiAbuseEmailWeight, req.AntiAbuseUserAgentWeight, req.AntiAbuseTLSFingerprintWeight} {
+		if item != nil && *item < 1 {
+			*item = 1
+		}
 	}
 	affiliateRebateRate := previousSettings.AffiliateRebateRate
 	if req.AffiliateRebateRate != nil {
@@ -1525,6 +1551,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		APIUsageIPUARiskControlThreshold:    intValueOrDefault(req.APIUsageIPUARiskControlThreshold, previousSettings.APIUsageIPUARiskControlThreshold),
 		APIUsageIPUADisablePreviousAccounts: boolValueOrDefault(req.APIUsageIPUADisablePreviousAccounts, previousSettings.APIUsageIPUADisablePreviousAccounts),
 		APIUsageIPUAKeepPreviousAccounts:    intValueOrDefault(req.APIUsageIPUAKeepPreviousAccounts, previousSettings.APIUsageIPUAKeepPreviousAccounts),
+		AntiAbuseEnabled:                    boolValueOrDefault(req.AntiAbuseEnabled, previousSettings.AntiAbuseEnabled),
+		AntiAbuseScoreThreshold:             intValueOrDefault(req.AntiAbuseScoreThreshold, previousSettings.AntiAbuseScoreThreshold),
+		AntiAbuseFingerprintWeight:          intValueOrDefault(req.AntiAbuseFingerprintWeight, previousSettings.AntiAbuseFingerprintWeight),
+		AntiAbuseIPWeight:                   intValueOrDefault(req.AntiAbuseIPWeight, previousSettings.AntiAbuseIPWeight),
+		AntiAbuseEmailWeight:                intValueOrDefault(req.AntiAbuseEmailWeight, previousSettings.AntiAbuseEmailWeight),
+		AntiAbuseUserAgentWeight:            intValueOrDefault(req.AntiAbuseUserAgentWeight, previousSettings.AntiAbuseUserAgentWeight),
+		AntiAbuseTLSFingerprintWeight:       intValueOrDefault(req.AntiAbuseTLSFingerprintWeight, previousSettings.AntiAbuseTLSFingerprintWeight),
+		AntiAbuseIPReputationEndpoint:       stringPtrValueOrDefault(req.AntiAbuseIPReputationEndpoint, previousSettings.AntiAbuseIPReputationEndpoint),
+		AntiAbuseIPReputationAPIKey:         stringPtrValueOrDefault(req.AntiAbuseIPReputationAPIKey, previousSettings.AntiAbuseIPReputationAPIKey),
 		TotpEnabled:                         req.TotpEnabled,
 		PasskeyEnabled:                      passkeyEnabled,
 		SessionBindingEnabled:               sessionBindingEnabled,
@@ -2159,6 +2194,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		APIUsageIPUARiskControlThreshold:                       updatedSettings.APIUsageIPUARiskControlThreshold,
 		APIUsageIPUADisablePreviousAccounts:                    updatedSettings.APIUsageIPUADisablePreviousAccounts,
 		APIUsageIPUAKeepPreviousAccounts:                       updatedSettings.APIUsageIPUAKeepPreviousAccounts,
+		AntiAbuseEnabled:                                       updatedSettings.AntiAbuseEnabled,
+		AntiAbuseScoreThreshold:                                updatedSettings.AntiAbuseScoreThreshold,
+		AntiAbuseFingerprintWeight:                             updatedSettings.AntiAbuseFingerprintWeight,
+		AntiAbuseIPWeight:                                      updatedSettings.AntiAbuseIPWeight,
+		AntiAbuseEmailWeight:                                   updatedSettings.AntiAbuseEmailWeight,
+		AntiAbuseUserAgentWeight:                               updatedSettings.AntiAbuseUserAgentWeight,
+		AntiAbuseTLSFingerprintWeight:                          updatedSettings.AntiAbuseTLSFingerprintWeight,
+		AntiAbuseIPReputationEndpoint:                          updatedSettings.AntiAbuseIPReputationEndpoint,
+		AntiAbuseIPReputationAPIKeyConfigured:                  updatedSettings.AntiAbuseIPReputationAPIKeyConfigured,
 		TotpEnabled:                                            updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
 		PasskeyEnabled:                                         updatedSettings.PasskeyEnabled,

@@ -50,15 +50,17 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 
 // RegisterRequest represents the registration request payload
 type RegisterRequest struct {
-	Email                 string `json:"email" binding:"required,email"`
-	Password              string `json:"password" binding:"required,min=6"`
-	VerifyCode            string `json:"verify_code"`
-	TurnstileToken        string `json:"turnstile_token"`
-	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
-	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
-	PromoCode             string `json:"promo_code"`      // 注册优惠码
-	InvitationCode        string `json:"invitation_code"` // 邀请码
-	AffCode               string `json:"aff_code"`        // 邀请返利码
+	Email                 string   `json:"email" binding:"required,email"`
+	Password              string   `json:"password" binding:"required,min=6"`
+	VerifyCode            string   `json:"verify_code"`
+	TurnstileToken        string   `json:"turnstile_token"`
+	TencentCaptchaTicket  string   `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string   `json:"tencent_captcha_randstr"`
+	PromoCode             string   `json:"promo_code"`      // 注册优惠码
+	InvitationCode        string   `json:"invitation_code"` // 邀请码
+	AffCode               string   `json:"aff_code"`        // 邀请返利码
+	BrowserFingerprint    string   `json:"browser_fingerprint"`
+	BrowserFingerprints   []string `json:"browser_fingerprints"`
 }
 
 // SendVerifyCodeRequest 发送验证码请求
@@ -192,8 +194,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	fingerprints := append([]string{}, req.BrowserFingerprints...)
+	if req.BrowserFingerprint != "" {
+		fingerprints = append(fingerprints, req.BrowserFingerprint)
+	}
+	transportSignals := service.RiskSignalsFromContext(c.Request.Context())
+	requestCtx := service.WithRiskSignals(c.Request.Context(), service.RiskSignals{
+		IPAddress: ip.GetClientIP(c), Email: req.Email, UserAgent: c.GetHeader("User-Agent"), BrowserFingerprints: fingerprints,
+		JA3: transportSignals.JA3, JA4: transportSignals.JA4,
+	})
 	_, user, err := h.authService.RegisterWithVerification(
-		service.WithSignupIP(c.Request.Context(), ip.GetClientIP(c)),
+		requestCtx,
 		req.Email,
 		req.Password,
 		req.VerifyCode,

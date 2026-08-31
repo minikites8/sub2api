@@ -1682,6 +1682,52 @@
                   {{ t("admin.settings.registration.apiUsageIPUAKeepPreviousAccountsHint") }}
                 </p>
               </div>
+              <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{ t("admin.settings.registration.antiAbuseEnabled") }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">{{ t("admin.settings.registration.antiAbuseEnabledHint") }}</p>
+                </div>
+                <Toggle v-model="form.anti_abuse_enabled" />
+              </div>
+              <div v-if="form.anti_abuse_enabled" class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.registration.antiAbuseScoreThreshold") }}
+                    <input v-model.number="form.anti_abuse_score_threshold" type="number" min="1" class="input mt-2 w-full" />
+                  </label>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.registration.fingerprintWeight") }}
+                    <input v-model.number="form.anti_abuse_fingerprint_weight" type="number" min="1" class="input mt-2 w-full" />
+                  </label>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.registration.ipWeight") }}
+                    <input v-model.number="form.anti_abuse_ip_weight" type="number" min="1" class="input mt-2 w-full" />
+                  </label>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.registration.emailWeight") }}
+                    <input v-model.number="form.anti_abuse_email_weight" type="number" min="1" class="input mt-2 w-full" />
+                  </label>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.registration.userAgentWeight") }}
+                    <input v-model.number="form.anti_abuse_user_agent_weight" type="number" min="1" class="input mt-2 w-full" />
+                  </label>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.registration.tlsFingerprintWeight") }}
+                    <input v-model.number="form.anti_abuse_tls_fingerprint_weight" type="number" min="1" class="input mt-2 w-full" />
+                  </label>
+                </div>
+                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.registration.antiAbuseWeightsHint") }}</p>
+              </div>
+              <div v-if="form.anti_abuse_enabled" class="grid gap-4 border-t border-gray-100 pt-4 dark:border-dark-700 sm:grid-cols-2">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.registration.ipReputationEndpoint") }}
+                  <input v-model.trim="form.anti_abuse_ip_reputation_endpoint" type="url" placeholder="https://risk.example/v1/check" class="input mt-2 w-full" />
+                </label>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.registration.ipReputationAPIKey") }}
+                  <input v-model.trim="form.anti_abuse_ip_reputation_api_key" type="password" :placeholder="form.anti_abuse_ip_reputation_api_key_configured ? t('admin.settings.registration.secretConfigured') : ''" class="input mt-2 w-full" />
+                </label>
+              </div>
               <!-- Password Reset - Only show when email verification is enabled -->
               <div
                 v-if="form.email_verify_enabled"
@@ -9659,6 +9705,7 @@ type SettingsForm = Omit<
   oidc_connect_client_secret: string;
   github_oauth_client_secret: string;
   google_oauth_client_secret: string;
+  anti_abuse_ip_reputation_api_key: string;
   force_email_on_third_party_signup: boolean;
   openai_low_upstream_rate_priority_enabled: boolean;
   openai_oauth_scheduling_rate_multiplier: number;
@@ -9697,6 +9744,16 @@ const form = reactive<SettingsForm>({
   api_usage_ip_ua_risk_control_threshold: 4,
   api_usage_ip_ua_disable_previous_accounts: false,
   api_usage_ip_ua_keep_previous_accounts: 0,
+  anti_abuse_enabled: true,
+  anti_abuse_score_threshold: 60,
+  anti_abuse_fingerprint_weight: 1,
+  anti_abuse_ip_weight: 1,
+  anti_abuse_email_weight: 1,
+  anti_abuse_user_agent_weight: 1,
+  anti_abuse_tls_fingerprint_weight: 1,
+  anti_abuse_ip_reputation_endpoint: "",
+  anti_abuse_ip_reputation_api_key_configured: false,
+  anti_abuse_ip_reputation_api_key: "",
   totp_enabled: false,
   totp_encryption_key_configured: false,
   passkey_enabled: false,
@@ -11346,6 +11403,15 @@ async function saveSettings() {
         form.api_usage_ip_ua_disable_previous_accounts,
       api_usage_ip_ua_keep_previous_accounts:
         Math.max(0, Math.floor(Number(form.api_usage_ip_ua_keep_previous_accounts) || 0)),
+      anti_abuse_enabled: form.anti_abuse_enabled,
+      anti_abuse_score_threshold: Math.max(1, Math.floor(Number(form.anti_abuse_score_threshold) || 60)),
+      anti_abuse_fingerprint_weight: Math.max(1, Math.floor(Number(form.anti_abuse_fingerprint_weight) || 1)),
+      anti_abuse_ip_weight: Math.max(1, Math.floor(Number(form.anti_abuse_ip_weight) || 1)),
+      anti_abuse_email_weight: Math.max(1, Math.floor(Number(form.anti_abuse_email_weight) || 1)),
+      anti_abuse_user_agent_weight: Math.max(1, Math.floor(Number(form.anti_abuse_user_agent_weight) || 1)),
+      anti_abuse_tls_fingerprint_weight: Math.max(1, Math.floor(Number(form.anti_abuse_tls_fingerprint_weight) || 1)),
+      anti_abuse_ip_reputation_endpoint: form.anti_abuse_ip_reputation_endpoint,
+      ...(form.anti_abuse_ip_reputation_api_key ? { anti_abuse_ip_reputation_api_key: form.anti_abuse_ip_reputation_api_key } : {}),
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
       passkey_enabled: form.passkey_enabled,

@@ -18,6 +18,7 @@ import type {
   TotpLoginResponse,
   TotpLogin2FARequest
 } from '@/types'
+import { getBrowserFingerprints } from '@/utils/browserFingerprint'
 
 /**
  * Login response type - can be either full auth or 2FA required
@@ -173,7 +174,12 @@ export async function login2FA(request: TotpLogin2FARequest): Promise<AuthRespon
  * @returns Authentication response with token and user data
  */
 export async function register(userData: RegisterRequest): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/auth/register', userData)
+  const browserFingerprints = await getBrowserFingerprints()
+  const payload: RegisterRequest = {
+    ...userData,
+    browser_fingerprints: Array.from(new Set([...(userData.browser_fingerprints || []), ...browserFingerprints])).slice(0, 8)
+  }
+  const { data } = await apiClient.post<AuthResponse>('/auth/register', payload)
 
   // Store token and user data
   setAuthToken(data.access_token)

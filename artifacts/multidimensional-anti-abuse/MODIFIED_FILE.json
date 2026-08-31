@@ -1,0 +1,28 @@
+{
+  "mode": "multidimensional",
+  "score_threshold": 60,
+  "tls_fingerprint_weight": 1,
+  "browser_fingerprint_provider": "@fingerprintjs/fingerprintjs@4.6.2",
+  "transport_fingerprint_sources": ["JA3", "JA4"],
+  "transport_headers": ["X-JA3", "X-JA3-Fingerprint", "X-JA3-Hash", "X-TLS-JA3", "X-Client-JA3", "CF-JA3-Fingerprint", "CF-JA3-Hash", "X-JA4", "X-JA4-Fingerprint", "X-JA4-Hash", "X-TLS-JA4", "X-Client-JA4", "CF-JA4-Fingerprint", "CF-JA4-Hash", "CF-JA4"],
+  "transport_headers_trusted_proxy_only": true,
+  "ip_reputation_upstreams": ["IPPure/api.123169.xyz", "ipinfo.io/widget/demo"],
+  "signals": [
+    "multiple_browser_fingerprints",
+    "fuzzy_browser_fingerprint",
+    "ip_velocity",
+    "third_party_ip_reputation",
+    "email_reputation",
+    "calling_user_agent",
+    "ja3_ja4_velocity",
+    "ja3_ja4_reputation"
+  ],
+  "action": "deduct_free_credit",
+  "risk_control_center": {
+    "route": "/admin/risk-control",
+    "config": "multidimensional anti-abuse scoring and upstream settings",
+    "events": "/admin/risk-control/anti-abuse/events",
+    "gift_deduction_events": ["registration_gift_deduction", "gateway_gift_deduction"],
+    "balance_history_type": "risk_control_balance"
+  }
+}

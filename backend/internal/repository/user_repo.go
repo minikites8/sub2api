@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -38,6 +39,251 @@ var _ service.UserGroupBanRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
+}
+
+func (r *userRepository) antiAbuseExecutor(ctx context.Context) sqlExecutor {
+	if r == nil {
+		return nil
+	}
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return tx.Client()
+	}
+	return r.sql
+}
+
+func (r *userRepository) StoreSignupRiskSignals(ctx context.Context, userID int64, fingerprints []string, assessment service.AntiAbuseAssessment) error {
+	exec := r.antiAbuseExecutor(ctx)
+	if r == nil || exec == nil || userID <= 0 {
+		return nil
+	}
+	for _, fingerprint := range service.HashBrowserFingerprints(fingerprints) {
+		bucket := fingerprint
+		if strings.HasPrefix(bucket, "b:") {
+			bucket = strings.TrimPrefix(bucket, "b:")
+		}
+		if len(bucket) > 16 {
+			bucket = bucket[:16]
+		}
+		_, err := exec.ExecContext(ctx, `
+			INSERT INTO anti_abuse_user_fingerprints (user_id, fingerprint_hash, fingerprint_bucket, risk_score, risk_factors)
+			VALUES ($1, $2, $3, $4, $5::jsonb)
+			ON CONFLICT (user_id, fingerprint_hash) DO UPDATE SET risk_score = EXCLUDED.risk_score, risk_factors = EXCLUDED.risk_factors`,
+			userID, fingerprint, bucket, assessment.Score, marshalRiskFactors(assessment.Factors))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *userRepository) GetUserFingerprints(ctx context.Context, userID int64) ([]string, error) {
+	exec := r.antiAbuseExecutor(ctx)
+	if r == nil || exec == nil {
+		return nil, nil
+	}
+	rows, err := exec.QueryContext(ctx, `SELECT fingerprint_hash FROM anti_abuse_user_fingerprints WHERE user_id = $1 ORDER BY created_at ASC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []string
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	return result, rows.Err()
+}
+
+func (r *userRepository) CountUsersByFingerprintHashes(ctx context.Context, fingerprints []string, since time.Time) (int, error) {
+	exec := r.antiAbuseExecutor(ctx)
+	if r == nil || exec == nil || len(fingerprints) == 0 {
+		return 0, nil
+	}
+	rows, err := exec.QueryContext(ctx, `SELECT COUNT(DISTINCT user_id) FROM anti_abuse_user_fingerprints WHERE fingerprint_hash = ANY($1) AND created_at >= $2`, pq.Array(fingerprints), since)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var count int
+	if rows.Next() {
+		err = rows.Scan(&count)
+	}
+	return count, err
+}
+
+func (r *userRepository) StoreTransportFingerprints(ctx context.Context, userID int64, ja3, ja4 string, assessment service.AntiAbuseAssessment) error {
+	exec := r.antiAbuseExecutor(ctx)
+	if r == nil || exec == nil || userID <= 0 {
+		return nil
+	}
+	for _, pair := range [][2]string{{"ja3", ja3}, {"ja4", ja4}} {
+		hash := service.HashTransportFingerprint(pair[0], pair[1])
+		if hash == "" {
+			continue
+		}
+		_, err := exec.ExecContext(ctx, `INSERT INTO anti_abuse_user_fingerprints (user_id, fingerprint_hash, fingerprint_bucket, risk_score, risk_factors) VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT (user_id, fingerprint_hash) DO UPDATE SET risk_score = EXCLUDED.risk_score, risk_factors = EXCLUDED.risk_factors`, userID, hash, pair[0], assessment.Score, marshalRiskFactors(assessment.Factors))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *userRepository) CountUsersByTransportFingerprints(ctx context.Context, ja3, ja4 string, since time.Time) (int, error) {
+	exec := r.antiAbuseExecutor(ctx)
+	if r == nil || exec == nil {
+		return 0, nil
+	}
+	hashes := make([]string, 0, 2)
+	if hash := service.HashTransportFingerprint("ja3", ja3); hash != "" {
+		hashes = append(hashes, hash)
+	}
+	if hash := service.HashTransportFingerprint("ja4", ja4); hash != "" {
+		hashes = append(hashes, hash)
+	}
+	if len(hashes) == 0 {
+		return 0, nil
+	}
+	rows, err := exec.QueryContext(ctx, `SELECT COUNT(DISTINCT user_id) FROM anti_abuse_user_fingerprints WHERE fingerprint_hash = ANY($1) AND created_at >= $2`, pq.Array(hashes), since)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var count int
+	if rows.Next() {
+		err = rows.Scan(&count)
+	}
+	return count, err
+}
+
+func marshalRiskFactors(factors map[string]int) string {
+	if len(factors) == 0 {
+		return "{}"
+	}
+	raw, err := json.Marshal(factors)
+	if err != nil {
+		return "{}"
+	}
+	return string(raw)
+}
+
+func (r *userRepository) RecordAntiAbuseEvent(ctx context.Context, event *service.AntiAbuseEvent) error {
+	if event == nil {
+		return nil
+	}
+	exec := r.antiAbuseExecutor(ctx)
+	if exec == nil {
+		return nil
+	}
+	factors, err := json.Marshal(event.Factors)
+	if err != nil {
+		return err
+	}
+	reasons, err := json.Marshal(event.Reasons)
+	if err != nil {
+		return err
+	}
+	var userID any
+	if event.UserID != nil && *event.UserID > 0 {
+		userID = *event.UserID
+	}
+	rows, err := exec.QueryContext(ctx, `
+		INSERT INTO anti_abuse_events (
+			user_id, event_type, action, score, factors, reasons, ip_address, email,
+			user_agent, fingerprint_hash_count, ja3_hash, ja4_hash, gift_balance_deducted
+		) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)
+		RETURNING id, created_at`,
+		userID, event.EventType, event.Action, event.Score, string(factors), string(reasons),
+		event.IPAddress, event.Email, event.UserAgent, event.FingerprintHashCount,
+		event.JA3Hash, event.JA4Hash, event.GiftBalanceDeducted)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return rows.Err()
+	}
+	return rows.Scan(&event.ID, &event.CreatedAt)
+}
+
+func (r *userRepository) ListAntiAbuseEvents(ctx context.Context, filter service.AntiAbuseEventFilter) ([]service.AntiAbuseEvent, int64, error) {
+	exec := r.antiAbuseExecutor(ctx)
+	if exec == nil {
+		return []service.AntiAbuseEvent{}, 0, nil
+	}
+	where := []string{"1=1"}
+	args := make([]any, 0, 8)
+	add := func(clause string, value any) {
+		args = append(args, value)
+		where = append(where, fmt.Sprintf(clause, len(args)))
+	}
+	if value := strings.TrimSpace(filter.EventType); value != "" {
+		add("e.event_type = $%d", value)
+	}
+	if value := strings.TrimSpace(filter.Action); value != "" {
+		add("e.action = $%d", value)
+	}
+	if filter.DeductionsOnly {
+		where = append(where, "e.gift_balance_deducted > 0")
+	}
+	if value := strings.TrimSpace(filter.Search); value != "" {
+		args = append(args, "%"+value+"%")
+		index := len(args)
+		where = append(where, fmt.Sprintf("(e.email ILIKE $%d OR u.email ILIKE $%d OR CAST(e.user_id AS TEXT) = $%d OR e.ip_address ILIKE $%d)", index, index, index, index))
+	}
+	if filter.From != nil {
+		add("e.created_at >= $%d", *filter.From)
+	}
+	if filter.To != nil {
+		add("e.created_at <= $%d", *filter.To)
+	}
+	whereSQL := strings.Join(where, " AND ")
+	var total int64
+	countRows, err := exec.QueryContext(ctx, `SELECT COUNT(*) FROM anti_abuse_events e LEFT JOIN users u ON u.id = e.user_id WHERE `+whereSQL, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	if countRows.Next() {
+		err = countRows.Scan(&total)
+	}
+	closeErr := countRows.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+	if closeErr != nil {
+		return nil, 0, closeErr
+	}
+	args = append(args, filter.Pagination.Limit(), filter.Pagination.Offset())
+	rows, err := exec.QueryContext(ctx, fmt.Sprintf(`
+		SELECT e.id, e.user_id, COALESCE(u.email, ''), e.event_type, e.action, e.score,
+			e.factors, e.reasons, e.ip_address, e.email, e.user_agent,
+			e.fingerprint_hash_count, e.ja3_hash, e.ja4_hash, e.gift_balance_deducted, e.created_at
+		FROM anti_abuse_events e
+		LEFT JOIN users u ON u.id = e.user_id
+		WHERE %s
+		ORDER BY e.created_at DESC, e.id DESC
+		LIMIT $%d OFFSET $%d`, whereSQL, len(args)-1, len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := make([]service.AntiAbuseEvent, 0)
+	for rows.Next() {
+		var item service.AntiAbuseEvent
+		var factorsRaw, reasonsRaw []byte
+		if err := rows.Scan(&item.ID, &item.UserID, &item.UserEmail, &item.EventType, &item.Action, &item.Score,
+			&factorsRaw, &reasonsRaw, &item.IPAddress, &item.Email, &item.UserAgent,
+			&item.FingerprintHashCount, &item.JA3Hash, &item.JA4Hash, &item.GiftBalanceDeducted, &item.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		_ = json.Unmarshal(factorsRaw, &item.Factors)
+		_ = json.Unmarshal(reasonsRaw, &item.Reasons)
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
 }
 
 func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepository {

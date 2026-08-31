@@ -53,6 +53,34 @@
           </div>
         </div>
 
+        <div class="card" data-test="anti-abuse-config">
+          <div class="flex flex-col gap-3 border-b border-gray-100 px-6 py-4 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.antiAbuseConfig.title') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.antiAbuseConfig.hint') }}</p>
+            </div>
+            <button type="button" class="btn btn-primary inline-flex items-center gap-2" :disabled="antiAbuseConfigSaving" @click="saveAntiAbuseConfig">
+              <Icon name="check" size="sm" />
+              {{ antiAbuseConfigSaving ? t('common.saving') : t('admin.riskControl.antiAbuseConfig.save') }}
+            </button>
+          </div>
+          <div class="grid grid-cols-1 gap-4 p-6 sm:grid-cols-2 lg:grid-cols-4">
+            <label class="flex items-center gap-3 rounded-lg border border-gray-100 p-4 text-sm dark:border-dark-700">
+              <input v-model="antiAbuseConfig.enabled" type="checkbox" />
+              <span><span class="font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.antiAbuseConfig.enabled') }}</span><span class="mt-1 block text-xs text-gray-500">{{ t('admin.riskControl.antiAbuseConfig.enabledHint') }}</span></span>
+            </label>
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.riskControl.antiAbuseConfig.threshold') }}<input v-model.number="antiAbuseConfig.score_threshold" type="number" min="1" class="input mt-2 w-full" /></label>
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.riskControl.antiAbuseConfig.weights') }}<span class="mt-2 block text-xs font-normal text-gray-500">FP {{ antiAbuseConfig.fingerprint_weight }} · IP {{ antiAbuseConfig.ip_weight }} · Email {{ antiAbuseConfig.email_weight }} · UA {{ antiAbuseConfig.user_agent_weight }} · JA3/JA4 {{ antiAbuseConfig.tls_fingerprint_weight }}</span></label>
+            <div>
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.riskControl.antiAbuseConfig.ipReputation') }}<input v-model.trim="antiAbuseConfig.ip_reputation_endpoint" type="url" class="input mt-2 w-full" placeholder="IPPure" /></label>
+              <input v-model.trim="antiAbuseIPReputationAPIKey" type="password" class="input mt-2 w-full" :placeholder="antiAbuseConfig.ip_reputation_api_key_configured ? t('admin.settings.registration.secretConfigured') : 'API key'" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 border-t border-gray-100 px-6 py-4 text-sm dark:border-dark-700 md:grid-cols-5">
+            <label v-for="item in antiAbuseWeightFields" :key="item.key" class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}<input v-model.number="antiAbuseConfig[item.key]" type="number" min="1" class="input mt-1 w-full text-sm" /></label>
+          </div>
+        </div>
+
         <div
           v-if="showPreBlockRuntimeCard"
           data-test="pre-block-runtime-cards"
@@ -374,6 +402,56 @@
             @update:page="onPageChange"
             @update:pageSize="onPageSizeChange"
           />
+        </div>
+
+        <div class="card" data-test="anti-abuse-events">
+          <div class="flex flex-col gap-3 border-b border-gray-100 px-6 py-4 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.antiAbuseEvents.title') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.antiAbuseEvents.hint') }}</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <select v-model="antiAbuseFilters.action" class="input" @change="reloadAntiAbuseEvents">
+                <option value="">{{ t('admin.riskControl.antiAbuseEvents.allActions') }}</option>
+                <option value="allow">allow</option>
+                <option value="review">review</option>
+                <option value="restrict">restrict</option>
+              </select>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <input v-model="antiAbuseFilters.deductions_only" type="checkbox" @change="reloadAntiAbuseEvents" />
+                {{ t('admin.riskControl.antiAbuseEvents.deductionsOnly') }}
+              </label>
+              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="antiAbuseLoading" @click="loadAntiAbuseEvents">
+                <Icon name="refresh" size="sm" :class="antiAbuseLoading ? 'animate-spin' : ''" />
+                {{ t('admin.riskControl.refresh') }}
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+              <thead class="bg-gray-50 dark:bg-dark-800">
+                <tr>
+                  <th v-for="key in ['time', 'event', 'user', 'score', 'factors', 'network', 'deduction']" :key="key" class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t(`admin.riskControl.antiAbuseEvents.table.${key}`) }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-800 dark:bg-dark-800">
+                <tr v-if="antiAbuseLoading"><td colspan="7" class="px-5 py-10 text-center text-sm text-gray-500">{{ t('common.loading') }}</td></tr>
+                <tr v-else-if="antiAbuseEvents.length === 0"><td colspan="7" class="px-5 py-10 text-center text-sm text-gray-500">{{ t('admin.riskControl.antiAbuseEvents.empty') }}</td></tr>
+                <template v-else><tr v-for="event in antiAbuseEvents" :key="event.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/60">
+                  <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(event.created_at) }}</td>
+                  <td class="whitespace-nowrap px-5 py-4"><span class="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ event.event_type }}</span><div class="mt-1 text-xs text-gray-500">{{ event.action }}</div></td>
+                  <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ event.user_email || event.email || '-' }}<div v-if="event.user_id" class="text-xs text-gray-400">UID {{ event.user_id }}</div></td>
+                  <td class="whitespace-nowrap px-5 py-4 text-sm font-semibold" :class="event.score >= 60 ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'">{{ event.score }}</td>
+                  <td class="max-w-[280px] px-5 py-4 text-xs text-gray-600 dark:text-gray-300"><span class="break-words">{{ formatAntiAbuseFactors(event.factors) }}</span></td>
+                  <td class="max-w-[260px] px-5 py-4 text-xs text-gray-500 dark:text-gray-400"><div>{{ event.ip_address || '-' }}</div><div class="truncate" :title="event.user_agent">{{ event.user_agent || '-' }}</div><div>FP {{ event.fingerprint_hash_count }} · JA3 {{ event.ja3_hash ? 'yes' : 'no' }} · JA4 {{ event.ja4_hash ? 'yes' : 'no' }}</div></td>
+                  <td class="whitespace-nowrap px-5 py-4 text-sm font-semibold" :class="event.gift_balance_deducted > 0 ? 'text-red-600' : 'text-gray-500'">{{ event.gift_balance_deducted > 0 ? `-${event.gift_balance_deducted}` : '-' }}</td>
+                </tr></template>
+              </tbody>
+            </table>
+          </div>
+          <Pagination v-if="antiAbusePagination.total > 0" :page="antiAbusePagination.page" :total="antiAbusePagination.total" :page-size="antiAbusePagination.page_size" @update:page="onAntiAbusePageChange" @update:pageSize="onAntiAbusePageSizeChange" />
         </div>
       </template>
 
@@ -1227,6 +1305,7 @@ import type {
   ContentModerationModelFilterType,
   ContentModerationRuntimeStatus,
   ContentModerationTestAuditResult,
+  AntiAbuseEvent,
   KeywordBlockingMode,
   ModerationMode,
   UpdateContentModerationConfig,
@@ -1261,6 +1340,7 @@ type RiskThresholdRow = {
   value: number
   defaultValue: number
 }
+type AntiAbuseWeightKey = 'fingerprint_weight' | 'ip_weight' | 'email_weight' | 'user_agent_weight' | 'tls_fingerprint_weight'
 
 const maxModerationTestImages = 1
 const maxModerationTestImageSize = 8 * 1024 * 1024
@@ -1301,6 +1381,30 @@ const flaggedHashInput = ref('')
 const groups = ref<AdminGroup[]>([])
 const proxies = ref<Proxy[]>([])
 const logs = ref<ContentModerationLog[]>([])
+const antiAbuseEvents = ref<AntiAbuseEvent[]>([])
+const antiAbuseLoading = ref(false)
+const antiAbuseFilters = reactive({ action: '', deductions_only: false })
+const antiAbusePagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
+const antiAbuseConfigSaving = ref(false)
+const antiAbuseConfig = reactive({
+  enabled: true,
+  score_threshold: 60,
+  fingerprint_weight: 1,
+  ip_weight: 1,
+  email_weight: 1,
+  user_agent_weight: 1,
+  tls_fingerprint_weight: 1,
+  ip_reputation_endpoint: '',
+  ip_reputation_api_key_configured: false,
+})
+const antiAbuseIPReputationAPIKey = ref('')
+const antiAbuseWeightFields: Array<{ key: AntiAbuseWeightKey; label: string }> = [
+  { key: 'fingerprint_weight', label: 'FP' },
+  { key: 'ip_weight', label: 'IP' },
+  { key: 'email_weight', label: 'Email' },
+  { key: 'user_agent_weight', label: 'UA' },
+  { key: 'tls_fingerprint_weight', label: 'JA3/JA4' },
+]
 const status = ref<ContentModerationRuntimeStatus | null>(null)
 const testedApiKeyStatuses = ref<ContentModerationAPIKeyStatus[]>([])
 const pendingDeleteApiKeyHashes = ref<string[]>([])
@@ -1855,27 +1959,122 @@ function applyConfig(config: ContentModerationConfig) {
 async function loadAll() {
   loading.value = true
   try {
-    const [config, groupItems, runtimeStatus, proxyItems] = await Promise.all([
+    const antiAbuseConfigRequest = typeof adminAPI.riskControl.getAntiAbuseConfig === 'function'
+      ? adminAPI.riskControl.getAntiAbuseConfig()
+      : Promise.resolve(null)
+    const [config, groupItems, runtimeStatus, proxyItems, antiAbuseSettings] = await Promise.all([
       adminAPI.riskControl.getConfig(),
       adminAPI.groups.getAll(),
       adminAPI.riskControl.getStatus(),
       // 代理列表加载失败不阻塞风控页面（仅影响下拉可选项）
       adminAPI.proxies.getAll().catch(() => [] as Proxy[]),
+      antiAbuseConfigRequest,
     ])
     applyConfig(config)
     groups.value = groupItems
     status.value = runtimeStatus
     proxies.value = proxyItems
+    if (antiAbuseSettings) applyAntiAbuseSettings(antiAbuseSettings)
     if (Array.isArray(runtimeStatus.api_key_statuses)) {
       configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
       prunePendingDeleteAPIKeyHashes()
     }
-    await loadLogs()
+    await Promise.all([loadLogs(), loadAntiAbuseEvents()])
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.loadFailed')))
   } finally {
     loading.value = false
   }
+}
+
+function applyAntiAbuseSettings(settings: {
+  enabled?: boolean
+  score_threshold?: number
+  fingerprint_weight?: number
+  ip_weight?: number
+  email_weight?: number
+  user_agent_weight?: number
+  tls_fingerprint_weight?: number
+  ip_reputation_endpoint?: string
+  ip_reputation_api_key_configured?: boolean
+}) {
+  antiAbuseConfig.enabled = settings.enabled !== false
+  antiAbuseConfig.score_threshold = Number(settings.score_threshold) || 60
+  antiAbuseConfig.fingerprint_weight = Number(settings.fingerprint_weight) || 1
+  antiAbuseConfig.ip_weight = Number(settings.ip_weight) || 1
+  antiAbuseConfig.email_weight = Number(settings.email_weight) || 1
+  antiAbuseConfig.user_agent_weight = Number(settings.user_agent_weight) || 1
+  antiAbuseConfig.tls_fingerprint_weight = Number(settings.tls_fingerprint_weight) || 1
+  antiAbuseConfig.ip_reputation_endpoint = String(settings.ip_reputation_endpoint || '')
+  antiAbuseConfig.ip_reputation_api_key_configured = settings.ip_reputation_api_key_configured === true
+  antiAbuseIPReputationAPIKey.value = ''
+}
+
+async function saveAntiAbuseConfig() {
+  antiAbuseConfigSaving.value = true
+  try {
+    const settings = await adminAPI.riskControl.updateAntiAbuseConfig({
+      enabled: antiAbuseConfig.enabled,
+      score_threshold: Math.max(1, Math.floor(Number(antiAbuseConfig.score_threshold) || 60)),
+      fingerprint_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.fingerprint_weight) || 1)),
+      ip_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.ip_weight) || 1)),
+      email_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.email_weight) || 1)),
+      user_agent_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.user_agent_weight) || 1)),
+      tls_fingerprint_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.tls_fingerprint_weight) || 1)),
+      ip_reputation_endpoint: antiAbuseConfig.ip_reputation_endpoint,
+      ...(antiAbuseIPReputationAPIKey.value.trim() ? { ip_reputation_api_key: antiAbuseIPReputationAPIKey.value.trim() } : {}),
+    })
+    applyAntiAbuseSettings(settings)
+    appStore.showSuccess(t('admin.riskControl.antiAbuseConfig.saved'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.antiAbuseConfig.saveFailed')))
+  } finally {
+    antiAbuseConfigSaving.value = false
+  }
+}
+
+async function loadAntiAbuseEvents() {
+  if (typeof adminAPI.riskControl.listAntiAbuseEvents !== 'function') {
+    antiAbuseEvents.value = []
+    return
+  }
+  antiAbuseLoading.value = true
+  try {
+    const result = await adminAPI.riskControl.listAntiAbuseEvents({
+      page: antiAbusePagination.page,
+      page_size: antiAbusePagination.page_size,
+      action: antiAbuseFilters.action || undefined,
+      deductions_only: antiAbuseFilters.deductions_only || undefined,
+    })
+    antiAbuseEvents.value = result.items || []
+    antiAbusePagination.total = result.total || 0
+    antiAbusePagination.pages = result.pages || 1
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.antiAbuseEvents.loadFailed')))
+  } finally {
+    antiAbuseLoading.value = false
+  }
+}
+
+function reloadAntiAbuseEvents() {
+  antiAbusePagination.page = 1
+  void loadAntiAbuseEvents()
+}
+
+function onAntiAbusePageChange(page: number) {
+  antiAbusePagination.page = page
+  void loadAntiAbuseEvents()
+}
+
+function onAntiAbusePageSizeChange(pageSize: number) {
+  antiAbusePagination.page_size = pageSize
+  antiAbusePagination.page = 1
+  void loadAntiAbuseEvents()
+}
+
+function formatAntiAbuseFactors(factors: Record<string, number> | null | undefined): string {
+  if (!factors || Object.keys(factors).length === 0) return '-'
+  return Object.entries(factors).map(([key, value]) => `${key}:${value}`).join(' · ')
 }
 
 async function loadStatus(silent = true) {

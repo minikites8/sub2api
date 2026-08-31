@@ -182,6 +182,16 @@ type UserRepository interface {
 	DisableTotp(ctx context.Context, userID int64) error
 }
 
+// AntiAbuseSignalStore persists hashed browser signals separately from the user row,
+// allowing multiple fingerprints and schema-compatible rollout on existing installs.
+type AntiAbuseSignalStore interface {
+	StoreSignupRiskSignals(ctx context.Context, userID int64, fingerprints []string, assessment AntiAbuseAssessment) error
+	GetUserFingerprints(ctx context.Context, userID int64) ([]string, error)
+	CountUsersByFingerprintHashes(ctx context.Context, fingerprints []string, since time.Time) (int, error)
+	StoreTransportFingerprints(ctx context.Context, userID int64, ja3, ja4 string, assessment AntiAbuseAssessment) error
+	CountUsersByTransportFingerprints(ctx context.Context, ja3, ja4 string, since time.Time) (int, error)
+}
+
 // UserGroupBanRepository provides the optional persistence used by the risk
 // control group-ban policy. Keeping it separate preserves compatibility with
 // lightweight UserRepository test doubles and alternate implementations.

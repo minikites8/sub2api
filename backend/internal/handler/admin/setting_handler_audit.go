@@ -68,6 +68,33 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.APIUsageIPUAKeepPreviousAccounts != after.APIUsageIPUAKeepPreviousAccounts {
 		changed = append(changed, "api_usage_ip_ua_keep_previous_accounts")
 	}
+	if before.AntiAbuseEnabled != after.AntiAbuseEnabled {
+		changed = append(changed, "anti_abuse_enabled")
+	}
+	if before.AntiAbuseScoreThreshold != after.AntiAbuseScoreThreshold {
+		changed = append(changed, "anti_abuse_score_threshold")
+	}
+	if before.AntiAbuseFingerprintWeight != after.AntiAbuseFingerprintWeight {
+		changed = append(changed, "anti_abuse_fingerprint_weight")
+	}
+	if before.AntiAbuseIPWeight != after.AntiAbuseIPWeight {
+		changed = append(changed, "anti_abuse_ip_weight")
+	}
+	if before.AntiAbuseEmailWeight != after.AntiAbuseEmailWeight {
+		changed = append(changed, "anti_abuse_email_weight")
+	}
+	if before.AntiAbuseUserAgentWeight != after.AntiAbuseUserAgentWeight {
+		changed = append(changed, "anti_abuse_user_agent_weight")
+	}
+	if before.AntiAbuseTLSFingerprintWeight != after.AntiAbuseTLSFingerprintWeight {
+		changed = append(changed, "anti_abuse_tls_fingerprint_weight")
+	}
+	if before.AntiAbuseIPReputationEndpoint != after.AntiAbuseIPReputationEndpoint {
+		changed = append(changed, "anti_abuse_ip_reputation_endpoint")
+	}
+	if req.AntiAbuseIPReputationAPIKey != nil {
+		changed = append(changed, "anti_abuse_ip_reputation_api_key")
+	}
 	if before.PasswordResetEnabled != after.PasswordResetEnabled {
 		changed = append(changed, "password_reset_enabled")
 	}
@@ -722,6 +749,13 @@ func intValueOrDefault(value *int, fallback int) int {
 }
 
 func boolValueOrDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+func stringPtrValueOrDefault(value *string, fallback string) string {
 	if value == nil {
 		return fallback
 	}

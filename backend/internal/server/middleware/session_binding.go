@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"net"
+	"net/netip"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -25,9 +27,52 @@ func SessionBindingContext(cfg *config.Config) gin.HandlerFunc {
 			IP:        ip.GetSecurityClientIP(c, forwardedIPSettings.TrustForwardedIP),
 			UserAgent: userAgent,
 		}
-		c.Request = c.Request.WithContext(service.WithSessionBinding(c.Request.Context(), binding))
+		fingerprints := append([]string{}, c.Request.Header.Values("X-Browser-Fingerprint")...)
+		fingerprints = append(fingerprints, c.Request.Header.Values("X-Browser-Fingerprints")...)
+		ja3, ja4 := "", ""
+		if trustedProxyFingerprintHeaders(c, cfg) {
+			ja3 = firstHeader(c, "X-JA3", "X-JA3-Fingerprint", "X-JA3-Hash", "X-TLS-JA3", "X-Client-JA3", "CF-JA3-Fingerprint", "CF-JA3-Hash", "JA3")
+			ja4 = firstHeader(c, "X-JA4", "X-JA4-Fingerprint", "X-JA4-Hash", "X-TLS-JA4", "X-Client-JA4", "CF-JA4-Fingerprint", "CF-JA4-Hash", "CF-JA4", "JA4")
+		}
+		requestContext := service.WithSessionBinding(c.Request.Context(), binding)
+		requestContext = service.WithRiskSignals(requestContext, service.RiskSignals{IPAddress: binding.IP, UserAgent: userAgent, BrowserFingerprints: fingerprints, JA3: ja3, JA4: ja4})
+		c.Request = c.Request.WithContext(requestContext)
 		c.Next()
 	}
+}
+
+func trustedProxyFingerprintHeaders(c *gin.Context, cfg *config.Config) bool {
+	if c == nil || cfg == nil || !cfg.Server.TrustedProxiesConfigured || len(cfg.Server.TrustedProxies) == 0 {
+		return false
+	}
+	remote := strings.TrimSpace(c.Request.RemoteAddr)
+	if host, _, err := net.SplitHostPort(remote); err == nil {
+		remote = host
+	}
+	remote = strings.Trim(strings.TrimSpace(remote), "[]")
+	addr, err := netip.ParseAddr(remote)
+	if err != nil {
+		return false
+	}
+	for _, raw := range cfg.Server.TrustedProxies {
+		raw = strings.TrimSpace(raw)
+		if prefix, parseErr := netip.ParsePrefix(raw); parseErr == nil && prefix.Contains(addr) {
+			return true
+		}
+		if proxyAddr, parseErr := netip.ParseAddr(raw); parseErr == nil && proxyAddr == addr {
+			return true
+		}
+	}
+	return false
+}
+
+func firstHeader(c *gin.Context, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(c.GetHeader(name)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // requestSessionBinding 返回当前请求的会话指纹，优先取 SessionBindingContext

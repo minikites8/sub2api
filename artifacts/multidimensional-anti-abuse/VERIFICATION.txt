@@ -1,0 +1,53 @@
+CHANGED_BRANCH_OR_FIELD: anti-abuse registration and gateway evaluation; settings keys anti_abuse_*; FingerprintJS v4.6.2 multi-value/fuzzy fingerprints; trusted-proxy JA3/JA4 headers and IPPure multi-source reputation
+ORIGINAL_SHA256: 8f0bcea32088a48387be67ef086b1586d9e0a85121de9a13f24f756a3177bd41
+MODIFIED_SHA256: 3fc758df04f640b2080a931d8424c91b0177e3cddefef67738042451f46f1865
+
+BASELINE_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; go test -tags=unit ./internal/service ./internal/handler ./internal/repository
+BASELINE_INPUT: repository checkout before this change
+BASELINE_LITERAL_RESULT: setup failed; Go build cache write returned Access is denied for C:\Users\Administrator\AppData\Local\go-build; later unit compilation also reported pre-existing duplicate methods and stale test constructor fields.
+BASELINE_EXIT_STATUS: 1
+
+MODIFIED_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test ./internal/service -run 'TestBrowserFingerprintsSupportMultipleAndFuzzyMatches|TestIPPureUpstreamHandshakeAndMultiSourceAggregation|TestEvaluateAntiAbuse|TestConfiguredIPReputationProviderAndCache' -count=1 -v
+MODIFIED_INPUT: FingerprintJS visitor/device values; JSON/pipe fingerprint values; fuzzy device variants; disposable email; scripted UA; JA3/JA4 values; IPPure session handshake; IP reputation provider response {"risk_score":72}
+MODIFIED_LITERAL_RESULT: PASS; ok github.com/Wei-Shaw/sub2api/internal/service 2.514s; all four tests passed.
+MODIFIED_EXIT_STATUS: 0
+
+TRANSPORT_TRUST_TEST_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test -tags unit ./internal/server/middleware -run 'TestSessionBindingContextOnlyAcceptsTransportFingerprintsFromTrustedProxy' -count=1
+TRANSPORT_TRUST_TEST_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/server/middleware 3.426s
+TRANSPORT_TRUST_TEST_EXIT_STATUS: 0
+
+FRONTEND_TYPECHECK_COMMAND: pnpm exec vue-tsc --noEmit; pnpm exec eslint src/api/admin/settings.ts src/views/admin/SettingsView.vue src/i18n/locales/zh/admin/settings.ts src/i18n/locales/en/admin/settings.ts src/utils/browserFingerprint.ts
+FRONTEND_TYPECHECK_LITERAL_RESULT: exit status 0
+FRONTEND_TYPECHECK_EXIT_STATUS: 0
+
+RISK_CENTER_BACKEND_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; $env:GOMAXPROCS='2'; go test ./internal/service ./internal/repository ./internal/handler/admin -run 'TestBrowserFingerprints|TestEvaluateAntiAbuse|TestConfiguredIPReputation|TestContentModeration' -count=1
+RISK_CENTER_BACKEND_INPUT: registration/gateway anti-abuse assessment events, gift-deduction events, event repository and admin risk-control route
+RISK_CENTER_BACKEND_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 3.340s; ok github.com/Wei-Shaw/sub2api/internal/repository 2.606s; ok github.com/Wei-Shaw/sub2api/internal/handler/admin 2.853s
+RISK_CENTER_BACKEND_EXIT_STATUS: 0
+
+RISK_CENTER_ENDPOINTS: GET/PUT /admin/risk-control/anti-abuse/config; GET /admin/risk-control/anti-abuse/events
+RISK_CENTER_EVENT_TYPES: registration, gateway, registration_gift_deduction, gateway_gift_deduction
+RISK_CENTER_BALANCE_HISTORY: risk_control_balance records remain written alongside anti_abuse_events
+
+RISK_CENTER_UI_TEST_COMMAND: pnpm exec vitest run src/views/admin/__tests__/RiskControlView.spec.ts
+RISK_CENTER_UI_TEST_LITERAL_RESULT: 1 test file passed; 8 tests passed; exit status 0
+RISK_CENTER_UI_TEST_EXIT_STATUS: 0
+
+UNIT_GAP_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test -tags unit ./internal/server -run 'Test.*Settings|Test.*Public' -count=1
+UNIT_GAP_LITERAL_RESULT: setup failed on pre-existing api_contract_test.go NewAdminService constructor argument mismatch
+UNIT_GAP_EXIT_STATUS: 1
+
+BUILD_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go build ./...
+BUILD_LITERAL_RESULT: exit status 0
+BUILD_EXIT_STATUS: 0
+
+FRONTEND_COMMAND: pnpm run build
+FRONTEND_LITERAL_RESULT: vite v5.4.21; 1040 modules transformed; built in 32.67s; risk-control center includes multidimensional config and event stream; exit status 0
+FRONTEND_EXIT_STATUS: 0
+
+ROLLBACK_COMMAND: & 'C:\Program Files\Git\bin\bash.exe' 'artifacts/multidimensional-anti-abuse/ROLLBACK.sh' 'artifacts/multidimensional-anti-abuse/rollback-copy.json'
+ROLLBACK_INPUT: copy of MODIFIED_FILE.json
+ROLLBACK_LITERAL_RESULT: restored:artifacts/multidimensional-anti-abuse/rollback-copy.json; rollback_sha256=8f0bcea32088a48387be67ef086b1586d9e0a85121de9a13f24f756a3177bd41; original_sha256=8f0bcea32088a48387be67ef086b1586d9e0a85121de9a13f24f756a3177bd41
+ROLLBACK_EXIT_STATUS: 0
+
+RESTORED_BEHAVIOR_STATUS: rollback copy restored to the original IP+UA fixture with matching SHA256; MODIFIED_FILE.json remains changed on the multidimensional branch.

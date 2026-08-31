@@ -156,6 +156,8 @@ export interface RegisterRequest {
   promo_code?: string
   invitation_code?: string
   aff_code?: string
+  browser_fingerprint?: string
+  browser_fingerprints?: string[]
 }
 
 export interface AffiliateInvitee {

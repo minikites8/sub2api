@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -12,11 +13,16 @@ import (
 )
 
 type ContentModerationHandler struct {
-	service *service.ContentModerationService
+	service  *service.ContentModerationService
+	settings *service.SettingService
 }
 
-func NewContentModerationHandler(svc *service.ContentModerationService) *ContentModerationHandler {
-	return &ContentModerationHandler{service: svc}
+func NewContentModerationHandler(svc *service.ContentModerationService, settings ...*service.SettingService) *ContentModerationHandler {
+	var settingService *service.SettingService
+	if len(settings) > 0 {
+		settingService = settings[0]
+	}
+	return &ContentModerationHandler{service: svc, settings: settingService}
 }
 
 type contentModerationConfigRequest struct {
@@ -82,6 +88,55 @@ func (h *ContentModerationHandler) GetConfig(c *gin.Context) {
 		return
 	}
 	response.Success(c, cfg)
+}
+
+func (h *ContentModerationHandler) GetAntiAbuseConfig(c *gin.Context) {
+	if h.settings == nil {
+		response.Success(c, service.AntiAbuseConfigView{})
+		return
+	}
+	response.Success(c, h.settings.GetAntiAbuseConfig(c.Request.Context()))
+}
+
+type antiAbuseConfigRequest struct {
+	Enabled              bool    `json:"enabled"`
+	ScoreThreshold       int     `json:"score_threshold"`
+	FingerprintWeight    int     `json:"fingerprint_weight"`
+	IPWeight             int     `json:"ip_weight"`
+	EmailWeight          int     `json:"email_weight"`
+	UserAgentWeight      int     `json:"user_agent_weight"`
+	TLSFingerprintWeight int     `json:"tls_fingerprint_weight"`
+	IPReputationEndpoint string  `json:"ip_reputation_endpoint"`
+	IPReputationAPIKey   *string `json:"ip_reputation_api_key"`
+}
+
+func (h *ContentModerationHandler) UpdateAntiAbuseConfig(c *gin.Context) {
+	if h.settings == nil {
+		response.InternalError(c, "setting service not configured")
+		return
+	}
+	var req antiAbuseConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	endpoint := strings.TrimSpace(req.IPReputationEndpoint)
+	if endpoint != "" {
+		if err := config.ValidateAbsoluteHTTPURL(endpoint); err != nil {
+			response.BadRequest(c, "ip_reputation_endpoint must be an absolute HTTP(S) URL")
+			return
+		}
+	}
+	view, err := h.settings.UpdateAntiAbuseConfig(c.Request.Context(), service.UpdateAntiAbuseConfigInput{
+		Enabled: req.Enabled, ScoreThreshold: req.ScoreThreshold, FingerprintWeight: req.FingerprintWeight,
+		IPWeight: req.IPWeight, EmailWeight: req.EmailWeight, UserAgentWeight: req.UserAgentWeight,
+		TLSFingerprintWeight: req.TLSFingerprintWeight, IPReputationEndpoint: endpoint, IPReputationAPIKey: req.IPReputationAPIKey,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, view)
 }
 
 func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
@@ -211,6 +266,40 @@ func (h *ContentModerationHandler) ListLogs(c *gin.Context) {
 		return
 	}
 	response.Paginated(c, items, pageResult.Total, pageResult.Page, pageResult.PageSize)
+}
+
+func (h *ContentModerationHandler) ListAntiAbuseEvents(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	filter := service.AntiAbuseEventFilter{
+		Pagination: pagination.PaginationParams{Page: page, PageSize: pageSize, SortOrder: pagination.SortOrderDesc},
+		EventType:  c.Query("event_type"), Action: c.Query("action"), Search: c.Query("search"),
+		DeductionsOnly: c.Query("deductions_only") == "true",
+	}
+	if raw := strings.TrimSpace(c.Query("from")); raw != "" {
+		t, _, err := parseContentModerationDate(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid from")
+			return
+		}
+		filter.From = &t
+	}
+	if raw := strings.TrimSpace(c.Query("to")); raw != "" {
+		t, dateOnly, err := parseContentModerationDate(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid to")
+			return
+		}
+		if dateOnly {
+			t = t.Add(24*time.Hour - time.Nanosecond)
+		}
+		filter.To = &t
+	}
+	items, total, err := h.service.ListAntiAbuseEvents(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, pageSize)
 }
 
 func (h *ContentModerationHandler) UnbanUser(c *gin.Context) {
