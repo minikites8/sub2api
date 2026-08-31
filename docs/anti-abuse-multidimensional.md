@@ -29,6 +29,8 @@
 
 旧的注册 IP、API IP+UA 配置保持有效，用作兼容处置阈值。`anti_abuse_ip_reputation_endpoint` 留空时使用 IPPure 多源聚合；填写自定义地址时调用 `GET <endpoint>?ip=<client-ip>` 并读取 JSON 内的 `score`、`risk_score` 或 `reputation`。上游请求异常时使用本地评分。
 
+关闭 `anti_abuse_enabled` 后，系统停止多维信誉查询、指纹持久化和 `anti_abuse_events` 新事件写入；旧的注册 IP、API IP+UA 兼容风控开关与阈值独立生效。关闭前已经产生的事件会继续保留在风控中心历史列表中。
+
 ## 发布顺序
 
 1. 应用 migration `231_anti_abuse_multidimensional.sql`。

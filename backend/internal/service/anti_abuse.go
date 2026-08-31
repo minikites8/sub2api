@@ -258,6 +258,9 @@ func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, ema
 		policy.TLSFingerprintWeight = 1
 	}
 	assessment := AntiAbuseAssessment{Action: AntiAbuseActionAllow, Factors: map[string]int{}}
+	if !policy.Enabled {
+		return assessment
+	}
 	add := func(name, reason string, value, weight int) {
 		if value <= 0 {
 			return

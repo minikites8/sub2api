@@ -261,7 +261,7 @@ export default {
         apiUsageIPUAKeepPreviousAccounts: '保留历史调用账号数量',
         apiUsageIPUAKeepPreviousAccountsHint: '保留最早出现的调用账号数量。',
         antiAbuseEnabled: '多维反滥用评分',
-        antiAbuseEnabledHint: '综合浏览器指纹、IP 信誉、邮箱信誉、调用 UA 与行为速度执行处置。',
+        antiAbuseEnabledHint: '综合浏览器指纹、IP 信誉、邮箱信誉、调用 UA 与行为速度执行处置；关闭后停止多维查询、指纹保存和新事件记录。',
         antiAbuseScoreThreshold: '处置分数阈值',
         fingerprintWeight: '浏览器指纹权重',
         ipWeight: 'IP 与 IP 信誉权重',

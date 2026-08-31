@@ -261,7 +261,7 @@ export default {
         apiUsageIPUAKeepPreviousAccounts: 'Earlier API accounts to retain',
         apiUsageIPUAKeepPreviousAccountsHint: 'Retains this many earliest API accounts.',
         antiAbuseEnabled: 'Multi-signal anti-abuse scoring',
-        antiAbuseEnabledHint: 'Scores browser fingerprints, IP reputation, email reputation, calling UA, and behavioral velocity.',
+        antiAbuseEnabledHint: 'Scores browser fingerprints, IP reputation, email reputation, calling UA, and behavioral velocity. Disabling stops multidimensional lookups, fingerprint storage, and new event records.',
         antiAbuseScoreThreshold: 'Action score threshold',
         fingerprintWeight: 'Browser fingerprint weight',
         ipWeight: 'IP and reputation weight',

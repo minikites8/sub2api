@@ -89,6 +89,19 @@ func TestEvaluateAntiAbuseWithTLSFingerprints(t *testing.T) {
 	require.NotEmpty(t, HashTransportFingerprint("ja4", "t13d1714h1_5b57614c22b0_7baf387fc6ff"))
 }
 
+func TestDisabledAntiAbuseSkipsScoring(t *testing.T) {
+	policy := DefaultAntiAbusePolicy()
+	policy.Enabled = false
+	assessment := EvaluateAntiAbuseWithTLS(RiskSignals{
+		IPAddress: "8.8.8.8", Email: "temp-user@mailinator.com", UserAgent: "python-requests/2.32",
+		BrowserFingerprints: []string{"os=windows;chrome=136"}, JA3: strings.Repeat("a", 32),
+		JA4: "t13d1714h1_5b57614c22b0_7baf387fc6ff",
+	}, 4, 3, 2, 2, policy)
+	require.Equal(t, AntiAbuseActionAllow, assessment.Action)
+	require.Zero(t, assessment.Score)
+	require.Empty(t, assessment.Factors)
+}
+
 func TestConfiguredIPReputationProviderAndCache(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
