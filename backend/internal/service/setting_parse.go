@@ -322,6 +322,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PasswordResetEnabled:                   emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
 		FrontendURL:                            settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:                  settings[SettingKeyInvitationCodeEnabled] == "true",
+		SignupIPRiskControlThreshold:           parseSignupIPRiskControlThreshold(settings[SettingKeySignupIPRiskControlThreshold]),
+		SignupIPDisablePreviousAccounts:        parseSignupIPDisablePreviousAccounts(settings[SettingKeySignupIPDisablePreviousAccounts]),
+		SignupIPKeepPreviousAccounts:           parseSignupIPKeepPreviousAccounts(settings[SettingKeySignupIPKeepPreviousAccounts]),
+		APIUsageIPUARiskControlThreshold:       parseAPIUsageIPUARiskControlThreshold(settings[SettingKeyAPIUsageIPUARiskControlThreshold]),
+		APIUsageIPUADisablePreviousAccounts:    parseAPIUsageIPUADisablePreviousAccounts(settings[SettingKeyAPIUsageIPUADisablePreviousAccounts]),
+		APIUsageIPUAKeepPreviousAccounts:       parseAPIUsageIPUAKeepPreviousAccounts(settings[SettingKeyAPIUsageIPUAKeepPreviousAccounts]),
 		TotpEnabled:                            settings[SettingKeyTotpEnabled] == "true",
 		PasskeyEnabled:                         s.passkeySettingEnabled(settings),
 		SessionBindingEnabled:                  settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭
