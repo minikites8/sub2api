@@ -27,23 +27,24 @@ var (
 )
 
 type DailyCheckinStatus struct {
-	Enabled           bool       `json:"enabled"`
-	AdsEnabled        bool       `json:"ads_enabled"`
-	CheckedInToday    bool       `json:"checked_in_today"`
-	TodayReward       float64    `json:"today_reward"`
-	TodayTotalGranted float64    `json:"today_total_granted"`
-	DailyTotalLimit   float64    `json:"daily_total_limit"`
-	MinReward         float64    `json:"min_reward"`
-	MaxReward         float64    `json:"max_reward"`
-	MinRechargeAmount float64    `json:"min_recharge_amount"`
-	TotalRecharged    float64    `json:"total_recharged"`
-	RechargeEligible  bool       `json:"recharge_eligible"`
-	CheckinDate       string     `json:"checkin_date"`
-	LastCheckinAt     *time.Time `json:"last_checkin_at,omitempty"`
-	LastReward        float64    `json:"last_reward,omitempty"`
-	NextAvailableAt   time.Time  `json:"next_available_at"`
-	RemainingToday    float64    `json:"remaining_today"`
-	ExhaustedToday    bool       `json:"exhausted_today"`
+	Enabled            bool       `json:"enabled"`
+	AdsEnabled         bool       `json:"ads_enabled"`
+	CheckedInToday     bool       `json:"checked_in_today"`
+	TodayReward        float64    `json:"today_reward"`
+	TodayTotalGranted  float64    `json:"today_total_granted"`
+	DailyTotalLimit    float64    `json:"daily_total_limit"`
+	MinReward          float64    `json:"min_reward"`
+	MaxReward          float64    `json:"max_reward"`
+	RechargeWindowDays int        `json:"recharge_window_days"`
+	MinRechargeAmount  float64    `json:"min_recharge_amount"`
+	TotalRecharged     float64    `json:"total_recharged"`
+	RechargeEligible   bool       `json:"recharge_eligible"`
+	CheckinDate        string     `json:"checkin_date"`
+	LastCheckinAt      *time.Time `json:"last_checkin_at,omitempty"`
+	LastReward         float64    `json:"last_reward,omitempty"`
+	NextAvailableAt    time.Time  `json:"next_available_at"`
+	RemainingToday     float64    `json:"remaining_today"`
+	ExhaustedToday     bool       `json:"exhausted_today"`
 }
 
 type DailyCheckinResult struct {
@@ -102,6 +103,12 @@ type DailyCheckinRepository interface {
 	ListAdminRecords(ctx context.Context, filter DailyCheckinAdminListFilter) ([]DailyCheckinAdminRecord, int64, error)
 }
 
+// DailyCheckinRechargeRepository provides the completed recharge total for a
+// user within a configurable time window.
+type DailyCheckinRechargeRepository interface {
+	SumRechargeAmountSince(ctx context.Context, userID int64, since time.Time) (float64, error)
+}
+
 type DailyCheckinUserRepository interface {
 	GetByID(ctx context.Context, id int64) (*User, error)
 }
@@ -141,15 +148,16 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 	today, nextAvailableAt := s.todayWindow()
 
 	status := &DailyCheckinStatus{
-		Enabled:           claimable,
-		AdsEnabled:        settings.AdsEnabled,
-		DailyTotalLimit:   settings.DailyTotalLimit,
-		MinReward:         settings.MinReward,
-		MaxReward:         settings.MaxReward,
-		MinRechargeAmount: settings.MinRechargeAmount,
-		RechargeEligible:  true,
-		CheckinDate:       today,
-		NextAvailableAt:   nextAvailableAt,
+		Enabled:            claimable,
+		AdsEnabled:         settings.AdsEnabled,
+		DailyTotalLimit:    settings.DailyTotalLimit,
+		MinReward:          settings.MinReward,
+		MaxReward:          settings.MaxReward,
+		RechargeWindowDays: settings.RechargeWindowDays,
+		MinRechargeAmount:  settings.MinRechargeAmount,
+		RechargeEligible:   true,
+		CheckinDate:        today,
+		NextAvailableAt:    nextAvailableAt,
 	}
 
 	if s == nil || s.repo == nil || userID <= 0 {
@@ -157,7 +165,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 		return status, nil
 	}
 
-	totalRecharged, err := s.userTotalRecharged(ctx, userID)
+	totalRecharged, err := s.userRechargeAmount(ctx, userID, settings)
 	if err != nil {
 		return nil, fmt.Errorf("get daily check-in recharge total: %w", err)
 	}
@@ -195,7 +203,7 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 	if userID <= 0 {
 		return nil, ErrUserNotFound
 	}
-	totalRecharged, err := s.userTotalRecharged(ctx, userID)
+	totalRecharged, err := s.userRechargeAmount(ctx, userID, settings)
 	if err != nil {
 		return nil, fmt.Errorf("get daily check-in recharge total: %w", err)
 	}
@@ -232,21 +240,22 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 	s.invalidateBalanceCache(userID)
 
 	status := DailyCheckinStatus{
-		Enabled:           dailyCheckinClaimable(settings),
-		AdsEnabled:        settings.AdsEnabled,
-		CheckedInToday:    true,
-		TodayReward:       roundCheckinReward(claimed.Record.Reward),
-		TodayTotalGranted: roundCheckinReward(claimed.TodayTotalGranted),
-		DailyTotalLimit:   settings.DailyTotalLimit,
-		MinReward:         settings.MinReward,
-		MaxReward:         settings.MaxReward,
-		MinRechargeAmount: settings.MinRechargeAmount,
-		TotalRecharged:    totalRecharged,
-		RechargeEligible:  true,
-		CheckinDate:       today,
-		LastCheckinAt:     &claimed.Record.CreatedAt,
-		LastReward:        roundCheckinReward(claimed.Record.Reward),
-		NextAvailableAt:   nextAvailableAt,
+		Enabled:            dailyCheckinClaimable(settings),
+		AdsEnabled:         settings.AdsEnabled,
+		CheckedInToday:     true,
+		TodayReward:        roundCheckinReward(claimed.Record.Reward),
+		TodayTotalGranted:  roundCheckinReward(claimed.TodayTotalGranted),
+		DailyTotalLimit:    settings.DailyTotalLimit,
+		MinReward:          settings.MinReward,
+		MaxReward:          settings.MaxReward,
+		RechargeWindowDays: settings.RechargeWindowDays,
+		MinRechargeAmount:  settings.MinRechargeAmount,
+		TotalRecharged:     totalRecharged,
+		RechargeEligible:   true,
+		CheckinDate:        today,
+		LastCheckinAt:      &claimed.Record.CreatedAt,
+		LastReward:         roundCheckinReward(claimed.Record.Reward),
+		NextAvailableAt:    nextAvailableAt,
 	}
 	applyDailyCheckinRemaining(&status)
 
@@ -332,6 +341,9 @@ func normalizeDailyCheckinConfig(settings config.DailyCheckinConfig) config.Dail
 	if !isFiniteNonNegativeFloat(settings.MinRechargeAmount) {
 		settings.MinRechargeAmount = 0
 	}
+	if settings.RechargeWindowDays <= 0 {
+		settings.RechargeWindowDays = config.DefaultDailyCheckinRechargeWindowDays
+	}
 	if settings.MaxReward < settings.MinReward {
 		settings.MaxReward = settings.MinReward
 	}
@@ -386,6 +398,23 @@ func (s *DailyCheckinService) userTotalRecharged(ctx context.Context, userID int
 		return 0, err
 	}
 	return roundCheckinReward(user.TotalRecharged), nil
+}
+
+func (s *DailyCheckinService) userRechargeAmount(ctx context.Context, userID int64, settings config.DailyCheckinConfig) (float64, error) {
+	if settings.MinRechargeAmount <= 0 {
+		return s.userTotalRecharged(ctx, userID)
+	}
+	if recentRepo, ok := s.repo.(DailyCheckinRechargeRepository); ok {
+		since := time.Now().AddDate(0, 0, -settings.RechargeWindowDays)
+		amount, err := recentRepo.SumRechargeAmountSince(ctx, userID, since)
+		if err != nil {
+			return 0, err
+		}
+		return roundCheckinReward(amount), nil
+	}
+	// Alternate repository implementations can retain their legacy aggregate
+	// until they add the windowed recharge query.
+	return s.userTotalRecharged(ctx, userID)
 }
 
 func dailyCheckinRechargeEligible(totalRecharged, minRechargeAmount float64) bool {

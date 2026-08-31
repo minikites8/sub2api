@@ -802,7 +802,7 @@ export default {
       rechargedTotal: 'Total recharged',
       poolProgress: 'Today\'s pool progress',
       rechargeRequired: 'Recharge required',
-      rechargeRequiredHint: 'Meet the cumulative recharge requirement to check in',
+      rechargeRequiredHint: 'Meet the recharge requirement within the last {days} days to check in',
       goRecharge: 'Recharge now',
       verifyTitle: 'Complete verification',
       verifyHint: 'Pass the verification to claim today\'s check-in reward.',
@@ -818,7 +818,7 @@ export default {
         DAILY_CHECKIN_DISABLED: 'Daily check-in is not enabled',
         DAILY_CHECKIN_ALREADY: 'You have already checked in today',
         DAILY_CHECKIN_EXHAUSTED: 'Today\'s check-in pool is empty',
-        DAILY_CHECKIN_RECHARGE_REQUIRED: 'Your cumulative recharge has not reached the check-in requirement',
+        DAILY_CHECKIN_RECHARGE_REQUIRED: 'Your recharge total in the configured window has not reached the check-in requirement',
         TURNSTILE_VERIFICATION_FAILED: 'Verification failed, please try again',
         TURNSTILE_NOT_CONFIGURED: 'Cloudflare Turnstile is not configured'
       }
@@ -2051,7 +2051,9 @@ export default {
           minReward: 'Minimum reward',
           maxReward: 'Maximum reward',
           dailyTotalLimit: 'Daily total payout limit',
-          minRechargeAmount: 'Minimum cumulative recharge',
+          rechargeWindowDays: 'Recharge window (days)',
+          rechargeWindowDaysHint: 'Completed recharge orders within this window count toward eligibility.',
+          minRechargeAmount: 'Minimum recharge in window',
           minRechargeAmountHint: 'Set 0 to allow all users to check in.',
           rewardTiers: 'Reward tiers',
           rewardTiersHint: 'Distribute random rewards by interval upper bounds and probability.',

@@ -182,17 +182,30 @@
           />
         </label>
 
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-gray-700 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.minRechargeAmount') }}</span>
-          <input
-            v-model.number="settingsForm.min_recharge_amount"
-            type="number"
-            min="0"
-            step="0.00000001"
-            class="input"
-          />
-          <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.minRechargeAmountHint') }}</span>
-        </label>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="space-y-1.5">
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.rechargeWindowDays') }}</span>
+            <input
+              v-model.number="settingsForm.recharge_window_days"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+            />
+            <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.rechargeWindowDaysHint') }}</span>
+          </label>
+          <label class="space-y-1.5">
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.minRechargeAmount') }}</span>
+            <input
+              v-model.number="settingsForm.min_recharge_amount"
+              type="number"
+              min="0"
+              step="0.00000001"
+              class="input"
+            />
+            <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.minRechargeAmountHint') }}</span>
+          </label>
+        </div>
 
         <div class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
           <div class="flex flex-wrap items-start justify-between gap-3">
@@ -299,6 +312,7 @@ const settingsForm = reactive<DailyCheckinSettings>({
   daily_total_limit: 0,
   min_reward: 0,
   max_reward: 0,
+  recharge_window_days: 14,
   min_recharge_amount: 0,
   reward_tiers: [],
   today_total_granted: 0,
@@ -441,6 +455,7 @@ async function saveSettings() {
       daily_total_limit: Number(settingsForm.daily_total_limit) || 0,
       min_reward: Number(settingsForm.min_reward) || 0,
       max_reward: Number(settingsForm.max_reward) || 0,
+      recharge_window_days: Math.max(0, Math.trunc(Number(settingsForm.recharge_window_days) || 0)),
       min_recharge_amount: Number(settingsForm.min_recharge_amount) || 0,
       reward_tiers: buildRewardTiersPayload(),
     }))
@@ -460,6 +475,7 @@ function assignSettings(settings: DailyCheckinSettings) {
   settingsForm.daily_total_limit = Number(settings.daily_total_limit) || 0
   settingsForm.min_reward = Number(settings.min_reward) || 0
   settingsForm.max_reward = Number(settings.max_reward) || 0
+  settingsForm.recharge_window_days = Math.max(0, Math.trunc(Number(settings.recharge_window_days) || 0))
   settingsForm.min_recharge_amount = Number(settings.min_recharge_amount) || 0
   settingsForm.reward_tiers = normalizeRewardTiers(settings.reward_tiers)
   settingsForm.today_total_granted = Number(settings.today_total_granted) || 0

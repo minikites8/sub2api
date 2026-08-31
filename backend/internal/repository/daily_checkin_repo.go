@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -39,6 +40,25 @@ FROM daily_checkins
 WHERE user_id = $1
 ORDER BY checkin_date DESC
 LIMIT 1`, userID)
+}
+
+func (r *dailyCheckinRepository) SumRechargeAmountSince(ctx context.Context, userID int64, since time.Time) (float64, error) {
+	if r == nil || r.db == nil {
+		return 0, fmt.Errorf("daily check-in repository is not configured")
+	}
+	var total float64
+	err := r.db.QueryRowContext(ctx, `
+SELECT COALESCE(SUM(amount), 0)::double precision
+FROM payment_orders
+WHERE user_id = $1
+  AND order_type = 'balance'
+  AND status = 'COMPLETED'
+  AND paid_at IS NOT NULL
+  AND paid_at >= $2`, userID, since).Scan(&total)
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 func (r *dailyCheckinRepository) SumRewardsByDate(ctx context.Context, date string) (float64, error) {

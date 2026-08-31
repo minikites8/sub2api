@@ -32,6 +32,7 @@ export interface DailyCheckinSettings {
   daily_total_limit: number
   min_reward: number
   max_reward: number
+  recharge_window_days: number
   min_recharge_amount: number
   reward_tiers: DailyCheckinRewardTier[]
   today_total_granted: number
@@ -51,6 +52,7 @@ export interface UpdateDailyCheckinSettingsRequest {
   daily_total_limit: number
   min_reward: number
   max_reward: number
+  recharge_window_days: number
   min_recharge_amount: number
   reward_tiers: DailyCheckinRewardTier[]
 }

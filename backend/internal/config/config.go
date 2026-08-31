@@ -1635,6 +1635,8 @@ type DashboardCacheConfig struct {
 	StatsRefreshTimeoutSeconds int `mapstructure:"stats_refresh_timeout_seconds"`
 }
 
+const DefaultDailyCheckinRechargeWindowDays = 14
+
 // DailyCheckinConfig 每日签到奖励配置。
 type DailyCheckinConfig struct {
 	// Enabled: 是否启用签到功能
@@ -1647,7 +1649,9 @@ type DailyCheckinConfig struct {
 	MinReward float64 `mapstructure:"min_reward"`
 	// MaxReward: 单人单次签到随机奖励最大值（USD）
 	MaxReward float64 `mapstructure:"max_reward"`
-	// MinRechargeAmount: 使用签到功能所需累计充值金额（USD），0 表示不限制
+	// RechargeWindowDays: 统计签到资格时回看的充值时间窗口（天）。
+	RechargeWindowDays int `mapstructure:"recharge_window_days"`
+	// MinRechargeAmount: 充值时间窗口内所需累计充值金额，0 表示不限制
 	MinRechargeAmount float64 `mapstructure:"min_recharge_amount"`
 	// RewardTiers: 按区间比例随机发放奖励
 	RewardTiers []DailyCheckinRewardTier `mapstructure:"reward_tiers"`
@@ -2238,7 +2242,8 @@ func setDefaults() {
 	viper.SetDefault("daily_checkin.daily_total_limit", 0)
 	viper.SetDefault("daily_checkin.min_reward", 0)
 	viper.SetDefault("daily_checkin.max_reward", 0)
-	viper.SetDefault("daily_checkin.min_recharge_amount", 0)
+	viper.SetDefault("daily_checkin.recharge_window_days", 14)
+	viper.SetDefault("daily_checkin.min_recharge_amount", 1)
 	viper.SetDefault("daily_checkin.reward_tiers", DefaultDailyCheckinRewardTiers())
 
 	// Dashboard aggregation
@@ -2542,6 +2547,9 @@ func (c *Config) Validate() error {
 	}
 	if !isFiniteNonNegative(c.DailyCheckin.MinRechargeAmount) {
 		return fmt.Errorf("daily_checkin.min_recharge_amount must be a finite non-negative number")
+	}
+	if c.DailyCheckin.RechargeWindowDays < 0 {
+		return fmt.Errorf("daily_checkin.recharge_window_days must be non-negative")
 	}
 	dailyCheckinDailyTotalLimit := roundDailyCheckinAmount(c.DailyCheckin.DailyTotalLimit)
 	dailyCheckinMinReward := roundDailyCheckinAmount(c.DailyCheckin.MinReward)

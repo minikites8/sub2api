@@ -1204,6 +1204,17 @@ func TestValidateDailyCheckinConfig(t *testing.T) {
 			wantErr: "daily_checkin.min_recharge_amount must be a finite non-negative number",
 		},
 		{
+			name: "recharge window days cannot be negative",
+			cfg: DailyCheckinConfig{
+				Enabled:            true,
+				DailyTotalLimit:    100,
+				MinReward:          0.1,
+				MaxReward:          1,
+				RechargeWindowDays: -1,
+			},
+			wantErr: "daily_checkin.recharge_window_days must be non-negative",
+		},
+		{
 			name: "reward tiers must end at full range",
 			cfg: DailyCheckinConfig{
 				Enabled:         true,

@@ -801,7 +801,7 @@ export default {
       rechargedTotal: '累计充值',
       poolProgress: '今日发放进度',
       rechargeRequired: '需要充值',
-      rechargeRequiredHint: '达到累计充值要求后即可签到',
+      rechargeRequiredHint: '在最近 {days} 天的充值时间窗口内达到签到要求后即可签到',
       goRecharge: '去充值',
       verifyTitle: '完成人机验证',
       verifyHint: '验证通过后即可领取今日签到奖励。',
@@ -817,7 +817,7 @@ export default {
         DAILY_CHECKIN_DISABLED: '每日签到未启用',
         DAILY_CHECKIN_ALREADY: '今天已经签到过了',
         DAILY_CHECKIN_EXHAUSTED: '今日签到额度已发完',
-        DAILY_CHECKIN_RECHARGE_REQUIRED: '累计充值金额未达到签到要求',
+        DAILY_CHECKIN_RECHARGE_REQUIRED: '充值时间窗口内的累计充值金额未达到签到要求',
         TURNSTILE_VERIFICATION_FAILED: '人机验证失败，请重试',
         TURNSTILE_NOT_CONFIGURED: 'Cloudflare Turnstile 尚未配置'
       }
@@ -2072,7 +2072,9 @@ export default {
           minReward: '最小签到获取额度',
           maxReward: '最大签到获取额度',
           dailyTotalLimit: '每日总派发额度',
-          minRechargeAmount: '最低累计充值金额',
+          rechargeWindowDays: '充值统计时间窗口（天）',
+          rechargeWindowDaysHint: '按已完成充值订单统计最近时间窗口内的累计金额。',
+          minRechargeAmount: '时间窗口内最低充值金额',
           minRechargeAmountHint: '填 0 表示所有用户都可签到。',
           rewardTiers: '奖励分档',
           rewardTiersHint: '按区间上限和概率分配随机奖励。',

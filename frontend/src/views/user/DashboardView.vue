@@ -127,7 +127,7 @@
                       {{ t('dashboard.dailyCheckin.rechargeRequired') }}
                     </p>
                     <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-                      {{ t('dashboard.dailyCheckin.rechargeRequiredHint') }}
+                      {{ dailyCheckinRechargeRequirement }}
                     </p>
                   </div>
                 </div>
@@ -285,8 +285,14 @@ const dailyCheckinTitle = computed(() => {
   if (!status) return ''
   if (status.checked_in_today) return t('dashboard.dailyCheckin.checkedHint', { amount: formatCurrency(status.today_reward) })
   if (status.exhausted_today) return t('dashboard.dailyCheckin.exhaustedHint')
-  if (!dailyCheckinRechargeEligible.value) return t('dashboard.dailyCheckin.rechargeRequiredHint')
+  if (!dailyCheckinRechargeEligible.value) return dailyCheckinRechargeRequirement.value
   return t('dashboard.dailyCheckin.hint')
+})
+const dailyCheckinRechargeRequirement = computed(() => {
+  const status = dailyCheckinStatus.value
+  return t('dashboard.dailyCheckin.rechargeRequiredHint', {
+    days: status?.recharge_window_days || 14,
+  })
 })
 const dailyCheckinEntryIcon = computed(() => {
   const status = dailyCheckinStatus.value

@@ -14,14 +14,25 @@ import (
 )
 
 type fakeDailyCheckinRepo struct {
-	checkin       *DailyCheckinRecord
-	latest        *DailyCheckinRecord
-	total         float64
-	claimResult   *DailyCheckinClaimResult
-	claimErr      error
-	claimInputs   []DailyCheckinClaimInput
-	sumCallCount  int
-	userCallCount int
+	checkin           *DailyCheckinRecord
+	latest            *DailyCheckinRecord
+	total             float64
+	claimResult       *DailyCheckinClaimResult
+	claimErr          error
+	claimInputs       []DailyCheckinClaimInput
+	sumCallCount      int
+	userCallCount     int
+	recentRecharge    float64
+	recentRechargeSet bool
+	recentSince       time.Time
+}
+
+func (r *fakeDailyCheckinRepo) SumRechargeAmountSince(_ context.Context, _ int64, since time.Time) (float64, error) {
+	r.recentSince = since
+	if r.recentRechargeSet {
+		return r.recentRecharge, nil
+	}
+	return 0, nil
 }
 
 type fakeDailyCheckinUserRepo struct {
@@ -171,7 +182,7 @@ func TestDailyCheckinClaimDisabledWhenConfigNotClaimable(t *testing.T) {
 }
 
 func TestDailyCheckinClaimExhaustedWhenRemainingBelowMinimum(t *testing.T) {
-	repo := &fakeDailyCheckinRepo{total: 0.95}
+	repo := &fakeDailyCheckinRepo{total: 0.95, recentRecharge: 1, recentRechargeSet: true}
 	userRepo := &fakeDailyCheckinUserRepo{}
 	svc := NewDailyCheckinService(repo, userRepo, &config.Config{
 		DailyCheckin: config.DailyCheckinConfig{
@@ -192,8 +203,10 @@ func TestDailyCheckinClaimExhaustedWhenRemainingBelowMinimum(t *testing.T) {
 
 func TestDailyCheckinClaimPropagatesAlreadyCheckedIn(t *testing.T) {
 	repo := &fakeDailyCheckinRepo{
-		total:    0.2,
-		claimErr: ErrDailyCheckinAlready,
+		total:             0.2,
+		recentRecharge:    1,
+		recentRechargeSet: true,
+		claimErr:          ErrDailyCheckinAlready,
 	}
 	svc := NewDailyCheckinService(repo, &fakeDailyCheckinUserRepo{}, &config.Config{
 		DailyCheckin: config.DailyCheckinConfig{
@@ -211,7 +224,7 @@ func TestDailyCheckinClaimPropagatesAlreadyCheckedIn(t *testing.T) {
 }
 
 func TestDailyCheckinClaimRewardWithinRangeAndUpdatesStatus(t *testing.T) {
-	repo := &fakeDailyCheckinRepo{total: 0.2}
+	repo := &fakeDailyCheckinRepo{total: 0.2, recentRecharge: 5, recentRechargeSet: true}
 	svc := NewDailyCheckinService(repo, &fakeDailyCheckinUserRepo{user: &User{ID: 42, TotalRecharged: 5}}, &config.Config{
 		Timezone: "Asia/Shanghai",
 		DailyCheckin: config.DailyCheckinConfig{
@@ -242,7 +255,7 @@ func TestDailyCheckinClaimRewardWithinRangeAndUpdatesStatus(t *testing.T) {
 }
 
 func TestDailyCheckinClaimRequiresMinimumRechargeAmount(t *testing.T) {
-	repo := &fakeDailyCheckinRepo{total: 0.2}
+	repo := &fakeDailyCheckinRepo{total: 0.2, recentRecharge: 4.99, recentRechargeSet: true}
 	svc := NewDailyCheckinService(repo, &fakeDailyCheckinUserRepo{user: &User{ID: 42, TotalRecharged: 4.99}}, &config.Config{
 		DailyCheckin: config.DailyCheckinConfig{
 			Enabled:           true,
@@ -261,7 +274,7 @@ func TestDailyCheckinClaimRequiresMinimumRechargeAmount(t *testing.T) {
 }
 
 func TestDailyCheckinStatusIncludesRechargeEligibility(t *testing.T) {
-	repo := &fakeDailyCheckinRepo{}
+	repo := &fakeDailyCheckinRepo{recentRecharge: 4.99, recentRechargeSet: true}
 	svc := NewDailyCheckinService(repo, &fakeDailyCheckinUserRepo{user: &User{ID: 42, TotalRecharged: 4.99}}, &config.Config{
 		DailyCheckin: config.DailyCheckinConfig{
 			Enabled:           true,
@@ -280,8 +293,29 @@ func TestDailyCheckinStatusIncludesRechargeEligibility(t *testing.T) {
 	require.False(t, status.RechargeEligible)
 }
 
+func TestDailyCheckinUsesRechargeWindowAmount(t *testing.T) {
+	repo := &fakeDailyCheckinRepo{recentRecharge: 1, recentRechargeSet: true}
+	svc := NewDailyCheckinService(repo, &fakeDailyCheckinUserRepo{user: &User{ID: 42, TotalRecharged: 99}}, &config.Config{
+		DailyCheckin: config.DailyCheckinConfig{
+			Enabled:            true,
+			DailyTotalLimit:    1,
+			MinReward:          0.1,
+			MaxReward:          0.2,
+			RechargeWindowDays: 7,
+			MinRechargeAmount:  1,
+		},
+	})
+
+	status, err := svc.GetStatus(context.Background(), 42)
+	require.NoError(t, err)
+	require.True(t, status.RechargeEligible)
+	require.Equal(t, 7, status.RechargeWindowDays)
+	require.Equal(t, 1.0, status.TotalRecharged)
+	require.WithinDuration(t, time.Now().AddDate(0, 0, -7), repo.recentSince, 3*time.Second)
+}
+
 func TestDailyCheckinStatusMarksExhaustedWhenRemainingBelowMinimum(t *testing.T) {
-	repo := &fakeDailyCheckinRepo{total: 0.95}
+	repo := &fakeDailyCheckinRepo{total: 0.95, recentRecharge: 1, recentRechargeSet: true}
 	svc := NewDailyCheckinService(repo, &fakeDailyCheckinUserRepo{}, &config.Config{
 		DailyCheckin: config.DailyCheckinConfig{
 			Enabled:         true,
@@ -299,7 +333,7 @@ func TestDailyCheckinStatusMarksExhaustedWhenRemainingBelowMinimum(t *testing.T)
 
 func TestDailyCheckinClaimWrapsUnexpectedRepositoryError(t *testing.T) {
 	repoErr := errors.New("repository unavailable")
-	repo := &fakeDailyCheckinRepo{claimErr: repoErr}
+	repo := &fakeDailyCheckinRepo{claimErr: repoErr, recentRecharge: 1, recentRechargeSet: true}
 	svc := NewDailyCheckinService(repo, &fakeDailyCheckinUserRepo{}, &config.Config{
 		DailyCheckin: config.DailyCheckinConfig{
 			Enabled:         true,
@@ -315,7 +349,7 @@ func TestDailyCheckinClaimWrapsUnexpectedRepositoryError(t *testing.T) {
 }
 
 func TestDailyCheckinServiceUsesRuntimeSettingsOverConfig(t *testing.T) {
-	repo := &fakeDailyCheckinRepo{total: 0.2}
+	repo := &fakeDailyCheckinRepo{total: 0.2, recentRecharge: 1, recentRechargeSet: true}
 	settingRepo := &fakeDailyCheckinSettingRepo{values: map[string]string{
 		SettingKeyDailyCheckinEnabled:           "true",
 		SettingKeyDailyCheckinDailyTotalLimit:   "1",
@@ -344,22 +378,25 @@ func TestSettingServiceUpdateDailyCheckinSettingsPersistsKeys(t *testing.T) {
 	svc := NewSettingService(repo, &config.Config{})
 
 	settings, err := svc.UpdateDailyCheckinSettings(context.Background(), DailyCheckinSettings{
-		Enabled:           true,
-		AdsEnabled:        false,
-		DailyTotalLimit:   1.234567891,
-		MinReward:         0.1,
-		MaxReward:         0.2,
-		MinRechargeAmount: 3.456789123,
+		Enabled:            true,
+		AdsEnabled:         false,
+		DailyTotalLimit:    1.234567891,
+		MinReward:          0.1,
+		MaxReward:          0.2,
+		RechargeWindowDays: 30,
+		MinRechargeAmount:  3.456789123,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1.23456789, settings.DailyTotalLimit)
 	require.Equal(t, 3.45678912, settings.MinRechargeAmount)
+	require.Equal(t, 30, settings.RechargeWindowDays)
 	require.Equal(t, "true", repo.updates[SettingKeyDailyCheckinEnabled])
 	require.Equal(t, "false", repo.updates[SettingKeyDailyCheckinAdsEnabled])
 	require.Equal(t, "1.23456789", repo.updates[SettingKeyDailyCheckinDailyTotalLimit])
 	require.Equal(t, "0.10000000", repo.updates[SettingKeyDailyCheckinMinReward])
 	require.Equal(t, "0.20000000", repo.updates[SettingKeyDailyCheckinMaxReward])
 	require.Equal(t, "3.45678912", repo.updates[SettingKeyDailyCheckinMinRechargeAmount])
+	require.Equal(t, "30", repo.updates[SettingKeyDailyCheckinRechargeWindowDays])
 }
 
 func TestSettingServiceUpdateDailyCheckinSettingsRejectsInvalidEnabledConfig(t *testing.T) {

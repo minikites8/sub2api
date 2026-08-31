@@ -199,7 +199,8 @@ const (
 	SettingKeyDailyCheckinDailyTotalLimit         = "daily_checkin_daily_total_limit"           // 全站每日签到发放总额度上限
 	SettingKeyDailyCheckinMinReward               = "daily_checkin_min_reward"                  // 单人签到随机奖励最小值
 	SettingKeyDailyCheckinMaxReward               = "daily_checkin_max_reward"                  // 单人签到随机奖励最大值
-	SettingKeyDailyCheckinMinRechargeAmount       = "daily_checkin_min_recharge_amount"         // 使用签到功能所需累计充值金额
+	SettingKeyDailyCheckinRechargeWindowDays      = "daily_checkin_recharge_window_days"        // 签到资格充值统计窗口（天）
+	SettingKeyDailyCheckinMinRechargeAmount       = "daily_checkin_min_recharge_amount"         // 充值窗口内使用签到所需最低充值金额
 	SettingKeyDailyCheckinRewardTiers             = "daily_checkin_reward_tiers"                // 每日签到奖励分档配置
 	SettingKeyRiskControlEnabled                  = "risk_control_enabled"                      // 是否启用风控中心入口与审计链路
 	SettingKeyContentModerationConfig             = "content_moderation_config"                 // 内容审计配置（JSON）
