@@ -1,0 +1,28 @@
+Changed branch/field: main / frontend/src/views/user/ChannelStatusView.vue, monitorSquaresForMonitoring() shared data_through timeline endpoint.
+Previous source hash: 326df47f118f7fb9d21f31f201f8a797790c5f82
+Modified source hash: 89175bfd274c6e037c0a07ef37a4f413e6684f3d
+
+Artifacts:
+- MODIFIED_FILE: D:\Programs\sub2api\artifacts\channel-monitor-timeline-end-fix\MODIFIED_FILE
+- DIFF_FILE: D:\Programs\sub2api\artifacts\channel-monitor-timeline-end-fix\DIFF_FILE
+- VERIFICATION.txt: D:\Programs\sub2api\artifacts\channel-monitor-timeline-end-fix\VERIFICATION.txt
+- ROLLBACK.sh: D:\Programs\sub2api\artifacts\channel-monitor-timeline-end-fix\ROLLBACK.sh
+
+BASELINE
+Command: pnpm exec vitest run src/views/user/__tests__/ChannelStatusView.spec.ts src/utils/__tests__/modelMarketplace.spec.ts --reporter=dot
+Input: previous implementation using per-row latest sample endpoint
+Literal result: Test Files 2 passed (2); Tests 16 passed (16)
+Exit status: 0
+
+MODIFIED
+Command: pnpm exec vitest run src/views/user/__tests__/ChannelStatusView.spec.ts src/utils/__tests__/modelMarketplace.spec.ts --reporter=dot
+Input: shared data_through endpoint and parameterized 90m/12h/1d/15d regression tests
+Literal result: Test Files 2 passed (2); Tests 19 passed (19)
+Exit status: 0
+
+ROLLBACK
+Command: & 'C:\Program Files\Git\usr\bin\sh.exe' artifacts/channel-monitor-timeline-end-fix/ROLLBACK.sh artifacts/channel-monitor-timeline-end-fix/ROLLBACK_TEST_COPY artifacts/channel-monitor-timeline-end-fix/ROLLBACK_BACKUP
+Input: independent modified copy and previous-source backup
+Literal result: restored: artifacts/channel-monitor-timeline-end-fix/ROLLBACK_TEST_COPY
+Exit status: 0
+Restored behavior/status: ROLLBACK_TEST_COPY hash 326df47f118f7fb9d21f31f201f8a797790c5f82; previous implementation restored.

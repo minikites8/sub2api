@@ -84,6 +84,96 @@ describe('ChannelStatusView model marketplace', () => {
     expect(firstTrack.findAll('.health-unknown')).toHaveLength(0)
   })
 
+  it.each([
+    { window: '90m', label: '90min', intervalMs: 5 * 60_000, sampleCount: 18, sampleGap: 3 },
+    { window: '12h', label: '12h', intervalMs: 30 * 60_000, sampleCount: 24, sampleGap: 6 },
+    { window: '1d', label: '1d', intervalMs: 60 * 60_000, sampleCount: 24, sampleGap: 3 },
+    { window: '15d', label: '15d', intervalMs: 12 * 60 * 60_000, sampleCount: 30, sampleGap: 6 },
+  ])('keeps sparse $window buckets in chronological positions', async ({ window, label, intervalMs, sampleCount, sampleGap }) => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+    const firstBucketTimestamp = Date.parse('2026-08-01T00:00:00Z')
+    const trailingGap = 2
+    const lastBucketTimestamp = firstBucketTimestamp + intervalMs * sampleGap
+    const dataThroughTimestamp = lastBucketTimestamp + intervalMs * (trailingGap + 0.5)
+    const bucket = (timestamp: number) => ({
+      bucket_start: new Date(timestamp).toISOString(),
+      status: 'operational' as const,
+      success_rate: 100,
+      metrics: {
+        has_requests: true,
+        success_rate: 1,
+        error_rate: 0,
+        cache_rate: 0,
+        ttft: {},
+        duration: {},
+      },
+      health: {
+        overall: 'healthy' as const,
+        error_rate: 'healthy' as const,
+        ttft: 'healthy' as const,
+        cache: 'unknown' as const,
+        score: 100,
+        minimum_sample: 1,
+      },
+    })
+    monitor.windows = {
+      [window]: {
+        status: 'operational',
+        availability: 100,
+        data_through: new Date(dataThroughTimestamp).toISOString(),
+        coverage_complete: true,
+        metrics: {
+          has_requests: true,
+          success_rate: 1,
+          error_rate: 0,
+          cache_rate: 0,
+          ttft: {},
+          duration: {},
+        },
+        health: {
+          overall: 'healthy',
+          error_rate: 'healthy',
+          ttft: 'healthy',
+          cache: 'unknown',
+          score: 100,
+          minimum_sample: 1,
+        },
+        buckets: [
+          bucket(firstBucketTimestamp),
+          bucket(lastBucketTimestamp),
+        ],
+      },
+    }
+    const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh } })
+    const wrapper = mount(ChannelStatusView, {
+      props: { previewSnapshot: snapshot },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          PublicSiteFooter: true,
+          Icon: true,
+          ModelIcon: true,
+        },
+      },
+    })
+
+    const windowButton = wrapper.findAll('button').find((button) => button.text() === label)!
+    await windowButton.trigger('click')
+    const row = wrapper.findAll('.market-row').find((candidate) => candidate.text().includes('gpt-4.1'))!
+    const squares = row.find('.monitor-track').findAll(':scope > span')
+    const states = squares.map((square) => square.attributes('data-monitor-state'))
+    const firstSampleIndex = sampleCount - 1 - sampleGap - trailingGap
+    const lastSampleIndex = sampleCount - 1 - trailingGap
+    expect(squares).toHaveLength(sampleCount)
+    expect(states[firstSampleIndex]).toBe('operational')
+    expect(states[lastSampleIndex]).toBe('operational')
+    expect(states.slice(firstSampleIndex + 1, lastSampleIndex)).toEqual(Array(sampleGap - 1).fill('no-traffic'))
+    expect(states.slice(lastSampleIndex + 1)).toEqual(Array(trailingGap).fill('no-traffic'))
+    expect(squares.filter((_, index) => states[index] === 'no-traffic').every((square) => square.classes().includes('health-unknown'))).toBe(true)
+  })
+
   it('renders no-request passive windows as grey unknown cells', () => {
     const snapshot = createModelMarketplacePreviewSnapshot()
     const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!

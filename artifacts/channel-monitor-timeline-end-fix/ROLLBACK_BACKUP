@@ -561,16 +561,11 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
     .sort((a, b) => a.timestamp - b.timestamp)
   if (parsedSamples.length > 0) {
     // Keep every bucket in chronological position so sparse traffic remains visible.
-    const dataThroughTimestamp = Date.parse(monitoring.lastCheckedAt || '')
-    const timelineEndTimestamp = Number.isFinite(dataThroughTimestamp)
-      ? Math.max(dataThroughTimestamp, parsedSamples.at(-1)!.timestamp)
-      : parsedSamples.at(-1)!.timestamp
-    const endTimestamp = Math.floor(timelineEndTimestamp / intervalMs) * intervalMs
+    const endTimestamp = Math.round(parsedSamples.at(-1)!.timestamp / intervalMs) * intervalMs
     const startTimestamp = endTimestamp - (sampleCount - 1) * intervalMs
     const slots: Array<MonitorSquare | undefined> = Array.from({ length: sampleCount })
     for (const { sample, timestamp } of parsedSamples) {
-      const sampleBucketTimestamp = Math.floor(timestamp / intervalMs) * intervalMs
-      const index = (sampleBucketTimestamp - startTimestamp) / intervalMs
+      const index = Math.round((timestamp - startTimestamp) / intervalMs)
       if (index < 0 || index >= sampleCount) continue
       slots[index] = {
         key: `actual-${sample.checkedAt}`,

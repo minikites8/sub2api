@@ -1,0 +1,180 @@
+diff --git a/frontend/src/views/user/ChannelStatusView.vue b/frontend/src/views/user/ChannelStatusView.vue
+index e7aa5c42d..89175bfd2 100644
+--- a/frontend/src/views/user/ChannelStatusView.vue
++++ b/frontend/src/views/user/ChannelStatusView.vue
+@@ -344,6 +344,14 @@ const MONITOR_SAMPLE_COUNTS: Record<MarketplaceWindow, number> = {
+   '15d': 30,
+   '30d': 30,
+ }
++const MONITOR_BUCKET_INTERVALS_MS: Record<MarketplaceWindow, number> = {
++  '90m': 5 * 60_000,
++  '12h': 30 * 60_000,
++  '1d': 60 * 60_000,
++  '7d': 12 * 60 * 60_000,
++  '15d': 12 * 60 * 60_000,
++  '30d': 24 * 60 * 60_000,
++}
+ let abortController: AbortController | null = null
+
+ interface MonitorSquare {
+@@ -546,24 +554,42 @@ function monitorSquares(model: MarketplaceModel): MonitorSquare[] {
+
+ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): MonitorSquare[] {
+   const sampleCount = MONITOR_SAMPLE_COUNTS[monitorWindow.value]
+-  const actual = monitoring.samples.slice(-sampleCount).map((sample, index) => ({
+-    key: `actual-${sample.checkedAt}-${index}`,
+-    status: sample.status,
+-    hasRequests: sample.hasRequests,
+-    health: sample.health,
+-    healthScore: sample.healthScore,
+-    title: t('modelMarketplace.checkTooltip', {
+-      time: formatDateTime(sample.checkedAt),
+-      status: passiveStatusLabel(sample.status, sample.hasRequests, sample.health),
+-    }),
+-  }))
+-  if (actual.length > 0) {
+-    const padding = Array.from({ length: sampleCount - actual.length }, (_, index) => ({
+-      key: `empty-${index}`,
++  const intervalMs = MONITOR_BUCKET_INTERVALS_MS[monitorWindow.value]
++  const parsedSamples = monitoring.samples
++    .map((sample) => ({ sample, timestamp: Date.parse(sample.checkedAt) }))
++    .filter((entry) => Number.isFinite(entry.timestamp))
++    .sort((a, b) => a.timestamp - b.timestamp)
++  if (parsedSamples.length > 0) {
++    // Keep every bucket in chronological position so sparse traffic remains visible.
++    const dataThroughTimestamp = Date.parse(monitoring.lastCheckedAt || '')
++    const timelineEndTimestamp = Number.isFinite(dataThroughTimestamp)
++      ? Math.max(dataThroughTimestamp, parsedSamples.at(-1)!.timestamp)
++      : parsedSamples.at(-1)!.timestamp
++    const endTimestamp = Math.floor(timelineEndTimestamp / intervalMs) * intervalMs
++    const startTimestamp = endTimestamp - (sampleCount - 1) * intervalMs
++    const slots: Array<MonitorSquare | undefined> = Array.from({ length: sampleCount })
++    for (const { sample, timestamp } of parsedSamples) {
++      const sampleBucketTimestamp = Math.floor(timestamp / intervalMs) * intervalMs
++      const index = (sampleBucketTimestamp - startTimestamp) / intervalMs
++      if (index < 0 || index >= sampleCount) continue
++      slots[index] = {
++        key: `actual-${sample.checkedAt}`,
++        status: sample.status,
++        hasRequests: sample.hasRequests,
++        health: sample.health,
++        healthScore: sample.healthScore,
++        title: t('modelMarketplace.checkTooltip', {
++          time: formatDateTime(sample.checkedAt),
++          status: passiveStatusLabel(sample.status, sample.hasRequests, sample.health),
++        }),
++      }
++    }
++    return slots.map((square, index) => square || {
++      key: `empty-${new Date(startTimestamp + index * intervalMs).toISOString()}`,
+       status: 'unmonitored' as const,
+-      title: t('modelMarketplace.noCheckData'),
+-    }))
+-    return [...padding, ...actual]
++      hasRequests: false,
++      title: t('modelMarketplace.noTraffic'),
++    })
+   }
+
+   if (monitoring.hasRequests === false || monitoring.availability == null) {
+diff --git a/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts b/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
+index 0651f3a88..756d3a2f1 100644
+--- a/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
++++ b/frontend/src/views/user/__tests__/ChannelStatusView.spec.ts
+@@ -84,6 +84,96 @@ describe('ChannelStatusView model marketplace', () => {
+     expect(firstTrack.findAll('.health-unknown')).toHaveLength(0)
+   })
+
++  it.each([
++    { window: '90m', label: '90min', intervalMs: 5 * 60_000, sampleCount: 18, sampleGap: 3 },
++    { window: '12h', label: '12h', intervalMs: 30 * 60_000, sampleCount: 24, sampleGap: 6 },
++    { window: '1d', label: '1d', intervalMs: 60 * 60_000, sampleCount: 24, sampleGap: 3 },
++    { window: '15d', label: '15d', intervalMs: 12 * 60 * 60_000, sampleCount: 30, sampleGap: 6 },
++  ])('keeps sparse $window buckets in chronological positions', async ({ window, label, intervalMs, sampleCount, sampleGap }) => {
++    const snapshot = createModelMarketplacePreviewSnapshot()
++    const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
++    const firstBucketTimestamp = Date.parse('2026-08-01T00:00:00Z')
++    const trailingGap = 2
++    const lastBucketTimestamp = firstBucketTimestamp + intervalMs * sampleGap
++    const dataThroughTimestamp = lastBucketTimestamp + intervalMs * (trailingGap + 0.5)
++    const bucket = (timestamp: number) => ({
++      bucket_start: new Date(timestamp).toISOString(),
++      status: 'operational' as const,
++      success_rate: 100,
++      metrics: {
++        has_requests: true,
++        success_rate: 1,
++        error_rate: 0,
++        cache_rate: 0,
++        ttft: {},
++        duration: {},
++      },
++      health: {
++        overall: 'healthy' as const,
++        error_rate: 'healthy' as const,
++        ttft: 'healthy' as const,
++        cache: 'unknown' as const,
++        score: 100,
++        minimum_sample: 1,
++      },
++    })
++    monitor.windows = {
++      [window]: {
++        status: 'operational',
++        availability: 100,
++        data_through: new Date(dataThroughTimestamp).toISOString(),
++        coverage_complete: true,
++        metrics: {
++          has_requests: true,
++          success_rate: 1,
++          error_rate: 0,
++          cache_rate: 0,
++          ttft: {},
++          duration: {},
++        },
++        health: {
++          overall: 'healthy',
++          error_rate: 'healthy',
++          ttft: 'healthy',
++          cache: 'unknown',
++          score: 100,
++          minimum_sample: 1,
++        },
++        buckets: [
++          bucket(firstBucketTimestamp),
++          bucket(lastBucketTimestamp),
++        ],
++      },
++    }
++    const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh } })
++    const wrapper = mount(ChannelStatusView, {
++      props: { previewSnapshot: snapshot },
++      global: {
++        plugins: [i18n],
++        stubs: {
++          AppLayout: { template: '<div><slot /></div>' },
++          PublicSiteFooter: true,
++          Icon: true,
++          ModelIcon: true,
++        },
++      },
++    })
++
++    const windowButton = wrapper.findAll('button').find((button) => button.text() === label)!
++    await windowButton.trigger('click')
++    const row = wrapper.findAll('.market-row').find((candidate) => candidate.text().includes('gpt-4.1'))!
++    const squares = row.find('.monitor-track').findAll(':scope > span')
++    const states = squares.map((square) => square.attributes('data-monitor-state'))
++    const firstSampleIndex = sampleCount - 1 - sampleGap - trailingGap
++    const lastSampleIndex = sampleCount - 1 - trailingGap
++    expect(squares).toHaveLength(sampleCount)
++    expect(states[firstSampleIndex]).toBe('operational')
++    expect(states[lastSampleIndex]).toBe('operational')
++    expect(states.slice(firstSampleIndex + 1, lastSampleIndex)).toEqual(Array(sampleGap - 1).fill('no-traffic'))
++    expect(states.slice(lastSampleIndex + 1)).toEqual(Array(trailingGap).fill('no-traffic'))
++    expect(squares.filter((_, index) => states[index] === 'no-traffic').every((square) => square.classes().includes('health-unknown'))).toBe(true)
++  })
++
+   it('renders no-request passive windows as grey unknown cells', () => {
+     const snapshot = createModelMarketplacePreviewSnapshot()
+     const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
