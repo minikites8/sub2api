@@ -258,6 +258,16 @@ export async function refreshCredentials(id: number): Promise<Account> {
 }
 
 /**
+ * Force a ye.team credential reset for a bound OpenAI account.
+ */
+export async function resetYeTeam(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/ye-team/reset`, undefined, {
+    timeout: 660000
+  })
+  return data
+}
+
+/**
  * Apply OAuth credentials after re-authorization.
  *
  * Unlike `update()`, this endpoint:
@@ -1110,6 +1120,7 @@ export const accountsAPI = {
   toggleStatus,
   testAccount,
   refreshCredentials,
+  resetYeTeam,
   applyOAuthCredentials,
   getStats,
   clearError,

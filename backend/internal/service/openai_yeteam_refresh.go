@@ -38,7 +38,33 @@ func (s *OpenAIGatewayService) SetYeTeamClient(client *yeteam.Client) {
 }
 
 func (s *OpenAIGatewayService) reclaimOpenAIAccount401(ctx context.Context, account *Account) bool {
-	if s == nil || account == nil || account.Platform != PlatformOpenAI || s.yeTeam == nil || !s.yeTeam.AutoRefresh401Enabled() {
+	return s.reclaimOpenAIAccount(ctx, account, true)
+}
+
+// ReclaimOpenAIAccount performs a manual ye.team credential reset for an
+// existing OpenAI account. Manual resets intentionally bypass the automatic
+// 401 switch while still requiring the integration itself to be enabled.
+func (s *OpenAIGatewayService) ReclaimOpenAIAccount(ctx context.Context, account *Account) error {
+	if s == nil || account == nil {
+		return errors.New("account is unavailable")
+	}
+	if account.Platform != PlatformOpenAI {
+		return errors.New("ye.team reset requires an OpenAI account")
+	}
+	if s.yeTeam == nil || !s.yeTeam.Enabled() {
+		return errors.New("ye.team integration is disabled")
+	}
+	if yeTeamCardCode(account) == "" {
+		return errors.New("account has no ye.team card binding")
+	}
+	if !s.reclaimOpenAIAccount(ctx, account, false) {
+		return errors.New("ye.team credential reset failed; check the account refresh status")
+	}
+	return nil
+}
+
+func (s *OpenAIGatewayService) reclaimOpenAIAccount(ctx context.Context, account *Account, automatic bool) bool {
+	if s == nil || account == nil || account.Platform != PlatformOpenAI || s.yeTeam == nil || !s.yeTeam.Enabled() || (automatic && !s.yeTeam.AutoRefresh401Enabled()) {
 		return false
 	}
 	cardCode := yeTeamCardCode(account)

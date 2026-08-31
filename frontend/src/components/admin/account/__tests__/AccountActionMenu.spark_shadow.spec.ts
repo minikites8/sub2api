@@ -180,6 +180,37 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
     wrapper.unmount()
   })
 
+  it('带 ye.team 绑定的账号显示手动重置入口并触发事件', async () => {
+    const account = makeAccount({
+      platform: 'openai',
+      type: 'oauth',
+      parent_account_id: null,
+      extra: { ye_team_card_code: 'TEAM-TEST-401' }
+    })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+
+    const resetBtn = getBodyButtons().find(b => b.textContent?.includes('admin.accounts.yeTeamReset'))
+    expect(resetBtn).toBeDefined()
+    resetBtn!.click()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('ye-team-reset')?.[0][0]).toMatchObject({ id: account.id })
+    wrapper.unmount()
+  })
+
+  it('无 ye.team 绑定的账号隐藏手动重置入口', () => {
+    const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+    expect(getBodyText()).not.toContain('admin.accounts.yeTeamReset')
+    wrapper.unmount()
+  })
+
   it('点击按钮触发 create-spark-shadow 事件并携带 account', async () => {
     const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {

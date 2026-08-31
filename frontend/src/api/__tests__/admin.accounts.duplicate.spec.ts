@@ -8,7 +8,7 @@ vi.mock('@/api/client', () => ({
   apiClient: { post }
 }))
 
-import { duplicate } from '@/api/admin/accounts'
+import { duplicate, resetYeTeam } from '@/api/admin/accounts'
 
 describe('admin account duplicate API', () => {
   beforeEach(() => {
@@ -55,5 +55,14 @@ describe('admin account duplicate API', () => {
     expect(post).toHaveBeenCalledTimes(2)
     expect(post.mock.calls[1][2].headers).toEqual(firstHeaders)
     expect(sessionStorage.length).toBe(0)
+  })
+
+  it('posts a manual ye.team reset with the long-running request timeout', async () => {
+    post.mockResolvedValueOnce({ data: { id: 42, status: 'active' } })
+
+    await expect(resetYeTeam(42)).resolves.toEqual({ id: 42, status: 'active' })
+    expect(post).toHaveBeenCalledWith('/admin/accounts/42/ye-team/reset', undefined, {
+      timeout: 660000
+    })
   })
 })

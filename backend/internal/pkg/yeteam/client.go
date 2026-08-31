@@ -277,7 +277,7 @@ type BatchReclaimResult struct {
 
 type BatchDownloadItem struct {
 	OrderNo       string `json:"order_no"`
-	DownloadToken string `json:"download_token"`
+	DownloadToken string `json:"download_token,omitempty"`
 }
 
 type BatchDownloadRequest struct {
@@ -375,7 +375,7 @@ func (c *Client) Reclaim401Packages(ctx context.Context, cardCode string) ([][]b
 		return nil, errors.New(initial.Error)
 	}
 	final := initial
-	if initial.Queued > 0 || initial.AlreadyRunning > 0 || len(collectBatchDownloadItems(initial)) == 0 {
+	if initial.Queued > 0 || initial.AlreadyRunning > 0 || (!hasReclaimNoAction(initial) && len(collectBatchDownloadItems(initial)) == 0) {
 		if err := reclaimTerminalError(initial); err != nil {
 			return nil, err
 		}
@@ -399,6 +399,15 @@ func (c *Client) Reclaim401Packages(ctx context.Context, cardCode string) ([][]b
 	return [][]byte{data}, nil
 }
 
+func hasReclaimNoAction(result BatchReclaimResult) bool {
+	for _, task := range result.AllTasks {
+		if task.NoAction && isReclaimTaskDone(task.Status) {
+			return true
+		}
+	}
+	return false
+}
+
 func collectBatchDownloadItems(results ...BatchReclaimResult) []BatchDownloadItem {
 	items := make([]BatchDownloadItem, 0)
 	indexes := make(map[string]int)
@@ -409,7 +418,7 @@ func collectBatchDownloadItems(results ...BatchReclaimResult) []BatchDownloadIte
 			}
 			orderNo := strings.TrimSpace(task.OrderNo)
 			token := strings.TrimSpace(task.DownloadToken)
-			if orderNo == "" || token == "" {
+			if orderNo == "" || (token == "" && !task.NoAction) {
 				continue
 			}
 			if index, ok := indexes[orderNo]; ok {
@@ -425,7 +434,7 @@ func collectBatchDownloadItems(results ...BatchReclaimResult) []BatchDownloadIte
 
 func isReclaimTaskDone(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "done", "completed", "complete", "success", "succeeded", "finished":
+	case "done", "completed", "complete", "success", "succeeded", "finished", "ok", "healthy":
 		return true
 	default:
 		return false
@@ -458,13 +467,13 @@ func (c *Client) pollReclaimUntilDone(ctx context.Context, request ReclaimReques
 			return current, errors.New(current.Error)
 		}
 		// ye.team can briefly return an empty terminal-looking snapshot while it
-		// restores task metadata. A download token is the authoritative signal
-		// that the batch result is ready for the next step.
-		if len(collectBatchDownloadItems(current)) > 0 {
-			return current, nil
-		}
+		// restores task metadata. A download token or completed no_action task is
+		// the authoritative signal that the batch result is ready for download.
 		if err := reclaimTerminalError(current); err != nil {
 			return current, err
+		}
+		if hasReclaimNoAction(current) || len(collectBatchDownloadItems(current)) > 0 {
+			return current, nil
 		}
 		if time.Now().After(deadline) {
 			return current, fmt.Errorf("ye.team reclaim polling timed out: %s", strings.Join(request.CardCodes, ","))

@@ -1234,6 +1234,27 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	}
 }
 
+// ResetYeTeam performs a manual ye.team credential reset for a bound OpenAI
+// account and returns the refreshed account snapshot.
+// POST /api/v1/admin/accounts/:id/ye-team/reset
+func (h *AccountHandler) ResetYeTeam(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h == nil || h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "ye.team reset service is unavailable")
+		return
+	}
+	account, err := h.accountTestService.ReclaimYeTeamAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
 // RecoverState handles unified recovery of recoverable account runtime state.
 // POST /api/v1/admin/accounts/:id/recover-state
 func (h *AccountHandler) RecoverState(c *gin.Context) {

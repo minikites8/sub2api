@@ -164,6 +164,39 @@ func (s *AccountTestService) SetSettingService(settingService *SettingService) {
 	}
 }
 
+// ReclaimYeTeamAccount runs a manual ye.team credential reset and restores the
+// account to the scheduling pool when the downloaded credentials are accepted.
+func (s *AccountTestService) ReclaimYeTeamAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, errors.New("account service is unavailable")
+	}
+	if s.openAIGatewayService == nil {
+		return nil, errors.New("ye.team reset service is unavailable")
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if account == nil {
+		return nil, errors.New("account not found")
+	}
+	if err := s.openAIGatewayService.ReclaimOpenAIAccount(ctx, account); err != nil {
+		return nil, err
+	}
+	if account.Status == StatusError {
+		if err := s.accountRepo.SetSchedulable(ctx, account.ID, true); err != nil {
+			return nil, fmt.Errorf("restore account scheduling: %w", err)
+		}
+		if err := s.accountRepo.ClearError(ctx, account.ID); err != nil {
+			return nil, fmt.Errorf("clear account error: %w", err)
+		}
+		account.Status = StatusActive
+		account.ErrorMessage = ""
+		account.Schedulable = true
+	}
+	return account, nil
+}
+
 func openAIAccountTestYeTeamRetryWasTried(ctx context.Context) bool {
 	tried, _ := ctx.Value(openAIAccountTestYeTeamRetryContextKey{}).(bool)
 	return tried

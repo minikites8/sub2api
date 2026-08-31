@@ -236,3 +236,71 @@ func TestReclaim401PackagesStopsOnFailedTask(t *testing.T) {
 		t.Fatalf("batch calls = %d", batchCalls)
 	}
 }
+
+func TestReclaim401PackagesDownloadsNoActionWithoutDownloadToken(t *testing.T) {
+	batchCalls := 0
+	downloadCalls := 0
+	var downloadRequest BatchDownloadRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/redeem/reclaim/batch-cards":
+			batchCalls++
+			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"done","no_action":true,"message":"credential healthy"}]}]}`))
+		case "/api/redeem/batch-download":
+			downloadCalls++
+			if err := json.NewDecoder(r.Body).Decode(&downloadRequest); err != nil {
+				t.Fatalf("decode download request: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"new-token"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client := NewClient(Config{Enabled: true, BaseURL: server.URL, Timeout: time.Second, PollInterval: time.Millisecond, MaxPollDuration: time.Second})
+	packages, err := client.Reclaim401Packages(context.Background(), "TEAM-TEST")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if batchCalls != 1 {
+		t.Fatalf("batch calls = %d, want 1", batchCalls)
+	}
+	if downloadCalls != 1 || len(downloadRequest.Items) != 1 || downloadRequest.Items[0].OrderNo != "ord-1" || downloadRequest.Items[0].DownloadToken != "" {
+		t.Fatalf("download calls=%d request=%#v", downloadCalls, downloadRequest)
+	}
+	if len(packages) != 1 {
+		t.Fatalf("packages = %d, want 1", len(packages))
+	}
+}
+
+func TestReclaim401PackagesStopsPollingWhenNoActionBecomesTerminal(t *testing.T) {
+	batchCalls := 0
+	downloadCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/redeem/reclaim/batch-cards":
+			batchCalls++
+			if batchCalls == 1 {
+				_, _ = w.Write([]byte(`{"ok":true,"queued":1,"already_running":0,"cards":[{"card_code":"TEAM-TEST","tasks":[{"status":"pending"}]}]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"done","no_action":true}]}]}`))
+		case "/api/redeem/batch-download":
+			downloadCalls++
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"new-token"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client := NewClient(Config{Enabled: true, BaseURL: server.URL, Timeout: time.Second, PollInterval: time.Millisecond, MaxPollDuration: time.Second})
+	packages, err := client.Reclaim401Packages(context.Background(), "TEAM-TEST")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(packages) != 1 || batchCalls != 2 || downloadCalls != 1 {
+		t.Fatalf("packages=%d batch_calls=%d download_calls=%d", len(packages), batchCalls, downloadCalls)
+	}
+}

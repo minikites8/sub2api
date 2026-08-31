@@ -492,7 +492,7 @@
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <OpenAISessionsModal :show="showOpenAISessions" :account="sessionsAcc" @close="closeOpenAISessions" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @ye-team-reset="handleYeTeamReset" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <YeTeamRedeemModal :show="showYeTeamRedeem" @close="showYeTeamRedeem = false" @redeemed="handleYeTeamRedeemed" />
@@ -2409,6 +2409,22 @@ const handleRefresh = async (a: Account) => {
     enterAutoRefreshSilentWindow()
   } catch (error) {
     console.error('Failed to refresh credentials:', error)
+  }
+}
+const resettingYeTeamAccountIDs = new Set<number>()
+const handleYeTeamReset = async (a: Account) => {
+  if (resettingYeTeamAccountIDs.has(a.id)) return
+  resettingYeTeamAccountIDs.add(a.id)
+  try {
+    const updated = await adminAPI.accounts.resetYeTeam(a.id)
+    patchAccountInList(updated)
+    enterAutoRefreshSilentWindow()
+    appStore.showSuccess(t('admin.accounts.yeTeamResetSuccess'))
+  } catch (error: any) {
+    console.error('Failed to reset ye.team credentials:', error)
+    appStore.showError(error?.message || t('admin.accounts.yeTeamResetFailed'))
+  } finally {
+    resettingYeTeamAccountIDs.delete(a.id)
   }
 }
 const handleRecoverState = async (a: Account) => {

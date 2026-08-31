@@ -36,6 +36,10 @@
                 <Icon name="refresh" size="sm" />
                 {{ t('admin.accounts.refreshToken') }}
               </button>
+              <button v-if="hasYeTeamBinding" @click="$emit('ye-team-reset', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-cyan-600 hover:bg-gray-100 dark:hover:bg-dark-700">
+                <Icon name="refresh" size="sm" />
+                {{ t('admin.accounts.yeTeamReset') }}
+              </button>
             </template>
             <button v-if="isOpenAIOAuthParent" @click="$emit('create-spark-shadow', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-amber-600 hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="sparkles" size="sm" />
@@ -72,7 +76,7 @@ import { Icon } from '@/components/icons'
 import type { Account } from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; position: { top: number; left: number } | null }>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'sessions'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'ye-team-reset', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'sessions'])
 const { t } = useI18n()
 const canDuplicate = computed(() => {
   if (!props.account || props.account.parent_account_id != null) return false
@@ -102,6 +106,11 @@ const isOpenAIOAuth = computed(() => props.account?.platform === 'openai' && pro
 const isShadow = computed(() => props.account?.parent_account_id != null)
 // A "parent" OpenAI OAuth account is one that is NOT itself a shadow (parent_account_id == null)
 const isOpenAIOAuthParent = computed(() => isOpenAIOAuth.value && !isShadow.value)
+const hasYeTeamBinding = computed(() => {
+  if (props.account?.platform !== 'openai') return false
+  const cardCode = props.account?.extra?.ye_team_card_code
+  return typeof cardCode === 'string' && cardCode.trim().length > 0
+})
 const supportsPrivacy = computed(() => (isAntigravityOAuth.value || isOpenAIOAuth.value) && !isShadow.value)
 const hasQuotaLimit = computed(() => {
   return (props.account?.type === 'apikey' || props.account?.type === 'bedrock') && (

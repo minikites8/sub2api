@@ -140,3 +140,35 @@ func TestYeTeamReclaimPersistsFailureStatus(t *testing.T) {
 	require.Contains(t, repo.updatedExtra[yeTeamLastRefreshErrorKey], "reclaim service unavailable")
 	require.Equal(t, yeTeamRefreshStatusFailed, account.Extra[yeTeamLastRefreshStatusKey])
 }
+
+func TestYeTeamReclaimDownloadsHealthyNoActionPackage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/redeem/reclaim/batch-cards":
+			_, _ = w.Write([]byte(`{"ok":true,"queued":0,"already_running":0,"done":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"done","no_action":true,"message":"credential healthy"}]}]}`))
+		case "/api/redeem/batch-download":
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"new-token"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	account := newYeTeamRefreshAccount(86)
+	repo := &yeTeamTokenAccountRepo{account: account}
+	gateway := &OpenAIGatewayService{accountRepo: repo}
+	gateway.SetYeTeamClient(yeteam.NewClient(yeteam.Config{
+		Enabled:         true,
+		AutoRefresh401:  false,
+		BaseURL:         server.URL,
+		Timeout:         time.Second,
+		MaxPollDuration: time.Second,
+	}))
+
+	require.NoError(t, gateway.ReclaimOpenAIAccount(context.Background(), account))
+	require.Equal(t, "new-token", repo.updatedCredentials["access_token"])
+	require.Equal(t, yeTeamRefreshStatusSuccess, repo.updatedExtra[yeTeamLastRefreshStatusKey])
+	require.Empty(t, repo.updatedExtra[yeTeamLastRefreshErrorKey])
+	require.Equal(t, yeTeamRefreshStatusSuccess, account.Extra[yeTeamLastRefreshStatusKey])
+}
