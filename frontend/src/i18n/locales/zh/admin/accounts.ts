@@ -301,6 +301,7 @@ export default {
         checkedAt: '查询时间：{time}',
         loadFailed: '获取工作区信息失败',
         inviteTitle: '邀请成员',
+        workspaceDefaultSeat: '工作区默认席位',
         emailPlaceholder: '输入邮箱地址，多个地址用换行、逗号或分号分隔',
         invite: '发送邀请',
         inviting: '发送中…',

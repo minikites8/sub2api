@@ -15,12 +15,13 @@ func TestMergeWorkspaceMetadataCredentialsPreservesExistingCredentials(t *testin
 		"plan_type":     "team",
 	}
 	info := &service.OpenAIWorkspaceInfo{
-		AccountID:      "team-account-id",
-		Name:           "workspace",
-		CreatedTime:    "2026-05-14T12:28:12.982090Z",
-		OrganizationID: "org-team",
-		PlanType:       "self_serve_business_prolite",
-		WorkspaceType:  "business",
+		AccountID:       "team-account-id",
+		Name:            "workspace",
+		CreatedTime:     "2026-05-14T12:28:12.982090Z",
+		OrganizationID:  "org-team",
+		PlanType:        "self_serve_business_prolite",
+		WorkspaceType:   "business",
+		AccountUserRole: "standard-user",
 	}
 
 	credentials := mergeWorkspaceMetadataCredentials(existing, info)
@@ -35,5 +36,7 @@ func TestMergeWorkspaceMetadataCredentialsPreservesExistingCredentials(t *testin
 	require.Equal(t, "team-account-id", credentials["team_account_id"])
 	require.Equal(t, "self_serve_business_prolite", credentials["team_plan_type"])
 	require.Equal(t, "business", credentials["team_workspace_type"])
+	require.Equal(t, "standard-user", credentials["account_user_role"])
+	require.Equal(t, "standard-user", credentials["team_account_user_role"])
 	require.Equal(t, "team", existing["plan_type"])
 }

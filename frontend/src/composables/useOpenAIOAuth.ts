@@ -29,6 +29,8 @@ export interface OpenAITokenInfo {
   team_account_id?: string
   team_plan_type?: string
   team_workspace_type?: string
+  account_user_role?: string
+  team_account_user_role?: string
   team_self_serve_business_prolite?: boolean
   [key: string]: unknown
 }
@@ -226,6 +228,12 @@ export function useOpenAIOAuth() {
     }
     if (tokenInfo.team_workspace_type) {
       creds.team_workspace_type = tokenInfo.team_workspace_type
+    }
+    if (tokenInfo.account_user_role) {
+      creds.account_user_role = tokenInfo.account_user_role
+    }
+    if (tokenInfo.team_account_user_role) {
+      creds.team_account_user_role = tokenInfo.team_account_user_role
     }
     if (tokenInfo.team_name || tokenInfo.team_created_time || tokenInfo.team_organization_id || tokenInfo.team_account_id) {
       creds.team_self_serve_business_prolite = Boolean(tokenInfo.team_self_serve_business_prolite)

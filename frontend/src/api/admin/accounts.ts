@@ -1027,6 +1027,7 @@ export interface OpenAIWorkspaceInfo {
   organization_id: string
   plan_type?: string
   workspace_type?: string
+  account_user_role?: string
   seat_type_counts: Record<string, number>
   maximum_seats: number
   fetched_at: number
@@ -1088,17 +1089,26 @@ export async function inviteOpenAIWorkspaceMembers(
   id: number,
   workspaceAccountId: string,
   emailAddresses: string[],
-  seatType: string = 'default'
+  seatType?: string
 ): Promise<OpenAIWorkspaceInviteResult> {
+  const payload: {
+    workspace_account_id: string
+    email_addresses: string[]
+    role: string
+    resend_emails: boolean
+    seat_type?: string
+  } = {
+    workspace_account_id: workspaceAccountId,
+    email_addresses: emailAddresses,
+    role: 'standard-user',
+    resend_emails: true
+  }
+  const normalizedSeatType = seatType?.trim()
+  if (normalizedSeatType) payload.seat_type = normalizedSeatType
+
   const { data } = await apiClient.post<OpenAIWorkspaceInviteResult>(
     `/admin/openai/accounts/${id}/workspace-invites`,
-    {
-      workspace_account_id: workspaceAccountId,
-      email_addresses: emailAddresses,
-      role: 'standard-user',
-      seat_type: seatType,
-      resend_emails: true
-    }
+    payload
   )
   return data
 }

@@ -75,6 +75,8 @@ func TestOpenAIOAuthServiceBuildAccountCredentialsIncludesTeamWorkspaceMetadata(
 		TeamAccountID:                "team-account-id",
 		TeamPlanType:                 "self_serve_business_prolite",
 		TeamWorkspaceType:            "business",
+		AccountUserRole:              "standard-user",
+		TeamAccountUserRole:          "standard-user",
 		TeamSelfServeBusinessProlite: true,
 	})
 
@@ -87,6 +89,8 @@ func TestOpenAIOAuthServiceBuildAccountCredentialsIncludesTeamWorkspaceMetadata(
 	require.Equal(t, "team-account-id", creds["team_account_id"])
 	require.Equal(t, "self_serve_business_prolite", creds["team_plan_type"])
 	require.Equal(t, "business", creds["team_workspace_type"])
+	require.Equal(t, "standard-user", creds["account_user_role"])
+	require.Equal(t, "standard-user", creds["team_account_user_role"])
 	require.Equal(t, true, creds["team_self_serve_business_prolite"])
 }
 
@@ -101,7 +105,7 @@ func TestOpenAIOAuthServiceGetWorkspaceInfoUsesLegacyTeamMetadata(t *testing.T) 
 			require.Equal(t, "-540", r.URL.Query().Get("timezone_offset_min"))
 			require.Equal(t, workspaceAccountID, r.Header.Get("chatgpt-account-id"))
 			require.Equal(t, "/backend-api/accounts/check/v4-2023-04-27", r.Header.Get("x-openai-target-path"))
-			_, _ = w.Write([]byte(`{"accounts":{"` + workspaceAccountID + `":{"account":{"account_id":"` + workspaceAccountID + `","name":"Canonical Workspace","created_time":"2026-05-15T12:28:12.982090Z","organization_id":"org-canonical","plan_type":"self_serve_business_prolite","structure":"workspace"}}}}`))
+			_, _ = w.Write([]byte(`{"accounts":{"` + workspaceAccountID + `":{"account":{"account_id":"` + workspaceAccountID + `","name":"Canonical Workspace","created_time":"2026-05-15T12:28:12.982090Z","organization_id":"org-canonical","account_user_role":"standard-user","plan_type":"self_serve_business_prolite","structure":"workspace"}}}}`))
 		case "/backend-api/accounts/" + workspaceAccountID + "/users/seat_type_counts":
 			require.Equal(t, workspaceAccountID, r.Header.Get("chatgpt-account-id"))
 			require.Equal(t, r.URL.Path, r.Header.Get("x-openai-target-path"))
@@ -141,6 +145,7 @@ func TestOpenAIOAuthServiceGetWorkspaceInfoUsesLegacyTeamMetadata(t *testing.T) 
 	require.Equal(t, "2026-05-15T12:28:12.982090Z", info.CreatedTime)
 	require.Equal(t, "org-canonical", info.OrganizationID)
 	require.Equal(t, "self_serve_business_prolite", info.PlanType)
+	require.Equal(t, "standard-user", info.AccountUserRole)
 	require.Equal(t, 2, info.SeatTypeCounts["default"])
 	require.Equal(t, 1, info.SeatTypeCounts["prolite"])
 }

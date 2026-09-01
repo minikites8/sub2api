@@ -87,6 +87,8 @@ describe('useOpenAIOAuth.buildCredentials', () => {
       team_account_id: 'team-account-id',
       team_plan_type: 'self_serve_business_prolite',
       team_workspace_type: 'business',
+      account_user_role: 'standard-user',
+      team_account_user_role: 'standard-user',
       team_self_serve_business_prolite: true
     })
 
@@ -100,6 +102,8 @@ describe('useOpenAIOAuth.buildCredentials', () => {
       team_account_id: 'team-account-id',
       team_plan_type: 'self_serve_business_prolite',
       team_workspace_type: 'business',
+      account_user_role: 'standard-user',
+      team_account_user_role: 'standard-user',
       team_self_serve_business_prolite: true
     })
     expect(oauth.buildExtraInfo({

@@ -414,7 +414,7 @@ func mergeWorkspaceMetadataCredentials(existing map[string]any, info *service.Op
 	if info == nil {
 		return nil
 	}
-	credentials := make(map[string]any, len(existing)+10)
+	credentials := make(map[string]any, len(existing)+12)
 	for key, value := range existing {
 		credentials[key] = value
 	}
@@ -432,6 +432,8 @@ func mergeWorkspaceMetadataCredentials(existing map[string]any, info *service.Op
 		{key: "team_account_id", value: info.AccountID},
 		{key: "team_plan_type", value: info.PlanType},
 		{key: "team_workspace_type", value: info.WorkspaceType},
+		{key: "account_user_role", value: info.AccountUserRole},
+		{key: "team_account_user_role", value: info.AccountUserRole},
 	} {
 		if value := strings.TrimSpace(field.value); value != "" {
 			credentials[field.key] = value

@@ -132,6 +132,8 @@ type OpenAITokenInfo struct {
 	TeamAccountID                string `json:"team_account_id,omitempty"`
 	TeamPlanType                 string `json:"team_plan_type,omitempty"`
 	TeamWorkspaceType            string `json:"team_workspace_type,omitempty"`
+	AccountUserRole              string `json:"account_user_role,omitempty"`
+	TeamAccountUserRole          string `json:"team_account_user_role,omitempty"`
 	TeamSelfServeBusinessProlite bool   `json:"team_self_serve_business_prolite,omitempty"`
 	PlanType                     string `json:"plan_type,omitempty"`
 	SubscriptionExpiresAt        string `json:"subscription_expires_at,omitempty"`
@@ -315,6 +317,8 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 			tokenInfo.TeamAccountID = info.AccountID
 			tokenInfo.TeamPlanType = info.PlanType
 			tokenInfo.TeamWorkspaceType = info.WorkspaceType
+			tokenInfo.AccountUserRole = info.WorkspaceAccountUserRole
+			tokenInfo.TeamAccountUserRole = info.WorkspaceAccountUserRole
 			tokenInfo.TeamSelfServeBusinessProlite = info.HasSelfServeBusinessProlite
 			if info.WorkspaceOrganizationID != "" {
 				tokenInfo.OrganizationID = info.WorkspaceOrganizationID
@@ -352,12 +356,13 @@ func (s *OpenAIOAuthService) GetWorkspaceInfo(ctx context.Context, account *Acco
 	}
 
 	workspace := &OpenAIWorkspaceInfo{
-		AccountID:      strings.TrimSpace(account.GetCredential("team_account_id")),
-		Name:           strings.TrimSpace(account.GetCredential("team_name")),
-		CreatedTime:    strings.TrimSpace(account.GetCredential("team_created_time")),
-		OrganizationID: strings.TrimSpace(account.GetCredential("team_organization_id")),
-		PlanType:       strings.TrimSpace(account.GetCredential("team_plan_type")),
-		WorkspaceType:  strings.TrimSpace(account.GetCredential("team_workspace_type")),
+		AccountID:       strings.TrimSpace(account.GetCredential("team_account_id")),
+		Name:            strings.TrimSpace(account.GetCredential("team_name")),
+		CreatedTime:     strings.TrimSpace(account.GetCredential("team_created_time")),
+		OrganizationID:  strings.TrimSpace(account.GetCredential("team_organization_id")),
+		PlanType:        strings.TrimSpace(account.GetCredential("team_plan_type")),
+		WorkspaceType:   strings.TrimSpace(account.GetCredential("team_workspace_type")),
+		AccountUserRole: strings.TrimSpace(account.GetCredential("team_account_user_role")),
 	}
 	// Older Team imports stored the accounts/check fields under their original
 	// names. Keep those imports immediately displayable while the fresh lookup
@@ -377,28 +382,28 @@ func (s *OpenAIOAuthService) GetWorkspaceInfo(ctx context.Context, account *Acco
 	if workspace.PlanType == "" {
 		workspace.PlanType = strings.TrimSpace(account.GetCredential("plan_type"))
 	}
+	if workspace.AccountUserRole == "" {
+		workspace.AccountUserRole = strings.TrimSpace(account.GetCredential("account_user_role"))
+	}
 
-	needsAccountLookup := strings.TrimSpace(account.GetCredential("team_account_id")) == "" ||
-		strings.TrimSpace(account.GetCredential("team_name")) == "" ||
-		strings.TrimSpace(account.GetCredential("team_created_time")) == "" ||
-		strings.TrimSpace(account.GetCredential("team_organization_id")) == "" ||
-		strings.TrimSpace(account.GetCredential("team_plan_type")) == ""
-	if needsAccountLookup {
-		hint := workspace.AccountID
-		if hint == "" {
-			hint = workspace.OrganizationID
-		}
-		if hint == "" {
-			hint = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
-		}
-		if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, accessToken, proxyURL, hint); info != nil && info.IsTeamWorkspace {
-			workspace.AccountID = info.AccountID
-			workspace.Name = info.WorkspaceName
-			workspace.CreatedTime = info.WorkspaceCreatedTime
-			workspace.OrganizationID = info.WorkspaceOrganizationID
-			workspace.PlanType = info.PlanType
-			workspace.WorkspaceType = info.WorkspaceType
-		}
+	// Refresh the inviter role on every workspace-info request. Ownership can
+	// change independently of the stored OAuth credentials and controls whether
+	// ChatGPT accepts an explicit seat_type override.
+	hint := workspace.AccountID
+	if hint == "" {
+		hint = workspace.OrganizationID
+	}
+	if hint == "" {
+		hint = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
+	}
+	if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, accessToken, proxyURL, hint); info != nil && info.IsTeamWorkspace {
+		workspace.AccountID = info.AccountID
+		workspace.Name = info.WorkspaceName
+		workspace.CreatedTime = info.WorkspaceCreatedTime
+		workspace.OrganizationID = info.WorkspaceOrganizationID
+		workspace.PlanType = info.PlanType
+		workspace.WorkspaceType = info.WorkspaceType
+		workspace.AccountUserRole = info.WorkspaceAccountUserRole
 	}
 	if !isChatGPTTeamPlanType(workspace.PlanType) && workspace.Name == "" && workspace.OrganizationID == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_TEAM_REQUIRED", "account is not a Team workspace account")
@@ -413,6 +418,7 @@ func (s *OpenAIOAuthService) GetWorkspaceInfo(ctx context.Context, account *Acco
 	seatInfo.OrganizationID = workspace.OrganizationID
 	seatInfo.PlanType = workspace.PlanType
 	seatInfo.WorkspaceType = workspace.WorkspaceType
+	seatInfo.AccountUserRole = workspace.AccountUserRole
 	return seatInfo, nil
 }
 
@@ -432,13 +438,19 @@ func (s *OpenAIOAuthService) InviteWorkspaceMembers(ctx context.Context, account
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_ROLE_INVALID", "only standard-user invitations are supported")
 	}
 	seatType = strings.TrimSpace(strings.ToLower(seatType))
-	if seatType == "" {
-		seatType = "default"
+	if seatType != "" {
+		switch seatType {
+		case "default", "usage_based", "automation", "prolite":
+		default:
+			return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_SEAT_TYPE_INVALID", "unsupported workspace seat type")
+		}
 	}
-	switch seatType {
-	case "default", "usage_based", "automation", "prolite":
-	default:
-		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_SEAT_TYPE_INVALID", "unsupported workspace seat type")
+	inviterRole := strings.TrimSpace(account.GetCredential("team_account_user_role"))
+	if inviterRole == "" {
+		inviterRole = strings.TrimSpace(account.GetCredential("account_user_role"))
+	}
+	if !strings.EqualFold(inviterRole, "account-owner") {
+		seatType = ""
 	}
 	normalizedEmails := make([]string, 0, len(emailAddresses))
 	seen := make(map[string]struct{}, len(emailAddresses))
@@ -633,6 +645,8 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 				TeamAccountID:                account.GetCredential("team_account_id"),
 				TeamPlanType:                 account.GetCredential("team_plan_type"),
 				TeamWorkspaceType:            account.GetCredential("team_workspace_type"),
+				AccountUserRole:              account.GetCredential("account_user_role"),
+				TeamAccountUserRole:          account.GetCredential("team_account_user_role"),
 				TeamSelfServeBusinessProlite: strings.EqualFold(account.GetCredential("team_self_serve_business_prolite"), "true"),
 				PlanType:                     account.GetCredential("plan_type"),
 				SubscriptionExpiresAt:        account.GetCredential("subscription_expires_at"),
@@ -702,6 +716,12 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 	}
 	if tokenInfo.TeamWorkspaceType != "" {
 		creds["team_workspace_type"] = tokenInfo.TeamWorkspaceType
+	}
+	if tokenInfo.AccountUserRole != "" {
+		creds["account_user_role"] = tokenInfo.AccountUserRole
+	}
+	if tokenInfo.TeamAccountUserRole != "" {
+		creds["team_account_user_role"] = tokenInfo.TeamAccountUserRole
 	}
 	if tokenInfo.TeamName != "" || tokenInfo.TeamCreatedTime != "" || tokenInfo.TeamOrganizationID != "" || tokenInfo.TeamAccountID != "" {
 		creds["team_self_serve_business_prolite"] = tokenInfo.TeamSelfServeBusinessProlite

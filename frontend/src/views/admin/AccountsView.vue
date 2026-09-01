@@ -2470,7 +2470,9 @@ const handleWorkspaceInfoUpdated = (info: OpenAIWorkspaceInfo) => {
     team_organization_id: info.organization_id,
     team_account_id: info.account_id,
     team_plan_type: info.plan_type,
-    team_workspace_type: info.workspace_type
+    team_workspace_type: info.workspace_type,
+    account_user_role: info.account_user_role,
+    team_account_user_role: info.account_user_role
   }
 }
 const duplicatingAccountIDs = new Set<number>()

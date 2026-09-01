@@ -388,6 +388,7 @@ export default {
         checkedAt: 'Checked at: {time}',
         loadFailed: 'Failed to get workspace information',
         inviteTitle: 'Invite Members',
+        workspaceDefaultSeat: 'Workspace default seat',
         emailPlaceholder: 'Enter email addresses separated by line breaks, commas, or semicolons',
         invite: 'Send Invite',
         inviting: 'Sending...',

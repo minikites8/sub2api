@@ -52,12 +52,16 @@
       <form class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-700" @submit.prevent="submitInvite">
         <div class="flex items-center justify-between gap-3">
           <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.accounts.workspaceInfo.inviteTitle') }}</h4>
-          <select v-model="seatType" class="input w-auto min-w-36 text-sm" :disabled="inviting">
+          <select v-if="canOverrideSeatType" v-model="seatType" class="input w-auto min-w-36 text-sm" :disabled="inviting">
+            <option value="">{{ t('admin.accounts.workspaceInfo.workspaceDefaultSeat') }}</option>
             <option value="default">{{ t('admin.accounts.workspaceInfo.seatTypes.default') }}</option>
             <option value="prolite">{{ t('admin.accounts.workspaceInfo.seatTypes.prolite') }}</option>
             <option value="usage_based">{{ t('admin.accounts.workspaceInfo.seatTypes.usage_based') }}</option>
             <option value="automation">{{ t('admin.accounts.workspaceInfo.seatTypes.automation') }}</option>
           </select>
+          <span v-else class="text-xs font-medium text-gray-500 dark:text-dark-400">
+            {{ t('admin.accounts.workspaceInfo.workspaceDefaultSeat') }}
+          </span>
         </div>
         <textarea
           v-model="emailInput"
@@ -219,7 +223,7 @@ const props = defineProps<{
 }>()
 
 const emailInput = ref('')
-const seatType = ref('default')
+const seatType = ref('')
 const inviting = ref(false)
 const inviteError = ref('')
 const lastInvite = ref<OpenAIWorkspaceInviteResult | null>(null)
@@ -241,7 +245,7 @@ const userListError = ref('')
 watch(() => props.show, (show) => {
   if (show) {
     emailInput.value = ''
-    seatType.value = 'default'
+    seatType.value = ''
     inviteError.value = ''
     lastInvite.value = null
     inviteItems.value = []
@@ -269,6 +273,8 @@ const seatEntries = computed(() => {
   ]
 })
 
+const canOverrideSeatType = computed(() => props.info?.account_user_role?.trim().toLowerCase() === 'account-owner')
+
 function formatDate(value: string | number | undefined) {
   if (!value) return '-'
   if (typeof value === 'number') return formatDateTime(new Date(value * 1000))
@@ -291,7 +297,7 @@ async function submitInvite() {
       props.account.id,
       props.info.account_id,
       emails,
-      seatType.value
+      canOverrideSeatType.value ? seatType.value || undefined : undefined
     )
     emailInput.value = ''
     try {

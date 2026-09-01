@@ -102,6 +102,7 @@ type ChatGPTAccountInfo struct {
 	WorkspaceCreatedTime        string
 	WorkspaceOrganizationID     string
 	WorkspaceType               string
+	WorkspaceAccountUserRole    string
 	IsTeamWorkspace             bool
 	HasSelfServeBusinessProlite bool
 }
@@ -350,6 +351,7 @@ func fillAccountInfo(info *ChatGPTAccountInfo, acct map[string]any, fallbackID s
 	info.WorkspaceCreatedTime = chatGPTAccountString(account, "created_time")
 	info.WorkspaceOrganizationID = chatGPTAccountString(account, "organization_id")
 	info.WorkspaceType = chatGPTAccountString(account, "workspace_type")
+	info.WorkspaceAccountUserRole = chatGPTAccountString(account, "account_user_role")
 	info.HasSelfServeBusinessProlite = isChatGPTTeamPlanType(info.PlanType) &&
 		strings.EqualFold(strings.TrimSpace(info.PlanType), "self_serve_business_prolite")
 	info.HasSelfServeBusinessProlite = info.HasSelfServeBusinessProlite ||
@@ -398,15 +400,16 @@ func chatGPTAccountString(account map[string]any, key string) string {
 }
 
 type OpenAIWorkspaceInfo struct {
-	AccountID      string         `json:"account_id"`
-	Name           string         `json:"name"`
-	CreatedTime    string         `json:"created_time"`
-	OrganizationID string         `json:"organization_id"`
-	PlanType       string         `json:"plan_type"`
-	WorkspaceType  string         `json:"workspace_type,omitempty"`
-	SeatTypeCounts map[string]int `json:"seat_type_counts"`
-	MaximumSeats   int            `json:"maximum_seats"`
-	FetchedAt      int64          `json:"fetched_at"`
+	AccountID       string         `json:"account_id"`
+	Name            string         `json:"name"`
+	CreatedTime     string         `json:"created_time"`
+	OrganizationID  string         `json:"organization_id"`
+	PlanType        string         `json:"plan_type"`
+	WorkspaceType   string         `json:"workspace_type,omitempty"`
+	AccountUserRole string         `json:"account_user_role,omitempty"`
+	SeatTypeCounts  map[string]int `json:"seat_type_counts"`
+	MaximumSeats    int            `json:"maximum_seats"`
+	FetchedAt       int64          `json:"fetched_at"`
 }
 
 type OpenAIWorkspaceInvite struct {
@@ -528,7 +531,7 @@ func fetchChatGPTWorkspaceInvites(ctx context.Context, clientFactory PrivacyClie
 		EmailAddresses []string `json:"email_addresses"`
 		FlowID         string   `json:"flow_id"`
 		Role           string   `json:"role"`
-		SeatType       string   `json:"seat_type"`
+		SeatType       string   `json:"seat_type,omitempty"`
 		ResendEmails   bool     `json:"resend_emails"`
 		SubmissionID   string   `json:"submission_id"`
 	}{

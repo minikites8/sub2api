@@ -185,13 +185,14 @@ func TestFetchChatGPTAccountInfoExtractsTeamWorkspaceMetadata(t *testing.T) {
 			"accounts": map[string]any{
 				teamAccountID: map[string]any{
 					"account": map[string]any{
-						"account_id":      teamAccountID,
-						"name":            "workspace",
-						"created_time":    teamCreatedTime,
-						"organization_id": teamOrgID,
-						"structure":       "workspace",
-						"workspace_type":  "business",
-						"plan_type":       "self_serve_business_prolite",
+						"account_id":        teamAccountID,
+						"name":              "workspace",
+						"created_time":      teamCreatedTime,
+						"organization_id":   teamOrgID,
+						"account_user_role": "standard-user",
+						"structure":         "workspace",
+						"workspace_type":    "business",
+						"plan_type":         "self_serve_business_prolite",
 					},
 					"features": []any{"self_serve_business_prolite"},
 				},
@@ -213,7 +214,58 @@ func TestFetchChatGPTAccountInfoExtractsTeamWorkspaceMetadata(t *testing.T) {
 	require.Equal(t, teamCreatedTime, got.WorkspaceCreatedTime)
 	require.Equal(t, teamOrgID, got.WorkspaceOrganizationID)
 	require.Equal(t, "business", got.WorkspaceType)
+	require.Equal(t, "standard-user", got.WorkspaceAccountUserRole)
 	require.True(t, got.HasSelfServeBusinessProlite)
+}
+
+func TestOpenAIOAuthServiceInviteWorkspaceMembersOmitsSeatTypeForNonOwners(t *testing.T) {
+	const workspaceAccountID = "team-account-id"
+	var payloads []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/backend-api/accounts/"+workspaceAccountID+"/invites", r.URL.Path)
+		var payload map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		payloads = append(payloads, payload)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"account_invites":[],"errored_emails":[]}`))
+	}))
+	defer server.Close()
+
+	originalURL := chatGPTWorkspaceInvitesURL
+	chatGPTWorkspaceInvitesURL = server.URL + "/backend-api/accounts/%s/invites"
+	defer func() { chatGPTWorkspaceInvitesURL = originalURL }()
+
+	svc := &OpenAIOAuthService{privacyClientFactory: newTestPrivacyClientFactory()}
+	for _, inviterRole := range []string{"standard-user", "workspace-admin", ""} {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token":           "access-token",
+				"team_account_user_role": inviterRole,
+			},
+		}
+		_, err := svc.InviteWorkspaceMembers(context.Background(), account, workspaceAccountID, []string{"member@example.com"}, "standard-user", "default", true)
+		require.NoError(t, err)
+	}
+
+	owner := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":           "access-token",
+			"team_account_user_role": "account-owner",
+		},
+	}
+	_, err := svc.InviteWorkspaceMembers(context.Background(), owner, workspaceAccountID, []string{"owner-invite@example.com"}, "standard-user", "prolite", true)
+	require.NoError(t, err)
+
+	require.Len(t, payloads, 4)
+	for _, payload := range payloads[:3] {
+		require.NotContains(t, payload, "seat_type")
+	}
+	require.Equal(t, "prolite", payloads[3]["seat_type"])
 }
 
 func TestIsChatGPTTeamWorkspaceAccountRecognizesTeamPlanTypes(t *testing.T) {
