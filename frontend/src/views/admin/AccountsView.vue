@@ -363,6 +363,16 @@
           </template>
           <template #cell-proxy="{ row }">
             <div class="flex flex-col gap-1">
+              <div v-if="row.proxy_pool?.length" class="flex flex-wrap gap-1">
+                <span
+                  v-for="binding in row.proxy_pool"
+                  :key="binding.proxy_id"
+                  class="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                >
+                  <span>{{ binding.proxy?.name || `#${binding.proxy_id}` }}</span>
+                  <span class="font-mono">{{ binding.current_concurrency ?? 0 }}/{{ binding.concurrency }}</span>
+                </span>
+              </div>
               <div v-if="row.proxy" class="flex items-center gap-2">
                 <span class="text-sm text-gray-700 dark:text-gray-300">{{ row.proxy.name }}</span>
                 <span v-if="row.proxy.country_code" class="text-xs text-gray-500 dark:text-gray-400">

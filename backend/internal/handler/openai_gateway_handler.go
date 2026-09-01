@@ -1552,7 +1552,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 
 	fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(
 		ctx,
-		account.ID,
+		selection.WaitPlan.AccountID,
 		selection.WaitPlan.MaxConcurrency,
 	)
 	if err != nil {
@@ -1571,6 +1571,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 			reqLog.Debug("openai.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
 			return nil, openAISlotAcquireProfitVetoed
 		}
+		latest.PreserveSelectedProxyFrom(account)
 		account = latest
 		selection.Account = latest
 		if err := h.gatewayService.BindStickySessionAfterProfitAdmission(ctx, groupID, sessionHash, account.ID); err != nil {
@@ -1579,7 +1580,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 		return wrapReleaseOnDone(ctx, fastReleaseFunc), openAISlotAcquireOK
 	}
 
-	canWait, waitErr := h.concurrencyHelper.IncrementAccountWaitCount(ctx, account.ID, selection.WaitPlan.MaxWaiting)
+	canWait, waitErr := h.concurrencyHelper.IncrementAccountWaitCount(ctx, selection.WaitPlan.AccountID, selection.WaitPlan.MaxWaiting)
 	if waitErr != nil {
 		reqLog.Warn("openai.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(waitErr))
 	} else if !canWait {
@@ -1594,7 +1595,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	accountWaitCounted := waitErr == nil && canWait
 	releaseWait := func() {
 		if accountWaitCounted {
-			h.concurrencyHelper.DecrementAccountWaitCount(ctx, account.ID)
+			h.concurrencyHelper.DecrementAccountWaitCount(ctx, selection.WaitPlan.AccountID)
 			accountWaitCounted = false
 		}
 	}
@@ -1602,7 +1603,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 
 	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 		c,
-		account.ID,
+		selection.WaitPlan.AccountID,
 		selection.WaitPlan.MaxConcurrency,
 		selection.WaitPlan.Timeout,
 		reqStream,
@@ -1626,6 +1627,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 		reqLog.Debug("openai.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
 		return nil, openAISlotAcquireProfitVetoed
 	}
+	latest.PreserveSelectedProxyFrom(account)
 	account = latest
 	selection.Account = latest
 	if err := h.gatewayService.BindStickySessionAfterProfitAdmission(ctx, groupID, sessionHash, account.ID); err != nil {
@@ -1969,9 +1971,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		account := selection.Account
-		accountMaxConcurrency := account.Concurrency
+		accountMaxConcurrency := account.EffectiveProxyConcurrency()
+		accountSlotID := account.EffectiveProxySlotID()
 		if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 			accountMaxConcurrency = selection.WaitPlan.MaxConcurrency
+			accountSlotID = selection.WaitPlan.AccountID
 		}
 		// 终检、准入后绑定与后续 turn 级复核都使用选号结果携带的门（composite
 		// 等跨分组调度的门只存在于调度栈局部 ctx）；准入成功后并入连接 ctx。
@@ -1992,6 +1996,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				continue
 			}
+			latest.PreserveSelectedProxyFrom(account)
 			account = latest
 			selection.Account = latest
 		}
@@ -2002,7 +2007,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			}
 			fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(
 				ctx,
-				account.ID,
+				accountSlotID,
 				selection.WaitPlan.MaxConcurrency,
 			)
 			if err != nil {
@@ -2029,6 +2034,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				continue
 			}
+			latest.PreserveSelectedProxyFrom(account)
 			account = latest
 			selection.Account = latest
 			accountReleaseFunc = fastReleaseFunc
@@ -2171,7 +2177,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if !userAcquired {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "too many concurrent requests, please retry later", nil)
 				}
-				accountReleaseFunc, accountAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(ctx, account.ID, accountMaxConcurrency)
+				accountReleaseFunc, accountAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(ctx, accountSlotID, accountMaxConcurrency)
 				if err != nil {
 					if userReleaseFunc != nil {
 						userReleaseFunc()

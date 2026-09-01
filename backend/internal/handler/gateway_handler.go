@@ -426,7 +426,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 				accountWaitCounted := false
-				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), selection.WaitPlan.AccountID, selection.WaitPlan.MaxWaiting)
 				if err != nil {
 					reqLog.Warn("gateway.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				} else if !canWait {
@@ -442,14 +442,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				releaseWait := func() {
 					if accountWaitCounted {
-						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), selection.WaitPlan.AccountID)
 						accountWaitCounted = false
 					}
 				}
 
 				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 					c,
-					account.ID,
+					selection.WaitPlan.AccountID,
 					selection.WaitPlan.MaxConcurrency,
 					selection.WaitPlan.Timeout,
 					reqStream,
@@ -480,6 +480,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				continue
 			}
+			latest.PreserveSelectedProxyFrom(account)
 			account = latest
 			selection.Account = latest
 			// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已
@@ -749,7 +750,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 				accountWaitCounted := false
-				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), selection.WaitPlan.AccountID, selection.WaitPlan.MaxWaiting)
 				if err != nil {
 					reqLog.Warn("gateway.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				} else if !canWait {
@@ -765,14 +766,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				releaseWait := func() {
 					if accountWaitCounted {
-						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), selection.WaitPlan.AccountID)
 						accountWaitCounted = false
 					}
 				}
 
 				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 					c,
-					account.ID,
+					selection.WaitPlan.AccountID,
 					selection.WaitPlan.MaxConcurrency,
 					selection.WaitPlan.Timeout,
 					reqStream,
@@ -803,6 +804,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				continue
 			}
+			latest.PreserveSelectedProxyFrom(account)
 			account = latest
 			selection.Account = latest
 			// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已

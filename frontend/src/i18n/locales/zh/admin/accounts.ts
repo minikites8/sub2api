@@ -1087,6 +1087,8 @@ export default {
       affinityBufferInfinite: '不限制',
       expired: '已过期',
       proxy: '代理',
+      proxyPool: '代理池',
+      proxyConcurrency: '代理并发数',
       noProxy: '无代理',
       concurrency: '并发数',
       loadFactor: '负载因子',

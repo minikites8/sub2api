@@ -70,10 +70,14 @@ type Account struct {
 	ParentAccountID *int64 // non-nil → 影子账号（不持凭据，透传母账号凭据）
 	QuotaDimension  string // 用量维度："" / "global" / "spark"
 
-	Proxy         *Proxy
-	AccountGroups []AccountGroup
-	GroupIDs      []int64
-	Groups        []*Group
+	Proxy *Proxy
+	// ProxyPool contains optional per-account proxy bindings. It is populated
+	// from extra.proxy_pool and kept in memory for request routing.
+	ProxyPool           []AccountProxyBinding
+	ProxyPoolConfigured bool
+	AccountGroups       []AccountGroup
+	GroupIDs            []int64
+	Groups              []*Group
 
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string
@@ -177,6 +181,17 @@ func (a *Account) BillingRateMultiplier() float64 {
 func (a *Account) EffectiveLoadFactor() int {
 	if a == nil {
 		return 1
+	}
+	if len(a.ProxyPool) > 0 {
+		total := 0
+		for _, binding := range a.ProxyPool {
+			if binding.Concurrency > 0 {
+				total += binding.Concurrency
+			}
+		}
+		if total > 0 {
+			return total
+		}
 	}
 	if a.LoadFactor != nil && *a.LoadFactor > 0 {
 		return *a.LoadFactor

@@ -1,0 +1,6 @@
+Account proxy pool implementation:
+- Added proxy_pool account extra parsing, validation, stable account/proxy slot IDs, and effective capacity.
+- Added independent Redis concurrency acquisition and waiting per account/proxy pair.
+- Added admin create/update DTO fields and account response pool entries with current concurrency.
+- Added create/edit proxy pool controls and account-list capacity badges.
+- Added proxy-key based backup export/import conversion for proxy pools.

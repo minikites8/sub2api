@@ -1214,6 +1214,7 @@ kiro_credit_unit_price_usd?: number
     }
   } & Record<string, unknown>)
   proxy_id: number | null
+  proxy_pool?: AccountProxyBinding[]
   proxy_fallback_origin_id?: number | null
   proxy_fallback_origin_name?: string | null
   concurrency: number
@@ -1526,6 +1527,7 @@ export interface CreateAccountRequest {
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
+  proxy_pool?: AccountProxyBindingRequest[]
   concurrency?: number
   load_factor?: number | null
   priority?: number
@@ -1545,6 +1547,7 @@ export interface UpdateAccountRequest {
   credentials?: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
+  proxy_pool?: AccountProxyBindingRequest[]
   concurrency?: number
   load_factor?: number | null
   priority?: number
@@ -1558,6 +1561,18 @@ export interface UpdateAccountRequest {
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+}
+
+export interface AccountProxyBindingRequest {
+  proxy_id: number
+  concurrency: number
+}
+
+export interface AccountProxyBinding {
+  proxy_id: number
+  concurrency: number
+  current_concurrency?: number
+  proxy?: Proxy
 }
 
 export interface CheckMixedChannelRequest {
@@ -1636,6 +1651,7 @@ export interface AdminDataAccount {
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_key?: string | null
+  proxy_pool?: Array<{ proxy_key: string; concurrency: number }>
   concurrency: number
   priority: number
   is_fallback?: boolean

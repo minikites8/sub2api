@@ -1,0 +1,36 @@
+Changed branch/field: main (0f95589d7) / accounts.extra.proxy_pool.
+
+MODIFIED_FILE: D:/Programs/sub2api/artifacts/account-proxy-pool/MODIFIED_FILE
+DIFF_FILE: D:/Programs/sub2api/artifacts/account-proxy-pool/DIFF_FILE
+VERIFICATION.txt: D:/Programs/sub2api/artifacts/account-proxy-pool/VERIFICATION.txt
+ROLLBACK.sh: D:/Programs/sub2api/artifacts/account-proxy-pool/ROLLBACK.sh
+
+BASELINE command: go test ./internal/service ./internal/handler/dto
+BASELINE literal result: internal/service setup failed because pre-existing account_expiry_service_test.go referenced missing SetOpenAIQuotaRecoveryQuerier/openAIQuotaAllowsScheduling; internal/handler/dto passed.
+BASELINE exit status: 1
+
+MODIFIED command: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go build ./...
+MODIFIED literal result: completed with no output.
+MODIFIED exit status: 0
+
+MODIFIED backend test command: go test ./internal/service -run 'Test(ParseAccountProxyPool|AccountProxySlotIDStableAndDistinct|AccountProxyPoolValidation|AccountProxyPoolEffectiveCapacity)$' -count=1
+MODIFIED backend test literal result: ok github.com/Wei-Shaw/sub2api/internal/service 2.393s
+MODIFIED backend test exit status: 0
+
+MODIFIED service suite command: go test ./internal/service -count=1 (with the pre-existing untracked account_expiry_service_test.go temporarily isolated and restored)
+MODIFIED service suite literal result: ok github.com/Wei-Shaw/sub2api/internal/service 117.633s
+MODIFIED service suite exit status: 0
+
+MODIFIED admin data test command: go test ./internal/handler/admin -run 'Test.*Data|Test.*Account' -count=1
+MODIFIED admin data test literal result: ok github.com/Wei-Shaw/sub2api/internal/handler/admin 3.096s
+MODIFIED admin data test exit status: 0
+
+MODIFIED frontend command: pnpm exec vue-tsc --noEmit
+MODIFIED frontend literal result: completed with no output.
+MODIFIED frontend exit status: 0
+
+ROLLBACK command: & 'C:\Program Files\Git\bin\bash.exe' D:/Programs/sub2api/artifacts/account-proxy-pool/ROLLBACK.sh D:/Programs/sub2api/artifacts/account-proxy-pool/rollback-copy
+ROLLBACK literal result: rollback copy restored the recorded marker and exited successfully.
+ROLLBACK exit status: 0
+
+Restored behavior/status: rollback validation applies only to the copy; the working tree remains changed with proxy_pool support.

@@ -310,6 +310,9 @@ func (s *ConcurrencyService) SetAccountLoadBatchCacheTTL(ttl time.Duration) {
 type AcquireResult struct {
 	Acquired    bool
 	ReleaseFunc func() // Must be called when done (typically via defer)
+	// SlotID identifies the Redis namespace used for this acquisition. Legacy
+	// account requests use the account ID; proxy pools use a derived pair ID.
+	SlotID int64
 }
 
 type AccountWithConcurrency struct {
@@ -344,6 +347,7 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 	if maxConcurrency <= 0 {
 		return &AcquireResult{
 			Acquired:    true,
+			SlotID:      accountID,
 			ReleaseFunc: func() {}, // no-op
 		}, nil
 	}
@@ -371,8 +375,24 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 
 	return &AcquireResult{
 		Acquired:    false,
+		SlotID:      accountID,
 		ReleaseFunc: nil,
 	}, nil
+}
+
+// AcquireAccountProxySlot applies a concurrency cap to one account/proxy
+// pair. The pair gets its own Redis sorted set, allowing one account to use
+// multiple proxies concurrently with independent limits.
+func (s *ConcurrencyService) AcquireAccountProxySlot(ctx context.Context, accountID, proxyID int64, maxConcurrency int) (*AcquireResult, error) {
+	if proxyID <= 0 {
+		return s.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	}
+	slotID := AccountProxySlotID(accountID, proxyID)
+	result, err := s.AcquireAccountSlot(ctx, slotID, maxConcurrency)
+	if result != nil {
+		result.SlotID = slotID
+	}
+	return result, err
 }
 
 // AcquireUserSlot attempts to acquire a concurrency slot for a user.
@@ -557,6 +577,15 @@ func (s *ConcurrencyService) GetAccountWaitingCount(ctx context.Context, account
 		return 0, nil
 	}
 	return s.cache.GetAccountWaitingCount(ctx, accountID)
+}
+
+// GetAccountConcurrency returns the current number of active slots for one
+// account or derived account/proxy slot ID.
+func (s *ConcurrencyService) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
+	if s == nil || s.cache == nil {
+		return 0, nil
+	}
+	return s.cache.GetAccountConcurrency(ctx, accountID)
 }
 
 // CalculateMaxWait calculates the maximum wait queue size for a user

@@ -1018,6 +1018,8 @@ export default {
       affinityBufferInfinite: 'Unlimited',
       expired: 'Expired',
       proxy: 'Proxy',
+      proxyPool: 'Proxy pool',
+      proxyConcurrency: 'Proxy concurrency',
       noProxy: 'No Proxy',
       concurrency: 'Concurrency',
       loadFactor: 'Load Factor',

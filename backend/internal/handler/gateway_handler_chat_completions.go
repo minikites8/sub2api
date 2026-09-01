@@ -216,7 +216,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 				c,
-				account.ID,
+				selection.WaitPlan.AccountID,
 				selection.WaitPlan.MaxConcurrency,
 				selection.WaitPlan.Timeout,
 				reqStream,
@@ -243,6 +243,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 			continue
 		}
+		latest.PreserveSelectedProxyFrom(account)
 		account = latest
 		selection.Account = latest
 		if selection.ProfitGateActive() {

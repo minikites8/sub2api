@@ -392,6 +392,7 @@ type CreateAccountInput struct {
 	Credentials        map[string]any
 	Extra              map[string]any
 	ProxyID            *int64
+	ProxyPool          []AccountProxyBindingInput
 	Concurrency        int
 	Priority           int
 	IsFallback         bool
@@ -427,6 +428,7 @@ type UpdateAccountInput struct {
 	ReplaceCredentials    bool
 	Extra                 map[string]any
 	ProxyID               *int64
+	ProxyPool             *[]AccountProxyBindingInput
 	Concurrency           *int // 使用指针区分"未提供"和"设置为0"
 	Priority              *int // 使用指针区分"未提供"和"设置为0"
 	IsFallback            *bool

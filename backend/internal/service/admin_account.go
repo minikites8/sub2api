@@ -424,6 +424,16 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Status:      StatusActive,
 		Schedulable: true,
 	}
+	if len(input.ProxyPool) > 0 {
+		account.ProxyPoolConfigured = true
+		account.ProxyPool = make([]AccountProxyBinding, 0, len(input.ProxyPool))
+		for _, binding := range input.ProxyPool {
+			account.ProxyPool = append(account.ProxyPool, AccountProxyBinding{
+				ProxyID:     binding.ProxyID,
+				Concurrency: binding.Concurrency,
+			})
+		}
+	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
 			return nil, ErrUpstreamBillingProbeAccountInvalid
@@ -536,6 +546,9 @@ func (s *adminServiceImpl) applyAdminAPIKeyAccountDefaults(ctx context.Context, 
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input == nil {
+		return nil, errors.New("account input is nil")
+	}
 	var err error
 	input, err = s.applyAdminAPIKeyAccountDefaults(ctx, input)
 	if err != nil {
@@ -554,6 +567,24 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		return nil, err
 	}
 	delete(accountExtra, OpenAIAccountGuardLastRunAtExtraKey)
+	if len(input.ProxyPool) == 0 {
+		if extraPool, present, poolErr := accountProxyPoolInputsFromExtra(accountExtra); poolErr != nil {
+			return nil, poolErr
+		} else if present {
+			input.ProxyPool = extraPool
+		}
+	}
+	if len(input.ProxyPool) > 0 {
+		normalizedPool, poolErr := s.normalizeProxyPool(ctx, input.ProxyPool)
+		if poolErr != nil {
+			return nil, poolErr
+		}
+		accountExtra = setAccountProxyPoolExtra(accountExtra, normalizedPool)
+		if input.ProxyID == nil {
+			proxyID := normalizedPool[0].ProxyID
+			input.ProxyID = &proxyID
+		}
+	}
 
 	// 绑定分组
 	groupIDs := input.GroupIDs
@@ -629,11 +660,31 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
+	if input == nil {
+		return nil, errors.New("account input is nil")
+	}
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	if input.ProxyPool == nil && input.Extra != nil {
+		if extraPool, present, poolErr := accountProxyPoolInputsFromExtra(input.Extra); poolErr != nil {
+			return nil, poolErr
+		} else if present {
+			input.ProxyPool = &extraPool
+		}
+	}
 	var normalizedExtra map[string]any
+	var normalizedProxyPool []AccountProxyBindingInput
+	if input.ProxyPool != nil {
+		if account.IsCredentialShadow() {
+			return nil, infraerrors.BadRequest("SPARK_SHADOW_PROXY_POOL_IMMUTABLE", "spark shadow accounts inherit the parent proxy pool")
+		}
+		normalizedProxyPool, err = s.normalizeProxyPool(ctx, *input.ProxyPool)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
 		if err != nil {
@@ -800,6 +851,17 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.Extra == nil {
 		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
 	}
+	if input.ProxyPool != nil {
+		account.ProxyPoolConfigured = len(normalizedProxyPool) > 0
+		account.Extra = setAccountProxyPoolExtra(account.Extra, normalizedProxyPool)
+		if len(normalizedProxyPool) == 0 {
+			account.ProxyID = nil
+		} else {
+			proxyID := normalizedProxyPool[0].ProxyID
+			account.ProxyID = &proxyID
+		}
+		account.Proxy = nil
+	}
 	if requestedRateSyncEnabledUpdate != nil && *requestedRateSyncEnabledUpdate {
 		if requestedProbeEnabledUpdate != nil && !*requestedProbeEnabledUpdate {
 			return nil, infraerrors.BadRequest(
@@ -963,6 +1025,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// 影子自身 proxy 不可独立编辑(见上),故对影子的更新不触发传播。
 	if input.ProxyID != nil && !account.IsCredentialShadow() {
 		if err := s.propagateProxyToShadows(ctx, id, account.ProxyID); err != nil {
+			return nil, err
+		}
+	}
+	if input.ProxyPool != nil && !account.IsCredentialShadow() {
+		if err := propagateAccountProxyPoolToShadows(ctx, s.accountRepo, id, account.ProxyPool); err != nil {
 			return nil, err
 		}
 	}
@@ -1482,17 +1549,19 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		priority = parent.Priority
 	}
 	shadow := &Account{
-		Name:            name,
-		Platform:        PlatformOpenAI,
-		Type:            AccountTypeOAuth,
-		Status:          StatusActive,
-		Credentials:     map[string]any{"model_mapping": defaultSparkShadowModelMapping()},
-		ParentAccountID: &parentID,
-		QuotaDimension:  QuotaDimensionSpark,
-		ProxyID:         parent.ProxyID,
-		Priority:        priority,
-		Concurrency:     concurrency,
-		Schedulable:     true,
+		Name:                name,
+		Platform:            PlatformOpenAI,
+		Type:                AccountTypeOAuth,
+		Status:              StatusActive,
+		Credentials:         map[string]any{"model_mapping": defaultSparkShadowModelMapping()},
+		ParentAccountID:     &parentID,
+		QuotaDimension:      QuotaDimensionSpark,
+		ProxyID:             parent.ProxyID,
+		ProxyPool:           cloneAccountProxyBindings(parent.ProxyPool),
+		ProxyPoolConfigured: parent.ProxyPoolConfigured,
+		Priority:            priority,
+		Concurrency:         concurrency,
+		Schedulable:         true,
 		Extra: map[string]any{
 			openAILongContextBillingEnabledKey: parent.IsOpenAILongContextBillingEnabled(),
 		},
@@ -1546,6 +1615,27 @@ func propagateAccountProxyToShadows(ctx context.Context, repo AccountRepository,
 		shadow.ProxyID = proxyID
 		if err := repo.Update(ctx, shadow); err != nil {
 			return fmt.Errorf("update spark shadow %d proxy: %w", shadow.ID, err)
+		}
+	}
+	return nil
+}
+
+func propagateAccountProxyPoolToShadows(ctx context.Context, repo AccountRepository, parentID int64, pool []AccountProxyBinding) error {
+	shadows, err := repo.ListShadowsByParent(ctx, parentID)
+	if err != nil {
+		return fmt.Errorf("list spark shadows for proxy pool propagation: %w", err)
+	}
+	for _, shadow := range shadows {
+		shadow.ProxyPool = cloneAccountProxyBindings(pool)
+		shadow.ProxyPoolConfigured = len(pool) > 0
+		if len(pool) > 0 {
+			proxyID := pool[0].ProxyID
+			shadow.ProxyID = &proxyID
+		} else {
+			shadow.ProxyID = nil
+		}
+		if err := repo.Update(ctx, shadow); err != nil {
+			return fmt.Errorf("update spark shadow %d proxy pool: %w", shadow.ID, err)
 		}
 	}
 	return nil

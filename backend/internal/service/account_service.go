@@ -173,33 +173,35 @@ type AccountBulkUpdate struct {
 
 // CreateAccountRequest 创建账号请求
 type CreateAccountRequest struct {
-	Name               string         `json:"name"`
-	Notes              *string        `json:"notes"`
-	Platform           string         `json:"platform"`
-	Type               string         `json:"type"`
-	Credentials        map[string]any `json:"credentials"`
-	Extra              map[string]any `json:"extra"`
-	ProxyID            *int64         `json:"proxy_id"`
-	Concurrency        int            `json:"concurrency"`
-	Priority           int            `json:"priority"`
-	GroupIDs           []int64        `json:"group_ids"`
-	ExpiresAt          *time.Time     `json:"expires_at"`
-	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
+	Name               string                     `json:"name"`
+	Notes              *string                    `json:"notes"`
+	Platform           string                     `json:"platform"`
+	Type               string                     `json:"type"`
+	Credentials        map[string]any             `json:"credentials"`
+	Extra              map[string]any             `json:"extra"`
+	ProxyID            *int64                     `json:"proxy_id"`
+	ProxyPool          []AccountProxyBindingInput `json:"proxy_pool"`
+	Concurrency        int                        `json:"concurrency"`
+	Priority           int                        `json:"priority"`
+	GroupIDs           []int64                    `json:"group_ids"`
+	ExpiresAt          *time.Time                 `json:"expires_at"`
+	AutoPauseOnExpired *bool                      `json:"auto_pause_on_expired"`
 }
 
 // UpdateAccountRequest 更新账号请求
 type UpdateAccountRequest struct {
-	Name               *string         `json:"name"`
-	Notes              *string         `json:"notes"`
-	Credentials        *map[string]any `json:"credentials"`
-	Extra              *map[string]any `json:"extra"`
-	ProxyID            *int64          `json:"proxy_id"`
-	Concurrency        *int            `json:"concurrency"`
-	Priority           *int            `json:"priority"`
-	Status             *string         `json:"status"`
-	GroupIDs           *[]int64        `json:"group_ids"`
-	ExpiresAt          *time.Time      `json:"expires_at"`
-	AutoPauseOnExpired *bool           `json:"auto_pause_on_expired"`
+	Name               *string                     `json:"name"`
+	Notes              *string                     `json:"notes"`
+	Credentials        *map[string]any             `json:"credentials"`
+	Extra              *map[string]any             `json:"extra"`
+	ProxyID            *int64                      `json:"proxy_id"`
+	ProxyPool          *[]AccountProxyBindingInput `json:"proxy_pool"`
+	Concurrency        *int                        `json:"concurrency"`
+	Priority           *int                        `json:"priority"`
+	Status             *string                     `json:"status"`
+	GroupIDs           *[]int64                    `json:"group_ids"`
+	ExpiresAt          *time.Time                  `json:"expires_at"`
+	AutoPauseOnExpired *bool                       `json:"auto_pause_on_expired"`
 }
 
 // AccountService 账号管理服务
@@ -222,6 +224,16 @@ func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository)
 
 // Create 创建账号
 func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (*Account, error) {
+	if len(req.ProxyPool) > 0 {
+		if err := ValidateAccountProxyPool(req.ProxyPool); err != nil {
+			return nil, err
+		}
+		req.Extra = setAccountProxyPoolExtra(req.Extra, req.ProxyPool)
+		if req.ProxyID == nil {
+			proxyID := req.ProxyPool[0].ProxyID
+			req.ProxyID = &proxyID
+		}
+	}
 	// 验证分组是否存在（如果指定了分组）
 	if len(req.GroupIDs) > 0 {
 		if err := s.validateGroupIDsExist(ctx, req.GroupIDs); err != nil {
@@ -231,17 +243,19 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 
 	// 创建账号
 	account := &Account{
-		Name:        req.Name,
-		Notes:       normalizeAccountNotes(req.Notes),
-		Platform:    req.Platform,
-		Type:        req.Type,
-		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
-		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
-		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency,
-		Priority:    req.Priority,
-		Status:      StatusActive,
-		ExpiresAt:   req.ExpiresAt,
+		Name:                req.Name,
+		Notes:               normalizeAccountNotes(req.Notes),
+		Platform:            req.Platform,
+		Type:                req.Type,
+		Credentials:         SanitizeStoredCredentials(req.Platform, req.Credentials),
+		Extra:               prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
+		ProxyID:             req.ProxyID,
+		ProxyPool:           accountProxyBindingsFromInputs(req.ProxyPool),
+		ProxyPoolConfigured: len(req.ProxyPool) > 0,
+		Concurrency:         req.Concurrency,
+		Priority:            req.Priority,
+		Status:              StatusActive,
+		ExpiresAt:           req.ExpiresAt,
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
@@ -342,6 +356,20 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		account.Extra = prepareCodexFingerprintExtraForUpdate(account, extra)
 	} else {
 		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
+	}
+	if req.ProxyPool != nil {
+		if err := ValidateAccountProxyPool(*req.ProxyPool); err != nil {
+			return nil, err
+		}
+		account.Extra = setAccountProxyPoolExtra(account.Extra, *req.ProxyPool)
+		account.ProxyPool = accountProxyBindingsFromInputs(*req.ProxyPool)
+		account.ProxyPoolConfigured = len(*req.ProxyPool) > 0
+		if len(*req.ProxyPool) == 0 {
+			account.ProxyID = nil
+		} else {
+			proxyID := (*req.ProxyPool)[0].ProxyID
+			account.ProxyID = &proxyID
+		}
 	}
 
 	if req.ProxyID != nil {

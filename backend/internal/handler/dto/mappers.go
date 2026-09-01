@@ -266,6 +266,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		Extra:                   extra,
 		OllamaCloudUsage:        ollamaCloudUsage,
 		ProxyID:                 a.ProxyID,
+		ProxyPool:               accountProxyPoolFromService(a.ProxyPool),
 		ProxyFallbackOriginID:   a.ProxyFallbackOriginID,
 		ProxyFallbackOriginName: a.ProxyFallbackOriginName,
 		Concurrency:             a.Concurrency,
@@ -426,6 +427,21 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
+	return out
+}
+
+func accountProxyPoolFromService(bindings []service.AccountProxyBinding) []AccountProxyBinding {
+	if len(bindings) == 0 {
+		return nil
+	}
+	out := make([]AccountProxyBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		out = append(out, AccountProxyBinding{
+			ProxyID:     binding.ProxyID,
+			Concurrency: binding.Concurrency,
+			Proxy:       ProxyFromService(binding.Proxy),
+		})
+	}
 	return out
 }
 

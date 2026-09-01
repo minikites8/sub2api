@@ -435,7 +435,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				return
 			}
 			accountWaitCounted := false
-			canWait, err := geminiConcurrency.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+			canWait, err := geminiConcurrency.IncrementAccountWaitCount(c.Request.Context(), selection.WaitPlan.AccountID, selection.WaitPlan.MaxWaiting)
 			if err != nil {
 				reqLog.Warn("gemini.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			} else if !canWait {
@@ -451,13 +451,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			}
 			defer func() {
 				if accountWaitCounted {
-					geminiConcurrency.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+					geminiConcurrency.DecrementAccountWaitCount(c.Request.Context(), selection.WaitPlan.AccountID)
 				}
 			}()
 
 			accountReleaseFunc, err = geminiConcurrency.AcquireAccountSlotWithWaitTimeout(
 				c,
-				account.ID,
+				selection.WaitPlan.AccountID,
 				selection.WaitPlan.MaxConcurrency,
 				selection.WaitPlan.Timeout,
 				stream,
@@ -469,7 +469,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				return
 			}
 			if accountWaitCounted {
-				geminiConcurrency.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+				geminiConcurrency.DecrementAccountWaitCount(c.Request.Context(), selection.WaitPlan.AccountID)
 				accountWaitCounted = false
 			}
 		}
@@ -489,6 +489,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			}
 			continue
 		}
+		latest.PreserveSelectedProxyFrom(account)
 		account = latest
 		selection.Account = latest
 		// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已抢槽

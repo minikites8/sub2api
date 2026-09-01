@@ -123,46 +123,48 @@ func NewAccountHandler(
 
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
-	Name                    string         `json:"name" binding:"required"`
-	Notes                   *string        `json:"notes"`
-	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials             map[string]any `json:"credentials" binding:"required"`
-	Extra                   map[string]any `json:"extra"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             int            `json:"concurrency"`
-	Priority                int            `json:"priority"`
-	IsFallback              bool           `json:"is_fallback"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	GroupIDs                []int64        `json:"group_ids"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	Name                    string                             `json:"name" binding:"required"`
+	Notes                   *string                            `json:"notes"`
+	Platform                string                             `json:"platform" binding:"required"`
+	Type                    string                             `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Credentials             map[string]any                     `json:"credentials" binding:"required"`
+	Extra                   map[string]any                     `json:"extra"`
+	ProxyID                 *int64                             `json:"proxy_id"`
+	ProxyPool               []service.AccountProxyBindingInput `json:"proxy_pool"`
+	Concurrency             int                                `json:"concurrency"`
+	Priority                int                                `json:"priority"`
+	IsFallback              bool                               `json:"is_fallback"`
+	RateMultiplier          *float64                           `json:"rate_multiplier"`
+	LoadFactor              *int                               `json:"load_factor"`
+	GroupIDs                []int64                            `json:"group_ids"`
+	ExpiresAt               *int64                             `json:"expires_at"`
+	AutoPauseOnExpired      *bool                              `json:"auto_pause_on_expired"`
+	ProbeEnabled            *bool                              `json:"upstream_billing_probe_enabled"`
+	ConfirmMixedChannelRisk *bool                              `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
-	Name                    string         `json:"name"`
-	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials             map[string]any `json:"credentials"`
-	Extra                   map[string]any `json:"extra"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	IsFallback              *bool          `json:"is_fallback"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	GroupIDs                *[]int64       `json:"group_ids"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
-	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	Name                    string                              `json:"name"`
+	Notes                   *string                             `json:"notes"`
+	Type                    string                              `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Credentials             map[string]any                      `json:"credentials"`
+	Extra                   map[string]any                      `json:"extra"`
+	ProxyID                 *int64                              `json:"proxy_id"`
+	ProxyPool               *[]service.AccountProxyBindingInput `json:"proxy_pool"`
+	Concurrency             *int                                `json:"concurrency"`
+	Priority                *int                                `json:"priority"`
+	IsFallback              *bool                               `json:"is_fallback"`
+	RateMultiplier          *float64                            `json:"rate_multiplier"`
+	LoadFactor              *int                                `json:"load_factor"`
+	Status                  string                              `json:"status" binding:"omitempty,oneof=active inactive error"`
+	GroupIDs                *[]int64                            `json:"group_ids"`
+	ExpiresAt               *int64                              `json:"expires_at"`
+	AutoPauseOnExpired      *bool                               `json:"auto_pause_on_expired"`
+	ProbeEnabled            *bool                               `json:"upstream_billing_probe_enabled"`
+	RateSyncEnabled         *bool                               `json:"upstream_billing_rate_sync_enabled"`
+	ConfirmMixedChannelRisk *bool                               `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
@@ -333,6 +335,7 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		if counts, err := h.concurrencyService.GetAccountConcurrencyBatch(ctx, []int64{account.ID}); err == nil {
 			item.CurrentConcurrency = counts[account.ID]
 		}
+		item.CurrentConcurrency = h.enrichAccountProxyPoolConcurrency(ctx, account, item.Account, item.CurrentConcurrency)
 	}
 
 	if account.IsAnthropicOAuthOrSetupToken() {
@@ -364,6 +367,21 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	h.enrichShadowParents(ctx, []AccountWithConcurrency{item})
 
 	return item
+}
+
+func (h *AccountHandler) enrichAccountProxyPoolConcurrency(ctx context.Context, account *service.Account, out *dto.Account, current int) int {
+	if h == nil || h.concurrencyService == nil || account == nil || out == nil || len(out.ProxyPool) == 0 {
+		return current
+	}
+	total := 0
+	for i := range out.ProxyPool {
+		slotID := service.AccountProxySlotID(account.ID, out.ProxyPool[i].ProxyID)
+		if count, err := h.concurrencyService.GetAccountConcurrency(ctx, slotID); err == nil {
+			out.ProxyPool[i].CurrentConcurrency = count
+			total += count
+		}
+	}
+	return total
 }
 
 // scoreOpenAIAccountSchedulerPool 对池内 OpenAI 账号计算调度分数快照。
@@ -762,6 +780,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 			SchedulerScore:     schedulerScores[acc.ID],
 			SchedulerScores:    schedulerGroupScores[acc.ID],
 		}
+		item.CurrentConcurrency = h.enrichAccountProxyPoolConcurrency(c.Request.Context(), acc, item.Account, item.CurrentConcurrency)
 		if onlineTerminalCounts != nil {
 			if counts, ok := onlineTerminalCounts[acc.ID]; ok {
 				item.OnlineTerminalCount = &counts.Total
@@ -969,6 +988,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			Credentials:           req.Credentials,
 			Extra:                 req.Extra,
 			ProxyID:               req.ProxyID,
+			ProxyPool:             req.ProxyPool,
 			Concurrency:           req.Concurrency,
 			Priority:              req.Priority,
 			IsFallback:            req.IsFallback,
@@ -1097,6 +1117,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
 		ProxyID:               req.ProxyID,
+		ProxyPool:             req.ProxyPool,
 		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
 		Priority:              req.Priority,    // 指针类型，nil 表示未提供
 		IsFallback:            req.IsFallback,
@@ -2149,6 +2170,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				Credentials:           item.Credentials,
 				Extra:                 item.Extra,
 				ProxyID:               item.ProxyID,
+				ProxyPool:             item.ProxyPool,
 				Concurrency:           item.Concurrency,
 				Priority:              item.Priority,
 				IsFallback:            item.IsFallback,

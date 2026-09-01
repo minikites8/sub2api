@@ -1083,7 +1083,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if err != nil {
 			return nil, err
 		}
-		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+		result, err := s.tryAcquireAccountSlot(ctx, account)
 		if err == nil && result != nil && result.Acquired {
 			return s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
 		}
@@ -1145,7 +1145,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
-						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+						result, err := s.tryAcquireAccountSlot(ctx, account)
 						if err == nil && result != nil && result.Acquired {
 							selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
 							if selectErr != nil {
@@ -1310,7 +1310,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 				continue
 			}
-			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, fresh)
 			if err == nil && result != nil && result.Acquired {
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
@@ -1352,7 +1352,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 				continue
 			}
-			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, fresh)
 			if err == nil && result != nil && result.Acquired {
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
@@ -1451,11 +1451,46 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	return accounts, nil
 }
 
-func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
-	if s.concurrencyService == nil {
-		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, target any, legacyMax ...int) (*AcquireResult, error) {
+	account, ok := target.(*Account)
+	if !ok || account == nil {
+		accountID, idOK := target.(int64)
+		if !idOK {
+			return nil, fmt.Errorf("account is nil")
+		}
+		maxConcurrency := 0
+		if len(legacyMax) > 0 {
+			maxConcurrency = legacyMax[0]
+		}
+		if s.concurrencyService == nil {
+			return &AcquireResult{Acquired: true, SlotID: accountID, ReleaseFunc: func() {}}, nil
+		}
+		return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 	}
-	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	if s.concurrencyService == nil {
+		bindings := account.ProxyBindings()
+		if len(bindings) > 0 {
+			account.setSelectedProxy(bindings[0])
+		}
+		return &AcquireResult{Acquired: true, SlotID: account.EffectiveProxySlotID(), ReleaseFunc: func() {}}, nil
+	}
+	bindings := account.ProxyBindings()
+	if len(bindings) == 0 {
+		return s.concurrencyService.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	}
+	for i := range bindings {
+		binding := bindings[i]
+		result, err := s.concurrencyService.AcquireAccountProxySlot(ctx, account.ID, binding.ProxyID, binding.Concurrency)
+		if err != nil {
+			return nil, err
+		}
+		if result != nil && result.Acquired {
+			account.setSelectedProxy(binding)
+			return result, nil
+		}
+	}
+	account.setSelectedProxy(bindings[0])
+	return &AcquireResult{Acquired: false, SlotID: account.EffectiveProxySlotID()}, nil
 }
 
 func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
@@ -1647,10 +1682,26 @@ func (s *OpenAIGatewayService) hydrateSelectedAccount(ctx context.Context, accou
 	if hydrated == nil {
 		return nil, fmt.Errorf("selected openai account %d not found during hydration", account.ID)
 	}
+	if account.ProxyID != nil {
+		selectedID := *account.ProxyID
+		for _, binding := range hydrated.ProxyPool {
+			if binding.ProxyID == selectedID {
+				hydrated.setSelectedProxy(binding)
+				break
+			}
+		}
+	}
 	return hydrated, nil
 }
 
 func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+	if account != nil {
+		account.ensureSelectedProxy()
+		if waitPlan != nil {
+			waitPlan.AccountID = account.EffectiveProxySlotID()
+			waitPlan.MaxConcurrency = account.EffectiveProxyConcurrency()
+		}
+	}
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
 		return nil, err

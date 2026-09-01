@@ -3127,13 +3127,22 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 
 	accountIDs := make([]int64, 0, len(accounts))
 	proxyIDs := make([]int64, 0, len(accounts))
+	proxyIDSet := make(map[int64]struct{}, len(accounts))
 	for _, acc := range accounts {
 		accountIDs = append(accountIDs, acc.ID)
 		if acc.ProxyID != nil {
 			proxyIDs = append(proxyIDs, *acc.ProxyID)
+			proxyIDSet[*acc.ProxyID] = struct{}{}
 		}
 		if acc.ProxyFallbackOriginID != nil {
 			proxyIDs = append(proxyIDs, *acc.ProxyFallbackOriginID)
+			proxyIDSet[*acc.ProxyFallbackOriginID] = struct{}{}
+		}
+		for _, binding := range service.ParseAccountProxyPool(acc.Extra) {
+			if _, exists := proxyIDSet[binding.ProxyID]; !exists {
+				proxyIDs = append(proxyIDs, binding.ProxyID)
+				proxyIDSet[binding.ProxyID] = struct{}{}
+			}
 		}
 	}
 
@@ -3156,6 +3165,17 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 			if proxy, ok := proxyMap[*acc.ProxyID]; ok {
 				out.Proxy = proxy
 			}
+		}
+		for _, binding := range service.ParseAccountProxyPool(acc.Extra) {
+			proxy, exists := proxyMap[binding.ProxyID]
+			if !exists || proxy == nil {
+				continue
+			}
+			binding.Proxy = proxy
+			out.ProxyPool = append(out.ProxyPool, binding)
+		}
+		if _, configured := acc.Extra[service.AccountProxyPoolExtraKey]; configured {
+			out.ProxyPoolConfigured = true
 		}
 		out.ProxyFallbackOriginID = acc.ProxyFallbackOriginID
 		if acc.ProxyFallbackOriginID != nil {

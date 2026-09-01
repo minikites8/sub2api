@@ -62,19 +62,25 @@ type DataProxy struct {
 // 影子的独立调度配置(priority/并发/分组/status 管理员可单独调)亦不在本备份范围,属已知局限
 // (外审第6轮裁决:保持排除 + 前端警告,而非升级格式做完整往返)。
 type DataAccount struct {
-	Name               string         `json:"name"`
-	Notes              *string        `json:"notes,omitempty"`
-	Platform           string         `json:"platform"`
-	Type               string         `json:"type"`
-	Credentials        map[string]any `json:"credentials"`
-	Extra              map[string]any `json:"extra,omitempty"`
-	ProxyKey           *string        `json:"proxy_key,omitempty"`
-	Concurrency        int            `json:"concurrency"`
-	Priority           int            `json:"priority"`
-	IsFallback         bool           `json:"is_fallback"`
-	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
-	ExpiresAt          *int64         `json:"expires_at,omitempty"`
-	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired,omitempty"`
+	Name               string             `json:"name"`
+	Notes              *string            `json:"notes,omitempty"`
+	Platform           string             `json:"platform"`
+	Type               string             `json:"type"`
+	Credentials        map[string]any     `json:"credentials"`
+	Extra              map[string]any     `json:"extra,omitempty"`
+	ProxyKey           *string            `json:"proxy_key,omitempty"`
+	ProxyPool          []DataProxyBinding `json:"proxy_pool,omitempty"`
+	Concurrency        int                `json:"concurrency"`
+	Priority           int                `json:"priority"`
+	IsFallback         bool               `json:"is_fallback"`
+	RateMultiplier     *float64           `json:"rate_multiplier,omitempty"`
+	ExpiresAt          *int64             `json:"expires_at,omitempty"`
+	AutoPauseOnExpired *bool              `json:"auto_pause_on_expired,omitempty"`
+}
+
+type DataProxyBinding struct {
+	ProxyKey    string `json:"proxy_key"`
+	Concurrency int    `json:"concurrency"`
 }
 
 type DataImportRequest struct {
@@ -220,6 +226,12 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			v := acc.ExpiresAt.Unix()
 			expiresAt = &v
 		}
+		proxyPool := make([]DataProxyBinding, 0, len(acc.ProxyPool))
+		for _, binding := range acc.ProxyPool {
+			if key, ok := proxyKeyByID[binding.ProxyID]; ok {
+				proxyPool = append(proxyPool, DataProxyBinding{ProxyKey: key, Concurrency: binding.Concurrency})
+			}
+		}
 		dataAccounts = append(dataAccounts, DataAccount{
 			Name:               acc.Name,
 			Notes:              acc.Notes,
@@ -228,6 +240,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Credentials:        acc.Credentials,
 			Extra:              acc.Extra,
 			ProxyKey:           proxyKey,
+			ProxyPool:          proxyPool,
 			Concurrency:        acc.Concurrency,
 			Priority:           acc.Priority,
 			IsFallback:         acc.IsFallback,
@@ -459,6 +472,27 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 				continue
 			}
 		}
+		proxyPool := make([]service.AccountProxyBindingInput, 0, len(item.ProxyPool))
+		for _, binding := range item.ProxyPool {
+			id, ok := proxyKeyToID[binding.ProxyKey]
+			if !ok {
+				result.AccountFailed++
+				result.Errors = append(result.Errors, DataImportError{
+					Kind: "account", Name: item.Name, ProxyKey: binding.ProxyKey,
+					Message: "proxy_pool proxy_key not found",
+				})
+				proxyPool = nil
+				break
+			}
+			proxyPool = append(proxyPool, service.AccountProxyBindingInput{ProxyID: id, Concurrency: binding.Concurrency})
+		}
+		if item.ProxyPool != nil && proxyPool == nil {
+			continue
+		}
+		if len(proxyPool) > 0 {
+			item.Extra = cloneImportExtra(item.Extra)
+			item.Extra[service.AccountProxyPoolExtraKey] = service.AccountProxyPoolExtra(proxyPool)
+		}
 
 		enrichCredentialsFromIDToken(&item)
 
@@ -480,6 +514,9 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 			}
 			// The selected ye.team import mode controls the proxy for all imported accounts.
 			proxyID = nil
+			proxyPool = nil
+			accountExtra = cloneImportExtra(accountExtra)
+			delete(accountExtra, service.AccountProxyPoolExtraKey)
 		}
 
 		accountInput := &service.CreateAccountInput{
@@ -490,6 +527,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 			Credentials:           item.Credentials,
 			Extra:                 accountExtra,
 			ProxyID:               proxyID,
+			ProxyPool:             proxyPool,
 			Concurrency:           concurrency,
 			Priority:              priority,
 			IsFallback:            item.IsFallback,
