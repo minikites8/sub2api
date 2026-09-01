@@ -1705,6 +1705,26 @@ func getDefaultSeedanceVideoPrice(model, resolution string) (float64, bool) {
 		return priceByResolution(defaultSeedance10ProPrice480P, defaultSeedance10ProPrice720P, defaultSeedance10ProPrice1080P, 0)
 	case "doubao-seedance-1-0-pro-fast-251015":
 		return priceByResolution(defaultSeedance10ProFastPrice480P, defaultSeedance10ProFastPrice720P, defaultSeedance10ProFastPrice1080P, 0)
+	}
+
+	// Custom Seedance IDs use the pricing contract of their version family.
+	// Group/channel pricing still takes precedence in calculateVideoCost.
+	switch seedanceModelGeneration(model) {
+	case "2.x", "modern":
+		if strings.Contains(model, "-fast") {
+			return priceByResolution(defaultSeedance20FastPrice480P, defaultSeedance20FastPrice720P, 0, 0)
+		}
+		if strings.Contains(model, "-mini") {
+			return priceByResolution(defaultSeedance20MiniPrice480P, defaultSeedance20MiniPrice720P, 0, 0)
+		}
+		return priceByResolution(defaultSeedance20VideoPrice480P, defaultSeedance20VideoPrice720P, defaultSeedance20VideoPrice1080P, defaultSeedance20VideoPrice4K)
+	case "1.5":
+		return priceByResolution(defaultSeedance15ProPrice480P, defaultSeedance15ProPrice720P, defaultSeedance15ProPrice1080P, 0)
+	case "1.0":
+		if strings.Contains(model, "-fast") {
+			return priceByResolution(defaultSeedance10ProFastPrice480P, defaultSeedance10ProFastPrice720P, defaultSeedance10ProFastPrice1080P, 0)
+		}
+		return priceByResolution(defaultSeedance10ProPrice480P, defaultSeedance10ProPrice720P, defaultSeedance10ProPrice1080P, 0)
 	default:
 		return 0, false
 	}

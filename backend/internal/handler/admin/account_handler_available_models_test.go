@@ -189,6 +189,39 @@ func TestAccountHandlerGetAvailableModels_BaiduVODUsesVideoRegistry(t *testing.T
 	require.Contains(t, ids, "kling-v3")
 }
 
+func TestAccountHandlerGetAvailableModels_BaiduVODUsesCustomModelMapping(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       51,
+			Name:     "baidu-vod-custom",
+			Platform: service.PlatformBaiduVOD,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"doubao-seedance-2.5": "doubao-seedance-2.5",
+				},
+			},
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/51/models", nil)
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &result))
+	require.Equal(t, []struct {
+		ID string `json:"id"`
+	}{{ID: "doubao-seedance-2.5"}}, result.Data)
+}
+
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),

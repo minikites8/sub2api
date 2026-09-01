@@ -49,6 +49,66 @@ func TestBaiduVODModelsRegistersVideoFamilies(t *testing.T) {
 	}
 }
 
+func TestBaiduVODModelResolvesCustomSeedanceRevisions(t *testing.T) {
+	tests := []struct {
+		model             string
+		generation        string
+		defaultResolution string
+		allowAutoDuration bool
+	}{
+		{model: "doubao-seedance-2.5", generation: "2.x", defaultResolution: "720P", allowAutoDuration: true},
+		{model: "doubao-seedance-2-7-custom", generation: "2.x", defaultResolution: "720P", allowAutoDuration: true},
+		{model: "doubao-seedance-3.0-preview", generation: "modern", defaultResolution: "720P", allowAutoDuration: true},
+		{model: "seedance-1.5-custom", generation: "1.5", defaultResolution: "720P", allowAutoDuration: true},
+		{model: "doubao-seedance-1.0-custom", generation: "1.0", defaultResolution: "1080P", allowAutoDuration: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			spec, ok := BaiduVODModel(tt.model)
+			require.True(t, ok)
+			require.Equal(t, tt.model, spec.Model)
+			require.Equal(t, tt.model, spec.UpstreamModel)
+			require.Equal(t, BaiduVODProviderSeedance, spec.Provider)
+			require.Equal(t, tt.defaultResolution, spec.DefaultResolution)
+			require.Equal(t, tt.allowAutoDuration, spec.AllowAutoDuration)
+			require.Equal(t, tt.generation, seedanceModelGeneration(tt.model))
+		})
+	}
+
+	_, ok := BaiduVODModel("doubao-sora-2.5")
+	require.False(t, ok)
+	_, ok = BaiduVODModel("doubao-seedance-preview")
+	require.False(t, ok)
+}
+
+func TestTranslateBaiduVODCustomSeedance25(t *testing.T) {
+	spec, upstream, err := TranslateBaiduVODVideoRequest(BaiduVODVideoRequest{
+		Model:      "doubao-seedance-2.5",
+		Prompt:     "a paper boat drifts along a quiet stream",
+		Resolution: "1080P",
+		Ratio:      "16:9",
+		Duration:   5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, BaiduVODProviderSeedance, spec.Provider)
+	require.Equal(t, "doubao-seedance-2.5", upstream.Model)
+	require.Equal(t, "1080P", upstream.Resolution)
+	require.Equal(t, 5, upstream.Duration)
+	require.Len(t, upstream.Content, 1)
+
+	imageCount := 0
+	for _, raw := range upstream.Content {
+		var item struct {
+			Type string `json:"type"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &item))
+		if item.Type == "image_url" {
+			imageCount++
+		}
+	}
+	require.Zero(t, imageCount)
+}
+
 func TestTranslateBaiduVODKlingV3TextAndImageRequests(t *testing.T) {
 	t.Run("text to video", func(t *testing.T) {
 		req := BaiduVODVideoRequest{
@@ -960,4 +1020,14 @@ func TestDefaultSeedanceVideoPrice(t *testing.T) {
 	price, ok = getDefaultSeedanceVideoPrice("doubao-seedance-1-5-pro-251215", "1080P")
 	require.True(t, ok)
 	require.Equal(t, 0.778, price)
+}
+
+func TestDefaultSeedanceVideoPriceSupportsCustomRevisions(t *testing.T) {
+	price, ok := getDefaultSeedanceVideoPrice("doubao-seedance-2.5", "720P")
+	require.True(t, ok)
+	require.Equal(t, defaultSeedance20VideoPrice720P, price)
+
+	price, ok = getDefaultSeedanceVideoPrice("doubao-seedance-2.5-fast", "480P")
+	require.True(t, ok)
+	require.Equal(t, defaultSeedance20FastPrice480P, price)
 }

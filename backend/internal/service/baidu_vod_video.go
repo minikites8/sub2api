@@ -110,7 +110,7 @@ func happyHorseModelSpec(model string, capability BaiduVODVideoCapability) Baidu
 
 func seedanceModelSpec(model string, resolutions []string, defaultResolution string, minDuration, maxDuration int, allowAutoDuration bool) BaiduVODModelSpec {
 	defaultRatio := "adaptive"
-	if strings.Contains(model, "seedance-1-0") {
+	if seedanceModelGeneration(model) == "1.0" {
 		defaultRatio = "16:9"
 	}
 	return BaiduVODModelSpec{
@@ -118,6 +118,48 @@ func seedanceModelSpec(model string, resolutions []string, defaultResolution str
 		CreatePath: BaiduVODSeedanceCreatePath, TaskPath: BaiduVODSeedanceTaskPath,
 		Resolutions: resolutions, DefaultResolution: defaultResolution, DefaultRatio: defaultRatio,
 		DefaultDuration: baiduVODDefaultDuration, MinDuration: minDuration, MaxDuration: maxDuration, AllowAutoDuration: allowAutoDuration,
+	}
+}
+
+// seedanceModelGeneration groups model IDs by the request contract exposed by
+// the Seedance API. Version punctuation varies across upstream model IDs.
+func seedanceModelGeneration(model string) string {
+	normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(model)), ".", "-")
+	marker := strings.Index(normalized, "seedance-")
+	if marker < 0 {
+		return ""
+	}
+	version := normalized[marker+len("seedance-"):]
+	switch {
+	case strings.HasPrefix(version, "1-0"):
+		return "1.0"
+	case strings.HasPrefix(version, "1-5"):
+		return "1.5"
+	case strings.HasPrefix(version, "2-"):
+		return "2.x"
+	case len(version) > 0 && version[0] >= '3' && version[0] <= '9' && (len(version) == 1 || version[1] == '-'):
+		return "modern"
+	default:
+		return ""
+	}
+}
+
+// dynamicSeedanceModelSpec keeps custom model IDs usable when an upstream
+// releases a new Seedance revision before the built-in catalog is updated.
+func dynamicSeedanceModelSpec(model string) (BaiduVODModelSpec, bool) {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if !strings.HasPrefix(model, "doubao-seedance-") && !strings.HasPrefix(model, "seedance-") {
+		return BaiduVODModelSpec{}, false
+	}
+	switch seedanceModelGeneration(model) {
+	case "1.0":
+		return seedanceModelSpec(model, []string{"480P", "720P", "1080P"}, "1080P", 2, 12, false), true
+	case "1.5":
+		return seedanceModelSpec(model, []string{"480P", "720P", "1080P"}, "720P", 4, 12, true), true
+	case "2.x", "modern":
+		return seedanceModelSpec(model, []string{"480P", "720P", "1080P", "4K"}, "720P", 4, 15, true), true
+	default:
+		return BaiduVODModelSpec{}, false
 	}
 }
 
@@ -142,6 +184,9 @@ func klingModelSpec(model, createPath, taskPath string, capability BaiduVODVideo
 func BaiduVODModel(model string) (BaiduVODModelSpec, bool) {
 	model = strings.ToLower(strings.TrimSpace(model))
 	if spec, ok := baiduVODModelRegistry[model]; ok {
+		return spec, true
+	}
+	if spec, ok := dynamicSeedanceModelSpec(model); ok {
 		return spec, true
 	}
 	baseModel := model
@@ -713,9 +758,16 @@ func validateSeedanceContent(spec BaiduVODModelSpec, content []json.RawMessage) 
 	if len(content) == counts["audio_url"] {
 		return errors.New("Seedance requires text, image, or video content")
 	}
-	if strings.Contains(spec.Model, "seedance-2-0") {
+	generation := seedanceModelGeneration(spec.Model)
+	if generation == "2.x" || generation == "modern" {
 		if counts["image_url"] > 9 || counts["video_url"] > 3 || counts["audio_url"] > 3 {
-			return errors.New("Seedance 2.0 supports up to 9 images, 3 videos, and 3 audio files")
+			generationLabel := "modern model family"
+			if strings.Contains(strings.ReplaceAll(spec.Model, ".", "-"), "seedance-2-0") {
+				generationLabel = "2.0"
+			} else if generation == "2.x" {
+				generationLabel = "2.x"
+			}
+			return fmt.Errorf("Seedance %s supports up to 9 images, 3 videos, and 3 audio files", generationLabel)
 		}
 		return nil
 	}
@@ -822,8 +874,9 @@ func validateSeedanceParameters(req BaiduVODVideoRequest, spec BaiduVODModelSpec
 	if req.ExpiresAfter != nil && (*req.ExpiresAfter < 3600 || *req.ExpiresAfter > 259200) {
 		return errors.New("Seedance execution_expires_after must be between 3600 and 259200 seconds")
 	}
-	is20 := strings.Contains(spec.Model, "seedance-2-0")
-	is15 := strings.Contains(spec.Model, "seedance-1-5")
+	generation := seedanceModelGeneration(spec.Model)
+	is20 := generation == "2.x" || generation == "modern"
+	is15 := generation == "1.5"
 	if is20 && strings.TrimSpace(req.ServiceTier) != "" && !strings.EqualFold(strings.TrimSpace(req.ServiceTier), "default") {
 		return fmt.Errorf("model %s supports the default service tier", spec.Model)
 	}

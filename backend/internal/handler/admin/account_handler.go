@@ -2703,6 +2703,25 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	}
 
 	if account.Platform == service.PlatformBaiduVOD {
+		if mapping := account.GetModelMapping(); len(mapping) > 0 {
+			requestedModels := make([]string, 0, len(mapping))
+			for requestedModel := range mapping {
+				requestedModels = append(requestedModels, requestedModel)
+			}
+			sort.Strings(requestedModels)
+			models := make([]openai.Model, 0, len(requestedModels))
+			for _, requestedModel := range requestedModels {
+				models = append(models, openai.Model{
+					ID:          requestedModel,
+					Object:      "model",
+					OwnedBy:     service.PlatformBaiduVOD,
+					Type:        "model",
+					DisplayName: requestedModel,
+				})
+			}
+			response.Success(c, models)
+			return
+		}
 		specs := service.BaiduVODModels()
 		models := make([]openai.Model, 0, len(specs))
 		for _, spec := range specs {
