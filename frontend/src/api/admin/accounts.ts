@@ -1020,6 +1020,127 @@ export async function revokeOpenAISession(id: number, sessionId: string): Promis
   return data
 }
 
+export interface OpenAIWorkspaceInfo {
+  account_id: string
+  name: string
+  created_time: string
+  organization_id: string
+  plan_type?: string
+  workspace_type?: string
+  seat_type_counts: Record<string, number>
+  maximum_seats: number
+  fetched_at: number
+}
+
+export async function getOpenAIWorkspaceInfo(id: number): Promise<OpenAIWorkspaceInfo> {
+  const { data } = await apiClient.get<OpenAIWorkspaceInfo>(`/admin/openai/accounts/${id}/workspace-info`)
+  return data
+}
+
+export interface OpenAIWorkspaceInvite {
+  id: string
+  email_address: string
+  role: string
+  status: number
+  seat_type: string
+  created_time: string
+  is_scim_managed: boolean
+  creation_source?: unknown
+}
+
+export interface OpenAIWorkspaceInviteResult {
+  account_invites: OpenAIWorkspaceInvite[]
+  errored_emails: string[]
+}
+
+export interface OpenAIWorkspaceInviteListResult {
+  items: OpenAIWorkspaceInvite[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface OpenAIWorkspaceUser {
+  id: string
+  account_user_id: string
+  email: string
+  verified_email?: unknown
+  role: string
+  seat_type: string
+  credit_limits?: unknown
+  name: string
+  created_time: string
+  is_scim_managed: boolean
+  creation_source?: unknown
+  deactivated_time?: unknown
+  pending_seat_type?: unknown
+  reclaimable_seat_type?: unknown
+}
+
+export interface OpenAIWorkspaceUserListResult {
+  items: OpenAIWorkspaceUser[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export async function inviteOpenAIWorkspaceMembers(
+  id: number,
+  workspaceAccountId: string,
+  emailAddresses: string[],
+  seatType: string = 'default'
+): Promise<OpenAIWorkspaceInviteResult> {
+  const { data } = await apiClient.post<OpenAIWorkspaceInviteResult>(
+    `/admin/openai/accounts/${id}/workspace-invites`,
+    {
+      workspace_account_id: workspaceAccountId,
+      email_addresses: emailAddresses,
+      role: 'standard-user',
+      seat_type: seatType,
+      resend_emails: true
+    }
+  )
+  return data
+}
+
+export async function listOpenAIWorkspaceInvites(
+  id: number,
+  workspaceAccountId: string,
+  options?: { offset?: number; limit?: number; query?: string }
+): Promise<OpenAIWorkspaceInviteListResult> {
+  const { data } = await apiClient.get<OpenAIWorkspaceInviteListResult>(
+    `/admin/openai/accounts/${id}/workspace-invites`,
+    {
+      params: {
+        workspace_account_id: workspaceAccountId,
+        offset: options?.offset ?? 0,
+        limit: options?.limit ?? 25,
+        query: options?.query ?? ''
+      }
+    }
+  )
+  return data
+}
+
+export async function listOpenAIWorkspaceUsers(
+  id: number,
+  workspaceAccountId: string,
+  options?: { offset?: number; limit?: number; query?: string }
+): Promise<OpenAIWorkspaceUserListResult> {
+  const { data } = await apiClient.get<OpenAIWorkspaceUserListResult>(
+    `/admin/openai/accounts/${id}/workspace-users`,
+    {
+      params: {
+        workspace_account_id: workspaceAccountId,
+        offset: options?.offset ?? 0,
+        limit: options?.limit ?? 25,
+        query: options?.query ?? ''
+      }
+    }
+  )
+  return data
+}
+
 export interface SparkShadowCreatePayload {
   name?: string
   priority?: number
@@ -1161,6 +1282,10 @@ export const accountsAPI = {
   resetOpenAIQuota,
   listOpenAISessions,
   revokeOpenAISession,
+  getOpenAIWorkspaceInfo,
+  inviteOpenAIWorkspaceMembers,
+  listOpenAIWorkspaceInvites,
+  listOpenAIWorkspaceUsers,
   createSparkShadow,
   getUpstreamBillingProbeSettings,
   updateUpstreamBillingProbeSettings,

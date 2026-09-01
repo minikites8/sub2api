@@ -112,21 +112,30 @@ type OpenAIExchangeCodeInput struct {
 
 // OpenAITokenInfo represents the token information for OpenAI
 type OpenAITokenInfo struct {
-	AccessToken           string `json:"access_token"`
-	RefreshToken          string `json:"refresh_token"`
-	IDToken               string `json:"id_token,omitempty"`
-	ExpiresIn             int64  `json:"expires_in"`
-	ExpiresAt             int64  `json:"expires_at"`
-	ClientID              string `json:"client_id,omitempty"`
-	AuthMode              string `json:"auth_mode,omitempty"`
-	Email                 string `json:"email,omitempty"`
-	ChatGPTAccountID      string `json:"chatgpt_account_id,omitempty"`
-	ChatGPTUserID         string `json:"chatgpt_user_id,omitempty"`
-	ChatGPTAccountFedRAMP bool   `json:"chatgpt_account_is_fedramp,omitempty"`
-	OrganizationID        string `json:"organization_id,omitempty"`
-	PlanType              string `json:"plan_type,omitempty"`
-	SubscriptionExpiresAt string `json:"subscription_expires_at,omitempty"`
-	PrivacyMode           string `json:"privacy_mode,omitempty"`
+	AccessToken                  string `json:"access_token"`
+	RefreshToken                 string `json:"refresh_token"`
+	IDToken                      string `json:"id_token,omitempty"`
+	ExpiresIn                    int64  `json:"expires_in"`
+	ExpiresAt                    int64  `json:"expires_at"`
+	ClientID                     string `json:"client_id,omitempty"`
+	AuthMode                     string `json:"auth_mode,omitempty"`
+	Email                        string `json:"email,omitempty"`
+	Name                         string `json:"name,omitempty"`
+	CreatedTime                  string `json:"created_time,omitempty"`
+	ChatGPTAccountID             string `json:"chatgpt_account_id,omitempty"`
+	ChatGPTUserID                string `json:"chatgpt_user_id,omitempty"`
+	ChatGPTAccountFedRAMP        bool   `json:"chatgpt_account_is_fedramp,omitempty"`
+	OrganizationID               string `json:"organization_id,omitempty"`
+	TeamName                     string `json:"team_name,omitempty"`
+	TeamCreatedTime              string `json:"team_created_time,omitempty"`
+	TeamOrganizationID           string `json:"team_organization_id,omitempty"`
+	TeamAccountID                string `json:"team_account_id,omitempty"`
+	TeamPlanType                 string `json:"team_plan_type,omitempty"`
+	TeamWorkspaceType            string `json:"team_workspace_type,omitempty"`
+	TeamSelfServeBusinessProlite bool   `json:"team_self_serve_business_prolite,omitempty"`
+	PlanType                     string `json:"plan_type,omitempty"`
+	SubscriptionExpiresAt        string `json:"subscription_expires_at,omitempty"`
+	PrivacyMode                  string `json:"privacy_mode,omitempty"`
 }
 
 // ExchangeCode exchanges authorization code for tokens
@@ -287,7 +296,8 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 		// 默认 Personal workspace 与 chatgpt_account_id 可以是两个不同的标识，
 		// 混用会显示成「个人 Pro + workspace 到期时间」。
 		if info.SubscriptionExpiresAt != "" {
-			if appliedAccountInfoPlanType || chatGPTAccountInfoBelongsToTokenAccount(tokenInfo, info) {
+			if appliedAccountInfoPlanType || chatGPTAccountInfoBelongsToTokenAccount(tokenInfo, info) ||
+				chatGPTTeamAccountInfoMatchesToken(tokenInfo, info, orgID) {
 				tokenInfo.SubscriptionExpiresAt = info.SubscriptionExpiresAt
 			} else {
 				forcePersonalSubscriptionLookup = true
@@ -295,6 +305,20 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 		}
 		if tokenInfo.Email == "" && info.Email != "" {
 			tokenInfo.Email = info.Email
+		}
+		if info.IsTeamWorkspace {
+			tokenInfo.Name = info.WorkspaceName
+			tokenInfo.CreatedTime = info.WorkspaceCreatedTime
+			tokenInfo.TeamName = info.WorkspaceName
+			tokenInfo.TeamCreatedTime = info.WorkspaceCreatedTime
+			tokenInfo.TeamOrganizationID = info.WorkspaceOrganizationID
+			tokenInfo.TeamAccountID = info.AccountID
+			tokenInfo.TeamPlanType = info.PlanType
+			tokenInfo.TeamWorkspaceType = info.WorkspaceType
+			tokenInfo.TeamSelfServeBusinessProlite = info.HasSelfServeBusinessProlite
+			if info.WorkspaceOrganizationID != "" {
+				tokenInfo.OrganizationID = info.WorkspaceOrganizationID
+			}
 		}
 	}
 	if forcePersonalSubscriptionLookup || strings.TrimSpace(tokenInfo.SubscriptionExpiresAt) == "" {
@@ -305,6 +329,216 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 
 	// 尝试设置隐私（关闭训练数据共享），best-effort
 	tokenInfo.PrivacyMode = disableOpenAITraining(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL)
+}
+
+func (s *OpenAIOAuthService) GetWorkspaceInfo(ctx context.Context, account *Account) (*OpenAIWorkspaceInfo, error) {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_INVALID_ACCOUNT", "account is not an OpenAI OAuth account")
+	}
+	accessToken := strings.TrimSpace(account.GetCredential("access_token"))
+	if accessToken == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_ACCESS_TOKEN_REQUIRED", "access token is required")
+	}
+	if s.privacyClientFactory == nil {
+		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_WORKSPACE_CLIENT_UNAVAILABLE", "OpenAI workspace client is not configured")
+	}
+
+	var proxyURL string
+	if account.ProxyID != nil && s.proxyRepo != nil {
+		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+		if err == nil && proxy != nil {
+			proxyURL = proxy.URL()
+		}
+	}
+
+	workspace := &OpenAIWorkspaceInfo{
+		AccountID:      strings.TrimSpace(account.GetCredential("team_account_id")),
+		Name:           strings.TrimSpace(account.GetCredential("team_name")),
+		CreatedTime:    strings.TrimSpace(account.GetCredential("team_created_time")),
+		OrganizationID: strings.TrimSpace(account.GetCredential("team_organization_id")),
+		PlanType:       strings.TrimSpace(account.GetCredential("team_plan_type")),
+		WorkspaceType:  strings.TrimSpace(account.GetCredential("team_workspace_type")),
+	}
+	// Older Team imports stored the accounts/check fields under their original
+	// names. Keep those imports immediately displayable while the fresh lookup
+	// fills the normalized team_* keys.
+	if workspace.Name == "" {
+		workspace.Name = strings.TrimSpace(account.GetCredential("name"))
+	}
+	if workspace.CreatedTime == "" {
+		workspace.CreatedTime = strings.TrimSpace(account.GetCredential("created_time"))
+	}
+	if workspace.AccountID == "" {
+		workspace.AccountID = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
+	}
+	if workspace.OrganizationID == "" {
+		workspace.OrganizationID = strings.TrimSpace(account.GetCredential("organization_id"))
+	}
+	if workspace.PlanType == "" {
+		workspace.PlanType = strings.TrimSpace(account.GetCredential("plan_type"))
+	}
+
+	needsAccountLookup := strings.TrimSpace(account.GetCredential("team_account_id")) == "" ||
+		strings.TrimSpace(account.GetCredential("team_name")) == "" ||
+		strings.TrimSpace(account.GetCredential("team_created_time")) == "" ||
+		strings.TrimSpace(account.GetCredential("team_organization_id")) == "" ||
+		strings.TrimSpace(account.GetCredential("team_plan_type")) == ""
+	if needsAccountLookup {
+		hint := workspace.AccountID
+		if hint == "" {
+			hint = workspace.OrganizationID
+		}
+		if hint == "" {
+			hint = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
+		}
+		if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, accessToken, proxyURL, hint); info != nil && info.IsTeamWorkspace {
+			workspace.AccountID = info.AccountID
+			workspace.Name = info.WorkspaceName
+			workspace.CreatedTime = info.WorkspaceCreatedTime
+			workspace.OrganizationID = info.WorkspaceOrganizationID
+			workspace.PlanType = info.PlanType
+			workspace.WorkspaceType = info.WorkspaceType
+		}
+	}
+	if !isChatGPTTeamPlanType(workspace.PlanType) && workspace.Name == "" && workspace.OrganizationID == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_TEAM_REQUIRED", "account is not a Team workspace account")
+	}
+
+	seatInfo, err := fetchChatGPTSeatTypeCounts(ctx, s.privacyClientFactory, accessToken, proxyURL, workspace.AccountID)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_WORKSPACE_SEAT_COUNTS_FAILED", "%v", err)
+	}
+	seatInfo.Name = workspace.Name
+	seatInfo.CreatedTime = workspace.CreatedTime
+	seatInfo.OrganizationID = workspace.OrganizationID
+	seatInfo.PlanType = workspace.PlanType
+	seatInfo.WorkspaceType = workspace.WorkspaceType
+	return seatInfo, nil
+}
+
+func (s *OpenAIOAuthService) InviteWorkspaceMembers(ctx context.Context, account *Account, workspaceAccountID string, emailAddresses []string, role, seatType string, resendEmails bool) (*OpenAIWorkspaceInviteResult, error) {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_INVALID_ACCOUNT", "account is not an OpenAI OAuth account")
+	}
+	accessToken := strings.TrimSpace(account.GetCredential("access_token"))
+	if accessToken == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_ACCESS_TOKEN_REQUIRED", "access token is required")
+	}
+	role = strings.TrimSpace(role)
+	if role == "" {
+		role = "standard-user"
+	}
+	if role != "standard-user" {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_ROLE_INVALID", "only standard-user invitations are supported")
+	}
+	seatType = strings.TrimSpace(strings.ToLower(seatType))
+	if seatType == "" {
+		seatType = "default"
+	}
+	switch seatType {
+	case "default", "usage_based", "automation", "prolite":
+	default:
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_SEAT_TYPE_INVALID", "unsupported workspace seat type")
+	}
+	normalizedEmails := make([]string, 0, len(emailAddresses))
+	seen := make(map[string]struct{}, len(emailAddresses))
+	for _, email := range emailAddresses {
+		email = strings.TrimSpace(email)
+		if email == "" {
+			continue
+		}
+		key := strings.ToLower(email)
+		if !strings.Contains(email, "@") || strings.HasPrefix(email, "@") || strings.HasSuffix(email, "@") {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_WORKSPACE_EMAIL_INVALID", "invalid email address: %s", email)
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalizedEmails = append(normalizedEmails, email)
+	}
+	if len(normalizedEmails) == 0 {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_EMAIL_REQUIRED", "at least one email address is required")
+	}
+
+	var proxyURL string
+	if account.ProxyID != nil && s.proxyRepo != nil {
+		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+		if err == nil && proxy != nil {
+			proxyURL = proxy.URL()
+		}
+	}
+	result, err := fetchChatGPTWorkspaceInvites(ctx, s.privacyClientFactory, accessToken, proxyURL, workspaceAccountID, normalizedEmails, role, seatType, resendEmails)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_WORKSPACE_INVITE_FAILED", "%v", err)
+	}
+	return result, nil
+}
+
+func (s *OpenAIOAuthService) ListWorkspaceInvites(ctx context.Context, account *Account, workspaceAccountID string, offset, limit int, query string) (*OpenAIWorkspaceInviteListResult, error) {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_INVALID_ACCOUNT", "account is not an OpenAI OAuth account")
+	}
+	accessToken := strings.TrimSpace(account.GetCredential("access_token"))
+	if accessToken == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_ACCESS_TOKEN_REQUIRED", "access token is required")
+	}
+	if offset < 0 {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_INVITE_OFFSET_INVALID", "offset must be non-negative")
+	}
+	if limit <= 0 || limit > 100 {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_INVITE_LIMIT_INVALID", "limit must be between 1 and 100")
+	}
+	query = strings.TrimSpace(query)
+	if len(query) > 100 {
+		query = query[:100]
+	}
+
+	var proxyURL string
+	if account.ProxyID != nil && s.proxyRepo != nil {
+		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+		if err == nil && proxy != nil {
+			proxyURL = proxy.URL()
+		}
+	}
+	result, err := fetchChatGPTWorkspaceInviteList(ctx, s.privacyClientFactory, accessToken, proxyURL, workspaceAccountID, offset, limit, query)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_WORKSPACE_INVITE_LIST_FAILED", "%v", err)
+	}
+	return result, nil
+}
+
+func (s *OpenAIOAuthService) ListWorkspaceUsers(ctx context.Context, account *Account, workspaceAccountID string, offset, limit int, query string) (*OpenAIWorkspaceUserListResult, error) {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_INVALID_ACCOUNT", "account is not an OpenAI OAuth account")
+	}
+	accessToken := strings.TrimSpace(account.GetCredential("access_token"))
+	if accessToken == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_ACCESS_TOKEN_REQUIRED", "access token is required")
+	}
+	if offset < 0 {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_USER_OFFSET_INVALID", "offset must be non-negative")
+	}
+	if limit <= 0 || limit > 100 {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_WORKSPACE_USER_LIMIT_INVALID", "limit must be between 1 and 100")
+	}
+	query = strings.TrimSpace(query)
+	if len(query) > 100 {
+		query = query[:100]
+	}
+
+	var proxyURL string
+	if account.ProxyID != nil && s.proxyRepo != nil {
+		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+		if err == nil && proxy != nil {
+			proxyURL = proxy.URL()
+		}
+	}
+	result, err := fetchChatGPTWorkspaceUserList(ctx, s.privacyClientFactory, accessToken, proxyURL, workspaceAccountID, offset, limit, query)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_WORKSPACE_USER_LIST_FAILED", "%v", err)
+	}
+	return result, nil
 }
 
 func shouldApplyChatGPTAccountInfoPlanType(current, candidate string) bool {
@@ -320,6 +554,25 @@ func chatGPTAccountInfoBelongsToTokenAccount(tokenInfo *OpenAITokenInfo, info *C
 		return true
 	}
 	return strings.EqualFold(personalID, sourceID)
+}
+
+func chatGPTTeamAccountInfoMatchesToken(tokenInfo *OpenAITokenInfo, info *ChatGPTAccountInfo, orgID string) bool {
+	if tokenInfo == nil || info == nil || !info.IsTeamWorkspace {
+		return false
+	}
+	if isChatGPTTeamPlanType(tokenInfo.PlanType) {
+		return true
+	}
+	for _, candidate := range []string{orgID, tokenInfo.ChatGPTAccountID, tokenInfo.OrganizationID} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if strings.EqualFold(candidate, info.AccountID) || strings.EqualFold(candidate, info.WorkspaceOrganizationID) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveChatGPTSubscriptionAccountID(tokenInfo *OpenAITokenInfo, orgID string) string {
@@ -364,16 +617,25 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 	if refreshToken == "" {
 		if accessToken != "" {
 			tokenInfo := &OpenAITokenInfo{
-				AccessToken:           accessToken,
-				RefreshToken:          "",
-				IDToken:               account.GetCredential("id_token"),
-				ClientID:              account.GetCredential("client_id"),
-				Email:                 account.GetCredential("email"),
-				ChatGPTAccountID:      account.GetCredential("chatgpt_account_id"),
-				ChatGPTUserID:         account.GetCredential("chatgpt_user_id"),
-				OrganizationID:        account.GetCredential("organization_id"),
-				PlanType:              account.GetCredential("plan_type"),
-				SubscriptionExpiresAt: account.GetCredential("subscription_expires_at"),
+				AccessToken:                  accessToken,
+				RefreshToken:                 "",
+				IDToken:                      account.GetCredential("id_token"),
+				ClientID:                     account.GetCredential("client_id"),
+				Email:                        account.GetCredential("email"),
+				Name:                         account.GetCredential("name"),
+				CreatedTime:                  account.GetCredential("created_time"),
+				ChatGPTAccountID:             account.GetCredential("chatgpt_account_id"),
+				ChatGPTUserID:                account.GetCredential("chatgpt_user_id"),
+				OrganizationID:               account.GetCredential("organization_id"),
+				TeamName:                     account.GetCredential("team_name"),
+				TeamCreatedTime:              account.GetCredential("team_created_time"),
+				TeamOrganizationID:           account.GetCredential("team_organization_id"),
+				TeamAccountID:                account.GetCredential("team_account_id"),
+				TeamPlanType:                 account.GetCredential("team_plan_type"),
+				TeamWorkspaceType:            account.GetCredential("team_workspace_type"),
+				TeamSelfServeBusinessProlite: strings.EqualFold(account.GetCredential("team_self_serve_business_prolite"), "true"),
+				PlanType:                     account.GetCredential("plan_type"),
+				SubscriptionExpiresAt:        account.GetCredential("subscription_expires_at"),
 			}
 			if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
 				tokenInfo.ExpiresAt = expiresAt.Unix()
@@ -408,6 +670,12 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 	if tokenInfo.Email != "" {
 		creds["email"] = tokenInfo.Email
 	}
+	if tokenInfo.Name != "" {
+		creds["name"] = tokenInfo.Name
+	}
+	if tokenInfo.CreatedTime != "" {
+		creds["created_time"] = tokenInfo.CreatedTime
+	}
 	if tokenInfo.ChatGPTAccountID != "" {
 		creds["chatgpt_account_id"] = tokenInfo.ChatGPTAccountID
 	}
@@ -416,6 +684,27 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 	}
 	if tokenInfo.OrganizationID != "" {
 		creds["organization_id"] = tokenInfo.OrganizationID
+	}
+	if tokenInfo.TeamName != "" {
+		creds["team_name"] = tokenInfo.TeamName
+	}
+	if tokenInfo.TeamCreatedTime != "" {
+		creds["team_created_time"] = tokenInfo.TeamCreatedTime
+	}
+	if tokenInfo.TeamOrganizationID != "" {
+		creds["team_organization_id"] = tokenInfo.TeamOrganizationID
+	}
+	if tokenInfo.TeamAccountID != "" {
+		creds["team_account_id"] = tokenInfo.TeamAccountID
+	}
+	if tokenInfo.TeamPlanType != "" {
+		creds["team_plan_type"] = tokenInfo.TeamPlanType
+	}
+	if tokenInfo.TeamWorkspaceType != "" {
+		creds["team_workspace_type"] = tokenInfo.TeamWorkspaceType
+	}
+	if tokenInfo.TeamName != "" || tokenInfo.TeamCreatedTime != "" || tokenInfo.TeamOrganizationID != "" || tokenInfo.TeamAccountID != "" {
+		creds["team_self_serve_business_prolite"] = tokenInfo.TeamSelfServeBusinessProlite
 	}
 	if tokenInfo.PlanType != "" {
 		creds["plan_type"] = tokenInfo.PlanType

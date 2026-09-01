@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/imroc/req/v3"
 )
 
@@ -93,14 +96,42 @@ type ChatGPTAccountInfo struct {
 	// AccountID 是本条信息所属账号的标识（优先取 account.account_id，否则取 accounts
 	// 的 map key）。accounts/check 是多账号/工作区端点，调用方需要据此判断拿到的
 	// plan_type / expires_at 到底属于个人账号还是某个 workspace。
-	AccountID             string
-	SubscriptionExpiresAt string // entitlement.expires_at (RFC3339)
+	AccountID                   string
+	SubscriptionExpiresAt       string // entitlement.expires_at (RFC3339)
+	WorkspaceName               string
+	WorkspaceCreatedTime        string
+	WorkspaceOrganizationID     string
+	WorkspaceType               string
+	IsTeamWorkspace             bool
+	HasSelfServeBusinessProlite bool
 }
 
 var (
-	chatGPTAccountsCheckURL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
-	chatGPTSubscriptionsURL = "https://chatgpt.com/backend-api/subscriptions"
+	chatGPTAccountsCheckURL    = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
+	chatGPTSubscriptionsURL    = "https://chatgpt.com/backend-api/subscriptions"
+	chatGPTSeatTypeCountsURL   = "https://chatgpt.com/backend-api/accounts/%s/users/seat_type_counts"
+	chatGPTWorkspaceInvitesURL = "https://chatgpt.com/backend-api/accounts/%s/invites"
+	chatGPTWorkspaceUsersURL   = "https://chatgpt.com/backend-api/accounts/%s/users"
 )
+
+const chatGPTAccountsCheckTimezoneOffsetMin = "-540"
+
+func setChatGPTBackendRequestHeaders(request *req.Request, accessToken, accountID, targetPath string) {
+	request.
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetHeader("Origin", "https://chatgpt.com").
+		SetHeader("Referer", "https://chatgpt.com/").
+		SetHeader("Accept", "application/json").
+		SetHeader("sec-fetch-mode", "cors").
+		SetHeader("sec-fetch-site", "same-origin").
+		SetHeader("sec-fetch-dest", "empty")
+	if accountID = strings.TrimSpace(accountID); accountID != "" {
+		request.SetHeader("chatgpt-account-id", accountID)
+	}
+	if targetPath = strings.TrimSpace(targetPath); targetPath != "" {
+		request.SetHeader("x-openai-target-path", targetPath)
+	}
+}
 
 // fetchChatGPTAccountInfo calls ChatGPT backend-api to get account info (plan_type, etc.).
 // Used as fallback when id_token doesn't contain these fields (e.g., Mobile RT).
@@ -121,12 +152,10 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 	}
 
 	var result map[string]any
-	resp, err := client.R().
-		SetContext(ctx).
-		SetHeader("Authorization", "Bearer "+accessToken).
-		SetHeader("Origin", "https://chatgpt.com").
-		SetHeader("Referer", "https://chatgpt.com/").
-		SetHeader("Accept", "application/json").
+	request := client.R().SetContext(ctx)
+	setChatGPTBackendRequestHeaders(request, accessToken, orgID, "/backend-api/accounts/check/v4-2023-04-27")
+	resp, err := request.
+		SetQueryParam("timezone_offset_min", chatGPTAccountsCheckTimezoneOffsetMin).
 		SetSuccessResult(&result).
 		Get(chatGPTAccountsCheckURL)
 
@@ -149,22 +178,18 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 	}
 
 	// 优先匹配 orgID 对应的账号（access_token JWT 中的 poid）
-	if orgID != "" {
-		if acctRaw, ok := accounts[orgID]; ok {
-			if acct, ok := acctRaw.(map[string]any); ok {
-				if isUsableChatGPTAccountCandidate(acct, time.Now()) {
-					fillAccountInfo(info, acct, orgID)
-				}
-			}
-		}
+	if acct, key, ok := findChatGPTAccount(accounts, orgID); ok && isUsableChatGPTAccountCandidate(acct, time.Now()) {
+		fillAccountInfo(info, acct, key)
 	}
 
 	// 未匹配到时，遍历所有账号：优先 is_default，次选非 free
 	if info.PlanType == "" {
 		type candidate struct {
-			planType  string
-			expiresAt string
-			accountID string
+			account    map[string]any
+			accountKey string
+			planType   string
+			expiresAt  string
+			accountID  string
 		}
 		var defaultC, paidC, anyC candidate
 		for key, acctRaw := range accounts {
@@ -182,25 +207,29 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 			ea := extractEntitlementExpiresAt(acct)
 			id := chatGPTAccountObjectID(acct, key)
 			if anyC.planType == "" {
-				anyC = candidate{planType, ea, id}
+				anyC = candidate{account: acct, accountKey: key, planType: planType, expiresAt: ea, accountID: id}
 			}
 			if account, ok := acct["account"].(map[string]any); ok {
 				if isDefault, _ := account["is_default"].(bool); isDefault {
-					defaultC = candidate{planType, ea, id}
+					defaultC = candidate{account: acct, accountKey: key, planType: planType, expiresAt: ea, accountID: id}
 				}
 			}
 			if !strings.EqualFold(planType, "free") && paidC.planType == "" {
-				paidC = candidate{planType, ea, id}
+				paidC = candidate{account: acct, accountKey: key, planType: planType, expiresAt: ea, accountID: id}
 			}
 		}
 		// 优先级：default > 非 free > 任意
+		var selected candidate
 		switch {
 		case defaultC.planType != "":
-			info.PlanType, info.SubscriptionExpiresAt, info.AccountID = defaultC.planType, defaultC.expiresAt, defaultC.accountID
+			selected = defaultC
 		case paidC.planType != "":
-			info.PlanType, info.SubscriptionExpiresAt, info.AccountID = paidC.planType, paidC.expiresAt, paidC.accountID
+			selected = paidC
 		default:
-			info.PlanType, info.SubscriptionExpiresAt, info.AccountID = anyC.planType, anyC.expiresAt, anyC.accountID
+			selected = anyC
+		}
+		if selected.account != nil {
+			fillAccountInfo(info, selected.account, selected.accountKey)
 		}
 	}
 
@@ -211,6 +240,39 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 
 	slog.Info("chatgpt_account_check_success", "plan_type", info.PlanType, "subscription_expires_at", info.SubscriptionExpiresAt, "org_id", orgID)
 	return info
+}
+
+func findChatGPTAccount(accounts map[string]any, hint string) (map[string]any, string, bool) {
+	hint = strings.TrimSpace(hint)
+	if hint == "" {
+		return nil, "", false
+	}
+	if raw, ok := accounts[hint]; ok {
+		if acct, ok := raw.(map[string]any); ok {
+			return acct, hint, true
+		}
+	}
+	for key, raw := range accounts {
+		acct, ok := raw.(map[string]any)
+		if ok && chatGPTAccountMatchesHint(acct, hint) {
+			return acct, key, true
+		}
+	}
+	return nil, "", false
+}
+
+func chatGPTAccountMatchesHint(acct map[string]any, hint string) bool {
+	account, ok := acct["account"].(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"account_id", "organization_id"} {
+		value, _ := account[key].(string)
+		if strings.EqualFold(strings.TrimSpace(value), hint) {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchChatGPTSubscriptionExpiresAt reads the lightweight subscription endpoint used by
@@ -275,6 +337,294 @@ func fillAccountInfo(info *ChatGPTAccountInfo, acct map[string]any, fallbackID s
 	info.PlanType = extractPlanType(acct)
 	info.SubscriptionExpiresAt = extractEntitlementExpiresAt(acct)
 	info.AccountID = chatGPTAccountObjectID(acct, fallbackID)
+	if !isChatGPTTeamWorkspaceAccount(acct) {
+		return
+	}
+
+	account, ok := acct["account"].(map[string]any)
+	if !ok {
+		return
+	}
+	info.IsTeamWorkspace = true
+	info.WorkspaceName = chatGPTAccountString(account, "name")
+	info.WorkspaceCreatedTime = chatGPTAccountString(account, "created_time")
+	info.WorkspaceOrganizationID = chatGPTAccountString(account, "organization_id")
+	info.WorkspaceType = chatGPTAccountString(account, "workspace_type")
+	info.HasSelfServeBusinessProlite = isChatGPTTeamPlanType(info.PlanType) &&
+		strings.EqualFold(strings.TrimSpace(info.PlanType), "self_serve_business_prolite")
+	info.HasSelfServeBusinessProlite = info.HasSelfServeBusinessProlite ||
+		chatGPTAccountHasFeature(acct, "self_serve_business_prolite")
+}
+
+func isChatGPTTeamWorkspaceAccount(acct map[string]any) bool {
+	account, ok := acct["account"].(map[string]any)
+	if !ok {
+		return false
+	}
+	planType := strings.ToLower(strings.TrimSpace(extractPlanType(acct)))
+	if isChatGPTTeamPlanType(planType) {
+		return true
+	}
+	if strings.EqualFold(chatGPTAccountString(account, "structure"), "workspace") {
+		return true
+	}
+	return chatGPTAccountHasFeature(acct, "self_serve_business_prolite") &&
+		strings.TrimSpace(chatGPTAccountString(account, "organization_id")) != "" &&
+		!strings.EqualFold(chatGPTAccountString(account, "structure"), "personal")
+}
+
+func chatGPTAccountHasFeature(acct map[string]any, wanted string) bool {
+	switch features := acct["features"].(type) {
+	case []any:
+		for _, raw := range features {
+			feature, _ := raw.(string)
+			if strings.EqualFold(strings.TrimSpace(feature), wanted) {
+				return true
+			}
+		}
+	case []string:
+		for _, feature := range features {
+			if strings.EqualFold(strings.TrimSpace(feature), wanted) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func chatGPTAccountString(account map[string]any, key string) string {
+	value, _ := account[key].(string)
+	return strings.TrimSpace(value)
+}
+
+type OpenAIWorkspaceInfo struct {
+	AccountID      string         `json:"account_id"`
+	Name           string         `json:"name"`
+	CreatedTime    string         `json:"created_time"`
+	OrganizationID string         `json:"organization_id"`
+	PlanType       string         `json:"plan_type"`
+	WorkspaceType  string         `json:"workspace_type,omitempty"`
+	SeatTypeCounts map[string]int `json:"seat_type_counts"`
+	MaximumSeats   int            `json:"maximum_seats"`
+	FetchedAt      int64          `json:"fetched_at"`
+}
+
+type OpenAIWorkspaceInvite struct {
+	ID             string `json:"id"`
+	EmailAddress   string `json:"email_address"`
+	Role           string `json:"role"`
+	Status         int    `json:"status"`
+	SeatType       string `json:"seat_type"`
+	CreatedTime    string `json:"created_time"`
+	IsSCIMManaged  bool   `json:"is_scim_managed"`
+	CreationSource any    `json:"creation_source"`
+}
+
+type OpenAIWorkspaceInviteResult struct {
+	AccountInvites []OpenAIWorkspaceInvite `json:"account_invites"`
+	ErroredEmails  []string                `json:"errored_emails"`
+}
+
+type OpenAIWorkspaceInviteListResult struct {
+	Items  []OpenAIWorkspaceInvite `json:"items"`
+	Total  int                     `json:"total"`
+	Limit  int                     `json:"limit"`
+	Offset int                     `json:"offset"`
+}
+
+type OpenAIWorkspaceUser struct {
+	ID                  string `json:"id"`
+	AccountUserID       string `json:"account_user_id"`
+	Email               string `json:"email"`
+	VerifiedEmail       any    `json:"verified_email"`
+	Role                string `json:"role"`
+	SeatType            string `json:"seat_type"`
+	CreditLimits        any    `json:"credit_limits"`
+	Name                string `json:"name"`
+	CreatedTime         string `json:"created_time"`
+	IsSCIMManaged       bool   `json:"is_scim_managed"`
+	CreationSource      any    `json:"creation_source"`
+	DeactivatedTime     any    `json:"deactivated_time"`
+	PendingSeatType     any    `json:"pending_seat_type"`
+	ReclaimableSeatType any    `json:"reclaimable_seat_type"`
+}
+
+type OpenAIWorkspaceUserListResult struct {
+	Items  []OpenAIWorkspaceUser `json:"items"`
+	Total  int                   `json:"total"`
+	Limit  int                   `json:"limit"`
+	Offset int                   `json:"offset"`
+}
+
+func fetchChatGPTSeatTypeCounts(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, accountID string) (*OpenAIWorkspaceInfo, error) {
+	accountID = strings.TrimSpace(accountID)
+	if accessToken == "" {
+		return nil, fmt.Errorf("access token is required")
+	}
+	if accountID == "" {
+		return nil, fmt.Errorf("workspace account id is required")
+	}
+	if clientFactory == nil {
+		return nil, fmt.Errorf("openai workspace client is not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	client, err := clientFactory(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("create workspace client: %w", err)
+	}
+
+	var result struct {
+		SeatTypeCounts map[string]int `json:"seat_type_counts"`
+		MaximumSeats   int            `json:"maximum_seats"`
+	}
+	request := client.R().SetContext(ctx)
+	setChatGPTBackendRequestHeaders(request, accessToken, accountID, "/backend-api/accounts/"+accountID+"/users/seat_type_counts")
+	resp, err := request.
+		SetSuccessResult(&result).
+		Get(fmt.Sprintf(chatGPTSeatTypeCountsURL, url.PathEscape(accountID)))
+	if err != nil {
+		return nil, fmt.Errorf("request workspace seat counts: %w", err)
+	}
+	if !resp.IsSuccessState() {
+		return nil, fmt.Errorf("workspace seat counts request failed with status %d: %s", resp.StatusCode, truncate(resp.String(), 200))
+	}
+	if result.SeatTypeCounts == nil {
+		return nil, fmt.Errorf("workspace seat counts response is missing seat_type_counts")
+	}
+
+	return &OpenAIWorkspaceInfo{
+		AccountID:      accountID,
+		SeatTypeCounts: result.SeatTypeCounts,
+		MaximumSeats:   result.MaximumSeats,
+		FetchedAt:      time.Now().Unix(),
+	}, nil
+}
+
+func fetchChatGPTWorkspaceInvites(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, accountID string, emailAddresses []string, role, seatType string, resendEmails bool) (*OpenAIWorkspaceInviteResult, error) {
+	accountID = strings.TrimSpace(accountID)
+	if accessToken == "" {
+		return nil, fmt.Errorf("access token is required")
+	}
+	if accountID == "" {
+		return nil, fmt.Errorf("workspace account id is required")
+	}
+	if len(emailAddresses) == 0 {
+		return nil, fmt.Errorf("at least one email address is required")
+	}
+	if clientFactory == nil {
+		return nil, fmt.Errorf("openai workspace client is not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client, err := clientFactory(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("create workspace client: %w", err)
+	}
+	payload := struct {
+		EmailAddresses []string `json:"email_addresses"`
+		FlowID         string   `json:"flow_id"`
+		Role           string   `json:"role"`
+		SeatType       string   `json:"seat_type"`
+		ResendEmails   bool     `json:"resend_emails"`
+		SubmissionID   string   `json:"submission_id"`
+	}{
+		EmailAddresses: emailAddresses,
+		FlowID:         uuid.NewString(),
+		Role:           role,
+		SeatType:       seatType,
+		ResendEmails:   resendEmails,
+		SubmissionID:   uuid.NewString(),
+	}
+	var result OpenAIWorkspaceInviteResult
+	request := client.R().SetContext(ctx)
+	setChatGPTBackendRequestHeaders(request, accessToken, accountID, "/backend-api/accounts/"+accountID+"/invites")
+	resp, err := request.
+		SetBody(payload).
+		SetSuccessResult(&result).
+		Post(fmt.Sprintf(chatGPTWorkspaceInvitesURL, url.PathEscape(accountID)))
+	if err != nil {
+		return nil, fmt.Errorf("request workspace invites: %w", err)
+	}
+	if !resp.IsSuccessState() {
+		return nil, fmt.Errorf("workspace invite request failed with status %d: %s", resp.StatusCode, truncate(resp.String(), 300))
+	}
+	return &result, nil
+}
+
+func fetchChatGPTWorkspaceInviteList(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, accountID string, offset, limit int, query string) (*OpenAIWorkspaceInviteListResult, error) {
+	accountID = strings.TrimSpace(accountID)
+	if accessToken == "" {
+		return nil, fmt.Errorf("access token is required")
+	}
+	if accountID == "" {
+		return nil, fmt.Errorf("workspace account id is required")
+	}
+	if clientFactory == nil {
+		return nil, fmt.Errorf("openai workspace client is not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client, err := clientFactory(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("create workspace client: %w", err)
+	}
+	var result OpenAIWorkspaceInviteListResult
+	request := client.R().SetContext(ctx)
+	setChatGPTBackendRequestHeaders(request, accessToken, accountID, "/backend-api/accounts/"+accountID+"/invites")
+	resp, err := request.
+		SetQueryParam("offset", strconv.Itoa(offset)).
+		SetQueryParam("limit", strconv.Itoa(limit)).
+		SetQueryParam("query", query).
+		SetSuccessResult(&result).
+		Get(fmt.Sprintf(chatGPTWorkspaceInvitesURL, url.PathEscape(accountID)))
+	if err != nil {
+		return nil, fmt.Errorf("request workspace invite list: %w", err)
+	}
+	if !resp.IsSuccessState() {
+		return nil, fmt.Errorf("workspace invite list request failed with status %d: %s", resp.StatusCode, truncate(resp.String(), 300))
+	}
+	return &result, nil
+}
+
+func fetchChatGPTWorkspaceUserList(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, accountID string, offset, limit int, query string) (*OpenAIWorkspaceUserListResult, error) {
+	accountID = strings.TrimSpace(accountID)
+	if accessToken == "" {
+		return nil, fmt.Errorf("access token is required")
+	}
+	if accountID == "" {
+		return nil, fmt.Errorf("workspace account id is required")
+	}
+	if clientFactory == nil {
+		return nil, fmt.Errorf("openai workspace client is not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client, err := clientFactory(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("create workspace client: %w", err)
+	}
+	var result OpenAIWorkspaceUserListResult
+	request := client.R().SetContext(ctx)
+	setChatGPTBackendRequestHeaders(request, accessToken, accountID, "/backend-api/accounts/"+accountID+"/users")
+	resp, err := request.
+		SetQueryParam("offset", strconv.Itoa(offset)).
+		SetQueryParam("limit", strconv.Itoa(limit)).
+		SetQueryParam("query", query).
+		SetSuccessResult(&result).
+		Get(fmt.Sprintf(chatGPTWorkspaceUsersURL, url.PathEscape(accountID)))
+	if err != nil {
+		return nil, fmt.Errorf("request workspace user list: %w", err)
+	}
+	if !resp.IsSuccessState() {
+		return nil, fmt.Errorf("workspace user list request failed with status %d: %s", resp.StatusCode, truncate(resp.String(), 300))
+	}
+	return &result, nil
 }
 
 // chatGPTAccountObjectID 取单个 account 对象的账号标识。
@@ -301,6 +651,15 @@ func extractPlanType(acct map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func isChatGPTTeamPlanType(planType string) bool {
+	switch strings.ToLower(strings.TrimSpace(planType)) {
+	case "team", "self_serve_business_prolite":
+		return true
+	default:
+		return false
+	}
 }
 
 func isUsableChatGPTAccountCandidate(acct map[string]any, now time.Time) bool {

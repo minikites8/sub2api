@@ -15,6 +15,7 @@ export interface OpenAITokenInfo {
   scope?: string
   email?: string
   name?: string
+  created_time?: string
   plan_type?: string
   subscription_expires_at?: string
   privacy_mode?: string
@@ -22,6 +23,13 @@ export interface OpenAITokenInfo {
   chatgpt_account_id?: string
   chatgpt_user_id?: string
   organization_id?: string
+  team_name?: string
+  team_created_time?: string
+  team_organization_id?: string
+  team_account_id?: string
+  team_plan_type?: string
+  team_workspace_type?: string
+  team_self_serve_business_prolite?: boolean
   [key: string]: unknown
 }
 
@@ -186,6 +194,12 @@ export function useOpenAIOAuth() {
     if (tokenInfo.email) {
       creds.email = tokenInfo.email
     }
+    if (tokenInfo.name) {
+      creds.name = tokenInfo.name
+    }
+    if (tokenInfo.created_time) {
+      creds.created_time = tokenInfo.created_time
+    }
     if (tokenInfo.chatgpt_account_id) {
       creds.chatgpt_account_id = tokenInfo.chatgpt_account_id
     }
@@ -194,6 +208,27 @@ export function useOpenAIOAuth() {
     }
     if (tokenInfo.organization_id) {
       creds.organization_id = tokenInfo.organization_id
+    }
+    if (tokenInfo.team_name) {
+      creds.team_name = tokenInfo.team_name
+    }
+    if (tokenInfo.team_created_time) {
+      creds.team_created_time = tokenInfo.team_created_time
+    }
+    if (tokenInfo.team_organization_id) {
+      creds.team_organization_id = tokenInfo.team_organization_id
+    }
+    if (tokenInfo.team_account_id) {
+      creds.team_account_id = tokenInfo.team_account_id
+    }
+    if (tokenInfo.team_plan_type) {
+      creds.team_plan_type = tokenInfo.team_plan_type
+    }
+    if (tokenInfo.team_workspace_type) {
+      creds.team_workspace_type = tokenInfo.team_workspace_type
+    }
+    if (tokenInfo.team_name || tokenInfo.team_created_time || tokenInfo.team_organization_id || tokenInfo.team_account_id) {
+      creds.team_self_serve_business_prolite = Boolean(tokenInfo.team_self_serve_business_prolite)
     }
     if (tokenInfo.plan_type) {
       creds.plan_type = tokenInfo.plan_type
@@ -216,6 +251,9 @@ export function useOpenAIOAuth() {
     }
     if (tokenInfo.name) {
       extra.name = tokenInfo.name
+    }
+    if (tokenInfo.created_time) {
+      extra.created_time = tokenInfo.created_time
     }
     if (tokenInfo.privacy_mode) {
       extra.privacy_mode = tokenInfo.privacy_mode

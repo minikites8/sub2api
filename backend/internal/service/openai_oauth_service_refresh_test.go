@@ -62,6 +62,89 @@ func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccess
 	require.Positive(t, atomic.LoadInt32(&privacyClientCalls), "existing access token should still run enrichment")
 }
 
+func TestOpenAIOAuthServiceBuildAccountCredentialsIncludesTeamWorkspaceMetadata(t *testing.T) {
+	svc := &OpenAIOAuthService{}
+	creds := svc.BuildAccountCredentials(&OpenAITokenInfo{
+		AccessToken:                  "access-token",
+		Name:                         "workspace",
+		CreatedTime:                  "2026-05-14T12:28:12.982090Z",
+		OrganizationID:               "org-team",
+		TeamName:                     "workspace",
+		TeamCreatedTime:              "2026-05-14T12:28:12.982090Z",
+		TeamOrganizationID:           "org-team",
+		TeamAccountID:                "team-account-id",
+		TeamPlanType:                 "self_serve_business_prolite",
+		TeamWorkspaceType:            "business",
+		TeamSelfServeBusinessProlite: true,
+	})
+
+	require.Equal(t, "workspace", creds["name"])
+	require.Equal(t, "2026-05-14T12:28:12.982090Z", creds["created_time"])
+	require.Equal(t, "org-team", creds["organization_id"])
+	require.Equal(t, "workspace", creds["team_name"])
+	require.Equal(t, "2026-05-14T12:28:12.982090Z", creds["team_created_time"])
+	require.Equal(t, "org-team", creds["team_organization_id"])
+	require.Equal(t, "team-account-id", creds["team_account_id"])
+	require.Equal(t, "self_serve_business_prolite", creds["team_plan_type"])
+	require.Equal(t, "business", creds["team_workspace_type"])
+	require.Equal(t, true, creds["team_self_serve_business_prolite"])
+}
+
+func TestOpenAIOAuthServiceGetWorkspaceInfoUsesLegacyTeamMetadata(t *testing.T) {
+	const workspaceAccountID = "legacy-team-account"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
+		w.Header().Set("content-type", "application/json")
+		switch r.URL.Path {
+		case "/backend-api/accounts/check/v4-2023-04-27":
+			require.Equal(t, "-540", r.URL.Query().Get("timezone_offset_min"))
+			require.Equal(t, workspaceAccountID, r.Header.Get("chatgpt-account-id"))
+			require.Equal(t, "/backend-api/accounts/check/v4-2023-04-27", r.Header.Get("x-openai-target-path"))
+			_, _ = w.Write([]byte(`{"accounts":{"` + workspaceAccountID + `":{"account":{"account_id":"` + workspaceAccountID + `","name":"Canonical Workspace","created_time":"2026-05-15T12:28:12.982090Z","organization_id":"org-canonical","plan_type":"self_serve_business_prolite","structure":"workspace"}}}}`))
+		case "/backend-api/accounts/" + workspaceAccountID + "/users/seat_type_counts":
+			require.Equal(t, workspaceAccountID, r.Header.Get("chatgpt-account-id"))
+			require.Equal(t, r.URL.Path, r.Header.Get("x-openai-target-path"))
+			_, _ = w.Write([]byte(`{"seat_type_counts":{"default":2,"prolite":1},"maximum_seats":1000}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	originalAccountsCheckURL, originalSeatURL := chatGPTAccountsCheckURL, chatGPTSeatTypeCountsURL
+	chatGPTAccountsCheckURL = server.URL + "/backend-api/accounts/check/v4-2023-04-27"
+	chatGPTSeatTypeCountsURL = server.URL + "/backend-api/accounts/%s/users/seat_type_counts"
+	defer func() {
+		chatGPTAccountsCheckURL = originalAccountsCheckURL
+		chatGPTSeatTypeCountsURL = originalSeatURL
+	}()
+
+	svc := &OpenAIOAuthService{privacyClientFactory: newTestPrivacyClientFactory()}
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":       "access-token",
+			"chatgpt_account_id": workspaceAccountID,
+			"name":               "Legacy Workspace",
+			"created_time":       "2026-05-14T12:28:12.982090Z",
+			"organization_id":    "org-legacy",
+			"plan_type":          "self_serve_business_prolite",
+		},
+	}
+
+	info, err := svc.GetWorkspaceInfo(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, workspaceAccountID, info.AccountID)
+	require.Equal(t, "Canonical Workspace", info.Name)
+	require.Equal(t, "2026-05-15T12:28:12.982090Z", info.CreatedTime)
+	require.Equal(t, "org-canonical", info.OrganizationID)
+	require.Equal(t, "self_serve_business_prolite", info.PlanType)
+	require.Equal(t, 2, info.SeatTypeCounts["default"])
+	require.Equal(t, 1, info.SeatTypeCounts["prolite"])
+}
+
 func TestOpenAIOAuthService_RefreshAccountToken_PATIgnoresStaleRefreshToken(t *testing.T) {
 	client := &openaiOAuthClientRefreshStub{}
 	var whoamiCalls int32

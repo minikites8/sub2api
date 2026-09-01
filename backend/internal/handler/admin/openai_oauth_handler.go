@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -377,6 +378,187 @@ func (h *OpenAIOAuthHandler) RefreshAccountToken(c *gin.Context) {
 	}
 
 	response.Success(c, dto.AccountFromService(updatedAccount))
+}
+
+// GetWorkspaceInfo returns Team workspace metadata and seat counts.
+// GET /api/v1/admin/openai/accounts/:id/workspace-info
+func (h *OpenAIOAuthHandler) GetWorkspaceInfo(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil || account == nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	info, err := h.openaiOAuthService.GetWorkspaceInfo(c.Request.Context(), account)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if credentials := mergeWorkspaceMetadataCredentials(account.Credentials, info); len(credentials) > 0 {
+		if _, updateErr := h.adminService.UpdateAccount(c.Request.Context(), account.ID, &service.UpdateAccountInput{
+			Credentials: credentials,
+		}); updateErr != nil {
+			// The upstream result remains useful for this request. A later refresh
+			// can retry persistence without hiding the workspace response.
+			slog.Warn("openai_workspace_metadata_persist_failed", "account_id", account.ID, "error", updateErr)
+		}
+	}
+	response.Success(c, info)
+}
+
+func mergeWorkspaceMetadataCredentials(existing map[string]any, info *service.OpenAIWorkspaceInfo) map[string]any {
+	if info == nil {
+		return nil
+	}
+	credentials := make(map[string]any, len(existing)+10)
+	for key, value := range existing {
+		credentials[key] = value
+	}
+	for _, field := range []struct {
+		key   string
+		value string
+	}{
+		{key: "name", value: info.Name},
+		{key: "created_time", value: info.CreatedTime},
+		{key: "organization_id", value: info.OrganizationID},
+		{key: "plan_type", value: info.PlanType},
+		{key: "team_name", value: info.Name},
+		{key: "team_created_time", value: info.CreatedTime},
+		{key: "team_organization_id", value: info.OrganizationID},
+		{key: "team_account_id", value: info.AccountID},
+		{key: "team_plan_type", value: info.PlanType},
+		{key: "team_workspace_type", value: info.WorkspaceType},
+	} {
+		if value := strings.TrimSpace(field.value); value != "" {
+			credentials[field.key] = value
+		}
+	}
+	return credentials
+}
+
+type OpenAIWorkspaceInviteRequest struct {
+	WorkspaceAccountID string   `json:"workspace_account_id" binding:"required"`
+	EmailAddresses     []string `json:"email_addresses" binding:"required,min=1"`
+	Role               string   `json:"role"`
+	SeatType           string   `json:"seat_type"`
+	ResendEmails       *bool    `json:"resend_emails"`
+}
+
+// InviteWorkspaceMembers sends Team workspace invitations.
+// POST /api/v1/admin/openai/accounts/:id/workspace-invites
+func (h *OpenAIOAuthHandler) InviteWorkspaceMembers(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil || account == nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	var req OpenAIWorkspaceInviteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	resendEmails := true
+	if req.ResendEmails != nil {
+		resendEmails = *req.ResendEmails
+	}
+	result, err := h.openaiOAuthService.InviteWorkspaceMembers(
+		c.Request.Context(), account, req.WorkspaceAccountID, req.EmailAddresses, req.Role, req.SeatType, resendEmails,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ListWorkspaceInvites returns Team workspace invitations.
+// GET /api/v1/admin/openai/accounts/:id/workspace-invites
+func (h *OpenAIOAuthHandler) ListWorkspaceInvites(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil || account == nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	offset := 0
+	if value := strings.TrimSpace(c.Query("offset")); value != "" {
+		offset, err = strconv.Atoi(value)
+		if err != nil {
+			response.BadRequest(c, "Invalid offset")
+			return
+		}
+	}
+	limit := 25
+	if value := strings.TrimSpace(c.Query("limit")); value != "" {
+		limit, err = strconv.Atoi(value)
+		if err != nil {
+			response.BadRequest(c, "Invalid limit")
+			return
+		}
+	}
+	result, err := h.openaiOAuthService.ListWorkspaceInvites(c.Request.Context(), account, c.Query("workspace_account_id"), offset, limit, c.Query("query"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ListWorkspaceUsers returns Team workspace users.
+// GET /api/v1/admin/openai/accounts/:id/workspace-users
+func (h *OpenAIOAuthHandler) ListWorkspaceUsers(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil || account == nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	offset, limit, parseErr := parseWorkspaceListPagination(c)
+	if parseErr != nil {
+		response.BadRequest(c, parseErr.Error())
+		return
+	}
+	result, err := h.openaiOAuthService.ListWorkspaceUsers(c.Request.Context(), account, c.Query("workspace_account_id"), offset, limit, c.Query("query"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func parseWorkspaceListPagination(c *gin.Context) (offset, limit int, err error) {
+	offset = 0
+	if value := strings.TrimSpace(c.Query("offset")); value != "" {
+		offset, err = strconv.Atoi(value)
+		if err != nil {
+			return 0, 0, fmt.Errorf("Invalid offset")
+		}
+	}
+	limit = 25
+	if value := strings.TrimSpace(c.Query("limit")); value != "" {
+		limit, err = strconv.Atoi(value)
+		if err != nil {
+			return 0, 0, fmt.Errorf("Invalid limit")
+		}
+	}
+	return offset, limit, nil
 }
 
 // CreateAccountFromOAuth creates a new OpenAI OAuth account from token info

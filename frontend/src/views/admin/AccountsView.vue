@@ -261,6 +261,21 @@
               >
                 {{ accountDisplayEmail(row) }}
               </span>
+              <div
+                v-if="getOpenAITeamMetadata(row)"
+                class="mt-1 max-w-[260px] space-y-0.5 text-[11px] leading-4 text-indigo-600 dark:text-indigo-300"
+                :title="getOpenAITeamMetadata(row)?.organizationId || undefined"
+              >
+                <span v-if="getOpenAITeamMetadata(row)?.name" class="block truncate">
+                  {{ t('admin.accounts.teamMetadata.name') }}: {{ getOpenAITeamMetadata(row)?.name }}
+                </span>
+                <span v-if="getOpenAITeamMetadata(row)?.createdTime" class="block truncate">
+                  {{ t('admin.accounts.teamMetadata.createdTime') }}: {{ formatDateTime(getOpenAITeamMetadata(row)!.createdTime!) }}
+                </span>
+                <span v-if="getOpenAITeamMetadata(row)?.organizationId" class="block truncate font-mono">
+                  {{ t('admin.accounts.teamMetadata.organizationId') }}: {{ getOpenAITeamMetadata(row)?.organizationId }}
+                </span>
+              </div>
               <YeTeamRefreshBadge :account="row" />
             </div>
           </template>
@@ -501,8 +516,9 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <OpenAISessionsModal :show="showOpenAISessions" :account="sessionsAcc" @close="closeOpenAISessions" />
+    <OpenAIWorkspaceInfoModal :show="showWorkspaceInfo" :account="workspaceInfoAcc" :info="workspaceInfo" @close="closeWorkspaceInfo" @invited="handleWorkspaceInviteCompleted" @info-updated="handleWorkspaceInfoUpdated" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @ye-team-reset="handleYeTeamReset" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @ye-team-reset="handleYeTeamReset" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" @workspace-info="handleGetWorkspaceInfo" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <YeTeamRedeemModal :show="showYeTeamRedeem" @close="showYeTeamRedeem = false" @redeemed="handleYeTeamRedeemed" />
@@ -590,6 +606,7 @@ import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vu
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import OpenAISessionsModal from '@/components/admin/account/OpenAISessionsModal.vue'
+import OpenAIWorkspaceInfoModal from '@/components/admin/account/OpenAIWorkspaceInfoModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
@@ -608,6 +625,7 @@ import { isKiroRelayAccount } from '@/utils/kiroAccount'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import type { OpenAIWorkspaceInfo } from '@/api/admin/accounts'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
@@ -679,6 +697,7 @@ const showReAuth = ref(false)
 const showTest = ref(false)
 const showStats = ref(false)
 const showOpenAISessions = ref(false)
+const showWorkspaceInfo = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
 const edAcc = ref<Account | null>(null)
@@ -689,6 +708,9 @@ const reAuthAcc = ref<Account | null>(null)
 const testingAcc = ref<Account | null>(null)
 const statsAcc = ref<Account | null>(null)
 const sessionsAcc = ref<Account | null>(null)
+const workspaceInfoAcc = ref<Account | null>(null)
+const workspaceInfo = ref<OpenAIWorkspaceInfo | null>(null)
+const workspaceInfoLoadingID = ref<number | null>(null)
 const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
@@ -1741,6 +1763,20 @@ function accountDisplayEmail(row: any): string {
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
 }
 
+function getOpenAITeamMetadata(row: Account): { name?: string; createdTime?: string; organizationId?: string } | null {
+  if (row.platform !== 'openai' || row.type !== 'oauth') return null
+  const credentials = row.credentials || {}
+  const planType = String(credentials.team_plan_type || credentials.plan_type || '').trim().toLowerCase()
+  const hasTeamIdentity = ['team', 'self_serve_business_prolite'].includes(planType) ||
+    typeof credentials.team_account_id === 'string' ||
+    typeof credentials.team_name === 'string'
+  if (!hasTeamIdentity) return null
+  const name = String(credentials.team_name || credentials.name || '').trim()
+  const createdTime = String(credentials.team_created_time || credentials.created_time || '').trim()
+  const organizationId = String(credentials.team_organization_id || credentials.organization_id || '').trim()
+  return { name: name || undefined, createdTime: createdTime || undefined, organizationId: organizationId || undefined }
+}
+
 function accountHomepageUrl(row: Account): string {
   if (row.type !== 'apikey' || typeof row.credentials?.base_url !== 'string') return ''
   const baseUrl = sanitizeUrl(row.credentials.base_url)
@@ -1856,7 +1892,7 @@ const openMenu = (a: Account, e: MouseEvent) => {
   if (target) {
     const rect = target.getBoundingClientRect()
     const menuWidth = 200
-    const menuHeight = 320
+    const menuHeight = 360
     const padding = 8
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
@@ -2397,6 +2433,46 @@ const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
 const handleOpenAISessions = (a: Account) => { sessionsAcc.value = a; showOpenAISessions.value = true }
 const closeOpenAISessions = () => { showOpenAISessions.value = false; sessionsAcc.value = null }
+const handleGetWorkspaceInfo = async (a: Account) => {
+  if (workspaceInfoLoadingID.value === a.id) return
+  workspaceInfoLoadingID.value = a.id
+  try {
+    const info = await adminAPI.accounts.getOpenAIWorkspaceInfo(a.id)
+    workspaceInfoAcc.value = a
+    handleWorkspaceInfoUpdated(info)
+    showWorkspaceInfo.value = true
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.workspaceInfo.loadFailed')))
+  } finally {
+    workspaceInfoLoadingID.value = null
+  }
+}
+const closeWorkspaceInfo = () => {
+  showWorkspaceInfo.value = false
+  workspaceInfoAcc.value = null
+  workspaceInfo.value = null
+}
+const handleWorkspaceInviteCompleted = () => {
+  appStore.showSuccess(t('admin.accounts.workspaceInfo.inviteSent'))
+}
+const handleWorkspaceInfoUpdated = (info: OpenAIWorkspaceInfo) => {
+  workspaceInfo.value = info
+  const account = workspaceInfoAcc.value
+  if (!account) return
+  account.credentials = {
+    ...(account.credentials || {}),
+    name: info.name,
+    created_time: info.created_time,
+    organization_id: info.organization_id,
+    plan_type: info.plan_type,
+    team_name: info.name,
+    team_created_time: info.created_time,
+    team_organization_id: info.organization_id,
+    team_account_id: info.account_id,
+    team_plan_type: info.plan_type,
+    team_workspace_type: info.workspace_type
+  }
+}
 const duplicatingAccountIDs = new Set<number>()
 const handleDuplicateAccount = async (a: Account) => {
   if (duplicatingAccountIDs.has(a.id)) return

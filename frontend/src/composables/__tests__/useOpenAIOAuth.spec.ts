@@ -73,6 +73,43 @@ describe('useOpenAIOAuth.buildCredentials', () => {
     expect(creds.plan_type).toBe('team')
     expect(creds.subscription_expires_at).toBe('2026-07-20T19:22:48+00:00')
   })
+
+  it('should persist Team workspace metadata from the token response', () => {
+    const oauth = useOpenAIOAuth()
+    const creds = oauth.buildCredentials({
+      access_token: 'at',
+      name: 'workspace',
+      created_time: '2026-05-14T12:28:12.982090Z',
+      organization_id: 'org-team',
+      team_name: 'workspace',
+      team_created_time: '2026-05-14T12:28:12.982090Z',
+      team_organization_id: 'org-team',
+      team_account_id: 'team-account-id',
+      team_plan_type: 'self_serve_business_prolite',
+      team_workspace_type: 'business',
+      team_self_serve_business_prolite: true
+    })
+
+    expect(creds).toMatchObject({
+      name: 'workspace',
+      created_time: '2026-05-14T12:28:12.982090Z',
+      organization_id: 'org-team',
+      team_name: 'workspace',
+      team_created_time: '2026-05-14T12:28:12.982090Z',
+      team_organization_id: 'org-team',
+      team_account_id: 'team-account-id',
+      team_plan_type: 'self_serve_business_prolite',
+      team_workspace_type: 'business',
+      team_self_serve_business_prolite: true
+    })
+    expect(oauth.buildExtraInfo({
+      name: 'workspace',
+      created_time: '2026-05-14T12:28:12.982090Z'
+    })).toEqual({
+      name: 'workspace',
+      created_time: '2026-05-14T12:28:12.982090Z'
+    })
+  })
 })
 
 describe('useOpenAIOAuth.exchangeAuthCode', () => {

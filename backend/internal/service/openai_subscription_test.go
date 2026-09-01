@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,6 +168,128 @@ func TestFetchChatGPTAccountInfo_ReportsAccountID(t *testing.T) {
 	require.NotNil(t, got)
 	require.Equal(t, "plus", got.PlanType)
 	require.Equal(t, "personal-account-a", got.AccountID, "应优先取 account.account_id 而不是 map key")
+}
+
+func TestFetchChatGPTAccountInfoExtractsTeamWorkspaceMetadata(t *testing.T) {
+	const (
+		teamAccountID   = "team-account-id"
+		teamCreatedTime = "2026-05-14T12:28:12.982090Z"
+		teamOrgID       = "org-team"
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/backend-api/accounts/check/v4-2023-04-27", r.URL.Path)
+		require.Equal(t, "-540", r.URL.Query().Get("timezone_offset_min"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"accounts": map[string]any{
+				teamAccountID: map[string]any{
+					"account": map[string]any{
+						"account_id":      teamAccountID,
+						"name":            "workspace",
+						"created_time":    teamCreatedTime,
+						"organization_id": teamOrgID,
+						"structure":       "workspace",
+						"workspace_type":  "business",
+						"plan_type":       "self_serve_business_prolite",
+					},
+					"features": []any{"self_serve_business_prolite"},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	oldURL := chatGPTAccountsCheckURL
+	chatGPTAccountsCheckURL = server.URL + "/backend-api/accounts/check/v4-2023-04-27"
+	t.Cleanup(func() { chatGPTAccountsCheckURL = oldURL })
+
+	got := fetchChatGPTAccountInfo(context.Background(), newTestPrivacyClientFactory(), "access-token", "", teamOrgID)
+	require.NotNil(t, got)
+	require.Equal(t, "self_serve_business_prolite", got.PlanType)
+	require.Equal(t, teamAccountID, got.AccountID)
+	require.True(t, got.IsTeamWorkspace)
+	require.Equal(t, "workspace", got.WorkspaceName)
+	require.Equal(t, teamCreatedTime, got.WorkspaceCreatedTime)
+	require.Equal(t, teamOrgID, got.WorkspaceOrganizationID)
+	require.Equal(t, "business", got.WorkspaceType)
+	require.True(t, got.HasSelfServeBusinessProlite)
+}
+
+func TestIsChatGPTTeamWorkspaceAccountRecognizesTeamPlanTypes(t *testing.T) {
+	for _, planType := range []string{"team", "self_serve_business_prolite"} {
+		t.Run(planType, func(t *testing.T) {
+			require.True(t, isChatGPTTeamWorkspaceAccount(map[string]any{
+				"account": map[string]any{"plan_type": planType, "structure": "personal"},
+			}))
+		})
+	}
+}
+
+func TestFetchChatGPTWorkspaceEndpointsUseATAndExpectedPayloads(t *testing.T) {
+	const workspaceAccountID = "4f032565-83bc-4980-8fa7-ff01872ddc16"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
+		if strings.Contains(r.URL.Path, "/accounts/"+workspaceAccountID+"/") {
+			require.Equal(t, workspaceAccountID, r.Header.Get("chatgpt-account-id"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case http.MethodGet + " /backend-api/accounts/" + workspaceAccountID + "/users/seat_type_counts":
+			_, _ = w.Write([]byte(`{"seat_type_counts":{"default":2,"usage_based":0,"automation":0,"prolite":0},"maximum_seats":1000}`))
+		case http.MethodPost + " /backend-api/accounts/" + workspaceAccountID + "/invites":
+			var payload map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+			require.Equal(t, []any{"invitee@example.com"}, payload["email_addresses"])
+			require.Equal(t, "standard-user", payload["role"])
+			require.Equal(t, "default", payload["seat_type"])
+			require.Equal(t, true, payload["resend_emails"])
+			require.NotEmpty(t, payload["flow_id"])
+			require.NotEmpty(t, payload["submission_id"])
+			_, _ = w.Write([]byte(`{"account_invites":[{"id":"invite-1","email_address":"invitee@example.com","role":"standard-user","status":2,"seat_type":"default","created_time":"2026-09-01T15:41:42.054928Z","is_scim_managed":false,"creation_source":null}],"errored_emails":[]}`))
+		case http.MethodGet + " /backend-api/accounts/" + workspaceAccountID + "/invites":
+			require.Equal(t, "0", r.URL.Query().Get("offset"))
+			require.Equal(t, "25", r.URL.Query().Get("limit"))
+			require.Equal(t, "member", r.URL.Query().Get("query"))
+			_, _ = w.Write([]byte(`{"items":[],"total":0,"limit":25,"offset":0}`))
+		case http.MethodGet + " /backend-api/accounts/" + workspaceAccountID + "/users":
+			require.Equal(t, "0", r.URL.Query().Get("offset"))
+			require.Equal(t, "25", r.URL.Query().Get("limit"))
+			require.Equal(t, "member", r.URL.Query().Get("query"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"user-1","account_user_id":"user-1__workspace","email":"member@example.com","verified_email":null,"role":"standard-user","seat_type":"default","credit_limits":null,"name":"Member","created_time":"2026-06-02T07:08:10.300721Z","is_scim_managed":false,"creation_source":null,"deactivated_time":null,"pending_seat_type":null,"reclaimable_seat_type":null}],"total":1,"limit":25,"offset":0}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	oldSeatURL, oldInvitesURL, oldUsersURL := chatGPTSeatTypeCountsURL, chatGPTWorkspaceInvitesURL, chatGPTWorkspaceUsersURL
+	chatGPTSeatTypeCountsURL = server.URL + "/backend-api/accounts/%s/users/seat_type_counts"
+	chatGPTWorkspaceInvitesURL = server.URL + "/backend-api/accounts/%s/invites"
+	chatGPTWorkspaceUsersURL = server.URL + "/backend-api/accounts/%s/users"
+	t.Cleanup(func() {
+		chatGPTSeatTypeCountsURL, chatGPTWorkspaceInvitesURL, chatGPTWorkspaceUsersURL = oldSeatURL, oldInvitesURL, oldUsersURL
+	})
+
+	factory := func(proxyURL string) (*req.Client, error) { return req.C().SetTimeout(5 * time.Second), nil }
+	seatInfo, err := fetchChatGPTSeatTypeCounts(context.Background(), factory, "access-token", "", workspaceAccountID)
+	require.NoError(t, err)
+	require.Equal(t, 2, seatInfo.SeatTypeCounts["default"])
+	require.Equal(t, 1000, seatInfo.MaximumSeats)
+
+	inviteInfo, err := fetchChatGPTWorkspaceInvites(context.Background(), factory, "access-token", "", workspaceAccountID, []string{"invitee@example.com"}, "standard-user", "default", true)
+	require.NoError(t, err)
+	require.Len(t, inviteInfo.AccountInvites, 1)
+
+	userInfo, err := fetchChatGPTWorkspaceInviteList(context.Background(), factory, "access-token", "", workspaceAccountID, 0, 25, "member")
+	require.NoError(t, err)
+	require.Empty(t, userInfo.Items)
+
+	users, err := fetchChatGPTWorkspaceUserList(context.Background(), factory, "access-token", "", workspaceAccountID, 0, 25, "member")
+	require.NoError(t, err)
+	require.Len(t, users.Items, 1)
+	require.Equal(t, "member@example.com", users.Items[0].Email)
 }
 
 // issue #5459：poid 指向的默认 Personal workspace 与 chatgpt_account_id 是两个不同的

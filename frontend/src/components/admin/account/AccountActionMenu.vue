@@ -53,6 +53,10 @@
               <Icon name="server" size="sm" />
               {{ t('admin.accounts.sessions.menu') }}
             </button>
+            <button v-if="isTeamWorkspaceAccount" @click="$emit('workspace-info', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-indigo-600 hover:bg-gray-100 dark:hover:bg-dark-700">
+              <Icon name="users" size="sm" />
+              {{ t('admin.accounts.workspaceInfo.menu') }}
+            </button>
             <div v-if="hasRecoverableState" class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
             <button v-if="hasRecoverableState" @click="$emit('recover-state', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="sync" size="sm" />
@@ -76,7 +80,7 @@ import { Icon } from '@/components/icons'
 import type { Account } from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; position: { top: number; left: number } | null }>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'ye-team-reset', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'sessions'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'ye-team-reset', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'sessions', 'workspace-info'])
 const { t } = useI18n()
 const canDuplicate = computed(() => {
   if (!props.account || props.account.parent_account_id != null) return false
@@ -106,6 +110,14 @@ const isOpenAIOAuth = computed(() => props.account?.platform === 'openai' && pro
 const isShadow = computed(() => props.account?.parent_account_id != null)
 // A "parent" OpenAI OAuth account is one that is NOT itself a shadow (parent_account_id == null)
 const isOpenAIOAuthParent = computed(() => isOpenAIOAuth.value && !isShadow.value)
+const isTeamWorkspaceAccount = computed(() => {
+  if (!isOpenAIOAuth.value || isShadow.value) return false
+  const credentials = props.account?.credentials || {}
+  const planType = String(credentials.team_plan_type || credentials.plan_type || '').trim().toLowerCase()
+  return ['team', 'self_serve_business_prolite'].includes(planType) ||
+    typeof credentials.team_account_id === 'string' ||
+    typeof credentials.team_name === 'string'
+})
 const hasYeTeamBinding = computed(() => {
   if (props.account?.platform !== 'openai') return false
   const cardCode = props.account?.extra?.ye_team_card_code
