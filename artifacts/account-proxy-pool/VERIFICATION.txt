@@ -1,4 +1,4 @@
-Changed branch/field: main (0f95589d7) / accounts.extra.proxy_pool.
+Changed branch/field: main (d7b1e3b65) / accounts.extra.proxy_pool and account capacity per-proxy display.
 
 MODIFIED_FILE: D:/Programs/sub2api/artifacts/account-proxy-pool/MODIFIED_FILE
 DIFF_FILE: D:/Programs/sub2api/artifacts/account-proxy-pool/DIFF_FILE
@@ -28,6 +28,18 @@ MODIFIED admin data test exit status: 0
 MODIFIED frontend command: pnpm exec vue-tsc --noEmit
 MODIFIED frontend literal result: completed with no output.
 MODIFIED frontend exit status: 0
+
+MODIFIED capacity display test command: pnpm exec vitest run src/components/account/__tests__/AccountCapacityCell.spec.ts
+MODIFIED capacity display test literal result: 1 test file passed; 2 tests passed.
+MODIFIED capacity display test exit status: 0
+
+MODIFIED frontend typecheck command: pnpm exec vue-tsc --noEmit
+MODIFIED frontend typecheck literal result: completed with no output.
+MODIFIED frontend typecheck exit status: 0
+
+MODIFIED backend build command: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go build ./...
+MODIFIED backend build literal result: completed with no output; Go telemetry emitted a pre-existing access-denied message before build completion.
+MODIFIED backend build exit status: 0
 
 ROLLBACK command: & 'C:\Program Files\Git\bin\bash.exe' D:/Programs/sub2api/artifacts/account-proxy-pool/ROLLBACK.sh D:/Programs/sub2api/artifacts/account-proxy-pool/rollback-copy
 ROLLBACK literal result: rollback copy restored the recorded marker and exited successfully.

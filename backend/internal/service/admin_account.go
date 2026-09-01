@@ -580,10 +580,8 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			return nil, poolErr
 		}
 		accountExtra = setAccountProxyPoolExtra(accountExtra, normalizedPool)
-		if input.ProxyID == nil {
-			proxyID := normalizedPool[0].ProxyID
-			input.ProxyID = &proxyID
-		}
+		proxyID := normalizedPool[0].ProxyID
+		input.ProxyID = &proxyID
 	}
 
 	// 绑定分组

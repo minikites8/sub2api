@@ -1020,6 +1020,7 @@ export default {
       proxy: 'Proxy',
       proxyPool: 'Proxy pool',
       proxyConcurrency: 'Proxy concurrency',
+      proxyPoolTotalConcurrency: 'total {count}',
       noProxy: 'No Proxy',
       concurrency: 'Concurrency',
       loadFactor: 'Load Factor',

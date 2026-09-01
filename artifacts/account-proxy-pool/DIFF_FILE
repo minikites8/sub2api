@@ -3,4 +3,6 @@ Account proxy pool implementation:
 - Added independent Redis concurrency acquisition and waiting per account/proxy pair.
 - Added admin create/update DTO fields and account response pool entries with current concurrency.
 - Added create/edit proxy pool controls and account-list capacity badges.
+- Added per-proxy capacity badges in the account capacity column, with live current/max values and proxy-name tooltips.
+- Added AccountCapacityCell regression coverage for aggregate and per-proxy concurrency rendering.
 - Added proxy-key based backup export/import conversion for proxy pools.

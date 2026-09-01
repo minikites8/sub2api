@@ -1,6 +1,9 @@
 <template>
   <div v-if="proxies.length > 0" class="mt-2 rounded border border-gray-200 p-3 dark:border-dark-600">
-    <div class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.accounts.proxyPool') }}</div>
+    <div class="mb-2 flex items-center justify-between text-xs font-medium text-gray-500 dark:text-gray-400">
+      <span>{{ t('admin.accounts.proxyPool') }}</span>
+      <span v-if="modelValue.length" class="font-mono">{{ t('admin.accounts.proxyPoolTotalConcurrency', { count: totalConcurrency }) }}</span>
+    </div>
     <div class="space-y-2">
       <label v-for="proxy in proxies" :key="proxy.id" class="flex items-center gap-3 text-sm">
         <input
@@ -29,6 +32,7 @@
 
 <script setup lang="ts">
 import type { AccountProxyBindingRequest, Proxy } from '@/types'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -37,6 +41,8 @@ const props = defineProps<{
   modelValue: AccountProxyBindingRequest[]
   proxies: Proxy[]
 }>()
+
+const totalConcurrency = computed(() => props.modelValue.reduce((total, entry) => total + entry.concurrency, 0))
 
 const emit = defineEmits<{
   'update:modelValue': [value: AccountProxyBindingRequest[]]

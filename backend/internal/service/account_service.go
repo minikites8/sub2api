@@ -229,10 +229,8 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 			return nil, err
 		}
 		req.Extra = setAccountProxyPoolExtra(req.Extra, req.ProxyPool)
-		if req.ProxyID == nil {
-			proxyID := req.ProxyPool[0].ProxyID
-			req.ProxyID = &proxyID
-		}
+		proxyID := req.ProxyPool[0].ProxyID
+		req.ProxyID = &proxyID
 	}
 	// 验证分组是否存在（如果指定了分组）
 	if len(req.GroupIDs) > 0 {

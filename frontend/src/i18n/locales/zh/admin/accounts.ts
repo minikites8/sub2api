@@ -1089,6 +1089,7 @@ export default {
       proxy: '代理',
       proxyPool: '代理池',
       proxyConcurrency: '代理并发数',
+      proxyPoolTotalConcurrency: '总并发 {count}',
       noProxy: '无代理',
       concurrency: '并发数',
       loadFactor: '负载因子',

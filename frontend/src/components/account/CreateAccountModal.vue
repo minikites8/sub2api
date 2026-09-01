@@ -3352,8 +3352,10 @@
       </div>
 
       <div>
+        <template v-if="form.proxy_pool.length === 0">
         <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        </template>
         <ProxyPoolEditor v-model="form.proxy_pool" :proxies="proxies" />
       </div>
 
@@ -3361,6 +3363,8 @@
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input"
+            :readonly="form.proxy_pool.length > 0"
+            :class="form.proxy_pool.length > 0 ? 'cursor-not-allowed bg-gray-100 dark:bg-dark-700' : ''"
             @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
         </div>
         <div>
@@ -5111,6 +5115,13 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+
+watch(() => form.proxy_pool, (pool) => {
+  if (pool.length > 0) {
+    form.concurrency = pool.reduce((total, entry) => total + entry.concurrency, 0)
+    form.proxy_id = pool[0].proxy_id
+  }
+}, { deep: true })
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
