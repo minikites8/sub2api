@@ -24,17 +24,32 @@ const (
 // AntiAbusePolicy controls the score threshold and per-signal contribution.
 // Values are integer percentages, which keeps persisted settings portable.
 type AntiAbusePolicy struct {
-	Enabled              bool
-	ScoreThreshold       int
-	FingerprintWeight    int
-	IPWeight             int
-	EmailWeight          int
-	UserAgentWeight      int
-	TLSFingerprintWeight int
+	Enabled                             bool
+	ScoreThreshold                      int
+	FingerprintWeight                   int
+	IPWeight                            int
+	EmailWeight                         int
+	UserAgentWeight                     int
+	TLSFingerprintWeight                int
+	SignupIPRiskControlThreshold        int
+	SignupIPDisablePreviousAccounts     bool
+	SignupIPKeepPreviousAccounts        int
+	APIUsageIPUARiskControlThreshold    int
+	APIUsageIPUADisablePreviousAccounts bool
+	APIUsageIPUAKeepPreviousAccounts    int
 }
 
 func DefaultAntiAbusePolicy() AntiAbusePolicy {
-	return AntiAbusePolicy{Enabled: true, ScoreThreshold: defaultAntiAbuseScoreThreshold, FingerprintWeight: 1, IPWeight: 1, EmailWeight: 1, UserAgentWeight: 1, TLSFingerprintWeight: 1}
+	return AntiAbusePolicy{
+		Enabled: true, ScoreThreshold: defaultAntiAbuseScoreThreshold,
+		FingerprintWeight: 1, IPWeight: 1, EmailWeight: 1, UserAgentWeight: 1, TLSFingerprintWeight: 1,
+		SignupIPRiskControlThreshold:        defaultSignupIPRiskControlThreshold,
+		SignupIPDisablePreviousAccounts:     defaultSignupIPDisablePreviousAccounts,
+		SignupIPKeepPreviousAccounts:        defaultSignupIPKeepPreviousAccounts,
+		APIUsageIPUARiskControlThreshold:    defaultAPIUsageIPUARiskControlThreshold,
+		APIUsageIPUADisablePreviousAccounts: defaultAPIUsageIPUADisablePreviousAccounts,
+		APIUsageIPUAKeepPreviousAccounts:    defaultAPIUsageIPUAKeepPreviousAccounts,
+	}
 }
 
 type AntiAbuseAssessment struct {
@@ -231,14 +246,34 @@ func BrowserFingerprintMatch(stored, incoming []string) bool {
 }
 
 func EvaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, emailVelocity int, policy AntiAbusePolicy) AntiAbuseAssessment {
-	return evaluateAntiAbuse(signals, ipVelocity, fingerprintVelocity, emailVelocity, 0, policy)
+	return evaluateAntiAbuse(signals, ipVelocity, fingerprintVelocity, emailVelocity, 0, policy, 0, "", "")
 }
 
 func EvaluateAntiAbuseWithTLS(signals RiskSignals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity int, policy AntiAbusePolicy) AntiAbuseAssessment {
-	return evaluateAntiAbuse(signals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity, policy)
+	return evaluateAntiAbuse(signals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity, policy, 0, "", "")
 }
 
-func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity int, policy AntiAbusePolicy) AntiAbuseAssessment {
+// EvaluateRegistrationAntiAbuse applies the registration-IP velocity threshold
+// as a hard multidimensional factor.
+func EvaluateRegistrationAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity int, policy AntiAbusePolicy) AntiAbuseAssessment {
+	threshold := policy.SignupIPRiskControlThreshold
+	if threshold < 1 {
+		threshold = defaultSignupIPRiskControlThreshold
+	}
+	return evaluateAntiAbuse(signals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity, policy, threshold, "signup_ip_threshold", "registration IP account threshold reached")
+}
+
+// EvaluateGatewayAntiAbuse applies the API IP+UA velocity threshold as a hard
+// multidimensional factor.
+func EvaluateGatewayAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity int, policy AntiAbusePolicy) AntiAbuseAssessment {
+	threshold := policy.APIUsageIPUARiskControlThreshold
+	if threshold < 1 {
+		threshold = defaultAPIUsageIPUARiskControlThreshold
+	}
+	return evaluateAntiAbuse(signals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity, policy, threshold, "api_ip_ua_threshold", "API IP and User-Agent account threshold reached")
+}
+
+func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, emailVelocity, tlsVelocity int, policy AntiAbusePolicy, velocityThreshold int, velocityFactor, velocityReason string) AntiAbuseAssessment {
 	if policy.ScoreThreshold < 1 {
 		policy.ScoreThreshold = defaultAntiAbuseScoreThreshold
 	}
@@ -256,6 +291,12 @@ func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, ema
 	}
 	if policy.TLSFingerprintWeight < 1 {
 		policy.TLSFingerprintWeight = 1
+	}
+	if policy.SignupIPRiskControlThreshold < 1 {
+		policy.SignupIPRiskControlThreshold = defaultSignupIPRiskControlThreshold
+	}
+	if policy.APIUsageIPUARiskControlThreshold < 1 {
+		policy.APIUsageIPUARiskControlThreshold = defaultAPIUsageIPUARiskControlThreshold
 	}
 	assessment := AntiAbuseAssessment{Action: AntiAbuseActionAllow, Factors: map[string]int{}}
 	if !policy.Enabled {
@@ -294,6 +335,10 @@ func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, ema
 	}
 	if tlsScore := transportFingerprintReputationScore(signals.JA3, signals.JA4); tlsScore > 0 {
 		add("ja3_ja4_reputation", "JA3/JA4 transport fingerprint is malformed or incomplete", tlsScore, policy.TLSFingerprintWeight)
+	}
+	if velocityThreshold > 0 && ipVelocity+1 >= velocityThreshold {
+		add(velocityFactor, velocityReason, policy.ScoreThreshold, policy.IPWeight)
+		assessment.Action = AntiAbuseActionRestrict
 	}
 
 	if !policy.Enabled {

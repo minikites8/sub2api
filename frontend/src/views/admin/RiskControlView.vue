@@ -79,6 +79,36 @@
           <div class="grid grid-cols-2 gap-3 border-t border-gray-100 px-6 py-4 text-sm dark:border-dark-700 md:grid-cols-5">
             <label v-for="item in antiAbuseWeightFields" :key="item.key" class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}<input v-model.number="antiAbuseConfig[item.key]" type="number" min="1" class="input mt-1 w-full text-sm" /></label>
           </div>
+          <div class="grid grid-cols-1 gap-5 border-t border-gray-100 px-6 py-5 dark:border-dark-700 lg:grid-cols-2">
+            <div class="space-y-3">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.riskControl.antiAbuseConfig.signupIPThreshold') }}
+                <input v-model.number="antiAbuseConfig.signup_ip_risk_control_threshold" type="number" min="1" class="input mt-2 w-full" />
+              </label>
+              <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input v-model="antiAbuseConfig.signup_ip_disable_previous_accounts" type="checkbox" />
+                {{ t('admin.riskControl.antiAbuseConfig.signupIPPrevious') }}
+              </label>
+              <label v-if="antiAbuseConfig.signup_ip_disable_previous_accounts" class="block text-xs text-gray-500">
+                {{ t('admin.riskControl.antiAbuseConfig.keepPrevious') }}
+                <input v-model.number="antiAbuseConfig.signup_ip_keep_previous_accounts" type="number" min="0" class="input mt-1 w-full text-sm" />
+              </label>
+            </div>
+            <div class="space-y-3">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.riskControl.antiAbuseConfig.apiIPUAThreshold') }}
+                <input v-model.number="antiAbuseConfig.api_usage_ip_ua_risk_control_threshold" type="number" min="1" class="input mt-2 w-full" />
+              </label>
+              <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input v-model="antiAbuseConfig.api_usage_ip_ua_disable_previous_accounts" type="checkbox" />
+                {{ t('admin.riskControl.antiAbuseConfig.apiIPUAPrevious') }}
+              </label>
+              <label v-if="antiAbuseConfig.api_usage_ip_ua_disable_previous_accounts" class="block text-xs text-gray-500">
+                {{ t('admin.riskControl.antiAbuseConfig.keepPrevious') }}
+                <input v-model.number="antiAbuseConfig.api_usage_ip_ua_keep_previous_accounts" type="number" min="0" class="input mt-1 w-full text-sm" />
+              </label>
+            </div>
+          </div>
         </div>
 
         <div
@@ -1394,6 +1424,12 @@ const antiAbuseConfig = reactive({
   email_weight: 1,
   user_agent_weight: 1,
   tls_fingerprint_weight: 1,
+  signup_ip_risk_control_threshold: 3,
+  signup_ip_disable_previous_accounts: true,
+  signup_ip_keep_previous_accounts: 1,
+  api_usage_ip_ua_risk_control_threshold: 4,
+  api_usage_ip_ua_disable_previous_accounts: false,
+  api_usage_ip_ua_keep_previous_accounts: 0,
   ip_reputation_endpoint: '',
   ip_reputation_api_key_configured: false,
 })
@@ -1995,6 +2031,12 @@ function applyAntiAbuseSettings(settings: {
   email_weight?: number
   user_agent_weight?: number
   tls_fingerprint_weight?: number
+  signup_ip_risk_control_threshold?: number
+  signup_ip_disable_previous_accounts?: boolean
+  signup_ip_keep_previous_accounts?: number
+  api_usage_ip_ua_risk_control_threshold?: number
+  api_usage_ip_ua_disable_previous_accounts?: boolean
+  api_usage_ip_ua_keep_previous_accounts?: number
   ip_reputation_endpoint?: string
   ip_reputation_api_key_configured?: boolean
 }) {
@@ -2005,6 +2047,12 @@ function applyAntiAbuseSettings(settings: {
   antiAbuseConfig.email_weight = Number(settings.email_weight) || 1
   antiAbuseConfig.user_agent_weight = Number(settings.user_agent_weight) || 1
   antiAbuseConfig.tls_fingerprint_weight = Number(settings.tls_fingerprint_weight) || 1
+  antiAbuseConfig.signup_ip_risk_control_threshold = Number(settings.signup_ip_risk_control_threshold) || 3
+  antiAbuseConfig.signup_ip_disable_previous_accounts = settings.signup_ip_disable_previous_accounts !== false
+  antiAbuseConfig.signup_ip_keep_previous_accounts = Math.max(0, Number(settings.signup_ip_keep_previous_accounts) || 0)
+  antiAbuseConfig.api_usage_ip_ua_risk_control_threshold = Number(settings.api_usage_ip_ua_risk_control_threshold) || 4
+  antiAbuseConfig.api_usage_ip_ua_disable_previous_accounts = settings.api_usage_ip_ua_disable_previous_accounts === true
+  antiAbuseConfig.api_usage_ip_ua_keep_previous_accounts = Math.max(0, Number(settings.api_usage_ip_ua_keep_previous_accounts) || 0)
   antiAbuseConfig.ip_reputation_endpoint = String(settings.ip_reputation_endpoint || '')
   antiAbuseConfig.ip_reputation_api_key_configured = settings.ip_reputation_api_key_configured === true
   antiAbuseIPReputationAPIKey.value = ''
@@ -2021,6 +2069,12 @@ async function saveAntiAbuseConfig() {
       email_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.email_weight) || 1)),
       user_agent_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.user_agent_weight) || 1)),
       tls_fingerprint_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.tls_fingerprint_weight) || 1)),
+      signup_ip_risk_control_threshold: Math.max(1, Math.floor(Number(antiAbuseConfig.signup_ip_risk_control_threshold) || 3)),
+      signup_ip_disable_previous_accounts: antiAbuseConfig.signup_ip_disable_previous_accounts,
+      signup_ip_keep_previous_accounts: Math.max(0, Math.floor(Number(antiAbuseConfig.signup_ip_keep_previous_accounts) || 0)),
+      api_usage_ip_ua_risk_control_threshold: Math.max(1, Math.floor(Number(antiAbuseConfig.api_usage_ip_ua_risk_control_threshold) || 4)),
+      api_usage_ip_ua_disable_previous_accounts: antiAbuseConfig.api_usage_ip_ua_disable_previous_accounts,
+      api_usage_ip_ua_keep_previous_accounts: Math.max(0, Math.floor(Number(antiAbuseConfig.api_usage_ip_ua_keep_previous_accounts) || 0)),
       ip_reputation_endpoint: antiAbuseConfig.ip_reputation_endpoint,
       ...(antiAbuseIPReputationAPIKey.value.trim() ? { ip_reputation_api_key: antiAbuseIPReputationAPIKey.value.trim() } : {}),
     })

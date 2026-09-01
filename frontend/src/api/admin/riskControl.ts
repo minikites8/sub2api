@@ -277,6 +277,12 @@ export interface AntiAbuseConfig {
   email_weight: number
   user_agent_weight: number
   tls_fingerprint_weight: number
+  signup_ip_risk_control_threshold: number
+  signup_ip_disable_previous_accounts: boolean
+  signup_ip_keep_previous_accounts: number
+  api_usage_ip_ua_risk_control_threshold: number
+  api_usage_ip_ua_disable_previous_accounts: boolean
+  api_usage_ip_ua_keep_previous_accounts: number
   ip_reputation_endpoint: string
   ip_reputation_api_key_configured: boolean
 }
@@ -289,6 +295,12 @@ export interface UpdateAntiAbuseConfig {
   email_weight: number
   user_agent_weight: number
   tls_fingerprint_weight: number
+  signup_ip_risk_control_threshold: number
+  signup_ip_disable_previous_accounts: boolean
+  signup_ip_keep_previous_accounts: number
+  api_usage_ip_ua_risk_control_threshold: number
+  api_usage_ip_ua_disable_previous_accounts: boolean
+  api_usage_ip_ua_keep_previous_accounts: number
   ip_reputation_endpoint: string
   ip_reputation_api_key?: string
 }

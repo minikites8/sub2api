@@ -1,6 +1,6 @@
 CHANGED_BRANCH_OR_FIELD: anti-abuse registration and gateway evaluation; settings keys anti_abuse_*; FingerprintJS v4.6.2 multi-value/fuzzy fingerprints; trusted-proxy JA3/JA4 headers and IPPure multi-source reputation
 ORIGINAL_SHA256: 8f0bcea32088a48387be67ef086b1586d9e0a85121de9a13f24f756a3177bd41
-MODIFIED_SHA256: 3fc758df04f640b2080a931d8424c91b0177e3cddefef67738042451f46f1865
+MODIFIED_SHA256: 3b4c77f16dcdb087dadb3bedafb016fdc6debc247862480ed04dd234e052bd13
 
 BASELINE_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; go test -tags=unit ./internal/service ./internal/handler ./internal/repository
 BASELINE_INPUT: repository checkout before this change
@@ -51,3 +51,21 @@ ROLLBACK_LITERAL_RESULT: restored:artifacts/multidimensional-anti-abuse/rollback
 ROLLBACK_EXIT_STATUS: 0
 
 RESTORED_BEHAVIOR_STATUS: rollback copy restored to the original IP+UA fixture with matching SHA256; MODIFIED_FILE.json remains changed on the multidimensional branch.
+
+THRESHOLD_INTEGRATION_BRANCH_OR_FIELD: signup_ip_risk_control_threshold and api_usage_ip_ua_risk_control_threshold are evaluated as multidimensional hard factors; anti_abuse_enabled gates both threshold paths
+THRESHOLD_INTEGRATION_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
+THRESHOLD_MODIFIED_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test ./internal/service -run 'TestEvaluateAntiAbuse|TestConfiguredIPReputation|TestDisabledAntiAbuse|TestRegistrationIPThreshold|TestAPIIPUAThreshold|TestAntiAbuseConfigIncludesIPVelocity' -count=1
+THRESHOLD_MODIFIED_INPUT: registration IP velocity 2 with threshold 3; API IP+UA velocity 3 with threshold 4; stored settings 7/8; disabled anti-abuse policy
+THRESHOLD_MODIFIED_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 3.322s
+THRESHOLD_MODIFIED_EXIT_STATUS: 0
+THRESHOLD_BUILD_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go build ./...
+THRESHOLD_BUILD_LITERAL_RESULT: empty output; build completed
+THRESHOLD_BUILD_EXIT_STATUS: 0
+THRESHOLD_FRONTEND_COMMAND: pnpm exec vue-tsc --noEmit; pnpm exec eslint src/api/admin/riskControl.ts src/views/admin/RiskControlView.vue src/i18n/locales/zh/legacy.ts src/i18n/locales/en/legacy.ts src/i18n/locales/zh/admin/settings.ts src/i18n/locales/en/admin/settings.ts; pnpm exec vitest run src/views/admin/__tests__/RiskControlView.spec.ts; pnpm run build
+THRESHOLD_FRONTEND_LITERAL_RESULT: vue-tsc exit 0; eslint exit 0; RiskControlView 1 test file and 8 tests passed; Vite 1042 modules transformed and built in 32.92s
+THRESHOLD_FRONTEND_EXIT_STATUS: 0
+THRESHOLD_ROLLBACK_COMMAND: & 'C:\Program Files\Git\bin\bash.exe' 'artifacts/multidimensional-anti-abuse/ROLLBACK.sh' 'artifacts/multidimensional-anti-abuse/rollback-check.json'
+THRESHOLD_ROLLBACK_INPUT: copy of MODIFIED_FILE.json after threshold integration update
+THRESHOLD_ROLLBACK_LITERAL_RESULT: restored:artifacts\multidimensional-anti-abuse\rollback-check.json; restored_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; original_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02
+THRESHOLD_ROLLBACK_EXIT_STATUS: 0
+THRESHOLD_RESTORED_BEHAVIOR_STATUS: rollback-check.json restored to ORIGINAL_FILE.json SHA256; MODIFIED_FILE.json remains changed with threshold integration fields.

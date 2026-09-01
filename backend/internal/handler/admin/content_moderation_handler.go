@@ -99,15 +99,21 @@ func (h *ContentModerationHandler) GetAntiAbuseConfig(c *gin.Context) {
 }
 
 type antiAbuseConfigRequest struct {
-	Enabled              bool    `json:"enabled"`
-	ScoreThreshold       int     `json:"score_threshold"`
-	FingerprintWeight    int     `json:"fingerprint_weight"`
-	IPWeight             int     `json:"ip_weight"`
-	EmailWeight          int     `json:"email_weight"`
-	UserAgentWeight      int     `json:"user_agent_weight"`
-	TLSFingerprintWeight int     `json:"tls_fingerprint_weight"`
-	IPReputationEndpoint string  `json:"ip_reputation_endpoint"`
-	IPReputationAPIKey   *string `json:"ip_reputation_api_key"`
+	Enabled                             bool    `json:"enabled"`
+	ScoreThreshold                      int     `json:"score_threshold"`
+	FingerprintWeight                   int     `json:"fingerprint_weight"`
+	IPWeight                            int     `json:"ip_weight"`
+	EmailWeight                         int     `json:"email_weight"`
+	UserAgentWeight                     int     `json:"user_agent_weight"`
+	TLSFingerprintWeight                int     `json:"tls_fingerprint_weight"`
+	SignupIPRiskControlThreshold        *int    `json:"signup_ip_risk_control_threshold"`
+	SignupIPDisablePreviousAccounts     *bool   `json:"signup_ip_disable_previous_accounts"`
+	SignupIPKeepPreviousAccounts        *int    `json:"signup_ip_keep_previous_accounts"`
+	APIUsageIPUARiskControlThreshold    *int    `json:"api_usage_ip_ua_risk_control_threshold"`
+	APIUsageIPUADisablePreviousAccounts *bool   `json:"api_usage_ip_ua_disable_previous_accounts"`
+	APIUsageIPUAKeepPreviousAccounts    *int    `json:"api_usage_ip_ua_keep_previous_accounts"`
+	IPReputationEndpoint                string  `json:"ip_reputation_endpoint"`
+	IPReputationAPIKey                  *string `json:"ip_reputation_api_key"`
 }
 
 func (h *ContentModerationHandler) UpdateAntiAbuseConfig(c *gin.Context) {
@@ -127,10 +133,41 @@ func (h *ContentModerationHandler) UpdateAntiAbuseConfig(c *gin.Context) {
 			return
 		}
 	}
+	current := h.settings.GetAntiAbuseConfig(c.Request.Context())
+	signupThreshold := current.SignupIPRiskControlThreshold
+	if req.SignupIPRiskControlThreshold != nil {
+		signupThreshold = *req.SignupIPRiskControlThreshold
+	}
+	signupDisablePrevious := current.SignupIPDisablePreviousAccounts
+	if req.SignupIPDisablePreviousAccounts != nil {
+		signupDisablePrevious = *req.SignupIPDisablePreviousAccounts
+	}
+	signupKeepPrevious := current.SignupIPKeepPreviousAccounts
+	if req.SignupIPKeepPreviousAccounts != nil {
+		signupKeepPrevious = *req.SignupIPKeepPreviousAccounts
+	}
+	apiThreshold := current.APIUsageIPUARiskControlThreshold
+	if req.APIUsageIPUARiskControlThreshold != nil {
+		apiThreshold = *req.APIUsageIPUARiskControlThreshold
+	}
+	apiDisablePrevious := current.APIUsageIPUADisablePreviousAccounts
+	if req.APIUsageIPUADisablePreviousAccounts != nil {
+		apiDisablePrevious = *req.APIUsageIPUADisablePreviousAccounts
+	}
+	apiKeepPrevious := current.APIUsageIPUAKeepPreviousAccounts
+	if req.APIUsageIPUAKeepPreviousAccounts != nil {
+		apiKeepPrevious = *req.APIUsageIPUAKeepPreviousAccounts
+	}
 	view, err := h.settings.UpdateAntiAbuseConfig(c.Request.Context(), service.UpdateAntiAbuseConfigInput{
 		Enabled: req.Enabled, ScoreThreshold: req.ScoreThreshold, FingerprintWeight: req.FingerprintWeight,
 		IPWeight: req.IPWeight, EmailWeight: req.EmailWeight, UserAgentWeight: req.UserAgentWeight,
 		TLSFingerprintWeight: req.TLSFingerprintWeight, IPReputationEndpoint: endpoint, IPReputationAPIKey: req.IPReputationAPIKey,
+		SignupIPRiskControlThreshold:        signupThreshold,
+		SignupIPDisablePreviousAccounts:     signupDisablePrevious,
+		SignupIPKeepPreviousAccounts:        signupKeepPrevious,
+		APIUsageIPUARiskControlThreshold:    apiThreshold,
+		APIUsageIPUADisablePreviousAccounts: apiDisablePrevious,
+		APIUsageIPUAKeepPreviousAccounts:    apiKeepPrevious,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

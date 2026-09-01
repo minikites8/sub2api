@@ -1534,6 +1534,13 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 	if signupIP == "" {
 		return
 	}
+	policy := DefaultAntiAbusePolicy()
+	if s.settingService != nil {
+		policy = s.settingService.GetAntiAbusePolicy(ctx)
+	}
+	if !policy.Enabled {
+		return
+	}
 
 	client := s.entClient
 	if tx := dbent.TxFromContext(ctx); tx != nil {
@@ -1557,63 +1564,46 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 	if signals.Email == "" {
 		signals.Email = user.Email
 	}
-	policy := DefaultAntiAbusePolicy()
-	if s.settingService != nil {
-		policy = s.settingService.GetAntiAbusePolicy(ctx)
-	}
 	fingerprintVelocity := 0
 	tlsVelocity := 0
 	emailVelocity := 0
-	if policy.Enabled {
-		if s.settingService != nil {
-			signals.IPReputationScore = s.settingService.LookupConfiguredIPReputation(ctx, signupIP)
-		}
-		if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && len(signals.BrowserFingerprints) > 0 {
-			if count, queryErr := store.CountUsersByFingerprintHashes(ctx, HashBrowserFingerprints(signals.BrowserFingerprints), windowStart); queryErr == nil {
-				fingerprintVelocity = count
-			}
-		}
-		if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && (signals.JA3 != "" || signals.JA4 != "") {
-			if count, queryErr := store.CountUsersByTransportFingerprints(ctx, signals.JA3, signals.JA4, windowStart); queryErr == nil {
-				tlsVelocity = maxInt(0, count-1)
-			}
-		}
-		if _, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(signals.Email)), "@"); ok && domain != "" {
-			if count, countErr := client.User.Query().Where(dbuser.EmailHasSuffix("@"+domain), dbuser.CreatedAtGTE(windowStart)).Count(ctx); countErr == nil {
-				emailVelocity = maxInt(0, count-1)
-			}
+	if s.settingService != nil {
+		signals.IPReputationScore = s.settingService.LookupConfiguredIPReputation(ctx, signupIP)
+	}
+	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && len(signals.BrowserFingerprints) > 0 {
+		if count, queryErr := store.CountUsersByFingerprintHashes(ctx, HashBrowserFingerprints(signals.BrowserFingerprints), windowStart); queryErr == nil {
+			fingerprintVelocity = count
 		}
 	}
-	assessment := AntiAbuseAssessment{Action: AntiAbuseActionAllow, Factors: map[string]int{}}
-	if policy.Enabled {
-		assessment = EvaluateAntiAbuseWithTLS(signals, maxInt(0, len(users)-1), fingerprintVelocity, emailVelocity, tlsVelocity, policy)
+	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && (signals.JA3 != "" || signals.JA4 != "") {
+		if count, queryErr := store.CountUsersByTransportFingerprints(ctx, signals.JA3, signals.JA4, windowStart); queryErr == nil {
+			tlsVelocity = maxInt(0, count-1)
+		}
 	}
+	if _, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(signals.Email)), "@"); ok && domain != "" {
+		if count, countErr := client.User.Query().Where(dbuser.EmailHasSuffix("@"+domain), dbuser.CreatedAtGTE(windowStart)).Count(ctx); countErr == nil {
+			emailVelocity = maxInt(0, count-1)
+		}
+	}
+	assessment := EvaluateRegistrationAntiAbuse(signals, maxInt(0, len(users)-1), fingerprintVelocity, emailVelocity, tlsVelocity, policy)
 	antiAbuseStore, _ := s.userRepo.(AntiAbuseSignalStore)
 	antiAbuseEvents, _ := s.userRepo.(AntiAbuseEventStore)
-	if policy.Enabled {
-		RecordAntiAbuseAssessment(ctx, antiAbuseEvents, "registration", &user.ID, user.Email, signals, assessment)
-	}
-	if policy.Enabled && antiAbuseStore != nil && len(signals.BrowserFingerprints) > 0 {
+	RecordAntiAbuseAssessment(ctx, antiAbuseEvents, "registration", &user.ID, user.Email, signals, assessment)
+	if antiAbuseStore != nil && len(signals.BrowserFingerprints) > 0 {
 		store := antiAbuseStore
 		if storeErr := store.StoreSignupRiskSignals(ctx, user.ID, signals.BrowserFingerprints, assessment); storeErr != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] anti-abuse fingerprint persistence failed: user=%d err=%v", user.ID, storeErr)
 		}
 	}
-	if policy.Enabled && antiAbuseStore != nil && (signals.JA3 != "" || signals.JA4 != "") {
+	if antiAbuseStore != nil && (signals.JA3 != "" || signals.JA4 != "") {
 		store := antiAbuseStore
 		if storeErr := store.StoreTransportFingerprints(ctx, user.ID, signals.JA3, signals.JA4, assessment); storeErr != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] anti-abuse transport fingerprint persistence failed: user=%d err=%v", user.ID, storeErr)
 		}
 	}
-	threshold := defaultSignupIPRiskControlThreshold
-	disablePreviousAccounts := defaultSignupIPDisablePreviousAccounts
-	keepPreviousAccounts := defaultSignupIPKeepPreviousAccounts
-	if s.settingService != nil {
-		threshold = s.settingService.GetSignupIPRiskControlThreshold(ctx)
-		disablePreviousAccounts = s.settingService.GetSignupIPDisablePreviousAccounts(ctx)
-		keepPreviousAccounts = s.settingService.GetSignupIPKeepPreviousAccounts(ctx)
-	}
-	if assessment.Action != AntiAbuseActionRestrict && len(users) < threshold {
+	disablePreviousAccounts := policy.SignupIPDisablePreviousAccounts
+	keepPreviousAccounts := policy.SignupIPKeepPreviousAccounts
+	if assessment.Action != AntiAbuseActionRestrict {
 		return
 	}
 	if keepPreviousAccounts < 0 {
@@ -1650,14 +1640,9 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 				user.Balance = 0
 			}
 			if updated > 0 {
-				if policy.Enabled {
-					RecordAntiAbuseDeduction(ctx, antiAbuseEvents, "registration_gift_deduction", &item.ID, item.Email, signals, assessment, item.Balance)
-				}
+				RecordAntiAbuseDeduction(ctx, antiAbuseEvents, "registration_gift_deduction", &item.ID, item.Email, signals, assessment, item.Balance)
 				if recorder, ok := s.userRepo.(RiskControlBalanceRecorder); ok {
-					note := fmt.Sprintf("注册 IP 风控扣除赠金（score=%d factors=%v）", assessment.Score, assessment.Factors)
-					if policy.Enabled {
-						note = fmt.Sprintf("多维反滥用风控扣除赠金（score=%d factors=%v）", assessment.Score, assessment.Factors)
-					}
+					note := fmt.Sprintf("多维反滥用风控扣除赠金（score=%d factors=%v）", assessment.Score, assessment.Factors)
 					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.ID, item.Balance, note); err != nil {
 						logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control history record failed: user=%d ip=%s err=%v", item.ID, signupIP, err)
 					}

@@ -4609,3 +4609,7 @@ index 000000000..25e2f3e40
 +4. 对前端客户端逐步升级；旧客户端继续使用 IP、UA 和服务端请求上下文完成兼容判定。
 +
 +风控中心页面 `/admin/risk-control` 的“多维反滥用事件”区域读取 `/admin/risk-control/anti-abuse/events`。赠金扣除同时保留现有 `risk_control_balance` 余额历史记录，事件流提供评分和因子上下文。
+
+## Threshold integration update
+
+新增 `signup_ip_threshold` 与 `api_ip_ua_threshold` 多维评分因子；阈值配置、历史账号处置与总开关统一进入反滥用策略。

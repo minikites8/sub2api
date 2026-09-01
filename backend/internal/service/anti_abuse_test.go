@@ -102,6 +102,60 @@ func TestDisabledAntiAbuseSkipsScoring(t *testing.T) {
 	require.Empty(t, assessment.Factors)
 }
 
+func TestRegistrationIPThresholdIsMultidimensionalFactor(t *testing.T) {
+	policy := DefaultAntiAbusePolicy()
+	policy.SignupIPRiskControlThreshold = 3
+	signals := RiskSignals{IPAddress: "8.8.8.8", Email: "person@example.com", UserAgent: "Mozilla/5.0"}
+
+	below := EvaluateRegistrationAntiAbuse(signals, 1, 0, 0, 0, policy)
+	require.Equal(t, AntiAbuseActionAllow, below.Action)
+	require.NotContains(t, below.Factors, "signup_ip_threshold")
+
+	hit := EvaluateRegistrationAntiAbuse(signals, 2, 0, 0, 0, policy)
+	require.Equal(t, AntiAbuseActionRestrict, hit.Action)
+	require.Equal(t, policy.ScoreThreshold, hit.Factors["signup_ip_threshold"])
+}
+
+func TestAPIIPUAThresholdIsMultidimensionalFactor(t *testing.T) {
+	policy := DefaultAntiAbusePolicy()
+	policy.APIUsageIPUARiskControlThreshold = 4
+	signals := RiskSignals{IPAddress: "8.8.8.8", Email: "person@example.com", UserAgent: "Mozilla/5.0"}
+
+	hit := EvaluateGatewayAntiAbuse(signals, 3, 0, 0, 0, policy)
+	require.Equal(t, AntiAbuseActionRestrict, hit.Action)
+	require.Equal(t, policy.ScoreThreshold, hit.Factors["api_ip_ua_threshold"])
+}
+
+func TestAntiAbuseConfigIncludesIPVelocityControls(t *testing.T) {
+	repo := &antiAbuseSettingRepo{values: map[string]string{
+		SettingKeySignupIPRiskControlThreshold:        "7",
+		SettingKeySignupIPDisablePreviousAccounts:     "false",
+		SettingKeySignupIPKeepPreviousAccounts:        "2",
+		SettingKeyAPIUsageIPUARiskControlThreshold:    "8",
+		SettingKeyAPIUsageIPUADisablePreviousAccounts: "true",
+		SettingKeyAPIUsageIPUAKeepPreviousAccounts:    "3",
+	}}
+	svc := NewSettingService(repo, &config.Config{})
+	view := svc.GetAntiAbuseConfig(context.Background())
+	require.Equal(t, 7, view.SignupIPRiskControlThreshold)
+	require.False(t, view.SignupIPDisablePreviousAccounts)
+	require.Equal(t, 2, view.SignupIPKeepPreviousAccounts)
+	require.Equal(t, 8, view.APIUsageIPUARiskControlThreshold)
+	require.True(t, view.APIUsageIPUADisablePreviousAccounts)
+	require.Equal(t, 3, view.APIUsageIPUAKeepPreviousAccounts)
+
+	updated, err := svc.UpdateAntiAbuseConfig(context.Background(), UpdateAntiAbuseConfigInput{
+		Enabled: true, ScoreThreshold: 60, FingerprintWeight: 1, IPWeight: 1, EmailWeight: 1,
+		UserAgentWeight: 1, TLSFingerprintWeight: 1, SignupIPRiskControlThreshold: 9,
+		SignupIPDisablePreviousAccounts: true, SignupIPKeepPreviousAccounts: 1,
+		APIUsageIPUARiskControlThreshold: 10, APIUsageIPUADisablePreviousAccounts: false,
+		APIUsageIPUAKeepPreviousAccounts: 0,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 9, updated.SignupIPRiskControlThreshold)
+	require.Equal(t, "10", repo.values[SettingKeyAPIUsageIPUARiskControlThreshold])
+}
+
 func TestConfiguredIPReputationProviderAndCache(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

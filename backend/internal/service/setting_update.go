@@ -710,7 +710,13 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	}
 	s.antiAbuseRuntimeSF.Forget("anti_abuse_runtime")
 	s.antiAbuseRuntimeCache.Store(&cachedAntiAbuseRuntime{
-		policy:   AntiAbusePolicy{Enabled: settings.AntiAbuseEnabled, ScoreThreshold: parsePositiveInt(strconv.Itoa(settings.AntiAbuseScoreThreshold), defaultAntiAbuseScoreThreshold), FingerprintWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseFingerprintWeight), defaultAntiAbuseFingerprintWeight), IPWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseIPWeight), defaultAntiAbuseIPWeight), EmailWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseEmailWeight), defaultAntiAbuseEmailWeight), UserAgentWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseUserAgentWeight), defaultAntiAbuseUserAgentWeight), TLSFingerprintWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseTLSFingerprintWeight), defaultAntiAbuseTLSFingerprintWeight)},
+		policy: AntiAbusePolicy{
+			Enabled: settings.AntiAbuseEnabled, ScoreThreshold: parsePositiveInt(strconv.Itoa(settings.AntiAbuseScoreThreshold), defaultAntiAbuseScoreThreshold),
+			FingerprintWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseFingerprintWeight), defaultAntiAbuseFingerprintWeight), IPWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseIPWeight), defaultAntiAbuseIPWeight),
+			EmailWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseEmailWeight), defaultAntiAbuseEmailWeight), UserAgentWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseUserAgentWeight), defaultAntiAbuseUserAgentWeight), TLSFingerprintWeight: parsePositiveInt(strconv.Itoa(settings.AntiAbuseTLSFingerprintWeight), defaultAntiAbuseTLSFingerprintWeight),
+			SignupIPRiskControlThreshold: parseSignupIPRiskControlThreshold(strconv.Itoa(settings.SignupIPRiskControlThreshold)), SignupIPDisablePreviousAccounts: settings.SignupIPDisablePreviousAccounts, SignupIPKeepPreviousAccounts: parseSignupIPKeepPreviousAccounts(strconv.Itoa(settings.SignupIPKeepPreviousAccounts)),
+			APIUsageIPUARiskControlThreshold: parseAPIUsageIPUARiskControlThreshold(strconv.Itoa(settings.APIUsageIPUARiskControlThreshold)), APIUsageIPUADisablePreviousAccounts: settings.APIUsageIPUADisablePreviousAccounts, APIUsageIPUAKeepPreviousAccounts: parseAPIUsageIPUAKeepPreviousAccounts(strconv.Itoa(settings.APIUsageIPUAKeepPreviousAccounts)),
+		},
 		endpoint: strings.TrimSpace(settings.AntiAbuseIPReputationEndpoint), apiKey: strings.TrimSpace(settings.AntiAbuseIPReputationAPIKey), expiresAt: time.Now().Add(antiAbuseRuntimeCacheTTL).UnixNano(),
 	})
 

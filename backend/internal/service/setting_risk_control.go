@@ -32,27 +32,39 @@ type cachedAntiAbuseRuntime struct {
 }
 
 type AntiAbuseConfigView struct {
-	Enabled                      bool   `json:"enabled"`
-	ScoreThreshold               int    `json:"score_threshold"`
-	FingerprintWeight            int    `json:"fingerprint_weight"`
-	IPWeight                     int    `json:"ip_weight"`
-	EmailWeight                  int    `json:"email_weight"`
-	UserAgentWeight              int    `json:"user_agent_weight"`
-	TLSFingerprintWeight         int    `json:"tls_fingerprint_weight"`
-	IPReputationEndpoint         string `json:"ip_reputation_endpoint"`
-	IPReputationAPIKeyConfigured bool   `json:"ip_reputation_api_key_configured"`
+	Enabled                             bool   `json:"enabled"`
+	ScoreThreshold                      int    `json:"score_threshold"`
+	FingerprintWeight                   int    `json:"fingerprint_weight"`
+	IPWeight                            int    `json:"ip_weight"`
+	EmailWeight                         int    `json:"email_weight"`
+	UserAgentWeight                     int    `json:"user_agent_weight"`
+	TLSFingerprintWeight                int    `json:"tls_fingerprint_weight"`
+	SignupIPRiskControlThreshold        int    `json:"signup_ip_risk_control_threshold"`
+	SignupIPDisablePreviousAccounts     bool   `json:"signup_ip_disable_previous_accounts"`
+	SignupIPKeepPreviousAccounts        int    `json:"signup_ip_keep_previous_accounts"`
+	APIUsageIPUARiskControlThreshold    int    `json:"api_usage_ip_ua_risk_control_threshold"`
+	APIUsageIPUADisablePreviousAccounts bool   `json:"api_usage_ip_ua_disable_previous_accounts"`
+	APIUsageIPUAKeepPreviousAccounts    int    `json:"api_usage_ip_ua_keep_previous_accounts"`
+	IPReputationEndpoint                string `json:"ip_reputation_endpoint"`
+	IPReputationAPIKeyConfigured        bool   `json:"ip_reputation_api_key_configured"`
 }
 
 type UpdateAntiAbuseConfigInput struct {
-	Enabled              bool
-	ScoreThreshold       int
-	FingerprintWeight    int
-	IPWeight             int
-	EmailWeight          int
-	UserAgentWeight      int
-	TLSFingerprintWeight int
-	IPReputationEndpoint string
-	IPReputationAPIKey   *string
+	Enabled                             bool
+	ScoreThreshold                      int
+	FingerprintWeight                   int
+	IPWeight                            int
+	EmailWeight                         int
+	UserAgentWeight                     int
+	TLSFingerprintWeight                int
+	SignupIPRiskControlThreshold        int
+	SignupIPDisablePreviousAccounts     bool
+	SignupIPKeepPreviousAccounts        int
+	APIUsageIPUARiskControlThreshold    int
+	APIUsageIPUADisablePreviousAccounts bool
+	APIUsageIPUAKeepPreviousAccounts    int
+	IPReputationEndpoint                string
+	IPReputationAPIKey                  *string
 }
 
 func antiAbuseConfigView(runtime cachedAntiAbuseRuntime) AntiAbuseConfigView {
@@ -60,8 +72,14 @@ func antiAbuseConfigView(runtime cachedAntiAbuseRuntime) AntiAbuseConfigView {
 		Enabled: runtime.policy.Enabled, ScoreThreshold: runtime.policy.ScoreThreshold,
 		FingerprintWeight: runtime.policy.FingerprintWeight, IPWeight: runtime.policy.IPWeight,
 		EmailWeight: runtime.policy.EmailWeight, UserAgentWeight: runtime.policy.UserAgentWeight,
-		TLSFingerprintWeight: runtime.policy.TLSFingerprintWeight,
-		IPReputationEndpoint: runtime.endpoint, IPReputationAPIKeyConfigured: runtime.apiKey != "",
+		TLSFingerprintWeight:                runtime.policy.TLSFingerprintWeight,
+		SignupIPRiskControlThreshold:        runtime.policy.SignupIPRiskControlThreshold,
+		SignupIPDisablePreviousAccounts:     runtime.policy.SignupIPDisablePreviousAccounts,
+		SignupIPKeepPreviousAccounts:        runtime.policy.SignupIPKeepPreviousAccounts,
+		APIUsageIPUARiskControlThreshold:    runtime.policy.APIUsageIPUARiskControlThreshold,
+		APIUsageIPUADisablePreviousAccounts: runtime.policy.APIUsageIPUADisablePreviousAccounts,
+		APIUsageIPUAKeepPreviousAccounts:    runtime.policy.APIUsageIPUAKeepPreviousAccounts,
+		IPReputationEndpoint:                runtime.endpoint, IPReputationAPIKeyConfigured: runtime.apiKey != "",
 	}
 }
 
@@ -81,6 +99,12 @@ func (s *SettingService) UpdateAntiAbuseConfig(ctx context.Context, input Update
 	runtime.policy.EmailWeight = parsePositiveInt(strconv.Itoa(input.EmailWeight), defaultAntiAbuseEmailWeight)
 	runtime.policy.UserAgentWeight = parsePositiveInt(strconv.Itoa(input.UserAgentWeight), defaultAntiAbuseUserAgentWeight)
 	runtime.policy.TLSFingerprintWeight = parsePositiveInt(strconv.Itoa(input.TLSFingerprintWeight), defaultAntiAbuseTLSFingerprintWeight)
+	runtime.policy.SignupIPRiskControlThreshold = parseSignupIPRiskControlThreshold(strconv.Itoa(input.SignupIPRiskControlThreshold))
+	runtime.policy.SignupIPDisablePreviousAccounts = input.SignupIPDisablePreviousAccounts
+	runtime.policy.SignupIPKeepPreviousAccounts = parseSignupIPKeepPreviousAccounts(strconv.Itoa(input.SignupIPKeepPreviousAccounts))
+	runtime.policy.APIUsageIPUARiskControlThreshold = parseAPIUsageIPUARiskControlThreshold(strconv.Itoa(input.APIUsageIPUARiskControlThreshold))
+	runtime.policy.APIUsageIPUADisablePreviousAccounts = input.APIUsageIPUADisablePreviousAccounts
+	runtime.policy.APIUsageIPUAKeepPreviousAccounts = parseAPIUsageIPUAKeepPreviousAccounts(strconv.Itoa(input.APIUsageIPUAKeepPreviousAccounts))
 	runtime.endpoint = strings.TrimSpace(input.IPReputationEndpoint)
 	if input.IPReputationAPIKey != nil {
 		runtime.apiKey = strings.TrimSpace(*input.IPReputationAPIKey)
@@ -90,6 +114,12 @@ func (s *SettingService) UpdateAntiAbuseConfig(ctx context.Context, input Update
 		SettingKeyAntiAbuseFingerprintWeight: strconv.Itoa(runtime.policy.FingerprintWeight), SettingKeyAntiAbuseIPWeight: strconv.Itoa(runtime.policy.IPWeight),
 		SettingKeyAntiAbuseEmailWeight: strconv.Itoa(runtime.policy.EmailWeight), SettingKeyAntiAbuseUserAgentWeight: strconv.Itoa(runtime.policy.UserAgentWeight),
 		SettingKeyAntiAbuseTLSFingerprintWeight: strconv.Itoa(runtime.policy.TLSFingerprintWeight), SettingKeyAntiAbuseIPReputationEndpoint: runtime.endpoint,
+		SettingKeySignupIPRiskControlThreshold:        strconv.Itoa(runtime.policy.SignupIPRiskControlThreshold),
+		SettingKeySignupIPDisablePreviousAccounts:     strconv.FormatBool(runtime.policy.SignupIPDisablePreviousAccounts),
+		SettingKeySignupIPKeepPreviousAccounts:        strconv.Itoa(runtime.policy.SignupIPKeepPreviousAccounts),
+		SettingKeyAPIUsageIPUARiskControlThreshold:    strconv.Itoa(runtime.policy.APIUsageIPUARiskControlThreshold),
+		SettingKeyAPIUsageIPUADisablePreviousAccounts: strconv.FormatBool(runtime.policy.APIUsageIPUADisablePreviousAccounts),
+		SettingKeyAPIUsageIPUAKeepPreviousAccounts:    strconv.Itoa(runtime.policy.APIUsageIPUAKeepPreviousAccounts),
 	}
 	if input.IPReputationAPIKey != nil {
 		values[SettingKeyAntiAbuseIPReputationAPIKey] = runtime.apiKey
@@ -115,20 +145,26 @@ func (s *SettingService) getAntiAbuseRuntime(ctx context.Context) cachedAntiAbus
 		if cached, _ := s.antiAbuseRuntimeCache.Load().(*cachedAntiAbuseRuntime); cached != nil && time.Now().UnixNano() < cached.expiresAt {
 			return *cached, nil
 		}
-		keys := []string{SettingKeyAntiAbuseEnabled, SettingKeyAntiAbuseScoreThreshold, SettingKeyAntiAbuseFingerprintWeight, SettingKeyAntiAbuseIPWeight, SettingKeyAntiAbuseEmailWeight, SettingKeyAntiAbuseUserAgentWeight, SettingKeyAntiAbuseTLSFingerprintWeight, SettingKeyAntiAbuseIPReputationEndpoint, SettingKeyAntiAbuseIPReputationAPIKey}
+		keys := []string{SettingKeyAntiAbuseEnabled, SettingKeyAntiAbuseScoreThreshold, SettingKeyAntiAbuseFingerprintWeight, SettingKeyAntiAbuseIPWeight, SettingKeyAntiAbuseEmailWeight, SettingKeyAntiAbuseUserAgentWeight, SettingKeyAntiAbuseTLSFingerprintWeight, SettingKeySignupIPRiskControlThreshold, SettingKeySignupIPDisablePreviousAccounts, SettingKeySignupIPKeepPreviousAccounts, SettingKeyAPIUsageIPUARiskControlThreshold, SettingKeyAPIUsageIPUADisablePreviousAccounts, SettingKeyAPIUsageIPUAKeepPreviousAccounts, SettingKeyAntiAbuseIPReputationEndpoint, SettingKeyAntiAbuseIPReputationAPIKey}
 		values, loadErr := s.settingRepo.GetMultiple(ctx, keys)
 		if loadErr != nil {
 			return fallback, loadErr
 		}
 		runtime := cachedAntiAbuseRuntime{
 			policy: AntiAbusePolicy{
-				Enabled:              parseBoolWithDefault(values[SettingKeyAntiAbuseEnabled], defaultAntiAbuseEnabled),
-				ScoreThreshold:       parsePositiveInt(values[SettingKeyAntiAbuseScoreThreshold], defaultAntiAbuseScoreThreshold),
-				FingerprintWeight:    parsePositiveInt(values[SettingKeyAntiAbuseFingerprintWeight], defaultAntiAbuseFingerprintWeight),
-				IPWeight:             parsePositiveInt(values[SettingKeyAntiAbuseIPWeight], defaultAntiAbuseIPWeight),
-				EmailWeight:          parsePositiveInt(values[SettingKeyAntiAbuseEmailWeight], defaultAntiAbuseEmailWeight),
-				UserAgentWeight:      parsePositiveInt(values[SettingKeyAntiAbuseUserAgentWeight], defaultAntiAbuseUserAgentWeight),
-				TLSFingerprintWeight: parsePositiveInt(values[SettingKeyAntiAbuseTLSFingerprintWeight], defaultAntiAbuseTLSFingerprintWeight),
+				Enabled:                             parseBoolWithDefault(values[SettingKeyAntiAbuseEnabled], defaultAntiAbuseEnabled),
+				ScoreThreshold:                      parsePositiveInt(values[SettingKeyAntiAbuseScoreThreshold], defaultAntiAbuseScoreThreshold),
+				FingerprintWeight:                   parsePositiveInt(values[SettingKeyAntiAbuseFingerprintWeight], defaultAntiAbuseFingerprintWeight),
+				IPWeight:                            parsePositiveInt(values[SettingKeyAntiAbuseIPWeight], defaultAntiAbuseIPWeight),
+				EmailWeight:                         parsePositiveInt(values[SettingKeyAntiAbuseEmailWeight], defaultAntiAbuseEmailWeight),
+				UserAgentWeight:                     parsePositiveInt(values[SettingKeyAntiAbuseUserAgentWeight], defaultAntiAbuseUserAgentWeight),
+				TLSFingerprintWeight:                parsePositiveInt(values[SettingKeyAntiAbuseTLSFingerprintWeight], defaultAntiAbuseTLSFingerprintWeight),
+				SignupIPRiskControlThreshold:        parseSignupIPRiskControlThreshold(values[SettingKeySignupIPRiskControlThreshold]),
+				SignupIPDisablePreviousAccounts:     parseSignupIPDisablePreviousAccounts(values[SettingKeySignupIPDisablePreviousAccounts]),
+				SignupIPKeepPreviousAccounts:        parseSignupIPKeepPreviousAccounts(values[SettingKeySignupIPKeepPreviousAccounts]),
+				APIUsageIPUARiskControlThreshold:    parseAPIUsageIPUARiskControlThreshold(values[SettingKeyAPIUsageIPUARiskControlThreshold]),
+				APIUsageIPUADisablePreviousAccounts: parseAPIUsageIPUADisablePreviousAccounts(values[SettingKeyAPIUsageIPUADisablePreviousAccounts]),
+				APIUsageIPUAKeepPreviousAccounts:    parseAPIUsageIPUAKeepPreviousAccounts(values[SettingKeyAPIUsageIPUAKeepPreviousAccounts]),
 			},
 			endpoint:  strings.TrimSpace(values[SettingKeyAntiAbuseIPReputationEndpoint]),
 			apiKey:    strings.TrimSpace(values[SettingKeyAntiAbuseIPReputationAPIKey]),
