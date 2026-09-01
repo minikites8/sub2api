@@ -1474,7 +1474,7 @@ func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, target
 		}
 		return &AcquireResult{Acquired: true, SlotID: account.EffectiveProxySlotID(), ReleaseFunc: func() {}}, nil
 	}
-	bindings := account.ProxyBindings()
+	bindings := prioritizeAccountProxyBindings(ctx, s.concurrencyService, account.ID, account.ProxyBindings())
 	if len(bindings) == 0 {
 		return s.concurrencyService.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
 	}

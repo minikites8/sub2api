@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -222,6 +224,66 @@ func AccountProxySlotID(accountID, proxyID int64) int64 {
 	_, _ = h.Write([]byte(strconv.FormatInt(proxyID, 10)))
 	value := int64(h.Sum64() & 0x3fffffffffffffff)
 	return value | (1 << 62)
+}
+
+// prioritizeAccountProxyBindings orders a pool by the current load ratio of
+// each account/proxy slot. Stable ordering keeps the configured pool order as
+// the tie-breaker, so the first request uses the first proxy and subsequent
+// requests move to other proxies as soon as that proxy has load.
+func prioritizeAccountProxyBindings(ctx context.Context, concurrency *ConcurrencyService, accountID int64, bindings []AccountProxyBinding) []AccountProxyBinding {
+	if concurrency == nil || len(bindings) < 2 {
+		return bindings
+	}
+
+	slotIDs := make([]int64, len(bindings))
+	for i, binding := range bindings {
+		slotIDs[i] = AccountProxySlotID(accountID, binding.ProxyID)
+	}
+	counts, err := concurrency.GetAccountConcurrencyBatch(ctx, slotIDs)
+	if err != nil {
+		return bindings
+	}
+
+	type loadedBinding struct {
+		binding AccountProxyBinding
+		current int
+		index   int
+	}
+	loaded := make([]loadedBinding, len(bindings))
+	for i, binding := range bindings {
+		loaded[i] = loadedBinding{
+			binding: binding,
+			current: counts[slotIDs[i]],
+			index:   i,
+		}
+	}
+	sort.SliceStable(loaded, func(i, j int) bool {
+		left, right := loaded[i], loaded[j]
+		leftCapacity := left.binding.Concurrency
+		rightCapacity := right.binding.Concurrency
+		if leftCapacity <= 0 {
+			leftCapacity = 1
+		}
+		if rightCapacity <= 0 {
+			rightCapacity = 1
+		}
+		// Compare current/capacity without floating point rounding.
+		leftRatio := int64(left.current) * int64(rightCapacity)
+		rightRatio := int64(right.current) * int64(leftCapacity)
+		if leftRatio != rightRatio {
+			return leftRatio < rightRatio
+		}
+		if left.current != right.current {
+			return left.current < right.current
+		}
+		return left.index < right.index
+	})
+
+	ordered := make([]AccountProxyBinding, len(loaded))
+	for i, item := range loaded {
+		ordered[i] = item.binding
+	}
+	return ordered
 }
 
 func ValidateAccountProxyPool(bindings []AccountProxyBindingInput) error {

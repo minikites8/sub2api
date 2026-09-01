@@ -1,6 +1,57 @@
 package service
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
+
+type proxyPoolSchedulingCacheStub struct {
+	ConcurrencyCache
+	counts       map[int64]int
+	acquireCalls []int64
+}
+
+func (s *proxyPoolSchedulingCacheStub) GetAccountConcurrencyBatch(_ context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	for _, accountID := range accountIDs {
+		result[accountID] = s.counts[accountID]
+	}
+	return result, nil
+}
+
+func (s *proxyPoolSchedulingCacheStub) AcquireAccountSlot(_ context.Context, accountID int64, _ int, _ string) (bool, error) {
+	s.acquireCalls = append(s.acquireCalls, accountID)
+	return true, nil
+}
+
+func TestGatewayProxyPoolSchedulingPrefersLeastLoadedProxy(t *testing.T) {
+	accountID := int64(42)
+	bindings := []AccountProxyBinding{
+		{ProxyID: 1, Concurrency: 10},
+		{ProxyID: 2, Concurrency: 5},
+	}
+	cache := &proxyPoolSchedulingCacheStub{counts: map[int64]int{
+		AccountProxySlotID(accountID, 1): 2,
+		AccountProxySlotID(accountID, 2): 0,
+	}}
+	account := &Account{ID: accountID, Concurrency: 15, ProxyPool: bindings}
+	service := &GatewayService{concurrencyService: NewConcurrencyService(cache)}
+
+	result, err := service.tryAcquireAccountSlot(context.Background(), account)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || !result.Acquired {
+		t.Fatalf("expected a proxy slot to be acquired: %#v", result)
+	}
+	if len(cache.acquireCalls) == 0 || cache.acquireCalls[0] != AccountProxySlotID(accountID, 2) {
+		t.Fatalf("first proxy slot=%v, want proxy 2 slot %v", cache.acquireCalls, AccountProxySlotID(accountID, 2))
+	}
+	if account.ProxyID == nil || *account.ProxyID != 2 {
+		t.Fatalf("selected proxy=%v, want 2", account.ProxyID)
+	}
+}
 
 func TestParseAccountProxyPool(t *testing.T) {
 	extra := map[string]any{

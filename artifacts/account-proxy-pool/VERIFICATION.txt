@@ -37,6 +37,10 @@ MODIFIED proxy icon test command: pnpm exec vitest run src/components/account/__
 MODIFIED proxy icon test literal result: 1 test file passed; 2 tests passed, including proxy names and map-pin icon path.
 MODIFIED proxy icon test exit status: 0
 
+MODIFIED proxy scheduling test command: isolated production-source copy; go test -run 'Test(ParseAccountProxyPool|AccountProxySlotIDStableAndDistinct|AccountProxyPoolValidation|AccountProxyPoolEffectiveCapacity|GatewayProxyPoolSchedulingPrefersLeastLoadedProxy)$' -count=1
+MODIFIED proxy scheduling test literal result: PASS; ok github.com/Wei-Shaw/sub2api/.proxy-pool-test 1.377s
+MODIFIED proxy scheduling test exit status: 0
+
 MODIFIED frontend typecheck command: pnpm exec vue-tsc --noEmit
 MODIFIED frontend typecheck literal result: completed with no output.
 MODIFIED frontend typecheck exit status: 0
