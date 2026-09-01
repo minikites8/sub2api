@@ -3,3 +3,4 @@ backend/internal/service/account_proxy_pool.go
 Changed branch/field: accounts.extra.proxy_pool with proxy_id and concurrency entries.
 The working tree keeps this implementation changed for account-level multi-proxy scheduling.
 The account capacity column now shows one current/max concurrency badge for each configured proxy.
+Each proxy badge includes the proxy name and a map-pin icon.

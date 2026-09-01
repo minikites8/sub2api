@@ -53,8 +53,10 @@ describe('AccountCapacityCell', () => {
 
     const badges = wrapper.findAll('[data-testid="proxy-capacity-badge"]')
     expect(badges).toHaveLength(2)
-    expect(badges[0].text().replace(/\s+/g, '')).toContain('2/6')
-    expect(badges[1].text().replace(/\s+/g, '')).toContain('1/6')
+    expect(badges[0].text().replace(/\s+/g, '')).toContain('IP132/6')
+    expect(badges[1].text().replace(/\s+/g, '')).toContain('IP121/6')
+    expect(wrapper.findAll('[data-testid="proxy-capacity-icon"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="proxy-capacity-icon"] path').attributes('d')).toContain('M15 10.5a3 3')
     expect(badges[0].attributes('title')).toBe('IP13: 2/6')
     expect(badges[1].attributes('title')).toBe('IP12: 1/6')
 

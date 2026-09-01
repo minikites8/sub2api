@@ -4,5 +4,6 @@ Account proxy pool implementation:
 - Added admin create/update DTO fields and account response pool entries with current concurrency.
 - Added create/edit proxy pool controls and account-list capacity badges.
 - Added per-proxy capacity badges in the account capacity column, with live current/max values and proxy-name tooltips.
+- Added a map-pin icon before each proxy name and concurrency value to distinguish proxy slots from account capacity.
 - Added AccountCapacityCell regression coverage for aggregate and per-proxy concurrency rendering.
 - Added proxy-key based backup export/import conversion for proxy pools.

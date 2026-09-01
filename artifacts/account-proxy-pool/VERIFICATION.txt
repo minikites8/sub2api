@@ -33,6 +33,10 @@ MODIFIED capacity display test command: pnpm exec vitest run src/components/acco
 MODIFIED capacity display test literal result: 1 test file passed; 2 tests passed.
 MODIFIED capacity display test exit status: 0
 
+MODIFIED proxy icon test command: pnpm exec vitest run src/components/account/__tests__/AccountCapacityCell.spec.ts
+MODIFIED proxy icon test literal result: 1 test file passed; 2 tests passed, including proxy names and map-pin icon path.
+MODIFIED proxy icon test exit status: 0
+
 MODIFIED frontend typecheck command: pnpm exec vue-tsc --noEmit
 MODIFIED frontend typecheck literal result: completed with no output.
 MODIFIED frontend typecheck exit status: 0
