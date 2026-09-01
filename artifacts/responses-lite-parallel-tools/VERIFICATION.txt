@@ -1,0 +1,24 @@
+Changed branch/field: main / Responses Lite parallel_tool_calls.
+
+MODIFIED_FILE: D:/Programs/sub2api/artifacts/responses-lite-parallel-tools/MODIFIED_FILE
+DIFF_FILE: D:/Programs/sub2api/artifacts/responses-lite-parallel-tools/DIFF_FILE
+VERIFICATION.txt: D:/Programs/sub2api/artifacts/responses-lite-parallel-tools/VERIFICATION.txt
+ROLLBACK.sh: D:/Programs/sub2api/artifacts/responses-lite-parallel-tools/ROLLBACK.sh
+
+BASELINE command: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test -tags=unit ./internal/service -run 'Test(NormalizeOpenAIResponsesLiteTools|OpenAIGatewayService_Forward_NormalizesResponsesLiteToolsForOAuth)' -count=1
+BASELINE literal result: package test build failed on pre-existing duplicate Kiro helpers, account expiry test API references, and OAuth test fixture fields.
+BASELINE exit status: 1
+
+MODIFIED command: isolated production-source copy with openai_responses_lite_tools_test.go and minimal upstream recorder helper; go test -tags=unit -run 'Test(NormalizeOpenAIResponsesLiteTools|OpenAIGatewayService_Forward_NormalizesResponsesLiteToolsForOAuth)' -count=1
+MODIFIED literal result: PASS; ok github.com/Wei-Shaw/sub2api/.lite-test 1.981s
+MODIFIED exit status: 0
+
+MODIFIED backend build command: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go build ./...
+MODIFIED literal result: completed with no output; Go telemetry emitted a pre-existing access-denied message before build completion.
+MODIFIED backend build exit status: 0
+
+ROLLBACK command: & 'C:\Program Files\Git\bin\bash.exe' D:/Programs/sub2api/artifacts/responses-lite-parallel-tools/ROLLBACK.sh D:/Programs/sub2api/artifacts/responses-lite-parallel-tools/rollback-copy
+ROLLBACK literal result: rollback copy restored the recorded marker and exited successfully.
+ROLLBACK exit status: 0
+
+Restored behavior/status: rollback validation applies only to the copy; the working tree remains changed with parallel_tool_calls=false normalization.

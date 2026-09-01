@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -24,6 +26,23 @@ func isOpenAIResponsesLiteWebSocketPayload(body []byte) bool {
 		return false
 	}
 	return isOpenAIResponsesLiteHeader(gjson.GetBytes(body, "client_metadata."+responsesLiteWSMetadataKey).String())
+}
+
+func setOpenAIResponsesLiteWebSocketMetadata(body []byte) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	if payload == nil {
+		return nil, errors.New("responses Lite websocket payload must be an object")
+	}
+	metadata, ok := payload["client_metadata"].(map[string]any)
+	if !ok || metadata == nil {
+		metadata = make(map[string]any)
+	}
+	metadata[responsesLiteWSMetadataKey] = "true"
+	payload["client_metadata"] = metadata
+	return json.Marshal(payload)
 }
 
 // ImageGenerationPermissionMessage returns the stable end-user error text for disabled groups.

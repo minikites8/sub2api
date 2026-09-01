@@ -1,0 +1,5 @@
+Responses Lite compatibility fix:
+- Normalize parallel_tool_calls to the required boolean false value.
+- Preserve existing reasoning and tool migration behavior.
+- Keep Lite metadata active for every response.create frame in a WebSocket session.
+- Cover omitted, true, and already-false values in unit tests.

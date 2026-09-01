@@ -181,6 +181,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return rebuilt, nil
 	}
 
+	responsesLiteSession := false
 	parseClientPayload := func(turn int, raw []byte) (openAIWSClientPayload, error) {
 		trimmed := bytes.TrimSpace(raw)
 		if len(trimmed) == 0 {
@@ -255,7 +256,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			normalized = next
 		}
-		if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(normalized) {
+		liteFrame := isOpenAIResponsesLiteWebSocketPayload(normalized)
+		if account.IsOpenAIOAuth() && liteFrame {
+			responsesLiteSession = true
+		}
+		if account.IsOpenAIOAuth() && responsesLiteSession {
+			if !liteFrame {
+				next, setErr := applyPayloadMutation(normalized, "client_metadata."+responsesLiteWSMetadataKey, "true")
+				if setErr != nil {
+					return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
+				}
+				normalized = next
+			}
 			litePayload, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(normalized)
 			if liteErr != nil {
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(
@@ -273,7 +285,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
 		}
 		codexBridgeEnabled := isCodexCLI &&
-			!isOpenAIResponsesLiteWebSocketPayload(normalized) &&
+			!responsesLiteSession &&
 			imageGenerationAllowed &&
 			codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip &&
 			s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)

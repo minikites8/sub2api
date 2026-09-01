@@ -1,0 +1,3 @@
+Changed field: Responses Lite request payload parallel_tool_calls.
+The implementation writes parallel_tool_calls=false for every normalized Lite request.
+The working tree keeps this fix changed for HTTP and WebSocket forwarding, including later frames that omit Lite metadata.

@@ -674,7 +674,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
-	if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
+	responsesLiteSession := account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(firstClientMessage)
+	if responsesLiteSession {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(firstClientMessage)
 		if liteErr != nil {
 			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, liteErr.Error(), liteErr)
@@ -957,7 +958,17 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}()
 			}
 			if isResponseCreate {
-				if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(payload) {
+				liteFrame := isOpenAIResponsesLiteWebSocketPayload(payload)
+				if account.IsOpenAIOAuth() && liteFrame {
+					responsesLiteSession = true
+				}
+				if account.IsOpenAIOAuth() && responsesLiteSession {
+					if !liteFrame {
+						payload, filterErr = setOpenAIResponsesLiteWebSocketMetadata(payload)
+						if filterErr != nil {
+							return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", filterErr)
+						}
+					}
 					litePayload, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(payload)
 					if liteErr != nil {
 						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, liteErr.Error(), liteErr)

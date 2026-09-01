@@ -135,7 +135,8 @@ func TestNormalizeOpenAIResponsesLiteTools_ConvertsStringInput(t *testing.T) {
 
 func TestNormalizeOpenAIResponsesLiteTools_KeepsSupportedTopLevelTools(t *testing.T) {
 	reqBody := map[string]any{
-		"reasoning": map[string]any{"context": "all_turns"},
+		"parallel_tool_calls": false,
+		"reasoning":           map[string]any{"context": "all_turns"},
 		"tools": []any{
 			map[string]any{"type": "function", "name": "shell"},
 			map[string]any{"type": "custom", "name": "exec"},
@@ -149,6 +150,43 @@ func TestNormalizeOpenAIResponsesLiteTools_KeepsSupportedTopLevelTools(t *testin
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Len(t, reqBody["tools"], 4)
+}
+
+func TestNormalizeOpenAIResponsesLiteTools_DisablesParallelToolCalls(t *testing.T) {
+	tests := []struct {
+		name     string
+		parallel any
+		wantDiff bool
+	}{
+		{name: "omitted", wantDiff: true},
+		{name: "enabled", parallel: true, wantDiff: true},
+		{name: "already disabled", parallel: false, wantDiff: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reqBody := map[string]any{
+				"reasoning": map[string]any{"context": "all_turns"},
+			}
+			if tt.parallel != nil {
+				reqBody["parallel_tool_calls"] = tt.parallel
+			}
+
+			changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.wantDiff, changed)
+			require.Equal(t, false, reqBody["parallel_tool_calls"])
+		})
+	}
+}
+
+func TestSetOpenAIResponsesLiteWebSocketMetadata(t *testing.T) {
+	updated, err := setOpenAIResponsesLiteWebSocketMetadata([]byte(`{"type":"response.create","parallel_tool_calls":true}`))
+
+	require.NoError(t, err)
+	require.Equal(t, "true", gjson.GetBytes(updated, "client_metadata."+responsesLiteWSMetadataKey).String())
+	require.True(t, gjson.GetBytes(updated, "parallel_tool_calls").Bool())
 }
 
 func TestNormalizeOpenAIResponsesLiteTools_EnsuresReasoningContext(t *testing.T) {
@@ -227,6 +265,7 @@ func TestNormalizeOpenAIResponsesLiteToolsPayload_PreservesResponseCreateShape(t
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.Equal(t, "response.create", gjson.GetBytes(updated, "type").String())
+	require.Equal(t, "false", gjson.GetBytes(updated, "parallel_tool_calls").String())
 	require.False(t, gjson.GetBytes(updated, "tools").Exists())
 	require.Equal(t, "collaboration", gjson.GetBytes(updated, `input.#(type=="additional_tools").tools.0.name`).String())
 	require.Equal(t, "namespace", gjson.GetBytes(updated, "tool_choice.type").String())
@@ -297,6 +336,7 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, "true", upstream.lastReq.Header.Get(responsesLiteHeader))
+			require.Equal(t, "false", gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").String())
 			require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
 			require.Equal(t, "all_turns", gjson.GetBytes(upstream.lastBody, "reasoning.context").String())
 			require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="namespace")`).Exists())
