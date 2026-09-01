@@ -1,4 +1,4 @@
-Changed branch/field: main (d7b1e3b65) / accounts.extra.proxy_pool and account capacity per-proxy display.
+Changed branch/field: main / accounts.extra.proxy_pool and account capacity per-proxy display.
 
 MODIFIED_FILE: D:/Programs/sub2api/artifacts/account-proxy-pool/MODIFIED_FILE
 DIFF_FILE: D:/Programs/sub2api/artifacts/account-proxy-pool/DIFF_FILE
