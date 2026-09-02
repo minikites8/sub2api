@@ -96,6 +96,9 @@
                   <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
                     {{ t('dashboard.dailyCheckin.checkedHint', { amount: formatCurrency(dailyCheckinStatus.today_reward) }) }}
                   </p>
+                  <p v-if="dailyCheckinStatus.today_reward_expires_at" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                    {{ t('dashboard.dailyCheckin.expiresAt', { date: formatDateTime(dailyCheckinStatus.today_reward_expires_at) }) }}
+                  </p>
                 </div>
               </div>
             </template>

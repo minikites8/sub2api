@@ -191,6 +191,8 @@ export interface DailyCheckinStatus {
   ads_enabled: boolean
   checked_in_today: boolean
   today_reward: number
+  reward_validity_days?: number
+  today_reward_expires_at?: string | null
   recharge_window_days: number
   recharge_eligible: boolean
   checkin_date: string

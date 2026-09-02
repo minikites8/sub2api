@@ -325,6 +325,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.SubscriptionCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
+		cmd.DailyCheckinRewardExpiry = true
 	}
 
 	if p.shouldDeductAPIKeyQuota() {

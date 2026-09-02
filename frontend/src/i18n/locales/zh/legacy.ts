@@ -795,6 +795,7 @@ export default {
       ready: '可签到',
       hint: '试试看今天的手气吧',
       checkedHint: '今日已获得 {amount}',
+      expiresAt: '有效期至 {date}',
       exhaustedHint: '今日签到额度已发完',
       rewardRange: '奖励范围',
       remainingToday: '今日剩余',
@@ -2060,7 +2061,8 @@ export default {
         user: '用户',
         checkinDate: '签到日期',
         reward: '获得额度',
-        createdAt: '领取时间'
+        createdAt: '领取时间',
+        expiresAt: '失效时间'
         },
         settings: {
           button: '签到设置',
@@ -2071,6 +2073,8 @@ export default {
           adsEnabledHint: '开启后用户签到验证区域会展示广告。',
           minReward: '最小签到获取额度',
           maxReward: '最大签到获取额度',
+          rewardValidityDays: '赠金有效期（天）',
+          rewardValidityDaysHint: '每次签到获得的赠金在此天数后失效。',
           dailyTotalLimit: '每日总派发额度',
           rechargeWindowDays: '充值统计时间窗口（天）',
           rechargeWindowDaysHint: '按已完成充值订单统计最近时间窗口内的累计金额。',

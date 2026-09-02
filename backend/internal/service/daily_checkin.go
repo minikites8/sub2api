@@ -27,24 +27,26 @@ var (
 )
 
 type DailyCheckinStatus struct {
-	Enabled            bool       `json:"enabled"`
-	AdsEnabled         bool       `json:"ads_enabled"`
-	CheckedInToday     bool       `json:"checked_in_today"`
-	TodayReward        float64    `json:"today_reward"`
-	TodayTotalGranted  float64    `json:"today_total_granted"`
-	DailyTotalLimit    float64    `json:"daily_total_limit"`
-	MinReward          float64    `json:"min_reward"`
-	MaxReward          float64    `json:"max_reward"`
-	RechargeWindowDays int        `json:"recharge_window_days"`
-	MinRechargeAmount  float64    `json:"min_recharge_amount"`
-	TotalRecharged     float64    `json:"total_recharged"`
-	RechargeEligible   bool       `json:"recharge_eligible"`
-	CheckinDate        string     `json:"checkin_date"`
-	LastCheckinAt      *time.Time `json:"last_checkin_at,omitempty"`
-	LastReward         float64    `json:"last_reward,omitempty"`
-	NextAvailableAt    time.Time  `json:"next_available_at"`
-	RemainingToday     float64    `json:"remaining_today"`
-	ExhaustedToday     bool       `json:"exhausted_today"`
+	Enabled              bool       `json:"enabled"`
+	AdsEnabled           bool       `json:"ads_enabled"`
+	CheckedInToday       bool       `json:"checked_in_today"`
+	TodayReward          float64    `json:"today_reward"`
+	TodayTotalGranted    float64    `json:"today_total_granted"`
+	DailyTotalLimit      float64    `json:"daily_total_limit"`
+	MinReward            float64    `json:"min_reward"`
+	MaxReward            float64    `json:"max_reward"`
+	RewardValidityDays   int        `json:"reward_validity_days"`
+	RechargeWindowDays   int        `json:"recharge_window_days"`
+	MinRechargeAmount    float64    `json:"min_recharge_amount"`
+	TotalRecharged       float64    `json:"total_recharged"`
+	RechargeEligible     bool       `json:"recharge_eligible"`
+	CheckinDate          string     `json:"checkin_date"`
+	LastCheckinAt        *time.Time `json:"last_checkin_at,omitempty"`
+	LastReward           float64    `json:"last_reward,omitempty"`
+	TodayRewardExpiresAt *time.Time `json:"today_reward_expires_at,omitempty"`
+	NextAvailableAt      time.Time  `json:"next_available_at"`
+	RemainingToday       float64    `json:"remaining_today"`
+	ExhaustedToday       bool       `json:"exhausted_today"`
 }
 
 type DailyCheckinResult struct {
@@ -54,19 +56,21 @@ type DailyCheckinResult struct {
 }
 
 type DailyCheckinRecord struct {
-	UserID    int64
-	Date      string
-	Reward    float64
-	CreatedAt time.Time
+	UserID          int64
+	Date            string
+	Reward          float64
+	CreatedAt       time.Time
+	ExpiresAt       *time.Time
 }
 
 type DailyCheckinAdminRecord struct {
-	UserID      int64     `json:"user_id"`
-	Email       string    `json:"email"`
-	Username    string    `json:"username"`
-	CheckinDate string    `json:"checkin_date"`
-	Reward      float64   `json:"reward"`
-	CreatedAt   time.Time `json:"created_at"`
+	UserID      int64      `json:"user_id"`
+	Email       string     `json:"email"`
+	Username    string     `json:"username"`
+	CheckinDate string     `json:"checkin_date"`
+	Reward      float64    `json:"reward"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }
 
 type DailyCheckinAdminListFilter struct {
@@ -81,12 +85,13 @@ type DailyCheckinAdminListFilter struct {
 }
 
 type DailyCheckinClaimInput struct {
-	UserID          int64
-	Date            string
-	Reward          float64
-	DailyTotalLimit float64
-	MinReward       float64
-	GrantedSoFar    float64
+	UserID             int64
+	Date               string
+	Reward             float64
+	DailyTotalLimit    float64
+	MinReward          float64
+	RewardValidityDays int
+	GrantedSoFar       float64
 }
 
 type DailyCheckinClaimResult struct {
@@ -153,6 +158,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 		DailyTotalLimit:    settings.DailyTotalLimit,
 		MinReward:          settings.MinReward,
 		MaxReward:          settings.MaxReward,
+		RewardValidityDays: settings.RewardValidityDays,
 		RechargeWindowDays: settings.RechargeWindowDays,
 		MinRechargeAmount:  settings.MinRechargeAmount,
 		RechargeEligible:   true,
@@ -177,6 +183,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 	} else if record != nil {
 		status.CheckedInToday = true
 		status.TodayReward = roundCheckinReward(record.Reward)
+		status.TodayRewardExpiresAt = record.ExpiresAt
 		status.LastCheckinAt = &record.CreatedAt
 		status.LastReward = roundCheckinReward(record.Reward)
 	} else if latest, latestErr := s.repo.GetUserLatestCheckin(ctx, userID); latestErr != nil {
@@ -227,12 +234,13 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 	}
 
 	claimed, err := s.repo.Claim(ctx, DailyCheckinClaimInput{
-		UserID:          userID,
-		Date:            today,
-		Reward:          reward,
-		DailyTotalLimit: settings.DailyTotalLimit,
-		MinReward:       settings.MinReward,
-		GrantedSoFar:    grantedSoFar,
+		UserID:             userID,
+		Date:               today,
+		Reward:             reward,
+		DailyTotalLimit:    settings.DailyTotalLimit,
+		MinReward:          settings.MinReward,
+		RewardValidityDays: settings.RewardValidityDays,
+		GrantedSoFar:       grantedSoFar,
 	})
 	if err != nil {
 		return nil, err
@@ -240,22 +248,24 @@ func (s *DailyCheckinService) Claim(ctx context.Context, userID int64) (*DailyCh
 	s.invalidateBalanceCache(userID)
 
 	status := DailyCheckinStatus{
-		Enabled:            dailyCheckinClaimable(settings),
-		AdsEnabled:         settings.AdsEnabled,
-		CheckedInToday:     true,
-		TodayReward:        roundCheckinReward(claimed.Record.Reward),
-		TodayTotalGranted:  roundCheckinReward(claimed.TodayTotalGranted),
-		DailyTotalLimit:    settings.DailyTotalLimit,
-		MinReward:          settings.MinReward,
-		MaxReward:          settings.MaxReward,
-		RechargeWindowDays: settings.RechargeWindowDays,
-		MinRechargeAmount:  settings.MinRechargeAmount,
-		TotalRecharged:     totalRecharged,
-		RechargeEligible:   true,
-		CheckinDate:        today,
-		LastCheckinAt:      &claimed.Record.CreatedAt,
-		LastReward:         roundCheckinReward(claimed.Record.Reward),
-		NextAvailableAt:    nextAvailableAt,
+		Enabled:              dailyCheckinClaimable(settings),
+		AdsEnabled:           settings.AdsEnabled,
+		CheckedInToday:       true,
+		TodayReward:          roundCheckinReward(claimed.Record.Reward),
+		TodayTotalGranted:    roundCheckinReward(claimed.TodayTotalGranted),
+		DailyTotalLimit:      settings.DailyTotalLimit,
+		MinReward:            settings.MinReward,
+		MaxReward:            settings.MaxReward,
+		RewardValidityDays:   settings.RewardValidityDays,
+		RechargeWindowDays:   settings.RechargeWindowDays,
+		MinRechargeAmount:    settings.MinRechargeAmount,
+		TotalRecharged:       totalRecharged,
+		RechargeEligible:     true,
+		CheckinDate:          today,
+		LastCheckinAt:        &claimed.Record.CreatedAt,
+		LastReward:           roundCheckinReward(claimed.Record.Reward),
+		TodayRewardExpiresAt: claimed.Record.ExpiresAt,
+		NextAvailableAt:      nextAvailableAt,
 	}
 	applyDailyCheckinRemaining(&status)
 
@@ -343,6 +353,9 @@ func normalizeDailyCheckinConfig(settings config.DailyCheckinConfig) config.Dail
 	}
 	if settings.RechargeWindowDays <= 0 {
 		settings.RechargeWindowDays = config.DefaultDailyCheckinRechargeWindowDays
+	}
+	if settings.RewardValidityDays <= 0 {
+		settings.RewardValidityDays = config.DefaultDailyCheckinRewardValidityDays
 	}
 	if settings.MaxReward < settings.MinReward {
 		settings.MaxReward = settings.MinReward

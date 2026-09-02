@@ -1215,6 +1215,17 @@ func TestValidateDailyCheckinConfig(t *testing.T) {
 			wantErr: "daily_checkin.recharge_window_days must be non-negative",
 		},
 		{
+			name: "reward validity days cannot be negative",
+			cfg: DailyCheckinConfig{
+				Enabled:            true,
+				DailyTotalLimit:    100,
+				MinReward:          0.1,
+				MaxReward:          1,
+				RewardValidityDays: -1,
+			},
+			wantErr: "daily_checkin.reward_validity_days must be non-negative",
+		},
+		{
 			name: "reward tiers must end at full range",
 			cfg: DailyCheckinConfig{
 				Enabled:         true,

@@ -23,16 +23,18 @@ type DailyCheckinClaimRequest struct {
 }
 
 type DailyCheckinPublicStatus struct {
-	Enabled            bool       `json:"enabled"`
-	AdsEnabled         bool       `json:"ads_enabled"`
-	CheckedInToday     bool       `json:"checked_in_today"`
-	TodayReward        float64    `json:"today_reward"`
-	RechargeWindowDays int        `json:"recharge_window_days"`
-	RechargeEligible   bool       `json:"recharge_eligible"`
-	CheckinDate        string     `json:"checkin_date"`
-	LastCheckinAt      *time.Time `json:"last_checkin_at,omitempty"`
-	NextAvailableAt    time.Time  `json:"next_available_at"`
-	ExhaustedToday     bool       `json:"exhausted_today"`
+	Enabled              bool       `json:"enabled"`
+	AdsEnabled           bool       `json:"ads_enabled"`
+	CheckedInToday       bool       `json:"checked_in_today"`
+	TodayReward          float64    `json:"today_reward"`
+	RewardValidityDays   int        `json:"reward_validity_days"`
+	TodayRewardExpiresAt *time.Time `json:"today_reward_expires_at,omitempty"`
+	RechargeWindowDays   int        `json:"recharge_window_days"`
+	RechargeEligible     bool       `json:"recharge_eligible"`
+	CheckinDate          string     `json:"checkin_date"`
+	LastCheckinAt        *time.Time `json:"last_checkin_at,omitempty"`
+	NextAvailableAt      time.Time  `json:"next_available_at"`
+	ExhaustedToday       bool       `json:"exhausted_today"`
 }
 
 type DailyCheckinPublicResult struct {
@@ -128,16 +130,18 @@ func toDailyCheckinPublicStatus(status *service.DailyCheckinStatus) DailyCheckin
 		return DailyCheckinPublicStatus{}
 	}
 	return DailyCheckinPublicStatus{
-		Enabled:            status.Enabled,
-		AdsEnabled:         status.AdsEnabled,
-		CheckedInToday:     status.CheckedInToday,
-		TodayReward:        status.TodayReward,
-		RechargeWindowDays: status.RechargeWindowDays,
-		RechargeEligible:   status.RechargeEligible,
-		CheckinDate:        status.CheckinDate,
-		LastCheckinAt:      status.LastCheckinAt,
-		NextAvailableAt:    status.NextAvailableAt,
-		ExhaustedToday:     status.ExhaustedToday,
+		Enabled:              status.Enabled,
+		AdsEnabled:           status.AdsEnabled,
+		CheckedInToday:       status.CheckedInToday,
+		TodayReward:          status.TodayReward,
+		RewardValidityDays:   status.RewardValidityDays,
+		TodayRewardExpiresAt: status.TodayRewardExpiresAt,
+		RechargeWindowDays:   status.RechargeWindowDays,
+		RechargeEligible:     status.RechargeEligible,
+		CheckinDate:          status.CheckinDate,
+		LastCheckinAt:        status.LastCheckinAt,
+		NextAvailableAt:      status.NextAvailableAt,
+		ExhaustedToday:       status.ExhaustedToday,
 	}
 }
 

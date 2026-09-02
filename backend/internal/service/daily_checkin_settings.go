@@ -17,6 +17,7 @@ type DailyCheckinSettings struct {
 	DailyTotalLimit    float64                         `json:"daily_total_limit"`
 	MinReward          float64                         `json:"min_reward"`
 	MaxReward          float64                         `json:"max_reward"`
+	RewardValidityDays int                             `json:"reward_validity_days"`
 	RechargeWindowDays int                             `json:"recharge_window_days"`
 	MinRechargeAmount  float64                         `json:"min_recharge_amount"`
 	RewardTiers        []config.DailyCheckinRewardTier `json:"reward_tiers"`
@@ -32,6 +33,7 @@ var dailyCheckinSettingKeys = []string{
 	SettingKeyDailyCheckinDailyTotalLimit,
 	SettingKeyDailyCheckinMinReward,
 	SettingKeyDailyCheckinMaxReward,
+	SettingKeyDailyCheckinRewardValidityDays,
 	SettingKeyDailyCheckinRechargeWindowDays,
 	SettingKeyDailyCheckinMinRechargeAmount,
 	SettingKeyDailyCheckinRewardTiers,
@@ -65,6 +67,9 @@ func (s *SettingService) GetDailyCheckinSettings(ctx context.Context) (DailyChec
 	}
 	if value, ok := parseDailyCheckinSettingFloat(values, SettingKeyDailyCheckinMaxReward); ok {
 		result.MaxReward = value
+	}
+	if value, ok := parseDailyCheckinSettingInt(values, SettingKeyDailyCheckinRewardValidityDays); ok {
+		result.RewardValidityDays = value
 	}
 	if value, ok := parseDailyCheckinSettingInt(values, SettingKeyDailyCheckinRechargeWindowDays); ok {
 		result.RechargeWindowDays = value
@@ -104,6 +109,7 @@ func (s *SettingService) UpdateDailyCheckinSettings(ctx context.Context, input D
 		SettingKeyDailyCheckinDailyTotalLimit:    strconv.FormatFloat(settings.DailyTotalLimit, 'f', 8, 64),
 		SettingKeyDailyCheckinMinReward:          strconv.FormatFloat(settings.MinReward, 'f', 8, 64),
 		SettingKeyDailyCheckinMaxReward:          strconv.FormatFloat(settings.MaxReward, 'f', 8, 64),
+		SettingKeyDailyCheckinRewardValidityDays: strconv.Itoa(settings.RewardValidityDays),
 		SettingKeyDailyCheckinRechargeWindowDays: strconv.Itoa(settings.RechargeWindowDays),
 		SettingKeyDailyCheckinMinRechargeAmount:  strconv.FormatFloat(settings.MinRechargeAmount, 'f', 8, 64),
 		SettingKeyDailyCheckinRewardTiers:        formatDailyCheckinRewardTiersSetting(settings.RewardTiers),
@@ -132,6 +138,7 @@ func dailyCheckinSettingsFromConfig(cfg config.DailyCheckinConfig) DailyCheckinS
 		DailyTotalLimit:    cfg.DailyTotalLimit,
 		MinReward:          cfg.MinReward,
 		MaxReward:          cfg.MaxReward,
+		RewardValidityDays: cfg.RewardValidityDays,
 		RechargeWindowDays: cfg.RechargeWindowDays,
 		MinRechargeAmount:  cfg.MinRechargeAmount,
 		RewardTiers:        cloneDailyCheckinRewardTiers(cfg.RewardTiers),
@@ -145,6 +152,7 @@ func dailyCheckinConfigFromSettings(settings DailyCheckinSettings) config.DailyC
 		DailyTotalLimit:    settings.DailyTotalLimit,
 		MinReward:          settings.MinReward,
 		MaxReward:          settings.MaxReward,
+		RewardValidityDays: settings.RewardValidityDays,
 		RechargeWindowDays: settings.RechargeWindowDays,
 		MinRechargeAmount:  settings.MinRechargeAmount,
 		RewardTiers:        cloneDailyCheckinRewardTiers(settings.RewardTiers),
@@ -167,6 +175,9 @@ func validateDailyCheckinSettings(input DailyCheckinSettings) (DailyCheckinSetti
 	if input.RechargeWindowDays < 0 {
 		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "recharge_window_days must be non-negative")
 	}
+	if input.RewardValidityDays < 0 {
+		return DailyCheckinSettings{}, infraerrors.BadRequest("DAILY_CHECKIN_SETTINGS_INVALID", "reward_validity_days must be non-negative")
+	}
 
 	settings := DailyCheckinSettings{
 		Enabled:            input.Enabled,
@@ -174,11 +185,15 @@ func validateDailyCheckinSettings(input DailyCheckinSettings) (DailyCheckinSetti
 		DailyTotalLimit:    roundCheckinReward(input.DailyTotalLimit),
 		MinReward:          roundCheckinReward(input.MinReward),
 		MaxReward:          roundCheckinReward(input.MaxReward),
+		RewardValidityDays: input.RewardValidityDays,
 		RechargeWindowDays: input.RechargeWindowDays,
 		MinRechargeAmount:  roundCheckinReward(input.MinRechargeAmount),
 	}
 	if settings.RechargeWindowDays <= 0 {
 		settings.RechargeWindowDays = config.DefaultDailyCheckinRechargeWindowDays
+	}
+	if settings.RewardValidityDays <= 0 {
+		settings.RewardValidityDays = config.DefaultDailyCheckinRewardValidityDays
 	}
 	rewardTiers, err := config.NormalizeDailyCheckinRewardTiers(input.RewardTiers)
 	if err != nil {

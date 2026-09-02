@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -25,7 +26,7 @@ func (r *dailyCheckinRepository) GetUserCheckin(ctx context.Context, userID int6
 		return nil, fmt.Errorf("daily check-in repository is not configured")
 	}
 	return scanDailyCheckinRecord(ctx, r.db, `
-SELECT user_id, checkin_date::text, reward::double precision, created_at
+SELECT user_id, checkin_date::text, reward::double precision, created_at, expires_at
 FROM daily_checkins
 WHERE user_id = $1 AND checkin_date = $2`, userID, date)
 }
@@ -35,7 +36,7 @@ func (r *dailyCheckinRepository) GetUserLatestCheckin(ctx context.Context, userI
 		return nil, fmt.Errorf("daily check-in repository is not configured")
 	}
 	return scanDailyCheckinRecord(ctx, r.db, `
-SELECT user_id, checkin_date::text, reward::double precision, created_at
+SELECT user_id, checkin_date::text, reward::double precision, created_at, expires_at
 FROM daily_checkins
 WHERE user_id = $1
 ORDER BY checkin_date DESC
@@ -89,6 +90,9 @@ func (r *dailyCheckinRepository) Claim(ctx context.Context, input service.DailyC
 		return nil, fmt.Errorf("begin daily check-in transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := expireDailyCheckinRewards(ctx, tx, input.UserID); err != nil {
+		return nil, fmt.Errorf("expire prior daily check-in rewards: %w", err)
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO daily_checkin_totals (checkin_date, total_reward, created_at, updated_at)
@@ -122,6 +126,10 @@ WHERE user_id = $1 AND checkin_date = $2`, input.UserID, input.Date)
 
 	remaining := input.DailyTotalLimit - total
 	reward := input.Reward
+	validityDays := input.RewardValidityDays
+	if validityDays <= 0 {
+		validityDays = config.DefaultDailyCheckinRewardValidityDays
+	}
 	if input.MinReward > 0 && remaining < input.MinReward {
 		return nil, service.ErrDailyCheckinExhausted
 	}
@@ -134,15 +142,22 @@ WHERE user_id = $1 AND checkin_date = $2`, input.UserID, input.Date)
 
 	record := service.DailyCheckinRecord{}
 	if err := tx.QueryRowContext(ctx, `
-INSERT INTO daily_checkins (user_id, checkin_date, reward, created_at, updated_at)
-VALUES ($1, $2, $3, NOW(), NOW())
-RETURNING user_id, checkin_date::text, reward::double precision, created_at`,
-		input.UserID, input.Date, reward,
-	).Scan(&record.UserID, &record.Date, &record.Reward, &record.CreatedAt); err != nil {
+INSERT INTO daily_checkins (user_id, checkin_date, reward, created_at, updated_at, expires_at)
+VALUES ($1, $2, $3, NOW(), NOW(), NOW() + ($4::int * INTERVAL '1 day'))
+RETURNING user_id, checkin_date::text, reward::double precision, created_at, expires_at`,
+		input.UserID, input.Date, reward, validityDays,
+	).Scan(&record.UserID, &record.Date, &record.Reward, &record.CreatedAt, &record.ExpiresAt); err != nil {
 		if isUniqueConstraintViolation(err) {
 			return nil, service.ErrDailyCheckinAlready
 		}
 		return nil, fmt.Errorf("insert daily check-in: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO daily_checkin_rewards (user_id, daily_checkin_id, amount, remaining_amount, expires_at, created_at, updated_at)
+SELECT $1, id, $2, $2, expires_at, NOW(), NOW()
+FROM daily_checkins
+WHERE user_id = $1 AND checkin_date = $3`, input.UserID, reward, input.Date); err != nil {
+		return nil, fmt.Errorf("insert daily check-in reward ledger: %w", err)
 	}
 
 	total += reward
@@ -210,7 +225,8 @@ SELECT dc.user_id,
        COALESCE(u.username, ''),
        dc.checkin_date::text,
        dc.reward::double precision,
-       dc.created_at
+       dc.created_at,
+       dc.expires_at
 FROM daily_checkins dc
 LEFT JOIN users u ON u.id = dc.user_id
 %s
@@ -233,6 +249,7 @@ LIMIT $%d OFFSET $%d`, whereSQL, sortExpr, sortOrder, limitParam, offsetParam)
 			&record.CheckinDate,
 			&record.Reward,
 			&record.CreatedAt,
+			&record.ExpiresAt,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan daily check-in record: %w", err)
 		}
@@ -290,6 +307,8 @@ func dailyCheckinAdminSortExpression(sortBy string) string {
 		return "dc.reward"
 	case "created_at":
 		return "dc.created_at"
+	case "expires_at":
+		return "dc.expires_at"
 	default:
 		return "dc.created_at"
 	}
@@ -297,7 +316,7 @@ func dailyCheckinAdminSortExpression(sortBy string) string {
 
 func scanDailyCheckinRecord(ctx context.Context, q sqlQueryer, query string, args ...any) (*service.DailyCheckinRecord, error) {
 	var record service.DailyCheckinRecord
-	err := scanSingleRow(ctx, q, query, args, &record.UserID, &record.Date, &record.Reward, &record.CreatedAt)
+	err := scanSingleRow(ctx, q, query, args, &record.UserID, &record.Date, &record.Reward, &record.CreatedAt, &record.ExpiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

@@ -179,9 +179,19 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	}
 
 	if cmd.BalanceCost > 0 {
+		if cmd.DailyCheckinRewardExpiry {
+			if err := expireDailyCheckinRewards(ctx, tx, cmd.UserID); err != nil {
+				return err
+			}
+		}
 		newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, cmd.UserID, cmd.BalanceCost)
 		if err != nil {
 			return err
+		}
+		if cmd.DailyCheckinRewardExpiry {
+			if err := consumeDailyCheckinRewards(ctx, tx, cmd.UserID, cmd.BalanceCost); err != nil {
+				return err
+			}
 		}
 		result.NewBalance = &newBalance
 		result.BalanceOverdrafted = !sufficient
@@ -238,6 +248,55 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 		return nil
 	}
 	return service.ErrSubscriptionNotFound
+}
+
+func expireDailyCheckinRewards(ctx context.Context, tx *sql.Tx, userID int64) error {
+	_, err := tx.ExecContext(ctx, `
+WITH expired AS (
+	SELECT id, remaining_amount
+	FROM daily_checkin_rewards
+	WHERE user_id = $1 AND remaining_amount > 0 AND expires_at <= NOW()
+	FOR UPDATE
+), marked AS (
+	UPDATE daily_checkin_rewards r
+	SET remaining_amount = 0, updated_at = NOW()
+	FROM expired e
+	WHERE r.id = e.id
+	RETURNING e.remaining_amount
+), total AS (
+	SELECT COALESCE(SUM(remaining_amount), 0) AS amount FROM marked
+)
+UPDATE users
+SET balance = balance - LEAST((SELECT amount FROM total), GREATEST(balance, 0)), updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL AND (SELECT amount FROM total) > 0`, userID)
+	return err
+}
+
+func consumeDailyCheckinRewards(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error {
+	if amount <= 0 {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+WITH ordered AS (
+	SELECT id,
+	       LEAST(
+			remaining_amount,
+			GREATEST($2 - COALESCE(SUM(remaining_amount) OVER (
+				ORDER BY expires_at ASC, id ASC
+				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+			), 0), 0)
+		) AS consumed
+	FROM daily_checkin_rewards
+	WHERE user_id = $1 AND remaining_amount > 0 AND expires_at > NOW()
+), updated AS (
+	UPDATE daily_checkin_rewards r
+	SET remaining_amount = r.remaining_amount - o.consumed, updated_at = NOW()
+	FROM ordered o
+	WHERE r.id = o.id AND o.consumed > 0
+	RETURNING r.id
+)
+SELECT COUNT(*) FROM updated`, userID, amount)
+	return err
 }
 
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, bool, error) {

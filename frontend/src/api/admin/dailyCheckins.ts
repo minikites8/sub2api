@@ -13,6 +13,7 @@ export interface DailyCheckinRecord {
   checkin_date: string
   reward: number
   created_at: string
+  expires_at?: string | null
 }
 
 export interface ListDailyCheckinRecordsParams {
@@ -32,6 +33,7 @@ export interface DailyCheckinSettings {
   daily_total_limit: number
   min_reward: number
   max_reward: number
+  reward_validity_days: number
   recharge_window_days: number
   min_recharge_amount: number
   reward_tiers: DailyCheckinRewardTier[]
@@ -52,6 +54,7 @@ export interface UpdateDailyCheckinSettingsRequest {
   daily_total_limit: number
   min_reward: number
   max_reward: number
+  reward_validity_days: number
   recharge_window_days: number
   min_recharge_amount: number
   reward_tiers: DailyCheckinRewardTier[]

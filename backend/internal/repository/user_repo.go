@@ -36,6 +36,7 @@ type userRepository struct {
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
 var _ service.RiskControlBalanceRecorder = (*userRepository)(nil)
 var _ service.UserGroupBanRepository = (*userRepository)(nil)
+var _ service.DailyCheckinRewardExpirer = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -1137,6 +1138,39 @@ func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount flo
 		return service.ErrUserNotFound
 	}
 	return nil
+}
+
+// ExpireDailyCheckinRewards atomically removes expired check-in rewards from
+// the user's balance. The ledger rows are cleared even when the balance was
+// already spent, preserving the single-use semantics of the grant.
+func (r *userRepository) ExpireDailyCheckinRewards(ctx context.Context, userID int64) (bool, error) {
+	exec := r.antiAbuseExecutor(ctx)
+	if r == nil || exec == nil || userID <= 0 {
+		return false, nil
+	}
+	result, err := exec.ExecContext(ctx, `
+WITH expired AS (
+	SELECT id, remaining_amount
+	FROM daily_checkin_rewards
+	WHERE user_id = $1 AND remaining_amount > 0 AND expires_at <= NOW()
+	FOR UPDATE
+), marked AS (
+	UPDATE daily_checkin_rewards r
+	SET remaining_amount = 0, updated_at = NOW()
+	FROM expired e
+	WHERE r.id = e.id
+	RETURNING e.remaining_amount
+), total AS (
+	SELECT COALESCE(SUM(remaining_amount), 0) AS amount FROM marked
+)
+UPDATE users
+SET balance = balance - LEAST((SELECT amount FROM total), GREATEST(balance, 0)), updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL AND (SELECT amount FROM total) > 0`, userID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected > 0, err
 }
 
 func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error {

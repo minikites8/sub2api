@@ -99,6 +99,9 @@
           <template #cell-created_at="{ row }">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(row.created_at) }}</span>
           </template>
+          <template #cell-expires_at="{ row }">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(row.expires_at) }}</span>
+          </template>
         </DataTable>
       </template>
 
@@ -168,6 +171,11 @@
               step="0.00000001"
               class="input"
             />
+          </label>
+          <label class="space-y-1.5">
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-300">{{ t('admin.dailyCheckins.settings.rewardValidityDays') }}</span>
+            <input v-model.number="settingsForm.reward_validity_days" type="number" min="1" step="1" class="input" />
+            <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dailyCheckins.settings.rewardValidityDaysHint') }}</span>
           </label>
         </div>
 
@@ -312,6 +320,7 @@ const settingsForm = reactive<DailyCheckinSettings>({
   daily_total_limit: 0,
   min_reward: 0,
   max_reward: 0,
+  reward_validity_days: 30,
   recharge_window_days: 14,
   min_recharge_amount: 0,
   reward_tiers: [],
@@ -328,6 +337,7 @@ const columns = computed<Column[]>(() => [
   { key: 'checkin_date', label: t('admin.dailyCheckins.columns.checkinDate'), sortable: true },
   { key: 'reward', label: t('admin.dailyCheckins.columns.reward'), sortable: true },
   { key: 'created_at', label: t('admin.dailyCheckins.columns.createdAt'), sortable: true },
+  { key: 'expires_at', label: t('admin.dailyCheckins.columns.expiresAt'), sortable: true },
 ])
 
 const sortState = reactive(loadInitialSortState())
@@ -455,6 +465,7 @@ async function saveSettings() {
       daily_total_limit: Number(settingsForm.daily_total_limit) || 0,
       min_reward: Number(settingsForm.min_reward) || 0,
       max_reward: Number(settingsForm.max_reward) || 0,
+      reward_validity_days: Math.max(1, Math.trunc(Number(settingsForm.reward_validity_days) || 30)),
       recharge_window_days: Math.max(0, Math.trunc(Number(settingsForm.recharge_window_days) || 0)),
       min_recharge_amount: Number(settingsForm.min_recharge_amount) || 0,
       reward_tiers: buildRewardTiersPayload(),
@@ -475,6 +486,7 @@ function assignSettings(settings: DailyCheckinSettings) {
   settingsForm.daily_total_limit = Number(settings.daily_total_limit) || 0
   settingsForm.min_reward = Number(settings.min_reward) || 0
   settingsForm.max_reward = Number(settings.max_reward) || 0
+  settingsForm.reward_validity_days = Math.max(1, Math.trunc(Number(settings.reward_validity_days) || 30))
   settingsForm.recharge_window_days = Math.max(0, Math.trunc(Number(settings.recharge_window_days) || 0))
   settingsForm.min_recharge_amount = Number(settings.min_recharge_amount) || 0
   settingsForm.reward_tiers = normalizeRewardTiers(settings.reward_tiers)

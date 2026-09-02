@@ -796,6 +796,7 @@ export default {
       ready: 'Ready',
       hint: 'Claim today\'s random balance reward',
       checkedHint: 'Received {amount} today',
+      expiresAt: 'Expires {date}',
       exhaustedHint: 'Today\'s check-in pool is empty',
       rewardRange: 'Reward range',
       remainingToday: 'Remaining today',
@@ -2039,7 +2040,8 @@ export default {
         user: 'User',
         checkinDate: 'Check-in Date',
         reward: 'Reward',
-        createdAt: 'Claimed At'
+        createdAt: 'Claimed At',
+        expiresAt: 'Expires At'
         },
         settings: {
           button: 'Check-in Settings',
@@ -2050,6 +2052,8 @@ export default {
           adsEnabledHint: 'When enabled, ads appear in the user check-in verification area.',
           minReward: 'Minimum reward',
           maxReward: 'Maximum reward',
+          rewardValidityDays: 'Reward validity (days)',
+          rewardValidityDaysHint: 'Each check-in reward expires after this many days.',
           dailyTotalLimit: 'Daily total payout limit',
           rechargeWindowDays: 'Recharge window (days)',
           rechargeWindowDaysHint: 'Completed recharge orders within this window count toward eligibility.',

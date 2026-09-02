@@ -252,6 +252,7 @@ func TestDailyCheckinClaimRewardWithinRangeAndUpdatesStatus(t *testing.T) {
 	require.Len(t, repo.claimInputs, 1)
 	require.Equal(t, int64(42), repo.claimInputs[0].UserID)
 	require.Equal(t, 0.2, repo.claimInputs[0].GrantedSoFar)
+	require.Equal(t, config.DefaultDailyCheckinRewardValidityDays, repo.claimInputs[0].RewardValidityDays)
 }
 
 func TestDailyCheckinClaimRequiresMinimumRechargeAmount(t *testing.T) {
@@ -397,6 +398,17 @@ func TestSettingServiceUpdateDailyCheckinSettingsPersistsKeys(t *testing.T) {
 	require.Equal(t, "0.20000000", repo.updates[SettingKeyDailyCheckinMaxReward])
 	require.Equal(t, "3.45678912", repo.updates[SettingKeyDailyCheckinMinRechargeAmount])
 	require.Equal(t, "30", repo.updates[SettingKeyDailyCheckinRechargeWindowDays])
+	require.Equal(t, "30", repo.updates[SettingKeyDailyCheckinRewardValidityDays])
+}
+
+func TestSettingServiceUpdateDailyCheckinSettingsRejectsNegativeRewardValidity(t *testing.T) {
+	repo := &fakeDailyCheckinSettingRepo{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	_, err := svc.UpdateDailyCheckinSettings(context.Background(), DailyCheckinSettings{RewardValidityDays: -1})
+	require.Error(t, err)
+	require.Equal(t, "DAILY_CHECKIN_SETTINGS_INVALID", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
 }
 
 func TestSettingServiceUpdateDailyCheckinSettingsRejectsInvalidEnabledConfig(t *testing.T) {

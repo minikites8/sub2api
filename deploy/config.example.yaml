@@ -850,6 +850,9 @@ daily_checkin:
   # Maximum balance a user can receive per check-in (USD)
   # 单人单次签到随机获得额度最大值（USD）
   max_reward: 1
+  # Check-in rewards remain available for this many days after claiming.
+  # 签到赠金领取后保留的有效天数。
+  reward_validity_days: 30
   # Completed recharge orders in this many days count toward check-in eligibility.
   # 签到资格统计最近多少天内的已完成充值订单。
   recharge_window_days: 14

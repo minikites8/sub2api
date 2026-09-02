@@ -309,6 +309,13 @@ func (s *BillingCacheService) logCacheWriteDrop(task cacheWriteTask, reason stri
 
 // GetUserBalance 获取用户余额（优先从缓存读取）
 func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) (float64, error) {
+	if expirer, ok := s.userRepo.(DailyCheckinRewardExpirer); ok {
+		if expired, err := expirer.ExpireDailyCheckinRewards(ctx, userID); err != nil {
+			return 0, fmt.Errorf("expire daily check-in rewards: %w", err)
+		} else if expired && s.cache != nil {
+			_ = s.cache.InvalidateUserBalance(ctx, userID)
+		}
+	}
 	if s.cache == nil {
 		// Redis不可用，直接查询数据库
 		return s.getUserBalanceFromDB(ctx, userID)

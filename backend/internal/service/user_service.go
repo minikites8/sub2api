@@ -229,6 +229,12 @@ type RiskControlBalanceRecorder interface {
 	RecordRiskControlBalanceDeduction(ctx context.Context, userID int64, amount float64, notes string) error
 }
 
+// DailyCheckinRewardExpirer removes expired, unspent daily check-in rewards
+// from a user's balance before the balance is used.
+type DailyCheckinRewardExpirer interface {
+	ExpireDailyCheckinRewards(ctx context.Context, userID int64) (bool, error)
+}
+
 type UserAuthIdentityRecord struct {
 	ProviderType    string
 	ProviderKey     string
