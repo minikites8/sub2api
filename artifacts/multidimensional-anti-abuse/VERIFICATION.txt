@@ -1,6 +1,6 @@
 CHANGED_BRANCH_OR_FIELD: anti-abuse registration and gateway evaluation; settings keys anti_abuse_*; FingerprintJS v4.6.2 multi-value/fuzzy fingerprints; trusted-proxy JA3/JA4 headers and IPPure multi-source reputation
 ORIGINAL_SHA256: 8f0bcea32088a48387be67ef086b1586d9e0a85121de9a13f24f756a3177bd41
-MODIFIED_SHA256: 3b4c77f16dcdb087dadb3bedafb016fdc6debc247862480ed04dd234e052bd13
+MODIFIED_SHA256: c79710c7c303b21ad1f145febe1736b3922ac934e58671b14caf9bb542927f94
 
 BASELINE_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; go test -tags=unit ./internal/service ./internal/handler ./internal/repository
 BASELINE_INPUT: repository checkout before this change
@@ -69,3 +69,22 @@ THRESHOLD_ROLLBACK_INPUT: copy of MODIFIED_FILE.json after threshold integration
 THRESHOLD_ROLLBACK_LITERAL_RESULT: restored:artifacts\multidimensional-anti-abuse\rollback-check.json; restored_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; original_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02
 THRESHOLD_ROLLBACK_EXIT_STATUS: 0
 THRESHOLD_RESTORED_BEHAVIOR_STATUS: rollback-check.json restored to ORIGINAL_FILE.json SHA256; MODIFIED_FILE.json remains changed with threshold integration fields.
+
+RISK_EVENT_FILTER_BRANCH_OR_FIELD: clean allow assessments with empty factors are omitted from anti_abuse_events; risky factors, review/restrict decisions, and gift deductions remain recorded
+RISK_EVENT_FILTER_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test ./internal/service -run 'TestCleanAntiAbuseAssessmentIsNotRecorded|TestAPIIPUAThresholdIsMultidimensionalFactor|TestRegistrationIPThresholdIsMultidimensionalFactor|TestDisabledAntiAbuseSkipsScoring|TestEvaluateAntiAbuse' -count=1 -v
+RISK_EVENT_FILTER_INPUT: clean allow score 0 with empty factors; allow score 25 with calling_user_agent factor; IP+UA velocity 3 with threshold 4
+RISK_EVENT_FILTER_LITERAL_RESULT: all selected tests passed; ok github.com/Wei-Shaw/sub2api/internal/service 2.475s
+RISK_EVENT_FILTER_EXIT_STATUS: 0
+RISK_EVENT_FILTER_RESTORED_BEHAVIOR_STATUS: ordinary requests are omitted from the event stream; IP+UA threshold remains immediate restrict
+
+BROWSER_LINK_BRANCH_OR_FIELD: browser_fingerprint exact/fuzzy hashes associate users across IPs; shared fingerprint is an immediate high-risk restrict and free-credit deduction signal
+BROWSER_LINK_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
+BROWSER_LINK_MODIFIED_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test ./internal/service -run 'TestSharedBrowserFingerprintIsImmediateHighRisk|TestCleanAntiAbuseAssessmentIsNotRecorded|TestAPIIPUAThresholdIsMultidimensionalFactor|TestRegistrationIPThresholdIsMultidimensionalFactor|TestDisabledAntiAbuseSkipsScoring|TestEvaluateAntiAbuse' -count=1 -v
+BROWSER_LINK_MODIFIED_INPUT: one existing account shares the exact/fuzzy browser fingerprint; different IP and User-Agent account linkage; clean allow request
+BROWSER_LINK_MODIFIED_LITERAL_RESULT: all selected tests passed; ok github.com/Wei-Shaw/sub2api/internal/service 2.594s
+BROWSER_LINK_MODIFIED_EXIT_STATUS: 0
+BROWSER_LINK_ROLLBACK_COMMAND: & 'C:\Program Files\Git\bin\bash.exe' 'artifacts/multidimensional-anti-abuse/ROLLBACK.sh' '$env:TEMP/sub2api-browser-link-rollback.json'
+BROWSER_LINK_ROLLBACK_INPUT: copy of MODIFIED_FILE.json after browser-link integration
+BROWSER_LINK_ROLLBACK_LITERAL_RESULT: restored:C:\Users\ADMINI~1\AppData\Local\Temp\sub2api-browser-link-rollback.json; restored_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; original_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02
+BROWSER_LINK_ROLLBACK_EXIT_STATUS: 0
+BROWSER_LINK_RESTORED_BEHAVIOR_STATUS: browser-link rollback copy restores the original fixture; MODIFIED_FILE.json remains changed with browser-link fields

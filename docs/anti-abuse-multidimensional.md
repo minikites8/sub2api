@@ -2,12 +2,12 @@
 
 ## 信号
 
-- 浏览器指纹：前端使用 FingerprintJS v4.6.2（兼容 FingerprintJS v3+ API）采集 `visitorId`，并叠加设备特征指纹；支持 `browser_fingerprints` 多值输入，服务端保存 SHA-256 精确哈希与数字归一化后的模糊桶哈希。FingerprintJS 加载失败时继续使用设备特征指纹。
+- 浏览器指纹：前端使用 FingerprintJS v4.6.2（兼容 FingerprintJS v3+ API）采集 `visitorId`，并叠加设备特征指纹；支持 `browser_fingerprints` 多值输入，服务端保存 SHA-256 精确哈希与数字归一化后的模糊桶哈希。多个账号命中同一精确或模糊指纹时建立账号关联，指纹复用直接判定为高风险并扣除免费赠金；关联账号可以跨越不同 IP。FingerprintJS 加载失败时继续使用设备特征指纹。
 - TLS 指纹：从 WAF/反向代理注入 `X-JA3`、`X-JA3-Fingerprint`、`X-JA3-Hash`、`X-TLS-JA3`、`X-Client-JA3`、`CF-JA3-*` 与对应 JA4 请求头；服务端仅采信来自 `server.trusted_proxies` 的直连代理，并校验格式与账号复用速度。JA3/JA4 原值不落库，只保存带命名空间的 SHA-256 哈希。
 - IP 信誉：默认使用 IPPure 页面实际调用的上游，聚合 `/api/info/ip-risk/{ip}`、`/api/info/ip-basic/{ip}`、`/api/info/asn/botclass/{asn}` 与 `ipinfo.io/widget/demo/{ip}`。服务端实现 `x-k`/`x-t` 握手和 HMAC-SHA256 请求签名，结果缓存 15 分钟。
 - 邮箱信誉：识别一次性邮箱域名、自动化命名模式和邮箱域名注册速度。
 - 调用 UA：识别缺失 UA、脚本客户端、无浏览器标识的客户端；API IP+UA 账号阈值作为多维硬因子参与网关判定。
-- 风控中心事件：注册评估、网关评估和实际赠金扣除均写入 `anti_abuse_events`，面板展示动作、评分、因子、网络摘要、指纹哈希存在性和扣除金额，并支持按动作和“仅扣除”筛选。
+- 风控中心事件：仅有风险因子或 `review/restrict` 动作的注册评估、网关评估和实际赠金扣除写入 `anti_abuse_events`，普通 `allow` 请求跳过事件记录；面板展示动作、评分、因子、网络摘要、指纹哈希存在性和扣除金额，并支持按动作和“仅扣除”筛选。
 
 ## 评分与处置
 
@@ -33,7 +33,7 @@
 - `anti_abuse_ip_reputation_endpoint`
 - `anti_abuse_ip_reputation_api_key`
 
-注册 IP、API IP+UA 阈值与历史账号处置选项属于多维策略。达到任一账号阈值时，评分事件分别加入 `signup_ip_threshold` 或 `api_ip_ua_threshold` 因子并进入 `restrict`。`anti_abuse_ip_reputation_endpoint` 留空时使用 IPPure 多源聚合；填写自定义地址时调用 `GET <endpoint>?ip=<client-ip>` 并读取 JSON 内的 `score`、`risk_score` 或 `reputation`。上游请求异常时使用本地评分。
+注册 IP、API IP+UA 阈值与历史账号处置选项属于多维策略。达到任一账号阈值时，评分事件分别加入 `signup_ip_threshold` 或 `api_ip_ua_threshold` 因子并立即进入 `restrict`，API IP+UA 命中继续执行即时赠金处置。`anti_abuse_ip_reputation_endpoint` 留空时使用 IPPure 多源聚合；填写自定义地址时调用 `GET <endpoint>?ip=<client-ip>` 并读取 JSON 内的 `score`、`risk_score` 或 `reputation`。上游请求异常时使用本地评分。
 
 关闭 `anti_abuse_enabled` 后，系统停止多维信誉查询、指纹持久化、注册 IP/API IP+UA 阈值判定和 `anti_abuse_events` 新事件写入。关闭前已经产生的事件会继续保留在风控中心历史列表中。
 

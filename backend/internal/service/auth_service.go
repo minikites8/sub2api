@@ -1567,12 +1567,29 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 	fingerprintVelocity := 0
 	tlsVelocity := 0
 	emailVelocity := 0
+	fingerprintLinkedUserIDs := make(map[int64]struct{})
 	if s.settingService != nil {
 		signals.IPReputationScore = s.settingService.LookupConfiguredIPReputation(ctx, signupIP)
 	}
 	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && len(signals.BrowserFingerprints) > 0 {
-		if count, queryErr := store.CountUsersByFingerprintHashes(ctx, HashBrowserFingerprints(signals.BrowserFingerprints), windowStart); queryErr == nil {
+		fingerprintHashes := HashBrowserFingerprints(signals.BrowserFingerprints)
+		if count, queryErr := store.CountUsersByFingerprintHashes(ctx, fingerprintHashes, windowStart); queryErr == nil {
 			fingerprintVelocity = count
+		}
+	}
+	if len(signals.BrowserFingerprints) > 0 {
+		fingerprintHashes := HashBrowserFingerprints(signals.BrowserFingerprints)
+		if linkStore, linkOK := s.userRepo.(AntiAbuseBrowserLinkStore); linkOK {
+			if linkedIDs, queryErr := linkStore.ListUsersByFingerprintHashes(ctx, fingerprintHashes, windowStart); queryErr == nil {
+				for _, linkedID := range linkedIDs {
+					if linkedID > 0 && linkedID != user.ID {
+						fingerprintLinkedUserIDs[linkedID] = struct{}{}
+					}
+				}
+				if len(linkedIDs) > fingerprintVelocity {
+					fingerprintVelocity = len(linkedIDs)
+				}
+			}
 		}
 	}
 	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && (signals.JA3 != "" || signals.JA4 != "") {
@@ -1620,6 +1637,9 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 
 	for idx, item := range users {
 		shouldDeduct := item.ID == user.ID
+		if _, linked := fingerprintLinkedUserIDs[item.ID]; linked {
+			shouldDeduct = true
+		}
 		if disablePreviousAccounts && idx != currentUserIndex && idx >= keepPreviousAccounts {
 			shouldDeduct = true
 		}
@@ -1645,6 +1665,51 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 					note := fmt.Sprintf("多维反滥用风控扣除赠金（score=%d factors=%v）", assessment.Score, assessment.Factors)
 					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.ID, item.Balance, note); err != nil {
 						logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control history record failed: user=%d ip=%s err=%v", item.ID, signupIP, err)
+					}
+				}
+				if s.authCacheInvalidator != nil {
+					s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, item.ID)
+				}
+				if s.billingCacheService != nil {
+					_ = s.billingCacheService.InvalidateUserBalance(ctx, item.ID)
+				}
+			}
+		}
+	}
+
+	// Fingerprint-linked accounts can use different IPs, so process those
+	// accounts after the same-IP ordered set has been handled.
+	for linkedID := range fingerprintLinkedUserIDs {
+		foundInSameIPSet := false
+		for _, item := range users {
+			if item.ID == linkedID {
+				foundInSameIPSet = true
+				break
+			}
+		}
+		if foundInSameIPSet {
+			continue
+		}
+		item, queryErr := client.User.Query().Where(dbuser.IDEQ(linkedID)).Only(ctx)
+		if queryErr != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] fingerprint-linked account lookup failed: user=%d linked_user=%d err=%v", user.ID, linkedID, queryErr)
+			continue
+		}
+		if item.TotalRecharged <= 0 && item.Balance > 0 {
+			updated, updateErr := client.User.Update().
+				Where(dbuser.IDEQ(item.ID), dbuser.TotalRechargedLTE(0), dbuser.BalanceGT(0)).
+				SetBalance(0).
+				Save(ctx)
+			if updateErr != nil {
+				logger.LegacyPrintf("service.auth", "[Auth] fingerprint-linked gift balance deduction failed: user=%d linked_user=%d err=%v", user.ID, item.ID, updateErr)
+				continue
+			}
+			if updated > 0 {
+				RecordAntiAbuseDeduction(ctx, antiAbuseEvents, "registration_gift_deduction", &item.ID, item.Email, signals, assessment, item.Balance)
+				if recorder, ok := s.userRepo.(RiskControlBalanceRecorder); ok {
+					note := fmt.Sprintf("多维反滥用浏览器指纹关联扣除赠金（score=%d factors=%v）", assessment.Score, assessment.Factors)
+					if err := recorder.RecordRiskControlBalanceDeduction(ctx, item.ID, item.Balance, note); err != nil {
+						logger.LegacyPrintf("service.auth", "[Auth] fingerprint-linked history record failed: user=%d linked_user=%d err=%v", user.ID, item.ID, err)
 					}
 				}
 				if s.authCacheInvalidator != nil {

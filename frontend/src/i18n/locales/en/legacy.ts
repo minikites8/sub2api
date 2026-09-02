@@ -2863,9 +2863,9 @@ export default {
       recordsHint: 'Shows hits, blocks, errors, and sampled records.',
       antiAbuseConfig: {
         title: 'Multidimensional Anti-Abuse Configuration',
-        hint: 'Adjust browser fingerprint, IP, email, UA, JA3/JA4, and signup/IP+UA thresholds in one place.',
+        hint: 'Adjust browser-fingerprint linking, IP, email, UA, JA3/JA4, and signup/IP+UA thresholds in one place.',
         enabled: 'Enable multidimensional controls',
-        enabledHint: 'Gift-balance action runs when the score or signup/IP+UA threshold is reached. Disabling turns off all these rules.',
+        enabledHint: 'Gift-balance action runs when fingerprint linking, the score, or signup/IP+UA threshold indicates risk. Disabling turns off all these rules.',
         threshold: 'Restriction threshold',
         signupIPThreshold: 'Signup IP threshold',
         signupIPPrevious: 'Handle previous signup accounts at threshold',
@@ -2880,7 +2880,7 @@ export default {
       },
       antiAbuseEvents: {
         title: 'Multidimensional Anti-Abuse Events',
-        hint: 'Registration, gateway scoring, and gift-balance deductions in one event stream.',
+        hint: 'Shows only registration and gateway events with risk factors, plus gift-balance deductions. IP+UA threshold hits restrict immediately.',
         allActions: 'All actions',
         deductionsOnly: 'Deductions only',
         empty: 'No multidimensional anti-abuse events',

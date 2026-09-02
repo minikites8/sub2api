@@ -4613,3 +4613,7 @@ index 000000000..25e2f3e40
 ## Threshold integration update
 
 新增 `signup_ip_threshold` 与 `api_ip_ua_threshold` 多维评分因子；阈值配置、历史账号处置与总开关统一进入反滥用策略。
+
+普通 `allow` 且无风险因子的请求跳过 `anti_abuse_events`；存在风险因子、`review/restrict` 或赠金扣除的请求继续记录。IP+UA 阈值命中直接进入 `restrict`。
+
+同一浏览器精确或模糊指纹关联到多个账号时，`browser_fingerprint` 因子直接进入 `restrict`；注册和网关会处理跨 IP 的关联免费账号赠金。

@@ -37,6 +37,7 @@ var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
 var _ service.RiskControlBalanceRecorder = (*userRepository)(nil)
 var _ service.UserGroupBanRepository = (*userRepository)(nil)
 var _ service.DailyCheckinRewardExpirer = (*userRepository)(nil)
+var _ service.AntiAbuseBrowserLinkStore = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -98,6 +99,27 @@ func (r *userRepository) GetUserFingerprints(ctx context.Context, userID int64) 
 	return result, rows.Err()
 }
 
+func (r *userRepository) GetUserBrowserFingerprints(ctx context.Context, userID int64) ([]string, error) {
+	exec := r.antiAbuseExecutor(ctx)
+	if r == nil || exec == nil || userID <= 0 {
+		return nil, nil
+	}
+	rows, err := exec.QueryContext(ctx, `SELECT fingerprint_hash FROM anti_abuse_user_fingerprints WHERE user_id = $1 AND fingerprint_bucket NOT IN ('ja3', 'ja4') ORDER BY created_at ASC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []string
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	return result, rows.Err()
+}
+
 func (r *userRepository) CountUsersByFingerprintHashes(ctx context.Context, fingerprints []string, since time.Time) (int, error) {
 	exec := r.antiAbuseExecutor(ctx)
 	if r == nil || exec == nil || len(fingerprints) == 0 {
@@ -113,6 +135,27 @@ func (r *userRepository) CountUsersByFingerprintHashes(ctx context.Context, fing
 		err = rows.Scan(&count)
 	}
 	return count, err
+}
+
+func (r *userRepository) ListUsersByFingerprintHashes(ctx context.Context, fingerprints []string, since time.Time) ([]int64, error) {
+	exec := r.antiAbuseExecutor(ctx)
+	if r == nil || exec == nil || len(fingerprints) == 0 {
+		return nil, nil
+	}
+	rows, err := exec.QueryContext(ctx, `SELECT DISTINCT user_id FROM anti_abuse_user_fingerprints WHERE fingerprint_hash = ANY($1) AND created_at >= $2 ORDER BY user_id`, pq.Array(fingerprints), since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []int64
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		result = append(result, userID)
+	}
+	return result, rows.Err()
 }
 
 func (r *userRepository) StoreTransportFingerprints(ctx context.Context, userID int64, ja3, ja4 string, assessment service.AntiAbuseAssessment) error {

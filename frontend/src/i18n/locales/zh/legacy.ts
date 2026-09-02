@@ -2940,9 +2940,9 @@ export default {
       recordsHint: '展示命中、拦截、异常和已采样记录。',
       antiAbuseConfig: {
         title: '多维反滥用配置',
-        hint: '集中调整浏览器指纹、IP、邮箱、UA、JA3/JA4 与注册/IP+UA 阈值的评分策略。',
+        hint: '集中调整浏览器指纹关联、IP、邮箱、UA、JA3/JA4 与注册/IP+UA 阈值的评分策略。',
         enabled: '启用多维风控',
-        enabledHint: '评分或注册/IP+UA 阈值命中时执行赠金处置。关闭后统一停用这些规则。',
+        enabledHint: '指纹关联、评分或注册/IP+UA 阈值命中时执行赠金处置。关闭后统一停用这些规则。',
         threshold: '限制阈值',
         signupIPThreshold: '注册 IP 阈值',
         signupIPPrevious: '达到阈值时处置历史注册账号',
@@ -2957,7 +2957,7 @@ export default {
       },
       antiAbuseEvents: {
         title: '多维反滥用事件',
-        hint: '集中展示注册、网关评分和赠金扣除事件。',
+        hint: '仅展示有风险因子的注册、网关评分和赠金扣除事件。IP+UA 阈值命中直接进入限制处置。',
         allActions: '全部动作',
         deductionsOnly: '仅显示扣除赠金',
         empty: '暂无多维反滥用事件',

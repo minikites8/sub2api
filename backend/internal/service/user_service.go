@@ -192,6 +192,14 @@ type AntiAbuseSignalStore interface {
 	CountUsersByTransportFingerprints(ctx context.Context, ja3, ja4 string, since time.Time) (int, error)
 }
 
+// AntiAbuseBrowserLinkStore resolves accounts linked by browser fingerprint.
+// It remains separate from AntiAbuseSignalStore so lightweight test doubles
+// and alternate repositories can adopt the association query independently.
+type AntiAbuseBrowserLinkStore interface {
+	GetUserBrowserFingerprints(ctx context.Context, userID int64) ([]string, error)
+	ListUsersByFingerprintHashes(ctx context.Context, fingerprints []string, since time.Time) ([]int64, error)
+}
+
 // UserGroupBanRepository provides the optional persistence used by the risk
 // control group-ban policy. Keeping it separate preserves compatibility with
 // lightweight UserRepository test doubles and alternate implementations.

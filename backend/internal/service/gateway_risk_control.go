@@ -53,24 +53,47 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 	signals.JA4 = contextSignals.JA4
 	fingerprintVelocity := 0
 	tlsVelocity := 0
+	fingerprintLinkedUserIDs := make(map[int64]struct{})
 	if s.settingService != nil {
 		signals.IPReputationScore = s.settingService.LookupConfiguredIPReputation(ctx, ipAddress)
 	}
-	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok {
-		if hashes, readErr := store.GetUserFingerprints(ctx, userID); readErr == nil && len(hashes) > 0 {
-			if count, countErr := store.CountUsersByFingerprintHashes(ctx, hashes, time.Now().Add(-24*time.Hour)); countErr == nil {
-				fingerprintVelocity = maxInt(0, count-1)
+	windowStart := time.Now().Add(-24 * time.Hour)
+	browserHashes := HashBrowserFingerprints(signals.BrowserFingerprints)
+	signalStore, hasSignalStore := s.userRepo.(AntiAbuseSignalStore)
+	if browserStore, ok := s.userRepo.(AntiAbuseBrowserLinkStore); ok {
+		if len(browserHashes) == 0 {
+			if storedHashes, readErr := browserStore.GetUserBrowserFingerprints(ctx, userID); readErr == nil {
+				browserHashes = storedHashes
 			}
 		}
-		if count, countErr := store.CountUsersByTransportFingerprints(ctx, signals.JA3, signals.JA4, time.Now().Add(-24*time.Hour)); countErr == nil {
+		if len(browserHashes) > 0 {
+			if hasSignalStore {
+				if count, countErr := signalStore.CountUsersByFingerprintHashes(ctx, browserHashes, windowStart); countErr == nil {
+					fingerprintVelocity = maxInt(0, count-1)
+				}
+			}
+			if linkedIDs, queryErr := browserStore.ListUsersByFingerprintHashes(ctx, browserHashes, windowStart); queryErr == nil {
+				for _, linkedID := range linkedIDs {
+					if linkedID > 0 && linkedID != userID {
+						fingerprintLinkedUserIDs[linkedID] = struct{}{}
+					}
+				}
+				if linkedCount := maxInt(len(linkedIDs)-1, 0); linkedCount > fingerprintVelocity {
+					fingerprintVelocity = linkedCount
+				}
+			}
+		}
+	}
+	if hasSignalStore {
+		if count, countErr := signalStore.CountUsersByTransportFingerprints(ctx, signals.JA3, signals.JA4, windowStart); countErr == nil {
 			tlsVelocity = maxInt(0, count-1)
 		}
 	}
 	assessment := EvaluateGatewayAntiAbuse(signals, maxInt(0, len(items)-1), fingerprintVelocity, 0, tlsVelocity, policy)
 	antiAbuseEvents, _ := s.userRepo.(AntiAbuseEventStore)
 	RecordAntiAbuseAssessment(ctx, antiAbuseEvents, "gateway", &userID, target.Email, signals, assessment)
-	if store, ok := s.userRepo.(AntiAbuseSignalStore); ok && (signals.JA3 != "" || signals.JA4 != "") {
-		_ = store.StoreTransportFingerprints(ctx, userID, signals.JA3, signals.JA4, assessment)
+	if hasSignalStore && (signals.JA3 != "" || signals.JA4 != "") {
+		_ = signalStore.StoreTransportFingerprints(ctx, userID, signals.JA3, signals.JA4, assessment)
 	}
 	threshold := policy.APIUsageIPUARiskControlThreshold
 	disablePreviousAccounts := policy.APIUsageIPUADisablePreviousAccounts
@@ -98,6 +121,9 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 
 	for idx, item := range items {
 		shouldDeduct := assessment.Action == AntiAbuseActionRestrict && item.UserID == userID
+		if _, linked := fingerprintLinkedUserIDs[item.UserID]; linked {
+			shouldDeduct = true
+		}
 		if len(items) >= threshold && idx >= threshold-1 {
 			shouldDeduct = true
 		}
@@ -142,7 +168,47 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 			}
 		}
 		if currentIndex == idx {
-			return
+			break
+		}
+	}
+
+	// Fingerprint-linked accounts can use different IPs and User-Agents, so
+	// process linked free-credit accounts after the IP+UA ordered set.
+	for linkedID := range fingerprintLinkedUserIDs {
+		foundInIPUASet := false
+		for _, item := range items {
+			if item.UserID == linkedID {
+				foundInIPUASet = true
+				break
+			}
+		}
+		if foundInIPUASet {
+			continue
+		}
+		target, err := s.userRepo.GetByID(ctx, linkedID)
+		if err != nil || target == nil || target.TotalRecharged > 0 || target.Balance <= 0 {
+			continue
+		}
+		deducted, err := deductIPRiskGiftBalance(ctx, s.userRepo, target)
+		if err != nil {
+			logger.LegacyPrintf("service.gateway", "fingerprint-linked gift balance deduction failed: user=%d linked_user=%d err=%v", userID, linkedID, err)
+			continue
+		}
+		if deducted <= 0 {
+			continue
+		}
+		RecordAntiAbuseDeduction(ctx, antiAbuseEvents, "gateway_gift_deduction", &linkedID, target.Email, signals, assessment, deducted)
+		if recorder, ok := s.userRepo.(RiskControlBalanceRecorder); ok {
+			note := fmt.Sprintf("多维反滥用浏览器指纹关联扣除赠金（score=%d factors=%v）", assessment.Score, assessment.Factors)
+			if err := recorder.RecordRiskControlBalanceDeduction(ctx, linkedID, deducted, note); err != nil {
+				logger.LegacyPrintf("service.gateway", "fingerprint-linked history record failed: user=%d linked_user=%d err=%v", userID, linkedID, err)
+			}
+		}
+		if s.authCacheInvalidator != nil {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, linkedID)
+		}
+		if s.billingCacheService != nil {
+			_ = s.billingCacheService.InvalidateUserBalance(ctx, linkedID)
 		}
 	}
 }

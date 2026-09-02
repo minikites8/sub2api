@@ -107,7 +107,9 @@ func (s *ContentModerationService) ListAntiAbuseEvents(ctx context.Context, filt
 }
 
 func RecordAntiAbuseAssessment(ctx context.Context, store AntiAbuseEventStore, eventType string, userID *int64, userEmail string, signals RiskSignals, assessment AntiAbuseAssessment) {
-	if store == nil {
+	// Keep the event stream focused on actionable or explainable risk signals.
+	// Clean allow decisions have no factor context for the risk center to use.
+	if store == nil || (assessment.Action == AntiAbuseActionAllow && len(assessment.Factors) == 0 && assessment.Score <= 0) {
 		return
 	}
 	event := &AntiAbuseEvent{
@@ -313,8 +315,9 @@ func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, ema
 	}
 
 	if fingerprintVelocity > 0 {
-		value := 20 + minInt(fingerprintVelocity*15, 40)
-		add("browser_fingerprint", "browser fingerprint reused across recent accounts", value, policy.FingerprintWeight)
+		// A browser fingerprint shared by multiple accounts is a hard high-risk
+		// association, regardless of the remaining signal score.
+		add("browser_fingerprint", "browser fingerprint is linked to multiple accounts", policy.ScoreThreshold, policy.FingerprintWeight)
 	}
 	if ipVelocity > 0 {
 		value := minInt(ipVelocity*12, 36)
@@ -338,6 +341,9 @@ func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, ema
 	}
 	if velocityThreshold > 0 && ipVelocity+1 >= velocityThreshold {
 		add(velocityFactor, velocityReason, policy.ScoreThreshold, policy.IPWeight)
+		assessment.Action = AntiAbuseActionRestrict
+	}
+	if fingerprintVelocity > 0 {
 		assessment.Action = AntiAbuseActionRestrict
 	}
 
