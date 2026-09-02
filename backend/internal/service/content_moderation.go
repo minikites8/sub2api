@@ -186,6 +186,11 @@ type ContentModerationConfig struct {
 	// 当次不判定封号，且历史 cyber 行在 CountFlaggedByUserSince 中被排除。
 	// 默认 false（计入，与历史行为一致；旧配置 JSON 无此字段时反序列化为 false）。
 	CyberPolicyExcludeFromBanCount bool `json:"cyber_policy_exclude_from_ban_count"`
+	// CyberPolicyGroupBanEnabled enables an immediate permanent ban for selected groups
+	// after an upstream cyber_policy warning.
+	CyberPolicyGroupBanEnabled bool    `json:"cyber_policy_group_ban_enabled"`
+	CyberPolicyTriggerGroupIDs []int64 `json:"cyber_policy_trigger_group_ids"`
+	CyberPolicyTargetGroupIDs  []int64 `json:"cyber_policy_target_group_ids"`
 }
 
 type ContentModerationConfigView struct {
@@ -225,6 +230,9 @@ type ContentModerationConfigView struct {
 	KeywordBlockingMode            string                          `json:"keyword_blocking_mode"`
 	ModelFilter                    ContentModerationModelFilter    `json:"model_filter"`
 	CyberPolicyExcludeFromBanCount bool                            `json:"cyber_policy_exclude_from_ban_count"`
+	CyberPolicyGroupBanEnabled     bool                            `json:"cyber_policy_group_ban_enabled"`
+	CyberPolicyTriggerGroupIDs     []int64                         `json:"cyber_policy_trigger_group_ids"`
+	CyberPolicyTargetGroupIDs      []int64                         `json:"cyber_policy_target_group_ids"`
 }
 
 type ContentModerationAPIKeyStatus struct {
@@ -321,6 +329,9 @@ type UpdateContentModerationConfigInput struct {
 	KeywordBlockingMode            *string                       `json:"keyword_blocking_mode"`
 	ModelFilter                    *ContentModerationModelFilter `json:"model_filter"`
 	CyberPolicyExcludeFromBanCount *bool                         `json:"cyber_policy_exclude_from_ban_count"`
+	CyberPolicyGroupBanEnabled     *bool                         `json:"cyber_policy_group_ban_enabled"`
+	CyberPolicyTriggerGroupIDs     *[]int64                      `json:"cyber_policy_trigger_group_ids"`
+	CyberPolicyTargetGroupIDs      *[]int64                      `json:"cyber_policy_target_group_ids"`
 }
 
 type ContentModerationModelFilter struct {
@@ -743,6 +754,15 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.CyberPolicyExcludeFromBanCount != nil {
 		cfg.CyberPolicyExcludeFromBanCount = *input.CyberPolicyExcludeFromBanCount
+	}
+	if input.CyberPolicyGroupBanEnabled != nil {
+		cfg.CyberPolicyGroupBanEnabled = *input.CyberPolicyGroupBanEnabled
+	}
+	if input.CyberPolicyTriggerGroupIDs != nil {
+		cfg.CyberPolicyTriggerGroupIDs = normalizeInt64IDs(*input.CyberPolicyTriggerGroupIDs)
+	}
+	if input.CyberPolicyTargetGroupIDs != nil {
+		cfg.CyberPolicyTargetGroupIDs = normalizeInt64IDs(*input.CyberPolicyTargetGroupIDs)
 	}
 	if input.Thresholds != nil {
 		cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), *input.Thresholds)
@@ -1756,12 +1776,22 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 	if cfg.ModelFilter.Type != ContentModerationModelFilterAll && len(cfg.ModelFilter.Models) == 0 {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_MODEL_FILTER", "指定或排除模型时至少需要配置 1 个模型")
 	}
+	if cfg.CyberPolicyGroupBanEnabled && len(cfg.CyberPolicyTargetGroupIDs) == 0 {
+		return infraerrors.BadRequest("INVALID_CYBER_POLICY_TARGET_GROUPS", "启用 cyber_policy 分组封禁时至少需要配置 1 个目标分组")
+	}
 	if !cfg.AllGroups && len(cfg.GroupIDs) > 0 && s.groupRepo != nil {
+		validGroupIDs := make([]int64, 0, len(cfg.GroupIDs))
 		for _, groupID := range cfg.GroupIDs {
 			if _, err := s.groupRepo.GetByIDLite(ctx, groupID); err != nil {
-				return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_GROUP", fmt.Sprintf("审计分组不存在: %d", groupID))
+				if errors.Is(err, ErrGroupNotFound) {
+					slog.Warn("content_moderation.drop_missing_audit_group", "group_id", groupID)
+					continue
+				}
+				return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_GROUP", fmt.Sprintf("审计分组校验失败: %d", groupID))
 			}
+			validGroupIDs = append(validGroupIDs, groupID)
 		}
+		cfg.GroupIDs = validGroupIDs
 	}
 	if len(cfg.GroupModelOverrides) > 0 && s.groupRepo != nil {
 		for groupID := range cfg.GroupModelOverrides {
@@ -1774,6 +1804,18 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 		for groupID := range cfg.GroupModelFilters {
 			if _, err := s.groupRepo.GetByIDLite(ctx, groupID); err != nil {
 				return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_GROUP_FILTER", fmt.Sprintf("监控模型分组不存在: %d", groupID))
+			}
+		}
+	}
+	if s.groupRepo != nil {
+		for _, groupID := range cfg.CyberPolicyTriggerGroupIDs {
+			if _, err := s.groupRepo.GetByIDLite(ctx, groupID); err != nil {
+				return infraerrors.BadRequest("INVALID_CYBER_POLICY_TRIGGER_GROUP", fmt.Sprintf("cyber_policy 触发分组不存在: %d", groupID))
+			}
+		}
+		for _, groupID := range cfg.CyberPolicyTargetGroupIDs {
+			if _, err := s.groupRepo.GetByIDLite(ctx, groupID); err != nil {
+				return infraerrors.BadRequest("INVALID_CYBER_POLICY_TARGET_GROUP", fmt.Sprintf("cyber_policy 封禁分组不存在: %d", groupID))
 			}
 		}
 	}
@@ -2251,6 +2293,9 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 			Models: []string{},
 		},
 		CyberPolicyExcludeFromBanCount: false,
+		CyberPolicyGroupBanEnabled:     false,
+		CyberPolicyTriggerGroupIDs:     []int64{},
+		CyberPolicyTargetGroupIDs:      []int64{},
 	}
 }
 
@@ -2264,6 +2309,8 @@ func cloneContentModerationConfig(cfg *ContentModerationConfig) *ContentModerati
 	clone.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	clone.GroupModelOverrides = cloneContentModerationGroupModelOverrides(cfg.GroupModelOverrides)
 	clone.GroupModelFilters = cloneContentModerationGroupModelFilters(cfg.GroupModelFilters)
+	clone.CyberPolicyTriggerGroupIDs = append([]int64(nil), cfg.CyberPolicyTriggerGroupIDs...)
+	clone.CyberPolicyTargetGroupIDs = append([]int64(nil), cfg.CyberPolicyTargetGroupIDs...)
 	clone.BlockedKeywords = append([]string(nil), cfg.BlockedKeywords...)
 	clone.Thresholds = cloneFloatMap(cfg.Thresholds)
 	clone.ModelFilter = ContentModerationModelFilter{
@@ -2362,6 +2409,8 @@ func (cfg *ContentModerationConfig) normalize() {
 		cfg.NonHitRetentionDays = maxContentModerationNonHitRetentionDays
 	}
 	cfg.GroupIDs = normalizeInt64IDs(cfg.GroupIDs)
+	cfg.CyberPolicyTriggerGroupIDs = normalizeInt64IDs(cfg.CyberPolicyTriggerGroupIDs)
+	cfg.CyberPolicyTargetGroupIDs = normalizeInt64IDs(cfg.CyberPolicyTargetGroupIDs)
 	cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), cfg.Thresholds)
 	cfg.BlockedKeywords = normalizeBlockedKeywords(cfg.BlockedKeywords)
 	cfg.KeywordBlockingMode = normalizeKeywordBlockingMode(cfg.KeywordBlockingMode)
@@ -2654,6 +2703,9 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		KeywordBlockingMode:            cfg.KeywordBlockingMode,
 		ModelFilter:                    cloneContentModerationModelFilter(cfg.ModelFilter),
 		CyberPolicyExcludeFromBanCount: cfg.CyberPolicyExcludeFromBanCount,
+		CyberPolicyGroupBanEnabled:     cfg.CyberPolicyGroupBanEnabled,
+		CyberPolicyTriggerGroupIDs:     append([]int64(nil), cfg.CyberPolicyTriggerGroupIDs...),
+		CyberPolicyTargetGroupIDs:      append([]int64(nil), cfg.CyberPolicyTargetGroupIDs...),
 	}
 }
 
@@ -3258,6 +3310,67 @@ type CyberPolicyRecordInput struct {
 	UpstreamOutTok  int
 }
 
+func cyberPolicyTriggerGroupMatches(cfg *ContentModerationConfig, groupID *int64) bool {
+	if cfg == nil || len(cfg.CyberPolicyTriggerGroupIDs) == 0 {
+		return true
+	}
+	if groupID == nil || *groupID <= 0 {
+		return false
+	}
+	for _, configuredID := range cfg.CyberPolicyTriggerGroupIDs {
+		if configuredID == *groupID {
+			return true
+		}
+	}
+	return false
+}
+
+// applyCyberPolicyGroupBan permanently blocks the user from configured target
+// groups after a matching upstream cyber_policy warning. Administrators are
+// explicitly exempt from this automatic action.
+func (s *ContentModerationService) applyCyberPolicyGroupBan(ctx context.Context, cfg *ContentModerationConfig, in CyberPolicyRecordInput, log *ContentModerationLog) bool {
+	if s == nil || cfg == nil || log == nil || !cfg.CyberPolicyGroupBanEnabled || in.UserID <= 0 || len(cfg.CyberPolicyTargetGroupIDs) == 0 {
+		return false
+	}
+	if !cyberPolicyTriggerGroupMatches(cfg, in.GroupID) || s.userRepo == nil {
+		return false
+	}
+	user, err := s.userRepo.GetByID(ctx, in.UserID)
+	if err != nil {
+		slog.Warn("content_moderation.cyber_group_ban_get_user_failed", "user_id", in.UserID, "error", err)
+		return false
+	}
+	if user == nil || user.IsAdmin() {
+		if user != nil && user.IsAdmin() {
+			slog.Warn("content_moderation.cyber_group_ban_skipped_admin", "user_id", in.UserID, "role", user.Role)
+		}
+		return false
+	}
+	banRepo, ok := s.userRepo.(UserGroupBanRepository)
+	if !ok {
+		slog.Warn("content_moderation.cyber_group_ban_repository_unavailable", "user_id", in.UserID)
+		return false
+	}
+	applied := false
+	for _, groupID := range cfg.CyberPolicyTargetGroupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if err := banRepo.BanGroupForUser(ctx, in.UserID, groupID, nil); err != nil {
+			slog.Warn("content_moderation.cyber_group_ban_failed", "user_id", in.UserID, "group_id", groupID, "error", err)
+			continue
+		}
+		applied = true
+	}
+	if applied {
+		if s.authCacheInvalidator != nil {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, in.UserID)
+		}
+		log.AutoBanned = true
+	}
+	return applied
+}
+
 // RecordCyberPolicyEvent 把一次 cyber_policy 硬阻断写入风控中心日志、计入违规计数、
 // 并给用户发邮件。当前请求已由 gateway 透传给用户；本方法仅做事后记录/通知/计数。
 // 上游明确返回的 cyber_policy 告警只受 risk_control_enabled 总开关约束。
@@ -3310,9 +3423,9 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	}
 	// 开关开时 cyber_policy 不参与封号计数：当次不判定（此处跳过），
 	// 历史行由 CountFlaggedByUserSince 的 excludeCyberPolicy 排除。
-	autoBanned := false
+	autoBanned := s.applyCyberPolicyGroupBan(ctx, cfg, in, log)
 	if !cfg.CyberPolicyExcludeFromBanCount {
-		autoBanned = s.applyFlaggedAccountSideEffects(ctx, cfg, log)
+		autoBanned = s.applyFlaggedAccountSideEffects(ctx, cfg, log) || autoBanned
 	}
 	log.EmailSent = false
 	logPersisted := true

@@ -443,7 +443,6 @@
             <div class="flex flex-wrap items-center gap-2">
               <select v-model="antiAbuseFilters.action" class="input" @change="reloadAntiAbuseEvents">
                 <option value="">{{ t('admin.riskControl.antiAbuseEvents.allActions') }}</option>
-                <option value="allow">allow</option>
                 <option value="review">review</option>
                 <option value="restrict">restrict</option>
               </select>
@@ -1089,6 +1088,66 @@
                 </div>
                 <Toggle v-model="configForm.cyber_policy_exclude_from_ban_count" />
               </div>
+              <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberPolicyGroupBan') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberPolicyGroupBanHint') }}</p>
+                </div>
+                <Toggle v-model="configForm.cyber_policy_group_ban_enabled" />
+              </div>
+              <div v-if="configForm.cyber_policy_group_ban_enabled" class="space-y-4 lg:col-span-2">
+                <div class="relative">
+                  <Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input v-model.trim="cyberGroupSearch" type="search" class="input pl-9" :placeholder="t('admin.riskControl.cyberPolicyGroupSearch')" />
+                </div>
+                <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div class="rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberPolicyTriggerGroups') }}</p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberPolicyTriggerGroupsHint') }}</p>
+                      </div>
+                      <span class="shrink-0 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">{{ configForm.cyber_policy_trigger_group_ids.length }}</span>
+                    </div>
+                    <div class="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                      <button
+                        v-for="group in filteredCyberGroups"
+                        :key="`trigger-${group.id}`"
+                        type="button"
+                        class="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors"
+                        :class="isCyberTriggerGroupSelected(group.id) ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300' : 'border-gray-100 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/60'"
+                        @click="toggleCyberTriggerGroup(group.id)"
+                      >
+                        <span class="min-w-0 truncate">{{ group.name }}</span>
+                        <Icon name="check" size="xs" :class="isCyberTriggerGroupSelected(group.id) ? '' : 'text-transparent'" />
+                      </button>
+                    </div>
+                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberPolicyTriggerGroupsEmptyHint') }}</p>
+                  </div>
+                  <div class="rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberPolicyTargetGroups') }}</p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberPolicyTargetGroupsHint') }}</p>
+                      </div>
+                      <span class="shrink-0 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">{{ configForm.cyber_policy_target_group_ids.length }}</span>
+                    </div>
+                    <div class="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                      <button
+                        v-for="group in filteredCyberGroups"
+                        :key="`target-${group.id}`"
+                        type="button"
+                        class="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors"
+                        :class="isCyberTargetGroupSelected(group.id) ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300' : 'border-gray-100 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/60'"
+                        @click="toggleCyberTargetGroup(group.id)"
+                      >
+                        <span class="min-w-0 truncate">{{ group.name }}</span>
+                        <Icon name="check" size="xs" :class="isCyberTargetGroupSelected(group.id) ? '' : 'text-transparent'" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.banThreshold') }}</label>
                 <input v-model.number="configForm.ban_threshold" type="number" min="1" max="1000" class="input" />
@@ -1407,6 +1466,7 @@ const unbanningKey = ref<string | null>(null)
 const settingsOpen = ref(false)
 const activeSettingsTab = ref<SettingsTab>('basic')
 const groupSearch = ref('')
+const cyberGroupSearch = ref('')
 const flaggedHashInput = ref('')
 const groups = ref<AdminGroup[]>([])
 const proxies = ref<Proxy[]>([])
@@ -1482,6 +1542,9 @@ const configForm = reactive({
   ban_type: 'user' as ContentModerationBanType,
   ban_duration_hours: 0,
   cyber_policy_exclude_from_ban_count: false,
+  cyber_policy_group_ban_enabled: false,
+  cyber_policy_trigger_group_ids: [] as number[],
+  cyber_policy_target_group_ids: [] as number[],
   ban_threshold: 10,
   violation_window_hours: 720,
   hit_retention_days: 180,
@@ -1677,6 +1740,14 @@ const hiddenModelFilterModelCount = computed(() => Math.max(0, configForm.model_
 
 const filteredGroups = computed(() => {
   const keyword = groupSearch.value.trim().toLowerCase()
+  if (!keyword) return groups.value
+  return groups.value.filter((group) => {
+    return group.name.toLowerCase().includes(keyword) || String(group.platform).toLowerCase().includes(keyword)
+  })
+})
+
+const filteredCyberGroups = computed(() => {
+  const keyword = cyberGroupSearch.value.trim().toLowerCase()
   if (!keyword) return groups.value
   return groups.value.filter((group) => {
     return group.name.toLowerCase().includes(keyword) || String(group.platform).toLowerCase().includes(keyword)
@@ -1979,6 +2050,9 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.ban_type = config.ban_type === 'group' ? 'group' : 'user'
   configForm.ban_duration_hours = Math.min(Math.max(Number(config.ban_duration_hours) || 0, 0), 8760)
   configForm.cyber_policy_exclude_from_ban_count = config.cyber_policy_exclude_from_ban_count ?? false
+  configForm.cyber_policy_group_ban_enabled = config.cyber_policy_group_ban_enabled ?? false
+  configForm.cyber_policy_trigger_group_ids = Array.isArray(config.cyber_policy_trigger_group_ids) ? [...config.cyber_policy_trigger_group_ids] : []
+  configForm.cyber_policy_target_group_ids = Array.isArray(config.cyber_policy_target_group_ids) ? [...config.cyber_policy_target_group_ids] : []
   configForm.ban_threshold = config.ban_threshold || 10
   configForm.violation_window_hours = config.violation_window_hours || 720
   configForm.hit_retention_days = config.hit_retention_days || 180
@@ -2008,6 +2082,7 @@ async function loadAll() {
     ])
     applyConfig(config)
     groups.value = groupItems
+    pruneUnknownGroupReferences()
     status.value = runtimeStatus
     proxies.value = proxyItems
     if (antiAbuseSettings) applyAntiAbuseSettings(antiAbuseSettings)
@@ -2021,6 +2096,19 @@ async function loadAll() {
   } finally {
     loading.value = false
   }
+}
+
+function pruneUnknownGroupReferences() {
+  const validIDs = new Set(groups.value.map((group) => group.id))
+  configForm.group_ids = configForm.group_ids.filter((groupID) => validIDs.has(groupID))
+  configForm.cyber_policy_trigger_group_ids = configForm.cyber_policy_trigger_group_ids.filter((groupID) => validIDs.has(groupID))
+  configForm.cyber_policy_target_group_ids = configForm.cyber_policy_target_group_ids.filter((groupID) => validIDs.has(groupID))
+  configForm.group_model_overrides = Object.fromEntries(
+    Object.entries(configForm.group_model_overrides).filter(([groupID]) => validIDs.has(Number(groupID))),
+  )
+  configForm.group_model_filters = Object.fromEntries(
+    Object.entries(configForm.group_model_filters).filter(([groupID]) => validIDs.has(Number(groupID))),
+  )
 }
 
 function applyAntiAbuseSettings(settings: {
@@ -2182,6 +2270,9 @@ async function saveConfig() {
       ban_type: configForm.ban_type,
       ban_duration_hours: Math.min(Math.max(Number(configForm.ban_duration_hours) || 0, 0), 8760),
       cyber_policy_exclude_from_ban_count: configForm.cyber_policy_exclude_from_ban_count,
+      cyber_policy_group_ban_enabled: configForm.cyber_policy_group_ban_enabled,
+      cyber_policy_trigger_group_ids: [...configForm.cyber_policy_trigger_group_ids],
+      cyber_policy_target_group_ids: [...configForm.cyber_policy_target_group_ids],
       ban_threshold: Number(configForm.ban_threshold) || 10,
       violation_window_hours: Number(configForm.violation_window_hours) || 720,
       hit_retention_days: Number(configForm.hit_retention_days) || 180,
@@ -2499,6 +2590,32 @@ function toggleGroup(groupID: number) {
 
 function isGroupSelected(groupID: number): boolean {
   return configForm.group_ids.includes(groupID)
+}
+
+function toggleCyberTriggerGroup(groupID: number) {
+  const index = configForm.cyber_policy_trigger_group_ids.indexOf(groupID)
+  if (index >= 0) {
+    configForm.cyber_policy_trigger_group_ids.splice(index, 1)
+  } else {
+    configForm.cyber_policy_trigger_group_ids.push(groupID)
+  }
+}
+
+function toggleCyberTargetGroup(groupID: number) {
+  const index = configForm.cyber_policy_target_group_ids.indexOf(groupID)
+  if (index >= 0) {
+    configForm.cyber_policy_target_group_ids.splice(index, 1)
+  } else {
+    configForm.cyber_policy_target_group_ids.push(groupID)
+  }
+}
+
+function isCyberTriggerGroupSelected(groupID: number): boolean {
+  return configForm.cyber_policy_trigger_group_ids.includes(groupID)
+}
+
+function isCyberTargetGroupSelected(groupID: number): boolean {
+  return configForm.cyber_policy_target_group_ids.includes(groupID)
 }
 
 function setGroupModelOverride(groupID: number, event: Event) {

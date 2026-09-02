@@ -47,6 +47,9 @@ export interface ContentModerationConfig {
   keyword_blocking_mode: KeywordBlockingMode
   model_filter: ContentModerationModelFilter
   cyber_policy_exclude_from_ban_count: boolean
+  cyber_policy_group_ban_enabled: boolean
+  cyber_policy_trigger_group_ids: number[]
+  cyber_policy_target_group_ids: number[]
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -131,6 +134,9 @@ export interface UpdateContentModerationConfig {
   keyword_blocking_mode?: KeywordBlockingMode
   model_filter?: ContentModerationModelFilter
   cyber_policy_exclude_from_ban_count?: boolean
+  cyber_policy_group_ban_enabled?: boolean
+  cyber_policy_trigger_group_ids?: number[]
+  cyber_policy_target_group_ids?: number[]
 }
 
 export interface ContentModerationRuntimeStatus {

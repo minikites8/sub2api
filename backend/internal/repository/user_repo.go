@@ -258,7 +258,9 @@ func (r *userRepository) ListAntiAbuseEvents(ctx context.Context, filter service
 	if exec == nil {
 		return []service.AntiAbuseEvent{}, 0, nil
 	}
-	where := []string{"1=1"}
+	// Ordinary allow assessments are intentionally omitted from the risk center.
+	// This also hides historical low-risk rows created before the write-path filter.
+	where := []string{"e.action <> 'allow'"}
 	args := make([]any, 0, 8)
 	add := func(clause string, value any) {
 		args = append(args, value)

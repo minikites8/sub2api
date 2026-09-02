@@ -4617,3 +4617,11 @@ index 000000000..25e2f3e40
 普通 `allow` 且无风险因子的请求跳过 `anti_abuse_events`；存在风险因子、`review/restrict` 或赠金扣除的请求继续记录。IP+UA 阈值命中直接进入 `restrict`。
 
 同一浏览器精确或模糊指纹关联到多个账号时，`browser_fingerprint` 因子直接进入 `restrict`；注册和网关会处理跨 IP 的关联免费账号赠金。
+
+## Cyber group-ban and config recovery update
+
+`cyber_policy_group_ban_enabled` activates permanent user-scoped bans for `cyber_policy_target_group_ids` when a warning comes from a configured `cyber_policy_trigger_group_ids` group. An empty trigger list matches any group, target bans persist with `expires_at = NULL`, and administrator users are exempt before any ban repository write. The risk-control UI exposes the toggle and both group selectors.
+
+Risk-control configuration drops deleted audit group IDs during save and filters stale group references after group loading. Its JSON binder replaces raw ASCII control bytes before decoding and caps the body at 2 MiB, covering legacy requests that produced `invalid character '\\x19' in string literal`.
+
+Anti-abuse assessment writes now omit every `allow` action, while the anti-abuse event query filters historical `allow` rows as well. The risk-center action selector exposes only `review` and `restrict`; deduction events remain visible.

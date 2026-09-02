@@ -152,16 +152,20 @@ func (s *recordingAntiAbuseEventStore) ListAntiAbuseEvents(context.Context, Anti
 	return s.events, int64(len(s.events)), nil
 }
 
-func TestCleanAntiAbuseAssessmentIsNotRecorded(t *testing.T) {
+func TestAllowAntiAbuseAssessmentIsNotRecorded(t *testing.T) {
 	store := &recordingAntiAbuseEventStore{}
 	clean := AntiAbuseAssessment{Action: AntiAbuseActionAllow, Factors: map[string]int{}, Score: 0}
 	RecordAntiAbuseAssessment(context.Background(), store, "gateway", nil, "clean@example.com", RiskSignals{}, clean)
 	require.Empty(t, store.events)
 
-	risky := AntiAbuseAssessment{Action: AntiAbuseActionAllow, Factors: map[string]int{"calling_user_agent": 25}, Score: 25}
-	RecordAntiAbuseAssessment(context.Background(), store, "gateway", nil, "risk@example.com", RiskSignals{UserAgent: "python-requests/2.32"}, risky)
+	lowRiskAllow := AntiAbuseAssessment{Action: AntiAbuseActionAllow, Factors: map[string]int{"calling_user_agent": 25}, Score: 25}
+	RecordAntiAbuseAssessment(context.Background(), store, "gateway", nil, "risk@example.com", RiskSignals{UserAgent: "python-requests/2.32"}, lowRiskAllow)
+	require.Empty(t, store.events)
+
+	restrict := AntiAbuseAssessment{Action: AntiAbuseActionRestrict, Factors: map[string]int{"browser_fingerprint": 60}, Score: 60}
+	RecordAntiAbuseAssessment(context.Background(), store, "gateway", nil, "restricted@example.com", RiskSignals{}, restrict)
 	require.Len(t, store.events, 1)
-	require.Equal(t, 25, store.events[0].Factors["calling_user_agent"])
+	require.Equal(t, 60, store.events[0].Factors["browser_fingerprint"])
 }
 
 func TestAntiAbuseConfigIncludesIPVelocityControls(t *testing.T) {

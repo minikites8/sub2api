@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +61,9 @@ type contentModerationConfigRequest struct {
 	// cyber_policy 命中是否排除出自动封号计数；前端 RiskControlView 已发送该字段，
 	// service.UpdateContentModerationConfigInput 已支持，此前 handler 层缺透传导致开关静默失效。
 	CyberPolicyExcludeFromBanCount *bool                                 `json:"cyber_policy_exclude_from_ban_count"`
+	CyberPolicyGroupBanEnabled     *bool                                 `json:"cyber_policy_group_ban_enabled"`
+	CyberPolicyTriggerGroupIDs     *[]int64                              `json:"cyber_policy_trigger_group_ids"`
+	CyberPolicyTargetGroupIDs      *[]int64                              `json:"cyber_policy_target_group_ids"`
 	RetryCount                     *int                                  `json:"retry_count"`
 	HitRetentionDays               *int                                  `json:"hit_retention_days"`
 	NonHitRetentionDays            *int                                  `json:"non_hit_retention_days"`
@@ -79,6 +85,29 @@ type contentModerationAPIKeyTestRequest struct {
 
 type contentModerationHashRequest struct {
 	InputHash string `json:"input_hash"`
+}
+
+const maxRiskControlJSONBodyBytes = 2 << 20
+
+// bindRiskControlJSON tolerates legacy clients that submitted an unescaped
+// control byte inside a text field while retaining standard JSON decoding.
+func bindRiskControlJSON(c *gin.Context, target any) error {
+	if c == nil || c.Request == nil || c.Request.Body == nil {
+		return io.EOF
+	}
+	raw, err := io.ReadAll(io.LimitReader(c.Request.Body, maxRiskControlJSONBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(raw) > maxRiskControlJSONBodyBytes {
+		return fmt.Errorf("request body exceeds %d bytes", maxRiskControlJSONBodyBytes)
+	}
+	for i, char := range raw {
+		if char < 0x20 && char != '\t' && char != '\r' && char != '\n' {
+			raw[i] = ' '
+		}
+	}
+	return json.Unmarshal(raw, target)
 }
 
 func (h *ContentModerationHandler) GetConfig(c *gin.Context) {
@@ -122,7 +151,7 @@ func (h *ContentModerationHandler) UpdateAntiAbuseConfig(c *gin.Context) {
 		return
 	}
 	var req antiAbuseConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindRiskControlJSON(c, &req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
@@ -178,7 +207,7 @@ func (h *ContentModerationHandler) UpdateAntiAbuseConfig(c *gin.Context) {
 
 func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 	var req contentModerationConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindRiskControlJSON(c, &req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
@@ -212,6 +241,9 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		BanThreshold:                   req.BanThreshold,
 		ViolationWindowHours:           req.ViolationWindowHours,
 		CyberPolicyExcludeFromBanCount: req.CyberPolicyExcludeFromBanCount,
+		CyberPolicyGroupBanEnabled:     req.CyberPolicyGroupBanEnabled,
+		CyberPolicyTriggerGroupIDs:     req.CyberPolicyTriggerGroupIDs,
+		CyberPolicyTargetGroupIDs:      req.CyberPolicyTargetGroupIDs,
 		RetryCount:                     req.RetryCount,
 		HitRetentionDays:               req.HitRetentionDays,
 		NonHitRetentionDays:            req.NonHitRetentionDays,
@@ -229,7 +261,7 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 
 func (h *ContentModerationHandler) TestAPIKeys(c *gin.Context) {
 	var req contentModerationAPIKeyTestRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindRiskControlJSON(c, &req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
@@ -369,7 +401,7 @@ func (h *ContentModerationHandler) UnbanUser(c *gin.Context) {
 
 func (h *ContentModerationHandler) DeleteFlaggedHash(c *gin.Context) {
 	var req contentModerationHashRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindRiskControlJSON(c, &req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}

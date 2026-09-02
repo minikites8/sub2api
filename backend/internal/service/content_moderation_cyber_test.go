@@ -374,3 +374,73 @@ func TestRecordCyberPolicyEvent_DefaultCountsTowardBan(t *testing.T) {
 	require.Len(t, logs, 1)
 	require.GreaterOrEqual(t, logs[0].ViolationCount, 1, "默认路径行为不变（现状回归）")
 }
+
+func TestRecordCyberPolicyEvent_PermanentlyBansConfiguredTargetGroups(t *testing.T) {
+	userRepo := &contentModerationTestUserRepo{user: &User{ID: 42, Role: RoleUser}}
+	moderationRepo := &contentModerationTestRepo{}
+	invalidator := &contentModerationTestAuthCacheInvalidator{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled: "true",
+			SettingKeyContentModerationConfig: `{
+                "cyber_policy_group_ban_enabled": true,
+                "cyber_policy_trigger_group_ids": [7],
+                "cyber_policy_target_group_ids": [7, 8, 8]
+            }`,
+		}},
+		moderationRepo, nil, nil, userRepo, nil, invalidator, nil,
+	)
+	triggerGroupID := int64(7)
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID:  42,
+		GroupID: &triggerGroupID,
+		Model:   "gpt-5",
+	})
+
+	logs := moderationRepo.snapshotLogs()
+	require.Len(t, logs, 1)
+	require.True(t, logs[0].AutoBanned)
+	require.Equal(t, [][2]int64{{42, 7}, {42, 8}}, userRepo.groupBans)
+	require.Empty(t, userRepo.expirations, "cyber group bans must be permanent")
+	require.Equal(t, []int64{42}, invalidator.userIDs)
+}
+
+func TestRecordCyberPolicyEvent_TriggerGroupAndAdminExemptions(t *testing.T) {
+	tests := []struct {
+		name       string
+		role       string
+		groupID    int64
+		wantBanned bool
+	}{
+		{name: "non-trigger group", role: RoleUser, groupID: 9, wantBanned: false},
+		{name: "administrator", role: RoleAdmin, groupID: 7, wantBanned: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userRepo := &contentModerationTestUserRepo{user: &User{ID: 42, Role: tt.role}}
+			moderationRepo := &contentModerationTestRepo{}
+			svc := NewContentModerationService(
+				&contentModerationTestSettingRepo{values: map[string]string{
+					SettingKeyRiskControlEnabled: "true",
+					SettingKeyContentModerationConfig: `{
+                        "cyber_policy_group_ban_enabled": true,
+                        "cyber_policy_trigger_group_ids": [7],
+                        "cyber_policy_target_group_ids": [8]
+                    }`,
+				}},
+				moderationRepo, nil, nil, userRepo, nil, nil, nil,
+			)
+			groupID := tt.groupID
+			svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{UserID: 42, GroupID: &groupID})
+			logs := moderationRepo.snapshotLogs()
+			require.Len(t, logs, 1)
+			require.Equal(t, tt.wantBanned, logs[0].AutoBanned)
+			if tt.wantBanned {
+				require.Equal(t, [][2]int64{{42, 8}}, userRepo.groupBans)
+			} else {
+				require.Empty(t, userRepo.groupBans)
+			}
+		})
+	}
+}

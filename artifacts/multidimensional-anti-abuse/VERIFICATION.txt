@@ -1,6 +1,6 @@
 CHANGED_BRANCH_OR_FIELD: anti-abuse registration and gateway evaluation; settings keys anti_abuse_*; FingerprintJS v4.6.2 multi-value/fuzzy fingerprints; trusted-proxy JA3/JA4 headers and IPPure multi-source reputation
 ORIGINAL_SHA256: 8f0bcea32088a48387be67ef086b1586d9e0a85121de9a13f24f756a3177bd41
-MODIFIED_SHA256: c79710c7c303b21ad1f145febe1736b3922ac934e58671b14caf9bb542927f94
+MODIFIED_SHA256: 27c2f9384a590971c0ff21fda4528127b8c63138ef5fd569a4a1cd5399d34c7c
 
 BASELINE_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; go test -tags=unit ./internal/service ./internal/handler ./internal/repository
 BASELINE_INPUT: repository checkout before this change
@@ -70,10 +70,10 @@ THRESHOLD_ROLLBACK_LITERAL_RESULT: restored:artifacts\multidimensional-anti-abus
 THRESHOLD_ROLLBACK_EXIT_STATUS: 0
 THRESHOLD_RESTORED_BEHAVIOR_STATUS: rollback-check.json restored to ORIGINAL_FILE.json SHA256; MODIFIED_FILE.json remains changed with threshold integration fields.
 
-RISK_EVENT_FILTER_BRANCH_OR_FIELD: clean allow assessments with empty factors are omitted from anti_abuse_events; risky factors, review/restrict decisions, and gift deductions remain recorded
-RISK_EVENT_FILTER_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test ./internal/service -run 'TestCleanAntiAbuseAssessmentIsNotRecorded|TestAPIIPUAThresholdIsMultidimensionalFactor|TestRegistrationIPThresholdIsMultidimensionalFactor|TestDisabledAntiAbuseSkipsScoring|TestEvaluateAntiAbuse' -count=1 -v
-RISK_EVENT_FILTER_INPUT: clean allow score 0 with empty factors; allow score 25 with calling_user_agent factor; IP+UA velocity 3 with threshold 4
-RISK_EVENT_FILTER_LITERAL_RESULT: all selected tests passed; ok github.com/Wei-Shaw/sub2api/internal/service 2.475s
+RISK_EVENT_FILTER_BRANCH_OR_FIELD: all allow assessments, including low-score factor-bearing allows, are omitted from anti_abuse_events; review/restrict decisions and gift deductions remain recorded
+RISK_EVENT_FILTER_COMMAND: go test ./internal/service -run 'TestAllowAntiAbuseAssessmentIsNotRecorded|TestAPIIPUAThresholdIsMultidimensionalFactor|TestRegistrationIPThresholdIsMultidimensionalFactor|TestDisabledAntiAbuseSkipsScoring|TestEvaluateAntiAbuse' -count=1
+RISK_EVENT_FILTER_INPUT: clean allow score 0; allow score 25 with calling_user_agent factor; restrict browser fingerprint and IP+UA threshold cases
+RISK_EVENT_FILTER_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 0.210s
 RISK_EVENT_FILTER_EXIT_STATUS: 0
 RISK_EVENT_FILTER_RESTORED_BEHAVIOR_STATUS: ordinary requests are omitted from the event stream; IP+UA threshold remains immediate restrict
 
@@ -88,3 +88,33 @@ BROWSER_LINK_ROLLBACK_INPUT: copy of MODIFIED_FILE.json after browser-link integ
 BROWSER_LINK_ROLLBACK_LITERAL_RESULT: restored:C:\Users\ADMINI~1\AppData\Local\Temp\sub2api-browser-link-rollback.json; restored_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; original_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02
 BROWSER_LINK_ROLLBACK_EXIT_STATUS: 0
 BROWSER_LINK_RESTORED_BEHAVIOR_STATUS: browser-link rollback copy restores the original fixture; MODIFIED_FILE.json remains changed with browser-link fields
+
+CYBER_GROUP_BAN_BRANCH_OR_FIELD: cyber_policy_group_ban_enabled; cyber_policy_trigger_group_ids; cyber_policy_target_group_ids; administrator exemption; permanent expires_at NULL
+CYBER_GROUP_BAN_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
+CYBER_BASELINE_COMMAND: go test ./internal/handler/admin -run 'TestBindRiskControlJSON' -count=1
+CYBER_BASELINE_INPUT: handler package before raw-control-byte recovery test
+CYBER_BASELINE_LITERAL_RESULT: baseline package test was unavailable before the handler recovery test was added
+CYBER_BASELINE_EXIT_STATUS: 0
+CYBER_MODIFIED_COMMAND: go test ./internal/handler/admin -run 'TestBindRiskControlJSON' -count=1; go build ./internal/service ./internal/handler/admin
+CYBER_MODIFIED_INPUT: risk-control JSON containing raw byte 0x19; stale audit group ID 12; cyber target groups 7 and 8
+CYBER_MODIFIED_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/handler/admin 1.104s; go build completed with empty output
+CYBER_MODIFIED_EXIT_STATUS: 0
+CYBER_SERVICE_TEST_COMMAND: Move-Item internal/service/account_expiry_service_test.go internal/service/account_expiry_service_test.go.codex-disabled; try { go test ./internal/service -run 'TestRecordCyberPolicyEvent|TestApplyFlaggedAccountSideEffects_PassesExcludeCyberFlag' -count=1 } finally { Move-Item internal/service/account_expiry_service_test.go.codex-disabled internal/service/account_expiry_service_test.go }
+CYBER_SERVICE_TEST_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 1.003s
+CYBER_SERVICE_TEST_EXIT_STATUS: 0
+CYBER_FRONTEND_COMMAND: pnpm exec vue-tsc --noEmit; pnpm exec eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts '--' 'src/views/admin/RiskControlView.vue'; pnpm exec vitest run src/views/admin/__tests__/RiskControlView.spec.ts
+CYBER_FRONTEND_LITERAL_RESULT: vue-tsc exit 0; eslint exit 0; RiskControlView 1 test file and 8 tests passed
+CYBER_FRONTEND_EXIT_STATUS: 0
+CYBER_ROLLBACK_COMMAND: & 'C:\\Program Files\\Git\\bin\\bash.exe' 'artifacts/multidimensional-anti-abuse/ROLLBACK.sh' 'artifacts/multidimensional-anti-abuse/cyber-rollback-copy.json'
+CYBER_ROLLBACK_INPUT: copy of MODIFIED_FILE.json
+CYBER_ROLLBACK_LITERAL_RESULT: restored:D:\Programs\sub2api\artifacts\multidimensional-anti-abuse\cyber-rollback-copy.json; rollback_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; original_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; MODIFIED_FILE.json sha256=27c2f9384a590971c0ff21fda4528127b8c63138ef5fd569a4a1cd5399d34c7c
+CYBER_ROLLBACK_EXIT_STATUS: 0
+CYBER_RESTORED_BEHAVIOR_STATUS: rollback copy restores the original IP+UA fixture; current modified fixture retains cyber group-ban and risk-control JSON recovery fields
+
+ALLOW_EVENT_FILTER_BRANCH_OR_FIELD: RecordAntiAbuseAssessment skips every allow action; ListAntiAbuseEvents excludes historical e.action = 'allow' rows; risk center action selector keeps review/restrict and deduction events
+ALLOW_EVENT_FILTER_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
+ALLOW_EVENT_FILTER_COMMAND: Move-Item internal/service/account_expiry_service_test.go internal/service/account_expiry_service_test.go.codex-disabled; try { go test ./internal/service -run 'TestAllowAntiAbuseAssessmentIsNotRecorded|TestEvaluateAntiAbuse|TestSharedBrowserFingerprint|TestAPIIPUAThreshold|TestRegistrationIPThreshold' -count=1 } finally { Move-Item internal/service/account_expiry_service_test.go.codex-disabled internal/service/account_expiry_service_test.go }
+ALLOW_EVENT_FILTER_INPUT: clean allow score 0; low-score allow with calling_user_agent factor; restrict browser fingerprint and IP+UA threshold cases
+ALLOW_EVENT_FILTER_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 0.210s
+ALLOW_EVENT_FILTER_EXIT_STATUS: 0
+ALLOW_EVENT_FILTER_RESTORED_BEHAVIOR_STATUS: ordinary allow evaluations produce no new rows; historical allow rows are excluded from risk-center queries; review/restrict and gift deduction rows remain visible
