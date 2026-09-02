@@ -152,7 +152,7 @@ func (s *recordingAntiAbuseEventStore) ListAntiAbuseEvents(context.Context, Anti
 	return s.events, int64(len(s.events)), nil
 }
 
-func TestAllowAntiAbuseAssessmentIsNotRecorded(t *testing.T) {
+func TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded(t *testing.T) {
 	store := &recordingAntiAbuseEventStore{}
 	clean := AntiAbuseAssessment{Action: AntiAbuseActionAllow, Factors: map[string]int{}, Score: 0}
 	RecordAntiAbuseAssessment(context.Background(), store, "gateway", nil, "clean@example.com", RiskSignals{}, clean)
@@ -160,6 +160,10 @@ func TestAllowAntiAbuseAssessmentIsNotRecorded(t *testing.T) {
 
 	lowRiskAllow := AntiAbuseAssessment{Action: AntiAbuseActionAllow, Factors: map[string]int{"calling_user_agent": 25}, Score: 25}
 	RecordAntiAbuseAssessment(context.Background(), store, "gateway", nil, "risk@example.com", RiskSignals{UserAgent: "python-requests/2.32"}, lowRiskAllow)
+	require.Empty(t, store.events)
+
+	review := AntiAbuseAssessment{Action: AntiAbuseActionReview, Factors: map[string]int{"ip_reputation": 45}, Score: 45}
+	RecordAntiAbuseAssessment(context.Background(), store, "gateway", nil, "review@example.com", RiskSignals{}, review)
 	require.Empty(t, store.events)
 
 	restrict := AntiAbuseAssessment{Action: AntiAbuseActionRestrict, Factors: map[string]int{"browser_fingerprint": 60}, Score: 60}

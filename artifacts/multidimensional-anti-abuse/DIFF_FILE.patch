@@ -4624,4 +4624,6 @@ index 000000000..25e2f3e40
 
 Risk-control configuration drops deleted audit group IDs during save and filters stale group references after group loading. Its JSON binder replaces raw ASCII control bytes before decoding and caps the body at 2 MiB, covering legacy requests that produced `invalid character '\\x19' in string literal`.
 
-Anti-abuse assessment writes now omit every `allow` action, while the anti-abuse event query filters historical `allow` rows as well. The risk-center action selector exposes only `review` and `restrict`; deduction events remain visible.
+Anti-abuse assessment writes now omit every `allow` and `review` action, while the anti-abuse event query filters historical `allow` and `review` rows as well. The risk-center action selector exposes only `restrict`; deduction events remain visible.
+
+Migration `233_anti_abuse_event_cleanup.sql` removes historical allow/review rows and replaces the action index with a partial restrict index to reduce table/index pressure.

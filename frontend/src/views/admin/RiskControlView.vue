@@ -443,7 +443,6 @@
             <div class="flex flex-wrap items-center gap-2">
               <select v-model="antiAbuseFilters.action" class="input" @change="reloadAntiAbuseEvents">
                 <option value="">{{ t('admin.riskControl.antiAbuseEvents.allActions') }}</option>
-                <option value="review">review</option>
                 <option value="restrict">restrict</option>
               </select>
               <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">

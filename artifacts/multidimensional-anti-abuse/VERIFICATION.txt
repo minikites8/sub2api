@@ -70,16 +70,16 @@ THRESHOLD_ROLLBACK_LITERAL_RESULT: restored:artifacts\multidimensional-anti-abus
 THRESHOLD_ROLLBACK_EXIT_STATUS: 0
 THRESHOLD_RESTORED_BEHAVIOR_STATUS: rollback-check.json restored to ORIGINAL_FILE.json SHA256; MODIFIED_FILE.json remains changed with threshold integration fields.
 
-RISK_EVENT_FILTER_BRANCH_OR_FIELD: all allow assessments, including low-score factor-bearing allows, are omitted from anti_abuse_events; review/restrict decisions and gift deductions remain recorded
-RISK_EVENT_FILTER_COMMAND: go test ./internal/service -run 'TestAllowAntiAbuseAssessmentIsNotRecorded|TestAPIIPUAThresholdIsMultidimensionalFactor|TestRegistrationIPThresholdIsMultidimensionalFactor|TestDisabledAntiAbuseSkipsScoring|TestEvaluateAntiAbuse' -count=1
-RISK_EVENT_FILTER_INPUT: clean allow score 0; allow score 25 with calling_user_agent factor; restrict browser fingerprint and IP+UA threshold cases
-RISK_EVENT_FILTER_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 0.210s
+RISK_EVENT_FILTER_BRANCH_OR_FIELD: allow and review assessments with any factor set are omitted from anti_abuse_events; restrict decisions and gift deductions remain recorded
+RISK_EVENT_FILTER_COMMAND: go test ./internal/service -run 'TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded|TestAPIIPUAThresholdIsMultidimensionalFactor|TestRegistrationIPThresholdIsMultidimensionalFactor|TestDisabledAntiAbuseSkipsScoring|TestEvaluateAntiAbuse' -count=1
+RISK_EVENT_FILTER_INPUT: clean allow score 0; low-score allow score 25 with calling_user_agent factor; review score 45 with ip_reputation factor; IP+UA velocity 3 with threshold 4
+RISK_EVENT_FILTER_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 1.186s
 RISK_EVENT_FILTER_EXIT_STATUS: 0
-RISK_EVENT_FILTER_RESTORED_BEHAVIOR_STATUS: ordinary requests are omitted from the event stream; IP+UA threshold remains immediate restrict
+RISK_EVENT_FILTER_RESTORED_BEHAVIOR_STATUS: allow/review requests are omitted from the event stream; IP+UA threshold remains immediate restrict
 
 BROWSER_LINK_BRANCH_OR_FIELD: browser_fingerprint exact/fuzzy hashes associate users across IPs; shared fingerprint is an immediate high-risk restrict and free-credit deduction signal
 BROWSER_LINK_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
-BROWSER_LINK_MODIFIED_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test ./internal/service -run 'TestSharedBrowserFingerprintIsImmediateHighRisk|TestCleanAntiAbuseAssessmentIsNotRecorded|TestAPIIPUAThresholdIsMultidimensionalFactor|TestRegistrationIPThresholdIsMultidimensionalFactor|TestDisabledAntiAbuseSkipsScoring|TestEvaluateAntiAbuse' -count=1 -v
+BROWSER_LINK_MODIFIED_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test ./internal/service -run 'TestSharedBrowserFingerprintIsImmediateHighRisk|TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded|TestAPIIPUAThresholdIsMultidimensionalFactor|TestRegistrationIPThresholdIsMultidimensionalFactor|TestDisabledAntiAbuseSkipsScoring|TestEvaluateAntiAbuse' -count=1 -v
 BROWSER_LINK_MODIFIED_INPUT: one existing account shares the exact/fuzzy browser fingerprint; different IP and User-Agent account linkage; clean allow request
 BROWSER_LINK_MODIFIED_LITERAL_RESULT: all selected tests passed; ok github.com/Wei-Shaw/sub2api/internal/service 2.594s
 BROWSER_LINK_MODIFIED_EXIT_STATUS: 0
@@ -111,10 +111,18 @@ CYBER_ROLLBACK_LITERAL_RESULT: restored:D:\Programs\sub2api\artifacts\multidimen
 CYBER_ROLLBACK_EXIT_STATUS: 0
 CYBER_RESTORED_BEHAVIOR_STATUS: rollback copy restores the original IP+UA fixture; current modified fixture retains cyber group-ban and risk-control JSON recovery fields
 
-ALLOW_EVENT_FILTER_BRANCH_OR_FIELD: RecordAntiAbuseAssessment skips every allow action; ListAntiAbuseEvents excludes historical e.action = 'allow' rows; risk center action selector keeps review/restrict and deduction events
+ALLOW_EVENT_FILTER_BRANCH_OR_FIELD: RecordAntiAbuseAssessment skips allow/review actions; ListAntiAbuseEvents excludes historical e.action IN ('allow','review') rows; risk center action selector keeps restrict and deduction events
 ALLOW_EVENT_FILTER_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
 ALLOW_EVENT_FILTER_COMMAND: Move-Item internal/service/account_expiry_service_test.go internal/service/account_expiry_service_test.go.codex-disabled; try { go test ./internal/service -run 'TestAllowAntiAbuseAssessmentIsNotRecorded|TestEvaluateAntiAbuse|TestSharedBrowserFingerprint|TestAPIIPUAThreshold|TestRegistrationIPThreshold' -count=1 } finally { Move-Item internal/service/account_expiry_service_test.go.codex-disabled internal/service/account_expiry_service_test.go }
-ALLOW_EVENT_FILTER_INPUT: clean allow score 0; low-score allow with calling_user_agent factor; restrict browser fingerprint and IP+UA threshold cases
-ALLOW_EVENT_FILTER_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 0.210s
+ALLOW_EVENT_FILTER_INPUT: clean allow score 0; low-score allow with calling_user_agent factor; review IP reputation score 45; restrict browser fingerprint and IP+UA threshold cases
+ALLOW_EVENT_FILTER_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 1.186s
 ALLOW_EVENT_FILTER_EXIT_STATUS: 0
-ALLOW_EVENT_FILTER_RESTORED_BEHAVIOR_STATUS: ordinary allow evaluations produce no new rows; historical allow rows are excluded from risk-center queries; review/restrict and gift deduction rows remain visible
+ALLOW_EVENT_FILTER_RESTORED_BEHAVIOR_STATUS: allow/review evaluations produce no new rows; historical allow/review rows are excluded from risk-center queries; restrict and gift deduction rows remain visible
+
+REVIEW_STORAGE_CLEANUP_BRANCH_OR_FIELD: review assessments are excluded from writes and reads; migration 233 removes historical allow/review rows and creates a partial restrict index
+REVIEW_STORAGE_CLEANUP_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
+REVIEW_STORAGE_CLEANUP_COMMAND: go test ./internal/repository -run 'TestMigration' -count=1; go test ./internal/service -run 'TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded' -count=1
+REVIEW_STORAGE_CLEANUP_INPUT: migration 233 validation; review assessment with ip_reputation factor; restrict assessment retention
+REVIEW_STORAGE_CLEANUP_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/repository 1.001s; ok github.com/Wei-Shaw/sub2api/internal/service 1.186s
+REVIEW_STORAGE_CLEANUP_EXIT_STATUS: 0
+REVIEW_STORAGE_CLEANUP_RESTORED_BEHAVIOR_STATUS: risk center stores and lists restrict/deduction events; ordinary allow/review rows consume no new storage and historical rows are purged by migration 233

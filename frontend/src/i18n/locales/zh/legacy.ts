@@ -2957,7 +2957,7 @@ export default {
       },
       antiAbuseEvents: {
         title: '多维反滥用事件',
-        hint: '仅展示 review/restrict 风险处置和赠金扣除事件。普通 allow 评估不会写入或展示。IP+UA 阈值命中直接进入限制处置。',
+        hint: '仅展示 restrict 风险处置和赠金扣除事件。allow/review 评估不会写入或展示。IP+UA 阈值命中直接进入限制处置。',
         allActions: '全部动作',
         deductionsOnly: '仅显示扣除赠金',
         empty: '暂无多维反滥用事件',

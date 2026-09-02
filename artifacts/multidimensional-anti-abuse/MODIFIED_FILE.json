@@ -21,9 +21,11 @@
     "max_request_body_bytes": 2097152
   },
   "risk_event_filter": {
-    "recorded_actions": ["review", "restrict"],
+    "recorded_actions": ["restrict"],
     "allow_assessments_persisted": false,
+    "review_assessments_persisted": false,
     "historical_allow_rows_visible": false,
+    "historical_review_rows_visible": false,
     "gift_deduction_events_visible": true
   },
   "tls_fingerprint_weight": 1,

@@ -107,9 +107,9 @@ func (s *ContentModerationService) ListAntiAbuseEvents(ctx context.Context, filt
 }
 
 func RecordAntiAbuseAssessment(ctx context.Context, store AntiAbuseEventStore, eventType string, userID *int64, userEmail string, signals RiskSignals, assessment AntiAbuseAssessment) {
-	// The event stream contains actionable decisions. Low-scoring allow checks
-	// remain available to the evaluator without creating ordinary log rows.
-	if store == nil || assessment.Action == AntiAbuseActionAllow {
+	// The event stream contains only hard restrictions. Allow and review checks
+	// remain available to the evaluator without creating risk-center rows.
+	if store == nil || assessment.Action != AntiAbuseActionRestrict {
 		return
 	}
 	event := &AntiAbuseEvent{

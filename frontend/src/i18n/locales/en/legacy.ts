@@ -2880,7 +2880,7 @@ export default {
       },
       antiAbuseEvents: {
         title: 'Multidimensional Anti-Abuse Events',
-        hint: 'Shows only review/restrict risk actions and gift-balance deductions. Ordinary allow evaluations are omitted from storage and display. IP+UA threshold hits restrict immediately.',
+        hint: 'Shows only restrict risk actions and gift-balance deductions. Allow/review evaluations are omitted from storage and display. IP+UA threshold hits restrict immediately.',
         allActions: 'All actions',
         deductionsOnly: 'Deductions only',
         empty: 'No multidimensional anti-abuse events',
