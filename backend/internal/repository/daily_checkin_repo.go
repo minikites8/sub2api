@@ -114,7 +114,7 @@ FOR UPDATE`, input.Date).Scan(&total); err != nil {
 	}
 
 	existing, err := scanDailyCheckinRecord(ctx, tx, `
-SELECT user_id, checkin_date::text, reward::double precision, created_at
+SELECT user_id, checkin_date::text, reward::double precision, created_at, expires_at
 FROM daily_checkins
 WHERE user_id = $1 AND checkin_date = $2`, input.UserID, input.Date)
 	if err != nil {
