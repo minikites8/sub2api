@@ -1,0 +1,49 @@
+MANUAL USER/GROUP BAN VERIFICATION
+
+Changed branch/field: main / admin user ban endpoints and AdminUser banned_group_ids/disabled_until state.
+Artifacts:
+- MODIFIED_FILE: artifacts/manual-user-ban/MODIFIED_FILE
+- DIFF_FILE: artifacts/manual-user-ban/DIFF_FILE
+- VERIFICATION.txt: artifacts/manual-user-ban/VERIFICATION.txt
+- ROLLBACK.sh: artifacts/manual-user-ban/ROLLBACK.sh
+
+BASELINE_BACKEND_COMMAND: go test -tags=unit ./internal/service -run '^(TestContentModerationAutoBanGroupLeavesUserActive|TestContentModerationAutoBanUserSetsExpiry)$' -count=1
+BASELINE_BACKEND_INPUT: existing content-moderation auto-ban behavior
+BASELINE_BACKEND_OUTPUT: compile failed before tests with duplicate Kiro helper methods, missing AccountExpiryService.SetOpenAIQuotaRecoveryQuerier, and missing openAIQuotaAllowsScheduling in existing test files.
+BASELINE_BACKEND_EXIT: 1
+
+BASELINE_FRONTEND_COMMAND: pnpm exec vitest run src/api/__tests__/admin.users.spec.ts src/views/admin/__tests__/UsersView.spec.ts
+BASELINE_FRONTEND_INPUT: existing admin user API and user-list behavior
+BASELINE_FRONTEND_OUTPUT: Test Files 2 passed; Tests 7 passed
+BASELINE_FRONTEND_EXIT: 0
+
+MODIFIED_COMMAND: go test -vet=off -overlay ..\.tmp\manual-user-ban-overlay.json ./internal/service -run '^TestAdmin(Ban|Unban|GroupBan)' -count=1
+MODIFIED_INPUT: manual permanent/timed user bans, admin protection, scoped group bans, independent unbans
+MODIFIED_OUTPUT: PASS; TestAdminBanUserSupportsPermanentAndTemporaryModes, TestAdminBanUserRejectsAdminAndInvalidDuration, TestAdminUnbanUserClearsStatusAndExpiry, TestAdminGroupBanSupportsExpiryAndScopedUnban; ok github.com/Wei-Shaw/sub2api/internal/service 1.845s
+MODIFIED_EXIT: 0
+
+BACKEND_COMPILE_COMMAND: go test ./internal/handler/admin ./internal/server/routes ./internal/repository -run '^$' -vet=off
+BACKEND_COMPILE_OUTPUT: all three packages compiled successfully
+BACKEND_COMPILE_EXIT: 0
+
+FRONTEND_COMMAND: pnpm exec vitest run src/api/__tests__/admin.users.spec.ts src/components/admin/user/__tests__/UserBanModal.spec.ts src/views/admin/__tests__/UsersView.spec.ts
+FRONTEND_OUTPUT: 3 files, 11 tests passed
+FRONTEND_EXIT: 0
+
+FRONTEND_TYPECHECK_COMMAND: pnpm typecheck
+FRONTEND_TYPECHECK_OUTPUT: vue-tsc --noEmit passed
+FRONTEND_TYPECHECK_EXIT: 0
+
+FRONTEND_LINT_COMMAND: pnpm lint:check
+FRONTEND_LINT_OUTPUT: eslint passed
+FRONTEND_LINT_EXIT: 0
+
+DIFF_CHECK_COMMAND: git apply --check --reverse artifacts/manual-user-ban/DIFF_FILE
+DIFF_CHECK_OUTPUT: DIFF_REVERSE_CHECK_EXIT:0
+DIFF_CHECK_EXIT: 0
+
+ROLLBACK_COMMAND: & 'C:\Program Files\Git\bin\bash.exe' artifacts/manual-user-ban/ROLLBACK.sh artifacts/manual-user-ban/ROLLBACK_TARGET .
+ROLLBACK_INPUT: copy of MODIFIED_FILE at artifacts/manual-user-ban/ROLLBACK_TARGET
+ROLLBACK_OUTPUT: BASELINE_HASH:83F8EA8E4C56572E95DCB50DC57B14138989B2CDBA42AFF96ADAFA02E1B33CC6; RESTORED_HASH:83F8EA8E4C56572E95DCB50DC57B14138989B2CDBA42AFF96ADAFA02E1B33CC6; RESTORED_STATUS:PASS
+ROLLBACK_EXIT: 0
+RESTORED_BEHAVIOR: rollback copy restored the original handler hash; working-tree MODIFIED_FILE remains changed at hash 50E21183712AF068E80DDB003361BBB56C355A3CC89617E45E72F6831CB4CFEF.

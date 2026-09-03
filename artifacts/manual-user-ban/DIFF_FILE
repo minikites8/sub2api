@@ -1,0 +1,1363 @@
+diff --git a/backend/internal/handler/admin/user_handler.go b/backend/internal/handler/admin/user_handler.go
+index 14255a006..0c399aba6 100644
+--- a/backend/internal/handler/admin/user_handler.go
++++ b/backend/internal/handler/admin/user_handler.go
+@@ -95,6 +95,11 @@ type UpdateBalanceRequest struct {
+ 	Notes     string  `json:"notes"`
+ }
+ 
++type ManualBanRequest struct {
++	// DurationHours uses 0 for a permanent ban.
++	DurationHours int `json:"duration_hours"`
++}
++
+ type BindUserAuthIdentityRequest struct {
+ 	ProviderType    string                              `json:"provider_type"`
+ 	ProviderKey     string                              `json:"provider_key"`
+@@ -381,6 +386,108 @@ func (h *UserHandler) Delete(c *gin.Context) {
+ 	response.Success(c, gin.H{"message": "User deleted successfully"})
+ }
+ 
++// BanUser applies a permanent or timed account-level ban.
++// POST /api/v1/admin/users/:id/ban
++func (h *UserHandler) BanUser(c *gin.Context) {
++	userID, ok := parseManualBanID(c, "id", "Invalid user ID")
++	if !ok {
++		return
++	}
++	durationHours, ok := bindManualBanDuration(c)
++	if !ok {
++		return
++	}
++	user, err := h.userService.AdminBanUser(c.Request.Context(), userID, durationHours)
++	if err != nil {
++		response.ErrorFrom(c, err)
++		return
++	}
++	slog.Info("admin manual user ban", "actor_admin_id", getAdminIDFromContext(c), "target_user_id", userID, "duration_hours", durationHours)
++	response.Success(c, dto.UserFromServiceAdmin(user))
++}
++
++// UnbanUser restores account-level access.
++// DELETE /api/v1/admin/users/:id/ban
++func (h *UserHandler) UnbanUser(c *gin.Context) {
++	userID, ok := parseManualBanID(c, "id", "Invalid user ID")
++	if !ok {
++		return
++	}
++	user, err := h.userService.AdminUnbanUser(c.Request.Context(), userID)
++	if err != nil {
++		response.ErrorFrom(c, err)
++		return
++	}
++	slog.Info("admin manual user unban", "actor_admin_id", getAdminIDFromContext(c), "target_user_id", userID)
++	response.Success(c, dto.UserFromServiceAdmin(user))
++}
++
++// BanGroup blocks one user from one group while preserving all other access.
++// POST /api/v1/admin/users/:id/group-bans/:group_id
++func (h *UserHandler) BanGroup(c *gin.Context) {
++	userID, ok := parseManualBanID(c, "id", "Invalid user ID")
++	if !ok {
++		return
++	}
++	groupID, ok := parseManualBanID(c, "group_id", "Invalid group ID")
++	if !ok {
++		return
++	}
++	if _, err := h.adminService.GetGroup(c.Request.Context(), groupID); err != nil {
++		response.ErrorFrom(c, err)
++		return
++	}
++	durationHours, ok := bindManualBanDuration(c)
++	if !ok {
++		return
++	}
++	user, err := h.userService.AdminBanGroupForUser(c.Request.Context(), userID, groupID, durationHours)
++	if err != nil {
++		response.ErrorFrom(c, err)
++		return
++	}
++	slog.Info("admin manual user group ban", "actor_admin_id", getAdminIDFromContext(c), "target_user_id", userID, "group_id", groupID, "duration_hours", durationHours)
++	response.Success(c, dto.UserFromServiceAdmin(user))
++}
++
++// UnbanGroup restores one user-group pair.
++// DELETE /api/v1/admin/users/:id/group-bans/:group_id
++func (h *UserHandler) UnbanGroup(c *gin.Context) {
++	userID, ok := parseManualBanID(c, "id", "Invalid user ID")
++	if !ok {
++		return
++	}
++	groupID, ok := parseManualBanID(c, "group_id", "Invalid group ID")
++	if !ok {
++		return
++	}
++	user, err := h.userService.AdminUnbanGroupForUser(c.Request.Context(), userID, groupID)
++	if err != nil {
++		response.ErrorFrom(c, err)
++		return
++	}
++	slog.Info("admin manual user group unban", "actor_admin_id", getAdminIDFromContext(c), "target_user_id", userID, "group_id", groupID)
++	response.Success(c, dto.UserFromServiceAdmin(user))
++}
++
++func parseManualBanID(c *gin.Context, param, message string) (int64, bool) {
++	id, err := strconv.ParseInt(c.Param(param), 10, 64)
++	if err != nil || id <= 0 {
++		response.BadRequest(c, message)
++		return 0, false
++	}
++	return id, true
++}
++
++func bindManualBanDuration(c *gin.Context) (int, bool) {
++	var req ManualBanRequest
++	if err := c.ShouldBindJSON(&req); err != nil {
++		response.BadRequest(c, "Invalid request: "+err.Error())
++		return 0, false
++	}
++	return req.DurationHours, true
++}
++
+ // UpdateBalance handles updating user balance
+ // POST /api/v1/admin/users/:id/balance
+ func (h *UserHandler) UpdateBalance(c *gin.Context) {
+diff --git a/backend/internal/handler/dto/mappers.go b/backend/internal/handler/dto/mappers.go
+index c913d54f8..1e4d2875a 100644
+--- a/backend/internal/handler/dto/mappers.go
++++ b/backend/internal/handler/dto/mappers.go
+@@ -70,10 +70,12 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
+ 		return nil
+ 	}
+ 	return &AdminUser{
+-		User:       *base,
+-		Notes:      u.Notes,
+-		LastUsedAt: u.LastUsedAt,
+-		GroupRates: u.GroupRates,
++		User:                   *base,
++		Notes:                  u.Notes,
++		LastUsedAt:             u.LastUsedAt,
++		BannedGroupIDs:         u.BannedGroupIDs,
++		BannedGroupExpirations: u.BannedGroupExpirations,
++		GroupRates:             u.GroupRates,
+ 	}
+ }
+ 
+diff --git a/backend/internal/handler/dto/types.go b/backend/internal/handler/dto/types.go
+index 54b44e00e..cb5053f0d 100644
+--- a/backend/internal/handler/dto/types.go
++++ b/backend/internal/handler/dto/types.go
+@@ -45,8 +45,10 @@ type User struct {
+ type AdminUser struct {
+ 	User
+ 
+-	Notes      string     `json:"notes"`
+-	LastUsedAt *time.Time `json:"last_used_at"`
++	Notes                  string              `json:"notes"`
++	LastUsedAt             *time.Time          `json:"last_used_at"`
++	BannedGroupIDs         []int64             `json:"banned_group_ids"`
++	BannedGroupExpirations map[int64]time.Time `json:"banned_group_expirations"`
+ 	// GroupRates 用户专属分组倍率配置
+ 	// map[groupID]rateMultiplier
+ 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
+diff --git a/backend/internal/server/routes/admin.go b/backend/internal/server/routes/admin.go
+index 1e6e8d8bd..8342fe201 100644
+--- a/backend/internal/server/routes/admin.go
++++ b/backend/internal/server/routes/admin.go
+@@ -323,6 +323,10 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+ 		users.POST("", h.Admin.User.Create)
+ 		users.PUT("/:id", h.Admin.User.Update)
+ 		users.DELETE("/:id", h.Admin.User.Delete)
++		users.POST("/:id/ban", h.Admin.User.BanUser)
++		users.DELETE("/:id/ban", h.Admin.User.UnbanUser)
++		users.POST("/:id/group-bans/:group_id", h.Admin.User.BanGroup)
++		users.DELETE("/:id/group-bans/:group_id", h.Admin.User.UnbanGroup)
+ 		users.POST("/:id/balance", h.Admin.User.UpdateBalance)
+ 		users.GET("/:id/api-keys", h.Admin.User.GetUserAPIKeys)
+ 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
+diff --git a/frontend/src/api/__tests__/admin.users.spec.ts b/frontend/src/api/__tests__/admin.users.spec.ts
+index b70170b91..0187c7eda 100644
+--- a/frontend/src/api/__tests__/admin.users.spec.ts
++++ b/frontend/src/api/__tests__/admin.users.spec.ts
+@@ -1,18 +1,25 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
++import type { AdminUser } from '@/types'
+ 
+-const { post } = vi.hoisted(() => ({
++const { post, deleteRequest } = vi.hoisted(() => ({
+   post: vi.fn(),
++  deleteRequest: vi.fn(),
+ }))
+ 
+ vi.mock('@/api/client', () => ({
+   apiClient: {
+     post,
++    delete: deleteRequest,
+   },
+ }))
+ 
+ import {
+   batchUpdateLimits,
++  banGroup,
++  banUser,
+   bindUserAuthIdentity,
++  unbanGroup,
++  unbanUser,
+   type AdminBindAuthIdentityRequest,
+   type AdminBoundAuthIdentity,
+   type BatchUpdateUserLimitsRequest,
+@@ -84,6 +91,7 @@ const batchResponseContractExact: Assert<
+ describe('admin users api auth identity binding', () => {
+   beforeEach(() => {
+     post.mockReset()
++    deleteRequest.mockReset()
+   })
+ 
+   it('posts the backend-compatible auth identity bind payload and returns the backend response shape', async () => {
+@@ -147,4 +155,20 @@ describe('admin users api auth identity binding', () => {
+     expect(batchRequestContractExact).toBe(true)
+     expect(batchResponseContractExact).toBe(true)
+   })
++
++  it('uses dedicated user and group ban endpoints for permanent and timed bans', async () => {
++    const user = { id: 9 } as AdminUser
++    post.mockResolvedValue({ data: user })
++    deleteRequest.mockResolvedValue({ data: user })
++
++    await banUser(9, { duration_hours: 0 })
++    await banGroup(9, 12, { duration_hours: 72 })
++    await unbanUser(9)
++    await unbanGroup(9, 12)
++
++    expect(post).toHaveBeenNthCalledWith(1, '/admin/users/9/ban', { duration_hours: 0 })
++    expect(post).toHaveBeenNthCalledWith(2, '/admin/users/9/group-bans/12', { duration_hours: 72 })
++    expect(deleteRequest).toHaveBeenNthCalledWith(1, '/admin/users/9/ban')
++    expect(deleteRequest).toHaveBeenNthCalledWith(2, '/admin/users/9/group-bans/12')
++  })
+ })
+diff --git a/frontend/src/api/admin/users.ts b/frontend/src/api/admin/users.ts
+index abdcea793..2db54591e 100644
+--- a/frontend/src/api/admin/users.ts
++++ b/frontend/src/api/admin/users.ts
+@@ -55,6 +55,11 @@ export interface BatchUpdateUserLimitsResponse {
+   affected: number
+ }
+ 
++export interface ManualBanRequest {
++  /** 0 means permanent; positive values are whole hours. */
++  duration_hours: number
++}
++
+ /**
+  * List all users with pagination
+  * @param page - Page number (default: 1)
+@@ -216,6 +221,35 @@ export async function toggleStatus(id: number, status: 'active' | 'disabled'): P
+   return update(id, { status })
+ }
+ 
++export async function banUser(id: number, request: ManualBanRequest): Promise<AdminUser> {
++  const { data } = await apiClient.post<AdminUser>(`/admin/users/${id}/ban`, request)
++  return data
++}
++
++export async function unbanUser(id: number): Promise<AdminUser> {
++  const { data } = await apiClient.delete<AdminUser>(`/admin/users/${id}/ban`)
++  return data
++}
++
++export async function banGroup(
++  userId: number,
++  groupId: number,
++  request: ManualBanRequest
++): Promise<AdminUser> {
++  const { data } = await apiClient.post<AdminUser>(
++    `/admin/users/${userId}/group-bans/${groupId}`,
++    request
++  )
++  return data
++}
++
++export async function unbanGroup(userId: number, groupId: number): Promise<AdminUser> {
++  const { data } = await apiClient.delete<AdminUser>(
++    `/admin/users/${userId}/group-bans/${groupId}`
++  )
++  return data
++}
++
+ /**
+  * Get user's API keys
+  * @param id - User ID
+@@ -409,6 +443,10 @@ export const usersAPI = {
+   updateConcurrency,
+   batchUpdateLimits,
+   toggleStatus,
++  banUser,
++  unbanUser,
++  banGroup,
++  unbanGroup,
+   getUserApiKeys,
+   getUserUsageStats,
+   getUserBalanceHistory,
+diff --git a/frontend/src/i18n/locales/en/admin/overview.ts b/frontend/src/i18n/locales/en/admin/overview.ts
+index 76705d134..aaf25d820 100644
+--- a/frontend/src/i18n/locales/en/admin/overview.ts
++++ b/frontend/src/i18n/locales/en/admin/overview.ts
+@@ -438,6 +438,39 @@ export default {
+       title: 'User Management',
+       description: 'Manage users and their permissions',
+       createUser: 'Create User',
++      ban: {
++        title: 'Ban Management',
++        action: 'Ban',
++        unban: 'Unban',
++        scope: 'Ban scope',
++        userScope: 'User',
++        groupScope: 'User group',
++        userId: 'User ID: {id}',
++        duration: 'Duration',
++        permanent: 'Permanent',
++        temporary: 'Temporary',
++        hours: 'Hours',
++        days: 'Days',
++        selectGroup: 'Select group',
++        activeGroupBans: 'Active group bans',
++        permanentActive: 'This user is permanently banned',
++        temporaryActive: 'This user is temporarily banned',
++        permanentStatus: 'Permanently banned',
++        temporaryStatus: 'Banned until {time}',
++        until: 'Until {time}',
++        banUser: 'Ban user',
++        banGroup: 'Ban group',
++        unbanUser: 'Unban user',
++        unbanGroup: 'Remove',
++        submitting: 'Applying...',
++        invalidDuration: 'Enter a positive whole-number duration.',
++        durationTooLong: 'Temporary bans can last up to 365 days.',
++        userBanned: 'User ban applied',
++        userUnbanned: 'User ban removed',
++        groupBanned: 'User group ban applied',
++        groupUnbanned: 'User group ban removed',
++        failed: 'Failed to update ban status'
++      },
+       bulkLimits: {
+         action: 'Set limits ({count})',
+         title: 'Set user limits',
+diff --git a/frontend/src/i18n/locales/zh/admin/overview.ts b/frontend/src/i18n/locales/zh/admin/overview.ts
+index 5bdd6da3e..a57fc50a5 100644
+--- a/frontend/src/i18n/locales/zh/admin/overview.ts
++++ b/frontend/src/i18n/locales/zh/admin/overview.ts
+@@ -438,6 +438,39 @@ export default {
+       title: '用户管理',
+       description: '管理用户账户和权限',
+       createUser: '创建用户',
++      ban: {
++        title: '封禁管理',
++        action: '封禁',
++        unban: '解封',
++        scope: '封禁范围',
++        userScope: '用户',
++        groupScope: '用户分组',
++        userId: '用户 ID：{id}',
++        duration: '封禁时长',
++        permanent: '永久',
++        temporary: '临时',
++        hours: '小时',
++        days: '天',
++        selectGroup: '选择分组',
++        activeGroupBans: '当前分组封禁',
++        permanentActive: '用户处于永久封禁状态',
++        temporaryActive: '用户处于临时封禁状态',
++        permanentStatus: '永久封禁',
++        temporaryStatus: '封禁至 {time}',
++        until: '截止 {time}',
++        banUser: '封禁用户',
++        banGroup: '封禁分组',
++        unbanUser: '解除用户封禁',
++        unbanGroup: '解除',
++        submitting: '处理中...',
++        invalidDuration: '请输入大于 0 的整数时长。',
++        durationTooLong: '临时封禁最长为 365 天。',
++        userBanned: '用户封禁已生效',
++        userUnbanned: '用户封禁已解除',
++        groupBanned: '用户分组封禁已生效',
++        groupUnbanned: '用户分组封禁已解除',
++        failed: '更新封禁状态失败'
++      },
+       bulkLimits: {
+         action: '批量设置限制（{count}）',
+         title: '批量设置用户限制',
+diff --git a/frontend/src/views/admin/UsersView.vue b/frontend/src/views/admin/UsersView.vue
+index 2bc3dd032..5e34e68be 100644
+--- a/frontend/src/views/admin/UsersView.vue
++++ b/frontend/src/views/admin/UsersView.vue
+@@ -577,16 +577,16 @@
+             />
+           </template>
+ 
+-          <template #cell-status="{ value }">
++          <template #cell-status="{ row }">
+             <div class="flex items-center gap-1.5">
+               <span
+                 :class="[
+                   'inline-block h-2 w-2 rounded-full',
+-                  value === 'active' ? 'bg-green-500' : 'bg-red-500'
++                  isUserBanActive(row) ? 'bg-red-500' : 'bg-green-500'
+                 ]"
+               ></span>
+               <span class="text-sm text-gray-700 dark:text-gray-300">
+-                {{ value === 'active' ? t('common.active') : t('admin.users.disabled') }}
++                {{ getUserStatusLabel(row) }}
+               </span>
+             </div>
+           </template>
+@@ -624,20 +624,20 @@
+                 <span class="text-xs">{{ t('common.edit') }}</span>
+               </button>
+ 
+-              <!-- Toggle Status Button (not for admin) -->
++              <!-- Ban management (not for admin) -->
+               <button
+                 v-if="row.role !== 'admin'"
+-                @click="handleToggleStatus(row)"
++                @click="handleBanManagement(row)"
+                 :class="[
+                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors',
+-                  row.status === 'active'
+-                    ? 'hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400'
+-                    : 'hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
++                  isUserBanActive(row)
++                    ? 'hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
++                    : 'hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
+                 ]"
++                :title="t('admin.users.ban.title')"
+               >
+-                <Icon v-if="row.status === 'active'" name="ban" size="sm" />
+-                <Icon v-else name="checkCircle" size="sm" />
+-                <span class="text-xs">{{ row.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') }}</span>
++                <Icon :name="isUserBanActive(row) ? 'checkCircle' : 'ban'" size="sm" />
++                <span class="text-xs">{{ isUserBanActive(row) ? t('admin.users.ban.unban') : t('admin.users.ban.action') }}</span>
+               </button>
+ 
+               <!-- More Actions Menu Trigger -->
+@@ -778,6 +778,13 @@
+     />
+     <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
+     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
++    <UserBanModal
++      :show="showBanModal"
++      :user="banUser"
++      :groups="allGroups"
++      @close="closeBanModal"
++      @success="handleBanSuccess"
++    />
+     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
+     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
+     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
+@@ -821,6 +828,7 @@ import BulkEditUserModal from '@/components/admin/user/BulkEditUserModal.vue'
+ import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaModal.vue'
+ import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
+ import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
++import UserBanModal from '@/components/admin/user/UserBanModal.vue'
+ import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
+ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
+ import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
+@@ -1347,10 +1355,12 @@ const showDeleteDialog = ref(false)
+ const showApiKeysModal = ref(false)
+ const showAttributesModal = ref(false)
+ const showPlatformQuotaModal = ref(false)
++const showBanModal = ref(false)
+ const editingUser = ref<AdminUser | null>(null)
+ const deletingUser = ref<AdminUser | null>(null)
+ const viewingUser = ref<AdminUser | null>(null)
+ const platformQuotaUser = ref<AdminUser | null>(null)
++const banUser = ref<AdminUser | null>(null)
+ 
+ const handlePlatformQuota = (user: AdminUser) => {
+   platformQuotaUser.value = user
+@@ -1361,6 +1371,18 @@ const closePlatformQuotaModal = () => {
+   showPlatformQuotaModal.value = false
+   platformQuotaUser.value = null
+ }
++
++const isUserBanActive = (user: AdminUser): boolean => {
++  if (user.status !== 'disabled') return false
++  if (!user.disabled_until) return true
++  return new Date(user.disabled_until).getTime() > Date.now()
++}
++
++const getUserStatusLabel = (user: AdminUser): string => {
++  if (!isUserBanActive(user)) return t('common.active')
++  if (!user.disabled_until) return t('admin.users.ban.permanentStatus')
++  return t('admin.users.ban.temporaryStatus', { time: formatDateTime(user.disabled_until) })
++}
+ let abortController: AbortController | null = null
+ let secondaryDataSeq = 0
+ 
+@@ -1741,18 +1763,20 @@ const closeEditModal = () => {
+   editingUser.value = null
+ }
+ 
+-const handleToggleStatus = async (user: AdminUser) => {
+-  const newStatus = user.status === 'active' ? 'disabled' : 'active'
+-  try {
+-    await adminAPI.users.toggleStatus(user.id, newStatus)
+-    appStore.showSuccess(
+-      newStatus === 'active' ? t('admin.users.userEnabled') : t('admin.users.userDisabled')
+-    )
+-    loadUsers()
+-  } catch (error: any) {
+-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
+-    console.error('Error toggling user status:', error)
+-  }
++const handleBanManagement = (user: AdminUser) => {
++  banUser.value = user
++  showBanModal.value = true
++  loadAllGroups()
++}
++
++const closeBanModal = () => {
++  showBanModal.value = false
++  banUser.value = null
++}
++
++const handleBanSuccess = () => {
++  closeBanModal()
++  loadUsers()
+ }
+ 
+ const handleViewApiKeys = (user: AdminUser) => {
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 485dfa573..954f1932a 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -127,2 +127,5 @@ export interface AdminUser extends User {
+   current_concurrency?: number
++  // 当前生效的用户-分组封禁；永久封禁在到期时间映射中没有对应值。
++  banned_group_ids?: number[]
++  banned_group_expirations?: Record<number, string>
+ }
+diff --git a/backend/internal/service/manual_user_ban.go b/backend/internal/service/manual_user_ban.go
+new file mode 100644
+index 000000000..f56008479
+--- /dev/null
++++ b/backend/internal/service/manual_user_ban.go
+@@ -0,0 +1,178 @@
++package service
++
++import (
++	"context"
++	"fmt"
++	"time"
++
++	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
++)
++
++const MaxManualBanDurationHours = 24 * 365
++
++// manualBanExpiry converts the admin API duration convention into a timestamp.
++// Zero means permanent; positive values are measured in whole hours.
++func manualBanExpiry(now time.Time, durationHours int) (*time.Time, error) {
++	if durationHours < 0 || durationHours > MaxManualBanDurationHours {
++		return nil, infraerrors.BadRequest(
++			"INVALID_BAN_DURATION",
++			fmt.Sprintf("duration_hours must be between 0 and %d", MaxManualBanDurationHours),
++		)
++	}
++	if durationHours == 0 {
++		return nil, nil
++	}
++	expiresAt := now.UTC().Add(time.Duration(durationHours) * time.Hour)
++	return &expiresAt, nil
++}
++
++func validateManualBanTarget(user *User) error {
++	if user == nil {
++		return ErrUserNotFound
++	}
++	if user.IsAdmin() {
++		return infraerrors.BadRequest("ADMIN_BAN_FORBIDDEN", "admin users cannot be banned")
++	}
++	return nil
++}
++
++// AdminBanUser applies a permanent or timed account-level ban.
++func (s *UserService) AdminBanUser(ctx context.Context, userID int64, durationHours int) (*User, error) {
++	if userID <= 0 {
++		return nil, infraerrors.BadRequest("INVALID_USER_ID", "user ID is invalid")
++	}
++	expiresAt, err := manualBanExpiry(time.Now(), durationHours)
++	if err != nil {
++		return nil, err
++	}
++	user, err := s.userRepo.GetByID(ctx, userID)
++	if err != nil {
++		return nil, fmt.Errorf("get user for manual ban: %w", err)
++	}
++	if err := validateManualBanTarget(user); err != nil {
++		return nil, err
++	}
++
++	user.Status = StatusDisabled
++	user.DisabledUntil = expiresAt
++	if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true, DisabledUntil: true}); err != nil {
++		return nil, fmt.Errorf("apply manual user ban: %w", err)
++	}
++	s.invalidateManualBanAuthCache(ctx, userID)
++	return user, nil
++}
++
++// AdminUnbanUser restores account-level access and clears any timed expiry.
++func (s *UserService) AdminUnbanUser(ctx context.Context, userID int64) (*User, error) {
++	if userID <= 0 {
++		return nil, infraerrors.BadRequest("INVALID_USER_ID", "user ID is invalid")
++	}
++	user, err := s.userRepo.GetByID(ctx, userID)
++	if err != nil {
++		return nil, fmt.Errorf("get user for manual unban: %w", err)
++	}
++	if user.Status != StatusActive || user.DisabledUntil != nil {
++		user.Status = StatusActive
++		user.DisabledUntil = nil
++		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true, DisabledUntil: true}); err != nil {
++			return nil, fmt.Errorf("remove manual user ban: %w", err)
++		}
++	}
++	s.invalidateManualBanAuthCache(ctx, userID)
++	return user, nil
++}
++
++// AdminBanGroupForUser blocks one user from one group while preserving access
++// to every other group.
++func (s *UserService) AdminBanGroupForUser(ctx context.Context, userID, groupID int64, durationHours int) (*User, error) {
++	if userID <= 0 {
++		return nil, infraerrors.BadRequest("INVALID_USER_ID", "user ID is invalid")
++	}
++	expiresAt, err := manualBanExpiry(time.Now(), durationHours)
++	if err != nil {
++		return nil, err
++	}
++	if groupID <= 0 {
++		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group ID is invalid")
++	}
++	user, err := s.userRepo.GetByID(ctx, userID)
++	if err != nil {
++		return nil, fmt.Errorf("get user for manual group ban: %w", err)
++	}
++	if err := validateManualBanTarget(user); err != nil {
++		return nil, err
++	}
++	banRepo, ok := s.userRepo.(UserGroupBanRepository)
++	if !ok {
++		return nil, infraerrors.InternalServer("GROUP_BAN_REPOSITORY_UNAVAILABLE", "group ban repository is unavailable")
++	}
++	if err := banRepo.BanGroupForUser(ctx, userID, groupID, expiresAt); err != nil {
++		return nil, fmt.Errorf("apply manual group ban: %w", err)
++	}
++	setUserGroupBanState(user, groupID, expiresAt)
++	s.invalidateManualBanAuthCache(ctx, userID)
++	return user, nil
++}
++
++// AdminUnbanGroupForUser restores one user-group pair and keeps other bans.
++func (s *UserService) AdminUnbanGroupForUser(ctx context.Context, userID, groupID int64) (*User, error) {
++	if userID <= 0 {
++		return nil, infraerrors.BadRequest("INVALID_USER_ID", "user ID is invalid")
++	}
++	if groupID <= 0 {
++		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group ID is invalid")
++	}
++	user, err := s.userRepo.GetByID(ctx, userID)
++	if err != nil {
++		return nil, fmt.Errorf("get user for manual group unban: %w", err)
++	}
++	banRepo, ok := s.userRepo.(UserGroupBanRepository)
++	if !ok {
++		return nil, infraerrors.InternalServer("GROUP_BAN_REPOSITORY_UNAVAILABLE", "group ban repository is unavailable")
++	}
++	if err := banRepo.UnbanGroupForUser(ctx, userID, groupID); err != nil {
++		return nil, fmt.Errorf("remove manual group ban: %w", err)
++	}
++	clearUserGroupBanState(user, groupID)
++	s.invalidateManualBanAuthCache(ctx, userID)
++	return user, nil
++}
++
++func setUserGroupBanState(user *User, groupID int64, expiresAt *time.Time) {
++	for _, existingID := range user.BannedGroupIDs {
++		if existingID == groupID {
++			setUserGroupBanExpiry(user, groupID, expiresAt)
++			return
++		}
++	}
++	user.BannedGroupIDs = append(user.BannedGroupIDs, groupID)
++	setUserGroupBanExpiry(user, groupID, expiresAt)
++}
++
++func setUserGroupBanExpiry(user *User, groupID int64, expiresAt *time.Time) {
++	if expiresAt == nil {
++		delete(user.BannedGroupExpirations, groupID)
++		return
++	}
++	if user.BannedGroupExpirations == nil {
++		user.BannedGroupExpirations = make(map[int64]time.Time)
++	}
++	user.BannedGroupExpirations[groupID] = *expiresAt
++}
++
++func clearUserGroupBanState(user *User, groupID int64) {
++	filtered := user.BannedGroupIDs[:0]
++	for _, existingID := range user.BannedGroupIDs {
++		if existingID != groupID {
++			filtered = append(filtered, existingID)
++		}
++	}
++	user.BannedGroupIDs = filtered
++	delete(user.BannedGroupExpirations, groupID)
++}
++
++func (s *UserService) invalidateManualBanAuthCache(ctx context.Context, userID int64) {
++	if s.authCacheInvalidator != nil {
++		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
++	}
++}
+diff --git a/backend/internal/service/manual_user_ban_test.go b/backend/internal/service/manual_user_ban_test.go
+new file mode 100644
+index 000000000..b4451f8a6
+--- /dev/null
++++ b/backend/internal/service/manual_user_ban_test.go
+@@ -0,0 +1,154 @@
++package service
++
++import (
++	"context"
++	"testing"
++	"time"
++
++	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
++	"github.com/stretchr/testify/require"
++)
++
++type manualBanUserRepo struct {
++	UserRepository
++	user          *User
++	updateCalls   int
++	updateFields  []UserUpdateFields
++	bannedGroupID int64
++	bannedUntil   *time.Time
++	unbannedID    int64
++}
++
++func (r *manualBanUserRepo) GetByID(_ context.Context, _ int64) (*User, error) {
++	clone := *r.user
++	clone.BannedGroupIDs = append([]int64(nil), r.user.BannedGroupIDs...)
++	if r.user.BannedGroupExpirations != nil {
++		clone.BannedGroupExpirations = make(map[int64]time.Time, len(r.user.BannedGroupExpirations))
++		for groupID, expiresAt := range r.user.BannedGroupExpirations {
++			clone.BannedGroupExpirations[groupID] = expiresAt
++		}
++	}
++	return &clone, nil
++}
++
++func (r *manualBanUserRepo) Update(_ context.Context, user *User, fields UserUpdateFields) error {
++	r.updateCalls++
++	r.updateFields = append(r.updateFields, fields)
++	r.user.Status = user.Status
++	r.user.DisabledUntil = user.DisabledUntil
++	return nil
++}
++
++func (r *manualBanUserRepo) BanGroupForUser(_ context.Context, _, groupID int64, expiresAt *time.Time) error {
++	r.bannedGroupID = groupID
++	r.bannedUntil = expiresAt
++	return nil
++}
++
++func (r *manualBanUserRepo) UnbanGroupForUser(_ context.Context, _, groupID int64) error {
++	r.unbannedID = groupID
++	return nil
++}
++
++func (r *manualBanUserRepo) ListBannedGroupIDs(context.Context, int64) ([]int64, map[int64]time.Time, error) {
++	return nil, nil, nil
++}
++
++type manualBanAuthCache struct {
++	APIKeyAuthCacheInvalidator
++	invalidatedUserIDs []int64
++}
++
++func (c *manualBanAuthCache) InvalidateAuthCacheByUserID(_ context.Context, userID int64) {
++	c.invalidatedUserIDs = append(c.invalidatedUserIDs, userID)
++}
++
++func TestAdminBanUserSupportsPermanentAndTemporaryModes(t *testing.T) {
++	tests := []struct {
++		name          string
++		durationHours int
++		wantExpiry    bool
++	}{
++		{name: "permanent", durationHours: 0, wantExpiry: false},
++		{name: "temporary", durationHours: 48, wantExpiry: true},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			repo := &manualBanUserRepo{user: &User{ID: 7, Role: RoleUser, Status: StatusActive}}
++			cache := &manualBanAuthCache{}
++			svc := NewUserService(repo, nil, cache, nil)
++			startedAt := time.Now().UTC()
++
++			user, err := svc.AdminBanUser(context.Background(), 7, tt.durationHours)
++
++			require.NoError(t, err)
++			require.Equal(t, StatusDisabled, user.Status)
++			require.Equal(t, []UserUpdateFields{{Status: true, DisabledUntil: true}}, repo.updateFields)
++			require.Equal(t, []int64{7}, cache.invalidatedUserIDs)
++			if tt.wantExpiry {
++				require.NotNil(t, user.DisabledUntil)
++				require.WithinDuration(t, startedAt.Add(48*time.Hour), *user.DisabledUntil, 2*time.Second)
++			} else {
++				require.Nil(t, user.DisabledUntil)
++			}
++		})
++	}
++}
++
++func TestAdminBanUserRejectsAdminAndInvalidDuration(t *testing.T) {
++	t.Run("admin", func(t *testing.T) {
++		repo := &manualBanUserRepo{user: &User{ID: 1, Role: RoleAdmin, Status: StatusActive}}
++		_, err := NewUserService(repo, nil, nil, nil).AdminBanUser(context.Background(), 1, 0)
++		require.Error(t, err)
++		require.Equal(t, "ADMIN_BAN_FORBIDDEN", infraerrors.Reason(err))
++		require.Zero(t, repo.updateCalls)
++	})
++
++	t.Run("duration", func(t *testing.T) {
++		repo := &manualBanUserRepo{user: &User{ID: 7, Role: RoleUser, Status: StatusActive}}
++		_, err := NewUserService(repo, nil, nil, nil).AdminBanUser(context.Background(), 7, MaxManualBanDurationHours+1)
++		require.Error(t, err)
++		require.Equal(t, "INVALID_BAN_DURATION", infraerrors.Reason(err))
++		require.Zero(t, repo.updateCalls)
++	})
++}
++
++func TestAdminUnbanUserClearsStatusAndExpiry(t *testing.T) {
++	expiresAt := time.Now().Add(time.Hour)
++	repo := &manualBanUserRepo{user: &User{ID: 7, Role: RoleUser, Status: StatusDisabled, DisabledUntil: &expiresAt}}
++
++	user, err := NewUserService(repo, nil, nil, nil).AdminUnbanUser(context.Background(), 7)
++
++	require.NoError(t, err)
++	require.Equal(t, StatusActive, user.Status)
++	require.Nil(t, user.DisabledUntil)
++	require.Equal(t, []UserUpdateFields{{Status: true, DisabledUntil: true}}, repo.updateFields)
++}
++
++func TestAdminGroupBanSupportsExpiryAndScopedUnban(t *testing.T) {
++	repo := &manualBanUserRepo{
++		user: &User{
++			ID:                     7,
++			Role:                   RoleUser,
++			Status:                 StatusActive,
++			BannedGroupIDs:         []int64{3},
++			BannedGroupExpirations: map[int64]time.Time{},
++		},
++	}
++	cache := &manualBanAuthCache{}
++	svc := NewUserService(repo, nil, cache, nil)
++
++	user, err := svc.AdminBanGroupForUser(context.Background(), 7, 9, 24)
++	require.NoError(t, err)
++	require.Equal(t, int64(9), repo.bannedGroupID)
++	require.NotNil(t, repo.bannedUntil)
++	require.ElementsMatch(t, []int64{3, 9}, user.BannedGroupIDs)
++	require.True(t, user.IsGroupBanned(9))
++
++	user, err = svc.AdminUnbanGroupForUser(context.Background(), 7, 3)
++	require.NoError(t, err)
++	require.Equal(t, int64(3), repo.unbannedID)
++	require.NotContains(t, user.BannedGroupIDs, int64(3))
++	require.Equal(t, []int64{7, 7}, cache.invalidatedUserIDs)
++}
+diff --git a/frontend/src/components/admin/user/UserBanModal.vue b/frontend/src/components/admin/user/UserBanModal.vue
+new file mode 100644
+index 000000000..2bb385301
+--- /dev/null
++++ b/frontend/src/components/admin/user/UserBanModal.vue
+@@ -0,0 +1,327 @@
++<template>
++  <BaseDialog
++    :show="show"
++    :title="t('admin.users.ban.title')"
++    width="normal"
++    @close="emit('close')"
++  >
++    <div v-if="user" class="space-y-5">
++      <div class="border-b border-gray-200 pb-4 dark:border-dark-700">
++        <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ user.email }}</p>
++        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
++          {{ t('admin.users.ban.userId', { id: user.id }) }}
++        </p>
++      </div>
++
++      <div
++        class="grid grid-cols-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-800"
++        role="tablist"
++        :aria-label="t('admin.users.ban.scope')"
++      >
++        <button
++          type="button"
++          class="rounded-md px-3 py-2 text-sm font-medium transition-colors"
++          :class="scope === 'user' ? activeSegmentClass : inactiveSegmentClass"
++          data-test="ban-scope-user"
++          @click="scope = 'user'"
++        >
++          {{ t('admin.users.ban.userScope') }}
++        </button>
++        <button
++          type="button"
++          class="rounded-md px-3 py-2 text-sm font-medium transition-colors"
++          :class="scope === 'group' ? activeSegmentClass : inactiveSegmentClass"
++          data-test="ban-scope-group"
++          @click="scope = 'group'"
++        >
++          {{ t('admin.users.ban.groupScope') }}
++        </button>
++      </div>
++
++      <div v-if="scope === 'user'" class="space-y-4">
++        <div
++          v-if="userBanActive"
++          class="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/30"
++        >
++          <div class="min-w-0">
++            <p class="text-sm font-medium text-red-800 dark:text-red-300">
++              {{ user.disabled_until ? t('admin.users.ban.temporaryActive') : t('admin.users.ban.permanentActive') }}
++            </p>
++            <p v-if="user.disabled_until" class="mt-1 text-xs text-red-700 dark:text-red-400">
++              {{ t('admin.users.ban.until', { time: formatDateTime(user.disabled_until) }) }}
++            </p>
++          </div>
++          <button
++            type="button"
++            class="btn btn-secondary btn-sm shrink-0"
++            :disabled="submitting"
++            data-test="unban-user"
++            @click="handleUnbanUser"
++          >
++            {{ t('admin.users.ban.unbanUser') }}
++          </button>
++        </div>
++
++      </div>
++
++      <div v-else class="space-y-4">
++        <div v-if="activeGroupBans.length" class="space-y-2">
++          <p class="input-label">{{ t('admin.users.ban.activeGroupBans') }}</p>
++          <div class="max-h-36 divide-y divide-gray-200 overflow-y-auto rounded-lg border border-gray-200 dark:divide-dark-700 dark:border-dark-700">
++            <div
++              v-for="ban in activeGroupBans"
++              :key="ban.groupId"
++              class="flex items-center justify-between gap-3 px-3 py-2"
++            >
++              <div class="min-w-0">
++                <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{{ ban.groupName }}</p>
++                <p class="text-xs text-gray-500 dark:text-gray-400">
++                  {{ ban.expiresAt
++                    ? t('admin.users.ban.until', { time: formatDateTime(ban.expiresAt) })
++                    : t('admin.users.ban.permanent') }}
++                </p>
++              </div>
++              <button
++                type="button"
++                class="btn btn-secondary btn-sm shrink-0"
++                :disabled="submitting"
++                :data-test="`unban-group-${ban.groupId}`"
++                @click="handleUnbanGroup(ban.groupId)"
++              >
++                {{ t('admin.users.ban.unbanGroup') }}
++              </button>
++            </div>
++          </div>
++        </div>
++
++        <div>
++          <label class="input-label" for="ban-group-select">{{ t('admin.users.ban.selectGroup') }}</label>
++          <Select
++            id="ban-group-select"
++            v-model="selectedGroupId"
++            :options="groupOptions"
++            searchable
++            :search-placeholder="t('admin.users.searchGroups')"
++            :aria-label="t('admin.users.ban.selectGroup')"
++            data-test="ban-group-select"
++          />
++        </div>
++      </div>
++
++      <div class="space-y-3">
++        <p class="input-label">{{ t('admin.users.ban.duration') }}</p>
++        <div class="grid grid-cols-2 gap-2">
++          <button
++            type="button"
++            class="btn"
++            :class="durationMode === 'permanent' ? 'btn-primary' : 'btn-secondary'"
++            data-test="ban-duration-permanent"
++            @click="durationMode = 'permanent'"
++          >
++            {{ t('admin.users.ban.permanent') }}
++          </button>
++          <button
++            type="button"
++            class="btn"
++            :class="durationMode === 'temporary' ? 'btn-primary' : 'btn-secondary'"
++            data-test="ban-duration-temporary"
++            @click="durationMode = 'temporary'"
++          >
++            {{ t('admin.users.ban.temporary') }}
++          </button>
++        </div>
++        <div v-if="durationMode === 'temporary'" class="grid grid-cols-[minmax(0,1fr)_9rem] gap-2">
++          <input
++            v-model="durationValue"
++            type="number"
++            min="1"
++            step="1"
++            class="input"
++            data-test="ban-duration-value"
++          />
++          <select v-model="durationUnit" class="input" data-test="ban-duration-unit">
++            <option value="hours">{{ t('admin.users.ban.hours') }}</option>
++            <option value="days">{{ t('admin.users.ban.days') }}</option>
++          </select>
++        </div>
++      </div>
++
++      <p v-if="durationError" class="text-sm text-red-600 dark:text-red-400" data-test="ban-duration-error">
++        {{ durationError }}
++      </p>
++    </div>
++
++    <template #footer>
++      <div class="flex justify-end gap-3">
++        <button type="button" class="btn btn-secondary" @click="emit('close')">
++          {{ t('common.cancel') }}
++        </button>
++        <button
++          type="button"
++          class="btn btn-danger"
++          :disabled="!canSubmit"
++          data-test="submit-ban"
++          @click="handleBan"
++        >
++          <Icon name="ban" size="sm" />
++          {{ submitting ? t('admin.users.ban.submitting') : submitLabel }}
++        </button>
++      </div>
++    </template>
++  </BaseDialog>
++</template>
++
++<script setup lang="ts">
++import { computed, ref, watch } from 'vue'
++import { useI18n } from 'vue-i18n'
++import { adminAPI } from '@/api/admin'
++import type { AdminGroup, AdminUser } from '@/types'
++import { formatDateTime } from '@/utils/format'
++import { useAppStore } from '@/stores/app'
++import BaseDialog from '@/components/common/BaseDialog.vue'
++import Select from '@/components/common/Select.vue'
++import Icon from '@/components/icons/Icon.vue'
++
++type BanScope = 'user' | 'group'
++type DurationMode = 'permanent' | 'temporary'
++type DurationUnit = 'hours' | 'days'
++
++const props = defineProps<{
++  show: boolean
++  user: AdminUser | null
++  groups: AdminGroup[]
++}>()
++
++const emit = defineEmits<{
++  close: []
++  success: []
++}>()
++
++const { t } = useI18n()
++const appStore = useAppStore()
++const scope = ref<BanScope>('user')
++const durationMode = ref<DurationMode>('permanent')
++const durationValue = ref<string | number>(24)
++const durationUnit = ref<DurationUnit>('hours')
++const selectedGroupId = ref<number | null>(null)
++const submitting = ref(false)
++
++const activeSegmentClass = 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
++const inactiveSegmentClass = 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
++
++const isFuture = (value?: string | null) => Boolean(value && new Date(value).getTime() > Date.now())
++const userBanActive = computed(() => Boolean(
++  props.user?.status === 'disabled'
++  && (!props.user.disabled_until || isFuture(props.user.disabled_until))
++))
++
++const activeBannedGroupIds = computed(() => (props.user?.banned_group_ids || []).filter((groupId) => {
++  const expiresAt = props.user?.banned_group_expirations?.[groupId]
++  return !expiresAt || isFuture(expiresAt)
++}))
++
++const activeGroupBans = computed(() => activeBannedGroupIds.value.map((groupId) => ({
++  groupId,
++  groupName: props.groups.find(group => group.id === groupId)?.name || `#${groupId}`,
++  expiresAt: props.user?.banned_group_expirations?.[groupId] || null
++})))
++
++const groupOptions = computed(() => props.groups
++  .filter(group => !activeBannedGroupIds.value.includes(group.id))
++  .map(group => ({ value: group.id, label: group.name })))
++
++const durationHours = computed(() => {
++  if (durationMode.value === 'permanent') return 0
++  const value = Number(durationValue.value)
++  if (!Number.isInteger(value) || value <= 0) return null
++  return value * (durationUnit.value === 'days' ? 24 : 1)
++})
++
++const durationError = computed(() => {
++  if (durationHours.value === null) return t('admin.users.ban.invalidDuration')
++  if (durationHours.value > 8760) return t('admin.users.ban.durationTooLong')
++  return ''
++})
++
++const canSubmit = computed(() => Boolean(
++  props.user
++  && props.user.role !== 'admin'
++  && !submitting.value
++  && durationHours.value !== null
++  && durationHours.value <= 8760
++  && (scope.value === 'user' || selectedGroupId.value)
++))
++
++const submitLabel = computed(() => scope.value === 'user'
++  ? t('admin.users.ban.banUser')
++  : t('admin.users.ban.banGroup'))
++
++const reset = () => {
++  scope.value = 'user'
++  durationMode.value = 'permanent'
++  durationValue.value = 24
++  durationUnit.value = 'hours'
++  selectedGroupId.value = null
++  submitting.value = false
++}
++
++watch(() => props.show, (show) => {
++  if (show) reset()
++})
++
++const errorMessage = (error: any) => error?.message
++  || error?.response?.data?.message
++  || error?.response?.data?.detail
++  || t('admin.users.ban.failed')
++
++const finishSuccess = (message: string) => {
++  appStore.showSuccess(message)
++  emit('success')
++  emit('close')
++}
++
++const handleBan = async () => {
++  if (!canSubmit.value || !props.user || durationHours.value === null) return
++  submitting.value = true
++  try {
++    if (scope.value === 'user') {
++      await adminAPI.users.banUser(props.user.id, { duration_hours: durationHours.value })
++      finishSuccess(t('admin.users.ban.userBanned'))
++    } else if (selectedGroupId.value) {
++      await adminAPI.users.banGroup(props.user.id, selectedGroupId.value, { duration_hours: durationHours.value })
++      finishSuccess(t('admin.users.ban.groupBanned'))
++    }
++  } catch (error: any) {
++    appStore.showError(errorMessage(error))
++  } finally {
++    submitting.value = false
++  }
++}
++
++const handleUnbanUser = async () => {
++  if (!props.user || submitting.value) return
++  submitting.value = true
++  try {
++    await adminAPI.users.unbanUser(props.user.id)
++    finishSuccess(t('admin.users.ban.userUnbanned'))
++  } catch (error: any) {
++    appStore.showError(errorMessage(error))
++  } finally {
++    submitting.value = false
++  }
++}
++
++const handleUnbanGroup = async (groupId: number) => {
++  if (!props.user || submitting.value) return
++  submitting.value = true
++  try {
++    await adminAPI.users.unbanGroup(props.user.id, groupId)
++    finishSuccess(t('admin.users.ban.groupUnbanned'))
++  } catch (error: any) {
++    appStore.showError(errorMessage(error))
++  } finally {
++    submitting.value = false
++  }
++}
++
++</script>
+diff --git a/frontend/src/components/admin/user/__tests__/UserBanModal.spec.ts b/frontend/src/components/admin/user/__tests__/UserBanModal.spec.ts
+new file mode 100644
+index 000000000..0544770b7
+--- /dev/null
++++ b/frontend/src/components/admin/user/__tests__/UserBanModal.spec.ts
+@@ -0,0 +1,141 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import { flushPromises, mount } from '@vue/test-utils'
++
++import type { AdminGroup, AdminUser } from '@/types'
++import UserBanModal from '../UserBanModal.vue'
++
++const { banUser, unbanUser, banGroup, unbanGroup, showSuccess, showError } = vi.hoisted(() => ({
++  banUser: vi.fn(),
++  unbanUser: vi.fn(),
++  banGroup: vi.fn(),
++  unbanGroup: vi.fn(),
++  showSuccess: vi.fn(),
++  showError: vi.fn()
++}))
++
++vi.mock('@/api/admin', () => ({
++  adminAPI: {
++    users: { banUser, unbanUser, banGroup, unbanGroup }
++  }
++}))
++
++vi.mock('@/stores/app', () => ({
++  useAppStore: () => ({ showSuccess, showError })
++}))
++
++vi.mock('vue-i18n', async () => {
++  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
++  return {
++    ...actual,
++    useI18n: () => ({ t: (key: string) => key })
++  }
++})
++
++const user = (overrides: Partial<AdminUser> = {}): AdminUser => ({
++  id: 42,
++  email: 'user@example.com',
++  username: 'user',
++  role: 'user',
++  balance: 0,
++  concurrency: 1,
++  status: 'active',
++  allowed_groups: [],
++  balance_notify_enabled: false,
++  balance_notify_threshold: null,
++  balance_notify_extra_emails: [],
++  created_at: '2026-09-04T00:00:00Z',
++  updated_at: '2026-09-04T00:00:00Z',
++  notes: '',
++  ...overrides
++})
++
++const groups = [
++  { id: 7, name: 'Claude', status: 'active' },
++  { id: 9, name: 'Codex', status: 'active' }
++] as AdminGroup[]
++
++const BaseDialogStub = {
++  props: ['show', 'title'],
++  emits: ['close'],
++  template: '<div v-if="show"><slot /><slot name="footer" /></div>'
++}
++
++const SelectStub = {
++  props: ['modelValue', 'options'],
++  emits: ['update:modelValue'],
++  template: `
++    <select
++      data-test="group-select-stub"
++      :value="modelValue ?? ''"
++      @change="$emit('update:modelValue', Number($event.target.value))"
++    >
++      <option value=""></option>
++      <option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option>
++    </select>
++  `
++}
++
++const mountModal = (targetUser: AdminUser) => mount(UserBanModal, {
++  props: { show: true, user: targetUser, groups },
++  global: {
++    stubs: {
++      BaseDialog: BaseDialogStub,
++      Select: SelectStub,
++      Icon: true
++    }
++  }
++})
++
++describe('UserBanModal', () => {
++  beforeEach(() => {
++    banUser.mockReset().mockResolvedValue(user({ status: 'disabled' }))
++    unbanUser.mockReset().mockResolvedValue(user())
++    banGroup.mockReset().mockResolvedValue(user({ banned_group_ids: [7] }))
++    unbanGroup.mockReset().mockResolvedValue(user())
++    showSuccess.mockReset()
++    showError.mockReset()
++  })
++
++  it('applies a permanent user ban', async () => {
++    const wrapper = mountModal(user())
++
++    await wrapper.get('[data-test="submit-ban"]').trigger('click')
++    await flushPromises()
++
++    expect(banUser).toHaveBeenCalledWith(42, { duration_hours: 0 })
++    expect(wrapper.emitted('success')).toHaveLength(1)
++    expect(wrapper.emitted('close')).toHaveLength(1)
++  })
++
++  it('converts a temporary group ban from days to hours', async () => {
++    const wrapper = mountModal(user())
++
++    await wrapper.get('[data-test="ban-scope-group"]').trigger('click')
++    await wrapper.get('[data-test="ban-group-select"]').setValue('7')
++    await wrapper.get('[data-test="ban-duration-temporary"]').trigger('click')
++    await wrapper.get('[data-test="ban-duration-value"]').setValue('3')
++    await wrapper.get('[data-test="ban-duration-unit"]').setValue('days')
++    await wrapper.get('[data-test="submit-ban"]').trigger('click')
++    await flushPromises()
++
++    expect(banGroup).toHaveBeenCalledWith(42, 7, { duration_hours: 72 })
++  })
++
++  it('removes account and group bans independently', async () => {
++    const wrapper = mountModal(user({
++      status: 'disabled',
++      disabled_until: null,
++      banned_group_ids: [9]
++    }))
++
++    await wrapper.get('[data-test="unban-user"]').trigger('click')
++    await flushPromises()
++    expect(unbanUser).toHaveBeenCalledWith(42)
++
++    const groupWrapper = mountModal(user({ banned_group_ids: [9] }))
++    await groupWrapper.get('[data-test="ban-scope-group"]').trigger('click')
++    await groupWrapper.get('[data-test="unban-group-9"]').trigger('click')
++    await flushPromises()
++    expect(unbanGroup).toHaveBeenCalledWith(42, 9)
++  })
++})

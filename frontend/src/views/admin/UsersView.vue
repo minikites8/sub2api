@@ -577,16 +577,16 @@
             />
           </template>
 
-          <template #cell-status="{ value }">
+          <template #cell-status="{ row }">
             <div class="flex items-center gap-1.5">
               <span
                 :class="[
                   'inline-block h-2 w-2 rounded-full',
-                  value === 'active' ? 'bg-green-500' : 'bg-red-500'
+                  isUserBanActive(row) ? 'bg-red-500' : 'bg-green-500'
                 ]"
               ></span>
               <span class="text-sm text-gray-700 dark:text-gray-300">
-                {{ value === 'active' ? t('common.active') : t('admin.users.disabled') }}
+                {{ getUserStatusLabel(row) }}
               </span>
             </div>
           </template>
@@ -624,20 +624,20 @@
                 <span class="text-xs">{{ t('common.edit') }}</span>
               </button>
 
-              <!-- Toggle Status Button (not for admin) -->
+              <!-- Ban management (not for admin) -->
               <button
                 v-if="row.role !== 'admin'"
-                @click="handleToggleStatus(row)"
+                @click="handleBanManagement(row)"
                 :class="[
                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors',
-                  row.status === 'active'
-                    ? 'hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400'
-                    : 'hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
+                  isUserBanActive(row)
+                    ? 'hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
+                    : 'hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
                 ]"
+                :title="t('admin.users.ban.title')"
               >
-                <Icon v-if="row.status === 'active'" name="ban" size="sm" />
-                <Icon v-else name="checkCircle" size="sm" />
-                <span class="text-xs">{{ row.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') }}</span>
+                <Icon :name="isUserBanActive(row) ? 'checkCircle' : 'ban'" size="sm" />
+                <span class="text-xs">{{ isUserBanActive(row) ? t('admin.users.ban.unban') : t('admin.users.ban.action') }}</span>
               </button>
 
               <!-- More Actions Menu Trigger -->
@@ -778,6 +778,13 @@
     />
     <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
+    <UserBanModal
+      :show="showBanModal"
+      :user="banUser"
+      :groups="allGroups"
+      @close="closeBanModal"
+      @success="handleBanSuccess"
+    />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
@@ -821,6 +828,7 @@ import BulkEditUserModal from '@/components/admin/user/BulkEditUserModal.vue'
 import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
+import UserBanModal from '@/components/admin/user/UserBanModal.vue'
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
@@ -1347,10 +1355,12 @@ const showDeleteDialog = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
+const showBanModal = ref(false)
 const editingUser = ref<AdminUser | null>(null)
 const deletingUser = ref<AdminUser | null>(null)
 const viewingUser = ref<AdminUser | null>(null)
 const platformQuotaUser = ref<AdminUser | null>(null)
+const banUser = ref<AdminUser | null>(null)
 
 const handlePlatformQuota = (user: AdminUser) => {
   platformQuotaUser.value = user
@@ -1360,6 +1370,18 @@ const handlePlatformQuota = (user: AdminUser) => {
 const closePlatformQuotaModal = () => {
   showPlatformQuotaModal.value = false
   platformQuotaUser.value = null
+}
+
+const isUserBanActive = (user: AdminUser): boolean => {
+  if (user.status !== 'disabled') return false
+  if (!user.disabled_until) return true
+  return new Date(user.disabled_until).getTime() > Date.now()
+}
+
+const getUserStatusLabel = (user: AdminUser): string => {
+  if (!isUserBanActive(user)) return t('common.active')
+  if (!user.disabled_until) return t('admin.users.ban.permanentStatus')
+  return t('admin.users.ban.temporaryStatus', { time: formatDateTime(user.disabled_until) })
 }
 let abortController: AbortController | null = null
 let secondaryDataSeq = 0
@@ -1741,18 +1763,20 @@ const closeEditModal = () => {
   editingUser.value = null
 }
 
-const handleToggleStatus = async (user: AdminUser) => {
-  const newStatus = user.status === 'active' ? 'disabled' : 'active'
-  try {
-    await adminAPI.users.toggleStatus(user.id, newStatus)
-    appStore.showSuccess(
-      newStatus === 'active' ? t('admin.users.userEnabled') : t('admin.users.userDisabled')
-    )
-    loadUsers()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
-    console.error('Error toggling user status:', error)
-  }
+const handleBanManagement = (user: AdminUser) => {
+  banUser.value = user
+  showBanModal.value = true
+  loadAllGroups()
+}
+
+const closeBanModal = () => {
+  showBanModal.value = false
+  banUser.value = null
+}
+
+const handleBanSuccess = () => {
+  closeBanModal()
+  loadUsers()
 }
 
 const handleViewApiKeys = (user: AdminUser) => {

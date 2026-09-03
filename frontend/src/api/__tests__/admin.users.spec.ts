@@ -1,18 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AdminUser } from '@/types'
 
-const { post } = vi.hoisted(() => ({
+const { post, deleteRequest } = vi.hoisted(() => ({
   post: vi.fn(),
+  deleteRequest: vi.fn(),
 }))
 
 vi.mock('@/api/client', () => ({
   apiClient: {
     post,
+    delete: deleteRequest,
   },
 }))
 
 import {
   batchUpdateLimits,
+  banGroup,
+  banUser,
   bindUserAuthIdentity,
+  unbanGroup,
+  unbanUser,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
   type BatchUpdateUserLimitsRequest,
@@ -84,6 +91,7 @@ const batchResponseContractExact: Assert<
 describe('admin users api auth identity binding', () => {
   beforeEach(() => {
     post.mockReset()
+    deleteRequest.mockReset()
   })
 
   it('posts the backend-compatible auth identity bind payload and returns the backend response shape', async () => {
@@ -146,5 +154,21 @@ describe('admin users api auth identity binding', () => {
     expect(result).toEqual({ affected: 2 })
     expect(batchRequestContractExact).toBe(true)
     expect(batchResponseContractExact).toBe(true)
+  })
+
+  it('uses dedicated user and group ban endpoints for permanent and timed bans', async () => {
+    const user = { id: 9 } as AdminUser
+    post.mockResolvedValue({ data: user })
+    deleteRequest.mockResolvedValue({ data: user })
+
+    await banUser(9, { duration_hours: 0 })
+    await banGroup(9, 12, { duration_hours: 72 })
+    await unbanUser(9)
+    await unbanGroup(9, 12)
+
+    expect(post).toHaveBeenNthCalledWith(1, '/admin/users/9/ban', { duration_hours: 0 })
+    expect(post).toHaveBeenNthCalledWith(2, '/admin/users/9/group-bans/12', { duration_hours: 72 })
+    expect(deleteRequest).toHaveBeenNthCalledWith(1, '/admin/users/9/ban')
+    expect(deleteRequest).toHaveBeenNthCalledWith(2, '/admin/users/9/group-bans/12')
   })
 })

@@ -55,6 +55,11 @@ export interface BatchUpdateUserLimitsResponse {
   affected: number
 }
 
+export interface ManualBanRequest {
+  /** 0 means permanent; positive values are whole hours. */
+  duration_hours: number
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -214,6 +219,35 @@ export async function batchUpdateLimits(
  */
 export async function toggleStatus(id: number, status: 'active' | 'disabled'): Promise<AdminUser> {
   return update(id, { status })
+}
+
+export async function banUser(id: number, request: ManualBanRequest): Promise<AdminUser> {
+  const { data } = await apiClient.post<AdminUser>(`/admin/users/${id}/ban`, request)
+  return data
+}
+
+export async function unbanUser(id: number): Promise<AdminUser> {
+  const { data } = await apiClient.delete<AdminUser>(`/admin/users/${id}/ban`)
+  return data
+}
+
+export async function banGroup(
+  userId: number,
+  groupId: number,
+  request: ManualBanRequest
+): Promise<AdminUser> {
+  const { data } = await apiClient.post<AdminUser>(
+    `/admin/users/${userId}/group-bans/${groupId}`,
+    request
+  )
+  return data
+}
+
+export async function unbanGroup(userId: number, groupId: number): Promise<AdminUser> {
+  const { data } = await apiClient.delete<AdminUser>(
+    `/admin/users/${userId}/group-bans/${groupId}`
+  )
+  return data
 }
 
 /**
@@ -409,6 +443,10 @@ export const usersAPI = {
   updateConcurrency,
   batchUpdateLimits,
   toggleStatus,
+  banUser,
+  unbanUser,
+  banGroup,
+  unbanGroup,
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,

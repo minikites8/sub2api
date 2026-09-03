@@ -125,6 +125,9 @@ export interface AdminUser extends User {
   group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
+  // 当前生效的用户-分组封禁；永久封禁在到期时间映射中没有对应值。
+  banned_group_ids?: number[]
+  banned_group_expirations?: Record<number, string>
 }
 
 export interface LoginRequest {

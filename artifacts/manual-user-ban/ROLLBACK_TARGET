@@ -95,11 +95,6 @@ type UpdateBalanceRequest struct {
 	Notes     string  `json:"notes"`
 }
 
-type ManualBanRequest struct {
-	// DurationHours uses 0 for a permanent ban.
-	DurationHours int `json:"duration_hours"`
-}
-
 type BindUserAuthIdentityRequest struct {
 	ProviderType    string                              `json:"provider_type"`
 	ProviderKey     string                              `json:"provider_key"`
@@ -384,108 +379,6 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "User deleted successfully"})
-}
-
-// BanUser applies a permanent or timed account-level ban.
-// POST /api/v1/admin/users/:id/ban
-func (h *UserHandler) BanUser(c *gin.Context) {
-	userID, ok := parseManualBanID(c, "id", "Invalid user ID")
-	if !ok {
-		return
-	}
-	durationHours, ok := bindManualBanDuration(c)
-	if !ok {
-		return
-	}
-	user, err := h.userService.AdminBanUser(c.Request.Context(), userID, durationHours)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	slog.Info("admin manual user ban", "actor_admin_id", getAdminIDFromContext(c), "target_user_id", userID, "duration_hours", durationHours)
-	response.Success(c, dto.UserFromServiceAdmin(user))
-}
-
-// UnbanUser restores account-level access.
-// DELETE /api/v1/admin/users/:id/ban
-func (h *UserHandler) UnbanUser(c *gin.Context) {
-	userID, ok := parseManualBanID(c, "id", "Invalid user ID")
-	if !ok {
-		return
-	}
-	user, err := h.userService.AdminUnbanUser(c.Request.Context(), userID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	slog.Info("admin manual user unban", "actor_admin_id", getAdminIDFromContext(c), "target_user_id", userID)
-	response.Success(c, dto.UserFromServiceAdmin(user))
-}
-
-// BanGroup blocks one user from one group while preserving all other access.
-// POST /api/v1/admin/users/:id/group-bans/:group_id
-func (h *UserHandler) BanGroup(c *gin.Context) {
-	userID, ok := parseManualBanID(c, "id", "Invalid user ID")
-	if !ok {
-		return
-	}
-	groupID, ok := parseManualBanID(c, "group_id", "Invalid group ID")
-	if !ok {
-		return
-	}
-	if _, err := h.adminService.GetGroup(c.Request.Context(), groupID); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	durationHours, ok := bindManualBanDuration(c)
-	if !ok {
-		return
-	}
-	user, err := h.userService.AdminBanGroupForUser(c.Request.Context(), userID, groupID, durationHours)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	slog.Info("admin manual user group ban", "actor_admin_id", getAdminIDFromContext(c), "target_user_id", userID, "group_id", groupID, "duration_hours", durationHours)
-	response.Success(c, dto.UserFromServiceAdmin(user))
-}
-
-// UnbanGroup restores one user-group pair.
-// DELETE /api/v1/admin/users/:id/group-bans/:group_id
-func (h *UserHandler) UnbanGroup(c *gin.Context) {
-	userID, ok := parseManualBanID(c, "id", "Invalid user ID")
-	if !ok {
-		return
-	}
-	groupID, ok := parseManualBanID(c, "group_id", "Invalid group ID")
-	if !ok {
-		return
-	}
-	user, err := h.userService.AdminUnbanGroupForUser(c.Request.Context(), userID, groupID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	slog.Info("admin manual user group unban", "actor_admin_id", getAdminIDFromContext(c), "target_user_id", userID, "group_id", groupID)
-	response.Success(c, dto.UserFromServiceAdmin(user))
-}
-
-func parseManualBanID(c *gin.Context, param, message string) (int64, bool) {
-	id, err := strconv.ParseInt(c.Param(param), 10, 64)
-	if err != nil || id <= 0 {
-		response.BadRequest(c, message)
-		return 0, false
-	}
-	return id, true
-}
-
-func bindManualBanDuration(c *gin.Context) (int, bool) {
-	var req ManualBanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return 0, false
-	}
-	return req.DurationHours, true
 }
 
 // UpdateBalance handles updating user balance
