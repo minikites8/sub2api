@@ -133,6 +133,7 @@ export interface AdminUser extends User {
 export interface LoginRequest {
   email: string
   password: string
+  account_attempts?: string[]
   turnstile_token?: string
   tencent_captcha_ticket?: string
   tencent_captcha_randstr?: string
@@ -161,6 +162,7 @@ export interface RegisterRequest {
   aff_code?: string
   browser_fingerprint?: string
   browser_fingerprints?: string[]
+  account_attempts?: string[]
 }
 
 export interface AffiliateInvitee {

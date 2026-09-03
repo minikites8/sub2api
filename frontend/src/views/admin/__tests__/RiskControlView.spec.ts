@@ -11,6 +11,8 @@ const {
   updateConfig,
   getStatus,
   listLogs,
+  listAntiAbuseEvents,
+  getAntiAbuseConfig,
   getGroups,
   getProxies,
   showError,
@@ -20,6 +22,8 @@ const {
   updateConfig: vi.fn(),
   getStatus: vi.fn(),
   listLogs: vi.fn(),
+  listAntiAbuseEvents: vi.fn(),
+  getAntiAbuseConfig: vi.fn(),
   getGroups: vi.fn(),
   getProxies: vi.fn(),
   showError: vi.fn(),
@@ -33,6 +37,8 @@ vi.mock('@/api/admin', () => ({
       updateConfig,
       getStatus,
       listLogs,
+      listAntiAbuseEvents,
+      getAntiAbuseConfig,
       testAPIKeys: vi.fn(),
       deleteFlaggedHash: vi.fn(),
       clearFlaggedHashes: vi.fn(),
@@ -199,6 +205,8 @@ describe('admin RiskControlView', () => {
     updateConfig.mockReset()
     getStatus.mockReset()
     listLogs.mockReset()
+    listAntiAbuseEvents.mockReset()
+    getAntiAbuseConfig.mockReset()
     getGroups.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
@@ -206,6 +214,8 @@ describe('admin RiskControlView', () => {
     getConfig.mockResolvedValue(baseConfig())
     getStatus.mockResolvedValue(runtimeStatus())
     listLogs.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+    listAntiAbuseEvents.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+    getAntiAbuseConfig.mockResolvedValue(null)
     getGroups.mockResolvedValue([])
     getProxies.mockResolvedValue([])
     updateConfig.mockImplementation(async (payload: UpdateContentModerationConfig) => ({
@@ -218,6 +228,52 @@ describe('admin RiskControlView', () => {
       api_key_masks: [],
       api_key_statuses: [],
     }))
+  })
+
+  it('shows browser-linked account attempts in restrict events', async () => {
+    listAntiAbuseEvents.mockResolvedValue({
+      items: [{
+        id: 901,
+        user_id: 7,
+        user_email: 'current@example.com',
+        event_type: 'gateway',
+        action: 'restrict',
+        score: 60,
+        factors: { browser_account_attempts: 60 },
+        reasons: ['browser memory contains multiple account attempts'],
+        ip_address: '1.2.3.4',
+        email: 'current@example.com',
+        user_agent: 'Mozilla/5.0',
+        fingerprint_hash_count: 2,
+        account_attempts: ['first@example.com', 'second@example.com'],
+        gift_balance_deducted: 0,
+        created_at: '2026-09-04T00:00:00Z',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.riskControl.antiAbuseEvents.attemptedAccounts')
+    expect(wrapper.text()).toContain('first@example.com')
+    expect(wrapper.text()).toContain('second@example.com')
   })
 
   it('saves the selected model filter mode and models', async () => {

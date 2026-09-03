@@ -61,6 +61,7 @@ type RegisterRequest struct {
 	AffCode               string   `json:"aff_code"`        // 邀请返利码
 	BrowserFingerprint    string   `json:"browser_fingerprint"`
 	BrowserFingerprints   []string `json:"browser_fingerprints"`
+	AccountAttempts       []string `json:"account_attempts"`
 }
 
 // SendVerifyCodeRequest 发送验证码请求
@@ -79,11 +80,12 @@ type SendVerifyCodeResponse struct {
 
 // LoginRequest represents the login request payload
 type LoginRequest struct {
-	Email                 string `json:"email" binding:"required,email"`
-	Password              string `json:"password" binding:"required"`
-	TurnstileToken        string `json:"turnstile_token"`
-	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
-	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
+	Email                 string   `json:"email" binding:"required,email"`
+	Password              string   `json:"password" binding:"required"`
+	TurnstileToken        string   `json:"turnstile_token"`
+	TencentCaptchaTicket  string   `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string   `json:"tencent_captcha_randstr"`
+	AccountAttempts       []string `json:"account_attempts"`
 }
 
 func captchaProof(turnstileToken, tencentTicket, tencentRandstr string) service.CaptchaProof {
@@ -199,9 +201,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		fingerprints = append(fingerprints, req.BrowserFingerprint)
 	}
 	transportSignals := service.RiskSignalsFromContext(c.Request.Context())
+	accountAttempts := append([]string{}, transportSignals.AccountAttempts...)
+	accountAttempts = append(accountAttempts, req.AccountAttempts...)
+	accountAttempts = append(accountAttempts, req.Email)
 	requestCtx := service.WithRiskSignals(c.Request.Context(), service.RiskSignals{
 		IPAddress: ip.GetClientIP(c), Email: req.Email, UserAgent: c.GetHeader("User-Agent"), BrowserFingerprints: fingerprints,
-		JA3: transportSignals.JA3, JA4: transportSignals.JA4,
+		AccountAttempts: accountAttempts, JA3: transportSignals.JA3, JA4: transportSignals.JA4,
 	})
 	_, user, err := h.authService.RegisterWithVerification(
 		requestCtx,
@@ -255,6 +260,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	transportSignals := service.RiskSignalsFromContext(c.Request.Context())
+	accountAttempts := append([]string{}, transportSignals.AccountAttempts...)
+	accountAttempts = append(accountAttempts, req.AccountAttempts...)
+	accountAttempts = append(accountAttempts, req.Email)
+	requestCtx := service.WithRiskSignals(c.Request.Context(), service.RiskSignals{
+		IPAddress: ip.GetClientIP(c), Email: req.Email, UserAgent: c.GetHeader("User-Agent"),
+		BrowserFingerprints: transportSignals.BrowserFingerprints, AccountAttempts: accountAttempts,
+		JA3: transportSignals.JA3, JA4: transportSignals.JA4,
+	})
+	c.Request = c.Request.WithContext(requestCtx)
 
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
 	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {

@@ -113,6 +113,7 @@ type RiskSignals struct {
 	Email               string
 	UserAgent           string
 	BrowserFingerprints []string
+	AccountAttempts     []string
 	IPReputationScore   int
 	JA3                 string
 	JA4                 string
@@ -183,6 +184,7 @@ func WithRiskSignals(ctx context.Context, signals RiskSignals) context.Context {
 	signals.JA3 = normalizeTransportFingerprint(signals.JA3, 128)
 	signals.JA4 = normalizeTransportFingerprint(signals.JA4, 256)
 	signals.BrowserFingerprints = NormalizeBrowserFingerprints(signals.BrowserFingerprints)
+	signals.AccountAttempts = NormalizeAccountAttempts(signals.AccountAttempts)
 	if signals.IPAddress != "" {
 		ctx = context.WithValue(ctx, authContextKeySignupIP, signals.IPAddress)
 	}
@@ -1597,7 +1599,8 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 			tlsVelocity = maxInt(0, count-1)
 		}
 	}
-	if _, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(signals.Email)), "@"); ok && domain != "" {
+	domain := RegistrationEmailDomain(signals.Email)
+	if domain != "" && !isAntiAbuseEmailVelocityExempt(signals.Email) {
 		if count, countErr := client.User.Query().Where(dbuser.EmailHasSuffix("@"+domain), dbuser.CreatedAtGTE(windowStart)).Count(ctx); countErr == nil {
 			emailVelocity = maxInt(0, count-1)
 		}

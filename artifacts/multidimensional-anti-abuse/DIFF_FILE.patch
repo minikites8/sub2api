@@ -4627,3 +4627,9 @@ Risk-control configuration drops deleted audit group IDs during save and filters
 Anti-abuse assessment writes now omit every `allow` and `review` action, while the anti-abuse event query filters historical `allow` and `review` rows as well. The risk-center action selector exposes only `restrict`; deduction events remain visible.
 
 Migration `233_anti_abuse_event_cleanup.sql` removes historical allow/review rows and replaces the action index with a partial restrict index to reduce table/index pressure.
+
+Registration risk scoring excludes `qq.com` and `gmail.com` (including normalized subdomains) from `email_velocity`. The registration path skips the corresponding domain-count query, while disposable/local-part email reputation checks remain active.
+
+Login and registration attempts persist up to eight normalized email accounts in browser localStorage. Authentication and later API requests send the account list through `X-Browser-Account-Attempts`; the backend validates the list, applies the hard `browser_account_attempts` factor when multiple accounts are present, exempts administrators, and stores the identifiable account list only with restrict/deduction events. Migration `235_anti_abuse_account_attempts.sql` adds the event field. Repeated ordinary restrict events with the same user, factors, and account list are deduplicated for one hour.
+
+The authentication handler always adds the current submitted email to the normalized account list, and the gateway always adds the authenticated user's email. Successful password, 2FA, passkey, OAuth, and SSO authentication paths persist the resolved account through the auth store. Each write merges the latest localStorage value so concurrent tabs retain all observed accounts; the linkage survives reloads and logout while remaining visible in restrict and deduction events.

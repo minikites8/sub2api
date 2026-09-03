@@ -137,6 +137,46 @@ func TestAPIIPUAThresholdIsMultidimensionalFactor(t *testing.T) {
 	require.Equal(t, policy.ScoreThreshold, hit.Factors["api_ip_ua_threshold"])
 }
 
+func TestEmailVelocityExemptsQQAndGmail(t *testing.T) {
+	policy := DefaultAntiAbusePolicy()
+	for _, email := range []string{"user@qq.com", " User@GMAIL.COM ", "user@mail.qq.com"} {
+		assessment := EvaluateRegistrationAntiAbuse(
+			RiskSignals{IPAddress: "8.8.8.8", Email: email, UserAgent: "Mozilla/5.0"},
+			0, 0, 10, 0, policy,
+		)
+		require.NotContains(t, assessment.Factors, "email_velocity", email)
+	}
+
+	assessment := EvaluateRegistrationAntiAbuse(
+		RiskSignals{IPAddress: "8.8.8.8", Email: "user@example.com", UserAgent: "Mozilla/5.0"},
+		0, 0, 10, 0, policy,
+	)
+	require.Equal(t, 30, assessment.Factors["email_velocity"])
+}
+
+func TestBrowserAccountAttemptsAreNormalizedAndRestricted(t *testing.T) {
+	ctx := WithRiskSignals(context.Background(), RiskSignals{AccountAttempts: []string{
+		`[" First@Example.com ","second@example.com","bad-value"]`,
+		"first@example.com|third@example.com",
+	}})
+	signals := RiskSignalsFromContext(ctx)
+	require.Equal(t, []string{"first@example.com", "second@example.com", "third@example.com"}, signals.AccountAttempts)
+
+	assessment := EvaluateGatewayAntiAbuse(signals, 0, 0, 0, 0, DefaultAntiAbusePolicy())
+	require.Equal(t, AntiAbuseActionRestrict, assessment.Action)
+	require.Equal(t, defaultAntiAbuseScoreThreshold, assessment.Factors["browser_account_attempts"])
+
+	singleAccount := EvaluateGatewayAntiAbuse(
+		RiskSignals{
+			IPAddress: "8.8.8.8", Email: "current@example.com", UserAgent: "Mozilla/5.0",
+			AccountAttempts: []string{"current@example.com"},
+		},
+		0, 0, 0, 0, DefaultAntiAbusePolicy(),
+	)
+	require.NotContains(t, singleAccount.Factors, "browser_account_attempts")
+	require.Equal(t, AntiAbuseActionAllow, singleAccount.Action)
+}
+
 type recordingAntiAbuseEventStore struct {
 	events []AntiAbuseEvent
 }

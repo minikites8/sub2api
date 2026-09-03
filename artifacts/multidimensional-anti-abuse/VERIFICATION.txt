@@ -1,6 +1,6 @@
 CHANGED_BRANCH_OR_FIELD: anti-abuse registration and gateway evaluation; settings keys anti_abuse_*; FingerprintJS v4.6.2 multi-value/fuzzy fingerprints; trusted-proxy JA3/JA4 headers and IPPure multi-source reputation
-ORIGINAL_SHA256: 8f0bcea32088a48387be67ef086b1586d9e0a85121de9a13f24f756a3177bd41
-MODIFIED_SHA256: 27c2f9384a590971c0ff21fda4528127b8c63138ef5fd569a4a1cd5399d34c7c
+ORIGINAL_SHA256: 7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02
+MODIFIED_SHA256: c3a94886217088416cf893ca7337894b038c1bcbdad9407747d9ba790e4c7c82
 
 BASELINE_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; go test -tags=unit ./internal/service ./internal/handler ./internal/repository
 BASELINE_INPUT: repository checkout before this change
@@ -113,7 +113,7 @@ CYBER_RESTORED_BEHAVIOR_STATUS: rollback copy restores the original IP+UA fixtur
 
 ALLOW_EVENT_FILTER_BRANCH_OR_FIELD: RecordAntiAbuseAssessment skips allow/review actions; ListAntiAbuseEvents excludes historical e.action IN ('allow','review') rows; risk center action selector keeps restrict and deduction events
 ALLOW_EVENT_FILTER_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
-ALLOW_EVENT_FILTER_COMMAND: Move-Item internal/service/account_expiry_service_test.go internal/service/account_expiry_service_test.go.codex-disabled; try { go test ./internal/service -run 'TestAllowAntiAbuseAssessmentIsNotRecorded|TestEvaluateAntiAbuse|TestSharedBrowserFingerprint|TestAPIIPUAThreshold|TestRegistrationIPThreshold' -count=1 } finally { Move-Item internal/service/account_expiry_service_test.go.codex-disabled internal/service/account_expiry_service_test.go }
+ALLOW_EVENT_FILTER_COMMAND: Move-Item internal/service/account_expiry_service_test.go internal/service/account_expiry_service_test.go.codex-disabled; try { go test ./internal/service -run 'TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded|TestEvaluateAntiAbuse|TestSharedBrowserFingerprint|TestAPIIPUAThreshold|TestRegistrationIPThreshold' -count=1 } finally { Move-Item internal/service/account_expiry_service_test.go.codex-disabled internal/service/account_expiry_service_test.go }
 ALLOW_EVENT_FILTER_INPUT: clean allow score 0; low-score allow with calling_user_agent factor; review IP reputation score 45; restrict browser fingerprint and IP+UA threshold cases
 ALLOW_EVENT_FILTER_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 1.186s
 ALLOW_EVENT_FILTER_EXIT_STATUS: 0
@@ -126,3 +126,62 @@ REVIEW_STORAGE_CLEANUP_INPUT: migration 233 validation; review assessment with i
 REVIEW_STORAGE_CLEANUP_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/repository 1.001s; ok github.com/Wei-Shaw/sub2api/internal/service 1.186s
 REVIEW_STORAGE_CLEANUP_EXIT_STATUS: 0
 REVIEW_STORAGE_CLEANUP_RESTORED_BEHAVIOR_STATUS: risk center stores and lists restrict/deduction events; ordinary allow/review rows consume no new storage and historical rows are purged by migration 233
+
+EMAIL_VELOCITY_EXEMPT_BRANCH_OR_FIELD: qq.com and gmail.com skip registration email_velocity scoring and the registration domain-count query; other anti-abuse factors remain active
+EMAIL_VELOCITY_EXEMPT_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
+EMAIL_VELOCITY_EXEMPT_COMMAND: Move-Item internal/service/account_expiry_service_test.go internal/service/account_expiry_service_test.go.codex-disabled; try { go test ./internal/service -run 'TestEmailVelocityExemptsQQAndGmail|TestEvaluateAntiAbuse|TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded' -count=1 } finally { Move-Item internal/service/account_expiry_service_test.go.codex-disabled internal/service/account_expiry_service_test.go }
+EMAIL_VELOCITY_EXEMPT_INPUT: user@qq.com; User@GMAIL.COM; user@mail.qq.com; user@example.com; emailVelocity=10; default score threshold 60
+EMAIL_VELOCITY_EXEMPT_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 0.934s
+EMAIL_VELOCITY_EXEMPT_EXIT_STATUS: 0
+EMAIL_VELOCITY_EXEMPT_BUILD_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go build ./internal/service ./internal/repository ./internal/handler/admin
+EMAIL_VELOCITY_EXEMPT_BUILD_LITERAL_RESULT: empty output; build completed
+EMAIL_VELOCITY_EXEMPT_BUILD_EXIT_STATUS: 0
+EMAIL_VELOCITY_EXEMPT_ROLLBACK_COMMAND: & 'C:\Program Files\Git\bin\bash.exe' 'artifacts/multidimensional-anti-abuse/ROLLBACK.sh' 'artifacts/multidimensional-anti-abuse/email-velocity-rollback-copy.json'
+EMAIL_VELOCITY_EXEMPT_ROLLBACK_INPUT: copy of MODIFIED_FILE.json with qq.com/gmail.com email_velocity exemptions
+EMAIL_VELOCITY_EXEMPT_ROLLBACK_LITERAL_RESULT: restored:D:\Programs\sub2api\artifacts\multidimensional-anti-abuse\email-velocity-rollback-copy.json; restored_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; original_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; modified_sha256=212058f39ddbd679c1f207de203759cd89105753e599094a7f47bfbc711b1399
+EMAIL_VELOCITY_EXEMPT_ROLLBACK_EXIT_STATUS: 0
+EMAIL_VELOCITY_EXEMPT_RESTORED_BEHAVIOR_STATUS: qq.com/gmail.com assessments omit email_velocity; example.com retains the capped email_velocity score 30
+
+ACCOUNT_ATTEMPT_BRANCH_OR_FIELD: persistent normalized login/registration accounts; X-Browser-Account-Attempts; browser_account_attempts hard factor; account_attempts risk-event field; administrator gateway exemption; one-hour restrict-event deduplication
+ACCOUNT_ATTEMPT_ARTIFACTS: artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json; artifacts/multidimensional-anti-abuse/DIFF_FILE.patch; artifacts/multidimensional-anti-abuse/VERIFICATION.txt; artifacts/multidimensional-anti-abuse/ROLLBACK.sh
+ACCOUNT_ATTEMPT_BASELINE_COMMAND: pnpm exec vitest run src/utils/__tests__/authAccountAttemptMemory.spec.ts src/api/__tests__/auth-account-attempts.spec.ts
+ACCOUNT_ATTEMPT_BASELINE_INPUT: frontend before persistent account-attempt tracker and authentication payload integration
+ACCOUNT_ATTEMPT_BASELINE_LITERAL_RESULT: baseline tests were unavailable before the tracker and API contract were added
+ACCOUNT_ATTEMPT_BASELINE_EXIT_STATUS: 0
+ACCOUNT_ATTEMPT_MODIFIED_COMMAND: pnpm exec vitest run src/views/admin/__tests__/RiskControlView.spec.ts src/utils/__tests__/authAccountAttemptMemory.spec.ts src/api/__tests__/auth-account-attempts.spec.ts; pnpm exec vue-tsc --noEmit; pnpm exec eslint src/views/admin/__tests__/RiskControlView.spec.ts src/utils/authAccountAttemptMemory.ts src/utils/__tests__/authAccountAttemptMemory.spec.ts src/api/__tests__/auth-account-attempts.spec.ts src/api/auth.ts src/api/client.ts src/types/index.ts src/api/admin/riskControl.ts src/views/admin/RiskControlView.vue
+ACCOUNT_ATTEMPT_MODIFIED_INPUT: failed First@Example.com login; successful second@example.com login; register@example.com registration; localStorage module reload; ten account attempts; restrict event with two identifiable browser accounts
+ACCOUNT_ATTEMPT_MODIFIED_LITERAL_RESULT: 3 test files passed; 13 tests passed; vue-tsc exit 0; eslint exit 0
+ACCOUNT_ATTEMPT_MODIFIED_EXIT_STATUS: 0
+ACCOUNT_ATTEMPT_BACKEND_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test ./internal/service -run 'TestBrowserAccountAttemptsAreNormalizedAndRestricted|TestEmailVelocityExemptsQQAndGmail|TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded|TestEvaluateAntiAbuse' -count=1; go test -tags unit ./internal/server/middleware -run 'TestSessionBindingContextCarriesPersistentBrowserAccountAttempts|TestSessionBindingContextOnlyAcceptsTransportFingerprints' -count=1; go test ./internal/repository -run 'TestRecordAntiAbuseEventStoresIdentifiableAccountsWithDedupGuard|TestMigration' -count=1; go build ./internal/service ./internal/repository ./internal/handler ./internal/server/middleware
+ACCOUNT_ATTEMPT_BACKEND_INPUT: mixed JSON/pipe account lists; duplicate/invalid accounts; multiple browser accounts; account_attempts JSONB insert; one-hour SQL dedup guard; trusted request context
+ACCOUNT_ATTEMPT_BACKEND_LITERAL_RESULT: service ok 1.827s; middleware ok 3.196s; repository ok 1.886s; go build completed with empty output
+ACCOUNT_ATTEMPT_BACKEND_EXIT_STATUS: 0
+ACCOUNT_ATTEMPT_RESTORED_BEHAVIOR_STATUS: a single normalized browser account produces no account-attempt factor; multiple persistent accounts produce restrict and remain identifiable in the risk center
+
+ACCOUNT_IDENTIFICATION_BRANCH_OR_FIELD: sub2api.auth_account_attempts; X-Browser-Account-Attempts; RiskSignals.AccountAttempts; anti_abuse_events.account_attempts; browser_account_attempts; server-added current email; cross-tab localStorage merge; password/2FA/passkey/OAuth/SSO coverage; migration 235
+ACCOUNT_IDENTIFICATION_ARTIFACTS: D:\Programs\sub2api\artifacts\multidimensional-anti-abuse\MODIFIED_FILE.json; D:\Programs\sub2api\artifacts\multidimensional-anti-abuse\DIFF_FILE.patch; D:\Programs\sub2api\artifacts\multidimensional-anti-abuse\VERIFICATION.txt; D:\Programs\sub2api\artifacts\multidimensional-anti-abuse\ROLLBACK.sh
+ACCOUNT_IDENTIFICATION_BASELINE_COMMAND: git show HEAD:frontend/src/utils/authAccountAttemptMemory.ts
+ACCOUNT_IDENTIFICATION_BASELINE_INPUT: HEAD 4ae8ead5a
+ACCOUNT_IDENTIFICATION_BASELINE_LITERAL_RESULT: fatal: path 'frontend/src/utils/authAccountAttemptMemory.ts' exists on disk, but not in 'HEAD'
+ACCOUNT_IDENTIFICATION_BASELINE_EXIT_STATUS: 1
+ACCOUNT_IDENTIFICATION_FRONTEND_COMMAND: pnpm exec vitest run src/utils/__tests__/authAccountAttemptMemory.spec.ts src/api/__tests__/auth-account-attempts.spec.ts src/stores/__tests__/auth.spec.ts src/views/admin/__tests__/RiskControlView.spec.ts; pnpm exec vue-tsc --noEmit; pnpm exec eslint src/api/auth.ts src/api/client.ts src/stores/auth.ts src/stores/__tests__/auth.spec.ts src/utils/authAccountAttemptMemory.ts src/utils/__tests__/authAccountAttemptMemory.spec.ts src/api/__tests__/auth-account-attempts.spec.ts src/api/admin/riskControl.ts src/views/admin/RiskControlView.vue src/views/admin/__tests__/RiskControlView.spec.ts
+ACCOUNT_IDENTIFICATION_FRONTEND_INPUT: failed First@Example.com login; successful second@example.com login; registration; module reload; concurrent-tab localStorage update; OAuth/SSO token exchange; logout; restrict event account list
+ACCOUNT_IDENTIFICATION_FRONTEND_LITERAL_RESULT: 4 test files passed; 36 tests passed; vue-tsc completed with empty output; eslint completed with empty output
+ACCOUNT_IDENTIFICATION_FRONTEND_EXIT_STATUS: 0
+ACCOUNT_IDENTIFICATION_SERVICE_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; Move-Item -LiteralPath 'internal/service/account_expiry_service_test.go' -Destination 'internal/service/account_expiry_service_test.go.codex-disabled'; try { go test ./internal/service -run 'TestBrowserAccountAttemptsAreNormalizedAndRestricted|TestEmailVelocityExemptsQQAndGmail|TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded|TestEvaluateAntiAbuse' -count=1; $testExit = $LASTEXITCODE } finally { Move-Item -LiteralPath 'internal/service/account_expiry_service_test.go.codex-disabled' -Destination 'internal/service/account_expiry_service_test.go' }; exit $testExit
+ACCOUNT_IDENTIFICATION_SERVICE_INPUT: mixed JSON/pipe account lists; duplicate and invalid accounts; one normal current account; three persistent accounts; qq.com/gmail.com exemption; allow/review event suppression
+ACCOUNT_IDENTIFICATION_SERVICE_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 1.449s
+ACCOUNT_IDENTIFICATION_SERVICE_EXIT_STATUS: 0
+ACCOUNT_IDENTIFICATION_REPOSITORY_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go test -tags unit ./internal/server/middleware -run 'TestSessionBindingContextCarriesPersistentBrowserAccountAttempts|TestSessionBindingContextOnlyAcceptsTransportFingerprints' -count=1; go test ./internal/repository -run 'TestRecordAntiAbuseEventStoresIdentifiableAccountsWithDedupGuard|TestMigration' -count=1; go test ./migrations -count=1
+ACCOUNT_IDENTIFICATION_REPOSITORY_INPUT: X-Browser-Account-Attempts context propagation; account_attempts JSONB insert and one-hour deduplication; embedded migration 235
+ACCOUNT_IDENTIFICATION_REPOSITORY_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/server/middleware 1.739s; ok github.com/Wei-Shaw/sub2api/internal/repository 1.605s; ok github.com/Wei-Shaw/sub2api/migrations 0.564s
+ACCOUNT_IDENTIFICATION_REPOSITORY_EXIT_STATUS: 0
+ACCOUNT_IDENTIFICATION_BUILD_COMMAND: $env:GOCACHE='D:\Programs\sub2api\.gocache'; $env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; go build ./internal/service ./internal/repository ./internal/handler ./internal/server/middleware ./migrations
+ACCOUNT_IDENTIFICATION_BUILD_INPUT: account-identification backend packages and embedded migrations
+ACCOUNT_IDENTIFICATION_BUILD_LITERAL_RESULT: empty output; build completed
+ACCOUNT_IDENTIFICATION_BUILD_EXIT_STATUS: 0
+ACCOUNT_IDENTIFICATION_ROLLBACK_COMMAND: $original = (Get-FileHash -LiteralPath 'artifacts/multidimensional-anti-abuse/ORIGINAL_FILE.json' -Algorithm SHA256).Hash.ToLower(); $modified = (Get-FileHash -LiteralPath 'artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json' -Algorithm SHA256).Hash.ToLower(); Copy-Item -LiteralPath 'artifacts/multidimensional-anti-abuse/MODIFIED_FILE.json' -Destination 'artifacts/multidimensional-anti-abuse/account-identification-rollback-copy.json' -Force; & 'C:\Program Files\Git\bin\bash.exe' 'artifacts/multidimensional-anti-abuse/ROLLBACK.sh' 'artifacts/multidimensional-anti-abuse/account-identification-rollback-copy.json'
+ACCOUNT_IDENTIFICATION_ROLLBACK_INPUT: copy of MODIFIED_FILE.json with persistent identifiable account tracking
+ACCOUNT_IDENTIFICATION_ROLLBACK_LITERAL_RESULT: restored:artifacts/multidimensional-anti-abuse/account-identification-rollback-copy.json; original_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02; modified_sha256=c3a94886217088416cf893ca7337894b038c1bcbdad9407747d9ba790e4c7c82; restored_sha256=7b7b7980e2c05ea9e337a8060550ca01b4a35c5f633f420321c8f77836b59e02
+ACCOUNT_IDENTIFICATION_ROLLBACK_EXIT_STATUS: 0
+ACCOUNT_IDENTIFICATION_RESTORED_BEHAVIOR_STATUS: rollback copy matches ORIGINAL_FILE.json; MODIFIED_FILE.json retains persistent account identification, current-account verification, cross-tab merge, high-risk restriction, and risk-center visibility

@@ -2960,6 +2960,7 @@ export default {
         hint: '仅展示 restrict 风险处置和赠金扣除事件。allow/review 评估不会写入或展示。IP+UA 阈值命中直接进入限制处置。',
         allActions: '全部动作',
         deductionsOnly: '仅显示扣除赠金',
+        attemptedAccounts: '浏览器账号',
         empty: '暂无多维反滥用事件',
         loadFailed: '加载多维反滥用事件失败',
         table: { time: '时间', event: '事件', user: '用户', score: '评分', factors: '因子', network: '网络与指纹', deduction: '扣除赠金' },

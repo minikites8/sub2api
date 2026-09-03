@@ -470,7 +470,13 @@
                 <template v-else><tr v-for="event in antiAbuseEvents" :key="event.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/60">
                   <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(event.created_at) }}</td>
                   <td class="whitespace-nowrap px-5 py-4"><span class="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ event.event_type }}</span><div class="mt-1 text-xs text-gray-500">{{ event.action }}</div></td>
-                  <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ event.user_email || event.email || '-' }}<div v-if="event.user_id" class="text-xs text-gray-400">UID {{ event.user_id }}</div></td>
+                  <td class="max-w-[320px] px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                    <div>{{ event.user_email || event.email || '-' }}</div>
+                    <div v-if="event.user_id" class="text-xs text-gray-400">UID {{ event.user_id }}</div>
+                    <div v-if="event.account_attempts?.length" class="mt-1 break-words text-xs text-red-600 dark:text-red-300" :title="event.account_attempts.join(', ')">
+                      {{ t('admin.riskControl.antiAbuseEvents.attemptedAccounts') }}: {{ event.account_attempts.join(' · ') }}
+                    </div>
+                  </td>
                   <td class="whitespace-nowrap px-5 py-4 text-sm font-semibold" :class="event.score >= 60 ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'">{{ event.score }}</td>
                   <td class="max-w-[280px] px-5 py-4 text-xs text-gray-600 dark:text-gray-300"><span class="break-words">{{ formatAntiAbuseFactors(event.factors) }}</span></td>
                   <td class="max-w-[260px] px-5 py-4 text-xs text-gray-500 dark:text-gray-400"><div>{{ event.ip_address || '-' }}</div><div class="truncate" :title="event.user_agent">{{ event.user_agent || '-' }}</div><div>FP {{ event.fingerprint_hash_count }} · JA3 {{ event.ja3_hash ? 'yes' : 'no' }} · JA4 {{ event.ja4_hash ? 'yes' : 'no' }}</div></td>

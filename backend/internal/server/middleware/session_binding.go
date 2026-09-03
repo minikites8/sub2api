@@ -29,13 +29,14 @@ func SessionBindingContext(cfg *config.Config) gin.HandlerFunc {
 		}
 		fingerprints := append([]string{}, c.Request.Header.Values("X-Browser-Fingerprint")...)
 		fingerprints = append(fingerprints, c.Request.Header.Values("X-Browser-Fingerprints")...)
+		accountAttempts := append([]string{}, c.Request.Header.Values("X-Browser-Account-Attempts")...)
 		ja3, ja4 := "", ""
 		if trustedProxyFingerprintHeaders(c, cfg) {
 			ja3 = firstHeader(c, "X-JA3", "X-JA3-Fingerprint", "X-JA3-Hash", "X-TLS-JA3", "X-Client-JA3", "CF-JA3-Fingerprint", "CF-JA3-Hash", "JA3")
 			ja4 = firstHeader(c, "X-JA4", "X-JA4-Fingerprint", "X-JA4-Hash", "X-TLS-JA4", "X-Client-JA4", "CF-JA4-Fingerprint", "CF-JA4-Hash", "CF-JA4", "JA4")
 		}
 		requestContext := service.WithSessionBinding(c.Request.Context(), binding)
-		requestContext = service.WithRiskSignals(requestContext, service.RiskSignals{IPAddress: binding.IP, UserAgent: userAgent, BrowserFingerprints: fingerprints, JA3: ja3, JA4: ja4})
+		requestContext = service.WithRiskSignals(requestContext, service.RiskSignals{IPAddress: binding.IP, UserAgent: userAgent, BrowserFingerprints: fingerprints, AccountAttempts: accountAttempts, JA3: ja3, JA4: ja4})
 		c.Request = c.Request.WithContext(requestContext)
 		c.Next()
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net"
+	"net/mail"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +21,11 @@ const (
 	AntiAbuseActionRestrict        = "restrict"
 	defaultAntiAbuseScoreThreshold = 60
 )
+
+var antiAbuseEmailVelocityExemptDomains = map[string]struct{}{
+	"gmail.com": {},
+	"qq.com":    {},
+}
 
 // AntiAbusePolicy controls the score threshold and per-signal contribution.
 // Values are integer percentages, which keeps persisted settings portable.
@@ -60,7 +66,8 @@ type AntiAbuseAssessment struct {
 }
 
 // AntiAbuseEvent is the persisted decision shown in the admin risk-control center.
-// Fingerprints and transport identifiers are represented by hashes only.
+// Fingerprints and transport identifiers use hashes; account attempts use
+// normalized emails so administrators can identify linked users.
 type AntiAbuseEvent struct {
 	ID                   int64          `json:"id"`
 	UserID               *int64         `json:"user_id,omitempty"`
@@ -76,6 +83,7 @@ type AntiAbuseEvent struct {
 	FingerprintHashCount int            `json:"fingerprint_hash_count"`
 	JA3Hash              string         `json:"ja3_hash,omitempty"`
 	JA4Hash              string         `json:"ja4_hash,omitempty"`
+	AccountAttempts      []string       `json:"account_attempts"`
 	GiftBalanceDeducted  float64        `json:"gift_balance_deducted"`
 	CreatedAt            time.Time      `json:"created_at"`
 }
@@ -119,6 +127,7 @@ func RecordAntiAbuseAssessment(ctx context.Context, store AntiAbuseEventStore, e
 		Email: strings.TrimSpace(signals.Email), UserAgent: strings.TrimSpace(signals.UserAgent),
 		FingerprintHashCount: len(HashBrowserFingerprints(signals.BrowserFingerprints)),
 		JA3Hash:              HashTransportFingerprint("ja3", signals.JA3), JA4Hash: HashTransportFingerprint("ja4", signals.JA4),
+		AccountAttempts: append([]string(nil), signals.AccountAttempts...),
 	}
 	if err := store.RecordAntiAbuseEvent(ctx, event); err != nil {
 		return
@@ -136,6 +145,7 @@ func RecordAntiAbuseDeduction(ctx context.Context, store AntiAbuseEventStore, ev
 		Email: strings.TrimSpace(signals.Email), UserAgent: strings.TrimSpace(signals.UserAgent),
 		FingerprintHashCount: len(HashBrowserFingerprints(signals.BrowserFingerprints)),
 		JA3Hash:              HashTransportFingerprint("ja3", signals.JA3), JA4Hash: HashTransportFingerprint("ja4", signals.JA4),
+		AccountAttempts:     append([]string(nil), signals.AccountAttempts...),
 		GiftBalanceDeducted: amount,
 	}
 	_ = store.RecordAntiAbuseEvent(ctx, event)
@@ -209,6 +219,47 @@ func HashBrowserFingerprints(values []string) []string {
 		}
 	}
 	return result
+}
+
+// NormalizeAccountAttempts accepts JSON arrays, repeated headers, and
+// pipe-delimited values while retaining only valid normalized email accounts.
+func NormalizeAccountAttempts(values []string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(values))
+	queue := append([]string(nil), values...)
+	for len(queue) > 0 {
+		raw := strings.TrimSpace(queue[0])
+		queue = queue[1:]
+		if raw == "" {
+			continue
+		}
+		if strings.HasPrefix(raw, "[") {
+			var parsed []string
+			if json.Unmarshal([]byte(raw), &parsed) == nil {
+				queue = append(parsed, queue...)
+				continue
+			}
+		}
+		for _, item := range strings.FieldsFunc(raw, func(r rune) bool { return r == '|' || r == '\n' || r == '\r' }) {
+			item = strings.ToLower(strings.TrimSpace(item))
+			if len(item) == 0 || len(item) > 320 {
+				continue
+			}
+			address, err := mail.ParseAddress(item)
+			if err != nil || address.Address != item {
+				continue
+			}
+			if _, exists := seen[item]; exists {
+				continue
+			}
+			seen[item] = struct{}{}
+			out = append(out, item)
+			if len(out) >= 8 {
+				return out
+			}
+		}
+	}
+	return out
 }
 
 func fuzzyFingerprintBucket(value string) string {
@@ -319,6 +370,9 @@ func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, ema
 		// association, regardless of the remaining signal score.
 		add("browser_fingerprint", "browser fingerprint is linked to multiple accounts", policy.ScoreThreshold, policy.FingerprintWeight)
 	}
+	if len(signals.AccountAttempts) > 1 {
+		add("browser_account_attempts", "browser memory contains multiple account attempts", policy.ScoreThreshold, policy.FingerprintWeight)
+	}
 	if ipVelocity > 0 {
 		value := minInt(ipVelocity*12, 36)
 		add("ip_velocity", "IP address shows recent account velocity", value, policy.IPWeight)
@@ -328,7 +382,7 @@ func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, ema
 		ipReputation = minInt(signals.IPReputationScore, 100)
 	}
 	add("ip_reputation", "IP address has a high reputation risk signal", ipReputation, policy.IPWeight)
-	if emailVelocity > 0 {
+	if emailVelocity > 0 && !isAntiAbuseEmailVelocityExempt(signals.Email) {
 		add("email_velocity", "email domain has recent account velocity", minInt(emailVelocity*10, 30), policy.EmailWeight)
 	}
 	add("email_reputation", "email address matches a disposable or automation pattern", emailReputationScore(signals.Email), policy.EmailWeight)
@@ -343,7 +397,7 @@ func evaluateAntiAbuse(signals RiskSignals, ipVelocity, fingerprintVelocity, ema
 		add(velocityFactor, velocityReason, policy.ScoreThreshold, policy.IPWeight)
 		assessment.Action = AntiAbuseActionRestrict
 	}
-	if fingerprintVelocity > 0 {
+	if fingerprintVelocity > 0 || len(signals.AccountAttempts) > 1 {
 		assessment.Action = AntiAbuseActionRestrict
 	}
 
@@ -436,6 +490,12 @@ func emailReputationScore(raw string) int {
 		return 12
 	}
 	return 0
+}
+
+func isAntiAbuseEmailVelocityExempt(email string) bool {
+	domain := RegistrationEmailDomain(email)
+	_, exempt := antiAbuseEmailVelocityExemptDomains[domain]
+	return exempt
 }
 
 func userAgentReputationScore(raw string) int {

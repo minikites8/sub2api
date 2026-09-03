@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import {
+  clearAuthAccountAttemptMemory,
+  getAuthAccountAttempts,
+} from '@/utils/authAccountAttemptMemory'
 
 // Mock authAPI
 const mockLogin = vi.fn()
@@ -55,6 +59,7 @@ describe('useAuthStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    clearAuthAccountAttemptMemory()
     vi.useFakeTimers()
     vi.clearAllMocks()
   })
@@ -77,6 +82,7 @@ describe('useAuthStore', () => {
       expect(store.isAuthenticated).toBe(true)
       expect(localStorage.getItem('auth_token')).toBe('test-token-123')
       expect(localStorage.getItem('auth_user')).toBe(JSON.stringify(fakeUser))
+      expect(getAuthAccountAttempts()).toEqual(['test@example.com'])
     })
 
     it('登录失败时清除状态并抛出错误', async () => {
@@ -155,6 +161,19 @@ describe('useAuthStore', () => {
       expect(localStorage.getItem('auth_user')).toBeNull()
       expect(localStorage.getItem('refresh_token')).toBeNull()
       expect(localStorage.getItem('token_expires_at')).toBeNull()
+      expect(getAuthAccountAttempts()).toEqual(['test@example.com'])
+    })
+  })
+
+  describe('external authentication', () => {
+    it('persists the resolved account after an OAuth or SSO token exchange', async () => {
+      const oauthUser = { ...fakeUser, email: 'oauth-user@example.com' }
+      mockGetCurrentUser.mockResolvedValue({ data: oauthUser })
+      const store = useAuthStore()
+
+      await store.setToken('oauth-access-token')
+
+      expect(getAuthAccountAttempts()).toEqual(['oauth-user@example.com'])
     })
   })
 

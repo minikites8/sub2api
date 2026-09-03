@@ -3,6 +3,7 @@
 package middleware
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -188,4 +189,22 @@ func TestSessionBindingContextOnlyAcceptsTransportFingerprintsFromTrustedProxy(t
 			require.Equal(t, 200, w.Code)
 		})
 	}
+}
+
+func TestSessionBindingContextCarriesPersistentBrowserAccountAttempts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{}
+	router := gin.New()
+	router.Use(SessionBindingContext(cfg))
+	router.GET("/t", func(c *gin.Context) {
+		signals := service.RiskSignalsFromContext(c.Request.Context())
+		require.Equal(t, []string{"first@example.com", "second@example.com"}, signals.AccountAttempts)
+		c.Status(http.StatusOK)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/t", nil)
+	request.Header.Set("X-Browser-Account-Attempts", `["First@Example.com","second@example.com","invalid"]`)
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code)
 }

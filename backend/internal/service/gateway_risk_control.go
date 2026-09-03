@@ -46,9 +46,13 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 	if targetErr != nil || target == nil {
 		return
 	}
+	if target.IsAdmin() {
+		return
+	}
 	signals := RiskSignals{IPAddress: ipAddress, Email: target.Email, UserAgent: userAgent}
 	contextSignals := RiskSignalsFromContext(ctx)
 	signals.BrowserFingerprints = contextSignals.BrowserFingerprints
+	signals.AccountAttempts = NormalizeAccountAttempts(append(append([]string{}, contextSignals.AccountAttempts...), target.Email))
 	signals.JA3 = contextSignals.JA3
 	signals.JA4 = contextSignals.JA4
 	fingerprintVelocity := 0

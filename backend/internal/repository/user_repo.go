@@ -230,6 +230,10 @@ func (r *userRepository) RecordAntiAbuseEvent(ctx context.Context, event *servic
 	if err != nil {
 		return err
 	}
+	accountAttempts, err := json.Marshal(service.NormalizeAccountAttempts(event.AccountAttempts))
+	if err != nil {
+		return err
+	}
 	var userID any
 	if event.UserID != nil && *event.UserID > 0 {
 		userID = *event.UserID
@@ -237,12 +241,24 @@ func (r *userRepository) RecordAntiAbuseEvent(ctx context.Context, event *servic
 	rows, err := exec.QueryContext(ctx, `
 		INSERT INTO anti_abuse_events (
 			user_id, event_type, action, score, factors, reasons, ip_address, email,
-			user_agent, fingerprint_hash_count, ja3_hash, ja4_hash, gift_balance_deducted
-		) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)
+			user_agent, fingerprint_hash_count, ja3_hash, ja4_hash, account_attempts, gift_balance_deducted
+		)
+		SELECT $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13::jsonb, $14
+		WHERE $14::numeric > 0 OR NOT EXISTS (
+			SELECT 1
+			FROM anti_abuse_events recent
+			WHERE recent.user_id IS NOT DISTINCT FROM $1
+			  AND recent.event_type = $2
+			  AND recent.action = $3
+			  AND recent.factors = $5::jsonb
+			  AND recent.account_attempts = $13::jsonb
+			  AND recent.gift_balance_deducted = 0
+			  AND recent.created_at >= NOW() - INTERVAL '1 hour'
+		)
 		RETURNING id, created_at`,
 		userID, event.EventType, event.Action, event.Score, string(factors), string(reasons),
 		event.IPAddress, event.Email, event.UserAgent, event.FingerprintHashCount,
-		event.JA3Hash, event.JA4Hash, event.GiftBalanceDeducted)
+		event.JA3Hash, event.JA4Hash, string(accountAttempts), event.GiftBalanceDeducted)
 	if err != nil {
 		return err
 	}
@@ -278,7 +294,7 @@ func (r *userRepository) ListAntiAbuseEvents(ctx context.Context, filter service
 	if value := strings.TrimSpace(filter.Search); value != "" {
 		args = append(args, "%"+value+"%")
 		index := len(args)
-		where = append(where, fmt.Sprintf("(e.email ILIKE $%d OR u.email ILIKE $%d OR CAST(e.user_id AS TEXT) = $%d OR e.ip_address ILIKE $%d)", index, index, index, index))
+		where = append(where, fmt.Sprintf("(e.email ILIKE $%d OR u.email ILIKE $%d OR CAST(e.user_id AS TEXT) = $%d OR e.ip_address ILIKE $%d OR e.account_attempts::text ILIKE $%d)", index, index, index, index, index))
 	}
 	if filter.From != nil {
 		add("e.created_at >= $%d", *filter.From)
@@ -306,7 +322,7 @@ func (r *userRepository) ListAntiAbuseEvents(ctx context.Context, filter service
 	rows, err := exec.QueryContext(ctx, fmt.Sprintf(`
 		SELECT e.id, e.user_id, COALESCE(u.email, ''), e.event_type, e.action, e.score,
 			e.factors, e.reasons, e.ip_address, e.email, e.user_agent,
-			e.fingerprint_hash_count, e.ja3_hash, e.ja4_hash, e.gift_balance_deducted, e.created_at
+			e.fingerprint_hash_count, e.ja3_hash, e.ja4_hash, e.account_attempts, e.gift_balance_deducted, e.created_at
 		FROM anti_abuse_events e
 		LEFT JOIN users u ON u.id = e.user_id
 		WHERE %s
@@ -319,14 +335,15 @@ func (r *userRepository) ListAntiAbuseEvents(ctx context.Context, filter service
 	items := make([]service.AntiAbuseEvent, 0)
 	for rows.Next() {
 		var item service.AntiAbuseEvent
-		var factorsRaw, reasonsRaw []byte
+		var factorsRaw, reasonsRaw, accountAttemptsRaw []byte
 		if err := rows.Scan(&item.ID, &item.UserID, &item.UserEmail, &item.EventType, &item.Action, &item.Score,
 			&factorsRaw, &reasonsRaw, &item.IPAddress, &item.Email, &item.UserAgent,
-			&item.FingerprintHashCount, &item.JA3Hash, &item.JA4Hash, &item.GiftBalanceDeducted, &item.CreatedAt); err != nil {
+			&item.FingerprintHashCount, &item.JA3Hash, &item.JA4Hash, &accountAttemptsRaw, &item.GiftBalanceDeducted, &item.CreatedAt); err != nil {
 			return nil, 0, err
 		}
 		_ = json.Unmarshal(factorsRaw, &item.Factors)
 		_ = json.Unmarshal(reasonsRaw, &item.Reasons)
+		_ = json.Unmarshal(accountAttemptsRaw, &item.AccountAttempts)
 		items = append(items, item)
 	}
 	return items, total, rows.Err()

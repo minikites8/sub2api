@@ -15,6 +15,7 @@ import {
 import { refreshAuthTokens } from './tokenRefresh'
 import { getAPIBaseURL } from './url'
 import { getBrowserFingerprints } from '@/utils/browserFingerprint'
+import { AUTH_ACCOUNT_ATTEMPTS_HEADER, getAuthAccountAttempts } from '@/utils/authAccountAttemptMemory'
 export { buildApiUrl, buildGatewayUrl } from './url'
 
 // ==================== Axios Instance Configuration ====================
@@ -52,6 +53,8 @@ apiClient.interceptors.request.use(
       config.headers['Accept-Language'] = getLocale()
       const fingerprints = await getBrowserFingerprints()
       if (fingerprints.length > 0) config.headers['X-Browser-Fingerprints'] = JSON.stringify(fingerprints)
+      const accountAttempts = getAuthAccountAttempts()
+      if (accountAttempts.length > 0) config.headers[AUTH_ACCOUNT_ATTEMPTS_HEADER] = JSON.stringify(accountAttempts)
     }
 
     // Attach timezone for all GET requests (backend may use it for default date ranges)

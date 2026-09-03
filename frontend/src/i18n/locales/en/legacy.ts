@@ -2883,6 +2883,7 @@ export default {
         hint: 'Shows only restrict risk actions and gift-balance deductions. Allow/review evaluations are omitted from storage and display. IP+UA threshold hits restrict immediately.',
         allActions: 'All actions',
         deductionsOnly: 'Deductions only',
+        attemptedAccounts: 'Browser accounts',
         empty: 'No multidimensional anti-abuse events',
         loadFailed: 'Failed to load anti-abuse events',
         table: { time: 'Time', event: 'Event', user: 'User', score: 'Score', factors: 'Factors', network: 'Network & fingerprints', deduction: 'Gift deduction' },

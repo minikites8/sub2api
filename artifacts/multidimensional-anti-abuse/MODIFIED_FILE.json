@@ -28,6 +28,21 @@
     "historical_review_rows_visible": false,
     "gift_deduction_events_visible": true
   },
+  "email_velocity_exempt_domains": ["qq.com", "gmail.com"],
+  "persistent_browser_account_attempts": {
+    "storage": "localStorage",
+    "storage_key": "sub2api.auth_account_attempts",
+    "cross_tab_merge": true,
+    "maximum_accounts": 8,
+    "identifier": "normalized_email",
+    "server_verified_current_account": true,
+    "authentication_sources": ["password", "2fa", "passkey", "oauth", "sso", "registration"],
+    "risk_factor": "browser_account_attempts",
+    "risk_action": "immediate_restrict",
+    "administrator_exempt": true,
+    "visible_in_risk_center": true,
+    "ordinary_restrict_deduplication": "1 hour"
+  },
   "tls_fingerprint_weight": 1,
   "browser_fingerprint_provider": "@fingerprintjs/fingerprintjs@4.6.2",
   "transport_fingerprint_sources": ["JA3", "JA4"],
@@ -40,6 +55,7 @@
     "ip_velocity",
     "third_party_ip_reputation",
     "email_reputation",
+    "browser_account_attempts",
     "calling_user_agent",
     "ja3_ja4_velocity",
     "ja3_ja4_reputation"

@@ -252,6 +252,7 @@ export interface AntiAbuseEvent {
   fingerprint_hash_count: number
   ja3_hash?: string
   ja4_hash?: string
+  account_attempts?: string[]
   gift_balance_deducted: number
   created_at: string
 }

@@ -19,6 +19,7 @@ import type {
   TotpLogin2FARequest
 } from '@/types'
 import { getBrowserFingerprints } from '@/utils/browserFingerprint'
+import { rememberAuthAccountAttempt } from '@/utils/authAccountAttemptMemory'
 
 /**
  * Login response type - can be either full auth or 2FA required
@@ -130,7 +131,12 @@ export function clearAuthToken(): void {
  * @returns Authentication response with token and user data, or 2FA required response
  */
 export async function login(credentials: LoginRequest): Promise<LoginResponse> {
-  const { data } = await apiClient.post<LoginResponse>('/auth/login', credentials)
+  const accountAttempts = rememberAuthAccountAttempt(credentials.email)
+  const payload: LoginRequest = {
+    ...credentials,
+    account_attempts: accountAttempts,
+  }
+  const { data } = await apiClient.post<LoginResponse>('/auth/login', payload)
 
   // Only store token if 2FA is not required
   if (!isTotp2FARequired(data)) {
@@ -175,9 +181,11 @@ export async function login2FA(request: TotpLogin2FARequest): Promise<AuthRespon
  */
 export async function register(userData: RegisterRequest): Promise<AuthResponse> {
   const browserFingerprints = await getBrowserFingerprints()
+  const accountAttempts = rememberAuthAccountAttempt(userData.email)
   const payload: RegisterRequest = {
     ...userData,
-    browser_fingerprints: Array.from(new Set([...(userData.browser_fingerprints || []), ...browserFingerprints])).slice(0, 8)
+    browser_fingerprints: Array.from(new Set([...(userData.browser_fingerprints || []), ...browserFingerprints])).slice(0, 8),
+    account_attempts: accountAttempts,
   }
   const { data } = await apiClient.post<AuthResponse>('/auth/register', payload)
 
