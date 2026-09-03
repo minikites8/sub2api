@@ -43,6 +43,19 @@ func TestBuildFirstRechargeAmountPlan_LowPaymentRateIsActive(t *testing.T) {
 	require.Equal(t, 0.01, plan.PaymentAmount)
 }
 
+func TestBuildFirstRechargeAmountPlan_DiscountKeepsRequestedCreditAmount(t *testing.T) {
+	plan := buildFirstRechargeAmountPlan(50, 45, &firstRechargePromo{
+		PromoCodeID:     9,
+		PromoCode:       "PARTNER80",
+		DiscountPercent: 80,
+		DiscountSet:     true,
+	})
+
+	require.Equal(t, 50.0, plan.BaseCreditAmount)
+	require.Equal(t, 50.0, plan.CreditAmount)
+	require.Equal(t, 40.0, plan.PaymentAmount)
+}
+
 func TestFirstRechargeAmountPlanFromSnapshot_UsesDiscountSetFlag(t *testing.T) {
 	plan, ok := firstRechargeAmountPlanFromSnapshot(map[string]any{
 		"first_recharge_promo": map[string]any{

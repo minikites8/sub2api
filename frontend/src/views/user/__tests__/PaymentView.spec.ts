@@ -749,4 +749,34 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(html).toContain('¥81.60')
     expect(html).toContain('$110.00')
   })
+
+  it('keeps the requested credit amount when a discount is combined with a recharge multiplier', async () => {
+    routeState.query = {}
+    const checkout = checkoutInfoWithRechargePromoFixture()
+    checkout.data.balance_recharge_multiplier = 0.9
+    checkout.data.first_recharge_promo.bonus_amount = 0
+    getCheckoutInfo.mockResolvedValue(checkout)
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.get('input[inputmode="decimal"]').setValue('50')
+    await flushPromises()
+
+    const html = wrapper.html()
+    expect(html).toContain('¥40.00')
+    expect(html).toContain('$50.00')
+    expect(html).not.toContain('$45.00')
+  })
 })

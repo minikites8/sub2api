@@ -159,15 +159,24 @@ func buildFirstRechargeAmountPlan(requestAmount, baseCreditAmount float64, promo
 	plan.DiscountPercent = clampFirstRechargeDiscount(promo.DiscountPercent)
 	plan.DiscountTimes = promo.DiscountTimes
 	plan.DiscountSet = promo.DiscountSet
-	if plan.DiscountSet {
+	creditAmount := baseCreditAmount
+	if plan.discountApplied() {
+		// A recharge discount changes the amount charged by the gateway. Keep the
+		// requested credit amount intact so a 50-credit recharge at 80% costs 40.
+		plan.BaseCreditAmount = roundTo(requestAmount, 8)
+		creditAmount = plan.BaseCreditAmount
 		plan.PaymentAmount = roundTo(requestAmount*(plan.DiscountPercent/100), 8)
 	}
-	plan.CreditAmount = roundTo(baseCreditAmount+plan.BonusAmount, 8)
+	plan.CreditAmount = roundTo(creditAmount+plan.BonusAmount, 8)
 	return plan
 }
 
 func (p firstRechargeAmountPlan) active() bool {
 	return p.BonusAmount > 0 || (p.DiscountSet && p.DiscountPercent < 100)
+}
+
+func (p firstRechargeAmountPlan) discountApplied() bool {
+	return p.DiscountSet && p.DiscountPercent > 0 && p.DiscountPercent < 100
 }
 
 func (p firstRechargeAmountPlan) normalCreditAmount(fallback float64) float64 {

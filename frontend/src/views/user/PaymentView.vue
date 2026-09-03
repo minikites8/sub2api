@@ -694,7 +694,9 @@ const rechargeDiscountAmount = computed(() =>
   Math.max(0, Math.round((validAmount.value - discountedRechargePaymentAmount.value) * 100) / 100)
 )
 const creditedAmount = computed(() =>
-  Math.round(((validAmount.value * balanceRechargeMultiplier.value) + rechargeBonusAmount.value) * 100) / 100
+  Math.round(((rechargeDiscountActive.value
+    ? validAmount.value
+    : validAmount.value * balanceRechargeMultiplier.value) + rechargeBonusAmount.value) * 100) / 100
 )
 const showCreditedAmount = computed(() => balanceRechargeMultiplier.value !== 1 || rechargeBonusAmount.value > 0)
 
