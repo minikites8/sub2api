@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const defaultBaseURL = "https://ye.team"
@@ -224,14 +226,36 @@ type ReclaimRequest struct {
 }
 
 type ReclaimTask struct {
-	CardCode      string `json:"card_code"`
-	OrderNo       string `json:"order_no"`
-	ResourceUID   string `json:"resource_uid"`
-	Status        string `json:"status"`
-	Message       string `json:"message"`
-	NoAction      bool   `json:"no_action"`
-	DownloadToken string `json:"download_token"`
-	DownloadError string `json:"download_error"`
+	CardCode       string `json:"card_code"`
+	OrderNo        string `json:"order_no"`
+	ResourceUID    string `json:"resource_uid"`
+	Status         string `json:"status"`
+	Message        string `json:"message"`
+	ErrorCode      string `json:"error_code"`
+	FailureClass   string `json:"failure_class"`
+	Permanent      bool   `json:"permanent"`
+	ProviderStatus int    `json:"provider_status"`
+	NoAction       bool   `json:"no_action"`
+	DownloadToken  string `json:"download_token"`
+	DownloadError  string `json:"download_error"`
+}
+
+// ReclaimTaskError preserves the terminal task metadata returned by ye.team.
+// Permanent unreclaimable tasks are eligible for the refresh_bound fallback.
+type ReclaimTaskError struct {
+	Status         string
+	Message        string
+	ErrorCode      string
+	FailureClass   string
+	Permanent      bool
+	ProviderStatus int
+}
+
+func (e *ReclaimTaskError) Error() string {
+	if e == nil || strings.TrimSpace(e.Message) == "" {
+		return "ye.team reclaim task failed"
+	}
+	return e.Message
 }
 
 func (t *ReclaimTask) UnmarshalJSON(data []byte) error {
@@ -244,8 +268,18 @@ func (t *ReclaimTask) UnmarshalJSON(data []byte) error {
 	t.ResourceUID = nestedString(raw, "resource_uid", "resourceUid")
 	t.Status = nestedString(raw, "status", "state")
 	t.Message = nestedString(raw, "message", "detail", "error")
+	t.ErrorCode = nestedString(raw, "error_code", "errorCode")
+	t.FailureClass = nestedString(raw, "failure_class", "failureClass")
 	t.DownloadToken = nestedString(raw, "download_token", "downloadToken", "token")
 	t.DownloadError = nestedString(raw, "download_error", "downloadError")
+	if value, ok := raw["permanent"].(bool); ok {
+		t.Permanent = value
+	}
+	if value, ok := raw["provider_status"].(float64); ok {
+		t.ProviderStatus = int(value)
+	} else if value, ok := raw["providerStatus"].(float64); ok {
+		t.ProviderStatus = int(value)
+	}
 	if value, ok := raw["no_action"].(bool); ok {
 		t.NoAction = value
 	} else if value, ok := raw["noAction"].(bool); ok {
@@ -356,47 +390,287 @@ type AccountCredentials struct {
 	Extra       map[string]any
 }
 
+type ReclaimFlowStage struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+	At      string `json:"at"`
+}
+
+type ReclaimFlowBatch struct {
+	OK             bool `json:"ok"`
+	Total          int  `json:"total"`
+	Queued         int  `json:"queued"`
+	AlreadyRunning int  `json:"already_running"`
+	Done           int  `json:"done"`
+	Failed         int  `json:"failed"`
+	Unreclaimable  int  `json:"unreclaimable"`
+	NotOwned       int  `json:"not_owned"`
+	Skipped        int  `json:"skipped"`
+	Cards          int  `json:"cards"`
+	Tasks          int  `json:"tasks"`
+}
+
+type ReclaimFlowTask struct {
+	Status         string `json:"status"`
+	OrderNo        string `json:"order_no,omitempty"`
+	ResourceUID    string `json:"resource_uid,omitempty"`
+	Message        string `json:"message,omitempty"`
+	ErrorCode      string `json:"error_code,omitempty"`
+	FailureClass   string `json:"failure_class,omitempty"`
+	Permanent      bool   `json:"permanent,omitempty"`
+	ProviderStatus int    `json:"provider_status,omitempty"`
+}
+
+type ReclaimFlow struct {
+	Status            string             `json:"status"`
+	Trigger           string             `json:"trigger,omitempty"`
+	StartedAt         string             `json:"started_at"`
+	FinishedAt        string             `json:"finished_at,omitempty"`
+	FallbackUsed      bool               `json:"fallback_used,omitempty"`
+	OrderNo           string             `json:"order_no,omitempty"`
+	PackageCount      int                `json:"package_count,omitempty"`
+	CredentialChanged *bool              `json:"credential_changed,omitempty"`
+	CacheInvalidated  bool               `json:"cache_invalidated,omitempty"`
+	Batch             *ReclaimFlowBatch  `json:"batch,omitempty"`
+	Task              *ReclaimFlowTask   `json:"task,omitempty"`
+	Tasks             []ReclaimFlowTask  `json:"tasks,omitempty"`
+	Stages            []ReclaimFlowStage `json:"stages"`
+}
+
+func NewReclaimFlow() ReclaimFlow {
+	return ReclaimFlow{Status: "running", StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Stages: make([]ReclaimFlowStage, 0, 8)}
+}
+
+func (f *ReclaimFlow) AddStage(name, status, message string) {
+	if f == nil {
+		return
+	}
+	f.Stages = append(f.Stages, ReclaimFlowStage{
+		Name: name, Status: status, Message: strings.TrimSpace(message), At: time.Now().UTC().Format(time.RFC3339Nano),
+	})
+}
+
+func (f *ReclaimFlow) Finish(status string) {
+	if f == nil {
+		return
+	}
+	f.Status = strings.TrimSpace(status)
+	f.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
+}
+
+func flowBatch(result BatchReclaimResult) *ReclaimFlowBatch {
+	return &ReclaimFlowBatch{
+		OK: result.OK, Total: result.Total, Queued: result.Queued, AlreadyRunning: result.AlreadyRunning,
+		Done: result.Done, Failed: result.Failed, Unreclaimable: result.Unreclaimable, NotOwned: result.NotOwned,
+		Skipped: result.Skipped, Cards: len(result.Cards), Tasks: len(result.AllTasks),
+	}
+}
+
+func flowTask(task ReclaimTask) *ReclaimFlowTask {
+	return &ReclaimFlowTask{
+		Status: task.Status, OrderNo: task.OrderNo, ResourceUID: task.ResourceUID, Message: task.Message,
+		ErrorCode: task.ErrorCode, FailureClass: task.FailureClass, Permanent: task.Permanent,
+		ProviderStatus: task.ProviderStatus,
+	}
+}
+
+func flowTasks(tasks []ReclaimTask) []ReclaimFlowTask {
+	if len(tasks) == 0 {
+		return nil
+	}
+	out := make([]ReclaimFlowTask, 0, len(tasks))
+	for _, task := range tasks {
+		out = append(out, *flowTask(task))
+	}
+	return out
+}
+
 // Reclaim401Packages submits and polls the batch-cards flow, then downloads
 // every completed task that exposes a download token.
 func (c *Client) Reclaim401Packages(ctx context.Context, cardCode string) ([][]byte, error) {
+	packages, _, err := c.Reclaim401PackagesWithTrace(ctx, cardCode)
+	return packages, err
+}
+
+func (c *Client) Reclaim401PackagesWithTrace(ctx context.Context, cardCode string) (packages [][]byte, flow ReclaimFlow, err error) {
+	flow = NewReclaimFlow()
+	defer func() {
+		if err != nil {
+			flow.Finish("failed")
+		} else {
+			flow.Finish("success")
+		}
+	}()
 	cardCode = strings.TrimSpace(cardCode)
 	if cardCode == "" {
-		return nil, errors.New("ye.team reclaim card code is empty")
+		err = errors.New("ye.team reclaim card code is empty")
+		return nil, flow, err
 	}
+	flow.AddStage("batch_reclaim", "running", "")
 	request := ReclaimRequest{CardCodes: []string{cardCode}, Mode: "401"}
 	initial, err := c.BatchReclaim(ctx, request)
 	if err != nil {
-		return nil, err
+		flow.AddStage("batch_reclaim", "failed", err.Error())
+		return nil, flow, err
+	}
+	flow.Batch = flowBatch(initial)
+	if len(initial.AllTasks) > 0 {
+		flow.Task = flowTask(initial.AllTasks[0])
+		flow.Tasks = flowTasks(initial.AllTasks)
 	}
 	if !initial.OK {
 		if strings.TrimSpace(initial.Error) == "" {
 			initial.Error = "ye.team reclaim submission failed"
 		}
-		return nil, errors.New(initial.Error)
+		err = errors.New(initial.Error)
+		flow.AddStage("batch_reclaim", "failed", err.Error())
+		return nil, flow, err
 	}
+	flow.AddStage("batch_reclaim", "success", fmt.Sprintf("done=%d queued=%d failed=%d unreclaimable=%d", initial.Done, initial.Queued, initial.Failed, initial.Unreclaimable))
 	final := initial
 	if initial.Queued > 0 || initial.AlreadyRunning > 0 || (!hasReclaimNoAction(initial) && len(collectBatchDownloadItems(initial)) == 0) {
 		if err := reclaimTerminalError(initial); err != nil {
-			return nil, err
+			flow.AddStage("batch_result", "failed", err.Error())
+			if packages, fallbackErr, handled := c.tryRefreshBoundAfterPermanentFailure(ctx, cardCode, "", err, &flow); handled {
+				return packages, flow, fallbackErr
+			}
+			return nil, flow, err
 		}
+		flow.AddStage("poll_reclaim", "running", "waiting for terminal task metadata")
 		final, err = c.pollReclaimUntilDone(ctx, request)
 		if err != nil {
-			return nil, err
+			flow.AddStage("poll_reclaim", "failed", err.Error())
+			if packages, fallbackErr, handled := c.tryRefreshBoundAfterPermanentFailure(ctx, cardCode, "", err, &flow); handled {
+				return packages, flow, fallbackErr
+			}
+			return nil, flow, err
 		}
+		flow.Batch = flowBatch(final)
+		if len(final.AllTasks) > 0 {
+			flow.Task = flowTask(final.AllTasks[0])
+			flow.Tasks = flowTasks(final.AllTasks)
+		}
+		flow.AddStage("poll_reclaim", "success", fmt.Sprintf("done=%d", final.Done))
 	}
 	items := collectBatchDownloadItems(initial, final)
 	if len(items) == 0 {
-		return nil, fmt.Errorf("ye.team reclaim completed without downloadable account packages (cards=%d tasks=%d done=%d)", len(final.Cards), len(final.AllTasks), final.Done)
+		err = fmt.Errorf("ye.team reclaim completed without downloadable account packages (cards=%d tasks=%d done=%d)", len(final.Cards), len(final.AllTasks), final.Done)
+		flow.AddStage("batch_download", "failed", err.Error())
+		return nil, flow, err
 	}
+	flow.AddStage("batch_download", "running", fmt.Sprintf("items=%d", len(items)))
 	data, err := c.BatchDownload(ctx, BatchDownloadRequest{
 		ExportMode: "multi_account_json",
 		Items:      items,
 		Summary:    []any{},
 	})
 	if err != nil {
-		return nil, err
+		flow.AddStage("batch_download", "failed", err.Error())
+		return nil, flow, err
 	}
-	return [][]byte{data}, nil
+	flow.AddStage("batch_download", "success", "account package downloaded")
+	flow.PackageCount = 1
+	return [][]byte{data}, flow, nil
+}
+
+// RefreshBoundPackages regenerates the delivery package for an already-bound
+// card through the standard order flow. ye.team's batch-cards endpoint can
+// report a stale permanent account-deactivated task while this path still has
+// a valid refresh_bound order available.
+func (c *Client) RefreshBoundPackages(ctx context.Context, cardCode, targetID string) ([][]byte, error) {
+	packages, _, err := c.refreshBoundPackagesWithTrace(ctx, cardCode, targetID, nil)
+	return packages, err
+}
+
+func (c *Client) refreshBoundPackagesWithTrace(ctx context.Context, cardCode, targetID string, flow *ReclaimFlow) ([][]byte, ReclaimFlow, error) {
+	localFlow := ReclaimFlow{}
+	if flow == nil {
+		localFlow = NewReclaimFlow()
+		flow = &localFlow
+	}
+	cardCode = strings.TrimSpace(cardCode)
+	if cardCode == "" {
+		err := errors.New("ye.team refresh card code is empty")
+		flow.AddStage("refresh_bound_order", "failed", err.Error())
+		return nil, *flow, err
+	}
+	flow.AddStage("refresh_bound_order", "running", "")
+	order, err := c.Redeem(ctx, RedeemRequest{
+		CardCode:        cardCode,
+		Format:          "sub2api",
+		Project:         "k12",
+		TargetID:        strings.TrimSpace(targetID),
+		Action:          "refresh_bound",
+		ClientRequestID: uuid.NewString(),
+	})
+	if err != nil {
+		flow.AddStage("refresh_bound_order", "failed", err.Error())
+		return nil, *flow, err
+	}
+	if strings.TrimSpace(order.OrderNo) == "" {
+		err = errors.New("ye.team refresh response did not include order_no")
+		flow.AddStage("refresh_bound_order", "failed", err.Error())
+		return nil, *flow, err
+	}
+	flow.OrderNo = order.OrderNo
+	flow.AddStage("refresh_bound_order", "success", "order created")
+	initialToken := strings.TrimSpace(order.DownloadToken)
+	if initialToken == "" {
+		initialToken = strings.TrimSpace(order.Token)
+	}
+	finalOrder, err := c.PollUntilDone(ctx, order.OrderNo, initialToken)
+	if err != nil {
+		flow.AddStage("refresh_bound_poll", "failed", err.Error())
+		return nil, *flow, err
+	}
+	flow.AddStage("refresh_bound_poll", "success", "order completed")
+	token := firstString(finalOrder.Raw, "download_token", "downloadToken", "token")
+	if token == "" {
+		token = strings.TrimSpace(finalOrder.DownloadToken)
+	}
+	if token == "" {
+		token = strings.TrimSpace(finalOrder.Token)
+	}
+	if token == "" {
+		token = firstString(order.Raw, "download_token", "downloadToken", "token")
+	}
+	if token == "" {
+		token = strings.TrimSpace(order.DownloadToken)
+	}
+	if token == "" {
+		token = strings.TrimSpace(order.Token)
+	}
+	if token == "" {
+		err = errors.New("ye.team refresh order completed without a download token")
+		flow.AddStage("download", "failed", err.Error())
+		return nil, *flow, err
+	}
+	flow.AddStage("download", "running", "")
+	data, err := c.Download(ctx, finalOrder.OrderNo, token)
+	if err != nil {
+		flow.AddStage("download", "failed", err.Error())
+		return nil, *flow, err
+	}
+	flow.AddStage("download", "success", "account package downloaded")
+	flow.PackageCount = 1
+	return [][]byte{data}, *flow, nil
+}
+
+func (c *Client) tryRefreshBoundAfterPermanentFailure(ctx context.Context, cardCode, targetID string, reclaimErr error, flow *ReclaimFlow) ([][]byte, error, bool) {
+	var taskErr *ReclaimTaskError
+	if !errors.As(reclaimErr, &taskErr) || !taskErr.Permanent || taskErr.Status != "unreclaimable" {
+		return nil, reclaimErr, false
+	}
+	flow.FallbackUsed = true
+	flow.AddStage("refresh_bound", "running", "batch result requested standard bound refresh")
+	packages, _, err := c.refreshBoundPackagesWithTrace(ctx, cardCode, targetID, flow)
+	if err == nil {
+		flow.AddStage("refresh_bound", "success", "fallback package downloaded")
+		return packages, nil, true
+	}
+	flow.AddStage("refresh_bound", "failed", err.Error())
+	return nil, errors.Join(reclaimErr, fmt.Errorf("ye.team refresh_bound fallback failed: %w", err)), true
 }
 
 func hasReclaimNoAction(result BatchReclaimResult) bool {
@@ -490,13 +764,8 @@ func (c *Client) pollReclaimUntilDone(ctx context.Context, request ReclaimReques
 
 func reclaimTerminalError(result BatchReclaimResult) error {
 	for _, task := range result.AllTasks {
-		switch strings.ToLower(strings.TrimSpace(task.Status)) {
-		case "failed", "error", "cancelled", "canceled", "expired":
-			message := strings.TrimSpace(task.Message)
-			if message == "" {
-				message = "ye.team reclaim task failed with status " + strings.ToLower(strings.TrimSpace(task.Status))
-			}
-			return errors.New(message)
+		if err := reclaimTaskTerminalError(task); err != nil {
+			return err
 		}
 	}
 	if result.Failed > 0 {
@@ -509,6 +778,38 @@ func reclaimTerminalError(result BatchReclaimResult) error {
 		return errors.New("ye.team reclaim card is not owned")
 	}
 	return nil
+}
+
+func reclaimTaskTerminalError(task ReclaimTask) error {
+	status := strings.ToLower(strings.TrimSpace(task.Status))
+	switch status {
+	case "failed", "error", "cancelled", "canceled", "expired", "unreclaimable", "not_owned", "not-owned":
+		message := strings.TrimSpace(task.Message)
+		if message == "" {
+			switch status {
+			case "unreclaimable":
+				message = "ye.team reclaim task is unreclaimable"
+			case "not_owned", "not-owned":
+				message = "ye.team reclaim card is not owned"
+			default:
+				message = "ye.team reclaim task failed with status " + status
+			}
+		}
+		errorCode := strings.TrimSpace(task.ErrorCode)
+		if errorCode != "" && !strings.Contains(strings.ToLower(message), strings.ToLower(errorCode)) {
+			message += " (" + errorCode + ")"
+		}
+		return &ReclaimTaskError{
+			Status:         status,
+			Message:        message,
+			ErrorCode:      errorCode,
+			FailureClass:   strings.TrimSpace(task.FailureClass),
+			Permanent:      task.Permanent,
+			ProviderStatus: task.ProviderStatus,
+		}
+	default:
+		return nil
+	}
 }
 
 // FindAccountCredentials selects an account from a downloaded package. A

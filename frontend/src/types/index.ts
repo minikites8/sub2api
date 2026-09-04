@@ -1218,9 +1218,10 @@ kiro_credit_unit_price_usd?: number
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
     ye_team_card_code?: string
-    ye_team_last_refresh_status?: 'success' | 'failed'
+    ye_team_last_refresh_status?: 'running' | 'success' | 'failed'
     ye_team_last_refresh_at?: string
     ye_team_last_refresh_error?: string
+    ye_team_last_refresh_flow?: YeTeamRefreshFlow
     codex_reset_credit_snapshot?: {
       available_count?: number
       credits?: { expires_at?: string }[]
@@ -1338,6 +1339,54 @@ kiro_credit_unit_price_usd?: number
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+}
+
+export interface YeTeamRefreshStage {
+  name: string
+  status: 'running' | 'success' | 'failed'
+  message?: string
+  at: string
+}
+
+export interface YeTeamRefreshBatch {
+  ok: boolean
+  total: number
+  queued: number
+  already_running: number
+  done: number
+  failed: number
+  unreclaimable: number
+  not_owned: number
+  skipped: number
+  cards: number
+  tasks: number
+}
+
+export interface YeTeamRefreshTask {
+  status: string
+  order_no?: string
+  resource_uid?: string
+  message?: string
+  error_code?: string
+  failure_class?: string
+  permanent?: boolean
+  provider_status?: number
+}
+
+export interface YeTeamRefreshFlow {
+  status: 'running' | 'success' | 'failed'
+  trigger?: 'automatic_401' | 'manual' | string
+  started_at: string
+  finished_at?: string
+  fallback_used?: boolean
+  order_no?: string
+  package_count?: number
+  credential_changed?: boolean
+  cache_invalidated?: boolean
+  batch?: YeTeamRefreshBatch
+  task?: YeTeamRefreshTask
+  tasks?: YeTeamRefreshTask[]
+  stages: YeTeamRefreshStage[]
 }
 
 export interface AccountSchedulerGroupScore {

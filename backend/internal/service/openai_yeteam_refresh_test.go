@@ -116,6 +116,12 @@ func TestYeTeamReclaimInvalidatesCachedOpenAIToken(t *testing.T) {
 	require.Equal(t, "new-token", cache.tokens[cacheKey])
 	require.Zero(t, state.healthCalls.Load())
 	require.Equal(t, int32(1), state.downloadCalls.Load())
+	flow, ok := repo.updatedExtra[yeTeamLastRefreshFlowKey].(yeteam.ReclaimFlow)
+	require.True(t, ok)
+	require.Equal(t, yeTeamRefreshStatusSuccess, flow.Status)
+	require.Contains(t, flowStageNames(flow), "match_credentials")
+	require.Contains(t, flowStageNames(flow), "persist_credentials")
+	require.Contains(t, flowStageNames(flow), "cache_invalidate")
 }
 
 func TestYeTeamReclaimPersistsFailureStatus(t *testing.T) {
@@ -139,6 +145,80 @@ func TestYeTeamReclaimPersistsFailureStatus(t *testing.T) {
 	require.NotEmpty(t, repo.updatedExtra[yeTeamLastRefreshAtKey])
 	require.Contains(t, repo.updatedExtra[yeTeamLastRefreshErrorKey], "reclaim service unavailable")
 	require.Equal(t, yeTeamRefreshStatusFailed, account.Extra[yeTeamLastRefreshStatusKey])
+	flow, ok := repo.updatedExtra[yeTeamLastRefreshFlowKey].(yeteam.ReclaimFlow)
+	require.True(t, ok)
+	require.Equal(t, yeTeamRefreshStatusFailed, flow.Status)
+	require.Contains(t, flowStageNames(flow), "batch_reclaim")
+}
+
+func TestYeTeamReclaimPersistsUnreclaimableTaskReason(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"cards":[{"card_code":"TEAM-TEST","tasks":[{"error_code":"account_deactivated","failure_class":"account_dead","message":"账号已被 ChatGPT 官方删除或停用（403 account_deactivated），请联系售后。","order_no":"ord-dead","permanent":true,"provider_status":403,"status":"unreclaimable"}],"unreclaimable":1}],"ok":true,"unreclaimable":1}`))
+	}))
+	t.Cleanup(server.Close)
+
+	account := newYeTeamRefreshAccount(87)
+	repo := &yeTeamTokenAccountRepo{account: account}
+	gateway := &OpenAIGatewayService{accountRepo: repo}
+	gateway.SetYeTeamClient(yeteam.NewClient(yeteam.Config{
+		Enabled:        true,
+		AutoRefresh401: true,
+		BaseURL:        server.URL,
+		Timeout:        time.Second,
+	}))
+
+	require.False(t, gateway.reclaimOpenAIAccount401(context.Background(), account))
+	require.Equal(t, yeTeamRefreshStatusFailed, repo.updatedExtra[yeTeamLastRefreshStatusKey])
+	require.Contains(t, repo.updatedExtra[yeTeamLastRefreshErrorKey], "账号已被 ChatGPT 官方删除或停用（403 account_deactivated），请联系售后。")
+	require.Equal(t, repo.updatedExtra[yeTeamLastRefreshErrorKey], account.Extra[yeTeamLastRefreshErrorKey])
+	flow, ok := repo.updatedExtra[yeTeamLastRefreshFlowKey].(yeteam.ReclaimFlow)
+	require.True(t, ok)
+	require.Equal(t, yeTeamRefreshStatusFailed, flow.Status)
+	require.True(t, flow.FallbackUsed)
+	require.Contains(t, flowStageNames(flow), "refresh_bound")
+}
+
+func TestYeTeamReclaimFallbackRefreshesBoundAccount(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/redeem/reclaim/batch-cards":
+			_, _ = w.Write([]byte(`{"cards":[{"card_code":"TEAM-TEST","tasks":[{"error_code":"account_deactivated","failure_class":"account_dead","message":"account deactivated","order_no":"ord-dead","permanent":true,"provider_status":403,"status":"unreclaimable"}],"unreclaimable":1}],"ok":true,"unreclaimable":1}`))
+		case "/api/redeem/orders":
+			_, _ = w.Write([]byte(`{"download_token":"tok-refresh","order_no":"ord-refresh","status":"pending"}`))
+		case "/api/redeem/orders/ord-refresh":
+			_, _ = w.Write([]byte(`{"order":{"order_no":"ord-refresh","status":"completed"}}`))
+		case "/api/redeem/orders/ord-refresh/download":
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"new-token"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	account := newYeTeamRefreshAccount(89)
+	repo := &yeTeamTokenAccountRepo{account: account}
+	gateway := &OpenAIGatewayService{accountRepo: repo}
+	gateway.SetYeTeamClient(yeteam.NewClient(yeteam.Config{
+		Enabled:         true,
+		AutoRefresh401:  true,
+		BaseURL:         server.URL,
+		Timeout:         time.Second,
+		PollInterval:    time.Millisecond,
+		MaxPollDuration: time.Second,
+	}))
+
+	require.True(t, gateway.reclaimOpenAIAccount401(context.Background(), account))
+	require.Equal(t, "new-token", repo.updatedCredentials["access_token"])
+	require.Equal(t, yeTeamRefreshStatusSuccess, repo.updatedExtra[yeTeamLastRefreshStatusKey])
+	require.Empty(t, repo.updatedExtra[yeTeamLastRefreshErrorKey])
+	flow, ok := repo.updatedExtra[yeTeamLastRefreshFlowKey].(yeteam.ReclaimFlow)
+	require.True(t, ok)
+	require.True(t, flow.FallbackUsed)
+	require.Equal(t, "ord-refresh", flow.OrderNo)
+	require.Contains(t, flowStageNames(flow), "refresh_bound_order")
+	require.Contains(t, flowStageNames(flow), "download")
 }
 
 func TestYeTeamReclaimDownloadsHealthyNoActionPackage(t *testing.T) {
@@ -171,4 +251,15 @@ func TestYeTeamReclaimDownloadsHealthyNoActionPackage(t *testing.T) {
 	require.Equal(t, yeTeamRefreshStatusSuccess, repo.updatedExtra[yeTeamLastRefreshStatusKey])
 	require.Empty(t, repo.updatedExtra[yeTeamLastRefreshErrorKey])
 	require.Equal(t, yeTeamRefreshStatusSuccess, account.Extra[yeTeamLastRefreshStatusKey])
+	flow, ok := repo.updatedExtra[yeTeamLastRefreshFlowKey].(yeteam.ReclaimFlow)
+	require.True(t, ok)
+	require.Contains(t, flowStageNames(flow), "batch_download")
+}
+
+func flowStageNames(flow yeteam.ReclaimFlow) []string {
+	names := make([]string, 0, len(flow.Stages))
+	for _, stage := range flow.Stages {
+		names = append(names, stage.Name)
+	}
+	return names
 }

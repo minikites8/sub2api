@@ -24,6 +24,8 @@ const (
 	yeTeamLastRefreshStatusKey = "ye_team_last_refresh_status"
 	yeTeamLastRefreshAtKey     = "ye_team_last_refresh_at"
 	yeTeamLastRefreshErrorKey  = "ye_team_last_refresh_error"
+	yeTeamLastRefreshFlowKey   = "ye_team_last_refresh_flow"
+	yeTeamRefreshStatusRunning = "running"
 	yeTeamRefreshStatusSuccess = "success"
 	yeTeamRefreshStatusFailed  = "failed"
 	yeTeamRefreshErrorMaxRunes = 300
@@ -88,16 +90,32 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount(ctx context.Context, account
 		currentCredential = account.GetCredential("api_key")
 	}
 	if beforeCredential != "" && currentCredential != "" && beforeCredential != currentCredential {
+		flow := yeteam.NewReclaimFlow()
+		flow.Trigger = yeTeamRefreshTrigger(automatic)
+		flow.CredentialChanged = boolPointer(true)
+		flow.AddStage("cache_invalidate", "running", "credential already changed; invalidating local token cache")
+		s.recordYeTeamReclaimResultWithFlow(reclaimCtx, account, yeTeamRefreshStatusRunning, nil, nil, &flow)
 		if err := s.invalidateOpenAITokenCache(reclaimCtx, account); err != nil {
-			return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err)
+			flow.AddStage("cache_invalidate", "failed", err.Error())
+			return s.failYeTeamReclaimWithFlow(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err, &flow)
 		}
-		s.recordYeTeamReclaimResult(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, nil)
+		flow.CacheInvalidated = true
+		flow.AddStage("cache_invalidate", "success", "token cache invalidated")
+		flow.AddStage("complete", "success", "another worker already persisted replacement credentials")
+		s.recordYeTeamReclaimResultWithFlow(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, nil, &flow)
 		return true
 	}
-	packages, err := s.yeTeam.Reclaim401Packages(reclaimCtx, cardCode)
+	flow := yeteam.NewReclaimFlow()
+	flow.Trigger = yeTeamRefreshTrigger(automatic)
+	flow.AddStage("batch_reclaim", "running", "submitting ye.team reclaim request")
+	s.recordYeTeamReclaimResultWithFlow(reclaimCtx, account, yeTeamRefreshStatusRunning, nil, nil, &flow)
+	packages, clientFlow, err := s.yeTeam.Reclaim401PackagesWithTrace(reclaimCtx, cardCode)
+	clientFlow.Trigger = yeTeamRefreshTrigger(automatic)
 	if err != nil {
-		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_failed", err)
+		return s.failYeTeamReclaimWithFlow(reclaimCtx, account, "ye_team_auto_reclaim_failed", err, &clientFlow)
 	}
+	flow = clientFlow
+	appendYeTeamFlowStage(&flow, "match_credentials", "running", "matching downloaded account package")
 	hints := []string{account.Name, account.GetCredential("email"), account.GetChatGPTAccountID()}
 	var matched yeteam.AccountCredentials
 	var matchErr error
@@ -108,40 +126,83 @@ func (s *OpenAIGatewayService) reclaimOpenAIAccount(ctx context.Context, account
 		}
 	}
 	if matchErr != nil {
-		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_match_failed", matchErr)
+		appendYeTeamFlowStage(&flow, "match_credentials", "failed", matchErr.Error())
+		return s.failYeTeamReclaimWithFlow(reclaimCtx, account, "ye_team_auto_reclaim_match_failed", matchErr, &flow)
 	}
+	appendYeTeamFlowStage(&flow, "match_credentials", "success", "account package matched")
 	matched.Credentials = shallowCopyMap(matched.Credentials)
 	matched.Credentials["_token_version"] = nextYeTeamCredentialVersion(account)
 	replacementCredential := strings.TrimSpace(credentialFromMap(matched.Credentials))
 	if replacementCredential == "" {
-		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_credential_missing", errors.New("ye.team replacement credentials did not include access_token or api_key"))
+		err := errors.New("ye.team replacement credentials did not include access_token or api_key")
+		appendYeTeamFlowStage(&flow, "credential_validation", "failed", err.Error())
+		return s.failYeTeamReclaimWithFlow(reclaimCtx, account, "ye_team_auto_reclaim_credential_missing", err, &flow)
 	}
 	if beforeCredential != "" && replacementCredential == beforeCredential {
+		flow.CredentialChanged = boolPointer(false)
+		appendYeTeamFlowStage(&flow, "credential_validation", "success", "downloaded credential is unchanged")
+		appendYeTeamFlowStage(&flow, "cache_invalidate", "running", "invalidating local token cache")
 		if err := s.invalidateOpenAITokenCache(reclaimCtx, account); err != nil {
-			return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err)
+			appendYeTeamFlowStage(&flow, "cache_invalidate", "failed", err.Error())
+			return s.failYeTeamReclaimWithFlow(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err, &flow)
 		}
-		s.recordYeTeamReclaimResult(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, matched.Extra)
+		flow.CacheInvalidated = true
+		appendYeTeamFlowStage(&flow, "cache_invalidate", "success", "token cache invalidated")
+		appendYeTeamFlowStage(&flow, "complete", "success", "credential remained healthy")
+		s.recordYeTeamReclaimResultWithFlow(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, matched.Extra, &flow)
 		slog.Info("ye_team_auto_reclaim_succeeded", "account_id", account.ID, "credential_changed", false, "token_cache_invalidated", true)
 		return true
 	}
+	flow.CredentialChanged = boolPointer(true)
+	appendYeTeamFlowStage(&flow, "credential_validation", "success", "replacement credential accepted")
+	appendYeTeamFlowStage(&flow, "persist_credentials", "running", "writing replacement credentials")
 	if err := persistAccountCredentials(reclaimCtx, s.accountRepo, account, matched.Credentials); err != nil {
-		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_persist_failed", err)
+		appendYeTeamFlowStage(&flow, "persist_credentials", "failed", err.Error())
+		return s.failYeTeamReclaimWithFlow(reclaimCtx, account, "ye_team_auto_reclaim_persist_failed", err, &flow)
 	}
+	appendYeTeamFlowStage(&flow, "persist_credentials", "success", "replacement credentials persisted")
+	appendYeTeamFlowStage(&flow, "cache_invalidate", "running", "invalidating local token cache")
 	if err := s.invalidateOpenAITokenCache(reclaimCtx, account); err != nil {
-		return s.failYeTeamReclaim(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err)
+		appendYeTeamFlowStage(&flow, "cache_invalidate", "failed", err.Error())
+		return s.failYeTeamReclaimWithFlow(reclaimCtx, account, "ye_team_auto_reclaim_cache_invalidate_failed", err, &flow)
 	}
-	s.recordYeTeamReclaimResult(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, matched.Extra)
+	flow.CacheInvalidated = true
+	appendYeTeamFlowStage(&flow, "cache_invalidate", "success", "token cache invalidated")
+	appendYeTeamFlowStage(&flow, "complete", "success", "replacement credential ready for retry")
+	s.recordYeTeamReclaimResultWithFlow(reclaimCtx, account, yeTeamRefreshStatusSuccess, nil, matched.Extra, &flow)
 	slog.Info("ye_team_auto_reclaim_succeeded", "account_id", account.ID, "credential_changed", true, "token_cache_invalidated", true)
 	return true
 }
 
+func yeTeamRefreshTrigger(automatic bool) string {
+	if automatic {
+		return "automatic_401"
+	}
+	return "manual"
+}
+
+func boolPointer(value bool) *bool {
+	return &value
+}
+
 func (s *OpenAIGatewayService) failYeTeamReclaim(ctx context.Context, account *Account, event string, err error) bool {
+	return s.failYeTeamReclaimWithFlow(ctx, account, event, err, nil)
+}
+
+func (s *OpenAIGatewayService) failYeTeamReclaimWithFlow(ctx context.Context, account *Account, event string, err error, flow *yeteam.ReclaimFlow) bool {
 	slog.Warn(event, "account_id", account.ID, "error", err)
-	s.recordYeTeamReclaimResult(ctx, account, yeTeamRefreshStatusFailed, err, nil)
+	if flow != nil {
+		appendYeTeamFlowStage(flow, "complete", "failed", err.Error())
+	}
+	s.recordYeTeamReclaimResultWithFlow(ctx, account, yeTeamRefreshStatusFailed, err, nil, flow)
 	return false
 }
 
 func (s *OpenAIGatewayService) recordYeTeamReclaimResult(ctx context.Context, account *Account, status string, reclaimErr error, extra map[string]any) {
+	s.recordYeTeamReclaimResultWithFlow(ctx, account, status, reclaimErr, extra, nil)
+}
+
+func (s *OpenAIGatewayService) recordYeTeamReclaimResultWithFlow(ctx context.Context, account *Account, status string, reclaimErr error, extra map[string]any, flow *yeteam.ReclaimFlow) {
 	if s == nil || s.accountRepo == nil || account == nil {
 		return
 	}
@@ -152,6 +213,13 @@ func (s *OpenAIGatewayService) recordYeTeamReclaimResult(ctx context.Context, ac
 	updates[yeTeamLastRefreshStatusKey] = status
 	updates[yeTeamLastRefreshAtKey] = time.Now().UTC().Format(time.RFC3339)
 	updates[yeTeamLastRefreshErrorKey] = compactYeTeamRefreshError(reclaimErr)
+	if flow != nil {
+		flow.Status = status
+		if status != yeTeamRefreshStatusRunning {
+			flow.Finish(status)
+		}
+		updates[yeTeamLastRefreshFlowKey] = *flow
+	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), yeTeamRefreshStatusPersistTimeout)
 	defer cancel()
 	if err := s.accountRepo.UpdateExtra(persistCtx, account.ID, updates); err != nil {
@@ -163,6 +231,12 @@ func (s *OpenAIGatewayService) recordYeTeamReclaimResult(ctx context.Context, ac
 	}
 	for key, value := range updates {
 		account.Extra[key] = value
+	}
+}
+
+func appendYeTeamFlowStage(flow *yeteam.ReclaimFlow, name, status, message string) {
+	if flow != nil {
+		flow.AddStage(name, status, message)
 	}
 }
 

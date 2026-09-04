@@ -3,8 +3,10 @@ package yeteam
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -234,6 +236,107 @@ func TestReclaim401PackagesStopsOnFailedTask(t *testing.T) {
 	}
 	if batchCalls != 1 {
 		t.Fatalf("batch calls = %d", batchCalls)
+	}
+}
+
+func TestReclaim401PackagesReturnsUnreclaimableTaskReason(t *testing.T) {
+	const response = `{"already_running":0,"cards":[{"card_code":"TEAM-TEST","tasks":[{"error_code":"account_deactivated","failure_class":"account_dead","message":"账号已被 ChatGPT 官方删除或停用（403 account_deactivated），请联系售后。","order_no":"ord-dead","permanent":true,"provider_status":403,"resource_uid":"acct-dead","status":"unreclaimable"}],"unreclaimable":1}],"ok":true,"total":1,"unreclaimable":1}`
+	batchCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/redeem/reclaim/batch-cards" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		batchCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(response))
+	}))
+	defer server.Close()
+
+	var parsed BatchReclaimResult
+	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.AllTasks) != 1 {
+		t.Fatalf("tasks = %#v", parsed.AllTasks)
+	}
+	task := parsed.AllTasks[0]
+	if task.ErrorCode != "account_deactivated" || task.FailureClass != "account_dead" || !task.Permanent || task.ProviderStatus != http.StatusForbidden {
+		t.Fatalf("task = %#v", task)
+	}
+
+	client := NewClient(Config{Enabled: true, BaseURL: server.URL, Timeout: time.Second, PollInterval: time.Millisecond, MaxPollDuration: time.Second})
+	_, err := client.Reclaim401Packages(context.Background(), "TEAM-TEST")
+	want := "账号已被 ChatGPT 官方删除或停用（403 account_deactivated），请联系售后。"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	var taskErr *ReclaimTaskError
+	if !errors.As(err, &taskErr) || !taskErr.Permanent || taskErr.ErrorCode != "account_deactivated" || taskErr.ProviderStatus != http.StatusForbidden {
+		t.Fatalf("typed err = %#v", err)
+	}
+	if batchCalls != 1 {
+		t.Fatalf("batch calls = %d", batchCalls)
+	}
+}
+
+func TestReclaim401PackagesFallsBackToRefreshBound(t *testing.T) {
+	batchCalls := 0
+	orderCalls := 0
+	downloadCalls := 0
+	var orderRequest RedeemRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/redeem/reclaim/batch-cards":
+			batchCalls++
+			_, _ = w.Write([]byte(`{"cards":[{"card_code":"TEAM-TEST","tasks":[{"error_code":"account_deactivated","failure_class":"account_dead","message":"account deactivated","order_no":"ord-dead","permanent":true,"provider_status":403,"status":"unreclaimable"}],"unreclaimable":1}],"ok":true,"unreclaimable":1}`))
+		case "/api/redeem/orders":
+			orderCalls++
+			if r.Method != http.MethodPost {
+				t.Fatalf("order method = %s", r.Method)
+			}
+			if err := json.NewDecoder(r.Body).Decode(&orderRequest); err != nil {
+				t.Fatalf("decode order request: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"download_token":"tok-refresh","order_no":"ord-refresh","status":"pending"}`))
+		case "/api/redeem/orders/ord-refresh":
+			if got := r.Header.Get("Authorization"); got != "Bearer tok-refresh" {
+				t.Fatalf("order authorization = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"order":{"order_no":"ord-refresh","status":"completed"}}`))
+		case "/api/redeem/orders/ord-refresh/download":
+			downloadCalls++
+			if got := r.URL.Query().Get("token"); got != "tok-refresh" {
+				t.Fatalf("download token = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"new-token"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{Enabled: true, BaseURL: server.URL, Timeout: time.Second, PollInterval: time.Millisecond, MaxPollDuration: time.Second})
+	packages, flow, err := client.Reclaim401PackagesWithTrace(context.Background(), "TEAM-TEST")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packages) != 1 || batchCalls != 1 || orderCalls != 1 || downloadCalls != 1 {
+		t.Fatalf("packages=%d batch_calls=%d order_calls=%d download_calls=%d", len(packages), batchCalls, orderCalls, downloadCalls)
+	}
+	if orderRequest.CardCode != "TEAM-TEST" || orderRequest.Format != "sub2api" || orderRequest.Project != "k12" || orderRequest.Action != "refresh_bound" || orderRequest.ClientRequestID == "" {
+		t.Fatalf("order request = %#v", orderRequest)
+	}
+	if flow.Status != "success" || !flow.FallbackUsed || flow.OrderNo != "ord-refresh" || flow.Batch == nil || flow.Batch.Unreclaimable != 1 || flow.Task == nil || flow.Task.ErrorCode != "account_deactivated" {
+		t.Fatalf("flow = %#v", flow)
+	}
+	data, err := json.Marshal(flow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "tok-refresh") || strings.Contains(string(data), "new-token") {
+		t.Fatalf("flow contains credential material: %s", data)
 	}
 }
 
