@@ -1,0 +1,65 @@
+Gift balance split verification
+
+Changed branch/field:
+- users.gift_balance stores unspent registration and daily check-in gifts.
+- users.gift_balance_expires_at stores the nearest active gift expiry.
+- users.frozen_gift_balance tracks gift funds held by batch image billing.
+- User API fields: recharge_balance, gift_balance, gift_balance_expires_at.
+- User API source fields: registration_gift_balance, daily_checkin_balance, daily_checkin_expires_at.
+
+BASELINE
+Command:
+Get-FileHash -Algorithm SHA256 artifacts/gift-balance-split/BASELINE_MIGRATION.sql
+Input:
+artifacts/gift-balance-split/BASELINE_MIGRATION.sql
+Literal output/result:
+SHA256 5955C3C1E35E2061A11CF4C77D400E2008CE21FDAF42C99A9F2F940142688436
+Exit status: 0
+
+MODIFIED
+Command:
+$env:GOTMPDIR='D:\Programs\sub2api\.gotmp'; $env:GOCACHE='D:\Programs\sub2api\.gocache'; go build -p 1 ./internal/service ./internal/repository ./internal/handler/dto
+Input:
+Current working tree with backend balance split changes.
+Literal output/result:
+no output
+Exit status: 0
+
+Command:
+pnpm exec vitest run src/components/user/profile/__tests__/ProfileInfoCard.spec.ts src/views/user/__tests__/PaymentView.spec.ts
+Input:
+Current frontend working tree.
+Literal output/result:
+Test Files 2 passed (2); Tests 22 passed (22); Duration 2.79s
+Exit status: 0
+
+Command:
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3000/
+Input:
+Frontend preview server.
+Literal output/result:
+StatusCode 200; ContentType text/html; Bytes 585
+Exit status: 0
+
+Command:
+go test -p 1 -tags=unit ./internal/repository -run 'TestUserRepositoryGetByEmailNormalizesLegacySpacingAndCase|TestDeductUsageBillingBalance|TestApplyRedeemBalanceAdjustment|TestDeductAvailableGiftBalance|TestReserveUsageBillingBatchImageBalance|TestCaptureUsageBillingBatchImageBalance|TestReleaseUsageBillingBatchImageBalance' -count=1
+Input:
+Current repository working tree.
+Literal output/result:
+ok github.com/Wei-Shaw/sub2api/internal/repository 1.401s
+Exit status: 0
+
+ROLLBACK
+Command:
+'/d/Programs/sub2api/artifacts/gift-balance-split/ROLLBACK.sh' '/d/Programs/sub2api/artifacts/gift-balance-split/ROLLBACK_TARGET.sql' '/d/Programs/sub2api/artifacts/gift-balance-split/ROLLBACK_BACKUP.sql'
+Input:
+ROLLBACK_TARGET.sql copied from MODIFIED_FILE.
+Literal output/result:
+restored /d/Programs/sub2api/artifacts/gift-balance-split/ROLLBACK_TARGET.sql from baseline
+Baseline hash: 5955C3C1E35E2061A11CF4C77D400E2008CE21FDAF42C99A9F2F940142688436
+Restored hash: 5955C3C1E35E2061A11CF4C77D400E2008CE21FDAF42C99A9F2F940142688436
+Modified hash: 05A808DDCAB0E80752CABF90AF05CD9F70AADB6F6D2244CB92D6B28C9D646E47
+Exit status: 0
+
+Restored behavior/status:
+ROLLBACK_TARGET.sql matches BASELINE_MIGRATION.sql. MODIFIED_FILE remains changed. The repository and frontend validation commands above pass; unrelated pre-existing worktree tests retain their existing failures.

@@ -353,6 +353,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
+		GiftBalance:  grantPlan.Balance,
 		Concurrency:  grantPlan.Concurrency,
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
@@ -792,6 +793,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
 				Balance:      grantPlan.Balance,
+				GiftBalance:  grantPlan.Balance,
 				Concurrency:  grantPlan.Concurrency,
 				RPMLimit:     defaultRPMLimit,
 				Status:       StatusActive,
@@ -946,6 +948,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
 				Balance:      grantPlan.Balance,
+				GiftBalance:  grantPlan.Balance,
 				Concurrency:  grantPlan.Concurrency,
 				RPMLimit:     defaultRPMLimit,
 				Status:       StatusActive,
@@ -1647,20 +1650,26 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 			shouldDeduct = true
 		}
 		if shouldDeduct && item.TotalRecharged <= 0 && item.Balance > 0 {
-			updated, err := client.User.Update().
-				Where(
-					dbuser.IDEQ(item.ID),
-					dbuser.TotalRechargedLTE(0),
-					dbuser.BalanceGT(0),
-				).
-				SetBalance(0).
-				Save(ctx)
+			result, err := client.ExecContext(ctx, `
+				UPDATE users
+				SET balance = 0, gift_balance = 0, gift_balance_expires_at = NULL, updated_at = NOW()
+				WHERE id = $1 AND deleted_at IS NULL AND total_recharged <= 0 AND balance > 0`, item.ID)
+			var updated int
+			if err == nil {
+				var rowsErr error
+				rows, rowsErr := result.RowsAffected()
+				updated = int(rows)
+				if rowsErr != nil {
+					err = rowsErr
+				}
+			}
 			if err != nil {
 				logger.LegacyPrintf("service.auth", "[Auth] Signup IP risk control gift balance deduction failed: user=%d ip=%s err=%v", item.ID, signupIP, err)
 				continue
 			}
 			if updated > 0 && item.ID == user.ID {
 				user.Balance = 0
+				user.GiftBalance = 0
 			}
 			if updated > 0 {
 				RecordAntiAbuseDeduction(ctx, antiAbuseEvents, "registration_gift_deduction", &item.ID, item.Email, signals, assessment, item.Balance)
@@ -1699,10 +1708,18 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 			continue
 		}
 		if item.TotalRecharged <= 0 && item.Balance > 0 {
-			updated, updateErr := client.User.Update().
-				Where(dbuser.IDEQ(item.ID), dbuser.TotalRechargedLTE(0), dbuser.BalanceGT(0)).
-				SetBalance(0).
-				Save(ctx)
+			result, updateErr := client.ExecContext(ctx, `
+				UPDATE users
+				SET balance = 0, gift_balance = 0, gift_balance_expires_at = NULL, updated_at = NOW()
+				WHERE id = $1 AND deleted_at IS NULL AND total_recharged <= 0 AND balance > 0`, item.ID)
+			updated := 0
+			if updateErr == nil {
+				rows, rowsErr := result.RowsAffected()
+				updated = int(rows)
+				if rowsErr != nil {
+					updateErr = rowsErr
+				}
+			}
 			if updateErr != nil {
 				logger.LegacyPrintf("service.auth", "[Auth] fingerprint-linked gift balance deduction failed: user=%d linked_user=%d err=%v", user.ID, item.ID, updateErr)
 				continue

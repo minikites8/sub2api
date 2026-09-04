@@ -78,7 +78,12 @@ ON CONFLICT (user_id, provider_type, grant_reason) DO NOTHING`,
 	}
 
 	if providerDefaults.Balance != 0 {
-		if err := client.User.UpdateOneID(userID).AddBalance(providerDefaults.Balance).Exec(ctx); err != nil {
+		if _, err := client.ExecContext(ctx, `
+			UPDATE users
+			SET balance = balance + $1,
+				gift_balance = COALESCE(gift_balance, 0) + $1,
+				updated_at = NOW()
+			WHERE id = $2 AND deleted_at IS NULL`, providerDefaults.Balance, userID); err != nil {
 			return fmt.Errorf("apply first bind balance default: %w", err)
 		}
 	}

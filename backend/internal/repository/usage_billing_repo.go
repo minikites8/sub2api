@@ -267,7 +267,13 @@ WITH expired AS (
 	SELECT COALESCE(SUM(remaining_amount), 0) AS amount FROM marked
 )
 UPDATE users
-SET balance = balance - LEAST((SELECT amount FROM total), GREATEST(balance, 0)), updated_at = NOW()
+SET balance = balance - LEAST((SELECT amount FROM total), GREATEST(balance, 0)),
+    gift_balance = GREATEST(COALESCE(gift_balance, 0) - (SELECT amount FROM total), 0),
+    gift_balance_expires_at = (
+        SELECT MIN(expires_at) FROM daily_checkin_rewards
+        WHERE user_id = $1 AND remaining_amount > 0 AND expires_at > NOW()
+    ),
+    updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL AND (SELECT amount FROM total) > 0`, userID)
 	return err
 }
@@ -276,7 +282,7 @@ func consumeDailyCheckinRewards(ctx context.Context, tx *sql.Tx, userID int64, a
 	if amount <= 0 {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 WITH ordered AS (
 	SELECT id,
 	       LEAST(
@@ -295,7 +301,16 @@ WITH ordered AS (
 	WHERE r.id = o.id AND o.consumed > 0
 	RETURNING r.id
 )
-SELECT COUNT(*) FROM updated`, userID, amount)
+	SELECT COUNT(*) FROM updated`, userID, amount); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `
+	UPDATE users
+	SET gift_balance_expires_at = (
+		SELECT MIN(expires_at) FROM daily_checkin_rewards
+		WHERE user_id = $1 AND remaining_amount > 0 AND expires_at > NOW()
+	), updated_at = NOW()
+	WHERE id = $1 AND deleted_at IS NULL`, userID)
 	return err
 }
 
@@ -303,7 +318,8 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 	var newBalance float64
 	err := tx.QueryRowContext(ctx, `
 		UPDATE users
-		SET balance = balance - $1,
+		SET gift_balance = GREATEST(COALESCE(gift_balance, 0) - $1, 0),
+			balance = balance - $1,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
 		RETURNING balance
@@ -317,7 +333,8 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 
 	err = tx.QueryRowContext(ctx, `
 		UPDATE users
-		SET balance = balance - $1,
+		SET gift_balance = GREATEST(COALESCE(gift_balance, 0) - $1, 0),
+			balance = balance - $1,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 		RETURNING balance
@@ -337,11 +354,20 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
+		WITH target AS (
+			SELECT id, balance, COALESCE(gift_balance, 0) AS gift_balance
+			FROM users
+			WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
+			FOR UPDATE
+		)
 		UPDATE users
-		SET balance = balance - $1,
-			frozen_balance = COALESCE(frozen_balance, 0) + $1,
+		SET balance = target.balance - $1,
+			gift_balance = target.gift_balance - LEAST($1, target.gift_balance),
+			frozen_balance = COALESCE(users.frozen_balance, 0) + $1,
+			frozen_gift_balance = COALESCE(users.frozen_gift_balance, 0) + LEAST($1, target.gift_balance),
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
+		FROM target
+		WHERE users.id = target.id AND users.deleted_at IS NULL
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
@@ -367,13 +393,29 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
+		WITH target AS (
+			SELECT id, balance, COALESCE(frozen_gift_balance, 0) AS frozen_gift_balance
+			FROM users
+			WHERE id = $3 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
+			FOR UPDATE
+		), amounts AS (
+			SELECT *, frozen_gift_balance - LEAST(frozen_gift_balance, $2) AS gift_release
+			FROM target
+		)
 		UPDATE users
-		SET balance = balance
+		SET balance = amounts.balance
 				+ CASE WHEN $1 > $2 THEN $1 - $2 ELSE 0 END
 				- CASE WHEN $2 > $1 THEN $2 - $1 ELSE 0 END,
-			frozen_balance = COALESCE(frozen_balance, 0) - $1,
+			gift_balance = COALESCE(users.gift_balance, 0) + amounts.gift_release,
+			gift_balance_expires_at = (
+				SELECT MIN(expires_at) FROM daily_checkin_rewards
+				WHERE user_id = $3 AND remaining_amount > 0 AND expires_at > NOW()
+			),
+			frozen_balance = COALESCE(users.frozen_balance, 0) - $1,
+			frozen_gift_balance = amounts.frozen_gift_balance - amounts.gift_release,
 			updated_at = NOW()
-		WHERE id = $3 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
+		FROM amounts
+		WHERE users.id = amounts.id AND users.deleted_at IS NULL
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.ActualAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
@@ -406,11 +448,24 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
+		WITH target AS (
+			SELECT id, balance, COALESCE(frozen_gift_balance, 0) AS frozen_gift_balance
+			FROM users
+			WHERE id = $2 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
+			FOR UPDATE
+		)
 		UPDATE users
-		SET balance = balance + $1,
-			frozen_balance = COALESCE(frozen_balance, 0) - $1,
+		SET balance = target.balance + $1,
+			gift_balance = COALESCE(users.gift_balance, 0) + target.frozen_gift_balance,
+			gift_balance_expires_at = (
+				SELECT MIN(expires_at) FROM daily_checkin_rewards
+				WHERE user_id = $2 AND remaining_amount > 0 AND expires_at > NOW()
+			),
+			frozen_balance = COALESCE(users.frozen_balance, 0) - $1,
+			frozen_gift_balance = 0,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
+		FROM target
+		WHERE users.id = target.id AND users.deleted_at IS NULL
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {

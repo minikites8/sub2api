@@ -58,7 +58,7 @@
               </div>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-3">
+            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <div
                 data-testid="profile-overview-metric-balance"
                 class="profile-metric"
@@ -68,6 +68,32 @@
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                   {{ formatCurrency(user?.balance || 0) }}
+                </p>
+              </div>
+              <div class="profile-metric">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('common.rechargeBalance') }}
+                </p>
+                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ formatCurrency(rechargeBalance) }}
+                </p>
+              </div>
+              <div class="profile-metric">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('common.giftBalance') }}
+                </p>
+                <p class="mt-1 text-lg font-semibold text-emerald-700 dark:text-emerald-300">
+                  {{ formatCurrency(giftBalance) }}
+                </p>
+                <div class="mt-1 space-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                  <p>{{ t('common.registrationGift') }}: {{ formatCurrency(registrationGiftBalance) }}</p>
+                  <p>
+                    {{ t('common.dailyCheckinGift') }}: {{ formatCurrency(dailyCheckinBalance) }}
+                    <span v-if="dailyCheckinExpiresAt"> · {{ formatGiftExpiry(dailyCheckinExpiresAt) }}</span>
+                  </p>
+                </div>
+                <p v-if="giftBalanceExpiresAt" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                  {{ t('common.giftExpiresAt', { date: formatGiftExpiry(giftBalanceExpiresAt) }) }}
                 </p>
               </div>
               <div
@@ -323,6 +349,12 @@ const primaryEmailDisplay = computed(() => {
   return email
 })
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
+const giftBalance = computed(() => Number(props.user?.gift_balance || 0))
+const rechargeBalance = computed(() => Number(props.user?.recharge_balance ?? Math.max(Number(props.user?.balance || 0) - giftBalance.value, 0)))
+const giftBalanceExpiresAt = computed(() => props.user?.gift_balance_expires_at || null)
+const registrationGiftBalance = computed(() => Number(props.user?.registration_gift_balance || 0))
+const dailyCheckinBalance = computed(() => Number(props.user?.daily_checkin_balance || 0))
+const dailyCheckinExpiresAt = computed(() => props.user?.daily_checkin_expires_at || null)
 const usedPromoCodes = computed(() => props.user?.used_promo_codes ?? [])
 const affiliateCode = computed(() => props.user?.affiliate?.aff_code?.trim() || '')
 const inviterAffiliateCode = computed(() => props.user?.affiliate?.inviter_aff_code?.trim() || '')
@@ -356,6 +388,14 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
 
 function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`
+}
+
+function formatGiftExpiry(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  }).format(date)
 }
 
 function formatPromoUsageLabel(usage: UserPromoCodeUsage): string {

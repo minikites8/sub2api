@@ -31,6 +31,23 @@
             <Icon name="bolt" size="sm" />
             <span>{{ t('redeem.concurrency') }}: {{ currentConcurrency }} {{ t('redeem.requests') }}</span>
           </div>
+          <div class="mt-3 grid gap-1 text-xs text-gray-600 dark:text-dark-300 sm:min-w-[15rem] sm:text-right">
+            <div class="flex items-center justify-between gap-4">
+              <span>{{ t('common.rechargeBalance') }}</span>
+              <strong>{{ formatBalanceAmount(rechargeBalance) }}</strong>
+            </div>
+            <div class="flex items-center justify-between gap-4 text-emerald-700 dark:text-emerald-300">
+              <span>{{ t('common.giftBalance') }}</span>
+              <strong>{{ formatBalanceAmount(giftBalance) }}</strong>
+            </div>
+            <div class="text-[11px] text-gray-500 dark:text-dark-400">
+              {{ t('common.registrationGift') }} {{ formatBalanceAmount(registrationGiftBalance) }} ·
+              {{ t('common.dailyCheckinGift') }} {{ formatBalanceAmount(dailyCheckinBalance) }}
+            </div>
+            <div v-if="giftBalanceExpiresAt" class="text-[11px] text-amber-600 dark:text-amber-300">
+              {{ t('common.giftExpiresAt', { date: formatDateTime(giftBalanceExpiresAt) }) }}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -248,6 +265,11 @@ const currentBalanceText = computed(() => {
   return Number.isFinite(balance) ? balance.toFixed(2) : '0.00'
 })
 const currentConcurrency = computed(() => user.value?.concurrency || 0)
+const giftBalance = computed(() => Number(user.value?.gift_balance || 0))
+const rechargeBalance = computed(() => Number(user.value?.recharge_balance ?? Math.max(Number(user.value?.balance || 0) - giftBalance.value, 0)))
+const giftBalanceExpiresAt = computed(() => user.value?.gift_balance_expires_at || null)
+const registrationGiftBalance = computed(() => Number(user.value?.registration_gift_balance || 0))
+const dailyCheckinBalance = computed(() => Number(user.value?.daily_checkin_balance || 0))
 
 const redeemCode = ref('')
 const submitting = ref(false)
@@ -266,6 +288,10 @@ const errorMessage = ref('')
 const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
+
+function formatBalanceAmount(value: number): string {
+  return `$${(Number.isFinite(value) ? value : 0).toFixed(2)}`
+}
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {

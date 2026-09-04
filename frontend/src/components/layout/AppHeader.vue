@@ -79,6 +79,21 @@
               <span class="font-medium text-gray-900 dark:text-white">{{ formatHeaderMoney(availableBalance) }}</span>
             </div>
             <div class="mt-2 flex items-center justify-between">
+              <span class="text-gray-500 dark:text-dark-400">{{ t('common.rechargeBalance') }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ formatHeaderMoney(rechargeBalance) }}</span>
+            </div>
+            <div class="mt-2 flex items-center justify-between">
+              <span class="text-gray-500 dark:text-dark-400">{{ t('common.giftBalance') }}</span>
+              <span class="font-medium text-emerald-700 dark:text-emerald-300">{{ formatHeaderMoney(giftBalance) }}</span>
+            </div>
+            <div class="mt-1 text-right text-[11px] text-gray-500 dark:text-dark-400">
+              {{ t('common.registrationGift') }} {{ formatHeaderMoney(registrationGiftBalance) }} ·
+              {{ t('common.dailyCheckinGift') }} {{ formatHeaderMoney(dailyCheckinBalance) }}
+            </div>
+            <div v-if="giftBalanceExpiresAt" class="mt-1 text-right text-[11px] text-amber-600 dark:text-amber-300">
+              {{ t('common.giftExpiresAt', { date: formatGiftExpiry(giftBalanceExpiresAt) }) }}
+            </div>
+            <div class="mt-2 flex items-center justify-between">
               <span class="text-gray-500 dark:text-dark-400">{{ balanceFrozenText }}</span>
               <span class="font-medium text-amber-700 dark:text-amber-200">{{ formatHeaderMoney(frozenBalance) }}</span>
             </div>
@@ -136,6 +151,13 @@
                 </div>
                 <div class="text-sm font-semibold text-primary-600 dark:text-primary-400">
                   {{ formatHeaderMoney(availableBalance) }}
+                </div>
+                <div class="mt-1 flex justify-between text-xs text-gray-500 dark:text-dark-400">
+                  <span>{{ t('common.rechargeBalance') }} {{ formatHeaderMoney(rechargeBalance) }}</span>
+                  <span>{{ t('common.giftBalance') }} {{ formatHeaderMoney(giftBalance) }}</span>
+                </div>
+                <div v-if="giftBalanceExpiresAt" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                  {{ t('common.giftExpiresAt', { date: formatGiftExpiry(giftBalanceExpiresAt) }) }}
                 </div>
                 <div v-if="frozenBalance > 0" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
                   {{ balanceFrozenText }} {{ formatHeaderMoney(frozenBalance) }}
@@ -266,12 +288,25 @@ const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const availableBalance = computed(() => Number(user.value?.balance || 0))
+const giftBalance = computed(() => Number(user.value?.gift_balance || 0))
+const rechargeBalance = computed(() => Number(user.value?.recharge_balance ?? Math.max(availableBalance.value - giftBalance.value, 0)))
+const giftBalanceExpiresAt = computed(() => user.value?.gift_balance_expires_at || null)
+const registrationGiftBalance = computed(() => Number(user.value?.registration_gift_balance || 0))
+const dailyCheckinBalance = computed(() => Number(user.value?.daily_checkin_balance || 0))
 const frozenBalance = computed(() => Number(user.value?.frozen_balance || 0))
 const totalBalance = computed(() => availableBalance.value + frozenBalance.value)
 const balanceAvailableText = computed(() => t('common.availableBalance') === 'common.availableBalance' ? '可用余额' : t('common.availableBalance'))
 const balanceFrozenText = computed(() => t('common.frozenBalance') === 'common.frozenBalance' ? '冻结金额' : t('common.frozenBalance'))
 const balanceTotalText = computed(() => t('common.totalBalance') === 'common.totalBalance' ? '总余额' : t('common.totalBalance'))
 const balanceFrozenLabel = computed(() => `${balanceFrozenText.value} ${formatHeaderMoney(frozenBalance.value)}`)
+
+function formatGiftExpiry(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  }).format(date)
+}
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {

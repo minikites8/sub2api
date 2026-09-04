@@ -61,6 +61,23 @@
                 <div class="credits-balance-info" :title="t('payment.currentBalance')">
                   <Icon name="infoCircle" size="sm" />
                 </div>
+                <div class="ml-auto grid min-w-[13rem] gap-1 text-right text-xs">
+                  <div class="flex items-center justify-between gap-4">
+                    <span>{{ t('common.rechargeBalance') }}</span>
+                    <strong>{{ formatBalanceAmount(rechargeBalance) }}</strong>
+                  </div>
+                  <div class="flex items-center justify-between gap-4 text-emerald-700 dark:text-emerald-300">
+                    <span>{{ t('common.giftBalance') }}</span>
+                    <strong>{{ formatBalanceAmount(giftBalance) }}</strong>
+                  </div>
+                  <div class="text-[11px] text-gray-500 dark:text-dark-400">
+                    {{ t('common.registrationGift') }} {{ formatBalanceAmount(registrationGiftBalance) }} ·
+                    {{ t('common.dailyCheckinGift') }} {{ formatBalanceAmount(dailyCheckinBalance) }}
+                  </div>
+                  <div v-if="giftBalanceExpiresAt" class="text-[11px] text-amber-600 dark:text-amber-300">
+                    {{ t('common.giftExpiresAt', { date: formatGiftExpiry(giftBalanceExpiresAt) }) }}
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -730,6 +747,11 @@ const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
 const selectedCurrency = computed(() => normalizePaymentCurrency(selectedLimit.value?.currency))
 const accountDisplayName = computed(() => user.value?.email || user.value?.username || '-')
 const currentBalanceText = computed(() => (Number(user.value?.balance || 0)).toFixed(2))
+const giftBalance = computed(() => Number(user.value?.gift_balance || 0))
+const rechargeBalance = computed(() => Number(user.value?.recharge_balance ?? Math.max(Number(user.value?.balance || 0) - giftBalance.value, 0)))
+const giftBalanceExpiresAt = computed(() => user.value?.gift_balance_expires_at || null)
+const registrationGiftBalance = computed(() => Number(user.value?.registration_gift_balance || 0))
+const dailyCheckinBalance = computed(() => Number(user.value?.daily_checkin_balance || 0))
 const localeCode = computed(() => {
   const raw = i18n.locale as unknown
   if (typeof raw === 'string') return raw
@@ -774,6 +796,14 @@ function formatSelectedPaymentAmount(value: number): string {
 
 function formatBalanceAmount(value: number): string {
   return `$${(Number.isFinite(value) ? value : 0).toFixed(2)}`
+}
+
+function formatGiftExpiry(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  }).format(date)
 }
 
 function formatCompactPaymentAmount(value: number): string {

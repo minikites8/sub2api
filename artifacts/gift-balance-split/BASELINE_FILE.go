@@ -12,10 +12,6 @@ func UserFromServiceShallow(u *service.User) *User {
 	if u == nil {
 		return nil
 	}
-	rechargeBalance := u.Balance - u.GiftBalance
-	if rechargeBalance < 0 {
-		rechargeBalance = 0
-	}
 	return &User{
 		ID:                         u.ID,
 		Email:                      u.Email,
@@ -23,12 +19,6 @@ func UserFromServiceShallow(u *service.User) *User {
 		Username:                   u.Username,
 		Role:                       u.Role,
 		Balance:                    u.Balance,
-		RechargeBalance:            rechargeBalance,
-		GiftBalance:                u.GiftBalance,
-		GiftBalanceExpiresAt:       u.GiftBalanceExpiresAt,
-		RegistrationGiftBalance:    u.RegistrationGiftBalance,
-		DailyCheckinBalance:        u.DailyCheckinBalance,
-		DailyCheckinExpiresAt:      u.DailyCheckinExpiresAt,
 		FrozenBalance:              u.FrozenBalance,
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,

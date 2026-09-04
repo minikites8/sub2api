@@ -7,24 +7,29 @@ import (
 )
 
 type User struct {
-	ID             int64
-	Email          string
-	SignupIP       *string
-	Username       string
-	Notes          string
-	AvatarURL      string
-	AvatarSource   string
-	AvatarMIME     string
-	AvatarByteSize int
-	AvatarSHA256   string
-	PasswordHash   string
-	Role           string
-	Balance        float64
-	FrozenBalance  float64
-	Concurrency    int
-	Status         string
-	DisabledUntil  *time.Time
-	AllowedGroups  []int64
+	ID                      int64
+	Email                   string
+	SignupIP                *string
+	Username                string
+	Notes                   string
+	AvatarURL               string
+	AvatarSource            string
+	AvatarMIME              string
+	AvatarByteSize          int
+	AvatarSHA256            string
+	PasswordHash            string
+	Role                    string
+	Balance                 float64
+	GiftBalance             float64
+	GiftBalanceExpiresAt    *time.Time
+	RegistrationGiftBalance float64
+	DailyCheckinBalance     float64
+	DailyCheckinExpiresAt   *time.Time
+	FrozenBalance           float64
+	Concurrency             int
+	Status                  string
+	DisabledUntil           *time.Time
+	AllowedGroups           []int64
 	// BannedGroupIDs contains groups this user cannot access. The ban is scoped
 	// to the user and leaves access to other groups intact.
 	BannedGroupIDs         []int64

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -485,6 +486,9 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 	}
 
 	applyUserEntityToService(userIn, created)
+	if userIn.GiftBalance <= 0 && userIn.TotalRecharged <= 0 && userIn.Balance > 0 {
+		userIn.GiftBalance = userIn.Balance
+	}
 	return nil
 }
 
@@ -495,6 +499,9 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	}
 
 	out := userEntityToService(m)
+	if err := r.loadGiftBalance(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{id})
 	if err != nil {
 		return nil, err
@@ -522,6 +529,9 @@ func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	out := userEntityToService(m)
+	if err := r.loadGiftBalance(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{id})
 	if err != nil {
 		return nil, err
@@ -559,6 +569,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	m := matches[0]
 
 	out := userEntityToService(m)
+	if err := r.loadGiftBalance(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
 	if err != nil {
 		return nil, err
@@ -957,6 +970,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		outUsers = append(outUsers, *u)
 		userMap[u.ID] = &outUsers[len(outUsers)-1]
 	}
+	if err := r.loadGiftBalances(ctx, userMap); err != nil {
+		return nil, nil, err
+	}
 
 	shouldLoadSubscriptions := filters.IncludeSubscriptions == nil || *filters.IncludeSubscriptions
 	if shouldLoadSubscriptions {
@@ -1186,15 +1202,22 @@ func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[
 }
 
 func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount float64) error {
-	client := clientFromContext(ctx, r.client)
-	update := client.User.Update().Where(dbuser.IDEQ(id)).AddBalance(amount)
-	// Track cumulative recharge amount for percentage-based notifications
-	if amount > 0 {
-		update = update.AddTotalRecharged(amount)
-	}
-	n, err := update.Save(ctx)
+	const updateSQL = `
+		UPDATE users
+		SET balance = balance + $1,
+			gift_balance = CASE WHEN $1 < 0
+				THEN GREATEST(COALESCE(gift_balance, 0) + $1, 0)
+				ELSE COALESCE(gift_balance, 0) END,
+			total_recharged = CASE WHEN $1 > 0 THEN total_recharged + $1 ELSE total_recharged END,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL`
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, updateSQL, amount, id)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
 	}
 	if n == 0 {
 		return service.ErrUserNotFound
@@ -1226,7 +1249,13 @@ WITH expired AS (
 	SELECT COALESCE(SUM(remaining_amount), 0) AS amount FROM marked
 )
 UPDATE users
-SET balance = balance - LEAST((SELECT amount FROM total), GREATEST(balance, 0)), updated_at = NOW()
+SET balance = balance - LEAST((SELECT amount FROM total), GREATEST(balance, 0)),
+    gift_balance = GREATEST(COALESCE(gift_balance, 0) - (SELECT amount FROM total), 0),
+    gift_balance_expires_at = (
+        SELECT MIN(expires_at) FROM daily_checkin_rewards
+        WHERE user_id = $1 AND remaining_amount > 0 AND expires_at > NOW()
+    ),
+    updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL AND (SELECT amount FROM total) > 0`, userID)
 	if err != nil {
 		return false, err
@@ -1238,7 +1267,12 @@ WHERE id = $1 AND deleted_at IS NULL AND (SELECT amount FROM total) > 0`, userID
 func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error {
 	const updateSQL = `
 		UPDATE users
-		SET balance = GREATEST(balance + $1, 0), updated_at = NOW()
+		SET balance = GREATEST(balance + $1, 0),
+			gift_balance = CASE WHEN $1 < 0
+				THEN GREATEST(COALESCE(gift_balance, 0) + $1, 0)
+				ELSE COALESCE(gift_balance, 0) END,
+			total_recharged = CASE WHEN $1 > 0 THEN total_recharged + $1 ELSE total_recharged END,
+			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 	`
 	client := clientFromContext(ctx, r.client)
@@ -1288,22 +1322,17 @@ func (r *userRepository) RecordRiskControlBalanceDeduction(ctx context.Context, 
 // 透支策略：允许余额变为负数，确保当前请求能够完成
 // 中间件会阻止余额 <= 0 的用户发起后续请求
 func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount float64) error {
-	client := clientFromContext(ctx, r.client)
-	n, err := client.User.Update().
-		Where(dbuser.IDEQ(id), dbuser.BalanceGTE(amount)).
-		AddBalance(-amount).
-		Save(ctx)
+	const updateSQL = `
+		UPDATE users
+		SET balance = balance - $1,
+			gift_balance = GREATEST(COALESCE(gift_balance, 0) - $1, 0),
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL`
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, updateSQL, amount, id)
 	if err != nil {
 		return err
 	}
-	if n > 0 {
-		return nil
-	}
-
-	n, err = client.User.Update().
-		Where(dbuser.IDEQ(id)).
-		AddBalance(-amount).
-		Save(ctx)
+	n, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
@@ -1313,22 +1342,21 @@ func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount flo
 	return nil
 }
 
-// DeductAvailableBalance atomically deducts min(amount, max(balance, 0)).
-// Unlike DeductBalance, this refund-specific operation never increases an
-// existing deficit or permits a concurrent deduction to cause an overdraft.
+// DeductAvailableBalance atomically deducts from the paid recharge balance.
+// It never consumes tracked gifts and never increases an existing deficit.
 func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, amount float64) (deducted float64, err error) {
 	if amount < 0 {
 		return 0, fmt.Errorf("deduction amount must be nonnegative")
 	}
 	const updateSQL = `
 		WITH target AS (
-			SELECT id, balance
+			SELECT id, balance, COALESCE(gift_balance, 0) AS gift_balance
 			FROM users
 			WHERE id = $2 AND deleted_at IS NULL
 			FOR UPDATE
 		), updated AS (
 			UPDATE users AS u
-			SET balance = target.balance - LEAST($1, GREATEST(target.balance, 0)), updated_at = NOW()
+			SET balance = target.balance - LEAST($1, GREATEST(target.balance - target.gift_balance, 0)), updated_at = NOW()
 			FROM target
 			WHERE u.id = target.id AND u.deleted_at IS NULL
 			RETURNING target.balance - u.balance AS deducted
@@ -1356,21 +1384,25 @@ func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, a
 	return deducted, rows.Err()
 }
 
-// DeductAvailableGiftBalance atomically deducts balance while the user has no
-// recharge history. A concurrent paid recharge makes the predicate fail.
+// DeductAvailableGiftBalance atomically deducts the tracked gift bucket.
 func (r *userRepository) DeductAvailableGiftBalance(ctx context.Context, id int64, amount float64) (deducted float64, err error) {
 	if amount < 0 {
 		return 0, fmt.Errorf("deduction amount must be nonnegative")
 	}
 	const updateSQL = `
 		WITH target AS (
-			SELECT id, balance
+			SELECT id, balance, COALESCE(gift_balance, 0) AS gift_balance
 			FROM users
-			WHERE id = $2 AND deleted_at IS NULL AND total_recharged <= 0
+			WHERE id = $2 AND deleted_at IS NULL AND COALESCE(gift_balance, 0) > 0
 			FOR UPDATE
 		), updated AS (
 			UPDATE users AS u
-			SET balance = target.balance - LEAST($1, GREATEST(target.balance, 0)), updated_at = NOW()
+			SET balance = target.balance - LEAST($1, GREATEST(target.balance, 0), target.gift_balance),
+				gift_balance = target.gift_balance - LEAST($1, GREATEST(target.balance, 0), target.gift_balance),
+				gift_balance_expires_at = CASE
+					WHEN target.gift_balance - LEAST($1, GREATEST(target.balance, 0), target.gift_balance) > 0 THEN u.gift_balance_expires_at
+					ELSE NULL END,
+				updated_at = NOW()
 			FROM target
 			WHERE u.id = target.id AND u.deleted_at IS NULL
 			RETURNING target.balance - u.balance AS deducted
@@ -1404,7 +1436,12 @@ func (r *userRepository) DeductAvailableGiftBalance(ctx context.Context, id int6
 func (r *userRepository) AdjustBalance(ctx context.Context, id int64, delta float64) (service.BalanceChange, error) {
 	const updateSQL = `
 		UPDATE users
-		SET balance = balance + $1, updated_at = NOW()
+		SET balance = balance + $1,
+			gift_balance = CASE WHEN $1 < 0
+				THEN GREATEST(COALESCE(gift_balance, 0) + $1, 0)
+				ELSE COALESCE(gift_balance, 0) END,
+			total_recharged = CASE WHEN $1 > 0 THEN total_recharged + $1 ELSE total_recharged END,
+			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND balance + $1 >= 0
 		RETURNING balance - $1, balance
 	`
@@ -1436,8 +1473,10 @@ func (r *userRepository) SetBalance(ctx context.Context, id int64, value float64
 	}
 	const updateSQL = `
 		UPDATE users AS u
-		SET balance = $1, updated_at = NOW()
-		FROM (SELECT id, balance FROM users WHERE id = $2 AND deleted_at IS NULL) AS prev
+		SET balance = $1,
+			gift_balance = LEAST(COALESCE(prev.gift_balance, 0), $1),
+			updated_at = NOW()
+		FROM (SELECT id, balance, gift_balance FROM users WHERE id = $2 AND deleted_at IS NULL) AS prev
 		WHERE u.id = prev.id AND u.deleted_at IS NULL
 		RETURNING prev.balance, u.balance
 	`
@@ -1884,6 +1923,9 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	}
 
 	out := userEntityToService(m)
+	if err := r.loadGiftBalance(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
 	if err != nil {
 		return nil, err
@@ -2047,6 +2089,77 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 	dst.LastActiveAt = src.LastActiveAt
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
+}
+
+// loadGiftBalance keeps the split-balance fields available while the legacy
+// Ent generated files continue to expose the compatibility user shape.
+func (r *userRepository) loadGiftBalance(ctx context.Context, user *service.User) error {
+	if user == nil {
+		return nil
+	}
+	if exec := r.antiAbuseExecutor(ctx); exec != nil {
+		var gift float64
+		var expiresAt *time.Time
+		if err := scanSingleRow(ctx, exec, `
+SELECT COALESCE(gift_balance, 0), gift_balance_expires_at
+FROM users WHERE id = $1`, []any{user.ID}, &gift, &expiresAt); err == nil {
+			user.GiftBalance = gift
+			user.GiftBalanceExpiresAt = expiresAt
+			var daily float64
+			var dailyExpiresAt *time.Time
+			var expiredDaily float64
+			dailyErr := scanSingleRow(ctx, exec, `
+SELECT COALESCE(SUM(CASE WHEN expires_at > CURRENT_TIMESTAMP THEN remaining_amount ELSE 0 END), 0),
+       MIN(CASE WHEN expires_at > CURRENT_TIMESTAMP THEN expires_at ELSE NULL END),
+       COALESCE(SUM(CASE WHEN expires_at <= CURRENT_TIMESTAMP THEN remaining_amount ELSE 0 END), 0)
+FROM daily_checkin_rewards
+WHERE user_id = $1 AND remaining_amount > 0`, []any{user.ID}, &daily, &dailyExpiresAt, &expiredDaily)
+			if dailyErr != nil && !isMissingGiftBalanceSourceTable(dailyErr) {
+				return dailyErr
+			}
+			if dailyErr == nil {
+				user.GiftBalance = math.Max(0, user.GiftBalance-expiredDaily)
+				user.GiftBalanceExpiresAt = dailyExpiresAt
+			}
+			user.DailyCheckinBalance = daily
+			if user.DailyCheckinBalance > user.GiftBalance {
+				user.DailyCheckinBalance = user.GiftBalance
+			}
+			user.RegistrationGiftBalance = user.GiftBalance - user.DailyCheckinBalance
+			user.DailyCheckinExpiresAt = dailyExpiresAt
+			return nil
+		} else if !strings.Contains(strings.ToLower(err.Error()), "gift_balance") {
+			return err
+		}
+	}
+	// Pre-migration fallback classifies an account with no recharge history as
+	// registration gift, preserving the existing total for rolling upgrades.
+	if user.TotalRecharged <= 0 && user.Balance > 0 {
+		user.GiftBalance = user.Balance
+	}
+	user.RegistrationGiftBalance = user.GiftBalance
+	return nil
+}
+
+func isMissingGiftBalanceSourceTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "daily_checkin_rewards") &&
+		(strings.Contains(message, "does not exist") || strings.Contains(message, "no such table"))
+}
+
+func (r *userRepository) loadGiftBalances(ctx context.Context, users map[int64]*service.User) error {
+	if len(users) == 0 {
+		return nil
+	}
+	for _, user := range users {
+		if err := r.loadGiftBalance(ctx, user); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func userSignupSourceOrDefault(signupSource string) string {

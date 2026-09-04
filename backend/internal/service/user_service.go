@@ -224,9 +224,8 @@ type RedeemUserAdjustmentRepository interface {
 	ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error
 }
 
-// IPRiskGiftBalanceDeductor atomically removes available balance from an
-// account that has no recharge history. The recharge-history predicate is
-// evaluated in the same database statement as the balance update.
+// IPRiskGiftBalanceDeductor atomically removes available balance from the
+// tracked gift bucket while preserving paid recharge balance.
 type IPRiskGiftBalanceDeductor interface {
 	DeductAvailableGiftBalance(ctx context.Context, id int64, amount float64) (float64, error)
 }

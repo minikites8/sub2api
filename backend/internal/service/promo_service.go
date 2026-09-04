@@ -209,14 +209,19 @@ func (s *PromoService) grantPromoBonusBalance(ctx context.Context, userID int64,
 	if amount == 0 {
 		return nil
 	}
-	if tx := dbent.TxFromContext(ctx); tx != nil {
-		_, err := tx.User.UpdateOneID(userID).AddBalance(amount).Save(ctx)
-		return err
-	}
 	if s == nil || s.entClient == nil {
 		return fmt.Errorf("promo bonus balance client not configured")
 	}
-	_, err := s.entClient.User.UpdateOneID(userID).AddBalance(amount).Save(ctx)
+	client := s.entClient
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		client = tx.Client()
+	}
+	_, err := client.ExecContext(ctx, `
+		UPDATE users
+		SET balance = balance + $1,
+			gift_balance = COALESCE(gift_balance, 0) + $1,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL`, amount, userID)
 	return err
 }
 

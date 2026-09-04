@@ -387,10 +387,14 @@ func (s *PaymentService) applyFirstRechargePromoBalance(ctx context.Context, tx 
 	if creditAmount <= 0 {
 		creditAmount = o.Amount
 	}
-	_, err = tx.User.UpdateOneID(o.UserID).
-		AddBalance(creditAmount).
-		AddTotalRecharged(baseAmount).
-		Save(ctx)
+	bonusCredit := math.Max(0, creditAmount-baseAmount)
+	_, err = tx.Client().ExecContext(ctx, `
+		UPDATE users
+		SET balance = balance + $1,
+			gift_balance = COALESCE(gift_balance, 0) + $2,
+			total_recharged = total_recharged + $3,
+			updated_at = NOW()
+		WHERE id = $4 AND deleted_at IS NULL`, creditAmount, bonusCredit, baseAmount, o.UserID)
 	if err != nil {
 		return firstRechargePromoBalanceNone, fmt.Errorf("credit first recharge promo balance: %w", err)
 	}

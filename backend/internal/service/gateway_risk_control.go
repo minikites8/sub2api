@@ -218,20 +218,30 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 }
 
 func deductIPRiskGiftBalance(ctx context.Context, repo UserRepository, target *User) (float64, error) {
-	if repo == nil || target == nil || target.ID <= 0 || target.TotalRecharged > 0 || target.Balance <= 0 {
+	if repo == nil || target == nil || target.ID <= 0 || target.Balance <= 0 {
+		return 0, nil
+	}
+	if target.GiftBalance <= 0 {
+		fresh, err := repo.GetByID(ctx, target.ID)
+		if err != nil {
+			return 0, err
+		}
+		target = fresh
+	}
+	if target.GiftBalance <= 0 {
 		return 0, nil
 	}
 	if deductor, ok := repo.(IPRiskGiftBalanceDeductor); ok {
-		return deductor.DeductAvailableGiftBalance(ctx, target.ID, target.Balance)
+		return deductor.DeductAvailableGiftBalance(ctx, target.ID, target.GiftBalance)
 	}
 	if deductor, ok := repo.(availableBalanceDeductor); ok {
-		return deductor.DeductAvailableBalance(ctx, target.ID, target.Balance)
+		return deductor.DeductAvailableBalance(ctx, target.ID, target.GiftBalance)
 	}
 	if adjuster, ok := repo.(RedeemUserAdjustmentRepository); ok {
-		if err := adjuster.ApplyRedeemBalanceAdjustment(ctx, target.ID, -target.Balance); err != nil {
+		if err := adjuster.ApplyRedeemBalanceAdjustment(ctx, target.ID, -target.GiftBalance); err != nil {
 			return 0, err
 		}
-		return target.Balance, nil
+		return target.GiftBalance, nil
 	}
 	return 0, errors.New("user repository does not support IP risk gift balance deduction")
 }

@@ -172,6 +172,12 @@ WHERE checkin_date = $1`, input.Date, reward); err != nil {
 	if err := tx.QueryRowContext(ctx, `
 UPDATE users
 SET balance = balance + $2,
+    gift_balance = COALESCE(gift_balance, 0) + $2,
+    gift_balance_expires_at = (
+        SELECT MIN(expires_at)
+        FROM daily_checkin_rewards
+        WHERE user_id = $1 AND remaining_amount > 0 AND expires_at > NOW()
+    ),
     updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING balance::double precision`, input.UserID, reward).Scan(&balance); err != nil {
