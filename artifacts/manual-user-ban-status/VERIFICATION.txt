@@ -1,0 +1,33 @@
+MANUAL USER GROUP BAN STATUS VERIFICATION
+
+Changed branch/field: main / UsersView status column for active user-group bans.
+Behavior: account-level bans remain red and take priority; an active user-group ban on an otherwise active account displays orange "部分分组被封禁" (English: "Partially banned by group"); expired group bans display active status.
+Artifacts:
+- MODIFIED_FILE: artifacts/manual-user-ban-status/MODIFIED_FILE
+- DIFF_FILE: artifacts/manual-user-ban-status/DIFF_FILE
+- VERIFICATION.txt: artifacts/manual-user-ban-status/VERIFICATION.txt
+- ROLLBACK.sh: artifacts/manual-user-ban-status/ROLLBACK.sh
+
+BASELINE_COMMAND: pnpm exec vitest run src/views/admin/__tests__/UsersView.spec.ts
+BASELINE_INPUT: HEAD UsersView and original UsersView.spec.ts from detached baseline worktree
+BASELINE_OUTPUT: Test Files 1 passed; Tests 4 passed; Duration 5.34s
+BASELINE_EXIT: 0
+
+MODIFIED_COMMAND: pnpm exec vitest run src/views/admin/__tests__/UsersView.spec.ts
+MODIFIED_INPUT: active partial group ban, expired group ban, account-ban precedence, orange/red status dots
+MODIFIED_OUTPUT: Test Files 1 passed; Tests 7 passed; Duration 4.81s
+MODIFIED_EXIT: 0
+
+TYPECHECK_COMMAND: pnpm typecheck
+TYPECHECK_OUTPUT: vue-tsc --noEmit passed
+TYPECHECK_EXIT: 0
+
+LINT_COMMAND: pnpm lint:check
+LINT_OUTPUT: eslint passed
+LINT_EXIT: 0
+
+ROLLBACK_COMMAND: & 'C:\Program Files\Git\bin\bash.exe' artifacts/manual-user-ban-status/ROLLBACK.sh artifacts/manual-user-ban-status/ROLLBACK_TARGET artifacts/manual-user-ban-status/BASELINE_FILE
+ROLLBACK_INPUT: copy of MODIFIED_FILE at artifacts/manual-user-ban-status/ROLLBACK_TARGET
+ROLLBACK_OUTPUT: BASELINE_HASH:324CA695FB6A6F7E4FAA6D57F329493033C1856CFAE08BEFD5E7828799A3A7DA; RESTORED_HASH:324CA695FB6A6F7E4FAA6D57F329493033C1856CFAE08BEFD5E7828799A3A7DA; RESTORED_STATUS:PASS; MODIFIED_FILE_STATUS:CHANGED
+ROLLBACK_EXIT: 0
+RESTORED_BEHAVIOR: rollback copy matches the baseline component hash while MODIFIED_FILE remains changed.

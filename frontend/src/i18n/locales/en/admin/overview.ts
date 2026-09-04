@@ -457,6 +457,7 @@ export default {
         temporaryActive: 'This user is temporarily banned',
         permanentStatus: 'Permanently banned',
         temporaryStatus: 'Banned until {time}',
+        partialGroupStatus: 'Partially banned by group',
         until: 'Until {time}',
         banUser: 'Ban user',
         banGroup: 'Ban group',

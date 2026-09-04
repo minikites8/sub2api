@@ -457,6 +457,7 @@ export default {
         temporaryActive: '用户处于临时封禁状态',
         permanentStatus: '永久封禁',
         temporaryStatus: '封禁至 {time}',
+        partialGroupStatus: '部分分组被封禁',
         until: '截止 {time}',
         banUser: '封禁用户',
         banGroup: '封禁分组',

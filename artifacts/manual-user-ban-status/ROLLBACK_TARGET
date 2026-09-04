@@ -582,7 +582,7 @@
               <span
                 :class="[
                   'inline-block h-2 w-2 rounded-full',
-                  getUserStatusDotClass(row)
+                  isUserBanActive(row) ? 'bg-red-500' : 'bg-green-500'
                 ]"
               ></span>
               <span class="text-sm text-gray-700 dark:text-gray-300">
@@ -1378,26 +1378,10 @@ const isUserBanActive = (user: AdminUser): boolean => {
   return new Date(user.disabled_until).getTime() > Date.now()
 }
 
-const hasActiveGroupBan = (user: AdminUser): boolean => {
-  return (user.banned_group_ids || []).some((groupId) => {
-    const expiresAt = user.banned_group_expirations?.[groupId]
-    return !expiresAt || new Date(expiresAt).getTime() > Date.now()
-  })
-}
-
-const getUserStatusDotClass = (user: AdminUser): string => {
-  if (isUserBanActive(user)) return 'bg-red-500'
-  if (hasActiveGroupBan(user)) return 'bg-orange-500'
-  return 'bg-green-500'
-}
-
 const getUserStatusLabel = (user: AdminUser): string => {
-  if (isUserBanActive(user)) {
-    if (!user.disabled_until) return t('admin.users.ban.permanentStatus')
-    return t('admin.users.ban.temporaryStatus', { time: formatDateTime(user.disabled_until) })
-  }
-  if (hasActiveGroupBan(user)) return t('admin.users.ban.partialGroupStatus')
-  return t('common.active')
+  if (!isUserBanActive(user)) return t('common.active')
+  if (!user.disabled_until) return t('admin.users.ban.permanentStatus')
+  return t('admin.users.ban.temporaryStatus', { time: formatDateTime(user.disabled_until) })
 }
 let abortController: AbortController | null = null
 let secondaryDataSeq = 0

@@ -98,6 +98,7 @@ const DataTableStub = {
       </template>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
+        <slot name="cell-status" :value="row.status" :row="row" />
       </div>
     </div>
   `
@@ -216,6 +217,67 @@ describe('admin UsersView', () => {
     await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
 
     expect(wrapper.text()).toContain('admin.users.columns.usageKiro')
+  })
+
+  it('shows partial group bans in the user status column', async () => {
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({
+        banned_group_ids: [7],
+        banned_group_expirations: {}
+      })],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mountUsersView()
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.users.ban.partialGroupStatus')
+    expect(wrapper.find('.bg-orange-500').exists()).toBe(true)
+  })
+
+  it('ignores expired group bans in the user status column', async () => {
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({
+        banned_group_ids: [7],
+        banned_group_expirations: { 7: '2020-01-01T00:00:00Z' }
+      })],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mountUsersView()
+
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('admin.users.ban.partialGroupStatus')
+  })
+
+  it('keeps account-level bans ahead of partial group bans', async () => {
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({
+        status: 'disabled',
+        banned_group_ids: [7],
+        banned_group_expirations: {}
+      })],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mountUsersView()
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.users.ban.permanentStatus')
+    expect(wrapper.text()).not.toContain('admin.users.ban.partialGroupStatus')
+    expect(wrapper.find('.bg-red-500').exists()).toBe(true)
   })
 
   it('clears usage current-page sort when switching to last_used_at server sort', async () => {
