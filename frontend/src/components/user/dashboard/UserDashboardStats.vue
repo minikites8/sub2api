@@ -4,7 +4,23 @@
       <article v-if="!isSimple" class="md3-stat-card">
         <span class="md3-stat-label">{{ t('dashboard.balance') }}</span>
         <strong class="md3-stat-value">${{ formatBalance(balance) }}</strong>
-        <span class="md3-stat-meta">{{ t('common.available') }}</span>
+        <div class="md3-balance-breakdown">
+          <div class="md3-balance-row">
+            <span>{{ t('common.rechargeBalance') }}</span>
+            <strong>${{ formatBalance(rechargeBalance) }}</strong>
+          </div>
+          <div class="md3-balance-row md3-balance-gift">
+            <span>{{ t('common.giftBalance') }}</span>
+            <strong>${{ formatBalance(giftBalance) }}</strong>
+          </div>
+          <div class="md3-balance-sources">
+            <span>{{ t('common.registrationGift') }} ${{ formatBalance(registrationGiftBalance) }}</span>
+            <span>{{ t('common.dailyCheckinGift') }} ${{ formatBalance(dailyCheckinBalance) }}</span>
+          </div>
+          <span v-if="giftBalanceExpiresAt" class="md3-stat-meta">
+            {{ t('common.giftExpiresAt', { date: formatGiftExpiry(giftBalanceExpiresAt) }) }}
+          </span>
+        </div>
       </article>
 
       <article class="md3-stat-card">
@@ -36,21 +52,44 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 
-defineProps<{
+const props = defineProps<{
   stats: UserStatsType
   balance: number
+  rechargeBalance?: number
+  giftBalance?: number
+  registrationGiftBalance?: number
+  dailyCheckinBalance?: number
+  giftBalanceExpiresAt?: string | null
   isSimple: boolean
 }>()
 const { t } = useI18n()
+
+const stats = computed(() => props.stats)
+const balance = computed(() => props.balance)
+const isSimple = computed(() => props.isSimple)
+const rechargeBalance = computed(() => Number(props.rechargeBalance ?? Math.max(props.balance - Number(props.giftBalance || 0), 0)))
+const giftBalance = computed(() => Number(props.giftBalance || 0))
+const registrationGiftBalance = computed(() => Number(props.registrationGiftBalance || 0))
+const dailyCheckinBalance = computed(() => Number(props.dailyCheckinBalance || 0))
+const giftBalanceExpiresAt = computed(() => props.giftBalanceExpiresAt || null)
 
 const formatBalance = (b: number) =>
   new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(b)
+
+const formatGiftExpiry = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  }).format(date)
+}
 
 const formatNumber = (n: number) => n.toLocaleString()
 const formatCost = (c: number) => c.toFixed(4)
@@ -118,6 +157,40 @@ const formatTokens = (t: number) => {
   color: var(--md-on-surface-variant);
   font-size: 0.75rem;
   line-height: 1.45;
+}
+
+.md3-balance-breakdown {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.md3-balance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.md3-balance-row strong {
+  color: var(--md-on-surface);
+  font-weight: 600;
+}
+
+.md3-balance-row.md3-balance-gift strong {
+  color: var(--md-success);
+}
+
+.md3-balance-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.6875rem;
+  line-height: 1.35;
 }
 
 .md3-token-input {

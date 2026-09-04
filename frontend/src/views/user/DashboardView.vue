@@ -205,7 +205,16 @@
         <LoadingSpinner />
       </div>
       <template v-else-if="stats">
-        <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" />
+        <UserDashboardStats
+          :stats="stats"
+          :balance="user?.balance || 0"
+          :recharge-balance="user?.recharge_balance"
+          :gift-balance="user?.gift_balance"
+          :registration-gift-balance="user?.registration_gift_balance"
+          :daily-checkin-balance="user?.daily_checkin_balance"
+          :gift-balance-expires-at="user?.gift_balance_expires_at"
+          :is-simple="authStore.isSimpleMode"
+        />
         <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
       </template>
     </section>
