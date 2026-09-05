@@ -201,7 +201,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyYeTeamAutoRefresh401:                 strconv.FormatBool(yeTeamAutoRefresh401),
 
 		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
-		SettingKeyGrokDefaultTextModel:           "grok-4.5",
+		SettingKeyGrokDefaultTextModel:           "grok-4.6",
 		SettingKeyGrokCrossClientModelMapEnabled: "true",
 		SettingKeyGrokDefaultBaseURLMode:         GrokDefaultBaseURLModeCLI,
 
@@ -835,7 +835,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Grok default mapping policy
 	result.GrokDefaultTextModel = strings.TrimSpace(settings[SettingKeyGrokDefaultTextModel])
 	if result.GrokDefaultTextModel == "" {
-		result.GrokDefaultTextModel = "grok-4.5"
+		result.GrokDefaultTextModel = "grok-4.6"
 	}
 	// Default true (missing/empty → enabled) so Claude/Codex→Grok mapping keeps working.
 	// Operators can set false to disable silent cross-client rewrite.
@@ -870,6 +870,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
 	// cch_signing=false, claude_oauth_system_prompt_injection=true)
+	result.OpenAITTFTMode = normalizeOpenAITTFTMode(settings[SettingKeyOpenAITTFTMode])
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
 	} else {
@@ -1001,6 +1002,13 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	})
 
 	return result
+}
+
+func normalizeOpenAITTFTMode(mode string) string {
+	if strings.EqualFold(strings.TrimSpace(mode), OpenAITTFTModeVisible) {
+		return OpenAITTFTModeVisible
+	}
+	return OpenAITTFTModeSemantic
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

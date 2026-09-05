@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/singleflight"
@@ -18,10 +19,12 @@ import (
 // 渠道监控「配额模式」的配额抓取器。
 //
 // 不直接对接上游，而是把账号侧现成的用量服务归一成 domain.MonitorQuotaSnapshot：
-//   - 海外 5 家（anthropic/openai/gemini/antigravity/grok）→ AccountUsageService.GetUsage
-//   - 国产 coding plan（kimi/zhipu/deepseek）→ CNProviderQuotaService.QueryUsage
-//   - 国产 payg（kimi/deepseek）→ CNProviderBalanceService.QueryBalance
-//     （zhipu payg 无公开余额端点，QueryBalance 会返回该错误，原样透出）
+//   - 海外 5 家（anthropic/openai/gemini/antigravity/grok）→ AccountUsageService.GetUsageForAccount
+//   - 国产 coding plan（kimi/zhipu/deepseek）→ CNProviderQuotaService.QueryUsageForAccount
+//   - 国产 payg（kimi/deepseek）→ CNProviderBalanceService.QueryBalanceForAccount
+//     （zhipu payg 无公开余额端点，探测会返回该错误，原样透出）
+// 数据源统一接受已加载的 *Account：fetchUncached 路由前 GetByID 一次并传下去，
+// 下游服务不再各自重载（每次 GetByID 含 proxies/groups 联查）。
 //
 // Fetch 永不返回 error：所有失败都降级为 Success=false 的快照照常入库，
 // 由 deriveQuotaCheckResult 推导为 failed/error 状态。
@@ -32,23 +35,38 @@ import (
 // 抓取由 singleflight 合并为一次上游查询。
 
 // monitorUsageSource 海外平台账号用量查询（AccountUsageService 天然满足）。
+// 传已加载的 *Account：fetchUncached 只 GetByID 一次，下游不再重复加载。
 type monitorUsageSource interface {
-	GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error)
+	GetUsageForAccount(ctx context.Context, account *Account, force ...bool) (*UsageInfo, error)
 }
 
 // monitorCNQuotaSource 国产 coding plan 滚动窗口额度探测（CNProviderQuotaService 天然满足）。
 type monitorCNQuotaSource interface {
-	QueryUsage(ctx context.Context, accountID int64) (*CNProviderQuotaProbeResult, error)
+	QueryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error)
 }
 
 // monitorCNBalanceSource 国产 payg 余额探测（CNProviderBalanceService 天然满足）。
 type monitorCNBalanceSource interface {
-	QueryBalance(ctx context.Context, accountID int64) (*CNProviderBalanceResult, error)
+	QueryBalanceForAccount(ctx context.Context, account *Account) (*CNProviderBalanceResult, error)
 }
 
 // monitorAccountSource 账号加载（AccountRepository 天然满足）。
 type monitorAccountSource interface {
 	GetByID(ctx context.Context, id int64) (*Account, error)
+}
+
+// monitorGroupAccountSource 列出分组内的账号，供组级聚合使用
+// （AccountRepository 天然满足）。ListByGroup 返回组内全部 active 账号，
+// 不过滤 schedulable：被手动暂停的账号额度仍然算在渠道容量里，且分母不会
+// 因为某个号进 429 冷却而跳变。
+type monitorGroupAccountSource interface {
+	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
+}
+
+// monitorGroupSource 分组加载（GroupRepository 天然满足）。
+// 用 GetByIDLite 而非 GetByID：校验只需要 Name/Platform，不必付联查代价。
+type monitorGroupSource interface {
+	GetByIDLite(ctx context.Context, id int64) (*Group, error)
 }
 
 // ChannelMonitorQuotaFetcher 配额抓取器（成功/失败快照均带 TTL 缓存，
@@ -58,6 +76,11 @@ type ChannelMonitorQuotaFetcher struct {
 	cnQuota   monitorCNQuotaSource
 	cnBalance monitorCNBalanceSource
 	accounts  monitorAccountSource
+	// groupAccounts / groups 组级聚合用：前者列组内账号，后者校验分组平台。
+	groupAccounts monitorGroupAccountSource
+	groups        monitorGroupSource
+	// balanceThreshold cn_balance 余额告警阈值（与账号停调共用配置，见 monitorBalanceThreshold）。
+	balanceThreshold float64
 
 	mu     sync.Mutex
 	cache  map[int64]monitorQuotaCacheEntry
@@ -76,8 +99,13 @@ func NewChannelMonitorQuotaFetcher(
 	cnQuota *CNProviderQuotaService,
 	cnBalance *CNProviderBalanceService,
 	accounts AccountRepository,
+	groups GroupRepository,
+	cfg *config.Config,
 ) *ChannelMonitorQuotaFetcher {
-	f := &ChannelMonitorQuotaFetcher{cache: make(map[int64]monitorQuotaCacheEntry)}
+	f := &ChannelMonitorQuotaFetcher{
+		cache:            make(map[int64]monitorQuotaCacheEntry),
+		balanceThreshold: monitorBalanceThreshold(cfg),
+	}
 	if usage != nil {
 		f.usage = usage
 	}
@@ -89,8 +117,23 @@ func NewChannelMonitorQuotaFetcher(
 	}
 	if accounts != nil {
 		f.accounts = accounts
+		f.groupAccounts = accounts
+	}
+	if groups != nil {
+		f.groups = groups
 	}
 	return f
+}
+
+// monitorBalanceThreshold 余额告警阈值，与账号停调（CNProviderBalanceCheckService）
+// 共用 gateway.cn_providers.balance_threshold，保证监控 degraded 与调度器停调
+// 口径一致（任一币种达标即健康）。未配置/非正值时回退 viper 默认 0.5（config.go），
+// 避免 0 阈值下「余额=0 也不告警」相对旧 `<=0` 判定的回归。
+func monitorBalanceThreshold(cfg *config.Config) float64 {
+	if cfg != nil && cfg.Gateway.CNProviders.BalanceThreshold > 0 {
+		return cfg.Gateway.CNProviders.BalanceThreshold
+	}
+	return 0.5
 }
 
 // LoadAccount 加载账号（不走缓存）。供 Create/Update 时校验
@@ -100,6 +143,15 @@ func (f *ChannelMonitorQuotaFetcher) LoadAccount(ctx context.Context, id int64) 
 		return nil, fmt.Errorf("quota fetcher is not configured")
 	}
 	return f.accounts.GetByID(ctx, id)
+}
+
+// LoadGroup 加载分组（不走缓存）。供 Create/Update 时校验
+// provider 与 group.platform 一致；分组不存在时返回错误。
+func (f *ChannelMonitorQuotaFetcher) LoadGroup(ctx context.Context, id int64) (*Group, error) {
+	if f == nil || f.groups == nil {
+		return nil, fmt.Errorf("quota fetcher is not configured")
+	}
+	return f.groups.GetByIDLite(ctx, id)
 }
 
 // Fetch 抓取账号的最新配额快照。永不返回 error：失败降级为
@@ -120,16 +172,7 @@ func (f *ChannelMonitorQuotaFetcher) Fetch(ctx context.Context, accountID int64)
 	// 避免某个监控的取消波及共享同一账号的其他监控。
 	key := "monitor-quota:" + strconv.FormatInt(accountID, 10)
 	ch := f.flight.DoChan(key, func() (any, error) {
-		fetchCtx, cancel := context.WithTimeout(context.Background(), monitorQuotaFetchTimeout)
-		defer cancel()
-		snapshot := f.fetchUncached(fetchCtx, accountID, time.Now())
-		// 失败也进短 TTL 负缓存：凭据失效/故障期间不必每次调度都打上游。
-		ttl := monitorQuotaFetchCacheTTL
-		if !snapshot.Success {
-			ttl = monitorQuotaErrorCacheTTL
-		}
-		f.storeSnapshot(accountID, snapshot, time.Now().Add(ttl))
-		return snapshot, nil
+		return f.fetchShared(accountID), nil
 	})
 	select {
 	case <-ctx.Done():
@@ -141,6 +184,33 @@ func (f *ChannelMonitorQuotaFetcher) Fetch(ctx context.Context, accountID int64)
 		}
 		return snapshot
 	}
+}
+
+// fetchShared 是 singleflight 的执行体：抓取一次并写入缓存，结果由同一 key 上
+// 所有等待者共享。
+//
+// 开头必须重查缓存。Fetch 顶部的 cachedSnapshot 与下面的 flight.DoChan 之间有一个
+// 窗口：期间另一个 goroutine 的 flight 可能已经跑完、写好缓存，并且它的 singleflight
+// key 也已被摘掉，于是本 goroutine 不会并入那次飞行，而是另起一个新的、对同一账号
+// 再打一次上游——正是 singleflight 要消除的那种重复查询。
+//
+// 这次重查一定命中，所以合并是确定的而不是尽力而为：storeSnapshot 发生在本函数
+// 返回之前，而 singleflight 删 key 发生在返回之后，因此「能新起一次飞行」必然蕴含
+// 「上一次的快照已经可见」。
+func (f *ChannelMonitorQuotaFetcher) fetchShared(accountID int64) *domain.MonitorQuotaSnapshot {
+	if cached, ok := f.cachedSnapshot(accountID, time.Now()); ok {
+		return cached
+	}
+	fetchCtx, cancel := context.WithTimeout(context.Background(), monitorQuotaFetchTimeout)
+	defer cancel()
+	snapshot := f.fetchUncached(fetchCtx, accountID, time.Now())
+	// 失败也进短 TTL 负缓存：凭据失效/故障期间不必每次调度都打上游。
+	ttl := monitorQuotaFetchCacheTTL
+	if !snapshot.Success {
+		ttl = monitorQuotaErrorCacheTTL
+	}
+	f.storeSnapshot(accountID, snapshot, time.Now().Add(ttl))
+	return snapshot
 }
 
 func (f *ChannelMonitorQuotaFetcher) cachedSnapshot(accountID int64, now time.Time) (*domain.MonitorQuotaSnapshot, bool) {
@@ -170,26 +240,29 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 		// 推导为 degraded（配置问题，不是渠道故障）。
 		slog.Warn("channel_monitor: load linked account failed",
 			"account_id", accountID, "error", err)
-		return quotaErrorSnapshot("usage", "linked account not found", now)
+		return quotaErrorSnapshot("usage", monitorQuotaErrAccountNotFound, now)
 	}
 
+	// 账号只在路由前加载这一次；已加载的 account 直接传给数据源
+	// （GetUsageForAccount / QueryUsageForAccount / QueryBalanceForAccount），
+	// 下游服务不再各自 GetByID（每次含 proxies/groups 联查）。
 	switch account.Platform {
 	case domain.PlatformKimi, domain.PlatformZhipu, domain.PlatformDeepseek:
 		if account.IsCodingPlan() {
-			return f.fetchCNQuota(ctx, accountID, now)
+			return f.fetchCNQuota(ctx, account, now)
 		}
-		return f.fetchCNBalance(ctx, accountID, now)
+		return f.fetchCNBalance(ctx, account, now)
 	default:
-		return f.fetchUsage(ctx, accountID, now)
+		return f.fetchUsage(ctx, account, now)
 	}
 }
 
-// fetchUsage 海外平台：AccountUsageService.GetUsage → 快照。
-func (f *ChannelMonitorQuotaFetcher) fetchUsage(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+// fetchUsage 海外平台：AccountUsageService.GetUsageForAccount → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchUsage(ctx context.Context, account *Account, now time.Time) *domain.MonitorQuotaSnapshot {
 	if f.usage == nil {
 		return quotaErrorSnapshot("usage", "usage service is not configured", now)
 	}
-	usage, err := f.usage.GetUsage(ctx, accountID)
+	usage, err := f.usage.GetUsageForAccount(ctx, account)
 	if err != nil {
 		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
 		return &domain.MonitorQuotaSnapshot{
@@ -245,6 +318,9 @@ func usageQuotaTiers(usage *UsageInfo) []domain.MonitorQuotaTier {
 	// Grok requests/tokens 两个日窗口 + 月度计费窗口。
 	appendQuotaWindowTier(&tiers, "daily", "requests", usage.GrokRequestQuota)
 	appendQuotaWindowTier(&tiers, "daily", "tokens", usage.GrokTokenQuota)
+	// Kiro credits 主额度 + Bonus（免费试用）额度，二者共用 KiroResetAt。
+	appendKiroCreditTier(&tiers, "credits", usage.KiroCredit, usage.KiroResetAt)
+	appendKiroCreditTier(&tiers, "bonus", usage.KiroBonus, usage.KiroResetAt)
 	// Antigravity per-model 总量额度，Label = 模型名（按名排序保证输出稳定）。
 	for _, model := range sortedQuotaModelNames(usage.AntigravityQuota) {
 		q := usage.AntigravityQuota[model]
@@ -279,6 +355,26 @@ func appendProgressTier(tiers *[]domain.MonitorQuotaTier, window, label string, 
 	if p.LimitRequests > 0 {
 		tier.Used = float64(p.UsedRequests)
 		tier.Limit = float64(p.LimitRequests)
+	}
+	*tiers = append(*tiers, tier)
+}
+
+// appendKiroCreditTier 把 Kiro 的 credits / bonus 进度归一为 tier。
+// UsageLimit <= 0 表示上游没给额度上限（字段缺失或不限量），使用率无从计算，跳过；
+// PercentageUsed 上游已按 0-100 给出（percentageOrZero），与其余 tier 同量纲。
+func appendKiroCreditTier(tiers *[]domain.MonitorQuotaTier, label string, p *KiroCreditProgress, resetAt *time.Time) {
+	if p == nil || p.UsageLimit <= 0 {
+		return
+	}
+	tier := domain.MonitorQuotaTier{
+		Window:      "total",
+		Label:       label,
+		UsedPercent: p.PercentageUsed,
+		Used:        p.CurrentUsage,
+		Limit:       p.UsageLimit,
+	}
+	if resetAt != nil {
+		tier.ResetAt = resetAt.UTC().Format(time.RFC3339)
 	}
 	*tiers = append(*tiers, tier)
 }
@@ -318,12 +414,12 @@ func sortedQuotaModelNames(quotas map[string]*AntigravityModelQuota) []string {
 	return names
 }
 
-// fetchCNQuota 国产 coding plan：CNProviderQuotaService.QueryUsage → 快照。
-func (f *ChannelMonitorQuotaFetcher) fetchCNQuota(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+// fetchCNQuota 国产 coding plan：CNProviderQuotaService.QueryUsageForAccount → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchCNQuota(ctx context.Context, account *Account, now time.Time) *domain.MonitorQuotaSnapshot {
 	if f.cnQuota == nil {
 		return quotaErrorSnapshot("cn_quota", "cn quota service is not configured", now)
 	}
-	result, err := f.cnQuota.QueryUsage(ctx, accountID)
+	result, err := f.cnQuota.QueryUsageForAccount(ctx, account)
 	if err != nil {
 		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
 		return &domain.MonitorQuotaSnapshot{
@@ -341,7 +437,10 @@ func (f *ChannelMonitorQuotaFetcher) fetchCNQuota(ctx context.Context, accountID
 		Error:     result.Error,
 		FetchedAt: now,
 	}
-	if !result.Success && !result.CredentialValid {
+	// 只有 401/403 判凭据失效（与 fetchCNBalance 口径一致）：CN quota 服务的
+	// CredentialValid 仅在成功路径置 true，若按 `!Success && !CredentialValid`
+	// 推导，500/429/智谱业务错误全会被误判为 failed。
+	if !result.Success && (result.StatusCode == 401 || result.StatusCode == 403) {
 		snapshot.CredentialInvalid = true
 	}
 	if len(result.Tiers) > 0 {
@@ -360,12 +459,12 @@ func (f *ChannelMonitorQuotaFetcher) fetchCNQuota(ctx context.Context, accountID
 	return snapshot
 }
 
-// fetchCNBalance 国产 payg：CNProviderBalanceService.QueryBalance → 快照。
-func (f *ChannelMonitorQuotaFetcher) fetchCNBalance(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+// fetchCNBalance 国产 payg：CNProviderBalanceService.QueryBalanceForAccount → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchCNBalance(ctx context.Context, account *Account, now time.Time) *domain.MonitorQuotaSnapshot {
 	if f.cnBalance == nil {
 		return quotaErrorSnapshot("cn_balance", "cn balance service is not configured", now)
 	}
-	result, err := f.cnBalance.QueryBalance(ctx, accountID)
+	result, err := f.cnBalance.QueryBalanceForAccount(ctx, account)
 	if err != nil {
 		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
 		return &domain.MonitorQuotaSnapshot{
@@ -386,6 +485,10 @@ func (f *ChannelMonitorQuotaFetcher) fetchCNBalance(ctx context.Context, account
 	if result.Success {
 		balance := result.Balance
 		snapshot.Balance = &balance
+		// 与账号停调（checkOne）同口径：上游标记不可用或全部币种低于阈值
+		// 才告警，任一币种达标即健康（余额 5 元/阈值 10 元的账号调度器已
+		// 停调，监控不能仍绿灯）。
+		snapshot.BalanceLow = !result.Available || allCNBalancesBelowThreshold(result, f.balanceThreshold)
 	} else if result.StatusCode == 401 || result.StatusCode == 403 {
 		snapshot.CredentialInvalid = true
 	}
@@ -454,10 +557,13 @@ func usageFailureInfo(usage *UsageInfo) (failed, credentialInvalid bool, msg str
 // deriveQuotaCheckResult 把配额快照推导为检测状态（复用既有 status 枚举，
 // 时间线/可用率机制自动生效）：
 //   - 查询成功且无告警        → operational
-//   - 任一窗口使用率 >= 阈值或余额耗尽 → degraded
-//   - 账号未关联（配置问题）    → degraded
+//   - 任一窗口使用率 >= 阈值或余额低于阈值/不可用 → degraded
+//   - 账号/分组未关联（配置问题） → degraded
 //   - 凭据失效（401/403）     → failed
 //   - 网络/解析等其他错误      → error
+//
+// 组级聚合快照（AccountsTotal > 0）走 deriveGroupQuotaStatus：
+// 还有健康账号 → operational（耗尽只在计数里暴露），全部耗尽 → failed。
 func deriveQuotaCheckResult(snapshot *domain.MonitorQuotaSnapshot, model string, checkedAt time.Time) *CheckResult {
 	res := &CheckResult{Model: model, CheckedAt: checkedAt}
 	if snapshot == nil {
@@ -465,12 +571,16 @@ func deriveQuotaCheckResult(snapshot *domain.MonitorQuotaSnapshot, model string,
 		res.Message = "quota snapshot missing"
 		return res
 	}
+	if snapshot.AccountsTotal > 0 {
+		res.Status, res.Message = deriveGroupQuotaStatus(snapshot)
+		return res
+	}
 
 	switch {
 	case !snapshot.Success && snapshot.CredentialInvalid:
 		res.Status = MonitorStatusFailed
 		res.Message = snapshot.Error
-	case !snapshot.Success && strings.Contains(snapshot.Error, "linked account not found"):
+	case !snapshot.Success && isMonitorQuotaConfigError(snapshot.Error):
 		res.Status = MonitorStatusDegraded
 		res.Message = snapshot.Error
 	case !snapshot.Success:
@@ -487,6 +597,13 @@ func deriveQuotaCheckResult(snapshot *domain.MonitorQuotaSnapshot, model string,
 	return res
 }
 
+// isMonitorQuotaConfigError 该错误是否属于「数据源没配好」而非渠道故障。
+func isMonitorQuotaConfigError(msg string) bool {
+	return strings.Contains(msg, monitorQuotaErrAccountNotFound) ||
+		strings.Contains(msg, monitorQuotaErrGroupNotFound) ||
+		strings.Contains(msg, monitorQuotaErrGroupNoAccounts)
+}
+
 // quotaDegradedHint 生成 degraded 的 message（指出触发告警的窗口/余额）；
 // 空串表示无告警。
 func quotaDegradedHint(snapshot *domain.MonitorQuotaSnapshot) string {
@@ -499,8 +616,11 @@ func quotaDegradedHint(snapshot *domain.MonitorQuotaSnapshot) string {
 			return fmt.Sprintf("quota high: %s at %s%%", name, strconv.FormatFloat(tier.UsedPercent, 'f', 1, 64))
 		}
 	}
-	if snapshot.Balance != nil && *snapshot.Balance <= 0 {
-		return fmt.Sprintf("balance depleted (%s)", firstNonEmpty(snapshot.Currency, "?"))
+	if snapshot.BalanceLow {
+		if snapshot.Balance != nil {
+			return fmt.Sprintf("balance low: %s %s", strconv.FormatFloat(*snapshot.Balance, 'f', -1, 64), firstNonEmpty(snapshot.Currency, "?"))
+		}
+		return fmt.Sprintf("balance low (%s)", firstNonEmpty(snapshot.Currency, "?"))
 	}
 	return ""
 }

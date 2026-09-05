@@ -135,7 +135,8 @@ func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelID
 func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs []int64) (map[int64][]service.PricingInterval, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, pricing_id, min_tokens, max_tokens, tier_label,
-		        input_price, output_price, cache_write_price, cache_read_price,
+		        input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price,
+		        input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier,
 		        per_request_price, sort_order, created_at, updated_at
 		 FROM channel_pricing_intervals
 		 WHERE pricing_id = ANY($1) ORDER BY pricing_id, sort_order, id`,
@@ -151,7 +152,8 @@ func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs [
 		var iv service.PricingInterval
 		if err := rows.Scan(
 			&iv.ID, &iv.PricingID, &iv.MinTokens, &iv.MaxTokens, &iv.TierLabel,
-			&iv.InputPrice, &iv.OutputPrice, &iv.CacheWritePrice, &iv.CacheReadPrice,
+			&iv.InputPrice, &iv.OutputPrice, &iv.CacheWritePrice, &iv.CacheWrite1hPrice, &iv.CacheReadPrice,
+			&iv.InputMultiplier, &iv.OutputMultiplier, &iv.CacheWriteMultiplier, &iv.CacheReadMultiplier,
 			&iv.PerRequestPrice, &iv.SortOrder, &iv.CreatedAt, &iv.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan interval: %w", err)
@@ -288,10 +290,11 @@ func unmarshalChannelTimePricing(data []byte) (*service.ChannelTimePricing, erro
 func createIntervalExec(ctx context.Context, exec dbExec, iv *service.PricingInterval) error {
 	return exec.QueryRowContext(ctx,
 		`INSERT INTO channel_pricing_intervals
-		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, per_request_price, sort_order)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at, updated_at`,
+		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier, per_request_price, sort_order)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id, created_at, updated_at`,
 		iv.PricingID, iv.MinTokens, iv.MaxTokens, iv.TierLabel,
-		iv.InputPrice, iv.OutputPrice, iv.CacheWritePrice, iv.CacheReadPrice,
+		iv.InputPrice, iv.OutputPrice, iv.CacheWritePrice, iv.CacheWrite1hPrice, iv.CacheReadPrice,
+		iv.InputMultiplier, iv.OutputMultiplier, iv.CacheWriteMultiplier, iv.CacheReadMultiplier,
 		iv.PerRequestPrice, iv.SortOrder,
 	).Scan(&iv.ID, &iv.CreatedAt, &iv.UpdatedAt)
 }

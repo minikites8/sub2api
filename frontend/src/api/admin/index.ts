@@ -37,6 +37,7 @@ import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
 import dailyCheckinsAPI from './dailyCheckins'
 import auditAPI from './audit'
+import pluginsAPI from './plugins'
 
 /**
  * Unified admin API object for convenient access

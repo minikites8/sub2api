@@ -42,6 +42,9 @@ type MonitorQuotaTier struct {
 //   - "usage"      海外平台（AccountUsageService.GetUsage）
 //   - "cn_quota"   国产 Coding Plan（CNProviderQuotaService.QueryUsage）
 //   - "cn_balance" 国产按量付费余额（CNProviderBalanceService.QueryBalance）
+//
+// 组级聚合快照沿用组内账号的 Source（同组账号平台一致，来源必然同构），
+// 由 AccountsTotal > 0 而非 Source 区分聚合与单账号。
 type MonitorQuotaSnapshot struct {
 	Source    string             `json:"source"`
 	Success   bool               `json:"success"`
@@ -50,11 +53,27 @@ type MonitorQuotaSnapshot struct {
 	Balances  []MonitorBalance   `json:"balances,omitempty"`   // 多币种余额（如 DeepSeek CNY+USD）
 	Currency  string             `json:"currency,omitempty"`   // 主余额币种
 	PlanLevel string             `json:"plan_level,omitempty"` // 套餐等级（如智谱 level）
+	// BalanceLow 余额低于阈值或账号被上游标记不可用（仅 cn_balance 来源）。
+	// 抓取器按 Gateway.CNProviders.BalanceThreshold 判定，口径与账号停调
+	// （CNProviderBalanceCheckService.checkOne）一致：任一币种达标即健康。
+	BalanceLow bool `json:"balance_low,omitempty"`
 	// CredentialInvalid 上游 401/403 鉴权失败（区别于网络/解析错误），
 	// 检测状态据此推导 failed 而非 error。
 	CredentialInvalid bool      `json:"credential_invalid,omitempty"`
 	Error             string    `json:"error,omitempty"` // Success=false 时的错误摘要
 	FetchedAt         time.Time `json:"fetched_at"`
+
+	// ---- 组级聚合（监控绑定 group 而非单个 account 时填充） ----
+
+	// AccountsTotal 组内参与聚合的账号数。> 0 即表示这是聚合快照，
+	// 单账号快照恒为 0（omitempty 下不出现在 JSON 里）。
+	AccountsTotal int `json:"accounts_total,omitempty"`
+	// AccountsHealthy 仍有额度可用的账号数。
+	AccountsHealthy int `json:"accounts_healthy,omitempty"`
+	// AccountsExhausted 额度耗尽 / 余额不足 / 凭据失效的账号数。
+	// 抓取失败或超出时间预算的账号数 = AccountsTotal - Healthy - Exhausted，
+	// 不单独计数：状态推导只需区分「确实耗尽」与「没查到」两种情况。
+	AccountsExhausted int `json:"accounts_exhausted,omitempty"`
 }
 
 // MonitorBalance 单币种余额条目。
