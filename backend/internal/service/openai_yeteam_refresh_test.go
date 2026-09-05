@@ -25,6 +25,14 @@ func (r *yeTeamTokenAccountRepo) GetByID(_ context.Context, _ int64) (*Account, 
 	return r.account, nil
 }
 
+type yeTeamDiscardingCredentialRepo struct {
+	yeTeamTokenAccountRepo
+}
+
+func (r *yeTeamDiscardingCredentialRepo) UpdateCredentials(_ context.Context, _ int64, _ map[string]any) error {
+	return nil
+}
+
 func (s *yeTeamTokenCacheStub) GetAccessToken(_ context.Context, cacheKey string) (string, error) {
 	return s.tokens[cacheKey], nil
 }
@@ -254,6 +262,61 @@ func TestYeTeamReclaimDownloadsHealthyNoActionPackage(t *testing.T) {
 	flow, ok := repo.updatedExtra[yeTeamLastRefreshFlowKey].(yeteam.ReclaimFlow)
 	require.True(t, ok)
 	require.Contains(t, flowStageNames(flow), "batch_download")
+}
+
+func TestYeTeamReclaimPersistsCompletePackageWhenPrimaryCredentialIsUnchanged(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/redeem/reclaim/batch-cards":
+			_, _ = w.Write([]byte(`{"ok":true,"done":1,"cards":[{"card_code":"TEAM-TEST","tasks":[{"order_no":"ord-1","status":"done","download_token":"tok-1"}]}]}`))
+		case "/api/redeem/batch-download":
+			_, _ = w.Write([]byte(`{"accounts":[{"name":"account@example.com","credentials":{"access_token":"old-token","refresh_token":"new-refresh-token","expires_at":1800000000,"chatgpt_account_id":"acct-1"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	account := newYeTeamRefreshAccount(90)
+	account.Credentials["refresh_token"] = "old-refresh-token"
+	repo := &yeTeamTokenAccountRepo{account: account}
+	gateway := &OpenAIGatewayService{accountRepo: repo}
+	gateway.SetYeTeamClient(yeteam.NewClient(yeteam.Config{
+		Enabled: true, AutoRefresh401: true, BaseURL: server.URL, Timeout: time.Second,
+	}))
+
+	require.True(t, gateway.reclaimOpenAIAccount401(context.Background(), account))
+	require.Equal(t, "old-token", repo.updatedCredentials["access_token"])
+	require.Equal(t, "new-refresh-token", repo.updatedCredentials["refresh_token"])
+	require.Equal(t, "new-refresh-token", account.GetCredential("refresh_token"))
+	flow, ok := repo.updatedExtra[yeTeamLastRefreshFlowKey].(yeteam.ReclaimFlow)
+	require.True(t, ok)
+	require.True(t, *flow.CredentialChanged)
+	require.Equal(t, yeTeamRefreshStatusSuccess, flow.Status)
+}
+
+func TestYeTeamReclaimFailsWhenCredentialReadbackDoesNotMatch(t *testing.T) {
+	server, _ := newYeTeamAccountTestServer(t)
+	t.Cleanup(server.Close)
+
+	account := newYeTeamRefreshAccount(91)
+	persisted := *account
+	persisted.Credentials = shallowCopyMap(account.Credentials)
+	repo := &yeTeamDiscardingCredentialRepo{yeTeamTokenAccountRepo: yeTeamTokenAccountRepo{account: &persisted}}
+	gateway := &OpenAIGatewayService{accountRepo: repo}
+	gateway.SetYeTeamClient(yeteam.NewClient(yeteam.Config{
+		Enabled: true, AutoRefresh401: true, BaseURL: server.URL, Timeout: time.Second,
+		PollInterval: time.Millisecond, MaxPollDuration: time.Second,
+	}))
+
+	require.False(t, gateway.reclaimOpenAIAccount401(context.Background(), account))
+	require.Equal(t, "old-token", persisted.GetCredential("access_token"))
+	require.Equal(t, yeTeamRefreshStatusFailed, repo.updatedExtra[yeTeamLastRefreshStatusKey])
+	require.Contains(t, repo.updatedExtra[yeTeamLastRefreshErrorKey], "did not match database readback")
+	flow, ok := repo.updatedExtra[yeTeamLastRefreshFlowKey].(yeteam.ReclaimFlow)
+	require.True(t, ok)
+	require.Equal(t, yeTeamRefreshStatusFailed, flow.Status)
 }
 
 func flowStageNames(flow yeteam.ReclaimFlow) []string {

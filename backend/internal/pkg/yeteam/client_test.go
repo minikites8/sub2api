@@ -290,7 +290,7 @@ func TestReclaim401PackagesFallsBackToRefreshBound(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/redeem/reclaim/batch-cards":
 			batchCalls++
-			_, _ = w.Write([]byte(`{"cards":[{"card_code":"TEAM-TEST","tasks":[{"error_code":"account_deactivated","failure_class":"account_dead","message":"account deactivated","order_no":"ord-dead","permanent":true,"provider_status":403,"status":"unreclaimable"}],"unreclaimable":1}],"ok":true,"unreclaimable":1}`))
+			_, _ = w.Write([]byte(`{"cards":[{"card_code":"TEAM-TEST","tasks":[{"error_code":"account_deactivated","failure_class":"account_dead","message":"account deactivated","order_no":"ord-dead","permanent":true,"provider_status":403,"resource_uid":"acct-dead","status":"unreclaimable"}],"unreclaimable":1}],"ok":true,"unreclaimable":1}`))
 		case "/api/redeem/orders":
 			orderCalls++
 			if r.Method != http.MethodPost {
@@ -325,7 +325,7 @@ func TestReclaim401PackagesFallsBackToRefreshBound(t *testing.T) {
 	if len(packages) != 1 || batchCalls != 1 || orderCalls != 1 || downloadCalls != 1 {
 		t.Fatalf("packages=%d batch_calls=%d order_calls=%d download_calls=%d", len(packages), batchCalls, orderCalls, downloadCalls)
 	}
-	if orderRequest.CardCode != "TEAM-TEST" || orderRequest.Format != "sub2api" || orderRequest.Project != "k12" || orderRequest.Action != "refresh_bound" || orderRequest.ClientRequestID == "" {
+	if orderRequest.CardCode != "TEAM-TEST" || orderRequest.Format != "sub2api" || orderRequest.Project != "k12" || orderRequest.TargetID != "acct-dead" || orderRequest.Action != "refresh_bound" || orderRequest.ClientRequestID == "" {
 		t.Fatalf("order request = %#v", orderRequest)
 	}
 	if flow.Status != "success" || !flow.FallbackUsed || flow.OrderNo != "ord-refresh" || flow.Batch == nil || flow.Batch.Unreclaimable != 1 || flow.Task == nil || flow.Task.ErrorCode != "account_deactivated" {

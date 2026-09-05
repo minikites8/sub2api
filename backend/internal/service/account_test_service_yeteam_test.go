@@ -23,6 +23,7 @@ type yeTeamAccountTestRepo struct {
 	setErrorID         int64
 	setErrorMsg        string
 	updatedCredentials map[string]any
+	updatedAccountID   int64
 	updatedExtra       map[string]any
 	setSchedulableID   int64
 	setSchedulable     bool
@@ -41,9 +42,17 @@ func (r *yeTeamAccountTestRepo) SetError(_ context.Context, id int64, errorMsg s
 	return nil
 }
 
-func (r *yeTeamAccountTestRepo) UpdateCredentials(_ context.Context, _ int64, credentials map[string]any) error {
+func (r *yeTeamAccountTestRepo) UpdateCredentials(_ context.Context, id int64, credentials map[string]any) error {
+	r.updatedAccountID = id
 	r.updatedCredentials = shallowCopyMap(credentials)
 	return nil
+}
+
+func (r *yeTeamAccountTestRepo) GetByID(_ context.Context, id int64) (*Account, error) {
+	if id == r.updatedAccountID && r.updatedCredentials != nil {
+		return &Account{ID: id, Credentials: shallowCopyMap(r.updatedCredentials)}, nil
+	}
+	return nil, ErrAccountNotFound
 }
 
 func (r *yeTeamAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {

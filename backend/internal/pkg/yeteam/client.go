@@ -245,6 +245,7 @@ type ReclaimTask struct {
 type ReclaimTaskError struct {
 	Status         string
 	Message        string
+	ResourceUID    string
 	ErrorCode      string
 	FailureClass   string
 	Permanent      bool
@@ -662,6 +663,9 @@ func (c *Client) tryRefreshBoundAfterPermanentFailure(ctx context.Context, cardC
 	if !errors.As(reclaimErr, &taskErr) || !taskErr.Permanent || taskErr.Status != "unreclaimable" {
 		return nil, reclaimErr, false
 	}
+	if strings.TrimSpace(targetID) == "" {
+		targetID = strings.TrimSpace(taskErr.ResourceUID)
+	}
 	flow.FallbackUsed = true
 	flow.AddStage("refresh_bound", "running", "batch result requested standard bound refresh")
 	packages, _, err := c.refreshBoundPackagesWithTrace(ctx, cardCode, targetID, flow)
@@ -802,6 +806,7 @@ func reclaimTaskTerminalError(task ReclaimTask) error {
 		return &ReclaimTaskError{
 			Status:         status,
 			Message:        message,
+			ResourceUID:    strings.TrimSpace(task.ResourceUID),
 			ErrorCode:      errorCode,
 			FailureClass:   strings.TrimSpace(task.FailureClass),
 			Permanent:      task.Permanent,
