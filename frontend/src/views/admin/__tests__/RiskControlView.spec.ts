@@ -276,6 +276,33 @@ describe('admin RiskControlView', () => {
     expect(wrapper.text()).toContain('second@example.com')
   })
 
+  it('returns to the newest page when anti-abuse events are refreshed', async () => {
+    listAntiAbuseEvents.mockResolvedValue({ items: [], total: 40, page: 1, page_size: 20, pages: 2 })
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const eventPanel = wrapper.get('[data-test="anti-abuse-events"]')
+    eventPanel.getComponent({ name: 'Pagination' }).vm.$emit('update:page', 2)
+    await flushPromises()
+    await findButtonByText(eventPanel, 'admin.riskControl.refresh').trigger('click')
+    await flushPromises()
+
+    expect(listAntiAbuseEvents).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
+  })
+
   it('saves the selected model filter mode and models', async () => {
     const wrapper = mount(RiskControlView, {
       global: {

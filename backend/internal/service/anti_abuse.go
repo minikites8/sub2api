@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -20,6 +21,7 @@ const (
 	AntiAbuseActionReview          = "review"
 	AntiAbuseActionRestrict        = "restrict"
 	defaultAntiAbuseScoreThreshold = 60
+	antiAbuseEventWriteTimeout     = 5 * time.Second
 )
 
 var antiAbuseEmailVelocityExemptDomains = map[string]struct{}{
@@ -129,9 +131,7 @@ func RecordAntiAbuseAssessment(ctx context.Context, store AntiAbuseEventStore, e
 		JA3Hash:              HashTransportFingerprint("ja3", signals.JA3), JA4Hash: HashTransportFingerprint("ja4", signals.JA4),
 		AccountAttempts: append([]string(nil), signals.AccountAttempts...),
 	}
-	if err := store.RecordAntiAbuseEvent(ctx, event); err != nil {
-		return
-	}
+	recordAntiAbuseEvent(ctx, store, event)
 }
 
 func RecordAntiAbuseDeduction(ctx context.Context, store AntiAbuseEventStore, eventType string, userID *int64, userEmail string, signals RiskSignals, assessment AntiAbuseAssessment, amount float64) {
@@ -148,7 +148,30 @@ func RecordAntiAbuseDeduction(ctx context.Context, store AntiAbuseEventStore, ev
 		AccountAttempts:     append([]string(nil), signals.AccountAttempts...),
 		GiftBalanceDeducted: amount,
 	}
-	_ = store.RecordAntiAbuseEvent(ctx, event)
+	recordAntiAbuseEvent(ctx, store, event)
+}
+
+func recordAntiAbuseEvent(ctx context.Context, store AntiAbuseEventStore, event *AntiAbuseEvent) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	writeCtx, cancel := context.WithTimeout(base, antiAbuseEventWriteTimeout)
+	defer cancel()
+	if err := store.RecordAntiAbuseEvent(writeCtx, event); err != nil {
+		var userID int64
+		if event.UserID != nil {
+			userID = *event.UserID
+		}
+		logger.LegacyPrintf(
+			"service.anti_abuse",
+			"anti-abuse event persistence failed: event_type=%s user=%d deduction=%.8f err=%v",
+			event.EventType,
+			userID,
+			event.GiftBalanceDeducted,
+			err,
+		)
+	}
 }
 
 // NormalizeBrowserFingerprints accepts a JSON array, pipe-delimited values, or a single value.

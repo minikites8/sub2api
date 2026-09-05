@@ -6,9 +6,25 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestListAntiAbuseEventsDisablesResponseCaching(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	contextValue, _ := gin.CreateTestContext(recorder)
+	contextValue.Request = httptest.NewRequest(http.MethodGet, "/admin/risk-control/anti-abuse/events", nil)
+	handler := NewContentModerationHandler(&service.ContentModerationService{})
+
+	handler.ListAntiAbuseEvents(contextValue)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "no-store, no-cache, must-revalidate, max-age=0", recorder.Header().Get("Cache-Control"))
+	require.Equal(t, "no-cache", recorder.Header().Get("Pragma"))
+	require.Equal(t, "0", recorder.Header().Get("Expires"))
+}
 
 func TestBindRiskControlJSON_ReplacesRawControlBytes(t *testing.T) {
 	raw := append([]byte(`{"block_message":"before`), byte(0x19))

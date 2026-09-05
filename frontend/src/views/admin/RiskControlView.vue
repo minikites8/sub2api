@@ -449,7 +449,7 @@
                 <input v-model="antiAbuseFilters.deductions_only" type="checkbox" @change="reloadAntiAbuseEvents" />
                 {{ t('admin.riskControl.antiAbuseEvents.deductionsOnly') }}
               </label>
-              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="antiAbuseLoading" @click="loadAntiAbuseEvents">
+              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="antiAbuseLoading" @click="reloadAntiAbuseEvents">
                 <Icon name="refresh" size="sm" :class="antiAbuseLoading ? 'animate-spin' : ''" />
                 {{ t('admin.riskControl.refresh') }}
               </button>
@@ -1480,6 +1480,7 @@ const antiAbuseEvents = ref<AntiAbuseEvent[]>([])
 const antiAbuseLoading = ref(false)
 const antiAbuseFilters = reactive({ action: '', deductions_only: false })
 const antiAbusePagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
+let antiAbuseLoadSequence = 0
 const antiAbuseConfigSaving = ref(false)
 const antiAbuseConfig = reactive({
   enabled: true,
@@ -2185,6 +2186,7 @@ async function loadAntiAbuseEvents() {
     antiAbuseEvents.value = []
     return
   }
+  const loadSequence = ++antiAbuseLoadSequence
   antiAbuseLoading.value = true
   try {
     const result = await adminAPI.riskControl.listAntiAbuseEvents({
@@ -2193,13 +2195,15 @@ async function loadAntiAbuseEvents() {
       action: antiAbuseFilters.action || undefined,
       deductions_only: antiAbuseFilters.deductions_only || undefined,
     })
+    if (loadSequence !== antiAbuseLoadSequence) return
     antiAbuseEvents.value = result.items || []
     antiAbusePagination.total = result.total || 0
     antiAbusePagination.pages = result.pages || 1
   } catch (err: unknown) {
+    if (loadSequence !== antiAbuseLoadSequence) return
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.antiAbuseEvents.loadFailed')))
   } finally {
-    antiAbuseLoading.value = false
+    if (loadSequence === antiAbuseLoadSequence) antiAbuseLoading.value = false
   }
 }
 

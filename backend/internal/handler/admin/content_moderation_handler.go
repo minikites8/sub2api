@@ -338,6 +338,9 @@ func (h *ContentModerationHandler) ListLogs(c *gin.Context) {
 }
 
 func (h *ContentModerationHandler) ListAntiAbuseEvents(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
 	page, pageSize := response.ParsePagination(c)
 	filter := service.AntiAbuseEventFilter{
 		Pagination: pagination.PaginationParams{Page: page, PageSize: pageSize, SortOrder: pagination.SortOrderDesc},

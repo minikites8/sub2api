@@ -367,7 +367,10 @@ export async function listLogs(
 export async function listAntiAbuseEvents(
   params: ListAntiAbuseEventsParams = {}
 ): Promise<AntiAbuseEventsResponse> {
-  const { data } = await apiClient.get<AntiAbuseEventsResponse>('/admin/risk-control/anti-abuse/events', { params })
+  const { data } = await apiClient.get<AntiAbuseEventsResponse>('/admin/risk-control/anti-abuse/events', {
+    params: { ...params, _refresh: Date.now() },
+    headers: { 'Cache-Control': 'no-cache' },
+  })
   return data
 }
 

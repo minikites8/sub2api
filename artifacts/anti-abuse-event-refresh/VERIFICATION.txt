@@ -1,0 +1,17 @@
+CHANGED_BRANCH_OR_FIELD: anti-abuse deduction event persistence; anti-abuse event response cache policy; first-page refresh; stale-response guard; risk_control_balance reconciliation migration 239
+ARTIFACTS: D:\Programs\sub2api\artifacts\anti-abuse-event-refresh\MODIFIED_FILE.json; D:\Programs\sub2api\artifacts\anti-abuse-event-refresh\DIFF_FILE.patch; D:\Programs\sub2api\artifacts\anti-abuse-event-refresh\VERIFICATION.txt; D:\Programs\sub2api\artifacts\anti-abuse-event-refresh\ROLLBACK.sh
+ORIGINAL_SHA256: 4286fc31e23554e0f2461e91c135157426936753af884aa4bfa465ea4ae49e88
+MODIFIED_SHA256: bcb051760bbf68d2b827350e19c2dee3975aa6e2c12212db9fd7c88b76d6549f
+BASELINE_COMMAND: backend: go test ./internal/service -run 'TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded|TestBrowserAccountAttemptsAreNormalizedAndRestricted' -count=1; frontend: pnpm exec vitest run src/views/admin/__tests__/RiskControlView.spec.ts
+BASELINE_INPUT: existing restrict-event persistence and risk-center event rendering before cancellation/cache/backfill regression coverage
+BASELINE_LITERAL_RESULT: ok github.com/Wei-Shaw/sub2api/internal/service 0.250s; RiskControlView.spec.ts 1 file passed, 9 tests passed
+BASELINE_EXIT_STATUS: 0
+MODIFIED_COMMAND: backend: go test ./internal/service -run 'TestAntiAbuseDeductionPersistsAfterRequestCancellation|TestAllowAndReviewAntiAbuseAssessmentsAreNotRecorded|TestBrowserAccountAttemptsAreNormalizedAndRestricted' -count=1; go test ./internal/handler/admin -run 'TestListAntiAbuseEventsDisablesResponseCaching|TestBindRiskControlJSON' -count=1; go test ./migrations -run 'TestAntiAbuseGiftDeductionReconciliationMigration' -count=1; go build ./internal/service ./internal/repository ./internal/handler/admin ./migrations; frontend: pnpm exec vitest run src/api/__tests__/risk-control-anti-abuse.spec.ts src/views/admin/__tests__/RiskControlView.spec.ts; pnpm exec vue-tsc --noEmit; pnpm exec eslint src/api/admin/riskControl.ts src/api/__tests__/risk-control-anti-abuse.spec.ts src/views/admin/RiskControlView.vue src/views/admin/__tests__/RiskControlView.spec.ts
+MODIFIED_INPUT: canceled request after successful gift deduction; cacheable repeated event-list GET; administrator on page 2; stale overlapping responses; risk_control_balance row missing a matching anti_abuse_events deduction row
+MODIFIED_LITERAL_RESULT: service ok 0.321s; handler/admin ok 0.318s; migrations ok 0.948s; backend build empty output; frontend 2 files passed, 11 tests passed; vue-tsc empty output; eslint empty output
+MODIFIED_EXIT_STATUS: 0
+ROLLBACK_COMMAND: Copy-Item -LiteralPath 'artifacts/anti-abuse-event-refresh/MODIFIED_FILE.json' -Destination 'artifacts/anti-abuse-event-refresh/rollback-copy.json' -Force; & 'C:\Program Files\Git\bin\bash.exe' 'artifacts/anti-abuse-event-refresh/ROLLBACK.sh' 'artifacts/anti-abuse-event-refresh/rollback-copy.json'
+ROLLBACK_INPUT: copy of MODIFIED_FILE.json
+ROLLBACK_LITERAL_RESULT: restored:artifacts/anti-abuse-event-refresh/rollback-copy.json; original_sha256=4286fc31e23554e0f2461e91c135157426936753af884aa4bfa465ea4ae49e88; modified_sha256=bcb051760bbf68d2b827350e19c2dee3975aa6e2c12212db9fd7c88b76d6549f; restored_sha256=4286fc31e23554e0f2461e91c135157426936753af884aa4bfa465ea4ae49e88
+ROLLBACK_EXIT_STATUS: 0
+RESTORED_BEHAVIOR_STATUS: rollback copy restores request-bound silent event writes and cacheable current-page refresh; MODIFIED_FILE.json retains detached logged writes, no-store latest-page refresh, stale-response protection, and migration 239 reconciliation

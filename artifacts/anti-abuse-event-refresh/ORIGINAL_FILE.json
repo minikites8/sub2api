@@ -1,0 +1,9 @@
+{
+  "deduction_event_context": "request",
+  "persistence_error": "discarded",
+  "event_response_cache_control": "unspecified",
+  "refresh_page": "current",
+  "refresh_cache_buster": false,
+  "stale_response_guard": false,
+  "historical_deduction_reconciliation": false
+}

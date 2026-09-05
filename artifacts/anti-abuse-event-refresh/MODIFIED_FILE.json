@@ -1,0 +1,9 @@
+{
+  "deduction_event_context": "detached_with_5_second_timeout",
+  "persistence_error": "logged_with_event_type_user_and_amount",
+  "event_response_cache_control": "no-store",
+  "refresh_page": "first",
+  "refresh_cache_buster": true,
+  "stale_response_guard": true,
+  "historical_deduction_reconciliation": "migration_239"
+}

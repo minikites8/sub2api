@@ -178,14 +178,38 @@ func TestBrowserAccountAttemptsAreNormalizedAndRestricted(t *testing.T) {
 }
 
 type recordingAntiAbuseEventStore struct {
-	events []AntiAbuseEvent
+	events        []AntiAbuseEvent
+	contextErrors []error
 }
 
-func (s *recordingAntiAbuseEventStore) RecordAntiAbuseEvent(_ context.Context, event *AntiAbuseEvent) error {
+func (s *recordingAntiAbuseEventStore) RecordAntiAbuseEvent(ctx context.Context, event *AntiAbuseEvent) error {
+	s.contextErrors = append(s.contextErrors, ctx.Err())
 	if event != nil {
 		s.events = append(s.events, *event)
 	}
 	return nil
+}
+
+func TestAntiAbuseDeductionPersistsAfterRequestCancellation(t *testing.T) {
+	store := &recordingAntiAbuseEventStore{}
+	requestCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	userID := int64(42)
+
+	RecordAntiAbuseDeduction(
+		requestCtx,
+		store,
+		"gateway_gift_deduction",
+		&userID,
+		"user@example.com",
+		RiskSignals{IPAddress: "8.8.8.8", UserAgent: "Codex Desktop/0.153.0"},
+		AntiAbuseAssessment{Action: AntiAbuseActionRestrict, Score: 94, Factors: map[string]int{"api_ip_ua_threshold": 60}},
+		12.5,
+	)
+
+	require.Len(t, store.events, 1)
+	require.Equal(t, float64(12.5), store.events[0].GiftBalanceDeducted)
+	require.Equal(t, []error{nil}, store.contextErrors)
 }
 
 func (s *recordingAntiAbuseEventStore) ListAntiAbuseEvents(context.Context, AntiAbuseEventFilter) ([]AntiAbuseEvent, int64, error) {
