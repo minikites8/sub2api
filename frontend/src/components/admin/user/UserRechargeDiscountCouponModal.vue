@@ -35,9 +35,12 @@
             <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="font-semibold text-gray-900 dark:text-gray-100">
-                  {{ t('admin.users.rechargeCoupon.couponRule', { amount: formatAmount(coupon.min_recharge_amount), rate: formatDiscountRate(coupon.discount_percent) }) }}
+                  {{ couponRuleLabel(coupon) }}
                 </p>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">#{{ coupon.id }} · {{ formatDateTime(coupon.created_at) }}</p>
+                <p class="mt-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  {{ couponSourceLabel(coupon) }}
+                </p>
               </div>
               <span :class="couponStatusClass(coupon)" class="shrink-0 rounded px-2 py-1 text-xs font-medium">
                 {{ couponStatusLabel(coupon) }}
@@ -45,7 +48,9 @@
             </div>
             <div class="mt-3 flex items-center justify-between text-sm">
               <span class="text-gray-500 dark:text-gray-400">{{ t('admin.users.rechargeCoupon.usage') }}</span>
-              <strong class="text-gray-900 dark:text-gray-100">{{ coupon.used_count }} / {{ coupon.total_uses }}</strong>
+              <strong class="text-gray-900 dark:text-gray-100">
+                {{ coupon.total_uses === 0 ? t('admin.users.rechargeCoupon.unlimitedUsage', { used: coupon.used_count }) : `${coupon.used_count} / ${coupon.total_uses}` }}
+              </strong>
             </div>
             <p v-if="coupon.notes" class="mt-2 break-words text-sm text-gray-600 dark:text-gray-300">{{ coupon.notes }}</p>
           </article>
@@ -168,10 +173,22 @@ function formatDiscountRate(value: number): string {
   return Number((Number(value) / 10).toFixed(2)).toString()
 }
 
+function couponRuleLabel(coupon: RechargeDiscountCoupon): string {
+  const params = { amount: formatAmount(coupon.min_recharge_amount), rate: formatDiscountRate(coupon.discount_percent) }
+  return t(coupon.min_recharge_amount > 0 ? 'admin.users.rechargeCoupon.couponRule' : 'admin.users.rechargeCoupon.couponRuleNoThreshold', params)
+}
+
 function couponState(coupon: RechargeDiscountCoupon): 'active' | 'exhausted' | 'revoked' {
   if (coupon.status === 'revoked') return 'revoked'
-  if (coupon.remaining_uses <= 0) return 'exhausted'
+  if (coupon.total_uses > 0 && coupon.remaining_uses <= 0) return 'exhausted'
   return 'active'
+}
+
+function couponSourceLabel(coupon: RechargeDiscountCoupon): string {
+  if (coupon.source_type === 'promo_code') {
+    return t('admin.users.rechargeCoupon.sourcePromoCode', { code: coupon.source_code || '-' })
+  }
+  return t('admin.users.rechargeCoupon.sourceAdmin')
 }
 
 function couponStatusLabel(coupon: RechargeDiscountCoupon): string {

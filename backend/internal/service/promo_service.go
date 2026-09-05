@@ -175,6 +175,9 @@ func (s *PromoService) applyPromoCodeInTx(ctx context.Context, userID int64, cod
 	if err := s.promoRepo.CreateUsage(ctx, usage); err != nil {
 		return fmt.Errorf("create usage record: %w", err)
 	}
+	if err := s.grantPromoRechargeDiscountCoupon(ctx, userID, promoCode, usage.UsedAt); err != nil {
+		return fmt.Errorf("create recharge discount coupon: %w", err)
+	}
 
 	// 增加使用次数
 	if err := s.promoRepo.IncrementUsedCount(ctx, promoCode.ID); err != nil {

@@ -96,16 +96,19 @@ describe('UserRechargeDiscountCouponModal', () => {
       {
         id: 7,
         user_id: 42,
-        min_recharge_amount: 200,
+        min_recharge_amount: 0,
         discount_percent: 85,
-        total_uses: 3,
+        total_uses: 0,
         used_count: 1,
-        remaining_uses: 2,
+        remaining_uses: 0,
         status: 'active',
         created_by: 99,
         notes: 'retention',
         created_at: '2026-09-05T00:00:00Z',
         updated_at: '2026-09-05T00:00:00Z',
+        source_type: 'promo_code',
+        source_id: 17,
+        source_code: 'PARTNER85',
       },
       {
         id: 8,
@@ -120,6 +123,7 @@ describe('UserRechargeDiscountCouponModal', () => {
         notes: '',
         created_at: '2026-09-04T00:00:00Z',
         updated_at: '2026-09-04T00:00:00Z',
+        source_type: 'admin',
       },
     ])
 
@@ -128,8 +132,10 @@ describe('UserRechargeDiscountCouponModal', () => {
 
     expect(wrapper.findAll('[data-test="coupon-item"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('retention')
-    expect(wrapper.text()).toContain('1 / 3')
+    expect(wrapper.text()).toContain('admin.users.rechargeCoupon.unlimitedUsage')
+    expect(wrapper.text()).toContain('admin.users.rechargeCoupon.couponRuleNoThreshold')
     expect(wrapper.text()).toContain('admin.users.rechargeCoupon.status.active')
     expect(wrapper.text()).toContain('admin.users.rechargeCoupon.status.exhausted')
+    expect(wrapper.text()).toContain('admin.users.rechargeCoupon.sourcePromoCode')
   })
 })

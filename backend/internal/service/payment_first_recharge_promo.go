@@ -50,6 +50,9 @@ type firstRechargeAmountPlan struct {
 	PromoCode               string
 	CouponID                int64
 	CouponMinRechargeAmount float64
+	CouponSourceType        string
+	CouponSourceID          int64
+	CouponSourceCode        string
 	BaseCreditAmount        float64
 	BonusAmount             float64
 	DiscountPercent         float64
@@ -116,19 +119,6 @@ func (s *PaymentService) resolveFirstRechargePromo(ctx context.Context, userID i
 	}
 	if firstRechargeAvailable && promoCode.FirstRechargeBonusAmount != nil {
 		promo.BonusAmount = roundTo(*promoCode.FirstRechargeBonusAmount, 8)
-	}
-	if promoCode.FirstRechargeDiscountPercent != nil {
-		discountTimes := promoCode.FirstRechargeDiscountTimes
-		discountUsed, err := countPromoRechargeDiscountOrders(ctx, s.entClient, userID, promoCode.ID)
-		if err != nil {
-			return nil, err
-		}
-		if discountTimes == 0 || discountUsed < discountTimes {
-			promo.DiscountPercent = clampFirstRechargeDiscount(*promoCode.FirstRechargeDiscountPercent)
-			promo.DiscountTimes = discountTimes
-			promo.DiscountUsed = discountUsed
-			promo.DiscountSet = true
-		}
 	}
 	if !promo.active() {
 		return nil, nil
@@ -223,6 +213,9 @@ func appendFirstRechargePromoSnapshot(snapshot map[string]any, plan firstRecharg
 		snapshot["recharge_discount_coupon"] = map[string]any{
 			"coupon_id":           plan.CouponID,
 			"min_recharge_amount": plan.CouponMinRechargeAmount,
+			"source_type":         plan.CouponSourceType,
+			"source_id":           plan.CouponSourceID,
+			"source_code":         plan.CouponSourceCode,
 			"base_amount":         plan.BaseCreditAmount,
 			"bonus_amount":        plan.BonusAmount,
 			"discount_percent":    plan.DiscountPercent,
@@ -261,6 +254,9 @@ func firstRechargeAmountPlanFromSnapshot(snapshot map[string]any) (firstRecharge
 		if data, dataOK := raw.(map[string]any); dataOK {
 			plan.CouponID = int64(numberFromSnapshot(data["coupon_id"]))
 			plan.CouponMinRechargeAmount = numberFromSnapshot(data["min_recharge_amount"])
+			plan.CouponSourceType = stringFromSnapshot(data["source_type"])
+			plan.CouponSourceID = int64(numberFromSnapshot(data["source_id"]))
+			plan.CouponSourceCode = stringFromSnapshot(data["source_code"])
 			plan.BaseCreditAmount = numberFromSnapshot(data["base_amount"])
 			plan.BonusAmount = numberFromSnapshot(data["bonus_amount"])
 			plan.DiscountPercent = clampFirstRechargeDiscount(numberFromSnapshot(data["discount_percent"]))
@@ -359,7 +355,7 @@ func countPromoRechargeDiscountOrders(ctx context.Context, client *dbent.Client,
 }
 
 func firstRechargePromoDiscountLimitReached(ctx context.Context, client *dbent.Client, userID int64, plan firstRechargeAmountPlan) (bool, error) {
-	if !plan.DiscountSet || plan.DiscountTimes <= 0 || plan.PromoCodeID <= 0 {
+	if plan.CouponID > 0 || !plan.DiscountSet || plan.DiscountTimes <= 0 || plan.PromoCodeID <= 0 {
 		return false, nil
 	}
 	used, err := countPromoRechargeDiscountOrders(ctx, client, userID, plan.PromoCodeID)

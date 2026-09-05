@@ -80,7 +80,7 @@ func TestFirstRechargeAmountPlanFromSnapshot_UsesDiscountSetFlag(t *testing.T) {
 	require.Equal(t, 100.0, plan.PaymentAmount)
 }
 
-func TestGetFirstRechargePromoPreview_ReturnsAvailablePromo(t *testing.T) {
+func TestGetFirstRechargePromoPreview_ReturnsFirstRechargeBonus(t *testing.T) {
 	ctx := context.Background()
 	bonus := 10.0
 	discountPercent := 80.0
@@ -104,11 +104,11 @@ func TestGetFirstRechargePromoPreview_ReturnsAvailablePromo(t *testing.T) {
 	require.NotNil(t, preview)
 	require.Equal(t, "PARTNER80", preview.PromoCode)
 	require.Equal(t, 10.0, preview.BonusAmount)
-	require.Equal(t, 80.0, preview.DiscountPercent)
-	require.Equal(t, 3, preview.DiscountTimes)
+	require.Zero(t, preview.DiscountPercent)
+	require.Zero(t, preview.DiscountTimes)
 	require.Equal(t, 0, preview.DiscountUsed)
-	require.Equal(t, 3, preview.DiscountRemaining)
-	require.True(t, preview.DiscountSet)
+	require.Zero(t, preview.DiscountRemaining)
+	require.False(t, preview.DiscountSet)
 }
 
 func TestApplyFirstRechargePromoBalanceUsesSnapshotCreditAmount(t *testing.T) {

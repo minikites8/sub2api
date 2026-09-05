@@ -77,6 +77,9 @@ export interface RechargeDiscountCouponPreview {
   total_uses: number
   used_count: number
   remaining_uses: number
+  source_type: 'admin' | 'promo_code'
+  source_id?: number
+  source_code?: string
 }
 
 /** Response from /payment/checkout-info API — single call for the payment page */

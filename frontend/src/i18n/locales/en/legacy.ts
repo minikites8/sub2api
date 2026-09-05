@@ -2234,7 +2234,11 @@ export default {
         issuedCount: '{count} total',
         issueTitle: 'Issue New Discount',
         couponRule: '{rate}x on ¥{amount}+',
+        couponRuleNoThreshold: 'All top-ups · {rate}x',
         usage: 'Used / Total',
+        unlimitedUsage: '{used} used / Unlimited',
+        sourceAdmin: 'Source: Admin',
+        sourcePromoCode: 'Source: Promo code {code}',
         empty: 'This user has no recharge discounts',
         loadFailed: 'Failed to load recharge discounts',
         status: {

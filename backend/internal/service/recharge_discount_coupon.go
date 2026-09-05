@@ -15,7 +15,11 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-const rechargeDiscountCouponStatusActive = "active"
+const (
+	rechargeDiscountCouponStatusActive    = "active"
+	rechargeDiscountCouponSourceAdmin     = "admin"
+	rechargeDiscountCouponSourcePromoCode = "promo_code"
+)
 
 type RechargeDiscountCoupon struct {
 	ID                int64     `json:"id"`
@@ -30,6 +34,9 @@ type RechargeDiscountCoupon struct {
 	Notes             string    `json:"notes"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
+	SourceType        string    `json:"source_type"`
+	SourceID          *int64    `json:"source_id,omitempty"`
+	SourceCode        string    `json:"source_code,omitempty"`
 }
 
 type RechargeDiscountCouponPreview struct {
@@ -39,6 +46,9 @@ type RechargeDiscountCouponPreview struct {
 	TotalUses         int     `json:"total_uses"`
 	UsedCount         int     `json:"used_count"`
 	RemainingUses     int     `json:"remaining_uses"`
+	SourceType        string  `json:"source_type"`
+	SourceID          *int64  `json:"source_id,omitempty"`
+	SourceCode        string  `json:"source_code,omitempty"`
 }
 
 type IssueRechargeDiscountCouponInput struct {
@@ -47,6 +57,39 @@ type IssueRechargeDiscountCouponInput struct {
 	TotalUses         int
 	CreatedBy         int64
 	Notes             string
+}
+
+func (s *PromoService) grantPromoRechargeDiscountCoupon(ctx context.Context, userID int64, promoCode *PromoCode, issuedAt time.Time) error {
+	if s == nil || s.entClient == nil || promoCode == nil || promoCode.FirstRechargeDiscountPercent == nil {
+		return nil
+	}
+	discountPercent := clampFirstRechargeDiscount(*promoCode.FirstRechargeDiscountPercent)
+	if discountPercent <= 0 || discountPercent >= 100 {
+		return nil
+	}
+	client := s.entClient
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		client = tx.Client()
+	}
+	if issuedAt.IsZero() {
+		issuedAt = time.Now().UTC()
+	}
+	_, err := client.ExecContext(ctx, `
+INSERT INTO recharge_discount_coupons
+    (user_id, min_recharge_amount, discount_percent, total_uses, status, created_by,
+     notes, created_at, updated_at, source_type, source_id, source_code)
+VALUES ($1, 0, $2, $3, $4, 0, NULL, $5, $5, $6, $7, $8)
+ON CONFLICT DO NOTHING`,
+		userID,
+		roundTo(discountPercent, 2),
+		promoCode.FirstRechargeDiscountTimes,
+		rechargeDiscountCouponStatusActive,
+		issuedAt.UTC(),
+		rechargeDiscountCouponSourcePromoCode,
+		promoCode.ID,
+		strings.ToUpper(strings.TrimSpace(promoCode.Code)),
+	)
+	return err
 }
 
 func (s *adminServiceImpl) IssueRechargeDiscountCoupon(ctx context.Context, userID int64, input IssueRechargeDiscountCouponInput) (*RechargeDiscountCoupon, error) {
@@ -79,10 +122,10 @@ func (s *adminServiceImpl) IssueRechargeDiscountCoupon(ctx context.Context, user
 	now := time.Now().UTC()
 	rows, err := s.entClient.QueryContext(ctx, `
 INSERT INTO recharge_discount_coupons
-    (user_id, min_recharge_amount, discount_percent, total_uses, status, created_by, notes, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+    (user_id, min_recharge_amount, discount_percent, total_uses, status, created_by, notes, created_at, updated_at, source_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9)
 RETURNING id, user_id, min_recharge_amount, discount_percent, total_uses, status,
-          created_by, notes, created_at, updated_at`,
+          created_by, notes, created_at, updated_at, source_type, source_id, source_code`,
 		userID,
 		roundTo(input.MinRechargeAmount, 8),
 		roundTo(input.DiscountPercent, 2),
@@ -91,6 +134,7 @@ RETURNING id, user_id, min_recharge_amount, discount_percent, total_uses, status
 		input.CreatedBy,
 		nullableTrimmedString(input.Notes),
 		now,
+		rechargeDiscountCouponSourceAdmin,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("issue recharge discount coupon: %w", err)
@@ -124,6 +168,8 @@ type rechargeDiscountCouponScanner interface {
 
 func scanRechargeDiscountCoupon(scanner rechargeDiscountCouponScanner) (*RechargeDiscountCoupon, error) {
 	var notes sql.NullString
+	var sourceID sql.NullInt64
+	var sourceCode sql.NullString
 	coupon := &RechargeDiscountCoupon{}
 	if err := scanner.Scan(
 		&coupon.ID,
@@ -136,11 +182,20 @@ func scanRechargeDiscountCoupon(scanner rechargeDiscountCouponScanner) (*Recharg
 		&notes,
 		&coupon.CreatedAt,
 		&coupon.UpdatedAt,
+		&coupon.SourceType,
+		&sourceID,
+		&sourceCode,
 	); err != nil {
 		return nil, err
 	}
 	if notes.Valid {
 		coupon.Notes = notes.String
+	}
+	if sourceID.Valid {
+		coupon.SourceID = &sourceID.Int64
+	}
+	if sourceCode.Valid {
+		coupon.SourceCode = sourceCode.String
 	}
 	return coupon, nil
 }
@@ -165,7 +220,7 @@ func (s *adminServiceImpl) ListUserRechargeDiscountCoupons(ctx context.Context, 
 func listUserRechargeDiscountCoupons(ctx context.Context, client *dbent.Client, userID int64) ([]RechargeDiscountCoupon, error) {
 	rows, err := client.QueryContext(ctx, `
 SELECT id, user_id, min_recharge_amount, discount_percent, total_uses, status,
-       created_by, notes, created_at, updated_at
+       created_by, notes, created_at, updated_at, source_type, source_id, source_code
 FROM recharge_discount_coupons
 WHERE user_id = $1
 ORDER BY created_at DESC, id DESC`, userID)
@@ -190,7 +245,7 @@ ORDER BY created_at DESC, id DESC`, userID)
 	}
 
 	for i := range coupons {
-		used, countErr := countRechargeDiscountCouponOrders(ctx, client, userID, coupons[i].ID)
+		used, countErr := countRechargeDiscountCouponOrders(ctx, client, userID, coupons[i])
 		if countErr != nil {
 			return nil, countErr
 		}
@@ -226,7 +281,7 @@ func (s *PaymentService) ListAvailableRechargeDiscountCoupons(ctx context.Contex
 
 	available := make([]RechargeDiscountCouponPreview, 0, len(coupons))
 	for i := range coupons {
-		if coupons[i].Status == rechargeDiscountCouponStatusActive && coupons[i].RemainingUses > 0 {
+		if coupons[i].Status == rechargeDiscountCouponStatusActive && (coupons[i].TotalUses == 0 || coupons[i].RemainingUses > 0) {
 			available = append(available, RechargeDiscountCouponPreview{
 				ID:                coupons[i].ID,
 				MinRechargeAmount: coupons[i].MinRechargeAmount,
@@ -234,6 +289,9 @@ func (s *PaymentService) ListAvailableRechargeDiscountCoupons(ctx context.Contex
 				TotalUses:         coupons[i].TotalUses,
 				UsedCount:         coupons[i].UsedCount,
 				RemainingUses:     coupons[i].RemainingUses,
+				SourceType:        coupons[i].SourceType,
+				SourceID:          coupons[i].SourceID,
+				SourceCode:        coupons[i].SourceCode,
 			})
 		}
 	}
@@ -263,7 +321,7 @@ func (s *PaymentService) resolveRechargeDiscountCoupon(ctx context.Context, user
 }
 
 func applyRechargeDiscountCoupon(requestAmount float64, plan firstRechargeAmountPlan, coupon *RechargeDiscountCouponPreview) firstRechargeAmountPlan {
-	if coupon == nil || coupon.ID <= 0 || coupon.RemainingUses <= 0 || requestAmount+0.00000001 < coupon.MinRechargeAmount {
+	if coupon == nil || coupon.ID <= 0 || (coupon.TotalUses > 0 && coupon.RemainingUses <= 0) || requestAmount+0.00000001 < coupon.MinRechargeAmount {
 		return plan
 	}
 	discountPercent := clampFirstRechargeDiscount(coupon.DiscountPercent)
@@ -275,6 +333,11 @@ func applyRechargeDiscountCoupon(requestAmount float64, plan firstRechargeAmount
 	}
 	plan.CouponID = coupon.ID
 	plan.CouponMinRechargeAmount = roundTo(coupon.MinRechargeAmount, 8)
+	plan.CouponSourceType = coupon.SourceType
+	plan.CouponSourceCode = coupon.SourceCode
+	if coupon.SourceID != nil {
+		plan.CouponSourceID = *coupon.SourceID
+	}
 	plan.DiscountPercent = discountPercent
 	plan.DiscountTimes = coupon.TotalUses
 	plan.DiscountSet = true
@@ -284,8 +347,8 @@ func applyRechargeDiscountCoupon(requestAmount float64, plan firstRechargeAmount
 	return plan
 }
 
-func countRechargeDiscountCouponOrders(ctx context.Context, client *dbent.Client, userID, couponID int64) (int, error) {
-	if client == nil || couponID <= 0 {
+func countRechargeDiscountCouponOrders(ctx context.Context, client *dbent.Client, userID int64, coupon RechargeDiscountCoupon) (int, error) {
+	if client == nil || coupon.ID <= 0 {
 		return 0, nil
 	}
 	orders, err := client.PaymentOrder.Query().
@@ -312,7 +375,15 @@ func countRechargeDiscountCouponOrders(ctx context.Context, client *dbent.Client
 	count := 0
 	for _, order := range orders {
 		plan, ok := firstRechargePromoPlanForOrder(order)
-		if ok && plan.CouponID == couponID && plan.discountApplied() {
+		if !ok || !plan.discountApplied() {
+			continue
+		}
+		usesCoupon := plan.CouponID == coupon.ID
+		usesLegacyPromo := coupon.SourceType == rechargeDiscountCouponSourcePromoCode &&
+			coupon.SourceID != nil &&
+			plan.CouponID == 0 &&
+			plan.PromoCodeID == *coupon.SourceID
+		if usesCoupon || usesLegacyPromo {
 			count++
 		}
 	}
@@ -325,7 +396,7 @@ func (s *PaymentService) checkRechargeDiscountCouponOrderLimit(ctx context.Conte
 	}
 	query := `
 SELECT id, user_id, min_recharge_amount, discount_percent, total_uses, status,
-       created_by, notes, created_at, updated_at
+       created_by, notes, created_at, updated_at, source_type, source_id, source_code
 FROM recharge_discount_coupons
 WHERE id = $1 AND user_id = $2`
 	if paymentTxSupportsForUpdate(tx) {
@@ -351,11 +422,11 @@ WHERE id = $1 AND user_id = $2`
 		math.Abs(coupon.DiscountPercent-plan.DiscountPercent) > 0.00000001 {
 		return infraerrors.Conflict("RECHARGE_COUPON_UNAVAILABLE", "recharge discount coupon is unavailable")
 	}
-	used, err := countRechargeDiscountCouponOrders(ctx, tx.Client(), userID, coupon.ID)
+	used, err := countRechargeDiscountCouponOrders(ctx, tx.Client(), userID, *coupon)
 	if err != nil {
 		return err
 	}
-	if used >= coupon.TotalUses {
+	if coupon.TotalUses > 0 && used >= coupon.TotalUses {
 		return infraerrors.Conflict("RECHARGE_COUPON_LIMIT_REACHED", "recharge discount coupon usage limit has been reached")
 	}
 	return nil

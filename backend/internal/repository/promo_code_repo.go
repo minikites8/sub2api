@@ -504,9 +504,9 @@ func (r *promoCodeRepository) ListRechargeStatsByPromoCodeIDs(ctx context.Contex
 	}
 
 	client := clientFromContext(ctx, r.client)
-	promoCodeIDExpr := "CAST(json_extract(provider_snapshot, '$.first_recharge_promo.promo_code_id') AS INTEGER)"
+	promoCodeIDExpr := "COALESCE(CAST(json_extract(provider_snapshot, '$.first_recharge_promo.promo_code_id') AS INTEGER), CAST(json_extract(provider_snapshot, '$.recharge_discount_coupon.source_id') AS INTEGER))"
 	if r.client != nil && r.client.Driver() != nil && r.client.Driver().Dialect() == dialect.Postgres {
-		promoCodeIDExpr = "NULLIF(provider_snapshot->'first_recharge_promo'->>'promo_code_id', '')::bigint"
+		promoCodeIDExpr = "COALESCE(NULLIF(provider_snapshot->'first_recharge_promo'->>'promo_code_id', '')::bigint, NULLIF(provider_snapshot->'recharge_discount_coupon'->>'source_id', '')::bigint)"
 	}
 	query := fmt.Sprintf(`
 SELECT %s AS promo_code_id,

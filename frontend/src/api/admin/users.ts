@@ -80,6 +80,9 @@ export interface RechargeDiscountCoupon {
   notes: string
   created_at: string
   updated_at: string
+  source_type: 'admin' | 'promo_code'
+  source_id?: number
+  source_code?: string
 }
 
 /**

@@ -2294,7 +2294,11 @@ export default {
         issuedCount: '共 {count} 张',
         issueTitle: '发放新券',
         couponRule: '满 ¥{amount} 打 {rate} 折',
+        couponRuleNoThreshold: '任意充值金额享 {rate} 折',
         usage: '已用 / 总次数',
+        unlimitedUsage: '已用 {used} 次 / 无限次',
+        sourceAdmin: '来源：管理员发放',
+        sourcePromoCode: '来源：优惠码 {code}',
         empty: '该用户暂无充值折扣券',
         loadFailed: '加载折扣券失败',
         status: {

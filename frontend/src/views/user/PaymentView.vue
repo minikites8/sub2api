@@ -115,15 +115,17 @@
                       <div v-if="availableRechargePromo || appliedRechargeCoupon" class="credits-promo-card">
                         <div class="credits-promo-topline">
                           <span>{{ t('payment.rechargePromo.available') }}</span>
-                          <code v-if="availableRechargePromo">{{ availableRechargePromo.promo_code }}</code>
+                          <code v-if="appliedRechargeCoupon?.source_code">{{ appliedRechargeCoupon.source_code }}</code>
+                          <code v-else-if="availableRechargePromo">{{ availableRechargePromo.promo_code }}</code>
                           <code v-else>{{ t('payment.rechargePromo.couponLabel') }}</code>
                         </div>
                         <p v-if="appliedRechargeCoupon">
-                          {{ t('payment.rechargePromo.couponPreview', {
+                          {{ t(appliedRechargeCoupon.min_recharge_amount > 0 ? 'payment.rechargePromo.couponPreview' : 'payment.rechargePromo.discountPreview', {
                             amount: formatSelectedPaymentAmount(appliedRechargeCoupon.min_recharge_amount),
                             discount: formatDiscountRate(appliedRechargeCoupon.discount_percent),
                           }) }}
-                          <span>{{ t('payment.rechargePromo.remainingDiscount', { remaining: appliedRechargeCoupon.remaining_uses }) }}</span>
+                          <span v-if="appliedRechargeCoupon.total_uses === 0">{{ t('payment.rechargePromo.unlimitedDiscount') }}</span>
+                          <span v-else>{{ t('payment.rechargePromo.remainingDiscount', { remaining: appliedRechargeCoupon.remaining_uses }) }}</span>
                         </p>
                         <p v-else-if="promoRechargeDiscountActive">
                           {{ t('payment.rechargePromo.discountPreview', { discount: formatDiscountRate(rechargeDiscountPercent) }) }}
@@ -714,7 +716,7 @@ const promoRechargeDiscountActive = computed(() =>
 )
 const bestEligibleRechargeCoupon = computed(() => availableRechargeCoupons.value
   .filter((coupon) =>
-    coupon.remaining_uses > 0
+    (coupon.total_uses === 0 || coupon.remaining_uses > 0)
     && coupon.discount_percent > 0
     && coupon.discount_percent < 100
     && validAmount.value >= coupon.min_recharge_amount

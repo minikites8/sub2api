@@ -38,6 +38,7 @@ func TestValidatePromoFirstRechargeValue_BoundaryAndInvalid(t *testing.T) {
 func TestApplyPromoCode_ZeroBonusCreatesUsageWithoutBalanceUpdate(t *testing.T) {
 	ctx := context.Background()
 	client := newOrderNotFoundTestClient(t)
+	createRechargeCouponTestTable(t, client)
 
 	discountPercent := 80.0
 	promoRepo := &promoCodeRepoStub{
@@ -61,6 +62,12 @@ func TestApplyPromoCode_ZeroBonusCreatesUsageWithoutBalanceUpdate(t *testing.T) 
 	require.Zero(t, promoRepo.createdUsage.BonusAmount)
 	require.Equal(t, []int64{9}, promoRepo.incrementedIDs)
 	require.Equal(t, 1, promoRepo.promo.UsedCount)
+	coupons, listErr := listUserRechargeDiscountCoupons(ctx, client, 42)
+	require.NoError(t, listErr)
+	require.Len(t, coupons, 1)
+	require.Equal(t, rechargeDiscountCouponSourcePromoCode, coupons[0].SourceType)
+	require.Equal(t, "PARTNER80", coupons[0].SourceCode)
+	require.Equal(t, 3, coupons[0].TotalUses)
 }
 
 func TestApplyPromoCode_BonusDoesNotCountAsRecharge(t *testing.T) {
