@@ -60,6 +60,28 @@ export interface ManualBanRequest {
   duration_hours: number
 }
 
+export interface IssueRechargeDiscountCouponRequest {
+  min_recharge_amount: number
+  discount_rate: number
+  total_uses: number
+  notes?: string
+}
+
+export interface RechargeDiscountCoupon {
+  id: number
+  user_id: number
+  min_recharge_amount: number
+  discount_percent: number
+  total_uses: number
+  used_count: number
+  remaining_uses: number
+  status: string
+  created_by: number
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -187,6 +209,26 @@ export async function updateBalance(
     operation,
     notes: notes || ''
   })
+  return data
+}
+
+export async function issueRechargeDiscountCoupon(
+  id: number,
+  request: IssueRechargeDiscountCouponRequest
+): Promise<RechargeDiscountCoupon> {
+  const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const { data } = await apiClient.post<RechargeDiscountCoupon>(
+    `/admin/users/${id}/recharge-discount-coupons`,
+    request,
+    { headers: { 'Idempotency-Key': `recharge-coupon-${id}-${requestId}` } }
+  )
+  return data
+}
+
+export async function listRechargeDiscountCoupons(id: number): Promise<RechargeDiscountCoupon[]> {
+  const { data } = await apiClient.get<RechargeDiscountCoupon[]>(
+    `/admin/users/${id}/recharge-discount-coupons`
+  )
   return data
 }
 
@@ -440,6 +482,8 @@ export const usersAPI = {
   update,
   delete: deleteUser,
   updateBalance,
+  issueRechargeDiscountCoupon,
+  listRechargeDiscountCoupons,
   updateConcurrency,
   batchUpdateLimits,
   toggleStatus,

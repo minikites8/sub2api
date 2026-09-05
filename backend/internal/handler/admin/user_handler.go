@@ -95,6 +95,13 @@ type UpdateBalanceRequest struct {
 	Notes     string  `json:"notes"`
 }
 
+type IssueRechargeDiscountCouponRequest struct {
+	MinRechargeAmount float64 `json:"min_recharge_amount" binding:"required,gt=0"`
+	DiscountRate      float64 `json:"discount_rate" binding:"required,gt=0,lt=10"`
+	TotalUses         int     `json:"total_uses" binding:"required,gt=0"`
+	Notes             string  `json:"notes"`
+}
+
 type ManualBanRequest struct {
 	// DurationHours uses 0 for a permanent ban.
 	DurationHours int `json:"duration_hours"`
@@ -517,6 +524,52 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 		}
 		return dto.UserFromServiceAdmin(user), nil
 	})
+}
+
+// IssueRechargeDiscountCoupon issues a threshold-based recharge discount to a user.
+// POST /api/v1/admin/users/:id/recharge-discount-coupons
+func (h *UserHandler) IssueRechargeDiscountCoupon(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	var req IssueRechargeDiscountCouponRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	payload := struct {
+		UserID int64                              `json:"user_id"`
+		Body   IssueRechargeDiscountCouponRequest `json:"body"`
+	}{UserID: userID, Body: req}
+	executeAdminIdempotentJSON(c, "admin.users.recharge_discount_coupon.issue", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		return h.adminService.IssueRechargeDiscountCoupon(ctx, userID, service.IssueRechargeDiscountCouponInput{
+			MinRechargeAmount: req.MinRechargeAmount,
+			DiscountPercent:   req.DiscountRate * 10,
+			TotalUses:         req.TotalUses,
+			CreatedBy:         getAdminIDFromContext(c),
+			Notes:             req.Notes,
+		})
+	})
+}
+
+// ListRechargeDiscountCoupons lists every recharge discount coupon issued to a user.
+// GET /api/v1/admin/users/:id/recharge-discount-coupons
+func (h *UserHandler) ListRechargeDiscountCoupons(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	coupons, err := h.adminService.ListUserRechargeDiscountCoupons(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, coupons)
 }
 
 // GetUserAPIKeys handles getting user's API keys

@@ -112,15 +112,23 @@
                         <span>{{ t('payment.paymentAmount') }}</span>
                         <strong>{{ formatSelectedPaymentAmount(validAmount) }}</strong>
                       </div>
-                      <div v-if="availableRechargePromo" class="credits-promo-card">
+                      <div v-if="availableRechargePromo || appliedRechargeCoupon" class="credits-promo-card">
                         <div class="credits-promo-topline">
                           <span>{{ t('payment.rechargePromo.available') }}</span>
-                          <code>{{ availableRechargePromo.promo_code }}</code>
+                          <code v-if="availableRechargePromo">{{ availableRechargePromo.promo_code }}</code>
+                          <code v-else>{{ t('payment.rechargePromo.couponLabel') }}</code>
                         </div>
-                        <p v-if="rechargeDiscountActive">
+                        <p v-if="appliedRechargeCoupon">
+                          {{ t('payment.rechargePromo.couponPreview', {
+                            amount: formatSelectedPaymentAmount(appliedRechargeCoupon.min_recharge_amount),
+                            discount: formatDiscountRate(appliedRechargeCoupon.discount_percent),
+                          }) }}
+                          <span>{{ t('payment.rechargePromo.remainingDiscount', { remaining: appliedRechargeCoupon.remaining_uses }) }}</span>
+                        </p>
+                        <p v-else-if="promoRechargeDiscountActive">
                           {{ t('payment.rechargePromo.discountPreview', { discount: formatDiscountRate(rechargeDiscountPercent) }) }}
-                          <span v-if="availableRechargePromo.discount_times === 0">{{ t('payment.rechargePromo.unlimitedDiscount') }}</span>
-                          <span v-else>{{ t('payment.rechargePromo.remainingDiscount', { remaining: availableRechargePromo.discount_remaining }) }}</span>
+                          <span v-if="availableRechargePromo?.discount_times === 0">{{ t('payment.rechargePromo.unlimitedDiscount') }}</span>
+                          <span v-else>{{ t('payment.rechargePromo.remainingDiscount', { remaining: availableRechargePromo?.discount_remaining }) }}</span>
                         </p>
                         <p v-if="rechargeBonusAmount > 0">
                           {{ t('payment.rechargePromo.bonusPreview', { amount: formatBalanceAmount(rechargeBonusAmount) }) }}
@@ -690,18 +698,43 @@ const subscriptionUsdToCnyRate = computed(() => {
 })
 
 const availableRechargePromo = computed(() => checkout.value.first_recharge_promo)
+const availableRechargeCoupons = computed(() => checkout.value.recharge_discount_coupons ?? [])
 const rechargeBonusAmount = computed(() => {
   const bonus = Number(availableRechargePromo.value?.bonus_amount || 0)
   return Number.isFinite(bonus) && bonus > 0 ? bonus : 0
 })
-const rechargeDiscountPercent = computed(() => {
+const promoRechargeDiscountPercent = computed(() => {
   const discount = Number(availableRechargePromo.value?.discount_percent || 0)
   return Number.isFinite(discount) ? Math.min(Math.max(discount, 0), 100) : 0
 })
-const rechargeDiscountActive = computed(() =>
+const promoRechargeDiscountActive = computed(() =>
   availableRechargePromo.value?.discount_set === true
-    && rechargeDiscountPercent.value > 0
-    && rechargeDiscountPercent.value < 100
+    && promoRechargeDiscountPercent.value > 0
+    && promoRechargeDiscountPercent.value < 100
+)
+const bestEligibleRechargeCoupon = computed(() => availableRechargeCoupons.value
+  .filter((coupon) =>
+    coupon.remaining_uses > 0
+    && coupon.discount_percent > 0
+    && coupon.discount_percent < 100
+    && validAmount.value >= coupon.min_recharge_amount
+  )
+  .sort((left, right) =>
+    left.discount_percent - right.discount_percent
+    || right.min_recharge_amount - left.min_recharge_amount
+    || left.id - right.id
+  )[0])
+const appliedRechargeCoupon = computed(() => {
+  const coupon = bestEligibleRechargeCoupon.value
+  if (!coupon) return undefined
+  if (promoRechargeDiscountActive.value && promoRechargeDiscountPercent.value <= coupon.discount_percent) return undefined
+  return coupon
+})
+const rechargeDiscountPercent = computed(() =>
+  appliedRechargeCoupon.value?.discount_percent ?? promoRechargeDiscountPercent.value
+)
+const rechargeDiscountActive = computed(() =>
+  appliedRechargeCoupon.value !== undefined || promoRechargeDiscountActive.value
 )
 const discountedRechargePaymentAmount = computed(() => {
   if (!rechargeDiscountActive.value || validAmount.value <= 0) return validAmount.value

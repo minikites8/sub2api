@@ -67,6 +67,11 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			return nil, err
 		}
 		firstRechargePlan = buildFirstRechargeAmountPlan(req.Amount, baseCreditAmount, firstRechargePromo)
+		rechargeCoupon, err := s.resolveRechargeDiscountCoupon(ctx, req.UserID, req.Amount)
+		if err != nil {
+			return nil, err
+		}
+		firstRechargePlan = applyRechargeDiscountCoupon(req.Amount, firstRechargePlan, rechargeCoupon)
 		orderAmount = firstRechargePlan.CreditAmount
 		limitAmount = firstRechargePlan.PaymentAmount
 	}
@@ -168,6 +173,9 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		return nil, err
 	}
 	if err := s.checkFirstRechargePromoOrderLimit(ctx, tx, req.UserID, firstRechargePlan); err != nil {
+		return nil, err
+	}
+	if err := s.checkRechargeDiscountCouponOrderLimit(ctx, tx, req.UserID, req.Amount, firstRechargePlan); err != nil {
 		return nil, err
 	}
 	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {

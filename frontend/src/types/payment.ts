@@ -70,6 +70,15 @@ export interface FirstRechargePromoPreview {
   discount_set: boolean
 }
 
+export interface RechargeDiscountCouponPreview {
+  id: number
+  min_recharge_amount: number
+  discount_percent: number
+  total_uses: number
+  used_count: number
+  remaining_uses: number
+}
+
 /** Response from /payment/checkout-info API — single call for the payment page */
 export interface CheckoutInfoResponse {
   methods: Record<string, MethodLimit>
@@ -87,6 +96,7 @@ export interface CheckoutInfoResponse {
   /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
   alipay_force_qrcode?: boolean
   first_recharge_promo?: FirstRechargePromoPreview
+  recharge_discount_coupons?: RechargeDiscountCouponPreview[]
   /** When true, official Alipay mobile orders use precreate plus an Alipay app deep link */
   alipay_mobile_precreate_deep_link?: boolean
 }

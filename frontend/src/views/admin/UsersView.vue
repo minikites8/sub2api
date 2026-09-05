@@ -271,7 +271,7 @@
           selectable
           :selected-keys="selectedIds"
           :selection-label="getUserSelectionLabel"
-          :actions-count="7"
+          :actions-count="8"
           :server-side-sort="true"
           default-sort-key="created_at"
           default-sort-order="desc"
@@ -715,6 +715,14 @@
                 {{ t('admin.users.deposit') }}
               </button>
 
+              <button
+                @click="handleIssueRechargeCoupon(user); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="gift" size="sm" class="text-emerald-500" :stroke-width="2" />
+                {{ t('admin.users.rechargeCoupon.menuItem') }}
+              </button>
+
               <!-- Withdraw -->
               <button
                 @click="handleWithdraw(user); closeActionMenu()"
@@ -786,6 +794,7 @@
       @success="handleBanSuccess"
     />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
+    <UserRechargeDiscountCouponModal :show="showRechargeCouponModal" :user="rechargeCouponUser" @close="closeRechargeCouponModal" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
@@ -830,6 +839,7 @@ import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
 import UserBanModal from '@/components/admin/user/UserBanModal.vue'
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
+import UserRechargeDiscountCouponModal from '@/components/admin/user/UserRechargeDiscountCouponModal.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
@@ -1592,6 +1602,9 @@ const showBalanceModal = ref(false)
 const balanceUser = ref<AdminUser | null>(null)
 const balanceOperation = ref<'add' | 'subtract'>('add')
 
+const showRechargeCouponModal = ref(false)
+const rechargeCouponUser = ref<AdminUser | null>(null)
+
 // Balance History modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
@@ -1862,6 +1875,16 @@ const handleWithdraw = (user: AdminUser) => {
 const closeBalanceModal = () => {
   showBalanceModal.value = false
   balanceUser.value = null
+}
+
+const handleIssueRechargeCoupon = (user: AdminUser) => {
+  rechargeCouponUser.value = user
+  showRechargeCouponModal.value = true
+}
+
+const closeRechargeCouponModal = () => {
+  showRechargeCouponModal.value = false
+  rechargeCouponUser.value = null
 }
 
 const handleBalanceHistory = (user: AdminUser) => {

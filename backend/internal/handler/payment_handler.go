@@ -145,8 +145,14 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	}
 
 	var firstRechargePromo *service.FirstRechargePromoPreview
+	rechargeDiscountCoupons := []service.RechargeDiscountCouponPreview{}
 	if h.paymentService != nil {
 		firstRechargePromo, err = h.paymentService.GetFirstRechargePromoPreview(ctx, subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		rechargeDiscountCoupons, err = h.paymentService.ListAvailableRechargeDiscountCoupons(ctx, subject.UserID)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -168,24 +174,26 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		AlipayForceQRCode:             cfg.AlipayForceQRCode,
 		AlipayMobilePrecreateDeepLink: alipayMobilePrecreateDeepLink,
 		FirstRechargePromo:            firstRechargePromo,
+		RechargeDiscountCoupons:       rechargeDiscountCoupons,
 	})
 }
 
 type checkoutInfoResponse struct {
-	Methods                       map[string]service.MethodLimits    `json:"methods"`
-	GlobalMin                     float64                            `json:"global_min"`
-	GlobalMax                     float64                            `json:"global_max"`
-	Plans                         []checkoutPlan                     `json:"plans"`
-	BalanceDisabled               bool                               `json:"balance_disabled"`
-	BalanceRechargeMultiplier     float64                            `json:"balance_recharge_multiplier"`
-	SubscriptionUSDToCNYRate      float64                            `json:"subscription_usd_to_cny_rate"`
-	RechargeFeeRate               float64                            `json:"recharge_fee_rate"`
-	HelpText                      string                             `json:"help_text"`
-	HelpImageURL                  string                             `json:"help_image_url"`
-	StripePublishableKey          string                             `json:"stripe_publishable_key"`
-	AlipayForceQRCode             bool                               `json:"alipay_force_qrcode"`
-	AlipayMobilePrecreateDeepLink bool                               `json:"alipay_mobile_precreate_deep_link"`
-	FirstRechargePromo            *service.FirstRechargePromoPreview `json:"first_recharge_promo,omitempty"`
+	Methods                       map[string]service.MethodLimits         `json:"methods"`
+	GlobalMin                     float64                                 `json:"global_min"`
+	GlobalMax                     float64                                 `json:"global_max"`
+	Plans                         []checkoutPlan                          `json:"plans"`
+	BalanceDisabled               bool                                    `json:"balance_disabled"`
+	BalanceRechargeMultiplier     float64                                 `json:"balance_recharge_multiplier"`
+	SubscriptionUSDToCNYRate      float64                                 `json:"subscription_usd_to_cny_rate"`
+	RechargeFeeRate               float64                                 `json:"recharge_fee_rate"`
+	HelpText                      string                                  `json:"help_text"`
+	HelpImageURL                  string                                  `json:"help_image_url"`
+	StripePublishableKey          string                                  `json:"stripe_publishable_key"`
+	AlipayForceQRCode             bool                                    `json:"alipay_force_qrcode"`
+	AlipayMobilePrecreateDeepLink bool                                    `json:"alipay_mobile_precreate_deep_link"`
+	FirstRechargePromo            *service.FirstRechargePromoPreview      `json:"first_recharge_promo,omitempty"`
+	RechargeDiscountCoupons       []service.RechargeDiscountCouponPreview `json:"recharge_discount_coupons"`
 }
 
 type checkoutPlan struct {

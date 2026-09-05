@@ -180,6 +180,26 @@ function checkoutInfoWithRechargePromoFixture() {
   }
 }
 
+function checkoutInfoWithRechargeCouponFixture() {
+  return {
+    data: {
+      ...checkoutInfoFixture().data,
+      recharge_fee_rate: 2,
+      balance_recharge_multiplier: 0.9,
+      recharge_discount_coupons: [
+        {
+          id: 12,
+          min_recharge_amount: 100,
+          discount_percent: 80,
+          total_uses: 3,
+          used_count: 1,
+          remaining_uses: 2,
+        },
+      ],
+    },
+  }
+}
+
 function jsapiOrderFixture(resumeToken: string) {
   return {
     order_id: 123,
@@ -778,5 +798,35 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(html).toContain('¥40.00')
     expect(html).toContain('$50.00')
     expect(html).not.toContain('$45.00')
+  })
+
+  it('applies an issued recharge coupon only when its threshold is reached', async () => {
+    routeState.query = {}
+    getCheckoutInfo.mockResolvedValue(checkoutInfoWithRechargeCouponFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.get('input[inputmode="decimal"]').setValue('99')
+    await flushPromises()
+    expect(wrapper.html()).not.toContain('payment.rechargePromo.couponLabel')
+
+    await wrapper.get('input[inputmode="decimal"]').setValue('100')
+    await flushPromises()
+    const html = wrapper.html()
+    expect(html).toContain('payment.rechargePromo.couponLabel')
+    expect(html).toContain('¥80.00')
+    expect(html).toContain('¥1.60')
+    expect(html).toContain('¥81.60')
+    expect(html).toContain('$100.00')
   })
 })

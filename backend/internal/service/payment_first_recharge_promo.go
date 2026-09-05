@@ -46,15 +46,17 @@ type FirstRechargePromoPreview struct {
 }
 
 type firstRechargeAmountPlan struct {
-	PromoCodeID      int64
-	PromoCode        string
-	BaseCreditAmount float64
-	BonusAmount      float64
-	DiscountPercent  float64
-	DiscountTimes    int
-	DiscountSet      bool
-	CreditAmount     float64
-	PaymentAmount    float64
+	PromoCodeID             int64
+	PromoCode               string
+	CouponID                int64
+	CouponMinRechargeAmount float64
+	BaseCreditAmount        float64
+	BonusAmount             float64
+	DiscountPercent         float64
+	DiscountTimes           int
+	DiscountSet             bool
+	CreditAmount            float64
+	PaymentAmount           float64
 }
 
 func (p firstRechargePromo) active() bool {
@@ -197,45 +199,76 @@ func appendFirstRechargePromoSnapshot(snapshot map[string]any, plan firstRecharg
 	if snapshot == nil {
 		snapshot = map[string]any{}
 	}
-	snapshot["first_recharge_promo"] = map[string]any{
-		"promo_code_id":    plan.PromoCodeID,
-		"promo_code":       plan.PromoCode,
-		"base_amount":      plan.BaseCreditAmount,
-		"bonus_amount":     plan.BonusAmount,
-		"discount_percent": plan.DiscountPercent,
-		"discount_times":   plan.DiscountTimes,
-		"discount_set":     plan.DiscountSet,
-		"credited_amount":  plan.CreditAmount,
-		"payment_amount":   plan.PaymentAmount,
+	if plan.PromoCodeID > 0 && (plan.BonusAmount > 0 || (plan.DiscountSet && plan.CouponID == 0)) {
+		promoDiscountSet := plan.DiscountSet && plan.CouponID == 0
+		promoDiscountPercent := 0.0
+		promoDiscountTimes := 0
+		if promoDiscountSet {
+			promoDiscountPercent = plan.DiscountPercent
+			promoDiscountTimes = plan.DiscountTimes
+		}
+		snapshot["first_recharge_promo"] = map[string]any{
+			"promo_code_id":    plan.PromoCodeID,
+			"promo_code":       plan.PromoCode,
+			"base_amount":      plan.BaseCreditAmount,
+			"bonus_amount":     plan.BonusAmount,
+			"discount_percent": promoDiscountPercent,
+			"discount_times":   promoDiscountTimes,
+			"discount_set":     promoDiscountSet,
+			"credited_amount":  plan.CreditAmount,
+			"payment_amount":   plan.PaymentAmount,
+		}
+	}
+	if plan.CouponID > 0 {
+		snapshot["recharge_discount_coupon"] = map[string]any{
+			"coupon_id":           plan.CouponID,
+			"min_recharge_amount": plan.CouponMinRechargeAmount,
+			"base_amount":         plan.BaseCreditAmount,
+			"bonus_amount":        plan.BonusAmount,
+			"discount_percent":    plan.DiscountPercent,
+			"total_uses":          plan.DiscountTimes,
+			"credited_amount":     plan.CreditAmount,
+			"payment_amount":      plan.PaymentAmount,
+		}
 	}
 	return snapshot
 }
 
 func firstRechargeAmountPlanFromSnapshot(snapshot map[string]any) (firstRechargeAmountPlan, bool) {
-	raw, ok := snapshot["first_recharge_promo"]
-	if !ok {
-		return firstRechargeAmountPlan{}, false
+	plan := firstRechargeAmountPlan{}
+	if raw, ok := snapshot["first_recharge_promo"]; ok {
+		if data, dataOK := raw.(map[string]any); dataOK {
+			_, hasDiscountPercent := data["discount_percent"]
+			_, hasDiscountSet := data["discount_set"]
+			discountSet := boolFromSnapshot(data["discount_set"])
+			if !hasDiscountSet {
+				discountSet = hasDiscountPercent
+			}
+			plan = firstRechargeAmountPlan{
+				PromoCodeID:      int64(numberFromSnapshot(data["promo_code_id"])),
+				PromoCode:        stringFromSnapshot(data["promo_code"]),
+				BaseCreditAmount: numberFromSnapshot(data["base_amount"]),
+				BonusAmount:      numberFromSnapshot(data["bonus_amount"]),
+				DiscountPercent:  clampFirstRechargeDiscount(numberFromSnapshot(data["discount_percent"])),
+				DiscountTimes:    int(numberFromSnapshot(data["discount_times"])),
+				DiscountSet:      discountSet,
+				CreditAmount:     numberFromSnapshot(data["credited_amount"]),
+				PaymentAmount:    numberFromSnapshot(data["payment_amount"]),
+			}
+		}
 	}
-	data, ok := raw.(map[string]any)
-	if !ok {
-		return firstRechargeAmountPlan{}, false
-	}
-	_, hasDiscountPercent := data["discount_percent"]
-	_, hasDiscountSet := data["discount_set"]
-	discountSet := boolFromSnapshot(data["discount_set"])
-	if !hasDiscountSet {
-		discountSet = hasDiscountPercent
-	}
-	plan := firstRechargeAmountPlan{
-		PromoCodeID:      int64(numberFromSnapshot(data["promo_code_id"])),
-		PromoCode:        stringFromSnapshot(data["promo_code"]),
-		BaseCreditAmount: numberFromSnapshot(data["base_amount"]),
-		BonusAmount:      numberFromSnapshot(data["bonus_amount"]),
-		DiscountPercent:  clampFirstRechargeDiscount(numberFromSnapshot(data["discount_percent"])),
-		DiscountTimes:    int(numberFromSnapshot(data["discount_times"])),
-		DiscountSet:      discountSet,
-		CreditAmount:     numberFromSnapshot(data["credited_amount"]),
-		PaymentAmount:    numberFromSnapshot(data["payment_amount"]),
+	if raw, ok := snapshot["recharge_discount_coupon"]; ok {
+		if data, dataOK := raw.(map[string]any); dataOK {
+			plan.CouponID = int64(numberFromSnapshot(data["coupon_id"]))
+			plan.CouponMinRechargeAmount = numberFromSnapshot(data["min_recharge_amount"])
+			plan.BaseCreditAmount = numberFromSnapshot(data["base_amount"])
+			plan.BonusAmount = numberFromSnapshot(data["bonus_amount"])
+			plan.DiscountPercent = clampFirstRechargeDiscount(numberFromSnapshot(data["discount_percent"]))
+			plan.DiscountTimes = int(numberFromSnapshot(data["total_uses"]))
+			plan.DiscountSet = plan.CouponID > 0
+			plan.CreditAmount = numberFromSnapshot(data["credited_amount"])
+			plan.PaymentAmount = numberFromSnapshot(data["payment_amount"])
+		}
 	}
 	plan.BonusAmount = roundTo(math.Max(0, plan.BonusAmount), 8)
 	plan.BaseCreditAmount = roundTo(math.Max(0, plan.BaseCreditAmount), 8)
@@ -318,7 +351,7 @@ func countPromoRechargeDiscountOrders(ctx context.Context, client *dbent.Client,
 	count := 0
 	for _, order := range orders {
 		plan, ok := firstRechargePromoPlanForOrder(order)
-		if ok && plan.PromoCodeID == promoCodeID && plan.DiscountSet && plan.DiscountPercent < 100 {
+		if ok && plan.CouponID == 0 && plan.PromoCodeID == promoCodeID && plan.DiscountSet && plan.DiscountPercent < 100 {
 			count++
 		}
 	}
