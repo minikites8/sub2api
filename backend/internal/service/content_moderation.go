@@ -2145,9 +2145,16 @@ func (s *ContentModerationService) sendFlaggedNotificationSideEffects(ctx contex
 			emailSent = true
 		}
 	}
-	if autoBanJustApplied && cfg.BanType == ContentModerationBanTypeUser {
-		if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
-			slog.Warn("content_moderation.ban_email_failed", "user_id", *log.UserID, "email", log.UserEmail, "error", err)
+	if autoBanJustApplied {
+		var err error
+		switch cfg.BanType {
+		case ContentModerationBanTypeGroup:
+			err = s.sendGroupBannedEmail(ctx, cfg, log)
+		case ContentModerationBanTypeUser:
+			err = s.sendAccountDisabledEmail(ctx, cfg, log)
+		}
+		if err != nil {
+			slog.Warn("content_moderation.ban_email_failed", "user_id", *log.UserID, "email", log.UserEmail, "ban_type", cfg.BanType, "error", err)
 		} else {
 			emailSent = true
 		}
@@ -2205,6 +2212,31 @@ func (s *ContentModerationService) sendAccountDisabledEmail(ctx context.Context,
 	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
 }
 
+func (s *ContentModerationService) sendGroupBannedEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
+	siteName := s.siteName(ctx)
+	if s.emailService.notificationEmailService != nil {
+		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+			Event:          NotificationEmailEventContentModerationGroupBanned,
+			RecipientEmail: log.UserEmail,
+			RecipientName:  emailRecipientName(log.UserEmail),
+			UserID:         contentModerationEmailUserID(log),
+			SourceType:     "content_moderation",
+			SourceID:       contentModerationEmailSourceID(log),
+			Variables:      contentModerationEmailVariables(log, cfg),
+		}); err == nil {
+			return nil
+		} else {
+			if !shouldFallbackNotificationEmail(err) {
+				return err
+			}
+			slog.Warn("template content moderation group banned email failed; falling back to built-in body", "log_id", log.ID, "recipient_hash", notificationEmailHash(log.UserEmail), "err", err.Error())
+		}
+	}
+	subject := fmt.Sprintf("[%s] 分组访问已被限制 / Group Access Restricted", sanitizeEmailHeader(siteName))
+	body := buildContentModerationGroupBannedEmailBody(siteName, log, cfg)
+	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
+}
+
 func contentModerationEmailUserID(log *ContentModerationLog) int64 {
 	if log == nil || log.UserID == nil {
 		return 0
@@ -2227,6 +2259,7 @@ func contentModerationEmailVariables(log *ContentModerationLog, cfg *ContentMode
 		"moderation_score":    "0.000",
 		"violation_count":     "0",
 		"ban_threshold":       "0",
+		"ban_duration_hours":  "0",
 	}
 	if log != nil {
 		if !log.CreatedAt.IsZero() {
@@ -2243,6 +2276,7 @@ func contentModerationEmailVariables(log *ContentModerationLog, cfg *ContentMode
 	}
 	if cfg != nil {
 		variables["ban_threshold"] = fmt.Sprintf("%d", cfg.BanThreshold)
+		variables["ban_duration_hours"] = fmt.Sprintf("%d", cfg.BanDurationHours)
 	}
 	return variables
 }
@@ -3423,9 +3457,10 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	}
 	// 开关开时 cyber_policy 不参与封号计数：当次不判定（此处跳过），
 	// 历史行由 CountFlaggedByUserSince 的 excludeCyberPolicy 排除。
-	autoBanned := s.applyCyberPolicyGroupBan(ctx, cfg, in, log)
+	groupBanned := s.applyCyberPolicyGroupBan(ctx, cfg, in, log)
+	accountBanned := false
 	if !cfg.CyberPolicyExcludeFromBanCount {
-		autoBanned = s.applyFlaggedAccountSideEffects(ctx, cfg, log) || autoBanned
+		accountBanned = s.applyFlaggedAccountSideEffects(ctx, cfg, log)
 	}
 	log.EmailSent = false
 	logPersisted := true
@@ -3440,7 +3475,20 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		} else {
 			emailSent = true
 		}
-		if autoBanned && cfg.BanType == ContentModerationBanTypeUser {
+		if groupBanned {
+			groupEmailCfg := cfg
+			if cfg.CyberPolicyGroupBanEnabled {
+				permanentCfg := *cfg
+				permanentCfg.BanDurationHours = 0
+				groupEmailCfg = &permanentCfg
+			}
+			if err := s.sendGroupBannedEmail(ctx, groupEmailCfg, log); err != nil {
+				slog.Warn("content_moderation.cyber_group_ban_email_failed", "user_id", in.UserID, "error", err)
+			} else {
+				emailSent = true
+			}
+		}
+		if accountBanned {
 			if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
 				slog.Warn("content_moderation.cyber_ban_email_failed", "user_id", in.UserID, "error", err)
 			} else {

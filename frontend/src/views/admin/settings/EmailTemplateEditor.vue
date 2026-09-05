@@ -385,6 +385,11 @@ const eventDisplayMeta: Record<string, EventDisplayMeta> = {
     timing: "内容审计违规次数达到封禁阈值并自动禁用用户账号时发送。",
     categoryLabel: "风控",
   },
+  "content_moderation.group_banned": {
+    label: "内容审计限制分组",
+    timing: "内容审计违规次数达到封禁阈值并自动限制用户访问指定分组时发送。",
+    categoryLabel: "风控",
+  },
   "ops.alert": {
     label: "运维告警",
     timing: "运维监控规则触发告警并满足邮件通知配置时发送给运维收件人。",
@@ -446,6 +451,11 @@ const eventDisplayMetaEn: Record<string, EventDisplayMeta> = {
   "content_moderation.account_disabled": {
     label: "Risk Control Account Disabled",
     timing: "Sent when content moderation reaches the ban threshold and automatically disables the user account.",
+    categoryLabel: "Risk Control",
+  },
+  "content_moderation.group_banned": {
+    label: "Risk Control Group Access Restricted",
+    timing: "Sent when content moderation reaches the ban threshold and automatically restricts the user's access to a specific group.",
     categoryLabel: "Risk Control",
   },
   "ops.alert": {

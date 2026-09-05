@@ -15,12 +15,18 @@ func buildContentModerationViolationEmailBody(siteName string, log *ContentModer
 	if userName == "" && log.UserID != nil {
 		userName = fmt.Sprintf("UID %d", *log.UserID)
 	}
-	threshold := cfg.BanThreshold
-	if threshold <= 0 {
-		threshold = defaultContentModerationBanThreshold
+	threshold := defaultContentModerationBanThreshold
+	banType := ContentModerationBanTypeUser
+	if cfg != nil {
+		if cfg.BanThreshold > 0 {
+			threshold = cfg.BanThreshold
+		}
+		if strings.TrimSpace(cfg.BanType) != "" {
+			banType = cfg.BanType
+		}
 	}
 	statusBlock := ""
-	if log.AutoBanned {
+	if log.AutoBanned && banType == ContentModerationBanTypeUser {
 		statusBlock = `<div style="margin-top:24px;padding:18px 20px;border-radius:10px;background:#ff3b30;color:#fff;font-size:18px;font-weight:700;text-align:center;line-height:1.6;">账户当前处于封禁状态，所有 API 请求将被拒绝</div>`
 	}
 	return fmt.Sprintf(`<!doctype html>
@@ -105,6 +111,64 @@ func buildContentModerationAccountDisabledEmailBody(siteName string, log *Conten
 		log.HighestScore,
 		log.ViolationCount,
 		threshold,
+		html.EscapeString(siteName),
+	)
+}
+
+func buildContentModerationGroupBannedEmailBody(siteName string, log *ContentModerationLog, cfg *ContentModerationConfig) string {
+	if log == nil {
+		return ""
+	}
+	userName := strings.TrimSpace(log.UserEmail)
+	if userName == "" && log.UserID != nil {
+		userName = fmt.Sprintf("UID %d", *log.UserID)
+	}
+	threshold := defaultContentModerationBanThreshold
+	durationHours := 0
+	if cfg != nil {
+		if cfg.BanThreshold > 0 {
+			threshold = cfg.BanThreshold
+		}
+		durationHours = cfg.BanDurationHours
+	}
+	duration := "永久"
+	if durationHours > 0 {
+		duration = fmt.Sprintf("%d 小时", durationHours)
+	}
+	return fmt.Sprintf(`<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f5f6fb;color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:680px;margin:0 auto;padding:32px 20px;">
+    <div style="height:8px;background:#c2410c;border-radius:14px 14px 0 0;"></div>
+    <div style="background:#fff;border-radius:0 0 14px 14px;padding:40px 48px;box-shadow:0 8px 28px rgba(15,23,42,.08);">
+      <div style="letter-spacing:4px;color:#999;font-size:14px;text-transform:uppercase;">Risk Control / 分组封禁</div>
+      <h1 style="margin:20px 0 28px;font-size:30px;line-height:1.25;">指定分组访问已被限制</h1>
+      <p style="font-size:17px;line-height:1.9;margin:0 0 24px;">尊敬的用户 <strong>%s</strong>，由于多次触发平台风控策略，您对指定分组的访问已被限制。您的账号仍可使用，其他分组继续可用。</p>
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:22px 28px;margin:28px 0;">
+        <h2 style="margin:0 0 18px;color:#c2410c;font-size:18px;">分组封禁详情</h2>
+        <table style="width:100%%;border-collapse:collapse;font-size:16px;">
+          <tr><td style="padding:12px 0;color:#888;border-bottom:1px solid #ffedd5;">限制时间</td><td style="padding:12px 0;border-bottom:1px solid #ffedd5;">%s</td></tr>
+          <tr><td style="padding:12px 0;color:#888;border-bottom:1px solid #ffedd5;">封禁分组</td><td style="padding:12px 0;border-bottom:1px solid #ffedd5;">%s</td></tr>
+          <tr><td style="padding:12px 0;color:#888;border-bottom:1px solid #ffedd5;">命中类别</td><td style="padding:12px 0;border-bottom:1px solid #ffedd5;">%s / %.3f</td></tr>
+          <tr><td style="padding:12px 0;color:#888;border-bottom:1px solid #ffedd5;">累计触发次数</td><td style="padding:12px 0;color:#c2410c;font-weight:700;border-bottom:1px solid #ffedd5;">%d 次（阈值 %d）</td></tr>
+          <tr><td style="padding:12px 0;color:#888;">封禁时长</td><td style="padding:12px 0;">%s</td></tr>
+        </table>
+      </div>
+      <div style="margin-top:24px;padding:18px 20px;border-radius:10px;background:#fff7ed;color:#9a3412;font-size:17px;font-weight:700;text-align:center;line-height:1.6;">账号整体保持可用，当前限制仅适用于此分组</div>
+      <p style="font-size:15px;line-height:1.8;color:#666;margin-top:24px;">请检查请求内容，解除限制后再使用该分组。</p>
+      <p style="font-size:14px;line-height:1.8;color:#777;margin-top:28px;">此邮件由 %s 自动发送，请勿回复。</p>
+    </div>
+  </div>
+</body>
+</html>`,
+		html.EscapeString(userName),
+		html.EscapeString(time.Now().Format("2006-01-02 15:04:05")),
+		html.EscapeString(defaultContentModerationString(log.GroupName, "-")),
+		html.EscapeString(defaultContentModerationString(log.HighestCategory, "-")),
+		log.HighestScore,
+		log.ViolationCount,
+		threshold,
+		html.EscapeString(duration),
 		html.EscapeString(siteName),
 	)
 }

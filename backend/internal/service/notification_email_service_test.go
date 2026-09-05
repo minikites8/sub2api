@@ -143,6 +143,7 @@ func TestNotificationEmailAdditionalEventsAreListedAndPreviewable(t *testing.T) 
 		{NotificationEmailEventAccountQuotaAlert, "account_name"},
 		{NotificationEmailEventContentModerationViolation, "moderation_category"},
 		{NotificationEmailEventContentModerationDisabled, "violation_count"},
+		{NotificationEmailEventContentModerationGroupBanned, "ban_duration_hours"},
 		{NotificationEmailEventCyberPolicyNotice, "upstream_message"},
 		{NotificationEmailEventOpsAlert, "rule_name"},
 		{NotificationEmailEventOpsScheduledReport, "report_html"},
@@ -159,6 +160,28 @@ func TestNotificationEmailAdditionalEventsAreListedAndPreviewable(t *testing.T) 
 		require.NotEmpty(t, preview.Subject)
 		require.NotEmpty(t, preview.HTML)
 	}
+}
+
+func TestContentModerationGroupBannedTemplateIsDistinctFromAccountDisabled(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+
+	groupPreview, err := svc.PreviewTemplate(ctx, NotificationEmailPreviewInput{
+		Event:  NotificationEmailEventContentModerationGroupBanned,
+		Locale: "zh",
+	})
+	require.NoError(t, err)
+	require.Contains(t, groupPreview.Subject, "分组访问")
+	require.Contains(t, groupPreview.HTML, "账号仍可正常使用")
+	require.NotContains(t, groupPreview.HTML, "账户已被禁用")
+
+	accountPreview, err := svc.PreviewTemplate(ctx, NotificationEmailPreviewInput{
+		Event:  NotificationEmailEventContentModerationDisabled,
+		Locale: "zh",
+	})
+	require.NoError(t, err)
+	require.Contains(t, accountPreview.HTML, "账户已被禁用")
+	require.NotEqual(t, groupPreview.Subject, accountPreview.Subject)
 }
 
 func TestCyberPolicyNoticeTemplateWrapsLongUpstreamMessages(t *testing.T) {

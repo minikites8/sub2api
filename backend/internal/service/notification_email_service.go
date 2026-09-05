@@ -20,19 +20,20 @@ import (
 )
 
 const (
-	NotificationEmailEventAuthVerifyCode              = "auth.verify_code"
-	NotificationEmailEventAuthPasswordReset           = "auth.password_reset"
-	NotificationEmailEventNotificationEmailVerifyCode = "notification_email.verify_code"
-	NotificationEmailEventSubscriptionPurchaseSuccess = "subscription.purchase_success"
-	NotificationEmailEventSubscriptionExpiryReminder  = "subscription.expiry_reminder"
-	NotificationEmailEventBalanceLow                  = "balance.low"
-	NotificationEmailEventBalanceRechargeSuccess      = "balance.recharge_success"
-	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
-	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
-	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
-	NotificationEmailEventCyberPolicyNotice           = "content_moderation.cyber_policy_notice"
-	NotificationEmailEventOpsAlert                    = "ops.alert"
-	NotificationEmailEventOpsScheduledReport          = "ops.scheduled_report"
+	NotificationEmailEventAuthVerifyCode               = "auth.verify_code"
+	NotificationEmailEventAuthPasswordReset            = "auth.password_reset"
+	NotificationEmailEventNotificationEmailVerifyCode  = "notification_email.verify_code"
+	NotificationEmailEventSubscriptionPurchaseSuccess  = "subscription.purchase_success"
+	NotificationEmailEventSubscriptionExpiryReminder   = "subscription.expiry_reminder"
+	NotificationEmailEventBalanceLow                   = "balance.low"
+	NotificationEmailEventBalanceRechargeSuccess       = "balance.recharge_success"
+	NotificationEmailEventAccountQuotaAlert            = "account.quota_alert"
+	NotificationEmailEventContentModerationViolation   = "content_moderation.violation_notice"
+	NotificationEmailEventContentModerationDisabled    = "content_moderation.account_disabled"
+	NotificationEmailEventContentModerationGroupBanned = "content_moderation.group_banned"
+	NotificationEmailEventCyberPolicyNotice            = "content_moderation.cyber_policy_notice"
+	NotificationEmailEventOpsAlert                     = "ops.alert"
+	NotificationEmailEventOpsScheduledReport           = "ops.scheduled_report"
 
 	notificationEmailTemplateKeyPrefix    = "notification_email_template:"
 	notificationEmailPreferenceKeyPrefix  = "notification_email_preference:"
@@ -928,6 +929,7 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 			"moderation_score":    "0.982",
 			"violation_count":     "2",
 			"ban_threshold":       "3",
+			"ban_duration_hours":  "24",
 			"rule_name":           "错误率过高",
 			"severity":            "critical",
 			"alert_status":        "firing",
@@ -976,6 +978,7 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 		"moderation_score":    "0.982",
 		"violation_count":     "2",
 		"ban_threshold":       "3",
+		"ban_duration_hours":  "24",
 		"rule_name":           "High error rate",
 		"severity":            "critical",
 		"alert_status":        "firing",
@@ -1031,6 +1034,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventAccountQuotaAlert,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
+	NotificationEmailEventContentModerationGroupBanned,
 	NotificationEmailEventCyberPolicyNotice,
 	NotificationEmailEventOpsAlert,
 	NotificationEmailEventOpsScheduledReport,
@@ -1119,6 +1123,15 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
 			"triggered_at", "group_name", "moderation_category", "moderation_score", "violation_count", "ban_threshold"),
+	},
+	NotificationEmailEventContentModerationGroupBanned: {
+		Event:       NotificationEmailEventContentModerationGroupBanned,
+		Label:       "Risk control group access restricted",
+		Description: "Sent to users when content moderation automatically restricts access to a specific group.",
+		Category:    "risk_control",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"triggered_at", "group_name", "moderation_category", "moderation_score", "violation_count", "ban_threshold", "ban_duration_hours"),
 	},
 	NotificationEmailEventCyberPolicyNotice: {
 		Event:       NotificationEmailEventCyberPolicyNotice,
@@ -1374,6 +1387,38 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
   <tr><td>累计触发次数</td><td>{{violation_count}} / {{ban_threshold}}</td></tr>
 </table>
 <p>如需申诉或恢复账号，请联系平台管理员处理。</p>`),
+		},
+	},
+	NotificationEmailEventContentModerationGroupBanned: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Group access restricted by risk control",
+			HTML: notificationEmailCard("#c2410c", "Group access restricted", `
+<p>Hello {{recipient_name}},</p>
+<p>Access to the group <strong>{{group_name}}</strong> has been restricted after repeated content moderation violations.</p>
+<p>Your account remains active, and other groups remain available.</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>Restricted at</td><td>{{triggered_at}}</td></tr>
+  <tr><td>Group</td><td>{{group_name}}</td></tr>
+  <tr><td>Category / Score</td><td>{{moderation_category}} / {{moderation_score}}</td></tr>
+  <tr><td>Violation count</td><td>{{violation_count}} / {{ban_threshold}}</td></tr>
+  <tr><td>Duration (hours, 0 = permanent)</td><td>{{ban_duration_hours}}</td></tr>
+</table>
+<p>Please review your request content before using this group again.</p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 分组访问已被风控限制",
+			HTML: notificationEmailCard("#c2410c", "分组访问已被限制", `
+<p>{{recipient_name}}，您好：</p>
+<p>由于多次触发内容审核规则，您对分组 <strong>{{group_name}}</strong> 的访问已被限制。</p>
+<p>您的账号仍可正常使用，其他分组继续可用。</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>限制时间</td><td>{{triggered_at}}</td></tr>
+  <tr><td>封禁分组</td><td>{{group_name}}</td></tr>
+  <tr><td>命中类别 / 分数</td><td>{{moderation_category}} / {{moderation_score}}</td></tr>
+  <tr><td>累计触发次数</td><td>{{violation_count}} / {{ban_threshold}}</td></tr>
+  <tr><td>封禁时长（小时，0 表示永久）</td><td>{{ban_duration_hours}}</td></tr>
+</table>
+<p>请检查请求内容，解除限制后再使用该分组。</p>`),
 		},
 	},
 	NotificationEmailEventCyberPolicyNotice: {

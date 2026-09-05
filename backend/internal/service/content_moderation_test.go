@@ -2164,6 +2164,43 @@ func TestBuildContentModerationAccountDisabledEmailBody_ContainsBanDetails(t *te
 	require.Contains(t, body, "Sub2API &lt;Admin&gt;")
 }
 
+func TestBuildContentModerationGroupBannedEmailBody_IsScopedToGroup(t *testing.T) {
+	userID := int64(1001)
+	cfg := defaultContentModerationConfig()
+	cfg.BanType = ContentModerationBanTypeGroup
+	cfg.BanThreshold = 10
+	cfg.BanDurationHours = 24
+	body := buildContentModerationGroupBannedEmailBody("Sub2API <Admin>", &ContentModerationLog{
+		UserID:          &userID,
+		UserEmail:       "user@example.com",
+		GroupName:       "vip_2",
+		HighestCategory: "sexual",
+		HighestScore:    0.926,
+		ViolationCount:  10,
+	}, cfg)
+
+	require.Contains(t, body, "指定分组访问已被限制")
+	require.Contains(t, body, "分组封禁详情")
+	require.Contains(t, body, "vip_2")
+	require.Contains(t, body, "24 小时")
+	require.Contains(t, body, "账号整体保持可用，当前限制仅适用于此分组")
+	require.NotContains(t, body, "账户已被自动禁用")
+	require.NotContains(t, body, "所有 API 请求将被拒绝")
+}
+
+func TestBuildContentModerationViolationEmailBody_GroupBanDoesNotClaimAccountDisabled(t *testing.T) {
+	userID := int64(1001)
+	cfg := defaultContentModerationConfig()
+	cfg.BanType = ContentModerationBanTypeGroup
+	body := buildContentModerationViolationEmailBody("Sub2API", &ContentModerationLog{
+		UserID:     &userID,
+		UserEmail:  "user@example.com",
+		AutoBanned: true,
+	}, cfg)
+
+	require.NotContains(t, body, "所有 API 请求将被拒绝")
+}
+
 func TestContentModerationUnbanUser_ActivatesUserAndInvalidatesAuthCache(t *testing.T) {
 	userRepo := &contentModerationTestUserRepo{user: &User{ID: 1001, Email: "user@example.com", Status: StatusDisabled}}
 	invalidator := &contentModerationTestAuthCacheInvalidator{}
