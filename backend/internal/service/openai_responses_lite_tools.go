@@ -26,7 +26,11 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	if reqBody == nil {
 		return false, nil
 	}
-	modified := ensureOpenAIResponsesLiteParallelToolCalls(reqBody)
+	if parallel, exists := reqBody["parallel_tool_calls"]; exists {
+		if _, ok := parallel.(bool); !ok {
+			return false, newOpenAIResponsesLiteValidationError("parallel_tool_calls", "responses Lite requires parallel_tool_calls to be a boolean")
+		}
+	}
 	if rawReasoning, exists := reqBody["reasoning"]; exists && rawReasoning != nil {
 		if _, ok := rawReasoning.(map[string]any); !ok {
 			return false, newOpenAIResponsesLiteValidationError("reasoning", "responses Lite requires reasoning to be an object")
@@ -35,7 +39,10 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	rawTools, exists := reqBody["tools"]
 	if !exists || rawTools == nil {
 		reasoningModified, err := ensureOpenAIResponsesLiteReasoningContext(reqBody)
-		return modified || reasoningModified, err
+		if err != nil {
+			return false, err
+		}
+		return ensureOpenAIResponsesLiteParallelToolCalls(reqBody, reasoningModified)
 	}
 	tools, ok := rawTools.([]any)
 	if !ok {
@@ -69,8 +76,11 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 		}
 	}
 	if len(namespaceTools) == 0 {
-		reasoningModified, err := ensureOpenAIResponsesLiteReasoningContext(reqBody)
-		return modified || reasoningModified, err
+		changed, err := ensureOpenAIResponsesLiteReasoningContext(reqBody)
+		if err != nil {
+			return false, err
+		}
+		return ensureOpenAIResponsesLiteParallelToolCalls(reqBody, changed)
 	}
 
 	input, err := appendOpenAIResponsesLiteAdditionalTools(reqBody["input"], namespaceTools)
@@ -101,17 +111,6 @@ func ensureOpenAIResponsesLiteParallelToolCalls(reqBody map[string]any, changed 
 	}
 	reqBody["parallel_tool_calls"] = false
 	return true, nil
-}
-
-// Responses Lite rejects parallel tool execution at the protocol boundary.
-// Always emit false so clients that omit the field and clients that send true
-// follow the same upstream contract.
-func ensureOpenAIResponsesLiteParallelToolCalls(reqBody map[string]any) bool {
-	if current, ok := reqBody["parallel_tool_calls"].(bool); ok && !current {
-		return false
-	}
-	reqBody["parallel_tool_calls"] = false
-	return true
 }
 
 func ensureOpenAIResponsesLiteReasoningContext(reqBody map[string]any) (bool, error) {

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,8 +30,10 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
+
+var registerOAuthPendingFlowSQLiteFunctions sync.Once
 
 func TestApplySuggestedProfileToCompletionResponse(t *testing.T) {
 	payload := map[string]any{
@@ -2531,6 +2535,11 @@ func newOAuthPendingFlowTestHandlerWithDependencies(
 	options oauthPendingFlowTestHandlerOptions,
 ) (*AuthHandler, *dbent.Client) {
 	t.Helper()
+	registerOAuthPendingFlowSQLiteFunctions.Do(func() {
+		sqlite.MustRegisterScalarFunction("now", 0, func(_ *sqlite.FunctionContext, _ []driver.Value) (driver.Value, error) {
+			return time.Now().UTC(), nil
+		})
+	})
 
 	db, err := sql.Open("sqlite", "file:auth_oauth_pending_flow_handler?mode=memory&cache=shared")
 	require.NoError(t, err)
@@ -2578,6 +2587,12 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	_, err = db.Exec(`ALTER TABLE users ADD COLUMN gift_balance REAL NOT NULL DEFAULT 0`)
+	require.NoError(t, err)
+	_, err = db.Exec(`ALTER TABLE users ADD COLUMN gift_balance_expires_at TIMESTAMP NULL`)
+	require.NoError(t, err)
+	_, err = db.Exec(`ALTER TABLE users ADD COLUMN frozen_gift_balance REAL NOT NULL DEFAULT 0`)
+	require.NoError(t, err)
 
 	cfg := &config.Config{
 		JWT: config.JWTConfig{

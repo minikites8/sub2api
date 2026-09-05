@@ -648,6 +648,7 @@ function publicMonitorToUserView(item: PublicTransitMonitor, id: number): UserMo
     name: `${platformLabel(item.platform)} / ${item.model}`,
     provider: normalizeProvider(item.platform),
     group_name: '',
+    check_mode: 'probe',
     primary_model: item.model,
     primary_status: normalizeStatus(item.status),
     primary_latency_ms: item.latest_duration_p50_ms ?? item.duration_p50_7d_ms ?? null,

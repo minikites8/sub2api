@@ -237,6 +237,7 @@ type SystemSettings struct {
 	// Public Transit feature (public ai-transit snapshot)
 	PublicTransitEnabled     bool `json:"public_transit_enabled"`
 	PublicTransitPageEnabled bool `json:"public_transit_page_enabled"`
+	PluginManagementEnabled  bool `json:"plugin_management_enabled"`
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
@@ -412,6 +413,7 @@ type PublicSettings struct {
 	// Public Transit feature (public ai-transit snapshot)
 	PublicTransitEnabled     bool `json:"public_transit_enabled"`
 	PublicTransitPageEnabled bool `json:"public_transit_page_enabled"`
+	PluginManagementEnabled  bool `json:"plugin_management_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`

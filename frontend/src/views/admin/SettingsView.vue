@@ -10071,6 +10071,7 @@ const form = reactive<SettingsForm>({
   // Public Transit API is enabled by default; the visual page is opt-in.
   public_transit_enabled: true,
   public_transit_page_enabled: false,
+  plugin_management_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
   // ye.team CDK account supply and 401 reclaim integration
@@ -11761,6 +11762,7 @@ async function saveSettings() {
       public_transit_enabled: form.public_transit_enabled,
       public_transit_page_enabled:
         form.public_transit_enabled && form.public_transit_page_enabled,
+      plugin_management_enabled: form.plugin_management_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       // ye.team CDK account supply and 401 reclaim integration

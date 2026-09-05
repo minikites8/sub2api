@@ -1630,6 +1630,13 @@ func applyGroupOpenAIServiceTierPolicy(ctx context.Context, body []byte) ([]byte
 	if !ok || !IsGroupContextValid(group) || group.Platform != PlatformOpenAI {
 		return body, nil
 	}
+	if group.ForceOpenAIFast && groupSupportsOpenAIFast(group.Platform) {
+		updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
+		if err != nil {
+			return body, fmt.Errorf("force group service_tier priority on body: %w", err)
+		}
+		body = updated
+	}
 	mode, tier, err := NormalizeOpenAIServiceTierConfig(group.Platform, group.OpenAIServiceTierMode, group.OpenAIServiceTier)
 	if err != nil {
 		return body, fmt.Errorf("invalid group openai service_tier policy: %w", err)

@@ -4888,10 +4888,7 @@ import {
   supportsMessagesDispatchPlatform,
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
-import {
-  normalizeGroupOpenAIFast,
-  supportsGroupOpenAIFast,
-} from "./groupsOpenAIFast";
+import { supportsGroupOpenAIFast } from "./groupsOpenAIFast";
 import {
   buildModelsListConfig,
   createModelsListState as createInitialModelsListState,

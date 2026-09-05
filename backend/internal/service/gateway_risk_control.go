@@ -108,10 +108,6 @@ func (s *GatewayService) applyAPIUsageIPUARiskControl(ctx context.Context, userI
 	if keepPreviousAccounts < 0 {
 		keepPreviousAccounts = 0
 	}
-	if assessment.Action != AntiAbuseActionRestrict {
-		return
-	}
-
 	currentIndex := -1
 	for idx, item := range items {
 		if item.UserID == userID {

@@ -3,7 +3,6 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import PaymentView from '../PaymentView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
 import { formatPaymentAmount } from '@/components/payment/currency'
-import AmountInput from '@/components/payment/AmountInput.vue'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import en from '@/i18n/locales/en'
 import zh from '@/i18n/locales/zh'
@@ -373,7 +372,7 @@ describe('PaymentView recharge rate preview', () => {
       },
     })
     await flushPromises()
-    wrapper.getComponent(AmountInput).vm.$emit('update:modelValue', 10)
+    await wrapper.get('input[inputmode="decimal"]').setValue('10')
     await flushPromises()
 
     expect(translate).toHaveBeenCalledWith('payment.rechargeRatePreview', {

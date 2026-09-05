@@ -32,7 +32,7 @@ const (
 
 // DefaultCSPPolicy is the default Content-Security-Policy with nonce support
 // __CSP_NONCE__ will be replaced with actual nonce at request time by the SecurityHeaders middleware
-const DefaultCSPPolicy = "default-src 'self'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+const DefaultCSPPolicy = "default-src 'self'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com https://*.googlesyndication.com https://*.googleadservices.com https://*.doubleclick.net; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.adtrafficquality.google; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // UMQ（用户消息队列）模式常量
 const (
@@ -75,6 +75,7 @@ type Config struct {
 	Database                DatabaseConfig                `mapstructure:"database"`
 	Redis                   RedisConfig                   `mapstructure:"redis"`
 	Ops                     OpsConfig                     `mapstructure:"ops"`
+	AutoSupply              AutoSupplyConfig              `mapstructure:"auto_supply"`
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
 	Totp                    TotpConfig                    `mapstructure:"totp"`
 	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
@@ -93,6 +94,7 @@ type Config struct {
 	SubscriptionMaintenance SubscriptionMaintenanceConfig `mapstructure:"subscription_maintenance"`
 	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
 	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
+	DailyCheckin            DailyCheckinConfig            `mapstructure:"daily_checkin"`
 	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
@@ -104,6 +106,17 @@ type Config struct {
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	YeTeam                  YeTeamConfig                  `mapstructure:"ye_team"`
+}
+
+// YeTeamConfig controls CDK redemption and optional 401 credential reclaim.
+type YeTeamConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	BaseURL             string `mapstructure:"base_url"`
+	AutoRefresh401      bool   `mapstructure:"auto_refresh_401"`
+	TimeoutSeconds      int    `mapstructure:"timeout_seconds"`
+	PollIntervalSeconds int    `mapstructure:"poll_interval_seconds"`
+	MaxPollSeconds      int    `mapstructure:"max_poll_seconds"`
 }
 
 // PluginConfig 控制管理员手动上传的本地进程插件。
@@ -1611,6 +1624,42 @@ type OpsConfig struct {
 	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
 }
 
+// AutoSupplyConfig controls server-side replenishment from a customer-token account supplier.
+type AutoSupplyConfig struct {
+	Enabled               bool                    `mapstructure:"enabled"`
+	BaseURL               string                  `mapstructure:"base_url"`
+	CustomerToken         string                  `mapstructure:"customer_token" json:"-" yaml:"-"`
+	IntervalSeconds       int                     `mapstructure:"interval_seconds"`
+	RequestTimeoutSeconds int                     `mapstructure:"request_timeout_seconds"`
+	MaxQuantityPerRun     int                     `mapstructure:"max_quantity_per_run"`
+	UsageForecastEnabled  bool                    `mapstructure:"usage_forecast_enabled"`
+	UsageLookbackMinutes  int                     `mapstructure:"usage_lookback_minutes"`
+	UsageForecastMinutes  int                     `mapstructure:"usage_forecast_minutes"`
+	UsageSafetyFactor     float64                 `mapstructure:"usage_safety_factor"`
+	UsageMinSamples       int                     `mapstructure:"usage_min_samples"`
+	Groups                []AutoSupplyGroupConfig `mapstructure:"groups"`
+	UsageLookbackHours    int                     `mapstructure:"usage_lookback_hours"`
+	UsageForecastHours    int                     `mapstructure:"usage_forecast_hours"`
+}
+
+type AutoSupplyGroupConfig struct {
+	GroupID                     int64   `mapstructure:"group_id"`
+	DeployGroupIDs              []int64 `mapstructure:"deploy_group_ids"`
+	Product                     string  `mapstructure:"product"`
+	MinAvailable                int     `mapstructure:"min_available"`
+	Quantity                    int     `mapstructure:"quantity"`
+	Platform                    string  `mapstructure:"platform"`
+	AccountType                 string  `mapstructure:"account_type"`
+	Priority                    int     `mapstructure:"priority"`
+	Concurrency                 int     `mapstructure:"concurrency"`
+	OpenAIWSMode                string  `mapstructure:"openai_ws_mode"`
+	ProxyMode                   string  `mapstructure:"proxy_mode"`
+	ProxyID                     *int64  `mapstructure:"proxy_id"`
+	CodexFingerprintMode        string  `mapstructure:"codex_fingerprint_mode"`
+	EnableAccountGuard          bool    `mapstructure:"enable_account_guard"`
+	AccountGuardIntervalMinutes int     `mapstructure:"account_guard_interval_minutes"`
+}
+
 type OpsCleanupConfig struct {
 	Enabled  bool   `mapstructure:"enabled"`
 	Schedule string `mapstructure:"schedule"`
@@ -1721,6 +1770,28 @@ type DashboardCacheConfig struct {
 	StatsRefreshTimeoutSeconds int `mapstructure:"stats_refresh_timeout_seconds"`
 }
 
+const (
+	DefaultDailyCheckinRechargeWindowDays = 14
+	DefaultDailyCheckinRewardValidityDays = 30
+)
+
+type DailyCheckinConfig struct {
+	Enabled            bool                     `mapstructure:"enabled"`
+	AdsEnabled         bool                     `mapstructure:"ads_enabled"`
+	DailyTotalLimit    float64                  `mapstructure:"daily_total_limit"`
+	MinReward          float64                  `mapstructure:"min_reward"`
+	MaxReward          float64                  `mapstructure:"max_reward"`
+	RewardValidityDays int                      `mapstructure:"reward_validity_days"`
+	RechargeWindowDays int                      `mapstructure:"recharge_window_days"`
+	MinRechargeAmount  float64                  `mapstructure:"min_recharge_amount"`
+	RewardTiers        []DailyCheckinRewardTier `mapstructure:"reward_tiers"`
+}
+
+type DailyCheckinRewardTier struct {
+	UpperRatio float64 `json:"upper_ratio" mapstructure:"upper_ratio" yaml:"upper_ratio"`
+	Weight     float64 `json:"weight" mapstructure:"weight" yaml:"weight"`
+}
+
 // DashboardAggregationConfig 仪表盘预聚合配置
 type DashboardAggregationConfig struct {
 	// Enabled: 是否启用预聚合作业
@@ -1797,6 +1868,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	if err := viper.BindEnv("server.enable_server_timing", "ENABLE_SERVER_TIMING"); err != nil {
 		return nil, fmt.Errorf("bind ENABLE_SERVER_TIMING: %w", err)
+	}
+	if err := viper.BindEnv("auto_supply.customer_token", "AUTO_SUPPLY_CUSTOMER_TOKEN"); err != nil {
+		return nil, fmt.Errorf("bind AUTO_SUPPLY_CUSTOMER_TOKEN: %w", err)
+	}
+	if err := viper.BindEnv("auto_supply.base_url", "AUTO_SUPPLY_BASE_URL"); err != nil {
+		return nil, fmt.Errorf("bind AUTO_SUPPLY_BASE_URL: %w", err)
 	}
 
 	// 默认值
@@ -1895,6 +1972,13 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
+	cfg.AutoSupply.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.AutoSupply.BaseURL), "/")
+	cfg.AutoSupply.CustomerToken = strings.TrimSpace(cfg.AutoSupply.CustomerToken)
+	for i := range cfg.AutoSupply.Groups {
+		cfg.AutoSupply.Groups[i].Product = strings.TrimSpace(cfg.AutoSupply.Groups[i].Product)
+		cfg.AutoSupply.Groups[i].Platform = strings.TrimSpace(cfg.AutoSupply.Groups[i].Platform)
+		cfg.AutoSupply.Groups[i].AccountType = strings.TrimSpace(cfg.AutoSupply.Groups[i].AccountType)
+	}
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 		if err != nil {
@@ -2000,6 +2084,12 @@ func setDefaults() {
 	viper.SetDefault("server.read_header_timeout", 10) // 10秒读取请求头
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
+	viper.SetDefault("ye_team.enabled", false)
+	viper.SetDefault("ye_team.base_url", "https://ye.team")
+	viper.SetDefault("ye_team.auto_refresh_401", false)
+	viper.SetDefault("ye_team.timeout_seconds", 60)
+	viper.SetDefault("ye_team.poll_interval_seconds", 12)
+	viper.SetDefault("ye_team.max_poll_seconds", 600)
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
 	// H2C 默认配置
 	viper.SetDefault("server.h2c.enabled", false)
@@ -2259,6 +2349,17 @@ func setDefaults() {
 	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
 	viper.SetDefault("ops.metrics_collector_cache.ttl", 65*time.Second)
 
+	viper.SetDefault("auto_supply.enabled", false)
+	viper.SetDefault("auto_supply.base_url", "https://bugteam.team")
+	viper.SetDefault("auto_supply.customer_token", "")
+	viper.SetDefault("auto_supply.interval_seconds", 30)
+	viper.SetDefault("auto_supply.request_timeout_seconds", 20)
+	viper.SetDefault("auto_supply.max_quantity_per_run", 10)
+	viper.SetDefault("auto_supply.usage_forecast_enabled", false)
+	viper.SetDefault("auto_supply.usage_safety_factor", 1.25)
+	viper.SetDefault("auto_supply.usage_min_samples", 20)
+	viper.SetDefault("auto_supply.groups", []AutoSupplyGroupConfig{})
+
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
@@ -2328,6 +2429,16 @@ func setDefaults() {
 	viper.SetDefault("dashboard_cache.stats_fresh_ttl_seconds", 15)
 	viper.SetDefault("dashboard_cache.stats_ttl_seconds", 30)
 	viper.SetDefault("dashboard_cache.stats_refresh_timeout_seconds", 30)
+
+	viper.SetDefault("daily_checkin.enabled", false)
+	viper.SetDefault("daily_checkin.ads_enabled", true)
+	viper.SetDefault("daily_checkin.daily_total_limit", 0)
+	viper.SetDefault("daily_checkin.min_reward", 0)
+	viper.SetDefault("daily_checkin.max_reward", 0)
+	viper.SetDefault("daily_checkin.reward_validity_days", DefaultDailyCheckinRewardValidityDays)
+	viper.SetDefault("daily_checkin.recharge_window_days", DefaultDailyCheckinRechargeWindowDays)
+	viper.SetDefault("daily_checkin.min_recharge_amount", 1)
+	viper.SetDefault("daily_checkin.reward_tiers", DefaultDailyCheckinRewardTiers())
 
 	// Dashboard aggregation
 	viper.SetDefault("dashboard_aggregation.enabled", true)
@@ -2774,6 +2885,45 @@ func (c *Config) Validate() error {
 	if c.SubscriptionMaintenance.QueueSize < 0 {
 		return fmt.Errorf("subscription_maintenance.queue_size must be non-negative")
 	}
+	if !isFiniteNonNegative(c.DailyCheckin.DailyTotalLimit) {
+		return fmt.Errorf("daily_checkin.daily_total_limit must be a finite non-negative number")
+	}
+	if !isFiniteNonNegative(c.DailyCheckin.MinReward) {
+		return fmt.Errorf("daily_checkin.min_reward must be a finite non-negative number")
+	}
+	if !isFiniteNonNegative(c.DailyCheckin.MaxReward) {
+		return fmt.Errorf("daily_checkin.max_reward must be a finite non-negative number")
+	}
+	if !isFiniteNonNegative(c.DailyCheckin.MinRechargeAmount) {
+		return fmt.Errorf("daily_checkin.min_recharge_amount must be a finite non-negative number")
+	}
+	if c.DailyCheckin.RechargeWindowDays < 0 {
+		return fmt.Errorf("daily_checkin.recharge_window_days must be non-negative")
+	}
+	if c.DailyCheckin.RewardValidityDays < 0 {
+		return fmt.Errorf("daily_checkin.reward_validity_days must be non-negative")
+	}
+	dailyTotal := roundDailyCheckinAmount(c.DailyCheckin.DailyTotalLimit)
+	dailyMin := roundDailyCheckinAmount(c.DailyCheckin.MinReward)
+	dailyMax := roundDailyCheckinAmount(c.DailyCheckin.MaxReward)
+	if dailyMax < dailyMin {
+		return fmt.Errorf("daily_checkin.max_reward must be greater than or equal to min_reward")
+	}
+	if c.DailyCheckin.Enabled && dailyTotal <= 0 {
+		return fmt.Errorf("daily_checkin.daily_total_limit must be positive when daily check-in is enabled")
+	}
+	if c.DailyCheckin.Enabled && dailyMax <= 0 {
+		return fmt.Errorf("daily_checkin.max_reward must be positive when daily check-in is enabled")
+	}
+	if c.DailyCheckin.Enabled && dailyMin <= 0 {
+		return fmt.Errorf("daily_checkin.min_reward must be positive when daily check-in is enabled")
+	}
+	if c.DailyCheckin.Enabled && dailyMin > dailyTotal {
+		return fmt.Errorf("daily_checkin.min_reward must be less than or equal to daily_total_limit when daily check-in is enabled")
+	}
+	if _, err := NormalizeDailyCheckinRewardTiers(c.DailyCheckin.RewardTiers); err != nil {
+		return fmt.Errorf("daily_checkin.%w", err)
+	}
 
 	// Gemini OAuth 配置校验：client_id 与 client_secret 必须同时设置或同时留空。
 	// 留空时表示使用内置的 Gemini CLI OAuth 客户端（其 client_secret 通过环境变量注入）。
@@ -2844,6 +2994,85 @@ func (c *Config) Validate() error {
 	}
 	if c.JWT.ExpireHour > 24 {
 		slog.Warn("jwt.expire_hour is high; consider shorter expiration for security", "expire_hour", c.JWT.ExpireHour)
+	}
+	if c.AutoSupply.Enabled {
+		if strings.TrimSpace(c.AutoSupply.CustomerToken) == "" {
+			return fmt.Errorf("auto_supply.customer_token is required when auto_supply is enabled")
+		}
+		if c.AutoSupply.IntervalSeconds <= 0 {
+			return fmt.Errorf("auto_supply.interval_seconds must be positive when auto_supply is enabled")
+		}
+		if c.AutoSupply.RequestTimeoutSeconds <= 0 {
+			return fmt.Errorf("auto_supply.request_timeout_seconds must be positive when auto_supply is enabled")
+		}
+		if c.AutoSupply.MaxQuantityPerRun <= 0 {
+			return fmt.Errorf("auto_supply.max_quantity_per_run must be positive when auto_supply is enabled")
+		}
+		if c.AutoSupply.UsageForecastEnabled {
+			lookbackMinutes := c.AutoSupply.UsageLookbackMinutes
+			if lookbackMinutes <= 0 && c.AutoSupply.UsageLookbackHours > 0 {
+				if c.AutoSupply.UsageLookbackHours > 168 {
+					return fmt.Errorf("auto_supply.usage_lookback_hours must be at most 168")
+				}
+				lookbackMinutes = c.AutoSupply.UsageLookbackHours * 60
+			}
+			if lookbackMinutes <= 0 {
+				lookbackMinutes = 360
+			}
+			if lookbackMinutes < 2 || lookbackMinutes > 10080 {
+				return fmt.Errorf("auto_supply.usage_lookback_minutes must be between 2 and 10080")
+			}
+			forecastMinutes := c.AutoSupply.UsageForecastMinutes
+			if forecastMinutes <= 0 && c.AutoSupply.UsageForecastHours > 0 {
+				if c.AutoSupply.UsageForecastHours > 168 {
+					return fmt.Errorf("auto_supply.usage_forecast_hours must be at most 168")
+				}
+				forecastMinutes = c.AutoSupply.UsageForecastHours * 60
+			}
+			if forecastMinutes <= 0 {
+				forecastMinutes = 120
+			}
+			if forecastMinutes < 1 || forecastMinutes > 10080 {
+				return fmt.Errorf("auto_supply.usage_forecast_minutes must be between 1 and 10080")
+			}
+		}
+		baseURL := strings.TrimSpace(c.AutoSupply.BaseURL)
+		parsed, err := url.Parse(baseURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+			return fmt.Errorf("auto_supply.base_url must be an absolute URL without userinfo")
+		}
+		if parsed.Scheme != "https" {
+			host := strings.ToLower(parsed.Hostname())
+			if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+				return fmt.Errorf("auto_supply.base_url must use HTTPS")
+			}
+		}
+		if len(c.AutoSupply.Groups) == 0 {
+			return fmt.Errorf("auto_supply.groups must contain at least one group when auto_supply is enabled")
+		}
+		for index, group := range c.AutoSupply.Groups {
+			if group.GroupID <= 0 {
+				return fmt.Errorf("auto_supply.groups[%d].group_id must be positive", index)
+			}
+			if len(group.DeployGroupIDs) > 100 {
+				return fmt.Errorf("auto_supply.groups[%d].deploy_group_ids must contain at most 100 groups", index)
+			}
+			for targetIndex, targetID := range group.DeployGroupIDs {
+				if targetID <= 0 {
+					return fmt.Errorf("auto_supply.groups[%d].deploy_group_ids[%d] must be positive", index, targetIndex)
+				}
+			}
+			if group.MinAvailable < 0 {
+				return fmt.Errorf("auto_supply.groups[%d].min_available must be non-negative", index)
+			}
+			if group.Quantity < 0 {
+				return fmt.Errorf("auto_supply.groups[%d].quantity must be non-negative", index)
+			}
+			wsMode := strings.ToLower(strings.TrimSpace(group.OpenAIWSMode))
+			if wsMode != "" && wsMode != "off" && wsMode != "ctx_pool" && wsMode != "passthrough" && wsMode != "http_bridge" {
+				return fmt.Errorf("auto_supply.groups[%d].openai_ws_mode must be off, ctx_pool, passthrough, or http_bridge", index)
+			}
+		}
 	}
 	// JWT Refresh Token配置验证
 	if c.JWT.AccessTokenExpireMinutes < 0 {
@@ -3747,6 +3976,85 @@ func isWeakJWTSecret(secret string) bool {
 	}
 	_, exists := weak[lower]
 	return exists
+}
+
+func isFiniteNonNegative(value float64) bool {
+	return value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func roundDailyCheckinAmount(value float64) float64 {
+	if !isFiniteNonNegative(value) {
+		return 0
+	}
+	return math.Round(value*1e8) / 1e8
+}
+
+func DefaultDailyCheckinRewardTiers() []DailyCheckinRewardTier {
+	return []DailyCheckinRewardTier{
+		{UpperRatio: 0.10, Weight: 0.50},
+		{UpperRatio: 0.35, Weight: 0.30},
+		{UpperRatio: 0.75, Weight: 0.15},
+		{UpperRatio: 1.00, Weight: 0.05},
+	}
+}
+
+func NormalizeDailyCheckinRewardTiers(tiers []DailyCheckinRewardTier) ([]DailyCheckinRewardTier, error) {
+	if len(tiers) == 0 {
+		return DefaultDailyCheckinRewardTiers(), nil
+	}
+	if len(tiers) > 20 {
+		return nil, fmt.Errorf("reward_tiers must contain at most 20 tiers")
+	}
+
+	ratioScale := 1.0
+	for _, tier := range tiers {
+		if tier.UpperRatio > 1 {
+			ratioScale = 100
+			break
+		}
+	}
+
+	normalized := make([]DailyCheckinRewardTier, 0, len(tiers))
+	previousUpper := 0.0
+	totalWeight := 0.0
+	for i, tier := range tiers {
+		upperRatio := tier.UpperRatio / ratioScale
+		if !isFiniteNonNegative(upperRatio) || upperRatio <= 0 || upperRatio > 1 {
+			return nil, fmt.Errorf("reward_tiers[%d].upper_ratio must be greater than 0 and less than or equal to 1", i)
+		}
+		upperRatio = roundDailyCheckinAmount(upperRatio)
+		if upperRatio <= previousUpper {
+			return nil, fmt.Errorf("reward_tiers[%d].upper_ratio must be greater than previous tier upper_ratio", i)
+		}
+		if !isFiniteNonNegative(tier.Weight) || tier.Weight <= 0 {
+			return nil, fmt.Errorf("reward_tiers[%d].weight must be positive", i)
+		}
+		normalized = append(normalized, DailyCheckinRewardTier{UpperRatio: upperRatio, Weight: tier.Weight})
+		previousUpper = upperRatio
+		totalWeight += tier.Weight
+	}
+
+	lastIndex := len(normalized) - 1
+	if math.Abs(normalized[lastIndex].UpperRatio-1) > 1e-8 {
+		return nil, fmt.Errorf("reward_tiers last upper_ratio must be 1")
+	}
+	normalized[lastIndex].UpperRatio = 1
+	if !isFiniteNonNegative(totalWeight) || totalWeight <= 0 {
+		return nil, fmt.Errorf("reward_tiers total weight must be positive")
+	}
+	weightSum := 0.0
+	for i := range normalized {
+		if i == lastIndex {
+			normalized[i].Weight = roundDailyCheckinAmount(math.Max(1-weightSum, 0))
+			break
+		}
+		normalized[i].Weight = roundDailyCheckinAmount(normalized[i].Weight / totalWeight)
+		weightSum += normalized[i].Weight
+	}
+	if normalized[lastIndex].Weight <= 0 {
+		return nil, fmt.Errorf("reward_tiers normalized last weight must be positive")
+	}
+	return normalized, nil
 }
 
 func generateJWTSecret(byteLength int) (string, error) {

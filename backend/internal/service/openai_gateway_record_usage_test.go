@@ -513,10 +513,10 @@ func TestOpenAIGatewayServiceRecordUsage_DeductsFourthFreeUserGiftBalanceForSame
 	}
 	userRepo := &openAIRecordUsageUserRepoStub{
 		users: map[int64]*User{
-			201: {ID: 201, Status: StatusActive, Balance: 2},
-			202: {ID: 202, Status: StatusActive, Balance: 2},
-			203: {ID: 203, Status: StatusActive, Balance: 2},
-			204: {ID: 204, Status: StatusActive, Balance: 2},
+			201: {ID: 201, Status: StatusActive, Balance: 2, GiftBalance: 2},
+			202: {ID: 202, Status: StatusActive, Balance: 2, GiftBalance: 2},
+			203: {ID: 203, Status: StatusActive, Balance: 2, GiftBalance: 2},
+			204: {ID: 204, Status: StatusActive, Balance: 2, GiftBalance: 2},
 		},
 	}
 	subRepo := &openAIRecordUsageSubRepoStub{}

@@ -16,7 +16,7 @@ func TestListAntiAbuseEventsDisablesResponseCaching(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	contextValue, _ := gin.CreateTestContext(recorder)
 	contextValue.Request = httptest.NewRequest(http.MethodGet, "/admin/risk-control/anti-abuse/events", nil)
-	handler := NewContentModerationHandler(&service.ContentModerationService{})
+	handler := NewContentModerationHandler(&service.ContentModerationService{}, nil)
 
 	handler.ListAntiAbuseEvents(contextValue)
 

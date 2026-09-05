@@ -157,7 +157,7 @@
                         <strong>{{ formatBalanceAmount(creditedAmount) }}</strong>
                       </div>
                       <p v-if="balanceRechargeMultiplier !== 1" class="credits-summary-note">
-                        {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                        {{ t('payment.rechargeRatePreview', { currency: selectedCurrency, usd: balanceRechargeMultiplier.toFixed(2) }) }}
                       </p>
                     </div>
 

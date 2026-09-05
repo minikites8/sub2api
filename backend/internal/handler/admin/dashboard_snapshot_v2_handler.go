@@ -38,14 +38,15 @@ type dashboardSnapshotV2Response struct {
 }
 
 type dashboardSnapshotV2Filters struct {
-	UserID      int64
-	APIKeyID    int64
-	AccountID   int64
-	GroupID     int64
-	Model       string
-	RequestType *int16
-	Stream      *bool
-	BillingType *int8
+	UserID             int64
+	APIKeyID           int64
+	AccountID          int64
+	GroupID            int64
+	Model              string
+	RequestType        *int16
+	Stream             *bool
+	NativeCompactionV2 *bool
+	BillingType        *int8
 }
 
 type dashboardSnapshotV2CacheKey struct {
@@ -59,6 +60,7 @@ type dashboardSnapshotV2CacheKey struct {
 	Model                       string `json:"model"`
 	RequestType                 *int16 `json:"request_type"`
 	Stream                      *bool  `json:"stream"`
+	NativeCompactionV2          *bool  `json:"native_compaction_v2"`
 	BillingType                 *int8  `json:"billing_type"`
 	IncludeStats                bool   `json:"include_stats"`
 	IncludeTrend                bool   `json:"include_trend"`

@@ -20,12 +20,8 @@ type ContentModerationHandler struct {
 	settings *service.SettingService
 }
 
-func NewContentModerationHandler(svc *service.ContentModerationService, settings ...*service.SettingService) *ContentModerationHandler {
-	var settingService *service.SettingService
-	if len(settings) > 0 {
-		settingService = settings[0]
-	}
-	return &ContentModerationHandler{service: svc, settings: settingService}
+func NewContentModerationHandler(svc *service.ContentModerationService, settings *service.SettingService) *ContentModerationHandler {
+	return &ContentModerationHandler{service: svc, settings: settings}
 }
 
 type contentModerationConfigRequest struct {

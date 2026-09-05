@@ -30,6 +30,7 @@ type User struct {
 	Status                  string
 	DisabledUntil           *time.Time
 	AllowedGroups           []int64
+	RestrictPublicGroups    bool
 	// BannedGroupIDs contains groups this user cannot access. The ban is scoped
 	// to the user and leaves access to other groups intact.
 	BannedGroupIDs         []int64
@@ -96,7 +97,7 @@ func (u *User) CanBindGroup(groupID int64, isExclusive bool) bool {
 		return false
 	}
 	// 公开分组（非专属）：所有用户都可以绑定
-	if !isExclusive {
+	if !isExclusive && !u.RestrictPublicGroups {
 		return true
 	}
 	// 专属分组，以及受限用户的公开分组：需要在 AllowedGroups 中
