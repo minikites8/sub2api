@@ -50,7 +50,7 @@ type AntiAbusePolicy struct {
 func DefaultAntiAbusePolicy() AntiAbusePolicy {
 	return AntiAbusePolicy{
 		Enabled: true, ScoreThreshold: defaultAntiAbuseScoreThreshold,
-		FingerprintWeight: 1, IPWeight: 1, EmailWeight: 1, UserAgentWeight: 1, TLSFingerprintWeight: 1,
+		FingerprintWeight: defaultAntiAbuseFingerprintWeight, IPWeight: defaultAntiAbuseIPWeight, EmailWeight: defaultAntiAbuseEmailWeight, UserAgentWeight: defaultAntiAbuseUserAgentWeight, TLSFingerprintWeight: defaultAntiAbuseTLSFingerprintWeight,
 		SignupIPRiskControlThreshold:        defaultSignupIPRiskControlThreshold,
 		SignupIPDisablePreviousAccounts:     defaultSignupIPDisablePreviousAccounts,
 		SignupIPKeepPreviousAccounts:        defaultSignupIPKeepPreviousAccounts,

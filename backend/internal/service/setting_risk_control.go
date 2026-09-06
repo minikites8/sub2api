@@ -15,11 +15,12 @@ const (
 	defaultAPIUsageIPUADisablePreviousAccounts = false
 	defaultAPIUsageIPUAKeepPreviousAccounts    = 0
 	defaultAntiAbuseEnabled                    = true
-	defaultAntiAbuseFingerprintWeight          = 1
-	defaultAntiAbuseIPWeight                   = 1
-	defaultAntiAbuseEmailWeight                = 1
-	defaultAntiAbuseUserAgentWeight            = 1
-	defaultAntiAbuseTLSFingerprintWeight       = 1
+	// Weight profile prioritizes stable cross-account identifiers and keeps shared-network/UA noise low.
+	defaultAntiAbuseFingerprintWeight    = 3
+	defaultAntiAbuseIPWeight             = 1
+	defaultAntiAbuseEmailWeight          = 2
+	defaultAntiAbuseUserAgentWeight      = 1
+	defaultAntiAbuseTLSFingerprintWeight = 2
 )
 
 const antiAbuseRuntimeCacheTTL = 30 * time.Second

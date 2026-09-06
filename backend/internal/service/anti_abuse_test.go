@@ -83,12 +83,27 @@ func TestEvaluateAntiAbuseCombinesSignals(t *testing.T) {
 
 func TestEvaluateAntiAbuseWithTLSFingerprints(t *testing.T) {
 	assessment := EvaluateAntiAbuseWithTLS(RiskSignals{IPAddress: "203.0.113.20", Email: "person@example.com", UserAgent: "Mozilla/5.0", JA3: strings.Repeat("a", 32), JA4: "t13d1714h1_5b57614c22b0_7baf387fc6ff"}, 0, 0, 0, 2, DefaultAntiAbusePolicy())
-	require.Equal(t, AntiAbuseActionAllow, assessment.Action)
-	require.Equal(t, 40, assessment.Factors["ja3_ja4_velocity"])
+	require.Equal(t, AntiAbuseActionRestrict, assessment.Action)
+	require.Equal(t, 40*DefaultAntiAbusePolicy().TLSFingerprintWeight, assessment.Factors["ja3_ja4_velocity"])
 	require.NotEmpty(t, HashTransportFingerprint("ja3", strings.Repeat("a", 32)))
 	require.NotEmpty(t, HashTransportFingerprint("ja4", "t13d1714h1_5b57614c22b0_7baf387fc6ff"))
 }
 
+func TestDefaultAntiAbusePolicyUsesSignalConfidenceWeights(t *testing.T) {
+	policy := DefaultAntiAbusePolicy()
+	require.Equal(t, 3, policy.FingerprintWeight)
+	require.Equal(t, 1, policy.IPWeight)
+	require.Equal(t, 2, policy.EmailWeight)
+	require.Equal(t, 1, policy.UserAgentWeight)
+	require.Equal(t, 2, policy.TLSFingerprintWeight)
+
+	assessment := EvaluateAntiAbuse(
+		RiskSignals{IPAddress: "8.8.8.8", Email: "user@mailinator.com", UserAgent: "Mozilla/5.0"},
+		0, 0, 0, policy,
+	)
+	require.Equal(t, AntiAbuseActionRestrict, assessment.Action)
+	require.Equal(t, 70, assessment.Factors["email_reputation"])
+}
 func TestDisabledAntiAbuseSkipsScoring(t *testing.T) {
 	policy := DefaultAntiAbusePolicy()
 	policy.Enabled = false
@@ -123,7 +138,7 @@ func TestSharedBrowserFingerprintIsImmediateHighRisk(t *testing.T) {
 		0, 1, 0, 0, policy,
 	)
 	require.Equal(t, AntiAbuseActionRestrict, assessment.Action)
-	require.Equal(t, policy.ScoreThreshold, assessment.Factors["browser_fingerprint"])
+	require.Equal(t, policy.ScoreThreshold*policy.FingerprintWeight, assessment.Factors["browser_fingerprint"])
 	require.Contains(t, assessment.Reasons, "browser fingerprint is linked to multiple accounts")
 }
 
@@ -151,7 +166,7 @@ func TestEmailVelocityExemptsQQAndGmail(t *testing.T) {
 		RiskSignals{IPAddress: "8.8.8.8", Email: "user@example.com", UserAgent: "Mozilla/5.0"},
 		0, 0, 10, 0, policy,
 	)
-	require.Equal(t, 30, assessment.Factors["email_velocity"])
+	require.Equal(t, 30*policy.EmailWeight, assessment.Factors["email_velocity"])
 }
 
 func TestBrowserAccountAttemptsAreNormalizedAndRestricted(t *testing.T) {
@@ -164,7 +179,7 @@ func TestBrowserAccountAttemptsAreNormalizedAndRestricted(t *testing.T) {
 
 	assessment := EvaluateGatewayAntiAbuse(signals, 0, 0, 0, 0, DefaultAntiAbusePolicy())
 	require.Equal(t, AntiAbuseActionRestrict, assessment.Action)
-	require.Equal(t, defaultAntiAbuseScoreThreshold, assessment.Factors["browser_account_attempts"])
+	require.Equal(t, defaultAntiAbuseScoreThreshold*DefaultAntiAbusePolicy().FingerprintWeight, assessment.Factors["browser_account_attempts"])
 
 	singleAccount := EvaluateGatewayAntiAbuse(
 		RiskSignals{

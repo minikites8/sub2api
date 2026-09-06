@@ -21,7 +21,7 @@ func TestSettingServiceParseSettingsRiskControlFields(t *testing.T) {
 		require.Equal(t, defaultAPIUsageIPUAKeepPreviousAccounts, got.APIUsageIPUAKeepPreviousAccounts)
 		require.True(t, got.AntiAbuseEnabled)
 		require.Equal(t, defaultAntiAbuseScoreThreshold, got.AntiAbuseScoreThreshold)
-		require.Equal(t, 1, got.AntiAbuseFingerprintWeight)
+		require.Equal(t, defaultAntiAbuseFingerprintWeight, got.AntiAbuseFingerprintWeight)
 	})
 
 	t.Run("stored values", func(t *testing.T) {

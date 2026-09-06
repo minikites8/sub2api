@@ -1485,11 +1485,11 @@ const antiAbuseConfigSaving = ref(false)
 const antiAbuseConfig = reactive({
   enabled: true,
   score_threshold: 60,
-  fingerprint_weight: 1,
+  fingerprint_weight: 3,
   ip_weight: 1,
-  email_weight: 1,
+  email_weight: 2,
   user_agent_weight: 1,
-  tls_fingerprint_weight: 1,
+  tls_fingerprint_weight: 2,
   signup_ip_risk_control_threshold: 3,
   signup_ip_disable_previous_accounts: true,
   signup_ip_keep_previous_accounts: 1,
@@ -2136,11 +2136,11 @@ function applyAntiAbuseSettings(settings: {
 }) {
   antiAbuseConfig.enabled = settings.enabled !== false
   antiAbuseConfig.score_threshold = Number(settings.score_threshold) || 60
-  antiAbuseConfig.fingerprint_weight = Number(settings.fingerprint_weight) || 1
+  antiAbuseConfig.fingerprint_weight = Number(settings.fingerprint_weight) || 3
   antiAbuseConfig.ip_weight = Number(settings.ip_weight) || 1
-  antiAbuseConfig.email_weight = Number(settings.email_weight) || 1
+  antiAbuseConfig.email_weight = Number(settings.email_weight) || 2
   antiAbuseConfig.user_agent_weight = Number(settings.user_agent_weight) || 1
-  antiAbuseConfig.tls_fingerprint_weight = Number(settings.tls_fingerprint_weight) || 1
+  antiAbuseConfig.tls_fingerprint_weight = Number(settings.tls_fingerprint_weight) || 2
   antiAbuseConfig.signup_ip_risk_control_threshold = Number(settings.signup_ip_risk_control_threshold) || 3
   antiAbuseConfig.signup_ip_disable_previous_accounts = settings.signup_ip_disable_previous_accounts !== false
   antiAbuseConfig.signup_ip_keep_previous_accounts = Math.max(0, Number(settings.signup_ip_keep_previous_accounts) || 0)
@@ -2158,11 +2158,11 @@ async function saveAntiAbuseConfig() {
     const settings = await adminAPI.riskControl.updateAntiAbuseConfig({
       enabled: antiAbuseConfig.enabled,
       score_threshold: Math.max(1, Math.floor(Number(antiAbuseConfig.score_threshold) || 60)),
-      fingerprint_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.fingerprint_weight) || 1)),
+      fingerprint_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.fingerprint_weight) || 3)),
       ip_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.ip_weight) || 1)),
-      email_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.email_weight) || 1)),
+      email_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.email_weight) || 2)),
       user_agent_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.user_agent_weight) || 1)),
-      tls_fingerprint_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.tls_fingerprint_weight) || 1)),
+      tls_fingerprint_weight: Math.max(1, Math.floor(Number(antiAbuseConfig.tls_fingerprint_weight) || 2)),
       signup_ip_risk_control_threshold: Math.max(1, Math.floor(Number(antiAbuseConfig.signup_ip_risk_control_threshold) || 3)),
       signup_ip_disable_previous_accounts: antiAbuseConfig.signup_ip_disable_previous_accounts,
       signup_ip_keep_previous_accounts: Math.max(0, Math.floor(Number(antiAbuseConfig.signup_ip_keep_previous_accounts) || 0)),
