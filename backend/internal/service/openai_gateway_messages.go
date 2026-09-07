@@ -930,6 +930,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	firstChunk := true
 	clientDisconnected := false
 	clientOutputStarted := false
+	pendingSSE := make([]string, 0, 4)
+	pendingSSEBytes := 0
 	var streamFailoverErr error
 	var streamNonFailoverErr error
 	terminalEventType := ""
@@ -978,6 +980,24 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			out.SearchCount = searchCount
 		}
 		return out
+	}
+
+	flushPendingSSE := func() {
+		if len(pendingSSE) == 0 || clientDisconnected {
+			return
+		}
+		writeStreamHeaders()
+		for _, sse := range pendingSSE {
+			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
+				clientDisconnected = true
+				logger.L().Info("openai messages stream: client disconnected while flushing preamble",
+					zap.String("request_id", requestID))
+				break
+			}
+			clientOutputStarted = true
+		}
+		pendingSSE = pendingSSE[:0]
+		pendingSSEBytes = 0
 	}
 
 	// processDataLine handles a single "data: ..." SSE line from upstream.
@@ -1099,18 +1119,21 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					)
 					continue
 				}
-				writeStreamHeaders()
-				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-					clientDisconnected = true
-					logger.L().Info("openai messages stream: client disconnected, continuing to drain upstream for billing",
-						zap.String("request_id", requestID),
-					)
+				pendingSSE = append(pendingSSE, sse)
+				pendingSSEBytes += len(sse)
+				// Keep message_start and empty content blocks replayable until
+				// semantic output arrives. Bound memory for noisy upstreams.
+				if !clientOutputStarted && !isTerminalEvent &&
+					!openAIStreamDataStartsClientOutput(payload, eventType) && pendingSSEBytes < 64*1024 {
+					continue
+				}
+				flushPendingSSE()
+				if clientDisconnected {
 					break
 				}
-				clientOutputStarted = true
 			}
 		}
-		if len(events) > 0 && !clientDisconnected {
+		if len(events) > 0 && !clientDisconnected && clientOutputStarted {
 			c.Writer.Flush()
 		}
 		return isTerminalEvent
@@ -1124,6 +1147,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		if streamNonFailoverErr != nil {
 			return resultWithUsage(), streamNonFailoverErr
 		}
+		flushPendingSSE()
 		if finalEvents := apicompat.FinalizeResponsesAnthropicStream(state); len(finalEvents) > 0 && !clientDisconnected {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
@@ -1302,7 +1326,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 
 		case <-keepaliveCh:
-			if clientDisconnected {
+			if clientDisconnected || !clientOutputStarted {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {

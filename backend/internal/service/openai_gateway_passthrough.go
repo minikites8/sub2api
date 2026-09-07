@@ -784,7 +784,7 @@ func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, r
 		return true
 	}
 	switch statusCode {
-	case http.StatusTooManyRequests, 529:
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, 529:
 		return true
 	}
 	if account == nil || account.Type != AccountTypeAPIKey {
@@ -1371,6 +1371,26 @@ func sanitizeOpenAICapacityShedErrorCodeForClient(payload []byte) ([]byte, bool)
 	return updated, changed
 }
 
+// openAIStreamTransientServerStatus reads explicit upstream error fields. A
+// generic semantic fallback to 502 alone is insufficient evidence for replay.
+func openAIStreamTransientServerStatus(payload []byte) int {
+	for _, path := range []string{"response.error.status_code", "error.status_code", "status_code"} {
+		switch status := int(gjson.GetBytes(payload, path).Int()); status {
+		case http.StatusBadGateway, http.StatusServiceUnavailable:
+			return status
+		}
+	}
+	for _, path := range []string{"response.error.code", "error.code", "response.error.type", "error.type"} {
+		switch strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, path).String())) {
+		case "service_unavailable", "service_unavailable_error", "server_is_overloaded", "slow_down":
+			return http.StatusServiceUnavailable
+		case "server_error", "internal_server_error", "upstream_error", "bad_gateway", "bad_gateway_error":
+			return http.StatusBadGateway
+		}
+	}
+	return 0
+}
+
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	if isOpenAIContextWindowError(message, payload) {
 		return http.StatusBadRequest
@@ -1402,6 +1422,9 @@ func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	case isOpenAIUpstreamCapacityShedEvent(payload):
 		return http.StatusServiceUnavailable
 	default:
+		if status := openAIStreamTransientServerStatus(payload); status > 0 {
+			return status
+		}
 		return http.StatusBadGateway
 	}
 }
@@ -1415,9 +1438,7 @@ func openAIStreamFailureStatus(payload []byte, message string) int {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 529:
 		return semanticStatus
 	case http.StatusServiceUnavailable:
-		if isOpenAIUpstreamCapacityShedEvent(payload) {
-			return semanticStatus
-		}
+		return semanticStatus
 	}
 	return http.StatusBadGateway
 }
@@ -1598,6 +1619,9 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
+	}
+	if openAIStreamTransientServerStatus(payload) > 0 {
+		return openAIStreamFailedEventShouldFailover(payload, message)
 	}
 	combined := strings.ToLower(strings.TrimSpace(message + " " +
 		gjson.GetBytes(payload, "error.message").String() + " " +

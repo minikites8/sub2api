@@ -661,6 +661,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	clientDisconnected := false
 	clientOutputStarted := false
 	pendingSSE := make([]string, 0, 4)
+	pendingSSEBytes := 0
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
@@ -835,8 +836,12 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					continue
 				}
-				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+				// Role-only preambles stay buffered so an immediate upstream
+				// 502/503 can retry before a client-visible stream is committed.
+				if !clientOutputStarted && (!refusalDetector.ShouldReleaseClientOutput() ||
+					(!isTerminalEvent && !openAIStreamDataStartsClientOutput(payload, event.Type) && pendingSSEBytes+len(sse) < 64*1024)) {
 					pendingSSE = append(pendingSSE, sse)
+					pendingSSEBytes += len(sse)
 					continue
 				}
 				if !clientOutputStarted {
@@ -851,6 +856,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 						}
 					}
 					pendingSSE = pendingSSE[:0]
+					pendingSSEBytes = 0
 					clientOutputStarted = !clientDisconnected
 					if clientDisconnected {
 						break
@@ -1110,7 +1116,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if clientDisconnected {
 				continue
 			}
-			if refusalDetector.Enabled() && !clientOutputStarted {
+			if !clientOutputStarted {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {

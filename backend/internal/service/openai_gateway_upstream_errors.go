@@ -358,6 +358,16 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
 	}
+	// OAuth 502/503 failures get two short retries before the handler excludes
+	// this account and selects another upstream. Existing capacity/pool retry
+	// policies retain their own budgets; disabled credentials go straight to
+	// account selection.
+	if isOpenAIOAuthAccount(account) && !shouldDisable && !failoverErr.IsCredentialFailure() &&
+		!failoverErr.RetryableOnSameAccount &&
+		(statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable) {
+		failoverErr.RetryableOnSameAccount = true
+		failoverErr.SameAccountRetryMax = 2
+	}
 	return failoverErr
 }
 
