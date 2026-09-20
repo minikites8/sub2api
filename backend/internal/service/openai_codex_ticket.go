@@ -21,6 +21,7 @@ import (
 var ErrOpenAICodexTicketUnavailable = errors.New("codex turn-state ticket unavailable")
 
 type codexTurnTicket struct {
+	attempts   int
 	state      string
 	expires    time.Time
 	credential [32]byte
@@ -141,8 +142,10 @@ func (s *OpenAIGatewayService) StartOpenAICodexTicketHarvester() {
 			case <-ctx.Done():
 				return
 			case <-timer.C:
+				s.codexTicketNextHarvest.Store(0)
 				s.refreshCodexTickets(ctx)
 				cfg := s.codexTicketConfig(ctx)
+				s.codexTicketNextHarvest.Store(time.Now().Add(time.Duration(cfg.HarvestProbeIntervalSeconds) * time.Second).UnixNano())
 				timer.Reset(time.Duration(cfg.HarvestProbeIntervalSeconds) * time.Second)
 			}
 		}
@@ -302,19 +305,52 @@ func (s *OpenAIGatewayService) probeCodexTicket(ctx context.Context, account *Ac
 			req.Header.Set("originator", openai.CodexDefaultOriginator)
 		}
 	}
+	attempt, logID := s.codexTicketTelemetry.begin(account, model)
+	started := time.Now()
+	egress := OpenAICodexTicketEgressResult{Error: &OpenAICodexTicketEgressError{Reason: "unknown"}}
+	req = req.WithContext(WithOpenAICodexTicketEgressObserver(req.Context(), func(result OpenAICodexTicketEgressResult) {
+		egress = normalizeOpenAICodexTicketEgressResult(result)
+		s.codexTicketTelemetry.setEgress(account.ID, model, logID, egress)
+	}))
+	event := OpenAICodexTicketLogEntry{Attempt: attempt, TargetLength: codexTicketLength(account), Event: "error", Reason: "request_error"}
+	defer func() {
+		elapsed := time.Since(started).Milliseconds()
+		event.DurationMS = &elapsed
+		event.EgressIP = egress.IP
+		event.EgressCountryCode = egress.CountryCode
+		event.EgressError = egress.Error
+		s.codexTicketTelemetry.finish(account.ID, model, event)
+	}()
 	resp, err := s.httpUpstream.Do(req, cfg.HarvestProxyURL, account.ID, account.Concurrency)
 	if resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
 	}
 	if err != nil || resp == nil {
+		event.Reason = codexTicketProbeErrorReason(err)
 		if ctx.Err() == nil {
 			s.deferCodexTicketModel(account, model, 0, nil)
 		}
 		return
 	}
+	event.HTTPStatus = resp.StatusCode
 	state := strings.TrimSpace(resp.Header.Get(openAICodexTurnStateHeader))
-	ticket := &codexTurnTicket{state: state, expires: time.Now().Add(time.Duration(cfg.TTLSeconds) * time.Second), credential: codexTicketCredential(account)}
+	length := len(state)
+	event.TicketLength = &length
+	event.Event = "miss"
+	switch {
+	case resp.StatusCode != http.StatusOK:
+		event.Reason = "http_error"
+	case state == "":
+		event.Reason = "missing_state"
+	case !strings.HasPrefix(state, "gAAAAA"):
+		event.Reason = "invalid_prefix"
+	default:
+		event.Reason = "length_mismatch"
+	}
+	ticket := &codexTurnTicket{attempts: attempt, state: state, expires: time.Now().Add(time.Duration(cfg.TTLSeconds) * time.Second), credential: codexTicketCredential(account)}
 	if resp.StatusCode == http.StatusOK && ticket.valid(account, time.Now()) {
+		event.Event = "acquired"
+		event.Reason = "target_length_matched"
 		s.codexTicketMissBackoffs.Delete(key)
 		s.codexTickets.Store(key, ticket)
 		s.codexTicketBackoffs.Delete(account.ID)

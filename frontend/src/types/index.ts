@@ -1226,6 +1226,7 @@ export interface OllamaCloudUsageSettings {
 }
 
 export interface Account {
+  codex_tickets?: import('./codexTicket').CodexTicketStatus[]
   id: number
   name: string
   notes?: string | null

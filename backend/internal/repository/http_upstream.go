@@ -215,8 +215,14 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 
 	// 执行请求
 	client := httpClientForUpstreamRequest(entry.client, req)
-	client = httpClientWithGrokAccessDeniedFallback(client)
-	resp, err := servertiming.Do(client, req)
+	var resp *http.Response
+	observer := service.OpenAICodexTicketEgressObserverFromContext(req.Context())
+	if profile == service.HTTPUpstreamProfileOpenAIHarvest && observer != nil && canTraceCodexTicketEgress(req) {
+		resp, err = doCodexTicketWithEgress(client, req, observer, codexTicketEgressTraceTimeout)
+	} else {
+		client = httpClientWithGrokAccessDeniedFallback(client)
+		resp, err = servertiming.Do(client, req)
+	}
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数

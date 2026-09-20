@@ -1,5 +1,6 @@
 <template>
   <div ref="rootRef" v-if="showUsageWindows">
+    <CodexTicketStatusCell :account="account" />
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -741,6 +742,7 @@ import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { isKiroDirectApiKeyAccount } from '@/utils/kiroAccount'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
+import CodexTicketStatusCell from './CodexTicketStatusCell.vue'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'

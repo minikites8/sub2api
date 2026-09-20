@@ -1,5 +1,60 @@
 export default {
     accounts: {
+      codexTickets: {
+  "viewLogs": "View {model} ticket logs",
+  "attempts": "{count} attempts",
+  "autoRefresh": "Refreshes every 2 seconds",
+  "lastUpdated": "Last refreshed:",
+  "retention": "Shows the latest {count} events in this process. History resets when the service restarts.",
+  "egressHint": "Egress IP and country come from anonymous diagnostics on the ticket connection. Ticket requests continue after diagnostic failures. Hover over a failure for details.",
+  "egressFailed": "Failed",
+  "egressDiagnostic": "Egress diagnostic",
+  "loadFailed": "Refresh failed. The last successful snapshot is still shown.",
+  "retry": "Retry",
+  "loading": "Loading ticket logs…",
+  "empty": "Waiting for the first ticket event",
+  "states": {
+    "ready": "Valid ticket acquired",
+    "harvesting": "Harvesting",
+    "waiting": "Waiting",
+    "cooldown": "Retry pending",
+    "paused": "Paused",
+    "token_invalid": "Invalid credential",
+    "proxy_missing": "Proxy needed",
+    "disabled": "Disabled",
+    "expired": "Expired"
+  },
+  "events": {
+    "started": "Started",
+    "acquired": "Acquired",
+    "miss": "Miss",
+    "error": "Failed"
+  },
+  "columns": {
+    "time": "Time (newest first)",
+    "attempt": "Round attempt",
+    "event": "Result",
+    "reason": "Reason",
+    "http": "HTTP",
+    "ip": "Egress IP",
+    "country": "Country",
+    "length": "Length (actual / target)",
+    "duration": "Duration"
+  },
+  "reasons": {
+    "request_started": "Ticket request started",
+    "target_length_matched": "Ticket matches the target length",
+    "http_error": "Upstream error; see HTTP status",
+    "missing_state": "Ticket header is missing",
+    "invalid_prefix": "Ticket prefix validation failed",
+    "length_mismatch": "Ticket length differs from the account target",
+    "timeout": "Request timed out",
+    "canceled": "Request canceled",
+    "network_error": "Network connection failed",
+    "empty_response": "Empty upstream response",
+    "request_error": "Request failed"
+  }
+},
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',

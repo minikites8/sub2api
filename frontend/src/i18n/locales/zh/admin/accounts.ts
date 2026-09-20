@@ -1,5 +1,60 @@
 export default {
     accounts: {
+      codexTickets: {
+  "viewLogs": "查看 {model} 打票日志",
+  "attempts": "打票 {count} 次",
+  "autoRefresh": "每 2 秒自动刷新",
+  "lastUpdated": "最近刷新：",
+  "retention": "保留最近 {count} 条事件，记录当前进程的打票过程；服务重启后清空。",
+  "egressHint": "出口 IP 和国家来自打票连接的匿名诊断；诊断失败时仍继续打票。悬停失败标记可查看原因。",
+  "egressFailed": "失败",
+  "egressDiagnostic": "出口诊断",
+  "loadFailed": "刷新失败，当前保留上次成功读取的数据。",
+  "retry": "重试",
+  "loading": "正在读取打票日志…",
+  "empty": "等待首次打票事件",
+  "states": {
+    "ready": "已获得有效门票",
+    "harvesting": "打票中",
+    "waiting": "等待打票",
+    "cooldown": "等待重试",
+    "paused": "已暂停",
+    "token_invalid": "凭证失效",
+    "proxy_missing": "待配置代理",
+    "disabled": "已关闭",
+    "expired": "门票已过期"
+  },
+  "events": {
+    "started": "开始打票",
+    "acquired": "获得门票",
+    "miss": "未命中",
+    "error": "请求失败"
+  },
+  "columns": {
+    "time": "时间（最新在前）",
+    "attempt": "轮内次数",
+    "event": "结果",
+    "reason": "原因",
+    "http": "HTTP",
+    "ip": "出口 IP",
+    "country": "出口国家",
+    "length": "长度（实际 / 目标）",
+    "duration": "耗时"
+  },
+  "reasons": {
+    "request_started": "已发起门票请求",
+    "target_length_matched": "已取得符合目标长度的门票",
+    "http_error": "上游返回错误，详见 HTTP 状态码",
+    "missing_state": "上游响应缺少门票",
+    "invalid_prefix": "门票前缀校验失败",
+    "length_mismatch": "门票长度与当前账号目标长度存在差异",
+    "timeout": "请求超时",
+    "canceled": "请求已取消",
+    "network_error": "网络连接失败",
+    "empty_response": "上游返回空响应",
+    "request_error": "请求处理失败"
+  }
+},
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',

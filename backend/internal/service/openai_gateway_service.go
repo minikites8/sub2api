@@ -487,6 +487,8 @@ type OpenAIGatewayService struct {
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+	codexTicketTelemetry                codexTicketTelemetryStore
+	codexTicketNextHarvest              atomic.Int64
 	codexTickets                        sync.Map // account/model -> immutable *codexTurnTicket
 	codexTicketMissBackoffs             sync.Map // account/model -> retry deadline
 	codexTicketBackoffs                 sync.Map // account -> codexTicketBackoff

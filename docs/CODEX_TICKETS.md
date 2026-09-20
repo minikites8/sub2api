@@ -58,3 +58,19 @@ gateway:
 界面测试：`pnpm exec vitest run src/views/admin/__tests__/SettingsView.spec.ts`。
 
 本次工作区已有的账号到期测试引用了缺失方法，因此服务测试使用独立 overlay 排除该文件；原测试文件保持原样。完整命令、原始结果与回滚校验保存在任务的 `VERIFICATION.txt` 中。
+
+## 账号列表与打票日志
+
+- 启用门票功能后，OpenAI OAuth / setup-token 账号的用量单元格按配置模型显示门票剩余时间、打票中 / 冷却 / 暂停等状态，以及本轮打票次数。有效门票每秒更新倒计时，可见账号每 5 秒批量刷新状态。
+- 点击模型状态行打开该账号、该模型的日志。日志按最新在前排列，包含时间、轮内次数、结果、原因、HTTP 状态、出口 IP / 国家、实际与目标长度、耗时。弹窗每次请求完成后等待 2 秒刷新，关闭弹窗或隐藏页面时暂停轮询。
+- 当前进程最多保留 512 个账号 / 模型日志流，每流保留最近 200 条事件；较旧日志流按使用顺序淘汰，服务重启清空。成功取票后的新一轮请求重新计数，多实例分别记录。
+- 出口诊断在本次打票的独立 HTTP/1.1 连接上匿名读取 `/cdn-cgi/trace`，并校验票据请求复用了同一连接。匿名诊断头部保持独立，账号认证仅用于票据请求。诊断预算为 3 秒，失败后继续打票并记录原因；出口国家取自诊断的 `loc` 字段。
+- 管理接口仅返回状态、计数和诊断摘要；门票正文、账号认证、代理密码始终保留在内部。
+
+管理 API：
+
+- `POST /api/v1/admin/accounts/codex-tickets/batch`，请求体 `{"account_ids":[1,2]}`，最多 200 个正整数账号 ID，返回 `statuses` 与 `fetched_at`。
+- `GET /api/v1/admin/accounts/:id/codex-ticket-logs?model=MODEL`，返回 `entries`、`status`、`limit`、`fetched_at`。
+- 账号列表和单账号响应增加 `codex_tickets`。以上接口继续使用管理员认证并设置 `Cache-Control: no-store`。
+
+账号显示专项验证见 `artifacts/codex-ticket-display/VERIFICATION.txt`；预览截图使用本地模拟账号数据。
