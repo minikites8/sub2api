@@ -897,6 +897,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.EnableClientDatelineNormalization = true
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
+	ticketCfg := config.OpenAICodexTicketConfig{}
+	if s.cfg != nil {
+		ticketCfg = s.cfg.Gateway.OpenAICodexTicket
+	}
+	result.OpenAICodexTicketEnabled = ticketCfg.Enabled
+	if v := settings[SettingKeyOpenAICodexTicketEnabled]; v != "" {
+		result.OpenAICodexTicketEnabled = v == "true"
+	}
+	result.OpenAICodexTicketHarvestProxyURL = settings[SettingKeyOpenAICodexTicketHarvestProxyURL]
+	result.OpenAICodexTicketModels = settings[SettingKeyOpenAICodexTicketModels]
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	result.OpenAICodexClientVersion = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersion])
 	result.OpenAICodexClientVersionSynced = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersionSynced])

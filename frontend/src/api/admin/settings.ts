@@ -647,6 +647,9 @@ export interface SystemSettings {
   rewrite_message_cache_control: boolean;
   enable_client_dateline_normalization: boolean;
   antigravity_user_agent_version: string;
+  openai_codex_ticket_enabled: boolean;
+  openai_codex_ticket_harvest_proxy_url: string;
+  openai_codex_ticket_models: string;
   openai_codex_user_agent: string;
   openai_codex_client_version: string;
   openai_codex_client_version_synced: string;
@@ -983,6 +986,9 @@ export interface UpdateSettingsRequest {
   rewrite_message_cache_control?: boolean;
   enable_client_dateline_normalization?: boolean;
   antigravity_user_agent_version?: string;
+  openai_codex_ticket_enabled?: boolean;
+  openai_codex_ticket_harvest_proxy_url?: string;
+  openai_codex_ticket_models?: string;
   openai_codex_user_agent?: string;
   openai_codex_client_version?: string;
   openai_codex_version_auto_sync_enabled?: boolean;

@@ -958,7 +958,19 @@ const (
 )
 
 // GatewayConfig API网关相关配置
+type OpenAICodexTicketConfig struct {
+	Enabled                      bool     `mapstructure:"enabled"`
+	HarvestProxyURL              string   `mapstructure:"harvest_proxy_url"`
+	Models                       []string `mapstructure:"models"`
+	TTLSeconds                   int      `mapstructure:"ttl_seconds"`
+	RefreshBeforeSeconds         int      `mapstructure:"refresh_before_seconds"`
+	HarvestProbeIntervalSeconds  int      `mapstructure:"harvest_probe_interval_seconds"`
+	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
+	FailClosed                   bool     `mapstructure:"fail_closed"`
+}
+
 type GatewayConfig struct {
+	OpenAICodexTicket OpenAICodexTicketConfig `mapstructure:"openai_codex_ticket"`
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
@@ -2486,6 +2498,14 @@ func setDefaults() {
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
+	viper.SetDefault("gateway.openai_codex_ticket.enabled", false)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_url", "")
+	viper.SetDefault("gateway.openai_codex_ticket.models", []string{"gpt-6-astra", "gpt-5.6-sol"})
+	viper.SetDefault("gateway.openai_codex_ticket.ttl_seconds", 3600)
+	viper.SetDefault("gateway.openai_codex_ticket.refresh_before_seconds", 600)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
+	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）

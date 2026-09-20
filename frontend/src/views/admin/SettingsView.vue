@@ -5878,6 +5878,23 @@
                 </p>
               </div>
 
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexTicketEnabled") }}</label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.gatewayForwarding.codexTicketHint") }}</p>
+                </div>
+                <Toggle v-model="form.openai_codex_ticket_enabled" data-testid="codex-ticket-toggle" />
+              </div>
+              <div>
+                <label for="codex-ticket-proxy" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexTicketProxy") }}</label>
+                <input id="codex-ticket-proxy" v-model="form.openai_codex_ticket_harvest_proxy_url" type="password" autocomplete="new-password" class="input w-full font-mono text-sm" placeholder="http://USER:PASSWORD@HOST:PORT" />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.gatewayForwarding.codexTicketProxyHint") }}</p>
+              </div>
+              <div>
+                <label for="codex-ticket-models" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexTicketModels") }}</label>
+                <input id="codex-ticket-models" v-model="form.openai_codex_ticket_models" class="input w-full font-mono text-sm" placeholder="gpt-6-astra,gpt-5.6-sol" />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.gatewayForwarding.codexTicketModelsHint") }}</p>
+              </div>
               <!-- Codex 版本号自动同步 -->
               <div class="flex items-center justify-between">
                 <div>
@@ -10045,6 +10062,9 @@ const form = reactive<SettingsForm>({
   openai_codex_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   openai_codex_client_version_synced: "",
+  openai_codex_ticket_enabled: false,
+  openai_codex_ticket_harvest_proxy_url: "",
+  openai_codex_ticket_models: "",
   openai_codex_version_auto_sync_enabled: true,
   // codex_cli_only 加固
   min_codex_version: "",
@@ -11656,6 +11676,9 @@ async function saveSettings() {
         form.openai_codex_user_agent?.trim() || "",
       openai_codex_client_version:
         form.openai_codex_client_version?.trim() || "",
+      openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
+      openai_codex_ticket_harvest_proxy_url: form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
+      openai_codex_ticket_models: form.openai_codex_ticket_models?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
       min_codex_version: form.min_codex_version?.trim() || "",

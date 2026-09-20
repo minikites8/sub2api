@@ -1386,6 +1386,29 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload.grok_cross_client_model_map_enabled).toBe(false);
   });
 
+  it("loads and saves Codex ticket settings with the masked proxy", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_enabled: true,
+      openai_codex_ticket_harvest_proxy_url: "http://user:***@proxy.example:8080",
+      openai_codex_ticket_models: "ticket-model",
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    expect((wrapper.get('#codex-ticket-proxy').element as HTMLInputElement).type).toBe('password');
+    expect((wrapper.get('#codex-ticket-proxy').element as HTMLInputElement).value).toBe('http://user:***@proxy.example:8080');
+    await wrapper.get('#codex-ticket-models').setValue('model-a, model-b');
+    await wrapper.get('[data-testid="codex-ticket-toggle"]').setValue(false);
+    await wrapper.find('form').trigger('submit.prevent');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      openai_codex_ticket_enabled: false,
+      openai_codex_ticket_harvest_proxy_url: 'http://user:***@proxy.example:8080',
+      openai_codex_ticket_models: 'model-a, model-b',
+    }));
+  });
+
   it("loads and saves the OpenAI Responses first-token metric mode", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

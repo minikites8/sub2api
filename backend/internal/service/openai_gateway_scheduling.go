@@ -1022,6 +1022,10 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			continue
 		}
 		fresh = s.recheckSelectedOpenAIAccountFromDBBeforeProfit(ctx, fresh, groupID, platform, requestedModel, false, requiredCapability)
+		if s.codexTicketBlocksAccount(ctx, fresh, requestedModel, requireCompact) {
+			filterStats.exclude("codex_ticket_unavailable")
+			continue
+		}
 		if fresh == nil {
 			filterStats.exclude("ineligible")
 			continue
@@ -1710,8 +1714,17 @@ func (s *OpenAIGatewayService) parentAccountLookup(ctx context.Context) func(int
 	}
 }
 
-func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Context, account *Account, groupID *int64, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
+// ticketCompact preserves the actual outbound compact model during scheduler phases
+// that intentionally defer compact-support filtering for exclusion diagnostics.
+func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Context, account *Account, groupID *int64, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability, ticketCompact ...bool) *Account {
 	latest := s.recheckSelectedOpenAIAccountFromDBBeforeProfit(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
+	ticketRequiresCompact := requireCompact
+	if len(ticketCompact) > 0 {
+		ticketRequiresCompact = ticketCompact[0]
+	}
+	if s.codexTicketBlocksAccount(ctx, latest, requestedModel, ticketRequiresCompact) {
+		return nil
+	}
 	if latest == nil {
 		return nil
 	}

@@ -193,6 +193,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		"soft_routing_hint",
 	)
 
+	if err := s.applyOpenAICodexTicket(ctx, account, routingModel, headers); err != nil {
+		return nil, sessionResolution, err
+	}
 	return headers, sessionResolution, nil
 }
 

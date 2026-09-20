@@ -126,6 +126,8 @@ type SettingService struct {
 	webSearchManagerBuilder     WebSearchManagerBuilder
 	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
 	antigravityUAVersionSF      singleflight.Group
+	codexTicketSettingsCache    atomic.Value // *codexTicketSettingsSnapshot
+	codexTicketSettingsSF       singleflight.Group
 	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
 	openAICodexUASF             singleflight.Group
 	openAICodexVersionCache     atomic.Value // *cachedOpenAICodexClientVersion

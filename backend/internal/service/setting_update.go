@@ -506,6 +506,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAICodexClientVersion] = NormalizeCodexClientVersion(settings.OpenAICodexClientVersion)
+	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_PROXY", err.Error())
+	}
+	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
+	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
+	updates[SettingKeyOpenAICodexTicketModels] = strings.Join(parseCodexTicketModels(settings.OpenAICodexTicketModels), ",")
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
 	// SettingKeyOpenAICodexClientVersionSynced 由自动同步任务独占写入，此处不得覆盖，
 	// 否则面板保存会把同步结果清空。
@@ -760,6 +766,8 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		version:   antigravityUserAgentVersion,
 		expiresAt: time.Now().Add(antigravityUserAgentVersionCacheTTL).UnixNano(),
 	})
+	s.codexTicketSettingsCache.Store(&codexTicketSettingsSnapshot{})
+	s.codexTicketSettingsSF.Forget("codex_ticket")
 	s.openAICodexUASF.Forget("openai_codex_user_agent")
 	codexUA := strings.TrimSpace(settings.OpenAICodexUserAgent)
 	if codexUA == "" {

@@ -270,6 +270,9 @@ type UpdateSettingsRequest struct {
 	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
 	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
+	OpenAICodexTicketEnabled               *bool   `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketHarvestProxyURL       *string `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAICodexTicketModels                *string `json:"openai_codex_ticket_models"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
@@ -483,6 +486,10 @@ func omittedSettingKeys(sentFields map[string]json.RawMessage) service.OmittedSe
 }
 
 func settingsAuditRequest(req UpdateSettingsRequest) UpdateSettingsRequest {
+	if req.OpenAICodexTicketHarvestProxyURL != nil {
+		masked := service.MaskCodexTicketProxyURL(*req.OpenAICodexTicketHarvestProxyURL)
+		req.OpenAICodexTicketHarvestProxyURL = &masked
+	}
 	req.TencentCaptchaAppSecretKey = strings.TrimSpace(req.TencentCaptchaAppSecretKey)
 	req.TencentCaptchaCloudSecretID = strings.TrimSpace(req.TencentCaptchaCloudSecretID)
 	req.TencentCaptchaCloudSecretKey = strings.TrimSpace(req.TencentCaptchaCloudSecretKey)
@@ -1808,6 +1815,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexUserAgent
 		}(),
+		OpenAICodexTicketEnabled: func() bool {
+			if req.OpenAICodexTicketEnabled != nil {
+				return *req.OpenAICodexTicketEnabled
+			}
+			return previousSettings.OpenAICodexTicketEnabled
+		}(),
+		OpenAICodexTicketHarvestProxyURL: func() string {
+			if req.OpenAICodexTicketHarvestProxyURL != nil && !service.IsMaskedCodexTicketProxyURL(*req.OpenAICodexTicketHarvestProxyURL) {
+				return strings.TrimSpace(*req.OpenAICodexTicketHarvestProxyURL)
+			}
+			return previousSettings.OpenAICodexTicketHarvestProxyURL
+		}(),
+		OpenAICodexTicketModels: func() string {
+			if req.OpenAICodexTicketModels != nil {
+				return *req.OpenAICodexTicketModels
+			}
+			return previousSettings.OpenAICodexTicketModels
+		}(),
 		OpenAICodexClientVersion: func() string {
 			if req.OpenAICodexClientVersion != nil {
 				return *req.OpenAICodexClientVersion
@@ -2374,6 +2399,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RewriteMessageCacheControl:                             updatedSettings.RewriteMessageCacheControl,
 		EnableClientDatelineNormalization:                      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            updatedSettings.AntigravityUserAgentVersion,
+		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
+		OpenAICodexTicketHarvestProxyURL:                       service.MaskCodexTicketProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
+		OpenAICodexTicketModels:                                updatedSettings.OpenAICodexTicketModels,
 		OpenAICodexUserAgent:                                   updatedSettings.OpenAICodexUserAgent,
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,

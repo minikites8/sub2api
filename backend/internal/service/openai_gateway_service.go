@@ -487,6 +487,14 @@ type OpenAIGatewayService struct {
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+	codexTickets                        sync.Map // account/model -> immutable *codexTurnTicket
+	codexTicketMissBackoffs             sync.Map // account/model -> retry deadline
+	codexTicketBackoffs                 sync.Map // account -> codexTicketBackoff
+	codexTicketFlight                   sync.Map // account/model -> in-flight marker
+	codexTicketLifecycleMu              sync.Mutex
+	codexTicketCancel                   context.CancelFunc
+	codexTicketDone                     chan struct{}
+	codexTicketStopped                  bool
 	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
 	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
@@ -572,6 +580,7 @@ func NewOpenAIGatewayService(
 	if openAITokenProvider != nil {
 		openAITokenProvider.SetAccountRuntimeBlocker(svc)
 	}
+	svc.StartOpenAICodexTicketHarvester()
 	svc.logOpenAIWSModeBootstrap()
 	return svc
 }
@@ -685,6 +694,7 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
+	s.StopOpenAICodexTicketHarvester()
 	if s != nil && s.openaiWSPool != nil {
 		s.openaiWSPool.Close()
 	}

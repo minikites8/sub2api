@@ -631,7 +631,10 @@ const (
 	// SettingKeyOpenAICodexUserAgent OpenAI Codex 完整 User-Agent（空值使用内置默认）
 	// 当客户端 UA 被识别为浏览器（Chrome/Firefox/Safari/Edge 等）时，转发给 OpenAI 上游前会替换为此值，
 	// 用于避免 Cloudflare 对浏览器型 UA 的质询拦截。
-	SettingKeyOpenAICodexUserAgent = "openai_codex_user_agent"
+	SettingKeyOpenAICodexTicketEnabled         = "openai_codex_ticket_enabled"
+	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
+	SettingKeyOpenAICodexTicketModels          = "openai_codex_ticket_models"
+	SettingKeyOpenAICodexUserAgent             = "openai_codex_user_agent"
 	// SettingKeyOpenAICodexClientVersion 网关对 ChatGPT 上游声明的 Codex 客户端版本号（管理员覆写）。
 	// 空值表示跟随自动同步值；自动同步也没有结果时回退到内置常量。
 	// 上游在容量紧张时按客户端身份分优先级降载，陈旧版本会被优先丢弃，故该值需保持跟随官方发布。
