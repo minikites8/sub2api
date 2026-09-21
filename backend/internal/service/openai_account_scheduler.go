@@ -1797,7 +1797,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
 		return false, "runtime_blocked"
 	}
-	if s != nil && s.service != nil && s.service.codexTicketBlocksAccount(ctx, account, req.RequestedModel, req.RequireCompact) {
+	if s != nil && s.service != nil && s.service.codexTicketBlocksSchedulerSnapshot(ctx, account, req.RequestedModel, req.RequireCompact) {
 		return false, "codex_ticket_unavailable"
 	}
 	if s != nil && s.service != nil && s.service.isOpenAIProxyStreamQuarantined(ctx, account) {

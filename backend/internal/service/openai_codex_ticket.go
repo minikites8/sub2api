@@ -60,6 +60,9 @@ func codexTicketKey(accountID int64, model string) string {
 func (t *codexTurnTicket) valid(account *Account, now time.Time) bool {
 	return t != nil && account != nil && now.Before(t.expires) && t.credential == codexTicketCredential(account) && len(t.state) == codexTicketLength(account) && strings.HasPrefix(t.state, "gAAAAA")
 }
+func (t *codexTurnTicket) validSchedulerSnapshot(account *Account, now time.Time) bool {
+	return t != nil && account != nil && now.Before(t.expires) && len(t.state) == codexTicketLength(account) && strings.HasPrefix(t.state, "gAAAAA")
+}
 func (s *OpenAIGatewayService) codexTicketConfig(ctx context.Context) config.OpenAICodexTicketConfig {
 	cfg := config.OpenAICodexTicketConfig{}
 	if s == nil {
@@ -118,6 +121,23 @@ func (s *OpenAIGatewayService) codexTicketBlocksAccount(ctx context.Context, acc
 		}
 	}
 	return codexTicketGated(cfg, account, model) && !s.cachedCodexTicket(account, model).valid(account, time.Now())
+}
+
+func (s *OpenAIGatewayService) codexTicketBlocksSchedulerSnapshot(ctx context.Context, account *Account, requestedModel string, requireCompact bool) bool {
+	if s == nil || !codexTicketAccount(account) {
+		return false
+	}
+	cfg := s.codexTicketConfig(ctx)
+	if !cfg.Enabled || !cfg.FailClosed {
+		return false
+	}
+	_, model := resolveOpenAIForwardMappedModels(account, requestedModel, requireCompact)
+	if requireCompact {
+		if fallback := strings.TrimSpace(s.resolveOpenAICompactFallbackModel(account, requestedModel)); fallback != "" {
+			model = fallback
+		}
+	}
+	return codexTicketGated(cfg, account, model) && !s.cachedCodexTicket(account, model).validSchedulerSnapshot(account, time.Now())
 }
 
 // Lifecycle is idempotent. Shutdown cancels any pending HTTP request before waiting.
