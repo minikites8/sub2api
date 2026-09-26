@@ -4,22 +4,23 @@
 --   3. channel_monitors / channel_monitor_request_templates.provider CHECK
 --
 -- 与 224/226/227 同型：DROP IF EXISTS 后重建超集约束，存量行瞬时校验通过。
+-- 保留升级前已经存在的 Kiro / OpenCode GO 数据；后续迁移仍会复用这些约束。
 
 ALTER TABLE user_platform_quotas
     DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
 
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
-    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
-                        'kimi', 'zhipu', 'deepseek', 'minimax'));
+    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kiro',
+                        'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'));
 
 ALTER TABLE composite_model_routes
     DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check;
 
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
-    CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
-                               'kimi', 'zhipu', 'deepseek', 'minimax'));
+    CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kiro',
+                               'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'));
 
 DO $$
 DECLARE
@@ -38,8 +39,8 @@ BEGIN
             DROP CONSTRAINT IF EXISTS channel_monitors_provider_check;
         ALTER TABLE channel_monitors
             ADD CONSTRAINT channel_monitors_provider_check
-            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
-                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax'));
+            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'kiro',
+                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'));
     END IF;
 
     SELECT pg_get_constraintdef(c.oid)
@@ -54,7 +55,7 @@ BEGIN
             DROP CONSTRAINT IF EXISTS channel_monitor_request_templates_provider_check;
         ALTER TABLE channel_monitor_request_templates
             ADD CONSTRAINT channel_monitor_request_templates_provider_check
-            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
-                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax'));
+            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'kiro',
+                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'));
     END IF;
 END $$;

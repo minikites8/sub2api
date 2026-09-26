@@ -5,14 +5,14 @@
 -- 3. channel_monitors / channel_monitor_request_templates provider CHECK
 --
 -- Runs after 237_add_minimax_platform.sql. DROP ... IF EXISTS + 幂等守卫保证可重入；
--- 新约束是 237 的超集，必须同时保留 MiniMax。
+-- 新约束是 237 的超集，必须同时保留 MiniMax 与 Kiro。
 
 ALTER TABLE user_platform_quotas
     DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
 
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
-    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
+    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kiro',
                         'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'));
 
 ALTER TABLE composite_model_routes
@@ -20,7 +20,7 @@ ALTER TABLE composite_model_routes
 
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
-    CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
+    CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kiro',
                                'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'));
 
 DO $$
@@ -40,7 +40,7 @@ BEGIN
             DROP CONSTRAINT IF EXISTS channel_monitors_provider_check;
         ALTER TABLE channel_monitors
             ADD CONSTRAINT channel_monitors_provider_check
-            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
+            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'kiro',
                                 'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'));
     END IF;
 
@@ -56,7 +56,7 @@ BEGIN
             DROP CONSTRAINT IF EXISTS channel_monitor_request_templates_provider_check;
         ALTER TABLE channel_monitor_request_templates
             ADD CONSTRAINT channel_monitor_request_templates_provider_check
-            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
+            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'kiro',
                                 'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'));
     END IF;
 END $$;

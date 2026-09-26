@@ -101,6 +101,13 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	//（db=4de3bf30）。当前文件必须保留 kiro，才能在 224 尚未应用且已有 kiro 数据的环境
 	// 成功升级；两个历史 checksum 双向互认，227 会将已应用旧版的约束统一为全部 9 平台。
 	"224_user_platform_quotas_add_cn_providers.sql": newMigrationChecksumCompatibilityRule("5227db3c1a6a1e2e422a9f9ba9d1f490c708b6c6dd91ce89f3c48115421a3e55", "4de3bf301cd838bbaf85613ce37dd47643165c0e3f36a1075341ff71aa37fae1"),
+	// 237 originally rebuilt platform/provider checks without Kiro and OpenCode GO.
+	// Existing databases may have already recorded that version; accept its checksum
+	// while allowing the expanded current migration to run on databases that have not.
+	"237_add_minimax_platform.sql": newMigrationChecksumCompatibilityRule("81d33f0df7753b3356ac96f1144108625c03034ed531cfe05d3b314ec94246b7", "f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b"),
+	// 238 originally rebuilt the same checks without Kiro. Keep its historical
+	// checksum accepted while using the Kiro-compatible definition for new upgrades.
+	"238_opencode_go_platform.sql": newMigrationChecksumCompatibilityRule("165507375b059593eefa7eea3f00cedd57461f500dea79a91129e51733db332e", "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。
