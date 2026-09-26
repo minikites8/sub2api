@@ -2,10 +2,7 @@ package service
 
 import (
 	"context"
-	"os"
-	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
+	"strings"
 )
 
 func (s *CodexHarvestService) Snapshot(ctx context.Context, proxy string) CodexHarvestControlSnapshot {
@@ -15,17 +12,9 @@ func (s *CodexHarvestService) Snapshot(ctx context.Context, proxy string) CodexH
 	if err != nil {
 		out.SettingsError = "harvest settings unavailable; retaining last valid values"
 	}
-	sidecar, err := mihomo.LoadDirectedSidecar(os.Getenv("DATA_DIR"), proxy)
-	if err != nil {
-		out.AvailabilityReason = err.Error()
-		return out
+	out.Available = strings.TrimSpace(proxy) != ""
+	if !out.Available {
+		out.AvailabilityReason = "configure an external harvest proxy"
 	}
-	query, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	if _, err := sidecar.Directory(query); err != nil {
-		out.AvailabilityReason = err.Error()
-		return out
-	}
-	out.Available = true
 	return out
 }

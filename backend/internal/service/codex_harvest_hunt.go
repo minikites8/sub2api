@@ -73,11 +73,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 			return
 		}
 		account = fresh
-		if controls.NodeMemoryEnabled {
-			maxAttempts = controls.Speed.MaxNodeAttempts
-		} else {
-			maxAttempts = 1
-		}
+		maxAttempts = 1
 		if n >= maxAttempts || round.AccountStopped(account.ID) || round.Used() >= min(round.limit, controls.Speed.MaxRequestsPerRound) {
 			break
 		}
@@ -91,7 +87,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 		started := time.Now()
 		session := s.harvestAttemptSession(account, model, attempt)
 		result := s.executeCodexHarvestProbe(ctx, account, token, model, attempt.proxy, time.Duration(controls.Speed.AttemptTimeoutSeconds)*time.Second, func() bool {
-			return s.reserveHarvestRequest(ctx, account, model, round, attempt.sidecar != nil)
+			return s.reserveHarvestRequest(ctx, account, model, round, false)
 		}, session)
 		if result.Kind == "account_error" || result.Kind == "rate_limited" {
 			round.stopped.Store(account.ID, struct{}{})
@@ -119,7 +115,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 			logger.L().Info("openai_codex_ticket harvested", zap.Int64("account_id", account.ID), zap.String("model", model), zap.Int("attempts", attempts))
 			return
 		}
-		if result.Kind == "account_error" || result.Kind == "rate_limited" || attempt.sidecar == nil {
+		if result.Kind != "success" {
 			break
 		}
 		if s.codexHarvest != nil {

@@ -4597,52 +4597,7 @@
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyDesc") }}
                   </p>
-                  <div class="mt-3 flex flex-wrap gap-2" role="radiogroup" :aria-label="t('admin.settings.gatewayForwarding.codexTicketProxyMode')">
-                    <label
-                      class="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
-                      :class="codexTicketProxyMode === 'mihomo'
-                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                        : 'border-gray-200 text-gray-600 hover:border-primary-300 dark:border-dark-600 dark:text-gray-400'"
-                    >
-                      <input
-                        class="sr-only"
-                        type="radio"
-                        name="codex-ticket-proxy-mode"
-                        value="mihomo"
-                        :checked="codexTicketProxyMode === 'mihomo'"
-                        @change="selectCodexTicketProxyMode('mihomo')"
-                      />
-                      <span>{{ t("admin.settings.gatewayForwarding.codexTicketProxyModeMihomo") }}</span>
-                    </label>
-                    <label
-                      class="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
-                      :class="codexTicketProxyMode === 'static'
-                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                        : 'border-gray-200 text-gray-600 hover:border-primary-300 dark:border-dark-600 dark:text-gray-400'"
-                    >
-                      <input
-                        class="sr-only"
-                        type="radio"
-                        name="codex-ticket-proxy-mode"
-                        value="static"
-                        :checked="codexTicketProxyMode === 'static'"
-                        @change="selectCodexTicketProxyMode('static')"
-                      />
-                      <span>{{ t("admin.settings.gatewayForwarding.codexTicketProxyModeStatic") }}</span>
-                    </label>
-                  </div>
-                  <div
-                    v-if="codexTicketProxyMode === 'mihomo'"
-                    class="mt-3 rounded-md border border-primary-200 bg-primary-50/60 px-3 py-2.5 dark:border-primary-800 dark:bg-primary-900/20"
-                  >
-                    <div class="flex flex-wrap items-center gap-2 text-sm text-primary-800 dark:text-primary-200">
-                      <span>{{ t("admin.settings.gatewayForwarding.codexTicketProxyMihomoEndpoint") }}</span>
-                      <code class="rounded bg-white/70 px-1.5 py-0.5 font-mono text-xs dark:bg-dark-800/70">{{ CODEX_TICKET_MIHOMO_PROXY_URL }}</code>
-                    </div>
-                    <MihomoSettings @ready="selectMihomoHarvestProxy" />
-                  </div>
                   <input
-                    v-else
                     id="codex-ticket-harvest-proxy"
                     v-model="form.openai_codex_ticket_harvest_proxy_url"
                     type="text"
@@ -4651,7 +4606,7 @@
                     autocomplete="off"
                   />
                   <p
-                    v-if="form.openai_codex_ticket_harvest_proxy_configured && codexTicketProxyMode === 'static'"
+                    v-if="form.openai_codex_ticket_harvest_proxy_configured"
                     class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
                   >
                     {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyConfigured") }}
@@ -9193,7 +9148,6 @@ import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
-import MihomoSettings from "@/views/admin/settings/MihomoSettings.vue";
 import PelicanShowcaseSettings from "@/views/admin/settings/PelicanShowcaseSettings.vue";
 import {
   defaultPelicanShowcaseConfig,
@@ -11194,39 +11148,6 @@ const codexSyncedVersionLabel = computed(() => {
   });
 });
 
-const CODEX_TICKET_MIHOMO_PROXY_URL = "http://127.0.0.1:3101";
-type CodexTicketProxyMode = "mihomo" | "static";
-const codexTicketProxyMode = ref<CodexTicketProxyMode>("static");
-const codexTicketStaticProxyDraft = ref("");
-
-function isCodexTicketMihomoProxyURL(value: string): boolean {
-  return value.trim().replace(/\/+$/, "") === CODEX_TICKET_MIHOMO_PROXY_URL;
-}
-
-function selectMihomoHarvestProxy(endpoint: string): void {
-  form.openai_codex_ticket_harvest_proxy_url = endpoint;
-  appStore.showSuccess(t("admin.settings.gatewayForwarding.codexTicketProxyMihomoSelected"));
-}
-
-function syncCodexTicketProxyMode(): void {
-  const current = form.openai_codex_ticket_harvest_proxy_url;
-  const isMihomo = isCodexTicketMihomoProxyURL(current);
-  codexTicketProxyMode.value = isMihomo ? "mihomo" : "static";
-  codexTicketStaticProxyDraft.value = isMihomo ? form.openai_codex_ticket_static_proxy_url || "" : current;
-}
-
-function selectCodexTicketProxyMode(mode: CodexTicketProxyMode): void {
-  const wasMihomo = isCodexTicketMihomoProxyURL(form.openai_codex_ticket_harvest_proxy_url);
-  if (!wasMihomo) {
-    codexTicketStaticProxyDraft.value =
-      form.openai_codex_ticket_harvest_proxy_url;
-  }
-  codexTicketProxyMode.value = mode;
-  if (mode === "static" && wasMihomo) {
-    form.openai_codex_ticket_harvest_proxy_url =
-      codexTicketStaticProxyDraft.value;
-  }
-}
 const claudeSyncedVersionLabel = computed(() => {
   const synced = form.claude_code_client_version_synced?.trim();
   if (!synced) return "";
@@ -11250,7 +11171,6 @@ async function loadSettings() {
     }
     form.openai_codex_ticket_harvest_scope.account_policy =
       form.openai_codex_ticket_harvest_scope.account_policy || 'schedulable_only';
-    syncCodexTicketProxyMode();
     // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
@@ -11902,7 +11822,7 @@ async function saveSettings() {
       openai_codex_ticket_strict_response: form.openai_codex_ticket_strict_response || false,
       openai_codex_ticket_harvest_proxy_url:
         form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
-      openai_codex_ticket_use_saved_static_proxy: codexTicketProxyMode.value === 'static',
+      openai_codex_ticket_use_saved_static_proxy: true,
       openai_codex_ticket_models: [...form.openai_codex_ticket_models],
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:

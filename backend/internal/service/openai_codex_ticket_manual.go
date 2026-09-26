@@ -5,11 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 )
 
 const (
@@ -87,9 +84,6 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 		progress(p)
 	}
 
-	if req.CollectLanes > 1 {
-		return s.executeParallelHarvest(ctx, req, account, emit)
-	}
 	proxy := s.openAICodexTicketHarvestProxyURLContext(ctx)
 	controls, _ := s.harvestControls(ctx)
 	timeout := time.Duration(controls.Speed.AttemptTimeoutSeconds) * time.Second
@@ -110,7 +104,7 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 		MaxAttempts: req.MaxAttempts,
 		Result:      "start",
 		Level:       "INFO",
-		Message:     fmt.Sprintf("开始单号打票：账号=%s 模型=%s 换节点=%s", account.Name, strings.Join(req.Models, ","), req.NodeSwitchRule),
+		Message:     fmt.Sprintf("开始单号打票：账号=%s 模型=%s 出口=外部代理", account.Name, strings.Join(req.Models, ",")),
 	})
 	if manualHarvestRunComplete(req.StopOnSuccess, req.Models, got) {
 		emit(ManualHarvestProgress{MaxAttempts: req.MaxAttempts, Result: "hit", Level: "OK", Done: true, Message: "目标模型已有有效门票，手动打票结束。"})
@@ -286,8 +280,8 @@ func manualHarvestRunComplete(stopOnSuccess bool, models []string, got map[strin
 }
 
 func NormalizeManualHarvestRequest(req ManualHarvestRequest) (ManualHarvestRequest, error) {
-	if req.CollectLanes < 0 || req.CollectLanes > mihomo.MaxCollectLanes {
-		return req, errors.New("collect_lanes must be 0-32")
+	if req.CollectLanes < 0 || req.CollectLanes > 1 {
+		return req, errors.New("collect_lanes must be 0-1")
 	}
 
 	req.NodeSwitchRule = strings.TrimSpace(req.NodeSwitchRule)
@@ -364,106 +358,12 @@ func manualHarvestShouldSwitch(rule string, consecutiveFails int, kind string, l
 	}
 }
 
-func (s *OpenAIGatewayService) acquireManualHarvestNode(ctx context.Context, account *Account, model, proxy, keepID string, tried map[string]bool, forceNew bool) (codexHarvestAttempt, error) {
-	fallback := codexHarvestAttempt{proxy: proxy, release: func() {}}
-	if s.codexHarvest == nil || strings.TrimSpace(proxy) == "" {
-		return fallback, nil
-	}
-	sidecar, err := mihomo.LoadDirectedSidecar(os.Getenv("DATA_DIR"), proxy)
-	if err != nil {
-		s.codexHarvest.degrade(err.Error())
-		if _, _, managed := mihomo.ManagedController(); managed && strings.TrimRight(proxy, "/") == mihomo.Endpoint {
-			return fallback, err
-		}
-		return fallback, nil
-	}
-	query, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	nodes, err := sidecar.Directory(query)
-	if err != nil {
-		s.codexHarvest.degrade(err.Error())
-		return fallback, err
-	}
-	pick := func(force bool) (mihomo.HarvestNode, bool) {
-		if !force && keepID != "" {
-			for _, node := range nodes {
-				if node.ID == keepID {
-					return node, true
-				}
-			}
-		}
-		scope := CodexHarvestNodeScope{PoolID: sidecar.PoolID, AccountID: account.ID, Identity: ticketIdentity(account), Model: model, Blocks: codexHarvestExpectedBlocks(account, s.openAICodexTicketConfig())}
-		var records []CodexHarvestNodeRecord
-		if controls, _ := s.harvestControls(ctx); controls.NodeMemoryEnabled {
-			if _, stored, snapErr := s.codexHarvest.nodes.Snapshot(query, scope); snapErr == nil {
-				records = stored
-			}
-		}
-		excluded := tried
-		if !force && keepID != "" {
-			excluded = map[string]bool{}
-			for id, seen := range tried {
-				excluded[id] = seen
-			}
-		}
-		ranked := rankCodexHarvestNodes(nodes, records, excluded, s.codexHarvest.explore.Add(1)-1, time.Now())
-		if len(ranked) == 0 {
-			ranked = rankCodexHarvestNodes(nodes, records, map[string]bool{}, s.codexHarvest.explore.Add(1)-1, time.Now())
-		}
-		if len(ranked) == 0 {
-			return mihomo.HarvestNode{}, false
-		}
-		if force && keepID != "" && ranked[0].ID == keepID && len(ranked) > 1 {
-			return ranked[1], true
-		}
-		return ranked[0], true
-	}
-	node, ok := pick(forceNew)
-	if !ok {
-		return fallback, errors.New("no identifiable harvest leaf nodes")
-	}
-	release, err := sidecar.Acquire(ctx, node)
-	if err != nil {
-		s.codexHarvest.degrade("directed selection unavailable")
-		return fallback, err
-	}
-	tried[node.ID] = true
-	scope := CodexHarvestNodeScope{PoolID: sidecar.PoolID, AccountID: account.ID, Identity: ticketIdentity(account), Model: model, Blocks: codexHarvestExpectedBlocks(account, s.openAICodexTicketConfig())}
-	generation := int64(0)
-	if controls, _ := s.harvestControls(ctx); controls.NodeMemoryEnabled {
-		if gen, _, snapErr := s.codexHarvest.nodes.Snapshot(query, scope); snapErr == nil {
-			generation = gen
-		}
-	}
-	s.codexHarvest.setRuntime(func(r *CodexHarvestRuntime) {
-		r.CurrentNode = node.Name
-		r.SelectionReason = "manual"
-		r.DegradedReason = ""
-	})
-	return codexHarvestAttempt{sidecar: sidecar, node: node, proxy: sidecar.ProxyURL, release: release, feedback: CodexHarvestNodeFeedback{Scope: scope, Node: node, Generation: generation}}, nil
+func (s *OpenAIGatewayService) acquireManualHarvestNode(_ context.Context, _ *Account, _ string, proxy, _ string, _ map[string]bool, _ bool) (codexHarvestAttempt, error) {
+	return codexHarvestAttempt{proxy: proxy, release: func() {}}, nil
 }
 
-func (s *OpenAIGatewayService) completeManualHarvestAttempt(ctx context.Context, attempt codexHarvestAttempt, result codexHarvestProbeResult, elapsed time.Duration, controls CodexHarvestControls) {
-	defer attempt.release()
-	if attempt.sidecar == nil || s.codexHarvest == nil || !result.Sent || result.Kind == "cancelled" {
-		return
-	}
-	query, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	if err := attempt.sidecar.Confirm(query, attempt.node); err != nil {
-		s.codexHarvest.degrade("node attribution changed; learning skipped")
-		return
-	}
-	if !controls.NodeMemoryEnabled {
-		return
-	}
-	feedback := attempt.feedback
-	feedback.Result = result.Kind
-	feedback.LatencyMS = elapsed.Milliseconds()
-	feedback.CooldownSeconds = controls.Speed.CooldownSeconds
-	if _, err := s.codexHarvest.nodes.Record(query, feedback); err != nil {
-		s.codexHarvest.degrade("learning feedback failed; ticket remains usable")
-	}
+func (s *OpenAIGatewayService) completeManualHarvestAttempt(_ context.Context, attempt codexHarvestAttempt, _ codexHarvestProbeResult, _ time.Duration, _ CodexHarvestControls) {
+	attempt.release()
 }
 
 func describeCodexProbeFailure(rawErr string, status int, model, node string) (message, level, detail string) {

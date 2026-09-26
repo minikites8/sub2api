@@ -592,13 +592,6 @@ export default {
           '仅在门票功能开启时用于打票，保存后后续探测会使用新代理，无需重启。日常业务仍走账号自己的住宅代理。填写完整代理 URL（http 或 socks5h，含用户名和密码）。代理服务商需自行负责出口 IP 轮换。留空并保存表示不改已保存的值。',
         codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
         codexTicketHarvestProxyConfigured: '已配置（密码已隐藏）。要更换请整段粘贴新的代理 URL。',
-        codexTicketProxyMode: '打票出口类型',
-        codexTicketProxyModeMihomo: 'Mihomo/VPN 内核',
-        codexTicketProxyModeStatic: '静态住宅代理',
-        codexTicketProxyMihomoEndpoint: '内核本地出口',
-        codexTicketProxyMihomoSelected: '已选择 Mihomo 打票代理，请点击“保存设置”后生效。',
-        codexTicketProxyMihomoHint:
-          '使用服务器上的 Mihomo 机场订阅轮换出口。请先运行发布包中的 install-mihomo-codex.sh，日常业务代理不受影响。',
         codexClientRestrictionTitle: 'Codex 客户端限制',
         codexHardeningDesc:
           '仅对已开启「仅允许 Codex 官方客户端」的 OpenAI OAuth 账号生效（全局）。在 User-Agent/Originator 之外，用版本区间、引擎指纹门与黑/白名单巩固判定。',

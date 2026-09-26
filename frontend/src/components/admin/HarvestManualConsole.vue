@@ -84,19 +84,7 @@
             {{ t(`${prefix}.maxAttempts`) }}
             <input v-model.number="form.max_attempts" type="number" min="1" max="100" :disabled="harvesting" class="input mt-1 w-full font-mono text-xs" />
           </label>
-          <label class="text-xs text-gray-600 dark:text-gray-300">
-            {{ t(`${prefix}.nodeSwitch`) }}
-            <select v-model="form.node_switch_rule" data-testid="manual-node-switch" :disabled="harvesting" class="input mt-1 w-full text-xs">
-              <option v-for="rule in nodeSwitchRules" :key="rule" :value="rule">{{ t(`${prefix}.nodeSwitchRules.${rule}`) }}</option>
-            </select>
-          </label>
         </div>
-
-        <label class="block text-xs text-gray-600 dark:text-gray-300">
-          {{ t(`${prefix}.collectLanes`) }}
-          <input v-model.number="collectLanes" data-testid="manual-collect-lanes" type="number" min="2" max="32" :disabled="harvesting" class="input mt-1 w-full font-mono text-xs" />
-          <span class="mt-1 block text-[10px] text-gray-400">{{ t(`${prefix}.parallelHint`) }}</span>
-        </label>
 
         <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
           <input v-model="form.stop_on_success" data-testid="manual-stop-on-success" type="checkbox" :disabled="harvesting" class="rounded text-primary-600" />
@@ -110,12 +98,11 @@
             type="button"
             class="btn btn-primary btn-sm flex-1"
             :disabled="!selected || !selectedModels.length"
-            @click="start(false)"
+            @click="start()"
           >
             {{ t(`${prefix}.start`) }}
           </button>
-          <button v-if="!harvesting" data-testid="manual-parallel-start" type="button" class="btn btn-secondary btn-sm flex-1" :disabled="!selected || !selectedModels.length" @click="start(true)">{{ t(`${prefix}.parallelStart`) }}</button>
-          <button v-else data-testid="manual-stop" type="button" class="btn btn-secondary btn-sm flex-1" @click="stop">{{ t(`${prefix}.stop`) }}</button>
+          <button v-if="harvesting" data-testid="manual-stop" type="button" class="btn btn-secondary btn-sm flex-1" @click="stop">{{ t(`${prefix}.stop`) }}</button>
           <button data-testid="manual-clear" type="button" class="btn btn-secondary btn-sm" :disabled="harvesting" @click="logs = []">{{ t(`${prefix}.clear`) }}</button>
         </div>
       </div>
@@ -159,14 +146,12 @@ const props = defineProps<{ accounts: CodexHarvestFlowAccount[]; models: string[
 const emit = defineEmits<{ running: [boolean]; finished: [] }>()
 const { t } = useI18n()
 const prefix = 'admin.harvestFlow.console'
-const nodeSwitchRules = ['312_or_2fail', 'every_request', '312_only', 'never'] as const
 const accountRoot = ref<HTMLElement | null>(null)
 const keyword = ref('')
 const open = ref(false)
 const selected = ref<CodexHarvestFlowAccount | null>(null)
 const selectedModels = ref<string[]>([])
 const harvesting = ref(false)
-const collectLanes = ref(10)
 const statusText = ref(t(`${prefix}.idle`))
 const statusColor = ref('text-gray-400')
 const progressText = ref('0 / 20')
@@ -177,7 +162,6 @@ const form = ref({
   probe_interval_seconds: 10,
   rate_limit_cooldown_seconds: 30,
   max_attempts: 20,
-  node_switch_rule: '312_or_2fail',
   stop_on_success: true
 })
 let abort: AbortController | null = null
@@ -282,7 +266,7 @@ function finish(kind: 'success' | 'finished' | 'stopped' | 'auth') {
   if (kind === 'success' || kind === 'finished') emit('finished')
 }
 
-async function start(parallel = false) {
+async function start() {
   if (!selected.value || harvesting.value || !selectedModels.value.length) return
   abort?.abort()
   abort = new AbortController()
@@ -295,12 +279,12 @@ async function start(parallel = false) {
   addLog('START', t(`${prefix}.startLog`, { id: selected.value.id }))
   try {
     await streamManualCodexHarvest(selected.value.id, {
-      collect_lanes: parallel ? collectLanes.value : 1,
+      collect_lanes: 1,
       models: [...selectedModels.value],
       probe_interval_seconds: form.value.probe_interval_seconds,
       rate_limit_cooldown_seconds: form.value.rate_limit_cooldown_seconds,
       max_attempts: form.value.max_attempts,
-      node_switch_rule: form.value.node_switch_rule,
+      node_switch_rule: 'never',
       stop_on_success: form.value.stop_on_success
     }, applyProgress, abort.signal)
     if (harvesting.value && !disposed) finish('finished')

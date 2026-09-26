@@ -2,31 +2,22 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 
 	"go.uber.org/zap"
-	"gopkg.in/yaml.v3"
 )
 
 const (
-	codexHarvestFlowCap            = 200
-	codexHarvestFlowSkipDebounce   = 8 * time.Second
-	codexHarvestSidecarQueryBudget = 400 * time.Millisecond
-	codexHarvestSidecarConfigTTL   = 30 * time.Second
-	codexHarvestSidecarGroup       = "CODEX-ROTATE"
+	codexHarvestFlowCap          = 200
+	codexHarvestFlowSkipDebounce = 8 * time.Second
 )
 
 // CodexHarvestFlowEvent is a redacted breadcrumb for the admin harvest pipeline.
@@ -154,16 +145,6 @@ type codexHarvestFlowRing struct {
 
 var defaultCodexHarvestFlow = &codexHarvestFlowRing{skips: make(map[string]time.Time)}
 
-type cachedSidecarController struct {
-	until      time.Time
-	controller string
-	secret     string
-	source     string
-	err        string
-}
-
-var sidecarControllerCache atomic.Pointer[cachedSidecarController]
-
 func resetCodexHarvestFlow() {
 	defaultCodexHarvestFlow.mu.Lock()
 	defer defaultCodexHarvestFlow.mu.Unlock()
@@ -257,10 +238,7 @@ func recordCodexHarvestNode(now, groupType string, allCount int) {
 	if now == "" {
 		return
 	}
-	// Mihomo's controller reports the stable node ID in connection chains.
-	// Resolve the operator-facing label before persisting the flow event; the
-	// resolver falls back to the ID when the managed snapshot has no label.
-	now = mihomo.NodeDisplayName(now)
+	now = strings.TrimSpace(now)
 	defaultCodexHarvestFlow.mu.Lock()
 	if allCount > 0 {
 		defaultCodexHarvestFlow.lastAll = allCount
@@ -411,287 +389,14 @@ func clipFlowText(value string, max int) string {
 	return string(runes[:max])
 }
 
-func watchCodexHarvestExit(proxyURL string) func() string {
-	if !usesCodexHarvestSidecar(proxyURL) {
-		return func() string { return "" }
-	}
-	done := make(chan struct{})
-	var latest atomic.Value
-	latest.Store("")
-	go func() {
-		ticker := time.NewTicker(80 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				if node := peekCodexHarvestExit(); node != "" {
-					latest.Store(node)
-				}
-			}
-		}
-	}()
-	return func() string {
-		close(done)
-		node, _ := latest.Load().(string)
-		if node == "" {
-			node = peekCodexHarvestExit()
-		}
-		if node == "" {
-			node = lastCodexHarvestNode()
-		}
-		return node
-	}
-}
+func watchCodexHarvestExit(string) func() string { return func() string { return "" } }
 
-func peekCodexHarvestExit() string {
-	ctrl := loadCodexHarvestSidecarController()
-	if ctrl.controller == "" {
-		return lastCodexHarvestNode()
-	}
-	queryCtx, cancel := context.WithTimeout(context.Background(), codexHarvestSidecarQueryBudget)
-	defer cancel()
-	node, err := queryCodexRotateExit(queryCtx, ctrl.controller, ctrl.secret)
-	if err != nil || node == "" {
-		return lastCodexHarvestNode()
-	}
-	recordCodexHarvestNode(node, "", 0)
-	return node
-}
-
-func usesCodexHarvestSidecar(proxyURL string) bool {
-	return strings.TrimRight(strings.TrimSpace(proxyURL), "/") == mihomo.Endpoint
-}
-
-// External harvest proxies do not require a local controller. Do not infer
-// their health or attribute their probes to an unrelated Mihomo node.
-func observeCodexHarvestProxy(ctx context.Context, proxyURL string) CodexHarvestFlowSidecar {
+func observeCodexHarvestProxy(_ context.Context, proxyURL string) CodexHarvestFlowSidecar {
 	if strings.TrimSpace(proxyURL) == "" {
 		return CodexHarvestFlowSidecar{Mode: "unconfigured"}
 	}
-	if !usesCodexHarvestSidecar(proxyURL) {
-		return CodexHarvestFlowSidecar{Mode: "external"}
-	}
-	out := observeCodexHarvestSidecar(ctx)
-	out.Mode = "mihomo"
-	return out
+	return CodexHarvestFlowSidecar{Mode: "external"}
 }
-
-func observeCodexHarvestSidecar(ctx context.Context) CodexHarvestFlowSidecar {
-	ctrl := loadCodexHarvestSidecarController()
-	out := CodexHarvestFlowSidecar{Group: codexHarvestSidecarGroup, Source: ctrl.source, Controller: redactController(ctrl.controller)}
-	if ctrl.err != "" && ctrl.controller == "" {
-		out.Error = ctrl.err
-		return out
-	}
-	if ctrl.controller == "" {
-		out.Error = "sidecar controller not found"
-		return out
-	}
-	queryCtx, cancel := context.WithTimeout(ctx, codexHarvestSidecarQueryBudget)
-	defer cancel()
-	group, err := queryCodexRotateGroup(queryCtx, ctrl.controller, ctrl.secret)
-	now := time.Now()
-	out.ObservedAt = &now
-	if err != nil {
-		out.Error = clipFlowText(err.Error(), 160)
-		return out
-	}
-	out.Reachable = true
-	out.Type = group.Type
-	out.Now = strings.TrimSpace(group.Now)
-	out.AllCount = len(group.All)
-	if out.Now == "" {
-		exitCtx, exitCancel := context.WithTimeout(ctx, codexHarvestSidecarQueryBudget)
-		node, err := queryCodexRotateExit(exitCtx, ctrl.controller, ctrl.secret)
-		exitCancel()
-		if err == nil {
-			out.Now = node
-		}
-	}
-	if out.Now == "" {
-		out.Now = lastCodexHarvestNode()
-	}
-	recordCodexHarvestNode(out.Now, group.Type, len(group.All))
-	return out
-}
-
-func redactController(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	return strings.TrimPrefix(strings.TrimPrefix(raw, "https://"), "http://")
-}
-
-func loadCodexHarvestSidecarController() cachedSidecarController {
-	if controller, secret, ok := mihomo.ManagedController(); ok {
-		return cachedSidecarController{controller: controller, secret: secret, source: "managed"}
-	}
-
-	if cached := sidecarControllerCache.Load(); cached != nil && time.Now().Before(cached.until) {
-		return *cached
-	}
-	next := cachedSidecarController{until: time.Now().Add(codexHarvestSidecarConfigTTL)}
-	dataDir := strings.TrimSpace(os.Getenv("DATA_DIR"))
-	if dataDir == "" {
-		dataDir = "."
-	}
-	// Web-managed Mihomo runs candidate.json; config.yaml remains the legacy
-	// sidecar format. yaml.Unmarshal also accepts the managed JSON document.
-	root, err := os.OpenRoot(dataDir)
-	if err != nil {
-		next.err = "sidecar config missing"
-		sidecarControllerCache.Store(&next)
-		return next
-	}
-	defer func() { _ = root.Close() }()
-	raw, err := root.ReadFile("mihomo-codex/candidate.json")
-	if os.IsNotExist(err) {
-		raw, err = root.ReadFile("mihomo-codex/config.yaml")
-	}
-	if err != nil {
-		next.err = "sidecar config missing"
-		sidecarControllerCache.Store(&next)
-		return next
-	}
-	var parsed struct {
-		ExternalController string `yaml:"external-controller"`
-		Secret             string `yaml:"secret"`
-	}
-	if yaml.Unmarshal(raw, &parsed) != nil {
-		next.err = "sidecar config invalid"
-		sidecarControllerCache.Store(&next)
-		return next
-	}
-	controller := strings.TrimSpace(parsed.ExternalController)
-	if controller == "" {
-		controller = "127.0.0.1:9098"
-	}
-	if !strings.Contains(controller, "://") {
-		controller = "http://" + controller
-	}
-	if !loopbackHTTPURL(controller) {
-		next.err = "sidecar controller is not loopback"
-		sidecarControllerCache.Store(&next)
-		return next
-	}
-	next.controller = controller
-	next.secret = strings.TrimSpace(parsed.Secret)
-	next.source = "sidecar"
-	sidecarControllerCache.Store(&next)
-	return next
-}
-
-func loopbackHTTPURL(raw string) bool {
-	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
-		return false
-	}
-	host := strings.TrimPrefix(strings.TrimPrefix(raw, "https://"), "http://")
-	if slash := strings.IndexByte(host, '/'); slash >= 0 {
-		host = host[:slash]
-	}
-	hostname, _, err := net.SplitHostPort(host)
-	if err != nil {
-		hostname = host
-	}
-	if strings.EqualFold(hostname, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(hostname)
-	return ip != nil && ip.IsLoopback()
-}
-
-type clashProxyGroup struct {
-	Name string   `json:"name"`
-	Type string   `json:"type"`
-	Now  string   `json:"now"`
-	All  []string `json:"all"`
-}
-
-func queryCodexRotateGroup(ctx context.Context, controller, secret string) (clashProxyGroup, error) {
-	body, err := clashGET(ctx, controller, secret, "/proxies/"+codexHarvestSidecarGroup, 1<<20)
-	if err != nil {
-		return clashProxyGroup{}, err
-	}
-	var group clashProxyGroup
-	if json.Unmarshal(body, &group) != nil {
-		return clashProxyGroup{}, fmt.Errorf("controller payload invalid")
-	}
-	return group, nil
-}
-
-func queryCodexRotateExit(ctx context.Context, controller, secret string) (string, error) {
-	body, err := clashGET(ctx, controller, secret, "/connections", 2<<20)
-	if err != nil {
-		return "", err
-	}
-	return exitNodeFromConnections(body), nil
-}
-
-func clashGET(ctx context.Context, controller, secret, path string, limit int64) ([]byte, error) {
-	if limit <= 0 {
-		limit = 1 << 20
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(controller, "/")+path, nil)
-	if err != nil {
-		return nil, err
-	}
-	if secret != "" {
-		req.Header.Set("Authorization", "Bearer "+secret)
-	}
-	client := &http.Client{Timeout: codexHarvestSidecarQueryBudget, Transport: &http.Transport{Proxy: nil}}
-	defer client.CloseIdleConnections()
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("controller unavailable")
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
-	if err != nil {
-		return nil, fmt.Errorf("controller read failed")
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("controller http %d", resp.StatusCode)
-	}
-	return body, nil
-}
-
-func exitNodeFromConnections(body []byte) string {
-	var payload struct {
-		Connections []struct {
-			Chains []string `json:"chains"`
-			Start  string   `json:"start"`
-		} `json:"connections"`
-	}
-	if json.Unmarshal(body, &payload) != nil {
-		return ""
-	}
-	best, bestStart := "", ""
-	for _, conn := range payload.Connections {
-		node := nodeFromChains(conn.Chains)
-		if node == "" {
-			continue
-		}
-		if best == "" || conn.Start >= bestStart {
-			best = node
-			bestStart = conn.Start
-		}
-	}
-	return best
-}
-
-func nodeFromChains(chains []string) string {
-	for _, hop := range chains {
-		hop = strings.TrimSpace(hop)
-		if hop != "" && hop != codexHarvestSidecarGroup {
-			return hop
-		}
-	}
-	return ""
-}
-
 func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *SettingService, accounts []Account, controls ...*CodexHarvestService) CodexHarvestFlowSnapshot {
 	now := time.Now()
 	ticketCfg := config.OpenAICodexTicketConfig{}
@@ -756,7 +461,7 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 	}
 	for i := range events {
 		if strings.TrimSpace(events[i].Node) != "" {
-			events[i].Node = mihomo.NodeDisplayName(events[i].Node)
+			events[i].Node = strings.TrimSpace(events[i].Node)
 		}
 	}
 	snapshot := CodexHarvestFlowSnapshot{
@@ -781,9 +486,6 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 		Sidecar:  observeCodexHarvestProxy(ctx, harvestProxy),
 		Events:   events,
 		Accounts: []CodexHarvestFlowAccount{},
-	}
-	if snapshot.Harvest.HarvestProxy == "" && harvestProxy == mihomo.Endpoint {
-		snapshot.Harvest.HarvestProxy = mihomo.Endpoint
 	}
 	for _, account := range accounts {
 		if !isOpenAICodexTicketAccount(&account) {
@@ -870,40 +572,14 @@ func buildCodexHarvestFlowStages(snapshot CodexHarvestFlowSnapshot) []CodexHarve
 		last[event.Stage+":"+event.Kind] = event
 		last[event.Stage] = event
 	}
-	node := CodexHarvestFlowStage{ID: "node", Status: "idle", Node: snapshot.Sidecar.Now}
+	node := CodexHarvestFlowStage{ID: "node", Status: "idle"}
 	switch {
 	case snapshot.Sidecar.Mode == "external":
 		node.Detail = "external_proxy"
 	case snapshot.Sidecar.Mode == "unconfigured":
 		node.Detail = "proxy_unconfigured"
-	case snapshot.Sidecar.Reachable && snapshot.Sidecar.Now != "":
-		node.Status = "ok"
-		node.Detail = snapshot.Sidecar.Now
-		node.At = snapshot.Sidecar.ObservedAt
-	case snapshot.Sidecar.Reachable && snapshot.Sidecar.AllCount > 0:
-		node.Status = "ok"
-		node.At = snapshot.Sidecar.ObservedAt
-		kind := snapshot.Sidecar.Type
-		if kind == "" {
-			kind = "LoadBalance"
-		}
-		node.Detail = fmt.Sprintf("%s · %d nodes", kind, snapshot.Sidecar.AllCount)
-	case snapshot.Sidecar.Error != "":
-		node.Status = "fail"
-		node.Detail = snapshot.Sidecar.Error
-	default:
-		node.Detail = "waiting for sidecar"
 	}
-	if event, ok := last["node"]; ok && snapshot.Sidecar.Mode != "external" && snapshot.Sidecar.Mode != "unconfigured" {
-		at := event.At
-		node.At = &at
-		copyFlowMetrics(&node, event)
-		if node.Detail == "" {
-			node.Detail = event.Node
-		}
-	}
-	// A directed probe uses its own listener, not CODEX-ROTATE's observed
-	// connection. Prefer the probe's confirmed attribution in the flow stage.
+	// Show the probe attribution when it is available.
 	if event, ok := last["probe"]; ok && event.Node != "" {
 		at := event.At
 		node.At, node.Node, node.Detail = &at, event.Node, event.Node

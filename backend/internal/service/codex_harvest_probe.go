@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"github.com/google/uuid"
 )
 
@@ -78,11 +77,7 @@ func bindCodexHarvestEgress(ticket *openAICodexTicket, attempt codexHarvestAttem
 		return
 	}
 	ticket.HarvestProxyURL = strings.TrimSpace(attempt.proxy)
-	if attempt.node.Provider == "managed" {
-		// Lane listeners are temporary leases; a stored ticket must reacquire
-		// its node through the manager before reusing the exit.
-		ticket.HarvestProxyURL = mihomo.Endpoint
-	}
+
 	ticket.HarvestNodeID = strings.TrimSpace(attempt.node.ID)
 	ticket.HarvestNodeName = strings.TrimSpace(attempt.node.Name)
 	ticket.HarvestNodeProvider = strings.TrimSpace(attempt.node.Provider)
@@ -97,11 +92,6 @@ func (s *OpenAIGatewayService) harvestAttemptSession(account *Account, model str
 }
 
 func (s *OpenAIGatewayService) executeCodexHarvestProbe(ctx context.Context, account *Account, token, model, proxy string, timeout time.Duration, reserve func() bool, sessionID string) (result codexHarvestProbeResult) {
-	release, err := mihomo.Lease(ctx, proxy)
-	if err != nil {
-		return codexHarvestProbeResult{Err: err, Kind: "network_error"}
-	}
-	defer func() { release(result.Kind == "success") }()
 	attempt, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if strings.TrimSpace(sessionID) == "" {

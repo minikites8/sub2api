@@ -2,14 +2,12 @@ package service
 
 import (
 	"context"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 )
 
 type codexHarvestRoundKey struct{}
@@ -39,11 +37,9 @@ func (r *codexHarvestRound) Take(limit int) bool {
 }
 
 type codexHarvestAttempt struct {
-	sidecar  *mihomo.DirectedSidecar
-	node     mihomo.HarvestNode
-	feedback CodexHarvestNodeFeedback
-	proxy    string
-	release  func()
+	node    HarvestNode
+	proxy   string
+	release func()
 }
 
 func (s *OpenAIGatewayService) harvestControls(ctx context.Context) (CodexHarvestControls, bool) {
@@ -124,83 +120,13 @@ func (s *OpenAIGatewayService) codexHarvestNeedsTicket(account *Account, model s
 	return ticket == nil || !ticket.Standby.valid(now, target) || ticket.Standby.needsRefresh(now, refresh)
 }
 
-func pinnedHarvestNode(nodes []mihomo.HarvestNode, ticket *openAICodexTicket, tried map[string]bool) (mihomo.HarvestNode, bool) {
-	if ticket == nil || strings.TrimSpace(ticket.HarvestNodeID) == "" {
-		return mihomo.HarvestNode{}, false
-	}
-	for _, node := range nodes {
-		if node.ID == ticket.HarvestNodeID && !tried[node.ID] {
-			return node, true
-		}
-	}
-	return mihomo.HarvestNode{}, false
-}
-
-func (s *OpenAIGatewayService) prepareHarvestAttempt(ctx context.Context, account *Account, model, proxy string, tried map[string]bool, controls CodexHarvestControls) (codexHarvestAttempt, bool) {
-	a := codexHarvestAttempt{proxy: proxy, release: func() {}}
+func (s *OpenAIGatewayService) prepareHarvestAttempt(_ context.Context, account *Account, model, proxy string, _ map[string]bool, _ CodexHarvestControls) (codexHarvestAttempt, bool) {
+	attempt := codexHarvestAttempt{proxy: proxy, release: func() {}}
 	pinned := s.lookupOpenAICodexTicket(account, model)
-	if pinned != nil && strings.TrimSpace(pinned.HarvestProxyURL) != "" && (!controls.NodeMemoryEnabled || s.codexHarvest == nil) {
-		a.proxy = pinned.HarvestProxyURL
+	if pinned != nil && pinned.HarvestNodeID == "" && pinned.HarvestNodeName == "" && strings.TrimSpace(pinned.HarvestProxyURL) != "" {
+		attempt.proxy = pinned.HarvestProxyURL
 	}
-	if !controls.NodeMemoryEnabled || s.codexHarvest == nil {
-		return a, true
-	}
-	learning := s.codexHarvest
-	sidecar, err := mihomo.LoadDirectedSidecar(os.Getenv("DATA_DIR"), proxy)
-	if err != nil {
-		if _, _, managed := mihomo.ManagedController(); managed && strings.TrimRight(proxy, "/") == mihomo.Endpoint {
-			learning.degrade(err.Error())
-			return a, false
-		}
-		if pinned != nil && strings.TrimSpace(pinned.HarvestProxyURL) != "" {
-			a.proxy = pinned.HarvestProxyURL
-		}
-		learning.degrade(err.Error())
-		return a, true
-	}
-	query, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	nodes, err := sidecar.Directory(query)
-	if err != nil {
-		learning.degrade(err.Error())
-		return a, false
-	}
-	scope := CodexHarvestNodeScope{PoolID: sidecar.PoolID, AccountID: account.ID, Identity: ticketIdentity(account), Model: model, Blocks: codexHarvestExpectedBlocks(account, s.openAICodexTicketConfig())}
-	generation, records, err := learning.nodes.Snapshot(query, scope)
-	if err != nil {
-		learning.degrade("node learning storage unavailable; using rotation")
-		return a, true
-	}
-	reason := "explore"
-	node, ok := pinnedHarvestNode(nodes, pinned, tried)
-	if ok {
-		reason = "ticket_sticky"
-	} else {
-		ranked := rankCodexHarvestNodes(nodes, records, tried, learning.explore.Add(1)-1, time.Now())
-		if len(ranked) == 0 {
-			learning.degrade("no untried eligible nodes; waiting for cooldown")
-			return a, false
-		}
-		node = ranked[0]
-		for _, r := range records {
-			if r.NodeID == node.ID && r.LastSuccess != nil && r.LastSuccess.After(time.Now().Add(-7*24*time.Hour)) {
-				reason = "recent_success"
-			}
-		}
-	}
-	tried[node.ID] = true
-	release, err := sidecar.Acquire(ctx, node)
-	if err != nil {
-		learning.degrade("directed selection unavailable")
-		return a, false
-	}
-	learning.setRuntime(func(r *CodexHarvestRuntime) {
-		r.CurrentNode = node.Name
-		r.SelectionReason = reason
-		r.DegradedReason = ""
-	})
-	return codexHarvestAttempt{sidecar: sidecar, node: node, proxy: sidecar.ProxyURL, release: release,
-		feedback: CodexHarvestNodeFeedback{Scope: scope, Node: node, Generation: generation}}, true
+	return attempt, true
 }
 
 func (s *OpenAIGatewayService) waitHarvestPace(ctx context.Context, _ CodexHarvestControls, configured bool) bool {
@@ -255,22 +181,6 @@ func (s *OpenAIGatewayService) reserveHarvestRequest(ctx context.Context, accoun
 	return true
 }
 
-func (s *OpenAIGatewayService) finishHarvestAttempt(ctx context.Context, attempt codexHarvestAttempt, result codexHarvestProbeResult, elapsed time.Duration, controls CodexHarvestControls) {
-	defer attempt.release()
-	if attempt.sidecar == nil || s.codexHarvest == nil || !result.Sent || result.Kind == "cancelled" {
-		return
-	}
-	query, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	if err := attempt.sidecar.Confirm(query, attempt.node); err != nil {
-		s.codexHarvest.degrade("node attribution changed; learning skipped")
-		return
-	}
-	feedback := attempt.feedback
-	feedback.Result = result.Kind
-	feedback.LatencyMS = elapsed.Milliseconds()
-	feedback.CooldownSeconds = controls.Speed.CooldownSeconds
-	if _, err := s.codexHarvest.nodes.Record(query, feedback); err != nil {
-		s.codexHarvest.degrade("learning feedback failed; ticket remains usable")
-	}
+func (s *OpenAIGatewayService) finishHarvestAttempt(_ context.Context, attempt codexHarvestAttempt, _ codexHarvestProbeResult, _ time.Duration, _ CodexHarvestControls) {
+	attempt.release()
 }

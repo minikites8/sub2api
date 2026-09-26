@@ -4,9 +4,13 @@ import (
 	"context"
 	"sort"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 )
+
+type HarvestNode struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+}
 
 type CodexHarvestNodeScope struct {
 	PoolID    string `json:"pool_id"`
@@ -41,7 +45,7 @@ type CodexHarvestNodePage struct {
 
 type CodexHarvestNodeFeedback struct {
 	Scope           CodexHarvestNodeScope
-	Node            mihomo.HarvestNode
+	Node            HarvestNode
 	Generation      int64
 	Result          string
 	LatencyMS       int64
@@ -57,12 +61,12 @@ type CodexHarvestNodeRepository interface {
 
 // Ranking is scoped to an account identity, model and ticket shape. Kernel IDs
 // are intentionally excluded from persistent ranking because they are random.
-func rankCodexHarvestNodes(nodes []mihomo.HarvestNode, records []CodexHarvestNodeRecord, tried map[string]bool, cursor uint64, now time.Time) []mihomo.HarvestNode {
+func rankCodexHarvestNodes(nodes []HarvestNode, records []CodexHarvestNodeRecord, tried map[string]bool, cursor uint64, now time.Time) []HarvestNode {
 	stats := make(map[string]CodexHarvestNodeRecord, len(records))
 	for _, r := range records {
 		stats[r.NodeID] = r
 	}
-	eligible := make([]mihomo.HarvestNode, 0, len(nodes))
+	eligible := make([]HarvestNode, 0, len(nodes))
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 	for i := range nodes {
 		n := nodes[(i+int(cursor%uint64(len(nodes))))%len(nodes)]

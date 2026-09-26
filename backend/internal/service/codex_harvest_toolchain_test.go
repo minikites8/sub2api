@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,8 +83,8 @@ func TestCodex780GatewayHostsAndAnyKeepActualRoute(t *testing.T) {
 	require.Equal(t, "success", r.Kind)
 	require.Equal(t, "unified-123", r.Gateway)
 	ticket := codexHarvestTicket(account, "gpt-6-astra", r, svc.openAICodexTicketConfig(), 1)
-	bindCodexHarvestEgress(ticket, codexHarvestAttempt{proxy: "http://127.0.0.1:17893", node: mihomo.HarvestNode{ID: "node-1", Name: "dynamic-1", Provider: "managed"}}, "session")
-	require.Equal(t, mihomo.Endpoint, ticket.HarvestProxyURL)
+	bindCodexHarvestEgress(ticket, codexHarvestAttempt{proxy: "http://127.0.0.1:17893", node: HarvestNode{ID: "node-1", Name: "dynamic-1", Provider: "external"}}, "session")
+	require.Equal(t, "http://127.0.0.1:17893", ticket.HarvestProxyURL)
 	svc.openaiCodexTickets.Store(openAICodexTicketKey(1, "gpt-6-astra"), ticket)
 	require.NotNil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
 	svc.codexHarvest.current.TargetGateway = "unified-95"

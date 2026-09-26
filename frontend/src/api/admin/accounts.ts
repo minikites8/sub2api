@@ -1192,7 +1192,7 @@ export interface CodexHarvestFlowSnapshot {
     harvest_proxy?: string
   }
   sidecar: {
-    mode?: 'mihomo' | 'external' | 'unconfigured'
+    mode?: 'external' | 'unconfigured'
     reachable: boolean
     source?: string
     controller?: string

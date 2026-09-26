@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -39,7 +38,7 @@ func TestHarvestPostgresPersistenceAndReset(t *testing.T) {
 	generation, records, err := repo.Snapshot(ctx, scope)
 	require.NoError(t, err)
 	require.Empty(t, records)
-	feedback := service.CodexHarvestNodeFeedback{Scope: scope, Node: mihomo.HarvestNode{ID: "node", Name: "Fixture", Provider: "airport"}, Generation: generation, Result: "success", LatencyMS: 120, CooldownSeconds: 180}
+	feedback := service.CodexHarvestNodeFeedback{Scope: scope, Node: service.HarvestNode{ID: "node", Name: "Fixture", Provider: "airport"}, Generation: generation, Result: "success", LatencyMS: 120, CooldownSeconds: 180}
 	stored, err := repo.Record(ctx, feedback)
 	require.NoError(t, err)
 	require.True(t, stored)

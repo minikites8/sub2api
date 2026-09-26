@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -272,28 +270,6 @@ func (s *OpenAIGatewayService) stickBoundCodexTicketRequest(req *http.Request, a
 	return req
 }
 
-func (s *OpenAIGatewayService) loadCodexTicketDirectedSidecar(ctx context.Context, proxyURL string) (*mihomo.DirectedSidecar, error) {
-	dataDir := os.Getenv("DATA_DIR")
-	seen := map[string]bool{}
-	var last error
-	for _, candidate := range []string{proxyURL, s.openAICodexTicketHarvestProxyURLContext(ctx)} {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" || seen[candidate] {
-			continue
-		}
-		seen[candidate] = true
-		sidecar, err := mihomo.LoadDirectedSidecar(dataDir, candidate)
-		if err == nil {
-			return sidecar, nil
-		}
-		last = err
-	}
-	if last != nil {
-		return nil, last
-	}
-	return nil, ErrOpenAICodexTicketUnavailable
-}
-
 func (s *OpenAIGatewayService) codexTicketPinsEgress(req *http.Request, account *Account) bool {
 	if req == nil {
 		return false
@@ -334,33 +310,14 @@ func (s *OpenAIGatewayService) pinCodexTicketEgressFromHeader(ctx context.Contex
 	if pinned == "" {
 		pinned = s.openAICodexTicketHarvestProxyURLContext(ctx)
 	}
+	// Legacy node-bound tickets require their original exit; fail closed.
+	if strings.TrimSpace(ticket.HarvestNodeID) != "" || strings.TrimSpace(ticket.HarvestNodeName) != "" {
+		return "", noop, ErrOpenAICodexTicketUnavailable
+	}
 	if pinned == "" {
 		return proxyURL, noop, nil
 	}
-	if strings.TrimSpace(ticket.HarvestNodeID) == "" && strings.TrimSpace(ticket.HarvestNodeName) == "" {
-		return pinned, noop, nil
-	}
-	if ticket.HarvestNodeProvider == "managed" {
-		proxy, release, err := mihomo.PinNode(ctx, ticket.HarvestNodeID)
-		if err != nil {
-			return "", noop, ErrOpenAICodexTicketUnavailable
-		}
-		return proxy, release, nil
-	}
-	sidecar, err := s.loadCodexTicketDirectedSidecar(ctx, pinned)
-	if err != nil {
-		return "", noop, ErrOpenAICodexTicketUnavailable
-	}
-	node, ok := sidecar.Lookup(ctx, ticket.HarvestNodeID, ticket.HarvestNodeName)
-	if !ok {
-		return "", noop, ErrOpenAICodexTicketUnavailable
-	}
-	release, err := sidecar.Acquire(ctx, node)
-	if err != nil {
-		return "", noop, ErrOpenAICodexTicketUnavailable
-	}
-	recordCodexHarvestNode(node.Name, "Selector", 0)
-	return sidecar.ProxyURL, release, nil
+	return pinned, noop, nil
 }
 
 func attachCodexTicketEgressRelease(resp *http.Response, err error, release func()) (*http.Response, error) {

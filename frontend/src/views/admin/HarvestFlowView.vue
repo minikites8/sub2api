@@ -87,17 +87,8 @@
               {{ t('admin.harvestFlow.externalProxy') }}
             </p>
             <p v-else-if="snapshot.sidecar.mode === 'unconfigured'" class="mt-1 text-sm text-gray-500">{{ t('admin.harvestFlow.proxyUnconfigured') }}</p>
-            <p v-else class="mt-1 text-sm font-semibold" :class="snapshot.sidecar.reachable ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
-              {{ snapshot.sidecar.reachable ? t('admin.harvestFlow.sidecarReachable') : t('admin.harvestFlow.sidecarOffline') }}
-            </p>
+
             <p v-if="snapshot.sidecar.mode === 'external'" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.harvestFlow.externalProxyHint') }}</p>
-            <template v-else-if="snapshot.sidecar.mode !== 'unconfigured'">
-              <p class="mt-2 break-all font-mono text-xs text-gray-500 dark:text-gray-400">
-                {{ snapshot.sidecar.now || (snapshot.sidecar.reachable ? t('admin.harvestFlow.poolOnline', { n: snapshot.sidecar.all_count || 0 }) : t('admin.harvestFlow.waitingSidecar')) }}
-              </p>
-              <p class="mt-1 text-xs text-gray-400">{{ t('admin.harvestFlow.nodePool') }} {{ snapshot.sidecar.all_count || 0 }} · {{ snapshot.sidecar.group || 'CODEX-ROTATE' }}</p>
-              <p v-if="snapshot.sidecar.error" class="mt-1 text-xs text-rose-500">{{ snapshot.sidecar.error }}</p>
-            </template>
           </div>
           <div class="card p-4">
             <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.harvestFlow.ready') }}</p>
@@ -379,13 +370,7 @@ function stageDetail(stage: CodexHarvestFlowStage) {
   switch (stage.id) {
     case 'node':
       if (snapshot.value?.sidecar.mode === 'external') return t('admin.harvestFlow.externalProxyHint')
-      if (snapshot.value?.sidecar.mode === 'unconfigured') return t('admin.harvestFlow.proxyUnconfigured')
-      if (stage.node) return stage.node
-      if (snapshot.value?.sidecar.now) return snapshot.value.sidecar.now
-      if (snapshot.value?.sidecar.reachable) {
-        return t('admin.harvestFlow.poolOnline', { n: snapshot.value.sidecar.all_count || 0 })
-      }
-      return t('admin.harvestFlow.waitingSidecar')
+      return t('admin.harvestFlow.proxyUnconfigured')
     case 'probe':
       if (stage.status === 'idle') return t('admin.harvestFlow.idleProbe')
       return resultLabel(stage.detail) || stage.node || stage.detail || t('admin.harvestFlow.idleProbe')
