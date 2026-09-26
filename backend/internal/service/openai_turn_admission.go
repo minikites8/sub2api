@@ -334,7 +334,11 @@ func (s *OpenAIGatewayService) admitOpenAITurnWithGroup(
 		return latest, nil
 	}
 	if openAITurnRouteFingerprint(latest) != openAITurnRouteFingerprint(selected) {
-		return nil, denyOpenAITurn("account_binding_changed")
+		if fallbackAccount, ok := accountForExcelBPSFallbackAdmission(ctx, selected, latest); ok {
+			latest = fallbackAccount
+		} else {
+			return nil, denyOpenAITurn("account_binding_changed")
+		}
 	}
 	if s.getOpenAIAccountModelTransientState().isBlocked(latest.ID, openAIAccountModelTransientModel(outboundModel), time.Now()) {
 		return nil, denyOpenAITurn("model_runtime_blocked")

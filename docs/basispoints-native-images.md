@@ -29,3 +29,9 @@ The conversion activates inside the existing Basispoints route. It uses the nati
 Tests use synthetic PNGs, recorded HTTP requests and miniredis. They cover multipart fields, account proxy/authentication, streaming and non-streaming forwarding, history/tool images, stable replay metadata, source immutability, escaped JSON types, preserved HTTPS/file IDs, file-ID response variants, invalid and oversized inputs, error redaction, concurrent deduplication, account isolation, absolute expiry and process-restart cache reuse.
 
 Reference implementation reviewed: Nonary/ghcp_proxy commit `dfb758b181e5caa6c52183ef957232140c384dcb`, `proxy.py` attachment materialization path. A live selected-account upload remains an operational deployment check.
+
+## Model availability fallback
+
+When Excel/BPS rejects the requested model before producing client-visible output, the gateway replays the original canonical request once through the ordinary upstream for the same account. The fallback preserves the request model, tools and inline image references; BPS-only attachment IDs remain local to the BPS attempt. The account's Excel/BPS setting stays enabled for later requests.
+
+The fallback covers explicit model-access and model-availability errors from HTTP 400/403/404/422 responses and initial streamed `response.failed` or `error` events. Authentication, quota, malformed-input, transport and already-committed stream failures retain their existing handling. Ops history records the BPS rejection and the final upstream attribution points to the ordinary endpoint.

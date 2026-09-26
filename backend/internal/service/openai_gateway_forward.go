@@ -78,7 +78,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if account.IsExcelBPSEnabled() {
-		return s.forwardExcelBPS(ctx, c, account, body, startTime)
+		bpsResult, bpsErr := s.forwardExcelBPS(ctx, c, account, body, startTime)
+		if !errors.Is(bpsErr, errExcelBPSModelUnavailable) {
+			return bpsResult, bpsErr
+		}
+		// Continue once with the original canonical request. BPS adaptation and
+		// attachment IDs belong exclusively to the completed BPS attempt.
+		account = accountForExcelBPSFallback(account)
+		ctx = withExcelBPSFallbackContext(ctx)
+		resetExcelBPSFallbackContext(c)
+		if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
+			return nil, err
+		}
 	}
 
 	// The SDK adapter owns Lite declarations, custom tools, replay item IDs,

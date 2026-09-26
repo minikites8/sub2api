@@ -166,6 +166,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			UpstreamURL: basispoints.ResponsesURL, Kind: "http_error",
 			Message: upstreamMessage, Detail: upstreamDetail, UpstreamResponseBody: upstreamDetail,
 		})
+		if excelBPSModelUnavailable(resp.StatusCode, raw) && excelBPSCanFallback(c) {
+			return nil, errExcelBPSModelUnavailable
+		}
 		code := gjson.GetBytes(raw, "error.code").String()
 		if code == "basispoints_model_access_changed" {
 			return fail(resp.StatusCode, code, "This model is not available on the account's Excel BPS endpoint")
@@ -192,11 +195,27 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	var completed []byte
 	terminal := ""
+	var pendingEventLine string
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
 		line := scanner.Text()
+		// Hold the SSE event prefix until its payload can be classified, so an
+		// initial model rejection can switch protocols before client output.
+		if stream && strings.HasPrefix(line, "event:") {
+			pendingEventLine = line
+			continue
+		}
 		if strings.HasPrefix(line, "data: ") {
 			payload := []byte(strings.TrimPrefix(line, "data: "))
 			kind := gjson.GetBytes(payload, "type").String()
+			if (kind == "response.failed" || kind == "error") && result.FirstTokenMs == nil && excelBPSCanFallback(c) && excelBPSModelUnavailable(http.StatusOK, payload) {
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+					ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
+					UpstreamStatusCode: resp.StatusCode, UpstreamRequestID: resp.Header.Get("x-request-id"),
+					UpstreamURL: basispoints.ResponsesURL, Kind: "model_fallback", Message: "Excel BPS rejected the requested model",
+				})
+				return nil, errExcelBPSModelUnavailable
+			}
 			s.parseSSEUsageBytes(payload, &result.Usage)
 			if result.FirstTokenMs == nil && (kind == "response.output_text.delta" || kind == "response.output_item.added") {
 				ms := int(time.Since(start).Milliseconds())
@@ -211,6 +230,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 		}
 		if stream {
+			if pendingEventLine != "" {
+				if _, err = c.Writer.WriteString(pendingEventLine + "\n"); err != nil {
+					result.ClientDisconnect = true
+					result.Duration = time.Since(start)
+					return result, err
+				}
+				pendingEventLine = ""
+			}
 			if _, err = c.Writer.WriteString(line + "\n"); err != nil {
 				result.ClientDisconnect = true
 				result.Duration = time.Since(start)
