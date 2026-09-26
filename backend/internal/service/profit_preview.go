@@ -160,7 +160,7 @@ func PreviewProfitAdmission(inputs []ProfitPreviewGroupInput, evalAt time.Time) 
 			verdict.ClassesByModel = make(map[string]string, len(in.Models))
 			verdict.RejectedUnderMinDByModel = make(map[string]bool, len(in.Models))
 			for _, model := range in.Models {
-				if !account.IsModelSupported(model) {
+				if !account.IsModelSupportedInGroup(&group.ID, model) {
 					continue
 				}
 				verdict.SupportedModels = append(verdict.SupportedModels, model)

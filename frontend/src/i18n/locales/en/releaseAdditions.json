@@ -1,0 +1,343 @@
+{
+  "requestTiming": {
+    "title": "Request timing details",
+    "loading": "Loading timing details…",
+    "loadError": "Unable to load timing details",
+    "retry": "Retry",
+    "empty": "No detailed trace is available. Historical records, unsupported protocols, expired traces and failed writes cannot be reconstructed. Retry shortly for a newly created record.",
+    "traceSelection": "Actual requests linked to this billed record (latest 20)",
+    "scope": "Timings cover the request as observed by Sub2API, not the full public network path. First output is measured during event parsing; flush does not prove client receipt. Read rate is not client bandwidth.",
+    "truncated": "Collection limit reached; some spans were not retained.",
+    "timeline": "Processing timeline",
+    "overlap": "Offsets start at request entry. Parent/child spans and reads/writes can overlap and must not be added. Gaps have no detailed instrumentation.",
+    "attempt": "Upstream attempt",
+    "account": "Account",
+    "proxy": "Proxy",
+    "direct": "Direct / unspecified proxy",
+    "retention": "Details retained for {days} days",
+    "missing": "Not collected",
+    "yes": "Yes",
+    "no": "No",
+    "legacyFirst": "Original TTFT (forwarding scope)",
+    "legacyTotal": "Original duration (forwarding scope)",
+    "requestTotal": "Full request duration",
+    "inbound": "Client → Sub2API",
+    "internal": "Inside Sub2API",
+    "result": "Result and response forwarding",
+    "completed": "Completion event",
+    "failed": "Failure event",
+    "incomplete": "Incomplete event",
+    "canceled": "Canceled",
+    "timeout": "Timeout",
+    "transport_error": "Transport error",
+    "fields": {
+      "first_semantic": "First semantic event from request start",
+      "first_visible": "First visible output from request start",
+      "first_output_flush": "First output flush (application)",
+      "body_read_start": "First read offset",
+      "body_first_wait": "Wait for first body bytes",
+      "body_receive": "Body receive interval",
+      "body_read_ms": "Time in body reads",
+      "body_bytes": "Inbound body size",
+      "body_rate": "Application read rate",
+      "body_complete": "Inbound body complete",
+      "api_key_auth": "API key authentication and admission",
+      "model_allowlist": "Model allowlist (includes pre-read)",
+      "composite_routing": "Composite routing (includes pre-read)",
+      "handler_body_read": "Handler body read",
+      "security_audit": "Security audit",
+      "billing_check": "Billing eligibility",
+      "user_queue": "User concurrency wait",
+      "account_selection": "Account selection (includes slot probe)",
+      "account_queue": "Account admission and wait",
+      "upstream_credentials": "Upstream credentials",
+      "build_upstream_request": "Build upstream request",
+      "handler": "Handler duration",
+      "forward_attempt": "Account forwarding attempt",
+      "status": "Status",
+      "attempts": "Upstream egress attempts",
+      "terminal": "Stream terminal event",
+      "canceled": "Request context canceled",
+      "downstream_error": "Downstream write error",
+      "downstream_bytes": "Downstream bytes written",
+      "downstream_write_ms": "Time in downstream writes/flushes",
+      "ttft_mode": "TTFT mode",
+      "attempt_total": "Attempt duration",
+      "reused": "Connection reused",
+      "connection": "Connection acquisition (pool/proxy)",
+      "request_write": "Connection ready to request written",
+      "wait_first_byte": "Request written to first upstream byte",
+      "response_headers": "Headers ready (from attempt start)",
+      "stream_transfer": "Read/forward after response headers",
+      "request_bytes": "Outbound Content-Length",
+      "response_bytes": "Upstream bytes read",
+      "body_eof": "Upstream EOF observed",
+      "outcome": "Forward outcome",
+      "client_disconnect": "Client disconnect detected",
+      "transport_result": "Transport completion"
+    },
+    "httpAttempt": "Physical HTTP attempt",
+    "parent": "Parent egress",
+    "success": "Forward succeeded",
+    "client_disconnected": "Client disconnected",
+    "tpsNote": "TPS is estimated from the usage record. Reasoning tokens, upstream buffering or a short post-first-token window may inflate it; it is not a direct measurement of model generation speed.",
+    "health": {
+      "good": "Normal",
+      "warn": "Watch",
+      "slow": "Slow",
+      "critical": "Very slow / error",
+      "neutral": "Informational",
+      "guideTitle": "How did this request perform?",
+      "thresholdTitle": "How to read the colors",
+      "thresholds": "Diagnostic reference bands, not an SLA. First output/upstream wait: green <10s, yellow 10–30s, orange 30–60s, red ≥60s. Total duration: green <60s, yellow 60–180s, orange 180–300s, red ≥300s. Local/connection stages: green <200ms, yellow 200–1000ms, orange 1–5s, red ≥5s. Long outputs and large bodies naturally take longer. Streaming duration, sizes, read rates and missing values are informational. New connections and missing EOF do not by themselves indicate failure.",
+      "largest": "Longest observed local stage: {stage}, {time}. Stages may overlap; this does not establish a root cause.",
+      "failed": "A request or downstream write failed. Check the result and upstream attempts below.",
+      "interrupted": "The request was canceled, disconnected or incomplete. Check the result below.",
+      "insufficient": "First-output data is missing; response speed cannot be assessed.",
+      "firstGood": "Output began after about {time}, within the reference normal range.",
+      "firstSlow": "Output began after about {time}, a longer wait. Compare body reads, queueing and upstream waits below.",
+      "normalClose": "Closed normally after completion",
+      "legacyCancel": "Canceled (legacy data lacks cleanup cause)",
+      "noTransportError": "No transport error recorded",
+      "attemptGuide": "Egress #1 and physical HTTP #1.1 are layers of the same request, not a retry. HTTP status and transport completion are separate. Legacy cancellation may be caused by closing after completion and does not alone establish failure.",
+      "readTooBrief": "Read <1ms; rate not estimated"
+    }
+  },
+  "nav": {
+    "modelPlaza": "Model Plaza",
+    "pelicanShowcase": "Pelican Showcase"
+  },
+  "modelPlaza": {
+    "title": "Model Plaza",
+    "description": "Browse available models and pricing by group",
+    "loading": "Loading...",
+    "empty": "No groups to display",
+    "loadFailed": "Failed to load model plaza",
+    "noSearchResult": "No matching models",
+    "anonymousHint": "Sign in to see your exclusive groups and personal rates",
+    "filters": {
+      "platformLabel": "Platform",
+      "groupLabel": "Group",
+      "rateLabel": "Rate",
+      "modelLabel": "Model",
+      "searchPlaceholder": "Search models",
+      "all": "All"
+    },
+    "badges": {
+      "exclusive": "Exclusive",
+      "subscription": "Subscription"
+    },
+    "detail": {
+      "noModels": "No models configured for this group",
+      "noPricing": "Pricing not configured",
+      "peakNote": "Peak hours {window}: billing rate ×{multiplier}",
+      "longContextDisabledNote": "Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only"
+    },
+    "table": {
+      "model": "Model",
+      "input": "Input",
+      "output": "Output",
+      "cache": "Cache",
+      "cacheWrite": "Write",
+      "cacheRead": "Read",
+      "cacheWriteShort": "W",
+      "cacheReadShort": "R",
+      "tierHint": "The whole request is billed at the tier matching its total context (input + cache write + cache read)",
+      "tierHintMarginal": "Only the portion above the threshold is billed at this tier; output is unaffected",
+      "reasoningMultiplierBadge": "{effort} ×{multiplier}",
+      "reasoningMultiplierHint": "When the forwarded reasoning effort is {effort}, billing and quota usage for the request are multiplied by {multiplier}. Unconfigured levels use 1×",
+      "marginalBadge": "excess-only tiers",
+      "timePricingRowHint": "Requests made within this period ({timezone} time) are billed at the prices in this row",
+      "timePricingRowHintWeekdays": "On weekdays (Mon–Fri) only, requests made within this period ({timezone} time) are billed at the prices in this row; weekends use the standard prices",
+      "timePricingRowHintPeak": "; prices in this row exclude the peak-hour rate — where this period overlaps the peak hours {window}, the overlapping portion is additionally multiplied by ×{multiplier}",
+      "timePricingWeekdays": "Weekdays",
+      "timePricingRateHint": "Effective rate {rate} × period multiplier {multiplier}",
+      "paidPrice": "Your Price (Discounted)",
+      "officialPrice": "Official Price",
+      "rate": "Rate",
+      "unitPerMillion": "$ / 1M tokens",
+      "perUnitRequest": "/ request",
+      "perUnitImage": "/ image",
+      "perRequest": "Per request",
+      "perImage": "Per image"
+    },
+    "nav": {
+      "login": "Sign In",
+      "backToDashboard": "Back to Console"
+    }
+  },
+  "admin": {
+    "users": {
+      "bulkDelete": {
+        "action": "Delete selected ({count})",
+        "title": "Delete selected users",
+        "confirm": "Delete the {count} selected users? This action cannot be undone. Administrator accounts cannot be deleted.",
+        "success": "Deleted {count} users",
+        "failed": "Failed to delete {count} users. They remain selected for retry."
+      }
+    },
+    "groups": {
+      "openaiFast": {
+        "title": "OpenAI Fast mode",
+        "force": "Force Fast (priority)",
+        "hint": "Forces service_tier=priority on OpenAI requests in this group. The global Fast/Flex policy can still filter or block it. New requests update immediately after saving; existing WebSocket sessions must reconnect.",
+        "free": "Free Fast",
+        "freeHint": "Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price."
+      }
+    },
+    "accounts": {
+      "openai": {
+        "codexTurnTicket": "Codex 780 ticket",
+        "codexTurnTicketDesc": "Ticket status for the configured models. Requests are paused without a valid ticket only when fail-closed is enabled.",
+        "ticketProbeNext": "Next allowed probe: ",
+        "ticketStandbyExpires": "Standby expires: ",
+        "ticketProbe": {
+          "success": "Harvest succeeded",
+          "token_error": "Account token unavailable",
+          "response_incomplete_or_error": "Upstream failed or did not complete",
+          "invalid_state": "Invalid ticket shape or expiry"
+        },
+        "codexTurnTicketMissing": "No valid ticket; requests remain allowed",
+        "codexTurnTicketReady": "{time} left",
+        "codexTurnTicketPaused": "No 780 ticket; this model is paused"
+      },
+      "usageWindow": {
+        "estimatedTotalCost": "Est. total ${cost}",
+        "estimatedTotalCostTooltip": "Estimated total cost at 100% utilization, based on current window cost and utilization"
+      },
+      "openaiReferral": {
+        "available": "Invites left",
+        "invite": "Invite user",
+        "fromAccount": "Inviting account:",
+        "personal": "Invite a friend",
+        "workspace": "Invite a coworker",
+        "email": "Recipient email",
+        "consent": "I have this person’s consent to send them an invitation.",
+        "send": "Send invitation",
+        "sending": "Sending…",
+        "sent": "Invitation sent to {email}",
+        "queryHint": "Click to query remaining invitations",
+        "checkedAt": "Checked: {time}. Click to refresh.",
+        "unavailable": "Invitations are unavailable. Eligibility requirements may not be met, or the limit has been reached.",
+        "invalidEmail": "Enter one valid email address.",
+        "rejected": "The invitation was rejected. Check the email and offer eligibility.",
+        "alreadyInvited": "An invitation already exists for this email. Check its status in Codex.",
+        "rateLimited": "The invitation rate or capacity limit has been reached. Try again later.",
+        "sendUnknown": "The invitation outcome is unknown. Check its status in Codex before deciding whether to retry.",
+        "programChanged": "The account’s referral program changed. Refresh eligibility before sending.",
+        "consentRequired": "Confirm that you have the recipient’s consent first.",
+        "shadowHint": "Send invitations from the parent account.",
+        "cacheFailed": "Live capacity was fetched, but the cache could not be saved. Query again.",
+        "refreshFailed": "The invitation was sent, but remaining capacity could not be refreshed. Query again."
+      },
+      "add": "Add",
+      "accountCreatedSuccess": "Account added successfully",
+      "accountDeletedSuccess": "Account deleted",
+      "accountUpdatedSuccess": "Account updated",
+      "cookieRefreshedSuccess": "Cookie refreshed",
+      "deleteConfirmMessage": "Delete this account?",
+      "failedToSave": "Failed to save account",
+      "noAccounts": "No accounts",
+      "noAccountsDescription": "Add an AI platform account to start using the API gateway",
+      "refreshCookie": "Refresh Cookie",
+      "refreshing": "Refreshing...",
+      "saving": "Saving...",
+      "testAccount": "Test account",
+      "testSuccess": "Connection test succeeded",
+      "filters": {
+        "allPlatforms": "All platforms",
+        "allStatuses": "All statuses",
+        "allTypes": "All types",
+        "platform": "Platform",
+        "status": "Status",
+        "type": "Type"
+      },
+      "form": {
+        "credentialsLabel": "Credentials",
+        "credentialsPlaceholder": "Enter credentials",
+        "nameLabel": "Name",
+        "namePlaceholder": "Account name",
+        "platformLabel": "Platform",
+        "priorityHint": "Higher priority accounts are selected first",
+        "priorityLabel": "Priority",
+        "selectPlatform": "Select platform",
+        "selectType": "Select account type",
+        "statusLabel": "Status",
+        "typeLabel": "Type",
+        "weightHint": "Relative scheduling weight",
+        "weightLabel": "Weight"
+      },
+      "types": {
+        "api_key": "API key",
+        "cookie": "Cookie"
+      }
+    },
+    "settings": {
+      "features": {
+        "pelicanShowcase": {
+          "title": "Pelican Showcase",
+          "description": "Show users the HTML results of scheduled Pelican tests so they can see the model quality of each group. Disabled by default.",
+          "configureLink": "Go to Accounts and add plans from an account's action menu: Pelican Test > Scheduled tests",
+          "enabled": "Enable Pelican Showcase",
+          "enabledHint": "Adds a \"Pelican Showcase\" page to the user sidebar. When off, the page is hidden and no new results are collected; kept results are still cleaned up by the rules below.",
+          "groups": "Showcased groups",
+          "groupsHint": "Shows scheduled Pelican results of accounts in these groups. Only successful HTML is collected and account names are never shown. Results of a removed group are cleaned up within a minute.",
+          "noGroups": "No groups selected, so the user page will be empty.",
+          "staleGroups": "These selected groups were deleted or disabled and are not shown to users:",
+          "removeStaleGroup": "Remove",
+          "staleGroupLabel": "Unavailable group #{id}",
+          "groupsLoadFailed": "Could not load groups. The saved selection is kept; refresh to retry.",
+          "maxItems": "Keep per group",
+          "maxItemsUnit": "items",
+          "maxItemsHint": "1–100. The oldest result of a group is removed once the limit is exceeded.",
+          "autoCleanup": "Auto cleanup",
+          "autoCleanupHint": "Remove results older than the retention period. When off, only the count limit applies.",
+          "retentionDays": "Retention",
+          "retentionDaysUnit": "days",
+          "retentionDaysHint": "1–90 days",
+          "independentNote": "Showcased results are separate copies. They are not affected by the test history limits (keep N results, remove after 7 days) and stay visible after a test plan is deleted, until cleaned up by the rules here."
+        },
+        "siteBillingMode": {
+          "title": "Site Billing Mode",
+          "description": "Controls which purchase options users see. Defaults to \"Recharge & Subscription\".",
+          "label": "Purchase options",
+          "options": {
+            "rechargeAndSubscription": "Recharge & Subscription",
+            "rechargeOnly": "Recharge only",
+            "subscriptionOnly": "Subscription only"
+          },
+          "hints": {
+            "rechargeAndSubscription": "Users can both top up their balance and buy subscription plans.",
+            "rechargeOnly": "Hides \"My Subscriptions\", the purchase-page subscription tab, the header subscription badge and the usage billing-type filter; direct visits to \"My Subscriptions\" return to the dashboard. The admin sidebar also hides the \"Subscription Management\" entry (the page stays reachable by URL). Existing subscription billing and redeem-code subscriptions are unaffected.",
+            "subscriptionOnly": "The purchase page only offers subscription plans and the sidebar entry reads \"Subscription\"; balance top-up orders are rejected. Redeem codes, affiliate payouts and other balance credits are unaffected."
+          }
+        },
+        "modelPlaza": {
+          "title": "Model Plaza",
+          "description": "A public page showcasing available models and pricing by group. Disabled by default.",
+          "enabled": "Enable Model Plaza",
+          "enabledHint": "When enabled, an entry appears in the header and the page is reachable at /model-plaza.",
+          "requireAuth": "Require sign-in to access",
+          "requireAuthHint": "When on, anonymous visitors are redirected to the login page; when off, the page is public and anonymous visitors only see non-exclusive groups.",
+          "priceDescription": "Pricing notes (Markdown)",
+          "priceDescriptionHint": "Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc."
+        },
+        "pluginManagement": {
+          "title": "Plugin Management",
+          "description": "Controls whether the plugin management entry appears in the admin sidebar. This switch does not control plugin runtime state.",
+          "enabled": "Show Plugin Management",
+          "enabledHint": "Turning this off only hides the sidebar entry; loaded or running plugins are not stopped."
+        }
+      }
+    },
+    "backup": {
+      "actions": {
+        "delete": "Delete"
+      }
+    }
+  },
+  "common": {
+    "retry": "Retry",
+    "unlimited": "Unlimited"
+  }
+}

@@ -103,10 +103,10 @@ export async function getById(id: number): Promise<AdminGroup> {
 }
 
 /**
- * Get candidate models for custom /v1/models list.
+ * Get candidate models for the group model allowlist.
  * id=0 returns platform default models for create flow.
  */
-export async function getModelsListCandidates(
+export async function getModelAllowlistCandidates(
   id: number,
   platform?: GroupPlatform
 ): Promise<string[]> {
@@ -345,6 +345,7 @@ export interface GroupRateMultiplierEntry {
   user_status: string
   rate_multiplier?: number | null
   rpm_override?: number | null
+  denied_models?: string[] | null
 }
 
 /**
@@ -452,6 +453,56 @@ export async function clearGroupRPMOverrides(id: number): Promise<{ message: str
   return data
 }
 
+export interface GroupUserDeniedModelsEntry {
+  user_id: number
+  user_name: string
+  user_email: string
+  user_notes: string
+  user_status: string
+  denied_models: string[]
+}
+
+/**
+ * Get the models each user may not use in a group (subset of rate-multipliers endpoint).
+ */
+export async function getGroupUserDeniedModels(id: number): Promise<GroupUserDeniedModelsEntry[]> {
+  const { data } = await apiClient.get<GroupRateMultiplierEntry[]>(
+    `/admin/groups/${id}/rate-multipliers`
+  )
+  return data
+    .filter(e => (e.denied_models?.length ?? 0) > 0)
+    .map(e => ({
+      user_id: e.user_id,
+      user_name: e.user_name,
+      user_email: e.user_email,
+      user_notes: e.user_notes,
+      user_status: e.user_status,
+      denied_models: [...(e.denied_models ?? [])]
+    }))
+}
+
+/**
+ * Replace the per-user denied models of a group; users not listed become unrestricted.
+ */
+export async function batchSetGroupUserDeniedModels(
+  id: number,
+  entries: Array<{ user_id: number; denied_models: string[] }>
+): Promise<{ message: string }> {
+  const { data } = await apiClient.put<{ message: string }>(
+    `/admin/groups/${id}/user-denied-models`,
+    { entries }
+  )
+  return data
+}
+
+/**
+ * Clear the denied models of every user in a group.
+ */
+export async function clearGroupUserDeniedModels(id: number): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(`/admin/groups/${id}/user-denied-models`)
+  return data
+}
+
 /**
  * Get usage summary (today + yesterday + cumulative cost) for all groups
  * @returns Array of group usage summaries
@@ -484,7 +535,8 @@ export const groupsAPI = {
   getAllIncludingInactive,
   getLiveCapability,
   getById,
-  getModelsListCandidates,
+  getModelAllowlistCandidates,
+  getModelsListCandidates: getModelAllowlistCandidates,
   getEffectiveModels,
   create,
   duplicate,
@@ -504,6 +556,9 @@ export const groupsAPI = {
   getGroupRPMOverrides,
   clearGroupRPMOverrides,
   batchSetGroupRPMOverrides,
+  getGroupUserDeniedModels,
+  batchSetGroupUserDeniedModels,
+  clearGroupUserDeniedModels,
   updateSortOrder,
   getUsageSummary,
   getCapacitySummary

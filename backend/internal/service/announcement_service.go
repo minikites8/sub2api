@@ -73,6 +73,10 @@ func (s *AnnouncementService) Create(ctx context.Context, input *CreateAnnouncem
 		return nil, ErrAnnouncementNilInput
 	}
 
+	if !isJSONTimeInRange(input.StartsAt) || !isJSONTimeInRange(input.EndsAt) {
+		return nil, ErrAnnouncementInvalidSchedule
+	}
+
 	title := strings.TrimSpace(input.Title)
 	content := strings.TrimSpace(input.Content)
 	if title == "" || len(title) > 200 {
@@ -132,6 +136,11 @@ func (s *AnnouncementService) Create(ctx context.Context, input *CreateAnnouncem
 func (s *AnnouncementService) Update(ctx context.Context, id int64, input *UpdateAnnouncementInput) (*Announcement, error) {
 	if input == nil {
 		return nil, ErrAnnouncementNilInput
+	}
+
+	if (input.StartsAt != nil && !isJSONTimeInRange(*input.StartsAt)) ||
+		(input.EndsAt != nil && !isJSONTimeInRange(*input.EndsAt)) {
+		return nil, ErrAnnouncementInvalidSchedule
 	}
 
 	a, err := s.announcementRepo.GetByID(ctx, id)
@@ -243,7 +252,7 @@ func (s *AnnouncementService) ListForUser(ctx context.Context, userID int64, unr
 		if !a.IsActiveAt(now) {
 			continue
 		}
-		if !a.Targeting.Matches(user.Balance, activeGroupIDs) {
+		if !a.Targeting.Matches(userID, user.Balance, activeGroupIDs) {
 			continue
 		}
 		visible = append(visible, a)
@@ -315,7 +324,7 @@ func (s *AnnouncementService) MarkRead(ctx context.Context, userID, announcement
 		activeGroupIDs[activeSubs[i].GroupID] = struct{}{}
 	}
 
-	if !a.Targeting.Matches(user.Balance, activeGroupIDs) {
+	if !a.Targeting.Matches(userID, user.Balance, activeGroupIDs) {
 		return ErrAnnouncementNotFound
 	}
 
@@ -338,6 +347,10 @@ func (s *AnnouncementService) ListUserReadStatus(
 
 	filters := UserListFilters{
 		Search: strings.TrimSpace(search),
+	}
+	// 只对指定用户可见的公告，已读情况只列这些用户，不用在全部用户里翻找。
+	if userIDs, ok := ann.Targeting.ExplicitUserIDs(); ok {
+		filters.UserIDs = userIDs
 	}
 
 	users, page, err := s.userRepo.ListWithFilters(ctx, params, filters)
@@ -379,7 +392,7 @@ func (s *AnnouncementService) ListUserReadStatus(
 			Email:    u.Email,
 			Username: u.Username,
 			Balance:  u.Balance,
-			Eligible: domain.AnnouncementTargeting(ann.Targeting).Matches(u.Balance, activeGroupIDs),
+			Eligible: domain.AnnouncementTargeting(ann.Targeting).Matches(u.ID, u.Balance, activeGroupIDs),
 			ReadAt:   ptr,
 		})
 	}

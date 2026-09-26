@@ -10,6 +10,17 @@ import (
 )
 
 type stubAdminService struct {
+	createdGroups                       []*service.CreateGroupInput
+	updatedGroups                       []*service.UpdateGroupInput
+	deletedGroupIDs                     []int64
+	guardedDeletedGroupIDs              []int64
+	deleteGroupIfEmptyErr               error
+	advancedGroupOperationCalls         int
+	userDeniedModelsGroupID             int64
+	userDeniedModelsEntries             []service.GroupUserDeniedModelsInput
+	clearUserDeniedModelsCalls          int
+	batchSetUserDeniedModelsErr         error
+	lastListGroupsIsExclusive           *bool
 	users                               []service.User
 	apiKeys                             []service.APIKey
 	groups                              []service.Group
@@ -286,6 +297,7 @@ func (s *stubAdminService) BindUserAuthIdentity(ctx context.Context, userID int6
 }
 
 func (s *stubAdminService) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string) ([]service.Group, int64, error) {
+	s.lastListGroupsIsExclusive = isExclusive
 	return s.groups, int64(len(s.groups)), nil
 }
 
@@ -318,6 +330,7 @@ func (s *stubAdminService) GetGroupEffectiveModels(ctx context.Context, id int64
 }
 
 func (s *stubAdminService) ListCompositeRoutes(ctx context.Context, groupID int64) ([]service.CompositeModelRoute, error) {
+	s.advancedGroupOperationCalls++
 	return []service.CompositeModelRoute{
 		{
 			ID:             1,
@@ -334,6 +347,7 @@ func (s *stubAdminService) ListCompositeRoutes(ctx context.Context, groupID int6
 }
 
 func (s *stubAdminService) CreateCompositeRoute(ctx context.Context, groupID int64, input service.CompositeRouteInput) (*service.CompositeModelRoute, error) {
+	s.advancedGroupOperationCalls++
 	return &service.CompositeModelRoute{
 		ID:             1,
 		GroupID:        groupID,
@@ -349,6 +363,7 @@ func (s *stubAdminService) CreateCompositeRoute(ctx context.Context, groupID int
 }
 
 func (s *stubAdminService) UpdateCompositeRoute(ctx context.Context, groupID, routeID int64, input service.CompositeRouteInput) (*service.CompositeModelRoute, error) {
+	s.advancedGroupOperationCalls++
 	return &service.CompositeModelRoute{
 		ID:             routeID,
 		GroupID:        groupID,
@@ -364,10 +379,12 @@ func (s *stubAdminService) UpdateCompositeRoute(ctx context.Context, groupID, ro
 }
 
 func (s *stubAdminService) DeleteCompositeRoute(ctx context.Context, groupID, routeID int64) error {
+	s.advancedGroupOperationCalls++
 	return nil
 }
 
 func (s *stubAdminService) PreviewCompositeRoute(ctx context.Context, groupID int64, input service.CompositeRoutePreviewRequest) (*service.CompositeRouteDecision, error) {
+	s.advancedGroupOperationCalls++
 	decision, err := service.NewCompositeRouteResolver(nil).Resolve(ctx, groupID, input.Model, input.Endpoint)
 	if err != nil {
 		return nil, err
@@ -376,11 +393,13 @@ func (s *stubAdminService) PreviewCompositeRoute(ctx context.Context, groupID in
 }
 
 func (s *stubAdminService) CreateGroup(ctx context.Context, input *service.CreateGroupInput) (*service.Group, error) {
+	s.createdGroups = append(s.createdGroups, input)
 	group := service.Group{ID: 200, Name: input.Name, Status: service.StatusActive}
 	return &group, nil
 }
 
 func (s *stubAdminService) DuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*service.Group, error) {
+	s.advancedGroupOperationCalls++
 	group := service.Group{ID: 201, Name: "group (Copy)", Status: "inactive"}
 	return &group, nil
 }
@@ -390,12 +409,19 @@ func (s *stubAdminService) RecoverDuplicateGroup(ctx context.Context, id int64, 
 }
 
 func (s *stubAdminService) UpdateGroup(ctx context.Context, id int64, input *service.UpdateGroupInput) (*service.Group, error) {
+	s.updatedGroups = append(s.updatedGroups, input)
 	group := service.Group{ID: id, Name: input.Name, Status: service.StatusActive}
 	return &group, nil
 }
 
 func (s *stubAdminService) DeleteGroup(ctx context.Context, id int64) error {
+	s.deletedGroupIDs = append(s.deletedGroupIDs, id)
 	return nil
+}
+
+func (s *stubAdminService) DeleteGroupIfEmpty(ctx context.Context, id int64) error {
+	s.guardedDeletedGroupIDs = append(s.guardedDeletedGroupIDs, id)
+	return s.deleteGroupIfEmptyErr
 }
 
 func (s *stubAdminService) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]service.APIKey, int64, error) {
@@ -407,10 +433,12 @@ func (s *stubAdminService) GetGroupRateMultipliers(_ context.Context, _ int64) (
 }
 
 func (s *stubAdminService) ClearGroupRateMultipliers(_ context.Context, _ int64) error {
+	s.advancedGroupOperationCalls++
 	return nil
 }
 
 func (s *stubAdminService) BatchSetGroupRateMultipliers(_ context.Context, _ int64, _ []service.GroupRateMultiplierInput) error {
+	s.advancedGroupOperationCalls++
 	return nil
 }
 
@@ -419,7 +447,21 @@ func (s *stubAdminService) ClearGroupRPMOverrides(_ context.Context, _ int64) er
 }
 
 func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64, _ []service.GroupRPMOverrideInput) error {
+	s.advancedGroupOperationCalls++
 	return nil
+}
+
+func (s *stubAdminService) ClearGroupUserDeniedModels(_ context.Context, groupID int64) error {
+	s.clearUserDeniedModelsCalls++
+	s.userDeniedModelsGroupID = groupID
+	return nil
+}
+
+func (s *stubAdminService) BatchSetGroupUserDeniedModels(_ context.Context, groupID int64, entries []service.GroupUserDeniedModelsInput) error {
+	s.advancedGroupOperationCalls++
+	s.userDeniedModelsGroupID = groupID
+	s.userDeniedModelsEntries = entries
+	return s.batchSetUserDeniedModelsErr
 }
 
 func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
@@ -516,6 +558,8 @@ func (s *stubAdminService) CreateAccount(ctx context.Context, input *service.Cre
 	account := service.Account{ID: 300, Name: input.Name, Status: service.StatusActive}
 	return &account, nil
 }
+
+func (s *stubAdminService) ValidateAccountGroupBindings(context.Context, []int64) error { return nil }
 
 func (s *stubAdminService) DuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*service.Account, error) {
 	account := service.Account{ID: 301, Name: "account (Copy)", Status: service.StatusActive, Schedulable: false}

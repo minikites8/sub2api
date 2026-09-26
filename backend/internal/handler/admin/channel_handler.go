@@ -619,14 +619,15 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"found":                true,
-		"input_price":          pricing.InputPricePerToken,
-		"output_price":         pricing.OutputPricePerToken,
-		"cache_write_price":    cacheWritePrice,
-		"cache_write_1h_price": cacheWrite1hPrice,
-		"cache_read_price":     pricing.CacheReadPricePerToken,
-		"image_input_price":    pricing.ImageInputPricePerToken,
-		"image_output_price":   pricing.ImageOutputPricePerToken,
+		"found":                        true,
+		"input_price":                  pricing.InputPricePerToken,
+		"output_price":                 pricing.OutputPricePerToken,
+		"cache_write_price":            cacheWritePrice,
+		"cache_write_1h_price":         cacheWrite1hPrice,
+		"cache_read_price":             pricing.CacheReadPricePerToken,
+		"reasoning_effort_multipliers": pricing.ReasoningEffortMultipliers,
+		"image_input_price":            pricing.ImageInputPricePerToken,
+		"image_output_price":           pricing.ImageOutputPricePerToken,
 	})
 }
 
@@ -641,6 +642,8 @@ var platformToLiteLLMProvider = map[string]string{
 	service.PlatformKimi:        "moonshot",
 	service.PlatformZhipu:       "zhipu",
 	service.PlatformDeepseek:    "deepseek",
+	service.PlatformMiniMax:     "minimax",
+	service.PlatformOpenCodeGo:  "opencode-go",
 }
 
 // SyncPricingModels 返回 LiteLLM 定价目录中指定平台的最新模型列表

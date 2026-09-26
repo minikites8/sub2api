@@ -373,7 +373,7 @@ const loadDailyCheckin = async () => {
 const loadRiskControlWarning = async () => {
   try {
     const history = await redeemAPI.getHistory()
-    const latestRiskRecord = history.find((item) => item.type === 'risk_control_balance') || null
+    const latestRiskRecord = history.items.find((item) => item.type === 'risk_control_balance') || null
     riskControlRecord.value = latestRiskRecord
     riskControlDismissed.value = latestRiskRecord
       ? readRiskControlDismissed(`dashboard-risk-warning:${user.value?.id}:${latestRiskRecord.id}`)

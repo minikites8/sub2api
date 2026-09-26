@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import GroupSelector from '../GroupSelector.vue'
 
 vi.mock('vue-i18n', async () => {
@@ -16,6 +17,7 @@ vi.mock('vue-i18n', async () => {
 describe('GroupSelector', () => {
   it('uses a custom label without repeating the default group title', () => {
     const wrapper = mount(GroupSelector, {
+      global: { plugins: [createPinia()] },
       props: {
         modelValue: [],
         groups: [],

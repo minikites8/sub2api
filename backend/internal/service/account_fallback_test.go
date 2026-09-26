@@ -75,6 +75,7 @@ func TestGeminiSelectionUsesRegularAccount(t *testing.T) {
 
 	selected := service.selectBestGeminiAccount(
 		context.Background(),
+		nil,
 		[]Account{fallback, regular},
 		"",
 		nil,

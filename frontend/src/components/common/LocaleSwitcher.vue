@@ -53,8 +53,8 @@ const isOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const switching = ref(false)
 
-const currentLocaleCode = computed(() => locale.value)
-const currentLocale = computed(() => availableLocales.find((l) => l.code === locale.value))
+const currentLocaleCode = computed(() => locale?.value ?? availableLocales[0]?.code ?? 'zh')
+const currentLocale = computed(() => availableLocales.find((l) => l.code === currentLocaleCode.value))
 
 function toggleDropdown() {
   isOpen.value = !isOpen.value

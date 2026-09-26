@@ -47,8 +47,14 @@ const (
 	PlatformKimi        = domain.PlatformKimi
 	PlatformZhipu       = domain.PlatformZhipu
 	PlatformDeepseek    = domain.PlatformDeepseek
+	PlatformMiniMax     = domain.PlatformMiniMax
+	PlatformOpenCodeGo  = domain.PlatformOpenCodeGo
 	PlatformComposite   = domain.PlatformComposite
 )
+
+func IsMultiProtocolAPIKeyProvider(platform string) bool {
+	return IsCNProvider(platform) || platform == PlatformOpenCodeGo
+}
 
 // AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
 // ent/schema/user_platform_quota.go 的 Validate 函数独立维护（构建期约束），
@@ -63,6 +69,8 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
+	PlatformMiniMax,
+	PlatformOpenCodeGo,
 }
 
 var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu}
@@ -70,6 +78,8 @@ var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthr
 const (
 	AccountModePayG            = domain.AccountModePayG
 	AccountModeCoding          = domain.AccountModeCoding
+	AccountModeZen             = domain.AccountModeZen
+	AccountModeGo              = domain.AccountModeGo
 	APIProtocolChatCompletions = domain.APIProtocolChatCompletions
 	APIProtocolAnthropic       = domain.APIProtocolAnthropic
 	APIProtocolResponses       = domain.APIProtocolResponses
@@ -77,20 +87,26 @@ const (
 )
 
 const (
-	DefaultKimiPayGBaseURL            = "https://api.moonshot.cn/v1"
-	DefaultKimiCodingBaseURL          = "https://api.kimi.com/coding/v1"
-	DefaultZhipuPayGBaseURL           = "https://open.bigmodel.cn/api/paas/v4"
-	DefaultZhipuCodingBaseURL         = "https://open.bigmodel.cn/api/coding/paas/v4"
-	DefaultDeepseekBaseURL            = "https://api.deepseek.com"
-	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
-	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
-	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
-	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultKimiPayGBaseURL             = "https://api.moonshot.cn/v1"
+	DefaultKimiCodingBaseURL           = "https://api.kimi.com/coding/v1"
+	DefaultMiniMaxBaseURL              = "https://api.minimaxi.com/v1"
+	DefaultOpenCodeGoBaseURL           = "https://opencode.ai/zen/go/v1"
+	DefaultOpenCodeZenBaseURL          = "https://opencode.ai/zen/v1"
+	DefaultMiniMaxAnthropicBaseURL     = "https://api.minimaxi.com/anthropic"
+	DefaultOpenCodeGoAnthropicBaseURL  = "https://opencode.ai/zen/go"
+	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
+	DefaultZhipuPayGBaseURL            = "https://open.bigmodel.cn/api/paas/v4"
+	DefaultZhipuCodingBaseURL          = "https://open.bigmodel.cn/api/coding/paas/v4"
+	DefaultDeepseekBaseURL             = "https://api.deepseek.com"
+	DefaultKimiPayGAnthropicBaseURL    = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL  = "https://api.kimi.com/coding"
+	DefaultZhipuAnthropicBaseURL       = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL    = "https://api.deepseek.com/anthropic"
 )
 
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		return true
 	default:
 		return false
@@ -216,11 +232,12 @@ const (
 	SettingKeyRiskControlEnabled                  = "risk_control_enabled"               // 是否启用风控中心入口与审计链路
 	SettingKeyContentModerationConfig             = "content_moderation_config"          // 内容审计配置（JSON）
 	SettingKeyCyberSessionBlockEnabled            = "cyber_session_block_enabled"        // cyber 命中后会话级自动屏蔽总开关(默认关)
-	SettingKeyCyberSessionBlockTTLSeconds         = "cyber_session_block_ttl_seconds"    // 会话屏蔽 TTL 秒数(默认 3600)
-	SettingKeyLoginAgreementEnabled               = "login_agreement_enabled"            // 登录前是否要求同意条款
-	SettingKeyLoginAgreementMode                  = "login_agreement_mode"               // 条款确认展示模式：modal / checkbox
-	SettingKeyLoginAgreementUpdatedAt             = "login_agreement_updated_at"         // 条款更新日期（展示用）
-	SettingKeyLoginAgreementDocuments             = "login_agreement_documents"          // 条款文档列表（JSON，Markdown 内容）
+	SettingKeyCyberSessionIdentityStrictEnabled   = "cyber_session_identity_strict_enabled"
+	SettingKeyCyberSessionBlockTTLSeconds         = "cyber_session_block_ttl_seconds" // 会话屏蔽 TTL 秒数(默认 3600)
+	SettingKeyLoginAgreementEnabled               = "login_agreement_enabled"         // 登录前是否要求同意条款
+	SettingKeyLoginAgreementMode                  = "login_agreement_mode"            // 条款确认展示模式：modal / checkbox
+	SettingKeyLoginAgreementUpdatedAt             = "login_agreement_updated_at"      // 条款更新日期（展示用）
+	SettingKeyLoginAgreementDocuments             = "login_agreement_documents"       // 条款文档列表（JSON，Markdown 内容）
 
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址
@@ -477,6 +494,30 @@ const (
 	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
 	SettingKeyChannelMonitorHideThroughput         = "channel_monitor_hide_throughput"
 	SettingKeyChannelMonitorShowQuota              = "channel_monitor_show_quota"
+	SettingKeyChannelMonitorHideUserRanking        = "channel_monitor_hide_user_ranking"
+	SettingKeyPelicanShowcaseEnabled               = "pelican_showcase_enabled"
+	// SettingKeySubscriptionEnabled is a DB-backed soft switch for the user-facing
+	// subscription surface: sidebar entries, purchase-page subscription tab, header
+	// progress badge, usage billing-type filter and the /subscriptions route. When
+	// false users can no longer buy or browse subscriptions from the UI; the
+	// subscriptions API, existing subscription billing and admin subscription
+	// management are unaffected. Together with BALANCE_PAYMENT_DISABLED it forms the
+	// admin "site billing mode" selector. Defaults to true (opt-out feature).
+	SettingKeySubscriptionEnabled = "subscription_enabled"
+
+	// SettingKeyModelPlazaEnabled is a DB-backed soft switch for the Model Plaza page
+	// (public group/model pricing showcase). When false: the plaza endpoint returns 404
+	// and the header entry is hidden. Defaults to false (opt-in feature).
+	SettingKeyModelPlazaEnabled = "model_plaza_enabled"
+
+	// SettingKeyModelPlazaRequireAuth controls whether the Model Plaza page requires a
+	// logged-in user. When false the page is public and anonymous visitors see only
+	// non-exclusive groups.
+	SettingKeyModelPlazaRequireAuth = "model_plaza_require_auth"
+
+	// SettingKeyModelPlazaDescription stores the Markdown blurb rendered at the top of
+	// the Model Plaza page (global pricing notes, exchange rate, promotions, ...).
+	SettingKeyModelPlazaDescription = "model_plaza_description"
 
 	SettingKeyGrokDefaultTextModel           = "grok_default_text_model"
 	SettingKeyGrokCrossClientModelMapEnabled = "grok_cross_client_model_map_enabled"
@@ -504,6 +545,9 @@ const (
 
 	// SettingKeyOllamaCloudUsageSettings stores the opt-in global runner switch and interval.
 	SettingKeyOllamaCloudUsageSettings = "ollama_cloud_usage_settings"
+
+	// SettingKeyOpenCodeGoUsageSettings stores the opt-in global runner switch and interval.
+	SettingKeyOpenCodeGoUsageSettings = "opencode_go_usage_settings"
 
 	// =========================
 	// Overload Cooldown (529)
@@ -631,10 +675,7 @@ const (
 	// SettingKeyOpenAICodexUserAgent OpenAI Codex 完整 User-Agent（空值使用内置默认）
 	// 当客户端 UA 被识别为浏览器（Chrome/Firefox/Safari/Edge 等）时，转发给 OpenAI 上游前会替换为此值，
 	// 用于避免 Cloudflare 对浏览器型 UA 的质询拦截。
-	SettingKeyOpenAICodexTicketEnabled         = "openai_codex_ticket_enabled"
-	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
-	SettingKeyOpenAICodexTicketModels          = "openai_codex_ticket_models"
-	SettingKeyOpenAICodexUserAgent             = "openai_codex_user_agent"
+	SettingKeyOpenAICodexUserAgent = "openai_codex_user_agent"
 	// SettingKeyOpenAICodexClientVersion 网关对 ChatGPT 上游声明的 Codex 客户端版本号（管理员覆写）。
 	// 空值表示跟随自动同步值；自动同步也没有结果时回退到内置常量。
 	// 上游在容量紧张时按客户端身份分优先级降载，陈旧版本会被优先丢弃，故该值需保持跟随官方发布。
@@ -645,6 +686,28 @@ const (
 	SettingKeyOpenAICodexClientVersionSynced = "openai_codex_client_version_synced"
 	// SettingKeyOpenAICodexVersionAutoSyncEnabled 是否启用 Codex 客户端版本号自动同步（默认 true）。
 	SettingKeyOpenAICodexVersionAutoSyncEnabled = "openai_codex_version_auto_sync_enabled"
+	// SettingKeyOpenAICodexTicketEnabled Codex 292 打票总开关（后台可改、热更新）。
+	// 关闭：不打票、不注入 x-codex-turn-state，按原链路转发。
+	// 开启：后台打票并在业务请求中覆盖该头。
+	SettingKeyOpenAICodexTicketEnabled = "openai_codex_ticket_enabled"
+	// SettingKeyOpenAICodexTicketFailClosed controls whether a missing/expired
+	// ticket makes an otherwise schedulable account ineligible. Missing defaults
+	// to false so ticket harvesting remains an optional enhancement.
+	SettingKeyOpenAICodexTicketFailClosed = "openai_codex_ticket_fail_closed"
+	// SettingKeyOpenAICodexTicketHarvestProxyURL Codex 292 打票出口（socks5h/http），后台可改、热更新。
+	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
+	SettingKeyOpenAICodexTicketStaticProxyURL  = "openai_codex_ticket_static_proxy_url"
+	// SettingKeyOpenAICodexTicketModels Codex 292 打票模型列表，JSON 数组格式；缺失时回退配置文件。
+	SettingKeyOpenAICodexTicketModels = "openai_codex_ticket_models"
+	// SettingKeyClaudeCodeClientVersion 网关对 Anthropic 上游声明的 Claude Code CLI 客户端版本号（管理员覆写）。
+	// 空值表示跟随自动同步值；自动同步也没有结果时回退到 claude.CLIVersion()（环境变量覆盖 + 内置基线）。
+	// 版本太旧会被 Anthropic 拒绝（claude_code_version_too_old），故该值需保持跟随官方发布。
+	SettingKeyClaudeCodeClientVersion = "claude_code_client_version"
+	// SettingKeyClaudeCodeClientVersionSynced 自动同步任务写入的官方 Claude Code CLI 最新版本号。
+	// 由同步任务独占写入，面板只读展示；管理员覆写请用 SettingKeyClaudeCodeClientVersion。
+	SettingKeyClaudeCodeClientVersionSynced = "claude_code_client_version_synced"
+	// SettingKeyClaudeCodeVersionAutoSyncEnabled 是否启用 Claude Code 客户端版本号自动同步（默认 true）。
+	SettingKeyClaudeCodeVersionAutoSyncEnabled = "claude_code_version_auto_sync_enabled"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

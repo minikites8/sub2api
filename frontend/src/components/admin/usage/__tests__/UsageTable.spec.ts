@@ -30,6 +30,7 @@ const messages: Record<string, string> = {
   'usage.perMillionTokens': '/ 1M tokens',
   'usage.serviceTier': 'Service tier',
   'usage.serviceTierPriority': 'Fast',
+  'usage.serviceTierUltrafast': 'Ultrafast',
   'usage.serviceTierFlex': 'Flex',
   'usage.serviceTierStandard': 'Standard',
   'usage.latencyFirstToken': 'First token',
@@ -63,6 +64,7 @@ const messages: Record<string, string> = {
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
 	'admin.usage.requestIdCopied': 'Request ID copied',
+	'admin.usage.upstreamRequestIdCopied': 'Upstream ID copied',
 	'keys.copied': 'Copied',
 	'keys.copyToClipboard': 'Copy to clipboard',
 	'common.copyFailed': 'Copy failed',
@@ -95,6 +97,7 @@ const DataTableStub = {
         <slot name="cell-cost" :row="row" />
         <slot name="cell-latency" :row="row" />
         <slot name="cell-request_id" :row="row" />
+        <slot name="cell-upstream_request_id" :row="row" />
       </div>
     </div>
   `,
@@ -273,6 +276,53 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('$5.0000 / 1M tokens')
     expect(text).toContain('$30.0000 / 1M tokens')
     expect(text).toContain('$0.069568')
+  })
+
+  it.each(['token', 'image', 'per_request'])('keeps eight decimal places in %s cost details', async (billingMode) => {
+    const row = {
+      ...baseImageRow,
+      billing_mode: billingMode,
+      image_count: billingMode === 'image' ? 2 : 0,
+      input_cost: 0.00000001,
+      image_input_cost: 0.00000002,
+      output_cost: 0.00000003,
+      image_output_cost: 0.00000004,
+      cache_creation_cost: 0.00000005,
+      cache_read_cost: 0.00000006,
+      total_cost: 0.00000022,
+      actual_cost: 0.00000042,
+      account_stats_cost: 0.00000012,
+      account_rate_multiplier: 1.5,
+    }
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const amounts = wrapper.get('.fixed').findAll('span').map(span => span.text())
+    expect(amounts).toEqual(expect.arrayContaining([
+      '$0.00000001', '$0.00000002', '$0.00000003', '$0.00000004',
+      '$0.00000005', '$0.00000006', '$0.00000022', '$0.00000042', '$0.00000018',
+    ]))
+    if (billingMode === 'image') expect(amounts).toContain('$0.00000011')
+    wrapper.unmount()
+  })
+
+  it('uses eight decimal places for missing cost values', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, billing_mode: 'per_request', image_count: 0, total_cost: undefined, actual_cost: undefined }],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const amounts = wrapper.get('.fixed').findAll('span').map(span => span.text()).filter(text => text.startsWith('$'))
+    expect(amounts).toEqual(['$0.00000000', '$0.00000000', '$0.00000000', '$0.00000000'])
+    wrapper.unmount()
   })
 
   it('shows requested and upstream models separately for admin rows', () => {
@@ -628,6 +678,35 @@ describe('admin UsageTable request ID column', () => {
     expect(writeText).toHaveBeenCalledWith('req-admin-visible-id')
     expect(appStoreMocks.showSuccess).toHaveBeenCalledWith('Request ID copied')
   })
+
+  it('renders and copies the upstream ID', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, request_id: '', upstream_request_id: '20260903082826779695' }],
+        loading: false,
+        columns: [{ key: 'upstream_request_id', label: 'Upstream ID' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('20260903082826779695')
+    const copyButtons = wrapper.findAll('button[title="Copy to clipboard"]')
+    expect(copyButtons).toHaveLength(1)
+    await copyButtons[0].trigger('click')
+
+    expect(writeText).toHaveBeenCalledWith('20260903082826779695')
+    expect(appStoreMocks.showSuccess).toHaveBeenCalledWith('Upstream ID copied')
+  })
 })
 
 describe('admin UsageTable IP geolocation batch toolbar', () => {
@@ -814,5 +893,111 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
+  })
+})
+
+const DataTableStubWithLatency = {
+  props: ['data'],
+  template: `
+    <div>
+      <div v-for="row in data" :key="row.request_id" :data-row="row.request_id">
+        <slot name="cell-latency" :row="row" />
+      </div>
+    </div>
+  `,
+}
+
+describe('admin UsageTable latency TPS', () => {
+  const mountLatency = (data: Record<string, unknown>[]) =>
+    mount(UsageTable, {
+      props: {
+        data: data as any,
+        loading: false,
+        columns: [{ key: 'latency', label: 'Latency' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithLatency,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+  const tpsCell = (wrapper: ReturnType<typeof mountLatency>, requestId: string) =>
+    wrapper.find(`[data-row="${requestId}"] [data-testid="latency-tps"]`)
+
+  const barClasses = (wrapper: ReturnType<typeof mountLatency>, requestId: string) =>
+    wrapper.find(`[data-row="${requestId}"] [data-testid="latency-bar"]`).classes()
+
+  it('shows output speed after the first token for streaming rows', () => {
+    const wrapper = mountLatency([
+      { request_id: 'req-tps-stream', output_tokens: 872, duration_ms: 31_260, first_token_ms: 2_910 },
+    ])
+
+    expect(wrapper.text()).toContain('usage.latencyTps')
+    const cell = tpsCell(wrapper, 'req-tps-stream')
+    expect(cell.text()).toBe('30.8 t/s')
+    expect(cell.attributes('title')).toBe('usage.latencyTpsHint')
+    expect(cell.classes()).toContain('text-emerald-600')
+  })
+
+  it('colors the TPS text and the bottom bar segment red below 10 t/s and yellow below 20 t/s', () => {
+    const wrapper = mountLatency([
+      // first token 12s (warn), total 17s (good), 5 t/s (critical)
+      { request_id: 'req-tps-slow', output_tokens: 25, duration_ms: 17_000, first_token_ms: 12_000 },
+      // first token 2s (good), total 12s (good), 15 t/s (warn)
+      { request_id: 'req-tps-mid', output_tokens: 150, duration_ms: 12_000, first_token_ms: 2_000 },
+    ])
+
+    expect(tpsCell(wrapper, 'req-tps-slow').text()).toBe('5.0 t/s')
+    expect(tpsCell(wrapper, 'req-tps-slow').classes()).toContain('text-red-600')
+    expect(barClasses(wrapper, 'req-tps-slow')).toEqual(
+      expect.arrayContaining(['from-amber-400', 'via-emerald-500', 'to-red-500']),
+    )
+
+    expect(tpsCell(wrapper, 'req-tps-mid').text()).toBe('15.0 t/s')
+    expect(tpsCell(wrapper, 'req-tps-mid').classes()).toContain('text-amber-600')
+    expect(barClasses(wrapper, 'req-tps-mid')).toEqual(
+      expect.arrayContaining(['from-emerald-500', 'via-emerald-500', 'to-amber-400']),
+    )
+  })
+
+  it('lets bar segments without first-token or TPS data follow the total-duration color', () => {
+    const wrapper = mountLatency([
+      // no first token, total 70s (warn), 1400 tokens / 70s = 20 t/s (good)
+      { request_id: 'req-bar-sync', output_tokens: 1_400, duration_ms: 70_000, first_token_ms: null },
+      // image row: no first token and no TPS, total 40s (good)
+      { ...baseImageRow, request_id: 'req-bar-image', duration_ms: 40_000, first_token_ms: null },
+    ])
+
+    expect(barClasses(wrapper, 'req-bar-sync')).toEqual(
+      expect.arrayContaining(['from-amber-400', 'via-amber-400', 'to-emerald-500']),
+    )
+    expect(barClasses(wrapper, 'req-bar-image')).toEqual(
+      expect.arrayContaining(['from-emerald-500', 'via-emerald-500', 'to-emerald-500']),
+    )
+  })
+
+  it('uses the total duration and a different hint when first token is missing', () => {
+    const wrapper = mountLatency([
+      { request_id: 'req-tps-sync', output_tokens: 500, duration_ms: 10_000, first_token_ms: null },
+    ])
+
+    const cell = tpsCell(wrapper, 'req-tps-sync')
+    expect(cell.text()).toBe('50.0 t/s')
+    expect(cell.attributes('title')).toBe('usage.latencyTpsHintNoFirstToken')
+  })
+
+  it('renders a placeholder when TPS cannot be computed', () => {
+    const wrapper = mountLatency([
+      { request_id: 'req-tps-empty', output_tokens: 0, duration_ms: 1_200, first_token_ms: 300 },
+      { ...baseImageRow, request_id: 'req-tps-image', duration_ms: 40_000, first_token_ms: null },
+    ])
+
+    expect(tpsCell(wrapper, 'req-tps-empty').text()).toBe('-')
+    expect(tpsCell(wrapper, 'req-tps-empty').attributes('title')).toBeUndefined()
+    expect(tpsCell(wrapper, 'req-tps-image').text()).toBe('-')
   })
 })

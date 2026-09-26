@@ -34,6 +34,8 @@ vi.mock('@/stores', () => ({
     loginWithPasskey: (...args: unknown[]) => loginWithPasskeyMock(...args)
   }),
   useAppStore: () => ({
+    publicSettingsLoaded: true,
+    fetchPublicSettings: vi.fn(),
     showError: vi.fn(),
     showSuccess: vi.fn(),
     showWarning: vi.fn()
@@ -205,7 +207,7 @@ describe('Tencent captcha action gate', () => {
     const wrapper = mountLogin()
     await flushPromises()
 
-    await wrapper.get('button.btn-secondary.w-full').trigger('click')
+    await wrapper.get('button.md3-secondary-button.w-full').trigger('click')
     await flushPromises()
 
     expect(verifyActionMock).toHaveBeenCalledOnce()
@@ -221,7 +223,7 @@ describe('Tencent captcha action gate', () => {
     const wrapper = mountLogin()
     await flushPromises()
 
-    await wrapper.get('button.btn-secondary.w-full').trigger('click')
+    await wrapper.get('button.md3-secondary-button.w-full').trigger('click')
     await flushPromises()
 
     expect(loginWithPasskeyMock).not.toHaveBeenCalled()

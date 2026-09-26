@@ -20,6 +20,22 @@ func TestFilterSchedulerCredentialsKeepsSubscriptionPlanType(t *testing.T) {
 	require.NotContains(t, filtered, "refresh_token")
 }
 
+func TestFilterSchedulerCredentialsOmitsCodexTicketIdentity(t *testing.T) {
+	filtered := filterSchedulerCredentials(map[string]any{
+		"plan_type":          "plus",
+		"chatgpt_account_id": "acc-1",
+		"email":              "user@example.com",
+		"access_token":       "secret-access-token",
+		"refresh_token":      "secret-refresh-token",
+	})
+
+	require.Equal(t, "plus", filtered["plan_type"])
+	require.NotContains(t, filtered, "chatgpt_account_id")
+	require.NotContains(t, filtered, "email")
+	require.NotContains(t, filtered, "access_token")
+	require.NotContains(t, filtered, "refresh_token")
+}
+
 func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	account := service.Account{
 		ID:         24,
@@ -27,8 +43,10 @@ func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 		Type:       service.AccountTypeOAuth,
 		IsFallback: true,
 		Credentials: map[string]any{
-			"plan_type":    "plus",
-			"access_token": "secret-access-token",
+			"plan_type":          "plus",
+			"chatgpt_account_id": "acc-1",
+			"email":              "user@example.com",
+			"access_token":       "secret-access-token",
 		},
 	}
 

@@ -31,11 +31,11 @@ type ticketDisplayProviderStub struct {
 }
 
 func (s *ticketDisplayProviderStub) OpenAICodexTicketStatuses(context.Context, *service.Account, time.Time) []service.OpenAICodexTicketStatus {
-	return []service.OpenAICodexTicketStatus{{Model: "ticket-model", Attempts: 3}}
+	return []service.OpenAICodexTicketStatus{{Model: "ticket-model", Ready: true}}
 }
 func (s *ticketDisplayProviderStub) OpenAICodexTicketStatusBatch(_ context.Context, ids []int64) (map[int64][]service.OpenAICodexTicketStatus, error) {
 	s.ids = ids
-	return map[int64][]service.OpenAICodexTicketStatus{71: {{Model: "ticket-model", Attempts: 3}}}, nil
+	return map[int64][]service.OpenAICodexTicketStatus{71: {{Model: "ticket-model", Ready: true}}}, nil
 }
 func (s *ticketDisplayProviderStub) OpenAICodexTicketLogs(_ context.Context, _ *service.Account, model string, _ time.Time) (*service.OpenAICodexTicketLogs, error) {
 	s.logs++

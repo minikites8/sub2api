@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -87,26 +88,27 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID                 int64
-	ChannelID          int64
-	Platform           string              // 所属平台（anthropic/openai/gemini/...）
-	Models             []string            // 绑定的模型列表
-	BillingMode        BillingMode         // 计费模式
-	InputPrice         *float64            // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice        *float64            // 每 token 输出价格（USD）
-	CacheWritePrice    *float64            // 缓存写入价格
-	CacheWrite1hPrice  *float64            // 1h 缓存写入价格
-	CacheReadPrice     *float64            // 缓存读取价格
-	FastMultiplier     *float64            // fast/priority service tier 倍率
-	FlexMultiplier     *float64            // flex service tier 倍率
-	ImageInputPrice    *float64            // 图片输入 token 价格（如 gpt-image-2 图片编辑）；未配置时回退文本输入价
-	ImageOutputPrice   *float64            // 图片输出价格（向后兼容）
-	PerRequestPrice    *float64            // 默认按次计费价格（USD）
-	PriorityMultiplier *float64            // priority/fast service tier 倍率（nil 表示沿用现有 tier 定价）
-	Intervals          []PricingInterval   // 区间定价列表
-	TimePricing        *ChannelTimePricing `json:"time_pricing,omitempty"`
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                         int64
+	ChannelID                  int64
+	Platform                   string              // 所属平台（anthropic/openai/gemini/...）
+	Models                     []string            // 绑定的模型列表
+	BillingMode                BillingMode         // 计费模式
+	InputPrice                 *float64            // 每 token 输入价格（USD）— 向后兼容 flat 定价
+	OutputPrice                *float64            // 每 token 输出价格（USD）
+	CacheWritePrice            *float64            // 缓存写入价格
+	CacheWrite1hPrice          *float64            // 1h 缓存写入价格
+	CacheReadPrice             *float64            // 缓存读取价格
+	FastMultiplier             *float64            // fast/priority service tier 倍率
+	FlexMultiplier             *float64            // flex service tier 倍率
+	ImageInputPrice            *float64            // 图片输入 token 价格（如 gpt-image-2 图片编辑）；未配置时回退文本输入价
+	ImageOutputPrice           *float64            // 图片输出价格（向后兼容）
+	PerRequestPrice            *float64            // 默认按次计费价格（USD）
+	ReasoningEffortMultipliers map[string]float64  `json:"reasoning_effort_multipliers,omitempty"`
+	PriorityMultiplier         *float64            // priority/fast service tier 倍率（nil 表示沿用现有 tier 定价）
+	Intervals                  []PricingInterval   // 区间定价列表
+	TimePricing                *ChannelTimePricing `json:"time_pricing,omitempty"`
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
 }
 
 // ChannelTimePricing configures time-of-day pricing multipliers.
@@ -207,9 +209,10 @@ func (p *ChannelModelPricing) GetTierByLabel(label string) *PricingInterval {
 	return nil
 }
 
-// Clone 返回 ChannelModelPricing 的拷贝（切片独立，指针字段共享，调用方只读安全）
+// Clone 返回 ChannelModelPricing 的拷贝（切片和映射独立，价格指针字段共享，调用方只读安全）
 func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	cp := p
+	cp.ReasoningEffortMultipliers = maps.Clone(p.ReasoningEffortMultipliers)
 	if p.Models != nil {
 		cp.Models = make([]string, len(p.Models))
 		copy(cp.Models, p.Models)

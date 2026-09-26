@@ -114,7 +114,8 @@ func writeOpenAICompactSSEFailureMessage(c *gin.Context, statusCode int, errType
 	}
 	MarkOpsStreamError(c, errType, message, statusCode)
 	payload, err := json.Marshal(map[string]any{
-		"type": "response.failed",
+		"type":            "response.failed",
+		"sequence_number": 0,
 		"response": map[string]any{
 			"id":     "resp_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
 			"object": "response",
@@ -143,8 +144,17 @@ func writeOpenAICompactSSEFailureMessage(c *gin.Context, statusCode int, errType
 // 携带完整 response 对象。Codex 的 SSE 解析只从 output_item.done 收集 item，
 // 并要求 response.completed 的 response.id 必填、usage（若存在）必须携带
 // input_tokens/output_tokens/total_tokens 整数字段，否则整条 completed 事件
-// 解析失败，故此处做兜底修补。
+// 解析失败，故此处做兜底修补。每帧还要带单调的 sequence_number：grok-build
+// 把它当必填，缺了整轮反序列化失败。
 func buildOpenAICompactSSEPayload(finalResponse []byte) ([]byte, bool) {
+	return buildOpenAICompactSSEPayloadWithLifecycle(finalResponse, false)
+}
+
+func buildDeepSeekCompactSSEPayload(finalResponse []byte) ([]byte, bool) {
+	return buildOpenAICompactSSEPayloadWithLifecycle(finalResponse, true)
+}
+
+func buildOpenAICompactSSEPayloadWithLifecycle(finalResponse []byte, lifecycle bool) ([]byte, bool) {
 	if len(finalResponse) == 0 || !gjson.ValidBytes(finalResponse) {
 		return nil, false
 	}
@@ -176,16 +186,74 @@ func buildOpenAICompactSSEPayload(finalResponse []byte) ([]byte, bool) {
 
 	var buf bytes.Buffer
 	outputIndex := 0
-	appendEvent := func(eventType string, data []byte) {
+	sequenceNumber := 0
+	appendEvent := func(eventType string, data []byte) bool {
+		numbered, err := sjson.SetBytes(data, "sequence_number", sequenceNumber)
+		if err != nil {
+			return false
+		}
+		sequenceNumber++
 		_, _ = buf.WriteString("event: ")
 		_, _ = buf.WriteString(eventType)
 		_, _ = buf.WriteString("\ndata: ")
-		_, _ = buf.Write(data)
+		_, _ = buf.Write(numbered)
 		_, _ = buf.WriteString("\n\n")
+		return true
+	}
+	if lifecycle {
+		// A Responses stream establishes the response before opening output
+		// items. Codex ignores output events that arrive without these lifecycle
+		// frames, which surfaces as "0 compaction output items".
+		progressResponse, err := sjson.SetBytes(response, "status", "in_progress")
+		if err != nil {
+			return nil, false
+		}
+		progressResponse, err = sjson.SetRawBytes(progressResponse, "output", []byte("[]"))
+		if err != nil {
+			return nil, false
+		}
+		created, err := sjson.SetRawBytes([]byte("{\"type\":\"response.created\"}"), "response", progressResponse)
+		if err != nil {
+			return nil, false
+		}
+		if !appendEvent("response.created", created) {
+			return nil, false
+		}
+		inProgress, err := sjson.SetRawBytes([]byte("{\"type\":\"response.in_progress\"}"), "response", progressResponse)
+		if err != nil {
+			return nil, false
+		}
+		if !appendEvent("response.in_progress", inProgress) {
+			return nil, false
+		}
 	}
 	for _, item := range gjson.GetBytes(response, "output").Array() {
 		if !item.IsObject() {
 			continue
+		}
+		if lifecycle {
+			// Codex tracks output items from the normal Responses lifecycle. A
+			// done-only compact item is ignored by the remote compaction parser,
+			// which then reports zero output items even though the terminal response
+			// contains the synthesized compaction object.
+			addedItem := []byte(item.Raw)
+			if status := gjson.GetBytes(addedItem, "status"); !status.Exists() || status.String() != "in_progress" {
+				if next, setErr := sjson.SetBytes(addedItem, "status", "in_progress"); setErr == nil {
+					addedItem = next
+				}
+			}
+			added, err := sjson.SetBytes([]byte(`{"type":"response.output_item.added"}`), "output_index", outputIndex)
+			if err != nil {
+				return nil, false
+			}
+			added, err = sjson.SetRawBytes(added, "item", addedItem)
+			if err != nil {
+				return nil, false
+			}
+			if !appendEvent("response.output_item.added", added) {
+				return nil, false
+			}
+
 		}
 		event, err := sjson.SetBytes([]byte(`{"type":"response.output_item.done"}`), "output_index", outputIndex)
 		if err != nil {
@@ -195,7 +263,9 @@ func buildOpenAICompactSSEPayload(finalResponse []byte) ([]byte, bool) {
 		if err != nil {
 			return nil, false
 		}
-		appendEvent("response.output_item.done", event)
+		if !appendEvent("response.output_item.done", event) {
+			return nil, false
+		}
 		outputIndex++
 	}
 
@@ -203,7 +273,9 @@ func buildOpenAICompactSSEPayload(finalResponse []byte) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	appendEvent("response.completed", completed)
+	if !appendEvent("response.completed", completed) {
+		return nil, false
+	}
 	return buf.Bytes(), true
 }
 

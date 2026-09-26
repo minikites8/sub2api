@@ -2,9 +2,7 @@ package service
 
 import (
 	"context"
-	"errors"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -89,29 +87,6 @@ func (s *SettingService) codexTicketRuntimeConfig(ctx context.Context, fallback 
 		}
 	}
 	return normalizeCodexTicketConfig(fallback)
-}
-
-func ValidateOpenAICodexTicketHarvestProxyURL(raw string) error {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Hostname() == "" || u.Opaque != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return errors.New("ticket proxy requires a host and an HTTP(S) or SOCKS5(h) URL without a path, query or fragment")
-	}
-	switch u.Scheme {
-	case "http", "https", "socks5", "socks5h":
-	default:
-		return errors.New("ticket proxy scheme must be http, https, socks5 or socks5h")
-	}
-	if p := u.Port(); p != "" {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 1 || n > 65535 {
-			return errors.New("ticket proxy port must be between 1 and 65535")
-		}
-	}
-	return nil
 }
 
 func MaskCodexTicketProxyURL(raw string) string {

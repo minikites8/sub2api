@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 26 // v26: timed user/group bans
+const apiKeyAuthSnapshotVersion = 27 // v27: stream-only, model allowlist and pinned manifest in auth cache
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -282,6 +282,10 @@ func (s *APIKeyService) loadAuthCacheEntry(ctx context.Context, key, cacheKey st
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
 	apiKey.Key = key
+	// 禁用模型是准入限制：查询失败不能当作「没有限制」放行，也不能写进缓存，直接报错让下次请求重试。
+	if err := s.loadUserGroupDeniedModels(ctx, apiKey); err != nil {
+		return nil, fmt.Errorf("get api key: load user group denied models: %w", err)
+	}
 	snapshot := s.snapshotFromAPIKey(ctx, apiKey)
 	if snapshot == nil {
 		return nil, fmt.Errorf("get api key: %w", ErrAPIKeyNotFound)
@@ -289,6 +293,19 @@ func (s *APIKeyService) loadAuthCacheEntry(ctx context.Context, key, cacheKey st
 	entry := &APIKeyAuthCacheEntry{Snapshot: snapshot}
 	s.setAuthCacheEntry(ctx, cacheKey, entry, s.authCfg.l2TTL)
 	return entry, nil
+}
+
+// loadUserGroupDeniedModels 把 (user, group) 禁用模型填到 apiKey.User 上，随认证快照一起缓存。
+func (s *APIKeyService) loadUserGroupDeniedModels(ctx context.Context, apiKey *APIKey) error {
+	if apiKey == nil || apiKey.User == nil || apiKey.GroupID == nil || *apiKey.GroupID <= 0 || s.userGroupRateRepo == nil {
+		return nil
+	}
+	denied, err := s.userGroupRateRepo.GetDeniedModelsByUserAndGroup(ctx, apiKey.UserID, *apiKey.GroupID)
+	if err != nil {
+		return err
+	}
+	apiKey.User.UserGroupDeniedModels = denied
+	return nil
 }
 
 func (s *APIKeyService) lookupAPIKeyForAuth(ctx context.Context, key string) (*APIKey, error) {
@@ -369,6 +386,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			BalanceNotifyExtraEmails:   apiKey.User.BalanceNotifyExtraEmails,
 			TotalRecharged:             apiKey.User.TotalRecharged,
 			RPMLimit:                   apiKey.User.RPMLimit,
+			UserGroupDeniedModels:      apiKey.User.UserGroupDeniedModels,
 		},
 	}
 	if banRepo, ok := s.userRepo.(UserGroupBanRepository); ok && apiKey.User != nil {
@@ -439,6 +457,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			DefaultMappedModel:              groupForSnapshot.DefaultMappedModel,
 			MessagesDispatchModelConfig:     groupForSnapshot.MessagesDispatchModelConfig,
 			ModelsListConfig:                groupForSnapshot.ModelsListConfig,
+			StreamOnly:                      groupForSnapshot.StreamOnly,
+			ModelAllowlist:                  groupForSnapshot.ModelAllowlist,
+			CodexModelsManifestConfig:       groupForSnapshot.CodexModelsManifestConfig,
 			OpenAIServiceTierMode:           groupForSnapshot.OpenAIServiceTierMode,
 			OpenAIServiceTier:               groupForSnapshot.OpenAIServiceTier,
 			RPMLimit:                        groupForSnapshot.RPMLimit,
@@ -504,6 +525,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			TotalRecharged:             snapshot.User.TotalRecharged,
 			RPMLimit:                   snapshot.User.RPMLimit,
 			UserGroupRPMOverride:       snapshot.User.UserGroupRPMOverride,
+			UserGroupDeniedModels:      snapshot.User.UserGroupDeniedModels,
 		},
 	}
 	if snapshot.Group != nil {
@@ -543,6 +565,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: snapshot.Group.FallbackGroupIDOnInvalidRequest,
+			StreamOnly:                      snapshot.Group.StreamOnly,
 			ModelRouting:                    snapshot.Group.ModelRouting,
 			ModelRoutingEnabled:             snapshot.Group.ModelRoutingEnabled,
 			MCPXMLInject:                    snapshot.Group.MCPXMLInject,
@@ -554,6 +577,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                snapshot.Group.ModelsListConfig,
+			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
+			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			OpenAIServiceTierMode:           snapshot.Group.OpenAIServiceTierMode,
 			OpenAIServiceTier:               snapshot.Group.OpenAIServiceTier,
 			RPMLimit:                        snapshot.Group.RPMLimit,
