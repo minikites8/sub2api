@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://tosky.io/site-assets/images/logo-icon.png" alt="Sub2API Logo" width="128" />
+<img src="assets/logo-icon.png" alt="Sub2API Logo" width="128" />
 
 # Sub2API
 
@@ -29,12 +29,12 @@ English | [简体中文](README_CN.md) | [日本語](README_JA.md)
 <table>
 <tr>
 <td align="center" width="50%">
-  <img src="assets/community/qq-relay-tech-group.png" alt="QQ 群：中转技术交流，群号 1004036018" width="100%" />
+  <img src="assets/community/qq-relay-tech-group.png" alt="QQ 群：中转技术交流，群号 1004036018" width="71%" />
   <br />
   加入 QQ 群「中转技术交流」
 </td>
 <td align="center" width="50%">
-  <img src="assets/community/coffee-reward.jpg" alt="赞赏码：如果帮到大家可以打赏咖啡" width="100%" />
+  <img src="assets/community/coffee-reward.png" alt="支付宝和微信赞赏码：如果帮到大家可以打赏咖啡" width="100%" />
   <br />
   如果帮到大家可以打赏咖啡！
 </td>
@@ -43,15 +43,24 @@ English | [简体中文](README_CN.md) | [日本語](README_JA.md)
 
 二维码长期有效。需要长期留档、报告问题或讨论具体改动时，请使用 [Issues](https://github.com/ranxi2001/sub2api/issues)。
 
+## 快速开始
+
+新人部署、官方版替换、Excel / BPS 配置、780 / 292 打票边界和“降智”运维步骤，请阅读[新人入门文档](docs/新人入门.md)。
+
+已经托管账号或完成部署，想在 Codex 中使用？请阅读[新人入门：使用 Sub2API 接入 Codex](docs/新人入门-使用Sub2API.md)，按步骤创建 API Key、配置 Cockpit Tools 并验证调用。
+
 
 ## 本仓库的维护方向
 
-基于 [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api) 持续维护，按需 cherry-pick 上游更新，同时保留并迭代自己的功能。默认分支为 `production`，发布版本和更新源均使用本仓库。
+本仓库是 `ranxi2001/sub2api` 的独立生产 fork，基于 [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api) 按需同步。应用功能、上游修复、Release 和生产验证都以 `production` 分支为准；不会用上游默认分支或 tag 直接覆盖本 fork 的生产历史。
 
 - **DeepSeek 与 Codex 适配**：支持 Responses 到 Chat Completions 的转换、工具调用历史和上下文压缩兼容。配置模型映射后，可通过切换 API Key 分组使用 DeepSeek，沿用客户端配置。[操作教程](https://tosky.io/docs/?doc=deepseek-switch-group)
 - **Codex ticket 管理**：提供后台采集、注入、模型选择及账号状态展示；相关开关和采集代理由管理员配置。
-- **Mihomo 出口管理**：集成采集出口管理、票据刷新策略和节点状态操作，日常业务代理与采集出口分别配置。
-- **独立发布与升级**：使用 `ranxi2001/sub2api` 的 Release、安装资源和容器镜像，具体版本变化见 [更新说明](https://github.com/ranxi2001/sub2api/releases)。
+- **Excel / Basispoints**：维护模型级 BPS 路由、内嵌图片 HTTPS 中转、磁盘和并发保护、结构化输出校验，以及工具历史和 transport 恢复。BPS 不支持的搜索、图片生成等请求按请求回退原 Codex 通道。
+- **上游修复维护**：持续跟踪上游 Codex、Responses、工具调用、密文恢复和限流修复；先确认与本 fork 的行为差异，再按提交级别移植并补充回归测试。
+- **独立发布与升级**：使用 `ranxi2001/sub2api` 的 Release、安装资源和容器镜像。版本变更见 [更新说明](https://github.com/ranxi2001/sub2api/releases)；Release 成功不代表生产服务已经部署，线上状态需要单独验证。
+
+贡献代码时，请在独立分支中说明影响的请求路径、账号类型、配置默认值和兼容边界。涉及生产分支的修复应先进入原 PR head，通过 CI 后再合并；不要提交 Token、OAuth 导出、ticket、代理凭据或生产配置。
 
 ## 项目概述
 
@@ -79,7 +88,6 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 | 缓存/队列 | Redis 7+ |
 | API 协议 | OpenAI Responses / Chat Completions、Anthropic Messages、Gemini、SSE、WebSocket |
 | 调度与可靠性 | 粘性会话、并发控制、限流、故障转移、ticket 准入与冷却 |
-| 观测与运维 | 结构化日志、请求分段耗时、健康检查、Mihomo 出口与 systemd |
 | 交付与质量 | Docker Compose、GitHub Actions、Go 单元测试、前端类型检查与构建 |
 
 ## 贡献与协作

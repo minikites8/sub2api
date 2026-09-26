@@ -88,7 +88,7 @@
                           {{ t('admin.accounts.dataActions') }}
                         </div>
                       </div>
-                      <button class="account-tools-menu-item" @click="openSyncFromCrs">
+                      <button v-if="authStore.isAdmin" class="account-tools-menu-item" @click="openSyncFromCrs">
                         <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
                           <Icon name="sync" size="sm" />
                         </span>
@@ -127,13 +127,13 @@
                           {{ t('admin.accounts.toolActions') }}
                         </div>
                       </div>
-                      <button class="account-tools-menu-item" @click="openErrorPassthrough">
+                      <button v-if="authStore.isAdmin" class="account-tools-menu-item" @click="openErrorPassthrough">
                         <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
                           <Icon name="shield" size="sm" />
                         </span>
                         <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
                       </button>
-                      <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
+                      <button v-if="authStore.isAdmin" class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
                         <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
                           <Icon name="lock" size="sm" />
                         </span>
@@ -261,22 +261,7 @@
               >
                 {{ accountDisplayEmail(row) }}
               </span>
-              <div
-                v-if="getOpenAITeamMetadata(row)"
-                class="mt-1 max-w-[260px] space-y-0.5 text-[11px] leading-4 text-indigo-600 dark:text-indigo-300"
-                :title="getOpenAITeamMetadata(row)?.organizationId || undefined"
-              >
-                <span v-if="getOpenAITeamMetadata(row)?.name" class="block truncate">
-                  {{ t('admin.accounts.teamMetadata.name') }}: {{ getOpenAITeamMetadata(row)?.name }}
-                </span>
-                <span v-if="getOpenAITeamMetadata(row)?.createdTime" class="block truncate">
-                  {{ t('admin.accounts.teamMetadata.createdTime') }}: {{ formatDateTime(getOpenAITeamMetadata(row)!.createdTime!) }}
-                </span>
-                <span v-if="getOpenAITeamMetadata(row)?.organizationId" class="block truncate font-mono">
-                  {{ t('admin.accounts.teamMetadata.organizationId') }}: {{ getOpenAITeamMetadata(row)?.organizationId }}
-                </span>
-              </div>
-              <YeTeamRefreshBadge :account="row" />
+              <ExcelBPS403Badge :account="row" />
             </div>
           </template>
           <template #cell-notes="{ value }">
@@ -519,8 +504,8 @@
     <OpenAISessionsModal :show="showOpenAISessions" :account="sessionsAcc" @close="closeOpenAISessions" />
     <OpenAIWorkspaceInfoModal :show="showWorkspaceInfo" :account="workspaceInfoAcc" :info="workspaceInfo" @close="closeWorkspaceInfo" @invited="handleWorkspaceInviteCompleted" @info-updated="handleWorkspaceInfoUpdated" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @iq-test="handleIQTest" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @ye-team-reset="handleYeTeamReset" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @sessions="handleOpenAISessions" @workspace-info="handleGetWorkspaceInfo" />
-    <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @iq-test="handleIQTest" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
+    <SyncFromCrsModal v-if="authStore.isAdmin" :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <YeTeamRedeemModal :show="showYeTeamRedeem" @close="showYeTeamRedeem = false" @redeemed="handleYeTeamRedeemed" />
     <BulkEditAccountModal
@@ -538,13 +523,13 @@
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
-      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+      <label v-if="authStore.isAdmin" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
         <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
         <span>{{ t('admin.accounts.dataExportIncludeProxies') }}</span>
       </label>
     </ConfirmDialog>
-    <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
-    <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <ErrorPassthroughRulesModal v-if="authStore.isAdmin" :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
+    <TLSFingerprintProfilesModal v-if="authStore.isAdmin" :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
     <TotpStepUpDialog :controller="accountExportStepUp" />
     <ConfirmDialog
       :show="showBulkDeleteConfirm"
@@ -602,7 +587,6 @@ import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActions
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import YeTeamRedeemModal from '@/components/admin/account/YeTeamRedeemModal.vue'
-import YeTeamRefreshBadge from '@/components/admin/account/YeTeamRefreshBadge.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
@@ -616,6 +600,7 @@ import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
+import ExcelBPS403Badge from '@/components/account/ExcelBPS403Badge.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -720,7 +705,7 @@ const iqTestingAcc = ref<Account | null>(null)
 const sessionsAcc = ref<Account | null>(null)
 const workspaceInfoAcc = ref<Account | null>(null)
 const workspaceInfo = ref<OpenAIWorkspaceInfo | null>(null)
-const workspaceInfoLoadingID = ref<number | null>(null)
+
 const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
@@ -1859,20 +1844,6 @@ function accountDisplayEmail(row: any): string {
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
 }
 
-function getOpenAITeamMetadata(row: Account): { name?: string; createdTime?: string; organizationId?: string } | null {
-  if (row.platform !== 'openai' || row.type !== 'oauth') return null
-  const credentials = row.credentials || {}
-  const planType = String(credentials.team_plan_type || credentials.plan_type || '').trim().toLowerCase()
-  const hasTeamIdentity = ['team', 'self_serve_business_prolite'].includes(planType) ||
-    typeof credentials.team_account_id === 'string' ||
-    typeof credentials.team_name === 'string'
-  if (!hasTeamIdentity) return null
-  const name = String(credentials.team_name || credentials.name || '').trim()
-  const createdTime = String(credentials.team_created_time || credentials.created_time || '').trim()
-  const organizationId = String(credentials.team_organization_id || credentials.organization_id || '').trim()
-  return { name: name || undefined, createdTime: createdTime || undefined, organizationId: organizationId || undefined }
-}
-
 function accountHomepageUrl(row: Account): string {
   if (row.type !== 'apikey' || typeof row.credentials?.base_url !== 'string') return ''
   const baseUrl = sanitizeUrl(row.credentials.base_url)
@@ -2444,9 +2415,9 @@ const handleExportData = async () => {
   try {
     const dataPayload = await accountExportStepUp.run(() => adminAPI.accounts.exportData(
       selIds.value.length > 0
-        ? { ids: selIds.value, includeProxies: includeProxyOnExport.value }
+        ? { ids: selIds.value, includeProxies: authStore.isAdmin && includeProxyOnExport.value }
         : {
-            includeProxies: includeProxyOnExport.value,
+            includeProxies: authStore.isAdmin && includeProxyOnExport.value,
             filters: buildAccountQueryFilters()
           }
     ))
@@ -2519,22 +2490,7 @@ const handleSchedule = async (a: Account) => {
 }
 const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
-const handleOpenAISessions = (a: Account) => { sessionsAcc.value = a; showOpenAISessions.value = true }
 const closeOpenAISessions = () => { showOpenAISessions.value = false; sessionsAcc.value = null }
-const handleGetWorkspaceInfo = async (a: Account) => {
-  if (workspaceInfoLoadingID.value === a.id) return
-  workspaceInfoLoadingID.value = a.id
-  try {
-    const info = await adminAPI.accounts.getOpenAIWorkspaceInfo(a.id)
-    workspaceInfoAcc.value = a
-    handleWorkspaceInfoUpdated(info)
-    showWorkspaceInfo.value = true
-  } catch (error) {
-    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.workspaceInfo.loadFailed')))
-  } finally {
-    workspaceInfoLoadingID.value = null
-  }
-}
 const closeWorkspaceInfo = () => {
   showWorkspaceInfo.value = false
   workspaceInfoAcc.value = null
@@ -2586,22 +2542,6 @@ const handleRefresh = async (a: Account) => {
     if (result.warning) appStore.showWarning(result.message)
   } catch (error) {
     console.error('Failed to refresh credentials:', error)
-  }
-}
-const resettingYeTeamAccountIDs = new Set<number>()
-const handleYeTeamReset = async (a: Account) => {
-  if (resettingYeTeamAccountIDs.has(a.id)) return
-  resettingYeTeamAccountIDs.add(a.id)
-  try {
-    const updated = await adminAPI.accounts.resetYeTeam(a.id)
-    patchAccountInList(updated)
-    enterAutoRefreshSilentWindow()
-    appStore.showSuccess(t('admin.accounts.yeTeamResetSuccess'))
-  } catch (error: any) {
-    console.error('Failed to reset ye.team credentials:', error)
-    appStore.showError(error?.message || t('admin.accounts.yeTeamResetFailed'))
-  } finally {
-    resettingYeTeamAccountIDs.delete(a.id)
   }
 }
 const handleRecoverState = async (a: Account) => {

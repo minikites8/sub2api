@@ -172,7 +172,7 @@ func TestExcelBPSImagesValidationAndPassthrough(t *testing.T) {
 		"empty":     {"type": "input_image", "image_url": "data:image/png;base64,"},
 		"fake png":  {"type": "input_image", "image_url": "data:image/png;base64,aGVsbG8="},
 		"svg":       {"type": "input_image", "image_url": "data:image/svg+xml;base64,PHN2Zy8+"},
-		"detail":    {"type": "input_image", "image_url": dataURL, "detail": "original"},
+		"detail":    {"type": "input_image", "image_url": dataURL, "detail": "invalid"},
 		"mixed":     {"type": "input_image", "image_url": dataURL, "file_id": "file-existing"},
 		"http":      {"type": "input_image", "image_url": "http://example.test/a.png"},
 	} {

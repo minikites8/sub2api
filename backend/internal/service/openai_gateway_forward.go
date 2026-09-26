@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
+	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"io"
 	"net/http"
 	"net/url"
@@ -77,18 +78,39 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
-	if account.IsExcelBPSEnabled() {
-		bpsResult, bpsErr := s.forwardExcelBPS(ctx, c, account, body, startTime)
-		if !errors.Is(bpsErr, errExcelBPSModelUnavailable) {
-			return bpsResult, bpsErr
+	modelForBPS := gjson.GetBytes(body, "model").String()
+	if c.GetBool(bpsAccountProbeRequiredContextKey) &&
+		(!account.IsExcelBPSEnabledForModel(modelForBPS) || basispoints.NativeFallbackReason(body) != "") {
+		return nil, errors.New("bps probe path is unavailable")
+	}
+	if account.IsExcelBPSEnabledForModel(modelForBPS) {
+		reason := basispoints.NativeFallbackReason(body)
+		if reason == "" {
+			bpsResult, bpsErr := s.forwardExcelBPS(ctx, c, account, body, startTime)
+			if !errors.Is(bpsErr, errExcelBPSModelUnavailable) {
+				return bpsResult, bpsErr
+			}
+			// Continue once with the original canonical request. BPS adaptation and
+			// attachment IDs belong exclusively to the completed BPS attempt.
+			account = accountForExcelBPSFallback(account)
+			ctx = withExcelBPSFallbackContext(ctx)
+			resetExcelBPSFallbackContext(c)
+			if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
+				return nil, err
+			}
+		} else {
+			c.Header("X-Codex2API-Upstream", "codex")
+			c.Header("X-Codex2API-Basispoints-Bypass", reason)
 		}
-		// Continue once with the original canonical request. BPS adaptation and
-		// attachment IDs belong exclusively to the completed BPS attempt.
-		account = accountForExcelBPSFallback(account)
-		ctx = withExcelBPSFallbackContext(ctx)
-		resetExcelBPSFallbackContext(c)
-		if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
-			return nil, err
+	}
+
+	if account.IsOpenAIOAuthLike() {
+		stripped, changed, stripErr := stripOpenAICodexUnsupportedWebSearchFields(body)
+		if stripErr != nil {
+			return nil, fmt.Errorf("strip unsupported Codex web search fields: %w", stripErr)
+		}
+		if changed {
+			body = stripped
 		}
 	}
 

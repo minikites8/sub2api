@@ -7,7 +7,7 @@ vi.mock('vue-i18n', async () => {
   return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
 })
 
-const position = { top: 100, left: 100 }
+const anchorRect = new DOMRect(100, 100, 24, 24)
 const account = (extra?: Record<string, unknown>) => ({
   id: 1,
   name: 'team-account',
@@ -23,7 +23,7 @@ const account = (extra?: Record<string, unknown>) => ({
 describe('AccountActionMenu ye.team reset', () => {
   it('shows and emits reset for a bound account', async () => {
     const wrapper = mount(AccountActionMenu, {
-      props: { show: true, account: account({ ye_team_card_code: 'TEAM-TEST-401' }), position },
+      props: { show: true, account: account({ ye_team_card_code: 'TEAM-TEST-401' }), anchorRect },
       attachTo: document.body,
     })
     const button = Array.from(document.body.querySelectorAll('button')).find(node =>
@@ -37,7 +37,7 @@ describe('AccountActionMenu ye.team reset', () => {
 
   it('hides reset for an unbound account', () => {
     const wrapper = mount(AccountActionMenu, {
-      props: { show: true, account: account(), position },
+      props: { show: true, account: account(), anchorRect },
       attachTo: document.body,
     })
     expect(document.body.textContent).not.toContain('admin.accounts.yeTeamReset')

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/requestcapture"
 	"strings"
 	"sync/atomic"
 
@@ -129,6 +130,7 @@ type SettingService struct {
 	openAICodexTicketHarvestProxySF    singleflight.Group
 	openAICodexTicketHarvestScopeCache atomic.Value
 	openAICodexTicketHarvestScopeSF    singleflight.Group
+	requestCapture                     *requestcapture.Manager
 	settingRepo                        SettingRepository
 	defaultSubGroupReader              DefaultSubscriptionGroupReader
 	proxyRepo                          ProxyRepository // for resolving websearch provider proxy URLs

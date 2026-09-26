@@ -248,6 +248,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPluginManagementEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
+		SettingKeyUsageShowLongContextBadge,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -387,6 +388,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
+
+		UsageShowLongContextBadge: settings[SettingKeyUsageShowLongContextBadge] != "false",
 	}, nil
 }
 
@@ -615,23 +618,30 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
-	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
-	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
-	ChannelMonitorHideUserRanking        bool   `json:"channel_monitor_hide_user_ranking"`
 	GrokDefaultTextModel                 string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled       bool   `json:"grok_cross_client_model_map_enabled"`
 	GrokDefaultBaseURLMode               string `json:"grok_default_base_url_mode"`
-	AvailableChannelsEnabled             bool   `json:"available_channels_enabled"`
 	PublicTransitEnabled                 bool   `json:"public_transit_enabled"`
 	PublicTransitPageEnabled             bool   `json:"public_transit_page_enabled"`
-	AffiliateEnabled                     bool   `json:"affiliate_enabled"`
-	PelicanShowcaseEnabled               bool   `json:"pelican_showcase_enabled"`
-	SubscriptionEnabled                  bool   `json:"subscription_enabled"`
-	ModelPlazaEnabled                    bool   `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth                bool   `json:"model_plaza_require_auth"`
-	PluginManagementEnabled              bool   `json:"plugin_management_enabled"`
-	RiskControlEnabled                   bool   `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests           bool   `json:"allow_user_view_error_requests"`
+	// ChannelMonitorHideThroughput is public so the user UI can hide RPM/TPM
+	// without waiting for API redaction alone (defense in depth).
+	ChannelMonitorHideThroughput bool `json:"channel_monitor_hide_throughput"`
+	// ChannelMonitorShowQuota gates the user-facing quota/balance display on
+	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
+	// ChannelMonitorHideUserRanking hides the user ranking tab and /users payload
+	// from non-admin channel-monitor v2 viewers; default false (visible).
+	ChannelMonitorHideUserRanking bool `json:"channel_monitor_hide_user_ranking"`
+	ChannelMonitorShowQuota       bool `json:"channel_monitor_show_quota"`
+	AvailableChannelsEnabled      bool `json:"available_channels_enabled"`
+	PelicanShowcaseEnabled        bool `json:"pelican_showcase_enabled"`
+	SubscriptionEnabled           bool `json:"subscription_enabled"`
+	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
+	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
+	AffiliateEnabled              bool `json:"affiliate_enabled"`
+	RiskControlEnabled            bool `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
+	UsageShowLongContextBadge     bool `json:"usage_show_long_context_badge"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -723,6 +733,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PluginManagementEnabled:              settings.PluginManagementEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
+		UsageShowLongContextBadge:            settings.UsageShowLongContextBadge,
 	}, nil
 }
 

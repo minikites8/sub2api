@@ -61,7 +61,7 @@ func excelBPSModelUnavailable(status int, payload []byte) bool {
 }
 
 func excelBPSCanFallback(c *gin.Context) bool {
-	return c != nil && c.Writer != nil && !IsResponseCommitted(c) && !c.Writer.Written()
+	return c != nil && c.Writer != nil && !c.GetBool(bpsAccountProbeRequiredContextKey) && !IsResponseCommitted(c) && !c.Writer.Written()
 }
 
 // accountForExcelBPSFallback is a request-local view. The shared account keeps
