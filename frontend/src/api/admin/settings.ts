@@ -789,6 +789,22 @@ export interface SystemSettings {
 
   // Allow user view error requests
   allow_user_view_error_requests: boolean;
+  usage_show_long_context_badge: boolean;
+  request_capture_enabled: boolean;
+  request_capture_quota_mib: number;
+  request_capture_retention_days: number;
+  excel_bps_image_mode: 'relay' | 'native'
+  excel_bps_image_relay_enabled: boolean;
+  excel_bps_image_base_url: string;
+  excel_bps_image_body_limit_mib: number;
+  excel_bps_image_budget_mib: number;
+  excel_bps_image_max_requests: number;
+  excel_bps_image_max_image_mib: number;
+  excel_bps_image_max_images: number;
+  excel_bps_image_max_total_mib: number;
+  excel_bps_image_storage_mib: number;
+  excel_bps_image_storage_entries: number;
+  excel_bps_image_ttl_minutes: number;
 }
 
 export interface UpdateSettingsRequest {
@@ -1124,6 +1140,22 @@ export interface UpdateSettingsRequest {
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
   allow_user_view_error_requests?: boolean;
+  usage_show_long_context_badge?: boolean;
+  request_capture_enabled?: boolean;
+  request_capture_quota_mib?: number;
+  request_capture_retention_days?: number;
+  excel_bps_image_mode?: 'relay' | 'native'
+  excel_bps_image_relay_enabled?: boolean;
+  excel_bps_image_base_url?: string;
+  excel_bps_image_body_limit_mib?: number;
+  excel_bps_image_budget_mib?: number;
+  excel_bps_image_max_requests?: number;
+  excel_bps_image_max_image_mib?: number;
+  excel_bps_image_max_images?: number;
+  excel_bps_image_max_total_mib?: number;
+  excel_bps_image_storage_mib?: number;
+  excel_bps_image_storage_entries?: number;
+  excel_bps_image_ttl_minutes?: number;
 }
 
 /**

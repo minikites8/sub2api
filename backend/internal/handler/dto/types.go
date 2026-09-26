@@ -27,6 +27,7 @@ type User struct {
 	Status                  string     `json:"status"`
 	DisabledUntil           *time.Time `json:"disabled_until,omitempty"`
 	AllowedGroups           []int64    `json:"allowed_groups"`
+	ObserverGroupIDs        []int64    `json:"observer_group_ids"`
 	LastActiveAt            *time.Time `json:"last_active_at,omitempty"`
 	CreatedAt               time.Time  `json:"created_at"`
 	UpdatedAt               time.Time  `json:"updated_at"`

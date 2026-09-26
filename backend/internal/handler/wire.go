@@ -15,6 +15,7 @@ import (
 
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
+	requestCaptureHandler *admin.RequestCaptureHandler,
 	dashboardHandler *admin.DashboardHandler,
 	userHandler *admin.UserHandler,
 	groupHandler *admin.GroupHandler,
@@ -46,6 +47,7 @@ func ProvideAdminHandlers(
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	accountOpsHandler *admin.AccountOpsHandler,
+	accountTokenGuardHandler *admin.AccountTokenGuardHandler,
 	channelHandler *admin.ChannelHandler,
 	channelMonitorHandler *admin.ChannelMonitorHandler,
 	channelMonitorTemplateHandler *admin.ChannelMonitorRequestTemplateHandler,
@@ -65,6 +67,7 @@ func ProvideAdminHandlers(
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
 	accountHandler.SetYeTeamClient(yeTeamClient)
 	return &AdminHandlers{
+		RequestCapture:         requestCaptureHandler,
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,
 		Group:                  groupHandler,
@@ -95,6 +98,7 @@ func ProvideAdminHandlers(
 		Plugin:                 pluginHandler,
 		APIKey:                 apiKeyHandler,
 		AccountOps:             accountOpsHandler,
+		AccountTokenGuard:      accountTokenGuardHandler,
 		ScheduledTest:          scheduledTestHandler,
 		Channel:                channelHandler,
 		ChannelMonitor:         channelMonitorHandler,
@@ -310,6 +314,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
 	admin.NewAccountOpsHandler,
+	admin.NewAccountTokenGuardHandler,
 	admin.NewChannelHandler,
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,
@@ -318,6 +323,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
+	admin.NewRequestCaptureHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

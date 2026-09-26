@@ -30,6 +30,7 @@ type User struct {
 	Status                  string
 	DisabledUntil           *time.Time
 	AllowedGroups           []int64
+	ObserverGroupIDs        []int64
 	RestrictPublicGroups    bool
 	// BannedGroupIDs contains groups this user cannot access. The ban is scoped
 	// to the user and leaves access to other groups intact.
@@ -82,6 +83,10 @@ type User struct {
 
 func (u *User) IsAdmin() bool {
 	return u.Role == RoleAdmin
+}
+
+func (u *User) IsObserver() bool {
+	return u.Role == RoleObserver
 }
 
 func (u *User) IsActive() bool {

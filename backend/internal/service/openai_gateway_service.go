@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 	"github.com/Wei-Shaw/sub2api/internal/platform/liveattestation"
+	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
@@ -451,39 +452,47 @@ var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /r
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	excelBPSImages excelBPSImageCache
-
-	codexHarvestRunMu     sync.RWMutex
-	accountRepo           AccountRepository
-	proxyRepo             ProxyRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	cache                 GatewayCache
-	cfg                   *config.Config
-	codexDetector         CodexClientRestrictionDetector
-	schedulerSnapshot     *SchedulerSnapshotService
-	concurrencyService    *ConcurrencyService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	userGroupRateResolver *userGroupRateResolver
-	httpUpstream          HTTPUpstream
-	pluginManager         *PluginManager
-	deferredService       *DeferredService
-	openAITokenProvider   *OpenAITokenProvider
-	grokTokenProvider     *GrokTokenProvider
-	toolCorrector         *CodexToolCorrector
-	openaiWSResolver      OpenAIWSProtocolResolver
-	resolver              *ModelPricingResolver
-	channelService        *ChannelService
-	balanceNotifyService  *BalanceNotifyService
-	settingService        *SettingService
-	authCacheInvalidator  APIKeyAuthCacheInvalidator
-	userPlatformQuotaRepo UserPlatformQuotaRepository
-	liveAttestation       liveattestation.Provider
-	liveAttestationCipher SecretEncryptor
+	excelBPSImagesMu       sync.Mutex
+	excelBPSImages         excelBPSImageCache
+	excelBPSRelay          *basispoints.ImageRelay
+	excelBPSAttachments    basispoints.AttachmentCache
+	excelBPSIPPoolMu       sync.Mutex
+	excelBPSIPPoolSyncedAt time.Time
+	harvestIPPoolMu        sync.Mutex
+	harvestIPPoolExits     []harvestIPPoolExit
+	harvestIPPoolSyncedAt  time.Time
+	harvestIPPoolCursor    atomic.Uint64
+	codexHarvestRunMu      sync.RWMutex
+	accountRepo            AccountRepository
+	proxyRepo              ProxyRepository
+	usageLogRepo           UsageLogRepository
+	usageBillingRepo       UsageBillingRepository
+	userRepo               UserRepository
+	userSubRepo            UserSubscriptionRepository
+	cache                  GatewayCache
+	cfg                    *config.Config
+	codexDetector          CodexClientRestrictionDetector
+	schedulerSnapshot      *SchedulerSnapshotService
+	concurrencyService     *ConcurrencyService
+	billingService         *BillingService
+	rateLimitService       *RateLimitService
+	billingCacheService    *BillingCacheService
+	userGroupRateResolver  *userGroupRateResolver
+	httpUpstream           HTTPUpstream
+	pluginManager          *PluginManager
+	deferredService        *DeferredService
+	openAITokenProvider    *OpenAITokenProvider
+	grokTokenProvider      *GrokTokenProvider
+	toolCorrector          *CodexToolCorrector
+	openaiWSResolver       OpenAIWSProtocolResolver
+	resolver               *ModelPricingResolver
+	channelService         *ChannelService
+	balanceNotifyService   *BalanceNotifyService
+	settingService         *SettingService
+	authCacheInvalidator   APIKeyAuthCacheInvalidator
+	userPlatformQuotaRepo  UserPlatformQuotaRepository
+	liveAttestation        liveattestation.Provider
+	liveAttestationCipher  SecretEncryptor
 
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once
@@ -517,35 +526,29 @@ type OpenAIGatewayService struct {
 	openAIModelsCache                   openAIModelsCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
-	codexTicketNextHarvest              atomic.Int64
-	codexTickets                        sync.Map // account/model -> immutable *codexTurnTicket
-	codexTicketMissBackoffs             sync.Map // account/model -> retry deadline
-	codexTicketBackoffs                 sync.Map // account -> codexTicketBackoff
-	codexTicketFlight                   sync.Map // account/model -> in-flight marker
-	codexTicketLifecycleMu              sync.Mutex
-	codexTicketCancel                   context.CancelFunc
-	codexTicketDone                     chan struct{}
-	codexTicketStopped                  bool
-	openaiCodexTickets                  sync.Map
-	openaiCodexTicketStateMu            sync.Mutex
-	openaiCodexTicketCursors            sync.Map
-	openaiCodexTicketFlight             singleflight.Group
-	openaiCodexTicketProbeCooldown      sync.Map
-	openaiCodexTicketChatHold           sync.Map
-	openaiCodexTicketLifecycleMu        sync.Mutex
-	openaiCodexTicketCancel             context.CancelFunc
-	openaiCodexTicketDone               chan struct{}
-	openaiCodexTicketStopped            bool
-	requireLatestTurnAdmission          bool
-	codexHarvest                        *CodexHarvestService
-	codexHarvestRoundActive             atomic.Bool
 	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
 	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64
-	yeTeam                      *yeteam.Client
-	yeTeamReclaimLocks          sync.Map // key: account ID, value: *sync.Mutex
+	// openaiCodexTickets: accountID\x00model → *openAICodexTicket，292 长度门票。
+	openaiCodexTickets             sync.Map
+	codex780Routes                 codex780RouteCache
+	openaiCodexTicketStateMu       sync.Mutex
+	openaiCodexTicketCursors       sync.Map // codexHarvestTier -> *atomic.Uint64
+	openaiCodexTicketFlight        singleflight.Group
+	openaiCodexTicketProbeCooldown sync.Map // accountID\x00model -> time.Time
+	openaiCodexTicketChatHold      sync.Map // accountID -> *int64 in-flight bound chats
+	openaiCodexTicketLifecycleMu   sync.Mutex
+	openaiCodexTicketCancel        context.CancelFunc
+	openaiCodexTicketDone          chan struct{}
+	openaiCodexTicketStopped       bool
+	yeTeam                         *yeteam.Client
+	yeTeamReclaimLocks             sync.Map // key: account ID, value: *sync.Mutex
+
+	requireLatestTurnAdmission bool
+	codexHarvest               *CodexHarvestService
+	codexHarvestRoundActive    atomic.Bool
 }
 
 type OpenAIGatewayOption func(*OpenAIGatewayService)

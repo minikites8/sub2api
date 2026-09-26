@@ -157,7 +157,7 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
   it('非 OAuth 账号也通过统一重新授权入口导入凭据', () => {
     const account = makeAccount({ platform: 'anthropic', type: 'apikey', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {
-      props: { show: true, account, position },
+      props: { show: true, account, anchorRect },
       attachTo: document.body,
     })
     expect(getBodyText()).toContain('admin.accounts.reAuthorize')
@@ -167,7 +167,7 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
   it('普通 OpenAI OAuth 母账号显示在线设备入口并触发 sessions 事件', async () => {
     const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {
-      props: { show: true, account, position },
+      props: { show: true, account, anchorRect },
       attachTo: document.body,
     })
 
@@ -188,7 +188,7 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
       extra: { ye_team_card_code: 'TEAM-TEST-401' }
     })
     const wrapper = mount(AccountActionMenu, {
-      props: { show: true, account, position },
+      props: { show: true, account, anchorRect },
       attachTo: document.body,
     })
 
@@ -204,7 +204,7 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
   it('无 ye.team 绑定的账号隐藏手动重置入口', () => {
     const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {
-      props: { show: true, account, position },
+      props: { show: true, account, anchorRect },
       attachTo: document.body,
     })
     expect(getBodyText()).not.toContain('admin.accounts.yeTeamReset')

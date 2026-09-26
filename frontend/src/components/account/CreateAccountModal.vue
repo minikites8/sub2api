@@ -3499,11 +3499,12 @@
         </div>
       </div>
 
-      <div>
-        <template v-if="form.proxy_pool.length === 0">
-        <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
+      <div v-if="!authStore.isObserver">
+        <div class="mb-1 flex items-center gap-2">
+          <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
+          <ProxyAdBanner />
+        </div>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
-        </template>
         <ProxyPoolEditor v-model="form.proxy_pool" :proxies="proxies" />
       </div>
 
@@ -4530,7 +4531,6 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { getAccountExpiryTimestamp } from './accountExpiry'
 
 import {
   claudeModels,
@@ -4612,6 +4612,7 @@ import {
   parseDateTimeLocalInput
 } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { getAccountExpiryTimestamp } from './accountExpiry'
 import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
 import {
@@ -5131,8 +5132,8 @@ const {
 } = useQuotaNotifyState()
 
 // Load global feature states once
-adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
-  webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
+adminAPI.accounts.getManagementCapabilities().then(cfg => {
+  webSearchGlobalEnabled.value = cfg?.web_search_enabled === true
 }).catch(() => { webSearchGlobalEnabled.value = false })
 
 loadQuotaNotifyGlobal()
@@ -6940,8 +6941,7 @@ const createAccountAndFinish = async (
     type,
     credentials,
     extra: finalExtra,
-    proxy_id: form.proxy_id,
-    proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool : undefined,
+    proxy_id: authStore.isObserver ? undefined : form.proxy_id,
     concurrency: form.concurrency,
     load_factor: form.load_factor ?? undefined,
     priority: form.priority,

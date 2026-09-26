@@ -1,5 +1,6 @@
 import qualityOps from './qualityOps'
 import accountOps from './accountOps'
+import tokenGuard from './tokenGuard'
 import landing from './landing'
 import common from './common'
 import dashboard from './dashboard'
@@ -11,6 +12,8 @@ import legacy from './legacy'
 import releaseAdditions from './releaseAdditions.json'
 import { mergeMissingLocaleKeys } from '../mergeLegacy'
 
+import requestTiming from './requestTiming'
+
 export default mergeMissingLocaleKeys(mergeMissingLocaleKeys({
   ...landing,
   ...common,
@@ -19,6 +22,8 @@ export default mergeMissingLocaleKeys(mergeMissingLocaleKeys({
   ...batchImage,
   qualityOps,
   accountOps,
+  tokenGuard,
+  requestTiming,
   admin,
   ...misc,
 }, releaseAdditions), legacy)

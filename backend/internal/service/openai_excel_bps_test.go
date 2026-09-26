@@ -70,7 +70,10 @@ func TestExcelBPSForwardContract(t *testing.T) {
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(body))
 			c.Request.Header.Set("x-codex-turn-state", "must-not-leak")
-			result, err := svc.Forward(context.Background(), c, excelAccount(), body)
+			account := excelAccount()
+			account.Proxy = &Proxy{Protocol: "http", Host: "127.0.0.1", Port: 7890}
+			result, err := svc.Forward(context.Background(), c, account, body)
+			require.Equal(t, account.Proxy.URL(), upstream.lastProxyURL)
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, "bps.openai.com", upstream.lastReq.URL.Host)
@@ -82,11 +85,58 @@ func TestExcelBPSForwardContract(t *testing.T) {
 			require.False(t, gjson.GetBytes(upstream.lastBody, "tools").Exists())
 			require.Equal(t, "xhigh", gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
 			require.Equal(t, "xhigh", *result.ReasoningEffort)
+			require.NotNil(t, result.RequestedReasoningEffort)
+			require.Equal(t, "max", *result.RequestedReasoningEffort)
 			require.Equal(t, 10, result.Usage.InputTokens)
 			require.Contains(t, rec.Body.String(), "21")
 		})
 	}
 }
+func TestExcelBPSUsagePreservesRequestedEffortBeforeGroupMapping(t *testing.T) {
+	for _, tc := range []struct {
+		name, requested, ceiling, forwarded string
+	}{
+		{"bps caps max", "max", "", "xhigh"},
+		{"group maps max to xhigh", "max", "xhigh", "xhigh"},
+		{"group maps max to high", "max", "high", "high"},
+		{"unchanged high", "high", "", "high"},
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", tc.name, stream), func(t *testing.T) {
+				wire := "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_bps_effort\",\"status\":\"completed\",\"model\":\"gpt-5.6-sol\",\"output\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":2}}}\n\n"
+				upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(wire))}}
+				svc := openAIClientToolsTestService(upstream)
+				body := []byte(fmt.Sprintf(`{"model":"gpt-5.6-sol","stream":%t,"reasoning":{"effort":%q},"input":"test"}`, stream, tc.requested))
+				ctx := WithRequestedReasoningEffort(context.Background(), tc.requested)
+				if tc.ceiling != "" {
+					var changed bool
+					var err error
+					body, changed, err = ApplyOpenAIReasoningEffortPolicy(body, tc.ceiling, nil, "downgrade")
+					require.NoError(t, err)
+					require.True(t, changed)
+				}
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body)).WithContext(ctx)
+				account := excelAccount()
+				result, err := svc.Forward(ctx, c, account, body)
+				require.NoError(t, err)
+				require.Equal(t, tc.forwarded, gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+				require.Equal(t, tc.requested, optionalStringValue(result.RequestedReasoningEffort))
+				require.Equal(t, tc.forwarded, optionalStringValue(result.ReasoningEffort))
+
+				usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+				usageService := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+				require.NoError(t, usageService.RecordUsage(ctx, &OpenAIRecordUsageInput{
+					Result: result, APIKey: &APIKey{ID: 10}, User: &User{ID: 20}, Account: account,
+				}))
+				require.NotNil(t, usageRepo.lastLog)
+				require.Equal(t, tc.requested, optionalStringValue(usageRepo.lastLog.RequestedReasoningEffort))
+				require.Equal(t, tc.forwarded, optionalStringValue(usageRepo.lastLog.ReasoningEffort))
+			})
+		}
+	}
+}
+
 func TestExcelBPSModelDeniedDoesNotFailover(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"basispoints_model_access_changed","message":"SECRET_UPSTREAM"}}`))}}
 	svc := openAIClientToolsTestService(upstream)
@@ -199,4 +249,36 @@ func TestExcelBPSThreadScopeSeparatesParallelChildren(t *testing.T) {
 	second, _ := resolveOpenAIWSExecutionScope(c, []byte(`{"client_metadata":{"x-codex-turn-metadata":"{\"thread_id\":\"child-B\"}"}}`), 1)
 	require.NotEmpty(t, first)
 	require.NotEqual(t, first, second)
+}
+
+func TestExcelBPSAnonymousIdentityIsRequestLocal(t *testing.T) {
+	body := []byte(`{"model":"gpt-6-astra","input":"identical prompt"}`)
+	newContext := func() *gin.Context {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+		return c
+	}
+	first := newContext()
+	id, transient := resolveExcelBPSIdentity(first, body, 1, true)
+	require.True(t, transient)
+	require.NotEmpty(t, id)
+	again, transient := resolveExcelBPSIdentity(first, body, 1, true)
+	require.True(t, transient)
+	require.Equal(t, id, again, "internal retries reuse a request identity")
+	other, transient := resolveExcelBPSIdentity(newContext(), body, 1, true)
+	require.True(t, transient)
+	require.NotEqual(t, id, other, "identical anonymous prompts must not share a session")
+	empty, transient := resolveExcelBPSIdentity(newContext(), body, 1, false)
+	require.False(t, transient)
+	require.Empty(t, empty, "static proxies keep their old identity behavior")
+	first.Request.Header.Set("session_id", "declared-session")
+	explicit, transient := resolveExcelBPSIdentity(first, body, 1, true)
+	require.False(t, transient)
+	second := newContext()
+	second.Request.Header.Set("session_id", "declared-session")
+	same, transient := resolveExcelBPSIdentity(second, body, 1, true)
+	require.False(t, transient)
+	require.Equal(t, explicit, same)
+	otherKey, _ := resolveExcelBPSIdentity(second, body, 2, true)
+	require.NotEqual(t, explicit, otherKey)
 }

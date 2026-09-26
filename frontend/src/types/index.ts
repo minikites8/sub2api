@@ -98,7 +98,7 @@ export interface User {
   linuxdo_bound?: boolean
   oidc_bound?: boolean
   wechat_bound?: boolean
-  role: 'admin' | 'user' // User role for authorization
+  role: 'admin' | 'user' | 'observer' // User role for authorization
   balance: number // User balance for API usage
   recharge_balance?: number
   gift_balance?: number
@@ -111,6 +111,7 @@ export interface User {
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
   status: 'active' | 'disabled' // Account status
   disabled_until?: string | null
+  observer_group_ids?: number[] | null
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
@@ -342,6 +343,8 @@ export interface PublicSettings {
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
+  /** Usage 表中长上下文计费 x2 徽标的展示开关（后端默认开启，缺失时按开启处理） */
+  usage_show_long_context_badge?: boolean
 }
 
 export interface AuthResponse {
@@ -2297,18 +2300,26 @@ export interface ApiKeyUsageTrendPoint {
 
 // ==================== Admin User Management ====================
 
+export interface ObserverSetupOptions {
+  create_dedicated_group: boolean
+  revoke_public_groups: boolean
+  grant_resources: boolean
+}
+
 export interface UpdateUserRequest {
   email?: string
   password?: string
   username?: string
   notes?: string
-  role?: 'admin' | 'user'
+  role?: 'admin' | 'user' | 'observer'
   balance?: number
   concurrency?: number
   rpm_limit?: number
   status?: 'active' | 'disabled'
+  observer_group_ids?: number[] | null
   allowed_groups?: number[] | null
   restrict_public_groups?: boolean
+  observer_setup?: ObserverSetupOptions
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>

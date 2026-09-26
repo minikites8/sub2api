@@ -394,6 +394,18 @@ func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *
 	}
 }
 
+func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
+	out := dto.AccountFromServiceShallow(account)
+	h.enrichCodexTicketStatus(account, out)
+	if out != nil && account != nil {
+		out.Proxy = dto.ProxyFromService(account.Proxy)
+	}
+	if h != nil && h.ollamaCloudUsage != nil && out != nil {
+		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
+	}
+	return out
+}
+
 func (h *AccountHandler) isSimpleMode() bool {
 	return h != nil && h.cfg != nil && h.cfg.RunMode == config.RunModeSimple
 }
@@ -485,7 +497,7 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		h.accountUsageService.EnrichAccountWithKiroRuntimeState(ctx, account)
 	}
 	item := AccountWithConcurrency{
-		Account:            h.accountResponseFromService(account),
+		Account:            dto.AccountForObserver(ctx, h.accountResponseFromService(account)),
 		simpleMode:         h.isSimpleMode(),
 		CurrentConcurrency: 0,
 		CodexTickets:       h.codexTicketStatuses(ctx, account),
@@ -942,10 +954,13 @@ func (h *AccountHandler) List(c *gin.Context) {
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
-		if h.accountUsageService != nil {
-			h.accountUsageService.EnrichAccountWithKiroRuntimeState(c.Request.Context(), acc)
+		accountResponse := dto.AccountForObserver(c.Request.Context(), h.accountResponseFromService(acc))
+		if lite {
+			accountResponse = dto.AccountForObserver(c.Request.Context(), h.accountListResponseFromService(acc))
+			if h.isSimpleMode() {
+				accountResponse.GroupIDs = filterSimpleModeGroupIDs(accountResponse.GroupIDs, simpleModeCompositeServiceGroupIDs(acc))
+			}
 		}
-		accountResponse := h.accountResponseFromService(acc)
 		item := AccountWithConcurrency{
 			Account:            accountResponse,
 			simpleMode:         h.isSimpleMode(),
