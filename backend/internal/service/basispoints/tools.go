@@ -366,7 +366,7 @@ func validateHistoryContent(value any) error {
 				return err
 			}
 		default:
-			return fmt.Errorf("basispoints supports text and HTTPS input_image content only")
+			return fmt.Errorf("basispoints supports text and input_image content only")
 		}
 	}
 	return nil

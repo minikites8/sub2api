@@ -33,7 +33,7 @@ func TestUnsupportedImageFormsReturnActionableErrors(t *testing.T) {
 		"missing host":    {"image_url": "https:///photo.png"},
 		"credentials":     {"image_url": "https://private-secret:password@images.example/photo.png"},
 		"URL object":      {"image_url": object{"url": "https://images.example/photo.png"}},
-		"file ID":         {"file_id": "file-private"},
+		"empty file ID":   {"file_id": ""},
 		"mixed file ID":   {"image_url": "https://images.example/photo.png", "file_id": "file-private"},
 		"original detail": {"image_url": "https://images.example/photo.png", "detail": "original"},
 	} {
@@ -49,9 +49,34 @@ func TestUnsupportedImageFormsReturnActionableErrors(t *testing.T) {
 			if strings.Contains(err.Error(), "PRIVATE_IMAGE_BYTES") || strings.Contains(err.Error(), "private-secret") {
 				t.Fatal("image data or credentials leaked into the error")
 			}
-			if name == "base64" && (!strings.Contains(err.Error(), "HTTPS image URL") || !strings.Contains(err.Error(), "disable Basispoints")) {
+			if name == "base64" && (!strings.Contains(err.Error(), "HTTPS image URL") || !strings.Contains(err.Error(), "gateway attachment upload")) {
 				t.Fatalf("base64 rejection lacks a remedy: %v", err)
 			}
 		})
+	}
+}
+
+func TestAttachmentImagesPreserveFileIDsAndDetail(t *testing.T) {
+	for _, detail := range []string{"auto", "low", "high"} {
+		image := object{"type": "input_image", "file_id": "file-test_123", "detail": detail}
+		item := object{"type": "message", "role": "user", "content": []any{image}}
+		source := testSource()
+		source["input"] = []any{item}
+		wire, _ := mustPrepare(t, source, "scope", nil)
+		items := mustTestValue[[]any](t, wire["input"])
+		if !reflect.DeepEqual(items[len(items)-1], item) {
+			t.Fatal("attachment reference changed")
+		}
+	}
+}
+
+func TestAttachmentImageValidation(t *testing.T) {
+	for _, id := range []any{nil, 1, "", "file bad", "file/secret", strings.Repeat("x", 257)} {
+		if ValidateImage(object{"file_id": id}) == nil {
+			t.Fatal("invalid attachment accepted")
+		}
+	}
+	if ValidateImage(object{"file_id": "file-ok", "image_url": ""}) == nil {
+		t.Fatal("mixed reference accepted")
 	}
 }

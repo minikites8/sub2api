@@ -99,10 +99,6 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 	}
 	scope := fmt.Sprintf("account:%d/key:%d/thread:%s", account.ID, getAPIKeyIDFromContext(c), identity)
-	upstreamBody, bridge, err := basispoints.Prepare(body, scope, &excelBPSReplay)
-	if err != nil {
-		return fail(400, "basispoints_request_invalid", err.Error())
-	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return fail(502, "basispoints_auth_unavailable", "Account OAuth credential is unavailable")
@@ -111,10 +107,26 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if accountID == "" {
 		return fail(400, "basispoints_account_id_missing", "Excel BPS requires chatgpt_account_id")
 	}
+	body, vision, err := s.materializeExcelBPSImages(ctx, body, account, token, accountID)
+	if err != nil {
+		status := http.StatusBadGateway
+		message := "Basispoints image upload failed"
+		if imageErr, ok := err.(*excelBPSImageError); ok {
+			status, message = imageErr.status, imageErr.message
+		}
+		return fail(status, "basispoints_image_error", message)
+	}
+	upstreamBody, bridge, err := basispoints.Prepare(body, scope, &excelBPSReplay)
+	if err != nil {
+		return fail(400, "basispoints_request_invalid", err.Error())
+	}
 	requestCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream))
 	req, err := newExcelBPSRequest(requestCtx, upstreamBody, token, accountID)
 	if err != nil {
 		return nil, err
+	}
+	if vision {
+		req.Header.Set("Copilot-Vision-Request", "true")
 	}
 	proxyURL := ""
 	if account.Proxy != nil {
