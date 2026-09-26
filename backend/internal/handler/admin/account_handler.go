@@ -1478,6 +1478,25 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	}
 }
 
+// PelicanTest handles the dedicated Pelican HTML-generation test stream.
+// POST /api/v1/admin/accounts/:id/pelican-test
+func (h *AccountHandler) PelicanTest(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	var req PelicanTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.accountTestService.TestPelicanAccountConnection(c, accountID, req.ModelID, req.Prompt, req.ReasoningEffort); err != nil {
+		return
+	}
+}
+
 // ResetYeTeam performs a manual ye.team credential reset for a bound OpenAI
 // account and returns the refreshed account snapshot.
 // POST /api/v1/admin/accounts/:id/ye-team/reset
