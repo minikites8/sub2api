@@ -728,6 +728,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	var passthroughFailoverState openAIPassthroughFailoverState
+	var lastAdmissionErr error
+	admissionBindingRetries := make(map[int64]bool)
 
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
@@ -793,6 +795,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
+				return
+			}
+			if lastFailoverErr == nil && lastAdmissionErr != nil {
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", service.OpenAITurnAdmissionMessage(lastAdmissionErr), streamStarted)
 				return
 			}
 			if lastFailoverErr != nil {
@@ -945,7 +951,26 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		if err != nil {
 			if service.IsOpenAITurnAdmissionError(err) {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", "Account eligibility changed; please retry with complete context", streamStarted)
+				if failoverClientGone(c) {
+					return
+				}
+				reason := service.OpenAITurnAdmissionReason(err)
+				if openAIHTTPAdmissionMayRetry(c, err, previousResponseID, result, writerSizeBeforeForward, switchCount, maxAccountSwitches) {
+					sameAccount := reason == "account_binding_changed" && !admissionBindingRetries[account.ID]
+					if sameAccount {
+						admissionBindingRetries[account.ID] = true
+					} else {
+						failedAccountIDs[account.ID] = struct{}{}
+					}
+					lastAdmissionErr = err
+					switchCount++
+					if c.Writer.Written() {
+						streamStarted = true
+					}
+					reqLog.Info("openai.admission_retry", zap.Int64("account_id", account.ID), zap.String("reason", reason), zap.Bool("same_account", sameAccount), zap.Int("switch_count", switchCount))
+					continue
+				}
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", service.OpenAITurnAdmissionMessage(err), streamStarted || c.Writer.Written())
 				return
 			}
 			if result != nil && result.ClientDisconnect {

@@ -56,11 +56,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		requesttiming.Outcome(ctx, outcome, disconnected)
 	}()
 	defer requesttiming.Observe(ctx, "forward_attempt")()
-	latest, admissionErr := s.admitOpenAITurn(ctx, c, account, extractOpenAICodexTicketModel(body))
+	defer func() { recordOpenAIHTTPAdmissionFailure(ctx, c, account, body, resultErr) }()
+	latest, admissionErr := s.admitOpenAIHTTPRequest(ctx, c, account, body)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	account = latest
+	clearOpenAIHTTPAdmissionFailure(c)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	// A failed account attempt must not leave a bypass reason on a later BPS response.
@@ -112,7 +114,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		reason := account.excelBPSNativeFallbackReason(body)
 		if reason == "" {
 			bpsResult, bpsErr := s.forwardExcelBPS(ctx, c, account, body, startTime)
-			if !errors.Is(bpsErr, errExcelBPSModelUnavailable) {
+			if !errors.Is(bpsErr, errExcelBPSModelUnavailable) && !errors.Is(bpsErr, errExcelBPSAccountEligibilityChanged) {
 				return bpsResult, bpsErr
 			}
 			// Continue once with the original canonical request. BPS adaptation and
@@ -120,6 +122,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			account = accountForExcelBPSFallback(account)
 			ctx = withExcelBPSFallbackContext(ctx)
 			resetExcelBPSFallbackContext(c)
+			if errors.Is(bpsErr, errExcelBPSAccountEligibilityChanged) {
+				c.Header("X-Codex2API-Upstream", "codex")
+				c.Header("X-Codex2API-Basispoints-Bypass", "account_eligibility_changed")
+			}
 			if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 				return nil, err
 			}

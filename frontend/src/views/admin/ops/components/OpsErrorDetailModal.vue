@@ -374,7 +374,7 @@ const nativeCapabilityBypasses = computed<NativeCapabilityBypassEvent[]>(() => {
 
   return parsed
     .filter((event): event is NativeCapabilityBypassEvent => {
-      return isRecord(event) && stringValue(event.kind) === 'bps_native_bypass'
+      return isRecord(event) && ['bps_native_bypass', 'bps_native_fallback'].includes(stringValue(event.kind))
     })
     .map(event => {
       const detailFields = parseNativeCapabilityDetail(stringValue(event.detail))

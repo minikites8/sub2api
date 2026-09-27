@@ -326,7 +326,13 @@ func (s *OpenAIGatewayService) admitOpenAITurnWithGroup(
 	if err != nil {
 		return nil, err
 	}
-	// 会话中途被收窄了分组内的可用模型、或后续 turn 换成了不允许的模型时，要求客户端重连重新选号。
+	return s.admitOpenAITurnSnapshot(ctx, selected, latest, outboundModel, groupID, enforceGroup)
+}
+
+// Admission checks operate on one authoritative snapshot. Established sends and
+// WebSocket turns keep their selected binding; a fresh HTTP request can route
+// from the latest snapshot before preparing any upstream-specific state.
+func (s *OpenAIGatewayService) admitOpenAITurnSnapshot(ctx context.Context, selected, latest *Account, outboundModel string, groupID int64, enforceGroup bool) (*Account, error) {
 	if enforceGroup && !latest.IsModelAllowedInGroup(&groupID, outboundModel) {
 		return nil, denyOpenAITurn("model_not_allowed_in_group")
 	}

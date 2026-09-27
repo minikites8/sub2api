@@ -80,7 +80,10 @@ describe('OpsErrorDetailModal', () => {
     expect(wrapper.text()).not.toContain('admin.ops.errorDetail.payloads.upstream_detail')
   })
 
-  it('renders detailed BPS native capability bypass context', async () => {
+  it.each([
+    { kind: 'bps_native_bypass', reason: 'web_search', message: 'Excel BPS bypassed for native Codex capability' },
+    { kind: 'bps_native_fallback', reason: 'account_eligibility_changed', message: 'Excel BPS account eligibility changed; retrying ordinary upstream with original context' }
+  ])('renders detailed BPS $kind context', async ({ kind, reason, message }) => {
     mocks.getRequestErrorDetail.mockResolvedValue({
       id: 2,
       created_at: '2026-09-27T00:00:00Z',
@@ -95,17 +98,17 @@ describe('OpsErrorDetailModal', () => {
       model: 'gpt-5.6-sol',
       resolved: false,
       request_id: 'rid-bps',
-      message: 'Excel BPS bypassed for native Codex capability',
+      message,
       error_body: '',
       upstream_error_message: '',
       upstream_error_detail: '',
       upstream_errors: JSON.stringify([
         {
-          kind: 'bps_native_bypass',
+          kind,
           stage: 'route',
           scope: 'bps',
-          reason: 'web_search',
-          message: 'Excel BPS bypassed for native Codex capability',
+          reason,
+          message,
           requested_model: 'gpt-5.6-sol',
           mapped_model: 'gpt-5.6-sol',
           detail: 'request_path=/v1/responses stream=true has_tools=true tool_choice_type= tool_choice_name='
@@ -129,10 +132,10 @@ describe('OpsErrorDetailModal', () => {
 
     expect(wrapper.text()).toContain('admin.ops.errorDetail.nativeCapabilityBypass.title')
     expect(wrapper.text()).toContain('admin.ops.errorDetail.nativeCapabilityBypass.requestPath')
-    expect(wrapper.text()).toContain('bps_native_bypass')
-    expect(wrapper.text()).toContain('web_search')
+    expect(wrapper.text()).toContain(kind)
+    expect(wrapper.text()).toContain(reason)
     expect(wrapper.text()).toContain('/v1/responses')
-    expect(wrapper.text()).toContain('Excel BPS bypassed for native Codex capability')
+    expect(wrapper.text()).toContain(message)
   })
 })
 

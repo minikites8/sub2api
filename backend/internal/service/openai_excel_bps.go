@@ -460,6 +460,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			UpstreamURL: basispoints.ResponsesURL, Kind: "http_error",
 			Message: upstreamMessage, Detail: upstreamDetail, UpstreamResponseBody: upstreamDetail,
 		})
+		if ctx.Err() == nil && excelBPSCanFallback(c) && excelBPSAccountEligibilityChanged(resp.StatusCode, raw) {
+			recordExcelBPSAccountEligibilityFallback(ctx, c, account, body, resp)
+			return nil, errExcelBPSAccountEligibilityChanged
+		}
 		if excelBPSModelUnavailable(resp.StatusCode, raw) && excelBPSCanFallback(c) {
 			return nil, errExcelBPSModelUnavailable
 		}
@@ -583,7 +587,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
 		line := scanner.Text()
 		// Hold the SSE event prefix until its payload can be classified, so an
-		// initial model rejection can switch protocols before client output.
+		// initial admission rejection can switch protocols before client output.
 		if stream && strings.HasPrefix(line, "event:") {
 			pendingEventLine = line
 			continue
@@ -591,6 +595,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if strings.HasPrefix(line, "data: ") {
 			payload := []byte(strings.TrimPrefix(line, "data: "))
 			kind := gjson.GetBytes(payload, "type").String()
+			if (kind == "response.failed" || kind == "error") && result.FirstTokenMs == nil && ctx.Err() == nil && excelBPSCanFallback(c) && excelBPSAccountEligibilityChanged(http.StatusOK, payload) {
+				recordExcelBPSAccountEligibilityFallback(ctx, c, account, body, resp)
+				return nil, errExcelBPSAccountEligibilityChanged
+			}
 			if (kind == "response.failed" || kind == "error") && result.FirstTokenMs == nil && excelBPSCanFallback(c) && excelBPSModelUnavailable(http.StatusOK, payload) {
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
