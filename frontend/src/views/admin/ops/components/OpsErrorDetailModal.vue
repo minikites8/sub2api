@@ -130,6 +130,61 @@
         <div class="mt-3 break-words text-sm font-medium text-amber-900 dark:text-amber-100">{{ rootCauseMessage }}</div>
       </div>
 
+      <div v-if="nativeCapabilityBypasses.length" class="rounded-xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-800/60 dark:bg-amber-900/10">
+        <h3 class="text-sm font-black uppercase tracking-wider text-amber-900 dark:text-amber-200">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.title') }}</h3>
+        <div class="mt-4 space-y-4">
+          <div
+            v-for="(event, idx) in nativeCapabilityBypasses"
+            :key="idx"
+            class="rounded-xl border border-amber-200 bg-white p-4 dark:border-amber-800/60 dark:bg-dark-800"
+          >
+            <div class="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+              <span>{{ t('admin.ops.errorDetail.nativeCapabilityBypass.reason') }}:</span>
+              <code class="rounded bg-amber-100 px-2 py-0.5 font-mono text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">{{ event.reason || '—' }}</code>
+            </div>
+            <div v-if="event.message" class="mt-2 break-words text-sm text-gray-700 dark:text-gray-200">{{ event.message }}</div>
+            <div class="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-700 dark:text-gray-200 sm:grid-cols-2">
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.stage') }}:</span>
+                <span class="ml-1 font-mono">{{ event.stage || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.scope') }}:</span>
+                <span class="ml-1 font-mono">{{ event.scope || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.requestedModel') }}:</span>
+                <span class="ml-1 font-mono">{{ event.requested_model || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.mappedModel') }}:</span>
+                <span class="ml-1 font-mono">{{ event.mapped_model || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.requestPath') }}:</span>
+                <span class="ml-1 break-all font-mono">{{ event.request_path || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.stream') }}:</span>
+                <span class="ml-1 font-mono">{{ formatOptionalBoolean(event.stream) }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.hasTools') }}:</span>
+                <span class="ml-1 font-mono">{{ formatOptionalBoolean(event.has_tools) }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.toolChoiceType') }}:</span>
+                <span class="ml-1 font-mono">{{ event.tool_choice_type || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.nativeCapabilityBypass.toolChoiceName') }}:</span>
+                <span class="ml-1 break-all font-mono">{{ event.tool_choice_name || '—' }}</span>
+              </div>
+            </div>
+            <pre v-if="event.detail" class="mt-3 overflow-auto rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-xs text-gray-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-gray-100"><code>{{ event.detail }}</code></pre>
+          </div>
+        </div>
+      </div>
       <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.diagnosticPayloads') }}</h3>
         <div v-if="!diagnosticPayloadSections.length" class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ t('common.noData') }}</div>
@@ -288,6 +343,81 @@ const diagnosticPayloadSections = computed(() => {
     return section.value && all.findIndex(candidate => candidate.value === section.value) === index
   })
 })
+
+interface NativeCapabilityBypassEvent {
+  kind?: string
+  stage?: string
+  scope?: string
+  reason?: string
+  message?: string
+  requested_model?: string
+  mapped_model?: string
+  request_path?: string
+  stream?: boolean
+  has_tools?: boolean
+  tool_choice_type?: string
+  tool_choice_name?: string
+  detail?: string
+}
+
+const nativeCapabilityBypasses = computed<NativeCapabilityBypassEvent[]>(() => {
+  const raw = meaningfulPayload(detail.value?.upstream_errors)
+  if (!raw) return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+
+  return parsed
+    .filter((event): event is NativeCapabilityBypassEvent => {
+      return isRecord(event) && stringValue(event.kind) === 'bps_native_bypass'
+    })
+    .map(event => {
+      const detailFields = parseNativeCapabilityDetail(stringValue(event.detail))
+      return {
+        ...event,
+        request_path: stringValue(event.request_path) || detailFields.request_path,
+        stream: typeof event.stream === 'boolean' ? event.stream : parseOptionalBoolean(detailFields.stream),
+        has_tools: typeof event.has_tools === 'boolean' ? event.has_tools : parseOptionalBoolean(detailFields.has_tools),
+        tool_choice_type: stringValue(event.tool_choice_type) || detailFields.tool_choice_type,
+        tool_choice_name: stringValue(event.tool_choice_name) || detailFields.tool_choice_name
+      }
+    })
+})
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value
+  const normalized = stringValue(value).toLowerCase()
+  if (normalized === 'true') return true
+  if (normalized === 'false') return false
+  return undefined
+}
+
+function parseNativeCapabilityDetail(raw: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  const pattern = /(?:^|\s)(request_path|stream|has_tools|tool_choice_type|tool_choice_name)=([^\s]*)/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(raw)) !== null) {
+    fields[match[1]] = match[2]
+  }
+  return fields
+}
+
+function formatOptionalBoolean(value: boolean | undefined): string {
+  return value === undefined ? '—' : String(value)
+}
 
 function meaningfulPayload(candidate: unknown): string {
   const value = String(candidate || '').trim()

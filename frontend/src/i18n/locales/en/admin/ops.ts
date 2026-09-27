@@ -330,6 +330,19 @@ export default {
         source: {
           upstream_http: 'Upstream HTTP'
         },
+        nativeCapabilityBypass: {
+          title: 'BPS Native Capability Bypass',
+          reason: 'Bypass Reason',
+          stage: 'Stage',
+          scope: 'Scope',
+          requestedModel: 'Requested Model',
+          mappedModel: 'Mapped Model',
+          requestPath: 'Request Path',
+          stream: 'Streaming Request',
+          hasTools: 'Has Tools',
+          toolChoiceType: 'Tool Choice Type',
+          toolChoiceName: 'Tool Choice Name'
+        },
         upstreamKeys: {
           status: 'Status',
           message: 'Message',

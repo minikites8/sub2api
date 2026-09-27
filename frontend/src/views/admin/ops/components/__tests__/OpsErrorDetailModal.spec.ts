@@ -79,6 +79,61 @@ describe('OpsErrorDetailModal', () => {
     expect(wrapper.findAll('pre')).toHaveLength(2)
     expect(wrapper.text()).not.toContain('admin.ops.errorDetail.payloads.upstream_detail')
   })
+
+  it('renders detailed BPS native capability bypass context', async () => {
+    mocks.getRequestErrorDetail.mockResolvedValue({
+      id: 2,
+      created_at: '2026-09-27T00:00:00Z',
+      phase: 'request',
+      type: 'upstream_error',
+      error_owner: 'provider',
+      error_source: 'gateway',
+      severity: 'P2',
+      status_code: 200,
+      upstream_status_code: 200,
+      platform: 'openai',
+      model: 'gpt-5.6-sol',
+      resolved: false,
+      request_id: 'rid-bps',
+      message: 'Excel BPS bypassed for native Codex capability',
+      error_body: '',
+      upstream_error_message: '',
+      upstream_error_detail: '',
+      upstream_errors: JSON.stringify([
+        {
+          kind: 'bps_native_bypass',
+          stage: 'route',
+          scope: 'bps',
+          reason: 'web_search',
+          message: 'Excel BPS bypassed for native Codex capability',
+          requested_model: 'gpt-5.6-sol',
+          mapped_model: 'gpt-5.6-sol',
+          detail: 'request_path=/v1/responses stream=true has_tools=true tool_choice_type= tool_choice_name='
+        }
+      ]),
+      account_name: 'account',
+      group_name: 'group',
+      is_business_limited: false
+    })
+
+    const wrapper = shallowMount(OpsErrorDetailModal, {
+      props: { show: true, errorId: 2, errorType: 'request' },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /></div>' },
+          Icon: true
+        }
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.ops.errorDetail.nativeCapabilityBypass.title')
+    expect(wrapper.text()).toContain('admin.ops.errorDetail.nativeCapabilityBypass.requestPath')
+    expect(wrapper.text()).toContain('bps_native_bypass')
+    expect(wrapper.text()).toContain('web_search')
+    expect(wrapper.text()).toContain('/v1/responses')
+    expect(wrapper.text()).toContain('Excel BPS bypassed for native Codex capability')
+  })
 })
 
 it('loads only the owned observer error and never requests correlated admin details', async () => {

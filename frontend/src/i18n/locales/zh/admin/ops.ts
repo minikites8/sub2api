@@ -330,6 +330,19 @@ export default {
         source: {
           upstream_http: '上游 HTTP'
         },
+        nativeCapabilityBypass: {
+          title: 'BPS 原生能力绕过',
+          reason: '绕过原因',
+          stage: '阶段',
+          scope: '范围',
+          requestedModel: '请求模型',
+          mappedModel: '映射模型',
+          requestPath: '请求路径',
+          stream: '流式请求',
+          hasTools: '包含工具',
+          toolChoiceType: '工具选择类型',
+          toolChoiceName: '工具选择名称'
+        },
         upstreamKeys: {
           status: '状态码',
           message: '消息',

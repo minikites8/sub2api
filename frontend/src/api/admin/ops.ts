@@ -21,6 +21,12 @@ export type OpsUpstreamErrorEvent = {
   upstream_status_code?: number
   upstream_request_id?: string
   kind?: string
+  stage?: string
+  scope?: string
+  reason?: string
+  requested_model?: string
+  mapped_model?: string
+  has_tools?: boolean
   message?: string
   detail?: string
 }
