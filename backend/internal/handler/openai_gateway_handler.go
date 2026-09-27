@@ -1401,6 +1401,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	var lastMessagesAdmissionErr error
+	messagesAdmissionBindingRetries := make(map[int64]bool)
 	effectiveMappedModel := preferredMappedModel
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
@@ -1449,6 +1451,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 			} else {
+				if lastFailoverErr == nil && lastMessagesAdmissionErr != nil {
+					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", service.OpenAITurnAdmissionMessage(lastMessagesAdmissionErr), streamStarted)
+					return
+				}
 				if lastFailoverErr != nil {
 					h.handleAnthropicFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -1562,6 +1568,29 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			})
 		}
 		if err != nil {
+			if service.IsOpenAITurnAdmissionError(err) {
+				if failoverClientGone(c) {
+					return
+				}
+				reason := service.OpenAITurnAdmissionReason(err)
+				if openAIHTTPAdmissionMayRetry(c, err, "", result, writerSizeBeforeForward, switchCount, maxAccountSwitches) {
+					sameAccount := reason == "account_binding_changed" && !messagesAdmissionBindingRetries[account.ID]
+					if sameAccount {
+						messagesAdmissionBindingRetries[account.ID] = true
+					} else {
+						failedAccountIDs[account.ID] = struct{}{}
+					}
+					lastMessagesAdmissionErr = err
+					switchCount++
+					if c.Writer.Written() {
+						streamStarted = true
+					}
+					reqLog.Info("openai_messages.admission_retry", zap.Int64("account_id", account.ID), zap.String("reason", reason), zap.Bool("same_account", sameAccount), zap.Int("switch_count", switchCount))
+					continue
+				}
+				h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", service.OpenAITurnAdmissionMessage(err), streamStarted || c.Writer.Written())
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai_messages.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),

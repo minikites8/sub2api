@@ -18,6 +18,11 @@ const openAIHTTPAdmissionFailureContextKey = "openai_http_admission_failure"
 // Continuations keep their account binding and every actual send still performs
 // its authoritative admission check.
 func (s *OpenAIGatewayService) admitOpenAIHTTPRequest(ctx context.Context, c *gin.Context, selected *Account, body []byte) (*Account, error) {
+	return s.admitOpenAIHTTPRequestForModel(ctx, c, selected, body, func(*Account) string { return extractOpenAICodexTicketModel(body) })
+}
+
+// Messages model mapping depends on the authoritative account snapshot.
+func (s *OpenAIGatewayService) admitOpenAIHTTPRequestForModel(ctx context.Context, c *gin.Context, selected *Account, body []byte, resolveModel func(*Account) string) (*Account, error) {
 	groupID, enforceGroup := openAITurnAdmissionGroupFromContext(c)
 	latest, err := s.latestOpenAITurnAccountForGroup(ctx, selected, groupID, enforceGroup)
 	if err != nil {
@@ -28,7 +33,7 @@ func (s *OpenAIGatewayService) admitOpenAIHTTPRequest(ctx context.Context, c *gi
 	if refresh {
 		binding = latest
 	}
-	admitted, err := s.admitOpenAITurnSnapshot(ctx, binding, latest, extractOpenAICodexTicketModel(body), groupID, enforceGroup)
+	admitted, err := s.admitOpenAITurnSnapshot(ctx, binding, latest, resolveModel(latest), groupID, enforceGroup)
 	if err == nil && refresh {
 		logger.FromContext(ctx).Info("openai.http_admission_snapshot_refreshed",
 			zap.Int64("account_id", latest.ID), zap.Bool("bps_before", selected.IsExcelBPSEnabled()), zap.Bool("bps_after", admitted.IsExcelBPSEnabled()))
