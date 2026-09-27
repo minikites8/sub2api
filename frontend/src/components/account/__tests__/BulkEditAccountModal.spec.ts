@@ -115,6 +115,8 @@ describe('BulkEditAccountModal', () => {
       openai_excel_bps: true,
       openai_excel_bps_models: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra'],
       openai_excel_bps_cache_creation_as_input: false,
+      openai_excel_bps_ignore_images: false,
+      openai_excel_bps_omit_unsupported_tools: false,
       openai_excel_bps_auto_disable_on_403: false,
       openai_excel_bps_auto_move_on_403: false,
       openai_excel_bps_403_target_group_id: null
@@ -159,6 +161,19 @@ describe('BulkEditAccountModal', () => {
       await submit(wrapper)
       expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
         extra: defaultExtra
+      })
+    })
+
+    it('saves the hosted tool omission opt-in in bulk', async () => {
+      const wrapper = mountModal(oauthProps)
+      await enableBPS(wrapper)
+      await wrapper.get('[data-testid="bulk-excel-bps-omit-unsupported-tools"]').setValue(true)
+      await submit(wrapper)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+        extra: {
+          ...defaultExtra,
+          openai_excel_bps_omit_unsupported_tools: true
+        }
       })
     })
 
@@ -208,6 +223,7 @@ describe('BulkEditAccountModal', () => {
     it('explicitly disables BPS and clears subordinate settings', async () => {
       const wrapper = mountModal(oauthProps)
       await enableBPS(wrapper)
+      await wrapper.get('[data-testid="bulk-excel-bps-omit-unsupported-tools"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-cache-creation-as-input"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-disable-on-403"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-move-on-403"]').setValue(true)
@@ -231,6 +247,7 @@ describe('BulkEditAccountModal', () => {
       wrapper.get('[data-testid="bulk-excel-bps-model-selection"]')
         .getComponent(ModelWhitelistSelector).vm.$emit('update:modelValue', ['gpt-6-sol'])
       await wrapper.get('[data-testid="bulk-excel-bps-all-models"]').setValue(true)
+      await wrapper.get('[data-testid="bulk-excel-bps-omit-unsupported-tools"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-cache-creation-as-input"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-disable-on-403"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-move-on-403"]').setValue(true)

@@ -362,8 +362,10 @@ describe('EditAccountModal', () => {
 
   it('uses the Kiro direct API-key placeholder when base_url is absent', () => {
     const wrapper = mountModal(buildKiroAPIKeyAccount())
-
-
+    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(true)
+    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
 
   it('saves and restores Excel BPS independently of existing OAuth settings', async () => {
     const account = buildAccount()

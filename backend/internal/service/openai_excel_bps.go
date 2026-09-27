@@ -201,6 +201,13 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	originalModel := gjson.GetBytes(body, "model").String()
 	model := account.GetMappedModel(originalModel)
 	stream := gjson.GetBytes(body, "stream").Bool()
+	clientCanceled := func() (*OpenAIForwardResult, error) {
+		StopOpenAICompactSSEKeepaliveCommitted(c)
+		MarkResponseCommitted(c)
+		MarkOpsClientCancellation(c, stream)
+		// No response or metered usage exists before headers; do not create a usage row.
+		return nil, context.Canceled
+	}
 	var err error
 	body, err = sjson.SetBytes(body, "model", model)
 	if err != nil {
@@ -240,12 +247,24 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	imageSettings, err := s.settingService.GetExcelBPSImageRelaySettings(ctx)
 	if err != nil {
+		if isExcelBPSClientCancellation(c, err) {
+			return clientCanceled()
+		}
 		return fail(503, "basispoints_image_settings_unavailable", "Excel BPS image settings are unavailable")
+	}
+	if !imageSettings.Enabled && account.IsExcelBPSIgnoreImagesEnabled() {
+		body, err = basispoints.StripInputImages(body)
+		if err != nil {
+			return fail(400, "basispoints_request_invalid", err.Error())
+		}
 	}
 	var token, accountID string
 	if imageSettings.LegacyNative {
 		token, _, err = s.GetAccessToken(ctx, account)
 		if err != nil {
+			if isExcelBPSClientCancellation(c, err) {
+				return clientCanceled()
+			}
 			return fail(502, "basispoints_auth_unavailable", "Account OAuth credential is unavailable")
 		}
 		accountID = excelBPSAccountID(account, token)
@@ -292,13 +311,22 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if identity != "" {
 		replay, catalog = &excelBPSReplay, &excelBPSCatalog
 	}
-	upstreamBody, bridge, err := basispoints.PrepareWithCatalog(body, scope, replay, catalog)
+	var upstreamBody []byte
+	var bridge *basispoints.Bridge
+	if images != nil {
+		upstreamBody, bridge, err = images.PrepareWithCatalog(scope, replay, catalog)
+	} else {
+		upstreamBody, bridge, err = basispoints.PrepareWithCatalog(body, scope, replay, catalog)
+	}
 	if err != nil {
 		return fail(400, "basispoints_request_invalid", err.Error())
 	}
 	if token == "" {
 		token, _, err = s.GetAccessToken(ctx, account)
 		if err != nil {
+			if isExcelBPSClientCancellation(c, err) {
+				return clientCanceled()
+			}
 			return fail(502, "basispoints_auth_unavailable", "Account OAuth credential is unavailable")
 		}
 		accountID = excelBPSAccountID(account, token)
@@ -320,6 +348,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			return s.uploadExcelBPSAttachment(uploadCtx, account, token, accountID, attachmentProxy, img)
 		})
 		if err != nil {
+			if isExcelBPSClientCancellation(c, err) {
+				return clientCanceled()
+			}
 			status, code := http.StatusBadGateway, "basispoints_attachment_error"
 			var uploadError *excelBPSAttachmentError
 			if errors.As(err, &uploadError) {
@@ -350,6 +381,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	resp, lease, proxyURL, err := s.doExcelBPSRequest(requestCtx, c, account, scope, upstreamBody, token, accountID)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
 	if err != nil {
+		if isExcelBPSClientCancellation(c, err) {
+			return clientCanceled()
+		}
 		return fail(502, "basispoints_transport_error", "Excel BPS connection failed; request was not replayed after sending")
 	}
 	if lease != nil {
@@ -385,6 +419,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			resp, err = s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
 			SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
 			if err != nil {
+				if isExcelBPSClientCancellation(c, err) {
+					return clientCanceled()
+				}
 				if lease != nil && ctx.Err() == nil {
 					lease.ReportFailure()
 				}
@@ -597,6 +634,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 			if _, err = c.Writer.WriteString(line + "\n"); err != nil {
 				result.ClientDisconnect = true
+				if isExcelBPSClientCancellation(c, c.Request.Context().Err()) {
+					MarkOpsClientCancellation(c, stream)
+				}
 				result.Duration = time.Since(start)
 				return result, err
 			}
@@ -609,6 +649,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	result.UpstreamTerminalEvent = terminal
 	if err = scanner.Err(); err != nil || terminal == "" {
 		if ctx.Err() != nil {
+			if isExcelBPSClientCancellation(c, ctx.Err()) {
+				MarkOpsClientCancellation(c, stream)
+			}
 			result.ClientDisconnect = true
 			return result, ctx.Err()
 		}
