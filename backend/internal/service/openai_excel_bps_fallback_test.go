@@ -218,3 +218,31 @@ func TestExcelBPSFallbackUsesOrdinaryErrorHandlingOnce(t *testing.T) {
 	require.EqualError(t, err, "upstream error: 400 (client response sanitized)")
 	require.Equal(t, chatgptCodexURL, upstream.requests[1].URL.String())
 }
+
+func TestExcelBPSNativeFallbackRecordsDetailedReason(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: excelBPSOrdinaryStreamResponse()}
+	svc := openAIClientToolsTestService(upstream)
+	body := []byte(`{"model":"gpt-5.6-sol","stream":true,"input":"search this","tools":[{"type":"web_search","external_web_access":true}]}`)
+	c, _ := newExcelBPSFallbackContext(body, true)
+	account := excelAccount()
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, chatgptCodexURL, upstream.requests[0].URL.String())
+	require.Equal(t, "web_search", c.Writer.Header().Get("X-Codex2API-Basispoints-Bypass"))
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "bps_native_bypass", events[0].Kind)
+	require.Equal(t, "route", events[0].Stage)
+	require.Equal(t, "bps", events[0].Scope)
+	require.Equal(t, "web_search", events[0].Reason)
+	require.Equal(t, "gpt-5.6-sol", events[0].RequestedModel)
+	require.Equal(t, "gpt-5.6-sol", events[0].MappedModel)
+	require.True(t, events[0].HasTools)
+	require.Contains(t, events[0].Detail, "request_path=/v1/responses")
+	require.Contains(t, events[0].Detail, "has_tools=true")
+}

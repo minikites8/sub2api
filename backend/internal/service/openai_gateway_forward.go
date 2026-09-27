@@ -20,6 +20,29 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func logBPSNativeCapabilityBypass(c *gin.Context, account *Account, requestedModel, mappedModel, reason string, body []byte) {
+	if account == nil {
+		return
+	}
+	requestPath := ""
+	if c != nil && c.Request != nil && c.Request.URL != nil {
+		requestPath = c.Request.URL.Path
+	}
+	stream := gjson.GetBytes(body, "stream").Bool()
+	hasTools := gjson.GetBytes(body, "tools").IsArray()
+	toolChoiceType := strings.TrimSpace(gjson.GetBytes(body, "tool_choice.type").String())
+	toolChoiceName := truncateString(strings.TrimSpace(gjson.GetBytes(body, "tool_choice.name").String()), 128)
+	detail := fmt.Sprintf("request_path=%s stream=%t has_tools=%t tool_choice_type=%s tool_choice_name=%s", requestPath, stream, hasTools, toolChoiceType, toolChoiceName)
+	logger.LegacyPrintf("service.openai_gateway", "[OpenAI BPS] native capability bypass: account_id=%d requested_model=%s mapped_model=%s reason=%s %s", account.ID, requestedModel, mappedModel, reason, detail)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+		RequestedModel: requestedModel, MappedModel: mappedModel, HasTools: hasTools,
+		ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
+		UpstreamURL: chatgptCodexURL, Kind: "bps_native_bypass", Stage: "route", Scope: "bps", Reason: reason,
+		Message: "Excel BPS bypassed for native Codex capability", Detail: detail,
+	})
+}
+
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (result *OpenAIForwardResult, resultErr error) {
 	defer func() {
@@ -101,6 +124,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		} else {
 			c.Header("X-Codex2API-Upstream", "codex")
 			c.Header("X-Codex2API-Basispoints-Bypass", reason)
+			logBPSNativeCapabilityBypass(c, account, modelForBPS, account.GetMappedModel(modelForBPS), reason, body)
 		}
 	}
 
