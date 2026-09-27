@@ -1043,6 +1043,34 @@ func (_u *GroupUpdate) SetNillableFreeOpenaiFast(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetEnableBps sets the "enable_bps" field.
+func (_u *GroupUpdate) SetEnableBps(v bool) *GroupUpdate {
+	_u.mutation.SetEnableBps(v)
+	return _u
+}
+
+// SetNillableEnableBps sets the "enable_bps" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableEnableBps(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetEnableBps(*v)
+	}
+	return _u
+}
+
+// SetSchedulingStrategy sets the "scheduling_strategy" field.
+func (_u *GroupUpdate) SetSchedulingStrategy(v string) *GroupUpdate {
+	_u.mutation.SetSchedulingStrategy(v)
+	return _u
+}
+
+// SetNillableSchedulingStrategy sets the "scheduling_strategy" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSchedulingStrategy(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetSchedulingStrategy(*v)
+	}
+	return _u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_u *GroupUpdate) SetRequireOauthOnly(v bool) *GroupUpdate {
 	_u.mutation.SetRequireOauthOnly(v)
@@ -1741,6 +1769,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "audio_stt_price_per_hour", err: fmt.Errorf(`ent: validator failed for field "Group.audio_stt_price_per_hour": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SchedulingStrategy(); ok {
+		if err := group.SchedulingStrategyValidator(v); err != nil {
+			return &ValidationError{Name: "scheduling_strategy", err: fmt.Errorf(`ent: validator failed for field "Group.scheduling_strategy": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
@@ -2100,6 +2133,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.EnableBps(); ok {
+		_spec.SetField(group.FieldEnableBps, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SchedulingStrategy(); ok {
+		_spec.SetField(group.FieldSchedulingStrategy, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
@@ -3519,6 +3558,34 @@ func (_u *GroupUpdateOne) SetNillableFreeOpenaiFast(v *bool) *GroupUpdateOne {
 	return _u
 }
 
+// SetEnableBps sets the "enable_bps" field.
+func (_u *GroupUpdateOne) SetEnableBps(v bool) *GroupUpdateOne {
+	_u.mutation.SetEnableBps(v)
+	return _u
+}
+
+// SetNillableEnableBps sets the "enable_bps" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableEnableBps(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetEnableBps(*v)
+	}
+	return _u
+}
+
+// SetSchedulingStrategy sets the "scheduling_strategy" field.
+func (_u *GroupUpdateOne) SetSchedulingStrategy(v string) *GroupUpdateOne {
+	_u.mutation.SetSchedulingStrategy(v)
+	return _u
+}
+
+// SetNillableSchedulingStrategy sets the "scheduling_strategy" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSchedulingStrategy(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSchedulingStrategy(*v)
+	}
+	return _u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_u *GroupUpdateOne) SetRequireOauthOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetRequireOauthOnly(v)
@@ -4230,6 +4297,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "audio_stt_price_per_hour", err: fmt.Errorf(`ent: validator failed for field "Group.audio_stt_price_per_hour": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SchedulingStrategy(); ok {
+		if err := group.SchedulingStrategyValidator(v); err != nil {
+			return &ValidationError{Name: "scheduling_strategy", err: fmt.Errorf(`ent: validator failed for field "Group.scheduling_strategy": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
@@ -4606,6 +4678,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.EnableBps(); ok {
+		_spec.SetField(group.FieldEnableBps, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SchedulingStrategy(); ok {
+		_spec.SetField(group.FieldSchedulingStrategy, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)

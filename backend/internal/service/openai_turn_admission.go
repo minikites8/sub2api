@@ -292,7 +292,11 @@ func (s *OpenAIGatewayService) latestOpenAITurnAccountForGroup(
 			return nil, denyOpenAITurn("account_runtime_blocked")
 		}
 	}
-	return latest, nil
+	var requestGroupID *int64
+	if enforceGroup {
+		requestGroupID = &groupID
+	}
+	return s.openAIAccountForGroup(ctx, requestGroupID, latest), nil
 }
 
 // Check every actual send, including retries and skipBeforeTurn paths. This is

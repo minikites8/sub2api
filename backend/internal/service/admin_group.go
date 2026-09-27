@@ -492,6 +492,7 @@ func sanitizeGroupOpenAIFast(group *Group) {
 		if group != nil {
 			group.ForceOpenAIFast = false
 			group.FreeOpenAIFast = false
+			group.EnableBPS = false
 		}
 	}
 }
@@ -530,6 +531,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		input.KiroCacheCreationEmulationRatio,
 		input.KiroCacheReadEmulationRatio,
 	); err != nil {
+		return nil, err
+	}
+	schedulingStrategy, err := NormalizeGroupSchedulingStrategy(input.SchedulingStrategy)
+	if err != nil {
 		return nil, err
 	}
 	modelPricing, err := normalizeGroupModelPricing(platform, input.ModelPricing)
@@ -775,6 +780,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowLive:                       input.AllowLive,
 		ForceOpenAIFast:                 input.ForceOpenAIFast,
 		FreeOpenAIFast:                  input.FreeOpenAIFast,
+		EnableBPS:                       input.EnableBPS,
+		SchedulingStrategy:              schedulingStrategy,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
@@ -1201,6 +1208,16 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.FreeOpenAIFast != nil {
 		group.FreeOpenAIFast = *input.FreeOpenAIFast
+	}
+	if input.EnableBPS != nil {
+		group.EnableBPS = *input.EnableBPS
+	}
+	if input.SchedulingStrategy != nil {
+		strategy, err := NormalizeGroupSchedulingStrategy(*input.SchedulingStrategy)
+		if err != nil {
+			return nil, err
+		}
+		group.SchedulingStrategy = strategy
 	}
 	if input.RequireOAuthOnly != nil {
 		group.RequireOAuthOnly = *input.RequireOAuthOnly

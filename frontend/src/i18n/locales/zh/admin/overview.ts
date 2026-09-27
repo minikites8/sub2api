@@ -891,6 +891,16 @@ export default {
 
     // Groups Management
     groups: {
+      routingPolicy: {
+        "title": "上游与调度策略",
+        "enableBPS": "启用 BPS",
+        "bpsHint": "默认关闭，使用平台上游；开启后，账户已启用 BPS 的模型可使用 BPS 上游。",
+        "strategy": "调度策略",
+        "balanced": "均衡",
+        "priority5h": "优先5h",
+        "priorityWeekly": "优先周限额",
+        "strategyHint": "均衡使用常规调度；优先5h先调度有5小时限额的账户；优先周限额先调度仅有周限额的账户。优先账户繁忙或受限时继续尝试其他可用账户，已有会话保持粘性。"
+      },
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
       searchGroups: '搜索分组...',

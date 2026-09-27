@@ -165,6 +165,8 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		Group:                       groupFromServiceBase(g),
 		ForceOpenAIFast:             g.ForceOpenAIFast,
 		FreeOpenAIFast:              g.FreeOpenAIFast,
+		EnableBPS:                   g.EnableBPS,
+		SchedulingStrategy:          g.EffectiveSchedulingStrategy(),
 		StreamOnly:                  g.StreamOnly,
 		ProfitControlEnabled:        g.ProfitControlEnabled,
 		ProfitMinMargin:             g.ProfitMinMargin,

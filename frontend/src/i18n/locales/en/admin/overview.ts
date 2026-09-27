@@ -894,6 +894,16 @@ export default {
 
     // Groups
     groups: {
+      routingPolicy: {
+        "title": "Upstream and scheduling",
+        "enableBPS": "Enable BPS",
+        "bpsHint": "Defaults to off and uses the platform upstream. Enable to allow BPS for models with BPS enabled on the account.",
+        "strategy": "Scheduling strategy",
+        "balanced": "Balanced",
+        "priority5h": "Prefer 5h",
+        "priorityWeekly": "Prefer weekly",
+        "strategyHint": "Balanced uses normal scheduling. Prefer 5h prioritizes accounts with a five-hour limit. Prefer weekly prioritizes weekly-only accounts. Busy or limited preferred accounts fall back to other eligible accounts. Existing sessions retain affinity."
+      },
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
       searchGroups: 'Search groups...',

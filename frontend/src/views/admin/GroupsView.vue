@@ -1817,6 +1817,12 @@
             </div>
           </div>
         </div>
+        <GroupRoutingPolicyFields
+          v-if="supportsGroupOpenAIFast(createForm.platform)"
+          id-prefix="create"
+          v-model:enable-bps="createForm.enable_bps"
+          v-model:scheduling-strategy="createForm.scheduling_strategy"
+        />
         <!-- OpenAI Fast 开关（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsGroupOpenAIFast(createForm.platform)"
@@ -3711,6 +3717,12 @@
             </div>
           </div>
         </div>
+        <GroupRoutingPolicyFields
+          v-if="supportsGroupOpenAIFast(editForm.platform)"
+          id-prefix="edit"
+          v-model:enable-bps="editForm.enable_bps"
+          v-model:scheduling-strategy="editForm.scheduling_strategy"
+        />
         <!-- OpenAI Fast 开关（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsGroupOpenAIFast(editForm.platform)"
@@ -4822,6 +4834,8 @@ import BaseDialog from "@/components/common/BaseDialog.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
+import GroupRoutingPolicyFields from "@/components/admin/group/GroupRoutingPolicyFields.vue";
+import type { GroupSchedulingStrategy } from "@/types";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
@@ -5577,6 +5591,8 @@ const createForm = reactive({
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   free_openai_fast: false,
+  enable_bps: false,
+  scheduling_strategy: "balanced" as GroupSchedulingStrategy,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
@@ -6003,6 +6019,8 @@ const editForm = reactive({
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   free_openai_fast: false,
+  enable_bps: false,
+  scheduling_strategy: "balanced" as GroupSchedulingStrategy,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
@@ -6504,6 +6522,8 @@ const closeCreateModal = () => {
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
   createForm.free_openai_fast = false;
+  createForm.enable_bps = false;
+  createForm.scheduling_strategy = "balanced";
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
   createForm.search_price_per_1k = null;
@@ -6817,6 +6837,8 @@ const handleEdit = async (group: AdminGroup) => {
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
+  editForm.enable_bps = group.enable_bps ?? false;
+  editForm.scheduling_strategy = group.scheduling_strategy ?? "balanced";
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
@@ -6948,6 +6970,8 @@ const closeEditModal = () => {
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;
+  editForm.enable_bps = false;
+  editForm.scheduling_strategy = "balanced";
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
   editForm.search_price_per_1k = null;

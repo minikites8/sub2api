@@ -9,6 +9,9 @@ import (
 // capabilities. Restrict only models that this group can send through BPS.
 // Operate on the caller's copy and update its ETag after all group transforms.
 func restrictExcelBPSCodexModelsManifest(body []byte, accounts []Account, group *Group) ([]byte, bool, error) {
+	if group != nil && !group.EnableBPS {
+		return body, false, nil
+	}
 	hasBPS := false
 	for i := range accounts {
 		hasBPS = hasBPS || accounts[i].IsExcelBPSEnabled()
@@ -63,7 +66,7 @@ func restrictExcelBPSCodexModelsManifest(body []byte, accounts []Account, group 
 }
 
 func codexGroupModelUsesExcelBPS(model string, accounts []Account, group *Group) bool {
-	if model == "" {
+	if model == "" || (group != nil && !group.EnableBPS) {
 		return false
 	}
 	var groupID *int64

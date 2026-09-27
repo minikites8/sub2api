@@ -692,9 +692,13 @@ export interface Group {
   updated_at: string
 }
 
+export type GroupSchedulingStrategy = 'balanced' | 'priority_5h' | 'priority_weekly'
+
 export interface AdminGroup extends Group {
   force_openai_fast: boolean
   free_openai_fast: boolean
+  enable_bps: boolean
+  scheduling_strategy: GroupSchedulingStrategy
   // 仅允许流式请求（管理端请求策略，用户侧分组不返回）
   stream_only: boolean
   model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
@@ -880,6 +884,8 @@ export interface CreateGroupRequest {
   long_context_pricing_enabled?: boolean
   force_openai_fast?: boolean
   free_openai_fast?: boolean
+  enable_bps?: boolean
+  scheduling_strategy?: GroupSchedulingStrategy
   stream_only?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
@@ -959,6 +965,8 @@ export interface UpdateGroupRequest {
   long_context_pricing_enabled?: boolean
   force_openai_fast?: boolean
   free_openai_fast?: boolean
+  enable_bps?: boolean
+  scheduling_strategy?: GroupSchedulingStrategy
   stream_only?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean

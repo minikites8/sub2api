@@ -967,6 +967,8 @@ var (
 		{Name: "allow_live", Type: field.TypeBool, Default: false},
 		{Name: "force_openai_fast", Type: field.TypeBool, Default: false},
 		{Name: "free_openai_fast", Type: field.TypeBool, Default: false},
+		{Name: "enable_bps", Type: field.TypeBool, Default: false},
+		{Name: "scheduling_strategy", Type: field.TypeString, Size: 32, Default: "balanced"},
 		{Name: "require_oauth_only", Type: field.TypeBool, Default: false},
 		{Name: "require_privacy_set", Type: field.TypeBool, Default: false},
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""},

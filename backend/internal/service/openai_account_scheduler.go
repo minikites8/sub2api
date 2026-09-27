@@ -76,6 +76,7 @@ type OpenAIAccountScheduleRequest struct {
 	GuardianParentAccountID int64
 	StickyPreviousAccountID int64
 	StickyWeighted          bool
+	SchedulingStrategy      string
 	SubscriptionPriority    bool
 	PreserveStickyBinding   bool
 	// DisableStickyEscape keeps task-owner lookups on their account even when
@@ -384,8 +385,14 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
-	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
-		req.RequirePrivacySet = true
+	if s != nil && s.service != nil {
+		ctx = s.service.withOpenAIGroupRoutingPolicy(ctx, req.GroupID)
+		if req.SchedulingStrategy == "" {
+			req.SchedulingStrategy = s.service.openAIRequestGroup(ctx, req.GroupID).EffectiveSchedulingStrategy()
+		}
+		if s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
+			req.RequirePrivacySet = true
+		}
 	}
 	start := time.Now()
 	// 命名返回值保证 defer 写入的耗时同时返回给调用方。
@@ -529,6 +536,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
+	account = s.service.openAIAccountForGroup(ctx, req.GroupID, account)
 	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
 		clearBinding()
 		return nil, false, nil
@@ -699,9 +707,6 @@ func (h *openAIAccountCandidateHeap) Pop() any {
 }
 
 func isOpenAIAccountCandidateBetter(left openAIAccountCandidateScore, right openAIAccountCandidateScore) bool {
-	if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(left.account, right.account); quotaCmp != 0 {
-		return quotaCmp < 0
-	}
 	if left.score != right.score {
 		return left.score > right.score
 	}
@@ -1129,12 +1134,12 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		return append(primary, overflow...)
 	}
 	buildSelectionOrderByQuotaTier := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
-		if NormalizeOpenAICompatiblePlatform(req.Platform) != PlatformOpenAI {
+		if NormalizeOpenAICompatiblePlatform(req.Platform) != PlatformOpenAI || req.SchedulingStrategy == "" || req.SchedulingStrategy == GroupSchedulingBalanced {
 			return buildSelectionOrder(pool)
 		}
 		buckets := [3][]openAIAccountCandidateScore{}
 		for _, candidate := range pool {
-			tier := openAIOAuthQuotaScheduleTierFor(candidate.account)
+			tier := openAIGroupQuotaRank(candidate.account, req.SchedulingStrategy)
 			buckets[tier] = append(buckets[tier], candidate)
 		}
 		ordered := make([]openAIAccountCandidateScore, 0, len(pool))
@@ -2361,6 +2366,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	ctx = withOpenAIProxyQuarantineTransport(ctx, requiredTransport)
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
 	ctx = s.withOpenAIGroupPrivacyRequirement(ctx, groupID)
+	ctx = s.withOpenAIGroupRoutingPolicy(ctx, groupID)
 	// 分组利润控制：唯一文本调度入口的防御性装门。handler 文本
 	// 入口已在请求开始经 WithOpenAIRequestPricingContext 装门并固定 pricingAt，
 	// 此处对同分组门直接复用（failover 重入阈值稳定），仅为不经 handler 装配的
@@ -2506,6 +2512,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		StickyPreviousAccountID: stickyPreviousAccountID,
 		StickyWeighted:          stickyWeighted,
 		SubscriptionPriority:    subscriptionPriority,
+		SchedulingStrategy:      s.openAIRequestGroup(ctx, groupID).EffectiveSchedulingStrategy(),
 		PreserveStickyBinding:   preserveGuardianParentBinding,
 		RequirePrivacySet:       s.openAIGroupRequiresPrivacySet(ctx, groupID),
 		PreviousResponseID:      previousResponseID,

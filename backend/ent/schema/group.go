@@ -257,6 +257,13 @@ func (Group) Fields() []ent.Field {
 		field.Bool("free_openai_fast").
 			Default(false).
 			Comment("是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费"),
+		field.Bool("enable_bps").
+			Default(false).
+			Comment("允许分组使用已开启 BPS 的账户上游；关闭时使用平台上游"),
+		field.String("scheduling_strategy").
+			Default("balanced").
+			MaxLen(32).
+			Comment("分组调度策略：balanced / priority_5h / priority_weekly"),
 		field.Bool("require_oauth_only").
 			Default(false).
 			Comment("仅允许非 apikey 类型账号关联到此分组"),

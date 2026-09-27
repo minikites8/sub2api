@@ -22486,6 +22486,8 @@ type GroupMutation struct {
 	allow_live                              *bool
 	force_openai_fast                       *bool
 	free_openai_fast                        *bool
+	enable_bps                              *bool
+	scheduling_strategy                     *string
 	require_oauth_only                      *bool
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
@@ -25446,6 +25448,78 @@ func (m *GroupMutation) ResetFreeOpenaiFast() {
 	m.free_openai_fast = nil
 }
 
+// SetEnableBps sets the "enable_bps" field.
+func (m *GroupMutation) SetEnableBps(b bool) {
+	m.enable_bps = &b
+}
+
+// EnableBps returns the value of the "enable_bps" field in the mutation.
+func (m *GroupMutation) EnableBps() (r bool, exists bool) {
+	v := m.enable_bps
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnableBps returns the old "enable_bps" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldEnableBps(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnableBps is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnableBps requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnableBps: %w", err)
+	}
+	return oldValue.EnableBps, nil
+}
+
+// ResetEnableBps resets all changes to the "enable_bps" field.
+func (m *GroupMutation) ResetEnableBps() {
+	m.enable_bps = nil
+}
+
+// SetSchedulingStrategy sets the "scheduling_strategy" field.
+func (m *GroupMutation) SetSchedulingStrategy(s string) {
+	m.scheduling_strategy = &s
+}
+
+// SchedulingStrategy returns the value of the "scheduling_strategy" field in the mutation.
+func (m *GroupMutation) SchedulingStrategy() (r string, exists bool) {
+	v := m.scheduling_strategy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSchedulingStrategy returns the old "scheduling_strategy" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSchedulingStrategy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSchedulingStrategy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSchedulingStrategy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSchedulingStrategy: %w", err)
+	}
+	return oldValue.SchedulingStrategy, nil
+}
+
+// ResetSchedulingStrategy resets all changes to the "scheduling_strategy" field.
+func (m *GroupMutation) ResetSchedulingStrategy() {
+	m.scheduling_strategy = nil
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (m *GroupMutation) SetRequireOauthOnly(b bool) {
 	m.require_oauth_only = &b
@@ -26823,7 +26897,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 79)
+	fields := make([]string, 0, 81)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26988,6 +27062,12 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.free_openai_fast != nil {
 		fields = append(fields, group.FieldFreeOpenaiFast)
+	}
+	if m.enable_bps != nil {
+		fields = append(fields, group.FieldEnableBps)
+	}
+	if m.scheduling_strategy != nil {
+		fields = append(fields, group.FieldSchedulingStrategy)
 	}
 	if m.require_oauth_only != nil {
 		fields = append(fields, group.FieldRequireOauthOnly)
@@ -27179,6 +27259,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ForceOpenaiFast()
 	case group.FieldFreeOpenaiFast:
 		return m.FreeOpenaiFast()
+	case group.FieldEnableBps:
+		return m.EnableBps()
+	case group.FieldSchedulingStrategy:
+		return m.SchedulingStrategy()
 	case group.FieldRequireOauthOnly:
 		return m.RequireOauthOnly()
 	case group.FieldRequirePrivacySet:
@@ -27346,6 +27430,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldForceOpenaiFast(ctx)
 	case group.FieldFreeOpenaiFast:
 		return m.OldFreeOpenaiFast(ctx)
+	case group.FieldEnableBps:
+		return m.OldEnableBps(ctx)
+	case group.FieldSchedulingStrategy:
+		return m.OldSchedulingStrategy(ctx)
 	case group.FieldRequireOauthOnly:
 		return m.OldRequireOauthOnly(ctx)
 	case group.FieldRequirePrivacySet:
@@ -27787,6 +27875,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFreeOpenaiFast(v)
+		return nil
+	case group.FieldEnableBps:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnableBps(v)
+		return nil
+	case group.FieldSchedulingStrategy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSchedulingStrategy(v)
 		return nil
 	case group.FieldRequireOauthOnly:
 		v, ok := value.(bool)
@@ -28685,6 +28787,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldFreeOpenaiFast:
 		m.ResetFreeOpenaiFast()
+		return nil
+	case group.FieldEnableBps:
+		m.ResetEnableBps()
+		return nil
+	case group.FieldSchedulingStrategy:
+		m.ResetSchedulingStrategy()
 		return nil
 	case group.FieldRequireOauthOnly:
 		m.ResetRequireOauthOnly()

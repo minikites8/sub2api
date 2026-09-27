@@ -59,7 +59,7 @@ func TestExcelBPSManifestMixedRoutesAndExplicitRouting(t *testing.T) {
 	native.ID = 301
 	native.Extra["openai_excel_bps"] = false
 	for _, routed := range []bool{false, true} {
-		group := &Group{ID: 11, Platform: PlatformOpenAI, ModelRoutingEnabled: routed, ModelRouting: map[string][]int64{"public-astra": {native.ID}}}
+		group := &Group{ID: 11, EnableBPS: true, Platform: PlatformOpenAI, ModelRoutingEnabled: routed, ModelRouting: map[string][]int64{"public-astra": {native.ID}}}
 		body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"public-astra"}, []Account{bps, native}, group, nil, true)
 		require.NoError(t, err)
 		model := decodeCodexManifestModels(t, body)[0]
@@ -75,7 +75,7 @@ func TestExcelBPSManifestFetchedAndPinnedCatalogUseFinalETag(t *testing.T) {
 	const source = `{"models":[{"slug":"public-astra","multi_agent_version":"v2","multi_agent_reasoning_effort":"xhigh","apply_patch_tool_type":"freeform","unknown":{"kept":true}},{"slug":"gpt-5.6-sol","multi_agent_version":"v2","multi_agent_reasoning_effort":"high"}],"metadata":{"version":1}}`
 	for _, pinned := range []bool{false, true} {
 		account := excelBPSManifestAccount()
-		group := &Group{ID: 11, Platform: PlatformOpenAI}
+		group := &Group{ID: 11, EnableBPS: true, Platform: PlatformOpenAI}
 		group.CodexModelsManifestConfig.Enabled = pinned
 		svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{11: {account}}}}
 		cacheBody := []byte(source)
@@ -105,7 +105,7 @@ func TestExcelBPSManifestRestrictionPreservesNativeModels(t *testing.T) {
 	native := excelBPSManifestAccount()
 	native.ID = 301
 	native.Extra["openai_excel_bps"] = false
-	group := &Group{ID: 11, Platform: PlatformOpenAI, ModelRoutingEnabled: true, ModelRouting: map[string][]int64{"public-astra": {301}}}
+	group := &Group{ID: 11, EnableBPS: true, Platform: PlatformOpenAI, ModelRoutingEnabled: true, ModelRouting: map[string][]int64{"public-astra": {301}}}
 	for _, accounts := range [][]Account{{native}, {bps, native}} {
 		result, changed, err := restrictExcelBPSCodexModelsManifest(body, accounts, group)
 		require.NoError(t, err)

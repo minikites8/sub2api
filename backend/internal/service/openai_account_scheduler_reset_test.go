@@ -87,7 +87,7 @@ func TestBuildOpenAISelectionOrder_QuotaTierPrecedesSchedulerScore(t *testing.T)
 		topK: 1,
 	}
 
-	order := scheduler.buildOpenAISelectionOrder(OpenAIAccountScheduleRequest{Platform: PlatformOpenAI}, plan)
+	order := scheduler.buildOpenAISelectionOrder(OpenAIAccountScheduleRequest{Platform: PlatformOpenAI, SchedulingStrategy: GroupSchedulingPriority5h}, plan)
 	require.Len(t, order, 2)
 	require.Equal(t, int64(2), order[0].account.ID)
 	require.Equal(t, int64(1), order[1].account.ID)
@@ -111,7 +111,7 @@ func TestOpenAIGatewayService_SelectBestAccount_QuotaTierPrecedesPriority(t *tes
 	}
 
 	selected, _, _ := (&OpenAIGatewayService{}).selectBestAccount(
-		context.Background(), nil, PlatformOpenAI, accounts, "gpt-5.1", nil, false, "", false,
+		groupPolicyContext(GroupSchedulingPriority5h, false), nil, PlatformOpenAI, accounts, "gpt-5.1", nil, false, "", false,
 	)
 	require.NotNil(t, selected)
 	require.Equal(t, int64(1), selected.ID)
@@ -142,7 +142,7 @@ func TestOpenAIGatewayService_SelectAccountWithLoadAwareness_QuotaTierPrecedesPr
 	}
 
 	selection, err := svc.selectAccountWithLoadAwareness(
-		context.Background(), nil, PlatformOpenAI, "", "gpt-5.1", nil, false, "", false,
+		groupPolicyContext(GroupSchedulingPriority5h, false), nil, PlatformOpenAI, "", "gpt-5.1", nil, false, "", false,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)

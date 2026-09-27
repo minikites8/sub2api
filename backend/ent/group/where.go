@@ -305,6 +305,16 @@ func FreeOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
 }
 
+// EnableBps applies equality check predicate on the "enable_bps" field. It's identical to EnableBpsEQ.
+func EnableBps(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldEnableBps, v))
+}
+
+// SchedulingStrategy applies equality check predicate on the "scheduling_strategy" field. It's identical to SchedulingStrategyEQ.
+func SchedulingStrategy(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSchedulingStrategy, v))
+}
+
 // RequireOauthOnly applies equality check predicate on the "require_oauth_only" field. It's identical to RequireOauthOnlyEQ.
 func RequireOauthOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequireOauthOnly, v))
@@ -2378,6 +2388,81 @@ func FreeOpenaiFastEQ(v bool) predicate.Group {
 // FreeOpenaiFastNEQ applies the NEQ predicate on the "free_openai_fast" field.
 func FreeOpenaiFastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldFreeOpenaiFast, v))
+}
+
+// EnableBpsEQ applies the EQ predicate on the "enable_bps" field.
+func EnableBpsEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldEnableBps, v))
+}
+
+// EnableBpsNEQ applies the NEQ predicate on the "enable_bps" field.
+func EnableBpsNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldEnableBps, v))
+}
+
+// SchedulingStrategyEQ applies the EQ predicate on the "scheduling_strategy" field.
+func SchedulingStrategyEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyNEQ applies the NEQ predicate on the "scheduling_strategy" field.
+func SchedulingStrategyNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyIn applies the In predicate on the "scheduling_strategy" field.
+func SchedulingStrategyIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSchedulingStrategy, vs...))
+}
+
+// SchedulingStrategyNotIn applies the NotIn predicate on the "scheduling_strategy" field.
+func SchedulingStrategyNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSchedulingStrategy, vs...))
+}
+
+// SchedulingStrategyGT applies the GT predicate on the "scheduling_strategy" field.
+func SchedulingStrategyGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyGTE applies the GTE predicate on the "scheduling_strategy" field.
+func SchedulingStrategyGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyLT applies the LT predicate on the "scheduling_strategy" field.
+func SchedulingStrategyLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyLTE applies the LTE predicate on the "scheduling_strategy" field.
+func SchedulingStrategyLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyContains applies the Contains predicate on the "scheduling_strategy" field.
+func SchedulingStrategyContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyHasPrefix applies the HasPrefix predicate on the "scheduling_strategy" field.
+func SchedulingStrategyHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyHasSuffix applies the HasSuffix predicate on the "scheduling_strategy" field.
+func SchedulingStrategyHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyEqualFold applies the EqualFold predicate on the "scheduling_strategy" field.
+func SchedulingStrategyEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldSchedulingStrategy, v))
+}
+
+// SchedulingStrategyContainsFold applies the ContainsFold predicate on the "scheduling_strategy" field.
+func SchedulingStrategyContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldSchedulingStrategy, v))
 }
 
 // RequireOauthOnlyEQ applies the EQ predicate on the "require_oauth_only" field.

@@ -126,6 +126,10 @@ const (
 	FieldForceOpenaiFast = "force_openai_fast"
 	// FieldFreeOpenaiFast holds the string denoting the free_openai_fast field in the database.
 	FieldFreeOpenaiFast = "free_openai_fast"
+	// FieldEnableBps holds the string denoting the enable_bps field in the database.
+	FieldEnableBps = "enable_bps"
+	// FieldSchedulingStrategy holds the string denoting the scheduling_strategy field in the database.
+	FieldSchedulingStrategy = "scheduling_strategy"
 	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
 	FieldRequireOauthOnly = "require_oauth_only"
 	// FieldRequirePrivacySet holds the string denoting the require_privacy_set field in the database.
@@ -304,6 +308,8 @@ var Columns = []string{
 	FieldAllowLive,
 	FieldForceOpenaiFast,
 	FieldFreeOpenaiFast,
+	FieldEnableBps,
+	FieldSchedulingStrategy,
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
@@ -443,6 +449,12 @@ var (
 	DefaultForceOpenaiFast bool
 	// DefaultFreeOpenaiFast holds the default value on creation for the "free_openai_fast" field.
 	DefaultFreeOpenaiFast bool
+	// DefaultEnableBps holds the default value on creation for the "enable_bps" field.
+	DefaultEnableBps bool
+	// DefaultSchedulingStrategy holds the default value on creation for the "scheduling_strategy" field.
+	DefaultSchedulingStrategy string
+	// SchedulingStrategyValidator is a validator for the "scheduling_strategy" field. It is called by the builders before save.
+	SchedulingStrategyValidator func(string) error
 	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
 	DefaultRequireOauthOnly bool
 	// DefaultRequirePrivacySet holds the default value on creation for the "require_privacy_set" field.
@@ -763,6 +775,16 @@ func ByForceOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
 // ByFreeOpenaiFast orders the results by the free_openai_fast field.
 func ByFreeOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFreeOpenaiFast, opts...).ToFunc()
+}
+
+// ByEnableBps orders the results by the enable_bps field.
+func ByEnableBps(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEnableBps, opts...).ToFunc()
+}
+
+// BySchedulingStrategy orders the results by the scheduling_strategy field.
+func BySchedulingStrategy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSchedulingStrategy, opts...).ToFunc()
 }
 
 // ByRequireOauthOnly orders the results by the require_oauth_only field.

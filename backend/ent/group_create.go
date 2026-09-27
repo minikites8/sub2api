@@ -752,6 +752,34 @@ func (_c *GroupCreate) SetNillableFreeOpenaiFast(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetEnableBps sets the "enable_bps" field.
+func (_c *GroupCreate) SetEnableBps(v bool) *GroupCreate {
+	_c.mutation.SetEnableBps(v)
+	return _c
+}
+
+// SetNillableEnableBps sets the "enable_bps" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableEnableBps(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetEnableBps(*v)
+	}
+	return _c
+}
+
+// SetSchedulingStrategy sets the "scheduling_strategy" field.
+func (_c *GroupCreate) SetSchedulingStrategy(v string) *GroupCreate {
+	_c.mutation.SetSchedulingStrategy(v)
+	return _c
+}
+
+// SetNillableSchedulingStrategy sets the "scheduling_strategy" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSchedulingStrategy(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetSchedulingStrategy(*v)
+	}
+	return _c
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_c *GroupCreate) SetRequireOauthOnly(v bool) *GroupCreate {
 	_c.mutation.SetRequireOauthOnly(v)
@@ -1337,6 +1365,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultFreeOpenaiFast
 		_c.mutation.SetFreeOpenaiFast(v)
 	}
+	if _, ok := _c.mutation.EnableBps(); !ok {
+		v := group.DefaultEnableBps
+		_c.mutation.SetEnableBps(v)
+	}
+	if _, ok := _c.mutation.SchedulingStrategy(); !ok {
+		v := group.DefaultSchedulingStrategy
+		_c.mutation.SetSchedulingStrategy(v)
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		v := group.DefaultRequireOauthOnly
 		_c.mutation.SetRequireOauthOnly(v)
@@ -1588,6 +1624,17 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		return &ValidationError{Name: "free_openai_fast", err: errors.New(`ent: missing required field "Group.free_openai_fast"`)}
+	}
+	if _, ok := _c.mutation.EnableBps(); !ok {
+		return &ValidationError{Name: "enable_bps", err: errors.New(`ent: missing required field "Group.enable_bps"`)}
+	}
+	if _, ok := _c.mutation.SchedulingStrategy(); !ok {
+		return &ValidationError{Name: "scheduling_strategy", err: errors.New(`ent: missing required field "Group.scheduling_strategy"`)}
+	}
+	if v, ok := _c.mutation.SchedulingStrategy(); ok {
+		if err := group.SchedulingStrategyValidator(v); err != nil {
+			return &ValidationError{Name: "scheduling_strategy", err: fmt.Errorf(`ent: validator failed for field "Group.scheduling_strategy": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
@@ -1942,6 +1989,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
 		_node.FreeOpenaiFast = value
+	}
+	if value, ok := _c.mutation.EnableBps(); ok {
+		_spec.SetField(group.FieldEnableBps, field.TypeBool, value)
+		_node.EnableBps = value
+	}
+	if value, ok := _c.mutation.SchedulingStrategy(); ok {
+		_spec.SetField(group.FieldSchedulingStrategy, field.TypeString, value)
+		_node.SchedulingStrategy = value
 	}
 	if value, ok := _c.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
@@ -3104,6 +3159,30 @@ func (u *GroupUpsert) SetFreeOpenaiFast(v bool) *GroupUpsert {
 // UpdateFreeOpenaiFast sets the "free_openai_fast" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateFreeOpenaiFast() *GroupUpsert {
 	u.SetExcluded(group.FieldFreeOpenaiFast)
+	return u
+}
+
+// SetEnableBps sets the "enable_bps" field.
+func (u *GroupUpsert) SetEnableBps(v bool) *GroupUpsert {
+	u.Set(group.FieldEnableBps, v)
+	return u
+}
+
+// UpdateEnableBps sets the "enable_bps" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateEnableBps() *GroupUpsert {
+	u.SetExcluded(group.FieldEnableBps)
+	return u
+}
+
+// SetSchedulingStrategy sets the "scheduling_strategy" field.
+func (u *GroupUpsert) SetSchedulingStrategy(v string) *GroupUpsert {
+	u.Set(group.FieldSchedulingStrategy, v)
+	return u
+}
+
+// UpdateSchedulingStrategy sets the "scheduling_strategy" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSchedulingStrategy() *GroupUpsert {
+	u.SetExcluded(group.FieldSchedulingStrategy)
 	return u
 }
 
@@ -4546,6 +4625,34 @@ func (u *GroupUpsertOne) SetFreeOpenaiFast(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateFreeOpenaiFast() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFreeOpenaiFast()
+	})
+}
+
+// SetEnableBps sets the "enable_bps" field.
+func (u *GroupUpsertOne) SetEnableBps(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetEnableBps(v)
+	})
+}
+
+// UpdateEnableBps sets the "enable_bps" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateEnableBps() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateEnableBps()
+	})
+}
+
+// SetSchedulingStrategy sets the "scheduling_strategy" field.
+func (u *GroupUpsertOne) SetSchedulingStrategy(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSchedulingStrategy(v)
+	})
+}
+
+// UpdateSchedulingStrategy sets the "scheduling_strategy" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSchedulingStrategy() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSchedulingStrategy()
 	})
 }
 
@@ -6209,6 +6316,34 @@ func (u *GroupUpsertBulk) SetFreeOpenaiFast(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateFreeOpenaiFast() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFreeOpenaiFast()
+	})
+}
+
+// SetEnableBps sets the "enable_bps" field.
+func (u *GroupUpsertBulk) SetEnableBps(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetEnableBps(v)
+	})
+}
+
+// UpdateEnableBps sets the "enable_bps" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateEnableBps() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateEnableBps()
+	})
+}
+
+// SetSchedulingStrategy sets the "scheduling_strategy" field.
+func (u *GroupUpsertBulk) SetSchedulingStrategy(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSchedulingStrategy(v)
+	})
+}
+
+// UpdateSchedulingStrategy sets the "scheduling_strategy" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSchedulingStrategy() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSchedulingStrategy()
 	})
 }
 

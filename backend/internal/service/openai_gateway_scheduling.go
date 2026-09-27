@@ -895,6 +895,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 // selectAccountForModelWithExclusionsStickyHit 与 selectAccountForModelWithExclusions 相同，
 // 另返回账号是否来自粘性会话命中。
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHit(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, bool, error) {
+	ctx = s.withOpenAIGroupRoutingPolicy(ctx, groupID)
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -968,6 +969,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		return nil
 	}
 
+	account = s.openAIAccountForGroup(ctx, groupID, account)
 	// 检查账号是否需要清理粘性会话
 	// Check if sticky session should be cleared
 	if shouldClearStickySession(account, requestedModel) {
@@ -1019,6 +1021,8 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 // true); the third contains deterministic
 // exclusion diagnostics for the evaluated snapshot.
 func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, platform string, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, bool, openAISelectionFilterStats) {
+	ctx = s.withOpenAIGroupRoutingPolicy(ctx, groupID)
+	strategy := s.openAIRequestGroup(ctx, groupID).EffectiveSchedulingStrategy()
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	compactBlocked := false
 	filterStats := openAISelectionFilterStats{pool: len(accounts)}
@@ -1084,7 +1088,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		if requireCompact && compactTiers[a.ID] != compactTiers[b.ID] {
 			return compactTiers[a.ID] > compactTiers[b.ID]
 		}
-		if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(a, b); quotaCmp != 0 {
+		if quotaCmp := compareOpenAIGroupQuotaRank(a, b, strategy); quotaCmp != 0 {
 			return quotaCmp < 0
 		}
 		if rateCmp := rateOrder.compare(a, b); rateCmp != 0 {
@@ -1232,6 +1236,8 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 }
 
 func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool) (*AccountSelectionResult, error) {
+	ctx = s.withOpenAIGroupRoutingPolicy(ctx, groupID)
+	strategy := s.openAIRequestGroup(ctx, groupID).EffectiveSchedulingStrategy()
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -1438,7 +1444,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 		sort.SliceStable(available, func(i, j int) bool {
 			a, b := available[i], available[j]
-			if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(a.account, b.account); quotaCmp != 0 {
+			if quotaCmp := compareOpenAIGroupQuotaRank(a.account, b.account, strategy); quotaCmp != 0 {
 				return quotaCmp < 0
 			}
 			if a.account.Priority != b.account.Priority {
@@ -1458,10 +1464,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
 			}
 		})
-		shuffleWithinSortGroups(available)
-		if rateOrder.enabled {
+		shuffleWithinSortGroups(available, strategy)
+		if rateOrder.enabled || strategy != GroupSchedulingBalanced {
 			sort.SliceStable(available, func(i, j int) bool {
-				if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(available[i].account, available[j].account); quotaCmp != 0 {
+				if quotaCmp := compareOpenAIGroupQuotaRank(available[i].account, available[j].account, strategy); quotaCmp != 0 {
 					return quotaCmp < 0
 				}
 				return rateOrder.compare(available[i].account, available[j].account) < 0
@@ -1518,9 +1524,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
-		if rateOrder.enabled {
+		if rateOrder.enabled || strategy != GroupSchedulingBalanced {
 			sort.SliceStable(ordered, func(i, j int) bool {
-				if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(ordered[i], ordered[j]); quotaCmp != 0 {
+				if quotaCmp := compareOpenAIGroupQuotaRank(ordered[i], ordered[j], strategy); quotaCmp != 0 {
 					return quotaCmp < 0
 				}
 				return rateOrder.compare(ordered[i], ordered[j]) < 0
@@ -1571,9 +1577,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
-	if rateOrder.enabled {
+	if rateOrder.enabled || strategy != GroupSchedulingBalanced {
 		sort.SliceStable(candidates, func(i, j int) bool {
-			if quotaCmp := compareOpenAIOAuthQuotaScheduleTier(candidates[i], candidates[j]); quotaCmp != 0 {
+			if quotaCmp := compareOpenAIGroupQuotaRank(candidates[i], candidates[j], strategy); quotaCmp != 0 {
 				return quotaCmp < 0
 			}
 			return rateOrder.compare(candidates[i], candidates[j]) < 0
@@ -1711,6 +1717,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 		fresh = current
 	}
 
+	fresh = s.openAIAccountForGroup(ctx, groupID, fresh)
 	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, groupID, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
@@ -1771,6 +1778,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if account == nil {
 		return nil
 	}
+	account = s.openAIAccountForGroup(ctx, groupID, account)
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
 		if s.openAIGroupRequiresPrivacySet(ctx, groupID) && !account.IsPrivacySet() {
@@ -1795,6 +1803,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if err != nil || latest == nil {
 		return nil
 	}
+	latest = s.openAIAccountForGroup(ctx, groupID, latest)
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
 		return nil
 	}
