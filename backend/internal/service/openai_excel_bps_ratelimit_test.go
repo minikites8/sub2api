@@ -160,7 +160,7 @@ func (r *excelBPSCancelReader) Read(p []byte) (int, error) {
 	return r.Reader.Read(p)
 }
 
-func TestExcelBPS429DoesNotChangeCodexQuotaOrScheduling(t *testing.T) {
+func TestExcelBPS429FailsOverWithoutChangingCodexQuota(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		headers      http.Header
@@ -205,12 +205,18 @@ func TestExcelBPS429DoesNotChangeCodexQuotaOrScheduling(t *testing.T) {
 
 				_, err := svc.Forward(ctx, c, account, body)
 
-				require.EqualError(t, err, "excel BPS: basispoints_rate_limited")
 				var failover *UpstreamFailoverError
-				require.NotErrorAs(t, err, &failover)
-				require.Equal(t, http.StatusTooManyRequests, rec.Code)
-				require.True(t, IsResponseCommitted(c))
-				require.Contains(t, rec.Body.String(), "basispoints_rate_limited")
+				if tc.cancelOnRead {
+					require.EqualError(t, err, "excel BPS: basispoints_rate_limited")
+					require.NotErrorAs(t, err, &failover)
+				} else {
+					require.ErrorAs(t, err, &failover)
+					require.Equal(t, http.StatusTooManyRequests, failover.StatusCode)
+					require.False(t, failover.RetryableOnSameAccount)
+					require.False(t, IsResponseCommitted(c))
+					require.False(t, c.Writer.Written())
+					require.Empty(t, rec.Body.String())
+				}
 				require.NotContains(t, rec.Body.String(), "PRIVATE_UPSTREAM")
 				require.Len(t, upstream.requests, 1)
 				requireNoExcelBPSQuotaWrite(t, repo)

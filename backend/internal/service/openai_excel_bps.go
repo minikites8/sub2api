@@ -435,8 +435,8 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			lease.ReportUpstreamFailure()
 		}
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
-		// BPS throttles its own endpoint. A BPS 429 must not write Codex
-		// quota/cooldown state or trigger account failover.
+		// BPS endpoint throttles use request-local account failover while
+		// preserving independent Codex quota and cooldown state.
 		// Preserve the original rejection for Ops without exposing it to clients.
 		// BPS errors can echo request fields, so redact before storing diagnostics.
 		upstreamMessage := fmt.Sprintf("Excel BPS returned HTTP %d", resp.StatusCode)
@@ -460,6 +460,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			UpstreamURL: basispoints.ResponsesURL, Kind: "http_error",
 			Message: upstreamMessage, Detail: upstreamDetail, UpstreamResponseBody: upstreamDetail,
 		})
+		if resp.StatusCode == http.StatusTooManyRequests && excelBPSCanRateLimitFailover(ctx, c) {
+			return nil, excelBPSRateLimitFailover(c, account, resp.Header, raw)
+		}
 		if ctx.Err() == nil && excelBPSCanFallback(c) && excelBPSAccountEligibilityChanged(resp.StatusCode, raw) {
 			recordExcelBPSAccountEligibilityFallback(ctx, c, account, body, resp)
 			return nil, errExcelBPSAccountEligibilityChanged
@@ -583,9 +586,16 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	var completed []byte
 	terminal := ""
 	var pendingEventLine string
+	var prelude bytes.Buffer
+	var skippedPreludeBlank, semanticOutput bool
 	cacheCreationAsInput := account.IsExcelBPSCacheCreationAsInputEnabled()
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
 		line := scanner.Text()
+		if skippedPreludeBlank && line == "" {
+			skippedPreludeBlank = false
+			continue
+		}
+		skippedPreludeBlank = false
 		// Hold the SSE event prefix until its payload can be classified, so an
 		// initial admission rejection can switch protocols before client output.
 		if stream && strings.HasPrefix(line, "event:") {
@@ -595,6 +605,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if strings.HasPrefix(line, "data: ") {
 			payload := []byte(strings.TrimPrefix(line, "data: "))
 			kind := gjson.GetBytes(payload, "type").String()
+			if (kind == "response.failed" || kind == "error") && !semanticOutput && excelBPSCanRateLimitFailover(ctx, c) && excelBPSRateLimitError(payload) {
+				return nil, excelBPSRateLimitFailover(c, account, resp.Header, payload)
+			}
 			if (kind == "response.failed" || kind == "error") && result.FirstTokenMs == nil && ctx.Err() == nil && excelBPSCanFallback(c) && excelBPSAccountEligibilityChanged(http.StatusOK, payload) {
 				recordExcelBPSAccountEligibilityFallback(ctx, c, account, body, resp)
 				return nil, errExcelBPSAccountEligibilityChanged
@@ -616,6 +629,17 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 				}
 				line = "data: " + string(payload)
 			}
+			isPrelude := (kind == "response.created" || kind == "response.in_progress") && len(gjson.GetBytes(payload, "response.output").Array()) == 0
+			if stream && !semanticOutput && isPrelude && prelude.Len()+len(pendingEventLine)+len(line)+3 <= 64<<10 {
+				// Keep rejected response IDs out of the client stream until actual output.
+				prelude.WriteString(pendingEventLine + "\n" + line + "\n\n")
+				pendingEventLine = ""
+				skippedPreludeBlank = true
+				continue
+			}
+			if !isPrelude || stream && prelude.Len()+len(pendingEventLine)+len(line)+3 > 64<<10 {
+				semanticOutput = true
+			}
 			if result.FirstTokenMs == nil && (kind == "response.output_text.delta" || kind == "response.output_item.added") {
 				ms := int(time.Since(start).Milliseconds())
 				result.FirstTokenMs = &ms
@@ -632,6 +656,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 		}
 		if stream {
+			if prelude.Len() > 0 {
+				if _, err = c.Writer.Write(prelude.Bytes()); err != nil {
+					result.ClientDisconnect = true
+					result.Duration = time.Since(start)
+					return result, err
+				}
+				prelude.Reset()
+			}
 			if pendingEventLine != "" {
 				if _, err = c.Writer.WriteString(pendingEventLine + "\n"); err != nil {
 					result.ClientDisconnect = true
