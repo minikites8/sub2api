@@ -110,6 +110,7 @@ func newExcelBPSRateLimitRouter(t *testing.T, upstream *excelBPSRateLimitUpstrea
 		c.Next()
 	})
 	r.POST("/v1/responses", h.Responses)
+	r.POST("/v1/chat/completions", h.ChatCompletions)
 	return r
 }
 
@@ -177,6 +178,39 @@ func TestExcelBPSRateLimitHandlerSwitchesAfterEmptyEvents(t *testing.T) {
 						require.Equal(t, http.StatusOK, rec.Code)
 						require.Contains(t, rec.Body.String(), "ok")
 						require.NotContains(t, rec.Body.String(), "rate_limit")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestExcelBPSChatCompletionsHandlerSwitchesAccount(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, sse := range []bool{false, true} {
+			for _, allFail := range []bool{false, true} {
+				t.Run(fmt.Sprintf("stream=%t/sse=%t/allFail=%t", stream, sse, allFail), func(t *testing.T) {
+					upstream := &excelBPSRateLimitUpstream{sse: sse, allFail: allFail, prefix: "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"reasoning\",\"summary\":[]}}\n\n"}
+					router := newExcelBPSRateLimitRouter(t, upstream)
+					rec := httptest.NewRecorder()
+					req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(fmt.Sprintf("{\"model\":\"gpt-6-sol\",\"stream\":%t,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}", stream)))
+					req.Header.Set("Content-Type", "application/json")
+					router.ServeHTTP(rec, req)
+					require.Equal(t, []int64{801, 802}, upstream.hits, "status=%d body=%s", rec.Code, rec.Body.String())
+					require.Equal(t, []string{"/basispoints/api/responses", "/basispoints/api/responses"}, upstream.paths)
+					require.NotContains(t, rec.Body.String(), "resp_throttled")
+					require.NotContains(t, rec.Body.String(), "event: response.")
+					if allFail {
+						require.Equal(t, http.StatusTooManyRequests, rec.Code)
+						require.Contains(t, rec.Body.String(), "error")
+						require.Equal(t, "1", rec.Header().Get("Retry-After"))
+					} else {
+						require.Equal(t, http.StatusOK, rec.Code)
+						require.Contains(t, rec.Body.String(), "ok")
+						require.Contains(t, rec.Body.String(), "chat.completion")
+						if stream {
+							require.Contains(t, rec.Body.String(), "data: [DONE]")
+						}
 					}
 				})
 			}

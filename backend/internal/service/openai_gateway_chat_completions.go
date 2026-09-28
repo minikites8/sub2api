@@ -71,12 +71,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	defaultMappedModel string,
 	compatPromptCacheTenantIsolated bool,
 ) (*OpenAIForwardResult, error) {
-	latest, admissionErr := s.admitOpenAITurn(
-		context.WithoutCancel(ctx),
-		c,
-		account,
-		gjson.GetBytes(body, "model").String(),
-	)
+	latest, admissionErr := s.admitOpenAIHTTPRequest(context.WithoutCancel(ctx), c, account, body)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -84,6 +79,8 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
+	c.Writer.Header().Del("X-Codex2API-Basispoints-Bypass")
+	c.Writer.Header().Del("X-Codex2API-Upstream")
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
@@ -287,6 +284,20 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("marshal responses request: %w", err)
 		}
+	}
+
+	// BPS owns adaptation, quota normalization and request-scoped failover.
+	// Preserve the canonical model so account mappings are applied exactly once.
+	canonicalModel := originalModel
+	if _, matched := account.ResolveMappedModel(originalModel); !matched && strings.TrimSpace(defaultMappedModel) != "" {
+		canonicalModel = billingModel
+	}
+	if account.IsExcelBPSEnabledForModel(canonicalModel) {
+		responsesBody, err = sjson.SetBytes(responsesBody, "model", canonicalModel)
+		if err != nil {
+			return nil, err
+		}
+		return s.forwardExcelBPSChatCompletions(ctx, c, account, responsesBody, originalModel, billingModel, promptCacheKey, clientStream)
 	}
 
 	logFields := []zap.Field{
