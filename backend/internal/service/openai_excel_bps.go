@@ -586,7 +586,8 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	var completed []byte
 	terminal := ""
 	var pendingEventLine string
-	var prelude bytes.Buffer
+	prelude := newDefaultOpenAIFirstOutputStage()
+	defer func() { _ = prelude.Close() }()
 	var skippedPreludeBlank, semanticOutput bool
 	cacheCreationAsInput := account.IsExcelBPSCacheCreationAsInputEnabled()
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
@@ -629,18 +630,20 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 				}
 				line = "data: " + string(payload)
 			}
-			isPrelude := (kind == "response.created" || kind == "response.in_progress") && len(gjson.GetBytes(payload, "response.output").Array()) == 0
-			if stream && !semanticOutput && isPrelude && prelude.Len()+len(pendingEventLine)+len(line)+3 <= 64<<10 {
+			isPrelude := excelBPSStreamEventIsPrelude(payload, kind)
+			if stream && !semanticOutput && isPrelude {
 				// Keep rejected response IDs out of the client stream until actual output.
-				prelude.WriteString(pendingEventLine + "\n" + line + "\n\n")
+				if _, stageErr := prelude.WriteString(pendingEventLine + "\n" + line + "\n\n"); stageErr != nil {
+					return fail(http.StatusBadGateway, "basispoints_prelude_limit", "Excel BPS initial event buffer is unavailable or exceeds its limit")
+				}
 				pendingEventLine = ""
 				skippedPreludeBlank = true
 				continue
 			}
-			if !isPrelude || stream && prelude.Len()+len(pendingEventLine)+len(line)+3 > 64<<10 {
+			if !isPrelude {
 				semanticOutput = true
 			}
-			if result.FirstTokenMs == nil && (kind == "response.output_text.delta" || kind == "response.output_item.added") {
+			if !isPrelude && result.FirstTokenMs == nil && (kind == "response.output_text.delta" || kind == "response.output_item.added") {
 				ms := int(time.Since(start).Milliseconds())
 				result.FirstTokenMs = &ms
 			}
@@ -656,13 +659,12 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 		}
 		if stream {
-			if prelude.Len() > 0 {
-				if _, err = c.Writer.Write(prelude.Bytes()); err != nil {
+			if prelude.Buffered() > 0 {
+				if err = prelude.CommitTo(c.Writer); err != nil {
 					result.ClientDisconnect = true
 					result.Duration = time.Since(start)
 					return result, err
 				}
-				prelude.Reset()
 			}
 			if pendingEventLine != "" {
 				if _, err = c.Writer.WriteString(pendingEventLine + "\n"); err != nil {

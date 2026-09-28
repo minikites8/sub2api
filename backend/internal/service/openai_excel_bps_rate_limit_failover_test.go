@@ -60,7 +60,7 @@ func TestExcelBPSRateLimitStreamReplayBoundary(t *testing.T) {
 		{name: "account probe", probe: true},
 		{name: "text already emitted", prefix: created + "data: {\"type\":\"response.output_text.delta\",\"delta\":\"already streamed\"}\n\n"},
 		{name: "created contains output", prefix: "data: {\"type\":\"response.created\",\"response\":{\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"already streamed\"}]}]}}\n\n"},
-		{name: "bounded prelude", prefix: "data: {\"type\":\"response.created\",\"response\":{\"output\":[],\"metadata\":\"" + strings.Repeat("x", 65<<10) + "\"}}\n\n"},
+		{name: "large empty prelude", failover: true, prefix: "data: {\"type\":\"response.created\",\"response\":{\"output\":[],\"metadata\":\"" + strings.Repeat("x", 65<<10) + "\"}}\n\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(tc.prefix + rejection))}}

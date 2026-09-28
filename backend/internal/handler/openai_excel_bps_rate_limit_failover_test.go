@@ -58,6 +58,7 @@ type excelBPSRateLimitUpstream struct {
 	sse, allFail bool
 	hits         []int64
 	paths        []string
+	prefix       string
 }
 
 func (u *excelBPSRateLimitUpstream) Do(req *http.Request, _ string, id int64, _ int) (*http.Response, error) {
@@ -70,7 +71,7 @@ func (u *excelBPSRateLimitUpstream) Do(req *http.Request, _ string, id int64, _ 
 		if u.sse {
 			status = http.StatusOK
 			contentType = "text/event-stream"
-			body = "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_throttled\",\"output\":[]}}\n\nevent: error\ndata: " + body + "\n\n"
+			body = "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_throttled\",\"output\":[]}}\n\n" + u.prefix + "event: error\ndata: " + body + "\n\n"
 		}
 		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {contentType}, "Retry-After": {"1"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 	}
@@ -138,6 +139,42 @@ func TestExcelBPSRateLimitHandlerSwitchesAccount(t *testing.T) {
 						require.Equal(t, "1", rec.Header().Get("Retry-After"))
 					} else {
 						require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+						require.Contains(t, rec.Body.String(), "ok")
+						require.NotContains(t, rec.Body.String(), "rate_limit")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestExcelBPSRateLimitHandlerSwitchesAfterEmptyEvents(t *testing.T) {
+	for _, prefix := range []string{
+		"data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"rs_empty\",\"type\":\"reasoning\",\"summary\":[]}}\n\n",
+		"data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"msg_empty\",\"type\":\"message\",\"content\":[]}}\n\ndata: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\"}}\n\n",
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"\"}\n\n",
+		"data: {\"type\":\"response.created\",\"response\":{\"output\":[],\"metadata\":\"" + strings.Repeat("x", 65<<10) + "\"}}\n\n",
+	} {
+		for _, stream := range []bool{false, true} {
+			for _, allFail := range []bool{false, true} {
+				t.Run(fmt.Sprintf("prefixLen=%d/stream=%t/allFail=%t", len(prefix), stream, allFail), func(t *testing.T) {
+					upstream := &excelBPSRateLimitUpstream{sse: true, allFail: allFail, prefix: prefix}
+					router := newExcelBPSRateLimitRouter(t, upstream)
+					rec := httptest.NewRecorder()
+					request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":"gpt-6-sol","input":"hello","stream":%t}`, stream)))
+					request.Header.Set("Content-Type", "application/json")
+					router.ServeHTTP(rec, request)
+					require.Equal(t, []int64{801, 802}, upstream.hits, "status=%d body=%s", rec.Code, rec.Body.String())
+					require.NotContains(t, rec.Body.String(), "resp_throttled")
+					require.NotContains(t, rec.Body.String(), "rs_empty")
+					require.NotContains(t, rec.Body.String(), "msg_empty")
+					require.NotEmpty(t, rec.Body.String())
+					if allFail {
+						require.Equal(t, http.StatusTooManyRequests, rec.Code)
+						require.Contains(t, rec.Body.String(), "error")
+						require.Equal(t, "1", rec.Header().Get("Retry-After"))
+					} else {
+						require.Equal(t, http.StatusOK, rec.Code)
 						require.Contains(t, rec.Body.String(), "ok")
 						require.NotContains(t, rec.Body.String(), "rate_limit")
 					}

@@ -71,3 +71,42 @@ func excelBPSRateLimitFailover(c *gin.Context, account *Account, headers http.He
 		RequestScopedTransient: true, SafeToFailoverAfterWrite: c.Writer.Written(),
 	}
 }
+
+// Empty lifecycle and content placeholders can precede a rejected generation.
+// Reuse the gateway's content checks while preserving conservative treatment of
+// unknown events, encrypted reasoning, tool arguments and actual text.
+func excelBPSStreamEventIsPrelude(payload []byte, kind string) bool {
+	if !gjson.ValidBytes(payload) {
+		return false
+	}
+	switch kind {
+	case "response.created", "response.in_progress", "keepalive":
+		output := gjson.GetBytes(payload, "response.output")
+		if output.Exists() && output.Type != gjson.Null && !output.IsArray() {
+			return false
+		}
+		for _, item := range output.Array() {
+			wrapped := []byte("{\"item\":" + item.Raw + "}")
+			if openAIStreamItemHasVisibleOutput(item) || openAIStreamAddedEventStartsClientOutput(wrapped, "response.output_item.added") {
+				return false
+			}
+		}
+		return true
+	case "response.output_item.added", "response.output_item.done":
+		return !openAIStreamItemHasVisibleOutput(gjson.GetBytes(payload, "item")) &&
+			!openAIStreamAddedEventStartsClientOutput(payload, "response.output_item.added")
+	case "response.content_part.added", "response.content_part.done":
+		return !openAIStreamAddedEventStartsClientOutput(payload, "response.content_part.added")
+	case "response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
+		return !openAIStreamAddedEventStartsClientOutput(payload, "response.reasoning_summary_part.added")
+	case "response.output_text.delta", "response.reasoning_summary_text.delta", "response.reasoning_text.delta",
+		"response.refusal.delta", "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
+		delta := gjson.GetBytes(payload, "delta")
+		return delta.Type == gjson.String && delta.String() == ""
+	case "response.output_text.done", "response.reasoning_summary_text.done", "response.reasoning_text.done":
+		text := gjson.GetBytes(payload, "text")
+		return text.Type == gjson.String && text.String() == ""
+	default:
+		return false
+	}
+}
