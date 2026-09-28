@@ -207,6 +207,20 @@ type PublicTransitModelSource struct {
 }
 
 type PublicTransitMonitor struct {
+	// V1 fields are projected from V2 traffic aggregates for existing crawlers.
+	Name            string                           `json:"name"`
+	Provider        string                           `json:"provider"`
+	GroupName       string                           `json:"group_name,omitempty"`
+	PrimaryModel    string                           `json:"primary_model"`
+	PrimaryStatus   string                           `json:"primary_status"`
+	AvgLatency7dMs  *int64                           `json:"avg_latency_7d_ms,omitempty"`
+	LatestLatencyMs *int64                           `json:"latest_latency_ms,omitempty"`
+	LastCheckedAt   string                           `json:"last_checked_at,omitempty"`
+	ExtraModels     []PublicTransitExtraModelStatus  `json:"extra_models"`
+	Models          []PublicTransitMonitorModel      `json:"models"`
+	Timeline        []PublicTransitV1MonitorTimeline `json:"timeline"`
+
+	// V2 fields remain available to the public model marketplace.
 	GroupID             int64                                 `json:"-"`
 	Platform            string                                `json:"platform"`
 	Model               string                                `json:"model"`
@@ -360,7 +374,7 @@ func (s *PublicTransitService) Snapshot(ctx context.Context, baseURL string) (*P
 		return nil, fmt.Errorf("list public groups: %w", err)
 	}
 
-	var monitorItems []PublicTransitMonitor
+	monitorItems := []PublicTransitMonitor{}
 	var groupMonitorItems []PublicTransitMonitor
 	var monitorConfig *ChannelMonitorV2Config
 	if s.settingService.GetChannelMonitorRuntime(ctx).PassiveAggregationAllowed() && s.monitorService != nil {
@@ -875,6 +889,7 @@ func (s *PublicTransitService) publicV2Monitors(ctx context.Context, groupBy Cha
 	}
 	monitors := buildPublicTransitV2Monitors(matrices["7d"], matrices["15d"], matrices["30d"])
 	attachPublicTransitMonitorWindows(monitors, matrices)
+	attachPublicTransitV1RecentTimeline(monitors, matrices["90m"])
 	return monitors, nil
 }
 
@@ -944,6 +959,7 @@ func buildPublicTransitV2Monitors(matrix7d, matrix15d, matrix30d *ChannelMonitor
 				break
 			}
 		}
+		populatePublicTransitV1Monitor(&item, row7d)
 		out = append(out, item)
 	}
 	sort.SliceStable(out, func(i, j int) bool {

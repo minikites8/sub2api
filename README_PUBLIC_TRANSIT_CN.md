@@ -63,6 +63,17 @@ curl https://your-domain.example/api/public/transit/v1/snapshot
 
 快照会包含站点基础信息、公开分组、模型价格、缓存指标和可用性监测摘要。
 
+### 渠道监控 V1 兼容输出
+
+发现接口继续声明 `schema_version: "ai-transit.v1"`，并指向 `/api/public/transit/v1/snapshot`。
+快照中的 `monitoring` 使用渠道监控 V2 的真实请求聚合数据，提供 V1 爬虫所需字段：
+
+- 每个 V2 平台/模型聚合行对应一个监控项，包含 `name`、`provider`、`primary_model`、`primary_status`、`models`、`extra_models` 和 `timeline`；`models` 包含该主模型，`extra_models` 为 `[]`。分组监控同时提供 `group_name`。
+- `availability_7d`、`availability_15d`、`availability_30d` 延用 V2 对应窗口成功率，数值范围为 0–100；主模型明细同步这些数值。
+- 状态映射为 `healthy → operational`、`warning → degraded`、`critical → failed`、`unknown → unknown`。主模型状态取最近有请求的聚合桶；仅有窗口汇总时采用窗口健康状态，空流量状态为 `unknown`。
+- `timeline` 优先使用 V2 最近 90 分钟的五分钟聚合桶，并按时间倒序列出有请求的观测；近期窗口空闲时保留七天历史中的最近观测。`checked_at` 与 `last_checked_at` 使用桶起始时间。`avg_latency_7d_ms` 使用 V2 七天请求耗时均值并四舍五入到毫秒，`latest_latency_ms` 与时间线 `latency_ms` 使用对应桶的耗时 P50；缺失延迟、Ping 字段保持省略。
+- `platform`、`model`、`status`、`metrics`、`health`、`buckets`、`windows` 等扩展字段继续服务模型广场。监控数据源和开关沿用 V2 配置。
+
 ## 接入方式
 
 如果你的 Sub2API 版本接近上游主线，推荐直接 cherry-pick 本仓库的功能提交：
