@@ -1,9 +1,17 @@
 package migrations
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
+
+func TestGroupRoutingPolicyMigrationDollarQuotedBlock(t *testing.T) {
+	content, err := FS.ReadFile("253_group_bps_scheduling.sql")
+	require.NoError(t, err)
+	// The DO body must have matching dollar quotes and a terminated PL/pgSQL block.
+	require.Regexp(t, `(?s)DO\s+\$group_bps_scheduling\$\s+BEGIN\b.*END;\s*\$group_bps_scheduling\$;`, string(content))
+}
 
 func TestGroupRoutingPolicyMigrationDefaultsAndConstraint(t *testing.T) {
 	content, err := FS.ReadFile("253_group_bps_scheduling.sql")
