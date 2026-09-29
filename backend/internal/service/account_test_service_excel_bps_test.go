@@ -52,7 +52,7 @@ func TestExcelBPSManualTestSuppliesProxySessionIdentity(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/api/v1/admin/accounts/300/test", nil)
 	err := svc.testExcelBPSAccountConnection(c, account, "gpt-6-astra", "Reply OK")
 	// The request reaches the mocked transport with its generated session identity.
-	require.ErrorContains(t, err, "basispoints_upstream_error")
+	require.ErrorContains(t, err, "basispoints_transport_error")
 	require.NotContains(t, err.Error(), "basispoints_session_required")
 	require.NotNil(t, upstream.lastReq)
 	require.Empty(t, c.Request.Header.Get("Session-Id"), "test must not mutate the inbound request")
@@ -66,7 +66,7 @@ func TestExcelBPSBackgroundTestHandlesNilHeader(t *testing.T) {
 	c.Request = &http.Request{}
 	require.NotPanics(t, func() {
 		err := svc.testExcelBPSAccountConnection(c, account, "gpt-6-astra", "Reply OK")
-		require.ErrorContains(t, err, "basispoints_upstream_error")
+		require.ErrorContains(t, err, "basispoints_transport_error")
 	})
 	require.Nil(t, c.Request.Header, "the inbound request must remain unchanged")
 	require.NotNil(t, upstream.lastReq)

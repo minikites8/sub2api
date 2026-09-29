@@ -182,7 +182,11 @@ func excelBPSRequestHasImages(value gjson.Result) bool {
 // BPS deliberately bypasses Codex ticket/cookie injection and OAuth plugins:
 // only the selected account's bearer and ChatGPT account ID belong on this host.
 func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Context, account *Account, body []byte, start time.Time) (*OpenAIForwardResult, error) {
+	semanticOutput := false
 	fail := func(status int, code, message string) (*OpenAIForwardResult, error) {
+		if excelBPSFailoverContextEnabled(ctx) && !semanticOutput && excelBPSCanFailover(ctx, c) && excelBPSShouldFailoverStatus(status) {
+			return nil, newExcelBPSFailureFailover(c, account, status, nil, code, message)
+		}
 		// A compact keepalive may already have committed SSE headers. Otherwise
 		// finish a single JSON response so the handler cannot append another error.
 		committed := StopOpenAICompactSSEKeepaliveCommitted(c)
@@ -588,7 +592,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	var pendingEventLine string
 	prelude := newDefaultOpenAIFirstOutputStage()
 	defer func() { _ = prelude.Close() }()
-	var skippedPreludeBlank, semanticOutput bool
+	var skippedPreludeBlank bool
 	cacheCreationAsInput := account.IsExcelBPSCacheCreationAsInputEnabled()
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
 		line := scanner.Text()
@@ -621,6 +625,18 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 					UpstreamURL: basispoints.ResponsesURL, Kind: "model_fallback", Message: "Excel BPS rejected the requested model",
 				})
 				return nil, errExcelBPSModelUnavailable
+			}
+			if excelBPSFailoverContextEnabled(ctx) && (kind == "response.failed" || kind == "response.incomplete" || kind == "error") && !semanticOutput && excelBPSCanFailover(ctx, c) {
+				code := "basispoints_response_failed"
+				message := "Excel BPS returned a failed response"
+				if kind == "response.incomplete" {
+					code = "basispoints_response_incomplete"
+					message = "Excel BPS returned an incomplete response"
+				} else if kind == "error" {
+					code = "basispoints_stream_error"
+					message = "Excel BPS returned a stream error"
+				}
+				return nil, newExcelBPSFailureFailover(c, account, http.StatusBadGateway, resp.Header, code, message)
 			}
 			s.parseSSEUsageBytes(payload, &result.Usage)
 			if cacheCreationAsInput {
@@ -697,6 +713,12 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			result.ClientDisconnect = true
 			return result, ctx.Err()
 		}
+		if excelBPSFailoverContextEnabled(ctx) && !semanticOutput && excelBPSCanFailover(ctx, c) {
+			if lease != nil {
+				lease.ReportStreamFailure()
+			}
+			return nil, newExcelBPSFailureFailover(c, account, http.StatusBadGateway, resp.Header, "basispoints_stream_incomplete", "Excel BPS stream ended before completion")
+		}
 		// Do not replay an incomplete response. Mark the exit for the next
 		// request only; a client cancellation never penalizes the node.
 		if lease != nil {
@@ -712,6 +734,18 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			c.JSON(502, gin.H{"error": gin.H{"type": "server_error", "code": "basispoints_stream_incomplete", "message": "Excel BPS stream ended before completion"}})
 		}
 		return result, fmt.Errorf("excel BPS stream incomplete")
+	}
+	if excelBPSFailoverContextEnabled(ctx) && terminal != "response.completed" && !semanticOutput && excelBPSCanFailover(ctx, c) {
+		code := "basispoints_response_failed"
+		message := "Excel BPS returned a failed response"
+		if terminal == "response.incomplete" {
+			code = "basispoints_response_incomplete"
+			message = "Excel BPS returned an incomplete response"
+		} else if terminal == "error" {
+			code = "basispoints_stream_error"
+			message = "Excel BPS returned a stream error"
+		}
+		return nil, newExcelBPSFailureFailover(c, account, http.StatusBadGateway, resp.Header, code, message)
 	}
 	if terminal != "response.completed" {
 		MarkResponseCommitted(c)

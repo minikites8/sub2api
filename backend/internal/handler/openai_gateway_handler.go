@@ -730,6 +730,26 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var passthroughFailoverState openAIPassthroughFailoverState
 	var lastAdmissionErr error
 	admissionBindingRetries := make(map[int64]bool)
+	ordinaryBPSFallbackStarted := false
+	writerSizeBeforeForward := -1
+	lastWriterSizeBeforeForward := -1
+	startOrdinaryBPSFallback := func() bool {
+		if ordinaryBPSFallbackStarted || !enterExcelBPSOrdinaryFallback(c) {
+			return false
+		}
+		ordinaryBPSFallbackStarted = true
+		clearExcelBPSFailoverMaps(failedAccountIDs, sameAccountRetryCount)
+		switchCount = 0
+		firstOutputTimeoutSwitchCount = 0
+		profitVetoCount = 0
+		lastFailoverErr = nil
+		lastAdmissionErr = nil
+		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
+		for accountID := range admissionBindingRetries {
+			delete(admissionBindingRetries, accountID)
+		}
+		return true
+	}
 
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
@@ -744,6 +764,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if nativeV2 && !legacyCompact && !imageIntent && requestPlatform == service.PlatformOpenAI {
 		requiredCapability = service.OpenAIEndpointCapabilityResponsesCompact
 	}
+
+	c.Request = c.Request.WithContext(service.WithExcelBPSFailoverContext(c.Request.Context()))
 
 	// 分组利润控制：请求级装配定价上下文——pricingAt 固定本请求的
 	// D 与计费高峰因子，选号、槽位终检与全部 failover 重入共用同一门与阈值。
@@ -801,6 +823,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", service.OpenAITurnAdmissionMessage(lastAdmissionErr), streamStarted)
 				return
 			}
+			if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
+				continue
+			}
 			if lastFailoverErr != nil {
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 			} else {
@@ -809,6 +834,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
+				continue
+			}
 			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -875,7 +903,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		forwardStart := time.Now()
 		// 用扣除非语义心跳字节的口径快照：心跳注释不构成语义响应，
 		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
-		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+		writerSizeBeforeForward = service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+		lastWriterSizeBeforeForward = writerSizeBeforeForward
 		// 跨 passthrough 边界的 failover：从 Kiro 等透传账号切到 Bedrock 等非透传账号前，
 		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
@@ -1019,10 +1048,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, nil), false, nil, err)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
+						if canStartExcelBPSOrdinaryFallback(c, writerSizeBeforeForward, failoverErr) && startOrdinaryBPSFallback() {
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
+						if canStartExcelBPSOrdinaryFallback(c, writerSizeBeforeForward, failoverErr) && startOrdinaryBPSFallback() {
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1051,11 +1086,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
+						if canStartExcelBPSOrdinaryFallback(c, writerSizeBeforeForward, failoverErr) && startOrdinaryBPSFallback() {
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+						if canStartExcelBPSOrdinaryFallback(c, writerSizeBeforeForward, failoverErr) && startOrdinaryBPSFallback() {
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}

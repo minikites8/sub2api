@@ -62,6 +62,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, admissionErr
 	}
 	account = latest
+	if excelBPSFallbackContextEnabled(ctx) {
+		account = accountForExcelBPSFallback(account)
+	}
 	clearOpenAIHTTPAdmissionFailure(c)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)

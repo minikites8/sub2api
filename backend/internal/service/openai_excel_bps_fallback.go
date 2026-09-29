@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -132,9 +133,14 @@ func resetExcelBPSFallbackContext(c *gin.Context) {
 }
 
 type excelBPSFallbackContextKey struct{}
+type excelBPSFailoverContextKey struct{}
 
 func withExcelBPSFallbackContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, excelBPSFallbackContextKey{}, true)
+}
+
+func withExcelBPSFailoverContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, excelBPSFailoverContextKey{}, true)
 }
 
 func excelBPSFallbackContextEnabled(ctx context.Context) bool {
@@ -145,13 +151,88 @@ func excelBPSFallbackContextEnabled(ctx context.Context) bool {
 	return enabled
 }
 
+func excelBPSFailoverContextEnabled(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	enabled, _ := ctx.Value(excelBPSFailoverContextKey{}).(bool)
+	return enabled
+}
+
 func accountForExcelBPSFallbackAdmission(ctx context.Context, selected, latest *Account) (*Account, bool) {
 	if !excelBPSFallbackContextEnabled(ctx) || selected == nil || latest == nil {
 		return nil, false
 	}
-	ordinary := accountForExcelBPSFallback(latest)
-	if openAITurnRouteFingerprint(ordinary) != openAITurnRouteFingerprint(selected) {
+	ordinarySelected := accountForExcelBPSFallback(selected)
+	ordinaryLatest := accountForExcelBPSFallback(latest)
+	if openAITurnRouteFingerprint(ordinaryLatest) != openAITurnRouteFingerprint(ordinarySelected) {
 		return nil, false
 	}
-	return ordinary, true
+	return ordinaryLatest, true
+}
+
+// WithExcelBPSFallbackContext marks the second routing phase that uses the
+// ordinary OpenAI upstream after the BPS account attempts are exhausted.
+func WithExcelBPSFallbackContext(ctx context.Context) context.Context {
+	return withExcelBPSFallbackContext(ctx)
+}
+
+// WithExcelBPSFailoverContext enables request-level BPS failover classification.
+func WithExcelBPSFailoverContext(ctx context.Context) context.Context {
+	return withExcelBPSFailoverContext(ctx)
+}
+
+// ResetExcelBPSFallbackContext clears attempt-local BPS response metadata before
+// the ordinary upstream phase writes its response.
+func ResetExcelBPSFallbackContext(c *gin.Context) {
+	if c == nil || c.Writer == nil {
+		return
+	}
+	resetExcelBPSFallbackContext(c)
+}
+
+// IsExcelBPSFailover identifies an account failover raised by the BPS route.
+func IsExcelBPSFailover(err error) bool {
+	var failover *UpstreamFailoverError
+	if !errors.As(err, &failover) || failover == nil {
+		return false
+	}
+	scope := strings.ToLower(strings.TrimSpace(string(failover.Scope)))
+	return scope == "bps" || scope == "excel_bps"
+}
+
+func excelBPSCanFailover(ctx context.Context, c *gin.Context) bool {
+	return excelBPSCanRateLimitFailover(ctx, c)
+}
+
+func excelBPSShouldFailoverStatus(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
+}
+
+func newExcelBPSFailureFailover(c *gin.Context, account *Account, status int, headers http.Header, code, message string) *UpstreamFailoverError {
+	body, _ := json.Marshal(map[string]any{"error": map[string]string{
+		"type": "server_error", "code": code, "message": message,
+	}})
+	responseHeaders := headers.Clone()
+	if responseHeaders == nil {
+		responseHeaders = make(http.Header)
+	}
+	if c != nil {
+		setOpsUpstreamError(c, status, message, "")
+		if account != nil {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+				ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
+				UpstreamStatusCode: status, UpstreamRequestID: responseHeaders.Get("x-request-id"),
+				UpstreamURL: basispoints.ResponsesURL, Kind: "failover", Stage: string(GatewayFailureStageInference), Scope: "bps",
+				Reason: code, Message: message,
+			})
+		}
+	}
+	return &UpstreamFailoverError{
+		StatusCode: status, ResponseBody: body, ResponseHeaders: responseHeaders,
+		Stage: GatewayFailureStageInference, Scope: GatewayFailureScope("bps"),
+		Reason: GatewayFailureReason(code), NextAccountAction: NextAccountRetry,
+		SafeToFailoverAfterWrite: c != nil && c.Writer != nil && c.Writer.Written(),
+	}
 }

@@ -69,6 +69,8 @@ func excelBPSRateLimitFailover(c *gin.Context, account *Account, headers http.He
 	return &UpstreamFailoverError{
 		StatusCode: http.StatusTooManyRequests, ResponseBody: []byte(body), ResponseHeaders: responseHeaders,
 		RequestScopedTransient: true, SafeToFailoverAfterWrite: c.Writer.Written(),
+		Stage: GatewayFailureStageInference, Scope: GatewayFailureScope("bps"),
+		Reason: GatewayFailureReason("rate_limit_exceeded"), NextAccountAction: NextAccountRetry,
 	}
 }
 

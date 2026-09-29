@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,25 +56,50 @@ func (r *excelBPSRateLimitAccountRepo) GetOpenAITurnAdmission(ctx context.Contex
 
 type excelBPSRateLimitUpstream struct {
 	service.HTTPUpstream
-	sse, allFail bool
-	hits         []int64
-	paths        []string
-	prefix       string
+	sse, allFail     bool
+	failureStatus    int
+	transportFailure bool
+	hits             []int64
+	paths            []string
+	prefix           string
+	streamBody       string
+	ordinaryStatus   int
 }
 
 func (u *excelBPSRateLimitUpstream) Do(req *http.Request, _ string, id int64, _ int) (*http.Response, error) {
 	u.hits = append(u.hits, id)
 	u.paths = append(u.paths, req.URL.Path)
-	if id == 801 || u.allFail {
-		status := http.StatusTooManyRequests
+	isBPSRequest := strings.Contains(req.URL.Path, "basispoints/api/responses")
+	if !isBPSRequest && u.ordinaryStatus != 0 {
+		return &http.Response{StatusCode: u.ordinaryStatus, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"ordinary upstream rejected request"}}`))}, nil
+	}
+	if isBPSRequest && (id == 801 || u.allFail) {
+		if u.streamBody != "" {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(u.streamBody))}, nil
+		}
+		status := u.failureStatus
+		if status == 0 {
+			status = http.StatusTooManyRequests
+		}
+		if u.transportFailure {
+			return nil, errors.New("test BPS transport failure")
+		}
 		body := `{"error":{"code":"rate_limit_exceeded","headers":{"retry-after":"1"},"message":"Rate limit reached for test-model on tokens per min (TPM). Please try again in 198ms."}}`
+		if status != http.StatusTooManyRequests {
+			body = fmt.Sprintf(`{"error":{"code":"upstream_failure","message":"BPS test failure status %d"}}`, status)
+		}
 		contentType := "application/json"
+		header := http.Header{"Content-Type": {contentType}}
+		if status == http.StatusTooManyRequests {
+			header.Set("Retry-After", "1")
+		}
 		if u.sse {
 			status = http.StatusOK
 			contentType = "text/event-stream"
+			header.Set("Content-Type", contentType)
 			body = "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_throttled\",\"output\":[]}}\n\n" + u.prefix + "event: error\ndata: " + body + "\n\n"
 		}
-		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {contentType}, "Retry-After": {"1"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+		return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(body))}, nil
 	}
 	body := `{"type":"response.completed","response":{"id":"resp_healthy","object":"response","model":"gpt-6-sol","status":"completed","output":[{"id":"msg_healthy","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok","annotations":[]}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`
 	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: " + body + "\n\n"))}, nil
@@ -128,16 +154,18 @@ func TestExcelBPSRateLimitHandlerSwitchesAccount(t *testing.T) {
 					req := httptest.NewRequest(http.MethodPost, endpoint.path, bytes.NewBufferString(endpoint.body))
 					req.Header.Set("Content-Type", "application/json")
 					router.ServeHTTP(rec, req)
-					require.Equal(t, []int64{801, 802}, upstream.hits, "status=%d body=%s", rec.Code, rec.Body.String())
-					for _, path := range upstream.paths {
-						require.Contains(t, path, "basispoints/api/responses")
+					expectedHits := []int64{801, 802}
+					if allFail {
+						expectedHits = append(expectedHits, 801)
 					}
+					require.Equal(t, expectedHits, upstream.hits, "status=%d body=%s", rec.Code, rec.Body.String())
 					require.NotEmpty(t, rec.Body.String())
 					require.NotContains(t, rec.Body.String(), "resp_throttled")
 					if allFail {
-						require.Equal(t, http.StatusTooManyRequests, rec.Code, rec.Body.String())
-						require.Contains(t, rec.Body.String(), "error")
-						require.Equal(t, "1", rec.Header().Get("Retry-After"))
+						require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+						require.Contains(t, rec.Body.String(), "ok")
+						require.NotContains(t, rec.Body.String(), "rate_limit")
+						require.Equal(t, "/backend-api/codex/responses", upstream.paths[2])
 					} else {
 						require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 						require.Contains(t, rec.Body.String(), "ok")
@@ -165,15 +193,20 @@ func TestExcelBPSRateLimitHandlerSwitchesAfterEmptyEvents(t *testing.T) {
 					request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":"gpt-6-sol","input":"hello","stream":%t}`, stream)))
 					request.Header.Set("Content-Type", "application/json")
 					router.ServeHTTP(rec, request)
-					require.Equal(t, []int64{801, 802}, upstream.hits, "status=%d body=%s", rec.Code, rec.Body.String())
+					expectedHits := []int64{801, 802}
+					if allFail {
+						expectedHits = append(expectedHits, 801)
+					}
+					require.Equal(t, expectedHits, upstream.hits, "status=%d body=%s", rec.Code, rec.Body.String())
 					require.NotContains(t, rec.Body.String(), "resp_throttled")
 					require.NotContains(t, rec.Body.String(), "rs_empty")
 					require.NotContains(t, rec.Body.String(), "msg_empty")
 					require.NotEmpty(t, rec.Body.String())
 					if allFail {
-						require.Equal(t, http.StatusTooManyRequests, rec.Code)
-						require.Contains(t, rec.Body.String(), "error")
-						require.Equal(t, "1", rec.Header().Get("Retry-After"))
+						require.Equal(t, http.StatusOK, rec.Code)
+						require.Contains(t, rec.Body.String(), "ok")
+						require.NotContains(t, rec.Body.String(), "rate_limit")
+						require.Equal(t, "/backend-api/codex/responses", upstream.paths[2])
 					} else {
 						require.Equal(t, http.StatusOK, rec.Code)
 						require.Contains(t, rec.Body.String(), "ok")
@@ -196,14 +229,22 @@ func TestExcelBPSChatCompletionsHandlerSwitchesAccount(t *testing.T) {
 					req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(fmt.Sprintf("{\"model\":\"gpt-6-sol\",\"stream\":%t,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}", stream)))
 					req.Header.Set("Content-Type", "application/json")
 					router.ServeHTTP(rec, req)
-					require.Equal(t, []int64{801, 802}, upstream.hits, "status=%d body=%s", rec.Code, rec.Body.String())
-					require.Equal(t, []string{"/basispoints/api/responses", "/basispoints/api/responses"}, upstream.paths)
+					expectedHits := []int64{801, 802}
+					if allFail {
+						expectedHits = append(expectedHits, 801)
+					}
+					require.Equal(t, expectedHits, upstream.hits, "status=%d body=%s", rec.Code, rec.Body.String())
+					require.Equal(t, "/basispoints/api/responses", upstream.paths[0])
+					require.Equal(t, "/basispoints/api/responses", upstream.paths[1])
+					if allFail {
+						require.Equal(t, "/backend-api/codex/responses", upstream.paths[2])
+					}
 					require.NotContains(t, rec.Body.String(), "resp_throttled")
 					require.NotContains(t, rec.Body.String(), "event: response.")
 					if allFail {
-						require.Equal(t, http.StatusTooManyRequests, rec.Code)
-						require.Contains(t, rec.Body.String(), "error")
-						require.Equal(t, "1", rec.Header().Get("Retry-After"))
+						require.Equal(t, http.StatusOK, rec.Code)
+						require.Contains(t, rec.Body.String(), "ok")
+						require.NotContains(t, rec.Body.String(), "rate_limit")
 					} else {
 						require.Equal(t, http.StatusOK, rec.Code)
 						require.Contains(t, rec.Body.String(), "ok")

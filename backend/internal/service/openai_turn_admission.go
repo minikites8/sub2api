@@ -337,6 +337,10 @@ func (s *OpenAIGatewayService) admitOpenAITurnWithGroup(
 // WebSocket turns keep their selected binding; a fresh HTTP request can route
 // from the latest snapshot before preparing any upstream-specific state.
 func (s *OpenAIGatewayService) admitOpenAITurnSnapshot(ctx context.Context, selected, latest *Account, outboundModel string, groupID int64, enforceGroup bool) (*Account, error) {
+	if fallbackAccount, ok := accountForExcelBPSFallbackAdmission(ctx, selected, latest); ok {
+		latest = fallbackAccount
+		selected = accountForExcelBPSFallback(selected)
+	}
 	if enforceGroup && !latest.IsModelAllowedInGroup(&groupID, outboundModel) {
 		return nil, denyOpenAITurn("model_not_allowed_in_group")
 	}
