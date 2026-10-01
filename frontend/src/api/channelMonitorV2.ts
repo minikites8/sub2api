@@ -34,6 +34,7 @@ export interface LatencyMetric {
 }
 
 export interface MonitorMetric {
+  has_samples?: boolean
   success_requests: number
   error_requests: number
   request_count: number
@@ -101,6 +102,7 @@ export interface MonitorCoverage {
 }
 
 export interface MonitorConfig {
+  candy_probes?: MonitorCandyProbe[]
   version: number
   enabled: boolean
   refresh_interval_seconds: 60 | 300
@@ -161,6 +163,8 @@ export interface MonitorMatrixBucket {
 }
 
 export interface MonitorMatrixRow {
+  group_rate_multiplier?: number
+  candy?: MonitorCandyHistory
   platform: string
   group_id?: number
   group_name?: string
@@ -168,6 +172,27 @@ export interface MonitorMatrixRow {
   metrics: MonitorMetric
   health: MonitorHealth
   buckets: MonitorMatrixBucket[]
+}
+
+export interface MonitorCandyProbe {
+  group_id: number
+  enabled: boolean
+  model: string
+  reasoning_effort: string
+  interval_minutes: number
+}
+export interface MonitorCandyResult {
+  checked_at: string
+  verdict: 'correct' | 'incorrect' | 'error'
+  latency_ms: number
+  answer_preview?: string
+  reason?: string
+}
+export interface MonitorCandyHistory {
+  model: string
+  reasoning_effort: string
+  interval_minutes: number
+  results: MonitorCandyResult[]
 }
 
 export interface MonitorMatrixResponse {

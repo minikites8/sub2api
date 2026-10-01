@@ -14,11 +14,21 @@ import (
 	"go.uber.org/zap"
 	"io"
 	"net/http"
-	"net/http/httptrace"
-	"sync/atomic"
 )
 
 var errExcelBPSProxyUnavailable = errors.New("BPS proxy unavailable")
+
+// Preserve local proxy classification after writing the client error without
+// changing its log message or retaining an acquisition cause with credentials.
+type excelBPSForwardError struct{ code string }
+
+func (e *excelBPSForwardError) Error() string { return "excel BPS: " + e.code }
+func (e *excelBPSForwardError) Unwrap() error {
+	if e.code == "basispoints_proxy_unavailable" {
+		return errExcelBPSProxyUnavailable
+	}
+	return nil
+}
 
 // Keep the cause available to diagnostics without exposing a supplier URL in
 // the error string if a caller logs the returned error.
@@ -39,27 +49,17 @@ type excelBPSLease interface {
 
 type excelBPSAcquire func(context.Context, string, ...string) (string, excelBPSLease, error)
 
+func (s *OpenAIGatewayService) excelBPSAcquireFor(*Account) excelBPSAcquire { return nil }
+
 // Missing trace is not evidence of safety. Standard net/http emits GetConn
 // before dialing and GotConn before handing a connection to request writing.
 // Keep evidence for the whole attempt, including any internal reconnects.
-type excelBPSWriteEvidence struct {
-	started      atomic.Bool
-	handedToHTTP atomic.Bool
-}
+type excelBPSWriteEvidence struct{ transportdiag.Trace }
 
 func (e *excelBPSWriteEvidence) request(req *http.Request) *http.Request {
-	mark := func() { e.handedToHTTP.Store(true) }
-	trace := &httptrace.ClientTrace{
-		GetConn:              func(string) { e.started.Store(true) },
-		GotConn:              func(httptrace.GotConnInfo) { mark() },
-		WroteHeaderField:     func(string, []string) { mark() },
-		WroteHeaders:         mark,
-		WroteRequest:         func(httptrace.WroteRequestInfo) { mark() },
-		GotFirstResponseByte: mark,
-	}
-	req = req.Clone(httptrace.WithClientTrace(req.Context(), trace))
+	req = e.Request(req)
 	if req.Body != nil {
-		req.Body = &excelBPSTrackedBody{ReadCloser: req.Body, mark: mark}
+		req.Body = &excelBPSTrackedBody{ReadCloser: req.Body, mark: e.MarkBodyRead}
 	}
 	if getBody := req.GetBody; getBody != nil {
 		req.GetBody = func() (io.ReadCloser, error) {
@@ -67,13 +67,12 @@ func (e *excelBPSWriteEvidence) request(req *http.Request) *http.Request {
 			if err != nil {
 				return nil, err
 			}
-			return &excelBPSTrackedBody{ReadCloser: body, mark: mark}, nil
+			return &excelBPSTrackedBody{ReadCloser: body, mark: e.MarkBodyRead}, nil
 		}
 	}
 	return req
 }
-
-func (e *excelBPSWriteEvidence) unsent() bool { return e.started.Load() && !e.handedToHTTP.Load() }
+func (e *excelBPSWriteEvidence) unsent() bool { return e.DefinitelyUnsent() }
 
 type excelBPSTrackedBody struct {
 	io.ReadCloser
@@ -90,7 +89,17 @@ func (b *excelBPSTrackedBody) Read(p []byte) (int, error) {
 // At most one extra model attempt, on another healthy managed exit, and only
 // before HTTP could have written anything. The caller owns the returned lease
 // through response closure. Static account proxies retain their old behavior.
-func (s *OpenAIGatewayService) doExcelBPSRequest(ctx context.Context, c *gin.Context, account *Account, scope string, body []byte, token, accountID string) (*http.Response, excelBPSLease, string, error) {
+func (s *OpenAIGatewayService) doExcelBPSRequest(ctx context.Context, c *gin.Context, account *Account, scope string, body []byte, token, accountID string, acquire ...excelBPSAcquire) (*http.Response, excelBPSLease, string, error) {
+	build := func(ctx context.Context) (*http.Request, error) {
+		return newExcelBPSRequest(ctx, body, token, accountID)
+	}
+	return s.doExcelBPSRequestTo(ctx, c, account, scope, basispoints.ResponsesURL, build, acquire...)
+}
+
+// doExcelBPSRequestTo applies the same exit and no-replay rules to another BPS
+// endpoint; build must return a fresh request for each attempt.
+func (s *OpenAIGatewayService) doExcelBPSRequestTo(ctx context.Context, c *gin.Context, account *Account, scope, upstreamURL string, build func(context.Context) (*http.Request, error), acquire ...excelBPSAcquire) (*http.Response, excelBPSLease, string, error) {
+	_ = acquire
 	proxy := ""
 	if account != nil && account.Proxy != nil {
 		proxy = account.Proxy.URL()
@@ -98,20 +107,31 @@ func (s *OpenAIGatewayService) doExcelBPSRequest(ctx context.Context, c *gin.Con
 	if err := ctx.Err(); err != nil {
 		return nil, nil, proxy, err
 	}
-	req, err := newExcelBPSRequest(ctx, body, token, accountID)
+	if s.httpUpstream == nil {
+		err := errors.New("Excel BPS upstream is unavailable")
+		recordExcelBPSTransportFailureAt(ctx, c, account, upstreamURL, scope, proxy, err, "transport", 1, false)
+		return nil, nil, proxy, err
+	}
+	req, err := build(ctx)
 	if err != nil {
 		return nil, nil, proxy, err
 	}
 	c.Set("excel_bps_upstream_attempt", 1)
 	evidence := &excelBPSWriteEvidence{}
 	resp, err := s.httpUpstream.Do(evidence.request(req), proxy, account.ID, account.Concurrency)
+	if err == nil && resp == nil {
+		err = errors.New("Excel BPS upstream returned no response")
+	}
 	if err != nil {
-		recordExcelBPSTransportFailure(ctx, c, account, scope, proxy, err, "transport", 1, false)
+		recordExcelBPSTransportFailureAt(ctx, c, account, upstreamURL, scope, proxy, err, "transport", 1, false, evidence)
 	}
 	return resp, nil, proxy, err
 }
+func recordExcelBPSTransportFailure(ctx context.Context, c *gin.Context, account *Account, scope, proxy string, err error, stage string, attempt int, retry bool, evidence ...*excelBPSWriteEvidence) {
+	recordExcelBPSTransportFailureAt(ctx, c, account, basispoints.ResponsesURL, scope, proxy, err, stage, attempt, retry, evidence...)
+}
 
-func recordExcelBPSTransportFailure(ctx context.Context, c *gin.Context, account *Account, scope, proxy string, err error, stage string, attempt int, retry bool) {
+func recordExcelBPSTransportFailureAt(ctx context.Context, c *gin.Context, account *Account, upstreamURL, scope, proxy string, err error, stage string, attempt int, retry bool, evidence ...*excelBPSWriteEvidence) {
 	if isExcelBPSClientCancellation(c, err) {
 		logger.FromContext(ctx).Info("excel_bps.client_canceled",
 			zap.Int64("account_id", account.ID), zap.String("stage", stage))
@@ -128,6 +148,9 @@ func recordExcelBPSTransportFailure(ctx context.Context, c *gin.Context, account
 		"error_kind": kind, "error_type": fmt.Sprintf("%T", err),
 		"proxy_port": port, "session_hash": sessionHash, "attempt": attempt, "retry_before_send": retry,
 	}
+	if len(evidence) > 0 && evidence[0] != nil {
+		diagnostics["transport"] = evidence[0].Snapshot()
+	}
 	detail, _ := json.Marshal(diagnostics)
 	message := "Excel BPS " + stage + " failed: " + kind
 	// Keep UI client errors generic; persist only explicitly safe diagnostics.
@@ -136,7 +159,7 @@ func recordExcelBPSTransportFailure(ctx context.Context, c *gin.Context, account
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform: account.Platform, AccountID: account.ID,
-		UpstreamURL: basispoints.ResponsesURL, Kind: "request_error", Stage: stage,
+		UpstreamURL: upstreamURL, Kind: "request_error", Stage: stage,
 		Scope: "excel_bps", Reason: kind, Message: message, Detail: string(detail),
 	})
 	logger.FromContext(ctx).Warn("excel_bps.transport_failed",
@@ -144,5 +167,5 @@ func recordExcelBPSTransportFailure(ctx context.Context, c *gin.Context, account
 		zap.String("error_kind", kind), zap.String("error_type", fmt.Sprintf("%T", err)),
 		zap.Int("proxy_port", port), zap.String("session_hash", sessionHash),
 		zap.Int("attempt", attempt), zap.Bool("retry_before_send", retry),
-		zap.Any("acquisition_reason", diagnostics["acquisition_reason"]), zap.Any("candidates_checked", diagnostics["candidates_checked"]))
+		zap.Any("transport", diagnostics["transport"]), zap.Any("acquisition_reason", diagnostics["acquisition_reason"]), zap.Any("candidates_checked", diagnostics["candidates_checked"]))
 }

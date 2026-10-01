@@ -130,6 +130,8 @@ type SettingService struct {
 	openAICodexTicketHarvestProxySF    singleflight.Group
 	openAICodexTicketHarvestScopeCache atomic.Value
 	openAICodexTicketHarvestScopeSF    singleflight.Group
+	modelBillingCache                  modelBillingConfigCache
+	prioritySchedulingConfig           priorityConfigCache
 	requestCapture                     *requestcapture.Manager
 	settingRepo                        SettingRepository
 	defaultSubGroupReader              DefaultSubscriptionGroupReader

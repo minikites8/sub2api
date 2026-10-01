@@ -73,6 +73,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 ) (*OpenAIForwardResult, error) {
 	latest, admissionErr := s.admitOpenAIHTTPRequest(context.WithoutCancel(ctx), c, account, body)
 	if admissionErr != nil {
+		if !agentIdentityTaskRecoveryWasTried(ctx) {
+			return nil, markOpenAIInitialAdmissionError(admissionErr)
+		}
 		return nil, admissionErr
 	}
 	account = latest

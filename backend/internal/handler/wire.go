@@ -25,6 +25,7 @@ func ProvideAdminHandlers(
 	backupHandler *admin.BackupHandler,
 	oauthHandler *admin.OAuthHandler,
 	openaiOAuthHandler *admin.OpenAIOAuthHandler,
+	openaiOAuthReauthHandler *admin.OpenAIOAuthReauthHandler,
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
 	antigravityOAuthHandler *admin.AntigravityOAuthHandler,
 	kiroOAuthHandler *admin.KiroOAuthHandler,
@@ -46,8 +47,10 @@ func ProvideAdminHandlers(
 	pluginHandler *admin.PluginHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
+	pelicanGroupTestHandler *admin.PelicanGroupTestHandler,
 	accountOpsHandler *admin.AccountOpsHandler,
 	accountTokenGuardHandler *admin.AccountTokenGuardHandler,
+	accountTokenGuardV2Handler *admin.AccountTokenGuardV2Handler,
 	channelHandler *admin.ChannelHandler,
 	channelMonitorHandler *admin.ChannelMonitorHandler,
 	channelMonitorTemplateHandler *admin.ChannelMonitorRequestTemplateHandler,
@@ -77,6 +80,7 @@ func ProvideAdminHandlers(
 		Backup:                 backupHandler,
 		OAuth:                  oauthHandler,
 		OpenAIOAuth:            openaiOAuthHandler,
+		OpenAIOAuthReauth:      openaiOAuthReauthHandler,
 		GeminiOAuth:            geminiOAuthHandler,
 		AntigravityOAuth:       antigravityOAuthHandler,
 		KiroOAuth:              kiroOAuthHandler,
@@ -99,7 +103,9 @@ func ProvideAdminHandlers(
 		APIKey:                 apiKeyHandler,
 		AccountOps:             accountOpsHandler,
 		AccountTokenGuard:      accountTokenGuardHandler,
+		AccountTokenGuardV2:    accountTokenGuardV2Handler,
 		ScheduledTest:          scheduledTestHandler,
+		PelicanGroupTest:       pelicanGroupTestHandler,
 		Channel:                channelHandler,
 		ChannelMonitor:         channelMonitorHandler,
 		ChannelMonitorTemplate: channelMonitorTemplateHandler,
@@ -173,7 +179,7 @@ func ProvideBatchImageHandler(
 	return h
 }
 
-// ProvideSystemHandler creates admin.SystemHandler with UpdateService
+// ProvideSystemHandler creates admin.SystemHandler with update and operation-lock services.
 func ProvideSystemHandler(updateService *service.UpdateService, lockService *service.SystemOperationLockService) *admin.SystemHandler {
 	return admin.NewSystemHandler(updateService, lockService)
 }
@@ -292,6 +298,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewBackupHandler,
 	admin.NewOAuthHandler,
 	admin.NewOpenAIOAuthHandlerWithSessions,
+	admin.NewOpenAIOAuthReauthHandler,
 	admin.NewGeminiOAuthHandler,
 	admin.NewAntigravityOAuthHandler,
 	admin.NewKiroOAuthHandler,
@@ -313,8 +320,10 @@ var ProviderSet = wire.NewSet(
 	admin.NewPluginHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
+	admin.NewPelicanGroupTestHandler,
 	admin.NewAccountOpsHandler,
 	admin.NewAccountTokenGuardHandler,
+	admin.NewAccountTokenGuardV2Handler,
 	admin.NewChannelHandler,
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,

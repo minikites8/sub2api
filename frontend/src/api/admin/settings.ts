@@ -16,6 +16,14 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
+/** Limits of the user-facing Pelican gallery; kept per group, independent of test history. */
+export interface PelicanShowcaseConfig {
+  group_ids: number[]
+  max_items: number
+  auto_cleanup: boolean
+  retention_days: number
+}
+
 // ── 平台限额类型 ──────────────────────────────────────────────────
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "kiro" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
@@ -141,16 +149,6 @@ export interface WeChatConnectModeOption {
   value: WeChatConnectMode;
   labelZh: string;
   labelEn: string;
-}
-
-/** Limits of the user-facing Pelican gallery; kept per group, independent of test history. */
-export interface PelicanShowcaseConfig {
-  group_ids: number[];
-  /** Newest snapshots kept per group (1–100). */
-  max_items: number;
-  /** When on, snapshots older than retention_days (1–90) are removed. */
-  auto_cleanup: boolean;
-  retention_days: number;
 }
 
 const AUTH_SOURCE_TYPES: AuthSourceType[] = [
@@ -775,6 +773,13 @@ export interface SystemSettings {
   public_transit_enabled: boolean;
   public_transit_page_enabled: boolean;
 
+  // Subscription and Model Plaza feature switches
+  subscription_enabled: boolean
+  model_plaza_enabled: boolean
+  model_plaza_require_auth: boolean
+  model_plaza_description: string
+  // The Pelican showcase settings are edited on the Smart Ops page (api/admin/pelicanTests).
+
   plugin_management_enabled: boolean;
 
   // Affiliate (邀请返利) feature switch
@@ -801,6 +806,10 @@ export interface SystemSettings {
   excel_bps_image_max_requests: number;
   excel_bps_image_max_image_mib: number;
   excel_bps_image_max_images: number;
+  excel_bps_image_limit_policy: "off" | "auto_compact" | "warn";
+  excel_bps_image_warning_remaining: number;
+  excel_bps_image_compact_reserve: number;
+
   excel_bps_image_max_total_mib: number;
   excel_bps_image_storage_mib: number;
   excel_bps_image_storage_entries: number;
@@ -1127,6 +1136,11 @@ export interface UpdateSettingsRequest {
   public_transit_enabled?: boolean;
   public_transit_page_enabled?: boolean;
 
+  // Subscription and Model Plaza feature switches
+  subscription_enabled?: boolean;
+  model_plaza_enabled?: boolean;
+  model_plaza_require_auth?: boolean;
+  model_plaza_description?: string;
   plugin_management_enabled?: boolean;
 
   // Affiliate (邀请返利) feature switch
@@ -1152,6 +1166,10 @@ export interface UpdateSettingsRequest {
   excel_bps_image_max_requests?: number;
   excel_bps_image_max_image_mib?: number;
   excel_bps_image_max_images?: number;
+  excel_bps_image_limit_policy?: "off" | "auto_compact" | "warn";
+  excel_bps_image_warning_remaining?: number;
+  excel_bps_image_compact_reserve?: number;
+
   excel_bps_image_max_total_mib?: number;
   excel_bps_image_storage_mib?: number;
   excel_bps_image_storage_entries?: number;

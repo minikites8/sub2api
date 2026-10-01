@@ -754,7 +754,8 @@ func responseModelBillingAdoptable(baseline, response *CostBreakdown, baselineCh
 	if baseline == nil || response == nil {
 		return false
 	}
-	if response.TotalCost > baseline.TotalCost+responseModelBillingCostEpsilon {
+	if response.TotalCost > baseline.TotalCost+responseModelBillingCostEpsilon ||
+		response.ActualCost > baseline.ActualCost+responseModelBillingCostEpsilon {
 		return false
 	}
 	if response.TotalCost <= 0 && baseline.TotalCost > 0 {
@@ -813,6 +814,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
+	ctx = withModelBillingConfig(ctx, s.settingService)
 	// 获取系统默认费率倍数；分组倍率在确定计费模型后解析，支持模型级覆盖。
 	baseMultiplier := 1.0
 	if s.cfg != nil {
@@ -899,6 +901,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost)
+	usageLog.RateMultiplier *= costModelBillingMultiplier(cost)
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
@@ -914,6 +917,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 				ImageOutputTokens:   result.Usage.ImageOutputTokens,
 			},
 			cost.TotalCost, pricingAt,
+			accountStatsLongContextPricingEnabled(nil),
 		)
 	}
 
@@ -1243,6 +1247,7 @@ func (s *GatewayService) calculateTokenCost(
 	if cost != nil && cost.BillingMode == "" {
 		cost.BillingMode = string(BillingModeToken)
 	}
+	applyModelBillingMultiplier(cost, s.settingService.modelBillingConfigForUsage(ctx), billingModel)
 	return cost
 }
 

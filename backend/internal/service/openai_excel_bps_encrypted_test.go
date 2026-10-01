@@ -141,7 +141,7 @@ func TestExcelBPSInvalidEncryptedContentRecoversSameRoute(t *testing.T) {
 				for _, req := range upstream.requests {
 					require.Equal(t, "Bearer test-token", req.Header.Get("Authorization"))
 					require.Equal(t, "test-account", req.Header.Get("Chatgpt-Account-Id"))
-					require.Equal(t, HTTPUpstreamProfileLongStream, HTTPUpstreamProfileFromContext(req.Context()))
+					require.Equal(t, HTTPUpstreamProfileExcelBPS, HTTPUpstreamProfileFromContext(req.Context()))
 				}
 				events, exists := c.Get(OpsUpstreamErrorsKey)
 				require.True(t, exists)
@@ -172,6 +172,13 @@ func TestExcelBPSInvalidEncryptedContentRetryIsBounded(t *testing.T) {
 			account := excelAccount()
 			_, err := svc.Forward(context.Background(), c, account, excelBPSEncryptedHistoryRequest(false))
 			require.Error(t, err)
+			require.Len(t, upstream.requests, 2)
+			require.True(t, account.Schedulable)
+			if status == http.StatusTooManyRequests {
+				// Both attempts were rejected before output; another account may retry.
+				requireExcelBPSRateLimitFailover(t, err, c)
+				return
+			}
 			var failover *UpstreamFailoverError
 			if status == http.StatusTooManyRequests {
 				require.ErrorAs(t, err, &failover)

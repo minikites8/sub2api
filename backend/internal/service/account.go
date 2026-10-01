@@ -1015,6 +1015,9 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	if normalized != requestedModel && mappingSupportsRequestedModel(mapping, normalized) {
 		return true
 	}
+	if a.IsOpenAIModelMappingAliases() {
+		return isOpenAIOAuthServableModel(requestedModel)
+	}
 	_, fallback := a.resolveGrokMediaFallbackModel(requestedModel)
 	return fallback
 }
@@ -2320,6 +2323,9 @@ func (a *Account) IsExcelBPSEnabled() bool {
 	if a == nil || a.bpsDisabledByGroup || a.Platform != PlatformOpenAI || a.Type != AccountTypeOAuth || a.IsShadow() || a.IsOpenAIAgentIdentity() || a.IsOpenAIPersonalAccessToken() {
 		return false
 	}
+	if strings.EqualFold(strings.TrimSpace(a.GetCredential("plan_type")), "free") {
+		return false
+	}
 	enabled, _ := a.Extra["openai_excel_bps"].(bool)
 	return enabled
 }
@@ -2333,6 +2339,19 @@ func (a *Account) IsExcelBPSIgnoreImagesEnabled() bool {
 		return false
 	}
 	enabled, _ := a.Extra[ExcelBPSIgnoreImagesKey].(bool)
+	return enabled
+}
+
+const ExcelBPSIgnoreEncryptedContentKey = "openai_excel_bps_ignore_encrypted_content"
+
+// IsExcelBPSIgnoreEncryptedContentEnabled opts into replacing ciphertext that
+// BPS cannot forward, such as sub-agent messages in an old Codex conversation,
+// with an omission notice instead of rejecting the whole request.
+func (a *Account) IsExcelBPSIgnoreEncryptedContentEnabled() bool {
+	if !a.IsExcelBPSEnabled() {
+		return false
+	}
+	enabled, _ := a.Extra[ExcelBPSIgnoreEncryptedContentKey].(bool)
 	return enabled
 }
 
@@ -2372,6 +2391,17 @@ func (a *Account) IsExcelBPSEnabledForModel(requestedModel string) bool {
 		return false
 	}
 	return a.isExcelBPSUpstreamModelEnabled(a.GetMappedModel(requestedModel))
+}
+
+// IsExcelBPSImagesEnabledForModel routes image generation through BPS only
+// when the image model is listed explicitly. Legacy account-wide routing keeps
+// images on Codex so an upgrade does not silently change the image channel.
+func (a *Account) IsExcelBPSImagesEnabledForModel(requestedModel string) bool {
+	if !a.IsExcelBPSEnabled() || a.isExcelBPSAllModelsEnabled() {
+		return false
+	}
+	model := a.GetMappedModel(requestedModel)
+	return usesCodexDirectImages(model) && excelBPSImagesSupportedModel(model) && a.isExcelBPSUpstreamModelEnabled(model)
 }
 
 func (a *Account) isExcelBPSUpstreamModelEnabled(model string) bool {
@@ -3438,8 +3468,11 @@ func (a *Account) GetBaseRPM() int {
 }
 
 // GetRPMStrategy 获取 RPM 策略
-// "tiered" = 三区模型（默认）, "sticky_exempt" = 粘性豁免
+// "strict" = OpenAI OAuth 硬上限；Anthropic 使用 "tiered" 或 "sticky_exempt"。
 func (a *Account) GetRPMStrategy() string {
+	if a.IsOpenAIOAuth() {
+		return "strict"
+	}
 	if a.Extra == nil {
 		return "tiered"
 	}
@@ -3509,6 +3542,9 @@ func (a *Account) CheckRPMSchedulability(currentRPM int) WindowCostSchedulabilit
 	}
 
 	strategy := a.GetRPMStrategy()
+	if strategy == "strict" {
+		return WindowCostNotSchedulable
+	}
 	if strategy == "sticky_exempt" {
 		return WindowCostStickyOnly // 粘性豁免无红区
 	}
@@ -3624,6 +3660,18 @@ func parseExtraInt(value any) int {
 
 // IsShadow 报告账号是否为影子账号（parent_account_id 非空；当前唯一预设是 spark 维度）。
 func (a *Account) IsShadow() bool { return a != nil && a.ParentAccountID != nil }
+
+// RPMAccountID returns the counter owner for per-minute limits. Credential
+// shadows intentionally share their parent account's upstream quota.
+func (a *Account) RPMAccountID() int64 {
+	if a == nil {
+		return 0
+	}
+	if a.IsOpenAIOAuth() && a.ParentAccountID != nil && *a.ParentAccountID > 0 {
+		return *a.ParentAccountID
+	}
+	return a.ID
+}
 
 // IsCredentialShadow 语义别名，供「凭据消费者跳过影子」处使用（管理/后台 OAuth 路径）。
 func (a *Account) IsCredentialShadow() bool { return a.IsShadow() }

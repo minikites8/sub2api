@@ -11,11 +11,12 @@ import (
 
 // AccountTokenGuardHandler 提供智能运维 → 凭证守护的状态、配置、日志与手动操作接口。
 type AccountTokenGuardHandler struct {
-	svc *service.AccountTokenGuardService
+	svc    *service.AccountTokenGuardService
+	reauth *service.OpenAIOAuthReauthService
 }
 
-func NewAccountTokenGuardHandler(svc *service.AccountTokenGuardService) *AccountTokenGuardHandler {
-	return &AccountTokenGuardHandler{svc: svc}
+func NewAccountTokenGuardHandler(svc *service.AccountTokenGuardService, reauth *service.OpenAIOAuthReauthService) *AccountTokenGuardHandler {
+	return &AccountTokenGuardHandler{svc: svc, reauth: reauth}
 }
 
 func (h *AccountTokenGuardHandler) Status(c *gin.Context) {
@@ -122,4 +123,63 @@ func (h *AccountTokenGuardHandler) Relogin(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"account_id": accountID, "action": action})
+}
+
+func (h *AccountTokenGuardHandler) StartTwoFALogin(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10)
+	var input struct {
+		service.AccountTokenGuardReloginAccount
+		CredentialTarget string `json:"credential_target"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "登录凭据格式不正确")
+		return
+	}
+	entry := input.AccountTokenGuardReloginAccount
+	if err := service.ValidateOpenAITwoFALogin(entry); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	var job *service.OpenAITwoFALoginJob
+	var err error
+	switch input.CredentialTarget {
+	case "operations":
+		status, statusErr := h.reauth.CredentialEncryptionStatus()
+		if statusErr != nil {
+			response.ErrorFrom(c, statusErr)
+			return
+		}
+		if !status.Configured {
+			response.BadRequest(c, "请先在凭证运营中启用凭据加密，再进行 2FA 导入")
+			return
+		}
+		job, err = h.svc.StartTwoFALoginForOperations(c.Request.Context(), entry)
+	case "", "guard": // Preserve the contract for older clients.
+		job, err = h.svc.StartTwoFALogin(c.Request.Context(), entry)
+	default:
+		response.BadRequest(c, "登录凭据目标不合法")
+		return
+	}
+	if err != nil {
+		response.Error(c, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	response.Accepted(c, job)
+}
+
+func (h *AccountTokenGuardHandler) TwoFALogin(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	job, ok := h.svc.TwoFALogin(c.Param("id"))
+	if !ok {
+		response.NotFound(c, "登录任务不存在或已过期")
+		return
+	}
+	response.Success(c, job)
+}
+
+func (h *AccountTokenGuardHandler) DeleteTwoFALogin(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	h.svc.DeleteTwoFALogin(c.Param("id"))
+	response.Success(c, gin.H{"deleted": true})
 }

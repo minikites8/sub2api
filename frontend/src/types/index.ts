@@ -1179,6 +1179,44 @@ export interface UpstreamBillingData {
 
 export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
 
+// A spending window reported by the upstream /v1/usage endpoint: subscription
+// limits use daily/weekly/monthly, key rate limits use 5h/1d/7d.
+export interface UpstreamBalanceWindow {
+  window: string
+  limit: number
+  used?: number
+  reset_at?: string
+}
+
+// Sanitized balance fields of the upstream /v1/usage response.
+export interface UpstreamBalanceData {
+  is_valid: boolean
+  mode?: 'unrestricted' | 'quota_limited'
+  key_status?: string
+  plan_name?: string
+  unit?: string
+  // Wallet balance, the smallest subscription headroom, or the key quota
+  // headroom, depending on how the upstream bills the key.
+  remaining?: number
+  wallet_balance?: number
+  // Subscription without any spending limit.
+  unlimited?: boolean
+  quota_limit?: number
+  quota_used?: number
+  expires_at?: string
+  windows?: UpstreamBalanceWindow[]
+}
+
+export interface UpstreamBalanceSnapshot {
+  status: UpstreamBillingProbeStatus
+  data?: UpstreamBalanceData
+  received_at?: string
+  fresh_until?: string
+  last_attempt_at: string
+  http_status?: number
+  last_error?: string
+}
+
 export interface UpstreamBillingProbeSnapshot {
   status: UpstreamBillingProbeStatus
   data?: UpstreamBillingData
@@ -1192,6 +1230,9 @@ export interface UpstreamBillingProbeSnapshot {
   // Value this probe wrote into the account rate multiplier; absent when the
   // probe did not sync a rate.
   synced_rate_multiplier?: number
+  // Upstream balance read by the same probe; its status is independent of the
+  // rate status above.
+  balance?: UpstreamBalanceSnapshot
 }
 
 export interface UpstreamBillingProbeSettings {
@@ -1206,6 +1247,7 @@ export interface UpstreamBillingProbeResult {
 }
 
 export interface UpstreamBillingRateSnapshotItem {
+  cost_multiplier?: number
   account_id: number
   snapshot?: UpstreamBillingProbeSnapshot | null
 }
@@ -1470,6 +1512,8 @@ kiro_credit_unit_price_usd?: number
   online_terminal_count?: number | null // OpenAI OAuth 当前在线终端数
   online_web_terminal_count?: number | null // OpenAI OAuth 当前在线 Web 端数量
   online_codex_terminal_count?: number | null // OpenAI OAuth 当前在线 Codex 端数量
+  rpm_paused?: boolean
+  rpm_reset_at?: number | null
 
   // 影子账号关系（spark 维度影子）
   parent_account_id?: number | null
@@ -1904,6 +1948,8 @@ export interface AdminDataImportResult {
 }
 
 export interface CodexSessionImportRequest {
+  /** Skip matching accounts without replacing their credentials or settings. */
+  skip_existing?: boolean
   content?: string
   contents?: string[]
   name?: string
@@ -2715,17 +2761,41 @@ export interface QualityJudgment {
   group_id?: number
   model_id?: string
 }
+// 「降智开 BPS」规则：何时开（连续降智次数 / 用量百分比，0 = 不按该条件）和开成什么样（与账号 BPS 选项一一对应）。
+export interface QualityBPSPolicy {
+  failure_threshold: number
+  usage_percent: number
+  require_all: boolean
+  all_models: boolean
+  models: string[]
+  omit_unsupported_tools: boolean
+  ignore_images: boolean
+  ignore_encrypted_content: boolean
+  auto_disable_on_403: boolean
+  auto_recover_on_403?: boolean
+  recovery_interval_minutes?: number
+  auto_move_on_403: boolean
+  target_group_id: number
+  session_proxy: boolean
+  proxy_source: 'mihomo' | 'ip_pool' | ''
+  cache_creation_as_input: boolean
+  // 规则开了 auto_restore 时：连续满血几轮才关 BPS；按用量开启时用量仍高是否先不关。
+  pass_threshold: number
+  hold_on_usage: boolean
+}
 export interface QualityPolicy {
   judge?: QualityJudgeConfig
   expected_answer: string
-  action: 'remove_groups' | 'disable_scheduling'
+  action: 'remove_groups' | 'disable_scheduling' | 'enable_bps' | 'observe_only'
   remove_group_ids: number[]
   auto_restore: boolean
+  bps?: QualityBPSPolicy
 }
 
 export interface PelicanTestConfig {
   quality?: QualityPolicy
   question_kind?: 'candy' | 'pelican' | 'state_probe'
+  test_channel?: 'account' | 'bps'
   prompt: string
   reasoning_effort: string
   parallel_count: number

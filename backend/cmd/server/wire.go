@@ -26,6 +26,7 @@ import (
 )
 
 type Application struct {
+	Lifecycle     *server.Lifecycle
 	Server        *http.Server
 	PromptAudit   *securityaudit.PromptService
 	PluginManager *service.PluginManager
@@ -59,7 +60,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		provideCleanup,
 
 		// Application struct
-		wire.Struct(new(Application), "Server", "PromptAudit", "PluginManager", "Cleanup"),
+		wire.Struct(new(Application), "Server", "PromptAudit", "PluginManager", "Lifecycle", "Cleanup"),
 	)
 	return nil, nil
 }
@@ -83,6 +84,7 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 }
 
 func provideCleanup(
+	cfg *config.Config,
 	requestCaptures *requestcapture.Manager,
 	entClient *ent.Client,
 	rdb *redis.Client,
@@ -125,6 +127,7 @@ func provideCleanup(
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	accountOps *service.AccountOpsService,
 	accountTokenGuard *service.AccountTokenGuardService,
+	accountTokenGuardV2 *service.AccountTokenGuardV2Service,
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
@@ -138,6 +141,11 @@ func provideCleanup(
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
 ) func() {
+	if openAIGateway != nil {
+		if cfg.RunsBackgroundJobs() {
+			openAIGateway.StartBPS403Recovery()
+		}
+	}
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -149,6 +157,12 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"BPS403Recovery", func() error {
+				if openAIGateway != nil {
+					openAIGateway.StopBPS403Recovery()
+				}
+				return nil
+			}},
 			{"AccountTokenGuardService", func() error {
 				if accountTokenGuard != nil {
 					accountTokenGuard.Stop()
@@ -380,6 +394,12 @@ func provideCleanup(
 			{"AccountOpsService", func() error {
 				if accountOps != nil {
 					accountOps.Stop()
+				}
+				return nil
+			}},
+			{"AccountTokenGuardV2Service", func() error {
+				if accountTokenGuardV2 != nil {
+					accountTokenGuardV2.Stop()
 				}
 				return nil
 			}},

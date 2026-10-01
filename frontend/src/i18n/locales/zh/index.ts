@@ -1,3 +1,7 @@
+import priorityScheduling from './priorityScheduling'
+import pelicanTests from './pelicanTests'
+import tokenGuardV2 from './tokenGuardV2'
+import autoConfig from './autoConfig'
 import qualityOps from './qualityOps'
 import accountOps from './accountOps'
 import tokenGuard from './tokenGuard'
@@ -15,15 +19,19 @@ import { mergeMissingLocaleKeys } from '../mergeLegacy'
 import requestTiming from './requestTiming'
 
 export default mergeMissingLocaleKeys(mergeMissingLocaleKeys({
+  autoConfig,
+  priorityScheduling,
+  qualityOps,
+  accountOps,
+  tokenGuard,
+  pelicanTests,
+  tokenGuardV2,
+  requestTiming,
   ...landing,
   ...common,
   ...dashboard,
   ...channelMonitorV2,
   ...batchImage,
-  qualityOps,
-  accountOps,
-  tokenGuard,
-  requestTiming,
   admin,
   ...misc,
 }, releaseAdditions), legacy)

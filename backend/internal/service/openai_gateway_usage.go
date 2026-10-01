@@ -208,6 +208,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// Get system default rate multiplier; group/model resolution follows after
 	// the billing model is selected below.
+	// Keep candidate fallback, response-model selection and Free Fast on one policy snapshot.
+	ctx = withModelBillingConfig(ctx, s.settingService)
+	// Get rate multiplier
 	multiplier := 1.0
 	if s.cfg != nil {
 		multiplier = s.cfg.Default.RateMultiplier
@@ -334,10 +337,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			longContextBillingGate,
 			pricingAt,
 		)
-		if standardErr != nil {
+		if standardErr != nil && !isUsagePricingUnavailableError(standardErr) {
 			return standardErr
 		}
-		if cost != nil && standardCost != nil {
+		// Missing pricing already fell back to a zero-cost log above; keep that
+		// usage row instead of dropping it on the Standard re-evaluation.
+		if standardErr == nil && cost != nil && standardCost != nil {
 			cost.ActualCost = standardCost.ActualCost
 		}
 	}
@@ -454,6 +459,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	} else {
 		usageLog.RateMultiplier = multiplier
 	}
+	usageLog.RateMultiplier *= costModelBillingMultiplier(cost)
 	usageLog.AccountRateMultiplier = &accountRateMultiplier
 	usageLog.BillingType = billingType
 	usageLog.Stream = result.Stream
@@ -506,6 +512,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			tokens, cost.TotalCost, pricingAt,
+			accountStatsLongContextPricingEnabled(longContextBillingGate),
 		)
 	}
 
@@ -654,6 +661,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 				longContextBillingGate,
 			)
 			if err == nil {
+				applyModelBillingMultiplier(cost, s.settingService.modelBillingConfigForUsage(ctx), candidate)
 				tokenCost = cost
 				break
 			}

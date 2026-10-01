@@ -53,9 +53,6 @@ func TestExcelBPSAutoDisableOn403(t *testing.T) {
 				}
 				raw := `{"error":{"code":"permission_denied","message":"PRIVATE_UPSTREAM"}}`
 				wantCode := "basispoints_upstream_error"
-				if tc.status == http.StatusTooManyRequests {
-					wantCode = "basispoints_rate_limited"
-				}
 				if tc.modelError {
 					raw = `{"error":{"code":"basispoints_model_access_changed"}}`
 					wantCode = "basispoints_model_access_changed"
