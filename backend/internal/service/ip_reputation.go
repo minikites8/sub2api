@@ -185,7 +185,7 @@ func lookupIPInfoPrivacy(ctx context.Context, client *http.Client, ip string) in
 	if err != nil {
 		return 0
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return 0
 	}
@@ -246,7 +246,7 @@ func lookupGenericIPReputation(ctx context.Context, client *http.Client, endpoin
 	if err != nil {
 		return 0
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return 0
 	}

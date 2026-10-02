@@ -291,7 +291,7 @@ func fuzzyFingerprintBucket(value string) string {
 	for _, char := range strings.ToLower(value) {
 		if unicode.IsDigit(char) {
 			if !inDigits {
-				builder.WriteByte('#')
+				_ = builder.WriteByte('#')
 				inDigits = true
 			}
 			continue
@@ -300,7 +300,7 @@ func fuzzyFingerprintBucket(value string) string {
 		if unicode.IsSpace(char) {
 			continue
 		}
-		builder.WriteRune(char)
+		_, _ = builder.WriteRune(char)
 	}
 	return builder.String()
 }

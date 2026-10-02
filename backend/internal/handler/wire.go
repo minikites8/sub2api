@@ -62,12 +62,14 @@ func ProvideAdminHandlers(
 	auditLogHandler *admin.AuditLogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
+	opencodeGoUsage *service.OpenCodeGoUsageService,
 	yeTeamClient *yeteam.Client,
 	openAIGateway *service.OpenAIGatewayService,
 ) *AdminHandlers {
 	accountHandler.SetCodexTicketProvider(openAIGateway)
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
 	accountHandler.SetYeTeamClient(yeTeamClient)
 	return &AdminHandlers{
 		RequestCapture:         requestCaptureHandler,

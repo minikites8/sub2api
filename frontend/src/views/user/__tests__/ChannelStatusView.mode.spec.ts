@@ -1,38 +1,34 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 
-const isV1 = vi.fn(() => false)
-
-vi.mock('@/utils/featureFlags', () => ({
-  isChannelMonitorV1Mode: () => isV1(),
+vi.mock('vue-i18n', () => ({
+  createI18n: () => ({ global: { locale: { value: 'en' }, setLocaleMessage: vi.fn() } }),
+  useI18n: () => ({ t: (key: string) => key })
 }))
-
-vi.mock('../ChannelStatusV1View.vue', () => ({
-  default: defineComponent({ name: 'ChannelStatusV1View', setup: () => () => h('div', { 'data-testid': 'v1' }) }),
-}))
-vi.mock('../ChannelStatusV2View.vue', () => ({
-  default: defineComponent({ name: 'ChannelStatusV2View', setup: () => () => h('div', { 'data-testid': 'v2' }) }),
-}))
+vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClipboard: vi.fn() }) }))
+vi.mock('@/api/publicTransit', () => ({ getPublicTransitSnapshot: vi.fn(async () => null) }))
 
 import ChannelStatusView from '../ChannelStatusView.vue'
 
-describe('ChannelStatusView mode switch', () => {
-  beforeEach(() => {
-    isV1.mockReset()
-  })
+const mountView = () => mount(ChannelStatusView, {
+  global: {
+    stubs: {
+      AppLayout: defineComponent({
+        name: 'AppLayoutStub',
+        setup: (_, { slots }) => () => h('div', slots.default?.())
+      }),
+      PublicSiteFooter: true,
+      Icon: true,
+      ModelIcon: true
+    }
+  }
+})
 
-  it('renders V2 when not in v1 mode', () => {
-    isV1.mockReturnValue(false)
-    const wrapper = mount(ChannelStatusView)
-    expect(wrapper.find('[data-testid="v2"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="v1"]').exists()).toBe(false)
-  })
-
-  it('renders V1 when in v1 mode', () => {
-    isV1.mockReturnValue(true)
-    const wrapper = mount(ChannelStatusView)
-    expect(wrapper.find('[data-testid="v1"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="v2"]').exists()).toBe(false)
+describe('ChannelStatusView marketplace shell', () => {
+  it('renders the public channel marketplace page', () => {
+    const wrapper = mountView()
+    expect(wrapper.find('.model-marketplace').exists()).toBe(true)
+    expect(wrapper.find('h1').text()).toBe('modelMarketplace.title')
   })
 })

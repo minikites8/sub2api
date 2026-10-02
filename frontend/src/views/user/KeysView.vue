@@ -2023,6 +2023,7 @@ const handleDelete = async () => {
 
 const closeModals = () => {
   showCreateModal.value = false
+  createProvider.value = 'anthropic'
   showEditModal.value = false
   selectedKey.value = null
   formData.value = {

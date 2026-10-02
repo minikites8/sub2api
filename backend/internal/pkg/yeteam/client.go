@@ -1060,7 +1060,7 @@ func (c *Client) doBytesWithHeaders(ctx context.Context, method, path string, bo
 	if err != nil {
 		return nil, fmt.Errorf("ye.team request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if readErr != nil {
 		return nil, readErr

@@ -7830,13 +7830,24 @@
           </div>
         </div>
 
-        <PelicanShowcaseSettings
-          v-model:enabled="form.pelican_showcase_enabled"
-          v-model:config="form.pelican_showcase_config"
-          :groups="pelicanShowcaseGroups"
-          :groups-loaded="pelicanShowcaseGroupsLoaded"
-          :groups-load-failed="pelicanShowcaseGroupsLoadFailed"
-        />
+        <!-- The Pelican showcase is configured with its group tests under Smart Ops. -->
+        <div class="card" data-testid="pelican-showcase-moved">
+          <div class="px-6 py-4">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.pelicanShowcase.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.pelicanShowcase.movedHint') }}
+              <router-link
+                to="/admin/pelican-tests"
+                class="ml-1 inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+              >
+                {{ t('admin.settings.features.pelicanShowcase.movedLink') }}
+                <span aria-hidden="true">→</span>
+              </router-link>
+            </p>
+          </div>
+        </div>
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -9539,7 +9550,6 @@ import type {
   DefaultSubscriptionSetting,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
-  PelicanShowcaseConfig,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -9570,11 +9580,6 @@ import BackupSettings from "@/views/admin/BackupView.vue";
 import AutoSupplySettingsPanel from "@/views/admin/settings/AutoSupplySettingsPanel.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
-import PelicanShowcaseSettings from "@/views/admin/settings/PelicanShowcaseSettings.vue";
-import {
-  defaultPelicanShowcaseConfig,
-  sanitizePelicanShowcaseConfig,
-} from "@/views/admin/settings/pelicanShowcase";
 import { useClipboard } from "@/composables/useClipboard";
 import {
   useStepUp,
@@ -9759,9 +9764,6 @@ const adminApiKeysRevision = ref(0);
 const subscriptionGroups = ref<AdminGroup[]>([]);
 const codexHarvestGroups = ref<AdminGroup[]>([]);
 const codexHarvestGroupsLoadFailed = ref(false);
-const pelicanShowcaseGroups = ref<AdminGroup[]>([]);
-const pelicanShowcaseGroupsLoaded = ref(false);
-const pelicanShowcaseGroupsLoadFailed = ref(false);
 const codexHarvestGroupChoices = computed(() => {
   const known = new Set(codexHarvestGroups.value.map(group => group.id));
   return [
@@ -10297,6 +10299,12 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown;
 }
 
+type OpenAICodexTicketHarvestScope = {
+  mode: "all" | "selected";
+  group_ids: number[];
+  account_policy: "schedulable_only" | "prioritize_schedulable";
+};
+
 type SettingsForm = Omit<
   SystemSettings,
   | "wechat_connect_open_enabled"
@@ -10304,7 +10312,7 @@ type SettingsForm = Omit<
   | "wechat_connect_mobile_enabled"
   | "openai_oauth_scheduling_rate_multiplier"
 > & {
-  openai_codex_ticket_harvest_scope: { mode: "all" | "selected"; group_ids: number[]; account_policy: "schedulable_only" | "prioritize_schedulable" };
+  openai_codex_ticket_harvest_scope: OpenAICodexTicketHarvestScope;
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
   channel_monitor_show_quota: boolean;
@@ -10345,14 +10353,27 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_weight_upstream_cost: string;
   openai_advanced_scheduler_weight_previous_response: string;
   openai_advanced_scheduler_weight_session_sticky: string;
-  // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
+  // 系统全局平台限额 map；form 内始终归一化为全 6 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
   account_scheduling_thresholds: ReturnType<typeof normalizeAccountSchedulingThresholdsMap>;
-  pelican_showcase_enabled: boolean;
-  pelican_showcase_config: PelicanShowcaseConfig;
 };
 
 const schedulingThresholdPlatforms = SCHEDULING_THRESHOLD_PLATFORMS;
+
+function normalizeOpenAICodexTicketHarvestScope(
+  input: SystemSettings["openai_codex_ticket_harvest_scope"] | null | undefined,
+): OpenAICodexTicketHarvestScope {
+  return {
+    mode: input?.mode === "selected" ? "selected" : "all",
+    group_ids: Array.isArray(input?.group_ids)
+      ? input.group_ids.filter((id): id is number => typeof id === "number")
+      : [],
+    account_policy:
+      input?.account_policy === "prioritize_schedulable"
+        ? "prioritize_schedulable"
+        : "schedulable_only",
+  };
+}
 
 const form = reactive<SettingsForm>({
   registration_enabled: true,
@@ -10658,8 +10679,6 @@ const form = reactive<SettingsForm>({
   channel_monitor_hide_throughput: false,
   channel_monitor_show_quota: false,
   channel_monitor_hide_user_ranking: false,
-  pelican_showcase_enabled: false,
-  pelican_showcase_config: defaultPelicanShowcaseConfig(),
   // Available Channels feature switch
   available_channels_enabled: false,
   // Subscription feature switch (user sidebar "My Subscriptions" entry)
@@ -11713,12 +11732,23 @@ async function loadSettings() {
       settings.payment_load_balance_strategy || "round-robin";
     // Only assign non-null values from backend (null means unconfigured, keep defaults)
     for (const [key, value] of Object.entries(settings)) {
+      if (
+        key === "default_platform_quotas" ||
+        key === "openai_codex_ticket_harvest_scope"
+      ) {
+        continue;
+      }
       if (value !== null && value !== undefined) {
         (form as Record<string, unknown>)[key] = value;
       }
     }
-    form.openai_codex_ticket_harvest_scope.account_policy =
-      form.openai_codex_ticket_harvest_scope.account_policy || 'schedulable_only';
+    form.openai_codex_ticket_harvest_scope =
+      normalizeOpenAICodexTicketHarvestScope(
+        settings.openai_codex_ticket_harvest_scope,
+      );
+    form.default_platform_quotas = normalizePlatformQuotasMap(
+      settings.default_platform_quotas,
+    );
     syncCodexTicketProxyMode();
     // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
@@ -11753,8 +11783,6 @@ async function loadSettings() {
     form.channel_monitor_show_quota = Boolean(
       settings.channel_monitor_show_quota
     );
-    form.pelican_showcase_enabled = Boolean(settings.pelican_showcase_enabled);
-    form.pelican_showcase_config = sanitizePelicanShowcaseConfig(settings.pelican_showcase_config || defaultPelicanShowcaseConfig());
     form.channel_monitor_hide_user_ranking = Boolean(
       settings.channel_monitor_hide_user_ranking
     );
@@ -11770,7 +11798,6 @@ async function loadSettings() {
           }))
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
-    form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.account_scheduling_thresholds = normalizeAccountSchedulingThresholdsMap(
       settings.account_scheduling_thresholds,
     );
@@ -11895,9 +11922,6 @@ async function loadSubscriptionGroups() {
     const groups = await adminAPI.groups.getAll();
     codexHarvestGroups.value = groups.filter(group => group.platform === 'openai');
     codexHarvestGroupsLoadFailed.value = false;
-    pelicanShowcaseGroups.value = groups.filter((group) => group.status === 'active');
-    pelicanShowcaseGroupsLoaded.value = true;
-    pelicanShowcaseGroupsLoadFailed.value = false;
     subscriptionGroups.value = groups.filter(
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
@@ -11906,9 +11930,6 @@ async function loadSubscriptionGroups() {
     subscriptionGroups.value = [];
     codexHarvestGroups.value = [];
     codexHarvestGroupsLoadFailed.value = true;
-    pelicanShowcaseGroups.value = [];
-    pelicanShowcaseGroupsLoaded.value = false;
-    pelicanShowcaseGroupsLoadFailed.value = true;
   }
 }
 
@@ -12428,7 +12449,9 @@ async function saveSettings() {
       openai_codex_ticket_strategy: form.openai_codex_ticket_strategy || 'standby',
       openai_codex_ticket_harvest_scope: {
         mode: form.openai_codex_ticket_harvest_scope.mode,
-        group_ids: [...form.openai_codex_ticket_harvest_scope.group_ids],
+        group_ids: Array.isArray(form.openai_codex_ticket_harvest_scope.group_ids)
+          ? [...form.openai_codex_ticket_harvest_scope.group_ids]
+          : [],
         account_policy: form.openai_codex_ticket_harvest_scope.account_policy,
       },
       openai_codex_ticket_strict_response: form.openai_codex_ticket_strict_response || false,
@@ -12540,8 +12563,6 @@ async function saveSettings() {
       channel_monitor_hide_throughput: Boolean(form.channel_monitor_hide_throughput),
       channel_monitor_show_quota: Boolean(form.channel_monitor_show_quota),
       channel_monitor_hide_user_ranking: Boolean(form.channel_monitor_hide_user_ranking),
-      pelican_showcase_enabled: Boolean(form.pelican_showcase_enabled),
-      pelican_showcase_config: sanitizePelicanShowcaseConfig(form.pelican_showcase_config || defaultPelicanShowcaseConfig()),
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
       // Public Transit feature switch
@@ -12625,11 +12646,22 @@ async function saveSettings() {
       adminAPI.settings.updateSettings(payload),
     );
     for (const [key, value] of Object.entries(updated)) {
-      if (key === "openai_fast_policy_settings") continue;
+      if (
+        key === "openai_fast_policy_settings" ||
+        key === "default_platform_quotas" ||
+        key === "openai_codex_ticket_harvest_scope"
+      ) {
+        continue;
+      }
       if (value !== null && value !== undefined) {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.openai_codex_ticket_harvest_scope =
+      normalizeOpenAICodexTicketHarvestScope(
+        updated.openai_codex_ticket_harvest_scope ??
+          form.openai_codex_ticket_harvest_scope,
+      );
     if (updated.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
     }

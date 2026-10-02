@@ -185,7 +185,7 @@
           {{ t('common.reset') }}
         </button>
         <slot name="after-reset" />
-        <button v-if="mode !== 'ranking'" type="button" @click="$emit('cleanup')" class="btn btn-danger">
+        <button v-if="mode === 'errors' && !observerMode" type="button" @click="$emit('cleanup')" class="btn btn-danger">
           {{ t('admin.usage.cleanup.button') }}
         </button>
         <template v-if="mode === 'usage'">

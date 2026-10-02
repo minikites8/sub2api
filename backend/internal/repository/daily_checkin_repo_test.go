@@ -13,7 +13,7 @@ import (
 func TestDailyCheckinRepositorySumsRecentCompletedRecharges(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 
 	since := time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COALESCE(SUM(amount), 0)::double precision")).
@@ -30,7 +30,7 @@ func TestDailyCheckinRepositorySumsRecentCompletedRecharges(t *testing.T) {
 func TestDailyCheckinRepositoryGetUserCheckinReadsExpiry(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 
 	createdAt := time.Date(2026, 9, 3, 10, 0, 0, 0, time.UTC)
 	expiresAt := createdAt.Add(30 * 24 * time.Hour)

@@ -1048,6 +1048,31 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("normalizes malformed Codex harvest scopes before rendering and saving", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_harvest_scope: {
+        mode: "selected",
+        group_ids: null,
+        account_policy: "legacy",
+      } as any,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect((wrapper.get("#codex-ticket-account-policy").element as HTMLSelectElement).value).toBe(
+      "schedulable_only",
+    );
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_scope).toEqual({
+      mode: "selected",
+      group_ids: [],
+      account_policy: "schedulable_only",
+    });
+    wrapper.unmount();
+  });
   it("loads and saves selected harvest groups, preserving an explicitly empty selection", async () => {
     getSettings.mockResolvedValueOnce({ ...baseSettingsResponse,
       openai_codex_ticket_harvest_scope: { mode: 'selected', group_ids: [2], account_policy: 'schedulable_only' },
@@ -2444,7 +2469,23 @@ describe("admin SettingsView platform quota matrix", () => {
     getProviders.mockResolvedValue({ data: [] });
   });
 
-  it("从 baseSettings 加载默认平台配额数据并在 Users tab 渲染 5 平台行", async () => {
+  it("normalizes missing platform quotas before rendering the quota matrix", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      default_platform_quotas: null,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    expect(wrapper.html()).toContain("grok");
+    const grokInputs = wrapper
+      .findAll('input[type="number"]')
+      .filter((input) => input.element.closest("tr")?.textContent?.includes("grok"));
+    expect(grokInputs).toHaveLength(3);
+    wrapper.unmount();
+  });
+  it("从 baseSettings 加载默认平台配额数据并在 Users tab 渲染 6 平台行", async () => {
     const wrapper = mountView();
     await flushPromises();
     await openUsersTab(wrapper);
@@ -2460,7 +2501,7 @@ describe("admin SettingsView platform quota matrix", () => {
     expect(html).toContain("kiro");
   });
 
-  it("保存时 updateSettings payload 应包含嵌套 default_platform_quotas 对象（含全 5 平台）", async () => {
+  it("保存时 updateSettings payload 应包含嵌套 default_platform_quotas 对象（含全 6 平台）", async () => {
     const wrapper = mountView();
     await flushPromises();
     await openUsersTab(wrapper);
@@ -2490,7 +2531,7 @@ describe("admin SettingsView platform quota matrix", () => {
     expect(payload).not.toHaveProperty("default_platform_quota_openai_weekly");
   });
 
-  it("加载后 form.default_platform_quotas 含全 5 平台，从嵌套 JSON 正确读取数值", async () => {
+  it("加载后 form.default_platform_quotas 含全 6 平台，从嵌套 JSON 正确读取数值", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       default_platform_quotas: {
