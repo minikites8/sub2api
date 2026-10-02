@@ -33,3 +33,26 @@ $env:SUB2API_CODEX_CLOUD_MINT_KEY = "your-relay-key"
 ```
 
 `cloud_mint.url` 使用 relay 的 HTTPS 地址；本机 relay 可使用 `http://127.0.0.1:<port>/`。relay 返回的 `served_model`、票据长度、签发时间、过期时间和路由 Cookie 会全部经过 Sub2api 校验。relay 请求失败时沿用现有 `fail_closed` 行为。
+
+## Docker Compose 配置
+
+Compose 部署需要把 relay 配置和密钥显式传入 `sub2api` 容器。主机 `.env` 用于 Compose 插值，`services.sub2api.environment` 决定容器内变量。
+
+```dotenv
+SUB2API_CODEX_CLOUD_MINT_KEY=与 relay 的 RELAY_KEY 相同
+GATEWAY_OPENAI_CODEX_TICKET_ENABLED=true
+GATEWAY_OPENAI_CODEX_TICKET_TARGET_LENGTH=780
+GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_ENABLED=true
+GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_URL=https://relay.example.com/
+GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_KEY_ENV=SUB2API_CODEX_CLOUD_MINT_KEY
+GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_TRANSPORT=sse
+GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_GATEWAY=any
+GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_TIMEOUT_SECONDS=90
+```
+
+将对应变量加入 Compose 的 `services.sub2api.environment`，然后执行：
+
+```bash
+docker compose -f docker-compose.local.yml config
+docker compose -f docker-compose.local.yml up -d --force-recreate sub2api
+```
