@@ -93,6 +93,50 @@ func TestCodexCloudMintProbeUsesRelayContract(t *testing.T) {
 	require.WithinDuration(t, expires, ticket.ExpiresAt, time.Second)
 }
 
+func TestCodexCloudMintProbeHonorsConfiguredAnyGateway(t *testing.T) {
+	account := ticketTestAccount(1)
+	issued := time.Now().Truncate(time.Second)
+	expires := issued.Add(4 * time.Minute)
+	pair := mint780Pair(expires, "unified-84")
+	state := mint780State(issued)
+	cfg := config.OpenAICodexTicketConfig{
+		TargetLength: 780,
+		TTLSeconds:   240,
+		CloudMint: config.OpenAICodexCloudMintConfig{
+			Enabled:        true,
+			URL:            "https://relay.example/",
+			KeyEnv:         "TEST_CODEX_CLOUD_MINT_KEY",
+			Transport:      "sse",
+			Gateway:        "any",
+			TimeoutSeconds: 25,
+		},
+	}
+	t.Setenv("TEST_CODEX_CLOUD_MINT_KEY", "relay-secret")
+	s := ticketTestService(t, cfg, nil)
+	s.codexHarvest = &CodexHarvestService{
+		current:     CodexHarvestControls{Transport: "sse", TargetGateway: "unified-88"},
+		loadedUntil: time.Now().Add(time.Hour),
+	}
+	s.httpUpstream = &harvestProxyUpstream{do: func(req *http.Request, proxy string) (*http.Response, error) {
+		require.Equal(t, "1", req.Header.Get("X-Relay-Mint"))
+		require.Equal(t, "any", req.Header.Get("X-Mint-Gateway"))
+		body, err := json.Marshal(map[string]any{
+			"transport": "sse",
+			"gateway":   "unified-84",
+			"cookies":   map[string]string{"__cflb": strings.TrimPrefix(pair[0], "__cflb="), "__oailb": strings.TrimPrefix(pair[1], "__oailb=")},
+			"tickets": map[string]any{"gpt-5.6-sol": map[string]any{
+				"turn_state": state, "ticket_len": len(state), "served_model": "gpt-5.6-sol",
+				"issued_at": issued.UTC().Format(time.RFC3339Nano), "expires_at": expires.UTC().Format(time.RFC3339Nano),
+			}},
+		})
+		require.NoError(t, err)
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(body)))}, nil
+	}}
+
+	out := s.requestCodex780Probe(context.Background(), account, "token", "gpt-5.6-sol", "", func() bool { return true }, "session")
+	require.NoError(t, out.Err)
+	require.Equal(t, "unified-84", out.Gateway)
+}
 func TestCodexCloudMintProbeRejectsServedModelMismatch(t *testing.T) {
 	account := ticketTestAccount(1)
 	now := time.Now().Truncate(time.Second)

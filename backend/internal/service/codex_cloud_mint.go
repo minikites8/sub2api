@@ -59,9 +59,6 @@ func (s *OpenAIGatewayService) codexCloudMintConfig() config.OpenAICodexCloudMin
 	if strings.TrimSpace(cfg.Transport) == "" {
 		cfg.Transport = "sse"
 	}
-	if strings.TrimSpace(cfg.Gateway) == "" {
-		cfg.Gateway = "any"
-	}
 	if cfg.TimeoutSeconds <= 0 {
 		cfg.TimeoutSeconds = 25
 		if s != nil {
@@ -192,7 +189,7 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		return
 	}
 	target := normalizeCodex780Gateway(cfg.Gateway)
-	if controls.TargetGateway != "" {
+	if target == "" {
 		target = normalizeCodex780Gateway(controls.TargetGateway)
 	}
 	if target == "" {
