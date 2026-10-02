@@ -174,6 +174,10 @@ func (s *promoCodeRepoStub) ListRechargeStatsByPromoCodeIDs(context.Context, []i
 	panic("unexpected ListRechargeStatsByPromoCodeIDs call")
 }
 
+func (s *promoCodeRepoStub) ReleaseSubscriptionPromoCode(context.Context, int64, int64) error {
+	return nil
+}
+
 func (s *promoCodeRepoStub) IncrementUsedCount(_ context.Context, id int64) error {
 	s.incrementedIDs = append(s.incrementedIDs, id)
 	if s.promo != nil && s.promo.ID == id {

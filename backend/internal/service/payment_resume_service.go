@@ -61,6 +61,7 @@ type WeChatPaymentResumeClaims struct {
 	Amount      string `json:"amt,omitempty"`
 	OrderType   string `json:"ot,omitempty"`
 	PlanID      int64  `json:"pid,omitempty"`
+	PromoCode   string `json:"pc,omitempty"`
 	RedirectTo  string `json:"rd,omitempty"`
 	Scope       string `json:"scp,omitempty"`
 	IssuedAt    int64  `json:"iat"`

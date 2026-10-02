@@ -259,6 +259,7 @@ type CreateOrderRequest struct {
 	PaymentSource     string  `json:"payment_source"`
 	OrderType         string  `json:"order_type"`
 	PlanID            int64   `json:"plan_id"`
+	PromoCode         string  `json:"promo_code"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -308,8 +309,32 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		PaymentSource:   req.PaymentSource,
 		OrderType:       req.OrderType,
 		PlanID:          req.PlanID,
+		PromoCode:       req.PromoCode,
 		Locale:          c.GetHeader("Accept-Language"),
 	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// PreviewSubscriptionCoupon previews the subscription price after applying a coupon.
+// POST /api/v1/payment/subscription-coupon/preview
+func (h *PaymentHandler) PreviewSubscriptionCoupon(c *gin.Context) {
+	subject, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		PlanID    int64  `json:"plan_id" binding:"required,gt=0"`
+		PromoCode string `json:"promo_code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.paymentService.PreviewSubscriptionPromoCode(c.Request.Context(), subject.UserID, req.PlanID, req.PromoCode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -351,6 +376,12 @@ func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeC
 	}
 	if claims.PlanID > 0 {
 		req.PlanID = claims.PlanID
+	}
+	if resumePromo := strings.TrimSpace(claims.PromoCode); resumePromo != "" {
+		if requestPromo := strings.TrimSpace(req.PromoCode); requestPromo != "" && !strings.EqualFold(requestPromo, resumePromo) {
+			return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", "wechat payment resume token promo code mismatch")
+		}
+		req.PromoCode = resumePromo
 	}
 	return nil
 }

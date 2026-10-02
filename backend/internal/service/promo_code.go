@@ -5,10 +5,12 @@ import "time"
 type PromoCode struct {
 	ID                           int64
 	Code                         string
+	CouponType                   string
 	BonusAmount                  float64
 	FirstRechargeBonusAmount     *float64
 	FirstRechargeDiscountPercent *float64
 	FirstRechargeDiscountTimes   int
+	SubscriptionDiscountPercent  *float64
 	MaxUses                      int
 	UsedCount                    int
 	Status                       string
@@ -58,10 +60,12 @@ func (p *PromoCode) IsExpired() bool {
 
 type CreatePromoCodeInput struct {
 	Code                         string
+	CouponType                   string
 	BonusAmount                  float64
 	FirstRechargeBonusAmount     *float64
 	FirstRechargeDiscountPercent *float64
 	FirstRechargeDiscountTimes   *int
+	SubscriptionDiscountPercent  *float64
 	MaxUses                      int
 	ExpiresAt                    *time.Time
 	Notes                        string
@@ -69,12 +73,15 @@ type CreatePromoCodeInput struct {
 
 type UpdatePromoCodeInput struct {
 	Code                         *string
+	CouponType                   *string
 	BonusAmount                  *float64
 	FirstRechargeBonusAmount     *float64
 	ClearFirstRechargeBonus      bool
 	FirstRechargeDiscountPercent *float64
 	ClearFirstRechargeDiscount   bool
 	FirstRechargeDiscountTimes   *int
+	SubscriptionDiscountPercent  *float64
+	ClearSubscriptionDiscount    bool
 	MaxUses                      *int
 	Status                       *string
 	ExpiresAt                    *time.Time

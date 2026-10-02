@@ -1014,10 +1014,12 @@ func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 	out := &PromoCode{
 		ID:                           pc.ID,
 		Code:                         pc.Code,
+		CouponType:                   pc.CouponType,
 		BonusAmount:                  pc.BonusAmount,
 		FirstRechargeBonusAmount:     pc.FirstRechargeBonusAmount,
 		FirstRechargeDiscountPercent: pc.FirstRechargeDiscountPercent,
 		FirstRechargeDiscountTimes:   pc.FirstRechargeDiscountTimes,
+		SubscriptionDiscountPercent:  pc.SubscriptionDiscountPercent,
 		MaxUses:                      pc.MaxUses,
 		UsedCount:                    pc.UsedCount,
 		Status:                       pc.Status,

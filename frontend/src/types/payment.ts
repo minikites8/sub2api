@@ -70,6 +70,14 @@ export interface FirstRechargePromoPreview {
   discount_set: boolean
 }
 
+export interface SubscriptionPromoCodePreview {
+  promo_code: string
+  discount_percent: number
+  original_amount: number
+  discount_amount: number
+  discounted_amount: number
+}
+
 export interface RechargeDiscountCouponPreview {
   id: number
   min_recharge_amount: number
@@ -195,6 +203,7 @@ export interface CreateOrderRequest {
   payment_type: string
   order_type: string
   plan_id?: number
+  promo_code?: string
   return_url?: string
   payment_source?: string
   openid?: string
@@ -236,6 +245,8 @@ export interface CreateOrderResult {
   fee_rate: number
   first_recharge_bonus_amount?: number
   first_recharge_discount_percent?: number
+  subscription_discount_percent?: number
+  subscription_discount_amount?: number
   expires_at: string
   result_type?: CreateOrderResultType
   payment_type?: string

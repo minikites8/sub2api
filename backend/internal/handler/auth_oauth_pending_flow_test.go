@@ -2773,6 +2773,10 @@ func (r *oauthPendingFlowPromoRepoStub) ListRechargeStatsByPromoCodeIDs(context.
 	panic("unexpected ListRechargeStatsByPromoCodeIDs call")
 }
 
+func (r *oauthPendingFlowPromoRepoStub) ReleaseSubscriptionPromoCode(context.Context, int64, int64) error {
+	return nil
+}
+
 func (r *oauthPendingFlowPromoRepoStub) IncrementUsedCount(context.Context, int64) error {
 	if r.promo != nil {
 		r.promo.UsedCount++

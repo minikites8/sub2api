@@ -300,6 +300,45 @@
                   </div>
                 </div>
               </div>
+              <div class="card p-5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <label class="input-label mb-0">{{ t('payment.subscriptionCoupon.label') }}</label>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.subscriptionCoupon.hint') }}</span>
+                </div>
+                <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    v-model="subscriptionPromoCode"
+                    type="text"
+                    class="input flex-1 font-mono uppercase"
+                    :placeholder="t('payment.subscriptionCoupon.placeholder')"
+                    :disabled="subscriptionPromoLoading || submitting"
+                    @keyup.enter="applySubscriptionPromoCode"
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    :disabled="subscriptionPromoLoading || submitting || !subscriptionPromoCode.trim()"
+                    @click="applySubscriptionPromoCode"
+                  >
+                    {{ subscriptionPromoLoading ? t('common.processing') : t('payment.subscriptionCoupon.apply') }}
+                  </button>
+                </div>
+                <div v-if="subscriptionPromoPreview && subscriptionPromoApplied" class="mt-3 space-y-1 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionCoupon.originalAmount') }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedSubscriptionPaymentAmount(subscriptionPromoPreview.original_amount) }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionCoupon.discount', { discount: formatDiscountRate(subscriptionPromoPreview.discount_percent) }) }}</span>
+                    <span class="text-green-600 dark:text-green-400">-{{ formatSelectedSubscriptionPaymentAmount(subscriptionPromoPreview.discount_amount) }}</span>
+                  </div>
+                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.subscriptionCoupon.discountedAmount') }}</span>
+                    <span class="font-semibold text-primary-600 dark:text-primary-400">{{ formatSelectedSubscriptionPaymentAmount(subscriptionPromoPreview.discounted_amount) }}</span>
+                  </div>
+                </div>
+                <p v-if="subscriptionPromoError" class="mt-2 text-sm text-red-600 dark:text-red-400">{{ subscriptionPromoError }}</p>
+              </div>
               <div v-if="enabledMethods.length >= 1" class="card p-6">
                 <PaymentMethodSelector
                   :methods="subMethodOptions"
@@ -307,7 +346,7 @@
                   @select="selectedMethod = $event"
                 />
               </div>
-              <div v-if="feeRate > 0 && selectedPlan.price > 0" class="card p-6">
+              <div v-if="feeRate > 0 && subPaymentAmount > 0" class="card p-6">
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
@@ -443,7 +482,7 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder, SubscriptionPromoCodePreview } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
@@ -503,6 +542,10 @@ const amount = ref<number | null>(null)
 const amountInputText = ref('')
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const subscriptionPromoCode = ref('')
+const subscriptionPromoPreview = ref<SubscriptionPromoCodePreview | null>(null)
+const subscriptionPromoLoading = ref(false)
+const subscriptionPromoError = ref('')
 const previewImage = ref('')
 const recentOrders = ref<PaymentOrder[]>([])
 const loadingRecentOrders = ref(false)
@@ -517,6 +560,7 @@ interface CreateOrderOptions {
   paymentType?: string
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
+  promoCode?: string
 }
 
 interface WeixinJSBridgeLike {
@@ -622,7 +666,7 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
+  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number; promoCode?: string },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -648,6 +692,12 @@ function buildWechatOAuthAuthorizeUrl(
       redirectUrl.searchParams.set('amount', String(context.orderAmount))
     } else {
       redirectUrl.searchParams.delete('amount')
+    }
+
+    if (context.promoCode?.trim()) {
+      redirectUrl.searchParams.set('promo_code', context.promoCode.trim())
+    } else {
+      redirectUrl.searchParams.delete('promo_code')
     }
 
     targetUrl.searchParams.set('redirect', `${redirectUrl.pathname}${redirectUrl.search}`)
@@ -1004,10 +1054,34 @@ const canSubmit = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
-const subPaymentAmount = computed(() => {
-  const price = selectedPlan.value?.price ?? 0
-  return subscriptionPaymentAmountForCurrency(price, selectedCurrency.value)
+const normalizedSubscriptionPromoCode = computed(() => subscriptionPromoCode.value.trim().toUpperCase())
+
+const subscriptionPromoApplied = computed(() => {
+  const preview = subscriptionPromoPreview.value
+  return !!preview
+    && normalizedSubscriptionPromoCode.value !== ''
+    && normalizedSubscriptionPromoCode.value === preview.promo_code.trim().toUpperCase()
 })
+
+watch(subscriptionPromoCode, (value) => {
+  const previewCode = subscriptionPromoPreview.value?.promo_code.trim().toUpperCase()
+  if (previewCode && value.trim().toUpperCase() !== previewCode) {
+    subscriptionPromoPreview.value = null
+  }
+  if (!value.trim()) {
+    subscriptionPromoError.value = ''
+  }
+})
+
+const subscriptionDiscountedPrice = computed(() => {
+  const preview = subscriptionPromoPreview.value
+  if (preview && subscriptionPromoApplied.value) return preview.discounted_amount
+  return selectedPlan.value?.price ?? 0
+})
+
+const subPaymentAmount = computed(() =>
+  subscriptionPaymentAmountForCurrency(subscriptionDiscountedPrice.value, selectedCurrency.value)
+)
 
 const subFeeAmount = computed(() => {
   if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return 0
@@ -1028,7 +1102,7 @@ function subscriptionTotalAmountForCurrency(value: number, currency: string): nu
 
 // Subscription-specific: method options based on gateway pay amount
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
-  const price = selectedPlan.value?.price ?? 0
+  const price = subscriptionDiscountedPrice.value
   return enabledMethods.value.map((type) => {
     const ml = visibleMethods.value[type]
     const currency = normalizePaymentCurrency(ml?.currency)
@@ -1043,6 +1117,7 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
 
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
+    && (normalizedSubscriptionPromoCode.value === '' || subscriptionPromoApplied.value)
     && amountFitsMethod(subTotalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
@@ -1090,8 +1165,15 @@ function planPeakRateLabel(plan: SubscriptionPlan): string {
   return formatPeakRateWindow(plan, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
 }
 
+function clearSubscriptionPromo() {
+  subscriptionPromoCode.value = ''
+  subscriptionPromoPreview.value = null
+  subscriptionPromoError.value = ''
+}
+
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
+  clearSubscriptionPromo()
   errorMessage.value = ''
 }
 
@@ -1099,6 +1181,7 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
   showRenewalModal.value = false
   renewGroupId.value = null
   selectedPlan.value = plan
+  clearSubscriptionPromo()
   errorMessage.value = ''
 }
 
@@ -1112,9 +1195,45 @@ async function handleSubmitRecharge() {
   await createOrder(validAmount.value, 'balance')
 }
 
+async function applySubscriptionPromoCode() {
+  const code = subscriptionPromoCode.value.trim()
+  if (!selectedPlan.value) return
+  if (!code) {
+    clearSubscriptionPromo()
+    return
+  }
+
+  subscriptionPromoLoading.value = true
+  subscriptionPromoError.value = ''
+  try {
+    const response = await paymentAPI.previewSubscriptionCoupon({
+      plan_id: selectedPlan.value.id,
+      promo_code: code,
+    })
+    subscriptionPromoPreview.value = response.data
+    subscriptionPromoCode.value = response.data.promo_code
+  } catch (err: unknown) {
+    subscriptionPromoPreview.value = null
+    subscriptionPromoError.value = extractI18nErrorMessage(
+      err,
+      t,
+      'payment.errors',
+      extractApiErrorMessage(err, t('payment.subscriptionCoupon.invalid')),
+    )
+  } finally {
+    subscriptionPromoLoading.value = false
+  }
+}
+
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
+  if (normalizedSubscriptionPromoCode.value !== '' && !subscriptionPromoApplied.value) {
+    subscriptionPromoError.value = t('payment.subscriptionCoupon.applyFirst')
+    return
+  }
+  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id, {
+    promoCode: normalizedSubscriptionPromoCode.value || undefined,
+  })
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
@@ -1122,12 +1241,14 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   errorMessage.value = ''
   errorHintMessage.value = ''
   const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
+  const requestPromoCode = options.promoCode ?? (orderType === 'subscription' ? subscriptionPromoCode.value.trim() : undefined)
   try {
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
       orderType,
       planId,
+      promoCode: requestPromoCode,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
@@ -1193,6 +1314,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         orderType,
         planId,
         orderAmount,
+        promoCode: requestPromoCode,
       })
       return
     }
@@ -1234,6 +1356,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderType,
               planId,
               paymentType: visibleMethod,
+              promoCode: requestPromoCode,
               attempted: options.mobileQrFallbackAttempted === true,
             },
           )
@@ -1252,6 +1375,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderType,
           planId,
           paymentType: visibleMethod,
+          promoCode: requestPromoCode,
           attempted: options.mobileQrFallbackAttempted === true,
         })
         if (!fallbackApplied) {
@@ -1281,6 +1405,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderType,
       planId,
       paymentType: requestType,
+      promoCode: requestPromoCode,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
       return
@@ -1308,6 +1433,7 @@ interface MobileQrFallbackContext {
   orderType: OrderType
   planId?: number
   paymentType: string
+  promoCode?: string
   attempted: boolean
 }
 
@@ -1356,6 +1482,7 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       paymentType: visibleMethod,
       orderType: context.orderType,
       planId: context.planId,
+      promoCode: context.promoCode,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: false,
       isWechatBrowser: false,
@@ -1427,6 +1554,9 @@ async function resumeWechatPaymentFromQuery() {
   }
   if (resume.orderType === 'subscription' && resume.planId) {
     selectedPlan.value = checkout.value.plans.find(plan => plan.id === resume.planId) ?? null
+    subscriptionPromoCode.value = resume.promoCode || ''
+    subscriptionPromoPreview.value = null
+    subscriptionPromoError.value = ''
   }
 
   await router.replace({ path: route.path, query: stripWechatResumeQuery(route.query) })
@@ -1435,6 +1565,7 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(0, resume.orderType, resume.planId, {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
+      promoCode: resume.promoCode,
       isResume: true,
     })
     return
@@ -1444,6 +1575,7 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
       openid: resume.openid,
       paymentType: resume.paymentType,
+      promoCode: resume.promoCode,
       isResume: true,
     })
   }

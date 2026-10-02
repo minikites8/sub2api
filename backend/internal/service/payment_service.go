@@ -84,6 +84,7 @@ type CreateOrderRequest struct {
 	PaymentSource   string
 	OrderType       string
 	PlanID          int64
+	PromoCode       string
 	Locale          string
 }
 
@@ -94,6 +95,8 @@ type CreateOrderResponse struct {
 	FeeRate                       float64                         `json:"fee_rate"`
 	FirstRechargeBonusAmount      float64                         `json:"first_recharge_bonus_amount,omitempty"`
 	FirstRechargeDiscountPercent  float64                         `json:"first_recharge_discount_percent,omitempty"`
+	SubscriptionDiscountPercent   float64                         `json:"subscription_discount_percent,omitempty"`
+	SubscriptionDiscountAmount    float64                         `json:"subscription_discount_amount,omitempty"`
 	Status                        string                          `json:"status"`
 	ResultType                    payment.CreatePaymentResultType `json:"result_type,omitempty"`
 	PaymentType                   string                          `json:"payment_type"`

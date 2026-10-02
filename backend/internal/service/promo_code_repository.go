@@ -30,4 +30,5 @@ type PromoCodeRepository interface {
 
 	// 计数操作
 	IncrementUsedCount(ctx context.Context, id int64) error
+	ReleaseSubscriptionPromoCode(ctx context.Context, promoCodeID, userID int64) error
 }

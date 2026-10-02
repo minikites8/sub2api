@@ -39,6 +39,8 @@ func scanPromoCode(rows interface {
 	var out service.PromoCode
 	var expiresAt sql.NullTime
 	var notes sql.NullString
+	var couponType sql.NullString
+	var subscriptionDiscount sql.NullFloat64
 	var firstRechargeBonus sql.NullFloat64
 	var firstRechargeDiscount sql.NullFloat64
 	var firstRechargeDiscountTimes sql.NullInt64
@@ -46,6 +48,8 @@ func scanPromoCode(rows interface {
 		&out.ID,
 		&out.Code,
 		&out.BonusAmount,
+		&couponType,
+		&subscriptionDiscount,
 		&firstRechargeBonus,
 		&firstRechargeDiscount,
 		&firstRechargeDiscountTimes,
@@ -58,6 +62,14 @@ func scanPromoCode(rows interface {
 		&out.UpdatedAt,
 	); err != nil {
 		return nil, err
+	}
+	out.CouponType = couponType.String
+	if strings.TrimSpace(out.CouponType) == "" {
+		out.CouponType = service.PromoCodeTypeRegistration
+	}
+	if subscriptionDiscount.Valid {
+		v := subscriptionDiscount.Float64
+		out.SubscriptionDiscountPercent = &v
 	}
 	if firstRechargeBonus.Valid {
 		v := firstRechargeBonus.Float64
@@ -88,18 +100,21 @@ func (r *promoCodeRepository) hydratePromoCodeFirstRechargeFields(ctx context.Co
 	client := clientFromContext(ctx, r.client)
 	for i := range codes {
 		query := fmt.Sprintf(`
-SELECT first_recharge_bonus_amount, first_recharge_discount_percent, first_recharge_discount_times
+SELECT coupon_type, subscription_discount_percent,
+       first_recharge_bonus_amount, first_recharge_discount_percent, first_recharge_discount_times
 FROM promo_codes
 WHERE id = %s`, r.placeholder(1))
 		rows, err := client.QueryContext(ctx, query, codes[i].ID)
 		if err != nil {
 			return err
 		}
+		var couponType sql.NullString
+		var subscriptionDiscount sql.NullFloat64
 		var bonus sql.NullFloat64
 		var discount sql.NullFloat64
 		var discountTimes sql.NullInt64
 		if rows.Next() {
-			if err := rows.Scan(&bonus, &discount, &discountTimes); err != nil {
+			if err := rows.Scan(&couponType, &subscriptionDiscount, &bonus, &discount, &discountTimes); err != nil {
 				_ = rows.Close()
 				return err
 			}
@@ -109,6 +124,14 @@ WHERE id = %s`, r.placeholder(1))
 			return err
 		}
 		_ = rows.Close()
+		codes[i].CouponType = couponType.String
+		if strings.TrimSpace(codes[i].CouponType) == "" {
+			codes[i].CouponType = service.PromoCodeTypeRegistration
+		}
+		if subscriptionDiscount.Valid {
+			v := subscriptionDiscount.Float64
+			codes[i].SubscriptionDiscountPercent = &v
+		}
 		if bonus.Valid {
 			v := bonus.Float64
 			codes[i].FirstRechargeBonusAmount = &v
@@ -130,11 +153,20 @@ func (r *promoCodeRepository) savePromoCodeFirstRechargeFields(ctx context.Conte
 	client := clientFromContext(ctx, r.client)
 	query := fmt.Sprintf(`
 UPDATE promo_codes
-SET first_recharge_bonus_amount = %s,
+SET coupon_type = %s,
+    subscription_discount_percent = %s,
+    first_recharge_bonus_amount = %s,
     first_recharge_discount_percent = %s,
     first_recharge_discount_times = %s
-WHERE id = %s`, r.placeholder(1), r.placeholder(2), r.placeholder(3), r.placeholder(4))
-	_, err := client.ExecContext(ctx, query, nullableFloatArg(code.FirstRechargeBonusAmount), nullableFloatArg(code.FirstRechargeDiscountPercent), code.FirstRechargeDiscountTimes, code.ID)
+WHERE id = %s`, r.placeholder(1), r.placeholder(2), r.placeholder(3), r.placeholder(4), r.placeholder(5), r.placeholder(6))
+	_, err := client.ExecContext(ctx, query,
+		strings.TrimSpace(code.CouponType),
+		nullableFloatArg(code.SubscriptionDiscountPercent),
+		nullableFloatArg(code.FirstRechargeBonusAmount),
+		nullableFloatArg(code.FirstRechargeDiscountPercent),
+		code.FirstRechargeDiscountTimes,
+		code.ID,
+	)
 	return err
 }
 
@@ -299,6 +331,8 @@ func (r *promoCodeRepository) getByIDRaw(ctx context.Context, id int64) (*servic
 SELECT id,
        code,
        bonus_amount,
+       coupon_type,
+       subscription_discount_percent,
        first_recharge_bonus_amount,
        first_recharge_discount_percent,
        first_recharge_discount_times,
@@ -394,6 +428,8 @@ func (r *promoCodeRepository) GetFirstRechargePromoByUser(ctx context.Context, u
 SELECT pc.id,
        pc.code,
        pc.bonus_amount,
+       pc.coupon_type,
+       pc.subscription_discount_percent,
        pc.first_recharge_bonus_amount,
        pc.first_recharge_discount_percent,
        pc.first_recharge_discount_times,
@@ -407,6 +443,7 @@ SELECT pc.id,
 FROM promo_code_usages pcu
 JOIN promo_codes pc ON pc.id = pcu.promo_code_id
 WHERE pcu.user_id = %s
+  AND pc.coupon_type = 'registration'
   AND (pc.first_recharge_bonus_amount IS NOT NULL
        OR pc.first_recharge_discount_percent IS NOT NULL)
 ORDER BY pcu.used_at ASC, pcu.id ASC
@@ -560,6 +597,29 @@ func (r *promoCodeRepository) IncrementUsedCount(ctx context.Context, id int64) 
 	return err
 }
 
+func (r *promoCodeRepository) ReleaseSubscriptionPromoCode(ctx context.Context, promoCodeID, userID int64) error {
+	if promoCodeID <= 0 || userID <= 0 {
+		return nil
+	}
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, fmt.Sprintf(
+		"DELETE FROM promo_code_usages WHERE promo_code_id = %s AND user_id = %s",
+		r.placeholder(1), r.placeholder(2),
+	), promoCodeID, userID)
+	if err != nil {
+		return err
+	}
+	removed, err := result.RowsAffected()
+	if err != nil || removed == 0 {
+		return err
+	}
+	_, err = client.ExecContext(ctx, fmt.Sprintf(
+		"UPDATE promo_codes SET used_count = CASE WHEN used_count > 0 THEN used_count - 1 ELSE 0 END, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+		r.placeholder(1),
+	), promoCodeID)
+	return err
+}
+
 // Entity to Service conversions
 
 func promoCodeEntityToService(m *dbent.PromoCode) *service.PromoCode {
@@ -570,6 +630,7 @@ func promoCodeEntityToService(m *dbent.PromoCode) *service.PromoCode {
 		ID:          m.ID,
 		Code:        m.Code,
 		BonusAmount: m.BonusAmount,
+		CouponType:  service.PromoCodeTypeRegistration,
 		MaxUses:     m.MaxUses,
 		UsedCount:   m.UsedCount,
 		Status:      m.Status,

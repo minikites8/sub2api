@@ -23,10 +23,12 @@ func NewPromoHandler(promoService *service.PromoService) *PromoHandler {
 
 type CreatePromoCodeRequest struct {
 	Code                         string   `json:"code"`
+	CouponType                   string   `json:"coupon_type" binding:"omitempty,oneof=registration subscription"`
 	BonusAmount                  *float64 `json:"bonus_amount" binding:"required,min=0"`
 	FirstRechargeBonusAmount     *float64 `json:"first_recharge_bonus_amount" binding:"omitempty,min=0"`
 	FirstRechargeDiscountPercent *float64 `json:"first_recharge_discount_percent" binding:"omitempty,min=0.01,max=100"`
 	FirstRechargeDiscountTimes   *int     `json:"first_recharge_discount_times" binding:"omitempty,min=0"`
+	SubscriptionDiscountPercent  *float64 `json:"subscription_discount_percent" binding:"omitempty,min=0.01,max=100"`
 	MaxUses                      int      `json:"max_uses" binding:"min=0"`
 	ExpiresAt                    *int64   `json:"expires_at"`
 	Notes                        string   `json:"notes"`
@@ -34,10 +36,13 @@ type CreatePromoCodeRequest struct {
 
 type UpdatePromoCodeRequest struct {
 	Code                         *string  `json:"code"`
+	CouponType                   *string  `json:"coupon_type" binding:"omitempty,oneof=registration subscription"`
 	BonusAmount                  *float64 `json:"bonus_amount" binding:"omitempty,min=0"`
 	FirstRechargeBonusAmount     *float64 `json:"first_recharge_bonus_amount" binding:"omitempty,min=0"`
 	FirstRechargeDiscountPercent *float64 `json:"first_recharge_discount_percent" binding:"omitempty,min=0.01,max=100"`
 	FirstRechargeDiscountTimes   *int     `json:"first_recharge_discount_times" binding:"omitempty,min=0"`
+	SubscriptionDiscountPercent  *float64 `json:"subscription_discount_percent" binding:"omitempty,min=0.01,max=100"`
+	ClearSubscriptionDiscount    bool     `json:"clear_subscription_discount"`
 	ClearFirstRechargeBonus      bool     `json:"clear_first_recharge_bonus"`
 	ClearFirstRechargeDiscount   bool     `json:"clear_first_recharge_discount"`
 	MaxUses                      *int     `json:"max_uses" binding:"omitempty,min=0"`
@@ -99,10 +104,12 @@ func (h *PromoHandler) Create(c *gin.Context) {
 
 	input := &service.CreatePromoCodeInput{
 		Code:                         req.Code,
+		CouponType:                   req.CouponType,
 		BonusAmount:                  *req.BonusAmount,
 		FirstRechargeBonusAmount:     req.FirstRechargeBonusAmount,
 		FirstRechargeDiscountPercent: req.FirstRechargeDiscountPercent,
 		FirstRechargeDiscountTimes:   req.FirstRechargeDiscountTimes,
+		SubscriptionDiscountPercent:  req.SubscriptionDiscountPercent,
 		MaxUses:                      req.MaxUses,
 		Notes:                        req.Notes,
 	}
@@ -135,11 +142,14 @@ func (h *PromoHandler) Update(c *gin.Context) {
 
 	input := &service.UpdatePromoCodeInput{
 		Code:                         req.Code,
+		CouponType:                   req.CouponType,
 		BonusAmount:                  req.BonusAmount,
 		FirstRechargeBonusAmount:     req.FirstRechargeBonusAmount,
 		ClearFirstRechargeBonus:      req.ClearFirstRechargeBonus,
 		FirstRechargeDiscountPercent: req.FirstRechargeDiscountPercent,
 		FirstRechargeDiscountTimes:   req.FirstRechargeDiscountTimes,
+		SubscriptionDiscountPercent:  req.SubscriptionDiscountPercent,
+		ClearSubscriptionDiscount:    req.ClearSubscriptionDiscount,
 		ClearFirstRechargeDiscount:   req.ClearFirstRechargeDiscount,
 		MaxUses:                      req.MaxUses,
 		Status:                       req.Status,

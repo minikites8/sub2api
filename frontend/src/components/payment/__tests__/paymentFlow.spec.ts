@@ -331,6 +331,21 @@ describe('buildCreateOrderPayload', () => {
     })
   })
 
+  it('trims and passes a subscription promo code', () => {
+    expect(buildCreateOrderPayload({
+      amount: 128,
+      paymentType: 'wxpay',
+      orderType: 'subscription',
+      planId: 7,
+      promoCode: '  sub-80  ',
+      origin: 'https://app.example.com',
+      isMobile: false,
+      isWechatBrowser: true,
+    })).toMatchObject({
+      plan_id: 7,
+      promo_code: 'sub-80',
+    })
+  })
   it('passes is_mobile: false when forceQRCode is enabled for alipay', () => {
     expect(buildCreateOrderPayload({
       amount: 50,

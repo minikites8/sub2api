@@ -41,6 +41,13 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, err
 	}
+	var subscriptionPromo *subscriptionPromoPlan
+	if plan != nil {
+		subscriptionPromo, err = s.resolveSubscriptionPromoCode(ctx, req.UserID, req.PromoCode, plan.Price)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err := s.checkCancelRateLimit(ctx, req.UserID, cfg); err != nil {
 		return nil, err
 	}
@@ -60,6 +67,10 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if plan != nil {
 		orderAmount = plan.Price
 		limitAmount = plan.Price
+		if subscriptionPromo != nil {
+			orderAmount = subscriptionPromo.DiscountedAmount
+			limitAmount = subscriptionPromo.DiscountedAmount
+		}
 	} else if req.OrderType == payment.OrderTypeBalance {
 		baseCreditAmount := calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
 		firstRechargePromo, err := s.resolveFirstRechargePromo(ctx, req.UserID)
@@ -107,14 +118,14 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err := validateSelectedCreateOrderAmountCurrency(payAmountStr, sel); err != nil {
 		return nil, err
 	}
-	oauthResp, err := s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, limitAmount, payAmount, feeRate, sel, firstRechargePlan)
+	oauthResp, err := s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, limitAmount, payAmount, feeRate, sel, firstRechargePlan, subscriptionPromo)
 	if err != nil {
 		return nil, err
 	}
 	if oauthResp != nil {
 		return oauthResp, nil
 	}
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel, firstRechargePlan)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel, firstRechargePlan, subscriptionPromo)
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +134,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		_, _ = s.entClient.PaymentOrder.UpdateOneID(order.ID).
 			SetStatus(OrderStatusFailed).
 			Save(ctx)
+		s.releaseSubscriptionPromoReservation(ctx, order)
 		return nil, err
 	}
 	return resp, nil
@@ -131,6 +143,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig) (*dbent.SubscriptionPlan, error) {
 	if req.OrderType == payment.OrderTypeBalance && cfg.BalanceDisabled {
 		return nil, infraerrors.Forbidden("BALANCE_PAYMENT_DISABLED", "balance recharge has been disabled")
+	}
+	if req.OrderType == payment.OrderTypeBalance && strings.TrimSpace(req.PromoCode) != "" {
+		return nil, ErrPromoCodeWrongType
 	}
 	if req.OrderType == payment.OrderTypeSubscription {
 		return s.validateSubOrder(ctx, req)
@@ -163,7 +178,7 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection, firstRechargePlan firstRechargeAmountPlan) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection, firstRechargePlan firstRechargeAmountPlan, subscriptionPromo *subscriptionPromoPlan) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -181,6 +196,9 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
 		return nil, err
 	}
+	if err := s.reserveSubscriptionPromoCode(ctx, tx, req.UserID, subscriptionPromo); err != nil {
+		return nil, err
+	}
 	tm := cfg.OrderTimeoutMin
 	if tm <= 0 {
 		tm = defaultOrderTimeoutMin
@@ -191,6 +209,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		return nil, err
 	}
 	providerSnapshot := appendFirstRechargePromoSnapshot(buildPaymentOrderProviderSnapshot(sel, req), firstRechargePlan)
+	providerSnapshot = appendSubscriptionPromoSnapshot(providerSnapshot, subscriptionPromo)
 	selectedInstanceID := ""
 	selectedProviderKey := ""
 	if sel != nil {
@@ -630,20 +649,20 @@ func applyPaymentProductNameAffix(productName string, cfg *PaymentConfig) string
 }
 
 func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64) (*CreateOrderResponse, error) {
-	return s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, amount, payAmount, feeRate, nil, firstRechargeAmountPlan{})
+	return s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, amount, payAmount, feeRate, nil, firstRechargeAmountPlan{}, nil)
 }
 
-func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponseForSelection(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64, sel *payment.InstanceSelection, firstRechargePlan firstRechargeAmountPlan) (*CreateOrderResponse, error) {
+func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponseForSelection(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64, sel *payment.InstanceSelection, firstRechargePlan firstRechargeAmountPlan, subscriptionPromo *subscriptionPromoPlan) (*CreateOrderResponse, error) {
 	if sel != nil && sel.ProviderKey != "" && sel.ProviderKey != payment.TypeWxpay {
 		return nil, nil
 	}
 	if strings.TrimSpace(req.OpenID) != "" || !req.IsWeChatBrowser || payment.GetBasePaymentType(req.PaymentType) != payment.TypeWxpay {
 		return nil, nil
 	}
-	return s.buildWeChatOAuthRequiredResponse(ctx, req, amount, payAmount, feeRate, firstRechargePlan)
+	return s.buildWeChatOAuthRequiredResponse(ctx, req, amount, payAmount, feeRate, firstRechargePlan, subscriptionPromo)
 }
 
-func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64, firstRechargePlan firstRechargeAmountPlan) (*CreateOrderResponse, error) {
+func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64, firstRechargePlan firstRechargeAmountPlan, subscriptionPromo *subscriptionPromoPlan) (*CreateOrderResponse, error) {
 	appID, _, err := s.getWeChatPaymentOAuthCredential(ctx)
 	if err != nil {
 		return nil, err
@@ -673,6 +692,10 @@ func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, r
 	if firstRechargePlan.active() {
 		resp.FirstRechargeBonusAmount = firstRechargePlan.BonusAmount
 		resp.FirstRechargeDiscountPercent = firstRechargePlan.DiscountPercent
+	}
+	if subscriptionPromo != nil {
+		resp.SubscriptionDiscountPercent = subscriptionPromo.DiscountPercent
+		resp.SubscriptionDiscountAmount = subscriptionPromo.DiscountAmount
 	}
 	return resp, nil
 }
@@ -828,6 +851,12 @@ func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest,
 			resp.FirstRechargeBonusAmount = promoPlan.BonusAmount
 		}
 	}
+	if req.OrderType == payment.OrderTypeSubscription {
+		if promoPlan, ok := subscriptionPromoPlanFromSnapshot(order.ProviderSnapshot); ok {
+			resp.SubscriptionDiscountPercent = promoPlan.DiscountPercent
+			resp.SubscriptionDiscountAmount = promoPlan.DiscountAmount
+		}
+	}
 	return resp
 }
 
@@ -846,6 +875,9 @@ func buildWeChatPaymentOAuthStartURL(req CreateOrderRequest, scope string) (stri
 	}
 	if req.PlanID > 0 {
 		q.Set("plan_id", strconv.FormatInt(req.PlanID, 10))
+	}
+	if promoCode := strings.TrimSpace(req.PromoCode); promoCode != "" {
+		q.Set("promo_code", promoCode)
 	}
 	if scope = strings.TrimSpace(scope); scope != "" {
 		q.Set("scope", scope)

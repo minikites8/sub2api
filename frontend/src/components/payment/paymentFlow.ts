@@ -81,6 +81,7 @@ export interface BuildCreateOrderPayloadInput {
   paymentType: string
   orderType: OrderType
   planId?: number
+  promoCode?: string
   origin?: string
   isMobile: boolean
   isWechatBrowser: boolean
@@ -138,6 +139,9 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
 
   if (input.planId) {
     payload.plan_id = input.planId
+  }
+  if (input.promoCode?.trim()) {
+    payload.promo_code = input.promoCode.trim()
   }
   if (normalizedOrigin) {
     payload.return_url = `${normalizedOrigin}/payment/result`

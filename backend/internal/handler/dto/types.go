@@ -748,10 +748,12 @@ type BulkAssignResult struct {
 type PromoCode struct {
 	ID                           int64                   `json:"id"`
 	Code                         string                  `json:"code"`
+	CouponType                   string                  `json:"coupon_type"`
 	BonusAmount                  float64                 `json:"bonus_amount"`
 	FirstRechargeBonusAmount     *float64                `json:"first_recharge_bonus_amount,omitempty"`
 	FirstRechargeDiscountPercent *float64                `json:"first_recharge_discount_percent,omitempty"`
 	FirstRechargeDiscountTimes   int                     `json:"first_recharge_discount_times"`
+	SubscriptionDiscountPercent  *float64                `json:"subscription_discount_percent,omitempty"`
 	MaxUses                      int                     `json:"max_uses"`
 	UsedCount                    int                     `json:"used_count"`
 	Status                       string                  `json:"status"`

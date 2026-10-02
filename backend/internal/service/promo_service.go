@@ -14,6 +14,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
+const (
+	PromoCodeTypeRegistration = "registration"
+	PromoCodeTypeSubscription = "subscription"
+)
+
 var (
 	ErrPromoCodeNotFound    = infraerrors.NotFound("PROMO_CODE_NOT_FOUND", "promo code not found")
 	ErrPromoCodeExpired     = infraerrors.BadRequest("PROMO_CODE_EXPIRED", "promo code has expired")
@@ -21,6 +26,7 @@ var (
 	ErrPromoCodeMaxUsed     = infraerrors.BadRequest("PROMO_CODE_MAX_USED", "promo code has reached maximum uses")
 	ErrPromoCodeAlreadyUsed = infraerrors.Conflict("PROMO_CODE_ALREADY_USED", "you have already used this promo code")
 	ErrPromoCodeInvalid     = infraerrors.BadRequest("PROMO_CODE_INVALID", "invalid promo code")
+	ErrPromoCodeWrongType   = infraerrors.BadRequest("PROMO_CODE_WRONG_TYPE", "promo code cannot be used in this flow")
 )
 
 const PromoRechargeDiscountTimesDefault = 1
@@ -32,6 +38,39 @@ func validatePromoFirstRechargeValue(value *float64, min, max float64, code, mes
 	v := *value
 	if math.IsNaN(v) || math.IsInf(v, 0) || v < min || v > max {
 		return infraerrors.BadRequest(code, message)
+	}
+	return nil
+}
+
+func normalizePromoCodeType(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), PromoCodeTypeSubscription) {
+		return PromoCodeTypeSubscription
+	}
+	return PromoCodeTypeRegistration
+}
+
+func validateSubscriptionDiscountPercent(value *float64) error {
+	if value == nil {
+		return infraerrors.BadRequest("INVALID_SUBSCRIPTION_DISCOUNT", "subscription payment percentage is required")
+	}
+	return validatePromoFirstRechargeValue(value, 0.01, 100, "INVALID_SUBSCRIPTION_DISCOUNT", "subscription payment percentage must be between 0.01 and 100")
+}
+
+func validatePromoCodeConfiguration(promoCode *PromoCode) error {
+	if promoCode == nil {
+		return ErrPromoCodeInvalid
+	}
+	promoCode.CouponType = normalizePromoCodeType(promoCode.CouponType)
+	if promoCode.CouponType == PromoCodeTypeSubscription {
+		if err := validateSubscriptionDiscountPercent(promoCode.SubscriptionDiscountPercent); err != nil {
+			return err
+		}
+		promoCode.BonusAmount = 0
+		promoCode.FirstRechargeBonusAmount = nil
+		promoCode.FirstRechargeDiscountPercent = nil
+		promoCode.FirstRechargeDiscountTimes = PromoRechargeDiscountTimesDefault
+	} else {
+		promoCode.SubscriptionDiscountPercent = nil
 	}
 	return nil
 }
@@ -93,12 +132,18 @@ func (s *PromoService) ValidatePromoCode(ctx context.Context, code string) (*Pro
 	if err := s.validatePromoCodeStatus(promoCode); err != nil {
 		return nil, err
 	}
+	if normalizePromoCodeType(promoCode.CouponType) != PromoCodeTypeRegistration {
+		return nil, ErrPromoCodeWrongType
+	}
 
 	return promoCode, nil
 }
 
 // validatePromoCodeStatus 验证优惠码状态
-func (s *PromoService) validatePromoCodeStatus(promoCode *PromoCode) error {
+func validatePromoCodeStatus(promoCode *PromoCode) error {
+	if promoCode == nil {
+		return ErrPromoCodeInvalid
+	}
 	if !promoCode.CanUse() {
 		if promoCode.IsExpired() {
 			return ErrPromoCodeExpired
@@ -112,6 +157,10 @@ func (s *PromoService) validatePromoCodeStatus(promoCode *PromoCode) error {
 		return ErrPromoCodeInvalid
 	}
 	return nil
+}
+
+func (s *PromoService) validatePromoCodeStatus(promoCode *PromoCode) error {
+	return validatePromoCodeStatus(promoCode)
 }
 
 // ApplyPromoCode 应用优惠码（注册成功后调用）
@@ -147,6 +196,9 @@ func (s *PromoService) applyPromoCodeInTx(ctx context.Context, userID int64, cod
 	// 在事务中验证优惠码状态
 	if err := s.validatePromoCodeStatus(promoCode); err != nil {
 		return err
+	}
+	if normalizePromoCodeType(promoCode.CouponType) != PromoCodeTypeRegistration {
+		return ErrPromoCodeWrongType
 	}
 
 	// 在事务中检查用户是否已使用过此优惠码
@@ -246,6 +298,9 @@ func (s *PromoService) GenerateRandomCode() (string, error) {
 
 // Create 创建优惠码
 func (s *PromoService) Create(ctx context.Context, input *CreatePromoCodeInput) (*PromoCode, error) {
+	if input == nil {
+		return nil, infraerrors.BadRequest("INVALID_PROMO_CODE", "promo code input is required")
+	}
 	code := strings.TrimSpace(input.Code)
 	if code == "" {
 		// 自动生成
@@ -264,18 +319,26 @@ func (s *PromoService) Create(ctx context.Context, input *CreatePromoCodeInput) 
 	if err := validatePromoRechargeDiscountTimes(input.FirstRechargeDiscountTimes); err != nil {
 		return nil, err
 	}
+	if err := validateSubscriptionDiscountPercent(input.SubscriptionDiscountPercent); err != nil {
+		return nil, err
+	}
 
 	promoCode := &PromoCode{
 		Code:                         strings.ToUpper(code),
+		CouponType:                   normalizePromoCodeType(input.CouponType),
 		BonusAmount:                  input.BonusAmount,
 		FirstRechargeBonusAmount:     input.FirstRechargeBonusAmount,
 		FirstRechargeDiscountPercent: input.FirstRechargeDiscountPercent,
 		FirstRechargeDiscountTimes:   promoRechargeDiscountTimes(input.FirstRechargeDiscountTimes),
+		SubscriptionDiscountPercent:  input.SubscriptionDiscountPercent,
 		MaxUses:                      input.MaxUses,
 		UsedCount:                    0,
 		Status:                       PromoCodeStatusActive,
 		ExpiresAt:                    input.ExpiresAt,
 		Notes:                        input.Notes,
+	}
+	if err := validatePromoCodeConfiguration(promoCode); err != nil {
+		return nil, err
 	}
 
 	if err := s.promoRepo.Create(ctx, promoCode); err != nil {
@@ -307,6 +370,9 @@ func (s *PromoService) Update(ctx context.Context, id int64, input *UpdatePromoC
 	if input.Code != nil {
 		promoCode.Code = strings.ToUpper(strings.TrimSpace(*input.Code))
 	}
+	if input.CouponType != nil {
+		promoCode.CouponType = normalizePromoCodeType(*input.CouponType)
+	}
 	if input.BonusAmount != nil {
 		promoCode.BonusAmount = *input.BonusAmount
 	}
@@ -332,6 +398,11 @@ func (s *PromoService) Update(ctx context.Context, id int64, input *UpdatePromoC
 	if input.FirstRechargeDiscountTimes != nil {
 		promoCode.FirstRechargeDiscountTimes = *input.FirstRechargeDiscountTimes
 	}
+	if input.ClearSubscriptionDiscount {
+		promoCode.SubscriptionDiscountPercent = nil
+	} else if input.SubscriptionDiscountPercent != nil {
+		promoCode.SubscriptionDiscountPercent = input.SubscriptionDiscountPercent
+	}
 	if input.MaxUses != nil {
 		promoCode.MaxUses = *input.MaxUses
 	}
@@ -345,6 +416,9 @@ func (s *PromoService) Update(ctx context.Context, id int64, input *UpdatePromoC
 	}
 	if input.Notes != nil {
 		promoCode.Notes = *input.Notes
+	}
+	if err := validatePromoCodeConfiguration(promoCode); err != nil {
+		return nil, err
 	}
 
 	if err := s.promoRepo.Update(ctx, promoCode); err != nil {
