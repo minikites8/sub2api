@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
@@ -213,8 +214,12 @@ func NewOpenAIOAuthReauthService(
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 		runtimeBlocker:          runtimeBlocker,
 		mihomoLeases:            make(map[int64]func()),
-		acquireMihomoProxy: func(context.Context, string) (string, func(), error) {
-			return "", nil, errors.New("managed Mihomo proxy is unavailable")
+		acquireMihomoProxy: func(ctx context.Context, scope string) (string, func(), error) {
+			lease, err := mihomo.AcquireBPSTransientLease(ctx, scope)
+			if err != nil {
+				return "", nil, err
+			}
+			return lease.ProxyURL, lease.Release, nil
 		},
 	}
 }

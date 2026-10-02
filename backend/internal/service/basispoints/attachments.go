@@ -49,15 +49,17 @@ func (a InlineAttachment) Multipart() (io.Reader, string, int64, error) {
 }
 
 type nativeImagePart struct {
-	part  object
-	image InlineAttachment
+	part           object
+	image          InlineAttachment
+	preserveDetail bool
 }
 type NativeImages struct {
-	source      object
-	parts       []nativeImagePart
-	raw         []byte
-	toolImages  map[string]bool
-	inlineCount int
+	source       object
+	parts        []nativeImagePart
+	raw          []byte
+	toolImages   map[string]bool
+	inlineCount  int
+	imageDetails map[string]string
 }
 
 // PrepareNativeImages checks every inline image before any upload. Only typed
@@ -158,7 +160,7 @@ func PrepareNativeImagesWithLimit(raw []byte, maxImages int) (*NativeImages, err
 				}
 				plan.toolImages[rawURL] = true
 			} else {
-				plan.parts = append(plan.parts, nativeImagePart{part: part, image: attachment})
+				plan.parts = append(plan.parts, nativeImagePart{part: part, image: attachment, preserveDetail: text(item["type"]) == "message"})
 			}
 		}
 	}
@@ -221,6 +223,9 @@ func (c *AttachmentCache) clock() time.Time {
 
 func (p *NativeImages) Upload(ctx context.Context, cache *AttachmentCache, scope string, upload AttachmentUpload) ([]byte, error) {
 	ids := make(map[[32]byte]string)
+	if p.imageDetails == nil {
+		p.imageDetails = make(map[string]string)
+	}
 	for _, part := range p.parts {
 		id := ids[part.image.digest]
 		if id == "" {
@@ -232,6 +237,11 @@ func (p *NativeImages) Upload(ctx context.Context, cache *AttachmentCache, scope
 			ids[part.image.digest] = id
 		}
 		part.part["file_id"] = id
+		if part.preserveDetail {
+			if detail := text(part.part["detail"]); detail != "" {
+				p.imageDetails[id] = detail
+			}
+		}
 	}
 	return p.Body()
 }
@@ -317,5 +327,12 @@ func (p *NativeImages) PrepareWithCatalog(scope string, replay *ReplayCache, cac
 	if err != nil {
 		return nil, nil, err
 	}
-	return prepareWithCatalog(raw, scope, replay, cache, p.toolImages)
+	body, bridge, err := prepareWithCatalog(raw, scope, replay, cache, p.toolImages)
+	if bridge != nil {
+		if p.imageDetails == nil {
+			p.imageDetails = make(map[string]string)
+		}
+		bridge.nativeImageDetails = &p.imageDetails
+	}
+	return body, bridge, err
 }

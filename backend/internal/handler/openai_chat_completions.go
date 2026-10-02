@@ -203,6 +203,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if err != nil {
 			err = rpmAdmission.selectionError(err)
 			if isOpenAIRPMError(err) {
+				if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
+					continue
+				}
 				rpmAdmission.retryAfter(c, err)
 				cls := classifySelectionFailureError(err, noAccountErrorClassification{})
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)

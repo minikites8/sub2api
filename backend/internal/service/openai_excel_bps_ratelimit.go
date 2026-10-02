@@ -30,7 +30,7 @@ func newExcelBPSRateLimitedFailoverError(retryAfter string) *UpstreamFailoverErr
 	failoverErr := &UpstreamFailoverError{
 		StatusCode:        http.StatusTooManyRequests,
 		Stage:             GatewayFailureStageInference,
-		Scope:             GatewayFailureScopeAccount,
+		Scope:             GatewayFailureScope("bps"),
 		Reason:            ExcelBPSRateLimitedReason,
 		NextAccountAction: NextAccountRetry,
 		ClientStatusCode:  http.StatusTooManyRequests,

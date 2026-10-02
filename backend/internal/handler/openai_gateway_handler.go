@@ -805,6 +805,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 			err = rpmAdmission.selectionError(err)
 			if isOpenAIRPMError(err) {
+				if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
+					continue
+				}
 				rpmAdmission.retryAfter(c, err)
 				cls := classifySelectionFailureError(err, noAccountErrorClassification{Status: http.StatusServiceUnavailable, ErrType: "api_error", Message: "OpenAI OAuth RPM protection is temporarily unavailable. Please retry later."})
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)

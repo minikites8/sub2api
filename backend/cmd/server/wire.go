@@ -142,6 +142,7 @@ func provideCleanup(
 	pluginManager *service.PluginManager,
 ) func() {
 	if openAIGateway != nil {
+		openAIGateway.StartBPSWarmPool()
 		if cfg.RunsBackgroundJobs() {
 			openAIGateway.StartBPS403Recovery()
 		}
@@ -157,9 +158,10 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
-			{"BPS403Recovery", func() error {
+			{"BPSWarmPool", func() error {
 				if openAIGateway != nil {
 					openAIGateway.StopBPS403Recovery()
+					openAIGateway.StopBPSWarmPool()
 				}
 				return nil
 			}},

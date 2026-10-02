@@ -180,8 +180,10 @@ func ProvideBatchImageHandler(
 }
 
 // ProvideSystemHandler creates admin.SystemHandler with update and operation-lock services.
-func ProvideSystemHandler(updateService *service.UpdateService, lockService *service.SystemOperationLockService) *admin.SystemHandler {
-	return admin.NewSystemHandler(updateService, lockService)
+func ProvideSystemHandler(updateService *service.UpdateService, lockService *service.SystemOperationLockService, adminService service.AdminService) *admin.SystemHandler {
+	h := admin.NewSystemHandler(updateService, lockService)
+	h.SetMihomoNodeChecker(adminService)
+	return h
 }
 
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo
@@ -226,6 +228,7 @@ func ProvideHandlers(
 	availableChannelHandler *AvailableChannelHandler,
 	publicTransitHandler *PublicTransitHandler,
 	pelicanShowcaseHandler *PelicanShowcaseHandler,
+	modelPlazaHandler *ModelPlazaHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
 	_ *service.IdempotencyCoordinator,
@@ -255,6 +258,7 @@ func ProvideHandlers(
 		AvailableChannel: availableChannelHandler,
 		PublicTransit:    publicTransitHandler,
 		PelicanShowcase:  pelicanShowcaseHandler,
+		ModelPlaza:       modelPlazaHandler,
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
 	}
@@ -285,6 +289,7 @@ var ProviderSet = wire.NewSet(
 	NewAvailableChannelHandler,
 	NewPublicTransitHandler,
 	NewPelicanShowcaseHandler,
+	NewModelPlazaHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
 

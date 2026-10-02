@@ -33,6 +33,9 @@ func separateToolImages(item object) object {
 		imageIndex++
 		label := fmt.Sprintf("[Tool output image %d for call_id %q]", imageIndex, text(item["call_id"]))
 		output = append(output, object{"type": "input_text", "text": label + " See the following image attachment message."})
+		if text(part["file_id"]) != "" {
+			part["__codex2api_tool_image"] = true
+		}
 		images = append(images, object{"type": "input_text", "text": label}, part)
 	}
 	if imageIndex == 0 {

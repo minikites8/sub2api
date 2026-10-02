@@ -405,9 +405,23 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if accountID == "" {
 		return fail(400, "basispoints_account_id_missing", "Excel BPS requires chatgpt_account_id")
 	}
+	requestAcquire = s.excelBPSAcquireFor(account)
 	attachmentProxy := ""
 	if account.Proxy != nil {
 		attachmentProxy = account.Proxy.URL()
+	}
+	if images != nil && images.HasImages() && account.IsExcelBPSMihomoEnabled() {
+		var lease excelBPSLease
+		// Pin attachment upload and the Responses request to the same managed exit.
+		attachmentProxy, lease, err = acquireExcelBPSAttachmentProxy(ctx, c, account, scope, requestAcquire)
+		if err != nil {
+			if isExcelBPSClientCancellation(c, err) {
+				return clientCanceled()
+			}
+			return fail(503, "basispoints_proxy_unavailable", "No healthy BPS session proxy is available; retry later")
+		}
+		defer lease.Release()
+		requestAcquire = pinnedExcelBPSAcquire(attachmentProxy, lease)
 	}
 	if images != nil && images.HasImages() {
 		attachmentScope := ""
@@ -520,11 +534,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	SetActualOpenAIUpstreamEndpoint(c, "/basispoints/api/responses")
 	SetOpsUpstreamModel(c, model)
 	sent := time.Now()
-	resp, lease, proxyURL, err := s.doExcelBPSRequest(requestCtx, c, account, scope, upstreamBody, token, accountID)
+	resp, lease, proxyURL, err := s.doExcelBPSRequest(requestCtx, c, account, scope, upstreamBody, token, accountID, requestAcquire)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
 	if err != nil {
 		if isExcelBPSClientCancellation(c, err) {
 			return clientCanceled()
+		}
+		if errors.Is(err, errExcelBPSProxyUnavailable) {
+			return fail(503, "basispoints_proxy_unavailable", "No healthy BPS session proxy is available; retry later")
 		}
 		return fail(502, "basispoints_transport_error", "Excel BPS connection failed; request was not replayed after sending")
 	}
@@ -761,7 +778,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if strings.HasPrefix(line, "data: ") {
 			payload := []byte(strings.TrimPrefix(line, "data: "))
 			kind := gjson.GetBytes(payload, "type").String()
-			if (kind == "response.failed" || kind == "error") && !semanticOutput && excelBPSCanRateLimitFailover(ctx, c) && excelBPSRateLimitError(payload) {
+			if (kind == "response.failed" || kind == "error") && excelBPSFailoverContextEnabled(ctx) && !semanticOutput && excelBPSCanRateLimitFailover(ctx, c) && excelBPSRateLimitError(payload) {
 				return nil, excelBPSRateLimitFailover(c, account, resp.Header, payload)
 			}
 			if (kind == "response.failed" || kind == "error") && result.FirstTokenMs == nil && ctx.Err() == nil && excelBPSCanFallback(c) && excelBPSAccountEligibilityChanged(http.StatusOK, payload) {

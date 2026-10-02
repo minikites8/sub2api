@@ -2344,6 +2344,25 @@ func (a *Account) IsExcelBPSIgnoreImagesEnabled() bool {
 
 const ExcelBPSIgnoreEncryptedContentKey = "openai_excel_bps_ignore_encrypted_content"
 
+func (a *Account) IsExcelBPSMihomoEnabled() bool {
+	if !a.IsExcelBPSEnabled() {
+		return false
+	}
+	enabled, _ := a.Extra["openai_excel_bps_mihomo"].(bool)
+	return enabled
+}
+
+func (a *Account) ExcelBPSProxySource() string {
+	if !a.IsExcelBPSMihomoEnabled() {
+		return ""
+	}
+	source, _ := a.Extra[ExcelBPSProxySourceKey].(string)
+	if source == ExcelBPSProxySourceIPPool {
+		return ExcelBPSProxySourceIPPool
+	}
+	return ExcelBPSProxySourceMihomo
+}
+
 // IsExcelBPSIgnoreEncryptedContentEnabled opts into replacing ciphertext that
 // BPS cannot forward, such as sub-agent messages in an old Codex conversation,
 // with an omission notice instead of rejecting the whole request.

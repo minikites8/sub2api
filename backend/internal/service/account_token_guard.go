@@ -247,17 +247,23 @@ func NewAccountTokenGuardService(settings SettingRepository, repo AccountTokenGu
 
 func defaultAccountTokenGuardConfig() AccountTokenGuardConfig {
 	return AccountTokenGuardConfig{
-		Enabled:             false,
-		IntervalSeconds:     300,
-		ProbeEndpoint:       "",
-		ProbeModel:          "gpt-6-astra",
-		ProbeHeaders:        nil,
+		Enabled:         false,
+		IntervalSeconds: 300,
+		ProbeEndpoint:   "https://session.ameng2027.xyz/api/v1/relogin/probe",
+		ProbeModel:      "gpt-6-astra",
+		ProbeHeaders: map[string]string{
+			"X-Session-Studio-Probe":  "1",
+			"X-Session-Studio-Client": "{{uuid}}",
+		},
 		ProbeTimeoutSeconds: 240,
 		ProbeConcurrency:    6,
 		MaxProbePerCycle:    12,
-		AutoRelogin:         false,
-		ReloginEndpoint:     "",
-		ReloginHeaders:      nil,
+		AutoRelogin:         true,
+		ReloginEndpoint:     "https://session.ameng2027.xyz/api/v1/relogin",
+		ReloginHeaders: map[string]string{
+			"X-Session-Studio-Relogin": "1",
+			"X-Session-Studio-Client":  "{{uuid}}",
+		},
 		RestoreSchedulable:  true,
 		FailStreakThreshold: 1,
 	}

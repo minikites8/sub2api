@@ -192,5 +192,53 @@ func (b *Bridge) Reprepare(raw []byte) ([]byte, *Bridge, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return prepare(encoded, b.scope, b.replay, b.nativeToolImages)
+	body, next, err := prepare(encoded, b.scope, b.replay, b.nativeToolImages)
+	if err != nil {
+		return nil, nil, err
+	}
+	if next != nil {
+		next.nativeImageDetails = b.nativeImageDetails
+	}
+	body, err = restoreNativeImageDetails(body, b.nativeImageDetails)
+	if err != nil {
+		return nil, nil, err
+	}
+	return body, next, nil
+}
+
+func restoreNativeImageDetails(raw []byte, details *map[string]string) ([]byte, error) {
+	if details == nil || len(*details) == 0 {
+		return raw, nil
+	}
+	var source object
+	if err := decode(raw, &source); err != nil {
+		return nil, err
+	}
+	changed := false
+	var walk func(any)
+	walk = func(value any) {
+		switch current := value.(type) {
+		case []any:
+			for _, item := range current {
+				walk(item)
+			}
+		case object:
+			if text(current["type"]) == "input_image" {
+				if id := text(current["file_id"]); id != "" {
+					if detail, ok := (*details)[id]; ok && text(current["detail"]) == "" {
+						current["detail"] = detail
+						changed = true
+					}
+				}
+			}
+			for _, child := range current {
+				walk(child)
+			}
+		}
+	}
+	walk(source)
+	if !changed {
+		return raw, nil
+	}
+	return json.Marshal(source)
 }

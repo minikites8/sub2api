@@ -23,19 +23,20 @@ const ImagesEditsURL = "https://bps.openai.com/basispoints/api/images/edits"
 type object = map[string]any
 
 type Bridge struct {
-	nativeToolImages map[string]bool
-	RequestedEffort  string
-	Effort           string
-	Warnings         []string
-	tools            map[string]tool
-	unsupportedTools map[string]bool
-	structured       *structuredOutput
-	replay           *ReplayCache
-	scope            string
-	stagedReplays    *[]replayWrite
-	hasToolHistory   bool
-	disallowParallel bool
-	clientStream     bool
+	nativeToolImages   map[string]bool
+	RequestedEffort    string
+	Effort             string
+	Warnings           []string
+	tools              map[string]tool
+	unsupportedTools   map[string]bool
+	structured         *structuredOutput
+	replay             *ReplayCache
+	scope              string
+	stagedReplays      *[]replayWrite
+	hasToolHistory     bool
+	disallowParallel   bool
+	clientStream       bool
+	nativeImageDetails *map[string]string
 }
 
 func decode(raw []byte, target any) error {

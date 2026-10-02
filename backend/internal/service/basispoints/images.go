@@ -73,7 +73,7 @@ func validateImage(part object) error {
 			return fmt.Errorf("basispoints input_image requires an HTTPS image_url or file_id")
 		}
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "data:") {
-			return fmt.Errorf("basispoints does not accept data:image input while image support is disabled; ask an administrator to enable the selected BPS account's 'Ignore image inputs when image support is disabled' option (openai_excel_bps_ignore_images), enable BPS image support, provide an HTTPS image URL, or disable Basispoints and start a new conversation")
+			return fmt.Errorf("basispoints does not accept data:image input while image support is disabled; ask an administrator to enable the selected BPS account's 'Ignore image inputs when image support is disabled' option (openai_excel_bps_ignore_images), enable BPS image support, use the gateway attachment upload path, provide an HTTPS image URL, or disable Basispoints and start a new conversation")
 		}
 		parsed, err := url.Parse(raw)
 		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" || strings.TrimSpace(raw) != raw {
@@ -108,7 +108,16 @@ func normalizeMessageFileImages(input []any) {
 		for i, rawPart := range parts {
 			part, _ := rawPart.(object)
 			if text(part["type"]) == "input_image" && text(part["file_id"]) != "" {
-				parts[i] = object{"type": "input_image", "file_id": part["file_id"]}
+				normalized := object{"type": "input_image", "file_id": part["file_id"]}
+				toolImage, _ := part["__codex2api_tool_image"].(bool)
+				if !toolImage {
+					if preserve, _ := part["__codex2api_preserve_image_detail"].(bool); preserve || part["client_metadata"] == nil {
+						if detail := text(part["detail"]); detail != "" && detail != "original" {
+							normalized["detail"] = detail
+						}
+					}
+				}
+				parts[i] = normalized
 			}
 		}
 	}

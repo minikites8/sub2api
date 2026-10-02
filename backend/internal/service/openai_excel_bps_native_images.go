@@ -325,6 +325,9 @@ func (s *OpenAIGatewayService) materializeExcelBPSImages(ctx context.Context, bo
 		for _, part := range item.parts {
 			delete(part, "image_url")
 			part["file_id"] = id
+			if detail := part["detail"]; detail != nil {
+				part["__codex2api_preserve_image_detail"] = true
+			}
 		}
 	}
 	rewritten, err := json.Marshal(source)

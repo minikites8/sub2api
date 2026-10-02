@@ -78,6 +78,7 @@ type Handlers struct {
 	AvailableChannel *AvailableChannelHandler
 	PublicTransit    *PublicTransitHandler
 	PelicanShowcase  *PelicanShowcaseHandler
+	ModelPlaza       *ModelPlazaHandler
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
 }
