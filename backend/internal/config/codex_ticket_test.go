@@ -11,6 +11,7 @@ func TestCodexTicketConfigDefaults(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, cfg.Gateway.OpenAICodexTicket.Enabled)
 	require.True(t, cfg.Gateway.OpenAICodexTicket.FailClosed)
+	require.Equal(t, 0, cfg.Gateway.OpenAICodexTicket.TargetLength)
 	require.Equal(t, 3600, cfg.Gateway.OpenAICodexTicket.TTLSeconds)
 	require.Equal(t, []string{"gpt-6-astra", "gpt-5.6-sol"}, cfg.Gateway.OpenAICodexTicket.Models)
 	require.False(t, cfg.Gateway.OpenAICodexTicket.CloudMint.Enabled)
@@ -22,6 +23,7 @@ func TestCodexTicketConfigDefaults(t *testing.T) {
 func TestCodexTicketConfigEnvironment(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_OPENAI_CODEX_TICKET_ENABLED", "true")
+	t.Setenv("GATEWAY_OPENAI_CODEX_TICKET_TARGET_LENGTH", "780")
 	t.Setenv("GATEWAY_OPENAI_CODEX_TICKET_HARVEST_PROXY_URL", "socks5://proxy.example:1080")
 	t.Setenv("GATEWAY_OPENAI_CODEX_TICKET_MODELS", "model-a,model-b")
 	t.Setenv("GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_ENABLED", "true")
@@ -34,6 +36,7 @@ func TestCodexTicketConfigEnvironment(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.True(t, cfg.Gateway.OpenAICodexTicket.Enabled)
+	require.Equal(t, 780, cfg.Gateway.OpenAICodexTicket.TargetLength)
 	require.Equal(t, "socks5://proxy.example:1080", cfg.Gateway.OpenAICodexTicket.HarvestProxyURL)
 	require.Equal(t, []string{"model-a", "model-b"}, cfg.Gateway.OpenAICodexTicket.Models)
 	require.True(t, cfg.Gateway.OpenAICodexTicket.CloudMint.Enabled)
