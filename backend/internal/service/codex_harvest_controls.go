@@ -177,6 +177,21 @@ func normalizeCodexHarvestControls(v *CodexHarvestControls) {
 	}
 }
 
+// effectiveCodex780Gateway keeps the configured cloud relay target aligned with
+// ticket lookup and harvest-flow status checks. An explicit cloud-mint gateway
+// takes precedence; the harvest control remains the fallback for local probes
+// and deployments that leave cloud mint routing unset.
+func effectiveCodex780Gateway(cfg config.OpenAICodexTicketConfig, controls CodexHarvestControls) string {
+	if cfg.CloudMint.Enabled {
+		if target := normalizeCodex780Gateway(cfg.CloudMint.Gateway); target != "" {
+			return target
+		}
+	}
+	if target := normalizeCodex780Gateway(controls.TargetGateway); target != "" {
+		return target
+	}
+	return "unified-88"
+}
 func NewCodexHarvestService(nodes CodexHarvestNodeRepository, settings SettingRepository, cfg *config.Config) *CodexHarvestService {
 	v := CodexHarvestControls{Version: 1, Speed: CodexHarvestSpeedPresets()["standard"]}
 	if cfg != nil {

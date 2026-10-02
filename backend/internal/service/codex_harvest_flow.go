@@ -449,6 +449,7 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 		state := controls[0].Runtime()
 		runtime = &state
 	}
+	policy.TargetGateway = effectiveCodex780Gateway(ticketCfg, policy)
 	ticketCfg.Enabled = enabled
 	ticketCfg.FailClosed = failClosed
 	rawEvents := listCodexHarvestFlowEvents()

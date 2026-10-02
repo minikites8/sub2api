@@ -163,3 +163,22 @@ func TestHarvestRejectedReservationDoesNotSend(t *testing.T) {
 	require.False(t, r.Sent)
 	require.Equal(t, "not_sent", r.Kind)
 }
+
+func TestEffectiveCodex780GatewayUsesCloudMintTarget(t *testing.T) {
+	controls := CodexHarvestControls{TargetGateway: "unified-88"}
+	for _, tc := range []struct {
+		name  string
+		cloud config.OpenAICodexCloudMintConfig
+		want  string
+	}{
+		{name: "explicit any overrides harvest control", cloud: config.OpenAICodexCloudMintConfig{Enabled: true, Gateway: "any"}, want: "any"},
+		{name: "explicit gateway overrides harvest control", cloud: config.OpenAICodexCloudMintConfig{Enabled: true, Gateway: "unified-84"}, want: "unified-84"},
+		{name: "disabled cloud mint uses harvest control", cloud: config.OpenAICodexCloudMintConfig{Gateway: "unified-84"}, want: "unified-88"},
+		{name: "empty cloud target uses harvest control", cloud: config.OpenAICodexCloudMintConfig{Enabled: true}, want: "unified-88"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.OpenAICodexTicketConfig{CloudMint: tc.cloud}
+			require.Equal(t, tc.want, effectiveCodex780Gateway(cfg, controls))
+		})
+	}
+}

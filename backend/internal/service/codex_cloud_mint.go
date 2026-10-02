@@ -188,13 +188,7 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		out.Err = err
 		return
 	}
-	target := normalizeCodex780Gateway(cfg.Gateway)
-	if target == "" {
-		target = normalizeCodex780Gateway(controls.TargetGateway)
-	}
-	if target == "" {
-		target = "any"
-	}
+	target := effectiveCodex780Gateway(s.openAICodexTicketConfig(), controls)
 	if controls.Transport == "sse" || controls.Transport == "websocket" {
 		transport = controls.Transport
 	}
