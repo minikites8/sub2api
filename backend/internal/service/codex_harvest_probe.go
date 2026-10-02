@@ -20,6 +20,7 @@ type codexHarvestProbeResult struct {
 	Transport  string
 	Gateway    string
 	State      string
+	ExpiresAt  time.Time
 	Status     int
 	RetryAfter time.Duration
 	Err        error
@@ -182,6 +183,8 @@ func classifyCodexHarvestProbe(ctx context.Context, account *Account, cfg config
 		return shape, "cancelled"
 	case !result.Sent:
 		return shape, "not_sent"
+	case errors.As(result.Err, &mintErr):
+		return shape, mintErr.kind
 	case result.Status == http.StatusUnauthorized || result.Status == http.StatusForbidden:
 		return shape, "account_error"
 	case result.Status == http.StatusTooManyRequests:
@@ -190,14 +193,15 @@ func classifyCodexHarvestProbe(ctx context.Context, account *Account, cfg config
 		return shape, "network_error"
 	case result.Status != http.StatusOK && (result.Transport != "websocket" || result.Status != http.StatusSwitchingProtocols):
 		return shape, "upstream_error"
-	case errors.As(result.Err, &mintErr):
-		return shape, mintErr.kind
 	case result.Err != nil:
 		return shape, "response_incomplete_or_error"
 	}
 	now := time.Now()
 	if err != nil || (len(result.State) != 780 && shape.Blocks != openAICodexTicketExpectedBlocks(account)) || len(result.State) != openAICodexTicketTargetLength(account, cfg) || !strings.HasPrefix(result.State, openAICodexTicketStatePrefix) || shape.IssuedAt.After(now.Add(30*time.Second)) || !now.Before(shape.IssuedAt.Add(codexTicketLifetime(len(result.State)))) {
 		return shape, "invalid_state"
+	}
+	if !result.ExpiresAt.IsZero() && !now.Before(result.ExpiresAt) {
+		return shape, "expired_ticket"
 	}
 	if len(result.State) == 780 {
 		if _, _, err := codex780Route(result.Cookies, result.Gateway, now); err != nil {
@@ -219,7 +223,13 @@ func codexHarvestRetryAfter(raw string, now time.Time) time.Duration {
 
 func codexHarvestTicket(account *Account, model string, r codexHarvestProbeResult, cfg config.OpenAICodexTicketConfig, attempts int) *openAICodexTicket {
 	now := time.Now()
-	expires := now.Add(time.Duration(cfg.TTLSeconds) * time.Second)
+	expires := r.ExpiresAt
+	if expires.IsZero() {
+		expires = now.Add(time.Duration(cfg.TTLSeconds) * time.Second)
+	}
+	if cfgExpiry := now.Add(time.Duration(cfg.TTLSeconds) * time.Second); cfgExpiry.Before(expires) {
+		expires = cfgExpiry
+	}
 	if issuedExpiry := r.Shape.IssuedAt.Add(codexTicketLifetime(len(r.State))); issuedExpiry.Before(expires) {
 		expires = issuedExpiry
 	}

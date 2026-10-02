@@ -8,3 +8,28 @@
 
 
 292/312 只是 `x-codex-turn-state` 的形态，不能单独证明模型质量；发布验收仍需查看实际 `response.model`。
+
+## SUCK_MY_ASTRA 云端取票
+
+Sub2api 支持把 780 票据探测交给 SUCK_MY_ASTRA 兼容 relay。Sub2api 继续负责账号级、模型级票据缓存、`__cflb/__oailb` 路由缓存、模型声明校验和过期裁剪；relay 负责使用账号凭据向 `chatgpt.com` 铸造票据并返回路由 pair。
+
+```yaml
+gateway:
+  openai_codex_ticket:
+    enabled: true
+    target_length: 780
+    cloud_mint:
+      enabled: true
+      url: https://your-relay.example/
+      key_env: SUB2API_CODEX_CLOUD_MINT_KEY
+      proxy_url: ""
+      transport: sse
+      gateway: any
+      timeout_seconds: 25
+```
+
+```powershell
+$env:SUB2API_CODEX_CLOUD_MINT_KEY = "your-relay-key"
+```
+
+`cloud_mint.url` 使用 relay 的 HTTPS 地址；本机 relay 可使用 `http://127.0.0.1:<port>/`。relay 返回的 `served_model`、票据长度、签发时间、过期时间和路由 Cookie 会全部经过 Sub2api 校验。relay 请求失败时沿用现有 `fail_closed` 行为。

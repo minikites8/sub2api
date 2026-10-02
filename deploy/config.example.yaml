@@ -358,6 +358,16 @@ gateway:
     # 后台「系统设置 → 网关 → Codex 设置」可覆盖此值，无需重启。
     # 后台值的读取缓存为 5 秒，下个探测周期使用新代理；代理服务商自行负责轮换 IP。
     harvest_proxy_url: ""
+    # Optional SUCK_MY_ASTRA-compatible relay. The relay mints one 780 ticket
+    # for the requested model and returns the matching __cflb/__oailb route pair.
+    cloud_mint:
+      enabled: false
+      url: ""
+      key_env: SUB2API_CODEX_CLOUD_MINT_KEY
+      proxy_url: ""
+      transport: sse
+      gateway: any
+      timeout_seconds: 25
     harvest_probe_interval_seconds: 180
     harvest_cooldown_seconds: 180
     max_probes_per_round: 6

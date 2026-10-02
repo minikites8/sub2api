@@ -180,6 +180,9 @@ func (s *OpenAIGatewayService) requestCodex780Probe(ctx context.Context, account
 	if edge, ok := ctx.Value(codexMintEdgeContextKey{}).(string); ok {
 		controls.EdgeIP = edge
 	}
+	if s.codexCloudMintConfig().Enabled {
+		return s.requestCodexCloudMintProbe(ctx, account, token, model, proxy, reserve, session, controls)
+	}
 	if err := validateCodexMintEdgeIP(controls.EdgeIP); err != nil {
 		out.Err = err
 		return

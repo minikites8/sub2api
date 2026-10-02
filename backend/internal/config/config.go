@@ -1250,17 +1250,31 @@ func (c *UserMessageQueueConfig) GetEffectiveMode() string {
 // 打票走 harvest_proxy_url（SOCKS），业务出站仍用账号住宅 proxy_id，只替换该请求头。
 // 门票默认有效 3600 秒，临近过期前 refresh_before_seconds 重新打票。
 type OpenAICodexTicketConfig struct {
-	Enabled                      bool     `mapstructure:"enabled"`
-	TargetLength                 int      `mapstructure:"target_length"`
-	TTLSeconds                   int      `mapstructure:"ttl_seconds"`
-	RefreshBeforeSeconds         int      `mapstructure:"refresh_before_seconds"`
-	HarvestProxyURL              string   `mapstructure:"harvest_proxy_url"`
-	HarvestProbeIntervalSeconds  int      `mapstructure:"harvest_probe_interval_seconds"`
-	HarvestCooldownSeconds       int      `mapstructure:"harvest_cooldown_seconds"`
-	MaxProbesPerRound            int      `mapstructure:"max_probes_per_round"`
-	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
-	FailClosed                   bool     `mapstructure:"fail_closed"`
-	Models                       []string `mapstructure:"models"`
+	Enabled                      bool                       `mapstructure:"enabled"`
+	TargetLength                 int                        `mapstructure:"target_length"`
+	TTLSeconds                   int                        `mapstructure:"ttl_seconds"`
+	RefreshBeforeSeconds         int                        `mapstructure:"refresh_before_seconds"`
+	HarvestProxyURL              string                     `mapstructure:"harvest_proxy_url"`
+	HarvestProbeIntervalSeconds  int                        `mapstructure:"harvest_probe_interval_seconds"`
+	HarvestCooldownSeconds       int                        `mapstructure:"harvest_cooldown_seconds"`
+	MaxProbesPerRound            int                        `mapstructure:"max_probes_per_round"`
+	HarvestAttemptTimeoutSeconds int                        `mapstructure:"harvest_attempt_timeout_seconds"`
+	FailClosed                   bool                       `mapstructure:"fail_closed"`
+	Models                       []string                   `mapstructure:"models"`
+	CloudMint                    OpenAICodexCloudMintConfig `mapstructure:"cloud_mint"`
+}
+
+// OpenAICodexCloudMintConfig connects the Codex ticket harvester to a
+// SUCK_MY_ASTRA-compatible relay. The relay key is read from an environment
+// variable so credentials stay outside the application config file.
+type OpenAICodexCloudMintConfig struct {
+	Enabled        bool   `mapstructure:"enabled"`
+	URL            string `mapstructure:"url"`
+	KeyEnv         string `mapstructure:"key_env"`
+	ProxyURL       string `mapstructure:"proxy_url"`
+	Transport      string `mapstructure:"transport"`
+	Gateway        string `mapstructure:"gateway"`
+	TimeoutSeconds int    `mapstructure:"timeout_seconds"`
 }
 
 // DefaultOpenAIWSClientFirstMessageTimeoutSeconds preserves the legacy ingress deadline.
@@ -2536,6 +2550,13 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
 	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)
+	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.enabled", false)
+	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.url", "")
+	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.key_env", "SUB2API_CODEX_CLOUD_MINT_KEY")
+	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.proxy_url", "")
+	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.transport", "sse")
+	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.gateway", "any")
+	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.timeout_seconds", 25)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.5")
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
