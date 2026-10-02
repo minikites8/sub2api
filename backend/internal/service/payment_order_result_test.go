@@ -440,7 +440,7 @@ func TestMaybeBuildWeChatOAuthRequiredResponseIncludesFirstRechargePromo(t *test
 		DiscountSet:      true,
 		CreditAmount:     110,
 		PaymentAmount:    80,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -575,7 +575,7 @@ func TestMaybeBuildWeChatOAuthRequiredResponseForSelectionSkipsEasyPayProvider(t
 		OrderType:       payment.OrderTypeBalance,
 	}, 12.5, 12.88, 0.03, &payment.InstanceSelection{
 		ProviderKey: payment.TypeEasyPay,
-	}, firstRechargeAmountPlan{})
+	}, firstRechargeAmountPlan{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
