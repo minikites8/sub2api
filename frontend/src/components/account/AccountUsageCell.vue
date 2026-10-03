@@ -929,6 +929,8 @@ const codexTurnTickets = computed(() => props.account.codex_turn_tickets ?? [])
 function shortCodexTicketModel(model: string) {
   if (model === 'gpt-6-astra') return 'astra'
   if (model === 'gpt-5.6-sol') return 'sol'
+  if (model === 'gpt-6-sol') return '6-sol'
+  if (model === 'gpt-6.1-sol') return '6.1-sol'
   return model
 }
 

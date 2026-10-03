@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"github.com/google/uuid"
 )
 
@@ -17,6 +16,13 @@ type harvestCollection interface {
 	Next(context.Context, int) (string, string, error)
 	Close() error
 }
+
+type relayHarvestCollection struct{}
+
+func (relayHarvestCollection) Next(context.Context, int) (string, string, error) {
+	return "relay", "", nil
+}
+func (relayHarvestCollection) Close() error { return nil }
 
 type parallelHarvestOutcome struct {
 	result        codexHarvestProbeResult
@@ -30,14 +36,7 @@ func (s *OpenAIGatewayService) executeParallelHarvest(ctx context.Context, req M
 	if s.codexTicketChatHeld(account.ID) {
 		return errors.New("account is in an active conversation")
 	}
-	if s.openAICodexTicketHarvestIPPoolEnabled(ctx) {
-		return errors.New("parallel collection requires the managed Mihomo proxy; the IP pool harvests on a single lane")
-	}
-	collection, err := mihomo.BeginCollection(ctx, s.openAICodexTicketHarvestProxyURLContext(ctx))
-	if err != nil {
-		return err
-	}
-	return s.runParallelHarvest(ctx, req, account, emit, collection)
+	return s.runParallelHarvest(ctx, req, account, emit, relayHarvestCollection{})
 }
 
 func (s *OpenAIGatewayService) runParallelHarvest(ctx context.Context, req ManualHarvestRequest, account *Account, emit func(ManualHarvestProgress), collection harvestCollection) (err error) {
@@ -117,9 +116,9 @@ func (s *OpenAIGatewayService) runParallelHarvest(ctx context.Context, req Manua
 			}
 			r := out.result
 			raw := safeCodexHarvestError(r.Err)
-			message, level, detail := describeCodexHarvestOutcome(r.Kind, raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg), model, mihomo.NodeDisplayName(out.node))
-			event := ManualHarvestProgress{Attempt: out.attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: mihomo.NodeDisplayName(out.node), HTTPStatus: r.Status, Length: len(r.State), Blocks: r.Shape.Blocks, Result: r.Kind, Level: level, Message: message, Detail: detail, TicketsStored: stored}
-			recordCodexHarvestProbe(account, model, r.Kind, mihomo.NodeDisplayName(out.node), raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg))
+			message, level, detail := describeCodexHarvestOutcome(r.Kind, raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg), model, out.node)
+			event := ManualHarvestProgress{Attempt: out.attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: out.node, HTTPStatus: r.Status, Length: len(r.State), Blocks: r.Shape.Blocks, Result: r.Kind, Level: level, Message: message, Detail: detail, TicketsStored: stored}
+			recordCodexHarvestProbe(account, model, r.Kind, out.node, raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg))
 			if r.Kind == "success" {
 				fresh, e := s.accountRepo.GetByID(ctx, account.ID)
 				if e != nil || fresh == nil || ticketIdentity(fresh) != ticketIdentity(account) {
@@ -129,7 +128,7 @@ func (s *OpenAIGatewayService) runParallelHarvest(ctx context.Context, req Manua
 					continue
 				}
 				ticket := codexHarvestTicket(account, model, r, cfg, out.attempt)
-				bindCodexHarvestEgress(ticket, codexHarvestAttempt{proxy: mihomo.Endpoint, node: HarvestNode{ID: out.node, Name: out.node, Provider: "managed"}}, out.session)
+				bindCodexHarvestEgress(ticket, codexHarvestAttempt{proxy: "", node: HarvestNode{ID: out.node, Name: out.node, Provider: "relay"}}, out.session)
 				if e = s.storeOpenAICodexTicket(ctx, fresh, ticket); e != nil {
 					event.Result = "persist_failed"
 					event.Level = "WARN"

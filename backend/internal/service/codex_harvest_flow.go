@@ -418,9 +418,11 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 	if ticketCfg.Models == nil {
 		ticketCfg.Models = []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel}
 	}
+	if settings != nil {
+		ticketCfg = settings.codexTicketRuntimeConfig(ctx, ticketCfg)
+	}
 	enabled := ticketCfg.Enabled
 	failClosed := ticketCfg.FailClosed
-	harvestProxy := strings.TrimSpace(ticketCfg.HarvestProxyURL)
 	strategy := "standby"
 	scopeError := false
 	scope := CodexTicketHarvestScope{Mode: "all", AccountPolicy: CodexHarvestSchedulableOnly}
@@ -428,9 +430,6 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 		enabled = settings.GetOpenAICodexTicketEnabled(ctx, enabled)
 		failClosed = settings.GetOpenAICodexTicketFailClosed(ctx)
 		ticketCfg.Models = settings.GetOpenAICodexTicketModels(ctx, ticketCfg.Models)
-		if proxy := settings.GetOpenAICodexTicketHarvestProxyURL(ctx); proxy != "" {
-			harvestProxy = proxy
-		}
 		strategy = settings.GetCodexTicketStrategy(ctx)
 		if current, err := settings.GetCodexTicketHarvestScope(ctx); err == nil {
 			scope = current
@@ -482,9 +481,9 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 			CooldownSec:       ticketCfg.HarvestCooldownSeconds,
 			MaxProbesPerRound: ticketCfg.MaxProbesPerRound,
 			RefreshBeforeSec:  ticketCfg.RefreshBeforeSeconds,
-			HarvestProxy:      MaskProxyURL(harvestProxy),
+			HarvestProxy:      strings.TrimSpace(ticketCfg.CloudMint.URL),
 		},
-		Sidecar:  observeCodexHarvestProxy(ctx, harvestProxy),
+		Sidecar:  observeCodexHarvestProxy(ctx, strings.TrimSpace(ticketCfg.CloudMint.URL)),
 		Events:   events,
 		Accounts: []CodexHarvestFlowAccount{},
 	}

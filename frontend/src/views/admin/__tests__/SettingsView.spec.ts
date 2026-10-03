@@ -1133,72 +1133,34 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
-  it("loads the masked Codex harvest proxy and submits a replacement URL", async () => {
+  it("loads and saves Codex Relay settings", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
-      openai_codex_ticket_harvest_proxy_url: "http://user:***@old.example.com:8080",
-      openai_codex_ticket_harvest_proxy_configured: true,
+      openai_codex_relay_url: "https://relay.example.com",
+      openai_codex_relay_key_env: "RELAY_KEY",
+      openai_codex_relay_transport: "sse",
+      openai_codex_relay_gateway: "any",
+      openai_codex_relay_timeout_seconds: 25,
     });
     const wrapper = mountView();
     await flushPromises();
-    const input = wrapper.get<HTMLInputElement>("#codex-ticket-harvest-proxy");
-    expect(input.element.value).toBe("http://user:***@old.example.com:8080");
-    await input.setValue("socks5h://user:new-secret@new.example.com:1080");
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_proxy_url)
-      .toBe("socks5h://user:new-secret@new.example.com:1080");
-    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("openai_codex_ticket_harvest_proxy_configured");
-    wrapper.unmount();
-  });
-
-
-
-  it("saves the IP management pool as the harvest proxy and restores the static address when leaving it", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_harvest_proxy_url: "http://user:***@old.example.com:8080",
-      openai_codex_ticket_harvest_proxy_configured: true,
-    });
-    const wrapper = mountView();
-    await flushPromises();
-
-    await wrapper
-      .get<HTMLInputElement>('input[name="codex-ticket-proxy-mode"][value="ip_pool"]')
-      .setValue(true);
-    expect(wrapper.find("#codex-ticket-harvest-proxy").exists()).toBe(false);
-    expect(wrapper.find('[data-testid="codex-ticket-proxy-ip-pool-hint"]').exists()).toBe(true);
+    const url = wrapper.get<HTMLInputElement>("#codex-relay-url");
+    expect(url.element.value).toBe("https://relay.example.com");
+    await url.setValue("https://relay-updated.example.com");
+    await wrapper.get("#codex-relay-key-env").setValue("UPDATED_RELAY_KEY");
+    await wrapper.get("#codex-relay-transport").setValue("websocket");
+    await wrapper.get("#codex-relay-gateway").setValue("any");
+    await wrapper.get("#codex-relay-timeout").setValue("45");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
     expect(updateSettings.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
-      openai_codex_ticket_harvest_proxy_url: "ippool://active",
-      openai_codex_ticket_use_saved_static_proxy: false,
+      openai_codex_relay_url: "https://relay-updated.example.com",
+      openai_codex_relay_key_env: "UPDATED_RELAY_KEY",
+      openai_codex_relay_transport: "websocket",
+      openai_codex_relay_gateway: "any",
+      openai_codex_relay_timeout_seconds: 45,
     }));
-
-    await wrapper
-      .get<HTMLInputElement>('input[name="codex-ticket-proxy-mode"][value="static"]')
-      .setValue(true);
-    expect(wrapper.get<HTMLInputElement>("#codex-ticket-harvest-proxy").element.value)
-      .toBe("http://user:***@old.example.com:8080");
-    wrapper.unmount();
-  });
-
-  it("restores the IP management pool mode from saved settings", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_harvest_proxy_url: "ippool://active",
-      openai_codex_ticket_harvest_proxy_configured: true,
-      openai_codex_ticket_static_proxy_url: "http://user:***@saved.example.com:8080",
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    expect(wrapper.get<HTMLInputElement>('input[name="codex-ticket-proxy-mode"][value="ip_pool"]').element.checked)
-      .toBe(true);
-    await wrapper
-      .get<HTMLInputElement>('input[name="codex-ticket-proxy-mode"][value="static"]')
-      .setValue(true);
-    expect(wrapper.get<HTMLInputElement>("#codex-ticket-harvest-proxy").element.value)
-      .toBe("http://user:***@saved.example.com:8080");
+    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("openai_codex_ticket_harvest_proxy_url");
     wrapper.unmount();
   });
 
@@ -1886,25 +1848,30 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload.grok_cross_client_model_map_enabled).toBe(false);
   });
 
-  it("loads and saves Codex ticket settings with the masked proxy", async () => {
+  it("loads and saves Codex ticket settings with Relay configuration", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       openai_codex_ticket_enabled: true,
-      openai_codex_ticket_harvest_proxy_url: "http://user:***@proxy.example:8080",
+      openai_codex_relay_url: "https://relay.example.com",
+      openai_codex_relay_key_env: "RELAY_KEY",
+      openai_codex_relay_transport: "sse",
+      openai_codex_relay_gateway: "any",
+      openai_codex_relay_timeout_seconds: 25,
       openai_codex_ticket_models: ["ticket-model"],
     });
     const wrapper = mountView();
     await flushPromises();
     await openGatewayTab(wrapper);
-    expect((wrapper.get('#codex-ticket-proxy').element as HTMLInputElement).type).toBe('password');
-    expect((wrapper.get('#codex-ticket-proxy').element as HTMLInputElement).value).toBe('http://user:***@proxy.example:8080');
+    expect((wrapper.get('#codex-ticket-relay-url').element as HTMLInputElement).value).toBe('https://relay.example.com');
+    await wrapper.get('#codex-ticket-relay-timeout').setValue('60');
     await wrapper.get('#codex-ticket-models').setValue('model-a, model-b');
     await wrapper.get('[data-testid="codex-ticket-toggle"]').setValue(false);
     await wrapper.find('form').trigger('submit.prevent');
     await flushPromises();
     expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
       openai_codex_ticket_enabled: false,
-      openai_codex_ticket_harvest_proxy_url: 'http://user:***@proxy.example:8080',
+      openai_codex_relay_url: 'https://relay.example.com',
+      openai_codex_relay_timeout_seconds: 60,
       openai_codex_ticket_models: ['model-a', 'model-b'],
     }));
   });

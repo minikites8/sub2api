@@ -48,10 +48,13 @@ func TestCodexTicketModelsRuntimeDisableAndEmpty(t *testing.T) {
 	account := ticketTestAccount(41)
 	ctx := context.Background()
 	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-5.6-sol"))
-	repo.values[SettingKeyOpenAICodexTicketModels] = `["gpt-6-astra"]`
+	repo.values[SettingKeyOpenAICodexTicketModels] = `["gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol"]`
 	settings.InvalidateOpenAICodexTicketModelsCache()
+	configured := svc.openAICodexTicketConfig()
+	require.Equal(t, []string{"gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol"}, configured.Models)
 	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-5.6-sol"))
-	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
+	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-sol"))
+	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6.1-sol"))
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, "client-state")
 	require.NoError(t, svc.applyOpenAICodexTicket(ctx, account, "gpt-5.6-sol", h))

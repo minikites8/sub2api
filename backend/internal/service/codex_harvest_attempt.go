@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -121,12 +120,7 @@ func (s *OpenAIGatewayService) codexHarvestNeedsTicket(account *Account, model s
 }
 
 func (s *OpenAIGatewayService) prepareHarvestAttempt(_ context.Context, account *Account, model, proxy string, _ map[string]bool, _ CodexHarvestControls) (codexHarvestAttempt, bool) {
-	attempt := codexHarvestAttempt{proxy: proxy, release: func() {}}
-	pinned := s.lookupOpenAICodexTicket(account, model)
-	if pinned != nil && pinned.HarvestNodeID == "" && pinned.HarvestNodeName == "" && strings.TrimSpace(pinned.HarvestProxyURL) != "" {
-		attempt.proxy = pinned.HarvestProxyURL
-	}
-	return attempt, true
+	return codexHarvestAttempt{proxy: proxy, release: func() {}}, true
 }
 
 func (s *OpenAIGatewayService) waitHarvestPace(ctx context.Context, _ CodexHarvestControls, configured bool) bool {

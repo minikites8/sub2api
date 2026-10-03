@@ -50,8 +50,8 @@ type codexCloudMintResponse struct {
 
 func (s *OpenAIGatewayService) codexCloudMintConfig() config.OpenAICodexCloudMintConfig {
 	cfg := config.OpenAICodexCloudMintConfig{}
-	if s != nil && s.cfg != nil {
-		cfg = s.cfg.Gateway.OpenAICodexTicket.CloudMint
+	if s != nil {
+		cfg = s.openAICodexTicketConfig().CloudMint
 	}
 	if strings.TrimSpace(cfg.KeyEnv) == "" {
 		cfg.KeyEnv = defaultCodexCloudMintKeyEnv
@@ -61,12 +61,6 @@ func (s *OpenAIGatewayService) codexCloudMintConfig() config.OpenAICodexCloudMin
 	}
 	if cfg.TimeoutSeconds <= 0 {
 		cfg.TimeoutSeconds = 25
-		if s != nil {
-			cfg.TimeoutSeconds = s.openAICodexTicketConfig().HarvestAttemptTimeoutSeconds
-			if cfg.TimeoutSeconds <= 0 {
-				cfg.TimeoutSeconds = 25
-			}
-		}
 	}
 	return cfg
 }
@@ -189,16 +183,11 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		return
 	}
 	target := effectiveCodex780Gateway(s.openAICodexTicketConfig(), controls)
-	if controls.Transport == "sse" || controls.Transport == "websocket" {
-		transport = controls.Transport
-	}
 	out.Transport = transport
 	out.Gateway = target
-	out.EdgeIP = strings.TrimSpace(controls.EdgeIP)
-	if err := validateCodexMintEdgeIP(out.EdgeIP); err != nil {
-		out.Err = err
-		return
-	}
+	// Relay selects the upstream edge. The legacy direct edge override is not
+	// part of the relay contract.
+	out.EdgeIP = ""
 
 	accountHeader := ""
 	if account != nil {
@@ -262,9 +251,6 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 	}
 	out.Sent = true
 	cloudProxy := strings.TrimSpace(cfg.ProxyURL)
-	if cloudProxy == "" {
-		cloudProxy = strings.TrimSpace(proxy)
-	}
 	if s.httpUpstream == nil {
 		out.Err = errors.New("cloud mint upstream unavailable")
 		return

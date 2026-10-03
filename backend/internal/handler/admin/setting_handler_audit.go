@@ -544,8 +544,8 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexTicketEnabled != after.OpenAICodexTicketEnabled {
 		changed = append(changed, "openai_codex_ticket_enabled")
 	}
-	if before.OpenAICodexTicketHarvestProxyURL != after.OpenAICodexTicketHarvestProxyURL {
-		changed = append(changed, "openai_codex_ticket_harvest_proxy_url")
+	if before.OpenAICodexRelayURL != after.OpenAICodexRelayURL || before.OpenAICodexRelayKeyEnv != after.OpenAICodexRelayKeyEnv || before.OpenAICodexRelayTransport != after.OpenAICodexRelayTransport || before.OpenAICodexRelayGateway != after.OpenAICodexRelayGateway || before.OpenAICodexRelayTimeoutSeconds != after.OpenAICodexRelayTimeoutSeconds {
+		changed = append(changed, "openai_codex_relay")
 	}
 	if !reflect.DeepEqual(before.OpenAICodexTicketHarvestScope, after.OpenAICodexTicketHarvestScope) {
 		changed = append(changed, "openai_codex_ticket_harvest_scope")
@@ -570,9 +570,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAICodexTicketEnabled != after.OpenAICodexTicketEnabled {
 		changed = append(changed, "openai_codex_ticket_enabled")
-	}
-	if before.OpenAICodexTicketHarvestProxyURL != after.OpenAICodexTicketHarvestProxyURL {
-		changed = append(changed, "openai_codex_ticket_harvest_proxy_url")
 	}
 	if before.OpenAICodexVersionAutoSyncEnabled != after.OpenAICodexVersionAutoSyncEnabled {
 		changed = append(changed, "openai_codex_version_auto_sync_enabled")

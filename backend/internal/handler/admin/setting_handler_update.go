@@ -277,11 +277,14 @@ type UpdateSettingsRequest struct {
 	EnableClientDatelineNormalization      *bool     `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            *string   `json:"antigravity_user_agent_version"`
 	OpenAICodexTicketEnabled               *bool     `json:"openai_codex_ticket_enabled"`
-	OpenAICodexTicketHarvestProxyURL       *string   `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAICodexRelayURL                    *string   `json:"openai_codex_relay_url"`
+	OpenAICodexRelayKeyEnv                 *string   `json:"openai_codex_relay_key_env"`
+	OpenAICodexRelayTransport              *string   `json:"openai_codex_relay_transport"`
+	OpenAICodexRelayGateway                *string   `json:"openai_codex_relay_gateway"`
+	OpenAICodexRelayTimeoutSeconds         *int      `json:"openai_codex_relay_timeout_seconds"`
 	OpenAICodexTicketModels                *[]string `json:"openai_codex_ticket_models"`
 	ClaudeCodeClientVersion                *string   `json:"claude_code_client_version"`
 	ClaudeCodeVersionAutoSyncEnabled       *bool     `json:"claude_code_version_auto_sync_enabled"`
-	OpenAICodexTicketUseSavedStaticProxy   bool      `json:"openai_codex_ticket_use_saved_static_proxy"`
 	OpenAICodexUserAgent                   *string   `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string   `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool     `json:"openai_codex_version_auto_sync_enabled"`
@@ -521,10 +524,6 @@ func omittedSettingKeys(sentFields map[string]json.RawMessage) service.OmittedSe
 }
 
 func settingsAuditRequest(req UpdateSettingsRequest) UpdateSettingsRequest {
-	if req.OpenAICodexTicketHarvestProxyURL != nil {
-		masked := service.MaskCodexTicketProxyURL(*req.OpenAICodexTicketHarvestProxyURL)
-		req.OpenAICodexTicketHarvestProxyURL = &masked
-	}
 	req.TencentCaptchaAppSecretKey = strings.TrimSpace(req.TencentCaptchaAppSecretKey)
 	req.TencentCaptchaCloudSecretID = strings.TrimSpace(req.TencentCaptchaCloudSecretID)
 	req.TencentCaptchaCloudSecretKey = strings.TrimSpace(req.TencentCaptchaCloudSecretKey)
@@ -2039,31 +2038,43 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexVersionAutoSyncEnabled
 		}(),
+		OpenAICodexRelayURL: func() string {
+			if req.OpenAICodexRelayURL != nil {
+				return strings.TrimSpace(*req.OpenAICodexRelayURL)
+			}
+			return previousSettings.OpenAICodexRelayURL
+		}(),
+		OpenAICodexRelayKeyEnv: func() string {
+			if req.OpenAICodexRelayKeyEnv != nil {
+				return strings.TrimSpace(*req.OpenAICodexRelayKeyEnv)
+			}
+			return previousSettings.OpenAICodexRelayKeyEnv
+		}(),
+		OpenAICodexRelayTransport: func() string {
+			if req.OpenAICodexRelayTransport != nil {
+				return strings.TrimSpace(*req.OpenAICodexRelayTransport)
+			}
+			return previousSettings.OpenAICodexRelayTransport
+		}(),
+		OpenAICodexRelayGateway: func() string {
+			if req.OpenAICodexRelayGateway != nil {
+				return strings.TrimSpace(*req.OpenAICodexRelayGateway)
+			}
+			return previousSettings.OpenAICodexRelayGateway
+		}(),
+		OpenAICodexRelayTimeoutSeconds: func() int {
+			if req.OpenAICodexRelayTimeoutSeconds != nil {
+				return *req.OpenAICodexRelayTimeoutSeconds
+			}
+			return previousSettings.OpenAICodexRelayTimeoutSeconds
+		}(),
 		OpenAICodexTicketEnabled: func() bool {
 			if req.OpenAICodexTicketEnabled != nil {
 				return *req.OpenAICodexTicketEnabled
 			}
 			return previousSettings.OpenAICodexTicketEnabled
 		}(),
-		OpenAICodexTicketHarvestProxyURL: func() string {
-			next := previousSettings.OpenAICodexTicketHarvestProxyURL
-			if req.OpenAICodexTicketHarvestProxyURL != nil {
-				next = strings.TrimSpace(*req.OpenAICodexTicketHarvestProxyURL)
-			}
-			if req.OpenAICodexTicketUseSavedStaticProxy && service.IsMaskedProxyURL(next) && previousSettings.OpenAICodexTicketStaticProxyURL != "" {
-				return previousSettings.OpenAICodexTicketStaticProxyURL
-			}
-			if service.IsMaskedProxyURL(next) {
-				return previousSettings.OpenAICodexTicketHarvestProxyURL
-			}
-			return next
-		}(),
-		OpenAICodexTicketStaticProxyURL: func() string {
-			if old := previousSettings.OpenAICodexTicketHarvestProxyURL; old != "" && old != "http://127.0.0.1:3101" && old != service.OpenAICodexTicketHarvestIPPoolURL {
-				return old
-			}
-			return previousSettings.OpenAICodexTicketStaticProxyURL
-		}(),
+
 		OpenAICodexTicketStrictResponse: func() bool {
 			if req.OpenAICodexTicketStrictResponse != nil {
 				return *req.OpenAICodexTicketStrictResponse
@@ -2708,13 +2719,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
-		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
-		OpenAICodexTicketStaticProxyURL:                        service.MaskProxyURL(updatedSettings.OpenAICodexTicketStaticProxyURL),
 		OpenAICodexTicketHarvestScope:                          updatedSettings.OpenAICodexTicketHarvestScope,
 		OpenAICodexTicketStrategy:                              updatedSettings.OpenAICodexTicketStrategy,
 		OpenAICodexTicketStrictResponse:                        updatedSettings.OpenAICodexTicketStrictResponse,
 		OpenAICodexTicketFailClosed:                            updatedSettings.OpenAICodexTicketFailClosed,
-		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		OpenAICodexTicketModels:                                updatedSettings.OpenAICodexTicketModels,
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
 		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,

@@ -156,6 +156,8 @@ describe('AccountUsageCell', () => {
           codex_turn_tickets: [
             { model: 'gpt-6-astra', ready: true, remaining_seconds: 2520, blocked: false },
             { model: 'gpt-5.6-sol', ready: false, remaining_seconds: 0, blocked: true },
+            { model: 'gpt-6-sol', ready: true, remaining_seconds: 1260, blocked: false },
+            { model: 'gpt-6.1-sol', ready: true, remaining_seconds: 720, blocked: false },
             { model: 'custom-model', ready: false, remaining_seconds: 0, blocked: false },
           ],
         }),

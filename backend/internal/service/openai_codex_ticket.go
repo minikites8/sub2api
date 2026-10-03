@@ -234,8 +234,7 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 		cfg.Models = []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel}
 	}
 	if s != nil && s.settingService != nil {
-		cfg.Models = s.settingService.GetOpenAICodexTicketModels(context.Background(), cfg.Models)
-		cfg.FailClosed = s.settingService.GetOpenAICodexTicketFailClosed(context.Background())
+		cfg = s.settingService.codexTicketRuntimeConfig(context.Background(), cfg)
 	}
 	return cfg
 }

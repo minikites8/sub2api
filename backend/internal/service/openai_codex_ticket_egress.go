@@ -278,14 +278,8 @@ func (s *OpenAIGatewayService) codexTicketPinsEgress(req *http.Request, account 
 }
 
 func (s *OpenAIGatewayService) codexTicketPinsEgressFromHeader(ctx context.Context, h http.Header, account *Account) bool {
-	ticket := s.boundCodexTicketFromHeader(ctx, h, account)
-	if ticket == nil {
-		return false
-	}
-	return strings.TrimSpace(ticket.HarvestProxyURL) != "" ||
-		strings.TrimSpace(ticket.HarvestNodeID) != "" ||
-		strings.TrimSpace(ticket.HarvestNodeName) != "" ||
-		s.openAICodexTicketHarvestProxyURLContext(ctx) != ""
+	// Relay harvesting does not bind production traffic to the relay endpoint.
+	return false
 }
 
 func (s *OpenAIGatewayService) pinCodexTicketEgress(req *http.Request, account *Account, proxyURL string) (string, func(), error) {
@@ -301,23 +295,7 @@ func (s *OpenAIGatewayService) pinCodexTicketWSAcquire(ctx context.Context, head
 }
 
 func (s *OpenAIGatewayService) pinCodexTicketEgressFromHeader(ctx context.Context, h http.Header, account *Account, proxyURL string) (string, func(), error) {
-	noop := func() {}
-	ticket := s.boundCodexTicketFromHeader(ctx, h, account)
-	if ticket == nil {
-		return proxyURL, noop, nil
-	}
-	pinned := strings.TrimSpace(ticket.HarvestProxyURL)
-	if pinned == "" {
-		pinned = s.openAICodexTicketHarvestProxyURLContext(ctx)
-	}
-	// Legacy node-bound tickets require their original exit; fail closed.
-	if strings.TrimSpace(ticket.HarvestNodeID) != "" || strings.TrimSpace(ticket.HarvestNodeName) != "" {
-		return "", noop, ErrOpenAICodexTicketUnavailable
-	}
-	if pinned == "" {
-		return proxyURL, noop, nil
-	}
-	return pinned, noop, nil
+	return proxyURL, func() {}, nil
 }
 
 func attachCodexTicketEgressRelease(resp *http.Response, err error, release func()) (*http.Response, error) {

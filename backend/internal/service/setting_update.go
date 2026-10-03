@@ -582,18 +582,18 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAICodexClientVersion] = NormalizeCodexClientVersion(settings.OpenAICodexClientVersion)
-	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_PROXY", err.Error())
-	}
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
-	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
+	if err := ValidateOpenAICodexRelaySettings(settings.OpenAICodexRelayURL, settings.OpenAICodexRelayKeyEnv, settings.OpenAICodexRelayTransport, settings.OpenAICodexRelayGateway, settings.OpenAICodexRelayTimeoutSeconds); err != nil {
+		return nil, err
+	}
+	updates[SettingKeyOpenAICodexRelayURL] = strings.TrimSpace(settings.OpenAICodexRelayURL)
+	updates[SettingKeyOpenAICodexRelayKeyEnv] = strings.TrimSpace(settings.OpenAICodexRelayKeyEnv)
+	updates[SettingKeyOpenAICodexRelayTransport] = strings.ToLower(strings.TrimSpace(settings.OpenAICodexRelayTransport))
+	updates[SettingKeyOpenAICodexRelayGateway] = normalizeCodex780Gateway(settings.OpenAICodexRelayGateway)
+	updates[SettingKeyOpenAICodexRelayTimeoutSeconds] = strconv.Itoa(settings.OpenAICodexRelayTimeoutSeconds)
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
 	updates[SettingKeyOpenAICodexTicketFailClosed] = strconv.FormatBool(settings.OpenAICodexTicketFailClosed)
-	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
-	}
-	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
 	if value := settings.OpenAICodexTicketStrategy; value != "" && value != "fixed" && value != "standby" {
 		return nil, infraerrors.BadRequest("INVALID_TICKET_STRATEGY", "strategy must be fixed or standby")
 	}
@@ -621,12 +621,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAICodexTicketHarvestScope] = string(scopeJSON)
 	updates[SettingKeyOpenAICodexTicketStrategy] = NormalizeCodexTicketStrategy(settings.OpenAICodexTicketStrategy)
 	updates[SettingKeyOpenAICodexTicketStrict] = strconv.FormatBool(settings.OpenAICodexTicketStrictResponse)
-	if settings.OpenAICodexTicketStaticProxyURL != "" {
-		updates[SettingKeyOpenAICodexTicketStaticProxyURL] = settings.OpenAICodexTicketStaticProxyURL
-	}
-	if proxy := strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL); proxy != "" && proxy != "http://127.0.0.1:3101" && proxy != OpenAICodexTicketHarvestIPPoolURL {
-		updates[SettingKeyOpenAICodexTicketStaticProxyURL] = proxy
-	}
 	modelsJSON, err := json.Marshal(NormalizeOpenAICodexTicketModels(settings.OpenAICodexTicketModels))
 	if err != nil {
 		return nil, fmt.Errorf("marshal Codex ticket models: %w", err)

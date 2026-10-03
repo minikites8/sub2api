@@ -254,6 +254,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAICodexClientVersion:                           "",
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
 		SettingKeyOpenAICodexVersionAutoSyncEnabled:                  "true",
+		SettingKeyOpenAICodexRelayURL:                                "",
+		SettingKeyOpenAICodexRelayKeyEnv:                             "SUB2API_CODEX_CLOUD_MINT_KEY",
+		SettingKeyOpenAICodexRelayTransport:                          "sse",
+		SettingKeyOpenAICodexRelayGateway:                            "any",
+		SettingKeyOpenAICodexRelayTimeoutSeconds:                     "25",
 		SettingKeyOpenAICodexTicketHarvestProxyURL:                   "",
 		SettingKeyClaudeCodeClientVersion:                            "",
 		SettingKeyClaudeCodeClientVersionSynced:                      "",
@@ -946,7 +951,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if v := settings[SettingKeyOpenAICodexTicketEnabled]; v != "" {
 		result.OpenAICodexTicketEnabled = v == "true"
 	}
-	result.OpenAICodexTicketHarvestProxyURL = settings[SettingKeyOpenAICodexTicketHarvestProxyURL]
+	result.OpenAICodexRelayURL = strings.TrimSpace(settings[SettingKeyOpenAICodexRelayURL])
+	result.OpenAICodexRelayKeyEnv = strings.TrimSpace(settings[SettingKeyOpenAICodexRelayKeyEnv])
+	result.OpenAICodexRelayTransport = strings.TrimSpace(settings[SettingKeyOpenAICodexRelayTransport])
+	result.OpenAICodexRelayGateway = strings.TrimSpace(settings[SettingKeyOpenAICodexRelayGateway])
+	if value, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexRelayTimeoutSeconds])); err == nil {
+		result.OpenAICodexRelayTimeoutSeconds = value
+	}
+	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	result.OpenAICodexClientVersion = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersion])
 	result.OpenAICodexClientVersionSynced = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersionSynced])
@@ -964,7 +976,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Missing values intentionally stay false. Ticket harvesting remains active,
 	// while scheduling is fail-open unless an administrator explicitly opts in.
 	result.OpenAICodexTicketFailClosed = settings[SettingKeyOpenAICodexTicketFailClosed] == "true"
-	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	harvestScope, harvestScopeErr := parseCodexTicketHarvestScope(settings[SettingKeyOpenAICodexTicketHarvestScope])
 	result.OpenAICodexTicketHarvestScope = harvestScope
 	if harvestScopeErr != nil {

@@ -4730,68 +4730,50 @@
                     </label>
                   </div>
                 </div>
-                <div>
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxy") }}
+                    {{ t("admin.settings.gatewayForwarding.codexRelayTitle") }}
                   </h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyDesc") }}
+                    {{ t("admin.settings.gatewayForwarding.codexRelayDesc") }}
                   </p>
-                  <div class="mt-3 flex flex-wrap gap-2" role="radiogroup" :aria-label="t('admin.settings.gatewayForwarding.codexTicketProxyMode')">
-                    <label
-                      class="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
-                      :class="codexTicketProxyMode === 'static'
-                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                        : 'border-gray-200 text-gray-600 hover:border-primary-300 dark:border-dark-600 dark:text-gray-400'"
-                    >
-                      <input
-                        class="sr-only"
-                        type="radio"
-                        name="codex-ticket-proxy-mode"
-                        value="static"
-                        :checked="codexTicketProxyMode === 'static'"
-                        @change="selectCodexTicketProxyMode('static')"
-                      />
-                      <span>{{ t("admin.settings.gatewayForwarding.codexTicketProxyModeStatic") }}</span>
-                    </label>
-                    <label
-                      class="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
-                      :class="codexTicketProxyMode === 'ip_pool'
-                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                        : 'border-gray-200 text-gray-600 hover:border-primary-300 dark:border-dark-600 dark:text-gray-400'"
-                    >
-                      <input
-                        class="sr-only"
-                        type="radio"
-                        name="codex-ticket-proxy-mode"
-                        value="ip_pool"
-                        :checked="codexTicketProxyMode === 'ip_pool'"
-                        @change="selectCodexTicketProxyMode('ip_pool')"
-                      />
-                      <span>{{ t("admin.settings.gatewayForwarding.codexTicketProxyModeIPPool") }}</span>
-                    </label>
+                  <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div class="sm:col-span-2">
+                      <label for="codex-relay-url" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.gatewayForwarding.codexRelayURL") }}
+                      </label>
+                      <input id="codex-relay-url" v-model="form.openai_codex_relay_url" type="url" class="input w-full font-mono text-sm" placeholder="https://relay.example.com" autocomplete="off" />
+                    </div>
+                    <div>
+                      <label for="codex-relay-key-env" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.gatewayForwarding.codexRelayKeyEnv") }}
+                      </label>
+                      <input id="codex-relay-key-env" v-model="form.openai_codex_relay_key_env" type="text" class="input w-full font-mono text-sm" placeholder="SUB2API_CODEX_CLOUD_MINT_KEY" autocomplete="off" />
+                    </div>
+                    <div>
+                      <label for="codex-relay-transport" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.gatewayForwarding.codexRelayTransport") }}
+                      </label>
+                      <select id="codex-relay-transport" v-model="form.openai_codex_relay_transport" class="input w-full font-mono text-sm">
+                        <option value="sse">SSE</option>
+                        <option value="websocket">WebSocket</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="codex-relay-gateway" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.gatewayForwarding.codexRelayGateway") }}
+                      </label>
+                      <input id="codex-relay-gateway" v-model="form.openai_codex_relay_gateway" type="text" class="input w-full font-mono text-sm" placeholder="any or unified-88" autocomplete="off" />
+                    </div>
+                    <div>
+                      <label for="codex-relay-timeout" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.gatewayForwarding.codexRelayTimeout") }}
+                      </label>
+                      <input id="codex-relay-timeout" v-model.number="form.openai_codex_relay_timeout_seconds" type="number" min="5" max="120" class="input w-full font-mono text-sm" />
+                    </div>
                   </div>
-                  <p
-                    v-if="codexTicketProxyMode === 'ip_pool'"
-                    data-testid="codex-ticket-proxy-ip-pool-hint"
-                    class="mt-3 rounded-md border border-primary-200 bg-primary-50/60 px-3 py-2.5 text-sm text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
-                  >
-                    {{ t("admin.settings.gatewayForwarding.codexTicketProxyIPPoolHint") }}
-                  </p>
-                  <input
-                    v-else
-                    id="codex-ticket-harvest-proxy"
-                    v-model="form.openai_codex_ticket_harvest_proxy_url"
-                    type="text"
-                    class="input mt-3 w-full font-mono text-sm"
-                    :placeholder="t('admin.settings.gatewayForwarding.codexTicketHarvestProxyPlaceholder')"
-                    autocomplete="off"
-                  />
-                  <p
-                    v-if="form.openai_codex_ticket_harvest_proxy_configured"
-                    class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
-                  >
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyConfigured") }}
+                  <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexRelayHint") }}
                   </p>
                 </div>
                 <div>
@@ -6120,10 +6102,33 @@
                 </div>
                 <Toggle v-model="form.openai_codex_ticket_enabled" data-testid="codex-ticket-toggle" />
               </div>
-              <div>
-                <label for="codex-ticket-proxy" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexTicketProxy") }}</label>
-                <input id="codex-ticket-proxy" v-model="form.openai_codex_ticket_harvest_proxy_url" type="password" autocomplete="new-password" class="input w-full font-mono text-sm" placeholder="http://USER:PASSWORD@HOST:PORT" />
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.gatewayForwarding.codexTicketProxyHint") }}</p>
+              <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+                <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t("admin.settings.gatewayForwarding.codexRelayTitle") }}</h3>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div class="sm:col-span-2">
+                    <label for="codex-ticket-relay-url" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexRelayURL") }}</label>
+                    <input id="codex-ticket-relay-url" v-model="form.openai_codex_relay_url" type="url" class="input w-full font-mono text-sm" placeholder="https://relay.example.com" />
+                  </div>
+                  <div>
+                    <label for="codex-ticket-relay-key-env" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexRelayKeyEnv") }}</label>
+                    <input id="codex-ticket-relay-key-env" v-model="form.openai_codex_relay_key_env" type="text" class="input w-full font-mono text-sm" />
+                  </div>
+                  <div>
+                    <label for="codex-ticket-relay-transport" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexRelayTransport") }}</label>
+                    <select id="codex-ticket-relay-transport" v-model="form.openai_codex_relay_transport" class="input w-full font-mono text-sm">
+                      <option value="sse">SSE</option>
+                      <option value="websocket">WebSocket</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="codex-ticket-relay-gateway" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexRelayGateway") }}</label>
+                    <input id="codex-ticket-relay-gateway" v-model="form.openai_codex_relay_gateway" type="text" class="input w-full font-mono text-sm" placeholder="any or unified-88" />
+                  </div>
+                  <div>
+                    <label for="codex-ticket-relay-timeout" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexRelayTimeout") }}</label>
+                    <input id="codex-ticket-relay-timeout" v-model.number="form.openai_codex_relay_timeout_seconds" type="number" min="5" max="120" class="input w-full font-mono text-sm" />
+                  </div>
+                </div>
               </div>
               <div>
                 <label for="codex-ticket-models" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexTicketModels") }}</label>
@@ -10651,8 +10656,11 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_strategy: 'standby',
   openai_codex_ticket_harvest_scope: { mode: 'all' as 'all' | 'selected', group_ids: [] as number[], account_policy: 'schedulable_only' as 'schedulable_only' | 'prioritize_schedulable' },
   openai_codex_ticket_strict_response: false,
-  openai_codex_ticket_harvest_proxy_url: "",
-  openai_codex_ticket_harvest_proxy_configured: false,
+  openai_codex_relay_url: "",
+  openai_codex_relay_key_env: "SUB2API_CODEX_CLOUD_MINT_KEY",
+  openai_codex_relay_transport: "sse" as "sse" | "websocket",
+  openai_codex_relay_gateway: "any",
+  openai_codex_relay_timeout_seconds: 25,
   openai_codex_ticket_models: ["gpt-6-astra", "gpt-5.6-sol"],
   claude_code_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
@@ -11677,44 +11685,6 @@ const codexSyncedVersionLabel = computed(() => {
   });
 });
 
-const CODEX_TICKET_IP_POOL_PROXY_URL = "ippool://active";
-type CodexTicketProxyMode = "static" | "ip_pool";
-const codexTicketProxyMode = ref<CodexTicketProxyMode>("static");
-const codexTicketStaticProxyDraft = ref("");
-
-
-function isCodexTicketIPPoolProxyURL(value: string): boolean {
-  return value.trim() === CODEX_TICKET_IP_POOL_PROXY_URL;
-}
-
-function codexTicketProxyModeOf(value: string): CodexTicketProxyMode {
-  if (isCodexTicketIPPoolProxyURL(value)) return "ip_pool";
-  return "static";
-}
-
-
-
-function syncCodexTicketProxyMode(): void {
-  const current = form.openai_codex_ticket_harvest_proxy_url;
-  const mode = codexTicketProxyModeOf(current);
-  codexTicketProxyMode.value = mode;
-  codexTicketStaticProxyDraft.value = mode === "static" ? current : form.openai_codex_ticket_static_proxy_url || "";
-}
-function selectCodexTicketProxyMode(mode: CodexTicketProxyMode): void {
-  const previous = codexTicketProxyModeOf(form.openai_codex_ticket_harvest_proxy_url);
-  if (previous === "static") {
-    codexTicketStaticProxyDraft.value =
-      form.openai_codex_ticket_harvest_proxy_url;
-  }
-  codexTicketProxyMode.value = mode;
-  if (mode === "ip_pool") {
-    form.openai_codex_ticket_harvest_proxy_url = CODEX_TICKET_IP_POOL_PROXY_URL;
-  } else {
-    // Switching from the pool restores the last static address.
-    form.openai_codex_ticket_harvest_proxy_url =
-      codexTicketStaticProxyDraft.value;
-  }
-}
 const claudeSyncedVersionLabel = computed(() => {
   const synced = form.claude_code_client_version_synced?.trim();
   if (!synced) return "";
@@ -11749,7 +11719,6 @@ async function loadSettings() {
     form.default_platform_quotas = normalizePlatformQuotasMap(
       settings.default_platform_quotas,
     );
-    syncCodexTicketProxyMode();
     // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
@@ -12455,9 +12424,11 @@ async function saveSettings() {
         account_policy: form.openai_codex_ticket_harvest_scope.account_policy,
       },
       openai_codex_ticket_strict_response: form.openai_codex_ticket_strict_response || false,
-      openai_codex_ticket_harvest_proxy_url:
-        form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
-      openai_codex_ticket_use_saved_static_proxy: codexTicketProxyMode.value === 'static',
+      openai_codex_relay_url: form.openai_codex_relay_url?.trim() || "",
+      openai_codex_relay_key_env: form.openai_codex_relay_key_env?.trim() || "SUB2API_CODEX_CLOUD_MINT_KEY",
+      openai_codex_relay_transport: form.openai_codex_relay_transport || "sse",
+      openai_codex_relay_gateway: form.openai_codex_relay_gateway?.trim() || "any",
+      openai_codex_relay_timeout_seconds: Number(form.openai_codex_relay_timeout_seconds) || 25,
       openai_codex_ticket_models: [...form.openai_codex_ticket_models],
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:

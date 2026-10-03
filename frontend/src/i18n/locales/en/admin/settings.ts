@@ -760,16 +760,16 @@ export default {
         codexTicketModels: "Ticket models",
         codexTicketModelsDesc: "Harvest and inject tickets only for selected models. Unselected models use the normal forwarding path.",
         codexTicketShapeNotice: "780 only describe the observed state shape and do not measure model quality. Only tickets matching the current validation rules are injected; with account pausing off, a shape mismatch does not block requests.",
-        codexTicketHarvestProxy: "780 harvest proxy",
-        codexTicketHarvestProxyDesc:
-          "Used only for minting 780 tickets when the ticket feature is enabled. Changes apply to subsequent probes without a restart. Production traffic still uses each account's residential proxy. Paste a full HTTP or SOCKS5h proxy URL including username and password. The proxy provider must handle IP rotation. Leave blank when saving to keep the stored value.",
-        codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
-        codexTicketHarvestProxyConfigured: "Configured (password hidden). Paste a full new proxy URL to replace it.",
-        codexTicketProxyMode: "Ticket exit type",
-        codexTicketProxyModeStatic: "Static residential proxy",
-        codexTicketProxyModeIPPool: "IP management pool",
-        codexTicketProxyIPPoolHint:
-          "Rotates ticket harvesting across every active, unexpired proxy in IP management and moves to the next exit on failure. Each ticket remembers the exit it was harvested on, and later conversations stay on that exit. Proxy changes apply within about 15 seconds.",
+        codexRelayTitle: "Codex Relay",
+        codexRelayDesc:
+          "All 780 ticket requests use the configured SUCK_MY_ASTRA-compatible relay. Settings take effect for subsequent probes without a restart.",
+        codexRelayURL: "Relay URL",
+        codexRelayKeyEnv: "Relay key environment variable",
+        codexRelayTransport: "Transport",
+        codexRelayGateway: "Target gateway",
+        codexRelayTimeout: "Request timeout (seconds)",
+        codexRelayHint:
+          "Set the environment variable on the Sub2API container. Use any to accept the gateway selected by the relay, or unified-N to pin a gateway.",
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:
           "Only affects OpenAI OAuth accounts with 'Codex official clients only' enabled (global). Beyond User-Agent/Originator, harden the decision with a version range, an engine-fingerprint gate, and black/whitelists.",
