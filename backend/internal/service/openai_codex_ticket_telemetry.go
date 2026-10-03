@@ -116,6 +116,12 @@ func appendCodexTicketHistoryLocked(event CodexHarvestFlowEvent) {
 	defaultCodexHarvestFlow.ticketLogs[key] = entries
 }
 
+func codexTicketHistoryAttempts(accountID int64, model string) int {
+	defaultCodexHarvestFlow.mu.Lock()
+	defer defaultCodexHarvestFlow.mu.Unlock()
+	return defaultCodexHarvestFlow.ticketLogSequence[openAICodexTicketKey(accountID, model)]
+}
+
 func listCodexTicketHistory(accountID int64, model string) []OpenAICodexTicketLogEntry {
 	if accountID <= 0 || strings.TrimSpace(model) == "" {
 		return []OpenAICodexTicketLogEntry{}

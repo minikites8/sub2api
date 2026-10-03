@@ -31,6 +31,70 @@ func TestCodexTicketAdminAdapterNoSecrets(t *testing.T) {
 	}
 }
 
+func TestOpenAICodexTicketStatusesUIState(t *testing.T) {
+	now := time.Now()
+	future, past := now.Add(time.Minute), now.Add(-time.Minute)
+	for _, tc := range []struct {
+		name, state string
+		ready, skip bool
+		probe       *CodexProbeSummary
+	}{
+		{name: "waiting", state: "waiting"},
+		{name: "ready", state: "ready", ready: true},
+		{name: "paused", state: "paused", skip: true},
+		{name: "ready while paused", state: "ready", ready: true, skip: true},
+		{name: "token error", state: "token_invalid", probe: &CodexProbeSummary{Result: "token_error"}},
+		{name: "unauthorized", state: "token_invalid", probe: &CodexProbeSummary{HTTPStatus: 401}},
+		{name: "forbidden", state: "token_invalid", probe: &CodexProbeSummary{HTTPStatus: 403}},
+		{name: "cooldown", state: "cooldown", probe: &CodexProbeSummary{NextProbeAt: &future}},
+		{name: "cooldown elapsed", state: "waiting", probe: &CodexProbeSummary{NextProbeAt: &past}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetCodexHarvestFlow()
+			t.Cleanup(resetCodexHarvestFlow)
+			account := ticketTestAccount(4242)
+			model := "gpt-6-astra"
+			account.Extra = map[string]any{OpenAICodexSkipHarvestExtraKey: tc.skip, codexProbeSummaryKey(model): tc.probe}
+			if tc.ready {
+				attachReadyCodexTicket(account, model)
+			}
+			statuses := OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{Enabled: true, Models: []string{model}, TargetLength: 292}, now)
+			require.Len(t, statuses, 1)
+			require.Equal(t, tc.state, statuses[0].State)
+			encoded, err := json.Marshal(statuses[0])
+			require.NoError(t, err)
+			var payload map[string]any
+			require.NoError(t, json.Unmarshal(encoded, &payload))
+			require.Equal(t, tc.state, payload["state"])
+			require.Equal(t, float64(0), payload["attempts"])
+			require.Equal(t, float64(292), payload["target_length"])
+		})
+	}
+}
+
+func TestOpenAICodexTicketStatusesUIAttempts(t *testing.T) {
+	resetCodexHarvestFlow()
+	t.Cleanup(resetCodexHarvestFlow)
+	account := ticketTestAccount(4242)
+	model := "gpt-6-astra"
+	attachReadyCodexTicket(account, model)
+	ticket := account.Extra[openAICodexTicketExtraKey(model)].(openAICodexTicket)
+	ticket.Attempts = 7
+	account.Extra[openAICodexTicketExtraKey(model)] = ticket
+	cfg := config.OpenAICodexTicketConfig{Enabled: true, Models: []string{model, "gpt-5.6-sol"}, TargetLength: 292}
+	statuses := OpenAICodexTicketStatuses(account, cfg, time.Now())
+	require.Equal(t, 7, statuses[0].Attempts)
+	require.Zero(t, statuses[1].Attempts)
+	for i := 0; i < 2; i++ {
+		recordCodexHarvestProbe(account, model, "success", "relay-a", "unified-88", "", 200, 292, 10, 292, 10)
+	}
+	recordCodexHarvestProbe(account, "gpt-5.6-sol", "invalid_state", "relay-a", "unified-88", "", 200, 312, 11, 292, 10)
+	recordCodexHarvestProbe(ticketTestAccount(4243), model, "success", "relay-a", "unified-88", "", 200, 292, 10, 292, 10)
+	statuses = OpenAICodexTicketStatuses(account, cfg, time.Now())
+	require.Equal(t, 2, statuses[0].Attempts)
+	require.Equal(t, 1, statuses[1].Attempts)
+}
+
 func TestCodexTicketLogsExposePerAccountHistory(t *testing.T) {
 	resetCodexHarvestFlow()
 	t.Cleanup(resetCodexHarvestFlow)

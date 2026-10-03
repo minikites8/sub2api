@@ -32,6 +32,15 @@ function mountDialog() {
 beforeEach(() => { vi.useFakeTimers(); getLogs.mockReset(); getLogs.mockResolvedValue(snapshot()); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible') })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 describe('CodexTicketLogsDialog', () => {
+  it('renders legacy status summaries with a translated state and default attempts', async () => {
+    const response = snapshot()
+    response.status = { model: response.model, ready: false, remaining_seconds: 0 }
+    getLogs.mockResolvedValue(response)
+    const wrapper = mountDialog(); await flushPromises()
+    expect(wrapper.text()).toContain('等待打票')
+    expect(wrapper.text()).toContain('打票 0 次')
+    expect(wrapper.text()).not.toContain('admin.accounts.codexTickets.states.')
+  })
   it('renders latest-first events with real diagnostics and polls every two seconds', async () => {
     const wrapper = mountDialog(); await flushPromises()
     expect(getLogs).toHaveBeenCalledWith(71, 'gpt-6-astra', expect.any(AbortSignal))

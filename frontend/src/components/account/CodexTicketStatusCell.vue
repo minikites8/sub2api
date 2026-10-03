@@ -11,7 +11,7 @@
         {{ state(status) === 'ready' ? codexTicketDuration(codexTicketRemaining(status, receivedAt, now)) : t(`admin.accounts.codexTickets.states.${state(status)}`) }}
       </span>
       <span class="whitespace-nowrap tabular-nums text-gray-500 dark:text-gray-400">
-        {{ t('admin.accounts.codexTickets.attempts', { count: status.attempts }) }}
+        {{ t('admin.accounts.codexTickets.attempts', { count: codexTicketAttempts(status) }) }}
       </span>
     </button>
     <CodexTicketLogsDialog v-if="selectedModel" :show="true" :account="account" :model="selectedModel" @close="selectedModel = ''" @status="updateModelStatus" />
@@ -24,7 +24,7 @@ import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import type { CodexTicketStatus } from '@/types/codexTicket'
 import { subscribeCodexTicketStatuses } from '@/composables/useCodexTicketStatuses'
-import { codexTicketModelLabel, codexTicketRemaining, codexTicketDuration, codexTicketState, codexTicketStateClass } from '@/utils/codexTicketDisplay'
+import { codexTicketModelLabel, codexTicketRemaining, codexTicketDuration, codexTicketAttempts, codexTicketState, codexTicketStateClass } from '@/utils/codexTicketDisplay'
 import CodexTicketLogsDialog from './CodexTicketLogsDialog.vue'
 
 const props = defineProps<{ account: Account }>()

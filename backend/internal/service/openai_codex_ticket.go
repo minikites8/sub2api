@@ -258,6 +258,9 @@ type OpenAICodexTicketStatus struct {
 	Gateway          string             `json:"gateway,omitempty"`
 	EdgeIP           string             `json:"edge_ip,omitempty"`
 	Model            string             `json:"model"`
+	State            string             `json:"state"`
+	Attempts         int                `json:"attempts"`
+	TargetLength     int                `json:"target_length"`
 	Length           int                `json:"length,omitempty"`
 	Ready            bool               `json:"ready"`
 	RemainingSeconds int64              `json:"remaining_seconds"`
@@ -287,8 +290,16 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		if model == "" || !isOpenAICodexTicketAccount(account, model) {
 			continue
 		}
-		status := OpenAICodexTicketStatus{Model: model}
+		status := OpenAICodexTicketStatus{Model: model, State: "waiting", TargetLength: targetLen, Attempts: codexTicketHistoryAttempts(account.ID, model)}
 		status.Probe = readCodexProbe(account, model)
+		switch {
+		case openAICodexSkipHarvest(account):
+			status.State = "paused"
+		case status.Probe != nil && (status.Probe.Result == "token_error" || status.Probe.HTTPStatus == http.StatusUnauthorized || status.Probe.HTTPStatus == http.StatusForbidden):
+			status.State = "token_invalid"
+		case status.Probe != nil && status.Probe.NextProbeAt != nil && now.Before(*status.Probe.NextProbeAt):
+			status.State = "cooldown"
+		}
 		ticket := parseOpenAICodexTicketFromAny(0, model, nil)
 		if account != nil && account.Extra != nil {
 			ticket = parseOpenAICodexTicketFromAny(account.ID, model, account.Extra[openAICodexTicketExtraKey(model)])
@@ -314,11 +325,15 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 				}
 			}
 		}
+		if ticket != nil && status.Attempts == 0 {
+			status.Attempts = max(0, ticket.Attempts)
+		}
 		if ticket.valid(now, targetLen) {
 			status.Transport = ticket.Transport
 			status.Gateway = ticket.Gateway
 			status.EdgeIP = ticket.EdgeIP
 			status.Ready = true
+			status.State = "ready"
 			status.Standby = usingStandby
 			status.Length = ticket.Length
 			exp := openAICodexTicketRemainingUntil(ticket)

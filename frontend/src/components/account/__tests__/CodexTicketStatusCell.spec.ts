@@ -24,6 +24,29 @@ function render(value = account()) { return mount(CodexTicketStatusCell, { props
 beforeEach(() => { vi.useFakeTimers(); subscribe.mockReset().mockReturnValue(dispose); dispose.mockClear(); vi.stubGlobal('IntersectionObserver', undefined); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible') })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 describe('CodexTicketStatusCell', () => {
+  it('renders legacy ticket summaries with countdowns, waiting labels and default attempts', async () => {
+    const value = account()
+    value.codex_tickets = [
+      { model: 'gpt-6-astra', ready: true, remaining_seconds: 120 },
+      { model: 'gpt-5.6-sol', ready: false, remaining_seconds: 0 }
+    ]
+    const wrapper = render(value); await flushPromises()
+    expect(wrapper.findAll('button')[0].text()).toContain('2m00s')
+    expect(wrapper.findAll('button')[1].text()).toContain('等待打票')
+    expect(wrapper.findAll('button')[1].text()).toContain('打票 0 次')
+    expect(wrapper.text()).not.toContain('admin.accounts.codexTickets.states.')
+  })
+  it('uses legacy probe metadata after polling and handles unknown state values', async () => {
+    const wrapper = render(); await flushPromises()
+    const accept = subscribe.mock.calls[0][1] as (items: CodexTicketStatus[]) => void
+    accept([{ model: 'gpt-6-astra', ready: false, remaining_seconds: 0, probe: {
+      result: 'invalid_state', checked_at: new Date().toISOString(), next_probe_at: new Date(Date.now() + 60000).toISOString()
+    } }]); await flushPromises()
+    expect(wrapper.text()).toContain('等待重试')
+    accept([{ model: 'gpt-6-astra', ready: false, remaining_seconds: 0, state: 'unknown' as CodexTicketStatus['state'] }]); await flushPromises()
+    expect(wrapper.text()).toContain('等待打票')
+    expect(wrapper.text()).not.toContain('admin.accounts.codexTickets.states.')
+  })
   it('shows per-model remaining time and attempts, opens scoped logs and cleans up', async () => {
     const wrapper = render(); await flushPromises()
     expect(wrapper.findAll('button')).toHaveLength(2); expect(wrapper.text()).toContain('gpt-6-astra'); expect(wrapper.text()).toContain('59m00s'); expect(wrapper.text()).toContain('打票 3 次')

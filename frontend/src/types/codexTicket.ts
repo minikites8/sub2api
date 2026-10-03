@@ -1,15 +1,18 @@
+export type CodexTicketState = 'ready' | 'harvesting' | 'waiting' | 'cooldown' | 'paused' | 'token_invalid' | 'proxy_missing' | 'disabled' | 'expired'
+
 export interface CodexTicketStatus {
   model: string
-  state: 'ready' | 'harvesting' | 'waiting' | 'cooldown' | 'paused' | 'token_invalid' | 'proxy_missing' | 'disabled'
+  state?: CodexTicketState
   ready: boolean
   remaining_seconds: number
   expires_at?: string
   length?: number
-  target_length: number
-  attempts: number
-  harvesting: boolean
-  harvest_enabled: boolean
+  target_length?: number
+  attempts?: number
+  harvesting?: boolean
+  harvest_enabled?: boolean
   next_harvest_at?: string
+  probe?: { result: string; http_status?: number; checked_at: string; next_probe_at?: string }
 }
 
 export interface CodexTicketLogEntry {

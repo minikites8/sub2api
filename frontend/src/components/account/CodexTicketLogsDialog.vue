@@ -4,8 +4,8 @@
       <div class="space-y-2">
         <div class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ model }}</div>
         <div v-if="snapshot?.status" class="flex items-center gap-3 text-xs">
-          <span :class="codexTicketStateClass(snapshot.status.state)">{{ t(`admin.accounts.codexTickets.states.${snapshot.status.state}`) }}</span>
-          <span class="tabular-nums text-gray-500 dark:text-gray-400">{{ t('admin.accounts.codexTickets.attempts', { count: snapshot.status.attempts }) }}</span>
+          <span :class="codexTicketStateClass(codexTicketState(snapshot.status))">{{ t(`admin.accounts.codexTickets.states.${codexTicketState(snapshot.status)}`) }}</span>
+          <span class="tabular-nums text-gray-500 dark:text-gray-400">{{ t('admin.accounts.codexTickets.attempts', { count: codexTicketAttempts(snapshot.status) }) }}</span>
         </div>
       </div>
       <span class="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
@@ -53,7 +53,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import { getCodexTicketLogs } from '@/api/admin/codexTickets'
 import type { Account } from '@/types'
 import type { CodexTicketLogsResponse, CodexTicketStatus } from '@/types/codexTicket'
-import { codexTicketStateClass } from '@/utils/codexTicketDisplay'
+import { codexTicketAttempts, codexTicketState, codexTicketStateClass } from '@/utils/codexTicketDisplay'
 
 const props = defineProps<{ show: boolean; account: Account; model: string }>()
 const emit = defineEmits<{ close: []; status: [status: CodexTicketStatus] }>()

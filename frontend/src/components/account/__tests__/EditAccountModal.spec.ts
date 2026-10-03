@@ -372,6 +372,14 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('renders a waiting state for legacy Codex ticket summaries', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.codex_tickets = [{ model: 'gpt-6-astra', ready: false, remaining_seconds: 0 }]
+    const wrapper = mountModal(account); await flushPromises()
+    expect(wrapper.text()).toContain('admin.accounts.codexTickets.states.waiting')
+    expect(wrapper.text()).not.toContain('admin.accounts.codexTickets.states.undefined')
+    wrapper.unmount()
+  })
   it('round-trips OAuth alias scope and lets an operator restore a whitelist', async () => {
     const account = { ...buildAccount(), type: 'oauth', credentials: { model_mapping_mode: 'aliases', model_mapping: { 'gpt-5.4': 'gpt-5.6-sol' } } }
     const wrapper = mountModal(account); await flushPromises()

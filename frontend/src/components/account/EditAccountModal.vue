@@ -2793,10 +2793,10 @@
               {{ t('admin.accounts.openai.codexTurnTicketReady', { time: formatCodexTicketRemaining(ticket.remaining_seconds) }) }}
             </span>
             <span v-else class="text-amber-600 dark:text-amber-400">
-              {{ t(`admin.accounts.codexTickets.states.${ticket.state}`) }}
+              {{ t(`admin.accounts.codexTickets.states.${codexTicketState(ticket)}`) }}
             </span>
             <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.codexTickets.attempts', { count: ticket.attempts }) }}
+              {{ t('admin.accounts.codexTickets.attempts', { count: codexTicketAttempts(ticket) }) }}
             </span>
           </div>
         </div>
@@ -3526,6 +3526,7 @@
 
 <script setup lang="ts">
 import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier, readAccountCostMultiplier } from '@/utils/accountCost'
+import { codexTicketAttempts, codexTicketState } from '@/utils/codexTicketDisplay'
 
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
