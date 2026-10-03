@@ -26,7 +26,7 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(
 describe('CodexTicketStatusCell', () => {
   it('shows per-model remaining time and attempts, opens scoped logs and cleans up', async () => {
     const wrapper = render(); await flushPromises()
-    expect(wrapper.findAll('button')).toHaveLength(2); expect(wrapper.text()).toContain('astra'); expect(wrapper.text()).toContain('59m00s'); expect(wrapper.text()).toContain('打票 3 次')
+    expect(wrapper.findAll('button')).toHaveLength(2); expect(wrapper.text()).toContain('gpt-6-astra'); expect(wrapper.text()).toContain('59m00s'); expect(wrapper.text()).toContain('打票 3 次')
     await vi.advanceTimersByTimeAsync(2000); expect(wrapper.text()).toContain('58m58s')
     await wrapper.findAll('button')[1].trigger('click'); expect(wrapper.get('[data-testid="dialog"]').text()).toContain('71 gpt-5.6-sol')
     wrapper.unmount(); expect(dispose).toHaveBeenCalled()

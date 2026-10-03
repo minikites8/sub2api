@@ -387,15 +387,23 @@ const (
 )
 
 func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
-	if h != nil && h.cfg != nil && out != nil {
-		cfg := h.cfg.Gateway.OpenAICodexTicket
-		if h.codexTicketSettings != nil {
-			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
-			cfg.Models = h.codexTicketSettings.GetOpenAICodexTicketModels(context.Background(), cfg.Models)
-			cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background())
-		}
-		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+	if h == nil || out == nil || account == nil {
+		return
 	}
+	if h.codexTicketProvider != nil {
+		out.CodexTurnTickets = h.codexTicketProvider.OpenAICodexTicketStatuses(context.Background(), account, time.Now())
+		return
+	}
+	if h.cfg == nil {
+		return
+	}
+	cfg := h.cfg.Gateway.OpenAICodexTicket
+	if h.codexTicketSettings != nil {
+		cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+		cfg.Models = h.codexTicketSettings.GetOpenAICodexTicketModels(context.Background(), cfg.Models)
+		cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background())
+	}
+	out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
 }
 
 func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {

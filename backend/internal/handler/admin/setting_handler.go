@@ -335,6 +335,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
 		OpenAICodexTicketEnabled:                               settings.OpenAICodexTicketEnabled,
 		OpenAICodexRelayURL:                                    settings.OpenAICodexRelayURL,
+		OpenAICodexRelayKeyConfigured:                          settings.OpenAICodexRelayKeyConfigured,
 		OpenAICodexRelayKeyEnv:                                 settings.OpenAICodexRelayKeyEnv,
 		OpenAICodexRelayTransport:                              settings.OpenAICodexRelayTransport,
 		OpenAICodexRelayGateway:                                settings.OpenAICodexRelayGateway,

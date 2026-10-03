@@ -583,10 +583,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAICodexClientVersion] = NormalizeCodexClientVersion(settings.OpenAICodexClientVersion)
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
-	if err := ValidateOpenAICodexRelaySettings(settings.OpenAICodexRelayURL, settings.OpenAICodexRelayKeyEnv, settings.OpenAICodexRelayTransport, settings.OpenAICodexRelayGateway, settings.OpenAICodexRelayTimeoutSeconds); err != nil {
+	if err := ValidateOpenAICodexRelaySettings(settings.OpenAICodexRelayURL, settings.OpenAICodexRelayKey, settings.OpenAICodexRelayKeyEnv, settings.OpenAICodexRelayTransport, settings.OpenAICodexRelayGateway, settings.OpenAICodexRelayTimeoutSeconds); err != nil {
 		return nil, err
 	}
 	updates[SettingKeyOpenAICodexRelayURL] = strings.TrimSpace(settings.OpenAICodexRelayURL)
+	updates[SettingKeyOpenAICodexRelayKey] = strings.TrimSpace(settings.OpenAICodexRelayKey)
 	updates[SettingKeyOpenAICodexRelayKeyEnv] = strings.TrimSpace(settings.OpenAICodexRelayKeyEnv)
 	updates[SettingKeyOpenAICodexRelayTransport] = strings.ToLower(strings.TrimSpace(settings.OpenAICodexRelayTransport))
 	updates[SettingKeyOpenAICodexRelayGateway] = normalizeCodex780Gateway(settings.OpenAICodexRelayGateway)

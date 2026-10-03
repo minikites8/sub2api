@@ -1265,11 +1265,12 @@ type OpenAICodexTicketConfig struct {
 }
 
 // OpenAICodexCloudMintConfig connects the Codex ticket harvester to a
-// SUCK_MY_ASTRA-compatible relay. The relay key is read from an environment
-// variable so credentials stay outside the application config file.
+// SUCK_MY_ASTRA-compatible relay. Key is the direct secret configured in the
+// admin settings or config; KeyEnv remains the deployment environment fallback.
 type OpenAICodexCloudMintConfig struct {
 	Enabled        bool   `mapstructure:"enabled"`
 	URL            string `mapstructure:"url"`
+	Key            string `mapstructure:"key"`
 	KeyEnv         string `mapstructure:"key_env"`
 	ProxyURL       string `mapstructure:"proxy_url"`
 	Transport      string `mapstructure:"transport"`
@@ -2553,6 +2554,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)
 	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.enabled", false)
 	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.url", "")
+	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.key", "")
 	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.key_env", "SUB2API_CODEX_CLOUD_MINT_KEY")
 	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.proxy_url", "")
 	viper.SetDefault("gateway.openai_codex_ticket.cloud_mint.transport", "sse")

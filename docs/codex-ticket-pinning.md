@@ -21,6 +21,7 @@ gateway:
     cloud_mint:
       enabled: true
       url: https://your-relay.example/
+      key: ""
       key_env: SUB2API_CODEX_CLOUD_MINT_KEY
       proxy_url: ""
       transport: sse
@@ -39,6 +40,8 @@ $env:SUB2API_CODEX_CLOUD_MINT_KEY = "your-relay-key"
 Compose 部署需要把 relay 配置和密钥显式传入 `sub2api` 容器。主机 `.env` 用于 Compose 插值，`services.sub2api.environment` 决定容器内变量。
 
 ```dotenv
+GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_KEY=与 relay 的 RELAY_KEY 相同
+# 也可使用部署密钥变量：
 SUB2API_CODEX_CLOUD_MINT_KEY=与 relay 的 RELAY_KEY 相同
 GATEWAY_OPENAI_CODEX_TICKET_ENABLED=true
 GATEWAY_OPENAI_CODEX_TICKET_TARGET_LENGTH=780

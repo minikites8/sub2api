@@ -363,6 +363,7 @@ gateway:
     cloud_mint:
       enabled: false
       url: ""
+      key: ""
       key_env: SUB2API_CODEX_CLOUD_MINT_KEY
       proxy_url: ""
       transport: sse

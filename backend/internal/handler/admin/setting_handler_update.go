@@ -278,6 +278,7 @@ type UpdateSettingsRequest struct {
 	AntigravityUserAgentVersion            *string   `json:"antigravity_user_agent_version"`
 	OpenAICodexTicketEnabled               *bool     `json:"openai_codex_ticket_enabled"`
 	OpenAICodexRelayURL                    *string   `json:"openai_codex_relay_url"`
+	OpenAICodexRelayKey                    *string   `json:"openai_codex_relay_key"`
 	OpenAICodexRelayKeyEnv                 *string   `json:"openai_codex_relay_key_env"`
 	OpenAICodexRelayTransport              *string   `json:"openai_codex_relay_transport"`
 	OpenAICodexRelayGateway                *string   `json:"openai_codex_relay_gateway"`
@@ -2044,6 +2045,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexRelayURL
 		}(),
+		OpenAICodexRelayKey: func() string {
+			if req.OpenAICodexRelayKey != nil {
+				if value := strings.TrimSpace(*req.OpenAICodexRelayKey); value != "" {
+					return value
+				}
+			}
+			return previousSettings.OpenAICodexRelayKey
+		}(),
 		OpenAICodexRelayKeyEnv: func() string {
 			if req.OpenAICodexRelayKeyEnv != nil {
 				return strings.TrimSpace(*req.OpenAICodexRelayKeyEnv)
@@ -2719,6 +2728,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
+		OpenAICodexRelayKeyConfigured:                          updatedSettings.OpenAICodexRelayKeyConfigured,
 		OpenAICodexTicketHarvestScope:                          updatedSettings.OpenAICodexTicketHarvestScope,
 		OpenAICodexTicketStrategy:                              updatedSettings.OpenAICodexTicketStrategy,
 		OpenAICodexTicketStrictResponse:                        updatedSettings.OpenAICodexTicketStrictResponse,

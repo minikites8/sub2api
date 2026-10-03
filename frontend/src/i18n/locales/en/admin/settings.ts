@@ -764,7 +764,9 @@ export default {
         codexRelayDesc:
           "All 780 ticket requests use the configured SUCK_MY_ASTRA-compatible relay. Settings take effect for subsequent probes without a restart.",
         codexRelayURL: "Relay URL",
-        codexRelayKeyEnv: "Relay key environment variable",
+         codexRelayKey: "Relay key",
+         codexRelayKeyPlaceholder: "Paste the Relay key",
+         codexRelayKeyEnv: "Legacy key environment variable",
         codexRelayTransport: "Transport",
         codexRelayGateway: "Target gateway",
         codexRelayTimeout: "Request timeout (seconds)",

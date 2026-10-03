@@ -234,7 +234,8 @@ type SystemSettings struct {
 	OpenAICodexTicketFailClosed            bool                            `json:"openai_codex_ticket_fail_closed"`
 	OpenAICodexTicketStrategy              string                          `json:"openai_codex_ticket_strategy"`
 	OpenAICodexRelayURL                    string                          `json:"openai_codex_relay_url"`
-	OpenAICodexRelayKeyEnv                 string                          `json:"openai_codex_relay_key_env"`
+	OpenAICodexRelayKeyConfigured          bool                            `json:"openai_codex_relay_key_configured"`
+	OpenAICodexRelayKeyEnv                 string                          `json:"openai_codex_relay_key_env,omitempty"`
 	OpenAICodexRelayTransport              string                          `json:"openai_codex_relay_transport"`
 	OpenAICodexRelayGateway                string                          `json:"openai_codex_relay_gateway"`
 	OpenAICodexRelayTimeoutSeconds         int                             `json:"openai_codex_relay_timeout_seconds"`

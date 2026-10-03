@@ -239,3 +239,24 @@ func TestParseSettingsRelayEchoesConfigWhenDatabaseOverridesAreMissing(t *testin
 	require.Equal(t, "unified-95", emptyOverrides.OpenAICodexRelayGateway)
 	require.Equal(t, 31, emptyOverrides.OpenAICodexRelayTimeoutSeconds)
 }
+
+func TestParseSettingsUsesDirectRelayKeyAndMigratesLegacyLiteral(t *testing.T) {
+	svc := &SettingService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		OpenAICodexTicket: config.OpenAICodexTicketConfig{CloudMint: config.OpenAICodexCloudMintConfig{
+			KeyEnv: "SUB2API_CODEX_CLOUD_MINT_KEY",
+		}},
+	}}}
+	direct := svc.parseSettings(map[string]string{
+		SettingKeyOpenAICodexRelayKey:    "direct-relay-secret",
+		SettingKeyOpenAICodexRelayKeyEnv: "SUB2API_CODEX_CLOUD_MINT_KEY",
+	})
+	require.Equal(t, "direct-relay-secret", direct.OpenAICodexRelayKey)
+	require.True(t, direct.OpenAICodexRelayKeyConfigured)
+	require.Equal(t, "SUB2API_CODEX_CLOUD_MINT_KEY", direct.OpenAICodexRelayKeyEnv)
+
+	legacySecret := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	legacy := svc.parseSettings(map[string]string{SettingKeyOpenAICodexRelayKeyEnv: legacySecret})
+	require.Equal(t, legacySecret, legacy.OpenAICodexRelayKey)
+	require.True(t, legacy.OpenAICodexRelayKeyConfigured)
+	require.Equal(t, "SUB2API_CODEX_CLOUD_MINT_KEY", legacy.OpenAICodexRelayKeyEnv)
+}

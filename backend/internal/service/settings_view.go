@@ -267,8 +267,10 @@ type SystemSettings struct {
 	OpenAICodexClientVersionSynced         string   // 自动同步到的官方最新稳定版版本号（只读展示）
 	OpenAICodexVersionAutoSyncEnabled      bool     // 是否启用 Codex 客户端版本号自动同步（默认 true）
 	OpenAICodexTicketEnabled               bool     // Codex Relay 打票总开关；关闭则不打票不注入
-	OpenAICodexRelayURL                    string   // Codex Relay 网关地址；空则回退 yaml/env
-	OpenAICodexRelayKeyEnv                 string   // Codex Relay key 环境变量名
+	OpenAICodexRelayURL                    string   // Codex Relay URL from config/env
+	OpenAICodexRelayKey                    string   // Direct Relay secret configured in admin settings
+	OpenAICodexRelayKeyConfigured          bool     // Direct Relay secret is configured
+	OpenAICodexRelayKeyEnv                 string   // Legacy deployment environment-variable name
 	OpenAICodexRelayTransport              string   // Codex Relay transport: sse/websocket
 	OpenAICodexRelayGateway                string   // Codex Relay target gateway: any/unified-N
 	OpenAICodexRelayTimeoutSeconds         int      // Codex Relay 请求超时

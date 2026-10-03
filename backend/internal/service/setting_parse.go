@@ -255,6 +255,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
 		SettingKeyOpenAICodexVersionAutoSyncEnabled:                  "true",
 		SettingKeyOpenAICodexRelayURL:                                "",
+		SettingKeyOpenAICodexRelayKey:                                "",
 		SettingKeyOpenAICodexRelayKeyEnv:                             "SUB2API_CODEX_CLOUD_MINT_KEY",
 		SettingKeyOpenAICodexRelayTransport:                          "sse",
 		SettingKeyOpenAICodexRelayGateway:                            "any",
@@ -955,6 +956,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// database override. Keep those values visible in the settings form.
 	relayCfg := ticketCfg.CloudMint
 	relayURL := strings.TrimSpace(relayCfg.URL)
+	relayKey := strings.TrimSpace(relayCfg.Key)
 	relayKeyEnv := strings.TrimSpace(relayCfg.KeyEnv)
 	relayTransport := strings.TrimSpace(relayCfg.Transport)
 	relayGateway := strings.TrimSpace(relayCfg.Gateway)
@@ -974,8 +976,19 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if value, ok := settings[SettingKeyOpenAICodexRelayURL]; ok && strings.TrimSpace(value) != "" {
 		relayURL = strings.TrimSpace(value)
 	}
+	if value, ok := settings[SettingKeyOpenAICodexRelayKey]; ok && strings.TrimSpace(value) != "" {
+		relayKey = strings.TrimSpace(value)
+	}
 	if value, ok := settings[SettingKeyOpenAICodexRelayKeyEnv]; ok && strings.TrimSpace(value) != "" {
-		relayKeyEnv = strings.TrimSpace(value)
+		legacy := strings.TrimSpace(value)
+		if looksLikeCodexRelayKey(legacy) {
+			if relayKey == "" {
+				relayKey = legacy
+			}
+			relayKeyEnv = "SUB2API_CODEX_CLOUD_MINT_KEY"
+		} else {
+			relayKeyEnv = legacy
+		}
 	}
 	if value, ok := settings[SettingKeyOpenAICodexRelayTransport]; ok && strings.TrimSpace(value) != "" {
 		relayTransport = strings.TrimSpace(value)
@@ -989,6 +1002,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		}
 	}
 	result.OpenAICodexRelayURL = relayURL
+	result.OpenAICodexRelayKey = relayKey
+	result.OpenAICodexRelayKeyConfigured = relayKey != ""
 	result.OpenAICodexRelayKeyEnv = relayKeyEnv
 	result.OpenAICodexRelayTransport = relayTransport
 	result.OpenAICodexRelayGateway = relayGateway

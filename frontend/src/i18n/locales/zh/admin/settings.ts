@@ -757,7 +757,9 @@ export default {
         codexRelayDesc:
           '全部 780 打票请求通过已配置的 SUCK_MY_ASTRA 兼容 Relay 网关。保存后后续探测立即使用新设置，无需重启。',
         codexRelayURL: 'Relay 地址',
-        codexRelayKeyEnv: 'Relay 密钥环境变量',
+         codexRelayKey: 'Relay 密钥',
+         codexRelayKeyPlaceholder: '填写 Relay 密钥',
+         codexRelayKeyEnv: '兼容旧版密钥环境变量',
         codexRelayTransport: '传输方式',
         codexRelayGateway: '目标网关',
         codexRelayTimeout: '请求超时（秒）',

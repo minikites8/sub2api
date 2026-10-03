@@ -73,7 +73,7 @@ func (s *SettingService) codexTicketRuntimeConfig(ctx context.Context, fallback 
 			}
 			dbCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			defer cancel()
-			keys := []string{SettingKeyOpenAICodexTicketFailClosed, SettingKeyOpenAICodexTicketModels, SettingKeyOpenAICodexRelayURL, SettingKeyOpenAICodexRelayKeyEnv, SettingKeyOpenAICodexRelayTransport, SettingKeyOpenAICodexRelayGateway, SettingKeyOpenAICodexRelayTimeoutSeconds}
+			keys := []string{SettingKeyOpenAICodexTicketFailClosed, SettingKeyOpenAICodexTicketModels, SettingKeyOpenAICodexRelayURL, SettingKeyOpenAICodexRelayKey, SettingKeyOpenAICodexRelayKeyEnv, SettingKeyOpenAICodexRelayTransport, SettingKeyOpenAICodexRelayGateway, SettingKeyOpenAICodexRelayTimeoutSeconds}
 			values := make(map[string]string, len(keys))
 			err := error(nil)
 			for _, key := range keys {
@@ -112,8 +112,18 @@ func (s *SettingService) codexTicketRuntimeConfig(ctx context.Context, fallback 
 			fallback.CloudMint.URL = value
 			fallback.CloudMint.Enabled = true
 		}
+		if value := strings.TrimSpace(cached.values[SettingKeyOpenAICodexRelayKey]); value != "" {
+			fallback.CloudMint.Key = value
+		}
 		if value := strings.TrimSpace(cached.values[SettingKeyOpenAICodexRelayKeyEnv]); value != "" {
-			fallback.CloudMint.KeyEnv = value
+			if looksLikeCodexRelayKey(value) {
+				if fallback.CloudMint.Key == "" {
+					fallback.CloudMint.Key = value
+				}
+				fallback.CloudMint.KeyEnv = "SUB2API_CODEX_CLOUD_MINT_KEY"
+			} else {
+				fallback.CloudMint.KeyEnv = value
+			}
 		}
 		if value := strings.TrimSpace(cached.values[SettingKeyOpenAICodexRelayTransport]); value != "" {
 			fallback.CloudMint.Transport = value
@@ -158,14 +168,14 @@ func IsMaskedCodexTicketProxyURL(raw string) bool {
 }
 
 // ValidateOpenAICodexRelaySettings validates settings exposed by the admin UI.
-func ValidateOpenAICodexRelaySettings(rawURL, keyEnv, transport, gateway string, timeoutSeconds int) error {
+func ValidateOpenAICodexRelaySettings(rawURL, key, keyEnv, transport, gateway string, timeoutSeconds int) error {
 	if strings.TrimSpace(rawURL) != "" {
 		if _, err := normalizeCodexCloudMintURL(rawURL); err != nil {
 			return infraerrors.BadRequest("INVALID_CODEX_RELAY_URL", err.Error())
 		}
 	}
-	if strings.TrimSpace(keyEnv) == "" {
-		return infraerrors.BadRequest("INVALID_CODEX_RELAY_KEY_ENV", "relay key environment variable is required")
+	if strings.TrimSpace(key) == "" && strings.TrimSpace(keyEnv) == "" {
+		return infraerrors.BadRequest("INVALID_CODEX_RELAY_KEY", "relay key or environment variable is required")
 	}
 	if _, err := normalizeCodexCloudMintTransport(transport); err != nil {
 		return infraerrors.BadRequest("INVALID_CODEX_RELAY_TRANSPORT", err.Error())

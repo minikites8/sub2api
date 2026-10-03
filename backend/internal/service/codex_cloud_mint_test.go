@@ -290,3 +290,28 @@ func TestCodexCloudMintProbeUsesAccountGatewayOverride(t *testing.T) {
 	out := s.requestCodex780Probe(context.Background(), account, "token", "gpt-6-astra", "", func() bool { return true }, "session")
 	require.NoError(t, out.Err)
 }
+
+func TestCodexCloudMintProbeUsesDirectConfiguredKey(t *testing.T) {
+	account := ticketTestAccount(1)
+	issued := time.Now().Truncate(time.Second)
+	expires := issued.Add(4 * time.Minute)
+	pair := mint780Pair(expires, "unified-88")
+	state := mint780State(issued)
+	cfg := config.OpenAICodexTicketConfig{
+		TargetLength: 780,
+		TTLSeconds:   240,
+		CloudMint: config.OpenAICodexCloudMintConfig{
+			Enabled: true, URL: "https://relay.example/", Key: "direct-relay-secret", KeyEnv: "TEST_CODEX_CLOUD_MINT_KEY",
+			Transport: "sse", Gateway: "any", TimeoutSeconds: 25,
+		},
+	}
+	t.Setenv("TEST_CODEX_CLOUD_MINT_KEY", "legacy-env-secret")
+	s := ticketTestService(t, cfg, nil)
+	s.httpUpstream = &harvestProxyUpstream{do: func(req *http.Request, _ string) (*http.Response, error) {
+		require.Equal(t, "direct-relay-secret", req.Header.Get("X-Relay-Key"))
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(cloudMintResponseBody(t, "gpt-6-astra", "gpt-6-astra", state, issued, expires, pair)))}, nil
+	}}
+	out := s.requestCodex780Probe(context.Background(), account, "token", "gpt-6-astra", "", func() bool { return true }, "session")
+	require.NoError(t, out.Err)
+	require.Equal(t, "direct-relay-secret", codexCloudMintKey(cfg.CloudMint))
+}

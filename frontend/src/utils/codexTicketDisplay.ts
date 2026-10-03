@@ -1,7 +1,7 @@
 import type { CodexTicketStatus } from '@/types/codexTicket'
 
 export function codexTicketModelLabel(model: string): string {
-  return /^gpt-[\d.]+-(astra|sol)$/.exec(model)?.[1] ?? model
+  return model
 }
 export function codexTicketRemaining(status: CodexTicketStatus, receivedAt: number, now: number): number {
   return Math.max(0, Math.floor(status.remaining_seconds - Math.max(0, now - receivedAt) / 1000))

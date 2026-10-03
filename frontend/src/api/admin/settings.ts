@@ -669,7 +669,8 @@ export interface SystemSettings {
   openai_codex_ticket_harvest_scope?: { mode: 'all' | 'selected'; group_ids: number[]; account_policy: 'schedulable_only' | 'prioritize_schedulable' };
   openai_codex_ticket_strict_response?: boolean;
   openai_codex_relay_url: string;
-  openai_codex_relay_key_env: string;
+  openai_codex_relay_key_configured: boolean;
+  openai_codex_relay_key_env?: string;
   openai_codex_relay_transport: 'sse' | 'websocket';
   openai_codex_relay_gateway: string;
   openai_codex_relay_timeout_seconds: number;
@@ -1049,6 +1050,7 @@ export interface UpdateSettingsRequest {
   openai_codex_ticket_strategy?: 'fixed' | 'standby';
   openai_codex_ticket_harvest_scope?: { mode: 'all' | 'selected'; group_ids: number[]; account_policy: 'schedulable_only' | 'prioritize_schedulable' };
   openai_codex_relay_url?: string;
+  openai_codex_relay_key?: string;
   openai_codex_relay_key_env?: string;
   openai_codex_relay_transport?: 'sse' | 'websocket';
   openai_codex_relay_gateway?: string;

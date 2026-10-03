@@ -48,6 +48,30 @@ type codexCloudMintResponse struct {
 	} `json:"error"`
 }
 
+func looksLikeCodexRelayKey(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 32 {
+		return false
+	}
+	for _, r := range value {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+func codexCloudMintKey(cfg config.OpenAICodexCloudMintConfig) string {
+	if key := strings.TrimSpace(cfg.Key); key != "" {
+		return key
+	}
+	keyRef := strings.TrimSpace(cfg.KeyEnv)
+	if looksLikeCodexRelayKey(keyRef) {
+		return keyRef
+	}
+	return strings.TrimSpace(os.Getenv(keyRef))
+}
+
 func (s *OpenAIGatewayService) codexCloudMintConfig() config.OpenAICodexCloudMintConfig {
 	cfg := config.OpenAICodexCloudMintConfig{}
 	if s != nil {
@@ -172,7 +196,7 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		out.Err = err
 		return
 	}
-	key := strings.TrimSpace(os.Getenv(cfg.KeyEnv))
+	key := codexCloudMintKey(cfg)
 	if key == "" {
 		out.Err = errors.New("cloud mint relay key is unavailable")
 		return

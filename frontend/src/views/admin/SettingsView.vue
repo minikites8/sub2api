@@ -4745,10 +4745,10 @@
                       <input id="codex-relay-url" v-model="form.openai_codex_relay_url" type="url" class="input w-full font-mono text-sm" placeholder="https://relay.example.com" autocomplete="off" />
                     </div>
                     <div>
-                      <label for="codex-relay-key-env" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {{ t("admin.settings.gatewayForwarding.codexRelayKeyEnv") }}
+                      <label for="codex-relay-key" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.gatewayForwarding.codexRelayKey") }}
                       </label>
-                      <input id="codex-relay-key-env" v-model="form.openai_codex_relay_key_env" type="text" class="input w-full font-mono text-sm" placeholder="SUB2API_CODEX_CLOUD_MINT_KEY" autocomplete="off" />
+                      <input id="codex-relay-key" v-model="form.openai_codex_relay_key" type="password" class="input w-full font-mono text-sm" :placeholder="t('admin.settings.gatewayForwarding.codexRelayKeyPlaceholder')" autocomplete="new-password" />
                     </div>
                     <div>
                       <label for="codex-relay-transport" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -6110,8 +6110,8 @@
                     <input id="codex-ticket-relay-url" v-model="form.openai_codex_relay_url" type="url" class="input w-full font-mono text-sm" placeholder="https://relay.example.com" />
                   </div>
                   <div>
-                    <label for="codex-ticket-relay-key-env" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexRelayKeyEnv") }}</label>
-                    <input id="codex-ticket-relay-key-env" v-model="form.openai_codex_relay_key_env" type="text" class="input w-full font-mono text-sm" />
+                    <label for="codex-ticket-relay-key" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexRelayKey") }}</label>
+                    <input id="codex-ticket-relay-key" v-model="form.openai_codex_relay_key" type="password" class="input w-full font-mono text-sm" :placeholder="t('admin.settings.gatewayForwarding.codexRelayKeyPlaceholder')" autocomplete="new-password" />
                   </div>
                   <div>
                     <label for="codex-ticket-relay-transport" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.codexRelayTransport") }}</label>
@@ -10318,6 +10318,8 @@ type SettingsForm = Omit<
   | "openai_oauth_scheduling_rate_multiplier"
 > & {
   openai_codex_ticket_harvest_scope: OpenAICodexTicketHarvestScope;
+  openai_codex_relay_key: string;
+  openai_codex_relay_key_configured: boolean;
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
   channel_monitor_show_quota: boolean;
@@ -10657,6 +10659,8 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_harvest_scope: { mode: 'all' as 'all' | 'selected', group_ids: [] as number[], account_policy: 'schedulable_only' as 'schedulable_only' | 'prioritize_schedulable' },
   openai_codex_ticket_strict_response: false,
   openai_codex_relay_url: "",
+  openai_codex_relay_key: "",
+  openai_codex_relay_key_configured: false,
   openai_codex_relay_key_env: "SUB2API_CODEX_CLOUD_MINT_KEY",
   openai_codex_relay_transport: "sse" as "sse" | "websocket",
   openai_codex_relay_gateway: "any",
@@ -11716,6 +11720,8 @@ async function loadSettings() {
       typeof settings.openai_codex_relay_url === "string"
         ? settings.openai_codex_relay_url.trim()
         : "";
+    form.openai_codex_relay_key = "";
+    form.openai_codex_relay_key_configured = settings.openai_codex_relay_key_configured === true;
     form.openai_codex_relay_key_env =
       typeof settings.openai_codex_relay_key_env === "string" && settings.openai_codex_relay_key_env.trim()
         ? settings.openai_codex_relay_key_env.trim()
@@ -12444,6 +12450,7 @@ async function saveSettings() {
       },
       openai_codex_ticket_strict_response: form.openai_codex_ticket_strict_response || false,
       openai_codex_relay_url: form.openai_codex_relay_url?.trim() || "",
+      openai_codex_relay_key: form.openai_codex_relay_key?.trim() || undefined,
       openai_codex_relay_key_env: form.openai_codex_relay_key_env?.trim() || "SUB2API_CODEX_CLOUD_MINT_KEY",
       openai_codex_relay_transport: form.openai_codex_relay_transport || "sse",
       openai_codex_relay_gateway: form.openai_codex_relay_gateway?.trim() || "any",
@@ -12676,6 +12683,7 @@ async function saveSettings() {
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
+    form.openai_codex_relay_key = "";
     form.turnstile_secret_key = "";
     form.aliyun_captcha_access_key_secret = "";
     form.linuxdo_connect_client_secret = "";

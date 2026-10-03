@@ -1137,7 +1137,7 @@ describe("admin SettingsView payment visible method controls", () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       openai_codex_relay_url: "https://relay.example.com",
-      openai_codex_relay_key_env: "RELAY_KEY",
+      openai_codex_relay_key_configured: true,
       openai_codex_relay_transport: "sse",
       openai_codex_relay_gateway: "any",
       openai_codex_relay_timeout_seconds: 25,
@@ -1147,7 +1147,7 @@ describe("admin SettingsView payment visible method controls", () => {
     const url = wrapper.get<HTMLInputElement>("#codex-relay-url");
     expect(url.element.value).toBe("https://relay.example.com");
     await url.setValue("https://relay-updated.example.com");
-    await wrapper.get("#codex-relay-key-env").setValue("UPDATED_RELAY_KEY");
+    await wrapper.get("#codex-relay-key").setValue("UPDATED_RELAY_KEY");
     await wrapper.get("#codex-relay-transport").setValue("websocket");
     await wrapper.get("#codex-relay-gateway").setValue("any");
     await wrapper.get("#codex-relay-timeout").setValue("45");
@@ -1155,7 +1155,7 @@ describe("admin SettingsView payment visible method controls", () => {
     await flushPromises();
     expect(updateSettings.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       openai_codex_relay_url: "https://relay-updated.example.com",
-      openai_codex_relay_key_env: "UPDATED_RELAY_KEY",
+      openai_codex_relay_key: "UPDATED_RELAY_KEY",
       openai_codex_relay_transport: "websocket",
       openai_codex_relay_gateway: "any",
       openai_codex_relay_timeout_seconds: 45,
@@ -1169,7 +1169,7 @@ describe("admin SettingsView payment visible method controls", () => {
     const wrapper = mountView();
     await flushPromises();
     expect(wrapper.get<HTMLInputElement>("#codex-relay-url").element.value).toBe("");
-    expect(wrapper.get<HTMLInputElement>("#codex-relay-key-env").element.value).toBe("SUB2API_CODEX_CLOUD_MINT_KEY");
+    expect(wrapper.get<HTMLInputElement>("#codex-relay-key").element.value).toBe("");
     expect(wrapper.get<HTMLSelectElement>("#codex-relay-transport").element.value).toBe("sse");
     expect(wrapper.get<HTMLInputElement>("#codex-relay-gateway").element.value).toBe("any");
     expect(wrapper.get<HTMLInputElement>("#codex-relay-timeout").element.value).toBe("25");
@@ -1864,7 +1864,7 @@ describe("admin SettingsView payment visible method controls", () => {
       ...baseSettingsResponse,
       openai_codex_ticket_enabled: true,
       openai_codex_relay_url: "https://relay.example.com",
-      openai_codex_relay_key_env: "RELAY_KEY",
+      openai_codex_relay_key_configured: true,
       openai_codex_relay_transport: "sse",
       openai_codex_relay_gateway: "any",
       openai_codex_relay_timeout_seconds: 25,

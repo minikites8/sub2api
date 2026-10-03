@@ -696,7 +696,8 @@ const (
 	// to false so ticket harvesting remains an optional enhancement.
 	SettingKeyOpenAICodexTicketFailClosed      = "openai_codex_ticket_fail_closed"
 	SettingKeyOpenAICodexRelayURL              = "openai_codex_relay_url"
-	SettingKeyOpenAICodexRelayKeyEnv           = "openai_codex_relay_key_env"
+	SettingKeyOpenAICodexRelayKey              = "openai_codex_relay_key"
+	SettingKeyOpenAICodexRelayKeyEnv           = "openai_codex_relay_key_env" // legacy environment-variable name
 	SettingKeyOpenAICodexRelayTransport        = "openai_codex_relay_transport"
 	SettingKeyOpenAICodexRelayGateway          = "openai_codex_relay_gateway"
 	SettingKeyOpenAICodexRelayTimeoutSeconds   = "openai_codex_relay_timeout_seconds"
