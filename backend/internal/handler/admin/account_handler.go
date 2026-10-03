@@ -391,7 +391,7 @@ func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *
 		return
 	}
 	if h.codexTicketProvider != nil {
-		out.CodexTurnTickets = h.codexTicketProvider.OpenAICodexTicketStatuses(context.Background(), account, time.Now())
+		out.CodexTickets = h.codexTicketProvider.OpenAICodexTicketStatuses(context.Background(), account, time.Now())
 		return
 	}
 	if h.cfg == nil {
@@ -403,7 +403,7 @@ func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *
 		cfg.Models = h.codexTicketSettings.GetOpenAICodexTicketModels(context.Background(), cfg.Models)
 		cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background())
 	}
-	out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+	out.CodexTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
 }
 
 func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
@@ -1042,8 +1042,12 @@ func (h *AccountHandler) List(c *gin.Context) {
 		compact := make([]AccountListItemWithConcurrency, len(result))
 		for i := range result {
 			item := result[i]
+			listItem := dto.AccountListItemFromAccount(item.Account)
+			if listItem != nil {
+				listItem.CodexTickets = item.CodexTickets
+			}
 			compact[i] = AccountListItemWithConcurrency{
-				AccountListItem:    dto.AccountListItemFromAccount(item.Account),
+				AccountListItem:    listItem,
 				CurrentConcurrency: item.CurrentConcurrency,
 				SchedulerScore:     item.SchedulerScore,
 				SchedulerScores:    item.SchedulerScores,
@@ -1081,6 +1085,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 		compact := make([]AccountListItemWithConcurrency, len(result))
 		for i, item := range result {
 			listItem := dto.AccountListItemFromAccount(item.Account)
+			if listItem != nil {
+				listItem.CodexTickets = item.CodexTickets
+			}
 			if h.isSimpleMode() && listItem != nil {
 				listItem.GroupIDs = filterSimpleModeGroupIDs(listItem.GroupIDs, simpleModeCompositeServiceGroupIDs(&accounts[i]))
 			}

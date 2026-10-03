@@ -2779,7 +2779,7 @@
 
       <!-- Codex 292 门票状态（仅 OpenAI OAuth） -->
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length"
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTickets.length"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTurnTicket') }}</label>
@@ -2787,21 +2787,17 @@
           {{ t('admin.accounts.openai.codexTurnTicketDesc') }}
         </p>
         <div class="mt-3 space-y-1.5">
-          <div v-for="ticket in codexTurnTickets" :key="ticket.model" class="flex items-center justify-between text-sm">
+          <div v-for="ticket in codexTickets" :key="ticket.model" class="flex items-center justify-between gap-2 text-sm">
             <span class="font-medium">{{ ticket.model }}</span>
             <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">
               {{ t('admin.accounts.openai.codexTurnTicketReady', { time: formatCodexTicketRemaining(ticket.remaining_seconds) }) }}
             </span>
-            <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">
-              {{ t('admin.accounts.openai.codexTurnTicketPaused') }}
+            <span v-else class="text-amber-600 dark:text-amber-400">
+              {{ t(`admin.accounts.codexTickets.states.${ticket.state}`) }}
             </span>
-            <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
-            <div v-if="ticket.probe" class="ml-2 text-xs text-gray-500">
-              {{ t('admin.accounts.openai.ticketProbe.' + ticket.probe.result) }} · HTTP {{ ticket.probe.http_status || '—' }}
-              <div>{{ new Date(ticket.probe.checked_at).toLocaleString() }}</div>
-              <div v-if="ticket.probe.next_probe_at">{{ t('admin.accounts.openai.ticketProbeNext') }} {{ new Date(ticket.probe.next_probe_at).toLocaleString() }}</div>
-              <div v-if="ticket.standby_expires_at">{{ t('admin.accounts.openai.ticketStandbyExpires') }} {{ new Date(ticket.standby_expires_at).toLocaleString() }}</div>
-            </div>
+            <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.codexTickets.attempts', { count: ticket.attempts }) }}
+            </span>
           </div>
         </div>
       </div>
@@ -3704,7 +3700,7 @@ watch(() => [props.show, props.account?.id, autoBPSSupported.value] as const, ([
   else autoBPS.reset()
 }, { immediate: true })
 
-const codexTurnTickets = computed(() => props.account?.codex_turn_tickets ?? [])
+const codexTickets = computed(() => props.account?.codex_tickets ?? [])
 
 function formatCodexTicketRemaining(seconds: number) {
   const total = Math.max(0, Math.floor(seconds || 0))

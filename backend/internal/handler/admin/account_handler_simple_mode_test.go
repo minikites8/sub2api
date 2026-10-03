@@ -172,6 +172,35 @@ func TestAccountHandlerSimpleModeLitePreservesCompactShapeAndETag(t *testing.T) 
 	require.Equal(t, http.StatusNotModified, notModified.Code)
 }
 
+func TestAccountHandlerLiteIncludesLiveCodexTickets(t *testing.T) {
+	account := service.Account{
+		ID: 71, Name: "codex", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive,
+	}
+	svc := &simpleModeAccountService{stubAdminService: newStubAdminService(), account: account}
+	svc.accounts = []service.Account{account}
+	h := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h.SetCodexTicketProvider(&ticketDisplayProviderStub{})
+	r := gin.New()
+	r.GET("/accounts", h.List)
+
+	res := httptest.NewRecorder()
+	r.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/accounts?lite=1", nil))
+	require.Equal(t, http.StatusOK, res.Code, res.Body.String())
+	var payload struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &payload))
+	require.Len(t, payload.Data.Items, 1)
+	tickets, ok := payload.Data.Items[0]["codex_tickets"].([]any)
+	require.True(t, ok)
+	require.Len(t, tickets, 1)
+	ticket, ok := tickets[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "ticket-model", ticket["model"])
+}
+
 func TestAccountHandlerSimpleModeRejectsCompositeGroupBindingsBeforeWrites(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, tt := range []struct{ name, method, path, body string }{
