@@ -261,3 +261,32 @@ func TestNormalizeCodexCloudMintURL(t *testing.T) {
 		})
 	}
 }
+
+func TestCodexCloudMintProbeUsesAccountGatewayOverride(t *testing.T) {
+	account := ticketTestAccount(2)
+	account.Extra = map[string]any{OpenAICodexTicketGatewayExtraKey: "unified-95"}
+	issued := time.Now().Truncate(time.Second)
+	expires := issued.Add(4 * time.Minute)
+	pair := mint780Pair(expires, "unified-88")
+	state := mint780State(issued)
+	cfg := config.OpenAICodexTicketConfig{
+		TargetLength: 780,
+		CloudMint: config.OpenAICodexCloudMintConfig{
+			Enabled: true, URL: "https://relay.example/", KeyEnv: "TEST_CODEX_CLOUD_MINT_KEY",
+			Transport: "sse", Gateway: "unified-88", TimeoutSeconds: 25,
+		},
+	}
+	t.Setenv("TEST_CODEX_CLOUD_MINT_KEY", "relay-secret")
+	s := ticketTestService(t, cfg, nil)
+	s.httpUpstream = &harvestProxyUpstream{do: func(req *http.Request, _ string) (*http.Response, error) {
+		require.Equal(t, "unified-95", req.Header.Get("X-Relay-Mint"))
+		require.Equal(t, "unified-95", req.Header.Get("X-Mint-Gateway"))
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(cloudMintResponseBody(t, "gpt-6-astra", "gpt-6-astra", state, issued, expires, pair))),
+		}, nil
+	}}
+
+	out := s.requestCodex780Probe(context.Background(), account, "token", "gpt-6-astra", "", func() bool { return true }, "session")
+	require.NoError(t, out.Err)
+}

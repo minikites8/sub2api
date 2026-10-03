@@ -2133,6 +2133,25 @@
         </div>
       </div>
 
+      <!-- OpenAI Codex ticket relay gateway override (OAuth / Setup Token) -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token')"
+        class="space-y-2 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.openai.codexTicketGateway') }}</label>
+        <input
+          v-model="openAICodexTicketGateway"
+          type="text"
+          class="input font-mono"
+          :placeholder="t('admin.accounts.openai.codexTicketGatewayPlaceholder')"
+          data-testid="openai-codex-ticket-gateway"
+          autocomplete="off"
+        />
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.openai.codexTicketGatewayHint') }}
+        </p>
+      </div>
+
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -4240,6 +4259,7 @@ const excelBPS403GroupOptions = computed(() => [
 ])
 const copilotSDKEnabled = ref(false)
 const openaiPassthroughEnabled = ref(false)
+const openAICodexTicketGateway = ref('')
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4780,6 +4800,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   excelBPS403TargetGroupID.value = ''
   copilotSDKEnabled.value = false
   openaiPassthroughEnabled.value = false
+  openAICodexTicketGateway.value = ''
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
@@ -4820,6 +4841,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     excelBPS403TargetGroupID.value = typeof targetGroupID === 'number' && Number.isSafeInteger(targetGroupID) && targetGroupID >= 0 ? targetGroupID : ''
     copilotSDKEnabled.value = newAccount.type === 'apikey' && extra?.openai_copilot_sdk === true
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+    openAICodexTicketGateway.value = typeof extra?.openai_codex_ticket_gateway === 'string' ? extra.openai_codex_ticket_gateway : ''
     openaiFlattenNamespacesEnabled.value =
       newAccount.type === 'oauth' && extra?.openai_responses_flatten_namespaces === true
     const longContextBillingValue = extra?.openai_long_context_billing_enabled
@@ -6426,6 +6448,14 @@ const handleSubmit = async () => {
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
+        const gateway = openAICodexTicketGateway.value.trim()
+        if (gateway) {
+          newExtra.openai_codex_ticket_gateway = gateway
+        } else {
+          delete newExtra.openai_codex_ticket_gateway
+        }
+      }
       if (props.account.type === 'oauth') {
         applyAccountRPMSettings(newExtra, {
           enabled: rpmLimitEnabled.value,

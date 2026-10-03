@@ -296,14 +296,22 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		if ticket != nil && !ticketIdentityMatches(account, ticket) {
 			ticket = nil
 		}
+		accountGateway := codex780GatewayOverrideForAccount(account)
+		if ticket != nil && ticket.Length == 780 && accountGateway != "" && !codex780GatewayAllowed(ticket.Gateway, accountGateway) {
+			ticket = nil
+		}
 		usingStandby := false
 		if ticket != nil && ticket.Standby.valid(now, targetLen) {
-			standbyExp := openAICodexTicketRemainingUntil(ticket.Standby)
-			status.StandbyExpiresAt = &standbyExp
-			if !ticket.valid(now, targetLen) {
-				ticket = ticket.Standby
-				status.StandbyExpiresAt = nil
-				usingStandby = true
+			if ticket.Standby.Length == 780 && accountGateway != "" && !codex780GatewayAllowed(ticket.Standby.Gateway, accountGateway) {
+				ticket.Standby = nil
+			} else {
+				standbyExp := openAICodexTicketRemainingUntil(ticket.Standby)
+				status.StandbyExpiresAt = &standbyExp
+				if !ticket.valid(now, targetLen) {
+					ticket = ticket.Standby
+					status.StandbyExpiresAt = nil
+					usingStandby = true
+				}
 			}
 		}
 		if ticket.valid(now, targetLen) {
@@ -579,7 +587,7 @@ func (s *OpenAIGatewayService) lookupCodexTicketLocked(account *Account, model s
 		if protocol == "" {
 			protocol = "sse"
 		}
-		gateway := effectiveCodex780Gateway(s.openAICodexTicketConfig(), controls)
+		gateway := effectiveCodex780GatewayForAccount(s.openAICodexTicketConfig(), controls, account)
 		if mem != nil && (mem.Transport != protocol || !codex780GatewayAllowed(mem.Gateway, gateway)) {
 			mem = nil
 		}

@@ -133,17 +133,23 @@ type harvestFlowStoreBox struct {
 }
 
 type codexHarvestFlowRing struct {
-	mu       sync.Mutex
-	seq      atomic.Uint64
-	events   []CodexHarvestFlowEvent
-	skips    map[string]time.Time
-	lastNow  string
-	lastType string
-	lastAll  int
-	persist  atomic.Value
+	mu                sync.Mutex
+	seq               atomic.Uint64
+	events            []CodexHarvestFlowEvent
+	skips             map[string]time.Time
+	lastNow           string
+	lastType          string
+	lastAll           int
+	persist           atomic.Value
+	ticketLogs        map[string][]OpenAICodexTicketLogEntry
+	ticketLogSequence map[string]int
 }
 
-var defaultCodexHarvestFlow = &codexHarvestFlowRing{skips: make(map[string]time.Time)}
+var defaultCodexHarvestFlow = &codexHarvestFlowRing{
+	skips:             make(map[string]time.Time),
+	ticketLogs:        make(map[string][]OpenAICodexTicketLogEntry),
+	ticketLogSequence: make(map[string]int),
+}
 
 func resetCodexHarvestFlow() {
 	defaultCodexHarvestFlow.mu.Lock()
@@ -153,6 +159,8 @@ func resetCodexHarvestFlow() {
 	defaultCodexHarvestFlow.lastNow = ""
 	defaultCodexHarvestFlow.lastType = ""
 	defaultCodexHarvestFlow.lastAll = 0
+	defaultCodexHarvestFlow.ticketLogs = make(map[string][]OpenAICodexTicketLogEntry)
+	defaultCodexHarvestFlow.ticketLogSequence = make(map[string]int)
 	defaultCodexHarvestFlow.seq.Store(0)
 }
 
@@ -171,6 +179,7 @@ func recordCodexHarvestFlow(event CodexHarvestFlowEvent) {
 		event.ID = fmt.Sprintf("%d-%d", event.At.UnixNano(), defaultCodexHarvestFlow.seq.Add(1))
 	}
 	defaultCodexHarvestFlow.events = append(defaultCodexHarvestFlow.events, event)
+	appendCodexTicketHistoryLocked(event)
 	if overflow := len(defaultCodexHarvestFlow.events) - codexHarvestFlowCap; overflow > 0 {
 		defaultCodexHarvestFlow.events = append([]CodexHarvestFlowEvent(nil), defaultCodexHarvestFlow.events[overflow:]...)
 	}
@@ -211,6 +220,11 @@ func hydrateCodexHarvestFlow(repo CodexHarvestFlowRepository) {
 		return
 	}
 	defaultCodexHarvestFlow.events = append([]CodexHarvestFlowEvent(nil), events...)
+	defaultCodexHarvestFlow.ticketLogs = make(map[string][]OpenAICodexTicketLogEntry)
+	defaultCodexHarvestFlow.ticketLogSequence = make(map[string]int)
+	for _, event := range defaultCodexHarvestFlow.events {
+		appendCodexTicketHistoryLocked(event)
+	}
 }
 
 func persistCodexHarvestFlow(event CodexHarvestFlowEvent) {
@@ -503,9 +517,10 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 			RecoverAt:    recoverAt,
 			Tickets:      OpenAICodexTicketStatuses(&account, ticketCfg, now),
 		}
+		accountGateway := effectiveCodex780GatewayForAccount(ticketCfg, policy, &account)
 		for i := range item.Tickets {
 			ticket := &item.Tickets[i]
-			if ticket.Length == 780 && (ticket.Transport != policy.Transport || !codex780GatewayAllowed(ticket.Gateway, policy.TargetGateway)) {
+			if ticket.Length == 780 && (ticket.Transport != policy.Transport || !codex780GatewayAllowed(ticket.Gateway, accountGateway)) {
 				ticket.Ready = false
 				ticket.RemainingSeconds = 0
 				ticket.ExpiresAt = nil

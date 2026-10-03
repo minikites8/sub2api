@@ -951,13 +951,48 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if v := settings[SettingKeyOpenAICodexTicketEnabled]; v != "" {
 		result.OpenAICodexTicketEnabled = v == "true"
 	}
-	result.OpenAICodexRelayURL = strings.TrimSpace(settings[SettingKeyOpenAICodexRelayURL])
-	result.OpenAICodexRelayKeyEnv = strings.TrimSpace(settings[SettingKeyOpenAICodexRelayKeyEnv])
-	result.OpenAICodexRelayTransport = strings.TrimSpace(settings[SettingKeyOpenAICodexRelayTransport])
-	result.OpenAICodexRelayGateway = strings.TrimSpace(settings[SettingKeyOpenAICodexRelayGateway])
-	if value, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexRelayTimeoutSeconds])); err == nil {
-		result.OpenAICodexRelayTimeoutSeconds = value
+	// Relay settings can come from config/env before an administrator saves a
+	// database override. Keep those values visible in the settings form.
+	relayCfg := ticketCfg.CloudMint
+	relayURL := strings.TrimSpace(relayCfg.URL)
+	relayKeyEnv := strings.TrimSpace(relayCfg.KeyEnv)
+	relayTransport := strings.TrimSpace(relayCfg.Transport)
+	relayGateway := strings.TrimSpace(relayCfg.Gateway)
+	relayTimeout := relayCfg.TimeoutSeconds
+	if relayKeyEnv == "" {
+		relayKeyEnv = "SUB2API_CODEX_CLOUD_MINT_KEY"
 	}
+	if relayTransport == "" {
+		relayTransport = "sse"
+	}
+	if relayGateway == "" {
+		relayGateway = "any"
+	}
+	if relayTimeout <= 0 {
+		relayTimeout = 25
+	}
+	if value, ok := settings[SettingKeyOpenAICodexRelayURL]; ok && strings.TrimSpace(value) != "" {
+		relayURL = strings.TrimSpace(value)
+	}
+	if value, ok := settings[SettingKeyOpenAICodexRelayKeyEnv]; ok && strings.TrimSpace(value) != "" {
+		relayKeyEnv = strings.TrimSpace(value)
+	}
+	if value, ok := settings[SettingKeyOpenAICodexRelayTransport]; ok && strings.TrimSpace(value) != "" {
+		relayTransport = strings.TrimSpace(value)
+	}
+	if value, ok := settings[SettingKeyOpenAICodexRelayGateway]; ok && strings.TrimSpace(value) != "" {
+		relayGateway = strings.TrimSpace(value)
+	}
+	if value, ok := settings[SettingKeyOpenAICodexRelayTimeoutSeconds]; ok {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && parsed > 0 {
+			relayTimeout = parsed
+		}
+	}
+	result.OpenAICodexRelayURL = relayURL
+	result.OpenAICodexRelayKeyEnv = relayKeyEnv
+	result.OpenAICodexRelayTransport = relayTransport
+	result.OpenAICodexRelayGateway = relayGateway
+	result.OpenAICodexRelayTimeoutSeconds = relayTimeout
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	result.OpenAICodexClientVersion = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersion])

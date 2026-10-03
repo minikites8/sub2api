@@ -13,7 +13,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
-const codexHarvestControlsKey = "openai_codex_harvest_controls_v1"
+const (
+	codexHarvestControlsKey          = "openai_codex_harvest_controls_v1"
+	OpenAICodexTicketGatewayExtraKey = "openai_codex_ticket_gateway"
+)
 
 type CodexHarvestSpeed struct {
 	RoundIntervalSeconds  int `json:"round_interval_seconds"`
@@ -191,6 +194,58 @@ func effectiveCodex780Gateway(cfg config.OpenAICodexTicketConfig, controls Codex
 		return target
 	}
 	return "unified-88"
+}
+
+func codex780GatewayOverrideForAccount(account *Account) string {
+	if account == nil || account.Extra == nil {
+		return ""
+	}
+	raw, ok := account.Extra[OpenAICodexTicketGatewayExtraKey]
+	if !ok {
+		return ""
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	target := normalizeCodex780Gateway(value)
+	if target == "any" || regexp.MustCompile("^unified-[0-9]{1,5}$").MatchString(target) {
+		return target
+	}
+	return ""
+}
+
+func effectiveCodex780GatewayForAccount(cfg config.OpenAICodexTicketConfig, controls CodexHarvestControls, account *Account) string {
+	if target := codex780GatewayOverrideForAccount(account); target != "" {
+		return target
+	}
+	return effectiveCodex780Gateway(cfg, controls)
+}
+
+// NormalizeOpenAICodexTicketGatewayExtra validates and canonicalizes an account-level
+// relay gateway override. Empty values clear the override and inherit the global target.
+func NormalizeOpenAICodexTicketGatewayExtra(extra map[string]any) error {
+	if extra == nil {
+		return nil
+	}
+	raw, ok := extra[OpenAICodexTicketGatewayExtraKey]
+	if !ok || raw == nil {
+		return nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return errors.New("openai_codex_ticket_gateway must be a string")
+	}
+	target := normalizeCodex780Gateway(value)
+	if target == "" {
+		delete(extra, OpenAICodexTicketGatewayExtraKey)
+		return nil
+	}
+	if target != "any" && !regexp.MustCompile(`^unified-[0-9]{1,5}$`).MatchString(target) {
+		return errors.New("openai_codex_ticket_gateway must be any, unified-N or chat.gateway.unified-N.api.openai.com")
+	}
+	extra[OpenAICodexTicketGatewayExtraKey] = target
+	return nil
 }
 func NewCodexHarvestService(nodes CodexHarvestNodeRepository, settings SettingRepository, cfg *config.Config) *CodexHarvestService {
 	v := CodexHarvestControls{Version: 1, Speed: CodexHarvestSpeedPresets()["standard"]}

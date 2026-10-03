@@ -198,3 +198,44 @@ func TestCodexTicketSettingsRefreshDoesNotMutateSharedConfig(t *testing.T) {
 	require.False(t, cfg.Gateway.OpenAICodexTicket.Enabled, "runtime settings must not write the shared immutable startup configuration")
 	require.True(t, svc.GetOpenAICodexTicketEnabled(context.Background(), false))
 }
+
+func TestParseSettingsRelayEchoesConfigWhenDatabaseOverridesAreMissing(t *testing.T) {
+	svc := &SettingService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		OpenAICodexTicket: config.OpenAICodexTicketConfig{CloudMint: config.OpenAICodexCloudMintConfig{
+			URL: "https://relay.example.com/mint", KeyEnv: "CUSTOM_RELAY_KEY", Transport: "websocket",
+			Gateway: "unified-95", TimeoutSeconds: 31,
+		}},
+	}}}
+	settings := svc.parseSettings(map[string]string{})
+	require.Equal(t, "https://relay.example.com/mint", settings.OpenAICodexRelayURL)
+	require.Equal(t, "CUSTOM_RELAY_KEY", settings.OpenAICodexRelayKeyEnv)
+	require.Equal(t, "websocket", settings.OpenAICodexRelayTransport)
+	require.Equal(t, "unified-95", settings.OpenAICodexRelayGateway)
+	require.Equal(t, 31, settings.OpenAICodexRelayTimeoutSeconds)
+
+	overridden := svc.parseSettings(map[string]string{
+		SettingKeyOpenAICodexRelayURL:            "https://saved.example.com/mint",
+		SettingKeyOpenAICodexRelayKeyEnv:         "SAVED_RELAY_KEY",
+		SettingKeyOpenAICodexRelayTransport:      "sse",
+		SettingKeyOpenAICodexRelayGateway:        "any",
+		SettingKeyOpenAICodexRelayTimeoutSeconds: "45",
+	})
+	require.Equal(t, "https://saved.example.com/mint", overridden.OpenAICodexRelayURL)
+	require.Equal(t, "SAVED_RELAY_KEY", overridden.OpenAICodexRelayKeyEnv)
+	require.Equal(t, "sse", overridden.OpenAICodexRelayTransport)
+	require.Equal(t, "any", overridden.OpenAICodexRelayGateway)
+	require.Equal(t, 45, overridden.OpenAICodexRelayTimeoutSeconds)
+
+	emptyOverrides := svc.parseSettings(map[string]string{
+		SettingKeyOpenAICodexRelayURL:            "",
+		SettingKeyOpenAICodexRelayKeyEnv:         "",
+		SettingKeyOpenAICodexRelayTransport:      "",
+		SettingKeyOpenAICodexRelayGateway:        "",
+		SettingKeyOpenAICodexRelayTimeoutSeconds: "0",
+	})
+	require.Equal(t, "https://relay.example.com/mint", emptyOverrides.OpenAICodexRelayURL)
+	require.Equal(t, "CUSTOM_RELAY_KEY", emptyOverrides.OpenAICodexRelayKeyEnv)
+	require.Equal(t, "websocket", emptyOverrides.OpenAICodexRelayTransport)
+	require.Equal(t, "unified-95", emptyOverrides.OpenAICodexRelayGateway)
+	require.Equal(t, 31, emptyOverrides.OpenAICodexRelayTimeoutSeconds)
+}

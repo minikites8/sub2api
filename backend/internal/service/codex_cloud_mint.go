@@ -182,7 +182,7 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		out.Err = err
 		return
 	}
-	target := effectiveCodex780Gateway(s.openAICodexTicketConfig(), controls)
+	target := effectiveCodex780GatewayForAccount(s.openAICodexTicketConfig(), controls, account)
 	out.Transport = transport
 	out.Gateway = target
 	// Relay selects the upstream edge. The legacy direct edge override is not

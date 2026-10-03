@@ -1154,3 +1154,33 @@ func TestBuildUpstreamRequest_BoundTicketPinsHarvestIdentity(t *testing.T) {
 	require.False(t, gjson.GetBytes(got, "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(got, "client_metadata").Exists())
 }
+
+func TestOpenAICodexTicketStatusesHonorsAccountGatewayOverride(t *testing.T) {
+	now := time.Now()
+	account := ticketTestAccount(77)
+	account.Extra = map[string]any{
+		OpenAICodexTicketGatewayExtraKey: "unified-95",
+		openAICodexTicketExtraKey("gpt-6-astra"): map[string]any{
+			"state":           mint780State(now),
+			"length":          780,
+			"model":           "gpt-6-astra",
+			"issued_at":       now.UTC().Format(time.RFC3339Nano),
+			"expires_at":      now.Add(time.Hour).UTC().Format(time.RFC3339Nano),
+			"transport":       "sse",
+			"gateway":         "unified-88",
+			"harvest_cookies": mint780Pair(now.Add(time.Hour), "unified-88"),
+		},
+	}
+	cfg := config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true, TargetLength: 780, Models: []string{"gpt-6-astra"}}
+	status := OpenAICodexTicketStatuses(account, cfg, now)
+	require.Len(t, status, 1)
+	require.False(t, status[0].Ready)
+	require.True(t, status[0].Blocked)
+
+	ticket := account.Extra[openAICodexTicketExtraKey("gpt-6-astra")].(map[string]any)
+	ticket["gateway"] = "unified-95"
+	ticket["harvest_cookies"] = mint780Pair(now.Add(time.Hour), "unified-95")
+	status = OpenAICodexTicketStatuses(account, cfg, now)
+	require.True(t, status[0].Ready)
+	require.Equal(t, "unified-95", status[0].Gateway)
+}

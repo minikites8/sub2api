@@ -1164,6 +1164,17 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("restores Codex Relay defaults when older settings responses omit relay fields", async () => {
+    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse });
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get<HTMLInputElement>("#codex-relay-url").element.value).toBe("");
+    expect(wrapper.get<HTMLInputElement>("#codex-relay-key-env").element.value).toBe("SUB2API_CODEX_CLOUD_MINT_KEY");
+    expect(wrapper.get<HTMLSelectElement>("#codex-relay-transport").element.value).toBe("sse");
+    expect(wrapper.get<HTMLInputElement>("#codex-relay-gateway").element.value).toBe("any");
+    expect(wrapper.get<HTMLInputElement>("#codex-relay-timeout").element.value).toBe("25");
+    wrapper.unmount();
+  });
   it("loads and saves the open button visibility for each custom menu", async () => {
     const menuItems = [
       { id: "docs", label: "Docs", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },

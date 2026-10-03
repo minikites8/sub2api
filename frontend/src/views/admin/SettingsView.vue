@@ -11712,6 +11712,25 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.openai_codex_relay_url =
+      typeof settings.openai_codex_relay_url === "string"
+        ? settings.openai_codex_relay_url.trim()
+        : "";
+    form.openai_codex_relay_key_env =
+      typeof settings.openai_codex_relay_key_env === "string" && settings.openai_codex_relay_key_env.trim()
+        ? settings.openai_codex_relay_key_env.trim()
+        : "SUB2API_CODEX_CLOUD_MINT_KEY";
+    form.openai_codex_relay_transport =
+      settings.openai_codex_relay_transport === "websocket" ? "websocket" : "sse";
+    form.openai_codex_relay_gateway =
+      typeof settings.openai_codex_relay_gateway === "string" && settings.openai_codex_relay_gateway.trim()
+        ? settings.openai_codex_relay_gateway.trim()
+        : "any";
+    const relayTimeout = Number(settings.openai_codex_relay_timeout_seconds);
+    form.openai_codex_relay_timeout_seconds =
+      Number.isFinite(relayTimeout) && relayTimeout >= 5 && relayTimeout <= 120
+        ? relayTimeout
+        : 25;
     form.openai_codex_ticket_harvest_scope =
       normalizeOpenAICodexTicketHarvestScope(
         settings.openai_codex_ticket_harvest_scope,

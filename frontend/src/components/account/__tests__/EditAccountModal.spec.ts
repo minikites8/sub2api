@@ -414,6 +414,29 @@ describe('EditAccountModal', () => {
     }
   })
 
+  it('saves, restores and clears the per-account Codex ticket gateway', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { unrelated: 'preserve' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]')
+    await input.setValue('unified-95')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra.openai_codex_ticket_gateway).toBe('unified-95')
+    expect(extra.unrelated).toBe('preserve')
+    wrapper.unmount()
+
+    const restored = mountModal({ ...account, extra })
+    expect(restored.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]').element.value).toBe('unified-95')
+    await restored.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]').setValue('')
+    await restored.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[1]?.[1]?.extra).not.toHaveProperty('openai_codex_ticket_gateway')
+    restored.unmount()
+  })
   beforeEach(() => {
     authIsSimpleMode.value = true
   })
@@ -2287,6 +2310,29 @@ describe('EditAccountModal', () => {
 })
 
 describe('EditAccountModal OpenAI 自动使用重置卡', () => {
+  it('saves, restores and clears the per-account Codex ticket gateway', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { unrelated: 'preserve' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]')
+    await input.setValue('unified-95')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra.openai_codex_ticket_gateway).toBe('unified-95')
+    expect(extra.unrelated).toBe('preserve')
+    wrapper.unmount()
+
+    const restored = mountModal({ ...account, extra })
+    expect(restored.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]').element.value).toBe('unified-95')
+    await restored.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]').setValue('')
+    await restored.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[1]?.[1]?.extra).not.toHaveProperty('openai_codex_ticket_gateway')
+    restored.unmount()
+  })
   beforeEach(() => {
     authIsSimpleMode.value = true
     updateAccountMock.mockReset()
@@ -2358,6 +2404,7 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
 
 
 describe('independent account cost multiplier', () => {
+
   beforeEach(() => {
     vi.clearAllMocks()
     authIsSimpleMode.value = true

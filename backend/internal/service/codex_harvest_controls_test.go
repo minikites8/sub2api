@@ -182,3 +182,50 @@ func TestEffectiveCodex780GatewayUsesCloudMintTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestEffectiveCodex780GatewayUsesAccountOverride(t *testing.T) {
+	cfg := config.OpenAICodexTicketConfig{
+		CloudMint: config.OpenAICodexCloudMintConfig{Enabled: true, Gateway: "unified-88"},
+	}
+	controls := CodexHarvestControls{TargetGateway: "unified-84"}
+	account := ticketTestAccount(1)
+	account.Extra = map[string]any{OpenAICodexTicketGatewayExtraKey: "88"}
+	require.Equal(t, "unified-88", effectiveCodex780GatewayForAccount(cfg, controls, account))
+
+	account.Extra[OpenAICodexTicketGatewayExtraKey] = "any"
+	require.Equal(t, "any", effectiveCodex780GatewayForAccount(cfg, controls, account))
+
+	delete(account.Extra, OpenAICodexTicketGatewayExtraKey)
+	require.Equal(t, "unified-88", effectiveCodex780GatewayForAccount(cfg, controls, account))
+}
+
+func TestNormalizeOpenAICodexTicketGatewayExtra(t *testing.T) {
+	cases := []struct {
+		name    string
+		extra   map[string]any
+		want    any
+		wantErr string
+	}{
+		{name: "alias", extra: map[string]any{OpenAICodexTicketGatewayExtraKey: "unified88"}, want: "unified-88"},
+		{name: "hostname", extra: map[string]any{OpenAICodexTicketGatewayExtraKey: "chat.gateway.unified-95.api.openai.com"}, want: "unified-95"},
+		{name: "any", extra: map[string]any{OpenAICodexTicketGatewayExtraKey: "any"}, want: "any"},
+		{name: "empty clears", extra: map[string]any{OpenAICodexTicketGatewayExtraKey: "  "}, want: nil},
+		{name: "invalid", extra: map[string]any{OpenAICodexTicketGatewayExtraKey: "unified-x"}, wantErr: "openai_codex_ticket_gateway"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := NormalizeOpenAICodexTicketGatewayExtra(tc.extra)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			if tc.want == nil {
+				_, exists := tc.extra[OpenAICodexTicketGatewayExtraKey]
+				require.False(t, exists)
+				return
+			}
+			require.Equal(t, tc.want, tc.extra[OpenAICodexTicketGatewayExtraKey])
+		})
+	}
+}

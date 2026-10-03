@@ -603,6 +603,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	if err := NormalizeOpenAICodexTicketGatewayExtra(accountExtra); err != nil {
+		return nil, err
+	}
 	delete(accountExtra, OpenAIAccountGuardLastRunAtExtraKey)
 	if len(input.ProxyPool) == 0 {
 		if extraPool, present, poolErr := accountProxyPoolInputsFromExtra(accountExtra); poolErr != nil {
@@ -755,6 +758,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		normalizedExtra, err = normalizeOpenAIAccountGuardExtra(account.Platform, candidateType, normalizedExtra)
 		if err != nil {
+			return nil, err
+		}
+		if err := NormalizeOpenAICodexTicketGatewayExtra(normalizedExtra); err != nil {
 			return nil, err
 		}
 		if normalizedExtra[OpenAIAccountGuardEnabledExtraKey] == true {
