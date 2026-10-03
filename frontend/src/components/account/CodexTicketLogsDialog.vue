@@ -18,7 +18,7 @@
     </div>
     <div v-if="blacklistFailed" role="alert" class="mb-3 rounded-lg bg-red-50 p-3 text-xs text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ t('admin.accounts.codexTickets.blacklistFailed') }}</div>
     <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-600" :aria-busy="loading && !snapshot">
-      <table class="w-full min-w-[1000px] table-fixed text-left text-xs">
+      <table class="w-full min-w-[1100px] table-fixed text-left text-xs">
         <caption class="sr-only">{{ t('admin.accounts.codexTickets.viewLogs', { model }) }}</caption>
         <thead class="border-b border-gray-200 text-gray-500 dark:border-dark-600 dark:text-gray-400">
           <tr>
@@ -44,6 +44,7 @@
                 >{{ t(isBlacklisted(entry.gateway) ? 'admin.accounts.codexTickets.gatewayBlacklisted' : blacklistSaving === entry.gateway ? 'admin.accounts.codexTickets.blacklistSaving' : 'admin.accounts.codexTickets.addToBlacklist') }}</button>
               </div>
             </td>
+            <td class="break-all px-3 py-3 font-mono text-[11px]">{{ entry.edge_ip || '—' }}</td>
             <td class="whitespace-nowrap px-3 py-3 tabular-nums">{{ entry.ticket_length ?? '—' }} / {{ entry.target_length }}</td>
             <td class="whitespace-nowrap px-3 py-3 tabular-nums">{{ entry.duration_ms == null ? '—' : `${entry.duration_ms} ms` }}</td>
           </tr>
@@ -81,9 +82,9 @@ const canBlacklist = (gateway?: string) => !!gateway && /^unified-\d{1,5}$/.test
 const isBlacklisted = (gateway?: string) => !!gateway && gatewayBlacklist.value.includes(normalizeCodexGatewayName(gateway))
 const entries = computed(() => [...(snapshot.value?.entries ?? [])].sort((a, b) => b.id - a.id))
 const columns = [
-  { key: 'time', width: '14%' }, { key: 'attempt', width: '8%' }, { key: 'event', width: '9%' },
-  { key: 'reason', width: '25%' }, { key: 'http', width: '6%' }, { key: 'gateway', width: '16%' },
-  { key: 'length', width: '14%' }, { key: 'duration', width: '8%' }
+  { key: 'time', width: '13%' }, { key: 'attempt', width: '6%' }, { key: 'event', width: '8%' },
+  { key: 'reason', width: '18%' }, { key: 'http', width: '5%' }, { key: 'gateway', width: '14%' },
+  { key: 'edgeIp', width: '16%' }, { key: 'length', width: '12%' }, { key: 'duration', width: '8%' }
 ]
 const reasonKeys = new Set(['request_started', 'target_length_matched', 'http_error', 'missing_state', 'invalid_prefix', 'length_mismatch', 'timeout', 'canceled', 'network_error', 'empty_response', 'request_error'])
 const reason = (value: string) => t(`admin.accounts.codexTickets.reasons.${reasonKeys.has(value) ? value : 'request_error'}`)

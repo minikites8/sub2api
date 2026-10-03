@@ -19,7 +19,7 @@ func TestCodexHarvestFlowRecordsProbeTicketAndSelect(t *testing.T) {
 	account := ticketTestAccount(2)
 	account.Name = "20x"
 	recordCodexHarvestNode("airport-node-1", "load-balance", 340)
-	recordCodexHarvestProbe(account, "gpt-6-astra", "invalid_state", lastCodexHarvestNode(), "", "", 200, 312, 11, 292, 10)
+	recordCodexHarvestProbe(account, "gpt-6-astra", "invalid_state", lastCodexHarvestNode(), "", "", "", 200, 312, 11, 292, 10)
 	recordCodexHarvestTicketReject(account, "gpt-6-astra", "response_mismatch", 312, 11)
 	recordCodexHarvestSelect(account, "gpt-6-astra", "skip", "ticket_unavailable", "")
 	recordCodexHarvestSelect(account, "gpt-6-astra", "skip", "ticket_unavailable", "")
@@ -53,7 +53,7 @@ func TestBuildCodexHarvestFlowSnapshotAndStages(t *testing.T) {
 			Identity:   ticketIdentity(account),
 		},
 	}
-	recordCodexHarvestProbe(account, "gpt-6-astra", "success", "airport-node-2", "", "", 200, 292, 10, 292, 10)
+	recordCodexHarvestProbe(account, "gpt-6-astra", "success", "airport-node-2", "", "", "", 200, 292, 10, 292, 10)
 	recordCodexHarvestTicketStore(account, &openAICodexTicket{Model: "gpt-6-astra", Length: 292, Blocks: 10}, false)
 	recordCodexHarvestSelect(account, "gpt-6-astra", "selected", "", "")
 
@@ -209,10 +209,10 @@ func TestShapeStageKeeps292AfterUnauthorizedProbe(t *testing.T) {
 	t.Cleanup(resetCodexHarvestFlow)
 	account := ticketTestAccount(2)
 	account.Name = "20x"
-	recordCodexHarvestProbe(account, "gpt-6-astra", "success", "japan-08", "", "", 200, 292, 10, 292, 10)
+	recordCodexHarvestProbe(account, "gpt-6-astra", "success", "japan-08", "", "", "", 200, 292, 10, 292, 10)
 	dead := ticketTestAccount(3)
 	dead.Name = "5x"
-	recordCodexHarvestProbe(dead, "gpt-6-astra", "response_incomplete_or_error", "japan-08", "", "", 401, 0, 0, 292, 10)
+	recordCodexHarvestProbe(dead, "gpt-6-astra", "response_incomplete_or_error", "japan-08", "", "", "", 401, 0, 0, 292, 10)
 
 	snapshot := BuildCodexHarvestFlow(context.Background(), &config.Config{
 		Gateway: config.GatewayConfig{OpenAICodexTicket: config.OpenAICodexTicketConfig{
@@ -232,7 +232,7 @@ func TestShapeStageFailsOnWrongTicketLength(t *testing.T) {
 	resetCodexHarvestFlow()
 	t.Cleanup(resetCodexHarvestFlow)
 	account := ticketTestAccount(2)
-	recordCodexHarvestProbe(account, "gpt-6-astra", "invalid_state", "japan-08", "", "", 200, 312, 11, 292, 10)
+	recordCodexHarvestProbe(account, "gpt-6-astra", "invalid_state", "japan-08", "", "", "", 200, 312, 11, 292, 10)
 	stages := buildCodexHarvestFlowStages(CodexHarvestFlowSnapshot{Events: listCodexHarvestFlowEvents()})
 	require.Equal(t, "fail", stages[2].Status)
 	require.Contains(t, stages[2].Detail, "312")
@@ -268,7 +268,7 @@ func TestRecordCodexHarvestProbeHumanizesMiss(t *testing.T) {
 	resetCodexHarvestFlow()
 	t.Cleanup(resetCodexHarvestFlow)
 	account := ticketTestAccount(2)
-	recordCodexHarvestProbe(account, "gpt-6-astra", "invalid_state", "node-a", "", "", 200, 312, 11, 292, 10)
+	recordCodexHarvestProbe(account, "gpt-6-astra", "invalid_state", "node-a", "", "", "", 200, 312, 11, 292, 10)
 	events := listCodexHarvestFlowEvents()
 	require.NotEmpty(t, events)
 	require.Contains(t, events[len(events)-1].Detail, "降智")
@@ -317,7 +317,7 @@ func TestHarvestFlowPersistsAcrossRestart(t *testing.T) {
 	})
 	account := ticketTestAccount(2)
 	account.Name = "20x"
-	recordCodexHarvestProbe(account, "gpt-6-astra", "success", "japan-08", "unified-88", "", 200, 292, 10, 292, 10)
+	recordCodexHarvestProbe(account, "gpt-6-astra", "success", "japan-08", "unified-88", "203.0.113.10", "", 200, 292, 10, 292, 10)
 	require.Len(t, store.events, 1)
 	resetCodexHarvestFlow()
 	require.Empty(t, listCodexHarvestFlowEvents())
@@ -327,9 +327,11 @@ func TestHarvestFlowPersistsAcrossRestart(t *testing.T) {
 	require.Equal(t, "probe_hit", events[0].Kind)
 	require.Equal(t, "japan-08", events[0].Node)
 	require.Equal(t, "unified-88", events[0].Gateway)
+	require.Equal(t, "203.0.113.10", events[0].EdgeIP)
 	history := listCodexTicketHistory(account.ID, "gpt-6-astra")
 	require.Len(t, history, 1)
 	require.Equal(t, "unified-88", history[0].Gateway)
+	require.Equal(t, "203.0.113.10", history[0].EdgeIP)
 }
 
 func TestHarvestFlowPersistFailureKeepsMemory(t *testing.T) {

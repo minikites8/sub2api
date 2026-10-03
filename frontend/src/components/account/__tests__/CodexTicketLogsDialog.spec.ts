@@ -23,7 +23,7 @@ const snapshot = (model = 'gpt-6-astra'): CodexTicketLogsResponse => ({
   status: { model, state: 'ready', ready: true, attempts: 3, remaining_seconds: 3540, target_length: 332, harvesting: false, harvest_enabled: true },
   entries: [
     { id: 1, time: '2026-09-20T13:59:00Z', attempt: 3, event: 'started', reason: 'request_started', target_length: 332 },
-    { id: 2, time: '2026-09-20T14:00:00Z', attempt: 3, event: 'acquired', reason: 'target_length_matched', target_length: 332, ticket_length: 332, http_status: 200, duration_ms: 6719, gateway: 'unified-88', egress_ip: '103.131.213.7', egress_country_code: 'PK' }
+    { id: 2, time: '2026-09-20T14:00:00Z', attempt: 3, event: 'acquired', reason: 'target_length_matched', target_length: 332, ticket_length: 332, http_status: 200, duration_ms: 6719, gateway: 'unified-88', edge_ip: '203.0.113.10', egress_ip: '103.131.213.7', egress_country_code: 'PK' }
   ]
 })
 function mountDialog() {
@@ -89,14 +89,20 @@ describe('CodexTicketLogsDialog', () => {
     const wrapper = mountDialog(); await flushPromises()
     expect(getLogs).toHaveBeenCalledWith(71, 'gpt-6-astra', expect.any(AbortSignal))
     expect(wrapper.text()).toContain('打票 3 次'); expect(wrapper.text()).toContain('每 2 秒自动刷新')
-    expect(wrapper.findAll('thead th').map(header => header.text())).toEqual(['时间（最新在前）', '轮内次数', '结果', '原因', 'HTTP', 'Gateway', '长度（实际 / 目标）', '耗时'])
+    expect(wrapper.findAll('thead th').map(header => header.text())).toEqual(['时间（最新在前）', '轮内次数', '结果', '原因', 'HTTP', 'Gateway', 'Edge IP', '长度（实际 / 目标）', '耗时'])
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('unified-88')
+    expect(wrapper.findAll('tbody tr')[0].findAll('td')[6].text()).toBe('203.0.113.10')
     expect(wrapper.text()).not.toContain('103.131.213.7')
     expect(wrapper.text()).not.toContain('出口')
     expect(wrapper.findAll('tbody tr')[1].findAll('td')[5].text()).toBe('—')
+    expect(wrapper.findAll('tbody tr')[1].findAll('td')[6].text()).toBe('—')
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('332 / 332')
     expect(wrapper.text()).toContain('6719 ms')
+    const refreshed = snapshot()
+    refreshed.entries[1].edge_ip = '2001:db8::20'
+    getLogs.mockResolvedValueOnce(refreshed)
     await vi.advanceTimersByTimeAsync(2000); await flushPromises(); expect(getLogs).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('tbody tr')[0].findAll('td')[6].text()).toBe('2001:db8::20')
     wrapper.unmount(); await vi.advanceTimersByTimeAsync(6000); expect(getLogs).toHaveBeenCalledTimes(2)
   })
   it('preserves the last successful snapshot when a refresh fails', async () => {

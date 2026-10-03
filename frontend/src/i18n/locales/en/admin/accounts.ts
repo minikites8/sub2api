@@ -39,6 +39,7 @@ export default {
     "reason": "Reason",
     "http": "HTTP",
     "gateway": "Gateway",
+    "edgeIp": "Edge IP",
     "length": "Length (actual / target)",
     "duration": "Duration"
   },

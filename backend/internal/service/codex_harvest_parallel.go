@@ -118,7 +118,7 @@ func (s *OpenAIGatewayService) runParallelHarvest(ctx context.Context, req Manua
 			raw := safeCodexHarvestError(r.Err)
 			message, level, detail := describeCodexHarvestOutcome(r.Kind, raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg), model, out.node)
 			event := ManualHarvestProgress{Attempt: out.attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: out.node, HTTPStatus: r.Status, Length: len(r.State), Blocks: r.Shape.Blocks, Result: r.Kind, Level: level, Message: message, Detail: detail, TicketsStored: stored}
-			recordCodexHarvestProbe(account, model, r.Kind, out.node, r.Gateway, raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg))
+			recordCodexHarvestProbe(account, model, r.Kind, out.node, r.Gateway, r.EdgeIP, raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg))
 			if r.Kind == "success" {
 				fresh, e := s.accountRepo.GetByID(ctx, account.ID)
 				if e != nil || fresh == nil || ticketIdentity(fresh) != ticketIdentity(account) {

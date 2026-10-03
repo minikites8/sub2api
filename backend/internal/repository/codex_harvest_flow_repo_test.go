@@ -17,7 +17,7 @@ func TestHarvestFlowAppendInsertsThenCaps(t *testing.T) {
 	at := time.Date(2026, 9, 21, 4, 0, 0, 0, time.UTC)
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO codex_harvest_flow_events").
-		WithArgs("evt-1", at, "probe", "probe_hit", int64(2), "20x", "gpt-6-astra", "japan-08", 200, 292, 10, 292, 10, true, false, "success", "", "", "unified-88").
+		WithArgs("evt-1", at, "probe", "probe_hit", int64(2), "20x", "gpt-6-astra", "japan-08", 200, 292, 10, 292, 10, true, false, "success", "", "", "unified-88", "203.0.113.10").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("DELETE FROM codex_harvest_flow_events").
 		WithArgs(harvestFlowPersistCap).
@@ -25,7 +25,7 @@ func TestHarvestFlowAppendInsertsThenCaps(t *testing.T) {
 	mock.ExpectCommit()
 	require.NoError(t, NewCodexHarvestFlowRepository(db).Append(context.Background(), service.CodexHarvestFlowEvent{
 		ID: "evt-1", At: at, Stage: "probe", Kind: "probe_hit", AccountID: 2, AccountName: "20x",
-		Model: "gpt-6-astra", Node: "japan-08", Gateway: "unified-88", HTTPStatus: 200, Length: 292, Blocks: 10,
+		Model: "gpt-6-astra", Node: "japan-08", Gateway: "unified-88", EdgeIP: "203.0.113.10", HTTPStatus: 200, Length: 292, Blocks: 10,
 		ExpectedLength: 292, ExpectedBlocks: 10, Accepted: true, Result: "success",
 	}))
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -41,16 +41,18 @@ func TestHarvestFlowListReturnsChronological(t *testing.T) {
 		WithArgs(harvestFlowPersistCap).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"event_id", "at", "stage", "kind", "account_id", "account_name", "model", "node",
-			"http_status", "length", "blocks", "expected_length", "expected_blocks", "accepted", "standby", "result", "reason", "detail", "gateway",
-		}).AddRow("evt-2", newer, "select", "selected", int64(2), "20x", "gpt-6-astra", "japan-08", 0, 0, 0, 0, 0, false, false, "", "", "", "").
-			AddRow("evt-1", older, "probe", "probe_hit", int64(2), "20x", "gpt-6-astra", "japan-08", 200, 292, 10, 292, 10, true, false, "success", "", "", "unified-88"))
+			"http_status", "length", "blocks", "expected_length", "expected_blocks", "accepted", "standby", "result", "reason", "detail", "gateway", "edge_ip",
+		}).AddRow("evt-2", newer, "select", "selected", int64(2), "20x", "gpt-6-astra", "japan-08", 0, 0, 0, 0, 0, false, false, "", "", "", "", "").
+			AddRow("evt-1", older, "probe", "probe_hit", int64(2), "20x", "gpt-6-astra", "japan-08", 200, 292, 10, 292, 10, true, false, "success", "", "", "unified-88", "2001:db8::20"))
 	events, err := NewCodexHarvestFlowRepository(db).List(context.Background(), 200)
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 	require.Equal(t, "evt-1", events[0].ID)
 	require.Equal(t, "unified-88", events[0].Gateway)
+	require.Equal(t, "2001:db8::20", events[0].EdgeIP)
 	require.Equal(t, "evt-2", events[1].ID)
 	require.Empty(t, events[1].Gateway)
+	require.Empty(t, events[1].EdgeIP)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

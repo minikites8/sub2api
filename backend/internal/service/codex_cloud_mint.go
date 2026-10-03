@@ -314,6 +314,7 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		return
 	}
 	// Capture the observed route for diagnostics even when ticket validation fails.
+	out.EdgeIP = strings.TrimSpace(envelope.EdgeIP)
 	cookies := cloudMintCookiePairs(envelope)
 	out.Gateway = normalizeCodex780Gateway(envelope.Gateway)
 	if out.Gateway == "" || out.Gateway == "any" {
@@ -354,9 +355,6 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		return
 	}
 	out.Cookies = cookies
-	if edge := strings.TrimSpace(envelope.EdgeIP); edge != "" {
-		out.EdgeIP = edge
-	}
 	if ticketExpiry, err := parseCodexCloudMintTime(ticket.ExpiresAt); err != nil {
 		out.Err = err
 		return

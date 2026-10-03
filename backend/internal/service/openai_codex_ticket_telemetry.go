@@ -25,6 +25,7 @@ type OpenAICodexTicketLogEntry struct {
 	TargetLength      int       `json:"target_length"`
 	DurationMS        int64     `json:"duration_ms,omitempty"`
 	Gateway           string    `json:"gateway,omitempty"`
+	EdgeIP            string    `json:"edge_ip,omitempty"`
 	EgressIP          string    `json:"egress_ip,omitempty"`
 	EgressCountryCode string    `json:"egress_country_code,omitempty"`
 }
@@ -105,6 +106,7 @@ func appendCodexTicketHistoryLocked(event CodexHarvestFlowEvent) {
 		HTTPStatus:   event.HTTPStatus,
 		TargetLength: event.ExpectedLength,
 		Gateway:      event.Gateway,
+		EdgeIP:       event.EdgeIP,
 	}
 	if event.Length > 0 {
 		length := event.Length

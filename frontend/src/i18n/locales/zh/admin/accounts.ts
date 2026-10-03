@@ -39,6 +39,7 @@ export default {
     "reason": "原因",
     "http": "HTTP",
     "gateway": "Gateway",
+    "edgeIp": "Edge IP",
     "length": "长度（实际 / 目标）",
     "duration": "耗时"
   },

@@ -31,6 +31,7 @@ type CodexHarvestFlowEvent struct {
 	Model          string    `json:"model,omitempty"`
 	Node           string    `json:"node,omitempty"`
 	Gateway        string    `json:"gateway,omitempty"`
+	EdgeIP         string    `json:"edge_ip,omitempty"`
 	HTTPStatus     int       `json:"http_status,omitempty"`
 	Length         int       `json:"length,omitempty"`
 	Blocks         int       `json:"blocks,omitempty"`
@@ -173,6 +174,7 @@ func recordCodexHarvestFlow(event CodexHarvestFlowEvent) {
 	event.Model = clipFlowText(event.Model, 64)
 	event.Node = clipFlowText(event.Node, 160)
 	event.Gateway = clipFlowText(event.Gateway, 64)
+	event.EdgeIP = clipFlowText(event.EdgeIP, 64)
 	event.Result = clipFlowText(event.Result, 64)
 	event.Reason = clipFlowText(event.Reason, 64)
 	event.Detail = clipFlowText(event.Detail, 240)
@@ -281,7 +283,7 @@ func recordCodexHarvestNode(now, groupType string, allCount int) {
 	})
 }
 
-func recordCodexHarvestProbe(account *Account, model, result, node, gateway, detail string, httpStatus, length, blocks, expectedLength, expectedBlocks int) {
+func recordCodexHarvestProbe(account *Account, model, result, node, gateway, edgeIP, detail string, httpStatus, length, blocks, expectedLength, expectedBlocks int) {
 	gateway = normalizeCodex780Gateway(gateway)
 	if gateway == "any" {
 		gateway = ""
@@ -296,6 +298,7 @@ func recordCodexHarvestProbe(account *Account, model, result, node, gateway, det
 		Model:          model,
 		Node:           node,
 		Gateway:        gateway,
+		EdgeIP:         edgeIP,
 		HTTPStatus:     httpStatus,
 		Length:         length,
 		Blocks:         blocks,
@@ -333,6 +336,7 @@ func recordCodexHarvestTicketStore(account *Account, ticket *openAICodexTicket, 
 		Model:    ticket.Model,
 		Node:     ticket.HarvestNodeName,
 		Gateway:  ticket.Gateway,
+		EdgeIP:   ticket.EdgeIP,
 		Length:   ticket.Length,
 		Blocks:   ticket.Blocks,
 		Accepted: true,

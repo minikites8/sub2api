@@ -88,10 +88,10 @@ func TestOpenAICodexTicketStatusesUIAttempts(t *testing.T) {
 	require.Equal(t, 7, statuses[0].Attempts)
 	require.Zero(t, statuses[1].Attempts)
 	for i := 0; i < 2; i++ {
-		recordCodexHarvestProbe(account, model, "success", "relay-a", "unified-88", "", 200, 292, 10, 292, 10)
+		recordCodexHarvestProbe(account, model, "success", "relay-a", "unified-88", "", "", 200, 292, 10, 292, 10)
 	}
-	recordCodexHarvestProbe(account, "gpt-5.6-sol", "invalid_state", "relay-a", "unified-88", "", 200, 312, 11, 292, 10)
-	recordCodexHarvestProbe(ticketTestAccount(4243), model, "success", "relay-a", "unified-88", "", 200, 292, 10, 292, 10)
+	recordCodexHarvestProbe(account, "gpt-5.6-sol", "invalid_state", "relay-a", "unified-88", "", "", 200, 312, 11, 292, 10)
+	recordCodexHarvestProbe(ticketTestAccount(4243), model, "success", "relay-a", "unified-88", "", "", 200, 292, 10, 292, 10)
 	statuses = OpenAICodexTicketStatuses(account, cfg, time.Now())
 	require.Equal(t, 2, statuses[0].Attempts)
 	require.Equal(t, 1, statuses[1].Attempts)
@@ -103,9 +103,9 @@ func TestCodexTicketLogsExposePerAccountHistory(t *testing.T) {
 	account := ticketTestAccount(4242)
 	other := ticketTestAccount(4243)
 	model := "gpt-6-astra"
-	recordCodexHarvestProbe(account, model, "invalid_state", "relay-a", "unified-84", "", 200, 312, 11, 292, 10)
-	recordCodexHarvestProbe(other, model, "success", "relay-b", "unified-95", "", 200, 292, 10, 292, 10)
-	recordCodexHarvestProbe(account, model, "success", "relay-a", "unified-88", "", 200, 292, 10, 292, 10)
+	recordCodexHarvestProbe(account, model, "invalid_state", "relay-a", "unified-84", "2001:db8::20", "", 200, 312, 11, 292, 10)
+	recordCodexHarvestProbe(other, model, "success", "relay-b", "unified-95", "203.0.113.30", "", 200, 292, 10, 292, 10)
+	recordCodexHarvestProbe(account, model, "success", "relay-a", "unified-88", "203.0.113.10", "", 200, 292, 10, 292, 10)
 
 	s := &OpenAIGatewayService{cfg: &config.Config{}}
 	s.cfg.Gateway.OpenAICodexTicket = config.OpenAICodexTicketConfig{Enabled: true, Models: []string{model}}
@@ -116,13 +116,16 @@ func TestCodexTicketLogsExposePerAccountHistory(t *testing.T) {
 	require.Equal(t, "target_length_matched", logs.Entries[0].Reason)
 	require.Equal(t, 292, *logs.Entries[0].TicketLength)
 	require.Equal(t, "unified-88", logs.Entries[0].Gateway)
+	require.Equal(t, "203.0.113.10", logs.Entries[0].EdgeIP)
 	require.Equal(t, "miss", logs.Entries[1].Event)
 	require.Equal(t, "length_mismatch", logs.Entries[1].Reason)
 	require.Equal(t, 312, *logs.Entries[1].TicketLength)
 	require.Equal(t, "unified-84", logs.Entries[1].Gateway)
+	require.Equal(t, "2001:db8::20", logs.Entries[1].EdgeIP)
 	encoded, err := json.Marshal(logs.Entries[0])
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), `"gateway":"unified-88"`)
+	require.Contains(t, string(encoded), `"edge_ip":"203.0.113.10"`)
 }
 
 func TestCodexTicketLogsLeaveUnobservedGatewayEmpty(t *testing.T) {
@@ -130,21 +133,24 @@ func TestCodexTicketLogsLeaveUnobservedGatewayEmpty(t *testing.T) {
 	t.Cleanup(resetCodexHarvestFlow)
 	account := ticketTestAccount(4242)
 	for _, gateway := range []string{"", "any"} {
-		recordCodexHarvestProbe(account, "gpt-6-astra", "network_error", "relay-a", gateway, "", 0, 0, 0, 780, 33)
+		recordCodexHarvestProbe(account, "gpt-6-astra", "network_error", "relay-a", gateway, "", "", 0, 0, 0, 780, 33)
 	}
 	entries := listCodexTicketHistory(account.ID, "gpt-6-astra")
 	require.Len(t, entries, 2)
 	for _, entry := range entries {
 		require.Empty(t, entry.Gateway)
+		require.Empty(t, entry.EdgeIP)
 	}
 }
 
-func TestCodexTicketLogsCaptureRelayGateway(t *testing.T) {
+func TestCodexTicketLogsCaptureRelayRoute(t *testing.T) {
 	for _, tc := range []struct {
-		name, servedModel, event string
+		name, servedModel, event, edgeIP string
+		httpStatus                       int
 	}{
-		{name: "acquired", servedModel: "gpt-6-astra", event: "acquired"},
-		{name: "model mismatch", servedModel: "gpt-5.6-luna", event: "miss"},
+		{name: "acquired", servedModel: "gpt-6-astra", event: "acquired", edgeIP: "203.0.113.10", httpStatus: http.StatusOK},
+		{name: "model mismatch", servedModel: "gpt-5.6-luna", event: "miss", edgeIP: "2001:db8::20", httpStatus: http.StatusOK},
+		{name: "relay error", servedModel: "gpt-6-astra", event: "error", edgeIP: "203.0.113.30", httpStatus: http.StatusServiceUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			resetCodexHarvestFlow()
@@ -164,7 +170,12 @@ func TestCodexTicketLogsCaptureRelayGateway(t *testing.T) {
 			s.httpUpstream = &harvestProxyUpstream{do: func(req *http.Request, _ string) (*http.Response, error) {
 				require.Equal(t, "any", req.Header.Get("X-Mint-Gateway"))
 				body := cloudMintResponseBody(t, model, tc.servedModel, mint780State(now), now, expires, pair)
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+				var envelope map[string]any
+				require.NoError(t, json.Unmarshal([]byte(body), &envelope))
+				envelope["edge_ip"] = " " + tc.edgeIP + " "
+				encoded, err := json.Marshal(envelope)
+				require.NoError(t, err)
+				return &http.Response{StatusCode: tc.httpStatus, Body: io.NopCloser(strings.NewReader(string(encoded)))}, nil
 			}}
 			s.probeOnceOpenAICodexTicket(context.Background(), account, model)
 			logs, err := s.OpenAICodexTicketLogs(context.Background(), account, model, time.Now())
@@ -172,6 +183,7 @@ func TestCodexTicketLogsCaptureRelayGateway(t *testing.T) {
 			require.Len(t, logs.Entries, 1)
 			require.Equal(t, tc.event, logs.Entries[0].Event)
 			require.Equal(t, "unified-88", logs.Entries[0].Gateway)
+			require.Equal(t, tc.edgeIP, logs.Entries[0].EdgeIP)
 		})
 	}
 }
