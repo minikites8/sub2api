@@ -15,8 +15,8 @@ vi.mock('vue-i18n', async () => {
   } }) }
 })
 
-const { getLogs } = vi.hoisted(() => ({ getLogs: vi.fn() }))
-vi.mock('@/api/admin/codexTickets', () => ({ getCodexTicketLogs: getLogs }))
+const { getLogs, addBlacklist } = vi.hoisted(() => ({ getLogs: vi.fn(), addBlacklist: vi.fn() }))
+vi.mock('@/api/admin/codexTickets', () => ({ getCodexTicketLogs: getLogs, addCodexTicketGatewayToBlacklist: addBlacklist }))
 const account = { id: 71, name: 'ticket@example.test' } as Account
 const snapshot = (model = 'gpt-6-astra'): CodexTicketLogsResponse => ({
   model, limit: 200, fetched_at: '2026-09-20T14:00:00Z',
@@ -29,9 +29,53 @@ const snapshot = (model = 'gpt-6-astra'): CodexTicketLogsResponse => ({
 function mountDialog() {
   return mount(CodexTicketLogsDialog, { props: { show: true, account, model: 'gpt-6-astra' }, global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': { admin: zhAccounts } } })], stubs: { Teleport: true, Transition: false } } })
 }
-beforeEach(() => { vi.useFakeTimers(); getLogs.mockReset(); getLogs.mockResolvedValue(snapshot()); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible') })
+beforeEach(() => { vi.useFakeTimers(); getLogs.mockReset(); addBlacklist.mockReset(); getLogs.mockResolvedValue(snapshot()); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible') })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 describe('CodexTicketLogsDialog', () => {
+  it('adds the current gateway, updates the account and prevents repeat clicks', async () => {
+    const initial = { ...snapshot(), gateway_blacklist: ['unified-12'] }
+    const updated = { ...account, extra: { openai_codex_ticket_gateway_blacklist: ['unified-12', 'unified-88'] } }
+    getLogs.mockResolvedValueOnce(initial).mockResolvedValue({ ...initial, gateway_blacklist: ['unified-12', 'unified-88'] })
+    let resolve!: (account: Account) => void
+    addBlacklist.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    const wrapper = mountDialog(); await flushPromises()
+    const button = wrapper.get('tbody tr button')
+    await button.trigger('click'); await button.trigger('click')
+    expect(addBlacklist).toHaveBeenCalledTimes(1)
+    expect(addBlacklist).toHaveBeenCalledWith(71, 'unified-88')
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.text()).toBe('保存中…')
+    resolve(updated); await flushPromises()
+    expect(button.text()).toBe('已加入黑名单')
+    expect(wrapper.emitted('account-updated')).toEqual([[updated]])
+    expect(getLogs).toHaveBeenCalledTimes(2)
+  })
+  it('disables gateways already blacklisted and hides actions for missing gateways', async () => {
+    getLogs.mockResolvedValue({ ...snapshot(), gateway_blacklist: ['unified-88'] })
+    const wrapper = mountDialog(); await flushPromises()
+    expect(wrapper.findAll('tbody tr button')).toHaveLength(1)
+    expect(wrapper.get('tbody tr button').text()).toBe('已加入黑名单')
+    expect(wrapper.get('tbody tr button').attributes('disabled')).toBeDefined()
+    expect(addBlacklist).not.toHaveBeenCalled()
+  })
+  it('retains the action and reports a failed save for retry', async () => {
+    addBlacklist.mockRejectedValueOnce(new Error('offline'))
+    const wrapper = mountDialog(); await flushPromises()
+    await wrapper.get('tbody tr button').trigger('click'); await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('加入黑名单失败')
+    expect(wrapper.get('tbody tr button').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('account-updated')).toBeUndefined()
+  })
+  it('ignores a completed save after switching accounts', async () => {
+    let resolve!: (account: Account) => void
+    addBlacklist.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    const wrapper = mountDialog(); await flushPromises()
+    await wrapper.get('tbody tr button').trigger('click')
+    await wrapper.setProps({ account: { ...account, id: 72 } }); await flushPromises()
+    resolve({ ...account, extra: { openai_codex_ticket_gateway_blacklist: ['unified-88'] } }); await flushPromises()
+    expect(wrapper.emitted('account-updated')).toBeUndefined()
+    expect(wrapper.get('tbody tr button').text()).toBe('加入黑名单')
+  })
   it('renders legacy status summaries with a translated state and default attempts', async () => {
     const response = snapshot()
     response.status = { model: response.model, ready: false, remaining_seconds: 0 }

@@ -29,11 +29,12 @@ type OpenAICodexTicketLogEntry struct {
 	EgressCountryCode string    `json:"egress_country_code,omitempty"`
 }
 type OpenAICodexTicketLogs struct {
-	Model     string                      `json:"model"`
-	Entries   []OpenAICodexTicketLogEntry `json:"entries"`
-	Status    *OpenAICodexTicketStatus    `json:"status"`
-	Limit     int                         `json:"limit"`
-	FetchedAt time.Time                   `json:"fetched_at"`
+	GatewayBlacklist []string                    `json:"gateway_blacklist"`
+	Model            string                      `json:"model"`
+	Entries          []OpenAICodexTicketLogEntry `json:"entries"`
+	Status           *OpenAICodexTicketStatus    `json:"status"`
+	Limit            int                         `json:"limit"`
+	FetchedAt        time.Time                   `json:"fetched_at"`
 }
 
 func codexTicketHistoryReason(event CodexHarvestFlowEvent) string {
@@ -167,7 +168,7 @@ func (s *OpenAIGatewayService) OpenAICodexTicketLogs(ctx context.Context, accoun
 	if account != nil {
 		entries = listCodexTicketHistory(account.ID, model)
 	}
-	out := &OpenAICodexTicketLogs{Model: model, Entries: entries, Limit: OpenAICodexTicketLogLimit, FetchedAt: now.UTC()}
+	out := &OpenAICodexTicketLogs{Model: model, Entries: entries, Limit: OpenAICodexTicketLogLimit, FetchedAt: now.UTC(), GatewayBlacklist: OpenAICodexTicketGatewayBlacklist(account)}
 	for _, status := range s.OpenAICodexTicketStatuses(ctx, account, now) {
 		if status.Model != model {
 			continue

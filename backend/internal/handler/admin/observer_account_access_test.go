@@ -41,6 +41,8 @@ func TestObserverGuardRejectsWholeUnauthorizedBatch(t *testing.T) {
 		status                          int
 	}{
 		{"single", "GET", "/accounts/:id", "/accounts/1", "", []int64{10}, 204},
+		{"gateway_blacklist", "POST", "/accounts/:id/codex-ticket-gateway-blacklist", "/accounts/1/codex-ticket-gateway-blacklist", `{"gateway":"unified-12"}`, []int64{10}, 204},
+		{"gateway_blacklist_hidden", "POST", "/accounts/:id/codex-ticket-gateway-blacklist", "/accounts/2/codex-ticket-gateway-blacklist", `{"gateway":"unified-12"}`, []int64{10}, 403},
 		{"shared", "DELETE", "/accounts/:id", "/accounts/3", "", []int64{10}, 204},
 		{"hidden", "GET", "/accounts/:id", "/accounts/2", "", []int64{10}, 403},
 		{"ungrouped", "DELETE", "/accounts/:id", "/accounts/4", "", []int64{10}, 403},

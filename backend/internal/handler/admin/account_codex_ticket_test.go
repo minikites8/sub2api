@@ -16,12 +16,18 @@ import (
 
 type ticketDisplayAdminStub struct {
 	service.AdminService
-	account *service.Account
-	calls   int
+	account          *service.Account
+	calls            int
+	blacklistGateway string
 }
 
 func (s *ticketDisplayAdminStub) GetAccount(context.Context, int64) (*service.Account, error) {
 	s.calls++
+	return s.account, nil
+}
+
+func (s *ticketDisplayAdminStub) AddCodexTicketGatewayToBlacklist(_ context.Context, _ int64, gateway string) (*service.Account, error) {
+	s.blacklistGateway = gateway
 	return s.account, nil
 }
 
@@ -54,7 +60,34 @@ func ticketDisplayRouter(t *testing.T) (*gin.Engine, *ticketDisplayAdminStub, *t
 	r := gin.New()
 	r.GET("/accounts/:id/codex-ticket-logs", h.GetCodexTicketLogs)
 	r.POST("/accounts/codex-tickets/batch", h.GetBatchCodexTickets)
+	r.POST("/accounts/:id/codex-ticket-gateway-blacklist", h.AddCodexTicketGatewayToBlacklist)
 	return r, a, p
+}
+
+func TestCodexTicketGatewayBlacklistEndpoint(t *testing.T) {
+	for _, tc := range []struct {
+		id, body string
+		code     int
+	}{
+		{"71", `{"gateway":"unified-12"}`, 200},
+		{"0", `{"gateway":"unified-12"}`, 400},
+		{"71", `{}`, 400},
+		{"71", `{"gateway":12}`, 400},
+	} {
+		t.Run(tc.id+tc.body, func(t *testing.T) {
+			r, admin, _ := ticketDisplayRouter(t)
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/accounts/"+tc.id+"/codex-ticket-gateway-blacklist", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			r.ServeHTTP(recorder, req)
+			require.Equal(t, tc.code, recorder.Code)
+			if tc.code == 200 {
+				require.Equal(t, "unified-12", admin.blacklistGateway)
+			} else {
+				require.Empty(t, admin.blacklistGateway)
+			}
+		})
+	}
 }
 func TestCodexTicketDisplayLogsValidation(t *testing.T) {
 	for _, tc := range []struct {

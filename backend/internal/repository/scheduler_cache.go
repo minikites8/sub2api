@@ -1080,6 +1080,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"codex_fingerprint_mode",
 		"codex_fingerprint_seed",
 		service.OpenAICodexSkipHarvestExtraKey,
+		service.OpenAICodexTicketGatewayBlacklistExtraKey,
 		"codex_5h_used_percent",
 		"codex_has_5h_limit",
 		"codex_7d_used_percent",

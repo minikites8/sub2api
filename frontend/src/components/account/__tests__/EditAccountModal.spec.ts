@@ -422,6 +422,33 @@ describe('EditAccountModal', () => {
     }
   })
 
+  it('saves, restores and clears the per-account gateway blacklist', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { unrelated: 'preserve' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="openai-codex-ticket-gateway-blacklist"]').setValue('unified-12, unified-35\n12')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra.openai_codex_ticket_gateway_blacklist).toEqual(['unified-12', 'unified-35'])
+    expect(extra.unrelated).toBe('preserve')
+    wrapper.unmount()
+    const restored = mountModal({ ...account, extra })
+    expect(restored.get<HTMLTextAreaElement>('[data-testid="openai-codex-ticket-gateway-blacklist"]').element.value).toBe('unified-12, unified-35')
+    await restored.get('[data-testid="openai-codex-ticket-gateway-blacklist"]').setValue('')
+    await restored.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
+    expect(updateAccountMock.mock.calls[1]?.[1]?.extra.openai_codex_ticket_gateway_blacklist).toEqual([])
+    restored.unmount()
+  })
+  it('validates blacklist names before saving account settings', async () => {
+    updateAccountMock.mockReset()
+    const wrapper = mountModal(buildOpenAISetupTokenAccount())
+    await wrapper.get('[data-testid="openai-codex-ticket-gateway-blacklist"]').setValue('any')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('saves, restores and clears the per-account Codex ticket gateway', async () => {
     const account = buildOpenAIOAuthParentAccount()
     account.extra = { unrelated: 'preserve' }

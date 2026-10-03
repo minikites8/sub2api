@@ -1,4 +1,5 @@
 import { apiClient } from '../client'
+import type { Account } from '@/types'
 import type { CodexTicketLogsResponse, CodexTicketStatus } from '@/types/codexTicket'
 
 export async function getCodexTicketLogs(accountId: number, model: string, signal?: AbortSignal): Promise<CodexTicketLogsResponse> {
@@ -13,4 +14,11 @@ export async function getBatchCodexTickets(accountIds: number[], signal?: AbortS
     '/admin/accounts/codex-tickets/batch', { account_ids: accountIds }, { signal, timeout: 10000 }
   )
   return data.statuses
+}
+
+export async function addCodexTicketGatewayToBlacklist(accountId: number, gateway: string): Promise<Account> {
+  const { data } = await apiClient.post<Account>(
+    `/admin/accounts/${accountId}/codex-ticket-gateway-blacklist`, { gateway }, { timeout: 10000 }
+  )
+  return data
 }

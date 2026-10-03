@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -218,11 +219,15 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		accountHeader = account.GetCredential("chatgpt_account_id")
 	}
 	keyHash := codex780RouteKey(account, token, accountHeader, target, transport)
+	blacklist := OpenAICodexTicketGatewayBlacklist(account)
 	seed, cached := s.codex780Routes.get(keyHash, time.Now())
 	if !cached {
 		if ticket := s.lookupOpenAICodexTicket(account, model); ticket != nil && !ticket.Revoked {
 			seed, _, _ = codex780Route(ticket.HarvestCookies, target, time.Now())
 		}
+	}
+	if slices.Contains(blacklist, codex780CookieGateway(seed)) {
+		seed = nil
 	}
 	defer func() { s.codex780Routes.update(keyHash, target, seed, out, time.Now()) }()
 
@@ -250,6 +255,9 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 	req.Header.Set("X-Mint-Model", model)
 	req.Header.Set("X-Mint-Transport", transport)
 	req.Header.Set("X-Mint-Gateway", target)
+	if len(blacklist) > 0 {
+		req.Header.Set("X-Mint-Gateway-Blacklist", strings.Join(blacklist, ","))
+	}
 	req.Header.Set("X-Mint-Len", strconv.Itoa(780))
 	attempts := s.openAICodexTicketConfig().MaxProbesPerRound
 	if attempts > 0 {
@@ -319,6 +327,10 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 	}
 	if resp.StatusCode != http.StatusOK {
 		out.Err = cloudMintErrorFromHTTP(resp.StatusCode, cloudMintResponseCode(envelope, resp.Header.Get("X-Relay-Error")))
+		return
+	}
+	if slices.Contains(blacklist, out.Gateway) || slices.Contains(blacklist, codex780CookieGateway(cookies)) {
+		out.Err = &codexMintError{kind: "invalid_route", detail: "cloud mint returned a blacklisted gateway"}
 		return
 	}
 

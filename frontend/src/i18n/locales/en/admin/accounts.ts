@@ -10,6 +10,11 @@ export default {
   "retry": "Retry",
   "loading": "Loading ticket logs…",
   "empty": "Waiting for the first ticket event",
+  "addToBlacklist": "Add to blacklist",
+  "addGatewayToBlacklist": "Add {gateway} to this account's gateway blacklist",
+  "gatewayBlacklisted": "Blacklisted",
+  "blacklistSaving": "Saving…",
+  "blacklistFailed": "Could not add the gateway. Click again to retry.",
   "states": {
     "ready": "Valid ticket acquired",
     "harvesting": "Harvesting",
@@ -902,6 +907,10 @@ export default {
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
         codexTicketGateway: 'Codex ticket Gateway',
         codexTicketGatewayPlaceholder: 'For example, unified-88 or any',
+        codexTicketGatewayBlacklist: 'Codex ticket gateway blacklist',
+        codexTicketGatewayBlacklistPlaceholder: 'unified-12, unified-35',
+        codexTicketGatewayBlacklistHint: 'Separate Gateway names with commas or newlines. Future ticket minting skips these gateways. Clear the field and save to empty the blacklist.',
+        codexTicketGatewayBlacklistInvalid: 'Enter unified-N gateway names separated by commas or newlines.',
         codexTicketGatewayHint: 'Choose the Relay Gateway used for this account\'s ticket minting and ticket scheduling. Leave it empty to inherit the global setting. Supports any, unified-N, and full Gateway hostnames.',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:

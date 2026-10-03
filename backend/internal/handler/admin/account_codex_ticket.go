@@ -89,3 +89,24 @@ func (h *AccountHandler) GetBatchCodexTickets(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"statuses": snapshots, "fetched_at": time.Now().UTC()})
 }
+
+func (h *AccountHandler) AddCodexTicketGatewayToBlacklist(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	var req struct {
+		Gateway string `json:"gateway" binding:"required,max=256"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Gateway is required")
+		return
+	}
+	account, err := h.adminService.AddCodexTicketGatewayToBlacklist(c.Request.Context(), id, req.Gateway)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}

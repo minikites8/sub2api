@@ -24,7 +24,9 @@ type codex780RouteCache struct {
 }
 
 func codex780RouteKey(account *Account, token, accountHeader, target, transport string) [32]byte {
-	raw, _ := json.Marshal([]any{account.ID, ticketIdentity(account), token, accountHeader, target, transport})
+	blacklist := OpenAICodexTicketGatewayBlacklist(account)
+	slices.Sort(blacklist)
+	raw, _ := json.Marshal([]any{account.ID, ticketIdentity(account), token, accountHeader, target, transport, blacklist})
 	return sha256.Sum256(raw)
 }
 

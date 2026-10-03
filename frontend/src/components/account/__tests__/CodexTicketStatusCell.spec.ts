@@ -62,6 +62,13 @@ describe('CodexTicketStatusCell', () => {
     accept([{ ...ticket('gpt-6-astra'), attempts: 5 }]); await flushPromises()
     expect(wrapper.text()).toContain('打票 5 次'); wrapper.unmount()
   })
+  it('forwards account changes from the gateway blacklist action', async () => {
+    const wrapper = render(); await flushPromises()
+    await wrapper.findAll('button')[0].trigger('click')
+    const updated = { ...account(), extra: { openai_codex_ticket_gateway_blacklist: ['unified-12'] } }
+    wrapper.getComponent('[data-testid="dialog"]').vm.$emit('account-updated', updated)
+    expect(wrapper.emitted('account-updated')).toEqual([[updated]])
+  })
   it('keeps API-key and shadow accounts out of ticket polling', async () => {
     for (const overrides of [{ type: 'apikey' }, { parent_account_id: 70 }]) {
       const wrapper = render({ ...account(), ...overrides } as Account); await flushPromises(); expect(wrapper.find('button').exists()).toBe(false); wrapper.unmount()

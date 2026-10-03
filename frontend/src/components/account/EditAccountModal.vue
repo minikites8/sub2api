@@ -2150,6 +2150,17 @@
         <p class="text-xs text-gray-500 dark:text-gray-400">
           {{ t('admin.accounts.openai.codexTicketGatewayHint') }}
         </p>
+        <label for="openai-codex-ticket-gateway-blacklist" class="input-label pt-2">{{ t('admin.accounts.openai.codexTicketGatewayBlacklist') }}</label>
+        <textarea
+          id="openai-codex-ticket-gateway-blacklist"
+          v-model="openAICodexTicketGatewayBlacklist"
+          class="input font-mono"
+          rows="2"
+          :placeholder="t('admin.accounts.openai.codexTicketGatewayBlacklistPlaceholder')"
+          data-testid="openai-codex-ticket-gateway-blacklist"
+          autocomplete="off"
+        />
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTicketGatewayBlacklistHint') }}</p>
       </div>
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
@@ -3620,6 +3631,7 @@ import {
 } from '@/utils/format'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { CODEX_GATEWAY_BLACKLIST_EXTRA_KEY, parseCodexGatewayBlacklist, readCodexGatewayBlacklist } from '@/utils/codexGatewayBlacklist'
 import { getAccountExpiryTimestamp } from './accountExpiry'
 import { isKiroDirectApiKeyAccount, isKiroRelayAccount } from '@/utils/kiroAccount'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
@@ -4257,6 +4269,7 @@ const excelBPS403GroupOptions = computed(() => [
 const copilotSDKEnabled = ref(false)
 const openaiPassthroughEnabled = ref(false)
 const openAICodexTicketGateway = ref('')
+const openAICodexTicketGatewayBlacklist = ref('')
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4798,6 +4811,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   copilotSDKEnabled.value = false
   openaiPassthroughEnabled.value = false
   openAICodexTicketGateway.value = ''
+  openAICodexTicketGatewayBlacklist.value = ''
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
@@ -4839,6 +4853,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     copilotSDKEnabled.value = newAccount.type === 'apikey' && extra?.openai_copilot_sdk === true
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openAICodexTicketGateway.value = typeof extra?.openai_codex_ticket_gateway === 'string' ? extra.openai_codex_ticket_gateway : ''
+    openAICodexTicketGatewayBlacklist.value = readCodexGatewayBlacklist(extra).join(', ')
     openaiFlattenNamespacesEnabled.value =
       newAccount.type === 'oauth' && extra?.openai_responses_flatten_namespaces === true
     const longContextBillingValue = extra?.openai_long_context_billing_enabled
@@ -6446,6 +6461,11 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
+        try {
+          newExtra[CODEX_GATEWAY_BLACKLIST_EXTRA_KEY] = parseCodexGatewayBlacklist(openAICodexTicketGatewayBlacklist.value)
+        } catch {
+          throw new Error(t('admin.accounts.openai.codexTicketGatewayBlacklistInvalid'))
+        }
         const gateway = openAICodexTicketGateway.value.trim()
         if (gateway) {
           newExtra.openai_codex_ticket_gateway = gateway

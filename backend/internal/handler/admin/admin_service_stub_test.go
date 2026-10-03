@@ -589,6 +589,10 @@ func (s *stubAdminService) DeleteAccount(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (s *stubAdminService) AddCodexTicketGatewayToBlacklist(ctx context.Context, id int64, gateway string) (*service.Account, error) {
+	return s.GetAccount(ctx, id)
+}
+
 func (s *stubAdminService) RefreshAccountCredentials(ctx context.Context, id int64) (*service.Account, error) {
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil

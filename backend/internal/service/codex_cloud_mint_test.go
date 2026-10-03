@@ -93,6 +93,47 @@ func TestCodexCloudMintProbeUsesRelayContract(t *testing.T) {
 	require.WithinDuration(t, expires, ticket.ExpiresAt, time.Second)
 }
 
+func TestCodexCloudMintGatewayBlacklist(t *testing.T) {
+	account := ticketTestAccount(1)
+	issued := time.Now().Truncate(time.Second)
+	expires := issued.Add(4 * time.Minute)
+	pair := mint780Pair(expires, "unified-88")
+	state := mint780State(issued)
+	cfg := config.OpenAICodexTicketConfig{TargetLength: 780, CloudMint: config.OpenAICodexCloudMintConfig{
+		Enabled: true, URL: "https://relay.example/", Key: "relay-secret", Gateway: "any",
+	}}
+	s := ticketTestService(t, cfg, nil)
+	requests := 0
+	s.httpUpstream = &harvestProxyUpstream{do: func(req *http.Request, _ string) (*http.Response, error) {
+		requests++
+		switch requests {
+		case 1:
+			require.Empty(t, req.Header.Get("X-Mint-Gateway-Blacklist"))
+		case 2:
+			require.Equal(t, "unified-12,unified-35", req.Header.Get("X-Mint-Gateway-Blacklist"))
+			require.NotEmpty(t, req.Header.Get("Cookie"))
+		case 3:
+			require.Equal(t, "unified-12,unified-35,unified-88", req.Header.Get("X-Mint-Gateway-Blacklist"))
+			require.Empty(t, req.Header.Get("Cookie"), "blocked routes must be excluded from mint seeds")
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(cloudMintResponseBody(t, "gpt-6-astra", "gpt-6-astra", state, issued, expires, pair)))}, nil
+	}}
+	out := s.requestCodex780Probe(context.Background(), account, "token", "gpt-6-astra", "", nil, "session")
+	require.NoError(t, out.Err)
+	// A persisted ticket is also considered as a seed after the blacklist changes.
+	account.Extra = map[string]any{openAICodexTicketExtraKey("gpt-6-astra"): codexHarvestTicket(account, "gpt-6-astra", out, cfg, 1)}
+	account.Extra[OpenAICodexTicketGatewayBlacklistExtraKey] = []any{"unified-12", "unified-35", "unified12"}
+	out = s.requestCodex780Probe(context.Background(), account, "token", "gpt-6-astra", "", nil, "session")
+	require.NoError(t, out.Err)
+	account.Extra[OpenAICodexTicketGatewayBlacklistExtraKey] = []string{"unified-12", "unified-35", "unified-88"}
+	out = s.requestCodex780Probe(context.Background(), account, "token", "gpt-6-astra", "", nil, "session")
+	var mintErr *codexMintError
+	require.ErrorAs(t, out.Err, &mintErr)
+	require.Equal(t, "invalid_route", mintErr.kind)
+	require.Empty(t, out.Cookies)
+	require.Equal(t, 3, requests)
+}
+
 func TestCodexCloudMintProbeHonorsConfiguredAnyGateway(t *testing.T) {
 	account := ticketTestAccount(1)
 	issued := time.Now().Truncate(time.Second)

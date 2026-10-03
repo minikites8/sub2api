@@ -1,6 +1,6 @@
 <template>
   <div ref="rootRef" v-if="showUsageWindows">
-    <CodexTicketStatusCell :account="account" />
+    <CodexTicketStatusCell :account="account" @account-updated="handleQuotaResetAccountUpdated" />
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="

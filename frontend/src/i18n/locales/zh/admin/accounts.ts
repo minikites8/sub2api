@@ -10,6 +10,11 @@ export default {
   "retry": "重试",
   "loading": "正在读取打票日志…",
   "empty": "等待首次打票事件",
+  "addToBlacklist": "加入黑名单",
+  "addGatewayToBlacklist": "将 {gateway} 加入本账号的网关黑名单",
+  "gatewayBlacklisted": "已加入黑名单",
+  "blacklistSaving": "保存中…",
+  "blacklistFailed": "加入黑名单失败，请再次点击重试。",
   "states": {
     "ready": "已获得有效门票",
     "harvesting": "打票中",
@@ -998,6 +1003,10 @@ export default {
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
         codexTicketGateway: 'Codex 打票 Gateway',
         codexTicketGatewayPlaceholder: '例如 unified-88、any',
+        codexTicketGatewayBlacklist: 'Codex 打票网关黑名单',
+        codexTicketGatewayBlacklistPlaceholder: 'unified-12, unified-35',
+        codexTicketGatewayBlacklistHint: '多个 Gateway 用逗号或换行分隔。后续打票会跳过这些网关，留空并保存可清除黑名单。',
+        codexTicketGatewayBlacklistInvalid: '请输入 unified-N 格式的网关名称，多个网关用逗号或换行分隔。',
         codexTicketGatewayHint: '为本账号指定 Relay 打票和 ticket 调度的 Gateway。留空继承全局设置，支持 any、unified-N 或完整 Gateway 主机名。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:

@@ -15,6 +15,7 @@ import (
 
 func TestCodexTicketAdminAdapterNoSecrets(t *testing.T) {
 	account := ticketTestAccount(4242)
+	account.Extra = map[string]any{OpenAICodexTicketGatewayBlacklistExtraKey: []string{"unified-12", "unified-35"}}
 	s := &OpenAIGatewayService{cfg: &config.Config{}}
 	s.cfg.Gateway.OpenAICodexTicket = config.OpenAICodexTicketConfig{Enabled: true, Models: []string{"gpt-6-astra"}}
 	now := time.Now()
@@ -25,6 +26,7 @@ func TestCodexTicketAdminAdapterNoSecrets(t *testing.T) {
 	for _, status := range statuses {
 		logs, err := s.OpenAICodexTicketLogs(context.Background(), account, status.Model, now)
 		require.NoError(t, err)
+		require.Equal(t, []string{"unified-12", "unified-35"}, logs.GatewayBlacklist)
 		encoded, err := json.Marshal(logs)
 		require.NoError(t, err)
 		require.NotContains(t, string(encoded), account.GetCredential("access_token"))

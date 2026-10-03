@@ -14,7 +14,7 @@
         {{ t('admin.accounts.codexTickets.attempts', { count: codexTicketAttempts(status) }) }}
       </span>
     </button>
-    <CodexTicketLogsDialog v-if="selectedModel" :show="true" :account="account" :model="selectedModel" @close="selectedModel = ''" @status="updateModelStatus" />
+    <CodexTicketLogsDialog v-if="selectedModel" :show="true" :account="account" :model="selectedModel" @close="selectedModel = ''" @status="updateModelStatus" @account-updated="emit('account-updated', $event)" />
   </div>
 </template>
 
@@ -28,6 +28,7 @@ import { codexTicketModelLabel, codexTicketRemaining, codexTicketDuration, codex
 import CodexTicketLogsDialog from './CodexTicketLogsDialog.vue'
 
 const props = defineProps<{ account: Account }>()
+const emit = defineEmits<{ 'account-updated': [account: Account] }>()
 const { t } = useI18n()
 const eligible = computed(() => props.account.platform === 'openai' && ['oauth', 'setup-token'].includes(props.account.type) && !props.account.parent_account_id)
 const root = ref<HTMLElement | null>(null)

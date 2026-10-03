@@ -32,6 +32,7 @@ export interface CodexTicketLogEntry {
 }
 
 export interface CodexTicketLogsResponse {
+  gateway_blacklist?: string[]
   model: string
   entries: CodexTicketLogEntry[]
   status: CodexTicketStatus | null
