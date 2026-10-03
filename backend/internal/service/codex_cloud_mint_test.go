@@ -47,7 +47,7 @@ func TestCodexCloudMintProbeUsesRelayContract(t *testing.T) {
 	state := mint780State(issued)
 	cfg := config.OpenAICodexTicketConfig{
 		TargetLength:                 780,
-		TTLSeconds:                   240,
+		TTLSeconds:                   3600,
 		HarvestAttemptTimeoutSeconds: 25,
 		CloudMint: config.OpenAICodexCloudMintConfig{
 			Enabled:        true,
@@ -65,6 +65,7 @@ func TestCodexCloudMintProbeUsesRelayContract(t *testing.T) {
 		require.Equal(t, "relay-secret", req.Header.Get("X-Relay-Key"))
 		require.Equal(t, "gpt-6-astra", req.Header.Get("X-Mint-Model"))
 		require.Equal(t, "780", req.Header.Get("X-Mint-Len"))
+		require.Equal(t, "0", req.Header.Get("X-Mint-TTL"))
 		require.Equal(t, "unified-88", req.Header.Get("X-Relay-Mint"))
 		require.Equal(t, "unified-88", req.Header.Get("X-Mint-Gateway"))
 		require.Equal(t, "6", req.Header.Get("X-Mint-Attempts"))

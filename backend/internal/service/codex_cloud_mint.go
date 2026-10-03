@@ -263,11 +263,8 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 	if attempts > 0 {
 		req.Header.Set("X-Mint-Attempts", strconv.Itoa(attempts))
 	}
-	ttl := s.openAICodexTicketConfig().TTLSeconds
-	if ttl <= 0 {
-		ttl = 240
-	}
-	req.Header.Set("X-Mint-TTL", strconv.Itoa(ttl))
+	// Request a fresh relay mint; local ticket lifetime is validated separately.
+	req.Header.Set("X-Mint-TTL", "0")
 	if out.EdgeIP != "" {
 		req.Header.Set("X-Edge-IP", out.EdgeIP)
 	}
