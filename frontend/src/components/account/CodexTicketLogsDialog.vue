@@ -31,12 +31,7 @@
             <td class="px-3 py-3" :class="eventClass(entry.event)">{{ t(`admin.accounts.codexTickets.events.${entry.event}`) }}</td>
             <td class="px-3 py-3 leading-5">{{ reason(entry.reason) }}</td>
             <td class="px-3 py-3 tabular-nums">{{ entry.http_status ?? '—' }}</td>
-            <td class="break-all px-3 py-3 font-mono text-[11px]">
-              <span v-if="entry.egress_ip">{{ entry.egress_ip }}</span>
-              <span v-else-if="entry.egress_error" tabindex="0" class="cursor-help border-b border-dotted border-red-400 text-red-500" :title="egressReason(entry)">{{ t('admin.accounts.codexTickets.egressFailed') }}</span>
-              <span v-else class="text-gray-400">—</span>
-            </td>
-            <td class="px-3 py-3">{{ countryName(entry.egress_country_code) }}</td>
+            <td class="break-all px-3 py-3 font-mono text-[11px]">{{ entry.gateway || '—' }}</td>
             <td class="whitespace-nowrap px-3 py-3 tabular-nums">{{ entry.ticket_length ?? '—' }} / {{ entry.target_length }}</td>
             <td class="whitespace-nowrap px-3 py-3 tabular-nums">{{ entry.duration_ms == null ? '—' : `${entry.duration_ms} ms` }}</td>
           </tr>
@@ -47,7 +42,6 @@
     <div class="mt-3 space-y-1 text-[11px] leading-5 text-gray-500 dark:text-gray-400">
       <div>{{ t('admin.accounts.codexTickets.lastUpdated') }} {{ snapshot ? formatTime(snapshot.fetched_at) : '—' }}</div>
       <div>{{ t('admin.accounts.codexTickets.retention', { count: snapshot?.limit ?? 200 }) }}</div>
-      <div>{{ t('admin.accounts.codexTickets.egressHint') }}</div>
     </div>
   </BaseDialog>
 </template>
@@ -58,7 +52,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { getCodexTicketLogs } from '@/api/admin/codexTickets'
 import type { Account } from '@/types'
-import type { CodexTicketLogEntry, CodexTicketLogsResponse, CodexTicketStatus } from '@/types/codexTicket'
+import type { CodexTicketLogsResponse, CodexTicketStatus } from '@/types/codexTicket'
 import { codexTicketStateClass } from '@/utils/codexTicketDisplay'
 
 const props = defineProps<{ show: boolean; account: Account; model: string }>()
@@ -70,27 +64,18 @@ const failed = ref(false)
 const entries = computed(() => [...(snapshot.value?.entries ?? [])].sort((a, b) => b.id - a.id))
 const columns = [
   { key: 'time', width: '14%' }, { key: 'attempt', width: '8%' }, { key: 'event', width: '9%' },
-  { key: 'reason', width: '22%' }, { key: 'http', width: '6%' }, { key: 'ip', width: '12%' },
-  { key: 'country', width: '10%' }, { key: 'length', width: '11%' }, { key: 'duration', width: '8%' }
+  { key: 'reason', width: '25%' }, { key: 'http', width: '6%' }, { key: 'gateway', width: '16%' },
+  { key: 'length', width: '14%' }, { key: 'duration', width: '8%' }
 ]
 const reasonKeys = new Set(['request_started', 'target_length_matched', 'http_error', 'missing_state', 'invalid_prefix', 'length_mismatch', 'timeout', 'canceled', 'network_error', 'empty_response', 'request_error'])
 const reason = (value: string) => t(`admin.accounts.codexTickets.reasons.${reasonKeys.has(value) ? value : 'request_error'}`)
 function eventClass(event: string) {
   return codexTicketStateClass(event === 'acquired' ? 'ready' : event === 'started' ? 'harvesting' : event === 'error' ? 'token_invalid' : 'cooldown')
 }
-function egressReason(entry: CodexTicketLogEntry) {
-  return `${t('admin.accounts.codexTickets.egressDiagnostic')}: ${entry.egress_error?.reason ?? 'unknown'}${entry.egress_error?.http_status ? ` (HTTP ${entry.egress_error.http_status})` : ''}`
-}
 function formatTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
   return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${date.toLocaleTimeString(locale?.value ?? 'zh-CN', { hour12: false })}`
-}
-function countryName(code?: string) {
-  if (!code || !/^[A-Z]{2}$/.test(code)) return '—'
-  // Keep compatibility with ES2020 TS libs while using modern browser region names.
-  const DisplayNames = (Intl as unknown as { DisplayNames?: new (locales: string[], options: { type: string }) => { of(code: string): string | undefined } }).DisplayNames
-  try { return DisplayNames ? new DisplayNames([locale?.value ?? 'zh-CN'], { type: 'region' }).of(code) ?? code : code } catch { return code }
 }
 let timer: ReturnType<typeof setTimeout> | undefined
 let controller: AbortController | undefined

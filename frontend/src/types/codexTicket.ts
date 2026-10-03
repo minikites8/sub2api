@@ -22,6 +22,7 @@ export interface CodexTicketLogEntry {
   ticket_length?: number
   target_length: number
   duration_ms?: number
+  gateway?: string
   egress_ip?: string
   egress_country_code?: string
   egress_error?: { reason: string; http_status?: number }

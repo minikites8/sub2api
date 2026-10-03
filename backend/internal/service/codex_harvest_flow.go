@@ -30,6 +30,7 @@ type CodexHarvestFlowEvent struct {
 	AccountName    string    `json:"account_name,omitempty"`
 	Model          string    `json:"model,omitempty"`
 	Node           string    `json:"node,omitempty"`
+	Gateway        string    `json:"gateway,omitempty"`
 	HTTPStatus     int       `json:"http_status,omitempty"`
 	Length         int       `json:"length,omitempty"`
 	Blocks         int       `json:"blocks,omitempty"`
@@ -171,6 +172,7 @@ func recordCodexHarvestFlow(event CodexHarvestFlowEvent) {
 	event.AccountName = clipFlowText(event.AccountName, 80)
 	event.Model = clipFlowText(event.Model, 64)
 	event.Node = clipFlowText(event.Node, 160)
+	event.Gateway = clipFlowText(event.Gateway, 64)
 	event.Result = clipFlowText(event.Result, 64)
 	event.Reason = clipFlowText(event.Reason, 64)
 	event.Detail = clipFlowText(event.Detail, 240)
@@ -279,7 +281,11 @@ func recordCodexHarvestNode(now, groupType string, allCount int) {
 	})
 }
 
-func recordCodexHarvestProbe(account *Account, model, result, node, detail string, httpStatus, length, blocks, expectedLength, expectedBlocks int) {
+func recordCodexHarvestProbe(account *Account, model, result, node, gateway, detail string, httpStatus, length, blocks, expectedLength, expectedBlocks int) {
+	gateway = normalizeCodex780Gateway(gateway)
+	if gateway == "any" {
+		gateway = ""
+	}
 	kind := "probe_miss"
 	if result == "success" {
 		kind = "probe_hit"
@@ -289,6 +295,7 @@ func recordCodexHarvestProbe(account *Account, model, result, node, detail strin
 		Kind:           kind,
 		Model:          model,
 		Node:           node,
+		Gateway:        gateway,
 		HTTPStatus:     httpStatus,
 		Length:         length,
 		Blocks:         blocks,
@@ -325,6 +332,7 @@ func recordCodexHarvestTicketStore(account *Account, ticket *openAICodexTicket, 
 		Kind:     "accept",
 		Model:    ticket.Model,
 		Node:     ticket.HarvestNodeName,
+		Gateway:  ticket.Gateway,
 		Length:   ticket.Length,
 		Blocks:   ticket.Blocks,
 		Accepted: true,

@@ -97,7 +97,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 		if result.Err != nil {
 			raw = result.Err.Error()
 		}
-		recordCodexHarvestProbe(account, model, result.Kind, nodeName, raw, result.Status, len(result.State), result.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg))
+		recordCodexHarvestProbe(account, model, result.Kind, nodeName, result.Gateway, raw, result.Status, len(result.State), result.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg))
 		if result.Kind == "success" {
 			s.openaiCodexTicketProbeCooldown.Delete(openAICodexTicketKey(account.ID, model))
 			ticket := codexHarvestTicket(account, model, result, cfg, attempts)

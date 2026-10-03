@@ -213,7 +213,7 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 			case "rate_limited":
 				progressResult = "rate_limited"
 			}
-			recordCodexHarvestProbe(account, model, result.Kind, nodeName, raw, result.Status, length, blocks, expectedLength, expectedBlocks)
+			recordCodexHarvestProbe(account, model, result.Kind, nodeName, result.Gateway, raw, result.Status, length, blocks, expectedLength, expectedBlocks)
 
 			if result.Kind == "success" {
 				consecutiveFails = 0

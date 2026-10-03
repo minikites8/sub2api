@@ -308,6 +308,15 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		out.Err = errors.New("cloud mint response is invalid")
 		return
 	}
+	// Capture the observed route for diagnostics even when ticket validation fails.
+	cookies := cloudMintCookiePairs(envelope)
+	out.Gateway = normalizeCodex780Gateway(envelope.Gateway)
+	if out.Gateway == "" || out.Gateway == "any" {
+		out.Gateway = codex780CookieGateway(cookies)
+	}
+	if out.Gateway == "" {
+		out.Gateway = target
+	}
 	if resp.StatusCode != http.StatusOK {
 		out.Err = cloudMintErrorFromHTTP(resp.StatusCode, cloudMintResponseCode(envelope, resp.Header.Get("X-Relay-Error")))
 		return
@@ -335,14 +344,7 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		out.Err = &codexMintError{kind: "ticket_length_mismatch", detail: "cloud mint ticket length mismatch"}
 		return
 	}
-	out.Cookies = cloudMintCookiePairs(envelope)
-	out.Gateway = normalizeCodex780Gateway(envelope.Gateway)
-	if out.Gateway == "" || out.Gateway == "any" {
-		out.Gateway = codex780CookieGateway(out.Cookies)
-	}
-	if out.Gateway == "" {
-		out.Gateway = target
-	}
+	out.Cookies = cookies
 	if edge := strings.TrimSpace(envelope.EdgeIP); edge != "" {
 		out.EdgeIP = edge
 	}
