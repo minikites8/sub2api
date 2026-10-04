@@ -73,6 +73,16 @@ deploy/sub2api-sudoers
 deploy/data/
 deploy/postgres_data/
 deploy/redis_data/
+deploy/prism_data/
+prism-adapter/venv/
+prism-adapter/.venv/
+prism-adapter/__pycache__/
+prism-adapter/test_*.py
+prism-adapter/smoke_*.py
+.task/
+.codex*/
+artifacts/
+_analysis/
 
 # GoReleaser
 .goreleaser.yaml

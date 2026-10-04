@@ -51,7 +51,7 @@ See [APPLE_CONTAINER.md](./APPLE_CONTAINER.md) for configuration, upgrades, pers
 
 ## Docker Deployment (Recommended)
 
-The Compose files use `ghcr.io/nianzs/sub2api:latest` by default. Set `SUB2API_IMAGE` in `.env` to pin a release tag or digest.
+The Compose files start both `ghcr.io/minikites8/sub2api:main` and `ghcr.io/minikites8/sub2api:prism-main`. Set `SUB2API_IMAGE` and `PRISM_ADAPTER_IMAGE` in `.env` to pin matching commit tags or digests. Keep `prism-seccomp.json` beside the deployment files. Compose 2.17+ starts the private Prism adapter automatically, shares the gateway loopback, and preserves its state and bridge key across updates. See [Prism Docker deployment](../prism-adapter/README.md#docker-compose-自动启动).
 
 ### Method 1: One-Click Deployment (Recommended)
 
@@ -59,10 +59,10 @@ Use the automated preparation script for the easiest setup:
 
 ```bash
 # Download and run the preparation script
-curl -sSL https://raw.githubusercontent.com/nianzs/sub2api/main/deploy/docker-deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minikites8/sub2api/main/deploy/docker-deploy.sh | bash
 
 # Or download first, then run
-curl -sSL https://raw.githubusercontent.com/nianzs/sub2api/main/deploy/docker-deploy.sh -o docker-deploy.sh
+curl -fsSL https://raw.githubusercontent.com/minikites8/sub2api/main/deploy/docker-deploy.sh -o docker-deploy.sh
 chmod +x docker-deploy.sh
 ./docker-deploy.sh
 ```

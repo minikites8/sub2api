@@ -16,7 +16,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: ${SUB2API_IMAGE:-ghcr.io/nianzs/sub2api:latest}
+    image: ${SUB2API_IMAGE:-ghcr.io/minikites8/sub2api:main}
     container_name: sub2api
     restart: unless-stopped
     security_opt:
@@ -42,6 +42,12 @@ services:
       # Auto Setup (REQUIRED for Docker deployment)
       # =======================================================================
       - AUTO_SETUP=true
+
+      # Prism adapter starts alongside the gateway and reads its persisted bridge key.
+      - GATEWAY_PRISM_BROWSER_ENABLED=${GATEWAY_PRISM_BROWSER_ENABLED:-true}
+      - GATEWAY_PRISM_BROWSER_BASE_URL=http://127.0.0.1:8319/v1
+      - GATEWAY_PRISM_BROWSER_API_KEY=${GATEWAY_PRISM_BROWSER_API_KEY:-${PRISM_ADAPTER_API_KEY:-}}
+      - PRISM_ADAPTER_API_KEY=${PRISM_ADAPTER_API_KEY:-}
 
       # =======================================================================
       # Server Configuration
@@ -258,6 +264,42 @@ services:
       start_period: 120s
 
   # ===========================================================================
+  # Prism Browser Adapter
+  # ===========================================================================
+  # Prism shares the gateway's loopback; its port is private to this namespace.
+  prism-adapter:
+    image: ${PRISM_ADAPTER_IMAGE:-ghcr.io/minikites8/sub2api:prism-main}
+    restart: unless-stopped
+    network_mode: service:sub2api
+    depends_on:
+      sub2api:
+        condition: service_started
+        restart: true
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./prism-seccomp.json
+    shm_size: 256mb
+    mem_limit: 900m
+    memswap_limit: 900m
+    cpus: 1.0
+    pids_limit: 256
+    volumes:
+      - sub2api_data:/gateway-data:ro
+      - prism_state:/var/lib/sub2api-prism
+    environment:
+      - PRISM_ADAPTER_API_KEY=${PRISM_ADAPTER_API_KEY:-${GATEWAY_PRISM_BROWSER_API_KEY:-}}
+      - PRISM_ADAPTER_API_KEY_FILE=/gateway-data/prism-adapter/bridge.key
+      - PRISM_ADAPTER_STATE_DIR=/var/lib/sub2api-prism
+      - PRISM_ADAPTER_ENABLED=${GATEWAY_PRISM_BROWSER_ENABLED:-true}
+      - PRISM_ADAPTER_CLIENT_TOOLS_ENABLED=${PRISM_ADAPTER_CLIENT_TOOLS_ENABLED:-true}
+      - PRISM_ADAPTER_MODE=${PRISM_ADAPTER_MODE:-browser}
+      - PRISM_ADAPTER_MAX_INFLIGHT=${PRISM_ADAPTER_MAX_INFLIGHT:-20}
+      - PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT=${PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT:-20}
+      - PRISM_ADAPTER_MAX_QUEUED=${PRISM_ADAPTER_MAX_QUEUED:-30}
+      - PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY=${PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY:-1}
+      - TZ=${TZ:-Asia/Shanghai}
+
+  # ===========================================================================
   # PostgreSQL Database
   # ===========================================================================
   postgres:
@@ -345,6 +387,8 @@ services:
 # Volumes
 # =============================================================================
 volumes:
+  prism_state:
+    driver: local
   sub2api_data:
     driver: local
   postgres_data:

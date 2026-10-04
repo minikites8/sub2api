@@ -67,6 +67,28 @@ python prism-adapter/smoke_client_tools.py --chrome /absolute/path/to/chrome-hea
 
 ## 运行环境
 
+### Docker Compose 自动启动
+
+本仓库的主分支打包流程同时发布 `ghcr.io/minikites8/sub2api:main` 和 `ghcr.io/minikites8/sub2api:prism-main`。四个 Compose 模板均包含自动启动的 `prism-adapter` 服务，使用 Docker Compose 2.17 或更新版本。按现有存储方式更新对应的 Compose 文件，并将 `deploy/prism-seccomp.json` 放到部署目录，然后执行：
+
+```sh
+docker compose pull sub2api prism-adapter
+docker compose up -d --force-recreate sub2api prism-adapter
+docker compose logs --tail=100 prism-adapter
+```
+
+`.env` 中的 `SUB2API_IMAGE` 和 `PRISM_ADAPTER_IMAGE` 使用上述本仓库镜像；可分别固定为 `main-<SHA>` 和 `prism-main-<同一 SHA>`。本地源码部署使用 `deploy/docker-compose.dev.yml` 和 `docker compose up -d --build`。镜像构建阶段安装 Python 3.12、固定版本的 Playwright / 工具验证依赖、Chromium 和浏览器系统依赖，容器启动时直接使用这些运行产物。
+
+网关首次启动会生成 `data/prism-adapter/bridge.key`（命名卷部署对应 `/app/data/prism-adapter/bridge.key`），权限为 `0600`；适配器通过只读共享数据卷读取同一密钥。显式设置 `PRISM_ADAPTER_API_KEY` 时使用该值，要求至少 32 个字符。已有 `GATEWAY_PRISM_BROWSER_API_KEY` 同样可以沿用；两项都配置时应保持相同。私有 API 位于网关的 `127.0.0.1:8319`，共享网络空间由 Compose 的 `network_mode: service:sub2api` 建立。网关更新时 Compose 同步重启适配器，升级命令同时重建两项服务以更新共享网络空间。
+
+本地目录部署将 pending journal 和工具状态保存到 `prism_data/`；命名卷部署使用 `prism_state`。升级沿用这些状态，保留原请求结局和工具记录。设置 `GATEWAY_PRISM_BROWSER_ENABLED=false` 可关闭部署中的 Prism 路由，适配器保持轻量禁用状态；启用后仍按账号编辑页中的 Prism 开关和模型范围选路。
+
+Chromium 以 UID 1000 运行，并保留浏览器沙盒。`prism-seccomp.json` 来自 [Playwright v1.63.0 的 Docker profile](https://github.com/microsoft/playwright/blob/v1.63.0/utils/docker/seccomp_profile.json)，附带 Apache 2.0 许可证，另加入 `clone3` 的 ENOSYS 回退规则；其余系统调用沿用默认限制。共享内存设为 256 MiB，适配器内存上限 900 MiB、单核、256 个进程。启动时先验证沙盒 Chromium，再开放 `/health`；具体模型与 OAuth 能力通过管理员账号测试确认。容器配置依据 [Playwright Docker 文档](https://playwright.dev/python/docs/docker)。
+
+CI 在发布前运行实际容器检查，验证回环可达、共享密钥鉴权、密钥和状态跨容器重建保留，以及真实 Chromium 上的本地模型/会话 smoke。这些检查使用合成账号与本地页面。
+
+### systemd 运行环境
+
 在构建机生成带前端的 Sub2API 二进制。生产机只安装已有产物及运行时，不执行 Go、Vite 或其他源码构建。
 
 浏览器运行时需要 Python 3.12、`requirements.txt` 固定版本的 Playwright wheel，以及匹配的 Linux Chromium 预构建产物。只安装 wheel，可用 `pip install --only-binary=:all: -r requirements.txt` 防止回退到源码构建。下载 Chromium 不属于编译；运行时目录应由 root 管理。

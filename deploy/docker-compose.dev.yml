@@ -22,9 +22,15 @@ services:
     ports:
       - "${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     volumes:
-      - ./data:/app/data:Z
+      - ./data:/app/data:z
     environment:
       - AUTO_SETUP=true
+
+      # Prism adapter starts alongside the gateway and reads its persisted bridge key.
+      - GATEWAY_PRISM_BROWSER_ENABLED=${GATEWAY_PRISM_BROWSER_ENABLED:-true}
+      - GATEWAY_PRISM_BROWSER_BASE_URL=http://127.0.0.1:8319/v1
+      - GATEWAY_PRISM_BROWSER_API_KEY=${GATEWAY_PRISM_BROWSER_API_KEY:-${PRISM_ADAPTER_API_KEY:-}}
+      - PRISM_ADAPTER_API_KEY=${PRISM_ADAPTER_API_KEY:-}
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=debug
@@ -134,6 +140,41 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # Prism shares the gateway's loopback; its port is private to this namespace.
+  prism-adapter:
+    build:
+      context: ..
+      dockerfile: prism-adapter/Dockerfile
+    restart: unless-stopped
+    network_mode: service:sub2api
+    depends_on:
+      sub2api:
+        condition: service_started
+        restart: true
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./prism-seccomp.json
+    shm_size: 256mb
+    mem_limit: 900m
+    memswap_limit: 900m
+    cpus: 1.0
+    pids_limit: 256
+    volumes:
+      - ./data:/gateway-data:ro,z
+      - ./prism_data:/var/lib/sub2api-prism:Z
+    environment:
+      - PRISM_ADAPTER_API_KEY=${PRISM_ADAPTER_API_KEY:-${GATEWAY_PRISM_BROWSER_API_KEY:-}}
+      - PRISM_ADAPTER_API_KEY_FILE=/gateway-data/prism-adapter/bridge.key
+      - PRISM_ADAPTER_STATE_DIR=/var/lib/sub2api-prism
+      - PRISM_ADAPTER_ENABLED=${GATEWAY_PRISM_BROWSER_ENABLED:-true}
+      - PRISM_ADAPTER_CLIENT_TOOLS_ENABLED=${PRISM_ADAPTER_CLIENT_TOOLS_ENABLED:-true}
+      - PRISM_ADAPTER_MODE=${PRISM_ADAPTER_MODE:-browser}
+      - PRISM_ADAPTER_MAX_INFLIGHT=${PRISM_ADAPTER_MAX_INFLIGHT:-20}
+      - PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT=${PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT:-20}
+      - PRISM_ADAPTER_MAX_QUEUED=${PRISM_ADAPTER_MAX_QUEUED:-30}
+      - PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY=${PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY:-1}
+      - TZ=${TZ:-Asia/Shanghai}
 
   postgres:
     image: postgres:18-alpine

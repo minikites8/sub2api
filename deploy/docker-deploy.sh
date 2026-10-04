@@ -21,7 +21,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # GitHub raw content base URL
-GITHUB_RAW_URL="https://raw.githubusercontent.com/nianzs/sub2api/main/deploy"
+GITHUB_RAW_URL="https://raw.githubusercontent.com/${SUB2API_REPOSITORY:-minikites8/sub2api}/main/deploy"
 
 # Print colored message
 print_info() {
@@ -87,6 +87,16 @@ main() {
     fi
     print_success "Downloaded docker-compose.yml"
 
+    # Chromium's sandbox uses this pinned Playwright/Docker seccomp profile.
+    print_info "Downloading Prism sandbox profile..."
+    if command_exists curl; then
+        curl -fsSL "${GITHUB_RAW_URL}/prism-seccomp.json" -o prism-seccomp.json
+        curl -fsSL "${GITHUB_RAW_URL}/prism-seccomp.LICENSE" -o prism-seccomp.LICENSE
+    else
+        wget -q "${GITHUB_RAW_URL}/prism-seccomp.json" -O prism-seccomp.json
+        wget -q "${GITHUB_RAW_URL}/prism-seccomp.LICENSE" -O prism-seccomp.LICENSE
+    fi
+
     # Download .env.example
     print_info "Downloading .env.example..."
     if command_exists curl; then
@@ -123,7 +133,7 @@ main() {
 
     # Create data directories
     print_info "Creating data directories..."
-    mkdir -p data postgres_data redis_data
+    mkdir -p data postgres_data redis_data prism_data
     print_success "Created data directories"
 
     # Set secure permissions for .env file (readable/writable only by owner)
@@ -150,6 +160,8 @@ main() {
     echo "  data/                     - Application data (will be created on first run)"
     echo "  postgres_data/            - PostgreSQL data"
     echo "  redis_data/               - Redis data"
+    echo "  prism_data/               - Prism pending and tool state"
+    echo "  prism-seccomp.json        - Chromium sandbox syscall profile"
     echo ""
     echo "Next steps:"
     echo "  1. (Optional) Edit .env to customize configuration"

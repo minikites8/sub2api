@@ -22,6 +22,8 @@
 
 Prism 的运行方式和依赖见 [Prism adapter 文档](../prism-adapter/README.md)。网关和完整 `prism-adapter/` 目录共同升级，按文档配置浏览器会话、适配器密钥和 Prism 模型范围。
 
+Docker Compose 已接入自动启动的 Prism 适配器服务，打包流程同时发布主服务与适配器镜像。更新对应的 Compose 文件与 `prism-seccomp.json`，并设置匹配的 `SUB2API_IMAGE` / `PRISM_ADAPTER_IMAGE` 后启动两项服务。桥接密钥由网关自动生成并保存，适配器只读共享；pending journal 与工具状态使用独立持久化目录。升级步骤和沙盒配置见上述部署文档。
+
 新增数据库迁移随服务启动执行。`241_add_typesafe_platform.sql` 兼容存量 Kiro 行，`265_preserve_kiro_typesafe_platforms.sql` 将配额与组合路由的平台约束收敛到 Kiro、TypeSafe 和其他已有平台的全集。已有主分支迁移文件保持原内容。
 
 全局充值阶梯与优惠券、首充活动组合时，优惠券保持原有到账规则，阶梯赠金单独记录，阶梯折扣与优惠券共同计算实付。账单和余额预览使用相同的规则。

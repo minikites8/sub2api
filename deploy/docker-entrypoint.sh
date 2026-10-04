@@ -20,4 +20,45 @@ if [ "${1#-}" != "$1" ]; then
     set -- /app/sub2api "$@"
 fi
 
+# Compose shares this private key file with the Prism adapter container.
+# Generate it once, so container recreation retains the same bridge identity.
+case "${GATEWAY_PRISM_BROWSER_ENABLED:-false}" in
+    true|TRUE|True|t|T|1) prism_enabled=true ;;
+    *) prism_enabled=false ;;
+esac
+if [ "$1" = "/app/sub2api" ] && [ "$prism_enabled" = "true" ]; then
+    if [ -n "${GATEWAY_PRISM_BROWSER_API_KEY:-}" ] && [ -n "${PRISM_ADAPTER_API_KEY:-}" ] &&
+       [ "$GATEWAY_PRISM_BROWSER_API_KEY" != "$PRISM_ADAPTER_API_KEY" ]; then
+        echo 'Prism gateway and adapter bridge keys must match' >&2
+        exit 1
+    fi
+    prism_key_dir=${DATA_DIR:-/app/data}/prism-adapter
+    prism_key_file=$prism_key_dir/bridge.key
+    mkdir -p "$prism_key_dir"
+    chmod 700 "$prism_key_dir"
+    prism_key=${GATEWAY_PRISM_BROWSER_API_KEY:-${PRISM_ADAPTER_API_KEY:-}}
+    if [ -z "$prism_key" ] && [ -f "$prism_key_file" ]; then
+        prism_key=$(cat "$prism_key_file")
+    fi
+    if [ -z "$prism_key" ]; then
+        prism_key=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+    fi
+    case "$prism_key" in
+        *[[:space:]]*) echo 'Prism bridge key must contain at least 32 characters without whitespace' >&2; exit 1 ;;
+    esac
+    if [ "${#prism_key}" -lt 32 ]; then
+        echo 'Prism bridge key must contain at least 32 characters without whitespace' >&2
+        exit 1
+    fi
+    prism_original_umask=$(umask)
+    umask 077
+    prism_key_tmp=$(mktemp "$prism_key_dir/.bridge.XXXXXX")
+    printf '%s' "$prism_key" > "$prism_key_tmp"
+    chmod 600 "$prism_key_tmp"
+    mv -f "$prism_key_tmp" "$prism_key_file"
+    umask "$prism_original_umask"
+    export GATEWAY_PRISM_BROWSER_API_KEY=$prism_key
+    export GATEWAY_PRISM_BROWSER_BASE_URL=${GATEWAY_PRISM_BROWSER_BASE_URL:-http://127.0.0.1:8319/v1}
+fi
+
 exec "$@"
