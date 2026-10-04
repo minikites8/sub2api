@@ -27,6 +27,7 @@ from tool_bridge import ToolBridge, has_tools, strict_json
 from tool_state import ToolState, digest
 from response_events import completed_events
 from reasoning_options import resolve_reasoning
+from error_redaction import redact_error
 
 
 BASE = "https://prism.openai.com"
@@ -169,6 +170,14 @@ def terminal_error(data):
         error = AdapterError(*codes.get(details.get('upstream_code'), (502, 'prism_failed', 'Prism turn failed')))
     error.upstream = terminal_failure_diagnostics(data)
     return error
+
+
+def terminal_failure_log_fields(data, secrets=()):
+    response = data.get('response') if isinstance(data, dict) else None
+    payload = response.get('payload') if isinstance(response, dict) else None
+    payload = payload if isinstance(payload, dict) else {}
+    return {'upstream_message': redact_error(payload.get('message'), secrets),
+            'upstream_root_cause': redact_error(payload.get('rootCause'), secrets)}
 
 
 def terminal_text(data):
