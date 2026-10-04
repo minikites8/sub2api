@@ -47,7 +47,7 @@ class PromptLimitTests(unittest.TestCase):
                 with self.assertRaises(adapter.AdapterError) as raised:
                     adapter.parse_prompt(dict(body, input=text + 'x'))
                 self.assertEqual((raised.exception.status, raised.exception.code), (413, 'request_too_large'))
-                self.assertIn('112 KiB', str(raised.exception))
+                self.assertIn('64 KiB', str(raised.exception))
 
     def test_budget_includes_instructions_history_and_content_parts(self):
         body = {'model': adapter.MODEL, 'instructions': 'x' * 30000, 'input': [

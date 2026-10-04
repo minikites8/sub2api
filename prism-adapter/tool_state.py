@@ -92,3 +92,9 @@ class ToolState:
     def not_sent(self, scope, lease):
         with self.lock, self.connect() as db:
             db.execute("UPDATE calls SET state='issued', result_hash=NULL, lease=NULL WHERE scope=? AND lease=?", (scope, lease))
+
+    def reject_input(self, scope, lease):
+        # A trusted start-time size rejection occurred before processing.
+        # Retain the submitted result digest while making the lease resumable.
+        with self.lock, self.connect() as db:
+            db.execute("UPDATE calls SET state='issued', lease=NULL WHERE scope=? AND lease=? AND state='reserved'", (scope, lease))

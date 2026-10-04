@@ -100,7 +100,7 @@ def parse_prompt(payload):
     # Codex instructions and full history can exceed 32,000 characters.
     if len(prompt.encode('utf-8')) > MAX_PRISM_PROMPT_BYTES:
         raise AdapterError(413, "request_too_large",
-            "Prism text prompt exceeds the 112 KiB UTF-8 submission budget; reduce instructions or message history")
+            f"Prism text prompt exceeds the {MAX_PRISM_PROMPT_BYTES // 1024} KiB UTF-8 submission budget; reduce instructions or message history")
     return prompt, payload.get("stream", False)
 
 
@@ -170,8 +170,10 @@ def terminal_error(data):
             'workspace_sync_unavailable': (503, 'prism_workspace_sync_unavailable', 'Prism project synchronization is unavailable'),
             'sandbox_disconnected': (503, 'prism_sandbox_disconnected', 'Prism project runtime disconnected'),
         }
-        fallback = ((400, 'prism_input_rejected', 'Prism rejected the conversation input; see adapter upstream error logs')
-                    if details.get('upstream_status') == 400 else (502, 'prism_failed', 'Prism turn failed'))
+        fallback = {
+            400: (400, 'prism_input_rejected', 'Prism rejected the conversation input; see adapter upstream error logs'),
+            413: (413, 'prism_input_too_large', 'Prism rejected the input size; reduce instructions, tool definitions or message history'),
+        }.get(details.get('upstream_status'), (502, 'prism_failed', 'Prism turn failed'))
         error = AdapterError(*codes.get(details.get('upstream_code'), fallback))
     error.upstream = terminal_failure_diagnostics(data)
     return error
@@ -408,6 +410,8 @@ class BrowserRequest:
                 self.state.update(self.account_id, update)
             result = terminal_text(data)
             if result is not None:
+                if isinstance(result, AdapterError) and result.code == 'prism_input_too_large':
+                    result.input_rejected_before_processing = response.url == BASE + START
                 self.terminal = (response.status, result)
         except (ValueError, TypeError):
             pass
@@ -815,7 +819,11 @@ class Handler(BaseHTTPRequestHandler):
                     if bridge is not None:
                         terminal_id = getattr(error, 'terminal_request_id', None)
                         if terminal_id:
-                            self.tool_state.complete(scope, bridge.lease, 'resp_prism_' + terminal_id, [])
+                            if (getattr(error, 'input_rejected_before_processing', False)
+                                    and getattr(error, 'code', None) == 'prism_input_too_large'):
+                                self.tool_state.reject_input(scope, bridge.lease)
+                            else:
+                                self.tool_state.complete(scope, bridge.lease, 'resp_prism_' + terminal_id, [])
                         elif (getattr(error,'not_submitted',False) or
                                 getattr(error,'code',None) in ('prism_busy','resource_pressure','credential_rotation')):
                             self.tool_state.not_sent(scope, bridge.lease)

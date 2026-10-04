@@ -3,7 +3,9 @@ import json
 from collections import Counter
 
 
-MAX_PRISM_PROMPT_BYTES = 112 * 1024
+# Prism rejected a 102,108-byte prompt before model processing. Leave room
+# for its own envelope and native context by compacting catalogs at 64 KiB.
+MAX_PRISM_PROMPT_BYTES = 64 * 1024
 MAX_CATALOG_INSPECTIONS = 4
 
 

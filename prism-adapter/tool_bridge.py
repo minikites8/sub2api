@@ -166,7 +166,7 @@ class ToolBridge:
             if len(prompt.encode('utf-8')) <= MAX_PRISM_PROMPT_BYTES:
                 return prompt
         raise self.error(status, 'tool_prompt_too_large',
-            'Prism tool prompt exceeds the 112 KiB submission budget; reduce tool descriptions, schemas or history')
+            f'Prism tool prompt exceeds the {MAX_PRISM_PROMPT_BYTES // 1024} KiB submission budget; reduce tool descriptions, schemas or history')
 
     def expand_catalog(self, answer):
         if self.catalog_mode != 'indexed':

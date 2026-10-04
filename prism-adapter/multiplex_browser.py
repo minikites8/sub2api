@@ -537,6 +537,8 @@ class MultiplexBrowser:
                 journal.finish()
                 if isinstance(result, self.api.AdapterError):
                     result.terminal_request_id = start.request_id
+                    if result.code == 'prism_input_too_large':
+                        result.input_rejected_before_processing = not needs_poll
                     response = data.get('response') if isinstance(data.get('response'), dict) else {}
                     self.observe('prism_upstream_terminal_failure', journal,
                         response_failed=response.get('status') in ('failed', 'error'),

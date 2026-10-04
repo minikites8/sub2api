@@ -105,7 +105,7 @@ class CatalogPromptTests(unittest.TestCase):
     def test_selected_definition_overflow_is_explicit_and_utf8_safe(self):
         tools = client_catalog(unique=True)
         tools[-1]['tools'][1]['format'] = {'type': 'grammar', 'syntax': 'regex', 'definition': '字' * 16000}
-        bridge = ToolBridge(request(tools=tools, input='历史 ' + '字' * 22000), adapter)
+        bridge = ToolBridge(request(tools=tools, input='历史 ' + '字' * 8000), adapter)
         with self.assertRaises(adapter.AdapterError) as raised:
             bridge.expand_catalog(frame(bridge, {'kind': 'inspect', 'names': ['client.echo']}))
         self.assertEqual(raised.exception.code, 'tool_prompt_too_large')

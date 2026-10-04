@@ -75,9 +75,10 @@ class TerminalErrorTests(unittest.TestCase):
         with http_adapter(Browser()) as url:
             with self.assertRaises(HTTPError) as raised:
                 send(url, payload({'effort': 'high'}))
-            self.assertEqual(raised.exception.code, 502)
+            self.assertEqual(raised.exception.code, 413)
             response = json.load(raised.exception)
-        self.assertEqual(response, {'error': {'type': 'prism_failed', 'message': 'Prism turn failed',
+        self.assertEqual(response, {'error': {'type': 'prism_input_too_large',
+                         'message': 'Prism rejected the input size; reduce instructions, tool definitions or message history',
                          'upstream': {'upstream_status': 413, 'upstream_hints': ['context']}}})
         self.assertNotIn('private', json.dumps(response))
 
