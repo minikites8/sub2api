@@ -297,7 +297,7 @@ func (s *OpenAIGatewayService) forwardPrismBrowser(ctx context.Context, c *gin.C
 		return nil, err
 	}
 	if stream {
-		c.Header("X-Prism-Usage", "unavailable")
+		c.Header("X-Prism-Usage", "response-metadata")
 		interval := 10 * time.Second
 		if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
 			interval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
@@ -333,23 +333,45 @@ func (s *OpenAIGatewayService) forwardPrismBrowser(ctx context.Context, c *gin.C
 		fail(http.StatusBadGateway, "invalid_prism_response", "Prism adapter returned an undeclared client tool")
 		return nil, err
 	}
+	responseBody, usage, usageSource, err := prismBrowserUsage(body, responseBody, upstreamModel, stream)
+	if err != nil {
+		fail(http.StatusBadGateway, "invalid_prism_usage", "Prism response usage could not be counted")
+		return nil, err
+	}
+	reasoningEffort := optionalTrimmedStringPtr(gjson.GetBytes(responseBody, "reasoning.effort").String())
+	if stream {
+		for _, line := range bytes.Split(responseBody, []byte("\n")) {
+			if bytes.HasPrefix(line, []byte("data:")) {
+				data := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
+				if gjson.GetBytes(data, "type").String() == "response.completed" {
+					reasoningEffort = optionalTrimmedStringPtr(gjson.GetBytes(data, "response.reasoning.effort").String())
+				}
+			}
+		}
+	}
+	requestedEffort := optionalTrimmedStringPtr(gjson.GetBytes(body, "reasoning.effort").String())
+	if reasoningEffort == nil {
+		reasoningEffort = requestedEffort
+	}
 	StopOpenAICompactSSEKeepaliveCommitted(c)
 	contentType := "application/json"
 	if stream {
 		contentType = "text/event-stream"
 	}
 	SetActualOpenAIUpstreamEndpoint(c, "/v1/responses")
-	c.Header("X-Prism-Usage", "unavailable")
+	c.Header("X-Prism-Usage", usageSource)
 	c.Data(http.StatusOK, contentType, responseBody)
 	return &OpenAIForwardResult{
-		RequestID:        responseID,
-		ResponseID:       responseID,
-		UpstreamHeaders:  upstreamHeaders,
-		Model:            model,
-		UpstreamModel:    upstreamModel,
-		Stream:           stream,
-		Duration:         time.Since(started),
-		UsageUnavailable: true,
+		RequestID:                "prism:" + responseID,
+		ResponseID:               responseID,
+		UpstreamHeaders:          upstreamHeaders,
+		Usage:                    usage,
+		Model:                    model,
+		UpstreamModel:            upstreamModel,
+		ReasoningEffort:          reasoningEffort,
+		RequestedReasoningEffort: requestedEffort,
+		Stream:                   stream,
+		Duration:                 time.Since(started),
 	}, nil
 }
 

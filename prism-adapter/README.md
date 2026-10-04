@@ -38,7 +38,7 @@ Codex 的 `max` / `ultra` 请求映射到 Prism 的最高档 `xhigh`；`minimal`
 - 结果不明确时保留待决文件，后续请求返回 409。没有自动删除待决文件或重放模型请求的逻辑。自动续接轮询、取消和结果恢复尚未实现；运营人员必须先确认原请求结局。
 - start 从未离开浏览器（页面没有发出，或被门控拦下）时结局是确定的：适配器清除待决文件并返回 `start_not_sent`，账号不会因此被锁。
 - 终态回执只保留 request ID、模型、请求次数、时间和答案摘要，不记录 prompt、答案正文、Cookie 或 OAuth token。待决文件含敏感 `turn_state`，不能公开或提交。
-- 成功结果 `usage: null`，不会估算官方 token 数。SSE 只包含 created/completed 事件，不产生伪造的 token delta。主网关发现 usage 不可用时拒绝将它记录为零 token 或据此扣费，所以这是未计费的试验通道。
+- 浏览器适配器的原始结果为 `usage: null`。Go 网关使用本地 tokenizer 估算客户端请求文本、完整工具声明、可读历史和终态输出的 token 数，补齐 Responses `usage`，按已有模型价格、分组倍率、余额或订阅规则记录请求并计费。metadata `prism_usage_source=estimated` 标记估算来源；未来提供有效上游用量时优先使用并标记 `upstream`。缓存和隐藏推理明细按零处理。内部目录查询沿用同一个客户端请求；估算依据是客户端完整请求与终态输出。SSE 等待阶段的 `X-Prism-Usage=response-metadata` 表示最终来源见 response metadata。
 - 仅允许 `http://127.0.0.1:<port>/v1` 或 `http://[::1]:<port>/v1` 作为适配器地址；不使用环境代理、账号代理、HTTP 重定向或通用插件链传递 OAuth token。适配器默认只监听 IPv4 回环 `127.0.0.1:8319`。
 - 单个浏览器回合串行执行，忙时返回 429，不排无限队列。每个账号有独立待决锁；全局服务也只允许一个浏览器回合，避免生产资源争用。重复、冲突或非法的标准会话标识在网关拒绝，不转发到适配器。
 - 调度器不会把 WebSocket 会话分给开启 Prism 的账号（与 Excel BPS 模型相同），HTTP 请求照常进入适配器。适配器的鉴权或路径错误（401/403/404/405）对客户端统一返回 502，不会被误当成客户端 API Key 失效。
@@ -50,7 +50,7 @@ Codex 的 `max` / `ultra` 请求映射到 Prism 的最高档 `xhigh`；`minimal`
 - 支持 Responses `function`、`custom`、嵌套 namespace，顶层 `tools` / `additional_tools` 及 input 内的 `additional_tools`。
 - 支持 `tool_choice=auto/none/required`、指定 function/custom，以及 `parallel_tool_calls`。所有 namespace、`additional_tools` 合计支持最多 512 个不同客户端工具，保留完整目录与参数定义；每次最多 8 个调用、历史最多 64 个调用，`parallel_tool_calls=false` 时最多一个。完整目录与历史按 UTF-8 限制为 1 MiB，验证进程使用一致的工具与历史预算；实际单次 Prism 提示采用 96 KiB 提交预算，目录压缩优先以 64 KiB 为目标。
 - 大型目录先用共享字段无损合并重复说明、JSON Schema 和自定义格式；压缩后仍超过提交预算时，提示提供全部工具名称和说明预览，通过内部 `inspect` 加载所选工具的完整定义，再释放经过原始 schema/grammar 校验的客户端调用。每个客户端请求最多 4 轮目录加载，各轮创建独立项目，沿用同一模型/强度和 285 秒总时限。目录加载会增加 Prism 回合数；工具结果与实际操作继续由客户端执行。单个所选定义或历史超出预算时明确返回 `tool_prompt_too_large`，管理员日志继续记录目录模式、加载次数与提示词字节数。
-- 多轮客户端工具输出使历史超出 64 KiB 目标时，优先缩减较早的大型结果，保留各结果的开头与结尾，并标记 `PRISM_CONTEXT_OMISSION`、原始字节数及进一步读取的提示。instructions、用户/系统/开发者消息、调用参数与身份完整保留；最近的短结果完整保留。缩减只作用于模型提示，消费校验、结果摘要、缓存请求摘要继续使用完整原始结果。响应 metadata 的 `prism_compacted_tool_results`、`prism_history_bytes_before/after` 和日志 `prism_tool_history_compacted` 记录缩减数量与字节数。受保护内容需要更多空间时使用 96 KiB 预算，仍超限则返回明确错误。
+- 多轮历史超出 64 KiB 目标时，依次缩减较早的大型工具结果、助手回复/推理摘要和已完成调用的参数；大量短结果继续累积时再缩减较早结果的预览。预览保留开头与结尾，并标记 `PRISM_CONTEXT_OMISSION`、原始字节数及进一步读取的提示。instructions、用户/系统/开发者消息及调用身份完整保留。缩减只作用于模型提示，调用参数校验、消费校验、结果摘要、缓存请求摘要继续使用完整原始数据。响应 metadata 的 `prism_compacted_tool_results`、`prism_compacted_history_items`、`prism_history_bytes_before/after` 和日志 `prism_tool_history_compacted` 记录缩减数量与字节数。受保护内容需要更多空间时使用 96 KiB 预算，仍超限则返回明确错误。
 - 网关不执行 shell、JavaScript、补丁、MCP 或文件操作。Prism 通过受控文本协议请求客户端工具，适配器只接受带本轮标记的完整 JSON；未知工具、裸 shell、代码围栏、重复调用或不合法参数不会被猜测、包装或发送给客户端。这不是 Prism 原生工具通道。
 - Function arguments 校验 JSON Schema Draft 2020-12 / Draft 7；拒绝外部 schema 引用。Custom input 保留原始字符串，支持 text、regex 和 Lark 格式；Lark 仅允许 bundled common imports。校验在独立子进程中运行，限制时间、CPU、输入大小，Linux 限制地址空间 192 MiB；不运行工具代码。
 - 回传 `function_call` / `custom_tool_call`、原工具名/namespace 和唯一 `call_id`。客户端执行后，用完整 Responses 历史提交对应的 `*_call_output`；当前不支持只有结果、没有原 call 的增量历史，也不把 `previous_response_id` 当作已恢复的会话。
@@ -62,7 +62,7 @@ Codex 的 `max` / `ultra` 请求映射到 Prism 的最高档 `xhigh`；`minimal`
 - 完整历史中的新用户消息标记新回合，随后附带的助手进度、推理摘要和系统/开发者上下文沿用该边界；后续工具调用或结果进入工具续接校验。历史结果的账号、调用参数、结果摘要和待决状态检查始终生效。
 - Hosted web/search、MCP、computer、image 等工具不由本桥执行。有可用客户端工具时，未支持的 hosted 类型在提示和响应 metadata `prism_unavailable_tools` 中明确列出；只有 hosted 工具或强制选择它们时拒绝请求。
 - SSE 在真实终态验证后输出 item added / arguments 或 input done / item done / completed；不伪造逐 token delta。Go 网关核对工具目录及事件与终态的一致性。当前响应仍按终态缓冲，主动终止远端生成、自动恢复未知回合和长连接实时心跳不属于本次实现。
-- `usage` 仍为 null，保持原来的未计费试用边界。可接受 `include=["reasoning.encrypted_content"]` 和 summary=auto 的可选请求，但不会编造 Prism 未提供的 encrypted reasoning；已包含密文的输入历史明确拒绝。
+- 工具调用和最终文本的成功响应均进入 Go 网关的用量记录与计费流程。工具续接缓存使用稳定响应 ID 去重，HTTP 请求 ID 及 JSON/SSE 编码变化沿用同一计费身份。可接受 `include=["reasoning.encrypted_content"]` 和 summary=auto 的可选请求；已包含密文的输入历史明确拒绝。
 
 离线验证（没有 OAuth、没有真实模型请求）：
 

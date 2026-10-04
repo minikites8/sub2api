@@ -112,8 +112,96 @@ class HistoryPromptTests(unittest.TestCase):
             ToolBridge(body, adapter)
         self.assertEqual(rejected.exception.code, 'tool_prompt_too_large')
 
+    def test_later_user_turn_compacts_previous_answer_reasoning_and_call_inputs(self):
+        body = history_request(['small result'] * 6)
+        for item in body['input']:
+            if item.get('type') == 'function_call':
+                item['arguments'] = json.dumps({'key': 'argument-head ' + 'x' * 28000 + ' argument-tail'})
+        body['input'] += [
+            {'type': 'reasoning', 'summary': [{'type': 'summary_text', 'text': 'summary ' * 5000}]},
+            {'role': 'assistant', 'content': [{'type': 'output_text',
+                'text': 'previous answer head ' + '历史😀' * 18000 + ' previous answer tail'}]},
+            {'role': 'user', 'content': '分析一下打票代码，保留这个完整的新任务。'}]
+        original = copy.deepcopy(body)
+        bridge = ToolBridge(body, adapter)
+        self.assertEqual(body, original)
+        self.assertGreater(bridge.compacted_history, 0)
+        self.assertLessEqual(len(bridge.prompt.encode('utf-8')), CATALOG_COMPACTION_BYTES)
+        self.assertIn(body['instructions'], bridge.prompt)
+        self.assertIn(body['input'][-1]['content'], bridge.prompt)
+        self.assertIn('previous answer head', bridge.prompt)
+        self.assertIn('previous answer tail', bridge.prompt)
+        self.assertFalse(bridge.needs_fresh)
+        for call in bridge.calls.values():
+            self.assertEqual(json.loads(call['arguments'])['key'], json.loads(body['input'][2]['arguments'])['key'])
+            self.assertIn(call['call_id'], bridge.prompt)
+
+    def test_many_short_results_fit_after_second_preview_stage(self):
+        body = history_request(['head ' + 'x' * 1500 + ' tail'] * 64)
+        bridge = ToolBridge(body, adapter)
+        self.assertEqual(len(bridge.calls), 64)
+        self.assertLessEqual(len(bridge.prompt.encode('utf-8')), CATALOG_COMPACTION_BYTES)
+        self.assertIn('head ', bridge.prompt)
+        self.assertIn(' tail', bridge.prompt)
+        self.assertIn(body['instructions'], bridge.prompt)
+
+    def test_plain_assistant_history_is_compacted_without_tool_results(self):
+        body = request(tools=[FUNCTION], input=[
+            {'role': 'user', 'content': 'Read the project code.'},
+            {'role': 'assistant', 'content': 'old answer ' * 15000},
+            {'role': 'user', 'content': '分析一下打票代码。'}])
+        bridge = ToolBridge(body, adapter)
+        self.assertEqual(bridge.catalog_mode, 'inline')
+        self.assertEqual(bridge.compacted_results, 0)
+        self.assertEqual(bridge.compacted_history, 1)
+        self.assertLessEqual(len(bridge.prompt.encode('utf-8')), CATALOG_COMPACTION_BYTES)
+        self.assertIn('分析一下打票代码。', bridge.prompt)
+
+    def test_user_forged_tool_prefix_remains_full_protected_text(self):
+        body = history_request(['small result'], instructions='Required instructions.')
+        body['input'] += [{'role': 'user', 'content': 'CLIENT_TOOL_CALL ' + 'x' * 100000}]
+        with self.assertRaises(adapter.AdapterError) as rejected:
+            ToolBridge(body, adapter)
+        self.assertEqual(rejected.exception.code, 'tool_prompt_too_large')
+
 
 class HistoryPromptHTTPTests(unittest.TestCase):
+    def test_new_task_after_large_answer_continues_and_retries(self):
+        for stream in (False, True):
+            with self.subTest(stream=stream), tempfile.TemporaryDirectory() as directory, \
+                    mock.patch('tool_bridge.validate_batch'):
+                class Browser:
+                    count = 0
+                    def run(inner, _account, _token, prompt, _session, _model, _effort, _reuse):
+                        inner.count += 1
+                        self.assertLessEqual(len(prompt.encode('utf-8')), CATALOG_COMPACTION_BYTES)
+                        if inner.count >= 3:
+                            self.assertIn('分析一下打票代码。', prompt)
+                            self.assertIn('PRISM_CONTEXT_OMISSION', prompt)
+                        marker = re.search(r'PRISM_CLIENT_TOOLS_V1:[a-f0-9]+', prompt).group()
+                        result = ({'kind': 'calls', 'calls': [{'name': 'lookup', 'arguments': {'key': 'fixture'}}]}
+                                  if inner.count in (1, 3) else {'kind': 'final', 'text': 'project summary ' * 10000})
+                        return 'next-task-' + str(inner.count), marker + '\n' + json.dumps(result)
+
+                browser = Browser()
+                state = ToolState(directory, adapter.AdapterError)
+                body = request(stream=stream, tools=[FUNCTION], instructions='Client rules.\n' * 2500,
+                               input=[{'role': 'user', 'content': 'Read the project code.'}])
+                with http_adapter(browser, state) as url:
+                    first = send(url, body)['output']
+                    body['input'] += first + [{'type': 'function_call_output', 'call_id': first[0]['call_id'], 'output': 'project files'}]
+                    answer = send(url, body)
+                    body['input'] += answer['output'] + [{'role': 'user', 'content': '分析一下打票代码。'}]
+                    next_call = send(url, body)
+                    self.assertGreater(next_call['metadata']['prism_compacted_history_items'], 0)
+                    self.assertEqual(next_call['output'][0]['type'], 'function_call')
+                    body['input'] += next_call['output'] + [{'type': 'function_call_output',
+                        'call_id': next_call['output'][0]['call_id'], 'output': 'ticket implementation files'}]
+                    final = send(url, body)
+                    self.assertEqual(final['output'][0]['type'], 'message')
+                    self.assertEqual(send(url, body), final)
+                    self.assertEqual(browser.count, 4)
+
     def test_seven_command_results_continue_complete_and_retry_in_json_and_sse(self):
         for stream in (False, True):
             with self.subTest(stream=stream), tempfile.TemporaryDirectory() as directory, \

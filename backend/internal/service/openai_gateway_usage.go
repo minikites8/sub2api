@@ -361,6 +361,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	durationMs := int(result.Duration.Milliseconds())
 	accountRateMultiplier := account.BillingRateMultiplier()
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
+	requestPayloadHash := resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash)
+	if accountHasPrismBrowser(account) && strings.HasPrefix(result.RequestID, "prism:") {
+		// Cached continuations keep the same adapter response across HTTP retries
+		// and JSON/SSE encoding changes. Use that identity for money-event dedup.
+		requestID = result.RequestID
+		requestPayloadHash = result.RequestID
+	}
 	if result.OpenAIWSMode {
 		if upstreamRequestID := strings.TrimSpace(result.RequestID); upstreamRequestID != "" {
 			requestID = upstreamRequestID
@@ -543,7 +550,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		APIKey:                     apiKey,
 		Account:                    account,
 		Subscription:               subscription,
-		RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+		RequestPayloadHash:         requestPayloadHash,
 		IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
 		AccountRateMultiplier:      accountRateMultiplier,
 		APIKeyService:              input.APIKeyService,

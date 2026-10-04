@@ -56,7 +56,7 @@ func TestPrismBrowserKeepaliveArrivesBeforeAdapterSettles(t *testing.T) {
 			defer response.Body.Close()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.Equal(t, "no", response.Header.Get("X-Accel-Buffering"))
-			require.Equal(t, "unavailable", response.Header.Get("X-Prism-Usage"))
+			require.Equal(t, "response-metadata", response.Header.Get("X-Prism-Usage"))
 			reader := bufio.NewReader(response.Body)
 			first, err := reader.ReadString('\n')
 			require.NoError(t, err)

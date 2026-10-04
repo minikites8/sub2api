@@ -50,9 +50,11 @@ class ToolFixture(Fixture):
                     return
                 prompt = data['response']['payload']['output'][0]['content'][0]['text']
                 marker = re.search(r'PRISM_CLIENT_TOOLS_V1:[a-f0-9]+',prompt).group()
-                if 'custom_tool_call_output' in prompt:
-                    result = {'kind':'final','text':'fixture-confirmed'}
-                elif 'function_call_output' in prompt:
+                current = prompt.rsplit('[user]\nNext task: verify the ticket code.', 1)[-1]
+                if 'custom_tool_call_output' in current:
+                    result = {'kind':'final','text':'fixture-confirmed' + ('\n' + 'y' * self.server.large_answer_bytes
+                              if self.server.large_answer_bytes else '')}
+                elif 'function_call_output' in current:
                     result = {'kind':'calls','calls':[{'name':'client.echo','input':'fixture-value'}]}
                 else:
                     result = {'kind':'calls','calls':[{'name':'client.lookup','arguments':{'key':'fixture'}}]}
@@ -74,12 +76,14 @@ def main():
     parser.add_argument('--catalog-size',type=int,default=512)
     parser.add_argument('--unique-catalog', action='store_true')
     parser.add_argument('--large-output-bytes', type=int, default=0)
+    parser.add_argument('--large-answer-bytes', type=int, default=0)
     args = parser.parse_args()
     upstream = ThreadingHTTPServer(('127.0.0.1',0),ToolFixture)
     upstream.daemon_threads = True
     upstream.lock = threading.Lock()
     upstream.asset_requests = 0
     upstream.reconnect_first = False
+    upstream.large_answer_bytes = args.large_answer_bytes
     upstream.reconnected = set()
     upstream.max_prompt_bytes, upstream.oversized_starts = MAX_PRISM_PROMPT_BYTES, 0
     upstream.jobs,upstream.release,upstream.mismatches,upstream.target = {},None,0,1
@@ -100,7 +104,9 @@ def main():
             'X-Prism-Account-ID':'300','X-Prism-Caller-ID':'a'*64,'X-Prism-Session-ID':'b'*64,
             'Content-Type':'application/json'}
         try:
-            for turn,expected in enumerate(('function_call','custom_tool_call','message')):
+            task_count = 2 if args.large_answer_bytes else 1
+            for step,expected in enumerate(('function_call','custom_tool_call','message') * task_count):
+                turn = step % 3
                 req=Request(f'http://127.0.0.1:{server.server_port}/v1/responses',data=json.dumps(payload).encode(),headers=headers)
                 with urlopen(req,timeout=120) as reply:
                     events=[json.loads(line[6:]) for line in reply.read().decode().splitlines() if line.startswith('data: ')]
@@ -115,6 +121,8 @@ def main():
                 if args.large_output_bytes and turn:
                     assert response['metadata']['prism_compacted_tool_results'] >= 1
                     assert response['metadata']['prism_history_bytes_before'] > MAX_PRISM_PROMPT_BYTES
+                if args.large_answer_bytes and step >= 3:
+                    assert response['metadata']['prism_compacted_history_items'] >= 1
                 payload['input'] += response['output']
                 if turn<2:
                     assert item['namespace']=='client'
@@ -123,8 +131,10 @@ def main():
                         output += '\n' + 'x' * args.large_output_bytes + '\n[exit code 0]'
                     payload['input'].append({'type':expected+'_output','call_id':item['call_id'], 'output': output})
                 else:
-                    assert item['content'][0]['text']=='fixture-confirmed'
-            expected_starts = 5 if args.unique_catalog and args.catalog_size == 512 else 3
+                    assert item['content'][0]['text'].startswith('fixture-confirmed')
+                    if step == 2 and task_count == 2:
+                        payload['input'].append({'role':'user','content':'Next task: verify the ticket code.'})
+            expected_starts = (5 if args.unique_catalog and args.catalog_size == 512 else 3) * task_count
             assert len(upstream.jobs)==expected_starts and upstream.mismatches==0
             assert upstream.oversized_starts == 0
             assert len({job['project'] for job in upstream.jobs.values()})==expected_starts
@@ -137,10 +147,11 @@ def main():
             assert all(job['effort']=='xhigh' for job in upstream.jobs.values())
             print(json.dumps({'result':'passed','scope':'real HTTP + Chromium + mock Prism',
                 'upstream_starts':expected_starts,'fresh_projects':expected_starts,
-                'function_calls':1,'custom_calls':1,'final_completed':True,
+                'function_calls':task_count,'custom_calls':task_count,'final_completed':True,
                 'catalog_tools':args.catalog_size,'requested_effort':'max','prism_effort':'xhigh',
-                'catalog_inspections':expected_starts-3,'peak_prompt_bytes':peak_prompt_bytes,
+                'catalog_inspections':expected_starts-3 * task_count,'peak_prompt_bytes':peak_prompt_bytes,
                 'large_output_bytes':args.large_output_bytes,
+                'large_answer_bytes':args.large_answer_bytes,
                 'pending':0,'real_prism_requests':0}))
         finally:
             server.shutdown();server.server_close();worker.close()

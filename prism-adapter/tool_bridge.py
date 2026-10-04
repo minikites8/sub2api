@@ -76,7 +76,10 @@ class ToolBridge:
         self.lease = uuid.uuid4().hex
         self.tools, self.calls, self.results = {}, {}, {}
         self.result_positions = []
+        self.call_positions = []
+        self.assistant_positions = []
         self.compacted_results = 0
+        self.compacted_history = 0
         self.unavailable = set()
         self.commands = []
         if payload.get('model') != 'gpt-6.1-sol':
@@ -145,7 +148,7 @@ class ToolBridge:
             self.reject('tool_request_too_large', 'Tool catalog and history exceed the Prism bridge limit of 1 MiB UTF-8')
         if len(self.prompt.encode('utf-8')) > CATALOG_COMPACTION_BYTES:
             # A small catalog needs no inspection to recover a long tool turn.
-            if len(encoded(catalog).encode('utf-8')) <= 8192 and self.results:
+            if len(encoded(catalog).encode('utf-8')) <= 8192:
                 self.prompt = self.fit_history(encoded(catalog))
                 if len(self.prompt.encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
                     return
@@ -166,9 +169,11 @@ class ToolBridge:
 
     def fit_history(self, catalog, budget=CATALOG_COMPACTION_BYTES):
         available = budget - len(self.build_prompt(catalog, history='').encode('utf-8'))
-        if available > 0 and self.result_positions:
-            self.history_prompt, self.compacted_results, self.history_bytes_before = compact_results(
-                self.history_payload, self.result_positions, self.api.parse_prompt, available)
+        if available > 0:
+            (self.history_prompt, self.compacted_results, self.history_bytes_before,
+             self.compacted_history) = compact_results(
+                self.history_payload, self.result_positions, self.api.parse_prompt, available,
+                call_positions=self.call_positions, assistant_positions=self.assistant_positions)
         return self.build_prompt(catalog)
 
     def indexed_prompt(self, status=502):
@@ -347,9 +352,12 @@ class ToolBridge:
                 if not isinstance(summary, list) or any(not isinstance(p,dict) or p.get('type')!='summary_text' or not isinstance(p.get('text'),str) for p in summary):
                     self.reject('unsupported_reasoning_history', 'Reasoning history requires readable summary text')
                 if summary:
+                    self.assistant_positions.append(len(translated))
                     translated.append({'role':'assistant','content':'PREVIOUS_REASONING_SUMMARY '+json.dumps(summary,ensure_ascii=False)})
                 continue
             if kind == 'message':
+                if item.get('role') == 'assistant':
+                    self.assistant_positions.append(len(translated))
                 translated.append(item)
                 if item.get('role', 'user') == 'user':
                     fresh_user_turn = True
@@ -365,6 +373,7 @@ class ToolBridge:
                     call['namespace'] = tool['namespace']
                 call[field] = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',',':')) if field=='arguments' else value
                 self.calls[call_id] = call
+                self.call_positions.append(len(translated))
                 translated.append({'role':'assistant','content':'CLIENT_TOOL_CALL '+json.dumps(call,ensure_ascii=False)})
                 fresh_user_turn = False
             elif kind in ('function_call_output','custom_tool_call_output'):

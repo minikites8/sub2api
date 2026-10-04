@@ -231,11 +231,11 @@ func TestPrismBrowserForwardTerminalAndUsage(t *testing.T) {
 		}
 		result, err := s.forwardPrismBrowser(context.Background(), c, account, []byte(body), time.Now())
 		server.Close()
-		if err != nil || w.Code != http.StatusOK || result == nil || !result.UsageUnavailable || result.ResponseID != "resp_fixture" {
+		if err != nil || w.Code != http.StatusOK || result == nil || result.UsageUnavailable || result.ResponseID != "resp_fixture" || result.Usage.InputTokens <= 0 || result.Usage.OutputTokens <= 0 {
 			t.Fatalf("unexpected result: result=%+v status=%d err=%v", result, w.Code, err)
 		}
-		if err := s.RecordUsage(context.Background(), &OpenAIRecordUsageInput{Result: result}); err == nil {
-			t.Fatal("unknown usage must not enter billing as zero tokens")
+		if !strings.Contains(w.Body.String(), `"prism_usage_source":"estimated"`) {
+			t.Fatal("Prism token estimate must carry its source")
 		}
 	}
 	for _, raw := range []string{`event: response.completed`, `data: {"type":"response.failed"}`, "data: not-json"} {

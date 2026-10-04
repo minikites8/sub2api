@@ -771,9 +771,10 @@ class Handler(BaseHTTPRequestHandler):
                 print(json.dumps({'event': 'prism_tool_catalog_prepared', 'catalog_tools': len(bridge.tools),
                     'catalog_mode': bridge.catalog_mode, 'prompt_bytes': len(prompt.encode('utf-8'))}),
                     file=sys.stderr, flush=True)
-                if bridge.compacted_results:
+                if bridge.compacted_results or bridge.compacted_history:
                     print(json.dumps({'event': 'prism_tool_history_compacted',
                         'tool_results': bridge.compacted_results,
+                        'history_items': bridge.compacted_history,
                         'history_bytes_before': bridge.history_bytes_before,
                         'history_bytes_after': len(bridge.history_prompt.encode('utf-8'))}),
                         file=sys.stderr, flush=True)
@@ -842,9 +843,10 @@ class Handler(BaseHTTPRequestHandler):
                 response['metadata'] = {'prism_requested_reasoning_effort': requested_effort,
                                         'prism_reasoning_effort': effort}
             if bridge is not None:
-                if bridge.compacted_results:
+                if bridge.compacted_results or bridge.compacted_history:
                     response.setdefault('metadata', {}).update(
                         prism_compacted_tool_results=bridge.compacted_results,
+                        prism_compacted_history_items=bridge.compacted_history,
                         prism_history_bytes_before=bridge.history_bytes_before,
                         prism_history_bytes_after=len(bridge.history_prompt.encode('utf-8')))
                 if bridge.catalog_mode != 'inline':
