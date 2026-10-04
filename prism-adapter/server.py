@@ -28,13 +28,13 @@ from tool_state import ToolState, digest
 from response_events import completed_events
 from reasoning_options import resolve_reasoning
 from error_redaction import redact_error
+from catalog_prompt import MAX_PRISM_PROMPT_BYTES
 
 
 BASE = "https://prism.openai.com"
 START = "/api/llm/response_with_tools_start"
 STATUS = "/api/llm/response_with_tools_status"
 MAX_REQUEST_BYTES = 1 << 20
-MAX_PROMPT_CHARS = 32000
 SESSION_ID = re.compile(r"^[0-9a-f]{64}$")
 MODEL = "gpt-5.6-sol"
 PROJECT_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f-]{27,}$")
@@ -96,8 +96,11 @@ def parse_prompt(payload):
             raise AdapterError(400, "invalid_request", "message content must not be empty")
         parts.append("[" + role + "]\n" + text)
     prompt = "\n\n".join(parts)
-    if not prompt.strip() or len(prompt) > MAX_PROMPT_CHARS:
-        raise AdapterError(400, "invalid_request", "text input is empty or too long")
+    # Text and client-tool requests share the rendered UTF-8 submission budget.
+    # Codex instructions and full history can exceed 32,000 characters.
+    if len(prompt.encode('utf-8')) > MAX_PRISM_PROMPT_BYTES:
+        raise AdapterError(413, "request_too_large",
+            "Prism text prompt exceeds the 112 KiB UTF-8 submission budget; reduce instructions or message history")
     return prompt, payload.get("stream", False)
 
 
