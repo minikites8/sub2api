@@ -94,6 +94,53 @@ func TestCodexCloudMintProbeUsesRelayContract(t *testing.T) {
 	require.WithinDuration(t, expires, ticket.ExpiresAt, time.Second)
 }
 
+func TestCodexCloudMintProbeWithCacheDisabled(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		age           time.Duration
+		cookieTTL     time.Duration
+		localTTL      int
+		kind          string
+		validLifetime time.Duration
+	}{
+		{name: "fresh ticket with immediately expired cache", cookieTTL: time.Hour, localTTL: 3600, kind: "success", validLifetime: 240 * time.Second},
+		{name: "cookie expires before ticket", cookieTTL: time.Minute, localTTL: 3600, kind: "success", validLifetime: time.Minute},
+		{name: "local lifetime still applies", cookieTTL: time.Hour, localTTL: 30, kind: "success", validLifetime: 30 * time.Second},
+		{name: "expired ticket body", age: 5 * time.Minute, cookieTTL: time.Hour, localTTL: 3600, kind: "invalid_state"},
+		{name: "expired routing cookie", cookieTTL: -time.Minute, localTTL: 3600, kind: "invalid_route"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := ticketTestAccount(1)
+			now := time.Now().Truncate(time.Second)
+			issued := now.Add(-tc.age)
+			cfg := config.OpenAICodexTicketConfig{
+				TargetLength: 780, TTLSeconds: tc.localTTL,
+				CloudMint: config.OpenAICodexCloudMintConfig{
+					Enabled: true, URL: "https://relay.example/", Key: "relay-secret", Gateway: "unified-88",
+				},
+			}
+			s := ticketTestService(t, cfg, nil)
+			s.httpUpstream = &harvestProxyUpstream{do: func(req *http.Request, _ string) (*http.Response, error) {
+				require.Equal(t, "0", req.Header.Get("X-Mint-TTL"))
+				// Relay sets expires_at = issued_at + X-Mint-TTL seconds.
+				body := cloudMintResponseBody(t, "gpt-6-astra", "gpt-6-astra", mint780State(issued), issued, issued, mint780Pair(now.Add(tc.cookieTTL), "unified-88"))
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+			}}
+			out := s.requestCodex780Probe(context.Background(), account, "token", "gpt-6-astra", "", nil, "session")
+			require.NoError(t, out.Err)
+			shape, kind := classifyCodexHarvestProbe(context.Background(), account, cfg, out)
+			require.Equal(t, tc.kind, kind)
+			if kind == "success" {
+				out.Shape = shape
+				ticket := codexHarvestTicket(account, "gpt-6-astra", out, cfg, 1)
+				require.WithinDuration(t, now.Add(tc.validLifetime), ticket.ExpiresAt, time.Second)
+				require.True(t, ticket.valid(time.Now(), 780))
+				require.False(t, ticket.valid(ticket.ExpiresAt, 780))
+			}
+		})
+	}
+}
+
 func TestCodexCloudMintGatewayBlacklist(t *testing.T) {
 	account := ticketTestAccount(1)
 	issued := time.Now().Truncate(time.Second)

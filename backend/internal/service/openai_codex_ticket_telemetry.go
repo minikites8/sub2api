@@ -43,7 +43,7 @@ func codexTicketHistoryReason(event CodexHarvestFlowEvent) string {
 	switch result {
 	case "success":
 		return "target_length_matched"
-	case "missing_state":
+	case "missing_state", "ticket_missing":
 		return "missing_state"
 	case "invalid_prefix":
 		return "invalid_prefix"
@@ -55,9 +55,14 @@ func codexTicketHistoryReason(event CodexHarvestFlowEvent) string {
 		return "network_error"
 	case "empty_response":
 		return "empty_response"
+	case "expired_ticket", "invalid_route", "model_mismatch", "ticket_timestamp_mismatch", "ticket_length_mismatch":
+		return result
 	case "invalid_state", "response_mismatch":
 		if event.Length > 0 && event.ExpectedLength > 0 && event.Length != event.ExpectedLength {
 			return "length_mismatch"
+		}
+		if result == "invalid_state" {
+			return "invalid_state"
 		}
 	}
 	if event.HTTPStatus >= 400 {

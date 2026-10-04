@@ -33,7 +33,9 @@ gateway:
 $env:SUB2API_CODEX_CLOUD_MINT_KEY = "your-relay-key"
 ```
 
-`cloud_mint.url` 使用 relay 的 HTTPS 地址；本机 relay 可使用 `http://127.0.0.1:<port>/`。relay 返回的 `served_model`、票据长度、签发时间、过期时间和路由 Cookie 会全部经过 Sub2api 校验。relay 请求失败时沿用现有 `fail_closed` 行为。
+`cloud_mint.url` 使用 relay 的 HTTPS 地址；本机 relay 可使用 `http://127.0.0.1:<port>/`。relay 返回的 `served_model`、票据长度、签发时间和路由 Cookie 会经过 Sub2api 校验。relay 请求失败时沿用现有 `fail_closed` 行为。
+
+取票请求固定携带 `X-Mint-TTL: 0`，每次向 relay 获取新票。`tickets[model].expires_at` 表示 relay 缓存截止时间，计算为 `issued_at + X-Mint-TTL`；TTL 为 0 时，这个时间等于签发时间。Sub2api 的票据有效期由票内签发时间加 240 秒、本地 `ttl_seconds` 和路由 Cookie 的 JWT 到期时间共同裁剪，取最早截止时间。打票日志会显示票据过期、票内时间异常、路由校验失败和模型差异等具体原因。
 
 ## Docker Compose 配置
 

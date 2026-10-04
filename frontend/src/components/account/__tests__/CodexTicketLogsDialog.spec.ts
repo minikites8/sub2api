@@ -32,6 +32,20 @@ function mountDialog() {
 beforeEach(() => { vi.useFakeTimers(); getLogs.mockReset(); addBlacklist.mockReset(); getLogs.mockResolvedValue(snapshot()); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible') })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 describe('CodexTicketLogsDialog', () => {
+  it.each([
+    ['invalid_state', '门票格式或票内时间校验失败'],
+    ['expired_ticket', '门票已过期'],
+    ['invalid_route', 'Gateway 或路由 Cookie 校验失败'],
+    ['model_mismatch', 'mint 返回的模型与请求模型存在差异'],
+    ['ticket_timestamp_mismatch', 'mint 签发时间与票内时间存在差异'],
+    ['ticket_length_mismatch', 'mint 声明的长度与实际门票长度存在差异']
+  ])('shows the specific diagnostic for %s', async (reason, message) => {
+    const response = snapshot()
+    response.entries[1] = { ...response.entries[1], event: 'miss', reason }
+    getLogs.mockResolvedValue(response)
+    const wrapper = mountDialog(); await flushPromises()
+    expect(wrapper.findAll('tbody tr')[0].findAll('td')[3].text()).toBe(message)
+  })
   it('adds the current gateway, updates the account and prevents repeat clicks', async () => {
     const initial = { ...snapshot(), gateway_blacklist: ['unified-12'] }
     const updated = { ...account, extra: { openai_codex_ticket_gateway_blacklist: ['unified-12', 'unified-88'] } }

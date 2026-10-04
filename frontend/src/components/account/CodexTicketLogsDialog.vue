@@ -86,7 +86,12 @@ const columns = [
   { key: 'reason', width: '18%' }, { key: 'http', width: '5%' }, { key: 'gateway', width: '14%' },
   { key: 'edgeIp', width: '16%' }, { key: 'length', width: '12%' }, { key: 'duration', width: '8%' }
 ]
-const reasonKeys = new Set(['request_started', 'target_length_matched', 'http_error', 'missing_state', 'invalid_prefix', 'length_mismatch', 'timeout', 'canceled', 'network_error', 'empty_response', 'request_error'])
+const reasonKeys = new Set([
+  'request_started', 'target_length_matched', 'http_error', 'missing_state', 'invalid_prefix',
+  'length_mismatch', 'invalid_state', 'expired_ticket', 'invalid_route', 'model_mismatch',
+  'ticket_timestamp_mismatch', 'ticket_length_mismatch', 'timeout', 'canceled',
+  'network_error', 'empty_response', 'request_error'
+])
 const reason = (value: string) => t(`admin.accounts.codexTickets.reasons.${reasonKeys.has(value) ? value : 'request_error'}`)
 function eventClass(event: string) {
   return codexTicketStateClass(event === 'acquired' ? 'ready' : event === 'started' ? 'harvesting' : event === 'error' ? 'token_invalid' : 'cooldown')

@@ -28,7 +28,8 @@ type codexCloudMintTicket struct {
 	TicketLen   int    `json:"ticket_len"`
 	ServedModel string `json:"served_model"`
 	IssuedAt    string `json:"issued_at"`
-	ExpiresAt   string `json:"expires_at"`
+	// Relay cache deadline: issued_at + X-Mint-TTL seconds.
+	CacheExpiresAt string `json:"expires_at"`
 }
 
 type codexCloudMintResponse struct {
@@ -355,17 +356,19 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 		return
 	}
 	out.Cookies = cookies
-	if ticketExpiry, err := parseCodexCloudMintTime(ticket.ExpiresAt); err != nil {
-		out.Err = err
-		return
-	} else {
-		out.ExpiresAt = ticketExpiry
+	shape, shapeErr := parseOpenAICodexTicketShape(out.State)
+	if shapeErr == nil {
+		// TTL=0 makes the relay cache deadline equal to the issue time.
+		// Credential validity uses the embedded timestamp and live routing cookie.
+		out.ExpiresAt = shape.IssuedAt.Add(codexTicketLifetime(len(out.State)))
+		if _, cookieExpiry, err := codex780Route(cookies, out.Gateway, time.Now()); err == nil && cookieExpiry.Before(out.ExpiresAt) {
+			out.ExpiresAt = cookieExpiry
+		}
 	}
 	if ticketIssued, err := parseCodexCloudMintTime(ticket.IssuedAt); err != nil {
 		out.Err = err
 		return
 	} else if !ticketIssued.IsZero() {
-		shape, shapeErr := parseOpenAICodexTicketShape(out.State)
 		if shapeErr == nil && shape.IssuedAt.Unix() != ticketIssued.Unix() {
 			out.Err = &codexMintError{kind: "ticket_timestamp_mismatch", detail: "cloud mint ticket timestamp mismatch"}
 			return
