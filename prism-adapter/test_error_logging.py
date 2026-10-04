@@ -91,6 +91,7 @@ class LifecycleErrorLoggingTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(adapter.AdapterError) as raised:
                     await engine.run('300', 'private-oauth', 'user prompt', 'fixture-session')
             self.assertEqual(raised.exception.code, 'prism_failed')
+            self.assertEqual(raised.exception.terminal_request_id, 'fixture-request')
             failures = [json.loads(record.getMessage()) for record in captured.records
                         if json.loads(record.getMessage())['event'] == 'prism_upstream_terminal_failure']
             self.assertEqual(len(failures), 1)

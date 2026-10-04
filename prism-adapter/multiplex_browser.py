@@ -536,6 +536,7 @@ class MultiplexBrowser:
                 self.state.receipt(account_id, start.request_id, getattr(start, 'start_attempts', 1), polls, result, start.cache_hit, model=model, effort=effort)
                 journal.finish()
                 if isinstance(result, self.api.AdapterError):
+                    result.terminal_request_id = start.request_id
                     response = data.get('response') if isinstance(data.get('response'), dict) else {}
                     self.observe('prism_upstream_terminal_failure', journal,
                         response_failed=response.get('status') in ('failed', 'error'),

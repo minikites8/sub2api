@@ -441,6 +441,7 @@ class BrowserRequest:
                            model=self.gate.model, effort=self.gate.effort)
         self.state.finish(self.account_id)
         if isinstance(result, AdapterError):
+            result.terminal_request_id = self.request_id
             raise result
         return self.request_id, result
 
@@ -767,9 +768,13 @@ class Handler(BaseHTTPRequestHandler):
                             'loaded_tools': len(bridge.loaded), 'prompt_bytes': len(prompt.encode('utf-8'))}),
                             file=sys.stderr, flush=True)
                 except Exception as error:
-                    if bridge is not None and (getattr(error,'not_submitted',False) or
-                            getattr(error,'code',None) in ('prism_busy','resource_pressure','credential_rotation')):
-                        self.tool_state.not_sent(scope, bridge.lease)
+                    if bridge is not None:
+                        terminal_id = getattr(error, 'terminal_request_id', None)
+                        if terminal_id:
+                            self.tool_state.complete(scope, bridge.lease, 'resp_prism_' + terminal_id, [])
+                        elif (getattr(error,'not_submitted',False) or
+                                getattr(error,'code',None) in ('prism_busy','resource_pressure','credential_rotation')):
+                            self.tool_state.not_sent(scope, bridge.lease)
                     raise
             finally:
                 if self.serialize_requests:

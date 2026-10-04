@@ -4,6 +4,7 @@ import tempfile
 import time
 import unittest
 from unittest import mock
+from urllib.error import HTTPError
 
 from catalog_prompt import shared_catalog, MAX_PRISM_PROMPT_BYTES, MAX_CATALOG_INSPECTIONS
 from smoke_client_tools import client_catalog
@@ -148,6 +149,51 @@ class CatalogPromptTests(unittest.TestCase):
         self.assertEqual(response['output'][0]['type'], 'function_call')
         self.assertEqual(response['output'][0]['namespace'], 'client')
         self.assertEqual(response['metadata']['prism_catalog_inspections'], 1)
+
+    def continuation_failure(self, known):
+        import re
+
+        class Browser:
+            calls = 0
+
+            def run(inner, *_args):
+                inner.calls += 1
+                if inner.calls == 1:
+                    marker = re.search(r'PRISM_CLIENT_TOOLS_V1:[a-f0-9]+', _args[2]).group()
+                    return 'fixture-call', marker + '\n' + json.dumps({'kind': 'calls', 'calls': [
+                        {'name': 'client.lookup', 'arguments': {'key': 'fixture'}}]})
+                error = adapter.AdapterError(400 if known else 502,
+                    'prism_input_rejected' if known else 'poll_failed', 'fixture failure')
+                if known:
+                    error.terminal_request_id = 'fixture-failed'
+                raise error
+
+        browser = Browser()
+        with tempfile.TemporaryDirectory() as directory:
+            state = ToolState(directory, adapter.AdapterError)
+            with http_adapter(browser, state) as url:
+                payload = request(tools=client_catalog(2), input=[{'role': 'user', 'content': 'fixture'}])
+                response = send(url, payload)
+                call = response['output'][0]
+                payload['input'].extend([call, {'type': 'function_call_output',
+                    'call_id': call['call_id'], 'output': 'fixture-value'}])
+                with self.assertRaises(HTTPError) as raised:
+                    send(url, payload)
+                self.assertEqual(raised.exception.code, 400 if known else 502)
+                with state.connect() as db:
+                    row = db.execute('SELECT state FROM calls WHERE call_id=?', (call['call_id'],)).fetchone()
+                self.assertEqual(row['state'], 'consumed' if known else 'reserved')
+                payload['input'].append({'role': 'user', 'content': 'Continue after the failure.'})
+                with self.assertRaises(HTTPError) as retry:
+                    send(url, payload)
+                self.assertEqual(retry.exception.code, 400 if known else 409)
+                self.assertEqual(browser.calls, 3 if known else 2)
+
+    def test_known_terminal_failure_consumes_results_and_allows_a_fresh_user_turn(self):
+        self.continuation_failure(known=True)
+
+    def test_unknown_poll_failure_keeps_the_pending_result_and_blocks_replay(self):
+        self.continuation_failure(known=False)
 
 
 if __name__ == '__main__':
