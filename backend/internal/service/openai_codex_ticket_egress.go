@@ -269,7 +269,7 @@ func (s *OpenAIGatewayService) stickBoundCodexTicketRequest(req *http.Request, a
 	req.Close = true
 	restoreBoundCodexTicketHarvestIdentity(req.Header, ticket)
 	pinBoundCodexTicketHarvestIdentityRequestBody(req, ticket)
-	return req
+	return withAstraSourceTicketRoute(req, account, ticket)
 }
 
 func (s *OpenAIGatewayService) codexTicketPinsEgress(req *http.Request, account *Account) bool {

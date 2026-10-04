@@ -87,6 +87,10 @@ func (s *codexGatewayPinUpstream) DoWithTLS(req *http.Request, proxy string, acc
 		proxy = egress.proxy
 		req = astraFreshRequest(req)
 	}
+	var cachedRoute *codexGatewayRoute
+	if source && service.IsAstraSourceAcquisition(req.Context()) {
+		cachedRoute = codexGatewayCachedSourceRoute(req, accountID)
+	}
 	started := time.Now()
 	resp, err := s.delegate.DoWithTLS(req, proxy, accountID, concurrency, profile)
 	if source && service.IsAstraSourceAcquisition(req.Context()) {
@@ -94,7 +98,7 @@ func (s *codexGatewayPinUpstream) DoWithTLS(req *http.Request, proxy string, acc
 			s.recordSourceReason(accountID, started, nil, false, "upstream_http_error")
 		} else {
 			received := time.Now()
-			route := codexGatewayRouteFromResponse(resp, req.URL.Path, received, s.config.TTLSeconds)
+			route := codexGatewayRouteFromSource(resp, req.URL.Path, received, s.config.TTLSeconds, cachedRoute)
 			if route != nil {
 				route.proxy = proxy
 				route.node = egress.node
@@ -143,6 +147,40 @@ func codexGatewayPinAstra(req *http.Request) bool {
 
 func codexGatewayCookiePathMatches(path, scope string) bool {
 	return path == scope || (strings.HasPrefix(path, scope) && (strings.HasSuffix(scope, "/") || strings.HasPrefix(strings.TrimPrefix(path, scope), "/")))
+}
+
+// A source request may continue its cached route while the upstream only renews
+// __cflb. Reuse the exact trusted Cookie sent, with its original cache expiry.
+// Explicit route replacement/deletion retains the response's authority.
+func codexGatewayCachedSourceRoute(req *http.Request, accountID int64) *codexGatewayRoute {
+	value, expires := service.AstraSourceCachedRouteFromRequest(req, accountID)
+	if value == "" {
+		return nil
+	}
+	return &codexGatewayRoute{
+		cookie:  http.Cookie{Name: "__oailb", Value: value, Path: "/backend-api", Secure: true, Expires: expires},
+		expires: expires,
+	}
+}
+
+func codexGatewayRouteFromSource(resp *http.Response, path string, now time.Time, ttl int, cached *codexGatewayRoute) *codexGatewayRoute {
+	route := codexGatewayRouteFromResponse(resp, path, now, ttl)
+	if route != nil {
+		if cached != nil && route.cookie.Value == cached.cookie.Value && cached.expires.Before(route.expires) {
+			route.expires = cached.expires
+		}
+		return route
+	}
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "__oailb" {
+			return nil
+		}
+	}
+	if cached == nil || !now.Before(cached.expires) {
+		return nil
+	}
+	copy := *cached
+	return &copy
 }
 
 func codexGatewayRouteFromResponse(resp *http.Response, path string, now time.Time, configuredTTL ...int) *codexGatewayRoute {
