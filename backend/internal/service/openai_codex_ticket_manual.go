@@ -202,6 +202,10 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 			started := time.Now()
 			session := s.harvestAttemptSession(account, model, lease)
 			result := s.executeCodexHarvestProbe(ctx, account, token, model, lease.proxy, timeout, func() bool { return ctx.Err() == nil }, session)
+			if result.ProxySID != "" {
+				nodeName = "SID " + result.ProxySID
+				emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "INFO", Message: "已轮换代理 SID。", TicketsStored: ticketsStored})
+			}
 			s.completeManualHarvestAttempt(ctx, lease, result, time.Since(started), controls)
 			length, blocks := len(result.State), result.Shape.Blocks
 			raw := ""
@@ -223,7 +227,7 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 			if result.Kind == "success" {
 				consecutiveFails = 0
 				ticket := codexHarvestTicket(account, model, result, cfg, attempt)
-				bindCodexHarvestEgress(ticket, lease, session)
+				bindCodexHarvestEgress(ticket, lease, session, result.ProxyURL)
 				if storeErr := s.storeOpenAICodexTicket(ctx, account, ticket); storeErr != nil {
 					persistPending[model] = true
 					if s.codexHarvest != nil {
@@ -410,7 +414,7 @@ func (s *OpenAIGatewayService) acquireManualHarvestNode(ctx context.Context, acc
 		return codexHarvestAttempt{release: func() {}}, nil
 	}
 	fallback := codexHarvestAttempt{proxy: proxy, release: func() {}}
-	if s.codexHarvest == nil || strings.TrimSpace(proxy) == "" {
+	if s.codexHarvest == nil || strings.TrimSpace(proxy) == "" || codexHarvestProxySID(proxy) != "" {
 		return fallback, nil
 	}
 	sidecar, err := mihomo.LoadDirectedSidecar(os.Getenv("DATA_DIR"), proxy)

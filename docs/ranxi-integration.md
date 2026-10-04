@@ -14,6 +14,8 @@
 
 本地代理可以在“系统设置 → 网关转发”中保存，也可以配置 `gateway.openai_codex_ticket.harvest_proxy_url`。支持 HTTP、SOCKS5、SOCKS5h 和 `ippool://active`。后台保存会立即使代理缓存失效；代理密码在返回值及审计数据中显示为掩码。
 
+本地代理用户名含 `-sid-<字母数字>` 时，每次探测自动生成同长度的新 SID，例如 `socks5://user-region-Rand-sid-Ab12Cd34-t-5:password@proxy.example:3000`。保存的代理模板保持原值，地区、时长和密码保持原值。路由 Cookie 按当次代理 SID 隔离，成功票据绑定当次代理地址，业务请求在该票据有效期内沿用同一 SID。采集日志显示当次 SID，出口 IP 由代理供应商分配。SID 代理直接进行会话轮换；Mihomo 节点记忆继续用于侧车代理，远程 Relay 继续使用原有配置。
+
 采集方式保存为 `openai_codex_harvest_controls_v1` 中的 `mint_mode`，取值为空字符串、`remote` 或 `local`。历史远程票保留账户的生产代理路径；本地票携带采集节点和代理绑定。账户网关选择及黑名单继续生效。
 
 ## 部署
@@ -26,6 +28,8 @@ Prism 的运行方式和依赖见 [Prism adapter 文档](../prism-adapter/README
 
 ## 验证记录
 
+- SID 自动轮换的 7 项测试通过，覆盖用户名参数和编码密码保留、并发会话生成、手动重试、Cookie 隔离、成功票据出口绑定，以及远程 Relay 和原生 292 打票。打票服务相关的 1352 项回归通过，统计包含子用例；分组模型清单及采集唤醒的历史失败组沿用显式跳过。
+- SID 改动后的 Linux 嵌入资源构建和 183 项管理接口回归通过，Mihomo 定向采集相关的 9 项回归通过。补充的 `TestUseOnceLeasePersistsReservationAndSerializesProbes` 报告 `failed` / `used` 状态差异，该失败已在改动前主分支 `8fdd2be` 上复现。
 - 前端类型检查、Vite 正式构建通过。设置、采集方式、模型广场入口和充值相关的 140 项回归通过。
 - 打票、Prism、TypeSafe、Astra、区域代理、API Key 队列和充值阶梯的 1855 项后端回归通过，统计包含子用例。Prism 协议桥、区域路由、TypeSafe 客户端和 BPS 包测试通过。
 - 后端所有包的 `-tags=unit` 单测编译通过。`CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags embed ./cmd/server` 构建通过，前端资源已嵌入 Linux 服务。

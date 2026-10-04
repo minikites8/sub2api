@@ -41,7 +41,7 @@ func (s *CodexHarvestService) snapshot(ctx context.Context, ticketCfg config.Ope
 		return out
 	}
 	proxy := ticketCfg.HarvestProxyURL
-	if !v.NodeMemoryEnabled && strings.TrimSpace(proxy) != "" {
+	if codexHarvestProxySID(proxy) != "" || (!v.NodeMemoryEnabled && strings.TrimSpace(proxy) != "") {
 		out.Available = true
 		return out
 	}

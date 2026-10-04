@@ -261,15 +261,16 @@ func (s *OpenAIGatewayService) requestLocalCodex780Probe(ctx context.Context, ac
 		return
 	}
 	// Keep a target route even when no acceptable ticket was returned. Models
-	// share routes only within the same account, credentials and protocol.
+	// share routes only within the same account, credentials, protocol and SID.
 	protocol := controls.Transport
 	if protocol == "" {
 		protocol = "sse"
 	}
-	key := codex780RouteKey(account, token, req.Header.Get("Chatgpt-Account-Id"), target, protocol)
+	key := codex780RouteKey(account, token, req.Header.Get("Chatgpt-Account-Id"), target, protocol, proxy)
 	seed, cached := s.codex780Routes.get(key, time.Now())
 	if !cached {
-		if ticket := s.lookupOpenAICodexTicket(account, model); ticket != nil && !ticket.Revoked {
+		if ticket := s.lookupOpenAICodexTicket(account, model); ticket != nil && !ticket.Revoked &&
+			(codexHarvestProxySID(proxy) == "" || ticket.HarvestProxyURL == proxy) {
 			seed, _, _ = codex780Route(ticket.HarvestCookies, target, time.Now())
 		}
 	}

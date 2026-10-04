@@ -107,6 +107,13 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 		result := s.executeCodexHarvestProbe(ctx, account, token, model, attempt.proxy, time.Duration(controls.Speed.AttemptTimeoutSeconds)*time.Second, func() bool {
 			return s.reserveHarvestRequest(ctx, account, model, round, attempt.sidecar != nil)
 		}, session)
+		if result.ProxySID != "" {
+			nodeName = "SID " + result.ProxySID
+			recordCodexHarvestNode(nodeName, "", 0)
+			if s.codexHarvest != nil {
+				s.codexHarvest.setRuntime(func(r *CodexHarvestRuntime) { r.CurrentNode = nodeName })
+			}
+		}
 		if result.Kind == "account_error" || result.Kind == "rate_limited" {
 			round.stopped.Store(account.ID, struct{}{})
 		}
@@ -125,7 +132,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 		if result.Kind == "success" {
 			s.openaiCodexTicketProbeCooldown.Delete(openAICodexTicketKey(account.ID, model))
 			ticket := codexHarvestTicket(account, model, result, cfg, attempts)
-			bindCodexHarvestEgress(ticket, attempt, session)
+			bindCodexHarvestEgress(ticket, attempt, session, result.ProxyURL)
 			if err := s.storeOpenAICodexTicket(ctx, account, ticket); err != nil && s.codexHarvest != nil {
 				s.codexHarvest.degrade("ticket persisted in memory only; database write failed")
 			}

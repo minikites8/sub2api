@@ -23,10 +23,14 @@ type codex780RouteCache struct {
 	entries map[[32]byte]codex780RouteEntry
 }
 
-func codex780RouteKey(account *Account, token, accountHeader, target, transport string) [32]byte {
+func codex780RouteKey(account *Account, token, accountHeader, target, transport string, proxy ...string) [32]byte {
 	blacklist := OpenAICodexTicketGatewayBlacklist(account)
 	slices.Sort(blacklist)
-	raw, _ := json.Marshal([]any{account.ID, ticketIdentity(account), token, accountHeader, target, transport, blacklist})
+	parts := []any{account.ID, ticketIdentity(account), token, accountHeader, target, transport, blacklist}
+	if len(proxy) > 0 && codexHarvestProxySID(proxy[0]) != "" {
+		parts = append(parts, proxy[0])
+	}
+	raw, _ := json.Marshal(parts)
 	return sha256.Sum256(raw)
 }
 

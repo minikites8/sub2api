@@ -17,6 +17,8 @@ import (
 )
 
 type codexHarvestProbeResult struct {
+	ProxyURL   string
+	ProxySID   string
 	EdgeIP     string
 	Transport  string
 	Gateway    string
@@ -75,11 +77,14 @@ func mergeCookiePairs(existing, incoming []string) []string {
 	return out
 }
 
-func bindCodexHarvestEgress(ticket *openAICodexTicket, attempt codexHarvestAttempt, session string) {
+func bindCodexHarvestEgress(ticket *openAICodexTicket, attempt codexHarvestAttempt, session, probeProxy string) {
 	if ticket == nil {
 		return
 	}
 	ticket.HarvestProxyURL = strings.TrimSpace(attempt.proxy)
+	if probeProxy != "" {
+		ticket.HarvestProxyURL = probeProxy
+	}
 	if attempt.node.Provider == "managed" {
 		ticket.HarvestProxyURL = mihomo.Endpoint
 	}
@@ -98,7 +103,12 @@ func (s *OpenAIGatewayService) harvestAttemptSession(account *Account, model str
 }
 
 func (s *OpenAIGatewayService) executeCodexHarvestProbe(ctx context.Context, account *Account, token, model, proxy string, timeout time.Duration, reserve func() bool, sessionID string) (result codexHarvestProbeResult) {
-	if !s.usesRemoteCodexMint(ctx) {
+	local := !s.usesRemoteCodexMint(ctx)
+	var sid string
+	if local {
+		proxy, sid = rotateCodexHarvestProxySID(proxy)
+		// Attach the actual egress even when the request fails before dispatch.
+		defer func() { result.ProxyURL, result.ProxySID = proxy, sid }()
 		release, err := mihomo.Lease(ctx, proxy)
 		if err != nil {
 			return codexHarvestProbeResult{Err: err, Kind: "network_error"}

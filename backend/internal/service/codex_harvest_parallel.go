@@ -137,7 +137,7 @@ func (s *OpenAIGatewayService) runParallelHarvest(ctx context.Context, req Manua
 					binding.proxy = ""
 					binding.node.Provider = "relay"
 				}
-				bindCodexHarvestEgress(ticket, binding, out.session)
+				bindCodexHarvestEgress(ticket, binding, out.session, r.ProxyURL)
 				if e = s.storeOpenAICodexTicket(ctx, fresh, ticket); e != nil {
 					event.Result = "persist_failed"
 					event.Level = "WARN"

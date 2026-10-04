@@ -141,6 +141,9 @@ func (s *OpenAIGatewayService) prepareHarvestAttempt(ctx context.Context, accoun
 	if s.usesRemoteCodexMint(ctx) {
 		return codexHarvestAttempt{node: mihomo.HarvestNode{ID: "relay", Name: "relay", Provider: "relay"}, release: func() {}}, true
 	}
+	if codexHarvestProxySID(proxy) != "" {
+		return a, true
+	}
 	pinned := s.lookupOpenAICodexTicket(account, model)
 	if pinned != nil && strings.TrimSpace(pinned.HarvestProxyURL) != "" && (!controls.NodeMemoryEnabled || s.codexHarvest == nil) {
 		a.proxy = pinned.HarvestProxyURL
