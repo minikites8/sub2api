@@ -16,9 +16,10 @@ from multiplex_browser import MultiplexBrowser
 from multiplex_runtime import AsyncBrowserWorker
 from smoke_multiplex import Fixture
 from tool_state import ToolState
+from catalog_prompt import MAX_PRISM_PROMPT_BYTES
 
 
-def client_catalog(size=512):
+def client_catalog(size=512, unique=False):
     """A Codex-sized catalog, with the exercised tools at the end."""
     if size < 2:
         raise ValueError('catalog requires the two exercised client tools')
@@ -26,7 +27,8 @@ def client_catalog(size=512):
     for offset in range(0, size - 2, 32):
         tools.append({'type': 'namespace', 'name': f'connector_{offset // 32}', 'tools': [
             {'type': 'function', 'name': f'operation_{index}',
-             'description': 'Codex connector fixture: preserve the complete client tool description. ' * 8,
+             'description': (f'Codex connector fixture {index}: preserve the complete client tool description. ' if unique
+                             else 'Codex connector fixture: preserve the complete client tool description. ') * 8,
              'parameters': {'type': 'object', 'properties': {'key': {'type': 'string'}},
                             'required': ['key'], 'additionalProperties': False}, 'strict': True}
             for index in range(offset, min(offset + 32, size - 2))]})
@@ -39,10 +41,13 @@ def client_catalog(size=512):
 
 
 class ToolFixture(Fixture):
-    def reply(self, code, body, content_type='application/json', cache=False):
+    def reply(self, code, body, content_type='application/json', cache=False, retry_after=None):
         if content_type == 'application/json':
             data = json.loads(body)
             if data.get('status') == 'completed':
+                if data['response']['status'] == 'error':
+                    super().reply(code, body, content_type, cache, retry_after)
+                    return
                 prompt = data['response']['payload']['output'][0]['content'][0]['text']
                 marker = re.search(r'PRISM_CLIENT_TOOLS_V1:[a-f0-9]+',prompt).group()
                 if 'custom_tool_call_output' in prompt:
@@ -51,15 +56,23 @@ class ToolFixture(Fixture):
                     result = {'kind':'calls','calls':[{'name':'client.echo','input':'fixture-value'}]}
                 else:
                     result = {'kind':'calls','calls':[{'name':'client.lookup','arguments':{'key':'fixture'}}]}
+                start = prompt.find('{"index":')
+                if start >= 0 and result['kind'] == 'calls':
+                    catalog, _ = json.JSONDecoder().raw_decode(prompt[start:])
+                    loaded = {tool['name'] for tool in catalog['full_declarations']}
+                    wanted = result['calls'][0]['name']
+                    if wanted not in loaded:
+                        result = {'kind': 'inspect', 'names': [wanted]}
                 data['response']['payload']['output'][0]['content'][0]['text'] = marker+'\n'+json.dumps(result)
                 body = json.dumps(data)
-        super().reply(code,body,content_type,cache)
+        super().reply(code,body,content_type,cache,retry_after)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--chrome',required=True)
     parser.add_argument('--catalog-size',type=int,default=512)
+    parser.add_argument('--unique-catalog', action='store_true')
     args = parser.parse_args()
     upstream = ThreadingHTTPServer(('127.0.0.1',0),ToolFixture)
     upstream.daemon_threads = True
@@ -67,6 +80,7 @@ def main():
     upstream.asset_requests = 0
     upstream.reconnect_first = False
     upstream.reconnected = set()
+    upstream.max_prompt_bytes, upstream.oversized_starts = MAX_PRISM_PROMPT_BYTES, 0
     upstream.jobs,upstream.release,upstream.mismatches,upstream.target = {},None,0,1
     threading.Thread(target=upstream.serve_forever,daemon=True).start()
     api.BASE = f'http://127.0.0.1:{upstream.server_port}'
@@ -79,7 +93,7 @@ def main():
         server.daemon_threads = True
         threading.Thread(target=server.serve_forever,daemon=True).start()
         payload={'model':'gpt-6.1-sol','stream':True,'reasoning':{'effort':'max','summary':'detailed'},
-            'tools':client_catalog(args.catalog_size),
+            'tools':client_catalog(args.catalog_size, unique=args.unique_catalog),
             'input':[{'role':'user','content':'Look up the fixture value, echo it, and report the confirmed result.'}]}
         headers={'Authorization':'Bearer synthetic-key','X-Prism-OAuth-Token':'synthetic-token',
             'X-Prism-Account-ID':'300','X-Prism-Caller-ID':'a'*64,'X-Prism-Session-ID':'b'*64,
@@ -104,16 +118,22 @@ def main():
                         'output':'fixture-value' if turn==0 else 'fixture-confirmed'})
                 else:
                     assert item['content'][0]['text']=='fixture-confirmed'
-            assert len(upstream.jobs)==3 and upstream.mismatches==0
-            assert len({job['project'] for job in upstream.jobs.values()})==3
+            expected_starts = 5 if args.unique_catalog and args.catalog_size == 512 else 3
+            assert len(upstream.jobs)==expected_starts and upstream.mismatches==0
+            assert upstream.oversized_starts == 0
+            assert len({job['project'] for job in upstream.jobs.values()})==expected_starts
+            peak_prompt_bytes = max(len(job['input'].encode('utf-8')) for job in upstream.jobs.values())
+            assert peak_prompt_bytes <= MAX_PRISM_PROMPT_BYTES
             assert not list(state.pending.iterdir())
             receipts=[json.loads(p.read_text()) for p in state.receipts.iterdir()]
-            assert len(receipts)==3 and all(r['start_count']==1 for r in receipts)
+            assert len(receipts)==expected_starts and all(r['start_count']==1 for r in receipts)
             assert all(r['model']=='gpt-6.1-sol' and r['reasoning_effort']=='xhigh' for r in receipts)
             assert all(job['effort']=='xhigh' for job in upstream.jobs.values())
             print(json.dumps({'result':'passed','scope':'real HTTP + Chromium + mock Prism',
-                'upstream_starts':3,'fresh_projects':3,'function_calls':1,'custom_calls':1,'final_completed':True,
+                'upstream_starts':expected_starts,'fresh_projects':expected_starts,
+                'function_calls':1,'custom_calls':1,'final_completed':True,
                 'catalog_tools':args.catalog_size,'requested_effort':'max','prism_effort':'xhigh',
+                'catalog_inspections':expected_starts-3,'peak_prompt_bytes':peak_prompt_bytes,
                 'pending':0,'real_prism_requests':0}))
         finally:
             server.shutdown();server.server_close();worker.close()

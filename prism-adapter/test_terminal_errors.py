@@ -46,6 +46,12 @@ class TerminalErrorTests(unittest.TestCase):
         for status in (True, '503', 200, 600, None):
             self.assertEqual(adapter.terminal_failure_diagnostics(failure(httpStatus=status)), {})
 
+    def test_confirmed_bad_input_stays_a_client_error_with_upstream_diagnostics(self):
+        error = adapter.terminal_text(failure(httpStatus=400,
+            message='Error while processing conversation (400 Bad Request). Please submit prompt again.'))
+        self.assertEqual((error.status, error.code), (400, 'prism_input_rejected'))
+        self.assertEqual(error.upstream, {'upstream_status': 400})
+
     def test_context_size_hints_are_safe_labels_with_generic_error(self):
         for text in ('maximum context exceeded', 'prompt is too long', 'request too large', '上下文长度超出限制'):
             with self.subTest(text=text):

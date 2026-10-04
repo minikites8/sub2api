@@ -167,7 +167,9 @@ def terminal_error(data):
             'workspace_sync_unavailable': (503, 'prism_workspace_sync_unavailable', 'Prism project synchronization is unavailable'),
             'sandbox_disconnected': (503, 'prism_sandbox_disconnected', 'Prism project runtime disconnected'),
         }
-        error = AdapterError(*codes.get(details.get('upstream_code'), (502, 'prism_failed', 'Prism turn failed')))
+        fallback = ((400, 'prism_input_rejected', 'Prism rejected the conversation input; see adapter upstream error logs')
+                    if details.get('upstream_status') == 400 else (502, 'prism_failed', 'Prism turn failed'))
+        error = AdapterError(*codes.get(details.get('upstream_code'), fallback))
     error.upstream = terminal_failure_diagnostics(data)
     return error
 
@@ -727,6 +729,9 @@ class Handler(BaseHTTPRequestHandler):
                 scope = digest([account_id, callers[0], session_id])
                 bridge = ToolBridge(payload, SimpleNamespace(AdapterError=AdapterError, parse_prompt=parse_prompt))
                 prompt, stream = bridge.prompt, bridge.stream
+                print(json.dumps({'event': 'prism_tool_catalog_prepared', 'catalog_tools': len(bridge.tools),
+                    'catalog_mode': bridge.catalog_mode, 'prompt_bytes': len(prompt.encode('utf-8'))}),
+                    file=sys.stderr, flush=True)
             else:
                 prompt, stream = parse_prompt(payload)
             model = payload["model"]
@@ -737,12 +742,30 @@ class Handler(BaseHTTPRequestHandler):
                 if bridge is not None:
                     self.tool_state.reserve(scope, bridge.calls, bridge.results, bridge.lease, bridge.needs_fresh)
                 try:
-                    args = (account_id, token, prompt, session_id, model, effort)
-                    if bridge is not None:
-                        # Client results already contain expanded history. A
-                        # native chat/project is not their continuation state.
-                        args += (False,)
-                    request_id, answer = self.browser_turn.run(*args)
+                    deadline = time.monotonic() + getattr(self.browser_turn, 'request_timeout', 285)
+                    while True:
+                        args = (account_id, token, prompt, session_id, model, effort)
+                        if bridge is not None:
+                            # Client results already contain expanded history.
+                            # Each inspection is a fresh, known completed turn.
+                            args += (False,)
+                        run_until = getattr(self.browser_turn, 'run_until', None)
+                        request_id, answer = (run_until(deadline, *args) if bridge is not None and run_until
+                                              else self.browser_turn.run(*args))
+                        if bridge is None:
+                            break
+                        try:
+                            expanded = bridge.expand_catalog(answer)
+                        except AdapterError:
+                            self.tool_state.complete(scope, bridge.lease, 'resp_prism_' + request_id, [])
+                            raise
+                        if not expanded:
+                            break
+                        prompt = bridge.prompt
+                        print(json.dumps({'event': 'prism_tool_catalog_inspection',
+                            'inspection': bridge.inspections, 'catalog_tools': len(bridge.tools),
+                            'loaded_tools': len(bridge.loaded), 'prompt_bytes': len(prompt.encode('utf-8'))}),
+                            file=sys.stderr, flush=True)
                 except Exception as error:
                     if bridge is not None and (getattr(error,'not_submitted',False) or
                             getattr(error,'code',None) in ('prism_busy','resource_pressure','credential_rotation')):
@@ -756,6 +779,9 @@ class Handler(BaseHTTPRequestHandler):
                 response['metadata'] = {'prism_requested_reasoning_effort': requested_effort,
                                         'prism_reasoning_effort': effort}
             if bridge is not None:
+                if bridge.catalog_mode != 'inline':
+                    response.setdefault('metadata', {}).update(prism_catalog_mode=bridge.catalog_mode,
+                                                               prism_catalog_inspections=bridge.inspections)
                 try:
                     output, calls = bridge.output(answer, request_id)
                 except AdapterError:

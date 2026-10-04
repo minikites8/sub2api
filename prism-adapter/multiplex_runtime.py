@@ -172,11 +172,11 @@ class AsyncBrowserWorker:
                 self.stop.set()
                 return
 
-    async def _run(self, args):
+    async def _run(self, args, timeout):
         task = asyncio.current_task()
         self.tasks.add(task)
         try:
-            async with asyncio.timeout(self.request_timeout):
+            async with asyncio.timeout(timeout):
                 return await self.engine.run(*args)
         except TimeoutError:
             raise self.api.AdapterError(504, "unknown_outcome", "Prism request deadline exceeded; inspect pending state") from None
@@ -184,14 +184,24 @@ class AsyncBrowserWorker:
             self.tasks.discard(task)
 
     def run(self, *args):
+        return self._submit(args, self.request_timeout)
+
+    def run_until(self, deadline, *args):
+        timeout = min(self.request_timeout, deadline - time.monotonic())
+        if timeout <= 0:
+            raise self.api.AdapterError(504, 'unknown_outcome', 'Prism tool request deadline exceeded before submission',
+                                        not_submitted=True)
+        return self._submit(args, timeout)
+
+    def _submit(self, args, timeout):
         if not self.ready.wait(5):
             raise self.api.AdapterError(503, "prism_unavailable", "Prism executor did not start", not_submitted=True)
         with self.lifecycle:
             if self.stopping or self.failed or not self.thread.is_alive():
                 raise self.api.AdapterError(503, "prism_unavailable", "Prism executor is unavailable", not_submitted=True)
-            future = asyncio.run_coroutine_threadsafe(self._run(args), self.loop)
+            future = asyncio.run_coroutine_threadsafe(self._run(args, timeout), self.loop)
         try:
-            return future.result(timeout=self.request_timeout + 10)
+            return future.result(timeout=timeout + 10)
         except concurrent.futures.TimeoutError:
             future.cancel()
             raise self.api.AdapterError(504, "unknown_outcome", "Prism executor did not settle; inspect pending state") from None

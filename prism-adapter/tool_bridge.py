@@ -15,6 +15,7 @@ from pathlib import Path
 
 from tool_state import digest
 from tool_limits import MAX_HISTORY_CALLS, MAX_TOOLS, MAX_TOOL_PAYLOAD_BYTES
+from catalog_prompt import encoded, shared_catalog, tool_index, MAX_PRISM_PROMPT_BYTES, MAX_CATALOG_INSPECTIONS
 
 NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_.-]{0,127}$')
 CALL = re.compile(r'^call_prism_[a-f0-9]{32}$')
@@ -105,9 +106,9 @@ class ToolBridge:
         base = copy.deepcopy(payload)
         base.update(input=translated, tools=[], additional_tools=[], tool_choice='none')
         # The ordinary parser still owns model/options/message validation.
-        self.prompt, self.stream = api.parse_prompt(base)
+        self.history_prompt, self.stream = api.parse_prompt(base)
         catalog = [tool['catalog'] for tool in self.tools.values()]
-        policy = (
+        self.policy = (
             'You are producing a response for an external client. All client tools run on the client, '
             'under its permission system. Never use Prism built-in terminal, file, patch, sandbox or other tools. '
             'Never claim an operation completed without its matching client result in the history. '
@@ -125,14 +126,91 @@ class ToolBridge:
             + ('Request at most 8 tools per response. ' if self.parallel else 'Request exactly one tool at a time. ')
             + 'tool_choice=' + json.dumps(self.choice, ensure_ascii=False) + '. '
             'With none return only final; with required return calls; with a named choice call exactly that tool. '
-            'Client tool catalog:\n' + json.dumps(catalog, ensure_ascii=False, separators=(',', ':')))
+            'Client tool catalog:\n')
         if self.unavailable:
-            policy += ('\nUnavailable hosted tools: '+', '.join(sorted(self.unavailable))+
+            self.policy += ('\nUnavailable hosted tools: '+', '.join(sorted(self.unavailable))+
                        '. They are not callable through this bridge. State the limitation if the user needs one; never claim to have used one.')
-        self.prompt = policy + '\n\nBEGIN_CLIENT_HISTORY\n' + self.prompt + '\nEND_CLIENT_HISTORY\n' + (
-            'Respond using ' + self.marker + ' and the JSON protocol above. Do not execute any remote sandbox tool.')
+        self.catalog = catalog
+        self.loaded = set()
+        self.inspections = 0
+        self.catalog_mode = 'inline'
+        self.prompt = self.build_prompt(encoded(catalog))
         if len(self.prompt.encode('utf-8')) > MAX_TOOL_PAYLOAD_BYTES:
             self.reject('tool_request_too_large', 'Tool catalog and history exceed the Prism bridge limit of 1 MiB UTF-8')
+        if len(self.prompt.encode('utf-8')) > MAX_PRISM_PROMPT_BYTES:
+            packed = self.build_prompt('Shared catalog: shared_description/shared_parameters/shared_format '
+                'references use the exact value in shared; expand these fields before reading the declaration.\n'
+                + shared_catalog(catalog))
+            if len(packed.encode('utf-8')) <= MAX_PRISM_PROMPT_BYTES:
+                self.prompt, self.catalog_mode = packed, 'shared'
+            else:
+                self.catalog_mode = 'indexed'
+                if self.target:
+                    self.loaded.add(self.target['catalog']['name'])
+                self.prompt = self.indexed_prompt(status=422)
+
+    def build_prompt(self, catalog):
+        return self.policy + catalog + '\n\nBEGIN_CLIENT_HISTORY\n' + self.history_prompt + '\nEND_CLIENT_HISTORY\n' + (
+            'Respond using ' + self.marker + ' and the JSON protocol above. Do not execute any remote sandbox tool.')
+
+    def indexed_prompt(self, status=502):
+        definitions = [self.tools[name]['catalog'] for name in self.tools if name in self.loaded]
+        for preview in (120, 60, 0):
+            catalog = ('The index lists every declared client tool. Description previews are navigation hints. '
+                'Read the full declaration before calling a tool. To load full declarations return '
+                '{"kind":"inspect","names":["exact tool name"]}, at most 8 names per inspection. '
+                'Inspections are internal catalog lookups; only kind=calls emits client operations. '
+                'Use full_declarations for authoritative descriptions, parameters and custom grammar.\n'
+                + encoded({'index': tool_index(self.catalog, preview), 'full_declarations': definitions}))
+            prompt = self.build_prompt(catalog)
+            if len(prompt.encode('utf-8')) <= MAX_PRISM_PROMPT_BYTES:
+                return prompt
+        raise self.error(status, 'tool_prompt_too_large',
+            'Prism tool prompt exceeds the 112 KiB submission budget; reduce tool descriptions, schemas or history')
+
+    def expand_catalog(self, answer):
+        if self.catalog_mode != 'indexed':
+            return False
+        try:
+            prefix = self.marker + '\n'
+            if not isinstance(answer, str) or not answer.strip().startswith(prefix):
+                return False
+            data = strict_json(answer.strip()[len(prefix):])
+            if not isinstance(data, dict):
+                return False
+            if data.get('kind') == 'inspect':
+                names = data.get('names')
+                if set(data) != {'kind', 'names'} or self.choice == 'none':
+                    raise ValueError('inspection')
+            elif data.get('kind') == 'calls':
+                calls = data.get('calls')
+                if not isinstance(calls, list) or set(data) != {'kind', 'calls'} or self.choice == 'none':
+                    raise ValueError('calls')
+                if not 1 <= len(calls) <= (MAX_CALLS if self.parallel else 1):
+                    raise ValueError('parallel calls')
+                names = [call.get('name') if isinstance(call, dict) else None for call in calls]
+            else:
+                return False
+            if (not isinstance(names, list) or not 1 <= len(names) <= MAX_CALLS
+                    or any(not isinstance(name, str) or name not in self.tools for name in names)):
+                raise ValueError('names')
+            if self.target and any(self.tools[name] != self.target for name in names):
+                raise ValueError('forced tool')
+            if data.get('kind') == 'inspect' and len(set(names)) != len(names):
+                raise ValueError('duplicate names')
+            missing = set(names) - self.loaded
+            if not missing:
+                if data.get('kind') == 'inspect':
+                    raise ValueError('duplicate inspection')
+                return False
+            if self.inspections >= MAX_CATALOG_INSPECTIONS:
+                raise self.error(502, 'tool_catalog_inspection_limit', 'Prism tool catalog inspection limit reached')
+            self.loaded.update(missing)
+            self.prompt = self.indexed_prompt()
+            self.inspections += 1
+            return True
+        except (ValueError, TypeError, KeyError, RecursionError):
+            raise self.error(502, 'invalid_tool_output', 'Prism returned an invalid client tool catalog inspection') from None
 
     def reject(self, code, message):
         raise self.error(422, code, message)
@@ -314,6 +392,8 @@ class ToolBridge:
                 tool = self.tools.get(item['name'])
                 if not tool or (self.target and tool != self.target):
                     raise ValueError('unknown')
+                if self.catalog_mode == 'indexed' and item['name'] not in self.loaded:
+                    raise ValueError('uninspected tool')
                 field, value = self.value(item, tool)
                 if set(item) != {'name',field}:
                     raise ValueError('fields')

@@ -7,6 +7,7 @@ from smoke_client_tools import client_catalog
 from test_server import adapter
 from tool_bridge import ToolBridge, validate_batch
 from tool_validation import validate
+from catalog_prompt import MAX_PRISM_PROMPT_BYTES
 
 
 def request(tools, **changes):
@@ -19,7 +20,8 @@ class CodexCatalogTests(unittest.TestCase):
         payload = request(client_catalog())
         bridge = ToolBridge(payload, adapter)
         self.assertEqual(len(bridge.tools), 512)
-        self.assertGreater(len(bridge.prompt), 128000)
+        self.assertEqual(bridge.catalog_mode, 'shared')
+        self.assertLessEqual(len(bridge.prompt.encode('utf-8')), MAX_PRISM_PROMPT_BYTES)
         self.assertLess(len(bridge.prompt.encode('utf-8')), 1 << 20)
         declared = payload['tools'][0]['tools'][0]
         self.assertEqual(bridge.tools['connector_0.operation_0']['catalog']['description'], declared['description'])

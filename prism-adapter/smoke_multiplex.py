@@ -78,6 +78,13 @@ class Fixture(BaseHTTPRequestHandler):
                 self.reply(200, json.dumps({'uuid':body['project_uuid']}))
                 return
             if self.path == api.START:
+                budget = getattr(self.server, 'max_prompt_bytes', None)
+                if budget and len(body['input'][-1].encode('utf-8')) > budget:
+                    self.server.oversized_starts += 1
+                    self.reply(200, json.dumps({'request_id': uuid.uuid4().hex, 'status': 'completed',
+                        'response': {'status': 'error', 'payload': {'reason': 'unknown', 'httpStatus': 400,
+                            'message': 'Error while processing conversation (400 Bad Request).'}}}))
+                    return
                 project = body['metadata']['projectId']
                 if self.server.reconnect_first and project not in self.server.reconnected:
                     self.server.reconnected.add(project)
