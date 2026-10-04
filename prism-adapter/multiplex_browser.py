@@ -13,6 +13,8 @@ import re
 import time
 import uuid
 from collections import OrderedDict
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -27,6 +29,24 @@ RUNTIME_RATE_LIMIT = re.compile(
     r'项目运行环境的启动请求受到限流|(?:project|sandbox|runtime).{0,80}(?:startup|start).{0,80}rate.limit',
     re.I,
 )
+POLL_RETRY_STATUSES = (429, 500, 502, 503, 504)
+POLL_MAX_ATTEMPTS = 4
+POLL_RETRY_WINDOW_SECONDS = 30
+
+
+def retry_after_seconds(value):
+    if not isinstance(value, str) or len(value) > 128:
+        return None
+    value = value.strip()
+    if value.isascii() and value.isdigit():
+        return min(int(value), 86400)
+    try:
+        when = parsedate_to_datetime(value)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return max(0, min((when - datetime.now(timezone.utc)).total_seconds(), 86400))
+    except (ValueError, TypeError, OverflowError):
+        return None
 
 
 async def wait_for_editor(page, api):
@@ -64,7 +84,8 @@ POLL_JS = """async ({origin, path, body}) => {
       raw += decoder.decode(value,{stream:true});
     }
     raw += decoder.decode();
-    if (response.status !== 200) return {status:response.status};
+    if (response.status !== 200) return {status:response.status,
+      retry_after:response.headers.get('Retry-After')};
     return {status:200,data:JSON.parse(raw)};
   } catch { return {status:0,error:'transport_failed'}; }
   finally { clearTimeout(timer); }
@@ -151,7 +172,11 @@ class AccountBrowser:
                 self.engine.observe('prism_poll_failed', sent=grant['sent'],
                     http_status=result.get('status') if isinstance(result, dict) else None,
                     transport_error=result.get('error') if isinstance(result, dict) else 'invalid_result')
-                raise self.api.AdapterError(502, 'poll_failed', 'Prism poll failed; pending state retained')
+                error = self.api.AdapterError(502, 'poll_failed', 'Prism poll failed; pending state retained')
+                error.poll_sent = grant['sent']
+                error.upstream_status = result.get('status') if isinstance(result, dict) else None
+                error.retry_after = retry_after_seconds(result.get('retry_after')) if isinstance(result, dict) else None
+                raise error
             data = result.get('data')
             if not isinstance(data, dict):
                 raise self.api.AdapterError(502, 'invalid_response', 'Prism poll returned an invalid response')
@@ -418,6 +443,33 @@ class MultiplexBrowser:
             actor.refs += 1
             return actor
 
+    async def poll_turn(self, actor, body, journal):
+        deadline = time.monotonic() + POLL_RETRY_WINDOW_SECONDS
+        last_status = None
+        for attempt in range(1, POLL_MAX_ATTEMPTS + 1):
+            try:
+                async with asyncio.timeout(max(0, deadline - time.monotonic())):
+                    return await actor.poll(body)
+            except TimeoutError:
+                self.observe('prism_poll_retry_exhausted', journal,
+                             attempt=attempt, http_status=last_status, reason='deadline')
+                raise self.api.AdapterError(504, 'poll_failed',
+                    'Prism polling deadline exceeded; pending state retained') from None
+            except self.api.AdapterError as error:
+                status = getattr(error, 'upstream_status', None)
+                if (error.code != 'poll_failed' or not getattr(error, 'poll_sent', False)
+                        or status not in POLL_RETRY_STATUSES):
+                    raise
+                last_status = status
+                delay = max(2 ** (attempt - 1), getattr(error, 'retry_after', None) or 0)
+                if attempt == POLL_MAX_ATTEMPTS or time.monotonic() + delay >= deadline:
+                    self.observe('prism_poll_retry_exhausted', journal,
+                                 attempt=attempt, http_status=status)
+                    raise
+                self.observe('prism_poll_retry', journal, attempt=attempt,
+                             http_status=status, delay_seconds=delay)
+                await asyncio.sleep(delay)
+
     async def run(self, account_id, token, prompt, session_id=None, model=None, effort='medium', reuse_project=True):
         model = self.api.MODEL if model is None else model
         async with self.admission.enter(account_id, session_id):
@@ -458,6 +510,7 @@ class MultiplexBrowser:
                         raise self.api.AdapterError(502, 'unexpected_start', 'Prism attempted an unexpected model start')
                 needs_poll = self.api.terminal_text(data) is None
                 if needs_poll:
+                    start.phase = 'polling'
                     self.polling += 1
                     self.observe('prism_poll_start', journal, model=model, effort=effort)
                 try:
@@ -466,7 +519,7 @@ class MultiplexBrowser:
                         # Only the trusted response may rotate the opaque turn state.
                         if isinstance(data.get('turn_state'), (str, dict)) and data['turn_state']:
                             body['turn_state'] = data['turn_state']
-                        data = await actor.poll(body)
+                        data = await self.poll_turn(actor, body, journal)
                         polls += 1
                         if data.get('request_id') not in (None, '', start.request_id):
                             raise self.api.AdapterError(502, 'foreign_response', 'Prism returned a different request identity')

@@ -75,7 +75,7 @@ print('Prism bridge authentication passed')
                              "python", "/tests/smoke_browser.py", "--chrome", paths[0]))
                 print(docker("exec", "--user", "1000", "-e", f"CHROME_DEVEL_SANDBOX={paths[1]}", adapter,
                              "python", "/tests/smoke_multiplex.py", "--chrome", paths[0],
-                             "--concurrency", "4", "--rounds", "2"))
+                             "--concurrency", "4", "--rounds", "2", "--poll-failures", "1"))
                 print(docker("exec", "--user", "1000", "-e", f"CHROME_DEVEL_SANDBOX={paths[1]}", adapter,
                              "python", "/tests/smoke_client_tools.py", "--chrome", paths[0],
                              "--catalog-size", "512"))

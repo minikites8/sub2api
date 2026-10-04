@@ -51,13 +51,15 @@ class Fixture(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
 
-    def reply(self, code, body, content_type='application/json', cache=False):
+    def reply(self, code, body, content_type='application/json', cache=False, retry_after=None):
         raw = body.encode()
         self.send_response(code)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(raw)))
         if cache:
             self.send_header('Cache-Control', 'public, max-age=3600')
+        if retry_after is not None:
+            self.send_header('Retry-After', str(retry_after))
         self.end_headers()
         self.wfile.write(raw)
 
@@ -101,6 +103,11 @@ class Fixture(BaseHTTPRequestHandler):
                     self.server.mismatches += 1
                     self.reply(409, '{"error":"wrong turn state"}')
                     return
+                job['poll_attempts'] = job.get('poll_attempts', 0) + 1
+                if job['poll_attempts'] <= getattr(self.server, 'poll_failures', 0):
+                    self.server.poll_errors += 1
+                    self.reply(503, '{"error":"temporarily unavailable"}', retry_after=1)
+                    return
                 job['state'] = uuid.uuid4().hex
                 job['polls'] += 1
                 result = {'request_id':rid, 'turn_state':job['state'], 'status':'running'}
@@ -119,6 +126,7 @@ def main():
     parser.add_argument('--concurrency', type=int, default=20, choices=range(1, 31))
     parser.add_argument('--output')
     parser.add_argument('--reconnect-first', action='store_true')
+    parser.add_argument('--poll-failures', type=int, default=0, choices=range(4))
     parser.add_argument('--model', choices=api.MODELS)
     parser.add_argument('--effort', choices=api.EFFORTS, default='xhigh')
     parser.add_argument('--rounds', type=int, default=1, choices=range(1, 5))
@@ -129,6 +137,7 @@ def main():
     upstream.asset_requests = 0
     upstream.reconnect_first = args.reconnect_first
     upstream.reconnected = set()
+    upstream.poll_failures, upstream.poll_errors = args.poll_failures, 0
     upstream.jobs, upstream.release, upstream.mismatches, upstream.target = {}, None, 0, args.concurrency
     threading.Thread(target=upstream.serve_forever, daemon=True).start()
     api.BASE = f'http://127.0.0.1:{upstream.server_port}'
@@ -194,10 +203,12 @@ def main():
             assert peak['pages'] <= 2 and peak['contexts'] == 1
             assert upstream.asset_requests == 1, upstream.asset_requests
             assert peak['active'] == args.concurrency and upstream.mismatches == 0
+            assert upstream.poll_errors == args.concurrency * args.rounds * args.poll_failures
             result = {'result':'passed','scope':'real adapter + real browser + mock upstream',
                 'concurrency':args.concurrency,'rounds':args.rounds,'model':args.model,'effort':args.effort,'completed':len(ids),'starts':len(upstream.jobs),
                 'projects':len({j['project'] for j in upstream.jobs.values()}),'peak':peak,
                 'state_mismatches':upstream.mismatches,'real_prism_requests':0,
+                'transient_poll_503s':upstream.poll_errors,
                 'asset_network_requests':upstream.asset_requests,'reconnects':len(upstream.reconnected),
                 'elapsed_seconds':round(time.monotonic()-started,3)}
             print(json.dumps(result), flush=True)

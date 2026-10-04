@@ -192,6 +192,8 @@ python3 prism-adapter/smoke_browser.py --chrome /absolute/path/to/chromium
 
 multiplex 日志记录 `prism_prepare_start/end`、`prism_poll_start/end`、完成和失败事件，包含本地请求标识、模型/强度、阶段、在途/排队/轮询数量和 cgroup 内存；不包含提示词、账号凭据、Cookie 或 turn-state。只有上游任务的执行区间确实重叠，才算实际并发。
 
+状态轮询收到 HTTP 429、500、502、503、504 时，按 1、2、4 秒退避，遵守 `Retry-After`，每次轮询最多发送 4 次，重试窗口为 30 秒，并受整个请求的 285 秒时限约束。重试沿用已捕获的任务 ID 和 turn_state；start 请求保持原有提交预算。认证失败、状态冲突、传输结果未知，以及重试次数或时间耗尽时，保留 pending 供核实。`prism_poll_retry` / `prism_poll_retry_exhausted` 日志包含本地请求标识、上游状态、尝试次数和等待秒数，实际轮询阶段记录为 `polling`。
+
 页面显示“项目运行环境的启动请求受到限流”或项目创建接口返回 429 时，会以 `project_runtime_rate_limited` 拒绝后续准备，并对该账号暂停新的启动至少 60 秒（当前进程内）。这是最短保护窗口，不代表上游冷却已经结束；页面给出的更晚时间应优先遵守。已有上游请求继续收尾，未知结局保留，不自动重放。仅调高并发配置不能解除上游限流。
 
 客户端应保留自己的稳定会话/线程标识。同一会话可以复用原项目并新建 chat tab，减少项目反复创建；不同 API Key、账号或会话仍独立。无会话标识的请求不能安全地共用项目，保持新建。工具回传继续遵守原有独立项目规则。
