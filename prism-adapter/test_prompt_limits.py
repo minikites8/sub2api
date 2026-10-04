@@ -25,6 +25,17 @@ def codex_request(**changes):
 
 
 class PromptLimitTests(unittest.TestCase):
+    def test_text_between_64_and_96_kib_preserves_all_utf8_content(self):
+        for model in adapter.MODELS:
+            for character in ('x', '字', '😀'):
+                text = '完整上下文\n' + character * (80000 // len(character.encode('utf-8')))
+                with self.subTest(model=model, character=character):
+                    prompt, stream = adapter.parse_prompt({'model': model, 'input': text, 'stream': True})
+                    self.assertGreater(len(prompt.encode('utf-8')), 64 * 1024)
+                    self.assertLess(len(prompt.encode('utf-8')), MAX_PRISM_PROMPT_BYTES)
+                    self.assertEqual(prompt, '[user]\n' + text)
+                    self.assertTrue(stream)
+
     def test_codex_context_above_32000_characters_preserves_all_messages(self):
         for model in adapter.MODELS:
             body = codex_request(model=model, stream=True)
@@ -47,7 +58,7 @@ class PromptLimitTests(unittest.TestCase):
                 with self.assertRaises(adapter.AdapterError) as raised:
                     adapter.parse_prompt(dict(body, input=text + 'x'))
                 self.assertEqual((raised.exception.status, raised.exception.code), (413, 'request_too_large'))
-                self.assertIn('64 KiB', str(raised.exception))
+                self.assertIn('96 KiB', str(raised.exception))
 
     def test_budget_includes_instructions_history_and_content_parts(self):
         body = {'model': adapter.MODEL, 'instructions': 'x' * 30000, 'input': [

@@ -81,7 +81,10 @@ print('Prism bridge authentication passed')
                              "--catalog-size", "512"))
                 print(docker("exec", "--user", "1000", "-e", f"CHROME_DEVEL_SANDBOX={paths[1]}", adapter,
                              "python", "/tests/smoke_client_tools.py", "--chrome", paths[0],
-                             "--catalog-size", "512", "--unique-catalog"))
+                             "--catalog-size", "512", "--unique-catalog", "--large-output-bytes", "180000"))
+                print(docker("exec", "--user", "1000", "-e", f"CHROME_DEVEL_SANDBOX={paths[1]}", adapter,
+                             "python", "/tests/smoke_client_tools.py", "--chrome", paths[0],
+                             "--catalog-size", "2", "--large-output-bytes", "180000"))
                 print(docker("exec", "--user", "1000", adapter, "python", "-m", "unittest",
                              "discover", "-s", "/tests", "-p", "test_*.py"))
                 docker("exec", "--user", "1000", adapter, "python", "-c",

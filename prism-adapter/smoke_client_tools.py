@@ -73,6 +73,7 @@ def main():
     parser.add_argument('--chrome',required=True)
     parser.add_argument('--catalog-size',type=int,default=512)
     parser.add_argument('--unique-catalog', action='store_true')
+    parser.add_argument('--large-output-bytes', type=int, default=0)
     args = parser.parse_args()
     upstream = ThreadingHTTPServer(('127.0.0.1',0),ToolFixture)
     upstream.daemon_threads = True
@@ -111,11 +112,16 @@ def main():
                 assert response['metadata']['prism_requested_reasoning_effort']=='max'
                 assert response['metadata']['prism_reasoning_effort']=='xhigh'
                 assert item['type']==expected
+                if args.large_output_bytes and turn:
+                    assert response['metadata']['prism_compacted_tool_results'] >= 1
+                    assert response['metadata']['prism_history_bytes_before'] > MAX_PRISM_PROMPT_BYTES
                 payload['input'] += response['output']
                 if turn<2:
                     assert item['namespace']=='client'
-                    payload['input'].append({'type':expected+'_output','call_id':item['call_id'],
-                        'output':'fixture-value' if turn==0 else 'fixture-confirmed'})
+                    output = 'fixture-value' if turn == 0 else 'fixture-confirmed'
+                    if turn == 0 and args.large_output_bytes:
+                        output += '\n' + 'x' * args.large_output_bytes + '\n[exit code 0]'
+                    payload['input'].append({'type':expected+'_output','call_id':item['call_id'], 'output': output})
                 else:
                     assert item['content'][0]['text']=='fixture-confirmed'
             expected_starts = 5 if args.unique_catalog and args.catalog_size == 512 else 3
@@ -134,6 +140,7 @@ def main():
                 'function_calls':1,'custom_calls':1,'final_completed':True,
                 'catalog_tools':args.catalog_size,'requested_effort':'max','prism_effort':'xhigh',
                 'catalog_inspections':expected_starts-3,'peak_prompt_bytes':peak_prompt_bytes,
+                'large_output_bytes':args.large_output_bytes,
                 'pending':0,'real_prism_requests':0}))
         finally:
             server.shutdown();server.server_close();worker.close()

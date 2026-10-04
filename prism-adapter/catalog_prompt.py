@@ -3,9 +3,10 @@ import json
 from collections import Counter
 
 
-# Prism rejected a 102,108-byte prompt before model processing. Leave room
-# for its own envelope and native context by compacting catalogs at 64 KiB.
-MAX_PRISM_PROMPT_BYTES = 64 * 1024
+# The 102,108-byte production rejection bounds the submission budget. Keep
+# catalog compaction eager while allowing ordinary Codex history beyond 64 KiB.
+MAX_PRISM_PROMPT_BYTES = 96 * 1024
+CATALOG_COMPACTION_BYTES = 64 * 1024
 MAX_CATALOG_INSPECTIONS = 4
 
 

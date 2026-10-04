@@ -50,7 +50,7 @@ class AdapterError(Exception):
         self.not_submitted = not_submitted
 
 
-def parse_prompt(payload):
+def parse_prompt(payload, *, max_bytes=MAX_PRISM_PROMPT_BYTES):
     if not isinstance(payload, dict) or not isinstance(payload.get("model"), str) or payload["model"] not in MODELS:
         raise AdapterError(422, "unsupported_model", "Unsupported Prism model; choose " + ", ".join(MODELS))
     if payload.get("tools") or payload.get("additional_tools") or payload.get("previous_response_id") or payload.get("conversation"):
@@ -98,9 +98,9 @@ def parse_prompt(payload):
     prompt = "\n\n".join(parts)
     # Text and client-tool requests share the rendered UTF-8 submission budget.
     # Codex instructions and full history can exceed 32,000 characters.
-    if len(prompt.encode('utf-8')) > MAX_PRISM_PROMPT_BYTES:
+    if len(prompt.encode('utf-8')) > max_bytes:
         raise AdapterError(413, "request_too_large",
-            f"Prism text prompt exceeds the {MAX_PRISM_PROMPT_BYTES // 1024} KiB UTF-8 submission budget; reduce instructions or message history")
+            f"Prism text prompt exceeds the {max_bytes // 1024} KiB UTF-8 submission budget; reduce instructions or message history")
     return prompt, payload.get("stream", False)
 
 
@@ -771,6 +771,12 @@ class Handler(BaseHTTPRequestHandler):
                 print(json.dumps({'event': 'prism_tool_catalog_prepared', 'catalog_tools': len(bridge.tools),
                     'catalog_mode': bridge.catalog_mode, 'prompt_bytes': len(prompt.encode('utf-8'))}),
                     file=sys.stderr, flush=True)
+                if bridge.compacted_results:
+                    print(json.dumps({'event': 'prism_tool_history_compacted',
+                        'tool_results': bridge.compacted_results,
+                        'history_bytes_before': bridge.history_bytes_before,
+                        'history_bytes_after': len(bridge.history_prompt.encode('utf-8'))}),
+                        file=sys.stderr, flush=True)
             else:
                 prompt, stream = parse_prompt(payload)
             model = payload["model"]
@@ -836,6 +842,11 @@ class Handler(BaseHTTPRequestHandler):
                 response['metadata'] = {'prism_requested_reasoning_effort': requested_effort,
                                         'prism_reasoning_effort': effort}
             if bridge is not None:
+                if bridge.compacted_results:
+                    response.setdefault('metadata', {}).update(
+                        prism_compacted_tool_results=bridge.compacted_results,
+                        prism_history_bytes_before=bridge.history_bytes_before,
+                        prism_history_bytes_after=len(bridge.history_prompt.encode('utf-8')))
                 if bridge.catalog_mode != 'inline':
                     response.setdefault('metadata', {}).update(prism_catalog_mode=bridge.catalog_mode,
                                                                prism_catalog_inspections=bridge.inspections)

@@ -72,7 +72,8 @@ class InputRejectionTests(unittest.TestCase):
                     for index in range(52)]
                 # Reproduce the original inline prompt at the observed byte
                 # count, independently of the corrected submission budget.
-                with mock.patch('tool_bridge.MAX_PRISM_PROMPT_BYTES', 112 * 1024):
+                with mock.patch('tool_bridge.MAX_PRISM_PROMPT_BYTES', 112 * 1024), \
+                        mock.patch('tool_bridge.CATALOG_COMPACTION_BYTES', 112 * 1024):
                     original = ToolBridge(body, adapter)
                     padding = 102108 - len(original.prompt.encode('utf-8'))
                     self.assertGreater(padding, 0)

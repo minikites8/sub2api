@@ -14,8 +14,10 @@ import uuid
 from pathlib import Path
 
 from tool_state import digest
+from history_prompt import compact_results
 from tool_limits import MAX_HISTORY_CALLS, MAX_TOOLS, MAX_TOOL_PAYLOAD_BYTES
-from catalog_prompt import encoded, shared_catalog, tool_index, MAX_PRISM_PROMPT_BYTES, MAX_CATALOG_INSPECTIONS
+from catalog_prompt import (encoded, shared_catalog, tool_index, MAX_PRISM_PROMPT_BYTES,
+                            CATALOG_COMPACTION_BYTES, MAX_CATALOG_INSPECTIONS)
 
 NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_.-]{0,127}$')
 CALL = re.compile(r'^call_prism_[a-f0-9]{32}$')
@@ -73,6 +75,8 @@ class ToolBridge:
         self.marker = 'PRISM_CLIENT_TOOLS_V1:' + uuid.uuid4().hex
         self.lease = uuid.uuid4().hex
         self.tools, self.calls, self.results = {}, {}, {}
+        self.result_positions = []
+        self.compacted_results = 0
         self.unavailable = set()
         self.commands = []
         if payload.get('model') != 'gpt-6.1-sol':
@@ -106,7 +110,9 @@ class ToolBridge:
         base = copy.deepcopy(payload)
         base.update(input=translated, tools=[], additional_tools=[], tool_choice='none')
         # The ordinary parser still owns model/options/message validation.
-        self.history_prompt, self.stream = api.parse_prompt(base)
+        self.history_payload = base
+        self.history_prompt, self.stream = api.parse_prompt(base, max_bytes=MAX_TOOL_PAYLOAD_BYTES)
+        self.history_bytes_before = len(self.history_prompt.encode('utf-8'))
         catalog = [tool['catalog'] for tool in self.tools.values()]
         self.policy = (
             'You are producing a response for an external client. All client tools run on the client, '
@@ -137,11 +143,16 @@ class ToolBridge:
         self.prompt = self.build_prompt(encoded(catalog))
         if len(self.prompt.encode('utf-8')) > MAX_TOOL_PAYLOAD_BYTES:
             self.reject('tool_request_too_large', 'Tool catalog and history exceed the Prism bridge limit of 1 MiB UTF-8')
-        if len(self.prompt.encode('utf-8')) > MAX_PRISM_PROMPT_BYTES:
+        if len(self.prompt.encode('utf-8')) > CATALOG_COMPACTION_BYTES:
+            # A small catalog needs no inspection to recover a long tool turn.
+            if len(encoded(catalog).encode('utf-8')) <= 8192 and self.results:
+                self.prompt = self.fit_history(encoded(catalog))
+                if len(self.prompt.encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
+                    return
             packed = self.build_prompt('Shared catalog: shared_description/shared_parameters/shared_format '
                 'references use the exact value in shared; expand these fields before reading the declaration.\n'
                 + shared_catalog(catalog))
-            if len(packed.encode('utf-8')) <= MAX_PRISM_PROMPT_BYTES:
+            if len(packed.encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
                 self.prompt, self.catalog_mode = packed, 'shared'
             else:
                 self.catalog_mode = 'indexed'
@@ -149,12 +160,22 @@ class ToolBridge:
                     self.loaded.add(self.target['catalog']['name'])
                 self.prompt = self.indexed_prompt(status=422)
 
-    def build_prompt(self, catalog):
-        return self.policy + catalog + '\n\nBEGIN_CLIENT_HISTORY\n' + self.history_prompt + '\nEND_CLIENT_HISTORY\n' + (
+    def build_prompt(self, catalog, history=None):
+        return self.policy + catalog + '\n\nBEGIN_CLIENT_HISTORY\n' + (self.history_prompt if history is None else history) + '\nEND_CLIENT_HISTORY\n' + (
             'Respond using ' + self.marker + ' and the JSON protocol above. Do not execute any remote sandbox tool.')
+
+    def fit_history(self, catalog, budget=CATALOG_COMPACTION_BYTES):
+        available = budget - len(self.build_prompt(catalog, history='').encode('utf-8'))
+        if available > 0 and self.result_positions:
+            self.history_prompt, self.compacted_results, self.history_bytes_before = compact_results(
+                self.history_payload, self.result_positions, self.api.parse_prompt, available)
+        return self.build_prompt(catalog)
 
     def indexed_prompt(self, status=502):
         definitions = [self.tools[name]['catalog'] for name in self.tools if name in self.loaded]
+        # Prefer a compact catalog; long history may need the larger transport
+        # budget. Keep previews removed before using that additional room.
+        minimal = None
         for preview in (120, 60, 0):
             catalog = ('The index lists every declared client tool. Description previews are navigation hints. '
                 'Read the full declaration before calling a tool. To load full declarations return '
@@ -162,9 +183,14 @@ class ToolBridge:
                 'Inspections are internal catalog lookups; only kind=calls emits client operations. '
                 'Use full_declarations for authoritative descriptions, parameters and custom grammar.\n'
                 + encoded({'index': tool_index(self.catalog, preview), 'full_declarations': definitions}))
-            prompt = self.build_prompt(catalog)
-            if len(prompt.encode('utf-8')) <= MAX_PRISM_PROMPT_BYTES:
-                return prompt
+            minimal = self.build_prompt(catalog)
+            if len(minimal.encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
+                return minimal
+        minimal = self.fit_history(catalog)
+        if len(minimal.encode('utf-8')) > CATALOG_COMPACTION_BYTES:
+            minimal = self.fit_history(catalog, MAX_PRISM_PROMPT_BYTES)
+        if len(minimal.encode('utf-8')) <= MAX_PRISM_PROMPT_BYTES:
+            return minimal
         raise self.error(status, 'tool_prompt_too_large',
             f'Prism tool prompt exceeds the {MAX_PRISM_PROMPT_BYTES // 1024} KiB submission budget; reduce tool descriptions, schemas or history')
 
@@ -353,6 +379,7 @@ class ToolBridge:
                 elif not isinstance(output,str):
                     self.reject('invalid_tool_result', 'Tool result must be text or text parts')
                 self.results[call_id] = {'type':kind,'call_id':call_id,'output':output}
+                self.result_positions.append(len(translated))
                 translated.append({'role':'user','content':'CLIENT_TOOL_RESULT '+json.dumps(self.results[call_id],ensure_ascii=False)})
                 fresh_user_turn = False
             else:
