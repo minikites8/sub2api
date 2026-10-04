@@ -65,8 +65,13 @@ func ProvideAdminHandlers(
 	opencodeGoUsage *service.OpenCodeGoUsageService,
 	yeTeamClient *yeteam.Client,
 	openAIGateway *service.OpenAIGatewayService,
+	codexHarvest *service.CodexHarvestService,
+	settingService *service.SettingService,
 ) *AdminHandlers {
 	accountHandler.SetCodexTicketProvider(openAIGateway)
+	accountHandler.SetOpenAIGatewayService(openAIGateway)
+	accountHandler.SetCodexHarvestService(codexHarvest)
+	accountHandler.SetCodexTicketSettings(settingService)
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
 	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
