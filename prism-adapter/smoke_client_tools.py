@@ -78,7 +78,7 @@ def main():
         server = ThreadingHTTPServer(('127.0.0.1',0),handler)
         server.daemon_threads = True
         threading.Thread(target=server.serve_forever,daemon=True).start()
-        payload={'model':'gpt-6.1-sol','stream':True,'reasoning':{'effort':'medium'},
+        payload={'model':'gpt-6.1-sol','stream':True,'reasoning':{'effort':'max','summary':'detailed'},
             'tools':client_catalog(args.catalog_size),
             'input':[{'role':'user','content':'Look up the fixture value, echo it, and report the confirmed result.'}]}
         headers={'Authorization':'Bearer synthetic-key','X-Prism-OAuth-Token':'synthetic-token',
@@ -93,6 +93,9 @@ def main():
                 assert not any(event['type'].endswith('.delta') for event in events)
                 response=events[-1]['response'];item=response['output'][0]
                 assert response['model']=='gpt-6.1-sol' and response['usage'] is None
+                assert response['reasoning']['effort']=='xhigh'
+                assert response['metadata']['prism_requested_reasoning_effort']=='max'
+                assert response['metadata']['prism_reasoning_effort']=='xhigh'
                 assert item['type']==expected
                 payload['input'] += response['output']
                 if turn<2:
@@ -106,10 +109,12 @@ def main():
             assert not list(state.pending.iterdir())
             receipts=[json.loads(p.read_text()) for p in state.receipts.iterdir()]
             assert len(receipts)==3 and all(r['start_count']==1 for r in receipts)
-            assert all(r['model']=='gpt-6.1-sol' and r['reasoning_effort']=='medium' for r in receipts)
+            assert all(r['model']=='gpt-6.1-sol' and r['reasoning_effort']=='xhigh' for r in receipts)
+            assert all(job['effort']=='xhigh' for job in upstream.jobs.values())
             print(json.dumps({'result':'passed','scope':'real HTTP + Chromium + mock Prism',
                 'upstream_starts':3,'fresh_projects':3,'function_calls':1,'custom_calls':1,'final_completed':True,
-                'catalog_tools':args.catalog_size,'pending':0,'real_prism_requests':0}))
+                'catalog_tools':args.catalog_size,'requested_effort':'max','prism_effort':'xhigh',
+                'pending':0,'real_prism_requests':0}))
         finally:
             server.shutdown();server.server_close();worker.close()
             upstream.shutdown();upstream.server_close()

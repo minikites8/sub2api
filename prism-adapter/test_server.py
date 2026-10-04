@@ -25,7 +25,7 @@ class AdapterTests(unittest.TestCase):
                        'reasoning': {'effort': 'high', 'summary': 'auto'}}
             self.assertEqual(adapter.parse_prompt(payload), ('[user]\nhi', False))
         for fields in ({'include': ['web_search_call.action.sources']},
-                       {'reasoning': {'summary': 'detailed'}},
+                       {'reasoning': {'summary': 'unsupported'}},
                        {'input': [{'type': 'reasoning', 'encrypted_content': 'fixture'}]}):
             with self.assertRaises(adapter.AdapterError):
                 adapter.parse_prompt({'model': adapter.MODEL, 'input': 'hi', **fields})

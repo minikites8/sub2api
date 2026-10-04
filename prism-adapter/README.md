@@ -22,6 +22,8 @@ Prism 请求由适配器独立排队与限流，不参与原生账号的自动�
 
 文本请求接受 `gpt-6.1-sol`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-6-luna` 四个精确模型 ID，以及 `low`、`medium`、`high`、`xhigh` 思考强度（省略时为 `medium`）。能否调用仍取决于该 OAuth 账号在 Prism 页面中实际可选的模型和强度；不把静态支持列表当作账号权益证明。默认保持文本模式。`gpt-6.1-sol` 可通过下述服务端试用开关启用客户端工具桥；图片、`previous_response_id`、background、structured output、compact 和原生 WebSocket 仍不支持。
 
+Codex 的 `max` / `ultra` 请求映射到 Prism 的最高档 `xhigh`；`minimal` / `none` 映射到最低档 `low`。响应的 `reasoning.effort`、提交校验和回执使用实际档位，映射时 metadata 保留 `prism_requested_reasoning_effort` 与 `prism_reasoning_effort`。最高档映射仍需页面可选 `xhigh`。`reasoning.summary` 接受 `auto`、`concise`、`detailed`、`none`，响应沿用实际收到的内容；非法 summary 单独返回 `unsupported_reasoning_summary`。
+
 每个请求先通过官方页面选择模型和思考强度，再核对 start 元数据中的实际值。缓存命中也重新检查，响应与终态回执保留本次模型和强度；并发请求不修改全局默认值，也不将新模型静默替换为 `gpt-5.6-sol`。账号页面没有对应选项时，发送前返回 `model_unavailable` 或 `reasoning_unavailable`（HTTP 422）；未知模型 ID 返回 `unsupported_model`。Beta 开关属于 Prism 账号设置，适配器不会自动修改它；开启 Beta 或在配置接口看到模型名都不能替代真实调用验收。
 
 ## 协议边界

@@ -26,6 +26,7 @@ from model_selection import MODELS, EFFORTS, select_options
 from tool_bridge import ToolBridge, has_tools, strict_json
 from tool_state import ToolState, digest
 from response_events import completed_events
+from reasoning_options import resolve_reasoning
 
 
 BASE = "https://prism.openai.com"
@@ -63,10 +64,7 @@ def parse_prompt(payload):
     text_options = payload.get("text") or {}
     if not isinstance(text_options, dict) or text_options.get("format", {"type": "text"}) != {"type": "text"}:
         raise AdapterError(422, "unsupported_request", "Only plain text output is supported")
-    reasoning = payload.get("reasoning") or {}
-    if (not isinstance(reasoning, dict) or not isinstance(reasoning.get("effort", "medium"), str)
-            or reasoning.get("effort", "medium") not in EFFORTS or reasoning.get("summary") not in (None, "none", "auto")):
-        raise AdapterError(422, "unsupported_reasoning", "Unsupported Prism reasoning effort")
+    resolve_reasoning(payload, AdapterError)
     if not isinstance(payload.get("stream", False), bool):
         raise AdapterError(400, "invalid_request", "stream must be a boolean")
     items = payload.get("input")
@@ -703,7 +701,8 @@ class Handler(BaseHTTPRequestHandler):
                 prompt, stream = bridge.prompt, bridge.stream
             else:
                 prompt, stream = parse_prompt(payload)
-            model, effort = payload["model"], (payload.get("reasoning") or {}).get("effort", "medium")
+            model = payload["model"]
+            requested_effort, effort = resolve_reasoning(payload, AdapterError)
             if self.serialize_requests and not self.lock.acquire(blocking=False):
                 raise AdapterError(429, "prism_busy", "Prism browser is busy; request was not submitted")
             try:
@@ -725,6 +724,9 @@ class Handler(BaseHTTPRequestHandler):
                 if self.serialize_requests:
                     self.lock.release()
             response = response_payload(request_id, answer, model, effort)
+            if requested_effort is not None and requested_effort != effort:
+                response['metadata'] = {'prism_requested_reasoning_effort': requested_effort,
+                                        'prism_reasoning_effort': effort}
             if bridge is not None:
                 try:
                     output, calls = bridge.output(answer, request_id)
@@ -736,7 +738,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.tool_state.complete(scope, bridge.lease, response['id'], calls)
                 response['output'] = output
                 if bridge.unavailable:
-                    response['metadata'] = {'prism_unavailable_tools': ','.join(sorted(bridge.unavailable))}
+                    response.setdefault('metadata', {})['prism_unavailable_tools'] = ','.join(sorted(bridge.unavailable))
             if stream:
                 created = dict(response, status="in_progress", output=[])
                 events = [

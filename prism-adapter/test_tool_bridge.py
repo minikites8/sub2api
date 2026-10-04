@@ -203,6 +203,7 @@ class ToolHTTPTests(unittest.TestCase):
             count = 0
             def run(inner, account, token, prompt, session, model, effort, reuse_project=True):
                 import re
+                self.assertEqual(effort, 'xhigh')
                 self.assertFalse(reuse_project)
                 self.assertEqual(session,'a'*64)
                 inner.count += 1
@@ -223,7 +224,7 @@ class ToolHTTPTests(unittest.TestCase):
             server=ThreadingHTTPServer(('127.0.0.1',0),handler)
             threading.Thread(target=server.serve_forever,daemon=True).start()
             try:
-                payload=request(stream=True, include=['reasoning.encrypted_content'], reasoning={'effort':'medium','summary':'auto'})
+                payload=request(stream=True, include=['reasoning.encrypted_content'], reasoning={'effort':'max','summary':'detailed'})
                 headers={'Authorization':'Bearer fixture-key','X-Prism-Account-ID':'300',
                     'X-Prism-OAuth-Token':'synthetic','X-Prism-Session-ID':'a'*64,'X-Prism-Caller-ID':'b'*64,'Content-Type':'application/json'}
                 def send(headers_=headers):
@@ -232,6 +233,8 @@ class ToolHTTPTests(unittest.TestCase):
                         events=[json.loads(line[6:]) for line in reply.read().decode().splitlines() if line.startswith('data: ')]
                     self.assertEqual(events[-1]['type'],'response.completed')
                     self.assertFalse(any(e['type'].endswith('.delta') for e in events))
+                    self.assertEqual(events[-1]['response']['reasoning']['effort'], 'xhigh')
+                    self.assertEqual(events[-1]['response']['metadata']['prism_requested_reasoning_effort'], 'max')
                     return events[-1]['response']
                 with self.assertRaises(HTTPError) as missing:
                     send({k:v for k,v in headers.items() if k!='X-Prism-Caller-ID'})
