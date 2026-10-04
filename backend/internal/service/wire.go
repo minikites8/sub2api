@@ -314,6 +314,7 @@ func ProvideAccountTestService(
 	)
 	service.agentIdentityWS = openAIGatewayService
 	service.openAIGatewayService = openAIGatewayService
+	service.SetOpenAIGatewayService(openAIGatewayService)
 	return service
 }
 

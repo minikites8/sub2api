@@ -1065,6 +1065,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
 	}
+	requestedTestModelID := testModelID
 
 	// Align test routing with gateway behavior: OpenAI accounts apply normal
 	// account model mapping. Native remote compaction v2 rides the ordinary
@@ -1085,6 +1086,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			return s.testOpenAIImageAPIKey(c, ctx, account, testModelID, imagePrompt)
 		}
 		return s.testOpenAIImageOAuth(c, ctx, account, testModelID, imagePrompt)
+	}
+
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok && account.IsOpenAIOAuthLike() {
+		return s.testOpenAICodexPelicanConnection(c, account, requestedTestModelID, options)
 	}
 
 	credentialAccount := account
@@ -3345,42 +3350,49 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 			return s.sendErrorAndEnd(c, "Stream ended before response.completed")
 		}
 
-		var data map[string]any
-		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-			continue
-		}
-
-		eventType, _ := data["type"].(string)
-
-		switch eventType {
-		case "response.output_text.delta":
-			// OpenAI Responses API uses "delta" field for text content
-			if delta, ok := data["delta"].(string); ok && delta != "" {
-				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
+		if done, errorMsg := s.processOpenAIStreamEvent(c, jsonStr); done {
+			if errorMsg != "" {
+				return s.sendErrorAndEnd(c, errorMsg)
 			}
-		case "response.completed", "response.done":
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
-		case "response.failed":
-			errorMsg := "OpenAI response failed"
-			if responseData, ok := data["response"].(map[string]any); ok {
-				if errData, ok := responseData["error"].(map[string]any); ok {
-					if msg, ok := errData["message"].(string); ok && msg != "" {
-						errorMsg = msg
-					}
-				}
-			}
-			return s.sendErrorAndEnd(c, errorMsg)
-		case "error":
-			errorMsg := "Unknown error"
-			if errData, ok := data["error"].(map[string]any); ok {
-				if msg, ok := errData["message"].(string); ok {
-					errorMsg = msg
-				}
-			}
-			return s.sendErrorAndEnd(c, errorMsg)
 		}
 	}
+}
+
+// processOpenAIStreamEvent also serves the gateway-backed Pelican stream.
+func (s *AccountTestService) processOpenAIStreamEvent(c *gin.Context, raw string) (done bool, errorMsg string) {
+	var data map[string]any
+	if json.Unmarshal([]byte(raw), &data) != nil {
+		return false, ""
+	}
+	switch data["type"] {
+	case "response.output_text.delta":
+		if delta, ok := data["delta"].(string); ok && delta != "" {
+			s.sendEvent(c, TestEvent{Type: "content", Text: delta})
+		}
+	case "response.completed", "response.done":
+		return true, ""
+	case "response.failed", "response.incomplete":
+		message := "OpenAI response failed"
+		if response, ok := data["response"].(map[string]any); ok {
+			if errData, ok := response["error"].(map[string]any); ok {
+				if msg, ok := errData["message"].(string); ok && msg != "" {
+					message = msg
+				}
+			}
+		}
+		return true, message
+	case "error":
+		message := "Unknown error"
+		if errData, ok := data["error"].(map[string]any); ok {
+			if msg, ok := errData["message"].(string); ok && msg != "" {
+				message = msg
+			}
+		}
+		return true, message
+	}
+	return false, ""
 }
 
 // testOpenAIImageAPIKey tests OpenAI image generation using an API Key account.

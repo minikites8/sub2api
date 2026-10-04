@@ -37,6 +37,8 @@ $env:SUB2API_CODEX_CLOUD_MINT_KEY = "your-relay-key"
 
 取票请求固定携带 `X-Mint-TTL: 0`，每次向 relay 获取新票。`tickets[model].expires_at` 表示 relay 缓存截止时间，计算为 `issued_at + X-Mint-TTL`；TTL 为 0 时，这个时间等于签发时间。Sub2api 的票据有效期由票内签发时间加 240 秒、本地 `ttl_seconds` 和路由 Cookie 的 JWT 到期时间共同裁剪，取最早截止时间。打票日志会显示票据过期、票内时间异常、路由校验失败和模型差异等具体原因。
 
+OpenAI OAuth 账号的智商题目测试通过正式 Responses 转发入口执行，沿用所选模型的有效后台票据和路由 Cookie，并保留测试题目、推理强度及实时输出。票据准入遵循当前打票配置；启用 `fail_closed` 时，缺票、过期或传输协议不匹配会提示等待打票成功。题目测试请求也参与票据响应观察，请求期间暂停该账号的后台打票。
+
 ## Docker Compose 配置
 
 Compose 部署需要把 relay 配置和密钥显式传入 `sub2api` 容器。主机 `.env` 用于 Compose 插值，`services.sub2api.environment` 决定容器内变量。
