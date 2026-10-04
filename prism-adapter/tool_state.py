@@ -8,6 +8,8 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from response_cache import ResponseCache
+
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
@@ -24,6 +26,7 @@ class ToolState:
         os.close(fd)
         os.chmod(self.path, 0o600)
         self.lock = threading.Lock()
+        self.responses = ResponseCache()
         with self.lock, self.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS calls (
                 scope TEXT NOT NULL, call_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
@@ -66,15 +69,25 @@ class ToolState:
                 raise self.error(409, 'tool_result_replayed', 'These tool results were already consumed; continuation was not replayed')
         return fresh
 
-    def complete(self, scope, lease, group, calls):
-        with self.lock, self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
-            if db.execute('SELECT COUNT(*) FROM calls').fetchone()[0] + len(calls) > 50000:
-                raise self.error(503, 'tool_state_full', 'Tool identity storage requires maintenance')
-            for call in calls:
-                db.execute('INSERT INTO calls VALUES (?,?,?,?,?,?,?,?)',
-                    (scope, call['call_id'], digest(call), group, 'issued', None, None, int(time.time())))
-            db.execute("UPDATE calls SET state='consumed', lease=NULL WHERE scope=? AND lease=?", (scope, lease))
+    def cached_response(self, scope, request_digest):
+        if request_digest is None:
+            return None
+        return self.responses.get(digest([scope, request_digest]))
+
+    def complete(self, scope, lease, group, calls, *, request_digest=None, response=None):
+        with self.lock:
+            with self.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                if db.execute('SELECT COUNT(*) FROM calls').fetchone()[0] + len(calls) > 50000:
+                    raise self.error(503, 'tool_state_full', 'Tool identity storage requires maintenance')
+                for call in calls:
+                    db.execute('INSERT INTO calls VALUES (?,?,?,?,?,?,?,?)',
+                        (scope, call['call_id'], digest(call), group, 'issued', None, None, int(time.time())))
+                db.execute("UPDATE calls SET state='consumed', lease=NULL WHERE scope=? AND lease=?", (scope, lease))
+            # Publish only after the identity transaction committed. Response
+            # bodies remain in bounded process memory, outside durable state.
+            if request_digest is not None and response is not None:
+                self.responses.put(digest([scope, request_digest]), response)
 
     def not_sent(self, scope, lease):
         with self.lock, self.connect() as db:

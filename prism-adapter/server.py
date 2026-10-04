@@ -689,6 +689,28 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_completion(self, response, stream, tool_response=False):
+        if not stream:
+            self.send_json(200, response)
+            return
+        created = dict(response, status="in_progress", output=[])
+        events = [
+            ("response.created", {"type": "response.created", "sequence_number": 0, "response": created}),
+            ("response.completed", {"type": "response.completed", "sequence_number": 1, "response": response}),
+        ]
+        if tool_response:
+            events = completed_events(response)
+        body = "".join("event: " + name + "\ndata: " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n\n"
+                       for name, data in events).encode('utf-8')
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Request-Id", response["id"])
+        self.send_header("Connection", "close")
+        self.close_connection = True
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         if self.path == "/health":
             status = self.browser_turn.health() if hasattr(self.browser_turn, "health") else {"status": "ok"}
@@ -724,6 +746,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = strict_json(self.rfile.read(length))
             bridge = None
             scope = None
+            request_digest = None
             if has_tools(payload):
                 if self.tool_state is None:
                     raise AdapterError(422, 'tools_disabled', 'Prism client tool bridge is disabled')
@@ -732,6 +755,14 @@ class Handler(BaseHTTPRequestHandler):
                     raise AdapterError(400, 'invalid_caller', 'Tool requests require a gateway-derived caller identity')
                 scope = digest([account_id, callers[0], session_id])
                 bridge = ToolBridge(payload, SimpleNamespace(AdapterError=AdapterError, parse_prompt=parse_prompt))
+                if bridge.results:
+                    # Transport encoding changes leave the generation intact.
+                    # All semantic request fields participate in the identity.
+                    request_digest = digest({key: value for key, value in payload.items() if key != 'stream'})
+                    cached = self.tool_state.cached_response(scope, request_digest)
+                    if cached is not None:
+                        self.send_completion(cached, bridge.stream, tool_response=True)
+                        return
                 prompt, stream = bridge.prompt, bridge.stream
                 print(json.dumps({'event': 'prism_tool_catalog_prepared', 'catalog_tools': len(bridge.tools),
                     'catalog_mode': bridge.catalog_mode, 'prompt_bytes': len(prompt.encode('utf-8'))}),
@@ -744,7 +775,17 @@ class Handler(BaseHTTPRequestHandler):
                 raise AdapterError(429, "prism_busy", "Prism browser is busy; request was not submitted")
             try:
                 if bridge is not None:
-                    self.tool_state.reserve(scope, bridge.calls, bridge.results, bridge.lease, bridge.needs_fresh)
+                    try:
+                        self.tool_state.reserve(scope, bridge.calls, bridge.results, bridge.lease, bridge.needs_fresh)
+                    except AdapterError as error:
+                        # A concurrent completion can commit after the first
+                        # cache lookup. Recover its response before returning 409.
+                        cached = (self.tool_state.cached_response(scope, request_digest)
+                                  if error.code == 'tool_result_replayed' else None)
+                        if cached is None:
+                            raise
+                        self.send_completion(cached, stream, tool_response=True)
+                        return
                 try:
                     deadline = time.monotonic() + getattr(self.browser_turn, 'request_timeout', 285)
                     while True:
@@ -797,29 +838,12 @@ class Handler(BaseHTTPRequestHandler):
                     # is released. These results were already fed to the model.
                     self.tool_state.complete(scope, bridge.lease, response['id'], [])
                     raise
-                self.tool_state.complete(scope, bridge.lease, response['id'], calls)
                 response['output'] = output
                 if bridge.unavailable:
                     response.setdefault('metadata', {})['prism_unavailable_tools'] = ','.join(sorted(bridge.unavailable))
-            if stream:
-                created = dict(response, status="in_progress", output=[])
-                events = [
-                    ("response.created", {"type": "response.created", "sequence_number": 0, "response": created}),
-                    ("response.completed", {"type": "response.completed", "sequence_number": 1, "response": response}),
-                ]
-                if bridge is not None:
-                    events = completed_events(response)
-                body = "".join("event: " + name + "\ndata: " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n\n" for name, data in events).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("X-Request-Id", response["id"])
-                self.send_header("Connection", "close")
-                self.close_connection = True
-                self.end_headers()
-                self.wfile.write(body)
-            else:
-                self.send_json(200, response)
+                self.tool_state.complete(scope, bridge.lease, response['id'], calls,
+                                         request_digest=request_digest, response=response)
+            self.send_completion(response, stream, tool_response=bridge is not None)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except AdapterError as error:

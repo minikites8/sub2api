@@ -244,9 +244,7 @@ class ToolHTTPTests(unittest.TestCase):
                 third=send()
                 self.assertEqual(third['output'][0]['content'][0]['text'],'confirmed-client-value')
                 self.assertIsNone(third['usage'])
-                with self.assertRaises(HTTPError) as duplicate:
-                    send()
-                self.assertEqual(duplicate.exception.code,409)
+                self.assertEqual(send(), third)
                 self.assertEqual(browser.count,3)
             finally:
                 server.shutdown();server.server_close()
