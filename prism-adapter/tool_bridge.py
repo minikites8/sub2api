@@ -14,15 +14,13 @@ import uuid
 from pathlib import Path
 
 from tool_state import digest
+from tool_limits import MAX_HISTORY_CALLS, MAX_TOOLS, MAX_TOOL_PAYLOAD_BYTES
 
 NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_.-]{0,127}$')
 CALL = re.compile(r'^call_prism_[a-f0-9]{32}$')
 VALIDATORS = threading.BoundedSemaphore(1)
-MAX_TOOLS = 96
 MAX_CALLS = 8
-MAX_HISTORY_CALLS = 64
 MAX_TOOL_CHARS = 32000
-MAX_BRIDGE_CHARS = 128000
 
 
 def strict_json(raw):
@@ -42,7 +40,7 @@ def validate_batch(commands, error, status=422):
     if not commands:
         return
     raw = json.dumps(commands, allow_nan=False, ensure_ascii=False).encode()
-    if len(raw) > 1 << 20:
+    if len(raw) > MAX_TOOL_PAYLOAD_BYTES:
         raise error(status, 'invalid_tool_payload', 'Tool validation payload exceeds the limit')
     if not VALIDATORS.acquire(timeout=5):
         raise error(429, 'tool_validation_busy', 'Tool validation is busy; request was not submitted')
@@ -133,8 +131,8 @@ class ToolBridge:
                        '. They are not callable through this bridge. State the limitation if the user needs one; never claim to have used one.')
         self.prompt = policy + '\n\nBEGIN_CLIENT_HISTORY\n' + self.prompt + '\nEND_CLIENT_HISTORY\n' + (
             'Respond using ' + self.marker + ' and the JSON protocol above. Do not execute any remote sandbox tool.')
-        if len(self.prompt) > MAX_BRIDGE_CHARS:
-            self.reject('tool_request_too_large', 'Tool catalog and history exceed the Prism bridge limit')
+        if len(self.prompt.encode('utf-8')) > MAX_TOOL_PAYLOAD_BYTES:
+            self.reject('tool_request_too_large', 'Tool catalog and history exceed the Prism bridge limit of 1 MiB UTF-8')
 
     def reject(self, code, message):
         raise self.error(422, code, message)
@@ -142,8 +140,10 @@ class ToolBridge:
     def collect(self, value, namespace='', depth=0):
         if value is None:
             return
-        if not isinstance(value, list) or len(value) > MAX_TOOLS or depth > 8:
+        if not isinstance(value, list) or depth > 8:
             self.reject('invalid_tools', 'Tool declarations exceed their shape or nesting limits')
+        if len(value) > MAX_TOOLS:
+            self.reject('too_many_tools', f'Client tool catalog exceeds the limit of {MAX_TOOLS} tools')
         for definition in value:
             if not isinstance(definition, dict):
                 self.reject('invalid_tools', 'Tool declaration must be an object')
@@ -192,7 +192,7 @@ class ToolBridge:
             self.tools[qualified] = tool
             self.commands.append(command)
             if len(self.tools) > MAX_TOOLS:
-                self.reject('too_many_tools', 'Client tool catalog exceeds the limit')
+                self.reject('too_many_tools', f'Client tool catalog exceeds the limit of {MAX_TOOLS} tools')
 
     def lookup(self, namespace, name):
         if not isinstance(namespace, str) or not isinstance(name, str):

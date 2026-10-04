@@ -18,6 +18,26 @@ from smoke_multiplex import Fixture
 from tool_state import ToolState
 
 
+def client_catalog(size=512):
+    """A Codex-sized catalog, with the exercised tools at the end."""
+    if size < 2:
+        raise ValueError('catalog requires the two exercised client tools')
+    tools = []
+    for offset in range(0, size - 2, 32):
+        tools.append({'type': 'namespace', 'name': f'connector_{offset // 32}', 'tools': [
+            {'type': 'function', 'name': f'operation_{index}',
+             'description': 'Codex connector fixture: preserve the complete client tool description. ' * 8,
+             'parameters': {'type': 'object', 'properties': {'key': {'type': 'string'}},
+                            'required': ['key'], 'additionalProperties': False}, 'strict': True}
+            for index in range(offset, min(offset + 32, size - 2))]})
+    tools.append({'type': 'namespace', 'name': 'client', 'tools': [
+        {'type': 'function', 'name': 'lookup', 'parameters': {'type': 'object',
+            'properties': {'key': {'type': 'string'}}, 'required': ['key'], 'additionalProperties': False}},
+        {'type': 'custom', 'name': 'echo', 'format': {
+            'type': 'grammar', 'syntax': 'regex', 'definition': 'fixture-value'}}]})
+    return tools
+
+
 class ToolFixture(Fixture):
     def reply(self, code, body, content_type='application/json', cache=False):
         if content_type == 'application/json':
@@ -39,6 +59,7 @@ class ToolFixture(Fixture):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--chrome',required=True)
+    parser.add_argument('--catalog-size',type=int,default=512)
     args = parser.parse_args()
     upstream = ThreadingHTTPServer(('127.0.0.1',0),ToolFixture)
     upstream.daemon_threads = True
@@ -56,9 +77,7 @@ def main():
         server.daemon_threads = True
         threading.Thread(target=server.serve_forever,daemon=True).start()
         payload={'model':'gpt-6.1-sol','stream':True,'reasoning':{'effort':'medium'},
-            'tools':[{'type':'namespace','name':'client','tools':[
-                {'type':'function','name':'lookup','parameters':{'type':'object','properties':{'key':{'type':'string'}},'required':['key'],'additionalProperties':False}},
-                {'type':'custom','name':'echo','format':{'type':'grammar','syntax':'regex','definition':'fixture-value'}}]}],
+            'tools':client_catalog(args.catalog_size),
             'input':[{'role':'user','content':'Look up the fixture value, echo it, and report the confirmed result.'}]}
         headers={'Authorization':'Bearer synthetic-key','X-Prism-OAuth-Token':'synthetic-token',
             'X-Prism-Account-ID':'300','X-Prism-Caller-ID':'a'*64,'X-Prism-Session-ID':'b'*64,
@@ -88,7 +107,7 @@ def main():
             assert all(r['model']=='gpt-6.1-sol' and r['reasoning_effort']=='medium' for r in receipts)
             print(json.dumps({'result':'passed','scope':'real HTTP + Chromium + mock Prism',
                 'upstream_starts':3,'fresh_projects':3,'function_calls':1,'custom_calls':1,'final_completed':True,
-                'pending':0,'real_prism_requests':0}))
+                'catalog_tools':args.catalog_size,'pending':0,'real_prism_requests':0}))
         finally:
             server.shutdown();server.server_close();worker.close()
             upstream.shutdown();upstream.server_close()
