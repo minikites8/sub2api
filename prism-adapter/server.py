@@ -120,7 +120,8 @@ def terminal_failure_diagnostics(data):
         return {}
     details = payload.get('diagnostics')
     result = {}
-    text = ' '.join(str(payload.get(key, ''))[:4096].lower() for key in ('message', 'rootCause'))
+    text = ' '.join(value[:4096].lower() for key in ('message', 'rootCause')
+                    if isinstance(value := payload.get(key), str))
     hints = [label for label, words in (
         ('rate_limit', ('rate limit', 'rate_limit', 'too many')),
         ('quota', ('quota', 'usage limit')),
@@ -128,10 +129,15 @@ def terminal_failure_diagnostics(data):
         ('sync', ('synchron', 'sync_', 'sync ')),
         ('timeout', ('timeout', 'timed out')),
         ('connection', ('connect', 'network', 'fetch failed')),
-        ('context', ('context length', 'conversation too')),
+        ('context', ('context length', 'conversation too', 'maximum context', 'too many tokens',
+                     'input too long', 'prompt too long', 'prompt is too long', 'request too large',
+                     'input is too large', '输入过长', '请求过大', '上下文长度')),
     ) if any(word in text for word in words)]
     if hints:
         result['upstream_hints'] = hints
+    status = payload.get('httpStatus')
+    if type(status) is int and 400 <= status <= 599:
+        result['upstream_status'] = status
     if not isinstance(details, dict):
         return result
     if details.get('code') in ('server_error', 'sandbox_disconnected', 'timeout',
@@ -145,6 +151,26 @@ def terminal_failure_diagnostics(data):
     return result
 
 
+def terminal_error(data):
+    reason = terminal_failure_reason(data)
+    if reason == 'sandbox_reconnecting':
+        error = AdapterError(503, 'sandbox_reconnecting', 'Prism project runtime is reconnecting')
+    elif reason == 'project_edit_access_required':
+        error = AdapterError(403, 'project_edit_access_required', 'Prism project edit access is required')
+    elif reason == 'conversation_too_large':
+        error = AdapterError(422, 'conversation_too_large', 'Prism conversation exceeds the upstream limit')
+    else:
+        details = terminal_failure_diagnostics(data)
+        codes = {
+            'workspace_sync_timeout': (504, 'prism_workspace_sync_timeout', 'Prism project synchronization timed out'),
+            'workspace_sync_unavailable': (503, 'prism_workspace_sync_unavailable', 'Prism project synchronization is unavailable'),
+            'sandbox_disconnected': (503, 'prism_sandbox_disconnected', 'Prism project runtime disconnected'),
+        }
+        error = AdapterError(*codes.get(details.get('upstream_code'), (502, 'prism_failed', 'Prism turn failed')))
+    error.upstream = terminal_failure_diagnostics(data)
+    return error
+
+
 def terminal_text(data):
     if not isinstance(data, dict):
         return None
@@ -152,18 +178,11 @@ def terminal_text(data):
     if data.get("status") not in ("completed", "failed", "error"):
         return None
     if data.get("status") in ("failed", "error"):
-        return AdapterError(502, "prism_failed", "Prism turn failed")
+        return terminal_error(data)
     if not isinstance(response, dict) or response.get("status") not in ("success", "failed", "error"):
         return None
     if response.get("status") in ("failed", "error"):
-        reason = terminal_failure_reason(data)
-        if reason == 'sandbox_reconnecting':
-            return AdapterError(503, 'sandbox_reconnecting', 'Prism project runtime is reconnecting')
-        if reason == 'project_edit_access_required':
-            return AdapterError(403, 'project_edit_access_required', 'Prism project edit access is required')
-        if reason == 'conversation_too_large':
-            return AdapterError(422, 'conversation_too_large', 'Prism conversation exceeds the upstream limit')
-        return AdapterError(502, "prism_failed", "Prism turn failed")
+        return terminal_error(data)
     output = (response.get("payload") or {}).get("output") or []
     texts = [part.get("text", "") for item in output if isinstance(item, dict) and item.get("type") == "message"
              for part in item.get("content", []) if isinstance(part, dict) and isinstance(part.get("text"), str)]
@@ -761,7 +780,10 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except AdapterError as error:
-            self.send_json(error.status, {"error": {"type": error.code, "message": str(error)}})
+            details = {"type": error.code, "message": str(error)}
+            if getattr(error, 'upstream', None):
+                details['upstream'] = error.upstream
+            self.send_json(error.status, {"error": details})
         except (ValueError, TypeError):
             self.send_json(400, {"error": {"type": "invalid_request", "message": "invalid JSON request"}})
         except Exception as error:

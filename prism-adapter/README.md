@@ -212,3 +212,5 @@ systemd 部署还需注意环境变量优先级：`EnvironmentFile` 中的值会
 multiplex 识别官方 start 返回的明确 `completed / response.status=error / payload.reason=sandbox_reconnecting`。此时保持准备页面，让官方页面等待自己的 `ensureSandboxConnection` 后继续提交，而不是立刻关闭页面。仅允许同一输入、previousResponseId、conversationId、项目、模型和强度；sandbox 元数据由官方页面刷新。每轮最多 3 次 start 尝试，仍受请求总时限限制。未知结果、一般 HTTP/网络错误、其他终态失败都不能重新放行 start。
 
 日志记录重连次数；回执 `start_count` 如实包含这类明确环境重连尝试。`conversation_too_large`、`project_edit_access_required` 与 `sandbox_reconnecting` 分别报告，不再全部掩盖为 `prism_failed`；其他未知失败保持通用错误，且不输出上游任意报错文本。
+
+`prism_prepare_start.prompt_bytes` 记录实际提交提示词的 UTF-8 大小，便于比较短文本与客户端工具目录/历史请求。失败诊断同时读取 `payload.httpStatus` 与 `payload.diagnostics.httpStatus`，并在 API 错误的 `upstream` 字段返回经过白名单筛选的状态、操作、诊断码与原因提示；message/rootCause 正文保持在官方项目中。明确的同步超时、同步不可用、运行环境断开分别返回 `prism_workspace_sync_timeout`、`prism_workspace_sync_unavailable`、`prism_sandbox_disconnected`。这些诊断保持原有 start 提交边界。

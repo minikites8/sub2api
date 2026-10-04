@@ -489,7 +489,8 @@ class MultiplexBrowser:
                             'Prism runtime startup is cooling down; model request was not submitted')
                     await self.wait_for_memory(actor, journal)
                     self.preparing += 1
-                    self.observe('prism_prepare_start', journal, model=model, effort=effort)
+                    self.observe('prism_prepare_start', journal, model=model, effort=effort,
+                                 prompt_bytes=len(prompt.encode('utf-8')))
                     try:
                         try:
                             data, body = await start.run(prompt)
