@@ -11,8 +11,7 @@ import type {
   CheckoutInfoResponse,
   CreateOrderRequest,
   CreateOrderResult,
-  PaymentOrder,
-  SubscriptionPromoCodePreview
+  PaymentOrder
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
@@ -50,10 +49,6 @@ export const paymentAPI = {
     return apiClient.post<CreateOrderResult>('/payment/orders', data)
   },
 
-  /** Preview a subscription coupon against a plan */
-  previewSubscriptionCoupon(data: { plan_id: number; promo_code: string }) {
-    return apiClient.post<SubscriptionPromoCodePreview>('/payment/subscription-coupon/preview', data)
-  },
 
   /** Get current user's orders */
   getMyOrders(params?: { page?: number; page_size?: number; status?: string }) {

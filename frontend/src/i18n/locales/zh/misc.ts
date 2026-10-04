@@ -457,6 +457,8 @@ export default {
       INVALID_AMOUNT: '金额无效',
       INVALID_INPUT: '参数有误',
       PLAN_NOT_AVAILABLE: '套餐不存在或已下架',
+      SUBSCRIPTION_COUPON_UNAVAILABLE: '订阅优惠券已变更，请刷新后重新购买',
+      SUBSCRIPTION_COUPON_LIMIT_REACHED: '订阅优惠券次数已用完，请刷新后重新购买',
       GROUP_NOT_FOUND: '订阅分组不可用',
       GROUP_TYPE_MISMATCH: '分组类型不是订阅类型',
       TOO_MANY_PENDING: '待支付订单过多（最多 {max} 个），请先完成或取消现有订单',

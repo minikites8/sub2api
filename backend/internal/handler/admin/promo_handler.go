@@ -23,7 +23,7 @@ func NewPromoHandler(promoService *service.PromoService) *PromoHandler {
 
 type CreatePromoCodeRequest struct {
 	Code                         string   `json:"code"`
-	CouponType                   string   `json:"coupon_type" binding:"omitempty,oneof=registration subscription"`
+	CouponType                   string   `json:"coupon_type" binding:"omitempty,oneof=registration"`
 	BonusAmount                  *float64 `json:"bonus_amount" binding:"required,min=0"`
 	FirstRechargeBonusAmount     *float64 `json:"first_recharge_bonus_amount" binding:"omitempty,min=0"`
 	FirstRechargeDiscountPercent *float64 `json:"first_recharge_discount_percent" binding:"omitempty,min=0.01,max=100"`
@@ -36,7 +36,7 @@ type CreatePromoCodeRequest struct {
 
 type UpdatePromoCodeRequest struct {
 	Code                         *string  `json:"code"`
-	CouponType                   *string  `json:"coupon_type" binding:"omitempty,oneof=registration subscription"`
+	CouponType                   *string  `json:"coupon_type" binding:"omitempty,oneof=registration"`
 	BonusAmount                  *float64 `json:"bonus_amount" binding:"omitempty,min=0"`
 	FirstRechargeBonusAmount     *float64 `json:"first_recharge_bonus_amount" binding:"omitempty,min=0"`
 	FirstRechargeDiscountPercent *float64 `json:"first_recharge_discount_percent" binding:"omitempty,min=0.01,max=100"`

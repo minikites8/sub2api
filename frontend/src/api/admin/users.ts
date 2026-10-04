@@ -85,6 +85,18 @@ export interface RechargeDiscountCoupon {
   source_code?: string
 }
 
+export interface IssueSubscriptionDiscountCouponRequest {
+  min_subscription_amount: number
+  discount_rate: number
+  total_uses: number
+  notes?: string
+}
+
+export interface SubscriptionDiscountCoupon extends Omit<RechargeDiscountCoupon, 'min_recharge_amount' | 'source_type' | 'source_id' | 'source_code'> {
+  min_subscription_amount: number
+  source_type: 'admin'
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -232,6 +244,26 @@ export async function issueRechargeDiscountCoupon(
 export async function listRechargeDiscountCoupons(id: number): Promise<RechargeDiscountCoupon[]> {
   const { data } = await apiClient.get<RechargeDiscountCoupon[]>(
     `/admin/users/${id}/recharge-discount-coupons`
+  )
+  return data
+}
+
+export async function issueSubscriptionDiscountCoupon(
+  id: number,
+  request: IssueSubscriptionDiscountCouponRequest
+): Promise<SubscriptionDiscountCoupon> {
+  const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const { data } = await apiClient.post<SubscriptionDiscountCoupon>(
+    `/admin/users/${id}/subscription-discount-coupons`,
+    request,
+    { headers: { 'Idempotency-Key': `subscription-coupon-${id}-${requestId}` } }
+  )
+  return data
+}
+
+export async function listSubscriptionDiscountCoupons(id: number): Promise<SubscriptionDiscountCoupon[]> {
+  const { data } = await apiClient.get<SubscriptionDiscountCoupon[]>(
+    `/admin/users/${id}/subscription-discount-coupons`
   )
   return data
 }
@@ -493,6 +525,8 @@ export const usersAPI = {
   updateBalance,
   issueRechargeDiscountCoupon,
   listRechargeDiscountCoupons,
+  issueSubscriptionDiscountCoupon,
+  listSubscriptionDiscountCoupons,
   updateConcurrency,
   batchUpdateLimits,
   toggleStatus,

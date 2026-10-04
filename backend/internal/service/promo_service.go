@@ -319,8 +319,8 @@ func (s *PromoService) Create(ctx context.Context, input *CreatePromoCodeInput) 
 	if err := validatePromoRechargeDiscountTimes(input.FirstRechargeDiscountTimes); err != nil {
 		return nil, err
 	}
-	if err := validateSubscriptionDiscountPercent(input.SubscriptionDiscountPercent); err != nil {
-		return nil, err
+	if normalizePromoCodeType(input.CouponType) != PromoCodeTypeRegistration {
+		return nil, ErrPromoCodeWrongType
 	}
 
 	promoCode := &PromoCode{
@@ -362,6 +362,12 @@ func (s *PromoService) GetByID(ctx context.Context, id int64) (*PromoCode, error
 
 // Update 更新优惠码
 func (s *PromoService) Update(ctx context.Context, id int64, input *UpdatePromoCodeInput) (*PromoCode, error) {
+	if input == nil {
+		return nil, infraerrors.BadRequest("INVALID_PROMO_CODE", "promo code input is required")
+	}
+	if input.CouponType != nil && normalizePromoCodeType(*input.CouponType) != PromoCodeTypeRegistration {
+		return nil, ErrPromoCodeWrongType
+	}
 	promoCode, err := s.promoRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err

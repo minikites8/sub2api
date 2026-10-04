@@ -76,12 +76,13 @@ export interface FirstRechargePromoPreview {
   discount_set: boolean
 }
 
-export interface SubscriptionPromoCodePreview {
-  promo_code: string
+export interface SubscriptionDiscountCouponPreview {
+  id: number
+  min_subscription_amount: number
   discount_percent: number
-  original_amount: number
-  discount_amount: number
-  discounted_amount: number
+  total_uses: number
+  used_count: number
+  remaining_uses: number
 }
 
 export interface RechargeDiscountCouponPreview {
@@ -120,6 +121,7 @@ export interface CheckoutInfoResponse {
   alipay_force_qrcode?: boolean
   first_recharge_promo?: FirstRechargePromoPreview
   recharge_discount_coupons?: RechargeDiscountCouponPreview[]
+  subscription_discount_coupons?: SubscriptionDiscountCouponPreview[]
   /** When true, official Alipay mobile orders use precreate plus an Alipay app deep link */
   alipay_mobile_precreate_deep_link?: boolean
 }

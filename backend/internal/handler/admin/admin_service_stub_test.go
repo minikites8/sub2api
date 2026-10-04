@@ -223,6 +223,24 @@ func (s *stubAdminService) ListUserRechargeDiscountCoupons(_ context.Context, _ 
 	return []service.RechargeDiscountCoupon{}, nil
 }
 
+func (s *stubAdminService) IssueSubscriptionDiscountCoupon(_ context.Context, userID int64, input service.IssueSubscriptionDiscountCouponInput) (*service.SubscriptionDiscountCoupon, error) {
+	return &service.SubscriptionDiscountCoupon{
+		ID:                    1,
+		UserID:                userID,
+		MinSubscriptionAmount: input.MinSubscriptionAmount,
+		DiscountPercent:       input.DiscountPercent,
+		TotalUses:             input.TotalUses,
+		RemainingUses:         input.TotalUses,
+		Status:                "active",
+		CreatedBy:             input.CreatedBy,
+		Notes:                 input.Notes,
+	}, nil
+}
+
+func (s *stubAdminService) ListUserSubscriptionDiscountCoupons(_ context.Context, _ int64) ([]service.SubscriptionDiscountCoupon, error) {
+	return []service.SubscriptionDiscountCoupon{}, nil
+}
+
 func (s *stubAdminService) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {
 	return len(userIDs), nil
 }

@@ -2288,8 +2288,14 @@ export default {
       deposit: '充值',
       withdraw: '退款',
       rechargeCoupon: {
+        typeLabel: '折扣券类型',
+        minSubscriptionAmount: '最低套餐价格（USD）',
+        subscriptionRule: '套餐满 ${amount} 打 {rate} 折',
+        subscriptionSummary: '套餐满 ${amount} 打 {rate} 折，可用 {count} 次',
+        subscriptionEmpty: '该用户暂无订阅优惠券',
+        types: { recharge: '充值折扣券', subscription: '订阅优惠券' },
         menuItem: '折扣券',
-        title: '用户充值折扣券',
+        title: '用户折扣券',
         issuedTitle: '已发放',
         issuedCount: '共 {count} 张',
         issueTitle: '发放新券',
@@ -5320,7 +5326,7 @@ export default {
     // Promo Codes
     promo: {
       title: '优惠码管理',
-      description: '创建和管理注册优惠码与订阅优惠券',
+      description: '创建和管理注册优惠码',
       createCode: '创建优惠码',
       editCode: '编辑优惠码',
       deleteCode: '删除优惠码',
@@ -5328,10 +5334,8 @@ export default {
       allStatus: '全部状态',
       columns: {
         code: '优惠码',
-        couponType: '类型',
         bonusAmount: '赠送金额',
         firstRechargePromo: '首充优惠',
-        subscriptionDiscount: '订阅支付比例',
         rechargeStats: '充值统计',
         maxUses: '最大使用次数',
         usedCount: '已使用',
@@ -5343,7 +5347,6 @@ export default {
       },
       // 表单标签（扁平结构便于模板使用）
       code: '优惠码',
-      couponType: '优惠券类型',
       autoGenerate: '留空自动生成',
       codePlaceholder: '输入优惠码或留空',
       bonusAmount: '赠送金额 ($)',
@@ -5358,12 +5361,6 @@ export default {
       rechargeDiscountTimesDisplay: 'x{count}',
       rechargeDiscountUnlimited: '长期',
       discountUnit: '折',
-      couponTypes: {
-        registration: '注册优惠券',
-        subscription: '订阅优惠券'
-      },
-      subscriptionDiscountPercent: '订阅支付比例',
-      subscriptionDiscountPlaceholder: '例如 80',
       noFirstRechargePromo: '无',
       rechargeStatsOrders: '{count} 笔',
       rechargeStatsUsers: '{count} 人',
@@ -5386,12 +5383,11 @@ export default {
       usageRecords: '使用记录',
       viewUsages: '查看使用记录',
       noUsages: '暂无使用记录',
-      subscriptionUsage: '已使用订阅优惠券',
       userPrefix: '用户 #{id}',
       copied: '已复制！',
       // 消息
       noCodesYet: '暂无优惠码',
-      createFirstCode: '创建您的第一个优惠码，为注册或订阅购买提供优惠。',
+      createFirstCode: '创建您的第一个优惠码，为新用户提供注册奖励。',
       codeCreated: '优惠码创建成功',
       codeUpdated: '优惠码更新成功',
       codeDeleted: '优惠码删除成功',
@@ -5405,8 +5401,7 @@ export default {
       failedToLoadUsages: '加载使用记录失败',
       errorBadFirstRechargeBonus: '请输入非负首充赠送额度',
       errorBadFirstRechargeDiscount: '请输入 0.01-10 之间的支付折扣',
-      errorBadRechargeDiscountTimes: '请输入非负折扣次数',
-      errorBadSubscriptionDiscount: '请输入 0.01-100 之间的订阅支付比例'
+      errorBadRechargeDiscountTimes: '请输入非负折扣次数'
     },
 
     // Usage Records
@@ -8001,14 +7996,12 @@ export default {
     },
     subscriptionCoupon: {
       label: '订阅优惠券',
-      hint: '可用于当前订阅套餐',
-      placeholder: '输入订阅优惠券码',
-      apply: '应用',
+      hint: '自动应用符合门槛的最优折扣券',
+      applied: '已自动应用 {discount} 折，剩余 {remaining} 次',
+      empty: '当前套餐暂无可用订阅优惠券',
       originalAmount: '套餐原价',
       discount: '支付比例：{discount} 折',
       discountedAmount: '折后金额',
-      invalid: '订阅优惠券应用失败',
-      applyFirst: '请先应用订阅优惠券'
     },
     rechargeRatePreview: '当前倍率：1 CNY = {usd} USD',
     refundReason: '退款原因',

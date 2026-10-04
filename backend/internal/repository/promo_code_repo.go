@@ -291,7 +291,9 @@ func (r *promoCodeRepository) List(ctx context.Context, params pagination.Pagina
 }
 
 func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, search string) ([]service.PromoCode, *pagination.PaginationResult, error) {
-	q := r.client.PromoCode.Query()
+	q := r.client.PromoCode.Query().Where(func(selector *entsql.Selector) {
+		selector.Where(entsql.EQ(selector.C("coupon_type"), service.PromoCodeTypeRegistration))
+	})
 
 	if status != "" {
 		q = q.Where(promocode.StatusEQ(status))

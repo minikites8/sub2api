@@ -74,17 +74,10 @@
             </div>
           </template>
 
-          <template #cell-coupon_type="{ value }">
-            <span class="badge badge-gray">
-              {{ t(`admin.promo.couponTypes.${value}`) }}
-            </span>
-          </template>
-
-          <template #cell-bonus_amount="{ value, row }">
-            <span v-if="row.coupon_type === 'registration'" class="text-sm font-medium text-gray-900 dark:text-white">
+          <template #cell-bonus_amount="{ value }">
+            <span class="text-sm font-medium text-gray-900 dark:text-white">
               ${{ value.toFixed(2) }}
             </span>
-            <span v-else class="text-sm text-gray-400">—</span>
           </template>
 
           <template #cell-first_recharge_promo="{ row }">
@@ -92,12 +85,6 @@
               {{ formatFirstRechargePromo(row) }}
             </span>
             <span v-else class="text-sm text-gray-400">{{ t('admin.promo.noFirstRechargePromo') }}</span>
-          </template>
-          <template #cell-subscription_discount_percent="{ value, row }">
-            <span v-if="row.coupon_type === 'subscription' && value != null" class="text-sm font-medium text-primary-600 dark:text-primary-400">
-              {{ formatSubscriptionDiscount(value) }}
-            </span>
-            <span v-else class="text-sm text-gray-400">—</span>
           </template>
 
           <template #cell-usage="{ row }">
@@ -150,7 +137,6 @@
           <template #cell-actions="{ row }">
             <div class="flex items-center space-x-1">
               <button
-                v-if="row.coupon_type === 'registration'"
                 @click="copyRegisterLink(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
                 :title="t('admin.promo.copyRegisterLink')"
@@ -216,10 +202,6 @@
           />
         </div>
         <div>
-          <label class="input-label">{{ t('admin.promo.couponType') }}</label>
-          <Select v-model="createForm.coupon_type" :options="couponTypeOptions" />
-        </div>
-        <div v-if="createForm.coupon_type === 'registration'">
           <label class="input-label">{{ t('admin.promo.bonusAmount') }}</label>
           <input
             v-model.number="createForm.bonus_amount"
@@ -230,7 +212,7 @@
             class="input"
           />
         </div>
-        <div class="grid gap-4 sm:grid-cols-3" v-if="createForm.coupon_type === 'registration'">
+        <div class="grid gap-4 sm:grid-cols-3">
           <div>
             <label class="input-label">
               {{ t('admin.promo.firstRechargeBonusAmount') }}
@@ -274,22 +256,6 @@
               class="input"
               :placeholder="t('admin.promo.rechargeDiscountTimesPlaceholder')"
             />
-          </div>
-        </div>
-        <div v-if="createForm.coupon_type === 'subscription'">
-          <label class="input-label">{{ t('admin.promo.subscriptionDiscountPercent') }}</label>
-          <div class="relative">
-            <input
-              v-model.number="createForm.subscription_discount_percent"
-              type="number"
-              step="0.01"
-              min="0.01"
-              max="100"
-              required
-              class="input pr-10"
-              :placeholder="t('admin.promo.subscriptionDiscountPlaceholder')"
-            />
-            <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
           </div>
         </div>
         <div>
@@ -357,10 +323,6 @@
           />
         </div>
         <div>
-          <label class="input-label">{{ t('admin.promo.couponType') }}</label>
-          <Select v-model="editForm.coupon_type" :options="couponTypeOptions" />
-        </div>
-        <div v-if="editForm.coupon_type === 'registration'">
           <label class="input-label">{{ t('admin.promo.bonusAmount') }}</label>
           <input
             v-model.number="editForm.bonus_amount"
@@ -371,7 +333,7 @@
             class="input"
           />
         </div>
-        <div class="grid gap-4 sm:grid-cols-3" v-if="editForm.coupon_type === 'registration'">
+        <div class="grid gap-4 sm:grid-cols-3">
           <div>
             <label class="input-label">
               {{ t('admin.promo.firstRechargeBonusAmount') }}
@@ -417,22 +379,7 @@
             />
           </div>
         </div>
-        <div v-if="editForm.coupon_type === 'subscription'">
-          <label class="input-label">{{ t('admin.promo.subscriptionDiscountPercent') }}</label>
-          <div class="relative">
-            <input
-              v-model.number="editForm.subscription_discount_percent"
-              type="number"
-              step="0.01"
-              min="0.01"
-              max="100"
-              required
-              class="input pr-10"
-              :placeholder="t('admin.promo.subscriptionDiscountPlaceholder')"
-            />
-            <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
-          </div>
-        </div>        <div>
+        <div>
           <label class="input-label">
             {{ t('admin.promo.maxUses') }}
             <span class="ml-1 text-xs font-normal text-gray-400">({{ t('admin.promo.zeroUnlimited') }})</span>
@@ -516,10 +463,7 @@
             </div>
           </div>
           <div class="text-right">
-            <span v-if="currentViewingCode?.coupon_type === 'subscription'" class="text-sm font-medium text-primary-600 dark:text-primary-400">
-              {{ t('admin.promo.subscriptionUsage') }}
-            </span>
-            <span v-else class="text-sm font-medium text-green-600 dark:text-green-400">
+            <span class="text-sm font-medium text-green-600 dark:text-green-400">
               +${{ usage.bonus_amount.toFixed(2) }}
             </span>
           </div>
@@ -623,12 +567,10 @@ const usagesTotal = ref(0)
 // Forms
 const createForm = reactive({
   code: '',
-  coupon_type: 'registration' as 'registration' | 'subscription',
   bonus_amount: 1,
   first_recharge_bonus_amount: '' as string | number,
   first_recharge_discount_rate: '' as string | number,
   first_recharge_discount_times: 1 as string | number,
-  subscription_discount_percent: '' as string | number,
   max_uses: 0,
   expires_at_str: '',
   notes: ''
@@ -636,12 +578,10 @@ const createForm = reactive({
 
 const editForm = reactive({
   code: '',
-  coupon_type: 'registration' as 'registration' | 'subscription',
   bonus_amount: 0,
   first_recharge_bonus_amount: '' as string | number,
   first_recharge_discount_rate: '' as string | number,
   first_recharge_discount_times: 1 as string | number,
-  subscription_discount_percent: '' as string | number,
   max_uses: 0,
   status: 'active' as 'active' | 'disabled',
   expires_at_str: '',
@@ -660,17 +600,10 @@ const statusOptions = computed(() => [
   { value: 'disabled', label: t('admin.promo.statusDisabled') }
 ])
 
-const couponTypeOptions = computed(() => [
-  { value: 'registration', label: t('admin.promo.couponTypes.registration') },
-  { value: 'subscription', label: t('admin.promo.couponTypes.subscription') },
-])
-
 const columns = computed<Column[]>(() => [
   { key: 'code', label: t('admin.promo.columns.code') },
-  { key: 'coupon_type', label: t('admin.promo.columns.couponType') },
   { key: 'bonus_amount', label: t('admin.promo.columns.bonusAmount'), sortable: true },
   { key: 'first_recharge_promo', label: t('admin.promo.columns.firstRechargePromo') },
-  { key: 'subscription_discount_percent', label: t('admin.promo.columns.subscriptionDiscount') },
   { key: 'usage', label: t('admin.promo.columns.usage') },
   { key: 'recharge_stats', label: t('admin.promo.columns.rechargeStats') },
   { key: 'status', label: t('admin.promo.columns.status'), sortable: true },
@@ -719,9 +652,6 @@ const parseOptionalNumber = (
 const formatDiscountRate = (percent: number): string =>
   Number(percent / 10).toFixed(2).replace(/\.?0+$/, '')
 
-const formatSubscriptionDiscount = (percent: number): string =>
-  `${Number(percent).toFixed(2).replace(/\.?0+$/, '')}%`
-
 const formatFirstRechargePromo = (code: PromoCode): string => {
   const parts: string[] = []
   const bonus = Number(code.first_recharge_bonus_amount || 0)
@@ -745,38 +675,6 @@ const formatMoney = (value: number): string => formatCurrency(value)
 const hasRechargeStats = (code: PromoCode): boolean => {
   const stats = code.recharge_stats
   return !!stats && stats.order_count > 0
-}
-
-const applySubscriptionPromoPayload = (
-  payload: {
-    subscription_discount_percent?: number | null
-    clear_subscription_discount?: boolean
-  },
-  form: {
-    coupon_type: 'registration' | 'subscription'
-    subscription_discount_percent: string | number
-  },
-  existing?: PromoCode | null
-): boolean => {
-  if (form.coupon_type !== 'subscription') {
-    if (existing?.subscription_discount_percent != null) {
-      payload.clear_subscription_discount = true
-    }
-    return true
-  }
-
-  const discount = parseOptionalNumber(
-    form.subscription_discount_percent,
-    0.01,
-    100,
-    'admin.promo.errorBadSubscriptionDiscount'
-  )
-  if (discount === undefined || discount === null) {
-    appStore.showError(t('admin.promo.errorBadSubscriptionDiscount'))
-    return false
-  }
-  payload.subscription_discount_percent = discount
-  return true
 }
 
 const applyFirstRechargePromoPayload = (
@@ -930,14 +828,12 @@ const handleCreate = async () => {
   try {
     const payload: CreatePromoCodeRequest = {
       code: createForm.code || undefined,
-      coupon_type: createForm.coupon_type,
-      bonus_amount: createForm.coupon_type === 'subscription' ? 0 : createForm.bonus_amount,
+      bonus_amount: createForm.bonus_amount,
       max_uses: createForm.max_uses,
       expires_at: createForm.expires_at_str ? Math.floor(new Date(createForm.expires_at_str).getTime() / 1000) : undefined,
       notes: createForm.notes || undefined
     }
-    if (!applySubscriptionPromoPayload(payload, createForm)) return
-    if (createForm.coupon_type === 'registration' && !applyFirstRechargePromoPayload(payload, createForm)) return
+    if (!applyFirstRechargePromoPayload(payload, createForm)) return
     await adminAPI.promo.create(payload)
     appStore.showSuccess(t('admin.promo.codeCreated'))
     showCreateDialog.value = false
@@ -952,12 +848,10 @@ const handleCreate = async () => {
 
 const resetCreateForm = () => {
   createForm.code = ''
-  createForm.coupon_type = 'registration'
   createForm.bonus_amount = 1
   createForm.first_recharge_bonus_amount = ''
   createForm.first_recharge_discount_rate = ''
   createForm.first_recharge_discount_times = 1
-  createForm.subscription_discount_percent = ''
   createForm.max_uses = 0
   createForm.expires_at_str = ''
   createForm.notes = ''
@@ -967,14 +861,12 @@ const resetCreateForm = () => {
 const handleEdit = (code: PromoCode) => {
   editingCode.value = code
   editForm.code = code.code
-  editForm.coupon_type = code.coupon_type || 'registration'
   editForm.bonus_amount = code.bonus_amount
   editForm.first_recharge_bonus_amount =
     code.first_recharge_bonus_amount != null ? String(code.first_recharge_bonus_amount) : ''
   editForm.first_recharge_discount_rate =
     code.first_recharge_discount_percent != null ? formatDiscountRate(code.first_recharge_discount_percent) : ''
   editForm.first_recharge_discount_times = code.first_recharge_discount_times ?? 1
-  editForm.subscription_discount_percent = code.subscription_discount_percent != null ? String(code.subscription_discount_percent) : ''
   editForm.max_uses = code.max_uses
   editForm.status = code.status
   editForm.expires_at_str = code.expires_at
@@ -996,15 +888,13 @@ const handleUpdate = async () => {
   try {
     const payload: UpdatePromoCodeRequest = {
       code: editForm.code,
-      coupon_type: editForm.coupon_type,
-      bonus_amount: editForm.coupon_type === 'subscription' ? 0 : editForm.bonus_amount,
+      bonus_amount: editForm.bonus_amount,
       max_uses: editForm.max_uses,
       status: editForm.status,
       expires_at: editForm.expires_at_str ? Math.floor(new Date(editForm.expires_at_str).getTime() / 1000) : 0,
       notes: editForm.notes
     }
-    if (!applySubscriptionPromoPayload(payload, editForm, editingCode.value)) return
-    if (editForm.coupon_type === 'registration' && !applyFirstRechargePromoPayload(payload, editForm, editingCode.value)) return
+    if (!applyFirstRechargePromoPayload(payload, editForm, editingCode.value)) return
     await adminAPI.promo.update(editingCode.value.id, payload)
     appStore.showSuccess(t('admin.promo.codeUpdated'))
     closeEditDialog()

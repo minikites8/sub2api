@@ -314,39 +314,24 @@
                   <label class="input-label mb-0">{{ t('payment.subscriptionCoupon.label') }}</label>
                   <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.subscriptionCoupon.hint') }}</span>
                 </div>
-                <div class="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <input
-                    v-model="subscriptionPromoCode"
-                    type="text"
-                    class="input flex-1 font-mono uppercase"
-                    :placeholder="t('payment.subscriptionCoupon.placeholder')"
-                    :disabled="subscriptionPromoLoading || submitting"
-                    @keyup.enter="applySubscriptionPromoCode"
-                  />
-                  <button
-                    type="button"
-                    class="btn btn-secondary"
-                    :disabled="subscriptionPromoLoading || submitting || !subscriptionPromoCode.trim()"
-                    @click="applySubscriptionPromoCode"
-                  >
-                    {{ subscriptionPromoLoading ? t('common.processing') : t('payment.subscriptionCoupon.apply') }}
-                  </button>
-                </div>
-                <div v-if="subscriptionPromoPreview && subscriptionPromoApplied" class="mt-3 space-y-1 text-sm">
+                <p v-if="appliedSubscriptionCoupon" data-test="subscription-coupon-applied" class="mt-3 text-sm text-green-600 dark:text-green-400">
+                  {{ t('payment.subscriptionCoupon.applied', { discount: formatDiscountRate(appliedSubscriptionCoupon.discount_percent), remaining: appliedSubscriptionCoupon.remaining_uses }) }}
+                </p>
+                <p v-else data-test="subscription-coupon-empty" class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionCoupon.empty') }}</p>
+                <div v-if="appliedSubscriptionCoupon" class="mt-3 space-y-1 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionCoupon.originalAmount') }}</span>
-                    <span class="text-gray-900 dark:text-white">{{ formatSelectedSubscriptionPaymentAmount(subscriptionPromoPreview.original_amount) }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedSubscriptionPaymentAmount(selectedPlan.price) }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionCoupon.discount', { discount: formatDiscountRate(subscriptionPromoPreview.discount_percent) }) }}</span>
-                    <span class="text-green-600 dark:text-green-400">-{{ formatSelectedSubscriptionPaymentAmount(subscriptionPromoPreview.discount_amount) }}</span>
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionCoupon.discount', { discount: formatDiscountRate(appliedSubscriptionCoupon.discount_percent) }) }}</span>
+                    <span class="text-green-600 dark:text-green-400">-{{ formatSelectedSubscriptionPaymentAmount(selectedPlan.price - subscriptionDiscountedPrice) }}</span>
                   </div>
                   <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                     <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.subscriptionCoupon.discountedAmount') }}</span>
-                    <span class="font-semibold text-primary-600 dark:text-primary-400">{{ formatSelectedSubscriptionPaymentAmount(subscriptionPromoPreview.discounted_amount) }}</span>
+                    <span class="font-semibold text-primary-600 dark:text-primary-400">{{ formatSelectedSubscriptionPaymentAmount(subscriptionDiscountedPrice) }}</span>
                   </div>
                 </div>
-                <p v-if="subscriptionPromoError" class="mt-2 text-sm text-red-600 dark:text-red-400">{{ subscriptionPromoError }}</p>
               </div>
               <div v-if="enabledMethods.length >= 1" class="card p-6">
                 <PaymentMethodSelector
@@ -491,7 +476,7 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder, SubscriptionPromoCodePreview } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder } from '@/types/payment'
 import { formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -552,10 +537,6 @@ const amount = ref<number | null>(null)
 const amountInputText = ref('')
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
-const subscriptionPromoCode = ref('')
-const subscriptionPromoPreview = ref<SubscriptionPromoCodePreview | null>(null)
-const subscriptionPromoLoading = ref(false)
-const subscriptionPromoError = ref('')
 const previewImage = ref('')
 const recentOrders = ref<PaymentOrder[]>([])
 const loadingRecentOrders = ref(false)
@@ -724,6 +705,7 @@ function onPaymentDone() {
   if (wasSubscription) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
+  void refreshCheckoutInfo()
 }
 
 async function onPaymentSuccess() {
@@ -1003,8 +985,17 @@ async function loadRecentOrders() {
 async function refreshPurchaseData() {
   await Promise.all([
     authStore.refreshUser().catch(() => {}),
+    refreshCheckoutInfo(),
     loadRecentOrders()
   ])
+}
+
+async function refreshCheckoutInfo() {
+  try {
+    checkout.value = (await paymentAPI.getCheckoutInfo()).data
+  } catch {
+    // Keep the current quote available while a refresh is retried.
+  }
 }
 
 function formatOrderPayAmount(order: PaymentOrder): string {
@@ -1085,29 +1076,18 @@ const canSubmit = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
-const normalizedSubscriptionPromoCode = computed(() => subscriptionPromoCode.value.trim().toUpperCase())
-
-const subscriptionPromoApplied = computed(() => {
-  const preview = subscriptionPromoPreview.value
-  return !!preview
-    && normalizedSubscriptionPromoCode.value !== ''
-    && normalizedSubscriptionPromoCode.value === preview.promo_code.trim().toUpperCase()
-})
-
-watch(subscriptionPromoCode, (value) => {
-  const previewCode = subscriptionPromoPreview.value?.promo_code.trim().toUpperCase()
-  if (previewCode && value.trim().toUpperCase() !== previewCode) {
-    subscriptionPromoPreview.value = null
-  }
-  if (!value.trim()) {
-    subscriptionPromoError.value = ''
-  }
+const appliedSubscriptionCoupon = computed(() => {
+  const price = selectedPlan.value?.price ?? 0
+  return [...(checkout.value.subscription_discount_coupons ?? [])]
+    .filter(coupon => coupon.remaining_uses > 0 && price + 0.00000001 >= coupon.min_subscription_amount)
+    .sort((a, b) => a.discount_percent - b.discount_percent
+      || b.min_subscription_amount - a.min_subscription_amount || a.id - b.id)[0]
 })
 
 const subscriptionDiscountedPrice = computed(() => {
-  const preview = subscriptionPromoPreview.value
-  if (preview && subscriptionPromoApplied.value) return preview.discounted_amount
-  return selectedPlan.value?.price ?? 0
+  const price = selectedPlan.value?.price ?? 0
+  const coupon = appliedSubscriptionCoupon.value
+  return coupon ? Math.round(price * coupon.discount_percent / 100 * 1e8) / 1e8 : price
 })
 
 const subPaymentAmount = computed(() =>
@@ -1148,7 +1128,6 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
 
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
-    && (normalizedSubscriptionPromoCode.value === '' || subscriptionPromoApplied.value)
     && amountFitsMethod(subTotalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
@@ -1196,15 +1175,8 @@ function planPeakRateLabel(plan: SubscriptionPlan): string {
   return formatPeakRateWindow(plan, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
 }
 
-function clearSubscriptionPromo() {
-  subscriptionPromoCode.value = ''
-  subscriptionPromoPreview.value = null
-  subscriptionPromoError.value = ''
-}
-
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
-  clearSubscriptionPromo()
   errorMessage.value = ''
 }
 
@@ -1212,7 +1184,6 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
   showRenewalModal.value = false
   renewGroupId.value = null
   selectedPlan.value = plan
-  clearSubscriptionPromo()
   errorMessage.value = ''
 }
 
@@ -1226,45 +1197,9 @@ async function handleSubmitRecharge() {
   await createOrder(validAmount.value, 'balance')
 }
 
-async function applySubscriptionPromoCode() {
-  const code = subscriptionPromoCode.value.trim()
-  if (!selectedPlan.value) return
-  if (!code) {
-    clearSubscriptionPromo()
-    return
-  }
-
-  subscriptionPromoLoading.value = true
-  subscriptionPromoError.value = ''
-  try {
-    const response = await paymentAPI.previewSubscriptionCoupon({
-      plan_id: selectedPlan.value.id,
-      promo_code: code,
-    })
-    subscriptionPromoPreview.value = response.data
-    subscriptionPromoCode.value = response.data.promo_code
-  } catch (err: unknown) {
-    subscriptionPromoPreview.value = null
-    subscriptionPromoError.value = extractI18nErrorMessage(
-      err,
-      t,
-      'payment.errors',
-      extractApiErrorMessage(err, t('payment.subscriptionCoupon.invalid')),
-    )
-  } finally {
-    subscriptionPromoLoading.value = false
-  }
-}
-
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  if (normalizedSubscriptionPromoCode.value !== '' && !subscriptionPromoApplied.value) {
-    subscriptionPromoError.value = t('payment.subscriptionCoupon.applyFirst')
-    return
-  }
-  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id, {
-    promoCode: normalizedSubscriptionPromoCode.value || undefined,
-  })
+  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
@@ -1272,7 +1207,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   errorMessage.value = ''
   errorHintMessage.value = ''
   const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
-  const requestPromoCode = options.promoCode ?? (orderType === 'subscription' ? subscriptionPromoCode.value.trim() : undefined)
+  const requestPromoCode = options.promoCode
   try {
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
@@ -1585,9 +1520,6 @@ async function resumeWechatPaymentFromQuery() {
   }
   if (resume.orderType === 'subscription' && resume.planId) {
     selectedPlan.value = checkout.value.plans.find(plan => plan.id === resume.planId) ?? null
-    subscriptionPromoCode.value = resume.promoCode || ''
-    subscriptionPromoPreview.value = null
-    subscriptionPromoError.value = ''
   }
 
   await router.replace({ path: route.path, query: stripWechatResumeQuery(route.query) })

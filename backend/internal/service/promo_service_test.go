@@ -4,13 +4,23 @@ package service
 
 import (
 	"context"
+	"database/sql/driver"
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
+	"modernc.org/sqlite"
 )
+
+func init() {
+	// Match the PostgreSQL timestamp function used when crediting promo gifts.
+	sqlite.MustRegisterScalarFunction("NOW", 0, func(_ *sqlite.FunctionContext, _ []driver.Value) (driver.Value, error) {
+		return time.Now().UTC().Format("2006-01-02 15:04:05.999999999-07:00"), nil
+	})
+}
 
 func TestValidatePromoFirstRechargeValue_BoundaryAndInvalid(t *testing.T) {
 	t.Parallel()
@@ -73,6 +83,9 @@ func TestApplyPromoCode_ZeroBonusCreatesUsageWithoutBalanceUpdate(t *testing.T) 
 func TestApplyPromoCode_BonusDoesNotCountAsRecharge(t *testing.T) {
 	ctx := context.Background()
 	client := newOrderNotFoundTestClient(t)
+	// This balance field is managed by SQL migrations alongside the Ent schema.
+	_, err := client.ExecContext(ctx, "ALTER TABLE users ADD COLUMN gift_balance DECIMAL(20,8) NOT NULL DEFAULT 0")
+	require.NoError(t, err)
 
 	user, err := client.User.Create().
 		SetEmail("promo-bonus@example.com").

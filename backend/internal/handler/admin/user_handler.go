@@ -107,6 +107,13 @@ type IssueRechargeDiscountCouponRequest struct {
 	Notes             string  `json:"notes"`
 }
 
+type IssueSubscriptionDiscountCouponRequest struct {
+	MinSubscriptionAmount float64 `json:"min_subscription_amount" binding:"required,gt=0"`
+	DiscountRate          float64 `json:"discount_rate" binding:"required,gt=0,lt=10"`
+	TotalUses             int     `json:"total_uses" binding:"required,gt=0"`
+	Notes                 string  `json:"notes"`
+}
+
 type ManualBanRequest struct {
 	// DurationHours uses 0 for a permanent ban.
 	DurationHours int `json:"duration_hours"`
@@ -575,6 +582,52 @@ func (h *UserHandler) ListRechargeDiscountCoupons(c *gin.Context) {
 		return
 	}
 	coupons, err := h.adminService.ListUserRechargeDiscountCoupons(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, coupons)
+}
+
+// IssueSubscriptionDiscountCoupon issues a threshold-based subscription discount to a user.
+// POST /api/v1/admin/users/:id/subscription-discount-coupons
+func (h *UserHandler) IssueSubscriptionDiscountCoupon(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	var req IssueSubscriptionDiscountCouponRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	payload := struct {
+		UserID int64                                  `json:"user_id"`
+		Body   IssueSubscriptionDiscountCouponRequest `json:"body"`
+	}{UserID: userID, Body: req}
+	executeAdminIdempotentJSON(c, "admin.users.subscription_discount_coupon.issue", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		return h.adminService.IssueSubscriptionDiscountCoupon(ctx, userID, service.IssueSubscriptionDiscountCouponInput{
+			MinSubscriptionAmount: req.MinSubscriptionAmount,
+			DiscountPercent:       req.DiscountRate * 10,
+			TotalUses:             req.TotalUses,
+			CreatedBy:             getAdminIDFromContext(c),
+			Notes:                 req.Notes,
+		})
+	})
+}
+
+// ListSubscriptionDiscountCoupons lists every subscription discount coupon issued to a user.
+// GET /api/v1/admin/users/:id/subscription-discount-coupons
+func (h *UserHandler) ListSubscriptionDiscountCoupons(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	coupons, err := h.adminService.ListUserSubscriptionDiscountCoupons(c.Request.Context(), userID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

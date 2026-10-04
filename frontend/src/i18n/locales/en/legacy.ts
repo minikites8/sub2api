@@ -2228,8 +2228,14 @@ export default {
       deposit: 'Deposit',
       withdraw: 'Withdraw',
       rechargeCoupon: {
+        typeLabel: 'Coupon type',
+        minSubscriptionAmount: 'Minimum plan price (USD)',
+        subscriptionRule: 'Plan ${amount}+ · {rate}x',
+        subscriptionSummary: 'Plan ${amount}+ · {rate}x · {count} uses',
+        subscriptionEmpty: 'This user has no subscription coupons',
+        types: { recharge: 'Recharge discount', subscription: 'Subscription discount' },
         menuItem: 'Discounts',
-        title: 'User Recharge Discounts',
+        title: 'User Discount Coupons',
         issuedTitle: 'Issued Discounts',
         issuedCount: '{count} total',
         issueTitle: 'Issue New Discount',
@@ -5169,7 +5175,7 @@ export default {
     // Promo Codes
     promo: {
       title: 'Promo Code Management',
-      description: 'Create and manage registration and subscription promo codes',
+      description: 'Create and manage registration promo codes',
       createCode: 'Create Promo Code',
       editCode: 'Edit Promo Code',
       deleteCode: 'Delete Promo Code',
@@ -5177,10 +5183,8 @@ export default {
       allStatus: 'All Status',
       columns: {
         code: 'Code',
-        couponType: 'Type',
         bonusAmount: 'Bonus Amount',
         firstRechargePromo: 'First Recharge',
-        subscriptionDiscount: 'Subscription Payment',
         rechargeStats: 'Recharge Stats',
         maxUses: 'Max Uses',
         usedCount: 'Used',
@@ -5192,7 +5196,6 @@ export default {
       },
       // Form labels (flat structure for template usage)
       code: 'Promo Code',
-      couponType: 'Coupon Type',
       autoGenerate: 'auto-generate if empty',
       codePlaceholder: 'Enter promo code or leave empty',
       bonusAmount: 'Bonus Amount ($)',
@@ -5207,12 +5210,6 @@ export default {
       rechargeDiscountTimesDisplay: 'x{count}',
       rechargeDiscountUnlimited: 'unlimited',
       discountUnit: 'x',
-      couponTypes: {
-        registration: 'Registration',
-        subscription: 'Subscription'
-      },
-      subscriptionDiscountPercent: 'Subscription payment percentage',
-      subscriptionDiscountPlaceholder: 'e.g. 80',
       noFirstRechargePromo: 'none',
       rechargeStatsOrders: '{count} orders',
       rechargeStatsUsers: '{count} users',
@@ -5235,12 +5232,11 @@ export default {
       usageRecords: 'Usage Records',
       viewUsages: 'View Usages',
       noUsages: 'No usage records yet',
-      subscriptionUsage: 'Subscription coupon used',
       userPrefix: 'User #{id}',
       copied: 'Copied!',
       // Messages
       noCodesYet: 'No promo codes yet',
-      createFirstCode: 'Create your first promo code for registration or subscription discounts.',
+      createFirstCode: 'Create your first promo code to offer registration bonuses.',
       codeCreated: 'Promo code created successfully',
       codeUpdated: 'Promo code updated successfully',
       codeDeleted: 'Promo code deleted successfully',
@@ -5254,8 +5250,7 @@ export default {
       failedToLoadUsages: 'Failed to load usage records',
       errorBadFirstRechargeBonus: 'Please enter a non-negative first recharge bonus',
       errorBadFirstRechargeDiscount: 'Please enter a payment discount between 0.01 and 10',
-      errorBadRechargeDiscountTimes: 'Please enter non-negative discount uses',
-      errorBadSubscriptionDiscount: 'Please enter a subscription payment percentage between 0.01 and 100'
+      errorBadRechargeDiscountTimes: 'Please enter non-negative discount uses'
     },
 
     // Usage Records
@@ -7822,15 +7817,13 @@ export default {
       discountedPaymentAmount: 'Discounted Amount',
     },
     subscriptionCoupon: {
-      label: 'Subscription coupon',
-      hint: 'Apply it to this subscription plan',
-      placeholder: 'Enter subscription coupon code',
-      apply: 'Apply',
+      label: 'Subscription discount',
+      hint: 'The best eligible discount applies automatically',
+      applied: 'Applied {discount}x automatically · {remaining} uses remaining',
+      empty: 'This plan has no eligible subscription coupon',
       originalAmount: 'Original amount',
       discount: 'Payment ratio: {discount}x',
       discountedAmount: 'Discounted amount',
-      invalid: 'Subscription coupon could not be applied',
-      applyFirst: 'Apply the subscription coupon to continue'
     },
     rechargeRatePreview: 'Current rate: 1 CNY = {usd} USD',
     refundReason: 'Refund Reason',

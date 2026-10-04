@@ -433,6 +433,8 @@ export default {
       INVALID_AMOUNT: 'Invalid amount.',
       INVALID_INPUT: 'Invalid request.',
       PLAN_NOT_AVAILABLE: 'Plan not found or no longer available.',
+      SUBSCRIPTION_COUPON_UNAVAILABLE: 'The subscription coupon has changed. Refresh before purchasing again.',
+      SUBSCRIPTION_COUPON_LIMIT_REACHED: 'The subscription coupon has reached its usage limit. Refresh before purchasing again.',
       GROUP_NOT_FOUND: 'Subscription group is no longer available.',
       GROUP_TYPE_MISMATCH: 'Group is not a subscription type.',
       TOO_MANY_PENDING: 'Too many pending orders (max {max}). Please complete or cancel existing orders first.',

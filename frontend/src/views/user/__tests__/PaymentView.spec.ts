@@ -463,6 +463,45 @@ describe('PaymentView recharge rate preview', () => {
 })
 
 describe('PaymentView subscription confirmation amounts', () => {
+  it('automatically applies the best eligible user coupon before conversion and fees', async () => {
+    const wrapper = await mountSubscriptionConfirm({
+      checkout: {
+        subscription_usd_to_cny_rate: 7.15,
+        recharge_fee_rate: 2.5,
+        subscription_discount_coupons: [
+          { id: 1, min_subscription_amount: 20, discount_percent: 50, total_uses: 1, used_count: 0, remaining_uses: 1 },
+          { id: 2, min_subscription_amount: 1, discount_percent: 70, total_uses: 1, used_count: 1, remaining_uses: 0 },
+          { id: 3, min_subscription_amount: 5, discount_percent: 90, total_uses: 2, used_count: 0, remaining_uses: 2 },
+          { id: 4, min_subscription_amount: 9.99, discount_percent: 80, total_uses: 3, used_count: 1, remaining_uses: 2 },
+        ],
+      },
+      method: { currency: 'CNY' },
+      plan: { price: 9.99 },
+    })
+    expect(wrapper.find('[data-test="subscription-coupon-applied"]').exists()).toBe(true)
+    expect(translate).toHaveBeenCalledWith('payment.subscriptionCoupon.applied', { discount: '8', remaining: 2 })
+    const paymentAmount = formatPaymentAmount(57.14, 'CNY')
+    const total = formatPaymentAmount(58.57, 'CNY')
+    expect(wrapper.text()).toContain(paymentAmount)
+    expect(wrapper.findAll('button').some(button => button.text().includes(total))).toBe(true)
+    expect(wrapper.find('input[type="text"]').exists()).toBe(false)
+  })
+
+  it('uses the plan price when user coupons are exhausted or below the amount threshold', async () => {
+    const wrapper = await mountSubscriptionConfirm({
+      checkout: {
+        subscription_discount_coupons: [
+          { id: 1, min_subscription_amount: 20, discount_percent: 50, total_uses: 1, used_count: 0, remaining_uses: 1 },
+          { id: 2, min_subscription_amount: 1, discount_percent: 80, total_uses: 1, used_count: 1, remaining_uses: 0 },
+        ],
+      },
+      method: { currency: 'USD' },
+      plan: { price: 9.99 },
+    })
+    expect(wrapper.find('[data-test="subscription-coupon-empty"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').some(button => button.text().includes(formatPaymentAmount(9.99, 'USD')))).toBe(true)
+  })
+
   it('shows converted CNY pay amount using the subscription rate, not the balance multiplier', async () => {
     const wrapper = await mountSubscriptionConfirm({
       checkout: {

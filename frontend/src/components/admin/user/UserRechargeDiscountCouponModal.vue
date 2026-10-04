@@ -1,6 +1,14 @@
 <template>
   <BaseDialog :show="show" :title="t('admin.users.rechargeCoupon.title')" width="wide" @close="emit('close')">
     <div v-if="user" class="space-y-6">
+      <div class="flex gap-2" role="tablist" :aria-label="t('admin.users.rechargeCoupon.typeLabel')">
+        <button v-for="type in couponTypes" :key="type" type="button" role="tab"
+          :aria-selected="couponType === type" :disabled="submitting" :data-test="`coupon-tab-${type}`"
+          :class="couponType === type ? 'btn btn-primary' : 'btn btn-secondary'"
+          @click="couponType = type">
+          {{ t(`admin.users.rechargeCoupon.types.${type}`) }}
+        </button>
+      </div>
       <div class="flex items-center gap-3 rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
           <Icon name="gift" size="md" />
@@ -28,7 +36,7 @@
           </button>
         </div>
         <div v-else-if="coupons.length === 0" class="flex min-h-32 items-center justify-center rounded-lg border border-dashed border-gray-300 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
-          {{ t('admin.users.rechargeCoupon.empty') }}
+          {{ t(couponType === 'subscription' ? 'admin.users.rechargeCoupon.subscriptionEmpty' : 'admin.users.rechargeCoupon.empty') }}
         </div>
         <div v-else class="grid max-h-72 grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
           <article v-for="coupon in coupons" :key="coupon.id" data-test="coupon-item" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
@@ -61,9 +69,9 @@
         <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ t('admin.users.rechargeCoupon.issueTitle') }}</h3>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label class="input-label" for="coupon-min-amount">{{ t('admin.users.rechargeCoupon.minAmount') }}</label>
+            <label class="input-label" for="coupon-min-amount">{{ t(couponType === 'subscription' ? 'admin.users.rechargeCoupon.minSubscriptionAmount' : 'admin.users.rechargeCoupon.minAmount') }}</label>
             <div class="relative">
-              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{{ couponType === 'subscription' ? '$' : '¥' }}</span>
               <input id="coupon-min-amount" v-model.number="form.minAmount" class="input pl-8" type="number" min="0.01" step="0.01" required />
             </div>
           </div>
@@ -104,7 +112,7 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import type { AdminUser } from '@/types'
-import type { RechargeDiscountCoupon } from '@/api/admin/users'
+import type { RechargeDiscountCoupon, SubscriptionDiscountCoupon } from '@/api/admin/users'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
@@ -116,14 +124,18 @@ const appStore = useAppStore()
 const submitting = ref(false)
 const loading = ref(false)
 const loadError = ref(false)
-const coupons = ref<RechargeDiscountCoupon[]>([])
+const couponTypes = ['recharge', 'subscription'] as const
+const couponType = ref<(typeof couponTypes)[number]>('recharge')
+type UserDiscountCoupon = RechargeDiscountCoupon | SubscriptionDiscountCoupon
+const coupons = ref<UserDiscountCoupon[]>([])
 const form = reactive({ minAmount: 100, discountRate: 8, totalUses: 1, notes: '' })
 let loadSequence = 0
 
 watch(
-  () => [props.show, props.user?.id] as const,
+  () => [props.show, props.user?.id, couponType.value] as const,
   ([show]) => {
     if (show) {
+      coupons.value = []
       resetForm()
       void loadCoupons()
     }
@@ -141,7 +153,9 @@ async function loadCoupons() {
   loading.value = true
   loadError.value = false
   try {
-    const result = await adminAPI.users.listRechargeDiscountCoupons(props.user.id)
+    const result = couponType.value === 'subscription'
+      ? await adminAPI.users.listSubscriptionDiscountCoupons(props.user.id)
+      : await adminAPI.users.listRechargeDiscountCoupons(props.user.id)
     if (sequence === loadSequence) coupons.value = result
   } catch {
     if (sequence === loadSequence) {
@@ -159,7 +173,7 @@ const isValid = computed(() =>
   && Number.isInteger(form.totalUses) && form.totalUses > 0
 )
 
-const couponSummary = computed(() => t('admin.users.rechargeCoupon.summary', {
+const couponSummary = computed(() => t(couponType.value === 'subscription' ? 'admin.users.rechargeCoupon.subscriptionSummary' : 'admin.users.rechargeCoupon.summary', {
   amount: Number(form.minAmount || 0).toFixed(2),
   rate: Number(form.discountRate || 0).toString(),
   count: form.totalUses || 0,
@@ -173,29 +187,34 @@ function formatDiscountRate(value: number): string {
   return Number((Number(value) / 10).toFixed(2)).toString()
 }
 
-function couponRuleLabel(coupon: RechargeDiscountCoupon): string {
+function couponRuleLabel(coupon: UserDiscountCoupon): string {
+  if ('min_subscription_amount' in coupon) {
+    return t('admin.users.rechargeCoupon.subscriptionRule', {
+      amount: formatAmount(coupon.min_subscription_amount), rate: formatDiscountRate(coupon.discount_percent),
+    })
+  }
   const params = { amount: formatAmount(coupon.min_recharge_amount), rate: formatDiscountRate(coupon.discount_percent) }
   return t(coupon.min_recharge_amount > 0 ? 'admin.users.rechargeCoupon.couponRule' : 'admin.users.rechargeCoupon.couponRuleNoThreshold', params)
 }
 
-function couponState(coupon: RechargeDiscountCoupon): 'active' | 'exhausted' | 'revoked' {
+function couponState(coupon: UserDiscountCoupon): 'active' | 'exhausted' | 'revoked' {
   if (coupon.status === 'revoked') return 'revoked'
   if (coupon.total_uses > 0 && coupon.remaining_uses <= 0) return 'exhausted'
   return 'active'
 }
 
-function couponSourceLabel(coupon: RechargeDiscountCoupon): string {
+function couponSourceLabel(coupon: UserDiscountCoupon): string {
   if (coupon.source_type === 'promo_code') {
     return t('admin.users.rechargeCoupon.sourcePromoCode', { code: coupon.source_code || '-' })
   }
   return t('admin.users.rechargeCoupon.sourceAdmin')
 }
 
-function couponStatusLabel(coupon: RechargeDiscountCoupon): string {
+function couponStatusLabel(coupon: UserDiscountCoupon): string {
   return t(`admin.users.rechargeCoupon.status.${couponState(coupon)}`)
 }
 
-function couponStatusClass(coupon: RechargeDiscountCoupon): string {
+function couponStatusClass(coupon: UserDiscountCoupon): string {
   return {
     active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
     exhausted: 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300',
@@ -207,12 +226,16 @@ async function handleSubmit() {
   if (!props.user || !isValid.value) return
   submitting.value = true
   try {
-    await adminAPI.users.issueRechargeDiscountCoupon(props.user.id, {
-      min_recharge_amount: form.minAmount,
-      discount_rate: form.discountRate,
-      total_uses: form.totalUses,
-      notes: form.notes.trim(),
-    })
+    const request = { discount_rate: form.discountRate, total_uses: form.totalUses, notes: form.notes.trim() }
+    if (couponType.value === 'subscription') {
+      await adminAPI.users.issueSubscriptionDiscountCoupon(props.user.id, {
+        ...request, min_subscription_amount: form.minAmount,
+      })
+    } else {
+      await adminAPI.users.issueRechargeDiscountCoupon(props.user.id, {
+        ...request, min_recharge_amount: form.minAmount,
+      })
+    }
     appStore.showSuccess(t('admin.users.rechargeCoupon.success'))
     resetForm()
     await loadCoupons()

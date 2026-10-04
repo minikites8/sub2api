@@ -4,15 +4,17 @@ import { flushPromises, mount } from '@vue/test-utils'
 import type { AdminUser } from '@/types'
 import UserRechargeDiscountCouponModal from '../UserRechargeDiscountCouponModal.vue'
 
-const { issueRechargeDiscountCoupon, listRechargeDiscountCoupons, showSuccess, showError } = vi.hoisted(() => ({
+const { issueRechargeDiscountCoupon, listRechargeDiscountCoupons, issueSubscriptionDiscountCoupon, listSubscriptionDiscountCoupons, showSuccess, showError } = vi.hoisted(() => ({
   issueRechargeDiscountCoupon: vi.fn(),
   listRechargeDiscountCoupons: vi.fn(),
+  issueSubscriptionDiscountCoupon: vi.fn(),
+  listSubscriptionDiscountCoupons: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn(),
 }))
 
 vi.mock('@/api/admin', () => ({
-  adminAPI: { users: { issueRechargeDiscountCoupon, listRechargeDiscountCoupons } },
+  adminAPI: { users: { issueRechargeDiscountCoupon, listRechargeDiscountCoupons, issueSubscriptionDiscountCoupon, listSubscriptionDiscountCoupons } },
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -61,6 +63,8 @@ describe('UserRechargeDiscountCouponModal', () => {
   beforeEach(() => {
     issueRechargeDiscountCoupon.mockReset().mockResolvedValue({ id: 1 })
     listRechargeDiscountCoupons.mockReset().mockResolvedValue([])
+    issueSubscriptionDiscountCoupon.mockReset().mockResolvedValue({ id: 2 })
+    listSubscriptionDiscountCoupons.mockReset().mockResolvedValue([])
     showSuccess.mockReset()
     showError.mockReset()
   })
@@ -89,6 +93,46 @@ describe('UserRechargeDiscountCouponModal', () => {
     await wrapper.get('#coupon-discount-rate').setValue('10')
 
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('issues and lists a subscription coupon from the user discount dialog', async () => {
+    listSubscriptionDiscountCoupons.mockResolvedValue([{
+      id: 12, user_id: 42, min_subscription_amount: 20, discount_percent: 80,
+      total_uses: 3, used_count: 1, remaining_uses: 2, status: 'active',
+      source_type: 'admin', created_at: '2026-10-05T00:00:00Z', notes: 'subscription grant',
+    }])
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.get('[data-test="coupon-tab-subscription"]').trigger('click')
+    await flushPromises()
+    expect(listSubscriptionDiscountCoupons).toHaveBeenCalledWith(42)
+    expect(wrapper.text()).toContain('admin.users.rechargeCoupon.subscriptionRule')
+    expect(wrapper.text()).toContain('subscription grant')
+    expect(wrapper.get('label[for="coupon-min-amount"]').text()).toContain('admin.users.rechargeCoupon.minSubscriptionAmount')
+
+    await wrapper.get('#coupon-min-amount').setValue('20')
+    await wrapper.get('#coupon-discount-rate').setValue('8')
+    await wrapper.get('#coupon-total-uses').setValue('3')
+    await wrapper.get('#coupon-notes').setValue(' subscription retention ')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(issueSubscriptionDiscountCoupon).toHaveBeenCalledWith(42, {
+      min_subscription_amount: 20, discount_rate: 8, total_uses: 3, notes: 'subscription retention',
+    })
+    expect(issueRechargeDiscountCoupon).not.toHaveBeenCalled()
+    expect(listSubscriptionDiscountCoupons).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the selected coupon list when a previous tab request finishes later', async () => {
+    let finishRecharge!: (value: unknown[]) => void
+    listRechargeDiscountCoupons.mockReturnValue(new Promise(resolve => { finishRecharge = resolve }))
+    const wrapper = mountModal()
+    await wrapper.get('[data-test="coupon-tab-subscription"]').trigger('click')
+    await flushPromises()
+    finishRecharge([{ id: 1, notes: 'stale recharge coupon' }])
+    await flushPromises()
+    expect(wrapper.text()).toContain('admin.users.rechargeCoupon.subscriptionEmpty')
+    expect(wrapper.text()).not.toContain('stale recharge coupon')
   })
 
   it('shows issued coupons with usage and derived status', async () => {

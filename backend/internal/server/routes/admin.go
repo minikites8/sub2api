@@ -363,6 +363,8 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.POST("/:id/balance", h.Admin.User.UpdateBalance)
 		users.GET("/:id/recharge-discount-coupons", h.Admin.User.ListRechargeDiscountCoupons)
 		users.POST("/:id/recharge-discount-coupons", h.Admin.User.IssueRechargeDiscountCoupon)
+		users.GET("/:id/subscription-discount-coupons", h.Admin.User.ListSubscriptionDiscountCoupons)
+		users.POST("/:id/subscription-discount-coupons", h.Admin.User.IssueSubscriptionDiscountCoupon)
 		users.GET("/:id/api-keys", h.Admin.User.GetUserAPIKeys)
 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
 		users.GET("/:id/balance-history", h.Admin.User.GetBalanceHistory)
