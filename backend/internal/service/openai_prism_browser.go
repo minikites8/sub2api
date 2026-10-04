@@ -296,8 +296,23 @@ func (s *OpenAIGatewayService) forwardPrismBrowser(ctx context.Context, c *gin.C
 		fail(http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
+	if stream {
+		c.Header("X-Prism-Usage", "unavailable")
+		interval := 10 * time.Second
+		if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+			interval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+		}
+		// Browser preparation and reasoning can outlast a proxy's idle timeout.
+		// The shared writer stops heartbeats before any response is written.
+		stopKeepalive := startOpenAISSEKeepalive(c, interval)
+		defer stopKeepalive()
+	}
 	responseBody, upstreamHeaders, status, err := s.callPrismBrowserForCaller(ctx, account, body, sessionID, prismBrowserCallerID(c, account.ID))
 	if err != nil {
+		if ctx.Err() != nil {
+			StopOpenAICompactSSEKeepaliveCommitted(c)
+			return nil, err
+		}
 		fail(http.StatusBadGateway, "prism_unavailable", "Prism adapter unavailable; request was not replayed")
 		return nil, err
 	}
@@ -318,6 +333,7 @@ func (s *OpenAIGatewayService) forwardPrismBrowser(ctx context.Context, c *gin.C
 		fail(http.StatusBadGateway, "invalid_prism_response", "Prism adapter returned an undeclared client tool")
 		return nil, err
 	}
+	StopOpenAICompactSSEKeepaliveCommitted(c)
 	contentType := "application/json"
 	if stream {
 		contentType = "text/event-stream"

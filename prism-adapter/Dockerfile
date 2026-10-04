@@ -6,6 +6,10 @@ ENV PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/opt/playwright \
     PRISM_ADAPTER_STATE_DIR=/var/lib/sub2api-prism \
     PRISM_ADAPTER_API_KEY_FILE=/gateway-data/prism-adapter/bridge.key \
+    PRISM_ADAPTER_MODE=multiplex \
+    PRISM_ADAPTER_MAX_INFLIGHT=4 \
+    PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT=4 \
+    PRISM_ADAPTER_MAX_QUEUED=8 \
     HOME=/var/lib/sub2api-prism
 
 WORKDIR /opt/prism-adapter

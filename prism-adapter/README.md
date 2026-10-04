@@ -81,11 +81,23 @@ docker compose logs --tail=100 prism-adapter
 
 网关首次启动会生成 `data/prism-adapter/bridge.key`（命名卷部署对应 `/app/data/prism-adapter/bridge.key`），权限为 `0600`；适配器通过只读共享数据卷读取同一密钥。显式设置 `PRISM_ADAPTER_API_KEY` 时使用该值，要求至少 32 个字符。已有 `GATEWAY_PRISM_BROWSER_API_KEY` 同样可以沿用；两项都配置时应保持相同。私有 API 位于网关的 `127.0.0.1:8319`，共享网络空间由 Compose 的 `network_mode: service:sub2api` 建立。网关更新时 Compose 同步重启适配器，升级命令同时重建两项服务以更新共享网络空间。
 
-本地目录部署将 pending journal 和工具状态保存到 `prism_data/`；命名卷部署使用 `prism_state`。升级沿用这些状态，保留原请求结局和工具记录。设置 `GATEWAY_PRISM_BROWSER_ENABLED=false` 可关闭部署中的 Prism 路由，适配器保持轻量禁用状态；启用后仍按账号编辑页中的 Prism 开关和模型范围选路。
+本地目录部署将 pending journal 和工具状态保存到 `prism_data/`；命名卷部署使用 `prism_state`。升级沿用这些状态，保留原请求结局和工具记录。Docker 默认使用 `multiplex`，最多 4 个活动请求、同账号 4 个、8 个排队请求，项目准备并发为 1；整个请求由 285 秒时限覆盖，早于网关的 300 秒调用上限。设置 `GATEWAY_PRISM_BROWSER_ENABLED=false` 可关闭部署中的 Prism 路由，适配器保持轻量禁用状态；启用后仍按账号编辑页中的 Prism 开关和模型范围选路。
 
 Chromium 以 UID 1000 运行，并保留浏览器沙盒。`prism-seccomp.json` 来自 [Playwright v1.63.0 的 Docker profile](https://github.com/microsoft/playwright/blob/v1.63.0/utils/docker/seccomp_profile.json)，附带 Apache 2.0 许可证，另加入 `clone3` 的 ENOSYS 回退规则；其余系统调用沿用默认限制。共享内存设为 256 MiB，适配器内存上限 900 MiB、单核、256 个进程。启动时先验证沙盒 Chromium，再开放 `/health`；具体模型与 OAuth 能力通过管理员账号测试确认。容器配置依据 [Playwright Docker 文档](https://playwright.dev/python/docs/docker)。
 
 CI 在发布前运行实际容器检查，验证回环可达、共享密钥鉴权、密钥和状态跨容器重建保留，以及真实 Chromium 上的本地模型/会话 smoke。这些检查使用合成账号与本地页面。
+
+### 调用等待与忙碌状态
+
+流式 Responses 调用在等待浏览器准备和推理时发送 SSE 注释心跳，默认每 10 秒一次，并设置 `X-Accel-Buffering: no`。最终结果继续使用原来的 Responses 终态；等待后失败会生成 `response.failed`。客户端断开时结束网关等待，请求状态继续由适配器 journal 记录。
+
+`/health` 返回执行器的 `mode`、`active`、`queued` 和 `max_inflight`；执行器停止或启动失败时返回 503。检查命令：
+
+```sh
+docker compose exec -T sub2api wget -qO- http://127.0.0.1:8319/health
+```
+
+日志中的 `prism_adapter_listening` 标明模式和并发上限。`browser` 的活动请求占用唯一通道；`multiplex` 使用有界队列，并按会话串行提交。同一会话的待决结果由 journal 保存，确认原请求结局后再继续。
 
 ### systemd 运行环境
 
@@ -116,13 +128,13 @@ PRISM_ADAPTER_SESSION_TTL_SECONDS=300
 
 ## 并发执行器（服务端试用开关）
 
-默认 `PRISM_ADAPTER_MODE=browser` 保持原来的单回合 UI 执行器。要试用单账号并发，在服务器环境文件中设置：
+Docker 使用有界并发模式；已有部署可在 `.env` 中设置以下值并重建适配器。systemd 直接运行 Python 时默认使用单回合 `browser`，可通过同一组环境变量启用并发：
 
 ```dotenv
 PRISM_ADAPTER_MODE=multiplex
-PRISM_ADAPTER_MAX_INFLIGHT=20
-PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT=20
-PRISM_ADAPTER_MAX_QUEUED=30
+PRISM_ADAPTER_MAX_INFLIGHT=4
+PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT=4
+PRISM_ADAPTER_MAX_QUEUED=8
 PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY=1
 ```
 

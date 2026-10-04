@@ -207,3 +207,13 @@ class AsyncBrowserWorker:
                 except RuntimeError:
                     pass  # Startup failed or the event loop just finished.
         self.thread.join(timeout=10)
+
+    def health(self):
+        ready = self.ready.is_set() and not self.stopping and not self.failed and self.thread.is_alive()
+        admission = getattr(getattr(self, "engine", None), "admission", None)
+        active = admission.running if admission is not None else len(self.tasks)
+        queued = max(0, admission.outstanding - active) if admission is not None else 0
+        return {"status": "ok" if ready else "unavailable", "mode": "multiplex",
+                "active": active, "queued": queued,
+                "max_inflight": admission.limit if admission is not None else 0,
+                "request_deadline_seconds": self.request_timeout}

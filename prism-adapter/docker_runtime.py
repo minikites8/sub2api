@@ -96,7 +96,7 @@ def main():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=str(chrome), headless=True, chromium_sandbox=True)
         browser.close()
-    print("Prism adapter ready to start on gateway loopback", flush=True)
+    print("Prism Chromium sandbox check passed; starting adapter listener", flush=True)
     runpy.run_path(str(Path(__file__).with_name("server.py")), run_name="__main__")
 
 

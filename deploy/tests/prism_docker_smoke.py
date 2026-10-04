@@ -26,7 +26,7 @@ def main():
         'cp /tests/gateway-fixture.sh /app/sub2api; chmod 755 /app/gateway-entrypoint.sh /app/sub2api; '
         'exec /app/gateway-entrypoint.sh /app/sub2api'
     )
-    health = "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8319/health', timeout=3).close()"
+    health = "import json, urllib.request; status=json.load(urllib.request.urlopen('http://127.0.0.1:8319/health', timeout=3)); assert status['mode']=='multiplex' and status['max_inflight']==4"
     key_hash = "from pathlib import Path; print(Path('/app/data/gateway-key.sha256').read_text())"
     original_hash = None
     try:
@@ -73,6 +73,11 @@ print('Prism bridge authentication passed')
                                         "import json, docker_runtime; print(json.dumps([str(p) for p in docker_runtime.browser_paths()]))"))
                 print(docker("exec", "--user", "1000", "-e", f"CHROME_DEVEL_SANDBOX={paths[1]}", adapter,
                              "python", "/tests/smoke_browser.py", "--chrome", paths[0]))
+                print(docker("exec", "--user", "1000", "-e", f"CHROME_DEVEL_SANDBOX={paths[1]}", adapter,
+                             "python", "/tests/smoke_multiplex.py", "--chrome", paths[0],
+                             "--concurrency", "4", "--rounds", "2"))
+                print(docker("exec", "--user", "1000", adapter, "python", "-m", "unittest",
+                             "discover", "-s", "/tests", "-p", "test_*.py"))
                 docker("exec", "--user", "1000", adapter, "python", "-c",
                        "from pathlib import Path; Path('/var/lib/sub2api-prism/container-recreation.fixture').write_text('retained')")
             else:

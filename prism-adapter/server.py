@@ -608,6 +608,11 @@ class BrowserWorker:
             self.stopping.set()
         self.thread.join(timeout=8)
 
+    def health(self):
+        ready = self.ready.is_set() and self.startup_error is None and not self.stopping.is_set() and self.thread.is_alive()
+        return {"status": "ok" if ready else "unavailable", "mode": "browser",
+                "active": int(self.busy.locked()), "queued": 0, "max_inflight": 1}
+
 
 def response_payload(request_id, text, model=MODEL, effort="medium"):
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", request_id)[:100]
@@ -654,7 +659,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self.send_json(200, {"status": "ok"})
+            status = self.browser_turn.health() if hasattr(self.browser_turn, "health") else {"status": "ok"}
+            self.send_json(200 if status["status"] == "ok" else 503, status)
         else:
             self.send_json(404, {"error": {"type": "not_found"}})
 
@@ -823,6 +829,8 @@ def main():
         raise SystemExit("PRISM_ADAPTER_PORT must be 1024..65535")
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True
+    print(json.dumps({"event": "prism_adapter_listening", "mode": mode,
+                      "max_inflight": 1 if mode == "browser" else active}), flush=True)
     try:
         server.serve_forever()
     finally:

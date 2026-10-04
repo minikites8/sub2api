@@ -23,6 +23,9 @@ class PrismComposeTests(unittest.TestCase):
                                    REDIS_HOST="redis", GATEWAY_PRISM_BROWSER_ENABLED="true")
                         for key in ("PRISM_ADAPTER_API_KEY", "GATEWAY_PRISM_BROWSER_API_KEY"):
                             env.pop(key, None)
+                        for key in ("PRISM_ADAPTER_MODE", "PRISM_ADAPTER_MAX_INFLIGHT",
+                                    "PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT", "PRISM_ADAPTER_MAX_QUEUED"):
+                            env.pop(key, None)
                         if source:
                             env[source] = "compose-fixture-" + "x" * 32
                         result = subprocess.run(
@@ -38,6 +41,10 @@ class PrismComposeTests(unittest.TestCase):
                                          gateway["environment"]["GATEWAY_PRISM_BROWSER_API_KEY"])
                         self.assertEqual(gateway["environment"]["GATEWAY_PRISM_BROWSER_API_KEY"],
                                          adapter["environment"]["PRISM_ADAPTER_API_KEY"])
+                        self.assertEqual("multiplex", adapter["environment"]["PRISM_ADAPTER_MODE"])
+                        self.assertEqual("4", adapter["environment"]["PRISM_ADAPTER_MAX_INFLIGHT"])
+                        self.assertEqual("4", adapter["environment"]["PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT"])
+                        self.assertEqual("8", adapter["environment"]["PRISM_ADAPTER_MAX_QUEUED"])
                         self.assertTrue(adapter["depends_on"]["sub2api"]["restart"])
                         self.assertFalse(adapter.get("ports"))
                         volumes = {volume["target"]: volume for volume in adapter["volumes"]}
