@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"github.com/google/uuid"
 )
 
@@ -79,6 +80,9 @@ func bindCodexHarvestEgress(ticket *openAICodexTicket, attempt codexHarvestAttem
 		return
 	}
 	ticket.HarvestProxyURL = strings.TrimSpace(attempt.proxy)
+	if attempt.node.Provider == "managed" {
+		ticket.HarvestProxyURL = mihomo.Endpoint
+	}
 
 	ticket.HarvestNodeID = strings.TrimSpace(attempt.node.ID)
 	ticket.HarvestNodeName = strings.TrimSpace(attempt.node.Name)
@@ -94,6 +98,13 @@ func (s *OpenAIGatewayService) harvestAttemptSession(account *Account, model str
 }
 
 func (s *OpenAIGatewayService) executeCodexHarvestProbe(ctx context.Context, account *Account, token, model, proxy string, timeout time.Duration, reserve func() bool, sessionID string) (result codexHarvestProbeResult) {
+	if !s.usesRemoteCodexMint(ctx) {
+		release, err := mihomo.Lease(ctx, proxy)
+		if err != nil {
+			return codexHarvestProbeResult{Err: err, Kind: "network_error"}
+		}
+		defer func() { release(result.Kind == "success") }()
+	}
 	attempt, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if strings.TrimSpace(sessionID) == "" {
@@ -108,6 +119,13 @@ func (s *OpenAIGatewayService) executeCodexHarvestProbe(ctx context.Context, acc
 }
 
 func (s *OpenAIGatewayService) requestCodexHarvestProbe(ctx context.Context, account *Account, token, model, proxy string, reserve func() bool, sessionID string) (out codexHarvestProbeResult) {
+	if s.usesRemoteCodexMint(ctx) {
+		controls, _ := s.harvestControls(ctx)
+		if edge, ok := ctx.Value(codexMintEdgeContextKey{}).(string); ok {
+			controls.EdgeIP = edge
+		}
+		return s.requestCodexCloudMintProbe(ctx, account, token, model, proxy, reserve, sessionID, controls)
+	}
 	if openAICodexTicketTargetLength(account, s.openAICodexTicketConfig()) == 780 {
 		return s.requestCodex780Probe(ctx, account, token, model, proxy, reserve, sessionID)
 	}

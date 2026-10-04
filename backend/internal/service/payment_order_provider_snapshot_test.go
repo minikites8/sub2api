@@ -88,8 +88,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 		88,
 		88,
 		0,
-		88,
-		&payment.InstanceSelection{
+		88, 0, &payment.InstanceSelection{
 			InstanceID:     strconv.FormatInt(instance.ID, 10),
 			ProviderKey:    payment.TypeAlipay,
 			SupportedTypes: "alipay,alipay_direct",
@@ -98,7 +97,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 				"secretKey": "do-not-copy",
 			},
 		},
-		firstRechargeAmountPlan{},
+		firstRechargeAmountPlan{}, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), valueOrEmpty(order.ProviderInstanceID))
@@ -147,8 +146,7 @@ func TestCreateOrderInTx_WritesFirstRechargePromoSnapshot(t *testing.T) {
 		110,
 		80,
 		0,
-		80,
-		&payment.InstanceSelection{
+		80, 0, &payment.InstanceSelection{
 			ProviderKey: payment.TypeAlipay,
 			PaymentMode: "redirect",
 		},
@@ -162,7 +160,7 @@ func TestCreateOrderInTx_WritesFirstRechargePromoSnapshot(t *testing.T) {
 			DiscountSet:      true,
 			CreditAmount:     110,
 			PaymentAmount:    80,
-		},
+		}, nil,
 	)
 	require.NoError(t, err)
 
@@ -224,12 +222,11 @@ func TestCreateOrderInTx_BlocksSecondPendingFirstRechargePromoOrder(t *testing.T
 		110,
 		80,
 		0,
-		80,
-		&payment.InstanceSelection{
+		80, 0, &payment.InstanceSelection{
 			ProviderKey: payment.TypeAlipay,
 			PaymentMode: "redirect",
 		},
-		promoPlan,
+		promoPlan, nil,
 	)
 	require.NoError(t, err)
 
@@ -255,12 +252,11 @@ func TestCreateOrderInTx_BlocksSecondPendingFirstRechargePromoOrder(t *testing.T
 		110,
 		80,
 		0,
-		80,
-		&payment.InstanceSelection{
+		80, 0, &payment.InstanceSelection{
 			ProviderKey: payment.TypeAlipay,
 			PaymentMode: "redirect",
 		},
-		promoPlan,
+		promoPlan, nil,
 	)
 	require.Error(t, err)
 	require.True(t, infraerrors.IsConflict(err))
@@ -311,12 +307,11 @@ func TestCreateOrderInTx_BlocksWhenRechargeDiscountLimitReached(t *testing.T) {
 		100,
 		80,
 		0,
-		80,
-		&payment.InstanceSelection{
+		80, 0, &payment.InstanceSelection{
 			ProviderKey: payment.TypeAlipay,
 			PaymentMode: "redirect",
 		},
-		promoPlan,
+		promoPlan, nil,
 	)
 	require.NoError(t, err)
 
@@ -342,12 +337,11 @@ func TestCreateOrderInTx_BlocksWhenRechargeDiscountLimitReached(t *testing.T) {
 		100,
 		80,
 		0,
-		80,
-		&payment.InstanceSelection{
+		80, 0, &payment.InstanceSelection{
 			ProviderKey: payment.TypeAlipay,
 			PaymentMode: "redirect",
 		},
-		promoPlan,
+		promoPlan, nil,
 	)
 	require.Error(t, err)
 	require.True(t, infraerrors.IsConflict(err))

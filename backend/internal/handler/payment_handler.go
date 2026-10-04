@@ -168,6 +168,9 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		BalanceRechargeMultiplier:     cfg.BalanceRechargeMultiplier,
 		SubscriptionUSDToCNYRate:      cfg.SubscriptionUSDToCNYRate,
 		RechargeFeeRate:               cfg.RechargeFeeRate,
+		RechargeBonusTiers:            cfg.RechargeBonusTiers,
+		RechargeBonusMode:             cfg.RechargeBonusMode,
+		RechargeBonusNotice:           cfg.RechargeBonusNotice,
 		HelpText:                      cfg.HelpText,
 		HelpImageURL:                  cfg.HelpImageURL,
 		StripePublishableKey:          cfg.StripePublishableKey,
@@ -194,6 +197,9 @@ type checkoutInfoResponse struct {
 	AlipayMobilePrecreateDeepLink bool                                    `json:"alipay_mobile_precreate_deep_link"`
 	FirstRechargePromo            *service.FirstRechargePromoPreview      `json:"first_recharge_promo,omitempty"`
 	RechargeDiscountCoupons       []service.RechargeDiscountCouponPreview `json:"recharge_discount_coupons"`
+	RechargeBonusTiers            []service.RechargeBonusTier             `json:"recharge_bonus_tiers"`
+	RechargeBonusMode             string                                  `json:"recharge_bonus_mode"`
+	RechargeBonusNotice           string                                  `json:"recharge_bonus_notice"`
 }
 
 type checkoutPlan struct {
@@ -536,6 +542,7 @@ type PublicOrderResult struct {
 	Amount              float64    `json:"amount"`
 	PayAmount           float64    `json:"pay_amount"`
 	FeeRate             float64    `json:"fee_rate"`
+	BonusAmount         float64    `json:"bonus_amount"`
 	Currency            string     `json:"currency"`
 	PaymentType         string     `json:"payment_type"`
 	OrderType           string     `json:"order_type"`
@@ -571,6 +578,7 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 		Amount:              order.Amount,
 		PayAmount:           order.PayAmount,
 		FeeRate:             order.FeeRate,
+		BonusAmount:         order.BonusAmount,
 		Currency:            service.PaymentOrderCurrency(order),
 		PaymentType:         order.PaymentType,
 		OrderType:           order.OrderType,
@@ -679,6 +687,7 @@ type PaymentOrderResult struct {
 	Amount              float64    `json:"amount"`
 	PayAmount           float64    `json:"pay_amount"`
 	FeeRate             float64    `json:"fee_rate"`
+	BonusAmount         float64    `json:"bonus_amount"`
 	Currency            string     `json:"currency"`
 	PaymentType         string     `json:"payment_type"`
 	OutTradeNo          string     `json:"out_trade_no"`
@@ -717,6 +726,7 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 		Amount:              order.Amount,
 		PayAmount:           order.PayAmount,
 		FeeRate:             order.FeeRate,
+		BonusAmount:         order.BonusAmount,
 		Currency:            service.PaymentOrderCurrency(order),
 		PaymentType:         order.PaymentType,
 		OutTradeNo:          order.OutTradeNo,

@@ -116,7 +116,7 @@ func newExcelBPSFailoverTestHandler(t *testing.T, upstream service.HTTPUpstream,
 		cfg,
 		nil, schedulingConcurrency, nil, nil, nil,
 		upstream,
-		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingService.Stop)
@@ -125,7 +125,7 @@ func newExcelBPSFailoverTestHandler(t *testing.T, upstream service.HTTPUpstream,
 		concurrencyService,
 		billingService,
 		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
-		nil, nil, nil, nil,
+		nil, nil, nil, nil, nil,
 		cfg,
 	)
 	handler.maxAccountSwitches = 10

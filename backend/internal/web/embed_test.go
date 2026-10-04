@@ -531,6 +531,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			"/api/v1/users",
 			"/.well-known/ai-transit.json",
 			"/models",
+			"/models/gpt-5.5",
 			"/v1/models",
 			"/v1beta/chat",
 			"/backend-api/codex/responses",
@@ -540,6 +541,20 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			"/health",
 			"/responses",
 			"/responses/compact",
+			"/chat/completions",
+			"/messages/count_tokens",
+			"/embeddings",
+			"/contents/generations/tasks",
+			"/contents/generations/tasks/task-123",
+			"/v3/contents/generations/tasks",
+			"/v3/contents/generations/tasks/task-123",
+			"/tts",
+			"/stt",
+			"/custom-voices",
+			"/custom-voices/voice-123",
+			"/realtime",
+			"/web_search",
+			"/x_search",
 		}
 
 		for _, path := range apiPaths {

@@ -546,6 +546,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// cyber 会话屏蔽开关 + TTL
 	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
+	if _, err := ParseCyberPolicyUserAllowlist(settings.CyberPolicyUserAllowlist); err != nil {
+		return nil, err
+	}
+	updates[SettingKeyCyberPolicyUserAllowlist] = settings.CyberPolicyUserAllowlist
 	if settings.CyberSessionBlockTTLSeconds > 0 {
 		updates[SettingKeyCyberSessionBlockTTLSeconds] = strconv.Itoa(settings.CyberSessionBlockTTLSeconds)
 	}
@@ -594,6 +598,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAICodexRelayTimeoutSeconds] = strconv.Itoa(settings.OpenAICodexRelayTimeoutSeconds)
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
+	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
+	}
+	staticProxy := settings.OpenAICodexTicketStaticProxyURL
+	if IsStaticCodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL) {
+		staticProxy = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
+	}
+	updates[SettingKeyOpenAICodexTicketStaticProxyURL] = staticProxy
+	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
 	updates[SettingKeyOpenAICodexTicketFailClosed] = strconv.FormatBool(settings.OpenAICodexTicketFailClosed)
 	if value := settings.OpenAICodexTicketStrategy; value != "" && value != "fixed" && value != "standby" {
 		return nil, infraerrors.BadRequest("INVALID_TICKET_STRATEGY", "strategy must be fixed or standby")
@@ -980,9 +993,12 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
 	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
 	// Cyber 会话屏蔽与严格身份门控必须在后台保存后立即生效，不能继续
-	// 使用最长 60 秒的旧开关快照。
+	// 使用最长 60 秒的旧开关快照。保留刚保存成功的白名单，下一次 DB 刷新失败时沿用。
 	s.cyberSessionBlockRuntimeSF.Forget("cyber_session_block_runtime")
-	s.cyberSessionBlockRuntimeCache.Store(&cachedCyberSessionBlockRuntime{expiresAt: 0})
+	s.cyberSessionBlockRuntimeMu.Lock()
+	allowlistedUsers, _ := ParseCyberPolicyUserAllowlist(settings.CyberPolicyUserAllowlist)
+	s.cyberSessionBlockRuntimeCache.Store(&cachedCyberSessionBlockRuntime{allowlistedUsers: allowlistedUsers})
+	s.cyberSessionBlockRuntimeMu.Unlock()
 	if s.requestCapture != nil {
 		s.requestCapture.ApplyConfig(settings.requestCaptureConfig())
 	}

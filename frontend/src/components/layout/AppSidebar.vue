@@ -29,6 +29,8 @@
       </div>
     </div>
 
+    <FeatureSearch v-if="isAdmin" :items="searchNavItems" :collapsed="sidebarCollapsed" @navigate="handleMenuItemClick" />
+
     <!-- Navigation -->
     <nav ref="sidebarNavRef" class="sidebar-nav scrollbar-hide">
       <div v-if="authStore.isObserver" class="sidebar-section">
@@ -221,6 +223,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
+import FeatureSearch from './FeatureSearch.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
@@ -302,7 +305,7 @@ const siteVersion = computed(() => appStore.siteVersion)
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 // SVG Icon Components
-const RequestCaptureIcon = { render: () => h(Icon, { name: 'requestCapture' }) }
+const RequestCaptureIcon = { render: () => h(Icon, { name: 'requestCapture', size: 'sm' }) }
 const OpsMonitoringIcon = { render: () => h(Icon, { name: 'monitorPulse' }) }
 const SmartOpsIcon = { render: () => h(Icon, { name: 'cpu' }) }
 const QualityOpsIcon = { render: () => h(Icon, { name: 'badge', size: 'sm' }) }
@@ -505,6 +508,7 @@ const GlobeIcon = {
       ]
     )
 }
+
 
 const ServerIcon = {
   render: () =>
@@ -907,7 +911,6 @@ const customMenuItemsForAdmin = computed(() => {
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
-    { path: '/admin/request-captures', label: t('admin.requestCapture.title'), icon: RequestCaptureIcon, featureFlag: () => adminSettingsStore.requestCaptureEnabled },
     { path: '/admin/ops', label: t('nav.ops'), icon: OpsMonitoringIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
@@ -933,8 +936,9 @@ const adminNavItems = computed((): NavItem[] => {
       { path: '/admin/token-guard', label: t('tokenGuard.title'), icon: TokenGuardIcon },
       { path: '/admin/token-guard-v2', label: t('tokenGuardV2.title'), icon: CredentialOpsIcon },
       { path: '/admin/pelican-tests', label: t('pelicanTests.title'), icon: PelicanTestsIcon },
+      { path: '/admin/request-captures', label: t('admin.requestCapture.title'), icon: RequestCaptureIcon, featureFlag: () => adminSettingsStore.requestCaptureEnabled },
+      { path: '/admin/harvest-flow', label: t('nav.harvestFlow'), icon: FlowIcon },
     ] },
-    { path: '/admin/harvest-flow', label: t('nav.harvestFlow'), icon: FlowIcon },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
@@ -1034,6 +1038,11 @@ const adminNavGroups = computed((): NavGroup[] => {
     }
   ])
 })
+// Use exactly the visible navigation, including the personal section only when shown.
+const searchNavItems = computed(() => [
+  ...adminNavItems.value,
+  ...(authStore.isSimpleMode ? [] : personalNavItems.value)
+])
 
 function toggleSidebar() {
   appStore.toggleSidebar()

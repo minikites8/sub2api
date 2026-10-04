@@ -11,6 +11,7 @@ export interface CodexHarvestSpeed {
 }
 
 export interface CodexHarvestControls {
+	 mint_mode?: '' | 'remote' | 'local'
   edge_ip?: string
   target_gateway?: string
   transport?: 'sse' | 'websocket'

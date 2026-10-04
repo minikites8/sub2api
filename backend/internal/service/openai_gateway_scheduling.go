@@ -393,6 +393,16 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	if account == nil {
 		return "account_nil"
 	}
+	// account_model composite routes publish an alias that only accounts with an
+	// explicit model mapping own. Both scheduler modes (advanced and legacy) must
+	// enforce ownership before any priority/sticky/transport consideration; a
+	// non-owner would forward the raw public alias and get model_not_found or
+	// hit an unrelated same-name upstream model.
+	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
+		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !explicitModelMappingClaims(*account, publicModel) {
+			return "account_model_not_owned"
+		}
+	}
 	if account.Platform != platform || !account.IsOpenAICompatible() {
 		return "platform_mismatch"
 	}
@@ -1354,13 +1364,13 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		result, err := s.tryAcquireAccountSlot(ctx, account)
 		if err == nil && result != nil && result.Acquired {
-			selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
+			selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc, result.RequestID)
 			return markStickySessionHit(selection, stickyHit), selectErr
 		}
 		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
 			waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
 			if waitingCount < cfg.StickySessionMaxWaiting {
-				selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+				selection, selectErr := s.newSelectionResult(ctx, account, false, nil, "", &AccountWaitPlan{
 					AccountID:      account.ID,
 					MaxConcurrency: account.Concurrency,
 					Timeout:        cfg.StickySessionWaitTimeout,
@@ -1369,7 +1379,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return markStickySessionHit(selection, stickyHit), selectErr
 			}
 		}
-		selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+		selection, selectErr := s.newSelectionResult(ctx, account, false, nil, "", &AccountWaitPlan{
 			AccountID:      account.ID,
 			MaxConcurrency: account.Concurrency,
 			Timeout:        cfg.FallbackWaitTimeout,
@@ -1443,7 +1453,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, account)
 						if err == nil && result != nil && result.Acquired {
-							selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
+							selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc, result.RequestID)
 							if selectErr != nil {
 								return nil, selectErr
 							}
@@ -1453,7 +1463,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 						waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
 						if waitingCount < cfg.StickySessionMaxWaiting {
-							selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+							selection, selectErr := s.newSelectionResult(ctx, account, false, nil, "", &AccountWaitPlan{
 								AccountID:      accountID,
 								MaxConcurrency: account.Concurrency,
 								Timeout:        cfg.StickySessionWaitTimeout,
@@ -1650,7 +1660,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 			result, err := s.tryAcquireAccountSlot(ctx, fresh)
 			if err == nil && result != nil && result.Acquired {
-				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
+				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc, result.RequestID)
 				if selectErr != nil {
 					return nil, true, selectErr
 				}
@@ -1692,7 +1702,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 			result, err := s.tryAcquireAccountSlot(ctx, fresh)
 			if err == nil && result != nil && result.Acquired {
-				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
+				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc, result.RequestID)
 				if selectErr != nil {
 					return nil, selectErr
 				}
@@ -1743,7 +1753,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 			continue
 		}
-		return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
+		return s.newSelectionResult(ctx, fresh, false, nil, "", &AccountWaitPlan{
 			AccountID:      fresh.ID,
 			MaxConcurrency: fresh.Concurrency,
 			Timeout:        cfg.FallbackWaitTimeout,
@@ -2061,7 +2071,7 @@ func (s *OpenAIGatewayService) hydrateSelectedAccount(ctx context.Context, accou
 	return hydrated, nil
 }
 
-func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), requestID string, waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
 	if account != nil {
 		account.ensureSelectedProxy()
 		if waitPlan != nil {
@@ -2074,15 +2084,16 @@ func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *
 		return nil, err
 	}
 	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
-		Account:     hydrated,
-		Acquired:    acquired,
-		ReleaseFunc: release,
-		WaitPlan:    waitPlan,
+		Account:          hydrated,
+		Acquired:         acquired,
+		ReleaseFunc:      release,
+		AccountRequestID: requestID,
+		WaitPlan:         waitPlan,
 	}), nil
 }
 
-func (s *OpenAIGatewayService) newAcquiredSelectionResult(ctx context.Context, account *Account, release func()) (*AccountSelectionResult, error) {
-	selection, err := s.newSelectionResult(ctx, account, true, release, nil)
+func (s *OpenAIGatewayService) newAcquiredSelectionResult(ctx context.Context, account *Account, release func(), requestID string) (*AccountSelectionResult, error) {
+	selection, err := s.newSelectionResult(ctx, account, true, release, requestID, nil)
 	if err != nil && release != nil {
 		release()
 	}

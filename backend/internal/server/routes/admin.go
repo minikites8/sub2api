@@ -38,6 +38,10 @@ func RegisterAdminRoutes(
 	admin.Use(h.Admin.Account.AuthorizeObserver)
 	admin.Use(middleware.AdminComplianceGuard(settingService))
 	{
+		// Optional region-to-Pod routing, configured inside Gateway settings.
+		admin.GET("/serverless", h.Admin.Setting.GetServerless)
+		admin.PUT("/serverless", h.Admin.Setting.SaveServerless)
+		admin.POST("/serverless/pods/:id/probe", h.Admin.Setting.ProbeServerless)
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)
 
@@ -421,6 +425,9 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/upstream-billing-probe/batch", h.Admin.Account.ProbeUpstreamBillingBatch)
 		accounts.GET("/ollama-cloud-usage/settings", h.Admin.Account.GetOllamaCloudUsageSettings)
 		accounts.PUT("/ollama-cloud-usage/settings", h.Admin.Account.UpdateOllamaCloudUsageSettings)
+		accounts.GET("/astra-gateway/status", h.Admin.Account.AstraGatewayStatus)
+		accounts.GET("/astra-gateway/history", h.Admin.Account.AstraGatewayHistory)
+		accounts.POST("/astra-gateway/test", h.Admin.Account.AstraGatewayTest)
 		accounts.GET("/codex-harvest-flow", h.Admin.Account.GetCodexHarvestFlow)
 		accounts.GET("/codex-harvest-controls", h.Admin.Account.GetCodexHarvestControls)
 		accounts.PUT("/codex-harvest-controls", h.Admin.Account.UpdateCodexHarvestControls)
@@ -517,6 +524,7 @@ func registerOpenAIOAuthReauthWorkerRoutes(v1 *gin.RouterGroup, h *handler.Handl
 	worker := v1.Group("/internal/openai-reauth")
 	{
 		worker.POST("/claim", h.Admin.OpenAIOAuthReauth.Claim)
+		worker.POST("/runtime-settings", h.Admin.OpenAIOAuthReauth.RuntimeSettings)
 		worker.POST("/:task_id/progress", h.Admin.OpenAIOAuthReauth.Progress)
 		worker.POST("/:task_id/callback", h.Admin.OpenAIOAuthReauth.Callback)
 		worker.POST("/:task_id/credentials", h.Admin.OpenAIOAuthReauth.Credentials)
@@ -668,6 +676,8 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	adminSettings := admin.Group("/settings")
 	{
+		adminSettings.GET("/astra-routing", h.Admin.Setting.GetAstraRouting)
+		adminSettings.PUT("/astra-routing", h.Admin.Setting.UpdateAstraRouting)
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
@@ -867,6 +877,8 @@ func registerScheduledTestRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	admin.POST("/account-ops/token-guard-v2/encryption/initialize", h.Admin.AccountTokenGuard.InitializeCredentialEncryption)
 	admin.GET("/account-ops/token-guard-v2/accounts", h.Admin.AccountTokenGuardV2.List)
 	admin.PUT("/account-ops/token-guard-v2/rules", h.Admin.AccountTokenGuardV2.SaveRules)
+	admin.PUT("/account-ops/token-guard-v2/runtime", h.Admin.AccountTokenGuardV2.SaveRuntime)
+	admin.PATCH("/account-ops/token-guard-v2/accounts/:id/switches", h.Admin.AccountTokenGuardV2.UpdateSwitches)
 	admin.POST("/account-ops/token-guard-v2/accounts", h.Admin.AccountTokenGuardV2.Create)
 	admin.PUT("/account-ops/token-guard-v2/accounts/:id", h.Admin.AccountTokenGuardV2.Update)
 	admin.DELETE("/account-ops/token-guard-v2/accounts/:id", h.Admin.AccountTokenGuardV2.Delete)

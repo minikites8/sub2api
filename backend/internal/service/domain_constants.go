@@ -51,6 +51,7 @@ const (
 	PlatformMiniMax     = domain.PlatformMiniMax
 	PlatformOpenCodeGo  = domain.PlatformOpenCodeGo
 	PlatformComposite   = domain.PlatformComposite
+	PlatformTypeSafe    = domain.PlatformTypeSafe
 )
 
 func IsMultiProtocolAPIKeyProvider(platform string) bool {
@@ -72,6 +73,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformDeepseek,
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
+	PlatformTypeSafe,
 }
 
 var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu}
@@ -239,6 +241,7 @@ const (
 	SettingKeyLoginAgreementMode                  = "login_agreement_mode"            // 条款确认展示模式：modal / checkbox
 	SettingKeyLoginAgreementUpdatedAt             = "login_agreement_updated_at"      // 条款更新日期（展示用）
 	SettingKeyLoginAgreementDocuments             = "login_agreement_documents"       // 条款文档列表（JSON，Markdown 内容）
+	SettingKeyCyberPolicyUserAllowlist            = "cyber_policy_user_allowlist"     // Platform user IDs with log-only cyber handling
 
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址

@@ -300,6 +300,8 @@ func ProvideAccountTestService(
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
 	openAIGatewayService *OpenAIGatewayService,
+	settingService *SettingService,
+	pluginManager *PluginManager,
 ) *AccountTestService {
 	service := NewAccountTestService(
 		accountRepo,
@@ -315,6 +317,35 @@ func ProvideAccountTestService(
 	service.agentIdentityWS = openAIGatewayService
 	service.openAIGatewayService = openAIGatewayService
 	service.SetOpenAIGatewayService(openAIGatewayService)
+	service.SetSettingService(settingService)
+	service.pluginManager = pluginManager
+	if p, ok := httpUpstream.(AstraGatewayRuntimeProvider); ok {
+		p.SetAstraGatewayPreparer(service.prepareAstraGatewaySource)
+	}
+	if settingService != nil {
+		settingService.SetAstraRoutingOnSaved(service.StartAstraAutomaticSetup)
+	}
+	if recorder, ok := httpUpstream.(AstraGatewayHistoryRecorder); ok && settingService != nil {
+		if history, ok := settingService.settingRepo.(AstraGatewayHistoryRepository); ok {
+			recorder.SetAstraGatewayHistoryRecorder(func(row AstraGatewayHistoryRecord, passed bool) {
+				if row.Gateway == "" {
+					return
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				if err := history.RecordAstraGateway(ctx, row, passed); err != nil {
+					logger.L().Warn("astra gateway history persistence failed")
+				}
+			})
+		}
+	}
+	if openAIGatewayService != nil && cfg != nil {
+		stopScheduling := service.startAstraAccountScheduling()
+		openAIGatewayService.stopAstraSetup = func() {
+			stopScheduling()
+			service.StopAstraAutomaticSetup()
+		}
+	}
 	return service
 }
 
@@ -533,6 +564,10 @@ func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountReposi
 		logger.LegacyPrintf("service.concurrency", "Warning: startup cleanup stale process slots failed: %v", err)
 	}
 	if cfg != nil {
+		svc.SetAPIKeyQueuePolicy(APIKeyQueuePolicy{
+			MaxWaiting: cfg.Gateway.APIKeyQueue.MaxWaiting,
+			Timeout:    cfg.Gateway.APIKeyQueue.Timeout(),
+		})
 		svc.SetAccountLoadBatchCacheTTL(time.Duration(cfg.Gateway.Scheduling.LoadBatchCacheTTLMS) * time.Millisecond)
 		svc.StartSlotCleanupWorker(accountRepo, cfg.Gateway.Scheduling.SlotCleanupInterval)
 	}

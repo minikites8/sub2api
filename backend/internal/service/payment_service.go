@@ -97,6 +97,7 @@ type CreateOrderResponse struct {
 	FirstRechargeDiscountPercent  float64                         `json:"first_recharge_discount_percent,omitempty"`
 	SubscriptionDiscountPercent   float64                         `json:"subscription_discount_percent,omitempty"`
 	SubscriptionDiscountAmount    float64                         `json:"subscription_discount_amount,omitempty"`
+	BonusAmount                   float64                         `json:"bonus_amount"`
 	Status                        string                          `json:"status"`
 	ResultType                    payment.CreatePaymentResultType `json:"result_type,omitempty"`
 	PaymentType                   string                          `json:"payment_type"`

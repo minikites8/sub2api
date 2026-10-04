@@ -430,6 +430,9 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
 	accountExtra = MergeOpenAICodexTicketExtra(accountExtra, nil)
+	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
+		return nil, errors.New("typesafe accounts only support apikey credentials")
+	}
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -734,6 +737,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		} else if present {
 			input.ProxyPool = &extraPool
 		}
+	}
+	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
+		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
 	var normalizedExtra map[string]any
 	var normalizedProxyPool []AccountProxyBindingInput

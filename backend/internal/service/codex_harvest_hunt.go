@@ -43,7 +43,8 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 	for n := 0; ; n++ {
 		current, configured := s.harvestControls(ctx)
 		controls = current
-		maxAttempts := harvestMaxNodeAttempts(controls, false)
+		pool := !s.usesRemoteCodexMint(ctx) && s.openAICodexTicketHarvestIPPoolEnabled(ctx)
+		maxAttempts := harvestMaxNodeAttempts(controls, pool)
 		if n >= maxAttempts || round.AccountStopped(account.ID) || round.Used() >= min(round.limit, controls.Speed.MaxRequestsPerRound) || ctx.Err() != nil {
 			break
 		}
@@ -52,7 +53,16 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 			return
 		}
 		account = fresh
+		var poolExit harvestIPPoolExit
 		proxy := ""
+		if pool {
+			if poolExit, ok = s.pickHarvestIPPoolExitFor(ctx, account, model, tried); !ok {
+				break
+			}
+			proxy = poolExit.url
+		} else if proxy = s.openAICodexTicketHarvestProxyURLContext(ctx); proxy == "" && !s.usesRemoteCodexMint(ctx) {
+			return
+		}
 		token, _, err := s.GetAccessToken(ctx, account)
 		if err != nil || strings.TrimSpace(token) == "" {
 			last.Kind = "token_error"
@@ -67,21 +77,35 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 			return
 		}
 		account = fresh
-		maxAttempts = harvestMaxNodeAttempts(controls, false)
+		maxAttempts = harvestMaxNodeAttempts(controls, pool)
 		if n >= maxAttempts || round.AccountStopped(account.ID) || round.Used() >= min(round.limit, controls.Speed.MaxRequestsPerRound) {
 			break
 		}
 		nodeName := ""
 		var attempt codexHarvestAttempt
-		if attempt, ok = s.prepareHarvestAttempt(ctx, account, model, proxy, tried, controls); !ok {
-			break
+		if pool {
+			// Pool exits are plain proxies: no sidecar, no node learning, and
+			// the ticket binds the concrete URL so requests reuse this exit.
+			tried[proxy] = true
+			attempt = codexHarvestAttempt{proxy: proxy, release: func() {}}
+			nodeName = harvestIPPoolNodeName(poolExit)
+			recordCodexHarvestNode(nodeName, "", 0)
+			if s.codexHarvest != nil {
+				s.codexHarvest.setRuntime(func(r *CodexHarvestRuntime) { r.CurrentNode = nodeName })
+			}
+		} else {
+			if attempt, ok = s.prepareHarvestAttempt(ctx, account, model, proxy, tried, controls); !ok {
+				break
+			}
+			nodeName = attempt.node.Name
+			if attempt.node.ID != "" {
+				recordCodexHarvestNode(attempt.node.Name, "Selector", 0)
+			}
 		}
-		nodeName = attempt.node.Name
-
 		started := time.Now()
 		session := s.harvestAttemptSession(account, model, attempt)
 		result := s.executeCodexHarvestProbe(ctx, account, token, model, attempt.proxy, time.Duration(controls.Speed.AttemptTimeoutSeconds)*time.Second, func() bool {
-			return s.reserveHarvestRequest(ctx, account, model, round, false)
+			return s.reserveHarvestRequest(ctx, account, model, round, attempt.sidecar != nil)
 		}, session)
 		if result.Kind == "account_error" || result.Kind == "rate_limited" {
 			round.stopped.Store(account.ID, struct{}{})
@@ -109,7 +133,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 			logger.L().Info("openai_codex_ticket harvested", zap.Int64("account_id", account.ID), zap.String("model", model), zap.Int("attempts", attempts))
 			return
 		}
-		if result.Terminal || result.Kind == "account_error" || result.Kind == "rate_limited" {
+		if result.Terminal || result.Kind == "account_error" || result.Kind == "rate_limited" || (attempt.sidecar == nil && !pool) {
 			break
 		}
 		if s.codexHarvest != nil {

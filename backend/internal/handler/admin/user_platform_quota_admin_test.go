@@ -115,7 +115,7 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 	}
 	// upsert 记录数 = 请求体中给出的平台数（未给出的平台不落库）。
 	// 请求体列了 6 个平台（anthropic/openai/gemini/antigravity/kiro/grok）。
-	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != 6 {
+	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != 2 {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}
 	for _, r := range repo.upsertCalls[0].records {

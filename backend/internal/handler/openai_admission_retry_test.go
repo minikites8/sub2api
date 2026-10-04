@@ -57,11 +57,11 @@ func newInitialAdmissionHandler(t *testing.T, repo *initialAdmissionRepo, upstre
 	repo.slots = &helperConcurrencyCacheStub{accountSeq: []bool{true, true, true}}
 	concurrency := service.NewConcurrencyService(repo.slots)
 	gw := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg,
-		nil, concurrency, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+		nil, concurrency, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billing.Stop)
 	h := NewOpenAIGatewayHandler(gw, concurrency, billing,
-		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, cfg)
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, nil, cfg)
 	h.maxAccountSwitches = 2
 	return h
 }

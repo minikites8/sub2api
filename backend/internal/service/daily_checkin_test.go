@@ -305,7 +305,7 @@ func TestDailyCheckinUsesRechargeWindowAmount(t *testing.T) {
 			RechargeWindowDays: 7,
 			MinRechargeAmount:  1,
 		},
-	})
+	}, nil)
 
 	status, err := svc.GetStatus(context.Background(), 42)
 	require.NoError(t, err)

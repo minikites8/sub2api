@@ -34,6 +34,7 @@ type CodexHarvestBound struct {
 }
 
 type CodexHarvestControls struct {
+	MintMode          string            `json:"mint_mode,omitempty"`
 	EdgeIP            string            `json:"edge_ip"`
 	Transport         string            `json:"transport"`
 	TargetGateway     string            `json:"target_gateway"`
@@ -65,6 +66,7 @@ type CodexHarvestControlSnapshot struct {
 }
 
 type CodexHarvestService struct {
+	cloudMint   config.OpenAICodexCloudMintConfig
 	nodes       CodexHarvestNodeRepository
 	settings    SettingRepository
 	defaults    CodexHarvestControls
@@ -185,7 +187,7 @@ func normalizeCodexHarvestControls(v *CodexHarvestControls) {
 // takes precedence; the harvest control remains the fallback for local probes
 // and deployments that leave cloud mint routing unset.
 func effectiveCodex780Gateway(cfg config.OpenAICodexTicketConfig, controls CodexHarvestControls) string {
-	if cfg.CloudMint.Enabled {
+	if remoteCodexMintSelected(cfg, controls) {
 		if target := normalizeCodex780Gateway(cfg.CloudMint.Gateway); target != "" {
 			return target
 		}
@@ -268,7 +270,11 @@ func NewCodexHarvestService(nodes CodexHarvestNodeRepository, settings SettingRe
 		}
 	}
 	normalizeCodexHarvestControls(&v)
-	return &CodexHarvestService{nodes: nodes, settings: settings, defaults: v, current: v, wake: make(chan struct{}, 1)}
+	s := &CodexHarvestService{nodes: nodes, settings: settings, defaults: v, current: v, wake: make(chan struct{}, 1)}
+	if cfg != nil {
+		s.cloudMint = cfg.Gateway.OpenAICodexTicket.CloudMint
+	}
+	return s
 }
 
 func ProvideCodexHarvestService(nodes CodexHarvestNodeRepository, settings SettingRepository, cfg *config.Config, flows CodexHarvestFlowRepository) *CodexHarvestService {
@@ -278,6 +284,9 @@ func ProvideCodexHarvestService(nodes CodexHarvestNodeRepository, settings Setti
 
 func ValidateCodexHarvestControls(v CodexHarvestControls) error {
 	normalizeCodexHarvestControls(&v)
+	if v.MintMode != "" && v.MintMode != "remote" && v.MintMode != "local" {
+		return errors.New("mint_mode must be remote or local, or empty to follow configuration")
+	}
 	if err := validateCodexMintEdgeIP(v.EdgeIP); err != nil {
 		return err
 	}

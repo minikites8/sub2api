@@ -25,7 +25,7 @@ func (h *AccountHandler) GetCodexHarvestControls(c *gin.Context) {
 	if !h.harvestControlsReady(c) {
 		return
 	}
-	response.Success(c, h.codexHarvest.Snapshot(c.Request.Context(), ""))
+	response.Success(c, h.codexHarvest.SnapshotWithSettings(c.Request.Context(), h.cfg, h.codexTicketSettings))
 }
 
 func (h *AccountHandler) UpdateCodexHarvestControls(c *gin.Context) {

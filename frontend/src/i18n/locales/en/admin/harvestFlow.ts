@@ -1,5 +1,12 @@
 export default {
   harvestFlow: {
+    localProxyLabel: 'Local harvest proxy',
+    localProxyHint: 'Supports HTTP and SOCKS proxies and ippool://active. After saving, select Local mint in the harvest panel. Follow configuration retains the deployment default.',
+    mintModeLabel: 'Mint source',
+    mintModeConfigured: 'Follow deployment configuration',
+    mintModeRemote: 'Remote mint (Relay)',
+    mintModeLocal: 'Local mint',
+    mintSourceHint: 'Remote mint uses the configured Relay URL and key. Local mint uses the harvest proxy and binds tickets to its exit. Follow configuration keeps the deployment default.',
     transportLabel: 'Mint transport',
     edgeLabel: 'Edge IP (optional)',
     edgeHint: 'Dial this public IP while keeping chatgpt.com Host, TLS SNI and certificate verification. Leave empty for DNS. Edge IP and Cookie gateway are separate selections.',

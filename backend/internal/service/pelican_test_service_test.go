@@ -23,6 +23,9 @@ func TestPelicanPayloadsDoNotChangeDefaultAccountTestPayloads(t *testing.T) {
 	defaultContent, ok := defaultMessages[0]["content"].([]map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "hi", defaultContent[0]["text"])
+	require.Equal(t, 1024, defaultClaude["max_tokens"])
+	require.NotContains(t, defaultClaude, "output_config")
+	require.NotContains(t, defaultClaude, "thinking")
 
 	defaultOpenAI := createOpenAITestPayload("gpt-6-astra", true)
 	defaultInput, ok := defaultOpenAI["input"].([]map[string]any)
@@ -32,7 +35,7 @@ func TestPelicanPayloadsDoNotChangeDefaultAccountTestPayloads(t *testing.T) {
 	require.Equal(t, "hi", defaultOpenAIContent[0]["text"])
 	require.NotContains(t, defaultOpenAI, "reasoning")
 
-	pelicanClaude, err := createPelicanClaudePayload("claude-sonnet-4-6", "draw the pelican animation")
+	pelicanClaude, err := createPelicanClaudePayload("claude-sonnet-4-6", "draw the pelican animation", "")
 	require.NoError(t, err)
 	pelicanMessages, ok := pelicanClaude["messages"].([]map[string]any)
 	require.True(t, ok)
@@ -102,7 +105,7 @@ func TestPelicanOpenAIQuestionUsesHarvestedTicket(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(
 			"data: {\"type\":\"response.output_text.delta\",\"delta\":\"42\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"model\":\"gpt-6-astra\"}}\n\n"))}, nil
 	}}
-	svc := ProvideAccountTestService(&pelicanTicketAccountRepo{account: account}, nil, nil, nil, nil, nil, gateway.httpUpstream, gateway.cfg, nil, gateway)
+	svc := ProvideAccountTestService(&pelicanTicketAccountRepo{account: account}, nil, nil, nil, nil, nil, gateway.httpUpstream, gateway.cfg, nil, gateway, nil, nil)
 	require.NoError(t, svc.TestPelicanAccountConnection(c, account.ID, "quality-alias", "智商题测试", "high"))
 	require.Equal(t, 1, requests)
 	require.Contains(t, recorder.Body.String(), `"text":"42"`)
@@ -172,7 +175,7 @@ func TestPelicanOpenAIConnectivityKeepsItsDirectProbe(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\"}\n\n")),
 	}}
 	gateway := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TargetLength: 780, FailClosed: true, Models: []string{ticket.Model}}, upstream)
-	svc := ProvideAccountTestService(&pelicanTicketAccountRepo{account: account}, nil, nil, nil, nil, nil, upstream, gateway.cfg, nil, gateway)
+	svc := ProvideAccountTestService(&pelicanTicketAccountRepo{account: account}, nil, nil, nil, nil, nil, upstream, gateway.cfg, nil, gateway, nil, nil)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/4242/test", nil)
 	require.NoError(t, svc.TestAccountConnection(c, account.ID, ticket.Model, "", AccountTestModeDefault))

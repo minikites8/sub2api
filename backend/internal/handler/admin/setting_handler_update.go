@@ -24,10 +24,12 @@ import (
 
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
-	OpenAICodexTicketHarvestScope   *service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
-	OpenAICodexTicketStrictResponse *bool                            `json:"openai_codex_ticket_strict_response"`
-	OpenAICodexTicketFailClosed     *bool                            `json:"openai_codex_ticket_fail_closed"`
-	OpenAICodexTicketStrategy       *string                          `json:"openai_codex_ticket_strategy"`
+	OpenAICodexTicketUseSavedStaticProxy *bool                            `json:"openai_codex_ticket_use_saved_static_proxy"`
+	OpenAICodexTicketHarvestProxyURL     *string                          `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAICodexTicketHarvestScope        *service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
+	OpenAICodexTicketStrictResponse      *bool                            `json:"openai_codex_ticket_strict_response"`
+	OpenAICodexTicketFailClosed          *bool                            `json:"openai_codex_ticket_fail_closed"`
+	OpenAICodexTicketStrategy            *string                          `json:"openai_codex_ticket_strategy"`
 	// 注册设置
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
@@ -342,11 +344,15 @@ type UpdateSettingsRequest struct {
 	PaymentBalanceRechargeMultiplier *float64 `json:"payment_balance_recharge_multiplier"`
 	PaymentSubscriptionUSDToCNYRate  *float64 `json:"payment_subscription_usd_to_cny_rate"`
 	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
-	PaymentHelpText                  *string  `json:"payment_help_text"`
+	// nil 表示不更新；空数组表示清空阶梯
+	PaymentRechargeBonusTiers  *[]dto.RechargeBonusTier `json:"payment_recharge_bonus_tiers"`
+	PaymentRechargeBonusMode   *string                  `json:"payment_recharge_bonus_mode"`
+	PaymentRechargeBonusNotice *string                  `json:"payment_recharge_bonus_notice"`
+	PaymentLoadBalanceStrat    *string                  `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix   *string                  `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix   *string                  `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL        *string                  `json:"payment_help_image_url"`
+	PaymentHelpText            *string                  `json:"payment_help_text"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -394,9 +400,10 @@ type UpdateSettingsRequest struct {
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
 
 	// cyber 会话屏蔽开关 + TTL
-	CyberSessionBlockEnabled          *bool `json:"cyber_session_block_enabled"`
-	CyberSessionBlockTTLSeconds       *int  `json:"cyber_session_block_ttl_seconds"`
-	CyberSessionIdentityStrictEnabled *bool `json:"cyber_session_identity_strict_enabled"`
+	CyberSessionBlockEnabled          *bool   `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds       *int    `json:"cyber_session_block_ttl_seconds"`
+	CyberSessionIdentityStrictEnabled *bool   `json:"cyber_session_identity_strict_enabled"`
+	CyberPolicyUserAllowlist          *string `json:"cyber_policy_user_allowlist"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -525,6 +532,10 @@ func omittedSettingKeys(sentFields map[string]json.RawMessage) service.OmittedSe
 }
 
 func settingsAuditRequest(req UpdateSettingsRequest) UpdateSettingsRequest {
+	if req.OpenAICodexTicketHarvestProxyURL != nil {
+		masked := service.MaskProxyURL(*req.OpenAICodexTicketHarvestProxyURL)
+		req.OpenAICodexTicketHarvestProxyURL = &masked
+	}
 	req.TencentCaptchaAppSecretKey = strings.TrimSpace(req.TencentCaptchaAppSecretKey)
 	req.TencentCaptchaCloudSecretID = strings.TrimSpace(req.TencentCaptchaCloudSecretID)
 	req.TencentCaptchaCloudSecretKey = strings.TrimSpace(req.TencentCaptchaCloudSecretKey)
@@ -1634,6 +1645,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	if req.CyberPolicyUserAllowlist != nil {
+		if _, err := service.ParseCyberPolicyUserAllowlist(*req.CyberPolicyUserAllowlist); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+
 	// cyber 会话屏蔽 TTL 校验：提供时必须 > 0
 	if req.CyberSessionBlockTTLSeconds != nil && *req.CyberSessionBlockTTLSeconds <= 0 {
 		response.BadRequest(c, "cyber_session_block_ttl_seconds must be > 0")
@@ -2084,6 +2102,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return previousSettings.OpenAICodexTicketEnabled
 		}(),
 
+		OpenAICodexTicketStaticProxyURL: func() string {
+			if service.IsStaticCodexTicketHarvestProxyURL(previousSettings.OpenAICodexTicketHarvestProxyURL) {
+				return previousSettings.OpenAICodexTicketHarvestProxyURL
+			}
+			return previousSettings.OpenAICodexTicketStaticProxyURL
+		}(),
+		OpenAICodexTicketHarvestProxyURL: func() string {
+			if req.OpenAICodexTicketUseSavedStaticProxy != nil && *req.OpenAICodexTicketUseSavedStaticProxy && previousSettings.OpenAICodexTicketStaticProxyURL != "" {
+				return previousSettings.OpenAICodexTicketStaticProxyURL
+			}
+			if req.OpenAICodexTicketHarvestProxyURL != nil {
+				value := strings.TrimSpace(*req.OpenAICodexTicketHarvestProxyURL)
+				if value != "" && !service.IsMaskedProxyURL(value) && !service.IsMaskedCodexTicketProxyURL(value) {
+					return value
+				}
+			}
+			return previousSettings.OpenAICodexTicketHarvestProxyURL
+		}(),
 		OpenAICodexTicketStrictResponse: func() bool {
 			if req.OpenAICodexTicketStrictResponse != nil {
 				return *req.OpenAICodexTicketStrictResponse
@@ -2373,6 +2409,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RiskControlEnabled
 		}(),
+		CyberPolicyUserAllowlist: func() string {
+			if req.CyberPolicyUserAllowlist != nil {
+				return *req.CyberPolicyUserAllowlist
+			}
+			return previousSettings.CyberPolicyUserAllowlist
+		}(),
 		CyberSessionBlockEnabled: func() bool {
 			if req.CyberSessionBlockEnabled != nil {
 				return *req.CyberSessionBlockEnabled
@@ -2489,6 +2531,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			BalanceRechargeMultiplier:     req.PaymentBalanceRechargeMultiplier,
 			SubscriptionUSDToCNYRate:      req.PaymentSubscriptionUSDToCNYRate,
 			RechargeFeeRate:               req.PaymentRechargeFeeRate,
+			RechargeBonusTiers:            rechargeBonusTiersFromDTO(req.PaymentRechargeBonusTiers),
+			RechargeBonusMode:             req.PaymentRechargeBonusMode,
+			RechargeBonusNotice:           req.PaymentRechargeBonusNotice,
 			LoadBalanceStrategy:           req.PaymentLoadBalanceStrat,
 			ProductNamePrefix:             req.PaymentProductNamePrefix,
 			ProductNameSuffix:             req.PaymentProductNameSuffix,
@@ -2727,6 +2772,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
+		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
+		OpenAICodexTicketHarvestProxyConfigured:                updatedSettings.OpenAICodexTicketHarvestProxyURL != "",
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
 		OpenAICodexRelayKeyConfigured:                          updatedSettings.OpenAICodexRelayKeyConfigured,
 		OpenAICodexTicketHarvestScope:                          updatedSettings.OpenAICodexTicketHarvestScope,
@@ -2791,6 +2838,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentBalanceRechargeMultiplier:                       updatedPaymentCfg.BalanceRechargeMultiplier,
 		PaymentSubscriptionUSDToCNYRate:                        updatedPaymentCfg.SubscriptionUSDToCNYRate,
 		PaymentRechargeFeeRate:                                 updatedPaymentCfg.RechargeFeeRate,
+		PaymentRechargeBonusTiers:                              rechargeBonusTiersToDTO(updatedPaymentCfg.RechargeBonusTiers),
+		PaymentRechargeBonusMode:                               rechargeBonusModeToDTO(updatedPaymentCfg.RechargeBonusMode),
+		PaymentRechargeBonusNotice:                             updatedPaymentCfg.RechargeBonusNotice,
 		PaymentLoadBalanceStrat:                                updatedPaymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:                               updatedPaymentCfg.ProductNamePrefix,
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
@@ -2856,6 +2906,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ExcelBPSImageBodyLimitMiB: updatedSettings.ExcelBPSImageBodyLimitMiB,
 		ExcelBPSImageBudgetMiB:    updatedSettings.ExcelBPSImageBudgetMiB,
 		ExcelBPSImageMaxRequests:  updatedSettings.ExcelBPSImageMaxRequests,
+		CyberPolicyUserAllowlist:  updatedSettings.CyberPolicyUserAllowlist,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -2892,6 +2943,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
 		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentSubscriptionUSDToCNYRate != nil ||
 		req.PaymentRechargeFeeRate != nil ||
+		req.PaymentRechargeBonusTiers != nil || req.PaymentRechargeBonusMode != nil || req.PaymentRechargeBonusNotice != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||

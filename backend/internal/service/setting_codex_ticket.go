@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -139,6 +140,9 @@ func (s *SettingService) codexTicketRuntimeConfig(ctx context.Context, fallback 
 	}
 	// These two settings have dedicated caches and are invalidated immediately
 	// after an admin save, so read them here to avoid stale model inventories.
+	if proxy := s.GetOpenAICodexTicketHarvestProxyURL(ctx); proxy != "" {
+		fallback.HarvestProxyURL = proxy
+	}
 	fallback.Models = s.GetOpenAICodexTicketModels(ctx, fallback.Models)
 	fallback.FailClosed = s.GetOpenAICodexTicketFailClosed(ctx)
 	return normalizeCodexTicketConfig(fallback)
@@ -188,4 +192,20 @@ func ValidateOpenAICodexRelaySettings(rawURL, key, keyEnv, transport, gateway st
 		return infraerrors.BadRequest("INVALID_CODEX_RELAY_TIMEOUT", "relay timeout must be between 5 and 120 seconds")
 	}
 	return nil
+}
+
+// IsStaticCodexTicketHarvestProxyURL identifies a reusable externally configured exit.
+func IsStaticCodexTicketHarvestProxyURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == OpenAICodexTicketHarvestIPPoolURL || ValidateOpenAICodexTicketHarvestProxyURL(raw) != nil {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Hostname() == "localhost" {
+		return false
+	}
+	if ip := net.ParseIP(parsed.Hostname()); ip != nil && ip.IsLoopback() {
+		return false
+	}
+	return true
 }

@@ -792,6 +792,21 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	return nil
 }
 
+func affiliateRebateBaseAmount(o *dbent.PaymentOrder) float64 {
+	if o == nil {
+		return 0
+	}
+	switch o.OrderType {
+	case payment.OrderTypeBalance:
+		// 返利只按实充部分计算，赠送额度不参与
+		return paymentOrderAmountWithoutBonus(o)
+	case payment.OrderTypeSubscription:
+		return o.Amount
+	default:
+		return 0
+	}
+}
+
 func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, client *dbent.Client, orderID int64, baseAmount float64) (bool, error) {
 	if client == nil {
 		return false, errors.New("nil payment client")

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -936,4 +937,20 @@ func (s *profileAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]
 
 func int64Ptr(v int64) *int64 {
 	return &v
+}
+
+func (s *userHandlerEmailCacheStub) IncrVerificationCodeAttempts(context.Context, string) (int, error) {
+	if s.data == nil {
+		return 0, errors.New("verification code not found")
+	}
+	s.data.Attempts++
+	return s.data.Attempts, nil
+}
+
+func (s *userHandlerEmailCacheStub) IncrNotifyVerifyCodeAttempts(context.Context, string) (int, error) {
+	return 0, errors.New("notify verification code not found")
+}
+
+func (s *userHandlerEmailCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
+	return false, nil
 }

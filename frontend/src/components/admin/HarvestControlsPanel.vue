@@ -17,6 +17,13 @@
     <form v-else id="harvest-controls-form" class="space-y-4" @submit.prevent="save">
       <fieldset :disabled="saving" class="space-y-4">
         <div class="rounded-xl border border-gray-100 p-4 dark:border-dark-700">
+          <label class="mb-3 block text-sm">{{ t('admin.harvestFlow.mintModeLabel') }}
+            <select v-model="draft.mint_mode" data-testid="mint-mode" class="input mt-2 max-w-xs">
+              <option value="">{{ t('admin.harvestFlow.mintModeConfigured') }}</option>
+              <option value="remote">{{ t('admin.harvestFlow.mintModeRemote') }}</option>
+              <option value="local">{{ t('admin.harvestFlow.mintModeLocal') }}</option>
+            </select>
+          </label>
           <label class="mb-3 block text-sm">{{ t('admin.harvestFlow.edgeLabel') }}
             <input v-model="draft.edge_ip" data-testid="edge-ip" class="input mt-2 max-w-xs" placeholder="172.64.155.209" />
           </label>
@@ -28,7 +35,7 @@
             <input v-model="draft.target_gateway" data-testid="target-gateway" class="input mt-2 max-w-xs" placeholder="unified-88 / any" required />
           </label>
           <p class="mt-2 text-xs text-gray-500">{{ t('admin.harvestFlow.gatewayHint') }}</p>
-          <p class="mt-2 text-xs text-gray-500">{{ t('admin.harvestFlow.nativeHint') }}</p>
+          <p class="mt-2 text-xs text-gray-500">{{ t('admin.harvestFlow.mintSourceHint') }}</p>
         </div>
         <div class="grid gap-3 lg:grid-cols-2">
           <div class="space-y-3 rounded-2xl border border-gray-100 p-4 dark:border-dark-700">
@@ -116,7 +123,7 @@ const advanced = ref(false)
 const error = ref('')
 let requestId = 0
 let disposed = false
-const copy = (v: CodexHarvestControls): CodexHarvestControls => ({ ...v, edge_ip: v.edge_ip || '', target_gateway: v.target_gateway || 'unified-88', transport: v.transport || 'sse', speed: { ...v.speed } })
+const copy = (v: CodexHarvestControls): CodexHarvestControls => ({ ...v, mint_mode: v.mint_mode || '', edge_ip: v.edge_ip || '', target_gateway: v.target_gateway || 'unified-88', transport: v.transport || 'sse', speed: { ...v.speed } })
 const defaultSpeedFields: { key: keyof CodexHarvestSpeed; min: number; max: number; step: number }[] = [
   { key: 'round_interval_seconds', min: 1, max: 3600, step: 1 },
   { key: 'probe_interval_seconds', min: 0, max: 60, step: 1 },
@@ -130,7 +137,7 @@ const speedFields = computed(() => defaultSpeedFields.map(field => {
   const bound = remote.value?.bounds?.[field.key]
   return bound ? { ...field, min: bound.min, max: bound.max } : field
 }))
-const same = (a: CodexHarvestControls | null, b: CodexHarvestControls | null) => !!a && !!b && a.version === b.version && a.edge_ip === b.edge_ip && a.target_gateway === b.target_gateway && a.transport === b.transport && a.node_memory_enabled === b.node_memory_enabled && speedFields.value.every(f => a.speed[f.key] === b.speed[f.key])
+const same = (a: CodexHarvestControls | null, b: CodexHarvestControls | null) => !!a && !!b && a.version === b.version && a.mint_mode === b.mint_mode && a.edge_ip === b.edge_ip && a.target_gateway === b.target_gateway && a.transport === b.transport && a.node_memory_enabled === b.node_memory_enabled && speedFields.value.every(f => a.speed[f.key] === b.speed[f.key])
 const dirty = computed(() => !!draft.value && !same(draft.value, saved.value))
 const live = computed(() => props.runtime || remote.value?.runtime)
 const selectionLabel = computed(() => {

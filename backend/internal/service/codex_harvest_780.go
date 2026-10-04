@@ -2,12 +2,15 @@ package service
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -178,7 +181,10 @@ func (s *OpenAIGatewayService) requestCodex780Probe(ctx context.Context, account
 	if edge, ok := ctx.Value(codexMintEdgeContextKey{}).(string); ok {
 		controls.EdgeIP = edge
 	}
-	return s.requestCodexCloudMintProbe(ctx, account, token, model, proxy, reserve, session, controls)
+	if s.usesRemoteCodexMint(ctx) {
+		return s.requestCodexCloudMintProbe(ctx, account, token, model, proxy, reserve, session, controls)
+	}
+	return s.requestLocalCodex780Probe(ctx, account, token, model, proxy, reserve, session)
 }
 
 func codex780ResponseRoute(resp *http.Response, seed []string, target string, now time.Time) ([]string, error) {
@@ -220,4 +226,119 @@ func splitCodex780SSELine(data []byte, atEOF bool) (int, []byte, error) {
 		return len(data), data, nil
 	}
 	return 0, nil, nil
+}
+
+func (s *OpenAIGatewayService) requestLocalCodex780Probe(ctx context.Context, account *Account, token, model, proxy string, reserve func() bool, session string) (out codexHarvestProbeResult) {
+	controls, _ := s.harvestControls(ctx)
+	if edge, ok := ctx.Value(codexMintEdgeContextKey{}).(string); ok {
+		controls.EdgeIP = edge
+	}
+	if err := validateCodexMintEdgeIP(controls.EdgeIP); err != nil {
+		out.Err = err
+		return
+	}
+	target := effectiveCodex780GatewayForAccount(s.openAICodexTicketConfig(), controls, account)
+	out.Gateway = target
+	out.Transport = "sse"
+	out.EdgeIP = controls.EdgeIP
+	payload := []byte(`{"model":` + jsonString(model) + `,"instructions":"","stream":true,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"ping"}]}],"reasoning":{"effort":"low"},"tool_choice":"auto","parallel_tool_calls":false}`)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexURL, bytes.NewReader(payload))
+	if err != nil {
+		out.Err = errors.New("cannot construct mint request")
+		return
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAIHarvest))
+	req.Close = true
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("session-id", session)
+	req.Header.Set("User-Agent", "codex-tui/0.154.0 (Ubuntu 24.04; x86_64) OVH (codex-tui; 0.154.0)")
+	req.Header.Set("originator", "codex-tui")
+	if err = resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, req.Header, account); err != nil {
+		out.Err = errors.New("account identity unavailable")
+		return
+	}
+	// Keep a target route even when no acceptable ticket was returned. Models
+	// share routes only within the same account, credentials and protocol.
+	protocol := controls.Transport
+	if protocol == "" {
+		protocol = "sse"
+	}
+	key := codex780RouteKey(account, token, req.Header.Get("Chatgpt-Account-Id"), target, protocol)
+	seed, cached := s.codex780Routes.get(key, time.Now())
+	if !cached {
+		if ticket := s.lookupOpenAICodexTicket(account, model); ticket != nil && !ticket.Revoked {
+			seed, _, _ = codex780Route(ticket.HarvestCookies, target, time.Now())
+		}
+	}
+	if len(seed) > 0 {
+		req.Header.Set("Cookie", strings.Join(seed, "; "))
+	}
+	defer func() {
+		if slices.Contains(OpenAICodexTicketGatewayBlacklist(account), out.Gateway) {
+			out.Err = mintRouteError("route_gateway_blacklisted")
+		}
+		s.codex780Routes.update(key, target, seed, out, time.Now())
+	}()
+	if ctx.Err() != nil || (reserve != nil && !reserve()) {
+		out.Err = errors.New("mint request no longer admitted")
+		return
+	}
+	out.Sent = true
+	if controls.Transport == "websocket" {
+		return requestCodex780WS(req, proxy, controls.EdgeIP, payload, seed, target, model)
+	}
+	var resp *http.Response
+	if controls.EdgeIP != "" {
+		var client *http.Client
+		client, req, err = codexMintHTTPClient(req, proxy, controls.EdgeIP)
+		if err == nil {
+			defer client.CloseIdleConnections()
+			resp, err = client.Do(req)
+		}
+	} else {
+		resp, err = s.httpUpstream.Do(req, proxy, account.ID, account.Concurrency)
+	}
+	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		out.Err = mintTransportError(err)
+		return
+	}
+	if resp == nil {
+		out.Err = errors.New("mint response missing")
+		return
+	}
+	out.Status = resp.StatusCode
+	out.RetryAfter = codexHarvestRetryAfter(resp.Header.Get("Retry-After"), time.Now())
+	if resp.Body == nil {
+		out.Err = errors.New("mint response body missing")
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	out.State = extractOpenAICodexTurnState(resp.Header)
+	modelErr := readCodex780Created(resp.Body, model)
+	out.Cookies, err = codex780ResponseRoute(resp, seed, target, time.Now())
+	var eventErr *codexMintError
+	if errors.As(modelErr, &eventErr) && (eventErr.terminal || eventErr.kind == "rate_limited") {
+		out.Err = modelErr // Error-only responses need not issue a route pair.
+		return
+	}
+	if err != nil {
+		out.Err = err
+		return
+	}
+	out.Gateway = codex780CookieGateway(out.Cookies)
+	if slices.Contains(OpenAICodexTicketGatewayBlacklist(account), out.Gateway) {
+		out.Err = mintRouteError("route_gateway_blacklisted")
+		return
+	}
+	out.Err = modelErr
+	return
 }

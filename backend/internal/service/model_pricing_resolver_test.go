@@ -230,7 +230,7 @@ func newResolverWithPlatformChannel(t *testing.T, platform string, pricing []Cha
 			return map[int64]string{groupID: platform}, nil
 		},
 	}
-	cs := NewChannelService(repo, nil, nil, nil)
+	cs := NewChannelService(repo, nil, nil, nil, nil)
 	bs := NewBillingService(nil, nil)
 	return NewModelPricingResolver(cs, bs)
 }

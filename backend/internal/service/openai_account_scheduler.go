@@ -653,9 +653,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
 		}
 		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
-			Account:     account,
-			Acquired:    true,
-			ReleaseFunc: result.ReleaseFunc,
+			Account:          account,
+			Acquired:         true,
+			ReleaseFunc:      result.ReleaseFunc,
+			AccountRequestID: result.RequestID,
 		}), false, nil
 	}
 
@@ -1402,9 +1403,10 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, fresh.ID)
 		}
 		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
-			Account:     fresh,
-			Acquired:    true,
-			ReleaseFunc: result.ReleaseFunc,
+			Account:          fresh,
+			Acquired:         true,
+			ReleaseFunc:      result.ReleaseFunc,
+			AccountRequestID: result.RequestID,
 		}), compactBlocked, nil
 	}
 	return nil, compactBlocked, nil
@@ -1505,9 +1507,10 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 				_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, account.ID)
 			}
 			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
-				Account:     account,
-				Acquired:    true,
-				ReleaseFunc: result.ReleaseFunc,
+				Account:          account,
+				Acquired:         true,
+				ReleaseFunc:      result.ReleaseFunc,
+				AccountRequestID: result.RequestID,
 			}), nil
 		}
 		if s.service.concurrencyService != nil {
@@ -2018,6 +2021,11 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	ctx = withOpenAIProxyQuarantineTransport(ctx, req.RequiredTransport)
 	if account == nil {
 		return false, "account_nil"
+	}
+	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
+		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !explicitModelMappingClaims(*account, publicModel) {
+			return false, "account_model_not_owned"
+		}
 	}
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
 		return false, "privacy_not_set"
@@ -2781,6 +2789,11 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 		return false
 	}
 	if len(requestedModels) > 0 && account.IsExcelBPSEnabledForModel(requestedModels[0]) {
+		return false
+	}
+	// Prism runs one HTTP turn per request; the WS entry would only close the
+	// session after selection, so keep WS clients on the other accounts.
+	if len(requestedModels) > 0 && account.IsPrismBrowserEnabledForModel(requestedModels[0]) {
 		return false
 	}
 	if requiredTransport == OpenAIUpstreamTransportResponsesWebsocketV2Ingress {

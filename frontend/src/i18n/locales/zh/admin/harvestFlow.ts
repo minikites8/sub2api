@@ -1,5 +1,12 @@
 export default {
   harvestFlow: {
+    localProxyLabel: '本地采集代理',
+    localProxyHint: '支持 HTTP、SOCKS 代理和 ippool://active。保存后，在采集面板选择“本地打票”；跟随部署配置会沿用原默认方式。',
+    mintModeLabel: '采集方式',
+    mintModeConfigured: '跟随部署配置',
+    mintModeRemote: '远程打票（Relay）',
+    mintModeLocal: '本地打票',
+    mintSourceHint: '远程打票使用已配置的 Relay 地址和密钥。本地打票使用采集代理，并将票绑定到采集出口。跟随配置会沿用部署中的默认方式。',
     transportLabel: '采票协议',
     edgeLabel: '边缘 IP（可选）',
     edgeHint: '指定公网 IP 直拨，Host、TLS SNI 和证书校验仍使用 chatgpt.com；留空走 DNS。边缘 IP 与 Cookie 目标网关分别校验。',

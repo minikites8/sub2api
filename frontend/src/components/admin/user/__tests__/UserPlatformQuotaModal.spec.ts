@@ -75,7 +75,7 @@ beforeEach(() => {
 })
 
 describe('UserPlatformQuotaModal', () => {
-  it.each([0, 4, 14])('does not turn a negative limit in input %s into unlimited', async (index) => {
+  it.each([0, 4, 14, 17])('does not turn a negative limit in input %s into unlimited', async (index) => {
     const w = await mountAndOpen()
     await w.findAll('input[type=number]')[index].setValue('-1')
     await w.findAll('button').find(b => b.text() === 'admin.users.platformQuota.save')!.trigger('click')
@@ -101,7 +101,7 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.getPlatformQuotas).toHaveBeenCalledWith(99)
   })
 
-  it('renders all ten supported platforms with empty limits', async () => {
+  it('renders all eleven supported platforms with empty limits', async () => {
     const w = await mountAndOpen()
     const html = w.html()
     expect(html).toContain('anthropic')
@@ -132,7 +132,7 @@ describe('UserPlatformQuotaModal', () => {
         : item)
       expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
       expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledWith(99, expect.arrayContaining(expected))
-      expect(apiMocks.updatePlatformQuotas.mock.calls[0][1]).toHaveLength(10)
+      expect(apiMocks.updatePlatformQuotas.mock.calls[0][1]).toHaveLength(11)
       expect(w.emitted('success')).toHaveLength(1)
       w.unmount()
     },
@@ -147,13 +147,13 @@ describe('UserPlatformQuotaModal', () => {
     })
     const w = await mountAndOpen()
     const inputs = w.findAll('input[type=number]')
-    // 10 platforms × 3 windows = 30 inputs
-    expect(inputs.length).toBe(30)
+    // 11 platforms × 3 windows = 33 inputs
+    expect(inputs.length).toBe(33)
     // 第一个 input 是 anthropic.daily = 10
     expect((inputs[0].element as HTMLInputElement).value).toBe('10')
   })
 
-  it('保存提交完整 10 platform payload', async () => {
+  it('保存提交完整 11 platform payload', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
         { platform: 'openai', daily_limit_usd: null, weekly_limit_usd: 20, monthly_limit_usd: null,
@@ -170,7 +170,7 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
     const [uid, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
     expect(uid).toBe(99)
-    expect(payload).toHaveLength(10) // 10 platforms always submitted
+    expect(payload).toHaveLength(11) // 11 platforms always submitted
     const openai = payload.find((p: any) => p.platform === 'openai')
     expect(openai.weekly_limit_usd).toBe(20)
   })

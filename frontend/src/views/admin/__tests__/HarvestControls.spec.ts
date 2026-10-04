@@ -60,6 +60,15 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); wrapper = undefined })
 
 describe('Harvest controls draft and request ordering', () => {
+  it.each(['remote', 'local'] as const)('persists mint source %s through the controls API', async mode => {
+    api.save.mockImplementation(async settings => settings)
+    wrapper = mount(HarvestControlsPanel)
+    await flushPromises()
+    await wrapper.get(selector('mint-mode')).setValue(mode)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ mint_mode: mode }))
+  })
   it('defaults to unified-88 without overwriting a saved gateway', async () => {
     wrapper = mount(HarvestControlsPanel)
     await flushPromises()

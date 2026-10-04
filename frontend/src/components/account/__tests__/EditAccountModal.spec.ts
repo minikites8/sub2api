@@ -2,7 +2,7 @@ import { getAutoConfig } from '@/api/admin/autoConfig'
 import { defaultExcelBPSDefaults } from '@/utils/excelBPSDefaults'
 vi.mock('@/api/admin/autoConfig', () => ({ getAutoConfig: vi.fn() }))
 beforeEach(() => { vi.mocked(getAutoConfig).mockResolvedValue({ excel_bps: defaultExcelBPSDefaults() } as Awaited<ReturnType<typeof getAutoConfig>>) })
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
@@ -75,6 +75,7 @@ const BaseDialogStub = defineComponent({
 const ModelWhitelistSelectorStub = defineComponent({
   name: 'ModelWhitelistSelector',
   props: {
+    modelMappings: { type: Array, default: () => [] },
     modelValue: {
       type: Array,
       default: () => []
@@ -2550,5 +2551,121 @@ describe('Excel BPS default template integration', () => {
     expect(wrapper.get<HTMLInputElement>('[data-testid="excel-bps-ignore-encrypted-content"]').element.checked).toBe(true)
   })
 
+
+  it('loads and removes Copilot SDK mode without dropping unrelated extra', async () => {
+    const account = buildAccount()
+    account.extra = { openai_copilot_sdk: true, unrelated_setting: 'keep' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="copilot-sdk-toggle"]').element.checked).toBe(true)
+    await wrapper.get('[data-testid="copilot-sdk-toggle"]').setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_copilot_sdk).toBeUndefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.unrelated_setting).toBe('keep')
+  })
+  it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
+      { from: 'gpt-latest', to: 'deepseek-chat' }
+    ])
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual(account.credentials.model_mapping)
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true, account: { ...account } })
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
+      { from: 'gpt-latest', to: 'deepseek-chat' }
+    ])
+  })
+  it('sets expiry presets from now instead of extending the saved expiry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2028-02-29T12:34:00'))
+    const account = buildAccount()
+    account.expires_at = new Date('2030-06-15T09:00:00').getTime() / 1000
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
+
+    for (const [label, expected] of [
+      ['payment.oneMonth', '2028-03-29T12:34'],
+      ['payment.oneYear', '2029-02-28T12:34'],
+    ]) {
+      const button = wrapper.findAll('button').find((candidate) => candidate.text() === label)!
+      expect(button.attributes('type')).toBe('button')
+      await button.trigger('click')
+      expect(input.element.value).toBe(expected)
+      expect(updateAccountMock).not.toHaveBeenCalled()
+    }
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.expires_at).toBe(new Date('2029-02-28T12:34:00').getTime() / 1000)
+    wrapper.unmount()
+  })
+  it('can clear a selected expiry preset before saving the account', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const button = wrapper.findAll('button').find((candidate) => candidate.text() === 'payment.oneYear')!
+    await button.trigger('click')
+    const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
+    expect(input.element.value).not.toBe('')
+    await input.setValue('')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.expires_at).toBe(0)
+    wrapper.unmount()
+  })
+  it('allows removing assigned inactive groups and undoing the selection before saving', async () => {
+    authIsSimpleMode.value = false
+    const account = buildAccount()
+    const activeGroup = {
+      id: 1,
+      name: 'Active group',
+      platform: 'openai',
+      status: 'active',
+      subscription_type: 'standard',
+      rate_multiplier: 1
+    }
+    const inactiveGroup = { ...activeGroup, id: 2, name: 'Paused group', status: 'inactive' }
+    account.group_ids = [1, 2]
+    account.groups = [
+      { ...activeGroup, name: 'Outdated name' },
+      inactiveGroup,
+      inactiveGroup,
+      { ...inactiveGroup, id: 3, name: 'Unassigned paused group' }
+    ]
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account, true)
+    await wrapper.setProps({ groups: [activeGroup] as any })
+    const selector = wrapper.get('[data-tour="account-form-groups"]')
+    expect(selector.findAll('input[type="checkbox"]').map(input => input.attributes('value')))
+      .toEqual(['1', '2'])
+    expect(selector.text()).toContain('Active group')
+    expect(selector.text()).not.toContain('Outdated name')
+    const pausedCheckbox = selector.get<HTMLInputElement>('input[value="2"]')
+    expect(pausedCheckbox.element.checked).toBe(true)
+
+    await pausedCheckbox.setValue(false)
+    expect(selector.get<HTMLInputElement>('input[value="2"]').element.checked).toBe(false)
+    await pausedCheckbox.setValue(true)
+    expect(pausedCheckbox.element.checked).toBe(true)
+    await pausedCheckbox.setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.group_ids).toEqual([1])
+    expect(account.group_ids).toEqual([1, 2])
+  })
 
 })

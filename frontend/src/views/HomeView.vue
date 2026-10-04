@@ -26,6 +26,9 @@
           <span class="min-w-0 truncate text-base font-semibold">{{ siteName }}</span>
         </div>
         <div class="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
+          <router-link v-if="showModelPlaza" to="/model-plaza" class="rounded-lg px-3 py-2 text-sm font-medium">
+            {{ t('nav.modelPlaza') }}
+          </router-link>
           <LocaleSwitcher />
           <a
             v-if="docUrl"
@@ -89,6 +92,9 @@
         </router-link>
 
         <div class="flex items-center gap-1 sm:gap-2">
+          <router-link v-if="showModelPlaza" to="/model-plaza" class="md3-transit-link">
+            {{ t('nav.modelPlaza') }}
+          </router-link>
           <div class="md3-locale">
             <LocaleSwitcher />
           </div>
@@ -326,6 +332,8 @@ const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
+const showModelPlaza = computed(() => appStore.cachedPublicSettings?.model_plaza_enabled === true
+  && (appStore.cachedPublicSettings?.model_plaza_require_auth !== true || authStore.isAuthenticated))
 const publicTransitEnabled = computed(() =>
   appStore.cachedPublicSettings?.public_transit_enabled === true &&
   appStore.cachedPublicSettings?.public_transit_page_enabled === true
