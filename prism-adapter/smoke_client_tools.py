@@ -65,6 +65,8 @@ def main():
     upstream.daemon_threads = True
     upstream.lock = threading.Lock()
     upstream.asset_requests = 0
+    upstream.reconnect_first = False
+    upstream.reconnected = set()
     upstream.jobs,upstream.release,upstream.mismatches,upstream.target = {},None,0,1
     threading.Thread(target=upstream.serve_forever,daemon=True).start()
     api.BASE = f'http://127.0.0.1:{upstream.server_port}'
