@@ -434,7 +434,8 @@ class ProjectRuntimeTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(adapter.AdapterError):
                 await engine.run('300','fixture','prompt','one')
             expiry=engine.runtime_cooldowns['300']
-            with self.assertRaises(adapter.AdapterError) as error:
+            clock=SimpleNamespace(monotonic=lambda: expiry - 30)
+            with mock.patch.object(multiplex_browser, 'time', clock), self.assertRaises(adapter.AdapterError) as error:
                 await engine.run('300','fixture','prompt','two')
             self.assertEqual(error.exception.code,'project_runtime_rate_limited')
             engine.account.assert_awaited_once()

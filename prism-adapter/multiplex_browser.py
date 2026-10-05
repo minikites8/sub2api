@@ -746,7 +746,8 @@ class MultiplexBrowser:
                 journal.finish()
                 return request_id, result
             except BaseException as error:
-                if getattr(error, 'code', None) == 'project_runtime_rate_limited':
+                if (getattr(error, 'code', None) == 'project_runtime_rate_limited'
+                        and time.monotonic() >= self.runtime_cooldowns.get(account_id, 0)):
                     self.runtime_cooldowns[account_id] = time.monotonic() + 60
                 if delivered:
                     if getattr(error, 'not_submitted', True):
