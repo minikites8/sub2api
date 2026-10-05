@@ -30,13 +30,14 @@ PAGE = PICKER + '''<script src="/fixture-app.js"></script><button onclick="docum
 <button role="menuitem" hidden onclick="location.href='/?u='+crypto.randomUUID()">Blank project</button>
 <button onclick="window.chat=[]">New chat tab</button>
 <textarea placeholder="Ask anything"></textarea><script>
-window.chat=[];
+window.chat=[]; window.fixtureConversation='cdx1_'+crypto.randomUUID();
 document.querySelector('textarea').addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter') return;
   e.preventDefault(); window.chat.push(e.target.value);
   let result; do { result = await fetch('/api/llm/response_with_tools_start', {
     method:'POST', body:JSON.stringify({metadata:{model:currentModel,reasoning_effort:currentEffort,
-    projectId:new URL(location.href).searchParams.get('u')},input:window.chat})
+    projectId:new URL(location.href).searchParams.get('u')},input:window.chat,
+    conversationId:window.fixtureConversation})
   }).then(r=>r.json());
   if (result.response?.payload?.reason === 'sandbox_reconnecting') await new Promise(r=>setTimeout(r,20));
   } while (result.response?.payload?.reason === 'sandbox_reconnecting');
@@ -78,8 +79,11 @@ class Fixture(BaseHTTPRequestHandler):
                 self.reply(200, json.dumps({'uuid':body['project_uuid']}))
                 return
             if self.path == api.START:
+                content = body['input'][-1]
+                if isinstance(content, dict):
+                    content = content['content'][0]['text']
                 budget = getattr(self.server, 'max_prompt_bytes', None)
-                if budget and len(body['input'][-1].encode('utf-8')) > budget:
+                if budget and len(content.encode('utf-8')) > budget:
                     self.server.oversized_starts += 1
                     self.reply(200, json.dumps({'request_id': uuid.uuid4().hex, 'status': 'completed',
                         'response': {'status': 'error', 'payload': {'reason': 'unknown', 'httpStatus': 400,
@@ -95,7 +99,20 @@ class Fixture(BaseHTTPRequestHandler):
                     self.reply(409, '{"error":"duplicate input"}')
                     return
                 rid = uuid.uuid4().hex
-                self.server.jobs[rid] = {'input':body['input'][0], 'project':body['metadata']['projectId'],
+                previous = body.get('previousResponseId')
+                cursor = 1
+                if previous:
+                    prior = self.server.jobs.get(previous.removeprefix('response_'))
+                    snapshot = json.loads(body['metadata'].get('codex_listen_snapshot', '{}'))
+                    if (prior is None or prior['cid'] != body.get('conversationId')
+                            or snapshot.get('conversation_id') != prior['cid']
+                            or snapshot.get('transcript_cursor') != prior['cursor']):
+                        self.server.mismatches += 1
+                        self.reply(409, '{"error":"invalid conversation continuation"}')
+                        return
+                    cursor = prior['cursor'] + 1
+                self.server.jobs[rid] = {'input':content, 'project':body['metadata']['projectId'],
+                    'cid':body.get('conversationId'), 'cursor':cursor, 'previous':previous,
                     'state':uuid.uuid4().hex, 'polls':0, 'model':body['metadata']['model'],
                     'effort':body['metadata']['reasoning_effort']}
                 # Keep model jobs open until the whole burst has started. A
@@ -119,7 +136,11 @@ class Fixture(BaseHTTPRequestHandler):
                 job['polls'] += 1
                 result = {'request_id':rid, 'turn_state':job['state'], 'status':'running'}
                 if self.server.release and time.monotonic() >= self.server.release:
-                    result.update(status='completed', response={'status':'success','payload':{'output':[
+                    result.update(status='completed', codex_listen_snapshot={
+                        'conversation_id':job['cid'], 'project_id':job['project'],
+                        'codex_session_id':'fixture-session-' + job['cid'], 'transcript_cursor':job['cursor']},
+                        response={'status':'success','payload':{'id':'response_' + rid,
+                        'conversationId':job['cid'], 'output':[
                         {'type':'message','content':[{'text':job['input']}]}]}})
             else:
                 self.reply(404, '{}')

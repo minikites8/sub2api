@@ -70,8 +70,9 @@ def has_tools(payload):
 
 
 class ToolBridge:
-    def __init__(self, payload, api):
+    def __init__(self, payload, api, *, relay=False):
         self.api, self.error = api, api.AdapterError
+        self.relay = relay
         self.marker = 'PRISM_CLIENT_TOOLS_V1:' + uuid.uuid4().hex
         self.lease = uuid.uuid4().hex
         self.tools, self.calls, self.results = {}, {}, {}
@@ -114,7 +115,8 @@ class ToolBridge:
         base.update(input=translated, tools=[], additional_tools=[], tool_choice='none')
         # The ordinary parser still owns model/options/message validation.
         self.history_payload = base
-        self.history_prompt, self.stream = api.parse_prompt(base, max_bytes=MAX_TOOL_PAYLOAD_BYTES)
+        self.history_prompt, self.stream = api.parse_prompt(base,
+            max_bytes=2 * MAX_TOOL_PAYLOAD_BYTES if relay else MAX_TOOL_PAYLOAD_BYTES)
         self.history_bytes_before = len(self.history_prompt.encode('utf-8'))
         catalog = [tool['catalog'] for tool in self.tools.values()]
         self.policy = (
@@ -144,8 +146,25 @@ class ToolBridge:
         self.inspections = 0
         self.catalog_mode = 'inline'
         self.prompt = self.build_prompt(encoded(catalog))
-        if len(self.prompt.encode('utf-8')) > MAX_TOOL_PAYLOAD_BYTES:
+        if not self.relay and len(self.prompt.encode('utf-8')) > MAX_TOOL_PAYLOAD_BYTES:
             self.reject('tool_request_too_large', 'Tool catalog and history exceed the Prism bridge limit of 1 MiB UTF-8')
+        if self.relay:
+            # Transport splits preserve the current user and tool outputs.
+            # Choose a catalog representation by its own size, independently
+            # of accumulated history that can be continued or sent in parts.
+            if len(self.build_prompt(encoded(catalog), history='').encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
+                return
+            packed_catalog = ('Shared catalog: shared_description/shared_parameters/shared_format '
+                'references use the exact value in shared; expand these fields before reading the declaration.\n'
+                + shared_catalog(catalog))
+            if len(self.build_prompt(packed_catalog, history='').encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
+                self.prompt, self.catalog_mode = self.build_prompt(packed_catalog), 'shared'
+            else:
+                self.catalog_mode = 'indexed'
+                if self.target:
+                    self.loaded.add(self.target['catalog']['name'])
+                self.prompt = self.indexed_prompt(status=422)
+            return
         if len(self.prompt.encode('utf-8')) > CATALOG_COMPACTION_BYTES:
             # A small catalog needs no inspection to recover a long tool turn.
             if len(encoded(catalog).encode('utf-8')) <= 8192:
@@ -164,6 +183,7 @@ class ToolBridge:
                 self.prompt = self.indexed_prompt(status=422)
 
     def build_prompt(self, catalog, history=None):
+        self.prompt_catalog = catalog
         return self.policy + catalog + '\n\nBEGIN_CLIENT_HISTORY\n' + (self.history_prompt if history is None else history) + '\nEND_CLIENT_HISTORY\n' + (
             'Respond using ' + self.marker + ' and the JSON protocol above. Do not execute any remote sandbox tool.')
 
@@ -188,9 +208,17 @@ class ToolBridge:
                 'Inspections are internal catalog lookups; only kind=calls emits client operations. '
                 'Use full_declarations for authoritative descriptions, parameters and custom grammar.\n'
                 + encoded({'index': tool_index(self.catalog, preview), 'full_declarations': definitions}))
+            if self.relay:
+                if len(self.build_prompt(catalog, history='').encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
+                    return self.build_prompt(catalog)
+                continue
             minimal = self.build_prompt(catalog)
             if len(minimal.encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
                 return minimal
+        if self.relay:
+            # Full declarations are validated against the request budget;
+            # transport splits also carry an unusually large selected schema.
+            return self.build_prompt(catalog)
         minimal = self.fit_history(catalog)
         if len(minimal.encode('utf-8')) > CATALOG_COMPACTION_BYTES:
             minimal = self.fit_history(catalog, MAX_PRISM_PROMPT_BYTES)

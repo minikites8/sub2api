@@ -1,7 +1,7 @@
 """Loopback-only Prism browser adapter for OpenAI OAuth accounts.
 
-Prism's web UI owns session, sandbox, and start/status requests. This adapter
-observes their terminal result and never fabricates token deltas or usage.
+Prism's web UI initializes sessions, sandboxes and first starts. Confirmed
+conversation continuations use the official browser fetch and listen snapshot.
 """
 
 import hmac
@@ -29,6 +29,7 @@ from response_events import completed_events
 from reasoning_options import resolve_reasoning
 from error_redaction import redact_error
 from catalog_prompt import MAX_PRISM_PROMPT_BYTES
+from relay_prompt import RelayPrompt
 
 
 BASE = "https://prism.openai.com"
@@ -749,6 +750,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise AdapterError(413, "request_too_large", "request body is empty or too large")
             payload = strict_json(self.rfile.read(length))
             bridge = None
+            relay = bool(getattr(self.browser_turn, 'supports_relay', False))
+            relay_prompt = None
             scope = None
             request_digest = None
             if has_tools(payload):
@@ -758,7 +761,7 @@ class Handler(BaseHTTPRequestHandler):
                 if len(callers) != 1 or not SESSION_ID.fullmatch(callers[0]):
                     raise AdapterError(400, 'invalid_caller', 'Tool requests require a gateway-derived caller identity')
                 scope = digest([account_id, callers[0], session_id])
-                bridge = ToolBridge(payload, SimpleNamespace(AdapterError=AdapterError, parse_prompt=parse_prompt))
+                bridge = ToolBridge(payload, SimpleNamespace(AdapterError=AdapterError, parse_prompt=parse_prompt), relay=relay)
                 if bridge.results:
                     # Transport encoding changes leave the generation intact.
                     # All semantic request fields participate in the identity.
@@ -779,7 +782,7 @@ class Handler(BaseHTTPRequestHandler):
                         'history_bytes_after': len(bridge.history_prompt.encode('utf-8'))}),
                         file=sys.stderr, flush=True)
             else:
-                prompt, stream = parse_prompt(payload)
+                prompt, stream = parse_prompt(payload, max_bytes=MAX_REQUEST_BYTES if relay else MAX_PRISM_PROMPT_BYTES)
             model = payload["model"]
             requested_effort, effort = resolve_reasoning(payload, AdapterError)
             if self.serialize_requests and not self.lock.acquire(blocking=False):
@@ -800,13 +803,17 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     deadline = time.monotonic() + getattr(self.browser_turn, 'request_timeout', 285)
                     while True:
+                        if relay:
+                            relay_prompt = RelayPrompt(prompt, payload,
+                                SimpleNamespace(AdapterError=AdapterError, parse_prompt=parse_prompt), bridge)
+                            prompt = relay_prompt
                         args = (account_id, token, prompt, session_id, model, effort)
-                        if bridge is not None:
+                        if bridge is not None and not relay:
                             # Client results already contain expanded history.
                             # Each inspection is a fresh, known completed turn.
                             args += (False,)
                         run_until = getattr(self.browser_turn, 'run_until', None)
-                        request_id, answer = (run_until(deadline, *args) if bridge is not None and run_until
+                        request_id, answer = (run_until(deadline, *args) if (bridge is not None or relay) and run_until
                                               else self.browser_turn.run(*args))
                         if bridge is None:
                             break
@@ -842,6 +849,9 @@ class Handler(BaseHTTPRequestHandler):
             if requested_effort is not None and requested_effort != effort:
                 response['metadata'] = {'prism_requested_reasoning_effort': requested_effort,
                                         'prism_reasoning_effort': effort}
+            if relay_prompt is not None:
+                response.setdefault('metadata', {}).update(prism_relay_mode=relay_prompt.mode,
+                    prism_relay_parts=relay_prompt.parts, prism_relay_transport_bytes=relay_prompt.sent_bytes)
             if bridge is not None:
                 if bridge.compacted_results or bridge.compacted_history:
                     response.setdefault('metadata', {}).update(
@@ -864,6 +874,8 @@ class Handler(BaseHTTPRequestHandler):
                     response.setdefault('metadata', {})['prism_unavailable_tools'] = ','.join(sorted(bridge.unavailable))
                 self.tool_state.complete(scope, bridge.lease, response['id'], calls,
                                          request_digest=request_digest, response=response)
+            if relay_prompt is not None:
+                relay_prompt.commit(response['output'])
             self.send_completion(response, stream, tool_response=bridge is not None)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
@@ -915,27 +927,26 @@ def main():
     if not 1 <= max_sessions <= 2 or not 30 <= idle_seconds <= 900:
         raise SystemExit("session cache limits are out of range")
     mode = os.environ.get("PRISM_ADAPTER_MODE", "browser")
-    if mode == "browser":
-        Handler.serialize_requests = True
-        Handler.browser_turn = BrowserWorker(lambda: BrowserTurn(Handler.state, chrome, max_sessions, idle_seconds))
-    elif mode == "multiplex":
-        from multiplex_browser import MultiplexBrowser
-        from multiplex_runtime import AsyncBrowserWorker, Admission
-        active = int(os.environ.get("PRISM_ADAPTER_MAX_INFLIGHT", "20"))
-        per_account = int(os.environ.get("PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT", str(active)))
-        queued = int(os.environ.get("PRISM_ADAPTER_MAX_QUEUED", "30"))
-        bootstrap = int(os.environ.get("PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY", "1"))
-        if not 1 <= bootstrap <= 2:
-            raise SystemExit("PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY must be 1 or 2")
-        # Validate before starting the worker so invalid settings fail startup.
-        api = sys.modules[__name__]
-        Admission(api, active, per_account, queued)
-        Handler.serialize_requests = False
-        Handler.browser_turn = AsyncBrowserWorker(lambda: MultiplexBrowser(
-            Handler.state, chrome, api, active=active, per_account=per_account,
-            queued=queued, bootstrap=bootstrap, idle_seconds=idle_seconds), api)
-    else:
+    if mode not in ("browser", "multiplex"):
         raise SystemExit("PRISM_ADAPTER_MODE must be browser or multiplex")
+    from multiplex_browser import MultiplexBrowser
+    from multiplex_runtime import AsyncBrowserWorker, Admission
+    from relay_prompt import relay_settings
+    # Browser mode preserves single-request admission while using the same
+    # conversation and transport implementation as the multiplex mode.
+    active = 1 if mode == "browser" else int(os.environ.get("PRISM_ADAPTER_MAX_INFLIGHT", "20"))
+    per_account = 1 if mode == "browser" else int(os.environ.get("PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT", str(active)))
+    queued = 0 if mode == "browser" else int(os.environ.get("PRISM_ADAPTER_MAX_QUEUED", "30"))
+    bootstrap = 1 if mode == "browser" else int(os.environ.get("PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY", "1"))
+    if not 1 <= bootstrap <= 2:
+        raise SystemExit("PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY must be 1 or 2")
+    api = sys.modules[__name__]
+    Admission(api, active, per_account, queued)
+    relay_settings()
+    Handler.serialize_requests = mode == "browser"
+    Handler.browser_turn = AsyncBrowserWorker(lambda: MultiplexBrowser(
+        Handler.state, chrome, api, active=active, per_account=per_account,
+        queued=queued, bootstrap=bootstrap, accounts=max_sessions, idle_seconds=idle_seconds), api, mode=mode)
     port = int(os.environ.get("PRISM_ADAPTER_PORT", "8319"))
     if not 1024 <= port <= 65535:
         raise SystemExit("PRISM_ADAPTER_PORT must be 1024..65535")

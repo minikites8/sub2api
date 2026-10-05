@@ -1,9 +1,8 @@
-"""UI-authored starts with bounded pages, then multiplexed browser polls.
+"""UI-authored first starts and confirmed conversation continuations.
 
-No model start is synthesized or replayed: the official editor submits it once.
-The first status body is captured before dispatch; subsequent polls use the
-account's stationary page and its normal fetch implementation. Unknown outcomes
-remain in the per-conversation journal.
+Bounded preparation pages capture the official metadata and first poll body.
+Continuations use the server's response ID and latest listen snapshot through
+the account's stationary browser fetch. Unknown outcomes remain journaled.
 """
 import asyncio
 import hashlib
@@ -23,6 +22,8 @@ from playwright.async_api import async_playwright
 from multiplex_runtime import Admission, TurnJournal
 from browser_gate import BrowserGate
 from model_selection import select_options_async
+from relay_prompt import (RelayPrompt, continuation_context, record_matches, relay_settings,
+                          split_prompt, part_prompt, transport_bytes)
 
 
 RUNTIME_RATE_LIMIT = re.compile(
@@ -120,6 +121,9 @@ class AccountBrowser:
         self.created = self.used
         self.projects = OrderedDict()
         self.expected = {}
+        self.conversations = OrderedDict()
+        self.expected_start = None
+        self.start_lock = asyncio.Lock()
 
     async def open(self, browser, token):
         self.context = await browser.new_context(user_agent=self.api.USER_AGENT, service_workers='block')
@@ -146,6 +150,17 @@ class AccountBrowser:
     async def route(self, route):
         try:
             request = route.request
+            if request.url == self.api.BASE + self.api.START and request.method == 'POST':
+                grant = self.expected_start
+                body = request.post_data_json
+                if grant is not None and not grant['sent'] and fingerprint(body) == grant['fingerprint']:
+                    # The complete body was built from a confirmed UI start
+                    # and the server's latest conversation listen snapshot.
+                    grant['sent'] = True
+                    grant['start'].sent = True
+                    grant['start'].journal.update(stage='submitting_continuation')
+                    await route.continue_()
+                    return
             if request.url == self.api.BASE + self.api.STATUS and request.method == 'POST':
                 body = request.post_data_json
                 grant = self.expected.get(fingerprint(body))
@@ -199,10 +214,32 @@ class AccountBrowser:
             raise self.api.AdapterError(502, 'project_creation_failed', 'Prism did not confirm the new project; model request was not submitted')
         return project
 
+    async def continue_turn(self, start, body):
+        async with self.start_lock:
+            return await self._continue_turn(start, body)
+
+    async def _continue_turn(self, start, body):
+        if self.expected_start is not None:
+            raise self.api.AdapterError(502, 'unexpected_start', 'Prism continuation carrier is busy')
+        grant = {'fingerprint': fingerprint(body), 'sent': False, 'start': start}
+        self.expected_start = grant
+        try:
+            result = await self.page.evaluate(POLL_JS, {'origin': self.api.BASE, 'path': self.api.START, 'body': body})
+            if not grant['sent'] or not isinstance(result, dict) or result.get('status') != 200:
+                raise self.api.AdapterError(502, 'invalid_start', 'Prism continuation start outcome requires inspection')
+            data = result.get('data')
+            if (not isinstance(data, dict) or not isinstance(data.get('request_id'), str)
+                    or not data['request_id'] or len(data['request_id']) > 1024):
+                raise self.api.AdapterError(502, 'invalid_start', 'Prism continuation returned an invalid identity')
+            return data
+        finally:
+            self.expected_start = None
+
     async def close(self):
         context, self.context = self.context, None
         self.page = None
         self.projects.clear()
+        self.conversations.clear()
         if context is not None:
             await context.close()
 
@@ -348,6 +385,41 @@ class BrowserStart:
             await page.close(run_before_unload=False)
 
 
+class BrowserContinuation:
+    """Continue a server-confirmed UI conversation through its browser fetch."""
+    def __init__(self, engine, actor, journal, context, model, effort):
+        self.engine, self.actor, self.journal, self.api = engine, actor, journal, engine.api
+        self.context = context
+        self.model, self.effort = model, effort
+        self.project = context['metadata']['projectId']
+        self.sent = self.violation = False
+        self.request_id = ''
+        self.start_attempts = 1
+        self.cache_hit = True
+        self.phase = 'submitting_continuation'
+        self.template = None
+
+    async def run(self, prompt):
+        metadata = dict(self.context['metadata'], model=self.model, reasoning_effort=self.effort)
+        snapshot = dict(self.context['snapshot'])
+        # The credential-bound actor is short lived; keep the current sandbox
+        # token observed in the official start alongside the latest cursor.
+        snapshot['sandbox_token'] = metadata.get('sandbox_token', snapshot.get('sandbox_token'))
+        metadata['codex_listen_snapshot'] = json.dumps(snapshot, ensure_ascii=False)
+        self.template = {'metadata': metadata, 'conversationId': self.context['conversation_id'],
+                         'previousResponseId': self.context['response_id'],
+                         'input': [{'type': 'message', 'role': 'user',
+                                    'content': [{'type': 'input_text', 'text': prompt}]}]}
+        data = await self.actor.continue_turn(self, self.template)
+        self.request_id = data['request_id']
+        self.journal.update(stage='polling', request_id=self.request_id, turn_state=data.get('turn_state'))
+        body = {'request_id': self.request_id, 'turn_state': data.get('turn_state')}
+        return data, body
+
+    async def close(self):
+        pass
+
+
 class MultiplexBrowser:
     def __init__(self, state, chrome, api, active=20, per_account=20, queued=30,
                  wait_seconds=15, bootstrap=1, accounts=1, idle_seconds=300, poll_seconds=2):
@@ -470,115 +542,235 @@ class MultiplexBrowser:
                              http_status=status, delay_seconds=delay)
                 await asyncio.sleep(delay)
 
+    async def execute_turn(self, actor, journal, prompt, session_id, model, effort, reuse_project, context=None, secrets=()):
+        start = (BrowserContinuation(self, actor, journal, context, model, effort) if context else
+                 BrowserStart(self, actor, journal, session_id if reuse_project else None, model, effort))
+        try:
+            async with self.bootstrap:
+                if time.monotonic() < self.runtime_cooldowns.get(journal.account_id, 0):
+                    raise self.api.AdapterError(429, 'project_runtime_rate_limited',
+                        'Prism runtime startup is cooling down; model request was not submitted')
+                await self.wait_for_memory(actor, journal)
+                self.preparing += 1
+                self.observe('prism_prepare_start', journal, model=model, effort=effort,
+                             prompt_bytes=len(prompt.encode('utf-8')), continuation=context is not None)
+                try:
+                    try:
+                        data, body = await start.run(prompt)
+                    except self.api.AdapterError:
+                        raise
+                    except Exception:
+                        disposition = 'inspect pending state' if start.sent else 'model request was not submitted'
+                        raise self.api.AdapterError(502, 'preparation_failed',
+                            'Prism preparation failed at ' + start.phase + '; ' + disposition) from None
+                finally:
+                    try:
+                        await start.close()
+                        await self.collect_closed_pages(actor)
+                    finally:
+                        self.preparing -= 1
+                        self.observe('prism_prepare_end', journal, submitted=start.sent)
+                if start.violation:
+                    raise self.api.AdapterError(502, 'unexpected_start', 'Prism attempted an unexpected model start')
+            snapshot = None
+            def remember_snapshot(data):
+                nonlocal snapshot
+                payload = (data.get('response') or {}).get('payload') or {}
+                for source in (data, payload):
+                    if isinstance(source, dict):
+                        candidate = source.get('codex_listen_snapshot') or source.get('codexListenSnapshot')
+                        if isinstance(candidate, dict):
+                            snapshot = candidate
+            remember_snapshot(data)
+            needs_poll = self.api.terminal_text(data) is None
+            if needs_poll:
+                start.phase = 'polling'
+                self.polling += 1
+                self.observe('prism_poll_start', journal, model=model, effort=effort)
+            try:
+                polls = 0
+                while self.api.terminal_text(data) is None:
+                    if isinstance(data.get('turn_state'), (str, dict)) and data['turn_state']:
+                        body['turn_state'] = data['turn_state']
+                    data = await self.poll_turn(actor, body, journal)
+                    polls += 1
+                    if data.get('request_id') not in (None, '', start.request_id):
+                        raise self.api.AdapterError(502, 'foreign_response', 'Prism returned a different request identity')
+                    remember_snapshot(data)
+                    journal.update(stage='polling', request_id=start.request_id, turn_state=data.get('turn_state', body.get('turn_state')))
+                    if self.api.terminal_text(data) is None:
+                        jitter = int(journal.local_id[:2], 16) / 255 * 0.25
+                        await asyncio.sleep(self.poll_seconds + jitter)
+            finally:
+                if needs_poll:
+                    self.polling -= 1
+                    self.observe('prism_poll_end', journal)
+            result = self.api.terminal_text(data)
+            self.state.receipt(journal.account_id, start.request_id, getattr(start, 'start_attempts', 1), polls,
+                               result, start.cache_hit, model=model, effort=effort)
+            if isinstance(result, self.api.AdapterError):
+                result.terminal_request_id = start.request_id
+                if result.code in ('prism_input_too_large', 'conversation_too_large'):
+                    payload = (data.get('response') or {}).get('payload') or {}
+                    result.input_rejected_before_processing = not needs_poll and not payload.get('output')
+                response = data.get('response') if isinstance(data.get('response'), dict) else {}
+                self.observe('prism_upstream_terminal_failure', journal,
+                    response_failed=response.get('status') in ('failed', 'error'),
+                    turn_failed=data.get('status') in ('failed', 'error'), from_start=polls == 0,
+                    reason=self.api.terminal_failure_reason(data), **self.api.terminal_failure_diagnostics(data),
+                    **self.api.terminal_failure_log_fields(data, secrets=(prompt, *secrets)))
+                raise result
+            if session_id and reuse_project:
+                actor.projects[session_id] = (start.project, time.monotonic())
+                actor.projects.move_to_end(session_id)
+                while len(actor.projects) > 128:
+                    actor.projects.popitem(last=False)
+            self.observe('prism_turn_complete', journal, model=model, effort=effort, polls=polls)
+            return start.request_id, result, continuation_context(start, data, snapshot)
+        except BaseException as error:
+            self.observe('prism_turn_error', journal, code=getattr(error, 'code', type(error).__name__),
+                         phase=getattr(start, 'phase', 'preparing'), submitted=start.sent)
+            error.not_submitted = not start.sent
+            raise
+        finally:
+            await start.close()
+
     async def run(self, account_id, token, prompt, session_id=None, model=None, effort='medium', reuse_project=True):
         model = self.api.MODEL if model is None else model
         async with self.admission.enter(account_id, session_id):
             journal = TurnJournal(self.state, self.api, account_id, session_id)
-            actor = start = None
-            succeeded = False
+            actor = None
+            settled = False
+            delivered = 0
+            last_id = None
+            relay = isinstance(prompt, RelayPrompt)
             try:
                 journal.begin()
                 if time.monotonic() < self.runtime_cooldowns.get(account_id, 0):
                     raise self.api.AdapterError(429, 'project_runtime_rate_limited',
                         'Prism runtime startup is cooling down; model request was not submitted')
                 actor = await self.account(account_id, token)
-                start = BrowserStart(self, actor, journal, session_id if reuse_project else None, model, effort)
-                async with self.bootstrap:
-                    if time.monotonic() < self.runtime_cooldowns.get(account_id, 0):
-                        raise self.api.AdapterError(429, 'project_runtime_rate_limited',
-                            'Prism runtime startup is cooling down; model request was not submitted')
-                    await self.wait_for_memory(actor, journal)
-                    self.preparing += 1
-                    self.observe('prism_prepare_start', journal, model=model, effort=effort,
-                                 prompt_bytes=len(prompt.encode('utf-8')))
-                    try:
-                        try:
-                            data, body = await start.run(prompt)
-                        except self.api.AdapterError:
-                            raise
-                        except Exception:
-                            disposition = 'inspect pending state' if start.sent else 'model request was not submitted'
-                            raise self.api.AdapterError(502, 'preparation_failed',
-                                'Prism preparation failed at ' + start.phase + '; ' + disposition) from None
-                    finally:
-                        try:
-                            await start.close()
-                            await self.collect_closed_pages(actor)
-                        finally:
-                            self.preparing -= 1
-                            self.observe('prism_prepare_end', journal, submitted=start.sent)
-                    if start.violation:
-                        raise self.api.AdapterError(502, 'unexpected_start', 'Prism attempted an unexpected model start')
-                needs_poll = self.api.terminal_text(data) is None
-                if needs_poll:
-                    start.phase = 'polling'
-                    self.polling += 1
-                    self.observe('prism_poll_start', journal, model=model, effort=effort)
-                try:
-                    polls = 0
-                    while self.api.terminal_text(data) is None:
-                        # Only the trusted response may rotate the opaque turn state.
-                        if isinstance(data.get('turn_state'), (str, dict)) and data['turn_state']:
-                            body['turn_state'] = data['turn_state']
-                        data = await self.poll_turn(actor, body, journal)
-                        polls += 1
-                        if data.get('request_id') not in (None, '', start.request_id):
-                            raise self.api.AdapterError(502, 'foreign_response', 'Prism returned a different request identity')
-                        journal.update(stage='polling', request_id=start.request_id, turn_state=data.get('turn_state', body.get('turn_state')))
-                        if self.api.terminal_text(data) is None:
-                            jitter = int(journal.local_id[:2], 16) / 255 * 0.25
-                            await asyncio.sleep(self.poll_seconds + jitter)
-                finally:
-                    if needs_poll:
-                        self.polling -= 1
-                        self.observe('prism_poll_end', journal)
-                result = self.api.terminal_text(data)
-                self.state.receipt(account_id, start.request_id, getattr(start, 'start_attempts', 1), polls, result, start.cache_hit, model=model, effort=effort)
+                if not relay:
+                    request_id, result, _ = await self.execute_turn(actor, journal, prompt, session_id,
+                                                                 model, effort, reuse_project, secrets=(token,))
+                else:
+                    record = actor.conversations.get(session_id) if session_id else None
+                    same_inspection = bool(record and not record['committed'] and prompt.bridge is not None
+                        and record['lease'] == prompt.bridge.lease and record['signature'] == prompt.signature
+                        and record['keys'] == prompt.keys and record['model'] == model and record['effort'] == effort)
+                    matched = record_matches(record, prompt, model, effort)
+                    context = record['context'] if matched or same_inspection else None
+                    begin = len(record['keys']) if matched else record['begin'] if same_inspection else 0
+                    calls = record['calls'] if matched else record['incoming_calls'] if same_inspection else ()
+                    text = prompt.delta(begin, calls) if context else str(prompt)
+                    prompt.mode = record['mode'] if same_inspection else 'delta' if context else 'full'
+                    budget, max_parts, gap = relay_settings()
+                    pieces = split_prompt(text, self.api.AdapterError, budget=budget, max_parts=max_parts)
+                    self.observe('prism_relay_prepared', journal, mode=prompt.mode, parts=len(pieces),
+                                 transport_bytes=transport_bytes(text), skipped_history_items=begin)
+                    if same_inspection:
+                        prompt.parts = record['parts']
+                        prompt.sent_bytes = record['sent_bytes']
+                    recoveries = 0
+                    while True:
+                        restarted = False
+                        for index, piece in enumerate(pieces, 1):
+                            if index > 1 and context is None:
+                                raise self.api.AdapterError(502, 'continuation_unavailable',
+                                    'Prism omitted the confirmed conversation identity required for split delivery',
+                                    not_submitted=True)
+                            sent = part_prompt(piece, index, len(pieces))
+                            if transport_bytes(sent) > budget:
+                                raise self.api.AdapterError(413, 'request_too_large', 'Prism part exceeds its transport budget', not_submitted=True)
+                            if index > 1:
+                                remaining = gap - (time.monotonic() - started)
+                                if remaining > 0:
+                                    await asyncio.sleep(remaining)
+                            started = time.monotonic()
+                            journal.update(relay_part=index, relay_parts=len(pieces), relay_mode=prompt.mode)
+                            try:
+                                request_id, result, context = await self.execute_turn(actor, journal, sent, session_id,
+                                                                                    model, effort, True, context, (token,))
+                            except self.api.AdapterError as error:
+                                # Only an explicit immediate refusal before processing
+                                # permits rebuilding a request. Poll failures and any
+                                # delivered part keep their existing outcome protection.
+                                refused = getattr(error, 'input_rejected_before_processing', False)
+                                if refused and delivered == 0 and recoveries < 2:
+                                    if error.code == 'conversation_too_large' and context is not None:
+                                        context, begin, calls = None, 0, ()
+                                        text, prompt.mode = str(prompt), 'full'
+                                        action = 'full_replay'
+                                    elif error.code == 'prism_input_too_large' and budget > 4096:
+                                        budget = max(4096, budget // 2)
+                                        action = 'smaller_parts'
+                                    else:
+                                        raise
+                                    recoveries += 1
+                                    pieces = split_prompt(text, self.api.AdapterError, budget=budget, max_parts=max_parts)
+                                    self.observe('prism_relay_recovery', journal, action=action, parts=len(pieces),
+                                                 turn_budget=budget, recovery=recoveries)
+                                    restarted = True
+                                    break
+                                raise
+                            last_id = request_id
+                            delivered += 1
+                            prompt.parts += 1
+                            prompt.sent_bytes += transport_bytes(sent)
+                            if index < len(pieces):
+                                acknowledgement = result.strip()
+                                if prompt.bridge is not None and acknowledgement.startswith(prompt.bridge.marker + '\n'):
+                                    try:
+                                        framed = json.loads(acknowledgement[len(prompt.bridge.marker) + 1:])
+                                        if framed == {'kind': 'final', 'text': 'ACK'}:
+                                            acknowledgement = 'ACK'
+                                    except (ValueError, TypeError):
+                                        pass
+                                if acknowledgement != 'ACK':
+                                    raise self.api.AdapterError(502, 'invalid_part_ack',
+                                        'Prism returned an invalid intermediate part acknowledgement', not_submitted=True)
+                        if not restarted:
+                            break
+                    if context is not None and session_id:
+                        prompt.record = {'signature': prompt.signature, 'keys': prompt.keys, 'context': context,
+                            'model': model, 'effort': effort, 'at': time.monotonic(), 'committed': False,
+                            'lease': prompt.bridge.lease if prompt.bridge else None, 'begin': begin,
+                            'mode': prompt.mode,
+                            'calls': (), 'incoming_calls': calls, 'parts': prompt.parts, 'sent_bytes': prompt.sent_bytes}
+                        actor.conversations[session_id] = prompt.record
+                        actor.conversations.move_to_end(session_id)
+                        while len(actor.conversations) > 128:
+                            actor.conversations.popitem(last=False)
+                    prompt.context = context
+                settled = True
                 journal.finish()
-                if isinstance(result, self.api.AdapterError):
-                    result.terminal_request_id = start.request_id
-                    if result.code == 'prism_input_too_large':
-                        result.input_rejected_before_processing = not needs_poll
-                    response = data.get('response') if isinstance(data.get('response'), dict) else {}
-                    self.observe('prism_upstream_terminal_failure', journal,
-                        response_failed=response.get('status') in ('failed', 'error'),
-                        turn_failed=data.get('status') in ('failed', 'error'),
-                        from_start=polls == 0,
-                        reason=self.api.terminal_failure_reason(data),
-                        **self.api.terminal_failure_diagnostics(data),
-                        **self.api.terminal_failure_log_fields(data, secrets=(token, prompt)))
-                    raise result
-                if session_id and reuse_project:
-                    actor.projects[session_id] = (start.project, time.monotonic())
-                    actor.projects.move_to_end(session_id)
-                    while len(actor.projects) > 128:
-                        actor.projects.popitem(last=False)
-                succeeded = True
-                self.observe('prism_turn_complete', journal, model=model, effort=effort, polls=polls)
-                return start.request_id, result
-            except Exception as error:
-                if getattr(error, 'code', None) == 'project_runtime_rate_limited' and time.monotonic() >= self.runtime_cooldowns.get(account_id, 0):
+                return request_id, result
+            except BaseException as error:
+                if getattr(error, 'code', None) == 'project_runtime_rate_limited':
                     self.runtime_cooldowns[account_id] = time.monotonic() + 60
-                self.observe('prism_turn_error', journal,
-                    code=getattr(error, 'code', type(error).__name__),
-                    phase=getattr(start, 'phase', 'account_preparation'),
-                    submitted=start is not None and start.sent)
-                error.not_submitted = start is None or not start.sent
+                if delivered:
+                    if getattr(error, 'not_submitted', True):
+                        error.terminal_request_id = last_id
+                    error.not_submitted = False
+                    error.input_rejected_before_processing = False
+                if getattr(error, 'terminal_request_id', None):
+                    settled = True
+                elif actor is None or getattr(error, 'not_submitted', True):
+                    error.not_submitted = True
+                    settled = True
+                if actor is not None and session_id:
+                    if relay:
+                        actor.conversations.pop(session_id, None)
+                    actor.projects.pop(session_id, None)
                 raise
             finally:
                 try:
-                    if start is not None:
-                        await start.close()
+                    if settled and journal.owned:
+                        journal.finish()
                 finally:
-                    try:
-                        if (start is None or not start.sent) and journal.owned:
-                            journal.finish()
-                    finally:
-                        if actor is not None:
-                            if not succeeded and session_id:
-                                actor.projects.pop(session_id, None)
-                            actor.refs -= 1
-                            actor.used = time.monotonic()
+                    if actor is not None:
+                        actor.refs -= 1
+                        actor.used = time.monotonic()
 
     async def prune(self):
         async with self.actor_lock:

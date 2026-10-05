@@ -24,7 +24,9 @@ class PrismComposeTests(unittest.TestCase):
                         for key in ("PRISM_ADAPTER_API_KEY", "GATEWAY_PRISM_BROWSER_API_KEY"):
                             env.pop(key, None)
                         for key in ("PRISM_ADAPTER_MODE", "PRISM_ADAPTER_MAX_INFLIGHT",
-                                    "PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT", "PRISM_ADAPTER_MAX_QUEUED"):
+                                    "PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT", "PRISM_ADAPTER_MAX_QUEUED",
+                                    "PRISM_ADAPTER_TURN_BYTES", "PRISM_ADAPTER_MAX_TURN_PARTS",
+                                    "PRISM_ADAPTER_PART_GAP_SECONDS"):
                             env.pop(key, None)
                         if source:
                             env[source] = "compose-fixture-" + "x" * 32
@@ -45,6 +47,9 @@ class PrismComposeTests(unittest.TestCase):
                         self.assertEqual("4", adapter["environment"]["PRISM_ADAPTER_MAX_INFLIGHT"])
                         self.assertEqual("4", adapter["environment"]["PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT"])
                         self.assertEqual("8", adapter["environment"]["PRISM_ADAPTER_MAX_QUEUED"])
+                        self.assertEqual("86000", adapter["environment"]["PRISM_ADAPTER_TURN_BYTES"])
+                        self.assertEqual("8", adapter["environment"]["PRISM_ADAPTER_MAX_TURN_PARTS"])
+                        self.assertEqual("8", adapter["environment"]["PRISM_ADAPTER_PART_GAP_SECONDS"])
                         self.assertTrue(adapter["depends_on"]["sub2api"]["restart"])
                         self.assertFalse(adapter.get("ports"))
                         volumes = {volume["target"]: volume for volume in adapter["volumes"]}

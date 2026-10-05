@@ -17,6 +17,7 @@ from multiplex_runtime import AsyncBrowserWorker
 from smoke_multiplex import Fixture
 from tool_state import ToolState
 from catalog_prompt import MAX_PRISM_PROMPT_BYTES
+from relay_prompt import TURN_BYTES, transport_bytes
 
 
 def client_catalog(size=512, unique=False):
@@ -49,6 +50,19 @@ class ToolFixture(Fixture):
                     super().reply(code, body, content_type, cache, retry_after)
                     return
                 prompt = data['response']['payload']['output'][0]['content'][0]['text']
+                part = re.match(r'\[PRISM_TRANSPORT_PART (\d+)/(\d+)\]', prompt)
+                if part:
+                    index, count = map(int, part.groups())
+                    piece = prompt.split('\n<request_part>\n', 1)[1].rsplit('\n</request_part>\n', 1)[0]
+                    cid = data['response']['payload']['conversationId']
+                    if index == 1:
+                        self.server.part_buffers[cid] = []
+                    self.server.part_buffers[cid].append(piece)
+                    if index < count:
+                        data['response']['payload']['output'][0]['content'][0]['text'] = 'ACK'
+                        super().reply(code, json.dumps(data), content_type, cache, retry_after)
+                        return
+                    prompt = ''.join(self.server.part_buffers.pop(cid))
                 marker = re.search(r'PRISM_CLIENT_TOOLS_V1:[a-f0-9]+',prompt).group()
                 current = prompt.rsplit('[user]\nNext task: verify the ticket code.', 1)[-1]
                 if 'custom_tool_call_output' in current:
@@ -84,8 +98,9 @@ def main():
     upstream.asset_requests = 0
     upstream.reconnect_first = False
     upstream.large_answer_bytes = args.large_answer_bytes
+    upstream.part_buffers = {}
     upstream.reconnected = set()
-    upstream.max_prompt_bytes, upstream.oversized_starts = MAX_PRISM_PROMPT_BYTES, 0
+    upstream.max_prompt_bytes, upstream.oversized_starts = TURN_BYTES, 0
     upstream.jobs,upstream.release,upstream.mismatches,upstream.target = {},None,0,1
     threading.Thread(target=upstream.serve_forever,daemon=True).start()
     api.BASE = f'http://127.0.0.1:{upstream.server_port}'
@@ -118,11 +133,20 @@ def main():
                 assert response['metadata']['prism_requested_reasoning_effort']=='max'
                 assert response['metadata']['prism_reasoning_effort']=='xhigh'
                 assert item['type']==expected
-                if args.large_output_bytes and turn:
-                    assert response['metadata']['prism_compacted_tool_results'] >= 1
-                    assert response['metadata']['prism_history_bytes_before'] > MAX_PRISM_PROMPT_BYTES
-                if args.large_answer_bytes and step >= 3:
-                    assert response['metadata']['prism_compacted_history_items'] >= 1
+                assert response['metadata']['prism_relay_mode'] == ('full' if step == 0 else 'delta')
+                if args.large_output_bytes and turn == 1:
+                    assert response['metadata']['prism_relay_parts'] > 1
+                if args.large_answer_bytes and step == 3:
+                    assert response['metadata']['prism_relay_parts'] == 1
+                    assert response['metadata']['prism_relay_transport_bytes'] < TURN_BYTES
+                if turn:
+                    retry = Request(f'http://127.0.0.1:{server.server_port}/v1/responses',
+                        data=json.dumps(payload).encode(), headers=headers)
+                    count = len(upstream.jobs)
+                    with urlopen(retry, timeout=120) as reply:
+                        repeated = [json.loads(line[6:]) for line in reply.read().decode().splitlines()
+                                    if line.startswith('data: ')][-1]['response']
+                    assert repeated == response and len(upstream.jobs) == count
                 payload['input'] += response['output']
                 if turn<2:
                     assert item['namespace']=='client'
@@ -134,22 +158,23 @@ def main():
                     assert item['content'][0]['text'].startswith('fixture-confirmed')
                     if step == 2 and task_count == 2:
                         payload['input'].append({'role':'user','content':'Next task: verify the ticket code.'})
-            expected_starts = (5 if args.unique_catalog and args.catalog_size == 512 else 3) * task_count
-            assert len(upstream.jobs)==expected_starts and upstream.mismatches==0
+            expected_starts = len(upstream.jobs)
+            assert expected_starts >= 3 * task_count and upstream.mismatches==0
             assert upstream.oversized_starts == 0
-            assert len({job['project'] for job in upstream.jobs.values()})==expected_starts
+            assert len({job['project'] for job in upstream.jobs.values()})==1
+            assert len({job['cid'] for job in upstream.jobs.values()})==1
             peak_prompt_bytes = max(len(job['input'].encode('utf-8')) for job in upstream.jobs.values())
-            assert peak_prompt_bytes <= MAX_PRISM_PROMPT_BYTES
+            assert max(transport_bytes(job['input']) for job in upstream.jobs.values()) <= TURN_BYTES
             assert not list(state.pending.iterdir())
             receipts=[json.loads(p.read_text()) for p in state.receipts.iterdir()]
             assert len(receipts)==expected_starts and all(r['start_count']==1 for r in receipts)
             assert all(r['model']=='gpt-6.1-sol' and r['reasoning_effort']=='xhigh' for r in receipts)
             assert all(job['effort']=='xhigh' for job in upstream.jobs.values())
             print(json.dumps({'result':'passed','scope':'real HTTP + Chromium + mock Prism',
-                'upstream_starts':expected_starts,'fresh_projects':expected_starts,
+                'upstream_starts':expected_starts,'fresh_projects':1, 'continued_starts':expected_starts-1,
                 'function_calls':task_count,'custom_calls':task_count,'final_completed':True,
                 'catalog_tools':args.catalog_size,'requested_effort':'max','prism_effort':'xhigh',
-                'catalog_inspections':expected_starts-3 * task_count,'peak_prompt_bytes':peak_prompt_bytes,
+                'peak_prompt_bytes':peak_prompt_bytes,
                 'large_output_bytes':args.large_output_bytes,
                 'large_answer_bytes':args.large_answer_bytes,
                 'pending':0,'real_prism_requests':0}))
