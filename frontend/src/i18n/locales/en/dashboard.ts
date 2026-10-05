@@ -871,6 +871,24 @@ export default {
 
   // Profile
   profile: {
+    coupons: {
+      title: 'My Coupons',
+      description: 'The best eligible coupon is applied automatically at checkout',
+      empty: 'You currently have no coupons',
+      loadFailed: 'Failed to load coupons. Please retry.',
+      discount: 'Pay {percent}%',
+      anyAmount: 'Valid for any amount',
+      threshold: { recharge: 'For recharges of {amount} or more', subscription: 'For plan subtotals of {amount} or more' },
+      types: { recharge: 'Recharge Coupon', subscription: 'Subscription Coupon' },
+      status: { available: 'Available', exhausted: 'Used Up', inactive: 'Inactive' },
+      remaining: 'Remaining uses',
+      usage: 'Used / Reserved',
+      times: '{count} uses',
+      unlimited: 'Unlimited uses',
+      issuedAt: 'Received {date}',
+      use: 'Use coupon',
+      reservationHint: 'Pending orders reserve coupon uses. Cancelling or expiry releases them.',
+    },
     title: 'Profile Settings',
     description: 'Manage your account information and settings',
     accountBalance: 'Account Balance',

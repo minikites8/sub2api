@@ -85,6 +85,18 @@ export interface SubscriptionDiscountCouponPreview {
   remaining_uses: number
 }
 
+export interface UserDiscountCoupon {
+  id: number
+  coupon_type: 'recharge' | 'subscription'
+  min_amount: number
+  discount_percent: number
+  total_uses: number
+  used_count: number
+  remaining_uses: number
+  status: 'available' | 'exhausted' | 'inactive'
+  created_at: string
+}
+
 export interface RechargeDiscountCouponPreview {
   id: number
   min_recharge_amount: number

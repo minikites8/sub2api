@@ -11,7 +11,8 @@ import type {
   CheckoutInfoResponse,
   CreateOrderRequest,
   CreateOrderResult,
-  PaymentOrder
+  PaymentOrder,
+  UserDiscountCoupon
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
@@ -37,6 +38,11 @@ export const paymentAPI = {
   /** Get all checkout page data in a single call */
   getCheckoutInfo() {
     return apiClient.get<CheckoutInfoResponse>('/payment/checkout-info')
+  },
+
+  /** Get the current user's recharge and subscription coupons. */
+  getMyCoupons() {
+    return apiClient.get<UserDiscountCoupon[]>('/payment/coupons')
   },
 
   /** Get payment method limits and fee rates */

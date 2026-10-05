@@ -15,6 +15,8 @@
         :wechat-mp-enabled="wechatOAuthMPEnabled"
       />
 
+      <ProfileCouponsCard v-if="user" />
+
       <div
         v-if="contactInfo"
         class="profile-support-card"
@@ -56,6 +58,7 @@ import { Icon } from '@/components/icons'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
+import ProfileCouponsCard from '@/components/user/profile/ProfileCouponsCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
 import ProfilePasskeyCard from '@/components/user/profile/ProfilePasskeyCard.vue'

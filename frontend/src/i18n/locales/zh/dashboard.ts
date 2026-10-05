@@ -877,6 +877,24 @@ export default {
 
   // Profile
   profile: {
+    coupons: {
+      title: '我的优惠券',
+      description: '结算时自动应用符合门槛的最优优惠券',
+      empty: '您当前暂无优惠券',
+      loadFailed: '优惠券加载失败，请重试',
+      discount: '{rate} 折',
+      anyAmount: '任意金额可用',
+      threshold: { recharge: '充值满 {amount} 可用', subscription: '套餐原价合计满 {amount} 可用' },
+      types: { recharge: '充值优惠券', subscription: '订阅优惠券' },
+      status: { available: '可用', exhausted: '已用完', inactive: '已停用' },
+      remaining: '剩余次数',
+      usage: '已使用 / 占用',
+      times: '{count} 次',
+      unlimited: '不限次数',
+      issuedAt: '领取于 {date}',
+      use: '去使用',
+      reservationHint: '待支付订单会占用优惠券次数，取消或超时后释放。',
+    },
     title: '个人设置',
     description: '管理您的账户信息和设置',
     accountBalance: '账户余额',
