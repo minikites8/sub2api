@@ -24,6 +24,7 @@ type AdminService interface {
 	ListUserRechargeDiscountCoupons(ctx context.Context, userID int64) ([]RechargeDiscountCoupon, error)
 	IssueSubscriptionDiscountCoupon(ctx context.Context, userID int64, input IssueSubscriptionDiscountCouponInput) (*SubscriptionDiscountCoupon, error)
 	ListUserSubscriptionDiscountCoupons(ctx context.Context, userID int64) ([]SubscriptionDiscountCoupon, error)
+	ImportDiscountCoupons(ctx context.Context, input ImportDiscountCouponsInput) (*ImportDiscountCouponsResult, error)
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
 	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)

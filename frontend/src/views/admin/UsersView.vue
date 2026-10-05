@@ -128,6 +128,10 @@
           <div class="flex flex-wrap items-center justify-end gap-2">
             <!-- Mobile: Secondary buttons (icon only) -->
             <div class="flex items-center gap-2 md:contents">
+              <button type="button" class="btn btn-secondary" data-test="import-discount-coupons" @click="showCouponImportModal = true">
+                <Icon name="upload" size="sm" />
+                {{ t('admin.users.couponImport.entry') }}
+              </button>
               <!-- Refresh Button -->
               <button
                 @click="loadUsers"
@@ -816,6 +820,7 @@
     />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserRechargeDiscountCouponModal :show="showRechargeCouponModal" :user="rechargeCouponUser" @close="closeRechargeCouponModal" @success="loadUsers" />
+    <DiscountCouponImportModal :show="showCouponImportModal" @close="showCouponImportModal = false" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
@@ -861,10 +866,12 @@ import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsMod
 import UserBanModal from '@/components/admin/user/UserBanModal.vue'
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
 import UserRechargeDiscountCouponModal from '@/components/admin/user/UserRechargeDiscountCouponModal.vue'
+import DiscountCouponImportModal from '@/components/admin/user/DiscountCouponImportModal.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
+const showCouponImportModal = ref(false)
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>

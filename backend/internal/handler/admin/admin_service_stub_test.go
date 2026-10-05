@@ -94,6 +94,10 @@ type stubAdminService struct {
 	mu sync.Mutex
 }
 
+func (s *stubAdminService) ImportDiscountCoupons(context.Context, service.ImportDiscountCouponsInput) (*service.ImportDiscountCouponsResult, error) {
+	return &service.ImportDiscountCouponsResult{Valid: true}, nil
+}
+
 func newStubAdminService() *stubAdminService {
 	now := time.Now().UTC()
 	user := service.User{

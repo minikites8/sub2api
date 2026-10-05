@@ -97,6 +97,47 @@ export interface SubscriptionDiscountCoupon extends Omit<RechargeDiscountCoupon,
   source_type: 'admin'
 }
 
+export type DiscountCouponType = 'recharge' | 'subscription'
+
+export interface DiscountCouponImportRow {
+  row_number: number
+  user_id?: number
+  email?: string
+  coupon_type: DiscountCouponType
+  min_amount: number
+  discount_rate: number
+  total_uses: number
+  notes?: string
+}
+
+export interface DiscountCouponImportRowResult {
+  row_number: number
+  user_id?: number
+  email?: string
+  coupon_id?: number
+  error?: string
+  error_code?: string
+}
+
+export interface ImportDiscountCouponsResult {
+  valid: boolean
+  issued_count: number
+  rows: DiscountCouponImportRowResult[]
+}
+
+export async function importDiscountCoupons(
+  rows: DiscountCouponImportRow[],
+  dryRun: boolean,
+  idempotencyKey: string
+): Promise<ImportDiscountCouponsResult> {
+  const { data } = await apiClient.post<ImportDiscountCouponsResult>(
+    '/admin/users/discount-coupons/import',
+    { rows, dry_run: dryRun },
+    { timeout: 120000, headers: dryRun ? {} : { 'Idempotency-Key': idempotencyKey } }
+  )
+  return data
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -527,6 +568,7 @@ export const usersAPI = {
   listRechargeDiscountCoupons,
   issueSubscriptionDiscountCoupon,
   listSubscriptionDiscountCoupons,
+  importDiscountCoupons,
   updateConcurrency,
   batchUpdateLimits,
   toggleStatus,

@@ -19,6 +19,10 @@
         </div>
       </div>
 
+      <button type="button" class="btn btn-secondary" data-test="open-coupon-import" :disabled="submitting" @click="showImport = true">
+        <Icon name="upload" size="sm" />
+        {{ t('admin.users.couponImport.entry') }}
+      </button>
       <section>
         <div class="mb-3 flex items-center justify-between gap-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ t('admin.users.rechargeCoupon.issuedTitle') }}</h3>
@@ -104,9 +108,11 @@
       </div>
     </template>
   </BaseDialog>
+  <DiscountCouponImportModal v-if="show && showImport" :show="showImport" :user="user" @close="showImport = false" @success="handleImportSuccess" />
 </template>
 
 <script setup lang="ts">
+import DiscountCouponImportModal from './DiscountCouponImportModal.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
@@ -129,6 +135,7 @@ const couponType = ref<(typeof couponTypes)[number]>('recharge')
 type UserDiscountCoupon = RechargeDiscountCoupon | SubscriptionDiscountCoupon
 const coupons = ref<UserDiscountCoupon[]>([])
 const form = reactive({ minAmount: 100, discountRate: 8, totalUses: 1, notes: '' })
+const showImport = ref(false)
 let loadSequence = 0
 
 watch(
@@ -145,6 +152,11 @@ watch(
 
 function resetForm() {
   Object.assign(form, { minAmount: 100, discountRate: 8, totalUses: 1, notes: '' })
+}
+
+async function handleImportSuccess() {
+  await loadCoupons()
+  emit('success')
 }
 
 async function loadCoupons() {
