@@ -311,6 +311,16 @@ export default {
 
   // Payment System
   payment: {
+    subscriptionPurchase: {
+      quantity: '购买数量',
+      decrease: '减少购买数量',
+      increase: '增加购买数量',
+      hint: '每份增加一个套餐周期，一次结算；最多 {max} 份。续费会顺延到期时间，每日额度保持套餐标准。',
+      invalid: '请输入 1 至 {max} 的整数',
+      totalDuration: '增加时长',
+      durationDays: '{days} 天',
+      subtotal: '套餐合计',
+    },
     title: '充值/订阅',
     amountLabel: '充值金额',
     paymentAmount: '支付金额',
@@ -455,6 +465,7 @@ export default {
       USER_INACTIVE: '账号已被禁用',
       BALANCE_PAYMENT_DISABLED: '余额充值功能已关闭',
       INVALID_AMOUNT: '金额无效',
+      INVALID_QUANTITY: '购买数量或总时长超出允许范围',
       INVALID_INPUT: '参数有误',
       PLAN_NOT_AVAILABLE: '套餐不存在或已下架',
       SUBSCRIPTION_COUPON_UNAVAILABLE: '订阅优惠券已变更，请刷新后重新购买',

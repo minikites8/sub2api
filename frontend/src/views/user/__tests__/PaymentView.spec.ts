@@ -463,6 +463,66 @@ describe('PaymentView recharge rate preview', () => {
 })
 
 describe('PaymentView subscription confirmation amounts', () => {
+  it.each([3, 5])('checks out %i day cards in a single order', async (quantity) => {
+    const wrapper = await mountSubscriptionConfirm({
+      plan: { price: 9.9, validity_days: 1, validity_unit: 'days' },
+      method: { currency: 'CNY' },
+    })
+    await wrapper.get('[data-test="subscription-quantity"]').setValue(quantity)
+    const total = quantity === 3 ? 29.7 : 49.5
+    expect(wrapper.get('[data-test="subscription-subtotal"]').text()).toBe(formatPaymentAmount(total, 'CNY'))
+    expect(translate).toHaveBeenCalledWith('payment.subscriptionPurchase.durationDays', { days: quantity })
+    createOrder.mockResolvedValue({
+      order_id: 123, amount: total, pay_amount: total, fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00.000Z', qr_code: 'https://example.com/qr',
+    })
+    await wrapper.get('[data-test="subscription-submit"]').trigger('click')
+    await flushPromises()
+    expect(createOrder).toHaveBeenCalledTimes(1)
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      plan_id: 7, order_type: 'subscription', quantity, amount: total,
+    }))
+    wrapper.unmount()
+  })
+
+  it('applies coupon thresholds and fees to the combined subtotal', async () => {
+    const wrapper = await mountSubscriptionConfirm({
+      plan: { price: 9.9, validity_days: 1 },
+      method: { currency: 'CNY' },
+      checkout: { recharge_fee_rate: 2, subscription_discount_coupons: [
+        { id: 1, min_subscription_amount: 40, discount_percent: 80, total_uses: 2, used_count: 0, remaining_uses: 2 },
+      ] },
+    })
+    expect(wrapper.find('[data-test="subscription-coupon-empty"]').exists()).toBe(true)
+    await wrapper.get('[data-test="subscription-quantity"]').setValue(5)
+    expect(wrapper.find('[data-test="subscription-coupon-applied"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="subscription-submit"]').text()).toContain(formatPaymentAmount(40.4, 'CNY'))
+    wrapper.unmount()
+  })
+
+  it('checks quantity validity, total duration, and payment limits', async () => {
+    const wrapper = await mountSubscriptionConfirm({
+      plan: { price: 9.9, validity_days: 2, validity_unit: 'months' },
+      method: { currency: 'CNY', single_max: 40 },
+    })
+    const quantity = wrapper.get('[data-test="subscription-quantity"]')
+    const submit = wrapper.get('[data-test="subscription-submit"]')
+    expect(quantity.attributes('max')).toBe('608')
+    await quantity.setValue(3)
+    expect(submit.attributes('disabled')).toBeUndefined()
+    expect(translate).toHaveBeenCalledWith('payment.subscriptionPurchase.durationDays', { days: 180 })
+    await quantity.setValue(5)
+    expect(submit.attributes('disabled')).toBeDefined()
+    for (const invalid of [0, -1, 1.5, 609, '']) {
+      await quantity.setValue(invalid)
+      expect(submit.attributes('disabled')).toBeDefined()
+    }
+    await quantity.trigger('blur')
+    expect((quantity.element as HTMLInputElement).value).toBe('1')
+    expect(submit.attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('automatically applies the best eligible user coupon before conversion and fees', async () => {
     const wrapper = await mountSubscriptionConfirm({
       checkout: {
@@ -822,6 +882,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
       payment_type: 'wxpay_direct',
       order_type: 'subscription',
       plan_id: '7',
+      quantity: '5',
     }
     getCheckoutInfo.mockResolvedValue(checkoutInfoWithPlansFixture())
     createOrder.mockResolvedValue(oauthOrderFixture())
@@ -852,11 +913,12 @@ describe('PaymentView WeChat JSAPI flow', () => {
       payment_type: 'wxpay',
       order_type: 'subscription',
       plan_id: 7,
+      quantity: 5,
       wechat_resume_token: 'resume-subscription-7',
     }))
     expect(locationState.href).toContain('/api/v1/auth/oauth/wechat/payment/start?')
     expect(new URL(locationState.href, 'http://localhost').searchParams.get('redirect')).toBe(
-      '/purchase?from=wechat&payment_type=wxpay&order_type=subscription&plan_id=7',
+      '/purchase?from=wechat&payment_type=wxpay&order_type=subscription&quantity=5&plan_id=7',
     )
 
     Object.defineProperty(window, 'location', {
@@ -908,6 +970,34 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(showWarning).toHaveBeenCalledWith('payment.errors.mobilePaymentFallbackToQr')
     expect(showError).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('weixin://wxpay/bizpayurl?pr=fallback-native')
+  })
+
+  it('uses the server-restored subscription quantity when retrying with a QR code', async () => {
+    routeState.query = {
+      wechat_resume: '1', wechat_resume_token: 'resume-subscription-5',
+      order_type: 'subscription', plan_id: '7',
+    }
+    getCheckoutInfo.mockResolvedValue(checkoutInfoWithPlansFixture({ plan: { price: 9.9, validity_days: 1 } }))
+    createOrder
+      .mockResolvedValueOnce({ ...jsapiOrderFixture('resume-token'), quantity: 5, amount: 49.5, pay_amount: 49.5 })
+      .mockResolvedValueOnce({
+        order_id: 789, amount: 49.5, pay_amount: 49.5, quantity: 5, fee_rate: 0,
+        expires_at: '2099-01-01T00:10:00.000Z', qr_code: 'weixin://wxpay/bizpayurl?pr=bulk',
+      })
+    bridgeInvoke.mockImplementation((_action, _payload, callback) => {
+      callback({ err_msg: 'get_brand_wcpay_request:fail' })
+    })
+    const wrapper = shallowMount(PaymentView, {
+      global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Teleport: true, Transition: false } },
+    })
+    await flushPromises()
+    await flushPromises()
+    expect(createOrder).toHaveBeenCalledTimes(2)
+    expect(createOrder).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      plan_id: 7, order_type: 'subscription', quantity: 5, is_mobile: false,
+    }))
+    expect(showWarning).toHaveBeenCalledWith('payment.errors.mobilePaymentFallbackToQr')
+    wrapper.unmount()
   })
 
   it('shows recharge promo discount and final payment amount before creating an order', async () => {

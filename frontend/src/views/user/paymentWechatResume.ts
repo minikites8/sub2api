@@ -1,12 +1,14 @@
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 import type { SubscriptionPlan } from '@/types/payment'
 import { normalizeVisibleMethod } from '@/components/payment/paymentFlow'
+import { MAX_SUBSCRIPTION_QUANTITY } from '@/components/payment/subscriptionQuantity'
 
 export interface ParsedWechatResumeRoute {
   orderAmount: number
   orderType: 'balance' | 'subscription'
   paymentType: string
   planId?: number
+  quantity?: number
   promoCode?: string
   openid?: string
   wechatResumeToken?: string
@@ -41,6 +43,10 @@ export function parseWechatResumeRoute(
   const paymentType = normalizeVisibleMethod(readQueryString(query, 'payment_type')) || 'wxpay'
   const planId = Number.parseInt(readQueryString(query, 'plan_id'), 10)
   const hasPlanId = Number.isFinite(planId) && planId > 0
+  const rawQuantity = readQueryString(query, 'quantity')
+  const parsedQuantity = Number(rawQuantity)
+  const quantity = rawQuantity && Number.isInteger(parsedQuantity) && parsedQuantity >= 1 && parsedQuantity <= MAX_SUBSCRIPTION_QUANTITY
+    ? parsedQuantity : undefined
   const promoCode = readQueryString(query, 'promo_code').trim()
   const orderType = readQueryString(query, 'order_type') === 'subscription' || hasPlanId
     ? 'subscription'
@@ -53,6 +59,7 @@ export function parseWechatResumeRoute(
       orderType,
       orderAmount: 0,
       planId: hasPlanId ? planId : undefined,
+      ...(quantity !== undefined ? { quantity } : {}),
       promoCode: promoCode || undefined,
     }
   }
@@ -66,7 +73,7 @@ export function parseWechatResumeRoute(
   const orderAmount = Number.isFinite(rawAmount) && rawAmount > 0
     ? rawAmount
     : (orderType === 'subscription'
-      ? (plans.find(plan => plan.id === planId)?.price ?? 0)
+      ? (plans.find(plan => plan.id === planId)?.price ?? 0) * (quantity ?? 1)
       : fallbackBalanceAmount)
 
   return {
@@ -75,6 +82,7 @@ export function parseWechatResumeRoute(
     orderType,
     orderAmount,
     planId: hasPlanId ? planId : undefined,
+    ...(quantity !== undefined ? { quantity } : {}),
     promoCode: promoCode || undefined,
   }
 }
@@ -90,6 +98,7 @@ export function stripWechatResumeQuery(query: LocationQuery): LocationQueryRaw {
   delete nextQuery.amount
   delete nextQuery.order_type
   delete nextQuery.plan_id
+  delete nextQuery.quantity
   delete nextQuery.promo_code
   return nextQuery
 }

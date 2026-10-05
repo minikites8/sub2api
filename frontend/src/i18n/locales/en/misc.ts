@@ -287,6 +287,16 @@ export default {
 
   // Payment System
   payment: {
+    subscriptionPurchase: {
+      quantity: 'Quantity',
+      decrease: 'Decrease quantity',
+      increase: 'Increase quantity',
+      hint: 'Each unit adds one plan period, paid together; up to {max} units. Renewals extend expiry with the same daily quota.',
+      invalid: 'Enter a whole number from 1 to {max}',
+      totalDuration: 'Duration added',
+      durationDays: '{days} days',
+      subtotal: 'Plan subtotal',
+    },
     title: 'Recharge / Subscription',
     amountLabel: 'Amount',
     paymentAmount: 'Payment Amount',
@@ -431,6 +441,7 @@ export default {
       USER_INACTIVE: 'Your account is disabled.',
       BALANCE_PAYMENT_DISABLED: 'Balance recharge has been disabled.',
       INVALID_AMOUNT: 'Invalid amount.',
+      INVALID_QUANTITY: 'Purchase quantity or total duration exceeds the allowed range.',
       INVALID_INPUT: 'Invalid request.',
       PLAN_NOT_AVAILABLE: 'Plan not found or no longer available.',
       SUBSCRIPTION_COUPON_UNAVAILABLE: 'The subscription coupon has changed. Refresh before purchasing again.',

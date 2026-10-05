@@ -84,12 +84,14 @@ type CreateOrderRequest struct {
 	PaymentSource   string
 	OrderType       string
 	PlanID          int64
+	Quantity        int
 	PromoCode       string
 	Locale          string
 }
 
 type CreateOrderResponse struct {
 	OrderID                       int64                           `json:"order_id"`
+	Quantity                      int                             `json:"quantity,omitempty"`
 	Amount                        float64                         `json:"amount"`
 	PayAmount                     float64                         `json:"pay_amount"`
 	FeeRate                       float64                         `json:"fee_rate"`

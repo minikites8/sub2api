@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -386,7 +387,7 @@ func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) 
 	req.Host = "api.example.com"
 	req.AddCookie(encodedCookie(wechatPaymentOAuthStateName, "state-123"))
 	req.AddCookie(encodedCookie(wechatPaymentOAuthRedirect, "/purchase?from=wechat"))
-	req.AddCookie(encodedCookie(wechatPaymentOAuthContextName, `{"payment_type":"wxpay","amount":"12.5","order_type":"subscription","plan_id":7}`))
+	req.AddCookie(encodedCookie(wechatPaymentOAuthContextName, `{"payment_type":"wxpay","amount":"12.5","order_type":"subscription","plan_id":7,"quantity":5}`))
 	req.AddCookie(encodedCookie(wechatPaymentOAuthScope, "snsapi_base"))
 	c.Request = req
 
@@ -413,7 +414,32 @@ func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) 
 	require.Equal(t, "12.5", claims.Amount)
 	require.Equal(t, payment.OrderTypeSubscription, claims.OrderType)
 	require.EqualValues(t, 7, claims.PlanID)
+	require.Equal(t, 5, claims.Quantity)
 	require.Equal(t, "/purchase?from=wechat", claims.RedirectTo)
+}
+
+func TestWeChatPaymentOAuthStartValidatesQuantity(t *testing.T) {
+	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, wechatOAuthTestSettings("mp", "wx-mp-app", "wx-mp-secret", "/auth/wechat/callback"))
+	defer client.Close()
+	for _, quantity := range []string{"3", "5", "0", "-1", "1.5", "1001"} {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/payment/start?payment_type=wxpay&order_type=subscription&plan_id=7&quantity="+quantity, nil)
+		c.Request.Host = "api.example.com"
+		handler.WeChatPaymentOAuthStart(c)
+		if quantity == "3" || quantity == "5" {
+			require.Equal(t, http.StatusFound, recorder.Code)
+			cookie := findCookie(recorder.Result().Cookies(), wechatPaymentOAuthContextName)
+			require.NotNil(t, cookie)
+			raw, err := decodeCookieValue(cookie.Value)
+			require.NoError(t, err)
+			paymentContext, err := decodeWeChatPaymentOAuthContext(raw)
+			require.NoError(t, err)
+			require.Equal(t, quantity, strconv.Itoa(paymentContext.Quantity))
+		} else {
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+		}
+	}
 }
 
 func TestWeChatPaymentOAuthCallbackUsesExplicitPaymentResumeSigningKeyWhenMixedKeysConfigured(t *testing.T) {

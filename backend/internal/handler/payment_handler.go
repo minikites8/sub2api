@@ -276,6 +276,7 @@ type CreateOrderRequest struct {
 	PaymentSource     string  `json:"payment_source"`
 	OrderType         string  `json:"order_type"`
 	PlanID            int64   `json:"plan_id"`
+	Quantity          *int    `json:"quantity" binding:"omitempty,gte=1,lte=1000"`
 	PromoCode         string  `json:"promo_code"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
@@ -309,6 +310,10 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	}
 
 	mobile := isMobile(c)
+	quantity := 0
+	if req.Quantity != nil {
+		quantity = *req.Quantity
+	}
 	if req.IsMobile != nil {
 		mobile = *req.IsMobile
 	}
@@ -326,6 +331,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		PaymentSource:   req.PaymentSource,
 		OrderType:       req.OrderType,
 		PlanID:          req.PlanID,
+		Quantity:        quantity,
 		PromoCode:       req.PromoCode,
 		Locale:          c.GetHeader("Accept-Language"),
 	})
@@ -370,6 +376,13 @@ func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeC
 	}
 	if claims.PlanID > 0 {
 		req.PlanID = claims.PlanID
+	}
+	if req.OrderType == payment.OrderTypeSubscription {
+		quantity := claims.Quantity
+		if quantity == 0 {
+			quantity = 1
+		}
+		req.Quantity = &quantity
 	}
 	if resumePromo := strings.TrimSpace(claims.PromoCode); resumePromo != "" {
 		if requestPromo := strings.TrimSpace(req.PromoCode); requestPromo != "" && !strings.EqualFold(requestPromo, resumePromo) {
@@ -545,6 +558,8 @@ type PublicOrderResult struct {
 	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
 	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
 	PlanID              *int64     `json:"plan_id,omitempty"`
+	Quantity            int        `json:"quantity,omitempty"`
+	SubscriptionDays    *int       `json:"subscription_days,omitempty"`
 }
 
 // PublicOrderVerifyResult is returned by the legacy anonymous out_trade_no
@@ -581,6 +596,8 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 		RefundRequestedBy:   order.RefundRequestedBy,
 		RefundRequestReason: order.RefundRequestReason,
 		PlanID:              order.PlanID,
+		Quantity:            service.PaymentOrderQuantity(order),
+		SubscriptionDays:    order.SubscriptionDays,
 	}
 }
 
@@ -691,6 +708,8 @@ type PaymentOrderResult struct {
 	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
 	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
 	PlanID              *int64     `json:"plan_id,omitempty"`
+	Quantity            int        `json:"quantity,omitempty"`
+	SubscriptionDays    *int       `json:"subscription_days,omitempty"`
 	ProviderInstanceID  *string    `json:"provider_instance_id,omitempty"`
 }
 
@@ -730,6 +749,8 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 		RefundRequestedBy:   order.RefundRequestedBy,
 		RefundRequestReason: order.RefundRequestReason,
 		PlanID:              order.PlanID,
+		Quantity:            service.PaymentOrderQuantity(order),
+		SubscriptionDays:    order.SubscriptionDays,
 		ProviderInstanceID:  order.ProviderInstanceID,
 	}
 }

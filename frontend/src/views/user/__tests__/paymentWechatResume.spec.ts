@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { parseWechatResumeRoute, stripWechatResumeQuery } from '../paymentWechatResume'
 
 describe('parseWechatResumeRoute', () => {
+  it('restores the quantity and combined amount for legacy subscription callbacks', () => {
+    const result = parseWechatResumeRoute({
+      wechat_resume: '1', openid: 'openid', order_type: 'subscription', plan_id: '7', quantity: '5',
+    }, [{ id: 7, price: 9.9 }] as Parameters<typeof parseWechatResumeRoute>[1], 0)
+    expect(result).toMatchObject({ quantity: 5, orderAmount: 49.5, planId: 7 })
+  })
+
   it('prefers the opaque resume token over legacy openid query params', () => {
     expect(parseWechatResumeRoute({
       wechat_resume: '1',
@@ -11,6 +18,7 @@ describe('parseWechatResumeRoute', () => {
       amount: '12.5',
       order_type: 'subscription',
       plan_id: '7',
+      quantity: '3',
       promo_code: 'SUB-80',
     }, [], 88)).toEqual({
       wechatResumeToken: 'resume-token-123',
@@ -18,6 +26,7 @@ describe('parseWechatResumeRoute', () => {
       orderType: 'subscription',
       orderAmount: 0,
       planId: 7,
+      quantity: 3,
       promoCode: 'SUB-80',
     })
   })
@@ -50,6 +59,7 @@ describe('stripWechatResumeQuery', () => {
       amount: '12.5',
       order_type: 'subscription',
       plan_id: '7',
+      quantity: '5',
       state: 'state-123',
       scope: 'snsapi_base',
       promo_code: 'SUB-80',

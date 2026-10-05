@@ -81,6 +81,7 @@ export interface BuildCreateOrderPayloadInput {
   paymentType: string
   orderType: OrderType
   planId?: number
+  quantity?: number
   promoCode?: string
   origin?: string
   isMobile: boolean
@@ -139,6 +140,9 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
 
   if (input.planId) {
     payload.plan_id = input.planId
+  }
+  if (input.orderType === 'subscription' && input.quantity !== undefined) {
+    payload.quantity = input.quantity
   }
   if (input.promoCode?.trim()) {
     payload.promo_code = input.promoCode.trim()

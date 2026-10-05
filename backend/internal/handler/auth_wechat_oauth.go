@@ -92,6 +92,7 @@ type wechatPaymentOAuthContext struct {
 	Amount      string `json:"amount,omitempty"`
 	OrderType   string `json:"order_type,omitempty"`
 	PlanID      int64  `json:"plan_id,omitempty"`
+	Quantity    int    `json:"quantity,omitempty"`
 	PromoCode   string `json:"promo_code,omitempty"`
 }
 
@@ -346,6 +347,14 @@ func (h *AuthHandler) WeChatPaymentOAuthStart(c *gin.Context) {
 		response.BadRequest(c, "Invalid payment type")
 		return
 	}
+	quantity := 0
+	if rawQuantity := strings.TrimSpace(c.Query("quantity")); rawQuantity != "" {
+		quantity, err = strconv.Atoi(rawQuantity)
+		if err != nil || quantity < 1 || quantity > service.MaxSubscriptionPurchaseQuantity {
+			response.ErrorFrom(c, infraerrors.BadRequest("INVALID_QUANTITY", "subscription quantity must be between 1 and 1000"))
+			return
+		}
+	}
 
 	state, err := oauth.GenerateState()
 	if err != nil {
@@ -362,6 +371,7 @@ func (h *AuthHandler) WeChatPaymentOAuthStart(c *gin.Context) {
 		Amount:      strings.TrimSpace(c.Query("amount")),
 		OrderType:   strings.TrimSpace(c.Query("order_type")),
 		PlanID:      parseWeChatPaymentPlanID(c.Query("plan_id")),
+		Quantity:    quantity,
 		PromoCode:   strings.TrimSpace(c.Query("promo_code")),
 	})
 	if err != nil {
@@ -464,6 +474,7 @@ func (h *AuthHandler) WeChatPaymentOAuthCallback(c *gin.Context) {
 		Amount:      paymentContext.Amount,
 		OrderType:   paymentContext.OrderType,
 		PlanID:      paymentContext.PlanID,
+		Quantity:    paymentContext.Quantity,
 		PromoCode:   paymentContext.PromoCode,
 		RedirectTo:  redirectTo,
 		Scope:       scope,

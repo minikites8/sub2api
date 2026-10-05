@@ -42,8 +42,14 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		return nil, err
 	}
 	var subscriptionCoupon *subscriptionDiscountPlan
+	var purchase subscriptionPurchase
 	if plan != nil {
-		subscriptionCoupon, err = s.resolveSubscriptionDiscountCoupon(ctx, req.UserID, plan.Price)
+		purchase, err = quoteSubscriptionPurchase(plan, req.Quantity)
+		if err != nil {
+			return nil, err
+		}
+		req.Quantity = purchase.Quantity
+		subscriptionCoupon, err = s.resolveSubscriptionDiscountCoupon(ctx, req.UserID, purchase.Amount)
 		if err != nil {
 			return nil, err
 		}
@@ -74,8 +80,8 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	bonusAmount := 0.0
 	var firstRechargePlan firstRechargeAmountPlan
 	if plan != nil {
-		orderAmount = plan.Price
-		limitAmount = plan.Price
+		orderAmount = purchase.Amount
+		limitAmount = purchase.Amount
 		if subscriptionCoupon != nil {
 			orderAmount = subscriptionCoupon.DiscountedAmount
 			limitAmount = subscriptionCoupon.DiscountedAmount
@@ -184,6 +190,14 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 }
 
 func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount, bonusAmount float64, sel *payment.InstanceSelection, firstRechargePlan firstRechargeAmountPlan, subscriptionCoupon *subscriptionDiscountPlan) (*dbent.PaymentOrder, error) {
+	var purchase subscriptionPurchase
+	if plan != nil {
+		var err error
+		purchase, err = quoteSubscriptionPurchase(plan, req.Quantity)
+		if err != nil {
+			return nil, err
+		}
+	}
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -215,6 +229,13 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	}
 	providerSnapshot := appendFirstRechargePromoSnapshot(buildPaymentOrderProviderSnapshot(sel, req), firstRechargePlan)
 	providerSnapshot = appendSubscriptionDiscountSnapshot(providerSnapshot, subscriptionCoupon)
+	if plan != nil {
+		if providerSnapshot == nil {
+			providerSnapshot = make(map[string]any)
+		}
+		providerSnapshot["subscription_quantity"] = purchase.Quantity
+		providerSnapshot["subscription_unit_price"] = plan.Price
+	}
 	selectedInstanceID := ""
 	selectedProviderKey := ""
 	if sel != nil {
@@ -252,7 +273,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		b.SetProviderSnapshot(providerSnapshot)
 	}
 	if plan != nil {
-		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
+		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(purchase.Days)
 	}
 	order, err := b.Save(ctx)
 	if err != nil {
@@ -500,6 +521,9 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 			WithMetadata(map[string]string{"provider": sel.ProviderKey, "instance_id": sel.InstanceID})
 	}
 	subject := s.buildPaymentSubject(plan, limitAmount, cfg, sel)
+	if quantity := PaymentOrderQuantity(order); quantity > 1 {
+		subject = fmt.Sprintf("%s ×%d", subject, quantity)
+	}
 	outTradeNo := order.OutTradeNo
 	canonicalReturnURL, err := CanonicalizeReturnURL(req.ReturnURL, req.SrcHost, req.SrcURL)
 	if err != nil {
@@ -696,6 +720,9 @@ func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, r
 			RedirectURL:  "/auth/wechat/payment/callback",
 		},
 	}
+	if req.OrderType == payment.OrderTypeSubscription {
+		resp.Quantity = req.Quantity
+	}
 	if firstRechargePlan.active() {
 		resp.FirstRechargeBonusAmount = firstRechargePlan.BonusAmount
 		resp.FirstRechargeDiscountPercent = firstRechargePlan.DiscountPercent
@@ -832,6 +859,7 @@ func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest,
 	}
 	resp := &CreateOrderResponse{
 		OrderID:      order.ID,
+		Quantity:     PaymentOrderQuantity(order),
 		Amount:       order.Amount,
 		PayAmount:    payAmount,
 		FeeRate:      order.FeeRate,
@@ -886,6 +914,9 @@ func buildWeChatPaymentOAuthStartURL(req CreateOrderRequest, scope string) (stri
 	}
 	if req.PlanID > 0 {
 		q.Set("plan_id", strconv.FormatInt(req.PlanID, 10))
+	}
+	if req.OrderType == payment.OrderTypeSubscription && req.Quantity > 0 {
+		q.Set("quantity", strconv.Itoa(req.Quantity))
 	}
 	if promoCode := strings.TrimSpace(req.PromoCode); promoCode != "" {
 		q.Set("promo_code", promoCode)

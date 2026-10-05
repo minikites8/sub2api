@@ -151,6 +151,8 @@ export interface PaymentOrder {
   refund_requested_by?: number
   refund_request_reason?: string
   plan_id?: number
+  quantity?: number
+  subscription_days?: number
   provider_instance_id?: string
 }
 
@@ -219,6 +221,7 @@ export interface CreateOrderRequest {
   payment_type: string
   order_type: string
   plan_id?: number
+  quantity?: number
   promo_code?: string
   return_url?: string
   payment_source?: string
@@ -249,6 +252,7 @@ export interface WechatJSAPIPayload {
 
 export interface CreateOrderResult {
   order_id: number
+  quantity?: number
   amount: number
   pay_url?: string
   qr_code?: string

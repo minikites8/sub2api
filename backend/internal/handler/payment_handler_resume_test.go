@@ -75,6 +75,47 @@ func TestApplyWeChatPaymentResumeClaimsRejectsPaymentTypeMismatch(t *testing.T) 
 	}
 }
 
+func TestApplyWeChatPaymentResumeClaimsRestoresQuantity(t *testing.T) {
+	for _, quantity := range []int{0, 3, 5} {
+		requestQuantity := 999
+		req := CreateOrderRequest{PaymentType: payment.TypeWxpay, Quantity: &requestQuantity}
+		require.NoError(t, applyWeChatPaymentResumeClaims(&req, &service.WeChatPaymentResumeClaims{
+			OpenID: "openid", OrderType: payment.OrderTypeSubscription, PlanID: 7, Quantity: quantity,
+		}))
+		want := quantity
+		if want == 0 {
+			want = 1
+		}
+		require.Equal(t, want, *req.Quantity)
+	}
+}
+
+func TestCreateOrderRequestQuantityValidation(t *testing.T) {
+	for _, tc := range []struct {
+		body  string
+		valid bool
+	}{
+		{`{"payment_type":"wxpay"}`, true},
+		{`{"payment_type":"wxpay","quantity":3}`, true},
+		{`{"payment_type":"wxpay","quantity":5}`, true},
+		{`{"payment_type":"wxpay","quantity":0}`, false},
+		{`{"payment_type":"wxpay","quantity":-1}`, false},
+		{`{"payment_type":"wxpay","quantity":1.5}`, false},
+		{`{"payment_type":"wxpay","quantity":1001}`, false},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/payment/orders", bytes.NewBufferString(tc.body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		var req CreateOrderRequest
+		err := c.ShouldBindJSON(&req)
+		if tc.valid {
+			require.NoError(t, err)
+		} else {
+			require.Error(t, err)
+		}
+	}
+}
+
 func TestVerifyOrderPublicReturnsLegacyOrderState(t *testing.T) {
 	t.Parallel()
 
