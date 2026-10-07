@@ -384,6 +384,18 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, l
 	if err != nil {
 		return err
 	}
+	if existing != nil {
+		validationOrder := *o
+		validationOrder.Amount = creditAmount
+		// A stale promotion can leave an unused code with the original amount
+		// until it is adjusted below. Validate its identity before that update.
+		if promoResult == firstRechargePromoBalanceStale && !existing.IsUsed() && math.Abs(existing.Value-o.Amount) <= 1e-8 {
+			validationOrder.Amount = o.Amount
+		}
+		if err := validatePaymentRedeemCode(&validationOrder, existing); err != nil {
+			return err
+		}
+	}
 	if existing != nil && promoResult == firstRechargePromoBalanceStale && !existing.IsUsed() && math.Abs(existing.Value-creditAmount) > 0.00000001 {
 		updated := *existing
 		updated.Value = creditAmount
@@ -418,7 +430,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, l
 			"rechargeCode":   o.RechargeCode,
 		})
 	}
-	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
+	if _, err := s.redeemService.redeemForPaymentFulfillment(ctx, o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {

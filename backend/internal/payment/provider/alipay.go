@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -248,6 +249,9 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		}
 		return nil, fmt.Errorf("alipay TradeQuery: %w", err)
 	}
+	if result == nil || strings.TrimSpace(result.OutTradeNo) == "" || result.OutTradeNo != tradeNo {
+		return nil, fmt.Errorf("alipay query order: out_trade_no mismatch")
+	}
 
 	status := payment.ProviderStatusPending
 	switch result.TradeStatus {
@@ -257,14 +261,12 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		status = payment.ProviderStatusFailed
 	}
 
-	amount, err := strconv.ParseFloat(result.TotalAmount, 64)
-	if err != nil {
-		amount, err = parseAlipayAmount(
-			result.TotalAmount,
-			result.ReceiptAmount,
-			result.BuyerPayAmount,
-			result.InvoiceAmount,
-		)
+	if status == payment.ProviderStatusPaid && strings.TrimSpace(result.TradeNo) == "" {
+		return nil, fmt.Errorf("alipay query order: missing trade_no")
+	}
+	var amount float64
+	if status == payment.ProviderStatusPaid || strings.TrimSpace(result.TotalAmount) != "" {
+		amount, err = parseAlipayTotalAmount(result.TotalAmount)
 		if err != nil {
 			return nil, fmt.Errorf("alipay parse amount: %w", err)
 		}
@@ -290,10 +292,19 @@ func (a *Alipay) VerifyNotification(ctx context.Context, rawBody string, _ map[s
 	if err != nil {
 		return nil, fmt.Errorf("alipay parse notification: %w", err)
 	}
+	for key, entries := range values {
+		if len(entries) != 1 {
+			return nil, fmt.Errorf("alipay duplicate notification parameter: %s", key)
+		}
+	}
 
 	notification, err := client.DecodeNotification(ctx, values)
 	if err != nil {
 		return nil, fmt.Errorf("alipay verify notification: %w", err)
+	}
+	appID := strings.TrimSpace(notification.AppId)
+	if appID == "" || appID != strings.TrimSpace(a.config["appId"]) {
+		return nil, fmt.Errorf("alipay notification app_id mismatch")
 	}
 
 	status := payment.ProviderStatusFailed
@@ -301,24 +312,15 @@ func (a *Alipay) VerifyNotification(ctx context.Context, rawBody string, _ map[s
 		status = payment.ProviderStatusSuccess
 	}
 
-	amount, err := strconv.ParseFloat(notification.TotalAmount, 64)
-	if err != nil {
-		amount, err = parseAlipayAmount(
-			notification.TotalAmount,
-			notification.ReceiptAmount,
-			notification.BuyerPayAmount,
-		)
+	if status == payment.ProviderStatusSuccess && (strings.TrimSpace(notification.OutTradeNo) == "" || strings.TrimSpace(notification.TradeNo) == "") {
+		return nil, fmt.Errorf("alipay notification missing out_trade_no or trade_no")
+	}
+	var amount float64
+	if status == payment.ProviderStatusSuccess || strings.TrimSpace(notification.TotalAmount) != "" {
+		amount, err = parseAlipayTotalAmount(notification.TotalAmount)
 		if err != nil {
 			return nil, fmt.Errorf("alipay parse notification amount: %w", err)
 		}
-	}
-
-	metadata := a.MerchantIdentityMetadata()
-	if appID := strings.TrimSpace(notification.AppId); appID != "" {
-		if metadata == nil {
-			metadata = map[string]string{}
-		}
-		metadata["app_id"] = appID
 	}
 
 	return &payment.PaymentNotification{
@@ -327,7 +329,7 @@ func (a *Alipay) VerifyNotification(ctx context.Context, rawBody string, _ map[s
 		Amount:   amount,
 		Status:   status,
 		RawData:  rawBody,
-		Metadata: metadata,
+		Metadata: map[string]string{"app_id": appID},
 	}, nil
 }
 
@@ -400,6 +402,16 @@ func parseAlipayAmount(values ...string) (float64, error) {
 		}
 	}
 	return 0, fmt.Errorf("no valid amount field")
+}
+
+// Only the order total can be compared with the local payable amount. Receipt
+// and payer amounts can differ when coupons or other discounts are applied.
+func parseAlipayTotalAmount(raw string) (float64, error) {
+	amount, err := parseAlipayAmount(raw)
+	if err != nil || amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return 0, fmt.Errorf("invalid total_amount")
+	}
+	return amount, nil
 }
 
 // Ensure interface compliance.

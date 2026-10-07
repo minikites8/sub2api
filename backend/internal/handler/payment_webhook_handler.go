@@ -104,6 +104,16 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	}
 
 	resolvedProviderKey, notification, err := verifyNotificationWithProviders(c.Request.Context(), providers, rawBody, headers)
+	if err == nil && providerKey == payment.TypeWxpay && notification != nil {
+		// The encrypted body reveals its order only after the first verification.
+		// Reverify with that order's original instance to bind legacy orders too.
+		orderProviders, resolveErr := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, notification.OrderID)
+		if resolveErr != nil {
+			err = resolveErr
+		} else {
+			resolvedProviderKey, notification, err = verifyNotificationWithProviders(c.Request.Context(), orderProviders, rawBody, headers)
+		}
+	}
 	if err != nil {
 		truncatedBody := rawBody
 		if len(truncatedBody) > webhookLogTruncateLen {

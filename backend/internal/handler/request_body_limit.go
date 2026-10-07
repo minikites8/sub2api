@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 )
 
 func extractMaxBytesError(err error) (*http.MaxBytesError, bool) {
@@ -30,7 +31,14 @@ func buildBodyTooLargeMessage(limit int64) string {
 }
 
 func readLenientJSONRequestBodyWithPrealloc(req *http.Request, cfg *config.Config) ([]byte, error) {
-	return pkghttputil.ReadLenientJSONRequestBodyWithPrealloc(req, gatewayMaxBodySize(cfg))
+	body, err := pkghttputil.ReadLenientJSONRequestBodyWithPrealloc(req, gatewayMaxBodySize(cfg))
+	if err != nil {
+		return nil, err
+	}
+	if err := requestmodel.ValidateJSONModels(body); err != nil {
+		return nil, err
+	}
+	return body, nil
 }
 
 func gatewayMaxBodySize(cfg *config.Config) int64 {

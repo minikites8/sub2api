@@ -374,9 +374,25 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 		return nil, fmt.Errorf("parse notify: %w", err)
 	}
 	// url.ParseQuery already decodes values — no additional decode needed.
-	params := make(map[string]string)
-	for k := range values {
-		params[k] = values.Get(k)
+	params := make(map[string]string, len(values))
+	for k, entries := range values {
+		// Checkout signatures use the same unescaped canonical string as
+		// notifications. Restrict the notification schema before verification
+		// so checkout fields cannot carry parameters across that boundary.
+		switch k {
+		case "pid", "trade_no", "out_trade_no", "type", "name", "money", "trade_status", "param", "sign", "sign_type", "api_trade_no":
+		default:
+			return nil, fmt.Errorf("unexpected notify param: %s", k)
+		}
+		if len(entries) != 1 {
+			return nil, fmt.Errorf("duplicate notify param: %s", k)
+		}
+		params[k] = entries[0]
+	}
+	// Bind the callback to this merchant. This also prevents an old checkout
+	// return_url from being folded into the pid value under the notify schema.
+	if strings.TrimSpace(params["pid"]) == "" || strings.TrimSpace(params["pid"]) != strings.TrimSpace(e.config["pid"]) {
+		return nil, fmt.Errorf("invalid merchant pid")
 	}
 	sign := params["sign"]
 	if sign == "" {

@@ -32,6 +32,9 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
 	if outTradeNo != "" {
 		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
+		if orderID, ok := parseLegacyPaymentOrderID(outTradeNo, err); ok {
+			order, err = s.entClient.PaymentOrder.Get(ctx, orderID)
+		}
 		if err == nil {
 			if psHasPinnedProviderInstance(order) {
 				prov, err := s.getPinnedOrderProvider(ctx, order)
@@ -52,7 +55,7 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 				return []payment.Provider{prov}, nil
 			}
 			if strings.TrimSpace(providerKey) == payment.TypeWxpay {
-				return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
+				return nil, fmt.Errorf("order %d webhook provider instance is unresolved", order.ID)
 			}
 			if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
 				return nil, fmt.Errorf("webhook provider fallback is ambiguous for %s", providerKey)

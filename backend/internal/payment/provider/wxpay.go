@@ -389,6 +389,43 @@ func buildWxpayTransactionMetadata(tx *payments.Transaction) map[string]string {
 	return metadata
 }
 
+// Bind authenticated transactions to this merchant even for legacy local
+// orders that predate merchant identity snapshots. JSAPI can use mpAppId.
+func (w *Wxpay) validateTransaction(tx *payments.Transaction, expectedOrderID string) error {
+	if tx == nil {
+		return fmt.Errorf("wxpay empty transaction")
+	}
+	appID := wxSV(tx.Appid)
+	if appID == "" || (appID != strings.TrimSpace(w.config["appId"]) && appID != ResolveWxpayJSAPIAppID(w.config)) {
+		return fmt.Errorf("wxpay transaction appid mismatch")
+	}
+	merchantID := wxSV(tx.Mchid)
+	if merchantID == "" || merchantID != strings.TrimSpace(w.config["mchId"]) {
+		return fmt.Errorf("wxpay transaction mchid mismatch")
+	}
+	orderID := wxSV(tx.OutTradeNo)
+	if strings.TrimSpace(orderID) == "" || (expectedOrderID != "" && orderID != expectedOrderID) {
+		return fmt.Errorf("wxpay transaction out_trade_no mismatch")
+	}
+	if wxSV(tx.TradeState) == wxpayTradeStateSuccess {
+		if strings.TrimSpace(wxSV(tx.TransactionId)) == "" {
+			return fmt.Errorf("wxpay transaction missing transaction_id")
+		}
+		return validateWxpayTransactionAmount(tx)
+	}
+	return nil
+}
+
+func validateWxpayTransactionAmount(tx *payments.Transaction) error {
+	if tx == nil || tx.Amount == nil || tx.Amount.Total == nil || *tx.Amount.Total <= 0 {
+		return fmt.Errorf("wxpay transaction missing or invalid total amount")
+	}
+	if wxSV(tx.Amount.Currency) != wxpayCurrency {
+		return fmt.Errorf("wxpay transaction currency mismatch")
+	}
+	return nil
+}
+
 func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	c, err := w.ensureClient()
 	if err != nil {
@@ -400,6 +437,9 @@ func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 	})
 	if err != nil {
 		return nil, fmt.Errorf("wxpay query order: %w", err)
+	}
+	if err := w.validateTransaction(tx, tradeNo); err != nil {
+		return nil, err
 	}
 	var amt float64
 	if tx.Amount != nil && tx.Amount.Total != nil {
@@ -440,6 +480,9 @@ func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers 
 	}
 	if nr.EventType != wxpayEventTransactionSuccess {
 		return nil, nil
+	}
+	if err := w.validateTransaction(&tx, ""); err != nil {
+		return nil, err
 	}
 	var amt float64
 	if tx.Amount != nil && tx.Amount.Total != nil {
@@ -540,11 +583,13 @@ func (w *Wxpay) queryOrderTotalFen(ctx context.Context, c *core.Client, orderID 
 	if err != nil {
 		return 0, fmt.Errorf("wxpay refund query order: %w", err)
 	}
-	var tf int64
-	if tx.Amount != nil && tx.Amount.Total != nil {
-		tf = *tx.Amount.Total
+	if err := w.validateTransaction(tx, orderID); err != nil {
+		return 0, err
 	}
-	return tf, nil
+	if err := validateWxpayTransactionAmount(tx); err != nil {
+		return 0, err
+	}
+	return *tx.Amount.Total, nil
 }
 
 func (w *Wxpay) CancelPayment(ctx context.Context, tradeNo string) error {
