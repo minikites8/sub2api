@@ -20,7 +20,7 @@ func TestContentModerationEngineProfilesPreserveLegacy(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "openai", view.Engine)
 	require.Equal(t, 1, view.APIKeyCount)
-	require.Equal(t, ContentModerationDefaultThresholds(), view.EngineConfigs["typesafe"].Thresholds)
+	require.Equal(t, moderationEngineDefaults("typesafe").Thresholds, view.EngineConfigs["typesafe"].Thresholds)
 	engine := "typesafe"
 	base := "https://typesafe.example"
 	model := "jev-test"
@@ -58,10 +58,14 @@ func TestContentModerationEngineProfilesPreserveLegacy(t *testing.T) {
 func TestContentModerationEngineThresholdDefaultsAreIndependent(t *testing.T) {
 	openai := moderationEngineDefaults(ContentModerationEngineOpenAI)
 	typeSafe := moderationEngineDefaults(ContentModerationEngineTypeSafe)
-	require.Equal(t, openai.Thresholds, typeSafe.Thresholds)
+	require.Equal(t, 0.85, typeSafe.Thresholds[ContentModerationCategoryJailbreak])
+	for category, threshold := range openai.Thresholds {
+		require.Equal(t, threshold, typeSafe.Thresholds[category])
+	}
+	expected := cloneFloatMap(typeSafe.Thresholds)
 	typeSafe.Thresholds["sexual"] = 0.8
 	require.Equal(t, 0.65, openai.Thresholds["sexual"])
-	require.Equal(t, openai.Thresholds, moderationEngineDefaults(ContentModerationEngineTypeSafe).Thresholds)
+	require.Equal(t, expected, moderationEngineDefaults(ContentModerationEngineTypeSafe).Thresholds)
 }
 
 func TestContentModerationTypeSafeAllCategoriesAndImages(t *testing.T) {

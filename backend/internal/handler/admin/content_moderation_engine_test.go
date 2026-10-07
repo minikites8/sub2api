@@ -33,7 +33,7 @@ func TestContentModerationEngineHandlerRoundTrip(t *testing.T) {
 	router := gin.New()
 	router.PUT("/config", h.UpdateConfig)
 	router.GET("/config", h.GetConfig)
-	body := `{"engine":"typesafe","engine_configs":{"typesafe":{"base_url":"https://api.typesafe.ai","model":"jev-latest","api_keys":["new-secret"],"thresholds":{"sexual":0.91}}}}`
+	body := `{"engine":"typesafe","engine_configs":{"typesafe":{"base_url":"https://api.typesafe.ai","model":"jev-latest","api_keys":["new-secret"],"jailbreak_enabled":true,"category_prompts":{"jailbreak":"自定义审查"},"thresholds":{"sexual":0.91,"jailbreak":0.8}}}}`
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -41,6 +41,9 @@ func TestContentModerationEngineHandlerRoundTrip(t *testing.T) {
 	require.Equal(t, 200, w.Code)
 	require.Contains(t, w.Body.String(), `"engine":"typesafe"`)
 	require.Contains(t, w.Body.String(), `"sexual":0.91`)
+	require.Contains(t, w.Body.String(), `"jailbreak_enabled":true`)
+	require.Contains(t, w.Body.String(), `"jailbreak":0.8`)
+	require.Contains(t, w.Body.String(), `"jailbreak":"自定义审查"`)
 	require.NotContains(t, w.Body.String(), "new-secret")
 	require.NotContains(t, w.Body.String(), "legacy-secret")
 	w = httptest.NewRecorder()
@@ -48,6 +51,7 @@ func TestContentModerationEngineHandlerRoundTrip(t *testing.T) {
 	require.Equal(t, 200, w.Code)
 	require.Contains(t, w.Body.String(), `"engine_configs"`)
 	require.Contains(t, w.Body.String(), `"model":"jev-latest"`)
+	require.Contains(t, w.Body.String(), `"jailbreak":"自定义审查"`)
 	require.Contains(t, settings.value, "legacy-secret")
 	require.Contains(t, settings.value, "new-secret")
 }

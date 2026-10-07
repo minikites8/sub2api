@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"maps"
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -13,16 +14,20 @@ const (
 )
 
 type ContentModerationEngineConfig struct {
-	BaseURL    string             `json:"base_url"`
-	Model      string             `json:"model"`
-	ProxyID    *int64             `json:"proxy_id,omitempty"`
-	APIKeys    []string           `json:"api_keys,omitempty"`
-	TimeoutMS  int                `json:"timeout_ms"`
-	RetryCount int                `json:"retry_count"`
-	Thresholds map[string]float64 `json:"thresholds"`
+	JailbreakEnabled bool               `json:"jailbreak_enabled"`
+	CategoryPrompts  map[string]string  `json:"category_prompts,omitempty"`
+	BaseURL          string             `json:"base_url"`
+	Model            string             `json:"model"`
+	ProxyID          *int64             `json:"proxy_id,omitempty"`
+	APIKeys          []string           `json:"api_keys,omitempty"`
+	TimeoutMS        int                `json:"timeout_ms"`
+	RetryCount       int                `json:"retry_count"`
+	Thresholds       map[string]float64 `json:"thresholds"`
 }
 
 type UpdateContentModerationEngineInput struct {
+	JailbreakEnabled   *bool               `json:"jailbreak_enabled"`
+	CategoryPrompts    *map[string]string  `json:"category_prompts"`
 	BaseURL            *string             `json:"base_url"`
 	Model              *string             `json:"model"`
 	ProxyID            *int64              `json:"proxy_id"`
@@ -58,6 +63,7 @@ func moderationEngineDefaults(engine string) *ContentModerationEngineConfig {
 	p := &ContentModerationEngineConfig{BaseURL: defaultContentModerationBaseURL, Model: defaultContentModerationModel, TimeoutMS: 3000, RetryCount: 2, Thresholds: ContentModerationDefaultThresholds()}
 	if engine == ContentModerationEngineTypeSafe {
 		p.BaseURL, p.Model = "https://api.typesafe.ai", "jev-latest"
+		p.Thresholds[ContentModerationCategoryJailbreak] = 0.85
 	}
 	return p
 }
@@ -74,7 +80,8 @@ func (cfg *ContentModerationConfig) engineProfile(engine string) *ContentModerat
 	}
 	p.ProxyID = cloneInt64Ptr(p.ProxyID)
 	p.APIKeys = append([]string(nil), p.APIKeys...)
-	p.Thresholds = cloneFloatMap(p.Thresholds)
+	p.Thresholds = mergeContentModerationThresholds(moderationEngineDefaults(engine).Thresholds, p.Thresholds)
+	p.CategoryPrompts = maps.Clone(p.CategoryPrompts)
 	return &p
 }
 
@@ -83,6 +90,8 @@ func (cfg *ContentModerationConfig) applyEngineProfile(p *ContentModerationEngin
 	cfg.APIKey, cfg.APIKeys = "", append([]string(nil), p.APIKeys...)
 	cfg.TimeoutMS, cfg.RetryCount = p.TimeoutMS, p.RetryCount
 	cfg.Thresholds = cloneFloatMap(p.Thresholds)
+	cfg.JailbreakEnabled = p.JailbreakEnabled
+	cfg.CategoryPrompts = maps.Clone(p.CategoryPrompts)
 }
 
 func (cfg *ContentModerationConfig) effectiveEngine(engine string) *ContentModerationConfig {
@@ -98,6 +107,19 @@ func (s *ContentModerationService) updateEngineProfile(ctx context.Context, cfg 
 	}
 	p := cfg.engineProfile(engine)
 	defaults := moderationEngineDefaults(engine)
+	if input.JailbreakEnabled != nil {
+		p.JailbreakEnabled = *input.JailbreakEnabled
+	}
+	if input.CategoryPrompts != nil {
+		prompts, err := validateTypeSafeCategoryPrompts(*input.CategoryPrompts)
+		if err != nil {
+			return err
+		}
+		p.CategoryPrompts = prompts
+	}
+	if engine != ContentModerationEngineTypeSafe && (p.JailbreakEnabled || len(p.CategoryPrompts) > 0) {
+		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_ENGINE", "破限审查和自定义提示词需要 TypeSafe / Jev 引擎")
+	}
 	if input.BaseURL != nil {
 		p.BaseURL = strings.TrimSpace(*input.BaseURL)
 		if p.BaseURL == "" {
@@ -149,7 +171,7 @@ func (s *ContentModerationService) updateEngineProfile(ctx context.Context, cfg 
 	if err := s.validateConfig(ctx, check); err != nil {
 		return err
 	}
-	p = &ContentModerationEngineConfig{BaseURL: check.BaseURL, Model: check.Model, ProxyID: check.ProxyID, APIKeys: check.APIKeys, TimeoutMS: check.TimeoutMS, RetryCount: check.RetryCount, Thresholds: check.Thresholds}
+	p = &ContentModerationEngineConfig{BaseURL: check.BaseURL, Model: check.Model, ProxyID: check.ProxyID, APIKeys: check.APIKeys, TimeoutMS: check.TimeoutMS, RetryCount: check.RetryCount, Thresholds: check.Thresholds, JailbreakEnabled: check.JailbreakEnabled, CategoryPrompts: check.CategoryPrompts}
 	if engine == ContentModerationEngineTypeSafe {
 		cfg.TypeSafe = p
 	} else {

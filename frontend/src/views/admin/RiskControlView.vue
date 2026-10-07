@@ -532,6 +532,29 @@
               <div v-if="configForm.engine === 'typesafe'" class="lg:col-span-2 text-sm text-amber-700 dark:text-amber-300" role="status">
                 {{ t('admin.riskControl.typeSafeNotice') }}
               </div>
+              <div v-if="configForm.engine === 'typesafe'" class="lg:col-span-2 space-y-4 rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label id="jailbreak-enabled-label" class="input-label">{{ t('admin.riskControl.jailbreakEnabled') }}</label>
+                    <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.jailbreakHint') }}</p>
+                  </div>
+                  <Toggle v-model="configForm.jailbreak_enabled" data-test="jailbreak-enabled" aria-labelledby="jailbreak-enabled-label" />
+                </div>
+                <div>
+                  <label for="audit-prompt-category" class="input-label">{{ t('admin.riskControl.auditPromptCategory') }}</label>
+                  <select id="audit-prompt-category" v-model="auditPromptCategory" data-test="audit-prompt-category" class="input">
+                    <option v-for="category in riskThresholdCategories" :key="category" :value="category">{{ category === 'jailbreak' ? t('admin.riskControl.jailbreakCategory') : category }}</option>
+                  </select>
+                </div>
+                <div>
+                  <div class="mb-2 flex items-center justify-between gap-3">
+                    <label for="audit-category-prompt" class="input-label mb-0">{{ t('admin.riskControl.auditCategoryPrompt') }}</label>
+                    <button type="button" data-test="reset-category-prompt" class="text-xs text-primary-600 hover:text-primary-700" @click="delete configForm.category_prompts[auditPromptCategory]">{{ t('admin.riskControl.auditPromptReset') }}</button>
+                  </div>
+                  <textarea id="audit-category-prompt" v-model="selectedCategoryPrompt" data-test="audit-category-prompt" rows="5" maxlength="12000" class="input font-mono text-sm" />
+                  <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.auditCategoryPromptHint') }}</p>
+                </div>
+              </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.baseUrl') }}</label>
                 <input v-model.trim="configForm.base_url" data-test="audit-base-url" type="url" class="input" :placeholder="configForm.engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'" />
@@ -1209,7 +1232,7 @@
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <label class="block truncate text-sm font-semibold text-gray-900 dark:text-white" :for="`risk-threshold-${row.category}`">
-                      {{ row.category }}
+                      {{ row.category === 'jailbreak' ? t('admin.riskControl.jailbreakCategory') : row.category }}
                     </label>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       {{ t('admin.riskControl.riskThresholdDefault', { value: formatThresholdPercent(row.defaultValue) }) }}
@@ -1484,6 +1507,7 @@ const riskThresholdDefaults: Record<string, number> = {
   'sexual/minors': 65,
   violence: 95,
   'violence/graphic': 95,
+  jailbreak: 85,
 }
 const riskThresholdCategories = Object.keys(riskThresholdDefaults)
 
@@ -1551,6 +1575,9 @@ const engineLabel = (engine: ModerationEngine) => engine === 'typesafe' ? 'TypeS
 let statusTimer: number | null = null
 
 const configForm = reactive({
+  jailbreak_enabled: false,
+  category_prompts: {} as Record<string, string>,
+  default_category_prompts: {} as Record<string, string>,
   engine: 'openai' as ModerationEngine,
   enabled: false,
   mode: 'pre_block' as ModerationMode,
@@ -1597,9 +1624,18 @@ const configForm = reactive({
   model_filter_models: [] as string[],
 })
 
-const engineFields = ['base_url', 'model', 'proxy_id', 'api_keys_text', 'api_key_configured', 'api_key_masked', 'api_key_count', 'api_key_masks', 'api_key_statuses', 'api_keys_mode', 'clear_api_key', 'timeout_ms', 'retry_count', 'thresholds'] as const
+const engineFields = ['base_url', 'model', 'proxy_id', 'api_keys_text', 'api_key_configured', 'api_key_masked', 'api_key_count', 'api_key_masks', 'api_key_statuses', 'api_keys_mode', 'clear_api_key', 'timeout_ms', 'retry_count', 'thresholds', 'jailbreak_enabled', 'category_prompts', 'default_category_prompts'] as const
 type EngineDraft = Pick<typeof configForm, typeof engineFields[number]> & { pendingDeletes: string[] }
 const engineDrafts = ref<Partial<Record<ModerationEngine, EngineDraft>>>({})
+const auditPromptCategory = ref('jailbreak')
+const selectedCategoryPrompt = computed({
+  get: () => configForm.category_prompts[auditPromptCategory.value] ?? configForm.default_category_prompts[auditPromptCategory.value] ?? '',
+  set: (value: string) => { configForm.category_prompts[auditPromptCategory.value] = value },
+})
+
+function thresholdCategoriesForEngine(engine: ModerationEngine): string[] {
+  return riskThresholdCategories.filter(category => category !== 'jailbreak' || engine === 'typesafe')
+}
 
 function captureEngineDraft(): EngineDraft {
   return structuredClone({ ...Object.fromEntries(engineFields.map(key => [key, toRaw(configForm)[key]])), pendingDeletes: [...pendingDeleteApiKeyHashes.value] }) as EngineDraft
@@ -1621,6 +1657,9 @@ function switchEngine(value: string | number | boolean | null) {
 
 function engineDraftFromConfig(config: ContentModerationConfig | undefined, engine: ModerationEngine): EngineDraft {
   return {
+    jailbreak_enabled: config?.jailbreak_enabled ?? false,
+    category_prompts: { ...(config?.category_prompts ?? {}) },
+    default_category_prompts: { ...(config?.default_category_prompts ?? {}) },
     base_url: config?.base_url || (engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'),
     model: config?.model || (engine === 'typesafe' ? 'jev-latest' : 'omni-moderation-latest'),
     proxy_id: config?.proxy_id ?? null, api_keys_text: '', api_key_configured: config?.api_key_configured ?? false,
@@ -1632,13 +1671,15 @@ function engineDraftFromConfig(config: ContentModerationConfig | undefined, engi
   }
 }
 
-function engineDraftPayload(draft: EngineDraft): UpdateModerationEngineConfig {
+function engineDraftPayload(draft: EngineDraft, engine: ModerationEngine): UpdateModerationEngineConfig {
   const keys = parseApiKeys(draft.api_keys_text)
   if (!draft.clear_api_key && draft.api_keys_mode === 'replace' && keys.length === 0) throw new Error('empty replacement keys')
   return {
+    jailbreak_enabled: engine === 'typesafe' ? draft.jailbreak_enabled : undefined,
+    category_prompts: engine === 'typesafe' ? { ...draft.category_prompts } : undefined,
     base_url: draft.base_url, model: draft.model, proxy_id: draft.proxy_id ?? 0,
     timeout_ms: draft.timeout_ms, retry_count: draft.retry_count,
-    thresholds: Object.fromEntries(riskThresholdCategories.map(k => [k, clampPercent(draft.thresholds[k]) / 100])),
+    thresholds: Object.fromEntries(thresholdCategoriesForEngine(engine).map(k => [k, clampPercent(draft.thresholds[k]) / 100])),
     clear_api_key: draft.clear_api_key, api_keys: keys.length ? keys : undefined,
     api_keys_mode: draft.api_keys_mode, delete_api_key_hashes: draft.pendingDeletes,
   }
@@ -1982,7 +2023,7 @@ const moderationScoreRows = computed<ModerationScoreRow[]>(() => {
 })
 
 const riskThresholdRows = computed<RiskThresholdRow[]>(() => (
-  riskThresholdCategories.map((category) => ({
+  thresholdCategoriesForEngine(configForm.engine).map((category) => ({
     category,
     value: configForm.thresholds[category] ?? riskThresholdDefaults[category],
     defaultValue: riskThresholdDefaults[category],
@@ -2345,6 +2386,8 @@ async function saveConfig() {
       return
     }
     const payload: UpdateContentModerationConfig = {
+      jailbreak_enabled: configForm.engine === 'typesafe' ? configForm.jailbreak_enabled : undefined,
+      category_prompts: configForm.engine === 'typesafe' ? { ...configForm.category_prompts } : undefined,
       engine: configForm.engine,
       enabled: configForm.enabled,
       mode: configForm.mode,
@@ -2398,7 +2441,7 @@ async function saveConfig() {
     }
 
     engineDrafts.value[configForm.engine] = captureEngineDraft()
-    payload.engine_configs = Object.fromEntries(Object.entries(engineDrafts.value).map(([engine, draft]) => [engine, engineDraftPayload(draft)]))
+    payload.engine_configs = Object.fromEntries(Object.entries(engineDrafts.value).map(([engine, draft]) => [engine, engineDraftPayload(draft, engine as ModerationEngine)]))
     const updated = await adminAPI.riskControl.updateConfig(payload)
     applyConfig(updated)
     settingsOpen.value = false
@@ -2572,6 +2615,8 @@ async function testApiKeys(useInputKeys: boolean) {
   apiKeyTesting.value = true
   try {
     const result = await adminAPI.riskControl.testAPIKeys({
+      jailbreak_enabled: configForm.engine === 'typesafe' ? configForm.jailbreak_enabled : undefined,
+      category_prompts: configForm.engine === 'typesafe' ? { ...configForm.category_prompts } : undefined,
       engine: configForm.engine,
       thresholds: buildRiskThresholdPayload(),
       api_keys: keys,
@@ -2968,7 +3013,7 @@ function riskThresholdsFromConfig(thresholds: Record<string, number> | null | un
 
 function buildRiskThresholdPayload(): Record<string, number> {
   const payload: Record<string, number> = {}
-  for (const category of riskThresholdCategories) {
+  for (const category of thresholdCategoriesForEngine(configForm.engine)) {
     payload[category] = Number((clampPercent(configForm.thresholds[category]) / 100).toFixed(4))
   }
   return payload

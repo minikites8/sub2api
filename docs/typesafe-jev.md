@@ -25,6 +25,14 @@ curl https://your-sub2api.example.com/v1/systemone \
 
 `jev-latest` 内置价格为输入 `$0.042/百万 tokens`、输出 `$0`，渠道定价可以覆盖。凭据、欠费、权限、限流、过载、服务端和网络错误（`401`、`402`、`403`、`429`、`529`、`5xx`、传输错误）沿用现有账号错误策略（含自定义错误码与临时不可调度规则）并切换账号；请求错误（`400`、`413`、`422`）不会切换账号重试，也不会改变账号状态。TypeSafe 分组（以及路由到 TypeSafe 的 Composite 请求）调用 Messages、Chat Completions、Responses、count_tokens 时返回 `404`。
 
+## 风控中心：破限审查与自定义提示词
+
+在 **风控中心 → 内容审计设置 → 基础设置** 中选择 **TypeSafe AI**，配置 Jev 的 Base URL、`jev-latest` 与 API Key，开启 **Jev 破限审查**。审查会增加 `jailbreak` 类别，识别模型越狱、指令覆盖与提示词注入，默认命中阈值为 `0.85`，可在风险阈值页调整。该开关默认关闭，启用后的命中沿用当前前置拦截或观察模式，以及通知、封禁策略。
+
+基础设置支持按类别编辑 Jev 审查提示词，包括 `jailbreak` 和原有的 13 个内容类别。自定义文本覆盖所选类别的判断规则，系统继续附加将输入作为评估数据的固定指令。清空或恢复默认会使用内置规则，每个类别最多 12000 字。在线测试使用当前编辑的提示词、破限开关和阈值，保存后应用于网关请求；各引擎配置单独保存。审查日志的规则版本包含破限规则版本与自定义提示词摘要，便于追溯。
+
+管理 API 的 `PUT /api/v1/admin/risk-control/config` 接受 `engine_configs.typesafe.jailbreak_enabled`、`engine_configs.typesafe.category_prompts` 和 `engine_configs.typesafe.thresholds.jailbreak`。`category_prompts` 使用类别名到提示词的映射，并整体替换已保存的自定义提示词；空映射恢复全部内置规则。审计测试接口接受顶层 `jailbreak_enabled` 和 `category_prompts` 作为本次测试覆盖项。
+
 ## English
 
 Sub2API supports TypeSafe API-key accounts through Jev's native, non-streaming System One protocol.

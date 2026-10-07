@@ -241,6 +241,13 @@ export default {
 
     riskControl: {
       engine: '审计引擎',
+      jailbreakEnabled: 'Jev 破限审查',
+      jailbreakHint: '启用后识别模型越狱与提示词注入，命中 jailbreak 阈值后执行当前拦截、记录与封禁策略。默认阈值 85%，可在风险阈值页调整。',
+      jailbreakCategory: '破限 / 提示词注入（jailbreak）',
+      auditPromptCategory: '提示词对应的审查类别',
+      auditCategoryPrompt: '自定义审查提示词',
+      auditCategoryPromptHint: '编辑后覆盖所选类别的内置判断规则；清空或恢复默认将使用内置规则。每个类别最多 12000 字，在线测试使用当前编辑内容，保存后应用于实际审查。',
+      auditPromptReset: '恢复内置提示词',
       activeEngine: '当前生效引擎：{engine}',
       engineUnavailable: '当前引擎没有可用 Key，API 审计不可用；失败请求按现有策略放行。',
       typeSafeNotice: 'TypeSafe AI 仅审文字，图片不外发也不审核。阈值为待校准初值；公共拦截、通知、封禁策略不会随引擎切换而关闭。',

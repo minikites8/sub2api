@@ -4,7 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import type { DOMWrapper, VueWrapper } from '@vue/test-utils'
 
 import RiskControlView from '../RiskControlView.vue'
-import type { ContentModerationAPIKeyStatus, ContentModerationConfig, UpdateContentModerationConfig } from '@/api/admin/riskControl'
+import type { ContentModerationConfig, UpdateContentModerationConfig } from '@/api/admin/riskControl'
 
 const {
   getConfig,
@@ -41,7 +41,7 @@ vi.mock('@/api/admin', () => ({
       listLogs,
       listAntiAbuseEvents,
       getAntiAbuseConfig,
-      testAPIKeys: vi.fn(),
+      testAPIKeys,
       deleteFlaggedHash: vi.fn(),
       clearFlaggedHashes: vi.fn(),
       unbanUser: vi.fn(),
@@ -504,6 +504,81 @@ describe('admin RiskControlView', () => {
       }),
     }))
     expect(showError).not.toHaveBeenCalled()
+  })
+
+  async function mountJevSettings() {
+    const config = {
+      ...baseConfig(), engine: 'typesafe' as const, base_url: 'https://api.typesafe.ai', model: 'jev-latest',
+      api_key_configured: true, api_key_count: 1, jailbreak_enabled: false,
+      default_category_prompts: { jailbreak: '内置破限规则', sexual: '内置内容规则' },
+    }
+    getConfig.mockResolvedValue(config)
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub, BaseDialog: BaseDialogStub, Icon: true, Select: true,
+          Toggle: true, Pagination: true, ModelWhitelistSelector: ModelWhitelistSelectorStub, ProxySelector: true,
+        },
+      },
+    })
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    return wrapper
+  }
+
+  it('preserves Jev jailbreak prompts and thresholds across engine switches and saves them', async () => {
+    const wrapper = await mountJevSettings()
+    expect(wrapper.get('[data-test="audit-category-prompt"]').element).toHaveProperty('value', '内置破限规则')
+    wrapper.getComponent('[data-test="jailbreak-enabled"]').vm.$emit('update:modelValue', true)
+    await wrapper.get('[data-test="audit-category-prompt"]').setValue('自定义破限规则')
+    await wrapper.get('[data-test="audit-prompt-category"]').setValue('sexual')
+    await wrapper.get('[data-test="audit-category-prompt"]').setValue('自定义内容规则')
+    wrapper.getComponent('[data-test="audit-engine-select"]').vm.$emit('update:modelValue', 'openai')
+    await flushPromises()
+    expect(wrapper.find('[data-test="audit-category-prompt"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="audit-model"]').element).toHaveProperty('value', 'omni-moderation-latest')
+    wrapper.getComponent('[data-test="audit-engine-select"]').vm.$emit('update:modelValue', 'typesafe')
+    await flushPromises()
+    expect(wrapper.get('[data-test="audit-category-prompt"]').element).toHaveProperty('value', '自定义内容规则')
+    await findButtonByText(wrapper, 'admin.riskControl.tabs.riskThresholds').trigger('click')
+    await wrapper.get('[data-test="risk-threshold-jailbreak"]').setValue('72')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      engine_configs: expect.objectContaining({
+        typesafe: expect.objectContaining({
+          jailbreak_enabled: true,
+          category_prompts: { jailbreak: '自定义破限规则', sexual: '自定义内容规则' },
+          thresholds: expect.objectContaining({ jailbreak: 0.72 }),
+        }),
+        openai: expect.objectContaining({ model: 'omni-moderation-latest' }),
+      }),
+    }))
+    expect(showError).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('uses draft Jev prompts in online tests and restores the built-in prompt', async () => {
+    const wrapper = await mountJevSettings()
+    testAPIKeys.mockResolvedValue({ items: [], image_count: 0 })
+    wrapper.getComponent('[data-test="jailbreak-enabled"]').vm.$emit('update:modelValue', true)
+    await wrapper.get('[data-test="audit-category-prompt"]').setValue('测试中的规则')
+    await findButtonByText(wrapper, 'admin.riskControl.testStoredApiKeys').trigger('click')
+    await flushPromises()
+    expect(testAPIKeys).toHaveBeenCalledWith(expect.objectContaining({
+      engine: 'typesafe', jailbreak_enabled: true,
+      category_prompts: { jailbreak: '测试中的规则' },
+      thresholds: expect.objectContaining({ jailbreak: 0.85 }),
+    }))
+    expect(updateConfig).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="reset-category-prompt"]').trigger('click')
+    expect(wrapper.get('[data-test="audit-category-prompt"]').element).toHaveProperty('value', '内置破限规则')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      engine_configs: expect.objectContaining({ typesafe: expect.objectContaining({ category_prompts: {} }) }),
+    }))
+    wrapper.unmount()
   })
 
   it('describes worker runtime as async audit and pre-block record processing', async () => {

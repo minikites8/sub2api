@@ -13,6 +13,9 @@ export interface ContentModerationModelFilter {
 }
 
 export interface ContentModerationConfig {
+  jailbreak_enabled?: boolean
+  category_prompts?: Record<string, string>
+  default_category_prompts?: Record<string, string>
   engine?: ModerationEngine
   engine_configs?: Record<ModerationEngine, ContentModerationConfig>
   enabled: boolean
@@ -75,6 +78,8 @@ export interface ContentModerationAPIKeyStatus {
 }
 
 export interface TestContentModerationAPIKeysPayload {
+  jailbreak_enabled?: boolean
+  category_prompts?: Record<string, string>
   engine?: ModerationEngine
   thresholds?: Record<string, number>
   api_keys?: string[]
@@ -104,6 +109,8 @@ export interface ContentModerationTestAuditResult {
 }
 
 export interface UpdateContentModerationConfig {
+  jailbreak_enabled?: boolean
+  category_prompts?: Record<string, string>
   engine?: ModerationEngine
   engine_configs?: Partial<Record<ModerationEngine, UpdateModerationEngineConfig>>
   enabled?: boolean
@@ -231,7 +238,7 @@ export interface ContentModerationLog {
 
 export type UpdateModerationEngineConfig = Pick<UpdateContentModerationConfig,
   'base_url' | 'model' | 'proxy_id' | 'api_keys' | 'api_keys_mode' | 'delete_api_key_hashes' |
-  'clear_api_key' | 'timeout_ms' | 'retry_count' | 'thresholds'>
+  'clear_api_key' | 'timeout_ms' | 'retry_count' | 'thresholds' | 'jailbreak_enabled' | 'category_prompts'>
 
 export interface ListContentModerationLogsParams {
   page?: number

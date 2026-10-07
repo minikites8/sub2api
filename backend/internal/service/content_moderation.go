@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"sort"
@@ -146,12 +147,14 @@ func ContentModerationCategories() []string {
 }
 
 type ContentModerationConfig struct {
-	Engine   string                         `json:"engine,omitempty"`
-	TypeSafe *ContentModerationEngineConfig `json:"typesafe,omitempty"`
-	Enabled  bool                           `json:"enabled"`
-	Mode     string                         `json:"mode"`
-	BaseURL  string                         `json:"base_url"`
-	Model    string                         `json:"model"`
+	JailbreakEnabled bool                           `json:"jailbreak_enabled"`
+	CategoryPrompts  map[string]string              `json:"category_prompts,omitempty"`
+	Engine           string                         `json:"engine,omitempty"`
+	TypeSafe         *ContentModerationEngineConfig `json:"typesafe,omitempty"`
+	Enabled          bool                           `json:"enabled"`
+	Mode             string                         `json:"mode"`
+	BaseURL          string                         `json:"base_url"`
+	Model            string                         `json:"model"`
 	// GroupModelOverrides maps a group ID to the moderation API model used for
 	// that group's audit requests. Empty or missing entries fall back to Model.
 	GroupModelOverrides map[int64]string `json:"group_model_overrides"`
@@ -197,6 +200,9 @@ type ContentModerationConfig struct {
 }
 
 type ContentModerationConfigView struct {
+	JailbreakEnabled               bool                                    `json:"jailbreak_enabled"`
+	CategoryPrompts                map[string]string                       `json:"category_prompts"`
+	DefaultCategoryPrompts         map[string]string                       `json:"default_category_prompts,omitempty"`
 	Engine                         string                                  `json:"engine"`
 	EngineConfigs                  map[string]*ContentModerationConfigView `json:"engine_configs,omitempty"`
 	Enabled                        bool                                    `json:"enabled"`
@@ -271,12 +277,14 @@ type ContentModerationAPIKeyLoad struct {
 }
 
 type TestContentModerationAPIKeysInput struct {
-	Engine     string              `json:"engine"`
-	Thresholds *map[string]float64 `json:"thresholds"`
-	APIKeys    []string            `json:"api_keys"`
-	BaseURL    string              `json:"base_url"`
-	Model      string              `json:"model"`
-	TimeoutMS  int                 `json:"timeout_ms"`
+	JailbreakEnabled *bool               `json:"jailbreak_enabled"`
+	CategoryPrompts  *map[string]string  `json:"category_prompts"`
+	Engine           string              `json:"engine"`
+	Thresholds       *map[string]float64 `json:"thresholds"`
+	APIKeys          []string            `json:"api_keys"`
+	BaseURL          string              `json:"base_url"`
+	Model            string              `json:"model"`
+	TimeoutMS        int                 `json:"timeout_ms"`
 	// ProxyID nil 表示沿用已保存配置的代理；<=0 表示强制直连测试；>0 表示指定代理测试。
 	ProxyID *int64   `json:"proxy_id"`
 	Prompt  string   `json:"prompt"`
@@ -300,6 +308,8 @@ type ContentModerationTestAuditResult struct {
 }
 
 type UpdateContentModerationConfigInput struct {
+	JailbreakEnabled    *bool                                         `json:"jailbreak_enabled"`
+	CategoryPrompts     *map[string]string                            `json:"category_prompts"`
 	Engine              *string                                       `json:"engine"`
 	EngineConfigs       map[string]UpdateContentModerationEngineInput `json:"engine_configs"`
 	Enabled             *bool                                         `json:"enabled"`
@@ -686,28 +696,11 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	if input.Mode != nil {
 		cfg.Mode = strings.TrimSpace(*input.Mode)
 	}
-	if input.BaseURL != nil {
-		cfg.BaseURL = strings.TrimSpace(*input.BaseURL)
-	}
-	if input.Model != nil {
-		cfg.Model = strings.TrimSpace(*input.Model)
-	}
 	if input.GroupModelOverrides != nil {
 		cfg.GroupModelOverrides = normalizeContentModerationGroupModelOverrides(*input.GroupModelOverrides)
 	}
 	if input.GroupModelFilters != nil {
 		cfg.GroupModelFilters = normalizeContentModerationGroupModelFilters(*input.GroupModelFilters)
-	}
-	if input.ProxyID != nil {
-		if *input.ProxyID > 0 {
-			id := *input.ProxyID
-			cfg.ProxyID = &id
-		} else {
-			cfg.ProxyID = nil
-		}
-	}
-	if input.TimeoutMS != nil {
-		cfg.TimeoutMS = *input.TimeoutMS
 	}
 	if input.SampleRate != nil {
 		cfg.SampleRate = *input.SampleRate
@@ -781,17 +774,27 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	if input.CyberPolicyTargetGroupIDs != nil {
 		cfg.CyberPolicyTargetGroupIDs = normalizeInt64IDs(*input.CyberPolicyTargetGroupIDs)
 	}
-	if input.Thresholds != nil {
-		cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), *input.Thresholds)
+	// Legacy top-level engine fields update the selected profile. Explicit
+	// engine_configs entries take precedence for clients with separate drafts.
+	if err := s.updateEngineProfile(ctx, cfg, cfg.Engine, UpdateContentModerationEngineInput{
+		BaseURL: input.BaseURL, Model: input.Model, ProxyID: input.ProxyID,
+		APIKey: input.APIKey, APIKeys: input.APIKeys, APIKeysMode: input.APIKeysMode,
+		DeleteAPIKeyHashes: input.DeleteAPIKeyHashes, ClearAPIKey: input.ClearAPIKey,
+		TimeoutMS: input.TimeoutMS, RetryCount: input.RetryCount, Thresholds: input.Thresholds,
+		JailbreakEnabled: input.JailbreakEnabled, CategoryPrompts: input.CategoryPrompts,
+	}); err != nil {
+		return nil, err
 	}
 	for engine, profile := range input.EngineConfigs {
 		if err := s.updateEngineProfile(ctx, cfg, engine, profile); err != nil {
 			return nil, err
 		}
 	}
-	if err := s.validateConfig(ctx, cfg); err != nil {
+	effective := cfg.effectiveEngine(cfg.Engine)
+	if err := s.validateConfig(ctx, effective); err != nil {
 		return nil, err
 	}
+	cfg.GroupIDs = effective.GroupIDs
 	cfg.normalize()
 	raw, err := json.Marshal(cfg)
 	if err != nil {
@@ -819,6 +822,18 @@ func (s *ContentModerationService) TestAPIKeys(ctx context.Context, input TestCo
 		return nil, infraerrors.BadRequest("INVALID_CONTENT_MODERATION_ENGINE", "内容审计引擎无效")
 	}
 	cfg = cfg.effectiveEngine(engine)
+	if input.JailbreakEnabled != nil {
+		cfg.JailbreakEnabled = *input.JailbreakEnabled
+	}
+	if input.CategoryPrompts != nil {
+		cfg.CategoryPrompts, err = validateTypeSafeCategoryPrompts(*input.CategoryPrompts)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if engine != ContentModerationEngineTypeSafe && (cfg.JailbreakEnabled || len(cfg.CategoryPrompts) > 0) {
+		return nil, infraerrors.BadRequest("INVALID_CONTENT_MODERATION_ENGINE", "破限审查和自定义提示词需要 TypeSafe / Jev 引擎")
+	}
 	if input.Thresholds != nil {
 		cfg.Thresholds = mergeContentModerationThresholds(moderationEngineDefaults(engine).Thresholds, *input.Thresholds)
 	}
@@ -2399,6 +2414,7 @@ func cloneContentModerationConfig(cfg *ContentModerationConfig) *ContentModerati
 		return nil
 	}
 	clone := *cfg
+	clone.CategoryPrompts = maps.Clone(cfg.CategoryPrompts)
 	if cfg.TypeSafe != nil {
 		clone.TypeSafe = cfg.engineProfile(ContentModerationEngineTypeSafe)
 	}
@@ -2756,6 +2772,10 @@ func (s *ContentModerationService) ensureAPIKeyHealthLocked(hash string, masked 
 }
 
 func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *ContentModerationConfigView {
+	var defaultPrompts map[string]string
+	if cfg.Engine == ContentModerationEngineTypeSafe {
+		defaultPrompts = typeSafeDefaultCategoryPrompts()
+	}
 	keys := cfg.apiKeys()
 	masks := make([]string, 0, len(keys))
 	for _, key := range keys {
@@ -2766,6 +2786,9 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		apiKeyMasked = masks[0]
 	}
 	return &ContentModerationConfigView{
+		JailbreakEnabled:               cfg.JailbreakEnabled,
+		CategoryPrompts:                maps.Clone(cfg.CategoryPrompts),
+		DefaultCategoryPrompts:         defaultPrompts,
 		Engine:                         cfg.Engine,
 		Enabled:                        cfg.Enabled,
 		Mode:                           cfg.Mode,
@@ -3066,6 +3089,9 @@ func evaluateModerationScores(scores map[string]float64, thresholds map[string]f
 		}
 	}
 	for category, score := range scores {
+		if threshold, ok := thresholds[category]; ok && category == ContentModerationCategoryJailbreak && score >= threshold {
+			flagged = true
+		}
 		if score > highestScore || highestCategory == "" {
 			highestScore = score
 			highestCategory = category
@@ -3079,7 +3105,7 @@ func mergeContentModerationThresholds(base map[string]float64, override map[stri
 	if out == nil {
 		out = map[string]float64{}
 	}
-	for _, category := range contentModerationCategoryOrder {
+	for _, category := range append(ContentModerationCategories(), ContentModerationCategoryJailbreak) {
 		if v, ok := override[category]; ok {
 			if v < 0 {
 				v = 0

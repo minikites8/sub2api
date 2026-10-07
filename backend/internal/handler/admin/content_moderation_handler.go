@@ -25,6 +25,8 @@ func NewContentModerationHandler(svc *service.ContentModerationService, settings
 }
 
 type contentModerationConfigRequest struct {
+	JailbreakEnabled    *bool                                                 `json:"jailbreak_enabled"`
+	CategoryPrompts     *map[string]string                                    `json:"category_prompts"`
 	Engine              *string                                               `json:"engine"`
 	EngineConfigs       map[string]service.UpdateContentModerationEngineInput `json:"engine_configs"`
 	Enabled             *bool                                                 `json:"enabled"`
@@ -72,15 +74,17 @@ type contentModerationConfigRequest struct {
 }
 
 type contentModerationAPIKeyTestRequest struct {
-	Engine     string              `json:"engine"`
-	Thresholds *map[string]float64 `json:"thresholds"`
-	APIKeys    []string            `json:"api_keys"`
-	BaseURL    string              `json:"base_url"`
-	Model      string              `json:"model"`
-	TimeoutMS  int                 `json:"timeout_ms"`
-	ProxyID    *int64              `json:"proxy_id"`
-	Prompt     string              `json:"prompt"`
-	Images     []string            `json:"images"`
+	JailbreakEnabled *bool               `json:"jailbreak_enabled"`
+	CategoryPrompts  *map[string]string  `json:"category_prompts"`
+	Engine           string              `json:"engine"`
+	Thresholds       *map[string]float64 `json:"thresholds"`
+	APIKeys          []string            `json:"api_keys"`
+	BaseURL          string              `json:"base_url"`
+	Model            string              `json:"model"`
+	TimeoutMS        int                 `json:"timeout_ms"`
+	ProxyID          *int64              `json:"proxy_id"`
+	Prompt           string              `json:"prompt"`
+	Images           []string            `json:"images"`
 }
 
 type contentModerationHashRequest struct {
@@ -212,6 +216,7 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 	cfg, err := h.service.UpdateConfig(c.Request.Context(), service.UpdateContentModerationConfigInput{
+		JailbreakEnabled: req.JailbreakEnabled, CategoryPrompts: req.CategoryPrompts,
 		Engine: req.Engine, EngineConfigs: req.EngineConfigs,
 		Enabled:                        req.Enabled,
 		Mode:                           req.Mode,
@@ -267,6 +272,7 @@ func (h *ContentModerationHandler) TestAPIKeys(c *gin.Context) {
 		return
 	}
 	result, err := h.service.TestAPIKeys(c.Request.Context(), service.TestContentModerationAPIKeysInput{
+		JailbreakEnabled: req.JailbreakEnabled, CategoryPrompts: req.CategoryPrompts,
 		Engine: req.Engine, Thresholds: req.Thresholds,
 		APIKeys:   req.APIKeys,
 		BaseURL:   req.BaseURL,

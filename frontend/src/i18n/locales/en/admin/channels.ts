@@ -241,6 +241,13 @@ export default {
 
     riskControl: {
       engine: 'Audit engine',
+      jailbreakEnabled: 'Jev jailbreak detection',
+      jailbreakHint: 'Detect model jailbreaks and prompt injection. Scores meeting the jailbreak threshold use the current blocking, logging and ban policy. The default threshold is 85%; adjust it in Risk thresholds.',
+      jailbreakCategory: 'Jailbreak / prompt injection (jailbreak)',
+      auditPromptCategory: 'Category to customize',
+      auditCategoryPrompt: 'Custom audit prompt',
+      auditCategoryPromptHint: 'Edits replace the selected category’s built-in rule. Clear or reset to use the built-in rule. Each category allows up to 12,000 characters. Online tests use the current draft; save to apply it to live audits.',
+      auditPromptReset: 'Restore built-in prompt',
       activeEngine: 'Active engine: {engine}',
       engineUnavailable: 'No usable Key for the active engine. API auditing is unavailable; failed checks fail open under the existing policy.',
       typeSafeNotice: 'TypeSafe AI audits text only. Images are neither sent nor audited. Thresholds are uncalibrated; switching engines does not disable shared blocking, notifications or automatic bans.',
