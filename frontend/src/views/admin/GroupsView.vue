@@ -931,7 +931,7 @@
                 {{ t("admin.groups.modelAllowlist.hint") }}
               </p>
             </div>
-            <Toggle v-model="createModelAllowlistState.enabled" />
+            <Toggle v-model="createModelAllowlistState.enabled" data-testid="create-model-allowlist" />
           </div>
           <div
             v-if="createModelAllowlistState.enabled"
@@ -2821,7 +2821,7 @@
                 {{ t("admin.groups.modelAllowlist.hint") }}
               </p>
             </div>
-            <Toggle v-model="editModelAllowlistState.enabled" />
+            <Toggle v-model="editModelAllowlistState.enabled" data-testid="edit-model-allowlist" />
           </div>
           <div
             v-if="editModelAllowlistState.enabled"
@@ -6483,6 +6483,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 };
 
 const openCreateModal = () => {
+  resetModelAllowlistState(createModelAllowlistState);
   showCreateModal.value = true;
   loadModelAllowlistCandidates("create", 0, createForm.platform);
   loadModelsListCandidates("create", 0, createForm.platform);
@@ -6563,6 +6564,9 @@ const closeCreateModal = () => {
   createForm.kiro_cache_creation_emulation_ratio = 1;
   createForm.kiro_cache_read_emulation_ratio = 1;
   createForm.kiro_endpoint_mode = "q";
+  resetModelAllowlistState(createModelAllowlistState);
+  createAllowlistCustomEntry.value = "";
+  createAllowlistCustomErrorKey.value = null;
   resetModelsListState(createModelsListState);
   loadModelsListCandidates("create", 0, createForm.platform);
   createModelRoutingRules.value = [];
@@ -6931,6 +6935,7 @@ editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
     group.kiro_cache_read_emulation_ratio ?? group.kiro_cache_emulation_ratio ?? 1;
   const mode = group.kiro_endpoint_mode;
   editForm.kiro_endpoint_mode = (mode === "krs" || mode === "auto") ? mode : "q";
+  resetModelAllowlistState(editModelAllowlistState, group.model_allowlist);
   resetModelsListState(editModelsListState, group.models_list_config);
   loadModelsListCandidates("edit", group.id, group.platform);
   // 加载模型路由规则（异步加载账号名称）
@@ -6982,6 +6987,9 @@ const closeEditModal = () => {
   editForm.allow_live = false;
   editForm.openai_service_tier_mode = "passthrough";
   editForm.openai_service_tier = "priority";
+  resetModelAllowlistState(editModelAllowlistState);
+  editAllowlistCustomEntry.value = "";
+  editAllowlistCustomErrorKey.value = null;
   resetModelsListState(editModelsListState);
 };
 

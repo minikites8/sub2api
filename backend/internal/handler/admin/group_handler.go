@@ -244,6 +244,7 @@ type CreateGroupRequest struct {
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
+	ModelAllowlist              service.GroupModelAllowlist               `json:"model_allowlist"`
 	OpenAIServiceTierMode       string                                    `json:"openai_service_tier_mode"`
 	OpenAIServiceTier           string                                    `json:"openai_service_tier"`
 	// 分组 RPM 上限（0 = 不限制）
@@ -332,6 +333,7 @@ type UpdateGroupRequest struct {
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
+	ModelAllowlist              *service.GroupModelAllowlist               `json:"model_allowlist"`
 	OpenAIServiceTierMode       *string                                    `json:"openai_service_tier_mode"`
 	OpenAIServiceTier           *string                                    `json:"openai_service_tier"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
@@ -773,6 +775,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
+		ModelAllowlist:                  req.ModelAllowlist,
 		OpenAIServiceTierMode:           req.OpenAIServiceTierMode,
 		OpenAIServiceTier:               req.OpenAIServiceTier,
 		RPMLimit:                        req.RPMLimit,
@@ -932,6 +935,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
+		ModelAllowlist:                  req.ModelAllowlist,
 		OpenAIServiceTierMode:           req.OpenAIServiceTierMode,
 		OpenAIServiceTier:               req.OpenAIServiceTier,
 		RPMLimit:                        req.RPMLimit,
