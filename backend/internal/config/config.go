@@ -1253,6 +1253,8 @@ type GatewayConfig struct {
 
 	// StreamDataIntervalTimeout: 流数据间隔超时（秒），0表示禁用
 	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`
+	// ExcelBPSStreamDataIntervalTimeout: BPS 上游读取无进展超时（秒），0禁用。
+	ExcelBPSStreamDataIntervalTimeout int `mapstructure:"excel_bps_stream_data_interval_timeout"`
 	// StreamKeepaliveInterval: 流式 keepalive 间隔（秒），0表示禁用
 	StreamKeepaliveInterval int `mapstructure:"stream_keepalive_interval"`
 	// KiroStreamKeepaliveInterval: Kiro 流式 keepalive 间隔（秒），0使用默认 25 秒
@@ -1513,6 +1515,9 @@ type GatewayOpenAIWSConfig struct {
 	HTTPBridgeEnabled bool `mapstructure:"http_bridge_enabled"`
 	// HTTPBridgeThresholdBytes: 触发 HTTP bridge 的入站 WS payload 阈值。
 	HTTPBridgeThresholdBytes int64 `mapstructure:"http_bridge_threshold_bytes"`
+	// SSEAccelerationMaxPayloadBytes bounds the encoded HTTP-to-WS request, including its JSON newline.
+	// Larger requests remain on HTTP/SSE; native WS ingress is unaffected.
+	SSEAccelerationMaxPayloadBytes int64 `mapstructure:"sse_acceleration_max_payload_bytes"`
 
 	// Feature 开关：v2 优先于 v1
 	ResponsesWebsockets   bool `mapstructure:"responses_websockets"`
@@ -1733,6 +1738,9 @@ type GatewaySchedulingConfig struct {
 	DbFallbackTimeoutSeconds int `mapstructure:"db_fallback_timeout_seconds"`
 	// 受控回源限流（实例级 QPS），0 表示不限制
 	DbFallbackMaxQPS int `mapstructure:"db_fallback_max_qps"`
+	// OpenAI 请求发送前账户快照的进程内缓存 TTL（秒），0 表示关闭。
+	// 启用后账户停用、换组或代理变更最坏可延迟该时长生效。
+	OpenAITurnAdmissionCacheTTLSeconds int `mapstructure:"openai_turn_admission_cache_ttl_seconds"`
 
 	// Outbox 轮询与滞后阈值配置
 	// Outbox 轮询周期（秒）
@@ -2815,6 +2823,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.client_read_limit_bytes", 64*1024*1024)
 	viper.SetDefault("gateway.openai_ws.http_bridge_enabled", true)
 	viper.SetDefault("gateway.openai_ws.http_bridge_threshold_bytes", 15*1024*1024)
+	viper.SetDefault("gateway.openai_ws.sse_acceleration_max_payload_bytes", 15*1024*1024)
 	viper.SetDefault("gateway.openai_ws.responses_websockets", false)
 	viper.SetDefault("gateway.openai_ws.responses_websockets_v2", true)
 	viper.SetDefault("gateway.openai_ws.max_conns_per_account", 128)
@@ -2900,6 +2909,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
 	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
+	viper.SetDefault("gateway.excel_bps_stream_data_interval_timeout", 120)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.kiro_stream_keepalive_interval", 25)
 	viper.SetDefault("gateway.image_stream_data_interval_timeout", 900)
@@ -2920,6 +2930,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)
 	viper.SetDefault("gateway.scheduling.db_fallback_timeout_seconds", 0)
 	viper.SetDefault("gateway.scheduling.db_fallback_max_qps", 0)
+	viper.SetDefault("gateway.scheduling.openai_turn_admission_cache_ttl_seconds", 0)
 	viper.SetDefault("gateway.scheduling.outbox_poll_interval_seconds", 1)
 	viper.SetDefault("gateway.scheduling.outbox_lag_warn_seconds", 5)
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_seconds", 10)
@@ -3917,6 +3928,9 @@ func (c *Config) Validate() error {
 		(c.Gateway.StreamDataIntervalTimeout < 30 || c.Gateway.StreamDataIntervalTimeout > 300) {
 		return fmt.Errorf("gateway.stream_data_interval_timeout must be 0 or between 30-300 seconds")
 	}
+	if n := c.Gateway.ExcelBPSStreamDataIntervalTimeout; n != 0 && (n < 30 || n > 300) {
+		return fmt.Errorf("gateway.excel_bps_stream_data_interval_timeout must be 0 or between 30-300 seconds")
+	}
 	if c.Gateway.StreamKeepaliveInterval < 0 {
 		return fmt.Errorf("gateway.stream_keepalive_interval must be non-negative")
 	}
@@ -4012,6 +4026,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIWS.ClientReadLimitBytes <= 0 {
 		return fmt.Errorf("gateway.openai_ws.client_read_limit_bytes must be positive")
+	}
+	if c.Gateway.OpenAIWS.SSEAccelerationMaxPayloadBytes <= 0 {
+		return fmt.Errorf("gateway.openai_ws.sse_acceleration_max_payload_bytes must be positive")
 	}
 	if c.Gateway.OpenAIWS.HTTPBridgeThresholdBytes < 0 {
 		return fmt.Errorf("gateway.openai_ws.http_bridge_threshold_bytes must be non-negative")
@@ -4212,6 +4229,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Scheduling.DbFallbackMaxQPS < 0 {
 		return fmt.Errorf("gateway.scheduling.db_fallback_max_qps must be non-negative")
+	}
+	if c.Gateway.Scheduling.OpenAITurnAdmissionCacheTTLSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.openai_turn_admission_cache_ttl_seconds must be non-negative")
 	}
 	if c.Gateway.Scheduling.OutboxPollIntervalSeconds <= 0 {
 		return fmt.Errorf("gateway.scheduling.outbox_poll_interval_seconds must be positive")

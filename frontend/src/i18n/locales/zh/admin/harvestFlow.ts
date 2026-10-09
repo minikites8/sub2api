@@ -107,6 +107,9 @@ export default {
       }
     },
     console: {
+      collectLanes: '并行通道数',
+      parallelStart: '并行获取凭证',
+      parallelHint: '通道数仅用于“并行获取凭证”。需要托管 Mihomo；独立出口共享尝试预算，每个模型成功入库后停止。通道数不设固定上限，实际并发不超过剩余预算与可用节点数。每轮节点不重复，下次接着上次位置继续。串行打票使用上面的换节点规则。',
       title: '单号定向打票',
       description: '使用已配置代理手动为指定账号打票。',
       account: '目标账号',
@@ -123,6 +126,15 @@ export default {
       rateLimitCooldown: '429 冷静',
       rateLimitCooldownHint: '1–60 秒',
       maxAttempts: '最大尝试',
+      maxAttemptsHint: '填写正整数，不设固定上限；所有模型和通道共享此预算。',
+      invalidBudget: '尝试次数须为正整数，并行通道数须为不小于 2 的整数。',
+      nodeSwitch: '换节点规则',
+      nodeSwitchRules: {
+        '312_or_2fail': '降智票或连败 2 次切',
+        every_request: '每次请求都切',
+        '312_only': '仅降智票切',
+        never: '固定当前出口'
+      },
       stopOnSuccess: '出票即停（入库合格票后结束）',
       start: '串行打票（1 路）',
       stop: '停止打票',

@@ -9,6 +9,8 @@ vi.mock('vue-i18n', () => ({
 vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClipboard: vi.fn() }) }))
 vi.mock('@/api/publicTransit', () => ({ getPublicTransitSnapshot: vi.fn(async () => null) }))
 
+vi.mock('@/utils/featureFlags', () => ({ isChannelMonitorV3Mode: () => false }))
+
 import ChannelStatusView from '../ChannelStatusView.vue'
 
 const mountView = () => mount(ChannelStatusView, {

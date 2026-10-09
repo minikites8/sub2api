@@ -224,6 +224,7 @@ export default {
     channelManagement: '渠道管理',
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
+    supportTickets: '网站工单',
     channelStatus: '模型广场',
     riskControl: '风控中心',
     securityAudit: '安全审计',

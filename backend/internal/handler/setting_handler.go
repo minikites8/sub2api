@@ -122,6 +122,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		PublicTransitEnabled:     settings.PublicTransitEnabled,
 		PublicTransitPageEnabled: settings.PublicTransitPageEnabled,
 
+		SupportTicketEnabled: settings.SupportTicketEnabled,
+
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		RiskControlEnabled: settings.RiskControlEnabled,

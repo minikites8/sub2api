@@ -24,12 +24,16 @@ import (
 
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
-	OpenAICodexTicketUseSavedStaticProxy *bool                            `json:"openai_codex_ticket_use_saved_static_proxy"`
-	OpenAICodexTicketHarvestProxyURL     *string                          `json:"openai_codex_ticket_harvest_proxy_url"`
+	ExcelBPSEnabled                      *bool                            `json:"excel_bps_enabled"`
 	OpenAICodexTicketHarvestScope        *service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
 	OpenAICodexTicketStrictResponse      *bool                            `json:"openai_codex_ticket_strict_response"`
 	OpenAICodexTicketFailClosed          *bool                            `json:"openai_codex_ticket_fail_closed"`
 	OpenAICodexTicketStrategy            *string                          `json:"openai_codex_ticket_strategy"`
+	PrismBrowserEnabled                  bool                             `json:"prism_browser_enabled"`
+	PrismBrowserBaseURL                  string                           `json:"prism_browser_base_url"`
+	PrismBrowserAPIKey                   string                           `json:"prism_browser_api_key"`
+	OpenAICodexTicketUseSavedStaticProxy *bool                            `json:"openai_codex_ticket_use_saved_static_proxy"`
+	OpenAICodexTicketHarvestProxyURL     *string                          `json:"openai_codex_ticket_harvest_proxy_url"`
 	// 注册设置
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
@@ -393,6 +397,10 @@ type UpdateSettingsRequest struct {
 	// Plugin management menu visibility switch; plugin runtime is unaffected.
 	PluginManagementEnabled *bool `json:"plugin_management_enabled"`
 
+	// Support tickets switch + form config
+	SupportTicketEnabled *bool                        `json:"support_ticket_enabled"`
+	SupportTicket        *service.SupportTicketConfig `json:"support_ticket_config"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
@@ -557,6 +565,25 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.OpenAICodexTicketHarvestScope != nil && req.OpenAICodexTicketHarvestScope.Mode == "" {
 		response.BadRequest(c, "harvest scope mode is required")
 		return
+	}
+	if req.PrismBrowserEnabled {
+		if strings.TrimSpace(req.PrismBrowserBaseURL) == "" {
+			response.BadRequest(c, "prism browser base URL is required when enabled")
+			return
+		}
+		if strings.TrimSpace(req.PrismBrowserAPIKey) != "" && len(strings.TrimSpace(req.PrismBrowserAPIKey)) < 32 {
+			response.BadRequest(c, "prism browser API key must contain at least 32 characters")
+			return
+		}
+		current, err := h.settingService.GetAllSettings(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if len(strings.TrimSpace(req.PrismBrowserAPIKey)) < 32 && len(strings.TrimSpace(current.PrismBrowserAPIKey)) < 32 {
+			response.BadRequest(c, "configure a Prism browser API key with at least 32 characters before enabling")
+			return
+		}
 	}
 	if req.RequestCaptureQuotaMiB != nil && (*req.RequestCaptureQuotaMiB < 1 || *req.RequestCaptureQuotaMiB > (1<<63-1)/(1<<20)) {
 		response.BadRequest(c, "Capture quota must be positive MiB within int64 range")
@@ -1663,6 +1690,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultPlatformQuotas: req.DefaultPlatformQuotas,
 
 		RegistrationEnabled:                 req.RegistrationEnabled,
+		PrismBrowserEnabled:                 req.PrismBrowserEnabled,
+		PrismBrowserBaseURL:                 req.PrismBrowserBaseURL,
+		PrismBrowserAPIKey:                  req.PrismBrowserAPIKey,
 		EmailVerifyEnabled:                  req.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:    req.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: registrationEmailDomainQuotaEnabled,
@@ -2277,6 +2307,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AccountQuotaNotifyEmails
 		}(),
+		ExcelBPSEnabled: func() bool {
+			if req.ExcelBPSEnabled != nil {
+				return *req.ExcelBPSEnabled
+			}
+			return previousSettings.ExcelBPSEnabled
+		}(),
 		ChannelMonitorEnabled: func() bool {
 			if req.ChannelMonitorEnabled != nil {
 				return *req.ChannelMonitorEnabled
@@ -2396,6 +2432,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.PluginManagementEnabled
 			}
 			return previousSettings.PluginManagementEnabled
+		}(),
+		SupportTicketEnabled: func() bool {
+			if req.SupportTicketEnabled != nil {
+				return *req.SupportTicketEnabled
+			}
+			return previousSettings.SupportTicketEnabled
+		}(),
+		SupportTicket: func() service.SupportTicketConfig {
+			if req.SupportTicket != nil {
+				return *req.SupportTicket
+			}
+			return previousSettings.SupportTicket
 		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
@@ -2591,6 +2639,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    updatedSettings.RegistrationEnabled,
+		PrismBrowserEnabled:                                    updatedSettings.PrismBrowserEnabled,
+		PrismBrowserBaseURL:                                    updatedSettings.PrismBrowserBaseURL,
+		PrismBrowserAPIKeyConfigured:                           updatedSettings.PrismBrowserAPIKeyConfigured,
 		EmailVerifyEnabled:                                     updatedSettings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       updatedSettings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled:                    updatedSettings.RegistrationEmailDomainQuotaEnabled,
@@ -2855,6 +2906,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentAlipayMobilePrecreateDeepLink:                   updatedPaymentCfg.AlipayMobilePrecreateDeepLink,
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
+		ExcelBPSEnabled:                      updatedSettings.ExcelBPSEnabled,
 		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
@@ -2876,6 +2928,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PluginManagementEnabled:  updatedSettings.PluginManagementEnabled,
 		PublicTransitEnabled:     updatedSettings.PublicTransitEnabled,
 		PublicTransitPageEnabled: updatedSettings.PublicTransitPageEnabled,
+
+		SupportTicketEnabled: updatedSettings.SupportTicketEnabled,
+		SupportTicket:        updatedSettings.SupportTicket,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 

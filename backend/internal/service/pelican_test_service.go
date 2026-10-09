@@ -31,6 +31,7 @@ type pelicanTestOptions struct {
 }
 
 func withPelicanTestOptions(ctx context.Context, options pelicanTestOptions) context.Context {
+	ctx = context.WithValue(ctx, qualityProbeContextKey{}, true)
 	return context.WithValue(ctx, pelicanTestContextKey{}, options)
 }
 
@@ -40,6 +41,9 @@ func pelicanTestOptionsFromContext(ctx context.Context) (pelicanTestOptions, boo
 }
 
 func isQualityObservation(ctx context.Context) bool {
+	if isControlledExperiment(ctx) {
+		return true
+	}
 	options, _ := pelicanTestOptionsFromContext(ctx)
 	return options.observeOnly
 }
@@ -146,7 +150,7 @@ func (w *pelicanOpenAIStreamRecorder) WriteString(data string) (int, error) {
 
 func normalizePelicanReasoningEffort(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "minimal", "low", "medium", "high", "xhigh":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra":
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
 		return ""

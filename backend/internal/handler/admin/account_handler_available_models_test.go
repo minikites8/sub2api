@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -370,6 +371,49 @@ func TestAccountHandlerGetAvailableModels_KiroOAuthFallsBackToDefaults(t *testin
 	require.False(t, slices.Contains(ids, "gpt-4o"))
 }
 
+func TestAccountHandlerGetAvailableModels_Antigravity(t *testing.T) {
+	defaults := antigravity.DefaultModels()
+	known := defaults[0]
+	custom := antigravity.ClaudeModel{ID: "claude-custom-alias", Type: "model", DisplayName: "claude-custom-alias"}
+	cases := []struct {
+		name        string
+		credentials map[string]any
+		want        []antigravity.ClaudeModel
+	}{
+		{name: "nil credentials", want: defaults},
+		{name: "missing mapping", credentials: map[string]any{}, want: defaults},
+		{name: "empty JSON mapping", credentials: map[string]any{"model_mapping": map[string]any{}}, want: defaults},
+		{name: "empty string mapping", credentials: map[string]any{"model_mapping": map[string]string{}}, want: defaults},
+		{name: "blank key", credentials: map[string]any{"model_mapping": map[string]any{" ": "upstream-model"}}, want: defaults},
+		{name: "JSON mapping keys and metadata", credentials: map[string]any{"model_mapping": map[string]any{
+			known.ID: known.ID, custom.ID: "upstream-model",
+		}}, want: []antigravity.ClaudeModel{custom, known}},
+		{name: "string mapping keys and metadata", credentials: map[string]any{"model_mapping": map[string]string{
+			known.ID: known.ID, custom.ID: "upstream-model",
+		}}, want: []antigravity.ClaudeModel{custom, known}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, accountType := range []string{service.AccountTypeOAuth, service.AccountTypeAPIKey} {
+				t.Run(accountType, func(t *testing.T) {
+					svc := &availableModelsAdminService{
+						stubAdminService: newStubAdminService(),
+						account:          service.Account{ID: 51, Platform: service.PlatformAntigravity, Type: accountType, Credentials: tc.credentials},
+					}
+					rec := httptest.NewRecorder()
+					setupAvailableModelsRouter(svc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/51/models", nil))
+					require.Equal(t, http.StatusOK, rec.Code)
+					var resp struct {
+						Data []antigravity.ClaudeModel `json:"data"`
+					}
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+					require.Equal(t, tc.want, resp.Data)
+				})
+			}
+		})
+	}
+}
+
 func TestAccountHandlerGetAvailableModels_KiroOAuthUsesExplicitModelMapping(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
@@ -487,30 +531,6 @@ func TestAccountHandlerGetAvailableModels_KiroAPIKeyWithoutMappingFallsBackToDef
 	require.True(t, slices.Contains(ids, "claude-opus-4-7"))
 	require.True(t, slices.Contains(ids, "claude-opus-4-6"))
 	require.False(t, slices.Contains(ids, "kiro-claude-opus-4-7"))
-}
-
-func TestAccountHandlerSyncUpstreamModels_ConfigErrorReturnsBadRequest(t *testing.T) {
-	svc := &availableModelsAdminService{
-		stubAdminService: newStubAdminService(),
-		account: service.Account{
-			ID:       48,
-			Name:     "openai-apikey-missing-key",
-			Platform: service.PlatformOpenAI,
-			Type:     service.AccountTypeAPIKey,
-			Status:   service.StatusActive,
-			Credentials: map[string]any{
-				"base_url": "https://openai.example.com/v1",
-			},
-		},
-	}
-	router := setupSyncUpstreamModelsRouter(svc, &syncUpstreamHTTPUpstream{})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/48/models/sync-upstream", nil)
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-	require.Contains(t, rec.Body.String(), "No OpenAI API key is available")
 }
 
 func TestAccountHandlerSyncUpstreamModelsReturnsCapabilityMetadata(t *testing.T) {
@@ -717,4 +737,28 @@ func TestAccountHandlerGetAvailableModels_TypeSafeOnlyReturnsJev(t *testing.T) {
 		require.Len(t, resp.Data, 1)
 		require.Equal(t, "jev-latest", resp.Data[0].ID)
 	}
+}
+
+func TestAccountHandlerSyncUpstreamModels_ConfigErrorReturnsBadRequest(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       44,
+			Name:     "openai-apikey-missing-key",
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"base_url": "https://openai.example.com/v1",
+			},
+		},
+	}
+	router := setupSyncUpstreamModelsRouter(svc, &syncUpstreamHTTPUpstream{})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/44/models/sync-upstream", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "No OpenAI API key is available")
 }

@@ -45,75 +45,104 @@ const (
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformKiro        = domain.PlatformKiro
 	PlatformGrok        = domain.PlatformGrok
+	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
 	PlatformKimi        = domain.PlatformKimi
 	PlatformZhipu       = domain.PlatformZhipu
 	PlatformDeepseek    = domain.PlatformDeepseek
 	PlatformMiniMax     = domain.PlatformMiniMax
 	PlatformOpenCodeGo  = domain.PlatformOpenCodeGo
-	PlatformComposite   = domain.PlatformComposite
 	PlatformTypeSafe    = domain.PlatformTypeSafe
+	PlatformCommandCode = domain.PlatformCommandCode
+	PlatformCline       = domain.PlatformCline
+	PlatformComposite   = domain.PlatformComposite
 )
 
-func IsMultiProtocolAPIKeyProvider(platform string) bool {
-	return IsCNProvider(platform) || platform == PlatformOpenCodeGo
-}
-
-// AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
-// ent/schema/user_platform_quota.go 的 Validate 函数独立维护（构建期约束），
-// 若新增平台需同步修改该 schema。
-var AllowedQuotaPlatforms = []string{
-	PlatformAnthropic,
-	PlatformOpenAI,
-	PlatformGemini,
-	PlatformAntigravity,
-	PlatformKiro,
-	PlatformGrok,
-	PlatformKimi,
-	PlatformZhipu,
-	PlatformDeepseek,
-	PlatformMiniMax,
-	PlatformOpenCodeGo,
-	PlatformTypeSafe,
-}
-
-var AllowedSchedulingThresholdPlatforms = []string{PlatformOpenAI, PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu}
-
+// 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
 const (
-	AccountModePayG            = domain.AccountModePayG
-	AccountModeCoding          = domain.AccountModeCoding
-	AccountModeZen             = domain.AccountModeZen
-	AccountModeGo              = domain.AccountModeGo
+	AccountModePayG   = domain.AccountModePayG
+	AccountModeCoding = domain.AccountModeCoding
+	AccountModeZen    = domain.AccountModeZen
+	AccountModeGo     = domain.AccountModeGo
+)
+
+// 上游 API 协议（国产供应商）：决定转发端点与格式，与接入模式正交。
+const (
 	APIProtocolChatCompletions = domain.APIProtocolChatCompletions
 	APIProtocolAnthropic       = domain.APIProtocolAnthropic
 	APIProtocolResponses       = domain.APIProtocolResponses
 	APIProtocolAdaptive        = domain.APIProtocolAdaptive
 )
 
+// 国产 OpenAI 兼容供应商各模式的默认 base_url。
+// 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGBaseURL             = "https://api.moonshot.cn/v1"
-	DefaultKimiCodingBaseURL           = "https://api.kimi.com/coding/v1"
-	DefaultMiniMaxBaseURL              = "https://api.minimaxi.com/v1"
-	DefaultOpenCodeGoBaseURL           = "https://opencode.ai/zen/go/v1"
-	DefaultOpenCodeZenBaseURL          = "https://opencode.ai/zen/v1"
-	DefaultMiniMaxAnthropicBaseURL     = "https://api.minimaxi.com/anthropic"
-	DefaultOpenCodeGoAnthropicBaseURL  = "https://opencode.ai/zen/go"
-	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
-	DefaultZhipuPayGBaseURL            = "https://open.bigmodel.cn/api/paas/v4"
-	DefaultZhipuCodingBaseURL          = "https://open.bigmodel.cn/api/coding/paas/v4"
-	DefaultDeepseekBaseURL             = "https://api.deepseek.com"
-	DefaultKimiPayGAnthropicBaseURL    = "https://api.moonshot.cn/anthropic"
-	DefaultKimiCodingAnthropicBaseURL  = "https://api.kimi.com/coding"
-	DefaultZhipuAnthropicBaseURL       = "https://open.bigmodel.cn/api/anthropic"
-	DefaultDeepseekAnthropicBaseURL    = "https://api.deepseek.com/anthropic"
+	DefaultKimiPayGBaseURL    = "https://api.moonshot.cn/v1"
+	DefaultKimiCodingBaseURL  = "https://api.kimi.com/coding/v1"
+	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
+	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
+	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	// MiniMax 按量付费与 Coding/Token Plan 共用推理域名，靠 API Key 区分套餐。
+	DefaultMiniMaxBaseURL = "https://api.minimaxi.com/v1"
+	// OpenCode Go：Chat Completions / Responses / models 共用 /v1 基址。
+	DefaultOpenCodeGoBaseURL = "https://opencode.ai/zen/go/v1"
+	// OpenCode Zen：按量付费网关，模型列表为 /zen/v1/models。
+	DefaultOpenCodeZenBaseURL = "https://opencode.ai/zen/v1"
+	// Command Code Provider API：Chat Completions / Responses / models 共用 /provider/v1 基址。
+	DefaultCommandCodeBaseURL = "https://api.commandcode.ai/provider/v1"
+	// Cline API：只提供 Chat Completions（{base}/chat/completions）与模型列表。
+	DefaultClineBaseURL = "https://api.cline.bot/api/v1"
 )
 
+// 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
+// 与前端 credentialsBuilder.ts 中的预设保持一致。
+const (
+	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
+	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultMiniMaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
+	// OpenCode Go Anthropic 基址不含 /v1：nativeAnthropicTargetURL 会再拼 /v1/messages。
+	DefaultOpenCodeGoAnthropicBaseURL  = "https://opencode.ai/zen/go"
+	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
+	// Command Code 的 Anthropic 端点为 /provider/v1/messages（Claude 系模型只在此端点提供）。
+	DefaultCommandCodeAnthropicBaseURL = "https://api.commandcode.ai/provider"
+)
+
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek/minimax），
+// 以平台清单（domain/platforms.go）为准。
 func IsCNProvider(platform string) bool {
-	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
-		return true
-	default:
-		return false
-	}
+	return domain.IsCNProviderPlatform(platform)
+}
+
+// IsOpenCodeGo 报告 platform 是否为 OpenCode Go 订阅网关。
+func IsOpenCodeGo(platform string) bool {
+	return platform == PlatformOpenCodeGo
+}
+
+// IsMultiProtocolAPIKeyProvider 报告 platform 是否为多协议 API Key 网关
+// （国产供应商 + OpenCode）：走 OpenAI 网关、支持 adaptive 协议分流。
+// 归属以 provider profile 登记为准（见 provider_profile.go）。
+func IsMultiProtocolAPIKeyProvider(platform string) bool {
+	return LookupProviderProfile(platform) != nil
+}
+
+// AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表：全部已登记的
+// 具体平台（domain/platforms.go），ent/schema/user_platform_quota.go 的校验同源。
+var AllowedQuotaPlatforms = domain.ConcretePlatformIDs()
+
+// AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
+// openai/anthropic/grok 有原生用量窗口；kimi/zhipu/minimax 的 Coding Plan 同样暴露
+// 5h/weekly 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
+// OpenCode Go 与 Command Code 的订阅套餐另有月度窗口。
+var AllowedSchedulingThresholdPlatforms = []string{
+	PlatformOpenAI,
+	PlatformAnthropic,
+	PlatformGrok,
+	PlatformKimi,
+	PlatformZhipu,
+	PlatformMiniMax,
+	PlatformOpenCodeGo,
+	PlatformCommandCode,
 }
 
 const (
@@ -487,19 +516,71 @@ const (
 	// SettingKeyChannelMonitorEnabled is a DB-backed soft switch for the channel monitor feature.
 	// When false: runner skips scheduling and user-facing endpoints return an empty list.
 	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
-	SettingKeyChannelMonitorMode    = "channel_monitor_mode"
 	SettingKeyYeTeamEnabled         = "ye_team_enabled"
 	SettingKeyYeTeamAutoRefresh401  = "ye_team_auto_refresh_401"
-	ChannelMonitorModeV1            = "v1"
-	ChannelMonitorModeV2            = "v2"
+
+	// SettingKeyChannelMonitorMode selects exclusive implementation:
+	// "v1" active probes, "v2" passive aggregation, "v3" component status page.
+	// Default "v1" (opt-in to v2/v3).
+	SettingKeyChannelMonitorMode = "channel_monitor_mode"
+
+	// ChannelMonitorModeV1/V2/V3 are the only accepted mode values.
+	ChannelMonitorModeV1 = "v1"
+	ChannelMonitorModeV2 = "v2"
+	ChannelMonitorModeV3 = "v3"
 
 	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].
 	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
-	SettingKeyChannelMonitorHideThroughput         = "channel_monitor_hide_throughput"
-	SettingKeyChannelMonitorShowQuota              = "channel_monitor_show_quota"
-	SettingKeyChannelMonitorHideUserRanking        = "channel_monitor_hide_user_ranking"
-	SettingKeyPelicanShowcaseEnabled               = "pelican_showcase_enabled"
+
+	// SettingKeyChannelMonitorHideThroughput hides RPM/TPM (and similar absolute
+	// throughput rates) from non-admin user-facing monitor APIs and UI, so users
+	// cannot reverse-estimate fleet volume from rates × window length.
+	// Default false (show rates). Admin endpoints always keep full metrics.
+	SettingKeyChannelMonitorHideThroughput = "channel_monitor_hide_throughput"
+
+	// SettingKeyChannelMonitorShowQuota controls whether quota/balance snapshots
+	// attached to channel monitors (check_mode=quota/quota_probe) are exposed on
+	// the user-facing monitor APIs and UI. Default false (hidden); parsed
+	// fail-closed (only the literal "true" enables it). Admin endpoints always
+	// keep the full snapshots regardless of this flag.
+	SettingKeyChannelMonitorShowQuota = "channel_monitor_show_quota"
+	// SettingKeyChannelMonitorHideUserRanking hides the user ranking tab and
+	// /users payload from non-admin channel-monitor v2 viewers.
+	// Default false (keep the current ranking tab). Admin endpoints always keep it.
+	SettingKeyChannelMonitorHideUserRanking = "channel_monitor_hide_user_ranking"
+
+	// Protocol-wide switches default on for BPS compatibility and off for Prism.
+	SettingKeyExcelBPSEnabled = "excel_bps_enabled"
+	// Prism browser bridge is administrator-managed and disabled by default.
+	SettingKeyPrismBrowserEnabled = "prism_browser_enabled"
+	SettingKeyPrismBrowserBaseURL = "prism_browser_base_url"
+	SettingKeyPrismBrowserAPIKey  = "prism_browser_api_key"
+
+	// SettingKeyGrokDefaultTextModel is the fallback Grok text model for empty
+	// request models and built-in Grok aliases (e.g. "grok" → this id). Default grok-4.5.
+	SettingKeyGrokDefaultTextModel = "grok_default_text_model"
+
+	// SettingKeyGrokCrossClientModelMapEnabled, when true, includes gpt-*/codex-*/o*/claude-*
+	// wildcards in the default Grok account model_mapping so foreign client model names
+	// can reach Grok groups. Default false (no silent cross-vendor rewrite).
+	SettingKeyGrokCrossClientModelMapEnabled = "grok_cross_client_model_map_enabled"
+
+	// SettingKeyGrokDefaultBaseURLMode controls the default text upstream for
+	// Grok accounts without an explicit credentials.base_url.
+	SettingKeyGrokDefaultBaseURLMode = "grok_default_base_url_mode"
+
+	// SettingKeyAvailableChannelsEnabled is a DB-backed soft switch for the "Available Channels"
+	// user-facing aggregate view. When false: user endpoint returns an empty list and the
+	// sidebar entry is hidden. Defaults to false (opt-in feature).
+	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
+
+	// SettingKeyPelicanShowcaseEnabled is a DB-backed soft switch for the user-facing
+	// Pelican gallery (scheduled Pelican HTML results of selected groups). When false the
+	// user endpoints return an empty gallery, the sidebar entry is hidden and no new
+	// snapshots are copied; cleanup keeps running. Defaults to false (opt-in feature).
+	SettingKeyPelicanShowcaseEnabled = "pelican_showcase_enabled"
+
 	// SettingKeySubscriptionEnabled is a DB-backed soft switch for the user-facing
 	// subscription surface: sidebar entries, purchase-page subscription tab, header
 	// progress badge, usage billing-type filter and the /subscriptions route. When
@@ -523,14 +604,9 @@ const (
 	// the Model Plaza page (global pricing notes, exchange rate, promotions, ...).
 	SettingKeyModelPlazaDescription = "model_plaza_description"
 
-	SettingKeyGrokDefaultTextModel           = "grok_default_text_model"
-	SettingKeyGrokCrossClientModelMapEnabled = "grok_cross_client_model_map_enabled"
-	SettingKeyGrokDefaultBaseURLMode         = "grok_default_base_url_mode"
-
 	// SettingKeyAvailableChannelsEnabled is a DB-backed soft switch for the "Available Channels"
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
-	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
 	// SettingKeyPublicTransitEnabled is a DB-backed soft switch for the public
 	// ai-transit.v1 API snapshot.
@@ -542,6 +618,12 @@ const (
 	// SettingKeyPluginManagementEnabled controls sidebar visibility only; it does
 	// not stop or otherwise change already loaded plugin runtimes.
 	SettingKeyPluginManagementEnabled = "plugin_management_enabled"
+
+	// SettingKeySupportTicketEnabled is a DB-backed soft switch for support tickets
+	// ("网站工单"). When false both user and admin endpoints answer
+	// SUPPORT_TICKET_DISABLED and the sidebar entries are hidden; stored tickets
+	// are kept. Defaults to false (opt-in feature).
+	SettingKeySupportTicketEnabled = "support_ticket_enabled"
 
 	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
 	// for probing remote Sub2API API-key billing metadata.

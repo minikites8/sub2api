@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, urlparse
 
 from playwright.sync_api import sync_playwright
 
-from model_selection import MODELS, EFFORTS, select_options
+from model_selection import MODELS, EFFORTS, CAPABILITIES, request_capabilities, select_options
 from tool_bridge import ToolBridge, has_tools, strict_json
 from tool_state import ToolState, digest
 from response_events import completed_events
@@ -36,6 +36,8 @@ BASE = "https://prism.openai.com"
 START = "/api/llm/response_with_tools_start"
 STATUS = "/api/llm/response_with_tools_status"
 MAX_REQUEST_BYTES = 1 << 20
+PENDING_LEASE_SECONDS = max(30, int(os.environ.get("PRISM_PENDING_LEASE_SECONDS", "900")))
+
 SESSION_ID = re.compile(r"^[0-9a-f]{64}$")
 MODEL = "gpt-5.6-sol"
 PROJECT_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f-]{27,}$")
@@ -54,6 +56,9 @@ class AdapterError(Exception):
 def parse_prompt(payload, *, max_bytes=MAX_PRISM_PROMPT_BYTES):
     if not isinstance(payload, dict) or not isinstance(payload.get("model"), str) or payload["model"] not in MODELS:
         raise AdapterError(422, "unsupported_model", "Unsupported Prism model; choose " + ", ".join(MODELS))
+    unsupported = request_capabilities(payload) - CAPABILITIES[payload['model']]
+    if unsupported:
+        raise AdapterError(422, 'unsupported_capability', 'Requested Prism capabilities are unavailable: ' + ', '.join(sorted(unsupported)))
     if payload.get("tools") or payload.get("additional_tools") or payload.get("previous_response_id") or payload.get("conversation"):
         raise AdapterError(422, "unsupported_request", "Prism adapter does not yet support tools or server-side conversation state")
     if any(payload.get(key) is not None for key in ("max_output_tokens", "temperature", "top_p")) or payload.get("background") or payload.get("store"):
@@ -268,7 +273,9 @@ class State:
         except FileExistsError:
             raise AdapterError(409, "pending_turn", "Previous Prism turn outcome is unknown; inspect it before a new request") from None
         with os.fdopen(fd, "w") as file:
-            json.dump({"stage": "submitting", "project_id": project_id, "at": int(time.time())}, file)
+            json.dump({"stage": "submitting", "project_id": project_id, "at": int(time.time()),
+                       "lease_owner": "%s:%s" % (os.uname().nodename if hasattr(os, 'uname') else 'host', os.getpid()),
+                       "lease_expires": int(time.time()) + PENDING_LEASE_SECONDS}, file)
             file.flush()
             os.fsync(file.fileno())
         self.sync_directory(self.pending)
@@ -281,6 +288,7 @@ class State:
         path = self.pending / account_id
         previous = json.loads(path.read_text())
         previous.update(data)
+        previous['lease_expires'] = int(time.time()) + PENDING_LEASE_SECONDS
         self.atomic_write(path, previous)
 
     def receipt(self, account_id, request_id, start_count, status_count, result, cache_hit=False, *, model=MODEL, effort="medium"):

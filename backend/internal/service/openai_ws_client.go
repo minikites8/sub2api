@@ -38,6 +38,11 @@ type OpenAIWSTransportMetricsSnapshot struct {
 	TransportReuseRatio    float64 `json:"transport_reuse_ratio"`
 }
 
+// openAIWSPreparedJSON is borrowed, valid JSON from our encoder. WriteJSON must
+// consume it synchronously and must not retain it. Keep this private rather than
+// treating arbitrary json.RawMessage values as prevalidated JSON.
+type openAIWSPreparedJSON []byte
+
 // openAIWSClientConn 抽象 WS 客户端连接，便于替换底层实现。
 type openAIWSClientConn interface {
 	WriteJSON(ctx context.Context, value any) error
@@ -148,7 +153,7 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		if err != nil {
 			return nil, 0, nil, errors.New("invalid websocket upstream URL")
 		}
-		proxyURL, region = d.upstreamRoutes.Match(parsed)
+		proxyURL, region = d.upstreamRoutes.MatchForAccount(parsed, upstreamroute.AccountIDFromContext(ctx))
 	}
 
 	wrapped := &coderOpenAIWSClientConn{}
@@ -179,7 +184,7 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 			// Also guard a direct first hop redirecting into a regional rule:
 			// it must not silently use the original direct transport.
-			_, nextRegion := d.upstreamRoutes.Match(req.URL)
+			_, nextRegion := d.upstreamRoutes.MatchForAccount(req.URL, upstreamroute.AccountIDFromContext(ctx))
 			if region != "" || nextRegion != "" {
 				return http.ErrUseLastResponse
 			}
@@ -201,7 +206,7 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		if resp != nil {
 			status = resp.StatusCode
 		}
-		logger.FromContext(ctx).Info("upstream.region_route", zap.String("transport", "websocket"), zap.String("upstream_host", parsed.Hostname()), zap.String("region", region), zap.Int("status_code", status), zap.Bool("transport_error", err != nil))
+		logger.FromContext(ctx).Info("upstream.region_route", zap.String("transport", "websocket"), zap.Int64("account_id", upstreamroute.AccountIDFromContext(ctx)), zap.String("upstream_host", parsed.Hostname()), zap.String("region", region), zap.Int("status_code", status), zap.Bool("transport_error", err != nil))
 	}
 	if err != nil {
 		status := 0
@@ -376,6 +381,9 @@ func (c *coderOpenAIWSClientConn) WriteJSON(ctx context.Context, value any) erro
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if payload, ok := value.(openAIWSPreparedJSON); ok {
+		return c.conn.Write(ctx, coderws.MessageText, payload)
 	}
 	return wsjson.Write(ctx, c.conn, value)
 }

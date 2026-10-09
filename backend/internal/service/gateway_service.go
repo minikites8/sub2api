@@ -461,7 +461,12 @@ var allowedHeaders = map[string]bool{
 	"content-type":                              true,
 	"accept-encoding":                           true,
 	"x-claude-code-session-id":                  true,
-	"x-client-request-id":                       true,
+	// Claude Code 2.1.139+ 在子 agent 请求上带这两个头（主线程不带）。按会话串行的
+	// 上游（如另一个 Claude Code 中转）靠它们把子 agent 拆成独立会话并行执行；
+	// 丢掉后所有子 agent 都会排在主会话后面。
+	"x-claude-code-agent-id":        true,
+	"x-claude-code-parent-agent-id": true,
+	"x-client-request-id":           true,
 }
 
 // ErrStickySessionNotFound is returned by GatewayCache.GetSessionAccountID
@@ -747,7 +752,7 @@ func (e *UpstreamFailoverError) IsCredentialFailure() bool {
 // and inference failures retain their existing scheduler-health behavior,
 // except an Excel BPS 429: it only cools the account's BPS route.
 func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
-	if e == nil || e.Reason == ExcelBPSRateLimitedReason {
+	if e == nil || e.Reason == ExcelBPSRateLimitedReason || e.Reason == GrokUnknownForbiddenReason {
 		return false
 	}
 	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount
@@ -1509,6 +1514,7 @@ func (s *GatewayService) DoGrokNativeResponsesJSON(ctx context.Context, account 
 		proxyURL = account.Proxy.URL()
 	}
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	s.rateLimitService.observeQualityResponse(upstreamReq.Context(), account, resp, err)
 	if err != nil {
 		return nil, &UpstreamFailoverError{StatusCode: http.StatusBadGateway, Reason: GatewayFailureReason("grok_search_transport")}
 	}
@@ -1702,6 +1708,14 @@ func explicitModelMappingClaims(account Account, model string) bool {
 	}
 	mapped, ok := stringMappingFromRaw(account.Credentials["model_mapping"])[model]
 	return ok && strings.TrimSpace(mapped) != ""
+}
+
+// GetCompositeRouteModels returns public IDs from enabled exact composite routes.
+func (s *GatewayService) GetCompositeRouteModels(ctx context.Context, groupID *int64, endpoint string) ([]string, error) {
+	if s == nil || s.compositeResolver == nil || groupID == nil {
+		return nil, nil
+	}
+	return s.compositeResolver.ListExactPublicModels(ctx, *groupID, endpoint)
 }
 
 // GetSchedulablePlatforms returns the concrete platforms that currently have

@@ -377,6 +377,7 @@ export const useAppStore = defineStore('app', () => {
         public_transit_enabled: true,
         public_transit_page_enabled: false,
         plugin_management_enabled: false,
+        support_ticket_enabled: false,
         risk_control_enabled: false,
         service_quota_enabled: false,
         affiliate_enabled: false,

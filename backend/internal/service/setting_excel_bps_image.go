@@ -105,6 +105,7 @@ func (s *SettingService) GetExcelBPSImageRelaySettings(ctx context.Context) (Exc
 	dbCtx, cancel := context.WithTimeout(ctx, gatewayForwardingDBTimeout)
 	defer cancel()
 	values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+		SettingKeyExcelBPSEnabled,
 		SettingKeyExcelBPSImageLimitPolicy, SettingKeyExcelBPSImageWarningRemaining, SettingKeyExcelBPSImageCompactReserve,
 		SettingKeyExcelBPSImageMode, SettingKeyExcelBPSImageRelayEnabled, SettingKeyExcelBPSImageBaseURL,
 		SettingKeyExcelBPSImageBodyLimitMiB, SettingKeyExcelBPSImageBudgetMiB, SettingKeyExcelBPSImageMaxRequests,
@@ -114,6 +115,9 @@ func (s *SettingService) GetExcelBPSImageRelaySettings(ctx context.Context) (Exc
 		return ExcelBPSImageRelaySettings{}, infraerrors.ServiceUnavailable("EXCEL_BPS_IMAGE_SETTINGS_UNAVAILABLE", "Excel BPS image settings are unavailable")
 	}
 	enabled := values[SettingKeyExcelBPSImageRelayEnabled] == "" || values[SettingKeyExcelBPSImageRelayEnabled] == "true"
+	if values[SettingKeyExcelBPSEnabled] == "false" {
+		enabled = false
+	}
 	settings, err := normalizeExcelBPSImageRelaySettings(enabled, values[SettingKeyExcelBPSImageBaseURL], values[SettingKeyExcelBPSImageMode])
 	if err != nil {
 		return ExcelBPSImageRelaySettings{}, err

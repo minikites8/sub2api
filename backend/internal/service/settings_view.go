@@ -215,6 +215,8 @@ type SystemSettings struct {
 	OpsQueryModeDefault          string
 	OpsMetricsIntervalSeconds    int
 
+	ExcelBPSEnabled bool `json:"excel_bps_enabled"`
+
 	// Channel Monitor feature
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
@@ -222,6 +224,10 @@ type SystemSettings struct {
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 	ChannelMonitorHideUserRanking        bool   `json:"channel_monitor_hide_user_ranking"`
+	PrismBrowserEnabled                  bool   `json:"prism_browser_enabled"`
+	PrismBrowserBaseURL                  string `json:"prism_browser_base_url"`
+	PrismBrowserAPIKeyConfigured         bool   `json:"prism_browser_api_key_configured"`
+	PrismBrowserAPIKey                   string `json:"-"`
 
 	// ye.team CDK account supply and 401 reclaim integration.
 	YeTeamEnabled        bool `json:"ye_team_enabled"`
@@ -240,6 +246,10 @@ type SystemSettings struct {
 	// Public Transit feature (public ai-transit snapshot)
 	PublicTransitEnabled     bool `json:"public_transit_enabled"`
 	PublicTransitPageEnabled bool `json:"public_transit_page_enabled"`
+
+	// Support tickets ("网站工单") switch + form config
+	SupportTicketEnabled bool                `json:"support_ticket_enabled"`
+	SupportTicket        SupportTicketConfig `json:"support_ticket_config"`
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
@@ -444,6 +454,10 @@ type PublicSettings struct {
 	BalanceLowNotifyThreshold   float64
 	BalanceLowNotifyRechargeURL string
 
+	// Protocol feature switches, exposed so account editors follow global controls.
+	ExcelBPSEnabled     bool `json:"excel_bps_enabled"`
+	PrismBrowserEnabled bool `json:"prism_browser_enabled"`
+
 	// Channel Monitor feature
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
@@ -468,6 +482,8 @@ type PublicSettings struct {
 	// Public Transit feature (public ai-transit snapshot)
 	PublicTransitEnabled     bool `json:"public_transit_enabled"`
 	PublicTransitPageEnabled bool `json:"public_transit_page_enabled"`
+	// Support tickets ("网站工单") feature switch
+	SupportTicketEnabled bool `json:"support_ticket_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`

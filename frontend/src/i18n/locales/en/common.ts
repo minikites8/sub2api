@@ -224,6 +224,7 @@ export default {
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
+    supportTickets: 'Support Tickets',
     channelStatus: 'Model Marketplace',
     riskControl: 'Risk Control',
     securityAudit: 'Security Audit',

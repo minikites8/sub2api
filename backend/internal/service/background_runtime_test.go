@@ -16,7 +16,7 @@ func TestGatewayRoleDoesNotStartGlobalMonitorOrSchedule(t *testing.T) {
 	monitor := ProvideChannelMonitorRunner(&ChannelMonitorService{}, &SettingService{}, nil, cfg)
 	require.False(t, monitor.started)
 	monitor.Stop()
-	runner := ProvideScheduledTestRunnerService(nil, nil, nil, nil, cfg, &QualityJudgeService{}, &PelicanGroupTestService{}, &ChannelMonitorV2Service{})
+	runner := ProvideScheduledTestRunnerService(nil, nil, nil, nil, cfg, &QualityJudgeService{}, nil, &PelicanGroupTestService{}, &ChannelMonitorV2Service{})
 	require.Nil(t, runner.cron)
 	runner.Stop()
 	expiry := ProvideAccountExpiryService(nil, cfg)
@@ -42,7 +42,7 @@ func TestGatewayRoleStillPersistsRequestObservations(t *testing.T) {
 	require.NoError(t, err)
 	repo := &gatewayAccountOpsRepo{recorded: make(chan AccountOpsEvent, 1)}
 	cfg := &config.Config{Runtime: config.RuntimeConfig{Role: config.RuntimeRoleGateway}}
-	svc := ProvideAccountOpsService(&accountOpsSettingsStub{raw: string(raw)}, repo, nil, nil, nil, cfg)
+	svc := ProvideAccountOpsService(&accountOpsSettingsStub{raw: string(raw)}, repo, nil, nil, nil, cfg, nil, nil, nil, nil)
 	defer svc.Stop()
 	_, err = svc.GetConfig(context.Background())
 	require.NoError(t, err)

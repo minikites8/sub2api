@@ -1,5 +1,6 @@
 <template>
-  <AppLayout>
+  <ChannelStatusV3View v-if="isChannelMonitorV3Mode()" />
+  <AppLayout v-else>
     <section class="model-marketplace mx-auto w-full max-w-[1440px] pb-10">
       <header class="mb-6 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div class="min-w-0">
@@ -298,6 +299,8 @@
 </template>
 
 <script setup lang="ts">
+import ChannelStatusV3View from "./ChannelStatusV3View.vue"
+import { isChannelMonitorV3Mode } from "@/utils/featureFlags"
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'

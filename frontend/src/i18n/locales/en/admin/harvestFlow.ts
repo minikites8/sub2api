@@ -107,6 +107,9 @@ export default {
       }
     },
     console: {
+      collectLanes: 'Parallel lanes',
+      parallelStart: 'Collect in parallel',
+      parallelHint: 'Lane count applies only to parallel collection. Requires managed Mihomo; independent exits share the attempt budget and stop after saving a ticket for each model. No fixed lane cap; concurrency is bounded by the remaining budget and eligible nodes. Nodes are not repeated within a collection; the next task resumes from the last position. Serial harvest uses the switch rule above.',
       title: 'Directed single-account harvest',
       description: 'Manually harvest tickets for one account through the configured proxy.',
       account: 'Account',
@@ -123,6 +126,15 @@ export default {
       rateLimitCooldown: '429 cooldown',
       rateLimitCooldownHint: '1–60 seconds',
       maxAttempts: 'Max attempts',
+      maxAttemptsHint: 'Positive integer with no fixed cap; shared across all models and lanes.',
+      invalidBudget: 'Attempts must be a positive integer; parallel lanes must be an integer of at least 2.',
+      nodeSwitch: 'Node switch rule',
+      nodeSwitchRules: {
+        '312_or_2fail': 'Switch on degraded ticket or 2 failures',
+        every_request: 'Switch every request',
+        '312_only': 'Switch only on degraded tickets',
+        never: 'Keep the current exit'
+      },
       stopOnSuccess: 'Stop after a stored qualified ticket',
       start: 'Serial harvest (1 lane)',
       stop: 'Stop harvest',

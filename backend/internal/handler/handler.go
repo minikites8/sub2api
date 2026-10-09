@@ -43,6 +43,7 @@ type AdminHandlers struct {
 	APIKey                 *admin.AdminAPIKeyHandler
 	ScheduledTest          *admin.ScheduledTestHandler
 	PelicanGroupTest       *admin.PelicanGroupTestHandler
+	ControlledExperiment   *admin.ControlledExperimentHandler
 	Channel                *admin.ChannelHandler
 	ChannelMonitor         *admin.ChannelMonitorHandler
 	ChannelMonitorTemplate *admin.ChannelMonitorRequestTemplateHandler
@@ -67,6 +68,7 @@ type Handlers struct {
 	ChannelMonitor   *ChannelMonitorUserHandler
 	ChannelMonitorV2 *ChannelMonitorV2Handler
 	PublicInfo       *PublicInfoHandler
+	ChannelMonitorV3 *ChannelMonitorV3Handler
 	Admin            *AdminHandlers
 	Gateway          *GatewayHandler
 	OpenAIGateway    *OpenAIGatewayHandler
@@ -78,6 +80,7 @@ type Handlers struct {
 	AvailableChannel *AvailableChannelHandler
 	PublicTransit    *PublicTransitHandler
 	PelicanShowcase  *PelicanShowcaseHandler
+	SupportTicket    *SupportTicketHandler
 	ModelPlaza       *ModelPlazaHandler
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler

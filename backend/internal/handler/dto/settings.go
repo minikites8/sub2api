@@ -28,42 +28,49 @@ type CustomEndpoint struct {
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	RegistrationEnabled                   bool                     `json:"registration_enabled"`
-	EmailVerifyEnabled                    bool                     `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist      []string                 `json:"registration_email_suffix_whitelist"`
-	RegistrationEmailDomainQuotaEnabled   bool                     `json:"registration_email_domain_quota_enabled"`
-	PromoCodeEnabled                      bool                     `json:"promo_code_enabled"`
-	PasswordResetEnabled                  bool                     `json:"password_reset_enabled"`
-	FrontendURL                           string                   `json:"frontend_url"`
-	InvitationCodeEnabled                 bool                     `json:"invitation_code_enabled"`
-	SignupIPRiskControlThreshold          int                      `json:"signup_ip_risk_control_threshold"`
-	SignupIPDisablePreviousAccounts       bool                     `json:"signup_ip_disable_previous_accounts"`
-	SignupIPKeepPreviousAccounts          int                      `json:"signup_ip_keep_previous_accounts"`
-	APIUsageIPUARiskControlThreshold      int                      `json:"api_usage_ip_ua_risk_control_threshold"`
-	APIUsageIPUADisablePreviousAccounts   bool                     `json:"api_usage_ip_ua_disable_previous_accounts"`
-	APIUsageIPUAKeepPreviousAccounts      int                      `json:"api_usage_ip_ua_keep_previous_accounts"`
-	AntiAbuseEnabled                      bool                     `json:"anti_abuse_enabled"`
-	AntiAbuseScoreThreshold               int                      `json:"anti_abuse_score_threshold"`
-	AntiAbuseFingerprintWeight            int                      `json:"anti_abuse_fingerprint_weight"`
-	AntiAbuseIPWeight                     int                      `json:"anti_abuse_ip_weight"`
-	AntiAbuseEmailWeight                  int                      `json:"anti_abuse_email_weight"`
-	AntiAbuseUserAgentWeight              int                      `json:"anti_abuse_user_agent_weight"`
-	AntiAbuseTLSFingerprintWeight         int                      `json:"anti_abuse_tls_fingerprint_weight"`
-	AntiAbuseIPReputationEndpoint         string                   `json:"anti_abuse_ip_reputation_endpoint"`
-	AntiAbuseIPReputationAPIKeyConfigured bool                     `json:"anti_abuse_ip_reputation_api_key_configured"`
-	TotpEnabled                           bool                     `json:"totp_enabled"`
-	TotpEncryptionKeyConfigured           bool                     `json:"totp_encryption_key_configured"`
-	PasskeyEnabled                        bool                     `json:"passkey_enabled"`
-	PasskeyConfigured                     bool                     `json:"passkey_configured"`
-	PasskeyRPID                           string                   `json:"passkey_rp_id"`
-	PasskeyRPOrigins                      []string                 `json:"passkey_rp_origins"`
-	SessionBindingEnabled                 bool                     `json:"session_binding_enabled"`
-	StepUpEnabled                         bool                     `json:"step_up_enabled"`
-	AuditLogRetentionDays                 int                      `json:"audit_log_retention_days"`
-	LoginAgreementEnabled                 bool                     `json:"login_agreement_enabled"`
-	LoginAgreementMode                    string                   `json:"login_agreement_mode"`
-	LoginAgreementUpdatedAt               string                   `json:"login_agreement_updated_at"`
-	LoginAgreementDocuments               []LoginAgreementDocument `json:"login_agreement_documents"`
+	OpenAICodexTicketHarvestScope         service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
+	OpenAICodexTicketStrictResponse       bool                            `json:"openai_codex_ticket_strict_response,omitempty"`
+	OpenAICodexTicketFailClosed           bool                            `json:"openai_codex_ticket_fail_closed"`
+	OpenAICodexTicketStrategy             string                          `json:"openai_codex_ticket_strategy"`
+	RegistrationEnabled                   bool                            `json:"registration_enabled"`
+	PrismBrowserEnabled                   bool                            `json:"prism_browser_enabled"`
+	PrismBrowserBaseURL                   string                          `json:"prism_browser_base_url"`
+	PrismBrowserAPIKeyConfigured          bool                            `json:"prism_browser_api_key_configured"`
+	EmailVerifyEnabled                    bool                            `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist      []string                        `json:"registration_email_suffix_whitelist"`
+	RegistrationEmailDomainQuotaEnabled   bool                            `json:"registration_email_domain_quota_enabled"`
+	PromoCodeEnabled                      bool                            `json:"promo_code_enabled"`
+	PasswordResetEnabled                  bool                            `json:"password_reset_enabled"`
+	FrontendURL                           string                          `json:"frontend_url"`
+	InvitationCodeEnabled                 bool                            `json:"invitation_code_enabled"`
+	TotpEnabled                           bool                            `json:"totp_enabled"`                   // TOTP 双因素认证
+	TotpEncryptionKeyConfigured           bool                            `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	PasskeyEnabled                        bool                            `json:"passkey_enabled"`
+	PasskeyConfigured                     bool                            `json:"passkey_configured"`
+	PasskeyRPID                           string                          `json:"passkey_rp_id"`
+	PasskeyRPOrigins                      []string                        `json:"passkey_rp_origins"`
+	SessionBindingEnabled                 bool                            `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	StepUpEnabled                         bool                            `json:"step_up_enabled"`          // 敏感操作 step-up 2FA
+	AuditLogRetentionDays                 int                             `json:"audit_log_retention_days"` // 审计日志保留天数
+	LoginAgreementEnabled                 bool                            `json:"login_agreement_enabled"`
+	LoginAgreementMode                    string                          `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt               string                          `json:"login_agreement_updated_at"`
+	LoginAgreementDocuments               []LoginAgreementDocument        `json:"login_agreement_documents"`
+	SignupIPRiskControlThreshold          int                             `json:"signup_ip_risk_control_threshold"`
+	SignupIPDisablePreviousAccounts       bool                            `json:"signup_ip_disable_previous_accounts"`
+	SignupIPKeepPreviousAccounts          int                             `json:"signup_ip_keep_previous_accounts"`
+	APIUsageIPUARiskControlThreshold      int                             `json:"api_usage_ip_ua_risk_control_threshold"`
+	APIUsageIPUADisablePreviousAccounts   bool                            `json:"api_usage_ip_ua_disable_previous_accounts"`
+	APIUsageIPUAKeepPreviousAccounts      int                             `json:"api_usage_ip_ua_keep_previous_accounts"`
+	AntiAbuseEnabled                      bool                            `json:"anti_abuse_enabled"`
+	AntiAbuseScoreThreshold               int                             `json:"anti_abuse_score_threshold"`
+	AntiAbuseFingerprintWeight            int                             `json:"anti_abuse_fingerprint_weight"`
+	AntiAbuseIPWeight                     int                             `json:"anti_abuse_ip_weight"`
+	AntiAbuseEmailWeight                  int                             `json:"anti_abuse_email_weight"`
+	AntiAbuseUserAgentWeight              int                             `json:"anti_abuse_user_agent_weight"`
+	AntiAbuseTLSFingerprintWeight         int                             `json:"anti_abuse_tls_fingerprint_weight"`
+	AntiAbuseIPReputationEndpoint         string                          `json:"anti_abuse_ip_reputation_endpoint"`
+	AntiAbuseIPReputationAPIKeyConfigured bool                            `json:"anti_abuse_ip_reputation_api_key_configured"`
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -218,38 +225,34 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	OpenAITTFTMode                          string                          `json:"openai_ttft_mode"`
-	EnableFingerprintUnification            bool                            `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough               bool                            `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                        bool                            `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection  bool                            `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                 string                          `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks           string                          `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection      bool                            `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl              bool                            `json:"rewrite_message_cache_control"`
-	EnableClientDatelineNormalization       bool                            `json:"enable_client_dateline_normalization"`
-	AntigravityUserAgentVersion             string                          `json:"antigravity_user_agent_version"`
-	OpenAICodexTicketHarvestScope           service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
-	OpenAICodexTicketStrictResponse         bool                            `json:"openai_codex_ticket_strict_response,omitempty"`
-	OpenAICodexTicketFailClosed             bool                            `json:"openai_codex_ticket_fail_closed"`
-	OpenAICodexTicketStrategy               string                          `json:"openai_codex_ticket_strategy"`
-	OpenAICodexRelayURL                     string                          `json:"openai_codex_relay_url"`
-	OpenAICodexRelayKeyConfigured           bool                            `json:"openai_codex_relay_key_configured"`
-	OpenAICodexRelayKeyEnv                  string                          `json:"openai_codex_relay_key_env,omitempty"`
-	OpenAICodexRelayTransport               string                          `json:"openai_codex_relay_transport"`
-	OpenAICodexRelayGateway                 string                          `json:"openai_codex_relay_gateway"`
-	OpenAICodexRelayTimeoutSeconds          int                             `json:"openai_codex_relay_timeout_seconds"`
-	OpenAICodexTicketHarvestProxyURL        string                          `json:"openai_codex_ticket_harvest_proxy_url"`
-	OpenAICodexTicketHarvestProxyConfigured bool                            `json:"openai_codex_ticket_harvest_proxy_configured"`
-	OpenAICodexTicketEnabled                bool                            `json:"openai_codex_ticket_enabled"`
-	OpenAICodexTicketModels                 []string                        `json:"openai_codex_ticket_models"`
-	OpenAICodexUserAgent                    string                          `json:"openai_codex_user_agent"`
-	OpenAICodexClientVersion                string                          `json:"openai_codex_client_version"`
-	OpenAICodexClientVersionSynced          string                          `json:"openai_codex_client_version_synced"`
-	ClaudeCodeClientVersion                 string                          `json:"claude_code_client_version"`
-	ClaudeCodeClientVersionSynced           string                          `json:"claude_code_client_version_synced"`
-	ClaudeCodeVersionAutoSyncEnabled        bool                            `json:"claude_code_version_auto_sync_enabled"`
-	OpenAICodexVersionAutoSyncEnabled       bool                            `json:"openai_codex_version_auto_sync_enabled"`
+	OpenAITTFTMode                          string   `json:"openai_ttft_mode"`
+	EnableFingerprintUnification            bool     `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough               bool     `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                        bool     `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection  bool     `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                 string   `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks           string   `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection      bool     `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl              bool     `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization       bool     `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion             string   `json:"antigravity_user_agent_version"`
+	OpenAICodexRelayURL                     string   `json:"openai_codex_relay_url"`
+	OpenAICodexRelayKeyConfigured           bool     `json:"openai_codex_relay_key_configured"`
+	OpenAICodexRelayKeyEnv                  string   `json:"openai_codex_relay_key_env,omitempty"`
+	OpenAICodexRelayTransport               string   `json:"openai_codex_relay_transport"`
+	OpenAICodexRelayGateway                 string   `json:"openai_codex_relay_gateway"`
+	OpenAICodexRelayTimeoutSeconds          int      `json:"openai_codex_relay_timeout_seconds"`
+	OpenAICodexTicketHarvestProxyURL        string   `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAICodexTicketHarvestProxyConfigured bool     `json:"openai_codex_ticket_harvest_proxy_configured"`
+	OpenAICodexTicketEnabled                bool     `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketModels                 []string `json:"openai_codex_ticket_models"`
+	OpenAICodexUserAgent                    string   `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion                string   `json:"openai_codex_client_version"`
+	OpenAICodexClientVersionSynced          string   `json:"openai_codex_client_version_synced"`
+	ClaudeCodeClientVersion                 string   `json:"claude_code_client_version"`
+	ClaudeCodeClientVersionSynced           string   `json:"claude_code_client_version_synced"`
+	ClaudeCodeVersionAutoSyncEnabled        bool     `json:"claude_code_version_auto_sync_enabled"`
+	OpenAICodexVersionAutoSyncEnabled       bool     `json:"openai_codex_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -340,11 +343,13 @@ type SystemSettings struct {
 	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Channel Monitor feature switch
+	ExcelBPSEnabled                      bool           `json:"excel_bps_enabled"`
 	ChannelMonitorEnabled                bool           `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string         `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int            `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         bool           `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool           `json:"channel_monitor_show_quota"`
+	ChannelMonitorHideUserRanking        bool           `json:"channel_monitor_hide_user_ranking"`
 	YeTeamEnabled                        bool           `json:"ye_team_enabled"`
 	YeTeamAutoRefresh401                 bool           `json:"ye_team_auto_refresh_401"`
 	AccountSchedulingThresholds          map[string]int `json:"account_scheduling_thresholds"`
@@ -366,6 +371,10 @@ type SystemSettings struct {
 	// Public Transit feature switch (public ai-transit snapshot)
 	PublicTransitEnabled     bool `json:"public_transit_enabled"`
 	PublicTransitPageEnabled bool `json:"public_transit_page_enabled"`
+
+	// Support tickets ("网站工单") switch + form config
+	SupportTicketEnabled bool                        `json:"support_ticket_enabled"`
+	SupportTicket        service.SupportTicketConfig `json:"support_ticket_config"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
@@ -480,6 +489,9 @@ type PublicSettings struct {
 	BalanceLowNotifyThreshold   float64 `json:"balance_low_notify_threshold"`
 	BalanceLowNotifyRechargeURL string  `json:"balance_low_notify_recharge_url"`
 
+	ExcelBPSEnabled     bool `json:"excel_bps_enabled"`
+	PrismBrowserEnabled bool `json:"prism_browser_enabled"`
+
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
@@ -496,9 +508,15 @@ type PublicSettings struct {
 
 	SubscriptionEnabled bool `json:"subscription_enabled"`
 
+	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`
+	PluginManagementEnabled bool `json:"plugin_management_enabled"`
+
+	SupportTicketEnabled bool `json:"support_ticket_enabled"`
+
+	AffiliateEnabled         bool `json:"affiliate_enabled"`
 	PublicTransitEnabled     bool `json:"public_transit_enabled"`
 	PublicTransitPageEnabled bool `json:"public_transit_page_enabled"`
-	AffiliateEnabled         bool `json:"affiliate_enabled"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 

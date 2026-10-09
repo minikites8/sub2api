@@ -86,6 +86,9 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 		progress(p)
 	}
 
+	if req.CollectLanes > 1 {
+		return s.executeParallelHarvest(ctx, req, account, emit)
+	}
 	proxy := ""
 	if !s.usesRemoteCodexMint(ctx) {
 		proxy = s.openAICodexTicketHarvestProxyURLContext(ctx)
@@ -305,8 +308,8 @@ func manualHarvestRunComplete(stopOnSuccess bool, models []string, got map[strin
 }
 
 func NormalizeManualHarvestRequest(req ManualHarvestRequest) (ManualHarvestRequest, error) {
-	if req.CollectLanes < 0 || req.CollectLanes > 1 {
-		return req, errors.New("collect_lanes must be 0-1")
+	if req.CollectLanes < 0 {
+		return req, errors.New("collect_lanes must be non-negative")
 	}
 
 	req.NodeSwitchRule = strings.TrimSpace(req.NodeSwitchRule)
@@ -331,9 +334,6 @@ func NormalizeManualHarvestRequest(req ManualHarvestRequest) (ManualHarvestReque
 	}
 	if req.MaxAttempts <= 0 {
 		req.MaxAttempts = 20
-	}
-	if req.MaxAttempts < manualHarvestMaxAttemptsMin || req.MaxAttempts > manualHarvestMaxAttemptsMax {
-		return req, errors.New("max_attempts must be 1-100")
 	}
 	seen := map[string]bool{}
 	models := make([]string, 0, len(req.Models))
@@ -564,7 +564,6 @@ const (
 	manualHarvestRateLimitCooldownMin = 1
 	manualHarvestRateLimitCooldownMax = 60
 	manualHarvestMaxAttemptsMin       = 1
-	manualHarvestMaxAttemptsMax       = 100
 	manualHarvestMaxModels            = 20
 )
 
@@ -595,9 +594,6 @@ func normalizeManualHarvestRequest(req *ManualHarvestRequest) {
 	}
 	if req.MaxAttempts < manualHarvestMaxAttemptsMin {
 		req.MaxAttempts = manualHarvestMaxAttemptsMin
-	}
-	if req.MaxAttempts > manualHarvestMaxAttemptsMax {
-		req.MaxAttempts = manualHarvestMaxAttemptsMax
 	}
 	seen := map[string]bool{}
 	models := make([]string, 0, len(req.Models))

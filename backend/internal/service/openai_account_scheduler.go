@@ -733,6 +733,8 @@ func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccountAt(accountID in
 }
 
 type openAIAccountCandidateScore struct {
+	priorityOAuthSpare    int
+	priorityAPIStandby    bool
 	priorityLatencyFactor float64
 	priorityUnhealthy     bool
 	priorityExploration   bool
@@ -1034,6 +1036,11 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 		loadRateSumSquares += loadRate * loadRate
 	}
 	plan.loadSkew = calcLoadSkewByMoments(loadRateSum, loadRateSumSquares, len(candidates))
+	// Priority scheduling supplies its own scores and uses every overflow peer.
+	// Do not read legacy weights or calculate reset/cost factors only to discard them.
+	if s.applyPriorityScheduling(req, &plan) {
+		return plan
+	}
 
 	weights := s.service.openAIWSSchedulerWeightsForRequest(ctx)
 	now := time.Now()
@@ -1143,7 +1150,6 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 		plan.topK = 1
 	}
 
-	s.applyPriorityScheduling(req, &plan)
 	plan.selectionOrder = s.buildOpenAISelectionOrder(req, plan)
 	return plan
 }
@@ -2815,6 +2821,9 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 	if account == nil {
 		return false
 	}
+	if !success && len(observedErr) > 0 && isGrokRequestScopedFailure(observedErr[0]) {
+		return false
+	}
 	// A failed managed proxy acquisition says nothing about account health.
 	// Keep the existing error response and diagnostics, but do not turn a local
 	// pool outage into an account penalty (or a successful recovery sample).
@@ -2848,7 +2857,7 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 // ObserveOpenAIAccountHealthFailure records failures that cannot reach the
 // scheduler-result path, for example after semantic response bytes were sent.
 func (s *OpenAIGatewayService) ObserveOpenAIAccountHealthFailure(ctx context.Context, account *Account, observedErr error) bool {
-	if s == nil || s.rateLimitService == nil || account == nil || observedErr == nil {
+	if s == nil || s.rateLimitService == nil || account == nil || observedErr == nil || isGrokRequestScopedFailure(observedErr) {
 		return false
 	}
 	return s.rateLimitService.ObserveOpenAIAPIKeyHealthFailure(ctx, account, observedErr)
