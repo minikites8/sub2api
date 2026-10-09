@@ -116,9 +116,34 @@ func isOpenAIInstructionsRequiredError(upstreamStatusCode int, upstreamMsg strin
 	return false
 }
 
+func isOpenAIProcessingFailureError(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if statusCode < http.StatusBadRequest {
+		return false
+	}
+	match := func(text string) bool {
+		lower := strings.ToLower(strings.TrimSpace(text))
+		return strings.Contains(lower, "an error occurred while processing your request") ||
+			(strings.Contains(lower, "you can retry your request") &&
+				strings.Contains(lower, "help.openai.com") && strings.Contains(lower, "request id"))
+	}
+	if match(upstreamMsg) {
+		return true
+	}
+	for _, path := range []string{"error.message", "response.error.message", "message"} {
+		if match(gjson.GetBytes(upstreamBody, path).String()) {
+			return true
+		}
+	}
+	// Structured error fields identify the failure; echoed request data stays outside classification.
+	return !gjson.ValidBytes(upstreamBody) && match(string(upstreamBody))
+}
+
 func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	if upstreamStatusCode < http.StatusBadRequest {
 		return false
+	}
+	if isOpenAIProcessingFailureError(upstreamStatusCode, upstreamMsg, upstreamBody) {
+		return true
 	}
 
 	hasOpenAIServerOverloadedCode := func(payload []byte) bool {
@@ -138,9 +163,6 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 		(!gjson.ValidBytes(upstreamBody) && isOpenAICapacityShedMessage(string(upstreamBody))) {
 		return true
 	}
-	if upstreamStatusCode != http.StatusBadRequest && upstreamStatusCode != http.StatusServiceUnavailable {
-		return false
-	}
 	if upstreamStatusCode != http.StatusBadRequest {
 		return false
 	}
@@ -150,15 +172,10 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 		if lower == "" {
 			return false
 		}
-		if strings.Contains(lower, "an error occurred while processing your request") {
-			return true
-		}
 		if strings.Contains(lower, "selected model is at capacity") {
 			return true
 		}
-		return strings.Contains(lower, "you can retry your request") &&
-			strings.Contains(lower, "help.openai.com") &&
-			strings.Contains(lower, "request id")
+		return false
 	}
 
 	if match(upstreamMsg) {

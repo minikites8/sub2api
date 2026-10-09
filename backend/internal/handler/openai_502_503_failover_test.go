@@ -46,10 +46,19 @@ func (u *openAI502503Upstream) Do(_ *http.Request, _ string, id int64, _ int) (*
 	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: " + body + "\n\n"))}, nil
 }
 
-func newOpenAI502503Router(t *testing.T, upstream *openAI502503Upstream) *gin.Engine {
+type openAI502503AdmissionRepo struct {
+	*grokCredentialHandlerRepo
+}
+
+func (r *openAI502503AdmissionRepo) GetOpenAITurnAdmission(ctx context.Context, id int64) (*service.Account, *service.Account, error) {
+	account, err := r.GetByID(ctx, id)
+	return account, nil, err
+}
+
+func newOpenAI502503Router(t *testing.T, upstream service.HTTPUpstream) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	repo := &grokCredentialHandlerRepo{}
+	repo := &openAI502503AdmissionRepo{grokCredentialHandlerRepo: &grokCredentialHandlerRepo{}}
 	for i := int64(801); i <= 802; i++ {
 		repo.accounts = append(repo.accounts, service.Account{ID: i, Name: fmt.Sprint(i), Platform: service.PlatformOpenAI,
 			Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true, Concurrency: 1, Priority: int(i),

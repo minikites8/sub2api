@@ -194,7 +194,7 @@ func TestGrokRefreshSuccessPreservesUnrelatedForbiddenCooldown(t *testing.T) {
 		TempUnschedulableReason: "grok access or entitlement denied",
 	}
 	repo := &tokenRefreshAccountRepo{}
-	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, nil, &config.Config{}, nil)
 
 	svc.postRefreshActions(context.Background(), account)
 
@@ -211,7 +211,7 @@ func TestGrokRefreshSuccessClearsCredentialUnauthorizedCooldown(t *testing.T) {
 		TempUnschedulableReason: "grok credentials unauthorized",
 	}
 	repo := &tokenRefreshAccountRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}}
-	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, nil, &config.Config{}, nil)
 
 	svc.postRefreshActions(context.Background(), account)
 
@@ -228,7 +228,7 @@ func TestGrokRefreshDoesNotClearArbitrary401ReasonOrConcurrentForbidden(t *testi
 		TempUnschedulableReason: "quota token401 remaining",
 	}
 	repo := &tokenRefreshAccountRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{accountsByID: map[int64]*Account{stale.ID: stale}}}
-	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, nil, &config.Config{}, nil)
 	svc.postRefreshActions(context.Background(), stale)
 	require.Zero(t, repo.clearTempCalls)
 

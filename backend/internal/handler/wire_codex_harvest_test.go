@@ -96,6 +96,7 @@ func TestProvideAdminHandlers_CodexHarvestRuntime(t *testing.T) {
 		nil,      // apiKeyHandler
 		nil,      // scheduledTestHandler
 		nil,      // pelicanGroupTestHandler
+		nil,      // controlledExperimentHandler
 		nil,      // accountOpsHandler
 		nil,      // accountTokenGuardHandler
 		nil,      // accountTokenGuardV2Handler
