@@ -93,10 +93,18 @@ class AdapterTests(unittest.TestCase):
         self.assertTrue(stream)
 
     def test_prompt_budget_counts_utf8_bytes(self):
-        with mock.patch.object(adapter, 'MAX_PROMPT_BYTES', 20):
-            with self.assertRaises(adapter.AdapterError) as raised:
-                adapter.parse_prompt({'model': adapter.MODEL, 'input': '中' * 20})
-            self.assertEqual(raised.exception.code, 'invalid_request')
+        # Exercise the shared UTF-8 budget through parse_prompt's explicit limit.
+        for text in ('a' * 14, '中' * 5):
+            with self.subTest(text=text), self.assertRaises(adapter.AdapterError) as raised:
+                adapter.parse_prompt({'model': adapter.MODEL, 'input': text}, max_bytes=20)
+            self.assertEqual(raised.exception.status, 413)
+            self.assertEqual(raised.exception.code, 'request_too_large')
+        for text in ('a' * 13, '中' * 4):
+            with self.subTest(text=text):
+                prompt, stream = adapter.parse_prompt(
+                    {'model': adapter.MODEL, 'input': text}, max_bytes=20)
+                self.assertLessEqual(len(prompt.encode('utf-8')), 20)
+                self.assertFalse(stream)
 
     def test_unsupported_features_fail_closed(self):
         for change in ({"model": "gpt-6-astra"}, {"tools": [{"type": "function", "name": "x"}]},
