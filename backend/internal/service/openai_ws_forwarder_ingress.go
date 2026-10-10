@@ -1702,6 +1702,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		defer finishDrain()
 		ctx := turnCtx
 		wroteDownstream := false
+		firstOutputStage := &openAIWSFirstOutputStage{}
 		if err := s.acquireOpenAIRPMForSend(ctx, latest); err != nil {
 			return nil, err
 		}
@@ -1786,6 +1787,16 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if eventType == "error" || eventType == "response.failed" {
 				markOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
+			}
+			if !wroteDownstream && !clientDisconnected && openAIWSProcessingFailure(upstreamMessage) {
+				lease.MarkBroken()
+				failover := s.newOpenAIWSProcessingFailoverError(c, account, upstreamMessage, mappedModel, lease.HandshakeHeaders())
+				if turn > 1 {
+					// Native continuation state is account-bound. A current-turn
+					// marker prevents the handler from replaying turn one.
+					return nil, newOpenAIWSCurrentTurnFailoverError(failover, nil)
+				}
+				return nil, failover
 			}
 			if eventType == "error" {
 				s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
@@ -1930,29 +1941,38 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						clientMessage = rewritten
 					}
 				}
-				if err := writeClientMessage(clientMessage); err != nil {
-					if isOpenAIWSClientDisconnectError(err) {
-						clientDisconnected = true
-						startDrain()
-						closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)
-						logOpenAIWSModeInfo(
-							"ingress_ws_client_disconnected_drain account_id=%d turn=%d conn_id=%s close_status=%s close_reason=%s",
-							account.ID,
-							turn,
-							truncateOpenAIWSLogValue(lease.ConnID(), openAIWSIDValueMaxLen),
-							closeStatus,
-							truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
-						)
+				messages := [][]byte{clientMessage}
+				if turn == 1 {
+					messages = firstOutputStage.messages(clientMessage)
+				}
+				for _, clientMessage := range messages {
+					if err := writeClientMessage(clientMessage); err != nil {
+						if isOpenAIWSClientDisconnectError(err) {
+							clientDisconnected = true
+							startDrain()
+							closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)
+							logOpenAIWSModeInfo(
+								"ingress_ws_client_disconnected_drain account_id=%d turn=%d conn_id=%s close_status=%s close_reason=%s",
+								account.ID,
+								turn,
+								truncateOpenAIWSLogValue(lease.ConnID(), openAIWSIDValueMaxLen),
+								closeStatus,
+								truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
+							)
+						} else {
+							return nil, wrapOpenAIWSIngressTurnError(
+								"write_client",
+								fmt.Errorf("write client websocket event: %w", err),
+								wroteDownstream,
+							)
+						}
 					} else {
-						return nil, wrapOpenAIWSIngressTurnError(
-							"write_client",
-							fmt.Errorf("write client websocket event: %w", err),
-							wroteDownstream,
-						)
+						wroteDownstream = true
+						markOpenAIWSClientVisibleFailure(c, eventType, upstreamMessage)
 					}
-				} else {
-					wroteDownstream = true
-					markOpenAIWSClientVisibleFailure(c, eventType, upstreamMessage)
+					if clientDisconnected {
+						break
+					}
 				}
 			}
 			if isTerminalEvent {
@@ -2639,7 +2659,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				continue
 			}
 			finalErr := relayErr
-			if unwrapped := errors.Unwrap(relayErr); unwrapped != nil && !IsOpenAITurnAdmissionError(relayErr) && !IsOpenAIRPMError(relayErr) {
+			_, currentTurnFailover := OpenAIWSCurrentTurnRetryPayload(relayErr)
+			if unwrapped := errors.Unwrap(relayErr); unwrapped != nil && !currentTurnFailover && !IsOpenAITurnAdmissionError(relayErr) && !IsOpenAIRPMError(relayErr) {
 				finalErr = unwrapped
 			}
 			sessionLease.MarkBroken()

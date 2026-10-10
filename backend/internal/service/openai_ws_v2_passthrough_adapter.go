@@ -1335,7 +1335,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
-		UpstreamConn:       relayUpstreamFrameConn,
+		UpstreamConn:       &openAIWSProcessingStageFrameConn{FrameConn: relayUpstreamFrameConn},
 		FirstClientMessage: firstClientMessage,
 		Options: openaiwsv2.RelayOptions{
 			WriteTimeout:       s.openAIWSWriteTimeout(),
@@ -1458,6 +1458,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 				if (eventType == "error" || eventType == "response.failed") && markOpenAIWSV2PassthroughCyberPolicy(c, payload) {
 					return nil
+				}
+				if !wroteDownstream && openAIWSProcessingFailure(payload) {
+					if completedTurns.Load() > 0 {
+						return NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "upstream processing failure; please reconnect", nil)
+					}
+					return s.newOpenAIWSProcessingFailoverError(c, account, payload, *activePolicyModel.Load(), handshakeHeaders)
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
 				isPreOutputRateLimit := eventType == "error" && !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
