@@ -45,6 +45,8 @@ func TestOpenAIOverloadHTTPAutoFailover(t *testing.T) {
 							var failover *UpstreamFailoverError
 							require.ErrorAs(t, err, &failover)
 							require.True(t, failover.ShouldRetryNextAccount())
+							require.False(t, failover.RetryableOnSameAccount)
+							require.True(t, failover.RequestScopedTransient)
 							require.Contains(t, string(failover.ResponseBody), overloadFixture)
 							require.False(t, c.Writer.Written())
 							require.Empty(t, rec.Body.String())
@@ -79,5 +81,32 @@ func TestOpenAIOverloadClassificationSafety(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, shouldFailoverOpenAIPassthroughResponse(account, tc.status, []byte(tc.body)))
 		})
+	}
+}
+
+func TestOpenAIOverloadLoggedPolicy(t *testing.T) {
+	payloads := []string{
+		`{"error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null,"type":"service_unavailable_error"},"sequence_number":2,"type":"error"}`,
+		`{"type":"response.failed","sequence_number":4,"response":{"id":"resp_051d834ce1882b2b016ac9d4eeb39c87d0824602d6dd951db3","status":"failed","model":"gpt-6.1-sol","error":{"code":"server_is_overloaded","type":"service_unavailable_error","message":"Our servers are currently overloaded. Please try again later."}}}`,
+	}
+	for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
+		for _, pool := range []bool{false, true} {
+			for _, status := range []int{400, 503} {
+				for i, payload := range payloads {
+					t.Run(fmt.Sprintf("%s/pool_%t/%d/frame_%d", typ, pool, status, i), func(t *testing.T) {
+						proxyID := int64(21)
+						a := &Account{ID: 1350, Name: "pro x20", ProxyID: &proxyID, Platform: PlatformOpenAI, Type: typ, Credentials: map[string]any{"pool_mode": pool, "pool_mode_retry_count": 10}}
+						svc := &OpenAIGatewayService{cfg: &config.Config{}}
+						failover := svc.newOpenAIAccountFailoverError(a, status, nil, []byte(payload), overloadFixture, false, true)
+						require.False(t, failover.RetryableOnSameAccount)
+						require.Zero(t, failover.SameAccountRetryMax)
+						require.True(t, failover.RequestScopedTransient)
+						require.True(t, failover.ShouldRetryNextAccount())
+						require.False(t, openAIStreamFailedEventRetryableOnSameAccount(a, []byte(payload), overloadFixture))
+						t.Logf("account=1350 proxy=21 status=%d same_account_retry=%t next_account=%t", status, failover.RetryableOnSameAccount, failover.ShouldRetryNextAccount())
+					})
+				}
+			}
+		}
 	}
 }

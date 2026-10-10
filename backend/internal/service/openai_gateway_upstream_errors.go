@@ -351,7 +351,7 @@ func newOpenAIUpstreamFailoverError(
 		StatusCode:             statusCode,
 		ResponseBody:           responseBody,
 		ResponseHeaders:        responseHeaders.Clone(),
-		RetryableOnSameAccount: retryableOnSameAccount || requestScopedCapacity,
+		RetryableOnSameAccount: retryableOnSameAccount && !requestScopedCapacity,
 		RequestScopedTransient: requestScopedCapacity,
 	}
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, responseBody) {
@@ -415,12 +415,13 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
 	}
-	// OAuth 502/503 failures get two short retries before the handler excludes
-	// this account and selects another upstream. Existing capacity/pool retry
-	// policies retain their own budgets; disabled credentials go straight to
-	// account selection.
+	// Generic OAuth 502/503 failures get two short retries before account
+	// selection. Recognized request-scoped overload switches accounts
+	// immediately; pool budgets and disabled-credential handling retain
+	// their own behavior.
 	if isOpenAIOAuthAccount(account) && !shouldDisable && !failoverErr.IsCredentialFailure() &&
 		!failoverErr.RetryableOnSameAccount &&
+		!failoverErr.RequestScopedTransient &&
 		(statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable) {
 		failoverErr.RetryableOnSameAccount = true
 		failoverErr.SameAccountRetryMax = 2

@@ -55,11 +55,14 @@ func (r *openAI502503AdmissionRepo) GetOpenAITurnAdmission(ctx context.Context, 
 	return account, nil, err
 }
 
-func newOpenAI502503Router(t *testing.T, upstream service.HTTPUpstream) *gin.Engine {
+func newOpenAI502503Router(t *testing.T, upstream service.HTTPUpstream, accountIDs ...int64) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	repo := &openAI502503AdmissionRepo{grokCredentialHandlerRepo: &grokCredentialHandlerRepo{}}
-	for i := int64(801); i <= 802; i++ {
+	if len(accountIDs) == 0 {
+		accountIDs = []int64{801, 802}
+	}
+	for _, i := range accountIDs {
 		repo.accounts = append(repo.accounts, service.Account{ID: i, Name: fmt.Sprint(i), Platform: service.PlatformOpenAI,
 			Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true, Concurrency: 1, Priority: int(i),
 			Credentials: map[string]any{"access_token": "test-access", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)},

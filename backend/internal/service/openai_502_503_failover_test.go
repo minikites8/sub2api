@@ -111,7 +111,7 @@ func TestOpenAI502503StreamFailover(t *testing.T) {
 				require.ErrorAs(t, err, &failover)
 				require.Equal(t, p.status, failover.StatusCode)
 				require.True(t, failover.ShouldRetryNextAccount())
-				require.True(t, failover.RetryableOnSameAccount)
+				require.Equal(t, p.name != "overload", failover.RetryableOnSameAccount)
 				require.False(t, c.Writer.Written())
 				require.Empty(t, rec.Body.String())
 			})

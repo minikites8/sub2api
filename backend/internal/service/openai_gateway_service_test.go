@@ -182,7 +182,7 @@ func TestOpenAIGatewayService_ForwardAsAnthropic_CapacityShedReturnsRequestScope
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
 	require.True(t, failoverErr.ShouldRetryNextAccount())
-	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.False(t, failoverErr.RetryableOnSameAccount)
 	require.True(t, failoverErr.RequestScopedTransient)
 	require.Zero(t, repo.modelRateLimitAccountID, "request-scoped capacity shedding must not change account health")
 	require.Empty(t, repo.modelRateLimitKey)
