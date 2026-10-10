@@ -502,7 +502,7 @@ function aggregateMonitoring(
 }
 
 export function buildMarketplaceModels(snapshot: PublicTransitSnapshot): MarketplaceModel[] {
-  const monitoringIndex = buildMonitoringIndex(snapshot.monitoring || [])
+  const monitoringIndex = buildMonitoringIndex((snapshot.monitoring || []).filter((monitor) => !monitor.group_name))
   const identityIndex = buildMarketplaceIdentityIndex(snapshot)
   const models = new Map<string, Omit<MarketplaceModel, 'monitoring'>>()
 

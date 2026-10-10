@@ -401,6 +401,7 @@ func (s *PublicTransitService) Snapshot(ctx context.Context, baseURL string) (*P
 
 	groups := buildPublicTransitGroups(configuredGroups, channels, cacheUsageByGroupID, publicPricingService(s.channelService))
 	attachPublicTransitGroupMonitoring(groups, groupMonitorItems, monitorConfig)
+	monitorItems = appendPublicTransitV1GroupMonitors(monitorItems, groups)
 	completeness := buildPublicTransitCompleteness(groups, monitorItems)
 
 	station := PublicTransitStation{

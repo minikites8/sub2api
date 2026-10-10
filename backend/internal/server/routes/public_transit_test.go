@@ -30,9 +30,11 @@ func (publicTransitHTTPGroupRepo) ListActive(context.Context) ([]service.Group, 
 
 type publicTransitHTTPMonitorRepo struct {
 	service.ChannelMonitorV2Repository
-	enabled   bool
-	configErr error
-	requests  []string
+	enabled       bool
+	configErr     error
+	requests      []string
+	recentMetrics *service.ChannelMonitorV2Metric
+	recentHealth  string
 }
 
 func (r *publicTransitHTTPMonitorRepo) GetConfig(context.Context) (*service.ChannelMonitorV2Config, error) {
@@ -77,6 +79,14 @@ func (r *publicTransitHTTPMonitorRepo) GetMatrix(_ context.Context, filter servi
 	if groupBy == service.ChannelMonitorV2GroupByPlatformGroupModel {
 		id := int64(7)
 		row.GroupID, row.GroupName = &id, "public-group"
+	}
+	if filter.Range == "90m" {
+		if r.recentMetrics != nil {
+			row.Buckets[0].Metrics = *r.recentMetrics
+		}
+		if r.recentHealth != "" {
+			row.Buckets[0].Health.Overall = r.recentHealth
+		}
 	}
 	return &service.ChannelMonitorV2Matrix{
 		GroupBy:  groupBy,
@@ -161,12 +171,12 @@ func TestPublicTransitHTTPSnapshotV1Contract(t *testing.T) {
 			require.NotContains(t, payload, "code")
 			monitors, ok := payload["monitoring"].([]any)
 			require.True(t, ok)
-			require.Len(t, monitors, 1)
+			require.Len(t, monitors, 2)
 			monitor := monitors[0].(map[string]any)
 			require.Equal(t, "openai / test-model", monitor["name"])
 			require.Equal(t, "openai", monitor["provider"])
 			require.Equal(t, "test-model", monitor["primary_model"])
-			require.Equal(t, "failed", monitor["primary_status"])
+			require.Equal(t, "degraded", monitor["primary_status"])
 			require.Equal(t, []any{}, monitor["extra_models"])
 			require.InDelta(t, 99, monitor["availability_7d"], 1e-12)
 			require.InDelta(t, 98, monitor["availability_15d"], 1e-12)
@@ -179,7 +189,7 @@ func TestPublicTransitHTTPSnapshotV1Contract(t *testing.T) {
 			require.Equal(t, monitor["primary_status"], model["latest_status"])
 			require.Equal(t, monitor["availability_30d"], model["availability_30d"])
 			point := monitor["timeline"].([]any)[0].(map[string]any)
-			require.Equal(t, "failed", point["status"])
+			require.Equal(t, "degraded", point["status"])
 			require.Equal(t, monitor["last_checked_at"], point["checked_at"])
 			require.NotContains(t, point, "ping_latency_ms")
 			require.NotContains(t, monitor, "group_id")
@@ -197,6 +207,61 @@ func TestPublicTransitHTTPSnapshotV1Contract(t *testing.T) {
 			require.Equal(t, "https://station.example/api/public/transit/v1/snapshot", endpoints["snapshot_url"])
 			require.Equal(t, true, payload["completeness"].(map[string]any)["has_monitoring"])
 			require.Len(t, repo.requests, 12)
+		})
+	}
+}
+
+func TestPublicTransitHTTPAvailabilityUsesRequestOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name, health, status string
+		metrics              service.ChannelMonitorV2Metric
+	}{
+		{"one_success", "unknown", "operational", service.ChannelMonitorV2Metric{RequestCount: 1, SuccessRequests: 1, SuccessRate: 1}},
+		{"one_failure", "unknown", "failed", service.ChannelMonitorV2Metric{RequestCount: 1, ErrorRequests: 1, ErrorRate: 1}},
+		{"mixed", "unknown", "degraded", service.ChannelMonitorV2Metric{RequestCount: 5, SuccessRequests: 4, ErrorRequests: 1, SuccessRate: .8, ErrorRate: .2}},
+	} {
+		for _, path := range []string{"/api/public/transit/v1/snapshot", "/api/v1/public/transit/snapshot"} {
+			t.Run(tc.name+path, func(t *testing.T) {
+				router, repo := newPublicTransitHTTPRouter(nil)
+				repo.recentMetrics, repo.recentHealth = &tc.metrics, tc.health
+				rec, payload := publicTransitHTTPPayload(t, router, path)
+				require.Equal(t, http.StatusOK, rec.Code)
+				monitor := payload["monitoring"].([]any)[0].(map[string]any)
+				require.Equal(t, tc.status, monitor["primary_status"])
+				require.Equal(t, tc.status, monitor["models"].([]any)[0].(map[string]any)["latest_status"])
+				require.Equal(t, tc.status, monitor["timeline"].([]any)[0].(map[string]any)["status"])
+				// Recent checks and seven-day aggregate availability keep their own windows.
+				require.InDelta(t, 99, monitor["availability_7d"], 1e-12)
+				require.Equal(t, "operational", monitor["status"])
+				require.Equal(t, tc.health, monitor["windows"].(map[string]any)["90m"].(map[string]any)["buckets"].([]any)[0].(map[string]any)["health"].(map[string]any)["overall"])
+				group := payload["groups"].([]any)[0].(map[string]any)
+				require.Equal(t, tc.status, group["monitoring"].([]any)[0].(map[string]any)["primary_status"])
+			})
+		}
+	}
+}
+
+func TestPublicTransitHTTPV1GroupMonitoring(t *testing.T) {
+	for _, path := range []string{"/api/public/transit/v1/snapshot", "/api/v1/public/transit/snapshot"} {
+		t.Run(path, func(t *testing.T) {
+			router, _ := newPublicTransitHTTPRouter(nil)
+			rec, payload := publicTransitHTTPPayload(t, router, path)
+			require.Equal(t, http.StatusOK, rec.Code)
+			group := payload["groups"].([]any)[0].(map[string]any)
+			var groupMonitor map[string]any
+			for _, raw := range payload["monitoring"].([]any) {
+				item := raw.(map[string]any)
+				if item["group_name"] == group["name"] {
+					groupMonitor = item
+				}
+			}
+			require.NotNil(t, groupMonitor, "V1 crawlers match group_name in top-level monitoring")
+			require.Equal(t, "test-model", groupMonitor["primary_model"])
+			require.InDelta(t, 99, groupMonitor["availability_7d"], 1e-12)
+			require.Len(t, groupMonitor["timeline"], 1)
+			require.Len(t, groupMonitor["models"], 1)
+			require.NotContains(t, groupMonitor, "group_id")
+			require.Equal(t, group["monitoring"].([]any)[0], groupMonitor)
 		})
 	}
 }

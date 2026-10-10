@@ -11,6 +11,29 @@ import {
 } from '@/utils/modelMarketplace'
 
 describe('model marketplace aggregation', () => {
+  it('keeps flattened V1 group monitors separate from site-wide V2 metrics', () => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const before = buildMarketplaceModels(snapshot).find((model) => model.name === 'gpt-4.1')!
+    const group = snapshot.groups[0]
+    const groupMonitor = {
+      platform: 'openai' as const,
+      group_name: group.name,
+      model: 'gpt-4.1',
+      status: 'degraded' as const,
+      availability_7d: 70,
+      availability_15d: 70,
+      availability_30d: 70,
+      coverage_complete: true,
+      buckets: [],
+    }
+    group.monitoring_enabled = true
+    group.monitoring = [groupMonitor]
+    snapshot.monitoring.push(groupMonitor)
+    const after = buildMarketplaceModels(snapshot).find((model) => model.name === 'gpt-4.1')!
+    expect(after.monitoring).toEqual(before.monitoring)
+    expect(after.profiles.find((profile) => profile.groupName === group.name)?.monitoring?.availability7d).toBe(70)
+  })
+
   it('groups pricing profiles by standard model and resolves developer', () => {
     const models = buildMarketplaceModels(createModelMarketplacePreviewSnapshot())
     const gpt = models.find((model) => model.name === 'gpt-4.1')

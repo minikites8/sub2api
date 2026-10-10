@@ -35,7 +35,7 @@ func TestPublicTransitV1CompatibilityFromV2(t *testing.T) {
 			Health: ChannelMonitorV2Health{Overall: "warning"},
 			Buckets: []ChannelMonitorV2TrendPoint{
 				{BucketStart: now.Add(-2 * time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 3}, Health: ChannelMonitorV2Health{Overall: "critical"}},
-				{BucketStart: now.Add(-time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 5, Duration: ChannelMonitorV2Latency{P50Ms: &latest}}, Health: ChannelMonitorV2Health{Overall: "healthy"}},
+				{BucketStart: now.Add(-time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 5, SuccessRate: 1, Duration: ChannelMonitorV2Latency{P50Ms: &latest}}, Health: ChannelMonitorV2Health{Overall: "healthy"}},
 				{BucketStart: now, Health: ChannelMonitorV2Health{Overall: "unknown"}},
 			},
 		}},
@@ -79,14 +79,18 @@ func TestPublicTransitV1CompatibilityFromV2(t *testing.T) {
 }
 
 func TestPublicTransitV1CompatibilityStatuses(t *testing.T) {
-	for _, tc := range []struct{ health, status string }{
-		{"healthy", "operational"}, {"warning", "degraded"},
-		{"critical", "failed"}, {"unknown", "unknown"},
+	for _, tc := range []struct {
+		health, status string
+		requests       int64
+		rate           float64
+	}{
+		{"healthy", "operational", 1, 1}, {"warning", "degraded", 2, .5},
+		{"critical", "failed", 1, 0}, {"unknown", "unknown", 0, 0},
 	} {
 		t.Run(tc.health, func(t *testing.T) {
 			payload := publicTransitV1JSON(t, &ChannelMonitorV2Matrix{Items: []ChannelMonitorV2MatrixRow{{
 				Platform: "anthropic", Model: "test-model",
-				Metrics: ChannelMonitorV2Metric{RequestCount: 1},
+				Metrics: ChannelMonitorV2Metric{RequestCount: tc.requests, SuccessRate: tc.rate},
 				Health:  ChannelMonitorV2Health{Overall: tc.health},
 			}}})
 			require.Equal(t, tc.status, payload["primary_status"])
@@ -158,7 +162,7 @@ func TestPublicTransitV1CompatibilityKeepsLatestMissingLatency(t *testing.T) {
 	// Deliberately unordered: the adapter must preserve V2 bucket ordering.
 	buckets := []ChannelMonitorV2TrendPoint{
 		{BucketStart: now, Metrics: ChannelMonitorV2Metric{RequestCount: 1}, Health: ChannelMonitorV2Health{Overall: "critical"}},
-		{BucketStart: now.Add(-time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 1, Duration: ChannelMonitorV2Latency{P50Ms: &oldLatency}}, Health: ChannelMonitorV2Health{Overall: "healthy"}},
+		{BucketStart: now.Add(-time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 1, SuccessRate: 1, Duration: ChannelMonitorV2Latency{P50Ms: &oldLatency}}, Health: ChannelMonitorV2Health{Overall: "healthy"}},
 	}
 	payload := publicTransitV1JSON(t, &ChannelMonitorV2Matrix{Items: []ChannelMonitorV2MatrixRow{{
 		Platform: "openai", Model: "test-model", Buckets: buckets,
@@ -244,7 +248,7 @@ func TestPublicTransitV1CompatibilityRecentObservation(t *testing.T) {
 				Platform: "openai", Model: "test-model",
 				Metrics: ChannelMonitorV2Metric{RequestCount: 100, SuccessRate: 0.99, Duration: ChannelMonitorV2Latency{AvgMs: &avg7d}},
 				Health:  ChannelMonitorV2Health{Overall: "healthy"},
-				Buckets: []ChannelMonitorV2TrendPoint{{BucketStart: now.Add(-12 * time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 100}, Health: ChannelMonitorV2Health{Overall: "healthy"}}},
+				Buckets: []ChannelMonitorV2TrendPoint{{BucketStart: now.Add(-12 * time.Hour), Metrics: ChannelMonitorV2Metric{RequestCount: 100, SuccessRate: 1}, Health: ChannelMonitorV2Health{Overall: "healthy"}}},
 			}
 			rowRecent := ChannelMonitorV2MatrixRow{
 				Platform: "openai", Model: "test-model",
