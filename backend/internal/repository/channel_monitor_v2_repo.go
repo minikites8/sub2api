@@ -177,11 +177,24 @@ func (r *channelMonitorV2Repository) GetDimensions(ctx context.Context, filter s
 			}
 		}
 	}
-	groupInfo, err := r.loadChannelMonitorV2GroupInfo(ctx, configuredChannelMonitorV2GroupIDs(catalogFilter, cfg))
+	seedGroupIDs := configuredChannelMonitorV2GroupIDs(catalogFilter, cfg)
+	// The all-groups catalog includes active groups before their first request,
+	// matching the matrix inventory while retaining the viewer's group scope.
+	if len(seedGroupIDs) == 0 && !catalogFilter.RestrictGroups {
+		seedGroupIDs, err = r.listActiveGroupIDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	groupInfo, err := r.loadChannelMonitorV2GroupInfo(ctx, seedGroupIDs)
 	if err != nil {
 		return nil, err
 	}
 	for groupID, info := range groupInfo {
+		// Composite groups route across enabled upstream platforms.
+		if _, enabled := platformCounts[info.platform]; !enabled && (info.platform != "composite" || len(platformCounts) == 0) {
+			continue
+		}
 		groupCounts[groupID] = groupValue{name: info.name, platform: info.platform, count: 0}
 	}
 	for rows.Next() {
