@@ -55,6 +55,7 @@ func (r *publicTransitHTTPMonitorRepo) GetMatrix(_ context.Context, filter servi
 	r.requests = append(r.requests, string(groupBy)+":"+filter.Range)
 	observed := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	avg, latest := 1234.6, int64(720)
+	durationAvg, durationLatest := 41269.3, int64(30000)
 	rate := 0.99
 	switch filter.Range {
 	case "15d":
@@ -68,11 +69,11 @@ func (r *publicTransitHTTPMonitorRepo) GetMatrix(_ context.Context, filter servi
 	}
 	row := service.ChannelMonitorV2MatrixRow{
 		Platform: "openai", Model: "test-model",
-		Metrics: service.ChannelMonitorV2Metric{RequestCount: 100, SuccessRate: rate, Duration: service.ChannelMonitorV2Latency{AvgMs: &avg}},
+		Metrics: service.ChannelMonitorV2Metric{RequestCount: 100, SuccessRate: rate, TTFT: service.ChannelMonitorV2Latency{AvgMs: &avg}, Duration: service.ChannelMonitorV2Latency{AvgMs: &durationAvg}},
 		Health:  service.ChannelMonitorV2Health{Overall: "healthy"},
 		Buckets: []service.ChannelMonitorV2TrendPoint{{
 			BucketStart: observed,
-			Metrics:     service.ChannelMonitorV2Metric{RequestCount: 5, SuccessRate: 0.8, Duration: service.ChannelMonitorV2Latency{P50Ms: &latest}},
+			Metrics:     service.ChannelMonitorV2Metric{RequestCount: 5, SuccessRate: 0.8, TTFT: service.ChannelMonitorV2Latency{P50Ms: &latest}, Duration: service.ChannelMonitorV2Latency{P50Ms: &durationLatest}},
 			Health:      service.ChannelMonitorV2Health{Overall: health},
 		}},
 	}
@@ -183,13 +184,18 @@ func TestPublicTransitHTTPSnapshotV1Contract(t *testing.T) {
 			require.InDelta(t, 97, monitor["availability_30d"], 1e-12)
 			require.Equal(t, float64(1235), monitor["avg_latency_7d_ms"])
 			require.Equal(t, float64(720), monitor["latest_latency_ms"])
+			require.Equal(t, float64(41269.3), monitor["metrics"].(map[string]any)["duration"].(map[string]any)["avg_ms"])
+			require.Equal(t, float64(30000), monitor["latest_duration_p50_ms"])
 			require.Equal(t, "2026-09-01T12:00:00Z", monitor["last_checked_at"])
 			model := monitor["models"].([]any)[0].(map[string]any)
 			require.Equal(t, monitor["primary_model"], model["model"])
 			require.Equal(t, monitor["primary_status"], model["latest_status"])
 			require.Equal(t, monitor["availability_30d"], model["availability_30d"])
+			require.Equal(t, monitor["latest_latency_ms"], model["latest_latency_ms"])
+			require.Equal(t, monitor["avg_latency_7d_ms"], model["avg_latency_7d_ms"])
 			point := monitor["timeline"].([]any)[0].(map[string]any)
 			require.Equal(t, "degraded", point["status"])
+			require.Equal(t, float64(720), point["latency_ms"])
 			require.Equal(t, monitor["last_checked_at"], point["checked_at"])
 			require.NotContains(t, point, "ping_latency_ms")
 			require.NotContains(t, monitor, "group_id")
@@ -201,6 +207,8 @@ func TestPublicTransitHTTPSnapshotV1Contract(t *testing.T) {
 			groupMonitor := group["monitoring"].([]any)[0].(map[string]any)
 			require.Equal(t, "public-group", groupMonitor["group_name"])
 			require.Equal(t, monitor["primary_status"], groupMonitor["primary_status"])
+			require.Equal(t, monitor["latest_latency_ms"], groupMonitor["latest_latency_ms"])
+			require.Equal(t, monitor["avg_latency_7d_ms"], groupMonitor["avg_latency_7d_ms"])
 			require.NotContains(t, groupMonitor, "group_id")
 			endpoints := payload["endpoints"].(map[string]any)
 			require.Equal(t, "https://station.example/.well-known/ai-transit.json", endpoints["discovery_url"])

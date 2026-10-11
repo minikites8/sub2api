@@ -28,6 +28,7 @@ func appendPublicTransitV1GroupMonitors(site []PublicTransitMonitor, groups []Pu
 
 // These types preserve the original ai-transit.v1 monitoring contract.
 // Each V2 platform/model row becomes one V1 monitor with one primary model.
+// V1 latency fields expose TTFT; explicit V2 duration fields retain total duration.
 type PublicTransitExtraModelStatus struct {
 	Model     string `json:"model"`
 	Status    string `json:"status"`
@@ -60,7 +61,7 @@ func populatePublicTransitV1Monitor(item *PublicTransitMonitor, row ChannelMonit
 	item.PrimaryStatus = publicTransitV1MonitorStatus(row.Metrics, row.Health, publicMonitorRowKey(row))
 	item.ExtraModels = []PublicTransitExtraModelStatus{}
 	item.Timeline = publicTransitV1Timeline(row.Buckets, publicMonitorRowKey(row))
-	if avg := row.Metrics.Duration.AvgMs; avg != nil {
+	if avg := row.Metrics.TTFT.AvgMs; avg != nil {
 		latency := int64(math.Round(*avg))
 		item.AvgLatency7dMs = &latency
 	}
@@ -130,7 +131,7 @@ func publicTransitV1Timeline(src []ChannelMonitorV2TrendPoint, rowKey string) []
 		point := PublicTransitV1MonitorTimeline{
 			Status:       publicTransitV1MonitorStatus(bucket.Metrics, bucket.Health, rowKey+":"+bucket.BucketStart.UTC().Format(time.RFC3339Nano)),
 			StatusPolicy: publicTransitV1StatusPolicy,
-			LatencyMs:    bucket.Metrics.Duration.P50Ms,
+			LatencyMs:    bucket.Metrics.TTFT.P50Ms,
 			CheckedAt:    bucket.BucketStart.UTC().Format(time.RFC3339),
 		}
 		timeline = append(timeline, point)
