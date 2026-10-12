@@ -232,7 +232,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					continue
 				}
 				if lastAdmissionErr != nil && lastFailoverErr == nil {
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", service.OpenAITurnAdmissionMessage(lastAdmissionErr), streamStarted)
+					h.handleTurnAdmissionError(c, lastAdmissionErr, streamStarted)
 				} else if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -366,7 +366,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		if err != nil {
 			if service.IsOpenAITurnAdmissionError(err) {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", "Account eligibility changed; please retry with complete context", streamStarted)
+				h.handleTurnAdmissionError(c, err, streamStarted)
 				return
 			}
 			if result != nil && result.ImageCount > 0 {

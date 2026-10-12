@@ -95,7 +95,7 @@ func TestExcelBPSStructuredOutputFallsBackOnModelAccess(t *testing.T) {
 		t.Run(model, func(t *testing.T) {
 			ordinaryWire := fmt.Sprintf("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"ordinary-%s\",\"status\":\"completed\",\"model\":\"%s\",\"output\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n", model, model)
 			upstream := &httpUpstreamRecorder{responses: []*http.Response{
-				{StatusCode: http.StatusForbidden, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{\"error\":{\"code\":\"basispoints_model_access_changed\"}}"))},
+				{StatusCode: http.StatusForbidden, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{\"error\":{\"code\":\"model_not_found\"}}"))},
 				{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(ordinaryWire))},
 			}}
 			svc := openAIClientToolsTestService(upstream)
@@ -112,7 +112,7 @@ func TestExcelBPSStructuredOutputFallsBackOnModelAccess(t *testing.T) {
 			require.Equal(t, model, gjson.GetBytes(upstream.lastBody, "model").String())
 			require.Equal(t, "json_schema", gjson.GetBytes(upstream.lastBody, "text.format.type").String())
 			require.Contains(t, rec.Body.String(), "ordinary-")
-			require.NotContains(t, rec.Body.String(), "basispoints_model_access_changed")
+			require.NotContains(t, rec.Body.String(), "model_not_found")
 			require.True(t, account.Schedulable)
 		})
 	}

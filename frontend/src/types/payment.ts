@@ -22,6 +22,7 @@ export type OrderStatus =
 export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'airwallex'
 
 export type OrderType = 'balance' | 'subscription'
+export type SubscriptionRenewalMode = 'restart' | 'extend'
 
 // ==================== Configuration ====================
 
@@ -165,6 +166,7 @@ export interface PaymentOrder {
   plan_id?: number
   quantity?: number
   subscription_days?: number
+  renewal_mode?: SubscriptionRenewalMode
   provider_instance_id?: string
 }
 
@@ -235,6 +237,7 @@ export interface CreateOrderRequest {
   plan_id?: number
   quantity?: number
   promo_code?: string
+  renewal_mode?: SubscriptionRenewalMode
   return_url?: string
   payment_source?: string
   openid?: string

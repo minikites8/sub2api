@@ -2227,6 +2227,8 @@
         />
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTicketGatewayBlacklistHint') }}</p>
       </div>
+      <OpenAIRequestTimezoneField v-if="account?.platform === 'openai'" v-model="openAIRequestTimezone" />
+      <ExcelBPSCredentialStatus :state="account?.excel_bps_credential_state" />
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
@@ -3601,6 +3603,8 @@
 </template>
 
 <script setup lang="ts">
+import OpenAIRequestTimezoneField from '@/components/account/OpenAIRequestTimezoneField.vue'
+import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
 import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier, readAccountCostMultiplier } from '@/utils/accountCost'
 import { codexTicketAttempts, codexTicketState } from '@/utils/codexTicketDisplay'
 
@@ -4362,6 +4366,7 @@ const excelBPS403GroupOptions = computed(() => [
     .map(group => ({ value: group.id, label: group.name }))
 ])
 const copilotSDKEnabled = ref(false)
+const openAIRequestTimezone = ref('Asia/Singapore')
 const openaiPassthroughEnabled = ref(false)
 const openAICodexTicketGateway = ref('')
 const openAICodexTicketGatewayBlacklist = ref('')
@@ -4902,6 +4907,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   prismBrowserEnabled.value = false
   prismBrowserModels.value = [...prismSupportedModels]
   copilotSDKEnabled.value = false
+  openAIRequestTimezone.value = 'Asia/Singapore'
   openaiPassthroughEnabled.value = false
   openAICodexTicketGateway.value = ''
   openAICodexTicketGatewayBlacklist.value = ''
@@ -4950,6 +4956,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const targetGroupID = extra?.openai_excel_bps_403_target_group_id
     excelBPS403TargetGroupID.value = typeof targetGroupID === 'number' && Number.isSafeInteger(targetGroupID) && targetGroupID >= 0 ? targetGroupID : ''
     copilotSDKEnabled.value = newAccount.type === 'apikey' && extra?.openai_copilot_sdk === true
+    openAIRequestTimezone.value = typeof extra?.openai_request_timezone === 'string' ? extra.openai_request_timezone : 'Asia/Singapore'
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openAICodexTicketGateway.value = typeof extra?.openai_codex_ticket_gateway === 'string' ? extra.openai_codex_ticket_gateway : ''
     openAICodexTicketGatewayBlacklist.value = readCodexGatewayBlacklist(extra).join(', ')
@@ -6583,6 +6590,7 @@ const handleSubmit = async () => {
           delete newExtra.openai_codex_ticket_gateway
         }
       }
+      newExtra.openai_request_timezone = openAIRequestTimezone.value
       if (props.account.type === 'oauth') {
         applyAccountRPMSettings(newExtra, {
           enabled: rpmLimitEnabled.value,

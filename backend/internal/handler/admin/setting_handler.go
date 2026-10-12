@@ -334,6 +334,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               settings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         settings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
+		OpenAIRequestTimezoneEnabled:                           settings.OpenAIRequestTimezoneEnabled,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(settings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                settings.OpenAICodexTicketHarvestProxyURL != "",
 		OpenAICodexTicketEnabled:                               settings.OpenAICodexTicketEnabled,
@@ -346,6 +347,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexTicketHarvestScope:                          settings.OpenAICodexTicketHarvestScope,
 		OpenAICodexTicketStrategy:                              settings.OpenAICodexTicketStrategy,
 		OpenAICodexTicketStrictResponse:                        settings.OpenAICodexTicketStrictResponse,
+		OpenAICodexTicketCandyObservation:                      settings.OpenAICodexTicketCandyObservation,
 		OpenAICodexTicketFailClosed:                            settings.OpenAICodexTicketFailClosed,
 		OpenAICodexTicketModels:                                settings.OpenAICodexTicketModels,
 		ClaudeCodeClientVersion:                                settings.ClaudeCodeClientVersion,
@@ -438,6 +440,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,
 		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
+		GrokVideoSourceURLEnabled:      settings.GrokVideoSourceURLEnabled,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 		PelicanShowcaseEnabled:   settings.PelicanShowcaseEnabled,

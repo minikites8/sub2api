@@ -86,6 +86,7 @@ type CreateOrderRequest struct {
 	PlanID          int64
 	Quantity        int
 	PromoCode       string
+	RenewalMode     string
 	Locale          string
 }
 

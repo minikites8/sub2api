@@ -63,6 +63,18 @@ export default {
     "request_error": "请求处理失败"
   }
 },
+      bpsAuthorizing: 'BPS 正在自动授权，当前使用原生通道；授权成功后自动切换，无需再次操作开关。',
+      "modelsLoadFailed": "模型列表加载失败，请重试。",
+      "retryModels": "重新加载模型",
+      "openCredentialOperations": "查看凭据运维",
+      "excelAuthErrors": {
+        "OPENAI_EXCEL_AUTH_PENDING": "Excel 授权正在进行中，完成后可重新加载模型。",
+        "OPENAI_EXCEL_AUTH_FAILED": "Excel 自动授权失败，系统将在冷却后重试；可在凭据运维查看进度。",
+        "OPENAI_EXCEL_AUTH_VERIFICATION_REQUIRED": "Excel 自动登录被上游安全验证阻塞，可在凭据运维查看状态。",
+        "OPENAI_EXCEL_AUTH_CONFIG_REQUIRED": "Excel 自动授权缺少登录配置，保存配置后后台会自动继续。",
+        "OPENAI_EXCEL_AUTH_REQUIRED": "Excel 授权等待后台自动处理，可在凭据运维查看进度。",
+        "OPENAI_EXCEL_AUTH_UNAVAILABLE": "暂时无法读取 Excel 授权状态，请稍后重试。"
+      },
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',
@@ -192,8 +204,6 @@ export default {
       editAccount: '编辑账号',
       deleteAccount: '删除账号',
       searchAccounts: '搜索账号...',
-      moreFilters: '更多筛选',
-      moreFiltersActive: '更多筛选（已启用 {count} 项）',
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',
@@ -1008,6 +1018,10 @@ export default {
       },
       // OpenAI specific hints
       openai: {
+        requestTimezone: '请求时区',
+        requestTimezoneDesc: '仅在系统设置中开启“请求时区绑定”后生效，未配置时使用 Asia/Singapore。',
+        requestTimezoneLoadFailed: '加载时区列表失败，请稍后重试。',
+
         baseUrlHint: '留空使用官方 OpenAI API',
         prismBrowser: '自动使用 Prism 浏览器协议',
         prismBrowserDesc: '使用此 OpenAI OAuth 账号接入服务器管理的 Prism 适配器，无需另填 Prism 凭据。支持以下四个模型的文本请求，以及 6.1 Sol 的客户端函数和自定义工具。',
@@ -1145,6 +1159,14 @@ export default {
         accountGuardDesc: '按设定间隔检查在线设备，并自动踢出上游标记为本机之外的设备。',
         accountGuardInterval: '检查间隔（分钟）',
         accountGuardIntervalHint: '允许 5 到 1440 分钟。启用后会在下一轮扫描执行首次检查。',
+        codexTurnTicket: 'Codex 门票',
+        codexTurnTicketDesc: '显示已配置模型的门票状态。仅在启用缺票拦截时，没有有效门票的模型才会暂停调度。',
+        ticketProbeNext: '下次允许探测：',
+        ticketStandbyExpires: '备用到期：',
+        ticketProbe: { success: '采集成功', token_error: '账号令牌不可用', response_incomplete_or_error: '上游响应失败或未完整结束', invalid_state: '票据校验失败或已过期' },
+        codexTurnTicketMissing: '暂无有效门票，仍允许请求',
+        codexTurnTicketReady: '剩余 {time}',
+        codexTurnTicketPaused: '暂无有效票据，该模型已暂停',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:
           '统一控制 Codex /responses 文本请求的 hosted image_generation 桥接和客户端图片工具声明。hosted 工具自动注入仅适用于非 Responses Lite 请求；账号级策略优先于渠道和全局配置，不影响独立图片生成接口。',
@@ -1287,7 +1309,7 @@ export default {
       poolModeRetryCount: '同账号重试次数',
       poolModeRetryCountHint: '仅在池模式下生效。0 表示不原地重试；默认 {default}，最大 {max}。',
       poolModeRetryStatusCodes: '同账号重试状态码',
-      poolModeRetryStatusCodesHint: '仅在池模式下生效。以英文逗号分隔的 HTTP 状态码（100-599），命中时触发同账号重试。留空使用默认值（{default}）。',
+      poolModeRetryStatusCodesHint: '仅在池模式下生效。以英文逗号分隔的 HTTP 状态码（100-599），命中时触发同账号重试。列入 503 且账号未配置代理时，连不上上游（拒绝连接、网络不可达等）也按 503 原地重试，不再临时停调度 10 分钟。留空使用默认值（{default}）。',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',
@@ -2108,6 +2130,7 @@ export default {
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
+      testRequestStarted: '测试请求已开始，等待上游响应',
       testAccountConnection: '测试账号连接',
       errorPrefix: '错误：{message}',
       imagePreviewAlt: '测试图片 {index}',
@@ -2116,6 +2139,16 @@ export default {
       readyToTest: '准备测试。点击"开始测试"按钮开始...',
       connectingToApi: '连接 API 中...',
       testCompleted: '测试完成！',
+      bpsCredentialState: {
+        unknown: 'Excel / BPS 授权状态未知',
+        pending: 'Excel / BPS 等待授权',
+        not_expired: 'Excel / BPS 凭证未过期（未验证上游）',
+        expired: 'Excel / BPS 凭证已过期',
+        revoked: 'Excel / BPS 凭证已撤销',
+        auth_failed: 'Excel / BPS 认证失败',
+        expiresAt: '凭证到期',
+        manualResume: '账号当前停用或暂停；授权恢复不会自动启用账号。',
+      },
       connectedToApi: '已连接到 API',
       usingModel: '使用模型：{model}',
       sendingTestMessage: '发送测试消息："hi"',

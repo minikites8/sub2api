@@ -476,7 +476,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
-	finalResp, usage := s.collectAnthropicResponseFromSSE(resp.Body, requestID, nil)
+	finalResp, usage := s.collectAnthropicResponseFromSSE(c, resp.Body, requestID, nil)
 
 	if finalResp == nil {
 		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
@@ -492,6 +492,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 // Anthropic 响应。onEvent 在每个事件解析成功后被调用（可为 nil），供调用方挂载
 // 心跳一类的副作用——compact 请求会借此在漫长的摘要生成期间向下游发送保活字节。
 func (s *GatewayService) collectAnthropicResponseFromSSE(
+	c *gin.Context,
 	body io.Reader,
 	requestID string,
 	onEvent func(),
@@ -524,6 +525,7 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 			continue
 		}
 
+		observeAnthropicUpstreamResponseModel(c, []byte(payload))
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("forward_as_responses buffered: failed to parse event",
@@ -635,7 +637,7 @@ func (s *GatewayService) writeResponsesBufferedResult(
 		c.JSON(http.StatusOK, responsesResp)
 	}
 
-	return &ForwardResult{
+	result := &ForwardResult{
 		RequestID:       requestID,
 		UpstreamHeaders: resp.Header,
 		Usage:           usage,
@@ -644,7 +646,9 @@ func (s *GatewayService) writeResponsesBufferedResult(
 		ReasoningEffort: reasoningEffort,
 		Stream:          false,
 		Duration:        time.Since(startTime),
-	}, nil
+	}
+	applyObservedGatewayResponseModel(c, result)
+	return result, nil
 }
 
 // handleResponsesStreamingResponse reads Anthropic SSE events from upstream,
@@ -686,7 +690,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	resultWithUsage := func() *ForwardResult {
-		return &ForwardResult{
+		result := &ForwardResult{
 			RequestID:       requestID,
 			UpstreamHeaders: resp.Header,
 			Usage:           usage,
@@ -697,6 +701,8 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
 		}
+		applyObservedGatewayResponseModel(c, result)
+		return result
 	}
 
 	// processEvent handles a single parsed Anthropic SSE event.
@@ -791,6 +797,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
+		observeAnthropicUpstreamResponseModel(c, []byte(payload))
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("forward_as_responses stream: failed to parse event",

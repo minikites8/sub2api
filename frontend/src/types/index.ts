@@ -1080,6 +1080,7 @@ export interface Proxy {
   protocol: ProxyProtocol
   host: string
   port: number
+  mihomo_node_id?: string
   username: string | null
   password?: string | null
   status: 'active' | 'inactive' | 'expired'
@@ -1416,8 +1417,17 @@ export interface OpenCodeGoUsageSettings {
   debounce_minutes: number
 }
 
+export interface ExcelBPSCredentialState {
+ status: string
+ expires_at?: string
+ observed_at?: string
+ error_code?: string
+ requires_manual_resume?: boolean
+}
+
 export interface Account {
   codex_tickets?: import('./codexTicket').CodexTicketStatus[]
+ excel_bps_credential_state?: ExcelBPSCredentialState
   id: number
   name: string
   notes?: string | null

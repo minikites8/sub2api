@@ -637,6 +637,7 @@ export interface SystemSettings {
   grok_default_text_model: string;
   grok_cross_client_model_map_enabled: boolean;
   grok_default_base_url_mode: string;
+  grok_video_source_url_enabled: boolean;
 
   // Per-platform account auto-pause thresholds (100 = disabled)
   account_scheduling_thresholds: AccountSchedulingThresholdsMap;
@@ -676,10 +677,11 @@ export interface SystemSettings {
   openai_codex_version_auto_sync_enabled: boolean;
   openai_codex_ticket_harvest_proxy_url?: string
   openai_codex_ticket_harvest_proxy_configured?: boolean
+  openai_request_timezone_enabled: boolean;
   openai_codex_ticket_enabled: boolean;
   openai_codex_ticket_fail_closed: boolean;
   openai_codex_ticket_strategy?: 'fixed' | 'standby';
-  openai_codex_ticket_harvest_scope?: { mode: 'all' | 'selected'; group_ids: number[]; account_policy: 'schedulable_only' | 'prioritize_schedulable' };
+  openai_codex_ticket_harvest_scope?: { mode: 'all' | 'selected' | 'selected_accounts'; group_ids: number[]; account_policy: 'schedulable_only' | 'prioritize_schedulable' };
   openai_codex_ticket_strict_response?: boolean;
   openai_codex_relay_url: string;
   openai_codex_relay_key_configured: boolean;
@@ -687,6 +689,8 @@ export interface SystemSettings {
   openai_codex_relay_transport: 'sse' | 'websocket';
   openai_codex_relay_gateway: string;
   openai_codex_relay_timeout_seconds: number;
+  openai_codex_ticket_candy_observation?: boolean;
+  openai_codex_ticket_static_proxy_url?: string;
   openai_codex_ticket_models: string[];
   claude_code_client_version: string;
   claude_code_client_version_synced: string;
@@ -841,7 +845,6 @@ export interface SystemSettings {
 }
 
 export interface UpdateSettingsRequest {
-  openai_codex_ticket_harvest_proxy_url?: string;
 	excel_bps_enabled?: boolean;
 	prism_browser_enabled?: boolean;
 	prism_browser_base_url?: string;
@@ -1047,6 +1050,7 @@ export interface UpdateSettingsRequest {
   grok_default_text_model?: string;
   grok_cross_client_model_map_enabled?: boolean;
   grok_default_base_url_mode?: string;
+  grok_video_source_url_enabled?: boolean;
   account_scheduling_thresholds?: AccountSchedulingThresholdsMap;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;
@@ -1071,17 +1075,21 @@ export interface UpdateSettingsRequest {
   openai_codex_user_agent?: string;
   openai_codex_client_version?: string;
   openai_codex_version_auto_sync_enabled?: boolean;
+  openai_request_timezone_enabled?: boolean;
   openai_codex_ticket_enabled?: boolean;
   openai_codex_ticket_fail_closed?: boolean;
   openai_codex_ticket_strategy?: 'fixed' | 'standby';
-  openai_codex_ticket_harvest_scope?: { mode: 'all' | 'selected'; group_ids: number[]; account_policy: 'schedulable_only' | 'prioritize_schedulable' };
+  openai_codex_ticket_harvest_scope?: { mode: 'all' | 'selected' | 'selected_accounts'; group_ids: number[]; account_policy: 'schedulable_only' | 'prioritize_schedulable' };
   openai_codex_relay_url?: string;
   openai_codex_relay_key?: string;
   openai_codex_relay_key_env?: string;
   openai_codex_relay_transport?: 'sse' | 'websocket';
   openai_codex_relay_gateway?: string;
   openai_codex_relay_timeout_seconds?: number;
+  openai_codex_ticket_harvest_proxy_url?: string;
+  openai_codex_ticket_use_saved_static_proxy?: boolean;
   openai_codex_ticket_strict_response?: boolean;
+  openai_codex_ticket_candy_observation?: boolean;
   openai_codex_ticket_models?: string[];
   claude_code_client_version?: string;
   claude_code_version_auto_sync_enabled?: boolean;

@@ -67,6 +67,7 @@ type CodexHarvestControlSnapshot struct {
 
 type CodexHarvestService struct {
 	cloudMint   config.OpenAICodexCloudMintConfig
+	coverage    harvestCoverageTracker
 	nodes       CodexHarvestNodeRepository
 	settings    SettingRepository
 	defaults    CodexHarvestControls
@@ -192,10 +193,14 @@ func effectiveCodex780Gateway(cfg config.OpenAICodexTicketConfig, controls Codex
 			return target
 		}
 	}
-	if target := normalizeCodex780Gateway(controls.TargetGateway); target != "" {
-		return target
+	if remoteCodexMintSelected(cfg, controls) {
+		if target := normalizeCodex780Gateway(controls.TargetGateway); target != "" {
+			return target
+		}
 	}
-	return "unified-88"
+	// Native acquisition records the observed gateway; legacy host settings
+	// remain available to the remote relay and explicit account overrides.
+	return "any"
 }
 
 func codex780GatewayOverrideForAccount(account *Account) string {

@@ -34,6 +34,7 @@ type UpdateSettingsRequest struct {
 	PrismBrowserAPIKey                   string                           `json:"prism_browser_api_key"`
 	OpenAICodexTicketUseSavedStaticProxy *bool                            `json:"openai_codex_ticket_use_saved_static_proxy"`
 	OpenAICodexTicketHarvestProxyURL     *string                          `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAICodexTicketCandyObservation    *bool                            `json:"openai_codex_ticket_candy_observation"`
 	// 注册设置
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
@@ -282,6 +283,10 @@ type UpdateSettingsRequest struct {
 	RewriteMessageCacheControl             *bool     `json:"rewrite_message_cache_control"`
 	EnableClientDatelineNormalization      *bool     `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            *string   `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                   *string   `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion               *string   `json:"openai_codex_client_version"`
+	OpenAICodexVersionAutoSyncEnabled      *bool     `json:"openai_codex_version_auto_sync_enabled"`
+	OpenAIRequestTimezoneEnabled           *bool     `json:"openai_request_timezone_enabled"`
 	OpenAICodexTicketEnabled               *bool     `json:"openai_codex_ticket_enabled"`
 	OpenAICodexRelayURL                    *string   `json:"openai_codex_relay_url"`
 	OpenAICodexRelayKey                    *string   `json:"openai_codex_relay_key"`
@@ -292,9 +297,6 @@ type UpdateSettingsRequest struct {
 	OpenAICodexTicketModels                *[]string `json:"openai_codex_ticket_models"`
 	ClaudeCodeClientVersion                *string   `json:"claude_code_client_version"`
 	ClaudeCodeVersionAutoSyncEnabled       *bool     `json:"claude_code_version_auto_sync_enabled"`
-	OpenAICodexUserAgent                   *string   `json:"openai_codex_user_agent"`
-	OpenAICodexClientVersion               *string   `json:"openai_codex_client_version"`
-	OpenAICodexVersionAutoSyncEnabled      *bool     `json:"openai_codex_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -382,6 +384,7 @@ type UpdateSettingsRequest struct {
 	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
 	GrokDefaultBaseURLMode         *string `json:"grok_default_base_url_mode"`
+	GrokVideoSourceURLEnabled      *bool   `json:"grok_video_source_url_enabled"`
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool                          `json:"available_channels_enabled"`
@@ -2125,6 +2128,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexRelayTimeoutSeconds
 		}(),
+		OpenAIRequestTimezoneEnabled: func() bool {
+			if req.OpenAIRequestTimezoneEnabled != nil {
+				return *req.OpenAIRequestTimezoneEnabled
+			}
+			return previousSettings.OpenAIRequestTimezoneEnabled
+		}(),
 		OpenAICodexTicketEnabled: func() bool {
 			if req.OpenAICodexTicketEnabled != nil {
 				return *req.OpenAICodexTicketEnabled
@@ -2155,6 +2164,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.OpenAICodexTicketStrictResponse
 			}
 			return previousSettings.OpenAICodexTicketStrictResponse
+		}(),
+		OpenAICodexTicketCandyObservation: func() bool {
+			if req.OpenAICodexTicketCandyObservation != nil {
+				return *req.OpenAICodexTicketCandyObservation
+			}
+			return previousSettings.OpenAICodexTicketCandyObservation
 		}(),
 		OpenAICodexTicketFailClosed: func() bool {
 			if req.OpenAICodexTicketFailClosed != nil {
@@ -2372,6 +2387,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return strings.TrimSpace(*req.GrokDefaultBaseURLMode)
 			}
 			return previousSettings.GrokDefaultBaseURLMode
+		}(),
+		GrokVideoSourceURLEnabled: func() bool {
+			if req.GrokVideoSourceURLEnabled != nil {
+				return *req.GrokVideoSourceURLEnabled
+			}
+			return previousSettings.GrokVideoSourceURLEnabled
 		}(),
 		AvailableChannelsEnabled: func() bool {
 			if req.AvailableChannelsEnabled != nil {
@@ -2823,6 +2844,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
+		OpenAIRequestTimezoneEnabled:                           updatedSettings.OpenAIRequestTimezoneEnabled,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                updatedSettings.OpenAICodexTicketHarvestProxyURL != "",
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
@@ -2830,6 +2852,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexTicketHarvestScope:                          updatedSettings.OpenAICodexTicketHarvestScope,
 		OpenAICodexTicketStrategy:                              updatedSettings.OpenAICodexTicketStrategy,
 		OpenAICodexTicketStrictResponse:                        updatedSettings.OpenAICodexTicketStrictResponse,
+		OpenAICodexTicketCandyObservation:                      updatedSettings.OpenAICodexTicketCandyObservation,
 		OpenAICodexTicketFailClosed:                            updatedSettings.OpenAICodexTicketFailClosed,
 		OpenAICodexTicketModels:                                updatedSettings.OpenAICodexTicketModels,
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
@@ -2917,6 +2940,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
 		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
+		GrokVideoSourceURLEnabled:      updatedSettings.GrokVideoSourceURLEnabled,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 		PelicanShowcaseEnabled:   updatedSettings.PelicanShowcaseEnabled,

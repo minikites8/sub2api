@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"errors"
+	"net/http"
+
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -25,4 +28,20 @@ func retryOpenAIInitialAdmission(c *gin.Context, err error, result *service.Open
 	excluded[accountID] = struct{}{}
 	*switches++
 	return true
+}
+
+// handleTurnAdmissionError retains model-capability attribution when a final
+// pre-send check rejects an account after model mapping.
+func (h *OpenAIGatewayHandler) handleTurnAdmissionError(c *gin.Context, err error, streamStarted bool) {
+	if service.IsOpenAIModelCapabilityRejection(err) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+		h.handleStreamingAwareError(c, http.StatusNotFound, "model_not_found", "The requested model is not supported by the selected account", streamStarted)
+		return
+	}
+	message := "Account eligibility changed; please retry with complete context"
+	var denied *service.OpenAITurnAdmissionError
+	if errors.As(err, &denied) && denied.Reason != "" {
+		message += " (" + denied.Reason + ")"
+	}
+	h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", message, streamStarted)
 }

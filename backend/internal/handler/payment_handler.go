@@ -278,6 +278,7 @@ type CreateOrderRequest struct {
 	PlanID            int64   `json:"plan_id"`
 	Quantity          *int    `json:"quantity" binding:"omitempty,gte=1,lte=1000"`
 	PromoCode         string  `json:"promo_code"`
+	RenewalMode       string  `json:"renewal_mode"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -333,6 +334,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		PlanID:          req.PlanID,
 		Quantity:        quantity,
 		PromoCode:       req.PromoCode,
+		RenewalMode:     req.RenewalMode,
 		Locale:          c.GetHeader("Accept-Language"),
 	})
 	if err != nil {
@@ -389,6 +391,22 @@ func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeC
 			return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", "wechat payment resume token promo code mismatch")
 		}
 		req.PromoCode = resumePromo
+	}
+	if claims.RenewalMode != "" {
+		claimMode, err := service.NormalizeSubscriptionRenewalMode(claims.RenewalMode)
+		if err != nil {
+			return err
+		}
+		if req.RenewalMode != "" {
+			requestMode, err := service.NormalizeSubscriptionRenewalMode(req.RenewalMode)
+			if err != nil {
+				return err
+			}
+			if requestMode != claimMode {
+				return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", "wechat payment resume token renewal mode mismatch")
+			}
+		}
+		req.RenewalMode = string(claimMode)
 	}
 	return nil
 }
@@ -560,6 +578,7 @@ type PublicOrderResult struct {
 	PlanID              *int64     `json:"plan_id,omitempty"`
 	Quantity            int        `json:"quantity,omitempty"`
 	SubscriptionDays    *int       `json:"subscription_days,omitempty"`
+	RenewalMode         string     `json:"renewal_mode,omitempty"`
 }
 
 // PublicOrderVerifyResult is returned by the legacy anonymous out_trade_no
@@ -598,6 +617,7 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 		PlanID:              order.PlanID,
 		Quantity:            service.PaymentOrderQuantity(order),
 		SubscriptionDays:    order.SubscriptionDays,
+		RenewalMode:         order.SubscriptionRenewalMode,
 	}
 }
 
@@ -710,6 +730,7 @@ type PaymentOrderResult struct {
 	PlanID              *int64     `json:"plan_id,omitempty"`
 	Quantity            int        `json:"quantity,omitempty"`
 	SubscriptionDays    *int       `json:"subscription_days,omitempty"`
+	RenewalMode         string     `json:"renewal_mode,omitempty"`
 	ProviderInstanceID  *string    `json:"provider_instance_id,omitempty"`
 }
 
@@ -751,6 +772,7 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 		PlanID:              order.PlanID,
 		Quantity:            service.PaymentOrderQuantity(order),
 		SubscriptionDays:    order.SubscriptionDays,
+		RenewalMode:         order.SubscriptionRenewalMode,
 		ProviderInstanceID:  order.ProviderInstanceID,
 	}
 }

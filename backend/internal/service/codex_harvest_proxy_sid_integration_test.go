@@ -32,26 +32,38 @@ func TestCodexHarvestProxySIDManualRetryStoresAndPinsSuccessfulSession(t *testin
 	require.NoError(t, s.codexHarvest.SaveControls(context.Background(), controls))
 	s.accountRepo = &manualHarvestAccountRepo{account: account, persist: func(context.Context) error { return nil }}
 	var proxies, sessions []string
+	state := mint780State(time.Now().Add(-time.Second))
+	pair := mint780Pair(time.Now().Add(time.Hour), "unified-88")
 	s.httpUpstream = &harvestProxyUpstream{do: func(req *http.Request, proxy string) (*http.Response, error) {
 		proxies = append(proxies, proxy)
 		sessions = append(sessions, req.Header.Get("session-id"))
 		require.NotEqual(t, "OldSID12", codexHarvestProxySID(proxy))
-		require.Empty(t, req.Header.Get("Cookie"), "a new SID gets a fresh route")
-		gateway := "unified-88"
-		if len(proxies) == 1 {
-			gateway = "unified-79"
+		h := http.Header{}
+		body := harvestProbeCompleteFixture("gpt-6-astra")
+		switch len(proxies) {
+		case 1:
+			require.Empty(t, req.Header.Get("Cookie"))
+			body = "data: {\"type\":\"response.created\"}\n\n"
+		case 2, 4:
+			require.Empty(t, req.Header.Get("Cookie"), "each new SID mints a fresh ticket")
+			h["Set-Cookie"] = pair
+			h.Set(openAICodexTurnStateHeader, state)
+		case 3, 5:
+			require.Equal(t, state, req.Header.Get(openAICodexTurnStateHeader))
+			require.Equal(t, strings.Join(pair, "; "), req.Header.Get("Cookie"))
+			require.Equal(t, proxies[len(proxies)-2], proxy, "continuation keeps candidate egress")
+			require.Equal(t, sessions[len(sessions)-2], sessions[len(sessions)-1])
+		default:
+			t.Fatalf("unexpected probe call %d", len(proxies))
 		}
-		h := http.Header{"Set-Cookie": mint780Pair(time.Now().Add(time.Hour), gateway)}
-		h.Set(openAICodexTurnStateHeader, mint780State(time.Now()))
-		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(
-			"data: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"model\":\"gpt-6-astra\"}}\n\n"))}, nil
+		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(body))}, nil
 	}}
 	var events []ManualHarvestProgress
 	require.NoError(t, s.ExecuteManualHarvest(context.Background(), ManualHarvestRequest{
-		AccountID: account.ID, Models: []string{"gpt-6-astra"}, MaxAttempts: 2,
+		AccountID: account.ID, Models: []string{"gpt-6-astra"}, MaxAttempts: 3,
 		ProbeIntervalSeconds: 1, StopOnSuccess: true, NodeSwitchRule: ManualHarvestNodeSwitchNever,
 	}, func(p ManualHarvestProgress) { events = append(events, p) }))
-	require.Len(t, proxies, 2)
+	require.Len(t, proxies, 3)
 	require.NotEqual(t, proxies[0], proxies[1])
 	require.NotEqual(t, sessions[0], sessions[1])
 	require.Equal(t, harvestSIDTestProxy, s.cfg.Gateway.OpenAICodexTicket.HarvestProxyURL)
@@ -77,7 +89,8 @@ func TestCodexHarvestProxySIDManualRetryStoresAndPinsSuccessfulSession(t *testin
 	// A later mint rotates again while the accepted ticket keeps its original egress.
 	r := s.executeCodexHarvestProbe(context.Background(), account, "tok", "gpt-6-astra", harvestSIDTestProxy, time.Second, nil, "next-session")
 	require.Equal(t, "success", r.Kind)
-	require.Equal(t, proxies[2], r.ProxyURL)
+	require.Len(t, proxies, 5)
+	require.Equal(t, proxies[3], r.ProxyURL)
 	require.NotEqual(t, ticket.HarvestProxyURL, r.ProxyURL)
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, ticket.State)
@@ -101,7 +114,7 @@ func TestCodexHarvestProxySIDRouteCacheAndTicketSeedsStayWithinSession(t *testin
 	s.openaiCodexTickets.Store(openAICodexTicketKey(account.ID, "gpt-6-astra"), &openAICodexTicket{
 		AccountID: account.ID, Model: "gpt-6-astra", State: mint780State(now), Length: 780,
 		IssuedAt: now, ExpiresAt: now.Add(time.Minute), HarvestCookies: pair, HarvestProxyURL: oldProxy,
-		Gateway: "unified-88", Transport: "sse",
+		Gateway: "unified-88", Transport: "sse", ProbeVerified: true,
 	})
 	calls := 0
 	s.httpUpstream = &harvestProxyUpstream{do: func(req *http.Request, proxy string) (*http.Response, error) {
@@ -114,7 +127,7 @@ func TestCodexHarvestProxySIDRouteCacheAndTicketSeedsStayWithinSession(t *testin
 		h := http.Header{"Set-Cookie": pair}
 		h.Set(openAICodexTurnStateHeader, mint780State(time.Now()))
 		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(
-			"data: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"model\":\"gpt-6-astra\"}}\n\n"))}, nil
+			harvestProbeCompleteFixture("gpt-6-astra")))}, nil
 	}}
 	for _, proxy := range []string{oldProxy, newProxy, newProxy} {
 		r := s.requestLocalCodex780Probe(context.Background(), account, "tok", "gpt-6-astra", proxy, nil, "session")

@@ -20,6 +20,7 @@ describe('parseWechatResumeRoute', () => {
       plan_id: '7',
       quantity: '3',
       promo_code: 'SUB-80',
+      renewal_mode: 'extend',
     }, [], 88)).toEqual({
       wechatResumeToken: 'resume-token-123',
       paymentType: 'wxpay',
@@ -28,6 +29,7 @@ describe('parseWechatResumeRoute', () => {
       planId: 7,
       quantity: 3,
       promoCode: 'SUB-80',
+      renewalMode: 'extend',
     })
   })
 
@@ -44,6 +46,7 @@ describe('parseWechatResumeRoute', () => {
       orderType: 'balance',
       orderAmount: 12.5,
       planId: undefined,
+      renewalMode: undefined,
     })
   })
 })
@@ -60,6 +63,7 @@ describe('stripWechatResumeQuery', () => {
       order_type: 'subscription',
       plan_id: '7',
       quantity: '5',
+      renewal_mode: 'restart',
       state: 'state-123',
       scope: 'snsapi_base',
       promo_code: 'SUB-80',

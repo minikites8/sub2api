@@ -1021,7 +1021,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				return
 			}
 			if lastFailoverErr == nil && lastAdmissionErr != nil {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", service.OpenAITurnAdmissionMessage(lastAdmissionErr), streamStarted)
+				h.handleTurnAdmissionError(c, lastAdmissionErr, streamStarted)
 				return
 			}
 			if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
@@ -1217,7 +1217,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					reqLog.Info("openai.admission_retry", zap.Int64("account_id", account.ID), zap.String("reason", reason), zap.Bool("same_account", sameAccount), zap.Int("switch_count", switchCount))
 					continue
 				}
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "admission_unavailable", service.OpenAITurnAdmissionMessage(err), streamStarted || c.Writer.Written())
+				h.handleTurnAdmissionError(c, err, streamStarted || c.Writer.Written())
 				return
 			}
 			if result != nil && result.ClientDisconnect {
@@ -4150,6 +4150,16 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
+	// Local BPS image admission rejection: nothing reached the upstream, so
+	// keep the fixed code and message of the image relay limit.
+	if failoverErr.IsExcelBPSImageAdmissionRejection() {
+		errType := "server_error"
+		if failoverErr.ClientStatusCode == http.StatusRequestEntityTooLarge {
+			errType = "invalid_request_error"
+		}
+		h.handleStreamingAwareErrorWithCode(c, failoverErr.ClientStatusCode, errType, string(failoverErr.Reason), failoverErr.ClientMessage, streamStarted, false)
+		return
+	}
 	if failoverErr.IsOpenAIRequestBodyTooLarge() {
 		service.SetOpsUpstreamError(c, http.StatusRequestEntityTooLarge, service.OpenAIRequestBodyTooLargeClientMessage, "")
 		h.handleStreamingAwareError(

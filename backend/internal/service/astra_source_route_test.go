@@ -18,7 +18,7 @@ func TestAstraSourceCachedRouteFollowsBoundTicket(t *testing.T) {
 	account.Extra = map[string]any{OpenAICodexTicketGatewayExtraKey: "unified-79"}
 	ticket := &openAICodexTicket{
 		AccountID: account.ID, Model: "gpt-6-astra", State: mint780State(now), Length: 780,
-		CapturedAt: now, IssuedAt: now, ExpiresAt: now.Add(240 * time.Second),
+		CapturedAt: now, IssuedAt: now, ExpiresAt: now.Add(240 * time.Second), ProbeVerified: true,
 		Transport: "sse", Gateway: "unified-79", HarvestCookies: mint780Pair(expires, "unified-79"),
 	}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TargetLength: 780, Models: []string{"gpt-6-astra"}}, nil)

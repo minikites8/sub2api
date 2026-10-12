@@ -489,6 +489,7 @@ const baseSettingsResponse = {
   fallback_model_antigravity: "",
   grok_default_text_model: "grok-4.5",
   grok_cross_client_model_map_enabled: false,
+  grok_video_source_url_enabled: false,
   enable_identity_patch: false,
   identity_patch_prompt: "",
   ops_monitoring_enabled: false,
@@ -1124,19 +1125,16 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
-  it("submits the Codex ticket harvest toggle", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_enabled: false,
-    });
+  it.each([false, true])("loads and toggles request timezone binding from %s", async (enabled) => {
+    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse, openai_request_timezone_enabled: enabled });
     const wrapper = mountView();
     await flushPromises();
-    const toggle = wrapper.get("#codex-ticket-enabled");
-    await toggle.setValue(true);
+    const toggle = wrapper.get<HTMLInputElement>("#request-timezone-enabled");
+    expect(toggle.element.checked).toBe(enabled);
+    await toggle.setValue(!enabled);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_enabled).toBe(true);
-    wrapper.unmount();
+    expect(updateSettings.mock.calls[0]?.[0].openai_request_timezone_enabled).toBe(!enabled);
   });
 
   it("loads and saves independent Codex ticket model toggles", async () => {
@@ -2131,6 +2129,29 @@ describe("admin SettingsView payment visible method controls", () => {
       openai_codex_relay_timeout_seconds: 60,
       openai_codex_ticket_models: ['model-a', 'model-b'],
     }));
+  });
+
+  it("loads and saves the Grok video source URL switch", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      grok_video_source_url_enabled: true,
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const sourceURLToggle = wrapper.get(
+      '[data-testid="grok-video-source-url-toggle"]',
+    );
+    expect((sourceURLToggle.element as HTMLInputElement).checked).toBe(true);
+
+    await sourceURLToggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = updateSettings.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(payload.grok_video_source_url_enabled).toBe(false);
   });
 
   it("loads and saves the OpenAI Responses first-token metric mode", async () => {

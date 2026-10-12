@@ -95,6 +95,15 @@ func TestExcelBPSHTTPModelRejectionFallsBackAcrossStatuses(t *testing.T) {
 			account := excelAccount()
 
 			result, err := svc.Forward(context.Background(), c, account, body)
+			if tc.status == http.StatusForbidden {
+				// A permission change cools only this model under the latest upstream policy.
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.True(t, svc.isExcelBPSModelCoolingDown(account, "gpt-5.6-sol"))
+				require.Len(t, upstream.requests, 1)
+				require.True(t, account.IsExcelBPSEnabled())
+				return
+			}
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Len(t, upstream.requests, 2)

@@ -374,5 +374,8 @@ func (s *OpenAIGatewayService) requestCodexCloudMintProbe(ctx context.Context, a
 			return
 		}
 	}
+	// The configured relay is the mint authority for this model-scoped bundle.
+	// Mark acceptance only after validating its route, model, length and issue time.
+	out.ProbeVerified = shapeErr == nil
 	return
 }

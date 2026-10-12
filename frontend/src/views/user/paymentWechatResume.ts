@@ -1,5 +1,5 @@
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
-import type { SubscriptionPlan } from '@/types/payment'
+import type { SubscriptionPlan, SubscriptionRenewalMode } from '@/types/payment'
 import { normalizeVisibleMethod } from '@/components/payment/paymentFlow'
 import { MAX_SUBSCRIPTION_QUANTITY } from '@/components/payment/subscriptionQuantity'
 
@@ -10,6 +10,7 @@ export interface ParsedWechatResumeRoute {
   planId?: number
   quantity?: number
   promoCode?: string
+  renewalMode?: SubscriptionRenewalMode
   openid?: string
   wechatResumeToken?: string
 }
@@ -51,6 +52,8 @@ export function parseWechatResumeRoute(
   const orderType = readQueryString(query, 'order_type') === 'subscription' || hasPlanId
     ? 'subscription'
     : 'balance'
+  const rawRenewalMode = readQueryString(query, 'renewal_mode')
+  const renewalMode = rawRenewalMode === 'extend' ? 'extend' : 'restart'
 
   if (wechatResumeToken) {
     return {
@@ -61,6 +64,7 @@ export function parseWechatResumeRoute(
       planId: hasPlanId ? planId : undefined,
       ...(quantity !== undefined ? { quantity } : {}),
       promoCode: promoCode || undefined,
+      renewalMode: orderType === 'subscription' ? renewalMode : undefined,
     }
   }
 
@@ -84,6 +88,7 @@ export function parseWechatResumeRoute(
     planId: hasPlanId ? planId : undefined,
     ...(quantity !== undefined ? { quantity } : {}),
     promoCode: promoCode || undefined,
+    renewalMode: orderType === 'subscription' ? renewalMode : undefined,
   }
 }
 
@@ -100,5 +105,6 @@ export function stripWechatResumeQuery(query: LocationQuery): LocationQueryRaw {
   delete nextQuery.plan_id
   delete nextQuery.quantity
   delete nextQuery.promo_code
+  delete nextQuery.renewal_mode
   return nextQuery
 }

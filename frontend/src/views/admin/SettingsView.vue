@@ -4660,14 +4660,12 @@
               </h2>
             </div>
             <div class="p-6 space-y-4">
-                <div class="flex items-center justify-between gap-4">
-                  <div class="min-w-0">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-                      {{ t("admin.settings.gatewayForwarding.codexTicketEnabled") }}
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.gatewayForwarding.codexTicketEnabledDesc") }}
-                    </p>
+                <RequestTimezoneSettings v-model="form.openai_request_timezone_enabled" />
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600" data-testid="codex-management-links">
+                  <p class="text-sm text-gray-500 dark:text-gray-400">{{ localText('自动打票、模型与票据策略在「打票全流程」管理；采票出口、订阅与节点在「IP 管理」管理。', 'Manage automatic harvesting, models and ticket policies in Harvest Flow; manage exits, subscriptions and nodes in IP Management.') }}</p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <router-link to="/admin/harvest-flow" class="btn btn-secondary btn-sm">{{ t('nav.harvestFlow') }}</router-link>
+                    <router-link to="/admin/proxies#harvest" class="btn btn-secondary btn-sm">{{ localText('IP 管理', 'IP Management') }}</router-link>
                   </div>
                   <Toggle
                     id="codex-ticket-enabled"
@@ -5639,6 +5637,20 @@
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.gatewayForwarding.grokDefaultBaseURLModeHint") }}
                   </p>
+                </div>
+                <div class="flex items-center justify-between gap-5 md:col-span-2">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.gatewayForwarding.grokVideoSourceURL") }}
+                    </label>
+                    <p class="mt-0.5 max-w-xl text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.grokVideoSourceURLHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="form.grok_video_source_url_enabled"
+                    data-testid="grok-video-source-url-toggle"
+                  />
                 </div>
 
               <!-- OpenAI Responses 首 token 统计 -->
@@ -9793,6 +9805,7 @@ import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
+import RequestTimezoneSettings from "@/components/settings/RequestTimezoneSettings.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
@@ -9987,6 +10000,7 @@ const codexHarvestGroupChoices = computed(() => {
     })),
   ];
 });
+
 
 // Upstream billing probe state
 const upstreamBillingProbeLoading = ref(true);
@@ -10521,6 +10535,7 @@ type OpenAICodexTicketHarvestScope = {
 
 type SettingsForm = Omit<
   SystemSettings,
+  | "openai_codex_ticket_harvest_scope"
   | "wechat_connect_open_enabled"
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
@@ -10840,6 +10855,7 @@ const form = reactive<SettingsForm>({
   grok_default_text_model: "grok-4.5",
   grok_cross_client_model_map_enabled: false,
   grok_default_base_url_mode: "cli",
+  grok_video_source_url_enabled: false,
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: "",
@@ -10900,6 +10916,7 @@ const form = reactive<SettingsForm>({
   openai_codex_relay_gateway: "any",
   openai_codex_relay_timeout_seconds: 25,
   openai_codex_ticket_models: ["gpt-6-astra", "gpt-5.6-sol"],
+  openai_request_timezone_enabled: false,
   claude_code_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   claude_code_client_version_synced: "",
@@ -12180,7 +12197,7 @@ async function loadSettings() {
 async function loadSubscriptionGroups() {
   try {
     const groups = await adminAPI.groups.getAll();
-    codexHarvestGroups.value = groups.filter(group => group.platform === 'openai');
+    codexHarvestGroups.value = groups.filter(group => group.platform === "openai");
     codexHarvestGroupsLoadFailed.value = false;
     subscriptionGroups.value = groups.filter(
       (group) =>
@@ -12679,6 +12696,7 @@ async function saveSettings() {
       grok_cross_client_model_map_enabled:
         form.grok_cross_client_model_map_enabled,
       grok_default_base_url_mode: form.grok_default_base_url_mode,
+      grok_video_source_url_enabled: form.grok_video_source_url_enabled,
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,
@@ -12727,6 +12745,7 @@ async function saveSettings() {
       openai_codex_relay_gateway: form.openai_codex_relay_gateway?.trim() || "any",
       openai_codex_relay_timeout_seconds: Number(form.openai_codex_relay_timeout_seconds) || 25,
       openai_codex_ticket_models: [...form.openai_codex_ticket_models],
+      openai_request_timezone_enabled: form.openai_request_timezone_enabled,
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,

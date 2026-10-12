@@ -31,9 +31,6 @@
           <label class="mb-3 block text-sm">{{ t('admin.harvestFlow.transportLabel') }}
             <select v-model="draft.transport" class="input mt-2 max-w-xs"><option value="sse">SSE</option><option value="websocket">WebSocket</option></select>
           </label>
-          <label class="block text-sm">{{ t('admin.harvestFlow.gatewayLabel') }}
-            <input v-model="draft.target_gateway" data-testid="target-gateway" class="input mt-2 max-w-xs" placeholder="unified-88 / any" required />
-          </label>
           <p class="mt-2 text-xs text-gray-500">{{ t('admin.harvestFlow.gatewayHint') }}</p>
           <p class="mt-2 text-xs text-gray-500">{{ t('admin.harvestFlow.mintSourceHint') }}</p>
         </div>
@@ -101,6 +98,14 @@
       </div>
       <p v-if="live.degraded_reason" class="text-xs text-amber-600 col-span-2 lg:col-span-4">{{ t(`${prefix}.degraded`) }} {{ live.degraded_reason }}</p>
     </div>
+    <HarvestGatewayBorrowPanel embedded />
+    <HarvestManualConsole
+      :accounts="props.accounts || []"
+      :models="props.models || []"
+      embedded
+      @running="emit('running', $event)"
+      @finished="emit('finished')"
+    />
   </section>
 </template>
 
@@ -109,9 +114,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getCodexHarvestControls, saveCodexHarvestControls, type CodexHarvestControls, type CodexHarvestControlSnapshot, type CodexHarvestRuntime, type CodexHarvestSpeed } from '@/api/admin/codexHarvest'
 import { useAppStore } from '@/stores'
+import HarvestGatewayBorrowPanel from '@/components/admin/HarvestGatewayBorrowPanel.vue'
+import HarvestManualConsole from '@/components/admin/HarvestManualConsole.vue'
 
-const props = defineProps<{ refreshKey?: string; runtime?: CodexHarvestRuntime }>()
-const emit = defineEmits<{ saved: [] }>()
+const props = defineProps<{ refreshKey?: string; runtime?: CodexHarvestRuntime; accounts?: import('@/api/admin/accounts').CodexHarvestFlowAccount[]; models?: string[] }>()
+const emit = defineEmits<{ saved: []; running: [boolean]; finished: [] }>()
 const { t, te } = useI18n()
 const appStore = useAppStore()
 const prefix = 'admin.harvestFlow.controls'

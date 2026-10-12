@@ -173,7 +173,7 @@ func TestEffectiveCodex780GatewayUsesCloudMintTarget(t *testing.T) {
 	}{
 		{name: "explicit any overrides harvest control", cloud: config.OpenAICodexCloudMintConfig{Enabled: true, Gateway: "any"}, want: "any"},
 		{name: "explicit gateway overrides harvest control", cloud: config.OpenAICodexCloudMintConfig{Enabled: true, Gateway: "unified-84"}, want: "unified-84"},
-		{name: "disabled cloud mint uses harvest control", cloud: config.OpenAICodexCloudMintConfig{Gateway: "unified-84"}, want: "unified-88"},
+		{name: "native mint follows observed gateway", cloud: config.OpenAICodexCloudMintConfig{Gateway: "unified-84"}, want: "any"},
 		{name: "empty cloud target uses harvest control", cloud: config.OpenAICodexCloudMintConfig{Enabled: true}, want: "unified-88"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

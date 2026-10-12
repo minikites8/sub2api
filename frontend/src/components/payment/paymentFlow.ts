@@ -3,6 +3,7 @@ import type {
   CreateOrderResult,
   MethodLimit,
   OrderType,
+  SubscriptionRenewalMode,
   WechatJSAPIPayload,
   WechatOAuthInfo,
 } from '@/types/payment'
@@ -83,6 +84,7 @@ export interface BuildCreateOrderPayloadInput {
   planId?: number
   quantity?: number
   promoCode?: string
+  renewalMode?: SubscriptionRenewalMode
   origin?: string
   isMobile: boolean
   isWechatBrowser: boolean
@@ -146,6 +148,9 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
   }
   if (input.promoCode?.trim()) {
     payload.promo_code = input.promoCode.trim()
+  }
+  if (input.orderType === 'subscription' && input.renewalMode) {
+    payload.renewal_mode = input.renewalMode
   }
   if (normalizedOrigin) {
     payload.return_url = `${normalizedOrigin}/payment/result`

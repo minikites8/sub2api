@@ -290,6 +290,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		Type:                    a.Type,
 		Credentials:             redactedCreds,
 		CredentialsStatus:       credsStatus,
+		ExcelBPSCredentialState: service.ExcelBPSCredentialStateFromAccount(a, time.Now()),
 		Extra:                   extra,
 		OllamaCloudUsage:        ollamaCloudUsage,
 		OpenCodeGoUsage:         openCodeGoUsage,
@@ -487,7 +488,7 @@ func redactAccountManagedExtra(extra map[string]any) map[string]any {
 	redacted := make(map[string]any, len(extra))
 	for key, value := range extra {
 		switch {
-		case key == service.OllamaCloudUsageSessionExtraKey,
+		case key == service.ExcelBPSCredentialStateExtraKey, key == service.OllamaCloudUsageSessionExtraKey,
 			key == service.OllamaCloudUsageAutoRefreshExtraKey,
 			key == service.OllamaCloudUsageSnapshotExtraKey,
 			key == service.OpenCodeGoUsageAutoRefreshExtraKey,
@@ -534,8 +535,11 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 	return &AccountListItem{
 		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
-		OllamaCloudUsage: a.OllamaCloudUsage, CodexTickets: a.CodexTickets,
-		ProxyID: a.ProxyID, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
+		ExcelBPSCredentialState: a.ExcelBPSCredentialState,
+		OllamaCloudUsage:        a.OllamaCloudUsage,
+		CodexTickets:            a.CodexTickets,
+		CodexTurnTickets:        a.CodexTurnTickets,
+		ProxyID:                 a.ProxyID, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
 		Concurrency: a.Concurrency, LoadFactor: a.LoadFactor, Priority: a.Priority, RateMultiplier: a.RateMultiplier, GroupRateMultiplier: a.GroupRateMultiplier,
 		OpenCodeGoUsage: a.OpenCodeGoUsage,
 		Status:          a.Status, ErrorMessage: a.ErrorMessage, LastUsedAt: a.LastUsedAt, ExpiresAt: a.ExpiresAt,
@@ -599,6 +603,7 @@ func ProxyFromService(p *service.Proxy) *Proxy {
 		Protocol:       p.Protocol,
 		Host:           p.Host,
 		Port:           p.Port,
+		MihomoNodeID:   p.MihomoNodeID,
 		Username:       p.Username,
 		Status:         p.Status,
 		CreatedAt:      p.CreatedAt,

@@ -71,7 +71,8 @@ func pelicanReadyTicketAccount() (*Account, *openAICodexTicket) {
 	ticket := &openAICodexTicket{
 		AccountID: account.ID, Model: "gpt-6-astra", State: mint780State(now), Length: 780,
 		IssuedAt: now, CapturedAt: now, ExpiresAt: now.Add(240 * time.Second),
-		Transport: "sse", Gateway: "unified-88", HarvestCookiesAt: now,
+		ProbeVerified: true,
+		Transport:     "sse", Gateway: "unified-88", HarvestCookiesAt: now,
 		HarvestCookies: mint780Pair(now.Add(time.Hour), "unified-88"),
 	}
 	account.Extra = map[string]any{openAICodexTicketExtraKey(ticket.Model): ticket}

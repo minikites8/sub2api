@@ -45,6 +45,11 @@ type SystemSettings struct {
 	LoginAgreementMode                    string
 	LoginAgreementUpdatedAt               string
 	LoginAgreementDocuments               []LoginAgreementDocument
+	OpenAICodexTicketHarvestScope         CodexTicketHarvestScope
+	OpenAICodexTicketStrictResponse       bool
+	OpenAICodexTicketCandyObservation     bool
+	OpenAICodexTicketFailClosed           bool
+	OpenAICodexTicketStrategy             string
 
 	SMTPHost               string
 	SMTPPort               int
@@ -239,6 +244,7 @@ type SystemSettings struct {
 	GrokDefaultTextModel           string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
 	GrokDefaultBaseURLMode         string `json:"grok_default_base_url_mode"`
+	GrokVideoSourceURLEnabled      bool   `json:"grok_video_source_url_enabled"`
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
@@ -288,6 +294,7 @@ type SystemSettings struct {
 	OpenAICodexTicketHarvestProxyURL       string   // Legacy value retained for migration reads
 	OpenAICodexTicketStaticProxyURL        string   // Legacy value retained for migration reads
 	OpenAICodexTicketModels                []string // Codex Relay 打票模型列表；缺失时回退 yaml/env
+	OpenAIRequestTimezoneEnabled           bool     // Rewrite request timezones; disabled by default.
 	MinCodexVersion                        string   // codex_cli_only 最低 Codex 引擎版本；空=不检查
 	MaxCodexVersion                        string   // codex_cli_only 最高 Codex 引擎版本；空=不检查
 	CodexCLIOnlyBlacklist                  string   // codex_cli_only 全局黑名单 JSON（[]AllowedClientEntry，OR deny）
@@ -352,21 +359,17 @@ type SystemSettings struct {
 	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
 
 	// 允许终端用户在用量页查看自己的失败请求
-	AllowUserViewErrorRequests      bool
-	OpenAICodexTicketHarvestScope   CodexTicketHarvestScope
-	OpenAICodexTicketStrictResponse bool
-	OpenAICodexTicketFailClosed     bool
-	OpenAICodexTicketStrategy       string
-	PelicanShowcaseEnabled          bool                  `json:"pelican_showcase_enabled"`
-	PelicanShowcase                 PelicanShowcaseConfig `json:"pelican_showcase_config"`
-	SubscriptionEnabled             bool                  `json:"subscription_enabled"`
-	ModelPlazaEnabled               bool                  `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth           bool                  `json:"model_plaza_require_auth"`
-	ModelPlazaDescription           string                `json:"model_plaza_description"`
-	PluginManagementEnabled         bool                  `json:"plugin_management_enabled"`
-	RequestCaptureEnabled           bool
-	RequestCaptureQuotaMiB          int64
-	RequestCaptureRetentionDays     int
+	AllowUserViewErrorRequests  bool
+	PelicanShowcaseEnabled      bool                  `json:"pelican_showcase_enabled"`
+	PelicanShowcase             PelicanShowcaseConfig `json:"pelican_showcase_config"`
+	SubscriptionEnabled         bool                  `json:"subscription_enabled"`
+	ModelPlazaEnabled           bool                  `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth       bool                  `json:"model_plaza_require_auth"`
+	ModelPlazaDescription       string                `json:"model_plaza_description"`
+	PluginManagementEnabled     bool                  `json:"plugin_management_enabled"`
+	RequestCaptureEnabled       bool
+	RequestCaptureQuotaMiB      int64
+	RequestCaptureRetentionDays int
 	// 使用详情中长上下文计费 x2 徽标的展示开关（默认开启）
 	ExcelBPSImageMode             string
 	UsageShowLongContextBadge     bool

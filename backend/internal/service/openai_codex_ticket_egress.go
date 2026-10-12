@@ -265,7 +265,12 @@ func (s *OpenAIGatewayService) stickBoundCodexTicketRequest(req *http.Request, a
 	if ticket == nil {
 		return req
 	}
-	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAIHarvest))
+	boundAstra := ticket.Length == 780 && s.UnifiedAstraTicketsEnabled(req.Context())
+	ctx := req.Context()
+	if boundAstra {
+		ctx = context.WithValue(ctx, boundAstraTicketContextKey{}, true)
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAIHarvest))
 	req.Close = true
 	restoreBoundCodexTicketHarvestIdentity(req.Header, ticket)
 	pinBoundCodexTicketHarvestIdentityRequestBody(req, ticket)
@@ -308,6 +313,12 @@ func (s *OpenAIGatewayService) pinCodexTicketEgressFromHeader(ctx context.Contex
 	if ticket == nil || ticket.HarvestNodeProvider == "relay" || (ticket.Length == 780 && ticket.HarvestNodeID == "" && ticket.HarvestProxyURL == "") {
 		return proxyURL, noop, nil
 	}
+	return s.pinStoredCodexTicketEgress(ctx, ticket, proxyURL)
+}
+
+// A single complete ticket determines the egress for self and reuse acquisition.
+func (s *OpenAIGatewayService) pinStoredCodexTicketEgress(ctx context.Context, ticket *openAICodexTicket, proxyURL string) (string, func(), error) {
+	noop := func() {}
 	pinned := strings.TrimSpace(ticket.HarvestProxyURL)
 	if pinned == "" {
 		pinned = s.openAICodexTicketHarvestFixedProxyURL(ctx)
