@@ -53,7 +53,7 @@ func CORS(cfg config.CORSConfig) gin.HandlerFunc {
 	}
 	allowHeaders := []string{
 		"Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization",
-		"accept", "origin", "Cache-Control", "X-Requested-With", "X-API-Key", "X-Admin-UI-Request", "X-User-UI-Request", "X-Browser-Fingerprint", "X-Browser-Fingerprints", "X-Browser-Account-Attempts", "X-JA3", "X-JA3-Fingerprint", "X-JA3-Hash", "X-TLS-JA3", "X-Client-JA3", "CF-JA3-Fingerprint", "CF-JA3-Hash", "X-JA4", "X-JA4-Fingerprint", "X-JA4-Hash", "X-TLS-JA4", "X-Client-JA4", "CF-JA4-Fingerprint", "CF-JA4-Hash", "CF-JA4",
+		"accept", "origin", "Cache-Control", "X-Requested-With", "X-API-Key", "X-Admin-UI-Request", "X-User-UI-Request", "Anthropic-Version", "X-Browser-Fingerprint", "X-Browser-Fingerprints", "X-Browser-Account-Attempts", "X-JA3", "X-JA3-Fingerprint", "X-JA3-Hash", "X-TLS-JA3", "X-Client-JA3", "CF-JA3-Fingerprint", "CF-JA3-Hash", "X-JA4", "X-JA4-Fingerprint", "X-JA4-Hash", "X-TLS-JA4", "X-Client-JA4", "CF-JA4-Fingerprint", "CF-JA4-Hash", "CF-JA4",
 	}
 	// OpenAI Node SDK 会发送 x-stainless-* 请求头，需在 CORS 中显式放行。
 	openAIProperties := []string{
@@ -105,7 +105,7 @@ func CORS(cfg config.CORSConfig) gin.HandlerFunc {
 			}
 			c.Writer.Header().Set("Access-Control-Allow-Headers", allowHeadersValue)
 			c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
-			c.Writer.Header().Set("Access-Control-Expose-Headers", "ETag, Server-Timing")
+			c.Writer.Header().Set("Access-Control-Expose-Headers", "ETag, Server-Timing, X-Client-Request-ID")
 			c.Writer.Header().Set("Access-Control-Max-Age", "86400")
 		}
 		// 处理预检请求
