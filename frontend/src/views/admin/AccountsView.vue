@@ -512,7 +512,7 @@
     <OpenAISessionsModal :show="showOpenAISessions" :account="sessionsAcc" @close="closeOpenAISessions" />
     <OpenAIWorkspaceInfoModal :show="showWorkspaceInfo" :account="workspaceInfoAcc" :info="workspaceInfo" @close="closeWorkspaceInfo" @invited="handleWorkspaceInviteCompleted" @info-updated="handleWorkspaceInfoUpdated" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @iq-test="handleIQTest" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @iq-test="handleIQTest" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @workspace-info="handleGetWorkspaceInfo" />
     <SyncFromCrsModal v-if="authStore.isAdmin" :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <YeTeamRedeemModal :show="showYeTeamRedeem" @close="showYeTeamRedeem = false" @redeemed="handleYeTeamRedeemed" />
@@ -734,6 +734,7 @@ const iqTestingAcc = ref<Account | null>(null)
 const sessionsAcc = ref<Account | null>(null)
 const workspaceInfoAcc = ref<Account | null>(null)
 const workspaceInfo = ref<OpenAIWorkspaceInfo | null>(null)
+const workspaceInfoLoadingID = ref<number | null>(null)
 
 const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
@@ -2541,6 +2542,22 @@ const handleSchedule = async (a: Account) => {
 const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
 const closeOpenAISessions = () => { showOpenAISessions.value = false; sessionsAcc.value = null }
+const handleGetWorkspaceInfo = async (a: AccountListItem) => {
+  if (workspaceInfoLoadingID.value !== null) return
+  workspaceInfoLoadingID.value = a.id
+  try {
+    const account = await loadAccountDetails(a)
+    if (!account) return
+    const info = await adminAPI.accounts.getOpenAIWorkspaceInfo(account.id)
+    workspaceInfoAcc.value = account
+    handleWorkspaceInfoUpdated(info)
+    showWorkspaceInfo.value = true
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.workspaceInfo.loadFailed')))
+  } finally {
+    workspaceInfoLoadingID.value = null
+  }
+}
 const closeWorkspaceInfo = () => {
   showWorkspaceInfo.value = false
   workspaceInfoAcc.value = null
