@@ -278,12 +278,6 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAICodexClientVersion:                           "",
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
 		SettingKeyOpenAICodexVersionAutoSyncEnabled:                  "true",
-		SettingKeyOpenAICodexRelayURL:                                "",
-		SettingKeyOpenAICodexRelayKey:                                "",
-		SettingKeyOpenAICodexRelayKeyEnv:                             "SUB2API_CODEX_CLOUD_MINT_KEY",
-		SettingKeyOpenAICodexRelayTransport:                          "sse",
-		SettingKeyOpenAICodexRelayGateway:                            "any",
-		SettingKeyOpenAICodexRelayTimeoutSeconds:                     "25",
 		SettingKeyOpenAICodexTicketHarvestProxyURL:                   "",
 		SettingKeyClaudeCodeClientVersion:                            "",
 		SettingKeyClaudeCodeClientVersionSynced:                      "",
@@ -987,71 +981,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.EnableClientDatelineNormalization = true
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
-	ticketCfg := config.OpenAICodexTicketConfig{}
-	if s.cfg != nil {
-		ticketCfg = s.cfg.Gateway.OpenAICodexTicket
-	}
-	result.OpenAICodexTicketEnabled = ticketCfg.Enabled
-	if v := settings[SettingKeyOpenAICodexTicketEnabled]; v != "" {
-		result.OpenAICodexTicketEnabled = v == "true"
-	}
-	// Relay settings can come from config/env before an administrator saves a
-	// database override. Keep those values visible in the settings form.
-	relayCfg := ticketCfg.CloudMint
-	relayURL := strings.TrimSpace(relayCfg.URL)
-	relayKey := strings.TrimSpace(relayCfg.Key)
-	relayKeyEnv := strings.TrimSpace(relayCfg.KeyEnv)
-	relayTransport := strings.TrimSpace(relayCfg.Transport)
-	relayGateway := strings.TrimSpace(relayCfg.Gateway)
-	relayTimeout := relayCfg.TimeoutSeconds
-	if relayKeyEnv == "" {
-		relayKeyEnv = "SUB2API_CODEX_CLOUD_MINT_KEY"
-	}
-	if relayTransport == "" {
-		relayTransport = "sse"
-	}
-	if relayGateway == "" {
-		relayGateway = "any"
-	}
-	if relayTimeout <= 0 {
-		relayTimeout = 25
-	}
-	if value, ok := settings[SettingKeyOpenAICodexRelayURL]; ok && strings.TrimSpace(value) != "" {
-		relayURL = strings.TrimSpace(value)
-	}
-	if value, ok := settings[SettingKeyOpenAICodexRelayKey]; ok && strings.TrimSpace(value) != "" {
-		relayKey = strings.TrimSpace(value)
-	}
-	if value, ok := settings[SettingKeyOpenAICodexRelayKeyEnv]; ok && strings.TrimSpace(value) != "" {
-		legacy := strings.TrimSpace(value)
-		if looksLikeCodexRelayKey(legacy) {
-			if relayKey == "" {
-				relayKey = legacy
-			}
-			relayKeyEnv = "SUB2API_CODEX_CLOUD_MINT_KEY"
-		} else {
-			relayKeyEnv = legacy
-		}
-	}
-	if value, ok := settings[SettingKeyOpenAICodexRelayTransport]; ok && strings.TrimSpace(value) != "" {
-		relayTransport = strings.TrimSpace(value)
-	}
-	if value, ok := settings[SettingKeyOpenAICodexRelayGateway]; ok && strings.TrimSpace(value) != "" {
-		relayGateway = strings.TrimSpace(value)
-	}
-	if value, ok := settings[SettingKeyOpenAICodexRelayTimeoutSeconds]; ok {
-		if parsed, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && parsed > 0 {
-			relayTimeout = parsed
-		}
-	}
-	result.OpenAICodexRelayURL = relayURL
-	result.OpenAICodexRelayKey = relayKey
-	result.OpenAICodexRelayKeyConfigured = relayKey != ""
-	result.OpenAICodexRelayKeyEnv = relayKeyEnv
-	result.OpenAICodexRelayTransport = relayTransport
-	result.OpenAICodexRelayGateway = relayGateway
-	result.OpenAICodexRelayTimeoutSeconds = relayTimeout
-	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	result.OpenAICodexClientVersion = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersion])
 	result.OpenAICodexClientVersionSynced = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersionSynced])
@@ -1070,6 +999,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Missing values intentionally stay false. Ticket harvesting remains active,
 	// while scheduling is fail-open unless an administrator explicitly opts in.
 	result.OpenAICodexTicketFailClosed = settings[SettingKeyOpenAICodexTicketFailClosed] == "true"
+	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	harvestScope, harvestScopeErr := parseCodexTicketHarvestScope(settings[SettingKeyOpenAICodexTicketHarvestScope])
 	result.OpenAICodexTicketHarvestScope = harvestScope
 	if harvestScopeErr != nil {

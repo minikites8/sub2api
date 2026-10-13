@@ -24,46 +24,29 @@ import (
 
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
-	ExcelBPSEnabled                      *bool                            `json:"excel_bps_enabled"`
-	OpenAICodexTicketHarvestScope        *service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
-	OpenAICodexTicketStrictResponse      *bool                            `json:"openai_codex_ticket_strict_response"`
-	OpenAICodexTicketFailClosed          *bool                            `json:"openai_codex_ticket_fail_closed"`
-	OpenAICodexTicketStrategy            *string                          `json:"openai_codex_ticket_strategy"`
-	PrismBrowserEnabled                  bool                             `json:"prism_browser_enabled"`
-	PrismBrowserBaseURL                  string                           `json:"prism_browser_base_url"`
-	PrismBrowserAPIKey                   string                           `json:"prism_browser_api_key"`
-	OpenAICodexTicketUseSavedStaticProxy *bool                            `json:"openai_codex_ticket_use_saved_static_proxy"`
-	OpenAICodexTicketHarvestProxyURL     *string                          `json:"openai_codex_ticket_harvest_proxy_url"`
-	OpenAICodexTicketCandyObservation    *bool                            `json:"openai_codex_ticket_candy_observation"`
+	ExcelBPSEnabled                   *bool                            `json:"excel_bps_enabled"`
+	OpenAICodexTicketHarvestScope     *service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
+	OpenAICodexTicketStrictResponse   *bool                            `json:"openai_codex_ticket_strict_response"`
+	OpenAICodexTicketCandyObservation *bool                            `json:"openai_codex_ticket_candy_observation"`
+	OpenAICodexTicketFailClosed       *bool                            `json:"openai_codex_ticket_fail_closed"`
+	OpenAICodexTicketStrategy         *string                          `json:"openai_codex_ticket_strategy"`
+	PrismBrowserEnabled               bool                             `json:"prism_browser_enabled"`
+	PrismBrowserBaseURL               string                           `json:"prism_browser_base_url"`
+	PrismBrowserAPIKey                string                           `json:"prism_browser_api_key"`
 	// 注册设置
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                     `json:"registration_email_suffix_whitelist"`
-	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"`
+	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"` // 非白名单域名限量注册开关（省略=保持现值）
 	PromoCodeEnabled                    bool                         `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                         `json:"password_reset_enabled"`
 	FrontendURL                         string                       `json:"frontend_url"`
 	InvitationCodeEnabled               bool                         `json:"invitation_code_enabled"`
-	SignupIPRiskControlThreshold        *int                         `json:"signup_ip_risk_control_threshold"`
-	SignupIPDisablePreviousAccounts     *bool                        `json:"signup_ip_disable_previous_accounts"`
-	SignupIPKeepPreviousAccounts        *int                         `json:"signup_ip_keep_previous_accounts"`
-	APIUsageIPUARiskControlThreshold    *int                         `json:"api_usage_ip_ua_risk_control_threshold"`
-	APIUsageIPUADisablePreviousAccounts *bool                        `json:"api_usage_ip_ua_disable_previous_accounts"`
-	APIUsageIPUAKeepPreviousAccounts    *int                         `json:"api_usage_ip_ua_keep_previous_accounts"`
-	AntiAbuseEnabled                    *bool                        `json:"anti_abuse_enabled"`
-	AntiAbuseScoreThreshold             *int                         `json:"anti_abuse_score_threshold"`
-	AntiAbuseFingerprintWeight          *int                         `json:"anti_abuse_fingerprint_weight"`
-	AntiAbuseIPWeight                   *int                         `json:"anti_abuse_ip_weight"`
-	AntiAbuseEmailWeight                *int                         `json:"anti_abuse_email_weight"`
-	AntiAbuseUserAgentWeight            *int                         `json:"anti_abuse_user_agent_weight"`
-	AntiAbuseTLSFingerprintWeight       *int                         `json:"anti_abuse_tls_fingerprint_weight"`
-	AntiAbuseIPReputationEndpoint       *string                      `json:"anti_abuse_ip_reputation_endpoint"`
-	AntiAbuseIPReputationAPIKey         *string                      `json:"anti_abuse_ip_reputation_api_key"`
-	TotpEnabled                         bool                         `json:"totp_enabled"` // TOTP 双因素认证
-	PasskeyEnabled                      *bool                        `json:"passkey_enabled"`
-	SessionBindingEnabled               *bool                        `json:"session_binding_enabled"`
-	StepUpEnabled                       *bool                        `json:"step_up_enabled"`
-	AuditLogRetentionDays               int                          `json:"audit_log_retention_days"`
+	TotpEnabled                         bool                         `json:"totp_enabled"`             // TOTP 双因素认证
+	PasskeyEnabled                      *bool                        `json:"passkey_enabled"`          // Passkey 登录（省略=保持现值）
+	SessionBindingEnabled               *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
+	StepUpEnabled                       *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
+	AuditLogRetentionDays               int                          `json:"audit_log_retention_days"` // 审计日志保留天数
 	LoginAgreementEnabled               bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode                  string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt             string                       `json:"login_agreement_updated_at"`
@@ -288,12 +271,8 @@ type UpdateSettingsRequest struct {
 	OpenAICodexVersionAutoSyncEnabled      *bool     `json:"openai_codex_version_auto_sync_enabled"`
 	OpenAIRequestTimezoneEnabled           *bool     `json:"openai_request_timezone_enabled"`
 	OpenAICodexTicketEnabled               *bool     `json:"openai_codex_ticket_enabled"`
-	OpenAICodexRelayURL                    *string   `json:"openai_codex_relay_url"`
-	OpenAICodexRelayKey                    *string   `json:"openai_codex_relay_key"`
-	OpenAICodexRelayKeyEnv                 *string   `json:"openai_codex_relay_key_env"`
-	OpenAICodexRelayTransport              *string   `json:"openai_codex_relay_transport"`
-	OpenAICodexRelayGateway                *string   `json:"openai_codex_relay_gateway"`
-	OpenAICodexRelayTimeoutSeconds         *int      `json:"openai_codex_relay_timeout_seconds"`
+	OpenAICodexTicketHarvestProxyURL       string    `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAICodexTicketUseSavedStaticProxy   bool      `json:"openai_codex_ticket_use_saved_static_proxy"`
 	OpenAICodexTicketModels                *[]string `json:"openai_codex_ticket_models"`
 	ClaudeCodeClientVersion                *string   `json:"claude_code_client_version"`
 	ClaudeCodeVersionAutoSyncEnabled       *bool     `json:"claude_code_version_auto_sync_enabled"`
@@ -431,26 +410,41 @@ type UpdateSettingsRequest struct {
 	AuthSourceGooglePlatformQuotas   map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_google_platform_quotas"`
 	AuthSourceDingTalkPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_dingtalk_platform_quotas"`
 
-	AllowUserViewErrorRequests    *bool   `json:"allow_user_view_error_requests"`
-	UsageShowLongContextBadge     *bool   `json:"usage_show_long_context_badge"`
-	RequestCaptureEnabled         *bool   `json:"request_capture_enabled"`
-	RequestCaptureQuotaMiB        *int64  `json:"request_capture_quota_mib"`
-	RequestCaptureRetentionDays   *int    `json:"request_capture_retention_days"`
-	ExcelBPSImageMode             *string `json:"excel_bps_image_mode"`
-	ExcelBPSImageRelayEnabled     *bool   `json:"excel_bps_image_relay_enabled"`
-	ExcelBPSImageBaseURL          *string `json:"excel_bps_image_base_url"`
-	ExcelBPSImageBodyLimitMiB     *int    `json:"excel_bps_image_body_limit_mib"`
-	ExcelBPSImageBudgetMiB        *int    `json:"excel_bps_image_budget_mib"`
-	ExcelBPSImageMaxRequests      *int    `json:"excel_bps_image_max_requests"`
-	ExcelBPSImageMaxImageMiB      *int    `json:"excel_bps_image_max_image_mib"`
-	ExcelBPSImageMaxImages        *int    `json:"excel_bps_image_max_images"`
-	ExcelBPSImageLimitPolicy      *string `json:"excel_bps_image_limit_policy"`
-	ExcelBPSImageWarningRemaining *int    `json:"excel_bps_image_warning_remaining"`
-	ExcelBPSImageCompactReserve   *int    `json:"excel_bps_image_compact_reserve"`
-	ExcelBPSImageMaxTotalMiB      *int    `json:"excel_bps_image_max_total_mib"`
-	ExcelBPSImageStorageMiB       *int    `json:"excel_bps_image_storage_mib"`
-	ExcelBPSImageStorageEntries   *int    `json:"excel_bps_image_storage_entries"`
-	ExcelBPSImageTTLMinutes       *int    `json:"excel_bps_image_ttl_minutes"`
+	AllowUserViewErrorRequests          *bool   `json:"allow_user_view_error_requests"`
+	UsageShowLongContextBadge           *bool   `json:"usage_show_long_context_badge"`
+	RequestCaptureEnabled               *bool   `json:"request_capture_enabled"`
+	RequestCaptureQuotaMiB              *int64  `json:"request_capture_quota_mib"`
+	RequestCaptureRetentionDays         *int    `json:"request_capture_retention_days"`
+	ExcelBPSImageMode                   *string `json:"excel_bps_image_mode"`
+	ExcelBPSImageRelayEnabled           *bool   `json:"excel_bps_image_relay_enabled"`
+	ExcelBPSImageBaseURL                *string `json:"excel_bps_image_base_url"`
+	ExcelBPSImageBodyLimitMiB           *int    `json:"excel_bps_image_body_limit_mib"`
+	ExcelBPSImageBudgetMiB              *int    `json:"excel_bps_image_budget_mib"`
+	ExcelBPSImageMaxRequests            *int    `json:"excel_bps_image_max_requests"`
+	ExcelBPSImageMaxImageMiB            *int    `json:"excel_bps_image_max_image_mib"`
+	ExcelBPSImageMaxImages              *int    `json:"excel_bps_image_max_images"`
+	ExcelBPSImageLimitPolicy            *string `json:"excel_bps_image_limit_policy"`
+	ExcelBPSImageWarningRemaining       *int    `json:"excel_bps_image_warning_remaining"`
+	ExcelBPSImageCompactReserve         *int    `json:"excel_bps_image_compact_reserve"`
+	ExcelBPSImageMaxTotalMiB            *int    `json:"excel_bps_image_max_total_mib"`
+	ExcelBPSImageStorageMiB             *int    `json:"excel_bps_image_storage_mib"`
+	ExcelBPSImageStorageEntries         *int    `json:"excel_bps_image_storage_entries"`
+	ExcelBPSImageTTLMinutes             *int    `json:"excel_bps_image_ttl_minutes"`
+	SignupIPRiskControlThreshold        *int    `json:"signup_ip_risk_control_threshold"`
+	SignupIPDisablePreviousAccounts     *bool   `json:"signup_ip_disable_previous_accounts"`
+	SignupIPKeepPreviousAccounts        *int    `json:"signup_ip_keep_previous_accounts"`
+	APIUsageIPUARiskControlThreshold    *int    `json:"api_usage_ip_ua_risk_control_threshold"`
+	APIUsageIPUADisablePreviousAccounts *bool   `json:"api_usage_ip_ua_disable_previous_accounts"`
+	APIUsageIPUAKeepPreviousAccounts    *int    `json:"api_usage_ip_ua_keep_previous_accounts"`
+	AntiAbuseEnabled                    *bool   `json:"anti_abuse_enabled"`
+	AntiAbuseScoreThreshold             *int    `json:"anti_abuse_score_threshold"`
+	AntiAbuseFingerprintWeight          *int    `json:"anti_abuse_fingerprint_weight"`
+	AntiAbuseIPWeight                   *int    `json:"anti_abuse_ip_weight"`
+	AntiAbuseEmailWeight                *int    `json:"anti_abuse_email_weight"`
+	AntiAbuseUserAgentWeight            *int    `json:"anti_abuse_user_agent_weight"`
+	AntiAbuseTLSFingerprintWeight       *int    `json:"anti_abuse_tls_fingerprint_weight"`
+	AntiAbuseIPReputationEndpoint       *string `json:"anti_abuse_ip_reputation_endpoint"`
+	AntiAbuseIPReputationAPIKey         *string `json:"anti_abuse_ip_reputation_api_key"`
 }
 
 // UpdateSettings 更新系统设置
@@ -543,10 +537,6 @@ func omittedSettingKeys(sentFields map[string]json.RawMessage) service.OmittedSe
 }
 
 func settingsAuditRequest(req UpdateSettingsRequest) UpdateSettingsRequest {
-	if req.OpenAICodexTicketHarvestProxyURL != nil {
-		masked := service.MaskProxyURL(*req.OpenAICodexTicketHarvestProxyURL)
-		req.OpenAICodexTicketHarvestProxyURL = &masked
-	}
 	req.TencentCaptchaAppSecretKey = strings.TrimSpace(req.TencentCaptchaAppSecretKey)
 	req.TencentCaptchaCloudSecretID = strings.TrimSpace(req.TencentCaptchaCloudSecretID)
 	req.TencentCaptchaCloudSecretKey = strings.TrimSpace(req.TencentCaptchaCloudSecretKey)
@@ -2090,44 +2080,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexVersionAutoSyncEnabled
 		}(),
-		OpenAICodexRelayURL: func() string {
-			if req.OpenAICodexRelayURL != nil {
-				return strings.TrimSpace(*req.OpenAICodexRelayURL)
-			}
-			return previousSettings.OpenAICodexRelayURL
-		}(),
-		OpenAICodexRelayKey: func() string {
-			if req.OpenAICodexRelayKey != nil {
-				if value := strings.TrimSpace(*req.OpenAICodexRelayKey); value != "" {
-					return value
-				}
-			}
-			return previousSettings.OpenAICodexRelayKey
-		}(),
-		OpenAICodexRelayKeyEnv: func() string {
-			if req.OpenAICodexRelayKeyEnv != nil {
-				return strings.TrimSpace(*req.OpenAICodexRelayKeyEnv)
-			}
-			return previousSettings.OpenAICodexRelayKeyEnv
-		}(),
-		OpenAICodexRelayTransport: func() string {
-			if req.OpenAICodexRelayTransport != nil {
-				return strings.TrimSpace(*req.OpenAICodexRelayTransport)
-			}
-			return previousSettings.OpenAICodexRelayTransport
-		}(),
-		OpenAICodexRelayGateway: func() string {
-			if req.OpenAICodexRelayGateway != nil {
-				return strings.TrimSpace(*req.OpenAICodexRelayGateway)
-			}
-			return previousSettings.OpenAICodexRelayGateway
-		}(),
-		OpenAICodexRelayTimeoutSeconds: func() int {
-			if req.OpenAICodexRelayTimeoutSeconds != nil {
-				return *req.OpenAICodexRelayTimeoutSeconds
-			}
-			return previousSettings.OpenAICodexRelayTimeoutSeconds
-		}(),
 		OpenAIRequestTimezoneEnabled: func() bool {
 			if req.OpenAIRequestTimezoneEnabled != nil {
 				return *req.OpenAIRequestTimezoneEnabled
@@ -2140,24 +2092,21 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketEnabled
 		}(),
-
-		OpenAICodexTicketStaticProxyURL: func() string {
-			if service.IsStaticCodexTicketHarvestProxyURL(previousSettings.OpenAICodexTicketHarvestProxyURL) {
-				return previousSettings.OpenAICodexTicketHarvestProxyURL
-			}
-			return previousSettings.OpenAICodexTicketStaticProxyURL
-		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
-			if req.OpenAICodexTicketUseSavedStaticProxy != nil && *req.OpenAICodexTicketUseSavedStaticProxy && previousSettings.OpenAICodexTicketStaticProxyURL != "" {
+			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
+			if req.OpenAICodexTicketUseSavedStaticProxy && service.IsMaskedProxyURL(next) && previousSettings.OpenAICodexTicketStaticProxyURL != "" {
 				return previousSettings.OpenAICodexTicketStaticProxyURL
 			}
-			if req.OpenAICodexTicketHarvestProxyURL != nil {
-				value := strings.TrimSpace(*req.OpenAICodexTicketHarvestProxyURL)
-				if value != "" && !service.IsMaskedProxyURL(value) && !service.IsMaskedCodexTicketProxyURL(value) {
-					return value
-				}
+			if service.IsMaskedProxyURL(next) {
+				return previousSettings.OpenAICodexTicketHarvestProxyURL
 			}
-			return previousSettings.OpenAICodexTicketHarvestProxyURL
+			return next
+		}(),
+		OpenAICodexTicketStaticProxyURL: func() string {
+			if old := previousSettings.OpenAICodexTicketHarvestProxyURL; old != "" && old != "http://127.0.0.1:3101" && old != service.OpenAICodexTicketHarvestIPPoolURL {
+				return old
+			}
+			return previousSettings.OpenAICodexTicketStaticProxyURL
 		}(),
 		OpenAICodexTicketStrictResponse: func() bool {
 			if req.OpenAICodexTicketStrictResponse != nil {
@@ -2845,15 +2794,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
 		OpenAIRequestTimezoneEnabled:                           updatedSettings.OpenAIRequestTimezoneEnabled,
-		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
-		OpenAICodexTicketHarvestProxyConfigured:                updatedSettings.OpenAICodexTicketHarvestProxyURL != "",
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
-		OpenAICodexRelayKeyConfigured:                          updatedSettings.OpenAICodexRelayKeyConfigured,
+		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
+		OpenAICodexTicketStaticProxyURL:                        service.MaskProxyURL(updatedSettings.OpenAICodexTicketStaticProxyURL),
 		OpenAICodexTicketHarvestScope:                          updatedSettings.OpenAICodexTicketHarvestScope,
 		OpenAICodexTicketStrategy:                              updatedSettings.OpenAICodexTicketStrategy,
 		OpenAICodexTicketStrictResponse:                        updatedSettings.OpenAICodexTicketStrictResponse,
 		OpenAICodexTicketCandyObservation:                      updatedSettings.OpenAICodexTicketCandyObservation,
 		OpenAICodexTicketFailClosed:                            updatedSettings.OpenAICodexTicketFailClosed,
+		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		OpenAICodexTicketModels:                                updatedSettings.OpenAICodexTicketModels,
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
 		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,

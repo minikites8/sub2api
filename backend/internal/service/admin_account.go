@@ -607,32 +607,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
-	accountExtra, err = normalizeOpenAIAccountGuardExtra(input.Platform, input.Type, accountExtra)
+	accountExtra, err = normalizeOpenAIAutoResetCreditExtra(input.Platform, input.Type, false, accountExtra)
 	if err != nil {
 		return nil, err
 	}
-	if err := NormalizeOpenAICodexTicketGatewayExtra(accountExtra); err != nil {
+	if err := ValidateUpstreamRequestIDHeaderExtra(accountExtra); err != nil {
 		return nil, err
-	}
-	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(accountExtra); err != nil {
-		return nil, err
-	}
-	delete(accountExtra, OpenAIAccountGuardLastRunAtExtraKey)
-	if len(input.ProxyPool) == 0 {
-		if extraPool, present, poolErr := accountProxyPoolInputsFromExtra(accountExtra); poolErr != nil {
-			return nil, poolErr
-		} else if present {
-			input.ProxyPool = extraPool
-		}
-	}
-	if len(input.ProxyPool) > 0 {
-		normalizedPool, poolErr := s.normalizeProxyPool(ctx, input.ProxyPool)
-		if poolErr != nil {
-			return nil, poolErr
-		}
-		accountExtra = setAccountProxyPoolExtra(accountExtra, normalizedPool)
-		proxyID := normalizedPool[0].ProxyID
-		input.ProxyID = &proxyID
 	}
 
 	// 绑定分组
@@ -778,30 +758,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 		if err := ValidateUpstreamRequestIDHeaderExtra(normalizedExtra); err != nil {
-			return nil, err
-		}
-		if err := NormalizeOpenAICodexTicketGatewayExtra(normalizedExtra); err != nil {
-			return nil, err
-		}
-		if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(normalizedExtra); err != nil {
-			return nil, err
-		}
-		if normalizedExtra[OpenAIAccountGuardEnabledExtraKey] == true {
-			if account.IsShadow() {
-				return nil, infraerrors.BadRequest("OPENAI_ACCOUNT_GUARD_ACCOUNT_INVALID", "account guard requires an OpenAI OAuth account")
-			}
-			if lastRun, exists := account.Extra[OpenAIAccountGuardLastRunAtExtraKey]; exists {
-				normalizedExtra[OpenAIAccountGuardLastRunAtExtraKey] = lastRun
-			} else {
-				delete(normalizedExtra, OpenAIAccountGuardLastRunAtExtraKey)
-			}
-		}
-	} else {
-		candidateType := account.Type
-		if input.Type != "" {
-			candidateType = input.Type
-		}
-		if _, err = normalizeOpenAIAccountGuardExtra(account.Platform, candidateType, account.Extra); err != nil {
 			return nil, err
 		}
 	}
@@ -1181,9 +1137,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
-	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(updates); err != nil {
-		return err
-	}
 	if err := ValidateAccountCostMultiplierExtra(updates); err != nil {
 		return err
 	}
@@ -1236,9 +1189,6 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
-	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(input.Extra); err != nil {
-		return nil, err
-	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
 		return nil, err
 	}

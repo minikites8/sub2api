@@ -132,18 +132,7 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	claudeCodeVersionCache             atomic.Value
-	claudeCodeVersionSF                singleflight.Group
-	openAICodexTicketEnabledCache      atomic.Value
-	openAICodexTicketEnabledSF         singleflight.Group
-	openAICodexTicketFailClosedCache   atomic.Value
-	openAICodexTicketFailClosedSF      singleflight.Group
-	openAICodexTicketModelsCache       atomic.Value
-	openAICodexTicketModelsSF          singleflight.Group
-	openAICodexTicketHarvestProxyCache atomic.Value
-	openAICodexTicketHarvestProxySF    singleflight.Group
-	openAICodexTicketHarvestScopeCache atomic.Value
-	openAICodexTicketHarvestScopeSF    singleflight.Group
+	adminAPIKeysMu                     sync.Mutex
 	Serverless                         *serverless.Manager // Initialized before requests start.
 	modelBillingCache                  modelBillingConfigCache
 	prioritySchedulingConfig           priorityConfigCache
@@ -161,31 +150,35 @@ type SettingService struct {
 	webSearchManagerBuilder            WebSearchManagerBuilder
 	antigravityUAVersionCache          atomic.Value // *cachedAntigravityUserAgentVersion
 	antigravityUAVersionSF             singleflight.Group
-	codexTicketSettingsCache           atomic.Value // *codexTicketSettingsSnapshot
-	codexTicketSettingsSF              singleflight.Group
 	openAICodexUACache                 atomic.Value // *cachedOpenAICodexUserAgent
 	openAICodexUASF                    singleflight.Group
 	openAICodexVersionCache            atomic.Value // *cachedOpenAICodexClientVersion
 	openAICodexVersionSF               singleflight.Group
+	openAICodexTicketEnabledCache      atomic.Value // *cachedOpenAICodexTicketEnabled
 	openAIRequestTimezoneEnabledCache  atomic.Value // *cachedOpenAIRequestTimezoneEnabled
 	openAIRequestTimezoneEnabledSF     singleflight.Group
+	openAICodexTicketEnabledSF         singleflight.Group
+	openAICodexTicketFailClosedCache   atomic.Value // *cachedOpenAICodexTicketFailClosed
+	openAICodexTicketFailClosedSF      singleflight.Group
+	openAICodexTicketModelsCache       atomic.Value // *cachedOpenAICodexTicketModels
+	openAICodexTicketModelsSF          singleflight.Group
+	openAICodexTicketHarvestProxyCache atomic.Value // *cachedOpenAICodexTicketHarvestProxy
+	openAICodexTicketHarvestProxySF    singleflight.Group
+	openAICodexTicketHarvestScopeCache atomic.Value // *cachedOpenAICodexTicketHarvestScope
+	openAICodexTicketHarvestScopeSF    singleflight.Group
 	codexRestrictionPolicyCache        atomic.Value // *cachedCodexRestrictionPolicy
 	codexRestrictionPolicySF           singleflight.Group
+	claudeCodeVersionCache             atomic.Value // *cachedClaudeCodeClientVersion
+	claudeCodeVersionSF                singleflight.Group
 
 	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
-	antiAbuseRuntimeCache         atomic.Value // *cachedAntiAbuseRuntime
-	antiAbuseRuntimeSF            singleflight.Group
 
 	// panelRateLimitCache 面板 API 限流配置进程内缓存（*cachedPanelRateLimitSettings）。
 	// 面板每个认证请求都会读取，禁止在热路径上直接访问 DB。
 	panelRateLimitCache atomic.Value
 	panelRateLimitSF    singleflight.Group
-
-	// adminAPIKeysMu serializes read-modify-write updates to the JSON-backed
-	// admin API key collection within one process.
-	adminAPIKeysMu sync.Mutex
 
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot
@@ -201,6 +194,9 @@ type SettingService struct {
 	channelMonitorRuntimeListeners   []func()
 	codexHarvestWakeOnce             sync.Once
 	codexHarvestWake                 chan struct{}
+
+	antiAbuseRuntimeCache atomic.Value // *cachedAntiAbuseRuntime
+	antiAbuseRuntimeSF    singleflight.Group
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）

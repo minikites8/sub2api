@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 )
 
 const (
@@ -89,8 +90,13 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 	if req.CollectLanes > 1 {
 		return s.executeParallelHarvest(ctx, req, account, emit)
 	}
+	pool := s.openAICodexTicketHarvestIPPoolEnabled(ctx)
 	proxy := ""
-	if !s.usesRemoteCodexMint(ctx) {
+	if pool {
+		if _, ok := s.pickHarvestIPPoolExit(ctx, nil); !ok {
+			return errors.New("harvest proxy is set to the IP pool, but IP management has no active proxies")
+		}
+	} else {
 		proxy = s.openAICodexTicketHarvestProxyURLContext(ctx)
 	}
 	controls, _ := s.harvestControls(ctx)
@@ -113,7 +119,7 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 		MaxAttempts: req.MaxAttempts,
 		Result:      "start",
 		Level:       "INFO",
-		Message:     fmt.Sprintf("开始单号打票：账号=%s 模型=%s 出口=配置的采集通道 换节点=%s", account.Name, strings.Join(req.Models, ","), manualHarvestSwitchLabel(req.NodeSwitchRule)),
+		Message:     fmt.Sprintf("开始单号打票：账号=%s 模型=%s 换节点=%s", account.Name, strings.Join(req.Models, ","), manualHarvestSwitchLabel(req.NodeSwitchRule)),
 	})
 	if manualHarvestRunComplete(req.StopOnSuccess, req.Models, got) {
 		emit(ManualHarvestProgress{MaxAttempts: req.MaxAttempts, Result: "hit", Level: "OK", Done: true, Message: "目标模型已有有效门票，手动打票结束。"})
@@ -170,7 +176,11 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 			var lease codexHarvestAttempt
 			var leaseErr error
 			nodeName := ""
-			lease, leaseErr = s.acquireManualHarvestNode(ctx, account, model, proxy, keepID, tried, forceSwitch)
+			if pool {
+				lease, nodeName, leaseErr = s.acquireManualHarvestPoolExit(ctx, keepID, tried, forceSwitch)
+			} else {
+				lease, leaseErr = s.acquireManualHarvestNode(ctx, account, model, proxy, keepID, tried, forceSwitch)
+			}
 			if leaseErr != nil {
 				consecutiveFails++
 				message, level, detail := describeCodexProbeFailure(leaseErr.Error(), 0, model, "")
@@ -180,15 +190,28 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 				}
 				continue
 			}
-			nodeName = strings.TrimSpace(lease.node.Name)
-			if forceSwitch && keepID != "" && lease.node.ID != "" && lease.node.ID == keepID && len(tried) > 1 {
-				emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "WARN", Message: "当前保持同一出口。", TicketsStored: ticketsStored})
-			} else if lease.node.ID != "" && lease.node.ID != keepID {
-				recordCodexHarvestNode(nodeName, "Selector", 0)
-				emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "INFO", Message: "已切换出票尝试。", TicketsStored: ticketsStored})
+			if pool {
+				// keepID holds the current pool exit URL in pool mode.
+				if lease.proxy != keepID {
+					recordCodexHarvestNode(nodeName, "", 0)
+					emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "INFO", Message: "已切换到出口 " + nodeName, TicketsStored: ticketsStored})
+				} else if forceSwitch {
+					emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "WARN", Message: "IP 池里暂时没有新的出口，继续使用当前出口。", TicketsStored: ticketsStored})
+				}
+				keepID = lease.proxy
+			} else {
+				nodeName = strings.TrimSpace(lease.node.Name)
+				if forceSwitch && keepID != "" && lease.node.ID != "" && lease.node.ID == keepID && len(tried) > 1 {
+					emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "WARN", Message: "定向池里暂时没有新的节点，继续使用当前出口。", TicketsStored: ticketsStored})
+				} else if lease.node.ID != "" && lease.node.ID != keepID {
+					recordCodexHarvestNode(nodeName, "Selector", 0)
+					emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "INFO", Message: "已切换到节点 " + nodeName, TicketsStored: ticketsStored})
+				}
+				if lease.node.ID == "" && forceSwitch {
+					emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Result: "node_switch", Level: "WARN", Message: "定向出口不可用，本次使用代理轮询；无法确认具体节点。", TicketsStored: ticketsStored})
+				}
+				keepID = lease.node.ID
 			}
-			keepID = lease.node.ID
-
 			forceSwitch = req.NodeSwitchRule == ManualHarvestNodeSwitchEveryRequest
 
 			token, _, tokenErr := s.GetAccessToken(ctx, account)
@@ -219,10 +242,6 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 				attempt++
 				return true
 			}, session)
-			if result.ProxySID != "" {
-				nodeName = "SID " + result.ProxySID
-				emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "INFO", Message: "已轮换代理 SID。", TicketsStored: ticketsStored})
-			}
 			s.completeManualHarvestAttempt(ctx, lease, result, time.Since(started), controls)
 			length, blocks := len(result.State), result.Shape.Blocks
 			raw := ""
@@ -239,12 +258,12 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 			case "rate_limited":
 				progressResult = "rate_limited"
 			}
-			recordCodexHarvestProbe(account, model, result.Kind, nodeName, result.Gateway, result.EdgeIP, raw, result.Status, length, blocks, expectedLength, expectedBlocks, result.ProbeVerified)
+			recordCodexHarvestProbe(account, model, result.Kind, nodeName, raw, result.Status, length, blocks, expectedLength, expectedBlocks, result.ProbeVerified)
 
 			if result.Kind == "success" {
 				consecutiveFails = 0
 				ticket := codexHarvestTicket(account, model, result, cfg, attempt)
-				bindCodexHarvestEgress(ticket, lease, session, result.ProxyURL)
+				bindCodexHarvestEgress(ticket, lease, session)
 				if storeErr := s.storeOpenAICodexTicket(ctx, account, ticket); storeErr != nil {
 					persistPending[model] = true
 					if s.codexHarvest != nil {
@@ -439,11 +458,8 @@ func (s *OpenAIGatewayService) acquireManualHarvestPoolExit(ctx context.Context,
 }
 
 func (s *OpenAIGatewayService) acquireManualHarvestNode(ctx context.Context, account *Account, model, proxy, keepID string, tried map[string]bool, forceNew bool) (codexHarvestAttempt, error) {
-	if s.usesRemoteCodexMint(ctx) {
-		return codexHarvestAttempt{release: func() {}}, nil
-	}
 	fallback := codexHarvestAttempt{proxy: proxy, release: func() {}}
-	if s.codexHarvest == nil || strings.TrimSpace(proxy) == "" || codexHarvestProxySID(proxy) != "" {
+	if s.codexHarvest == nil || strings.TrimSpace(proxy) == "" {
 		return fallback, nil
 	}
 	sidecar, err := mihomo.LoadDirectedSidecar(os.Getenv("DATA_DIR"), proxy)
@@ -519,6 +535,7 @@ func (s *OpenAIGatewayService) acquireManualHarvestNode(ctx context.Context, acc
 	})
 	return codexHarvestAttempt{sidecar: sidecar, node: node, proxy: sidecar.ProxyURL, release: release, feedback: CodexHarvestNodeFeedback{Scope: scope, Node: node, Generation: generation}}, nil
 }
+
 func (s *OpenAIGatewayService) completeManualHarvestAttempt(ctx context.Context, attempt codexHarvestAttempt, result codexHarvestProbeResult, elapsed time.Duration, controls CodexHarvestControls) {
 	defer attempt.release()
 	if attempt.sidecar == nil || s.codexHarvest == nil || !result.Sent || result.Kind == "cancelled" {

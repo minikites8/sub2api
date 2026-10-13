@@ -15,7 +15,7 @@ func TestRequestTimezoneSettingsPersistAndInvalidate(t *testing.T) {
 		repo := &settingUpdateRepoStub{}
 		svc := NewSettingService(repo, &config.Config{})
 		svc.openAIRequestTimezoneEnabledCache.Store(&cachedOpenAIRequestTimezoneEnabled{value: !enabled, expiresAt: time.Now().Add(time.Hour).UnixNano()})
-		require.NoError(t, svc.UpdateSettings(context.Background(), &SystemSettings{OpenAIRequestTimezoneEnabled: enabled, OpenAICodexRelayKey: "test-key", OpenAICodexRelayTransport: "sse", OpenAICodexRelayGateway: "any", OpenAICodexRelayTimeoutSeconds: 30}))
+		require.NoError(t, svc.UpdateSettings(context.Background(), &SystemSettings{OpenAIRequestTimezoneEnabled: enabled}))
 		require.Equal(t, map[bool]string{false: "false", true: "true"}[enabled], repo.updates[SettingKeyOpenAIRequestTimezoneEnabled])
 		require.Zero(t, svc.openAIRequestTimezoneEnabledCache.Load().(*cachedOpenAIRequestTimezoneEnabled).expiresAt)
 	}

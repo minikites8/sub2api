@@ -607,29 +607,14 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAICodexClientVersion] = NormalizeCodexClientVersion(settings.OpenAICodexClientVersion)
-	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
-	if err := ValidateOpenAICodexRelaySettings(settings.OpenAICodexRelayURL, settings.OpenAICodexRelayKey, settings.OpenAICodexRelayKeyEnv, settings.OpenAICodexRelayTransport, settings.OpenAICodexRelayGateway, settings.OpenAICodexRelayTimeoutSeconds); err != nil {
-		return nil, err
-	}
-	updates[SettingKeyOpenAICodexRelayURL] = strings.TrimSpace(settings.OpenAICodexRelayURL)
-	updates[SettingKeyOpenAICodexRelayKey] = strings.TrimSpace(settings.OpenAICodexRelayKey)
-	updates[SettingKeyOpenAICodexRelayKeyEnv] = strings.TrimSpace(settings.OpenAICodexRelayKeyEnv)
-	updates[SettingKeyOpenAICodexRelayTransport] = strings.ToLower(strings.TrimSpace(settings.OpenAICodexRelayTransport))
-	updates[SettingKeyOpenAICodexRelayGateway] = normalizeCodex780Gateway(settings.OpenAICodexRelayGateway)
-	updates[SettingKeyOpenAICodexRelayTimeoutSeconds] = strconv.Itoa(settings.OpenAICodexRelayTimeoutSeconds)
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
 	updates[SettingKeyOpenAIRequestTimezoneEnabled] = strconv.FormatBool(settings.OpenAIRequestTimezoneEnabled)
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
+	updates[SettingKeyOpenAICodexTicketFailClosed] = strconv.FormatBool(settings.OpenAICodexTicketFailClosed)
 	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
 	}
-	staticProxy := settings.OpenAICodexTicketStaticProxyURL
-	if IsStaticCodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL) {
-		staticProxy = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
-	}
-	updates[SettingKeyOpenAICodexTicketStaticProxyURL] = staticProxy
 	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
-	updates[SettingKeyOpenAICodexTicketFailClosed] = strconv.FormatBool(settings.OpenAICodexTicketFailClosed)
 	if value := settings.OpenAICodexTicketStrategy; value != "" && value != "fixed" && value != "standby" {
 		return nil, infraerrors.BadRequest("INVALID_TICKET_STRATEGY", "strategy must be fixed or standby")
 	}
@@ -948,8 +933,6 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		version:   antigravityUserAgentVersion,
 		expiresAt: time.Now().Add(antigravityUserAgentVersionCacheTTL).UnixNano(),
 	})
-	s.codexTicketSettingsCache.Store(&codexTicketSettingsSnapshot{})
-	s.codexTicketSettingsSF.Forget("codex_ticket")
 	s.openAICodexUASF.Forget("openai_codex_user_agent")
 	codexUA := strings.TrimSpace(settings.OpenAICodexUserAgent)
 	if codexUA == "" {

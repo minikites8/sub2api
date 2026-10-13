@@ -39,8 +39,6 @@ type CodexHarvestFlowEvent struct {
 	AccountName    string    `json:"account_name,omitempty"`
 	Model          string    `json:"model,omitempty"`
 	Node           string    `json:"node,omitempty"`
-	Gateway        string    `json:"gateway,omitempty"`
-	EdgeIP         string    `json:"edge_ip,omitempty"`
 	HTTPStatus     int       `json:"http_status,omitempty"`
 	Length         int       `json:"length,omitempty"`
 	Blocks         int       `json:"blocks,omitempty"`
@@ -147,19 +145,17 @@ type harvestFlowStoreBox struct {
 }
 
 type codexHarvestFlowRing struct {
-	ticketLogs        map[string][]OpenAICodexTicketLogEntry
-	ticketLogSequence map[string]int
-	mu                sync.Mutex
-	seq               atomic.Uint64
-	events            []CodexHarvestFlowEvent
-	skips             map[string]time.Time
-	lastNow           string
-	lastType          string
-	lastAll           int
-	persist           atomic.Value
+	mu       sync.Mutex
+	seq      atomic.Uint64
+	events   []CodexHarvestFlowEvent
+	skips    map[string]time.Time
+	lastNow  string
+	lastType string
+	lastAll  int
+	persist  atomic.Value
 }
 
-var defaultCodexHarvestFlow = &codexHarvestFlowRing{skips: make(map[string]time.Time), ticketLogs: make(map[string][]OpenAICodexTicketLogEntry), ticketLogSequence: make(map[string]int)}
+var defaultCodexHarvestFlow = &codexHarvestFlowRing{skips: make(map[string]time.Time)}
 
 type cachedSidecarController struct {
 	until      time.Time
@@ -175,8 +171,6 @@ func resetCodexHarvestFlow() {
 	defaultCodexHarvestFlow.mu.Lock()
 	defer defaultCodexHarvestFlow.mu.Unlock()
 	defaultCodexHarvestFlow.events = nil
-	defaultCodexHarvestFlow.ticketLogs = make(map[string][]OpenAICodexTicketLogEntry)
-	defaultCodexHarvestFlow.ticketLogSequence = make(map[string]int)
 	defaultCodexHarvestFlow.skips = make(map[string]time.Time)
 	defaultCodexHarvestFlow.lastNow = ""
 	defaultCodexHarvestFlow.lastType = ""
@@ -191,8 +185,6 @@ func recordCodexHarvestFlow(event CodexHarvestFlowEvent) {
 	event.AccountName = clipFlowText(event.AccountName, 80)
 	event.Model = clipFlowText(event.Model, 64)
 	event.Node = clipFlowText(event.Node, 160)
-	event.Gateway = clipFlowText(event.Gateway, 64)
-	event.EdgeIP = clipFlowText(event.EdgeIP, 64)
 	event.Result = clipFlowText(event.Result, 64)
 	event.Reason = clipFlowText(event.Reason, 64)
 	event.Detail = clipFlowText(event.Detail, 240)
@@ -201,7 +193,6 @@ func recordCodexHarvestFlow(event CodexHarvestFlowEvent) {
 		event.ID = fmt.Sprintf("%d-%d", event.At.UnixNano(), defaultCodexHarvestFlow.seq.Add(1))
 	}
 	defaultCodexHarvestFlow.events = append(defaultCodexHarvestFlow.events, event)
-	appendCodexTicketHistoryLocked(event)
 	if overflow := len(defaultCodexHarvestFlow.events) - codexHarvestFlowCap; overflow > 0 {
 		defaultCodexHarvestFlow.events = append([]CodexHarvestFlowEvent(nil), defaultCodexHarvestFlow.events[overflow:]...)
 	}
@@ -242,11 +233,6 @@ func hydrateCodexHarvestFlow(repo CodexHarvestFlowRepository) {
 		return
 	}
 	defaultCodexHarvestFlow.events = append([]CodexHarvestFlowEvent(nil), events...)
-	defaultCodexHarvestFlow.ticketLogs = make(map[string][]OpenAICodexTicketLogEntry)
-	defaultCodexHarvestFlow.ticketLogSequence = make(map[string]int)
-	for _, event := range defaultCodexHarvestFlow.events {
-		appendCodexTicketHistoryLocked(event)
-	}
 }
 
 func persistCodexHarvestFlow(event CodexHarvestFlowEvent) {
@@ -304,11 +290,7 @@ func recordCodexHarvestNode(now, groupType string, allCount int) {
 	})
 }
 
-func recordCodexHarvestProbe(account *Account, model, result, node, gateway, edgeIP, detail string, httpStatus, length, blocks, expectedLength, expectedBlocks int, verified ...bool) {
-	gateway = normalizeCodex780Gateway(gateway)
-	if gateway == "any" {
-		gateway = ""
-	}
+func recordCodexHarvestProbe(account *Account, model, result, node, detail string, httpStatus, length, blocks, expectedLength, expectedBlocks int, verified ...bool) {
 	kind := "probe_miss"
 	if result == "success" {
 		kind = "probe_hit"
@@ -318,8 +300,6 @@ func recordCodexHarvestProbe(account *Account, model, result, node, gateway, edg
 		Kind:           kind,
 		Model:          model,
 		Node:           node,
-		Gateway:        gateway,
-		EdgeIP:         edgeIP,
 		HTTPStatus:     httpStatus,
 		Length:         length,
 		Blocks:         blocks,
@@ -365,8 +345,6 @@ func recordCodexHarvestTicketStore(account *Account, ticket *openAICodexTicket, 
 		Kind:     "accept",
 		Model:    ticket.Model,
 		Node:     ticket.HarvestNodeName,
-		Gateway:  ticket.Gateway,
-		EdgeIP:   ticket.EdgeIP,
 		Length:   ticket.Length,
 		Blocks:   ticket.Blocks,
 		Accepted: true,
@@ -763,11 +741,9 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 	if ticketCfg.Models == nil {
 		ticketCfg.Models = []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel}
 	}
-	if settings != nil {
-		ticketCfg = settings.codexTicketRuntimeConfig(ctx, ticketCfg)
-	}
 	enabled := ticketCfg.Enabled
 	failClosed := ticketCfg.FailClosed
+	harvestProxy := strings.TrimSpace(ticketCfg.HarvestProxyURL)
 	strategy := "standby"
 	scopeError := false
 	scope := CodexTicketHarvestScope{Mode: "all", AccountPolicy: CodexHarvestSchedulableOnly}
@@ -775,6 +751,9 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 		enabled = settings.GetOpenAICodexTicketEnabled(ctx, enabled)
 		failClosed = settings.GetOpenAICodexTicketFailClosed(ctx)
 		ticketCfg.Models = settings.GetOpenAICodexTicketModels(ctx, ticketCfg.Models)
+		if proxy := settings.GetOpenAICodexTicketHarvestProxyURL(ctx); proxy != "" {
+			harvestProxy = proxy
+		}
 		strategy = settings.GetCodexTicketStrategy(ctx)
 		if current, err := settings.GetCodexTicketHarvestScope(ctx); err == nil {
 			scope = current
@@ -793,7 +772,6 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 		state := controls[0].Runtime()
 		runtime = &state
 	}
-	policy.TargetGateway = effectiveCodex780Gateway(ticketCfg, policy)
 	ticketCfg.Enabled = enabled
 	ticketCfg.FailClosed = failClosed
 	rawEvents := listCodexHarvestFlowEvents()
@@ -806,12 +784,8 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 	}
 	for i := range events {
 		if strings.TrimSpace(events[i].Node) != "" {
-			events[i].Node = strings.TrimSpace(events[i].Node)
+			events[i].Node = mihomo.NodeDisplayName(events[i].Node)
 		}
-	}
-	harvestProxy := strings.TrimSpace(ticketCfg.CloudMint.URL)
-	if !remoteCodexMintSelected(ticketCfg, policy) {
-		harvestProxy = strings.TrimSpace(ticketCfg.HarvestProxyURL)
 	}
 	snapshot := CodexHarvestFlowSnapshot{
 		Runtime:     runtime,
@@ -830,7 +804,7 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 			CooldownSec:       ticketCfg.HarvestCooldownSeconds,
 			MaxProbesPerRound: ticketCfg.MaxProbesPerRound,
 			RefreshBeforeSec:  ticketCfg.RefreshBeforeSeconds,
-			HarvestProxy:      harvestProxy,
+			HarvestProxy:      MaskProxyURL(harvestProxy),
 		},
 		Sidecar:  observeCodexHarvestProxy(ctx, harvestProxy),
 		Events:   events,
@@ -860,10 +834,9 @@ func BuildCodexHarvestFlow(ctx context.Context, cfg *config.Config, settings *Se
 			RecoverAt:       recoverAt,
 			Tickets:         OpenAICodexTicketStatuses(&account, ticketCfg, now),
 		}
-		accountGateway := effectiveCodex780GatewayForAccount(ticketCfg, policy, &account)
 		for i := range item.Tickets {
 			ticket := &item.Tickets[i]
-			if ticket.Length == 780 && (ticket.Transport != policy.Transport || !codex780GatewayAllowed(ticket.Gateway, accountGateway)) {
+			if ticket.Length == 780 && ticket.Transport != policy.Transport {
 				ticket.Ready = false
 				ticket.RemainingSeconds = 0
 				ticket.ExpiresAt = nil

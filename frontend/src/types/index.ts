@@ -1426,7 +1426,6 @@ export interface ExcelBPSCredentialState {
 }
 
 export interface Account {
-  codex_tickets?: import('./codexTicket').CodexTicketStatus[]
  excel_bps_credential_state?: ExcelBPSCredentialState
   id: number
   name: string
@@ -1440,21 +1439,25 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
+  codex_turn_tickets?: Array<{
+    standby_expires_at?: string
+    probe?: { result: string; http_status?: number; checked_at: string; next_probe_at?: string }
+    model: string
+    length?: number
+    ready: boolean
+    remaining_seconds: number
+    blocked: boolean
+    expires_at?: string
+  }>
   opencode_go_usage?: OpenCodeGoUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
-kiro_credit_unit_price_usd?: number
     upstream_billing_provider?: 'new_api'
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
-    ye_team_card_code?: string
-    ye_team_last_refresh_status?: 'running' | 'success' | 'failed'
-    ye_team_last_refresh_at?: string
-    ye_team_last_refresh_error?: string
-    ye_team_last_refresh_flow?: YeTeamRefreshFlow
     codex_reset_credit_snapshot?: {
       available_count?: number
       credits?: { expires_at?: string }[]

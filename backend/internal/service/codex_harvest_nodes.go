@@ -8,8 +8,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 )
 
-type HarvestNode = mihomo.HarvestNode
-
 type CodexHarvestNodeScope struct {
 	PoolID    string `json:"pool_id"`
 	AccountID int64  `json:"account_id"`

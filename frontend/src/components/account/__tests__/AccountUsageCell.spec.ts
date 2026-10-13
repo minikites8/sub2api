@@ -153,36 +153,30 @@ describe('AccountUsageCell', () => {
           id: type === 'oauth' ? 9701 : 9702,
           platform: 'openai',
           type,
-          codex_tickets: [
+          codex_turn_tickets: [
             { model: 'gpt-6-astra', ready: true, remaining_seconds: 2520, blocked: false },
             { model: 'gpt-5.6-sol', ready: false, remaining_seconds: 0, blocked: true },
-            { model: 'gpt-6-sol', ready: true, remaining_seconds: 1260, blocked: false },
-            { model: 'gpt-6.1-sol', ready: true, remaining_seconds: 720, blocked: false },
             { model: 'custom-model', ready: false, remaining_seconds: 0, blocked: false },
           ],
         }),
       },
       global: { stubs: {
-        CodexTicketStatusCell: {
-          props: ['account'],
-          template: '<div data-test="codex-ticket-status"><button v-for="ticket in account.codex_tickets" :key="ticket.model">{{ ticket.model }}</button></div>'
-        },
         OpenAIQuotaResetCell: { template: '<div data-test="quota-reset" />' },
         UsageProgressBar: true,
         AccountQuotaInfo: true,
       } },
     })
     await flushPromises()
-    const ticketButtons = wrapper.findAll('[data-test="codex-ticket-status"] button')
-    expect(ticketButtons).toHaveLength(5)
-    expect(wrapper.text()).toContain('gpt-6.1-sol')
-    expect(wrapper.text()).not.toContain('codexTurnTicket')
+    expect(wrapper.text()).toContain('42m00s')
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexTurnTicketPaused')
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexTurnTicketMissing')
     if (type === 'setup-token') {
       expect(getUsage).not.toHaveBeenCalled()
       expect(wrapper.find('[data-test="quota-reset"]').exists()).toBe(false)
     }
-    await wrapper.setProps({ account: { ...wrapper.props('account'), codex_tickets: [] } })
-    expect(wrapper.findAll('[data-test="codex-ticket-status"] button')).toHaveLength(0)
+    await wrapper.setProps({ account: { ...wrapper.props('account'), codex_turn_tickets: [] } })
+    expect(wrapper.text()).not.toContain('codexTurnTicket')
+    expect(wrapper.text()).not.toContain('42m00s')
     wrapper.unmount()
   })
 

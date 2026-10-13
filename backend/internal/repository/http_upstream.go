@@ -257,16 +257,8 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 		}
 	}
 	var resp *http.Response
-	observer := service.OpenAICodexTicketEgressObserverFromContext(req.Context())
-	if profile == service.HTTPUpstreamProfileOpenAIHarvest && observer != nil && canTraceCodexTicketEgress(req) {
-		resp, err = doCodexTicketWithEgress(client, req, observer, codexTicketEgressTraceTimeout)
-		if err == nil {
-			decompressResponseBody(resp)
-		}
-	} else {
-		client = httpClientWithGrokAccessDeniedFallback(client)
-		resp, err = doWithOpenAIPreRequestRetry(client, req, proxyURL, profile)
-	}
+	client = httpClientWithGrokAccessDeniedFallback(client)
+	resp, err = doWithOpenAIPreRequestRetry(client, req, proxyURL, profile)
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		s.recordBPSHTTP2Failure(req.Context(), entry.proxyKey, bpsTrace, err)

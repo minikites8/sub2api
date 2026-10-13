@@ -237,7 +237,8 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 		cfg.Models = []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel}
 	}
 	if s != nil && s.settingService != nil {
-		cfg = s.settingService.codexTicketRuntimeConfig(context.Background(), cfg)
+		cfg.Models = s.settingService.GetOpenAICodexTicketModels(context.Background(), cfg.Models)
+		cfg.FailClosed = s.settingService.GetOpenAICodexTicketFailClosed(context.Background())
 	}
 	return cfg
 }
@@ -261,9 +262,6 @@ type OpenAICodexTicketStatus struct {
 	Gateway          string             `json:"gateway,omitempty"`
 	EdgeIP           string             `json:"edge_ip,omitempty"`
 	Model            string             `json:"model"`
-	State            string             `json:"state"`
-	Attempts         int                `json:"attempts"`
-	TargetLength     int                `json:"target_length"`
 	Length           int                `json:"length,omitempty"`
 	Ready            bool               `json:"ready"`
 	RemainingSeconds int64              `json:"remaining_seconds"`
@@ -293,16 +291,8 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		if model == "" || !isOpenAICodexTicketAccount(account, model) {
 			continue
 		}
-		status := OpenAICodexTicketStatus{Model: model, State: "waiting", TargetLength: targetLen, Attempts: codexTicketHistoryAttempts(account.ID, model)}
+		status := OpenAICodexTicketStatus{Model: model}
 		status.Probe = readCodexProbe(account, model)
-		switch {
-		case openAICodexSkipHarvest(account):
-			status.State = "paused"
-		case status.Probe != nil && (status.Probe.Result == "token_error" || status.Probe.HTTPStatus == http.StatusUnauthorized || status.Probe.HTTPStatus == http.StatusForbidden):
-			status.State = "token_invalid"
-		case status.Probe != nil && status.Probe.NextProbeAt != nil && now.Before(*status.Probe.NextProbeAt):
-			status.State = "cooldown"
-		}
 		ticket := parseOpenAICodexTicketFromAny(0, model, nil)
 		if account != nil && account.Extra != nil {
 			ticket = parseOpenAICodexTicketFromAny(account.ID, model, account.Extra[openAICodexTicketExtraKey(model)])
@@ -310,33 +300,21 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		if ticket != nil && !ticketIdentityMatches(account, ticket) {
 			ticket = nil
 		}
-		accountGateway := codex780GatewayOverrideForAccount(account)
-		if ticket != nil && ticket.Length == 780 && accountGateway != "" && !codex780GatewayAllowed(ticket.Gateway, accountGateway) {
-			ticket = nil
-		}
 		usingStandby := false
 		if ticket != nil && ticket.Standby.valid(now, targetLen) {
-			if ticket.Standby.Length == 780 && accountGateway != "" && !codex780GatewayAllowed(ticket.Standby.Gateway, accountGateway) {
-				ticket.Standby = nil
-			} else {
-				standbyExp := openAICodexTicketRemainingUntil(ticket.Standby)
-				status.StandbyExpiresAt = &standbyExp
-				if !ticket.valid(now, targetLen) {
-					ticket = ticket.Standby
-					status.StandbyExpiresAt = nil
-					usingStandby = true
-				}
+			standbyExp := openAICodexTicketRemainingUntil(ticket.Standby)
+			status.StandbyExpiresAt = &standbyExp
+			if !ticket.valid(now, targetLen) {
+				ticket = ticket.Standby
+				status.StandbyExpiresAt = nil
+				usingStandby = true
 			}
-		}
-		if ticket != nil && status.Attempts == 0 {
-			status.Attempts = max(0, ticket.Attempts)
 		}
 		if ticket.valid(now, targetLen) {
 			status.Transport = ticket.Transport
 			status.Gateway = ticket.Gateway
 			status.EdgeIP = ticket.EdgeIP
 			status.Ready = true
-			status.State = "ready"
 			status.Standby = usingStandby
 			status.Length = ticket.Length
 			exp := openAICodexTicketRemainingUntil(ticket)
@@ -608,8 +586,7 @@ func (s *OpenAIGatewayService) lookupCodexTicketLocked(account *Account, model s
 		if protocol == "" {
 			protocol = "sse"
 		}
-		gateway := effectiveCodex780GatewayForAccount(s.openAICodexTicketConfig(), controls, account)
-		if mem != nil && (mem.Transport != protocol || !codex780GatewayAllowed(mem.Gateway, gateway)) {
+		if mem != nil && mem.Transport != protocol {
 			mem = nil
 		}
 		if extra != nil && extra.Transport != protocol {
@@ -833,17 +810,6 @@ func (s *OpenAIGatewayService) openAICodexTicketOutboundModel(account *Account, 
 		return upstreamModel
 	}
 	return model
-}
-
-// Scheduling rechecks the final outbound model against the active ticket gate.
-func (s *OpenAIGatewayService) codexTicketBlocksAccount(ctx context.Context, account *Account, requestedModel string, requireCompact bool) bool {
-	if s == nil || account == nil || !s.openAICodexTicketEnabledContext(ctx) {
-		return false
-	}
-	return s.openAICodexTicketBlocksAccount(account, s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact))
-}
-func (s *OpenAIGatewayService) codexTicketBlocksSchedulerSnapshot(ctx context.Context, account *Account, requestedModel string, requireCompact bool) bool {
-	return s.codexTicketBlocksAccount(ctx, account, requestedModel, requireCompact)
 }
 
 // outboundModel 必须是真正会发给上游的模型名（openAICodexTicketOutboundModel），

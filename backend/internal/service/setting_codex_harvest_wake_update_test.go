@@ -16,7 +16,7 @@ func TestCodexHarvestWakeAfterSuccessfulSettingsWrite(t *testing.T) {
 		t.Run(map[bool]string{false: "settings", true: "auth-defaults"}[withAuth], func(t *testing.T) {
 			repo := &settingUpdateRepoStub{}
 			svc := NewSettingService(repo, &config.Config{})
-			settings := &SystemSettings{OpenAICodexRelayKey: "test-key", OpenAICodexRelayTransport: "sse", OpenAICodexRelayGateway: "any", OpenAICodexRelayTimeoutSeconds: 30, OpenAICodexTicketEnabled: true}
+			settings := &SystemSettings{OpenAICodexTicketEnabled: true}
 			update := func() error {
 				if withAuth {
 					return svc.UpdateSettingsWithAuthSourceDefaults(context.Background(), settings, nil)

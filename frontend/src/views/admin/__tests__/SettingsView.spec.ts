@@ -1137,194 +1137,22 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings.mock.calls[0]?.[0].openai_request_timezone_enabled).toBe(!enabled);
   });
 
-  it("loads and saves independent Codex ticket model toggles", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_models: ["gpt-6-astra", "gpt-5.6-sol"],
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    await wrapper.get("#codex-ticket-model-sol").setValue(false);
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_models).toEqual([
-      "gpt-6-astra",
-    ]);
-    wrapper.unmount();
-  });
-
-  it("keeps missing-ticket account pausing off by default and saves explicit opt-in", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_fail_closed: false,
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    const toggle = wrapper.get<HTMLInputElement>("#codex-ticket-fail-closed");
-    expect(toggle.element.checked).toBe(false);
-    await toggle.setValue(true);
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_fail_closed).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("loads and changes the ticket refresh strategy", async () => {
-    getSettings.mockResolvedValueOnce({...baseSettingsResponse,openai_codex_ticket_strategy:'standby'});
-    const wrapper=mountView();await flushPromises();
-    await wrapper.get('#codex-ticket-strategy').setValue('fixed');
-    await wrapper.find('form').trigger('submit.prevent');await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_strategy).toBe('fixed');
-    wrapper.unmount();
-  });
-
-  it("normalizes malformed Codex harvest scopes before rendering and saving", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_harvest_scope: {
-        mode: "selected",
-        group_ids: null,
-        account_policy: "legacy",
-      } as any,
-    });
-    const wrapper = mountView();
-    await flushPromises();
-
-    expect((wrapper.get("#codex-ticket-account-policy").element as HTMLSelectElement).value).toBe(
-      "schedulable_only",
-    );
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_scope).toEqual({
-      mode: "selected",
-      group_ids: [],
-      account_policy: "schedulable_only",
-    });
-    wrapper.unmount();
-  });
-  it("loads and saves selected harvest groups, preserving an explicitly empty selection", async () => {
+  it("keeps harvest policy and exit settings in their dedicated pages", async () => {
     getSettings.mockResolvedValueOnce({ ...baseSettingsResponse,
-      openai_codex_ticket_harvest_scope: { mode: 'selected', group_ids: [2], account_policy: 'schedulable_only' },
-    });
-    getGroups.mockResolvedValueOnce([
-      { id: 2, name: 'PLUS', platform: 'openai', status: 'active' },
-      { id: 24, name: 'PRO', platform: 'openai', status: 'active' },
-      { id: 32, name: 'Grok', platform: 'grok', status: 'active' },
-    ]);
-    const wrapper = mountView(); await flushPromises();
-    expect(wrapper.find('#codex-ticket-group-32').exists()).toBe(false);
-    expect(wrapper.get<HTMLInputElement>('#codex-ticket-group-2').element.checked).toBe(true);
-    await wrapper.get('#codex-ticket-group-24').setValue(true);
-    await wrapper.find('form').trigger('submit.prevent'); await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_scope).toEqual({mode:'selected',group_ids:[2,24],account_policy:'schedulable_only'});
-    await wrapper.get('#codex-ticket-group-2').setValue(false);
-    await wrapper.get('#codex-ticket-group-24').setValue(false);
-    await wrapper.find('form').trigger('submit.prevent'); await flushPromises();
-    expect(updateSettings.mock.calls[1]?.[0].openai_codex_ticket_harvest_scope).toEqual({mode:'selected',group_ids:[],account_policy:'schedulable_only'});
-    wrapper.unmount();
-  });
-
-  it("preserves selected harvest IDs when group loading fails", async () => {
-    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse,
-      openai_codex_ticket_harvest_scope: { mode: 'selected', group_ids: [24], account_policy: 'schedulable_only' },
-    });
-    getGroups.mockRejectedValueOnce(new Error('offline'));
-    const wrapper = mountView(); await flushPromises();
-    expect(wrapper.get<HTMLInputElement>('#codex-ticket-group-24').element.checked).toBe(true);
-    await wrapper.find('form').trigger('submit.prevent'); await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_scope).toEqual({mode:'selected',group_ids:[24],account_policy:'schedulable_only'});
-    wrapper.unmount();
-  });
-
-  it("defaults legacy harvest scopes to schedulable only and saves compatibility policy", async () => {
-    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse,
-      openai_codex_ticket_harvest_scope: { mode: 'selected', group_ids: [24] },
+      openai_codex_ticket_enabled: true,
+      openai_codex_ticket_harvest_proxy_url: "ippool://active",
     });
     const wrapper = mountView();
     await flushPromises();
-    const policy = wrapper.get<HTMLSelectElement>('#codex-ticket-account-policy');
-    expect(policy.element.value).toBe('schedulable_only');
-    await policy.setValue('prioritize_schedulable');
-    await wrapper.find('form').trigger('submit.prevent');
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_scope).toEqual({
-      mode: 'selected', group_ids: [24], account_policy: 'prioritize_schedulable',
-    });
-    wrapper.unmount();
-  });
-
-  it("keeps strict ticket response rejection opt-in", async () => {
-    const wrapper=mountView();await flushPromises();
-    expect(wrapper.get<HTMLInputElement>('#codex-ticket-strict').element.checked).toBe(false);
-    await wrapper.get('#codex-ticket-strict').setValue(true);
-    await wrapper.find('form').trigger('submit.prevent');await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_strict_response).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("loads and saves Codex Relay settings", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_relay_url: "https://relay.example.com",
-      openai_codex_relay_key_configured: true,
-      openai_codex_relay_transport: "sse",
-      openai_codex_relay_gateway: "any",
-      openai_codex_relay_timeout_seconds: 25,
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    const url = wrapper.get<HTMLInputElement>("#codex-relay-url");
-    expect(url.element.value).toBe("https://relay.example.com");
-    await url.setValue("https://relay-updated.example.com");
-    await wrapper.get("#codex-relay-key").setValue("UPDATED_RELAY_KEY");
-    await wrapper.get("#codex-relay-transport").setValue("websocket");
-    await wrapper.get("#codex-relay-gateway").setValue("any");
-    await wrapper.get("#codex-relay-timeout").setValue("45");
+    expect(wrapper.find("#codex-ticket-enabled").exists()).toBe(false);
+    expect(wrapper.find("#codex-ticket-harvest-proxy").exists()).toBe(false);
+    expect(wrapper.find('[data-testid="codex-management-links"]').exists()).toBe(true);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
-      openai_codex_relay_url: "https://relay-updated.example.com",
-      openai_codex_relay_key: "UPDATED_RELAY_KEY",
-      openai_codex_relay_transport: "websocket",
-      openai_codex_relay_gateway: "any",
-      openai_codex_relay_timeout_seconds: 45,
-    }));
-    expect(updateSettings.mock.calls[0]?.[0]).toHaveProperty("openai_codex_ticket_harvest_proxy_url", "");
+    expect(Object.keys(updateSettings.mock.calls[0]?.[0] ?? {}).filter(key => key.startsWith('openai_codex_ticket_'))).toEqual([]);
     wrapper.unmount();
   });
 
-  it("loads and saves the local harvest proxy alongside Codex Relay settings", async () => {
-    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse,
-      openai_codex_ticket_harvest_proxy_url: "socks5h://user:***@harvest.example:1080",
-      openai_codex_ticket_harvest_proxy_configured: true,
-      openai_codex_relay_url: "https://relay.example.com",
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    const proxy = wrapper.get<HTMLInputElement>('[data-testid="codex-local-harvest-proxy"]');
-    expect(proxy.element.value).toBe("socks5h://user:***@harvest.example:1080");
-    await proxy.setValue("socks5h://user:new-password@updated.example:1080");
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
-      openai_codex_ticket_harvest_proxy_url: "socks5h://user:new-password@updated.example:1080",
-      openai_codex_relay_url: "https://relay.example.com",
-    }));
-    wrapper.unmount();
-  });
-
-  it("restores Codex Relay defaults when older settings responses omit relay fields", async () => {
-    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse });
-    const wrapper = mountView();
-    await flushPromises();
-    expect(wrapper.get<HTMLInputElement>("#codex-relay-url").element.value).toBe("");
-    expect(wrapper.get<HTMLInputElement>("#codex-relay-key").element.value).toBe("");
-    expect(wrapper.get<HTMLSelectElement>("#codex-relay-transport").element.value).toBe("sse");
-    expect(wrapper.get<HTMLInputElement>("#codex-relay-gateway").element.value).toBe("any");
-    expect(wrapper.get<HTMLInputElement>("#codex-relay-timeout").element.value).toBe("25");
-    wrapper.unmount();
-  });
   it("loads and saves the open button visibility for each custom menu", async () => {
     const menuItems = [
       { id: "docs", label: "Docs", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },
@@ -2101,34 +1929,6 @@ describe("admin SettingsView payment visible method controls", () => {
     const payload = updateSettings.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(payload.grok_default_text_model).toBe("grok-custom-text");
     expect(payload.grok_cross_client_model_map_enabled).toBe(false);
-  });
-
-  it("loads and saves Codex ticket settings with Relay configuration", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_enabled: true,
-      openai_codex_relay_url: "https://relay.example.com",
-      openai_codex_relay_key_configured: true,
-      openai_codex_relay_transport: "sse",
-      openai_codex_relay_gateway: "any",
-      openai_codex_relay_timeout_seconds: 25,
-      openai_codex_ticket_models: ["ticket-model"],
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    await openGatewayTab(wrapper);
-    expect((wrapper.get('#codex-ticket-relay-url').element as HTMLInputElement).value).toBe('https://relay.example.com');
-    await wrapper.get('#codex-ticket-relay-timeout').setValue('60');
-    await wrapper.get('#codex-ticket-models').setValue('model-a, model-b');
-    await wrapper.get('[data-testid="codex-ticket-toggle"]').setValue(false);
-    await wrapper.find('form').trigger('submit.prevent');
-    await flushPromises();
-    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
-      openai_codex_ticket_enabled: false,
-      openai_codex_relay_url: 'https://relay.example.com',
-      openai_codex_relay_timeout_seconds: 60,
-      openai_codex_ticket_models: ['model-a', 'model-b'],
-    }));
   });
 
   it("loads and saves the Grok video source URL switch", async () => {

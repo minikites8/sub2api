@@ -69,7 +69,6 @@ func ProvideAdminHandlers(
 	codexHarvest *service.CodexHarvestService,
 	settingService *service.SettingService,
 ) *AdminHandlers {
-	accountHandler.SetCodexTicketProvider(openAIGateway)
 	accountHandler.SetOpenAIGatewayService(openAIGateway)
 	accountHandler.SetCodexHarvestService(codexHarvest)
 	accountHandler.SetCodexTicketSettings(settingService)

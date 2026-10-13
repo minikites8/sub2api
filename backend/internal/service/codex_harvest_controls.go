@@ -13,10 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
-const (
-	codexHarvestControlsKey          = "openai_codex_harvest_controls_v1"
-	OpenAICodexTicketGatewayExtraKey = "openai_codex_ticket_gateway"
-)
+const codexHarvestControlsKey = "openai_codex_harvest_controls_v1"
 
 type CodexHarvestSpeed struct {
 	RoundIntervalSeconds  int `json:"round_interval_seconds"`
@@ -34,7 +31,6 @@ type CodexHarvestBound struct {
 }
 
 type CodexHarvestControls struct {
-	MintMode          string            `json:"mint_mode,omitempty"`
 	EdgeIP            string            `json:"edge_ip"`
 	Transport         string            `json:"transport"`
 	TargetGateway     string            `json:"target_gateway"`
@@ -66,7 +62,6 @@ type CodexHarvestControlSnapshot struct {
 }
 
 type CodexHarvestService struct {
-	cloudMint   config.OpenAICodexCloudMintConfig
 	coverage    harvestCoverageTracker
 	nodes       CodexHarvestNodeRepository
 	settings    SettingRepository
@@ -183,77 +178,6 @@ func normalizeCodexHarvestControls(v *CodexHarvestControls) {
 	}
 }
 
-// effectiveCodex780Gateway keeps the configured cloud relay target aligned with
-// ticket lookup and harvest-flow status checks. An explicit cloud-mint gateway
-// takes precedence; the harvest control remains the fallback for local probes
-// and deployments that leave cloud mint routing unset.
-func effectiveCodex780Gateway(cfg config.OpenAICodexTicketConfig, controls CodexHarvestControls) string {
-	if remoteCodexMintSelected(cfg, controls) {
-		if target := normalizeCodex780Gateway(cfg.CloudMint.Gateway); target != "" {
-			return target
-		}
-	}
-	if remoteCodexMintSelected(cfg, controls) {
-		if target := normalizeCodex780Gateway(controls.TargetGateway); target != "" {
-			return target
-		}
-	}
-	// Native acquisition records the observed gateway; legacy host settings
-	// remain available to the remote relay and explicit account overrides.
-	return "any"
-}
-
-func codex780GatewayOverrideForAccount(account *Account) string {
-	if account == nil || account.Extra == nil {
-		return ""
-	}
-	raw, ok := account.Extra[OpenAICodexTicketGatewayExtraKey]
-	if !ok {
-		return ""
-	}
-	value, ok := raw.(string)
-	if !ok {
-		return ""
-	}
-	target := normalizeCodex780Gateway(value)
-	if target == "any" || regexp.MustCompile("^unified-[0-9]{1,5}$").MatchString(target) {
-		return target
-	}
-	return ""
-}
-
-func effectiveCodex780GatewayForAccount(cfg config.OpenAICodexTicketConfig, controls CodexHarvestControls, account *Account) string {
-	if target := codex780GatewayOverrideForAccount(account); target != "" {
-		return target
-	}
-	return effectiveCodex780Gateway(cfg, controls)
-}
-
-// NormalizeOpenAICodexTicketGatewayExtra validates and canonicalizes an account-level
-// relay gateway override. Empty values clear the override and inherit the global target.
-func NormalizeOpenAICodexTicketGatewayExtra(extra map[string]any) error {
-	if extra == nil {
-		return nil
-	}
-	raw, ok := extra[OpenAICodexTicketGatewayExtraKey]
-	if !ok || raw == nil {
-		return nil
-	}
-	value, ok := raw.(string)
-	if !ok {
-		return errors.New("openai_codex_ticket_gateway must be a string")
-	}
-	target := normalizeCodex780Gateway(value)
-	if target == "" {
-		delete(extra, OpenAICodexTicketGatewayExtraKey)
-		return nil
-	}
-	if target != "any" && !regexp.MustCompile(`^unified-[0-9]{1,5}$`).MatchString(target) {
-		return errors.New("openai_codex_ticket_gateway must be any, unified-N or chat.gateway.unified-N.api.openai.com")
-	}
-	extra[OpenAICodexTicketGatewayExtraKey] = target
-	return nil
-}
 func NewCodexHarvestService(nodes CodexHarvestNodeRepository, settings SettingRepository, cfg *config.Config) *CodexHarvestService {
 	v := CodexHarvestControls{Version: 1, Speed: CodexHarvestSpeedPresets()["standard"]}
 	if cfg != nil {
@@ -275,11 +199,7 @@ func NewCodexHarvestService(nodes CodexHarvestNodeRepository, settings SettingRe
 		}
 	}
 	normalizeCodexHarvestControls(&v)
-	s := &CodexHarvestService{nodes: nodes, settings: settings, defaults: v, current: v, wake: make(chan struct{}, 1)}
-	if cfg != nil {
-		s.cloudMint = cfg.Gateway.OpenAICodexTicket.CloudMint
-	}
-	return s
+	return &CodexHarvestService{nodes: nodes, settings: settings, defaults: v, current: v, wake: make(chan struct{}, 1)}
 }
 
 func ProvideCodexHarvestService(nodes CodexHarvestNodeRepository, settings SettingRepository, cfg *config.Config, flows CodexHarvestFlowRepository) *CodexHarvestService {
@@ -289,9 +209,6 @@ func ProvideCodexHarvestService(nodes CodexHarvestNodeRepository, settings Setti
 
 func ValidateCodexHarvestControls(v CodexHarvestControls) error {
 	normalizeCodexHarvestControls(&v)
-	if v.MintMode != "" && v.MintMode != "remote" && v.MintMode != "local" {
-		return errors.New("mint_mode must be remote or local, or empty to follow configuration")
-	}
 	if err := validateCodexMintEdgeIP(v.EdgeIP); err != nil {
 		return err
 	}

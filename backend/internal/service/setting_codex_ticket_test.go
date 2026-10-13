@@ -48,13 +48,10 @@ func TestCodexTicketModelsRuntimeDisableAndEmpty(t *testing.T) {
 	account := ticketTestAccount(41)
 	ctx := context.Background()
 	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-5.6-sol"))
-	repo.values[SettingKeyOpenAICodexTicketModels] = `["gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol"]`
+	repo.values[SettingKeyOpenAICodexTicketModels] = `["gpt-6-astra"]`
 	settings.InvalidateOpenAICodexTicketModelsCache()
-	configured := svc.openAICodexTicketConfig()
-	require.Equal(t, []string{"gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol"}, configured.Models)
 	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-5.6-sol"))
-	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-sol"))
-	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6.1-sol"))
+	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, "client-state")
 	require.NoError(t, svc.applyOpenAICodexTicket(ctx, account, "gpt-5.6-sol", h))
@@ -197,66 +194,4 @@ func TestCodexTicketSettingsRefreshDoesNotMutateSharedConfig(t *testing.T) {
 	svc.refreshCachedSettings(&SystemSettings{OpenAICodexTicketEnabled: true})
 	require.False(t, cfg.Gateway.OpenAICodexTicket.Enabled, "runtime settings must not write the shared immutable startup configuration")
 	require.True(t, svc.GetOpenAICodexTicketEnabled(context.Background(), false))
-}
-
-func TestParseSettingsRelayEchoesConfigWhenDatabaseOverridesAreMissing(t *testing.T) {
-	svc := &SettingService{cfg: &config.Config{Gateway: config.GatewayConfig{
-		OpenAICodexTicket: config.OpenAICodexTicketConfig{CloudMint: config.OpenAICodexCloudMintConfig{
-			URL: "https://relay.example.com/mint", KeyEnv: "CUSTOM_RELAY_KEY", Transport: "websocket",
-			Gateway: "unified-95", TimeoutSeconds: 31,
-		}},
-	}}}
-	settings := svc.parseSettings(map[string]string{})
-	require.Equal(t, "https://relay.example.com/mint", settings.OpenAICodexRelayURL)
-	require.Equal(t, "CUSTOM_RELAY_KEY", settings.OpenAICodexRelayKeyEnv)
-	require.Equal(t, "websocket", settings.OpenAICodexRelayTransport)
-	require.Equal(t, "unified-95", settings.OpenAICodexRelayGateway)
-	require.Equal(t, 31, settings.OpenAICodexRelayTimeoutSeconds)
-
-	overridden := svc.parseSettings(map[string]string{
-		SettingKeyOpenAICodexRelayURL:            "https://saved.example.com/mint",
-		SettingKeyOpenAICodexRelayKeyEnv:         "SAVED_RELAY_KEY",
-		SettingKeyOpenAICodexRelayTransport:      "sse",
-		SettingKeyOpenAICodexRelayGateway:        "any",
-		SettingKeyOpenAICodexRelayTimeoutSeconds: "45",
-	})
-	require.Equal(t, "https://saved.example.com/mint", overridden.OpenAICodexRelayURL)
-	require.Equal(t, "SAVED_RELAY_KEY", overridden.OpenAICodexRelayKeyEnv)
-	require.Equal(t, "sse", overridden.OpenAICodexRelayTransport)
-	require.Equal(t, "any", overridden.OpenAICodexRelayGateway)
-	require.Equal(t, 45, overridden.OpenAICodexRelayTimeoutSeconds)
-
-	emptyOverrides := svc.parseSettings(map[string]string{
-		SettingKeyOpenAICodexRelayURL:            "",
-		SettingKeyOpenAICodexRelayKeyEnv:         "",
-		SettingKeyOpenAICodexRelayTransport:      "",
-		SettingKeyOpenAICodexRelayGateway:        "",
-		SettingKeyOpenAICodexRelayTimeoutSeconds: "0",
-	})
-	require.Equal(t, "https://relay.example.com/mint", emptyOverrides.OpenAICodexRelayURL)
-	require.Equal(t, "CUSTOM_RELAY_KEY", emptyOverrides.OpenAICodexRelayKeyEnv)
-	require.Equal(t, "websocket", emptyOverrides.OpenAICodexRelayTransport)
-	require.Equal(t, "unified-95", emptyOverrides.OpenAICodexRelayGateway)
-	require.Equal(t, 31, emptyOverrides.OpenAICodexRelayTimeoutSeconds)
-}
-
-func TestParseSettingsUsesDirectRelayKeyAndMigratesLegacyLiteral(t *testing.T) {
-	svc := &SettingService{cfg: &config.Config{Gateway: config.GatewayConfig{
-		OpenAICodexTicket: config.OpenAICodexTicketConfig{CloudMint: config.OpenAICodexCloudMintConfig{
-			KeyEnv: "SUB2API_CODEX_CLOUD_MINT_KEY",
-		}},
-	}}}
-	direct := svc.parseSettings(map[string]string{
-		SettingKeyOpenAICodexRelayKey:    "direct-relay-secret",
-		SettingKeyOpenAICodexRelayKeyEnv: "SUB2API_CODEX_CLOUD_MINT_KEY",
-	})
-	require.Equal(t, "direct-relay-secret", direct.OpenAICodexRelayKey)
-	require.True(t, direct.OpenAICodexRelayKeyConfigured)
-	require.Equal(t, "SUB2API_CODEX_CLOUD_MINT_KEY", direct.OpenAICodexRelayKeyEnv)
-
-	legacySecret := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	legacy := svc.parseSettings(map[string]string{SettingKeyOpenAICodexRelayKeyEnv: legacySecret})
-	require.Equal(t, legacySecret, legacy.OpenAICodexRelayKey)
-	require.True(t, legacy.OpenAICodexRelayKeyConfigured)
-	require.Equal(t, "SUB2API_CODEX_CLOUD_MINT_KEY", legacy.OpenAICodexRelayKeyEnv)
 }

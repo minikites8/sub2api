@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"io"
 	"net/http"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/mihomo"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -274,7 +274,29 @@ func (s *OpenAIGatewayService) stickBoundCodexTicketRequest(req *http.Request, a
 	req.Close = true
 	restoreBoundCodexTicketHarvestIdentity(req.Header, ticket)
 	pinBoundCodexTicketHarvestIdentityRequestBody(req, ticket)
-	return withAstraSourceTicketRoute(req, account, ticket)
+	return req
+}
+
+func (s *OpenAIGatewayService) loadCodexTicketDirectedSidecar(ctx context.Context, proxyURL string) (*mihomo.DirectedSidecar, error) {
+	dataDir := os.Getenv("DATA_DIR")
+	seen := map[string]bool{}
+	var last error
+	for _, candidate := range []string{proxyURL, s.openAICodexTicketHarvestFixedProxyURL(ctx)} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		sidecar, err := mihomo.LoadDirectedSidecar(dataDir, candidate)
+		if err == nil {
+			return sidecar, nil
+		}
+		last = err
+	}
+	if last != nil {
+		return nil, last
+	}
+	return nil, ErrOpenAICodexTicketUnavailable
 }
 
 func (s *OpenAIGatewayService) codexTicketPinsEgress(req *http.Request, account *Account) bool {
@@ -286,7 +308,7 @@ func (s *OpenAIGatewayService) codexTicketPinsEgress(req *http.Request, account 
 
 func (s *OpenAIGatewayService) codexTicketPinsEgressFromHeader(ctx context.Context, h http.Header, account *Account) bool {
 	ticket := s.boundCodexTicketFromHeader(ctx, h, account)
-	if ticket == nil || ticket.HarvestNodeProvider == "relay" || (ticket.Length == 780 && ticket.HarvestNodeID == "" && ticket.HarvestProxyURL == "") {
+	if ticket == nil {
 		return false
 	}
 	return strings.TrimSpace(ticket.HarvestProxyURL) != "" ||
@@ -310,7 +332,7 @@ func (s *OpenAIGatewayService) pinCodexTicketWSAcquire(ctx context.Context, head
 func (s *OpenAIGatewayService) pinCodexTicketEgressFromHeader(ctx context.Context, h http.Header, account *Account, proxyURL string) (string, func(), error) {
 	noop := func() {}
 	ticket := s.boundCodexTicketFromHeader(ctx, h, account)
-	if ticket == nil || ticket.HarvestNodeProvider == "relay" || (ticket.Length == 780 && ticket.HarvestNodeID == "" && ticket.HarvestProxyURL == "") {
+	if ticket == nil {
 		return proxyURL, noop, nil
 	}
 	return s.pinStoredCodexTicketEgress(ctx, ticket, proxyURL)
@@ -362,26 +384,4 @@ func attachCodexTicketEgressRelease(resp *http.Response, err error, release func
 	}
 	resp.Body = &codexTicketEgressBody{ReadCloser: resp.Body, release: release}
 	return resp, err
-}
-
-func (s *OpenAIGatewayService) loadCodexTicketDirectedSidecar(ctx context.Context, proxyURL string) (*mihomo.DirectedSidecar, error) {
-	dataDir := os.Getenv("DATA_DIR")
-	seen := map[string]bool{}
-	var last error
-	for _, candidate := range []string{proxyURL, s.openAICodexTicketHarvestFixedProxyURL(ctx)} {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" || seen[candidate] {
-			continue
-		}
-		seen[candidate] = true
-		sidecar, err := mihomo.LoadDirectedSidecar(dataDir, candidate)
-		if err == nil {
-			return sidecar, nil
-		}
-		last = err
-	}
-	if last != nil {
-		return nil, last
-	}
-	return nil, ErrOpenAICodexTicketUnavailable
 }

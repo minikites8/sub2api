@@ -246,17 +246,13 @@ type Account struct {
 	CredentialsStatus       map[string]bool                   `json:"credentials_status,omitempty"`
 	Extra                   map[string]any                    `json:"extra"`
 	OllamaCloudUsage        *service.OllamaCloudUsageState    `json:"ollama_cloud_usage,omitempty"`
-	CodexTickets            []service.OpenAICodexTicketStatus `json:"codex_tickets,omitempty"`
 	CodexTurnTickets        []service.OpenAICodexTicketStatus `json:"codex_turn_tickets,omitempty"`
-	OpenCodeGoUsage         *service.OpenCodeGoUsageState     `json:"opencode_go_usage,omitempty"`
 	ProxyID                 *int64                            `json:"proxy_id"`
-	ProxyPool               []AccountProxyBinding             `json:"proxy_pool,omitempty"`
 	ProxyFallbackOriginID   *int64                            `json:"proxy_fallback_origin_id"`
 	ProxyFallbackOriginName *string                           `json:"proxy_fallback_origin_name,omitempty"`
 	Concurrency             int                               `json:"concurrency"`
 	LoadFactor              *int                              `json:"load_factor,omitempty"`
 	Priority                int                               `json:"priority"`
-	IsFallback              bool                              `json:"is_fallback"`
 	RateMultiplier          float64                           `json:"rate_multiplier"`
 	GroupRateMultiplier     float64                           `json:"group_rate_multiplier"`
 	Status                  string                            `json:"status"`
@@ -362,8 +358,11 @@ type Account struct {
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 
-	GroupIDs []int64  `json:"group_ids,omitempty"`
-	Groups   []*Group `json:"groups,omitempty"`
+	GroupIDs        []int64                       `json:"group_ids,omitempty"`
+	Groups          []*Group                      `json:"groups,omitempty"`
+	OpenCodeGoUsage *service.OpenCodeGoUsageState `json:"opencode_go_usage,omitempty"`
+	ProxyPool       []AccountProxyBinding         `json:"proxy_pool,omitempty"`
+	IsFallback      bool                          `json:"is_fallback"`
 }
 
 type AccountProxyBinding struct {
@@ -385,12 +384,13 @@ type AccountListItem struct {
 	Platform string  `json:"platform"`
 	Type     string  `json:"type"`
 
-	Credentials       map[string]any                    `json:"credentials,omitempty"`
-	CredentialsStatus map[string]bool                   `json:"credentials_status,omitempty"`
-	Extra             map[string]any                    `json:"extra,omitempty"`
-	OllamaCloudUsage  *service.OllamaCloudUsageState    `json:"ollama_cloud_usage,omitempty"`
-	CodexTickets      []service.OpenAICodexTicketStatus `json:"codex_tickets,omitempty"`
-	OpenCodeGoUsage   *service.OpenCodeGoUsageState     `json:"opencode_go_usage,omitempty"`
+	Credentials             map[string]any                    `json:"credentials,omitempty"`
+	ExcelBPSCredentialState *service.ExcelBPSCredentialState  `json:"excel_bps_credential_state,omitempty"`
+	CredentialsStatus       map[string]bool                   `json:"credentials_status,omitempty"`
+	Extra                   map[string]any                    `json:"extra,omitempty"`
+	OllamaCloudUsage        *service.OllamaCloudUsageState    `json:"ollama_cloud_usage,omitempty"`
+	CodexTurnTickets        []service.OpenAICodexTicketStatus `json:"codex_turn_tickets,omitempty"`
+	OpenCodeGoUsage         *service.OpenCodeGoUsageState     `json:"opencode_go_usage,omitempty"`
 
 	ProxyID                 *int64     `json:"proxy_id"`
 	ProxyFallbackOriginID   *int64     `json:"proxy_fallback_origin_id"`
@@ -468,10 +468,8 @@ type AccountListItem struct {
 	ParentSubscriptionExpiresAt string `json:"parent_subscription_expires_at,omitempty"`
 	ParentChatGPTAccountID      string `json:"parent_chatgpt_account_id,omitempty"`
 
-	Proxy                   *Proxy                            `json:"proxy,omitempty"`
-	GroupIDs                []int64                           `json:"group_ids,omitempty"`
-	ExcelBPSCredentialState *service.ExcelBPSCredentialState  `json:"excel_bps_credential_state,omitempty"`
-	CodexTurnTickets        []service.OpenAICodexTicketStatus `json:"codex_turn_tickets,omitempty"`
+	Proxy    *Proxy  `json:"proxy,omitempty"`
+	GroupIDs []int64 `json:"group_ids,omitempty"`
 }
 
 type AccountGroup struct {

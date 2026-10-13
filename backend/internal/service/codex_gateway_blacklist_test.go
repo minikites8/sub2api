@@ -97,13 +97,3 @@ func TestCodexGatewayBlacklistAddValidation(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, []string{"unified-35", "unified-35"}, repo.added)
 }
-
-func TestCodexGatewayBlacklistRouteCacheKey(t *testing.T) {
-	account := ticketTestAccount(41)
-	base := codex780RouteKey(account, "token", "header", "any", "sse")
-	account.Extra = map[string]any{OpenAICodexTicketGatewayBlacklistExtraKey: []string{"unified-35", "unified-12"}}
-	blocked := codex780RouteKey(account, "token", "header", "any", "sse")
-	require.NotEqual(t, base, blocked)
-	account.Extra[OpenAICodexTicketGatewayBlacklistExtraKey] = []string{"unified-12", "unified-35"}
-	require.Equal(t, blocked, codex780RouteKey(account, "token", "header", "any", "sse"))
-}

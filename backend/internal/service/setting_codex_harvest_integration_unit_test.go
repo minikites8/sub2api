@@ -85,7 +85,7 @@ func TestCodexHarvestWakeThroughSettingsSave(t *testing.T) {
 	require.Eventually(t, func() bool { return repo.reads.Load() > 0 }, time.Second, 10*time.Millisecond)
 	time.Sleep(50 * time.Millisecond) // let the disabled startup round arm its timer
 	require.Zero(t, rounds.Load())
-	settings := &SystemSettings{OpenAICodexRelayKey: "test-key", OpenAICodexRelayTransport: "sse", OpenAICodexRelayGateway: "any", OpenAICodexRelayTimeoutSeconds: 30, OpenAICodexTicketEnabled: true, OpenAICodexTicketModels: []string{"gpt-6-astra"}}
+	settings := &SystemSettings{OpenAICodexTicketEnabled: true, OpenAICodexTicketModels: []string{"gpt-6-astra"}}
 	started := time.Now()
 	require.NoError(t, svc.settingService.UpdateSettings(context.Background(), settings))
 	require.Eventually(t, func() bool { return rounds.Load() == 1 }, 5*time.Second, 10*time.Millisecond)
@@ -104,7 +104,7 @@ func TestCodexHarvestWakePartialWriteReloadFailureStillInvalidates(t *testing.T)
 	s := NewSettingService(repo, &config.Config{})
 	require.False(t, s.GetOpenAICodexTicketEnabled(context.Background(), false))
 	// Any omitted key takes the partial-write reload path.
-	err := s.UpdateSettingsOmitting(context.Background(), &SystemSettings{OpenAICodexRelayKey: "test-key", OpenAICodexRelayTransport: "sse", OpenAICodexRelayGateway: "any", OpenAICodexRelayTimeoutSeconds: 30, OpenAICodexTicketEnabled: true},
+	err := s.UpdateSettingsOmitting(context.Background(), &SystemSettings{OpenAICodexTicketEnabled: true},
 		OmittedSettingKeys{"site_name": {}})
 	require.NoError(t, err)
 	require.Len(t, s.codexHarvestWakeups(), 1)
@@ -113,7 +113,7 @@ func TestCodexHarvestWakePartialWriteReloadFailureStillInvalidates(t *testing.T)
 
 func TestCodexHarvestWakeOmittedSettingsDoNotNotify(t *testing.T) {
 	s := NewSettingService(&harvestWakeSettingsRepo{values: map[string]string{}}, &config.Config{})
-	settings := &SystemSettings{OpenAICodexRelayKey: "test-key", OpenAICodexRelayTransport: "sse", OpenAICodexRelayGateway: "any", OpenAICodexRelayTimeoutSeconds: 30, OpenAICodexTicketEnabled: true}
+	settings := &SystemSettings{OpenAICodexTicketEnabled: true}
 	updates, err := s.buildSystemSettingsUpdates(context.Background(), settings)
 	require.NoError(t, err)
 	omitted := make(OmittedSettingKeys)

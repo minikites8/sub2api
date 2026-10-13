@@ -558,7 +558,6 @@ type OpenAIGatewayService struct {
 	astraCandyMu                   sync.Mutex
 	astraCandySeen                 map[[32]byte]time.Time
 	astraCandyRunning              int
-	codex780Routes                 codex780RouteCache
 	openaiCodexTickets             sync.Map
 	openaiCodexTicketStateMu       sync.Mutex
 	openaiCodexTicketCursors       sync.Map // codexHarvestTier -> *atomic.Uint64
@@ -785,7 +784,6 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
-	s.StopOpenAICodexTicketHarvester()
 	if s != nil && s.stopAstraSetup != nil {
 		s.stopAstraSetup()
 	}

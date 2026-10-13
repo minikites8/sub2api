@@ -60,7 +60,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 	for n := 0; ; n++ {
 		current, configured := s.harvestControls(ctx)
 		controls = current
-		pool := !s.usesRemoteCodexMint(ctx) && s.openAICodexTicketHarvestIPPoolEnabled(ctx)
+		pool := s.openAICodexTicketHarvestIPPoolEnabled(ctx)
 		maxAttempts := harvestMaxNodeAttempts(controls, pool)
 		if n >= maxAttempts || round.AccountStopped(account.ID) || round.Used() >= min(round.limit, controls.Speed.MaxRequestsPerRound) || ctx.Err() != nil {
 			break
@@ -77,7 +77,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 				break
 			}
 			proxy = poolExit.url
-		} else if proxy = s.openAICodexTicketHarvestProxyURLContext(ctx); proxy == "" && !s.usesRemoteCodexMint(ctx) {
+		} else if proxy = s.openAICodexTicketHarvestProxyURLContext(ctx); proxy == "" {
 			return
 		}
 		token, _, err := s.GetAccessToken(ctx, account)
@@ -124,13 +124,6 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 		result := s.executeCodexHarvestProbe(ctx, account, token, model, attempt.proxy, time.Duration(controls.Speed.AttemptTimeoutSeconds)*time.Second, func() bool {
 			return s.reserveHarvestRequest(ctx, account, model, round, attempt.sidecar != nil)
 		}, session)
-		if result.ProxySID != "" {
-			nodeName = "SID " + result.ProxySID
-			recordCodexHarvestNode(nodeName, "", 0)
-			if s.codexHarvest != nil {
-				s.codexHarvest.setRuntime(func(r *CodexHarvestRuntime) { r.CurrentNode = nodeName })
-			}
-		}
 		if result.Kind == "account_error" || result.Kind == "rate_limited" {
 			round.stopped.Store(account.ID, struct{}{})
 		}
@@ -145,11 +138,11 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 		if result.Err != nil {
 			raw = result.Err.Error()
 		}
-		recordCodexHarvestProbe(account, model, result.Kind, nodeName, result.Gateway, result.EdgeIP, raw, result.Status, len(result.State), result.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg), result.ProbeVerified)
+		recordCodexHarvestProbe(account, model, result.Kind, nodeName, raw, result.Status, len(result.State), result.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg), result.ProbeVerified)
 		if result.Kind == "success" {
 			s.openaiCodexTicketProbeCooldown.Delete(openAICodexTicketKey(account.ID, model))
 			ticket := codexHarvestTicket(account, model, result, cfg, attempts)
-			bindCodexHarvestEgress(ticket, attempt, session, result.ProxyURL)
+			bindCodexHarvestEgress(ticket, attempt, session)
 			if err := s.storeOpenAICodexTicket(ctx, account, ticket); err != nil && s.codexHarvest != nil {
 				s.codexHarvest.degrade("ticket persisted in memory only; database write failed")
 			}

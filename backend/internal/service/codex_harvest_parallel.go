@@ -30,9 +30,6 @@ func (s *OpenAIGatewayService) executeParallelHarvest(ctx context.Context, req M
 	if s.codexTicketChatHeld(account.ID) {
 		return errors.New("account is in an active conversation")
 	}
-	if s.usesRemoteCodexMint(ctx) {
-		return s.runParallelHarvest(ctx, req, account, emit, relayHarvestCollection{})
-	}
 	if s.openAICodexTicketHarvestIPPoolEnabled(ctx) {
 		return errors.New("parallel collection requires the managed Mihomo proxy; the IP pool harvests on a single lane")
 	}
@@ -146,7 +143,7 @@ func (s *OpenAIGatewayService) runParallelHarvest(ctx context.Context, req Manua
 			raw := safeCodexHarvestError(r.Err)
 			message, level, detail := describeCodexHarvestOutcome(r.Kind, raw, r.Status, model, mihomo.NodeDisplayName(out.node), r.ProbeVerified)
 			event := ManualHarvestProgress{Attempt: out.attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: mihomo.NodeDisplayName(out.node), HTTPStatus: r.Status, Length: len(r.State), Blocks: r.Shape.Blocks, Result: r.Kind, Level: level, Message: message, Detail: detail, TicketsStored: stored}
-			recordCodexHarvestProbe(account, model, r.Kind, mihomo.NodeDisplayName(out.node), r.Gateway, r.EdgeIP, raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg), r.ProbeVerified)
+			recordCodexHarvestProbe(account, model, r.Kind, mihomo.NodeDisplayName(out.node), raw, r.Status, len(r.State), r.Shape.Blocks, openAICodexTicketTargetLength(account, cfg), codexHarvestExpectedBlocks(account, cfg), r.ProbeVerified)
 			if r.Kind == "success" {
 				fresh, e := s.accountRepo.GetByID(ctx, account.ID)
 				if e != nil || fresh == nil || ticketIdentity(fresh) != ticketIdentity(account) {
@@ -156,12 +153,7 @@ func (s *OpenAIGatewayService) runParallelHarvest(ctx context.Context, req Manua
 					continue
 				}
 				ticket := codexHarvestTicket(account, model, r, cfg, out.attempt)
-				binding := codexHarvestAttempt{proxy: mihomo.Endpoint, node: mihomo.HarvestNode{ID: out.node, Name: out.node, Provider: "managed"}}
-				if s.usesRemoteCodexMint(ctx) {
-					binding.proxy = ""
-					binding.node.Provider = "relay"
-				}
-				bindCodexHarvestEgress(ticket, binding, out.session, r.ProxyURL)
+				bindCodexHarvestEgress(ticket, codexHarvestAttempt{proxy: mihomo.Endpoint, node: mihomo.HarvestNode{ID: out.node, Name: out.node, Provider: "managed"}}, out.session)
 				if e = s.storeOpenAICodexTicket(ctx, fresh, ticket); e != nil {
 					event.Result = "persist_failed"
 					event.Level = "WARN"
@@ -219,10 +211,3 @@ func reserveParallelProbe(used *atomic.Int64, limit int) int64 {
 		}
 	}
 }
-
-type relayHarvestCollection struct{}
-
-func (relayHarvestCollection) Next(context.Context, int) (string, string, error) {
-	return "relay", "", nil
-}
-func (relayHarvestCollection) Close() error { return nil }

@@ -381,14 +381,6 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
-  it('renders a waiting state for legacy Codex ticket summaries', async () => {
-    const account = buildOpenAIOAuthParentAccount()
-    account.codex_tickets = [{ model: 'gpt-6-astra', ready: false, remaining_seconds: 0 }]
-    const wrapper = mountModal(account); await flushPromises()
-    expect(wrapper.text()).toContain('admin.accounts.codexTickets.states.waiting')
-    expect(wrapper.text()).not.toContain('admin.accounts.codexTickets.states.undefined')
-    wrapper.unmount()
-  })
   it('round-trips OAuth alias scope and lets an operator restore a whitelist', async () => {
     const account = { ...buildAccount(), type: 'oauth', credentials: { model_mapping_mode: 'aliases', model_mapping: { 'gpt-5.4': 'gpt-5.6-sol' } } }
     const wrapper = mountModal(account); await flushPromises()
@@ -431,67 +423,12 @@ describe('EditAccountModal', () => {
     }
   })
 
-  it('saves, restores and clears the per-account gateway blacklist', async () => {
-    const account = buildOpenAIOAuthParentAccount()
-    account.extra = { unrelated: 'preserve' }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-    const wrapper = mountModal(account)
-    await wrapper.get('[data-testid="openai-codex-ticket-gateway-blacklist"]').setValue('unified-12, unified-35\n12')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
-    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
-    expect(extra.openai_codex_ticket_gateway_blacklist).toEqual(['unified-12', 'unified-35'])
-    expect(extra.unrelated).toBe('preserve')
-    wrapper.unmount()
-    const restored = mountModal({ ...account, extra })
-    expect(restored.get<HTMLTextAreaElement>('[data-testid="openai-codex-ticket-gateway-blacklist"]').element.value).toBe('unified-12, unified-35')
-    await restored.get('[data-testid="openai-codex-ticket-gateway-blacklist"]').setValue('')
-    await restored.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
-    expect(updateAccountMock.mock.calls[1]?.[1]?.extra.openai_codex_ticket_gateway_blacklist).toEqual([])
-    restored.unmount()
-  })
-  it('validates blacklist names before saving account settings', async () => {
-    updateAccountMock.mockReset()
-    const wrapper = mountModal(buildOpenAISetupTokenAccount())
-    await wrapper.get('[data-testid="openai-codex-ticket-gateway-blacklist"]').setValue('any')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
-    expect(updateAccountMock).not.toHaveBeenCalled()
-    wrapper.unmount()
-  })
-  it('saves, restores and clears the per-account Codex ticket gateway', async () => {
-    const account = buildOpenAIOAuthParentAccount()
-    account.extra = { unrelated: 'preserve' }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-    const wrapper = mountModal(account)
-    const input = wrapper.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]')
-    await input.setValue('unified-95')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
-    expect(extra.openai_codex_ticket_gateway).toBe('unified-95')
-    expect(extra.unrelated).toBe('preserve')
-    wrapper.unmount()
-
-    const restored = mountModal({ ...account, extra })
-    expect(restored.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]').element.value).toBe('unified-95')
-    await restored.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]').setValue('')
-    await restored.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(updateAccountMock.mock.calls[1]?.[1]?.extra).not.toHaveProperty('openai_codex_ticket_gateway')
-    restored.unmount()
-  })
   beforeEach(() => {
     showErrorMock.mockReset()
     authIsSimpleMode.value = true
   })
 
-  it('uses the Kiro direct API-key placeholder when base_url is absent', () => {
-    const wrapper = mountModal(buildKiroAPIKeyAccount())
-    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(true)
-    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(false)
-    wrapper.unmount()
-  })
+  afterEach(() => vi.useRealTimers())
 
   it('saves and restores Excel BPS independently of existing OAuth settings', async () => {
     const account = buildAccount()
@@ -2485,29 +2422,6 @@ describe('EditAccountModal', () => {
 })
 
 describe('EditAccountModal OpenAI 自动使用重置卡', () => {
-  it('saves, restores and clears the per-account Codex ticket gateway', async () => {
-    const account = buildOpenAIOAuthParentAccount()
-    account.extra = { unrelated: 'preserve' }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-    const wrapper = mountModal(account)
-    const input = wrapper.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]')
-    await input.setValue('unified-95')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
-    expect(extra.openai_codex_ticket_gateway).toBe('unified-95')
-    expect(extra.unrelated).toBe('preserve')
-    wrapper.unmount()
-
-    const restored = mountModal({ ...account, extra })
-    expect(restored.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]').element.value).toBe('unified-95')
-    await restored.get<HTMLInputElement>('[data-testid="openai-codex-ticket-gateway"]').setValue('')
-    await restored.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(updateAccountMock.mock.calls[1]?.[1]?.extra).not.toHaveProperty('openai_codex_ticket_gateway')
-    restored.unmount()
-  })
   beforeEach(() => {
     authIsSimpleMode.value = true
     updateAccountMock.mockReset()

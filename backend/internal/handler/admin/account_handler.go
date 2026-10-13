@@ -51,18 +51,11 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 
 // AccountHandler handles admin account management
 type AccountHandler struct {
-	codexTicketSettings     *service.SettingService
-	codexHarvest            *service.CodexHarvestService
-	openAIGatewayService    *service.OpenAIGatewayService
-	cfg                     *config.Config
-	opencodeGoUsage         *service.OpenCodeGoUsageService
-	codexTicketProvider     codexTicketProvider
 	adminService            service.AdminService
 	oauthService            *service.OAuthService
 	openaiOAuthService      *service.OpenAIOAuthService
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
-	kiroOAuthService        *service.KiroOAuthService
 	grokOAuthService        service.GrokOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
@@ -75,6 +68,12 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	codexTicketSettings     *service.SettingService
+	codexHarvest            *service.CodexHarvestService
+	openAIGatewayService    *service.OpenAIGatewayService
+	cfg                     *config.Config
+	opencodeGoUsage         *service.OpenCodeGoUsageService
+	kiroOAuthService        *service.KiroOAuthService
 	yeTeam                  *yeteam.Client
 	sessionService          openAISessionService
 }
@@ -88,16 +87,19 @@ func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUs
 	h.ollamaCloudUsage = usage
 }
 
+// SetCodexTicketSettings supplies the live policy without mutating shared config.
+func (h *AccountHandler) SetCodexTicketSettings(settings *service.SettingService) {
+	h.codexTicketSettings = settings
+}
+
 func (h *AccountHandler) SetYeTeamClient(client *yeteam.Client) {
 	h.yeTeam = client
 }
 
-func (h *AccountHandler) SetCodexTicketSettings(settings *service.SettingService) {
-	h.codexTicketSettings = settings
-}
 func (h *AccountHandler) SetOpenAIGatewayService(gateway *service.OpenAIGatewayService) {
 	h.openAIGatewayService = gateway
 }
+
 func (h *AccountHandler) SetOpenCodeGoUsageService(usage *service.OpenCodeGoUsageService) {
 	h.opencodeGoUsage = usage
 }
@@ -231,14 +233,13 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	simpleMode               bool                              `json:"-"`
-	CodexTickets             []service.OpenAICodexTicketStatus `json:"codex_tickets,omitempty"`
-	CurrentConcurrency       int                               `json:"current_concurrency"`
-	SchedulerScore           *AccountSchedulerScore            `json:"scheduler_score,omitempty"`
-	SchedulerScores          []AccountSchedulerGroupScore      `json:"scheduler_scores,omitempty"`
-	OnlineTerminalCount      *int                              `json:"online_terminal_count,omitempty"`
-	OnlineWebTerminalCount   *int                              `json:"online_web_terminal_count,omitempty"`
-	OnlineCodexTerminalCount *int                              `json:"online_codex_terminal_count,omitempty"`
+	simpleMode               bool                         `json:"-"`
+	CurrentConcurrency       int                          `json:"current_concurrency"`
+	SchedulerScore           *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
+	SchedulerScores          []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
+	OnlineTerminalCount      *int                         `json:"online_terminal_count,omitempty"`
+	OnlineWebTerminalCount   *int                         `json:"online_web_terminal_count,omitempty"`
+	OnlineCodexTerminalCount *int                         `json:"online_codex_terminal_count,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
@@ -382,29 +383,13 @@ type AccountSchedulerGroupScore struct {
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
-const (
-	openAIOnlineTerminalCountTimeout = 5 * time.Second
-	openAIOnlineTerminalCountWorkers = 8
-)
-
-func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
-	if h == nil || out == nil || account == nil {
-		return
+func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
+	out := dto.AccountFromService(account)
+	h.enrichCodexTicketStatus(account, out)
+	if h != nil && h.ollamaCloudUsage != nil && out != nil {
+		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
-	if h.codexTicketProvider != nil {
-		out.CodexTickets = h.codexTicketProvider.OpenAICodexTicketStatuses(context.Background(), account, time.Now())
-		return
-	}
-	if h.cfg == nil {
-		return
-	}
-	cfg := h.cfg.Gateway.OpenAICodexTicket
-	if h.codexTicketSettings != nil {
-		cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
-		cfg.Models = h.codexTicketSettings.GetOpenAICodexTicketModels(context.Background(), cfg.Models)
-		cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background())
-	}
-	out.CodexTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+	return out
 }
 
 func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
@@ -419,18 +404,26 @@ func (h *AccountHandler) accountListResponseFromService(account *service.Account
 	return out
 }
 
+func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
+	if h != nil && h.cfg != nil && out != nil {
+		cfg := h.cfg.Gateway.OpenAICodexTicket
+		if h.codexTicketSettings != nil {
+			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+			cfg.Models = h.codexTicketSettings.GetOpenAICodexTicketModels(context.Background(), cfg.Models)
+			cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background())
+		}
+		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+	}
+}
+
 func (h *AccountHandler) isSimpleMode() bool {
 	return h != nil && h.cfg != nil && h.cfg.RunMode == config.RunModeSimple
 }
 
-func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
-	out := dto.AccountFromService(account)
-	h.enrichCodexTicketStatus(account, out)
-	if h != nil && h.ollamaCloudUsage != nil && out != nil {
-		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
-	}
-	return out
-}
+const (
+	openAIOnlineTerminalCountTimeout = 5 * time.Second
+	openAIOnlineTerminalCountWorkers = 8
+)
 
 // listOpenAIOnlineTerminalCounts fetches device counts for the current page.
 // Each upstream failure is isolated so a slow or unavailable OpenAI account
@@ -509,11 +502,11 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	if h.accountUsageService != nil {
 		h.accountUsageService.EnrichAccountWithKiroRuntimeState(ctx, account)
 	}
+
 	item := AccountWithConcurrency{
 		Account:            dto.AccountForObserver(ctx, h.accountResponseFromService(account)),
 		simpleMode:         h.isSimpleMode(),
 		CurrentConcurrency: 0,
-		CodexTickets:       h.codexTicketStatuses(ctx, account),
 	}
 	if account == nil {
 		return item
@@ -991,7 +984,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 			Account:            accountResponse,
 			simpleMode:         h.isSimpleMode(),
 			CurrentConcurrency: concurrencyCounts[acc.ID],
-			CodexTickets:       h.codexTicketStatuses(c.Request.Context(), acc),
 			SchedulerScore:     schedulerScores[acc.ID],
 			SchedulerScores:    schedulerGroupScores[acc.ID],
 		}
@@ -1003,7 +995,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 				item.OnlineCodexTerminalCount = &counts.Codex
 			}
 		}
-
 		// 添加窗口费用（仅当启用时）
 		if windowCosts != nil {
 			if cost, ok := windowCosts[acc.ID]; ok {
@@ -1043,12 +1034,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 		compact := make([]AccountListItemWithConcurrency, len(result))
 		for i := range result {
 			item := result[i]
-			listItem := dto.AccountListItemFromAccount(item.Account)
-			if listItem != nil {
-				listItem.CodexTickets = item.CodexTickets
-			}
 			compact[i] = AccountListItemWithConcurrency{
-				AccountListItem:    listItem,
+				AccountListItem:    dto.AccountListItemFromAccount(item.Account),
 				CurrentConcurrency: item.CurrentConcurrency,
 				SchedulerScore:     item.SchedulerScore,
 				SchedulerScores:    item.SchedulerScores,
@@ -1082,27 +1069,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	if lite {
-		compact := make([]AccountListItemWithConcurrency, len(result))
-		for i, item := range result {
-			listItem := dto.AccountListItemFromAccount(item.Account)
-			if listItem != nil {
-				listItem.CodexTickets = item.CodexTickets
-			}
-			if h.isSimpleMode() && listItem != nil {
-				listItem.GroupIDs = filterSimpleModeGroupIDs(listItem.GroupIDs, simpleModeCompositeServiceGroupIDs(&accounts[i]))
-			}
-			compact[i] = AccountListItemWithConcurrency{
-				AccountListItem:    listItem,
-				CurrentConcurrency: item.CurrentConcurrency,
-				SchedulerScore:     item.SchedulerScore, SchedulerScores: item.SchedulerScores,
-				CurrentWindowCost: item.CurrentWindowCost, ActiveSessions: item.ActiveSessions,
-				CurrentRPM: item.CurrentRPM,
-			}
-		}
-		response.Paginated(c, compact, total, page, pageSize)
-		return
-	}
 	response.Paginated(c, result, total, page, pageSize)
 }
 

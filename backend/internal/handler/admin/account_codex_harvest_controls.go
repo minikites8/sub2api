@@ -25,7 +25,16 @@ func (h *AccountHandler) GetCodexHarvestControls(c *gin.Context) {
 	if !h.harvestControlsReady(c) {
 		return
 	}
-	response.Success(c, h.codexHarvest.SnapshotWithSettings(c.Request.Context(), h.cfg, h.codexTicketSettings))
+	proxy := ""
+	if h.cfg != nil {
+		proxy = h.cfg.Gateway.OpenAICodexTicket.HarvestProxyURL
+	}
+	if h.codexTicketSettings != nil {
+		if override := h.codexTicketSettings.GetOpenAICodexTicketHarvestProxyURL(c.Request.Context()); override != "" {
+			proxy = override
+		}
+	}
+	response.Success(c, h.codexHarvest.Snapshot(c.Request.Context(), proxy))
 }
 
 func (h *AccountHandler) UpdateCodexHarvestControls(c *gin.Context) {

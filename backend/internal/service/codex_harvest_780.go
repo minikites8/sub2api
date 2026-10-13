@@ -136,9 +136,6 @@ func (s *OpenAIGatewayService) requestCodex780Probe(ctx context.Context, account
 	// Self collection has no seed. Fast reuse is an explicit candidate, and
 	// only the new state issued to the target may enter its account store.
 	controls, _ := s.harvestControls(ctx)
-	if s.usesRemoteCodexMint(ctx) {
-		return s.requestCodexCloudMintProbe(ctx, account, token, model, proxy, reserve, session, controls)
-	}
 	seed, borrowed := ctx.Value(codex780SeedContextKey{}).(codex780Seed)
 	out = s.requestCodex780Shot(ctx, account, token, model, proxy, reserve, session, seed.state, seed.cookies, controls)
 	if borrowed && out.Err == nil && out.State == seed.state {
@@ -179,68 +176,12 @@ func (s *OpenAIGatewayService) requestCodex780Shot(ctx context.Context, account 
 	if edge, ok := ctx.Value(codexMintEdgeContextKey{}).(string); ok {
 		controls.EdgeIP = edge
 	}
-	if s.usesRemoteCodexMint(ctx) {
-		return s.requestCodexCloudMintProbe(ctx, account, token, model, proxy, reserve, session, controls)
-	}
-	return s.requestLocalCodex780Probe(ctx, account, token, model, proxy, reserve, session, codex780Seed{state: state, cookies: seed})
-}
-
-func codex780ResponseRoute(resp *http.Response, seed []string, target string, now time.Time) ([]string, error) {
-	var incoming []string
-	for _, cookie := range resp.Cookies() {
-		if cookie.Name != "__cflb" && cookie.Name != "__oailb" {
-			continue
-		}
-		if cookie.Value == "" || cookie.MaxAge < 0 || (cookie.MaxAge == 0 && !cookie.Expires.IsZero() && !now.Before(cookie.Expires)) {
-			return nil, mintRouteError("route_cookie_deleted")
-		}
-		incoming = append(incoming, cookie.Name+"="+cookie.Value)
-	}
-	if len(incoming) == 0 {
-		incoming = seed
-	}
-	// A changed pair must be complete; never combine old and new halves.
-	clean, _, err := codex780Route(incoming, target, now)
-	return clean, err
-}
-
-func splitCodex780SSELine(data []byte, atEOF bool) (int, []byte, error) {
-	for i, b := range data {
-		if b != '\r' && b != '\n' {
-			continue
-		}
-		n := 1
-		if b == '\r' {
-			if i+1 == len(data) && !atEOF {
-				return 0, nil, nil
-			}
-			if i+1 < len(data) && data[i+1] == '\n' {
-				n = 2
-			}
-		}
-		return i + n, data[:i], nil
-	}
-	if atEOF && len(data) > 0 {
-		return len(data), data, nil
-	}
-	return 0, nil, nil
-}
-
-func (s *OpenAIGatewayService) requestLocalCodex780Probe(ctx context.Context, account *Account, token, model, proxy string, reserve func() bool, session string, explicitSeed ...codex780Seed) (out codexHarvestProbeResult) {
-	var state string
-	var seed []string
-	if len(explicitSeed) > 0 {
-		state, seed = explicitSeed[0].state, explicitSeed[0].cookies
-	}
-	controls, _ := s.harvestControls(ctx)
-	if edge, ok := ctx.Value(codexMintEdgeContextKey{}).(string); ok {
-		controls.EdgeIP = edge
-	}
 	if err := validateCodexMintEdgeIP(controls.EdgeIP); err != nil {
 		out.Err = err
 		return
 	}
-	target := effectiveCodex780GatewayForAccount(s.openAICodexTicketConfig(), controls, account)
+	// Gateway claims describe routing, not ticket quality.
+	target := "any"
 	out.Gateway = target
 	out.Transport = "sse"
 	out.EdgeIP = controls.EdgeIP
@@ -267,32 +208,9 @@ func (s *OpenAIGatewayService) requestLocalCodex780Probe(ctx context.Context, ac
 		out.Err = errors.New("account identity unavailable")
 		return
 	}
-	// Keep a target route even when no acceptable ticket was returned. Models
-	// share routes only within the same account, credentials, protocol and SID.
-	protocol := controls.Transport
-	if protocol == "" {
-		protocol = "sse"
-	}
-	key := codex780RouteKey(account, token, req.Header.Get("Chatgpt-Account-Id"), target, protocol, proxy)
-	if len(explicitSeed) == 0 && len(seed) == 0 && state == "" {
-		var cached bool
-		seed, cached = s.codex780Routes.get(key, time.Now())
-		if !cached {
-			if ticket := s.lookupOpenAICodexTicket(account, model); ticket != nil && !ticket.Revoked &&
-				(codexHarvestProxySID(proxy) == "" || ticket.HarvestProxyURL == proxy) {
-				seed, _, _ = codex780Route(ticket.HarvestCookies, target, time.Now())
-			}
-		}
-	}
 	if len(seed) > 0 {
 		req.Header.Set("Cookie", strings.Join(seed, "; "))
 	}
-	defer func() {
-		if slices.Contains(OpenAICodexTicketGatewayBlacklist(account), out.Gateway) {
-			out.Err = mintRouteError("route_gateway_blacklisted")
-		}
-		s.codex780Routes.update(key, target, seed, out, time.Now())
-	}()
 	if ctx.Err() != nil || (reserve != nil && !reserve()) {
 		out.Err = errors.New("mint request no longer admitted")
 		return
@@ -346,10 +264,6 @@ func (s *OpenAIGatewayService) requestLocalCodex780Probe(ctx context.Context, ac
 		return
 	}
 	out.Gateway = codex780CookieGateway(out.Cookies)
-	if slices.Contains(OpenAICodexTicketGatewayBlacklist(account), out.Gateway) {
-		out.Err = mintRouteError("route_gateway_blacklisted")
-		return
-	}
 	if out.Gateway == "" {
 		out.Gateway = "any"
 	}
@@ -380,4 +294,23 @@ func readCodexHarvestComplete(body io.Reader) error {
 		return &codexMintError{kind: "response_incomplete_or_error", detail: "ticket probe did not complete"}
 	}
 	return nil
+}
+
+func codex780ResponseRoute(resp *http.Response, seed []string, target string, now time.Time) ([]string, error) {
+	var incoming []string
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name != "__cflb" && cookie.Name != "__oailb" {
+			continue
+		}
+		if cookie.Value == "" || cookie.MaxAge < 0 || (cookie.MaxAge == 0 && !cookie.Expires.IsZero() && !now.Before(cookie.Expires)) {
+			return nil, mintRouteError("route_cookie_deleted")
+		}
+		incoming = append(incoming, cookie.Name+"="+cookie.Value)
+	}
+	if len(incoming) == 0 {
+		incoming = seed
+	}
+	// A changed pair must be complete; never combine old and new halves.
+	clean, _, err := codex780Route(incoming, target, now)
+	return clean, err
 }

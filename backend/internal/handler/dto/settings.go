@@ -28,50 +28,35 @@ type CustomEndpoint struct {
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	OpenAICodexTicketHarvestScope         service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
-	OpenAICodexTicketStrictResponse       bool                            `json:"openai_codex_ticket_strict_response,omitempty"`
-	OpenAICodexTicketFailClosed           bool                            `json:"openai_codex_ticket_fail_closed"`
-	OpenAICodexTicketStrategy             string                          `json:"openai_codex_ticket_strategy"`
-	RegistrationEnabled                   bool                            `json:"registration_enabled"`
-	PrismBrowserEnabled                   bool                            `json:"prism_browser_enabled"`
-	PrismBrowserBaseURL                   string                          `json:"prism_browser_base_url"`
-	PrismBrowserAPIKeyConfigured          bool                            `json:"prism_browser_api_key_configured"`
-	EmailVerifyEnabled                    bool                            `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist      []string                        `json:"registration_email_suffix_whitelist"`
-	RegistrationEmailDomainQuotaEnabled   bool                            `json:"registration_email_domain_quota_enabled"`
-	PromoCodeEnabled                      bool                            `json:"promo_code_enabled"`
-	PasswordResetEnabled                  bool                            `json:"password_reset_enabled"`
-	FrontendURL                           string                          `json:"frontend_url"`
-	InvitationCodeEnabled                 bool                            `json:"invitation_code_enabled"`
-	TotpEnabled                           bool                            `json:"totp_enabled"`                   // TOTP 双因素认证
-	TotpEncryptionKeyConfigured           bool                            `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
-	PasskeyEnabled                        bool                            `json:"passkey_enabled"`
-	PasskeyConfigured                     bool                            `json:"passkey_configured"`
-	PasskeyRPID                           string                          `json:"passkey_rp_id"`
-	PasskeyRPOrigins                      []string                        `json:"passkey_rp_origins"`
-	SessionBindingEnabled                 bool                            `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
-	StepUpEnabled                         bool                            `json:"step_up_enabled"`          // 敏感操作 step-up 2FA
-	AuditLogRetentionDays                 int                             `json:"audit_log_retention_days"` // 审计日志保留天数
-	LoginAgreementEnabled                 bool                            `json:"login_agreement_enabled"`
-	LoginAgreementMode                    string                          `json:"login_agreement_mode"`
-	LoginAgreementUpdatedAt               string                          `json:"login_agreement_updated_at"`
-	LoginAgreementDocuments               []LoginAgreementDocument        `json:"login_agreement_documents"`
-	SignupIPRiskControlThreshold          int                             `json:"signup_ip_risk_control_threshold"`
-	SignupIPDisablePreviousAccounts       bool                            `json:"signup_ip_disable_previous_accounts"`
-	SignupIPKeepPreviousAccounts          int                             `json:"signup_ip_keep_previous_accounts"`
-	APIUsageIPUARiskControlThreshold      int                             `json:"api_usage_ip_ua_risk_control_threshold"`
-	APIUsageIPUADisablePreviousAccounts   bool                            `json:"api_usage_ip_ua_disable_previous_accounts"`
-	APIUsageIPUAKeepPreviousAccounts      int                             `json:"api_usage_ip_ua_keep_previous_accounts"`
-	AntiAbuseEnabled                      bool                            `json:"anti_abuse_enabled"`
-	AntiAbuseScoreThreshold               int                             `json:"anti_abuse_score_threshold"`
-	AntiAbuseFingerprintWeight            int                             `json:"anti_abuse_fingerprint_weight"`
-	AntiAbuseIPWeight                     int                             `json:"anti_abuse_ip_weight"`
-	AntiAbuseEmailWeight                  int                             `json:"anti_abuse_email_weight"`
-	AntiAbuseUserAgentWeight              int                             `json:"anti_abuse_user_agent_weight"`
-	AntiAbuseTLSFingerprintWeight         int                             `json:"anti_abuse_tls_fingerprint_weight"`
-	AntiAbuseIPReputationEndpoint         string                          `json:"anti_abuse_ip_reputation_endpoint"`
-	AntiAbuseIPReputationAPIKeyConfigured bool                            `json:"anti_abuse_ip_reputation_api_key_configured"`
-	OpenAICodexTicketCandyObservation     bool                            `json:"openai_codex_ticket_candy_observation"`
+	OpenAICodexTicketHarvestScope       service.CodexTicketHarvestScope `json:"openai_codex_ticket_harvest_scope"`
+	OpenAICodexTicketStrictResponse     bool                            `json:"openai_codex_ticket_strict_response,omitempty"`
+	OpenAICodexTicketCandyObservation   bool                            `json:"openai_codex_ticket_candy_observation"`
+	OpenAICodexTicketFailClosed         bool                            `json:"openai_codex_ticket_fail_closed"`
+	OpenAICodexTicketStrategy           string                          `json:"openai_codex_ticket_strategy"`
+	RegistrationEnabled                 bool                            `json:"registration_enabled"`
+	PrismBrowserEnabled                 bool                            `json:"prism_browser_enabled"`
+	PrismBrowserBaseURL                 string                          `json:"prism_browser_base_url"`
+	PrismBrowserAPIKeyConfigured        bool                            `json:"prism_browser_api_key_configured"`
+	EmailVerifyEnabled                  bool                            `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist    []string                        `json:"registration_email_suffix_whitelist"`
+	RegistrationEmailDomainQuotaEnabled bool                            `json:"registration_email_domain_quota_enabled"`
+	PromoCodeEnabled                    bool                            `json:"promo_code_enabled"`
+	PasswordResetEnabled                bool                            `json:"password_reset_enabled"`
+	FrontendURL                         string                          `json:"frontend_url"`
+	InvitationCodeEnabled               bool                            `json:"invitation_code_enabled"`
+	TotpEnabled                         bool                            `json:"totp_enabled"`                   // TOTP 双因素认证
+	TotpEncryptionKeyConfigured         bool                            `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	PasskeyEnabled                      bool                            `json:"passkey_enabled"`
+	PasskeyConfigured                   bool                            `json:"passkey_configured"`
+	PasskeyRPID                         string                          `json:"passkey_rp_id"`
+	PasskeyRPOrigins                    []string                        `json:"passkey_rp_origins"`
+	SessionBindingEnabled               bool                            `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	StepUpEnabled                       bool                            `json:"step_up_enabled"`          // 敏感操作 step-up 2FA
+	AuditLogRetentionDays               int                             `json:"audit_log_retention_days"` // 审计日志保留天数
+	LoginAgreementEnabled               bool                            `json:"login_agreement_enabled"`
+	LoginAgreementMode                  string                          `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt             string                          `json:"login_agreement_updated_at"`
+	LoginAgreementDocuments             []LoginAgreementDocument        `json:"login_agreement_documents"`
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -237,22 +222,16 @@ type SystemSettings struct {
 	RewriteMessageCacheControl              bool     `json:"rewrite_message_cache_control"`
 	EnableClientDatelineNormalization       bool     `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion             string   `json:"antigravity_user_agent_version"`
-	OpenAICodexRelayURL                     string   `json:"openai_codex_relay_url"`
-	OpenAICodexRelayKeyConfigured           bool     `json:"openai_codex_relay_key_configured"`
-	OpenAICodexRelayKeyEnv                  string   `json:"openai_codex_relay_key_env,omitempty"`
-	OpenAICodexRelayTransport               string   `json:"openai_codex_relay_transport"`
-	OpenAICodexRelayGateway                 string   `json:"openai_codex_relay_gateway"`
-	OpenAICodexRelayTimeoutSeconds          int      `json:"openai_codex_relay_timeout_seconds"`
-	OpenAICodexTicketHarvestProxyURL        string   `json:"openai_codex_ticket_harvest_proxy_url"`
-	OpenAICodexTicketHarvestProxyConfigured bool     `json:"openai_codex_ticket_harvest_proxy_configured"`
-	OpenAICodexTicketEnabled                bool     `json:"openai_codex_ticket_enabled"`
-	OpenAICodexTicketModels                 []string `json:"openai_codex_ticket_models"`
 	OpenAICodexUserAgent                    string   `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion                string   `json:"openai_codex_client_version"`
 	OpenAICodexClientVersionSynced          string   `json:"openai_codex_client_version_synced"`
 	OpenAICodexVersionAutoSyncEnabled       bool     `json:"openai_codex_version_auto_sync_enabled"`
 	OpenAIRequestTimezoneEnabled            bool     `json:"openai_request_timezone_enabled"`
+	OpenAICodexTicketEnabled                bool     `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketHarvestProxyURL        string   `json:"openai_codex_ticket_harvest_proxy_url"`
 	OpenAICodexTicketStaticProxyURL         string   `json:"openai_codex_ticket_static_proxy_url,omitempty"`
+	OpenAICodexTicketHarvestProxyConfigured bool     `json:"openai_codex_ticket_harvest_proxy_configured"`
+	OpenAICodexTicketModels                 []string `json:"openai_codex_ticket_models"`
 	ClaudeCodeClientVersion                 string   `json:"claude_code_client_version"`
 	ClaudeCodeClientVersionSynced           string   `json:"claude_code_client_version_synced"`
 	ClaudeCodeVersionAutoSyncEnabled        bool     `json:"claude_code_version_auto_sync_enabled"`
@@ -399,26 +378,41 @@ type SystemSettings struct {
 	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas,omitempty"`
 
 	// 允许终端用户在用量页查看自己的失败请求
-	AllowUserViewErrorRequests    bool   `json:"allow_user_view_error_requests"`
-	UsageShowLongContextBadge     bool   `json:"usage_show_long_context_badge"`
-	RequestCaptureEnabled         bool   `json:"request_capture_enabled"`
-	RequestCaptureQuotaMiB        int64  `json:"request_capture_quota_mib"`
-	RequestCaptureRetentionDays   int    `json:"request_capture_retention_days"`
-	ExcelBPSImageMode             string `json:"excel_bps_image_mode"`
-	ExcelBPSImageRelayEnabled     bool   `json:"excel_bps_image_relay_enabled"`
-	ExcelBPSImageBaseURL          string `json:"excel_bps_image_base_url"`
-	ExcelBPSImageBodyLimitMiB     int    `json:"excel_bps_image_body_limit_mib"`
-	ExcelBPSImageBudgetMiB        int    `json:"excel_bps_image_budget_mib"`
-	ExcelBPSImageMaxRequests      int    `json:"excel_bps_image_max_requests"`
-	ExcelBPSImageMaxImageMiB      int    `json:"excel_bps_image_max_image_mib"`
-	ExcelBPSImageMaxImages        int    `json:"excel_bps_image_max_images"`
-	ExcelBPSImageLimitPolicy      string `json:"excel_bps_image_limit_policy"`
-	ExcelBPSImageWarningRemaining int    `json:"excel_bps_image_warning_remaining"`
-	ExcelBPSImageCompactReserve   int    `json:"excel_bps_image_compact_reserve"`
-	ExcelBPSImageMaxTotalMiB      int    `json:"excel_bps_image_max_total_mib"`
-	ExcelBPSImageStorageMiB       int    `json:"excel_bps_image_storage_mib"`
-	ExcelBPSImageStorageEntries   int    `json:"excel_bps_image_storage_entries"`
-	ExcelBPSImageTTLMinutes       int    `json:"excel_bps_image_ttl_minutes"`
+	AllowUserViewErrorRequests            bool   `json:"allow_user_view_error_requests"`
+	UsageShowLongContextBadge             bool   `json:"usage_show_long_context_badge"`
+	RequestCaptureEnabled                 bool   `json:"request_capture_enabled"`
+	RequestCaptureQuotaMiB                int64  `json:"request_capture_quota_mib"`
+	RequestCaptureRetentionDays           int    `json:"request_capture_retention_days"`
+	ExcelBPSImageMode                     string `json:"excel_bps_image_mode"`
+	ExcelBPSImageRelayEnabled             bool   `json:"excel_bps_image_relay_enabled"`
+	ExcelBPSImageBaseURL                  string `json:"excel_bps_image_base_url"`
+	ExcelBPSImageBodyLimitMiB             int    `json:"excel_bps_image_body_limit_mib"`
+	ExcelBPSImageBudgetMiB                int    `json:"excel_bps_image_budget_mib"`
+	ExcelBPSImageMaxRequests              int    `json:"excel_bps_image_max_requests"`
+	ExcelBPSImageMaxImageMiB              int    `json:"excel_bps_image_max_image_mib"`
+	ExcelBPSImageMaxImages                int    `json:"excel_bps_image_max_images"`
+	ExcelBPSImageLimitPolicy              string `json:"excel_bps_image_limit_policy"`
+	ExcelBPSImageWarningRemaining         int    `json:"excel_bps_image_warning_remaining"`
+	ExcelBPSImageCompactReserve           int    `json:"excel_bps_image_compact_reserve"`
+	ExcelBPSImageMaxTotalMiB              int    `json:"excel_bps_image_max_total_mib"`
+	ExcelBPSImageStorageMiB               int    `json:"excel_bps_image_storage_mib"`
+	ExcelBPSImageStorageEntries           int    `json:"excel_bps_image_storage_entries"`
+	ExcelBPSImageTTLMinutes               int    `json:"excel_bps_image_ttl_minutes"`
+	SignupIPRiskControlThreshold          int    `json:"signup_ip_risk_control_threshold"`
+	SignupIPDisablePreviousAccounts       bool   `json:"signup_ip_disable_previous_accounts"`
+	SignupIPKeepPreviousAccounts          int    `json:"signup_ip_keep_previous_accounts"`
+	APIUsageIPUARiskControlThreshold      int    `json:"api_usage_ip_ua_risk_control_threshold"`
+	APIUsageIPUADisablePreviousAccounts   bool   `json:"api_usage_ip_ua_disable_previous_accounts"`
+	APIUsageIPUAKeepPreviousAccounts      int    `json:"api_usage_ip_ua_keep_previous_accounts"`
+	AntiAbuseEnabled                      bool   `json:"anti_abuse_enabled"`
+	AntiAbuseScoreThreshold               int    `json:"anti_abuse_score_threshold"`
+	AntiAbuseFingerprintWeight            int    `json:"anti_abuse_fingerprint_weight"`
+	AntiAbuseIPWeight                     int    `json:"anti_abuse_ip_weight"`
+	AntiAbuseEmailWeight                  int    `json:"anti_abuse_email_weight"`
+	AntiAbuseUserAgentWeight              int    `json:"anti_abuse_user_agent_weight"`
+	AntiAbuseTLSFingerprintWeight         int    `json:"anti_abuse_tls_fingerprint_weight"`
+	AntiAbuseIPReputationEndpoint         string `json:"anti_abuse_ip_reputation_endpoint"`
+	AntiAbuseIPReputationAPIKeyConfigured bool   `json:"anti_abuse_ip_reputation_api_key_configured"`
 }
 
 type DefaultSubscriptionSetting struct {

@@ -1,16 +1,15 @@
-//go:build unit
-
 package admin
 
 import (
 	"context"
 	"encoding/json"
-	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSettingsCodexTicketProxyWriteReadAndHotReload(t *testing.T) {
@@ -108,36 +107,21 @@ func TestSettingsCodexTicketIPPoolRoundTripKeepsStaticProxy(t *testing.T) {
 }
 
 func TestSettingsCodexTicketStrategyRoundTrip(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketStrategy
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
-	rec := doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_enabled": true, "openai_codex_ticket_harvest_proxy_url": "http://user:ticket-test-secret-123@proxy.example:8080", "openai_codex_ticket_models": []string{"a", "b", "a"}}, nil)
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Equal(t, "true", repo.values[service.SettingKeyOpenAICodexTicketEnabled])
-	require.Equal(t, `["a","b"]`, repo.values[service.SettingKeyOpenAICodexTicketModels])
-	require.NotContains(t, rec.Body.String(), "ticket-test-secret-123")
-	original := repo.values[service.SettingKeyOpenAICodexTicketHarvestProxyURL]
-	rec = doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_harvest_proxy_url": service.MaskCodexTicketProxyURL(original)}, nil)
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Equal(t, original, repo.values[service.SettingKeyOpenAICodexTicketHarvestProxyURL])
-	rec = doUpdateSettings(t, h, map[string]any{"site_name": "retained"}, nil)
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, original, repo.values[service.SettingKeyOpenAICodexTicketHarvestProxyURL])
-	require.Equal(t, "true", repo.values[service.SettingKeyOpenAICodexTicketEnabled])
-	rec = doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_enabled": false, "openai_codex_ticket_harvest_proxy_url": ""}, nil)
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "false", repo.values[service.SettingKeyOpenAICodexTicketEnabled])
-	require.Equal(t, original, repo.values[service.SettingKeyOpenAICodexTicketHarvestProxyURL])
-}
-func TestCodexTicketSettingsInvalidProxy(t *testing.T) {
-	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
-	rec := doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_harvest_proxy_url": "file:///secret"}, nil)
+	require.Equal(t, "standby", h.settingService.GetCodexTicketStrategy(context.Background()))
+	for _, strategy := range []string{"fixed", "standby"} {
+		rec := doUpdateSettings(t, h, map[string]any{key: strategy}, nil)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		require.Equal(t, strategy, repo.values[key])
+		require.Equal(t, strategy, h.settingService.GetCodexTicketStrategy(context.Background()))
+		rec = doUpdateSettings(t, h, map[string]any{"site_name": "kept"}, nil)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, strategy, repo.values[key])
+	}
+	rec := doUpdateSettings(t, h, map[string]any{key: "unknown"}, nil)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
-	require.Empty(t, repo.values[service.SettingKeyOpenAICodexTicketHarvestProxyURL])
-}
-func TestCodexTicketSettingsAuditMasksPassword(t *testing.T) {
-	proxy := "http://user:ticket-test-secret-123@proxy.example:8080"
-	req := settingsAuditRequest(UpdateSettingsRequest{OpenAICodexTicketHarvestProxyURL: &proxy})
-	require.NotContains(t, *req.OpenAICodexTicketHarvestProxyURL, "ticket-test-secret-123")
-	require.Contains(t, proxy, "ticket-test-secret-123")
+	require.Equal(t, "standby", repo.values[key])
 }
 
 func TestSettingsCodexTicketStrictPreservesOmittedValue(t *testing.T) {

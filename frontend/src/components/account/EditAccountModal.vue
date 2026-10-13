@@ -572,7 +572,8 @@
                 </button>
               </div>
             </div>
-          </template>
+            <ConfirmDialog :show="showErrorCodeWarning" :title="t('admin.accounts.customErrorCodes')" :message="errorCodeWarningMessage" :confirm-text="t('common.confirm')" :cancel-text="t('common.cancel')" @confirm="confirmAddErrorCode" @cancel="showErrorCodeWarning = false" />
+</template>
         </div>
 
         <!-- Pool Mode Section -->
@@ -2198,35 +2199,6 @@
         </div>
       </div>
 
-      <!-- OpenAI Codex ticket relay gateway override (OAuth / Setup Token) -->
-      <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token')"
-        class="space-y-2 border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
-        <label class="input-label">{{ t('admin.accounts.openai.codexTicketGateway') }}</label>
-        <input
-          v-model="openAICodexTicketGateway"
-          type="text"
-          class="input font-mono"
-          :placeholder="t('admin.accounts.openai.codexTicketGatewayPlaceholder')"
-          data-testid="openai-codex-ticket-gateway"
-          autocomplete="off"
-        />
-        <p class="text-xs text-gray-500 dark:text-gray-400">
-          {{ t('admin.accounts.openai.codexTicketGatewayHint') }}
-        </p>
-        <label for="openai-codex-ticket-gateway-blacklist" class="input-label pt-2">{{ t('admin.accounts.openai.codexTicketGatewayBlacklist') }}</label>
-        <textarea
-          id="openai-codex-ticket-gateway-blacklist"
-          v-model="openAICodexTicketGatewayBlacklist"
-          class="input font-mono"
-          rows="2"
-          :placeholder="t('admin.accounts.openai.codexTicketGatewayBlacklistPlaceholder')"
-          data-testid="openai-codex-ticket-gateway-blacklist"
-          autocomplete="off"
-        />
-        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTicketGatewayBlacklistHint') }}</p>
-      </div>
       <OpenAIRequestTimezoneField v-if="account?.platform === 'openai'" v-model="openAIRequestTimezone" />
       <ExcelBPSCredentialStatus :state="account?.excel_bps_credential_state" />
 
@@ -2857,7 +2829,7 @@
 
       <!-- Codex 292 门票状态（仅 OpenAI OAuth） -->
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTickets.length"
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTurnTicket') }}</label>
@@ -2865,17 +2837,21 @@
           {{ t('admin.accounts.openai.codexTurnTicketDesc') }}
         </p>
         <div class="mt-3 space-y-1.5">
-          <div v-for="ticket in codexTickets" :key="ticket.model" class="flex items-center justify-between gap-2 text-sm">
+          <div v-for="ticket in codexTurnTickets" :key="ticket.model" class="flex items-center justify-between text-sm">
             <span class="font-medium">{{ ticket.model }}</span>
             <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">
               {{ t('admin.accounts.openai.codexTurnTicketReady', { time: formatCodexTicketRemaining(ticket.remaining_seconds) }) }}
             </span>
-            <span v-else class="text-amber-600 dark:text-amber-400">
-              {{ t(`admin.accounts.codexTickets.states.${codexTicketState(ticket)}`) }}
+            <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">
+              {{ t('admin.accounts.openai.codexTurnTicketPaused') }}
             </span>
-            <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.codexTickets.attempts', { count: codexTicketAttempts(ticket) }) }}
-            </span>
+            <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
+            <div v-if="ticket.probe" class="ml-2 text-xs text-gray-500">
+              {{ t('admin.accounts.openai.ticketProbe.' + ticket.probe.result) }} · HTTP {{ ticket.probe.http_status || '—' }}
+              <div>{{ new Date(ticket.probe.checked_at).toLocaleString() }}</div>
+              <div v-if="ticket.probe.next_probe_at">{{ t('admin.accounts.openai.ticketProbeNext') }} {{ new Date(ticket.probe.next_probe_at).toLocaleString() }}</div>
+              <div v-if="ticket.standby_expires_at">{{ t('admin.accounts.openai.ticketStandbyExpires') }} {{ new Date(ticket.standby_expires_at).toLocaleString() }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -3599,14 +3575,12 @@
     @confirm="handleMixedChannelConfirm"
     @cancel="handleMixedChannelCancel"
   />
-  <ConfirmDialog :show="showErrorCodeWarning" :title="t('admin.accounts.customErrorCodes')" :message="errorCodeWarningMessage" :confirm-text="t('common.confirm')" :cancel-text="t('common.cancel')" @confirm="confirmAddErrorCode" @cancel="showErrorCodeWarning = false" />
 </template>
 
 <script setup lang="ts">
 import OpenAIRequestTimezoneField from '@/components/account/OpenAIRequestTimezoneField.vue'
 import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
 import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier, readAccountCostMultiplier } from '@/utils/accountCost'
-import { codexTicketAttempts, codexTicketState } from '@/utils/codexTicketDisplay'
 
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -3707,7 +3681,6 @@ import {
 } from '@/utils/format'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { CODEX_GATEWAY_BLACKLIST_EXTRA_KEY, parseCodexGatewayBlacklist, readCodexGatewayBlacklist } from '@/utils/codexGatewayBlacklist'
 import { getAccountExpiryTimestamp } from './accountExpiry'
 import { isKiroDirectApiKeyAccount, isKiroRelayAccount } from '@/utils/kiroAccount'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
@@ -3791,7 +3764,7 @@ watch(() => [props.show, props.account?.id, autoBPSSupported.value] as const, ([
   else autoBPS.reset()
 }, { immediate: true })
 
-const codexTickets = computed(() => props.account?.codex_tickets ?? [])
+const codexTurnTickets = computed(() => props.account?.codex_turn_tickets ?? [])
 
 function formatCodexTicketRemaining(seconds: number) {
   const total = Math.max(0, Math.floor(seconds || 0))
@@ -4368,8 +4341,6 @@ const excelBPS403GroupOptions = computed(() => [
 const copilotSDKEnabled = ref(false)
 const openAIRequestTimezone = ref('Asia/Singapore')
 const openaiPassthroughEnabled = ref(false)
-const openAICodexTicketGateway = ref('')
-const openAICodexTicketGatewayBlacklist = ref('')
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4909,8 +4880,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   copilotSDKEnabled.value = false
   openAIRequestTimezone.value = 'Asia/Singapore'
   openaiPassthroughEnabled.value = false
-  openAICodexTicketGateway.value = ''
-  openAICodexTicketGatewayBlacklist.value = ''
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
@@ -4958,8 +4927,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     copilotSDKEnabled.value = newAccount.type === 'apikey' && extra?.openai_copilot_sdk === true
     openAIRequestTimezone.value = typeof extra?.openai_request_timezone === 'string' ? extra.openai_request_timezone : 'Asia/Singapore'
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
-    openAICodexTicketGateway.value = typeof extra?.openai_codex_ticket_gateway === 'string' ? extra.openai_codex_ticket_gateway : ''
-    openAICodexTicketGatewayBlacklist.value = readCodexGatewayBlacklist(extra).join(', ')
     openaiFlattenNamespacesEnabled.value =
       newAccount.type === 'oauth' && extra?.openai_responses_flatten_namespaces === true
     const longContextBillingValue = extra?.openai_long_context_billing_enabled
@@ -6577,19 +6544,6 @@ const handleSubmit = async () => {
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
-        try {
-          newExtra[CODEX_GATEWAY_BLACKLIST_EXTRA_KEY] = parseCodexGatewayBlacklist(openAICodexTicketGatewayBlacklist.value)
-        } catch {
-          throw new Error(t('admin.accounts.openai.codexTicketGatewayBlacklistInvalid'))
-        }
-        const gateway = openAICodexTicketGateway.value.trim()
-        if (gateway) {
-          newExtra.openai_codex_ticket_gateway = gateway
-        } else {
-          delete newExtra.openai_codex_ticket_gateway
-        }
-      }
       newExtra.openai_request_timezone = openAIRequestTimezone.value
       if (props.account.type === 'oauth') {
         applyAccountRPMSettings(newExtra, {
