@@ -242,6 +242,16 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 				attempt++
 				return true
 			}, session)
+			if result.ProxySID != "" {
+				nodeName = "SID " + result.ProxySID
+				recordCodexHarvestNode(nodeName, "", 0)
+				if s.codexHarvest != nil {
+					s.codexHarvest.setRuntime(func(r *CodexHarvestRuntime) {
+						r.CurrentNode, r.SelectionReason, r.DegradedReason = nodeName, "sid_rotation", ""
+					})
+				}
+				emit(ManualHarvestProgress{Attempt: attempt, MaxAttempts: req.MaxAttempts, Model: model, Node: nodeName, Result: "node_switch", Level: "INFO", Message: "已轮换代理 SID。", TicketsStored: ticketsStored})
+			}
 			s.completeManualHarvestAttempt(ctx, lease, result, time.Since(started), controls)
 			length, blocks := len(result.State), result.Shape.Blocks
 			raw := ""
@@ -459,6 +469,9 @@ func (s *OpenAIGatewayService) acquireManualHarvestPoolExit(ctx context.Context,
 
 func (s *OpenAIGatewayService) acquireManualHarvestNode(ctx context.Context, account *Account, model, proxy, keepID string, tried map[string]bool, forceNew bool) (codexHarvestAttempt, error) {
 	fallback := codexHarvestAttempt{proxy: proxy, release: func() {}}
+	if codexHarvestProxySID(proxy) != "" {
+		return fallback, nil
+	}
 	if s.codexHarvest == nil || strings.TrimSpace(proxy) == "" {
 		return fallback, nil
 	}

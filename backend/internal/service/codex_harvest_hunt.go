@@ -61,7 +61,8 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 		current, configured := s.harvestControls(ctx)
 		controls = current
 		pool := s.openAICodexTicketHarvestIPPoolEnabled(ctx)
-		maxAttempts := harvestMaxNodeAttempts(controls, pool)
+		sidRotation := !pool && codexHarvestProxySID(s.openAICodexTicketHarvestProxyURLContext(ctx)) != ""
+		maxAttempts := harvestMaxNodeAttempts(controls, pool || sidRotation)
 		if n >= maxAttempts || round.AccountStopped(account.ID) || round.Used() >= min(round.limit, controls.Speed.MaxRequestsPerRound) || ctx.Err() != nil {
 			break
 		}
@@ -94,7 +95,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 			return
 		}
 		account = fresh
-		maxAttempts = harvestMaxNodeAttempts(controls, pool)
+		maxAttempts = harvestMaxNodeAttempts(controls, pool || codexHarvestProxySID(proxy) != "")
 		if n >= maxAttempts || round.AccountStopped(account.ID) || round.Used() >= min(round.limit, controls.Speed.MaxRequestsPerRound) {
 			break
 		}
@@ -124,6 +125,15 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 		result := s.executeCodexHarvestProbe(ctx, account, token, model, attempt.proxy, time.Duration(controls.Speed.AttemptTimeoutSeconds)*time.Second, func() bool {
 			return s.reserveHarvestRequest(ctx, account, model, round, attempt.sidecar != nil)
 		}, session)
+		if result.ProxySID != "" {
+			nodeName = "SID " + result.ProxySID
+			recordCodexHarvestNode(nodeName, "", 0)
+			if s.codexHarvest != nil {
+				s.codexHarvest.setRuntime(func(r *CodexHarvestRuntime) {
+					r.CurrentNode, r.SelectionReason, r.DegradedReason = nodeName, "sid_rotation", ""
+				})
+			}
+		}
 		if result.Kind == "account_error" || result.Kind == "rate_limited" {
 			round.stopped.Store(account.ID, struct{}{})
 		}
@@ -150,7 +160,7 @@ func (s *OpenAIGatewayService) huntCodexHarvestTicket(ctx context.Context, accou
 			logger.L().Info("openai_codex_ticket harvested", zap.Int64("account_id", account.ID), zap.String("model", model), zap.Int("attempts", attempts))
 			return
 		}
-		if result.Terminal || result.Kind == "account_error" || result.Kind == "rate_limited" || (attempt.sidecar == nil && !pool) {
+		if result.Terminal || result.Kind == "account_error" || result.Kind == "rate_limited" || (attempt.sidecar == nil && !pool && result.ProxySID == "") {
 			break
 		}
 		if s.codexHarvest != nil {
