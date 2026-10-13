@@ -59,7 +59,7 @@ describe('HarvestPolicyPanel', () => {
     });
     const wrapper = mountView();
     await flushPromises();
-    await wrapper.get("#codex-ticket-model-sol").setValue(false);
+    await wrapper.get('[data-model="gpt-5.6-sol"]').setValue(false);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
     expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_models).toEqual([

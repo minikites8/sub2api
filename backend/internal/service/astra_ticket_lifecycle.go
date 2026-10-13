@@ -212,10 +212,15 @@ func (s *OpenAIGatewayService) acquireStoredAstraTarget(ctx context.Context, id 
 			return account, ticket, nil
 		}
 	}
-	if !s.codexHarvestRunMu.TryLock() {
-		return nil, nil, errors.New("target_validation_in_progress")
+	release, err := s.lockCodexHarvest(ctx, id, []string{OpenAICodexStateProbeDefaultModel})
+	if err != nil {
+		return nil, nil, err
 	}
-	defer s.codexHarvestRunMu.Unlock()
+	defer release()
+	account, err = s.accountRepo.GetByID(ctx, id)
+	if err != nil || !astraTicketAccountEligible(ctx, account) {
+		return nil, nil, errors.New("account_unavailable")
+	}
 	// A collector may have finished between the first read and acquisition.
 	if ticket := s.lookupOpenAICodexTicket(account, OpenAICodexStateProbeDefaultModel); ticket.valid(time.Now(), 780) && ticket.Transport == protocol {
 		return account, ticket, nil

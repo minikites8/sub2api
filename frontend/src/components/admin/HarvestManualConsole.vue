@@ -190,12 +190,16 @@ const searching = computed(() => {
   const raw = keyword.value.trim()
   return !!raw && !(selected.value && raw === harvestAccountLabel(selected.value))
 })
-const models = computed(() => props.models?.length ? props.models : selectedModels.value)
+const models = computed(() => props.models || [])
 
-watch(() => props.models, (next) => {
-  if (!next?.length) return
-  if (!selectedModels.value.length) selectedModels.value = [...next]
-}, { immediate: true })
+watch(() => props.models, (next, previous) => {
+  const available = [...new Set(next || [])]
+  const selected = selectedModels.value
+  const followedDefault = previous == null || (
+    selected.length === previous.length && previous.every(model => selected.includes(model))
+  )
+  selectedModels.value = followedDefault ? available : selected.filter(model => available.includes(model))
+}, { immediate: true, deep: true })
 
 watch(() => props.accounts, (list) => {
   if (!selected.value) return

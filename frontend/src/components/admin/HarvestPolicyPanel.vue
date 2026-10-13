@@ -8,7 +8,7 @@
     <p v-if="loading" class="text-sm text-gray-500">{{ localText('加载中…', 'Loading…') }}</p>
     <button v-else-if="!form" type="button" class="btn btn-secondary" @click="load">{{ localText('重试', 'Retry') }}</button>
     <form v-else class="space-y-4" @submit.prevent="save">
-      <fieldset class="space-y-4" :disabled="saving">
+      <fieldset class="space-y-4" :disabled="saving || !modelsResolved">
         <div class="flex items-center justify-between gap-4">
           <div class="min-w-0">
             <h3 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -46,24 +46,23 @@
           </p>
 
           <div class="mt-3 grid gap-3 sm:grid-cols-2">
-            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <label v-for="model in modelOptions" :key="model" :for="`codex-ticket-model-${model}`" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
-                id="codex-ticket-model-astra"
+                :id="`codex-ticket-model-${model}`"
+                :data-model="model"
                 type="checkbox"
-                :checked="form.openai_codex_ticket_models.includes('gpt-6-astra')"
-                @change="toggleCodexTicketModel('gpt-6-astra', ($event.target as HTMLInputElement).checked)"
+                :checked="form.openai_codex_ticket_models.includes(model)"
+                @change="toggleCodexTicketModel(model, ($event.target as HTMLInputElement).checked)"
               />
-              <span>Astra (gpt-6-astra)</span>
+              <span>{{ model }}</span>
             </label>
-            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-              <input
-                id="codex-ticket-model-sol"
-                type="checkbox"
-                :checked="form.openai_codex_ticket_models.includes('gpt-5.6-sol')"
-                @change="toggleCodexTicketModel('gpt-5.6-sol', ($event.target as HTMLInputElement).checked)"
-              />
-              <span>Sol (gpt-5.6-sol)</span>
+          </div>
+          <div class="mt-3 flex flex-wrap items-end gap-2">
+            <label class="min-w-0 flex-1 text-xs text-gray-500" for="harvest-model-input">
+              {{ localText('添加完整上游模型 ID', 'Add an exact upstream model ID') }}
+              <input id="harvest-model-input" v-model="modelInput" data-testid="harvest-model-input" type="text" class="input mt-1 w-full" :placeholder="localText('完整模型 ID', 'Exact model ID')" @keydown.enter.prevent="addCodexTicketModel" />
             </label>
+            <button type="button" data-testid="add-harvest-model" class="btn btn-secondary btn-sm" :disabled="!modelInput.trim()" @click="addCodexTicketModel">{{ localText('添加', 'Add') }}</button>
           </div>
           <fieldset class="mt-3 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
             <legend class="px-1 text-sm font-semibold">{{ localText('自动打票范围', 'Automatic harvest scope') }}</legend>
@@ -96,20 +95,22 @@
 
         </div>
       </fieldset>
-      <button type="submit" data-testid="save-harvest-policy" class="btn btn-primary btn-sm" :disabled="saving">{{ localText('保存打票策略', 'Save harvest policy') }}</button>
+      <p v-if="!modelsResolved" class="text-xs text-gray-500">{{ localText('等待后台模型列表…', 'Waiting for the backend model list…') }}</p>
+      <button type="submit" data-testid="save-harvest-policy" class="btn btn-primary btn-sm" :disabled="saving || !modelsResolved">{{ localText('保存打票策略', 'Save harvest policy') }}</button>
     </form>
     <HarvestPoolSchedulingPanel />
   </section>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Toggle from '@/components/common/Toggle.vue'
 import HarvestPoolSchedulingPanel from './HarvestPoolSchedulingPanel.vue'
 import { getSettings, updateSettings, type SystemSettings } from '@/api/admin/settings'
 import { useAppStore } from '@/stores'
 
+const props = defineProps<{ models?: string[] }>()
 const emit = defineEmits<{ saved: [] }>()
 const { t, locale } = useI18n()
 const localText = (zh: string, en: string) => locale.value.startsWith('zh') ? zh : en
@@ -118,12 +119,21 @@ const saving = ref(false)
 const loading = ref(true)
 const error = ref('')
 let disposed = false
+const inheritsRuntimeModels = ref(false)
+const knownModels = ref<string[]>([])
+const modelInput = ref('')
+function normalizeModels(models: string[]) {
+  return [...new Set(models.map(model => model.trim()).filter(Boolean))]
+}
+function rememberModels(models: string[]) {
+  knownModels.value = normalizeModels([...knownModels.value, ...models])
+}
 function policyOf(settings: SystemSettings) {
   const scope = settings.openai_codex_ticket_harvest_scope
   return {
     openai_codex_ticket_enabled: settings.openai_codex_ticket_enabled ?? false,
     openai_codex_ticket_fail_closed: settings.openai_codex_ticket_fail_closed ?? false,
-    openai_codex_ticket_models: [...(settings.openai_codex_ticket_models ?? ['gpt-6-astra', 'gpt-5.6-sol'])],
+    openai_codex_ticket_models: normalizeModels(settings.openai_codex_ticket_models ?? props.models ?? []),
     openai_codex_ticket_strategy: settings.openai_codex_ticket_strategy || 'standby',
     openai_codex_ticket_candy_observation: settings.openai_codex_ticket_candy_observation ?? false,
     openai_codex_ticket_strict_response: settings.openai_codex_ticket_strict_response ?? false,
@@ -134,6 +144,20 @@ function policyOf(settings: SystemSettings) {
   }
 }
 const form = ref<ReturnType<typeof policyOf> | null>(null)
+const modelsResolved = computed(() => form.value !== null && (!inheritsRuntimeModels.value || props.models !== undefined))
+const modelOptions = computed(() => normalizeModels([
+  ...knownModels.value, ...(props.models ?? []), ...(form.value?.openai_codex_ticket_models ?? [])
+]))
+watch(() => props.models, (models) => {
+  rememberModels(models ?? [])
+  if (inheritsRuntimeModels.value && form.value) form.value.openai_codex_ticket_models = normalizeModels(models ?? [])
+}, { immediate: true, deep: true })
+function addCodexTicketModel() {
+  const model = modelInput.value.trim()
+  if (!model || !form.value) return
+  toggleCodexTicketModel(model, true)
+  modelInput.value = ''
+}
 function changeHarvestScope() {
   if (!form.value) return
   form.value.openai_codex_ticket_harvest_scope.group_ids = []
@@ -142,6 +166,8 @@ function changeHarvestScope() {
 }
 function toggleCodexTicketModel(model: string, checked: boolean) {
   if (!form.value) return
+  inheritsRuntimeModels.value = false
+  rememberModels([model])
   const models = new Set(form.value.openai_codex_ticket_models)
   if (checked) models.add(model)
   else models.delete(model)
@@ -152,12 +178,16 @@ async function load() {
   error.value = ''
   const [settings] = await Promise.allSettled([getSettings()])
   if (disposed) return
-  if (settings.status === 'fulfilled') form.value = policyOf(settings.value)
+  if (settings.status === 'fulfilled') {
+    inheritsRuntimeModels.value = settings.value.openai_codex_ticket_models == null
+    form.value = policyOf(settings.value)
+    rememberModels(form.value.openai_codex_ticket_models)
+  }
   else error.value = localText('无法加载打票策略，请重试。', 'Could not load harvest policy. Please retry.')
   loading.value = false
 }
 async function save() {
-  if (!form.value || saving.value || loading.value) return
+  if (!form.value || saving.value || loading.value || !modelsResolved.value) return
   saving.value = true
   error.value = ''
   try {

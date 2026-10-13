@@ -141,6 +141,38 @@ func (s *OpenAIGatewayService) prepareHarvestAttempt(ctx context.Context, accoun
 	if codexHarvestProxySID(proxy) != "" {
 		return a, true
 	}
+	if (!controls.NodeMemoryEnabled || s.codexHarvest == nil) && strings.TrimRight(proxy, "/") == mihomo.Endpoint {
+		if _, _, managed := mihomo.ManagedController(); managed {
+			// Even rotation without learning owns a concrete channel for its
+			// complete mint/confirmation pair and persists the issuing node.
+			sidecar, err := mihomo.LoadDirectedSidecar(os.Getenv("DATA_DIR"), proxy)
+			if err != nil {
+				return a, false
+			}
+			nodes, err := sidecar.Directory(ctx)
+			if err != nil {
+				return a, false
+			}
+			node, ok := pinnedHarvestNode(nodes, s.lookupOpenAICodexTicket(account, model), tried)
+			if !ok {
+				for _, candidate := range nodes {
+					if !tried[candidate.ID] {
+						node, ok = candidate, true
+						break
+					}
+				}
+			}
+			if !ok {
+				return a, false
+			}
+			tried[node.ID] = true
+			release, err := sidecar.Acquire(ctx, node)
+			if err != nil {
+				return a, false
+			}
+			return codexHarvestAttempt{sidecar: sidecar, node: node, proxy: sidecar.ProxyURL, release: release}, true
+		}
+	}
 	pinned := s.lookupOpenAICodexTicket(account, model)
 	if pinned != nil && strings.TrimSpace(pinned.HarvestProxyURL) != "" && (!controls.NodeMemoryEnabled || s.codexHarvest == nil) {
 		a.proxy = pinned.HarvestProxyURL
@@ -267,6 +299,9 @@ func (s *OpenAIGatewayService) finishHarvestAttempt(ctx context.Context, attempt
 	defer cancel()
 	if err := attempt.sidecar.Confirm(query, attempt.node); err != nil {
 		s.codexHarvest.degrade("node attribution changed; learning skipped")
+		return
+	}
+	if !controls.NodeMemoryEnabled {
 		return
 	}
 	feedback := attempt.feedback

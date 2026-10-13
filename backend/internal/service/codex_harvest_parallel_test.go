@@ -174,11 +174,14 @@ func TestParallelProbeBudgetIsAtomic(t *testing.T) {
 func TestParallelRequestValidationAndMutualExclusion(t *testing.T) {
 	_, err := NormalizeManualHarvestRequest(ManualHarvestRequest{CollectLanes: -1})
 	require.Error(t, err)
-	svc := &OpenAIGatewayService{accountRepo: &manualHarvestAccountRepo{}}
-	svc.codexHarvestRunMu.Lock()
-	defer svc.codexHarvestRunMu.Unlock()
-	err = svc.ExecuteManualHarvest(context.Background(), ManualHarvestRequest{CollectLanes: 10}, nil)
-	require.EqualError(t, err, "another harvest is running")
+	svc := &OpenAIGatewayService{accountRepo: &manualHarvestAccountRepo{account: ticketTestAccount(41)}}
+	release, err := svc.lockCodexHarvest(t.Context(), 41, []string{"gpt-6-astra"})
+	require.NoError(t, err)
+	defer release()
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	err = svc.ExecuteManualHarvest(ctx, ManualHarvestRequest{AccountID: 41, CollectLanes: 10, Models: []string{"gpt-6-astra"}}, nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestParallelHarvestKeepsSafeRouteDiagnostics(t *testing.T) {

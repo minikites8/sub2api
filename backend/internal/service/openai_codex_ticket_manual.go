@@ -52,10 +52,6 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 	if s == nil || s.accountRepo == nil {
 		return errors.New("gateway service unavailable")
 	}
-	if !s.codexHarvestRunMu.TryLock() {
-		return errors.New("another harvest is running")
-	}
-	defer s.codexHarvestRunMu.Unlock()
 	normalizeManualHarvestRequest(&req)
 	req, err := NormalizeManualHarvestRequest(req)
 	if err != nil {
@@ -75,6 +71,17 @@ func (s *OpenAIGatewayService) ExecuteManualHarvest(ctx context.Context, req Man
 	req.Models = NormalizeOpenAICodexTicketModels(req.Models)
 	if len(req.Models) == 0 {
 		req.Models = []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel}
+	}
+
+	release, err := s.lockCodexHarvest(ctx, account.ID, req.Models)
+	if err != nil {
+		return err
+	}
+	defer release()
+	// Refresh the account after a queued collection completes.
+	account, err = s.accountRepo.GetByID(ctx, req.AccountID)
+	if err != nil || !isOpenAICodexTicketAccount(account) {
+		return errors.New("account is unavailable after harvest admission")
 	}
 
 	emit := func(p ManualHarvestProgress) {

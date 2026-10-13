@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/keyedlock"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
@@ -481,7 +482,7 @@ type OpenAIGatewayService struct {
 	harvestIPPoolExits     []harvestIPPoolExit
 	harvestIPPoolSyncedAt  time.Time
 	harvestIPPoolCursor    atomic.Uint64
-	codexHarvestRunMu      sync.RWMutex
+	codexHarvestRuns       keyedlock.Pool
 	accountRepo            AccountRepository
 	proxyRepo              ProxyRepository
 	usageLogRepo           UsageLogRepository

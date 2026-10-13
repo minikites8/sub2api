@@ -114,6 +114,11 @@ type Manager struct {
 	countryLookupURL     string // test-only override; administrators cannot change the lookup target
 	controllerURL        string // optional override for isolated controller tests
 	subscriptionProxyURL string // test-only override for subscription download proxy
+	collectionGate       chan struct{}
+	collectionChanged    chan struct{}
+	collectionPorts      []int
+	collectionBusy       []bool
+	collectionExtended   bool
 	gate                 chan struct{}
 	mu                   sync.Mutex
 	dir                  string

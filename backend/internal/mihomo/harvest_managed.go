@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"sync"
 	"time"
 )
 
-// Managed directed harvests share the management gate and collection listener.
+// Managed directed harvests lease an exclusive collection selector/listener.
 // They never change the business/round-robin selector. UseOnce reservations are
 // persisted before traffic and remain retired after errors or cancellation.
 func (s *DirectedSidecar) managedDirectory() ([]HarvestNode, error) {
@@ -42,9 +43,19 @@ func (s *DirectedSidecar) acquireManaged(ctx context.Context, node HarvestNode) 
 	m := s.managed
 	wait, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := m.acquire(wait); err != nil {
+	unlock, err := directedLocks.Acquire(wait, fmt.Sprintf("managed-sidecar:%p", s))
+	if err != nil {
 		return nil, err
 	}
+	lanes, ports, closeChannels, err := m.reserveCollectionChannels(wait, 1)
+	if err != nil {
+		unlock()
+		return nil, err
+	}
+	var once sync.Once
+	release := func() { once.Do(func() { _ = closeChannels(); unlock() }) }
+	s.managedLane = lanes[0]
+	s.ProxyURL = fmt.Sprintf("http://127.0.0.1:%d", ports[0])
 	nodes, err := s.managedDirectory()
 	found := false
 	for _, current := range nodes {
@@ -54,11 +65,18 @@ func (s *DirectedSidecar) acquireManaged(ctx context.Context, node HarvestNode) 
 		}
 	}
 	if err != nil || !found {
-		m.release()
+		release()
 		return nil, errors.New("harvest node is no longer eligible")
 	}
 	m.mu.Lock()
 	next := m.saved
+	// Directory lookup and retirement form one reservation. Another channel
+	// may have retired this candidate while this caller was selecting it.
+	if next.UseOnce && next.Disabled[node.ID] != "" {
+		m.mu.Unlock()
+		release()
+		return nil, errors.New("harvest node is already reserved")
+	}
 	if next.UseOnce {
 		next.Disabled = copyNodeStates(next.Disabled)
 		next.Disabled[node.ID] = "used"
@@ -70,29 +88,11 @@ func (s *DirectedSidecar) acquireManaged(ctx context.Context, node HarvestNode) 
 	}
 	m.mu.Unlock()
 	if err != nil {
-		m.release()
+		release()
 		return nil, errors.New("cannot reserve harvest node")
 	}
-	var once sync.Once
-	release := func() {
-		once.Do(func() {
-			defer m.release()
-			if !next.UseOnce {
-				return
-			}
-			finish, stop := context.WithTimeout(context.Background(), 5*time.Second)
-			defer stop()
-			config, e := m.config(next)
-			if e == nil {
-				e = m.reload(finish, config, next.Secret)
-			}
-			if e != nil {
-				m.stop()
-			}
-		})
-	}
 	payload, _ := json.Marshal(map[string]string{"name": node.ID})
-	if err = m.control(ctx, http.MethodPut, "/proxies/"+collectionGroup(0), next.Secret, payload); err == nil {
+	if err = m.control(ctx, http.MethodPut, "/proxies/"+collectionGroup(s.managedLane), next.Secret, payload); err == nil {
 		err = s.confirmManaged(ctx, node)
 	}
 	if err != nil {
@@ -125,7 +125,7 @@ func (s *DirectedSidecar) confirmManaged(ctx context.Context, node HarvestNode) 
 	}
 	client := &DirectedSidecar{Controller: controller, Secret: secret}
 	var group directedProxy
-	if err := client.control(ctx, http.MethodGet, "/proxies/"+collectionGroup(0), nil, &group); err != nil {
+	if err := client.control(ctx, http.MethodGet, "/proxies/"+collectionGroup(s.managedLane), nil, &group); err != nil {
 		return err
 	}
 	if group.Type != "Selector" || group.Now != node.ID {
