@@ -618,12 +618,12 @@ describe('user KeysView column settings', () => {
     await getButtonByText(wrapper, 'Create API Key').trigger('click')
     expect((wrapper.get('#key-concurrency-limit').element as HTMLInputElement).value).toBe('0')
     await wrapper.get('[data-tour="key-form-name"]').setValue('new-key')
-    await wrapper.getComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 42)
+    await wrapper.getComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', [42])
     await wrapper.get('#key-concurrency-limit').setValue(input)
     await wrapper.get('#key-form').trigger('submit')
     await flushPromises()
     expect(createKey).toHaveBeenCalledWith('new-key', 42, undefined, [], [], 0, undefined,
-      { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }, Number(input))
+      { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }, Number(input), [42])
     await getButtonByText(wrapper, 'Create API Key').trigger('click')
     expect((wrapper.get('#key-concurrency-limit').element as HTMLInputElement).value).toBe('0')
   })
@@ -645,7 +645,7 @@ describe('user KeysView column settings', () => {
     listKeys.mockResolvedValueOnce({ items: [{ ...createApiKey(), group_id: 42 }], total: 1 })
     const wrapper = await mountView()
     await getButtonByText(wrapper, mode === 'edit' ? 'common.edit' : 'Create API Key').trigger('click')
-    await wrapper.getComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 42)
+    await wrapper.getComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', [42])
     await wrapper.get('#key-concurrency-limit').setValue(input)
     expect(wrapper.get('#key-concurrency-limit').attributes('aria-invalid')).toBe('true')
     expect(wrapper.get('#key-concurrency-error').text()).toBe(messages['keys.concurrencyLimitInvalid'])
@@ -701,11 +701,11 @@ describe('user KeysView column settings', () => {
     await wrapper.get('#key-concurrency-limit').setValue(2)
     expect(wrapper.get('#key-queue-policy').text()).toContain('7 waiting requests')
     await wrapper.get('[data-tour="key-form-name"]').setValue('new-key')
-    await wrapper.getComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 42)
+    await wrapper.getComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', [42])
     await wrapper.get('#key-form').trigger('submit')
     await flushPromises()
     expect(createKey).toHaveBeenCalledWith('new-key', 42, undefined, [], [], 0, undefined,
-      { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }, 2)
+      { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }, 2, [42])
   })
 
   it('distinguishes unknown statistics and policy from zero and still permits saving', async () => {
@@ -1037,22 +1037,19 @@ describe('user KeysView column settings', () => {
       expect(wrapper.findAllComponents({ name: 'Select' })[0].props('options')).toHaveLength(14)
     })
 
-    it('clears the previous group on provider change and submits only the newly selected group', async () => {
+    it('preserves bound groups across provider changes and submits their priority order', async () => {
       const wrapper = await openCreate()
       await wrapper.get('[data-tour="key-form-name"]').setValue('My key')
-      await groupSelect(wrapper).vm.$emit('update:modelValue', 1)
+      await groupSelect(wrapper).vm.$emit('update:modelValue', [1])
       await chooseProvider(wrapper, 'domestic')
-      expect(groupSelect(wrapper).props('modelValue')).toBeNull()
-      await wrapper.get('#key-form').trigger('submit')
-      expect(keysAPI.create).not.toHaveBeenCalled()
-      expect(showError).toHaveBeenCalledWith('keys.groupRequired')
-
-      await groupSelect(wrapper).vm.$emit('update:modelValue', 5)
-      vi.mocked(keysAPI.create).mockResolvedValue({ ...createApiKey(), group_id: 5 })
+      expect(groupSelect(wrapper).props('modelValue')).toEqual([1])
+      await groupSelect(wrapper).vm.$emit('update:modelValue', [1, 5])
+      vi.mocked(keysAPI.create).mockResolvedValue({ ...createApiKey(), group_id: 1, group_ids: [1, 5] })
       await wrapper.get('#key-form').trigger('submit')
       await flushPromises()
       expect(keysAPI.create).toHaveBeenCalledOnce()
-      expect(vi.mocked(keysAPI.create).mock.calls[0].slice(0, 2)).toEqual(['My key', 5])
+      expect(vi.mocked(keysAPI.create).mock.calls[0].slice(0, 2)).toEqual(['My key', 1])
+      expect(vi.mocked(keysAPI.create).mock.calls[0][9]).toEqual([1, 5])
     })
 
     it('defaults to a provider with available groups and disables empty categories', async () => {
@@ -1084,11 +1081,11 @@ describe('user KeysView column settings', () => {
     it('resets provider and group when reopening create, and preserves edit options', async () => {
       const wrapper = await openCreate()
       await chooseProvider(wrapper, 'domestic')
-      await groupSelect(wrapper).vm.$emit('update:modelValue', 5)
+      await groupSelect(wrapper).vm.$emit('update:modelValue', [5])
       await wrapper.get('[data-test="close-dialog"]').trigger('click')
       await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
       expect(optionIds(wrapper)).toEqual([1])
-      expect(groupSelect(wrapper).props('modelValue')).toBeNull()
+      expect(groupSelect(wrapper).props('modelValue')).toEqual([])
       await wrapper.get('[data-test="close-dialog"]').trigger('click')
       await getButtonByText(wrapper, 'common.edit').trigger('click')
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)

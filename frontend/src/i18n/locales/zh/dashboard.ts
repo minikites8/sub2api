@@ -140,6 +140,12 @@ export default {
     disable: '禁用',
     nameLabel: '名称',
     namePlaceholder: '我的 API 密钥',
+    groupOrder: '分组优先顺序',
+    addGroup: '添加分组',
+    moveGroupUp: '上移分组',
+    moveGroupDown: '下移分组',
+    removeGroup: '移除分组',
+    orderedGroupsHint: '按顺序优先使用可用分组，前组不可用时切换后组。最多绑定 32 个分组。',
     groupLabel: '分组',
     providerLabel: '厂商',
     providers: {

@@ -196,7 +196,10 @@
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
                 }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') }}</span>
+                <span v-if="(row.group_ids?.length ?? 0) > 1" class="max-w-60 truncate text-xs text-gray-500 dark:text-gray-400" :title="row.group_ids.map((id: number) => groups.find(group => group.id === id)?.name ?? `#${id}`).join(' → ')">
+                  {{ row.group_ids.map((id: number) => groups.find(group => group.id === id)?.name ?? `#${id}`).join(' → ') }}
+                </span>
+                <span v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') }}</span>
                 <svg
                   class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
                   fill="none"
@@ -606,19 +609,15 @@
 
         <div>
           <label class="input-label" for="key-form-group">{{ t('keys.groupLabel') }}</label>
-          <Select
+          <OrderedGroupSelect
             :key="showEditModal ? 'edit' : createProvider"
             id="key-form-group"
-            :aria-label="t('keys.groupLabel')"
-            v-model="formData.group_id"
+            v-model="formData.group_ids"
             :options="formGroupOptions"
-            :placeholder="t('keys.selectGroup')"
-            :empty-text="t('common.noGroupsAvailable')"
-            :searchable="true"
-            :search-placeholder="t('keys.searchGroup')"
+            :disabled="submitting"
             data-tour="key-form-group"
           >
-            <template #selected="{ option }">
+            <template #group="{ option, id }">
               <GroupBadge
                 v-if="option"
                 :name="(option as unknown as GroupOption).label"
@@ -631,7 +630,7 @@
                 :peak-end="(option as unknown as GroupOption).peakEnd"
                 :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
               />
-              <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
+              <span v-else class="text-gray-400">#{{ id }}</span>
             </template>
             <template #option="{ option, selected }">
               <GroupOptionItem
@@ -649,7 +648,7 @@
                 :selected="selected"
               />
             </template>
-          </Select>
+          </OrderedGroupSelect>
           <div
             v-if="selectedGroupOption"
             class="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300"
@@ -1348,6 +1347,7 @@ import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
+import OrderedGroupSelect from '@/components/keys/OrderedGroupSelect.vue'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1689,7 +1689,7 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
 const formData = ref({
   name: '',
   concurrency_limit: 0 as number | string,
-  group_id: null as number | null,
+  group_ids: [] as number[],
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
@@ -1836,18 +1836,17 @@ const createProviderOptions = computed(() => KEY_GROUP_PROVIDERS.map((value) => 
 })))
 const formGroupOptions = computed(() => showEditModal.value
   ? groupOptions.value
-  : groupOptions.value.filter((option) => getKeyGroupProvider(option.platform) === createProvider.value))
+  : groupOptions.value.filter((option) => formData.value.group_ids.includes(option.value) || getKeyGroupProvider(option.platform) === createProvider.value))
 const selectCreateProvider = (provider: KeyGroupProvider) => {
   createProvider.value = provider
-  formData.value.group_id = null
 }
 watch(createProviderOptions, (options) => {
   if (options.find((option) => option.value === createProvider.value)?.count) return
   createProvider.value = options.find((option) => option.count > 0)?.value ?? 'anthropic'
 }, { immediate: true })
 const selectedGroupOption = computed(() => {
-  if (formData.value.group_id === null) return null
-  return groupOptions.value.find((option) => option.value === formData.value.group_id) ?? null
+  if (formData.value.group_ids.length === 0) return null
+  return groupOptions.value.find((option) => option.value === formData.value.group_ids[0]) ?? null
 })
 
 const selectedGroupEffectiveRate = computed(() => getEffectiveGroupRate(selectedGroupOption.value))
@@ -2012,7 +2011,7 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     concurrency_limit: key.concurrency_limit ?? 0,
-    group_id: key.group_id,
+    group_ids: [...(key.group_ids ?? (key.group_id ? [key.group_id] : []))],
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
@@ -2046,6 +2045,12 @@ const toggleKeyStatus = async (key: ApiKey) => {
 }
 
 const openGroupSelector = (key: ApiKey) => {
+  if ((key.group_ids?.length ?? 0) > 1) {
+    groupSelectorKeyId.value = null
+    dropdownPosition.value = null
+    editKey(key)
+    return
+  }
   if (groupSelectorKeyId.value === key.id) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
@@ -2118,8 +2123,8 @@ const handleSubmit = async () => {
   // An empty input explicitly clears the saved key limit.
   const concurrencyLimit = Number(formData.value.concurrency_limit)
 
-  // Validate group_id is required
-  if (formData.value.group_id === null) {
+  // At least one bound group is required in the user form.
+  if (formData.value.group_ids.length === 0) {
     appStore.showError(t('keys.groupRequired'))
     return
   }
@@ -2177,7 +2182,7 @@ const handleSubmit = async () => {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
         concurrency_limit: concurrencyLimit,
-        group_id: formData.value.group_id,
+        group_ids: formData.value.group_ids,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -2195,14 +2200,15 @@ const handleSubmit = async () => {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
       await keysAPI.create(
         formData.value.name,
-        formData.value.group_id,
+        formData.value.group_ids[0],
         customKey,
         ipWhitelist,
         ipBlacklist,
         quota,
         expiresInDays,
         rateLimitData,
-        concurrencyLimit
+        concurrencyLimit,
+        formData.value.group_ids
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -2249,7 +2255,7 @@ const closeModals = () => {
   formData.value = {
     name: '',
     concurrency_limit: 0,
-    group_id: null,
+    group_ids: [],
     status: 'active',
     use_custom_key: false,
     custom_key: '',

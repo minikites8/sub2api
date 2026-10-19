@@ -140,6 +140,12 @@ export default {
     disable: 'Disable',
     nameLabel: 'Name',
     namePlaceholder: 'My API Key',
+    groupOrder: 'Group priority',
+    addGroup: 'Add group',
+    moveGroupUp: 'Move group up',
+    moveGroupDown: 'Move group down',
+    removeGroup: 'Remove group',
+    orderedGroupsHint: 'Groups are tried in order. Unavailable groups are skipped. Up to 32 groups.',
     groupLabel: 'Group',
     providerLabel: 'Provider',
     providers: {

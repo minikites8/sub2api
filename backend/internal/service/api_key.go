@@ -33,6 +33,7 @@ type APIKey struct {
 	Key         string
 	Name        string
 	GroupID     *int64
+	GroupIDs    []int64 // Bound groups in routing priority order.
 	Status      string
 	IPWhitelist []string
 	IPBlacklist []string
@@ -63,6 +64,20 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+}
+
+// OrderedGroupIDs also supports keys created before ordered bindings existed.
+func (k *APIKey) OrderedGroupIDs() []int64 {
+	if k == nil {
+		return []int64{}
+	}
+	if len(k.GroupIDs) > 0 {
+		return append([]int64(nil), k.GroupIDs...)
+	}
+	if k.GroupID != nil {
+		return []int64{*k.GroupID}
+	}
+	return []int64{}
 }
 
 func (k *APIKey) IsActive() bool {

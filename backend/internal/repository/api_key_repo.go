@@ -13,6 +13,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -22,6 +23,7 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 )
 
 type apiKeyRepository struct {
@@ -42,6 +44,12 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 	return r.client.APIKey.Query().Where(apikey.DeletedAtIsNil())
 }
 
+func apiKeyBoundToGroup(groupID int64) predicate.APIKey {
+	return apikey.Or(apikey.GroupIDEQ(groupID), func(s *entsql.Selector) {
+		s.Where(sqljson.ValueContains(apikey.FieldGroupIds, groupID))
+	})
+}
+
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
 	builder := r.client.APIKey.Create().
 		SetUserID(key.UserID).
@@ -50,6 +58,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetName(key.Name).
 		SetStatus(key.Status).
 		SetNillableGroupID(key.GroupID).
+		SetGroupIds(key.OrderedGroupIDs()).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
@@ -135,6 +144,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldID,
 			apikey.FieldUserID,
 			apikey.FieldGroupID,
+			apikey.FieldGroupIds,
 			apikey.FieldName,
 			apikey.FieldStatus,
 			apikey.FieldIPWhitelist,
@@ -313,6 +323,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 		}
 	}
 	if fields.GroupID {
+		builder.SetGroupIds(key.OrderedGroupIDs())
 		if key.GroupID != nil {
 			builder.SetGroupID(*key.GroupID)
 		} else {
@@ -461,7 +472,7 @@ func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service
 		if *filters.GroupID == 0 {
 			q = q.Where(apikey.GroupIDIsNil())
 		} else {
-			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
+			q = q.Where(apiKeyBoundToGroup(*filters.GroupID))
 		}
 	}
 
@@ -633,7 +644,7 @@ func (r *apiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, e
 }
 
 func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
-	q := r.activeQuery().Where(apikey.GroupIDEQ(groupID))
+	q := r.activeQuery().Where(apiKeyBoundToGroup(groupID))
 
 	total, err := q.Count(ctx)
 	if err != nil {
@@ -731,28 +742,49 @@ func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyw
 	return outKeys, nil
 }
 
-// ClearGroupIDByGroupID 将指定分组的所有 API Key 的 group_id 设为 nil
+// ClearGroupIDByGroupID removes this group from every binding list and promotes
+// the next group when the primary binding is removed.
 func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	n, err := r.client.APIKey.Update().
-		Where(apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()).
-		ClearGroupID().
-		Save(ctx)
-	return int64(n), err
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, `
+		WITH bindings AS (
+			SELECT id, jsonb_path_query_array(
+				COALESCE(group_ids, jsonb_build_array(group_id)),
+				'$[*] ? (@ != $id)', jsonb_build_object('id', $1::bigint)) AS ids
+			FROM api_keys WHERE deleted_at IS NULL
+			AND (group_id = $1 OR group_ids @> jsonb_build_array($1::bigint))
+		)
+		UPDATE api_keys k SET group_ids = b.ids, group_id = (b.ids->>0)::bigint, updated_at = NOW()
+		FROM bindings b WHERE k.id = b.id`, groupID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 // UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
 func (r *apiKeyRepository) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
-	client := clientFromContext(ctx, r.client)
-	n, err := client.APIKey.Update().
-		Where(apikey.UserIDEQ(userID), apikey.GroupIDEQ(oldGroupID), apikey.DeletedAtIsNil()).
-		SetGroupID(newGroupID).
-		Save(ctx)
-	return int64(n), err
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, `
+		WITH bindings AS (
+			SELECT id, (SELECT jsonb_agg(replacement::bigint ORDER BY first_position) FROM (
+				SELECT CASE WHEN value = $2 THEN $3 ELSE value END AS replacement, MIN(position) AS first_position
+				FROM jsonb_array_elements_text(COALESCE(group_ids, jsonb_build_array(group_id)))
+				WITH ORDINALITY AS e(value, position)
+				GROUP BY CASE WHEN value = $2 THEN $3 ELSE value END
+			) replaced) AS ids
+			FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL
+			AND (group_id = $2::bigint OR group_ids @> jsonb_build_array($2::bigint))
+		)
+		UPDATE api_keys k SET group_ids = b.ids, group_id = (b.ids->>0)::bigint, updated_at = NOW()
+		FROM bindings b WHERE k.id = b.id`, userID, fmt.Sprint(oldGroupID), fmt.Sprint(newGroupID))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 // CountByGroupID 获取分组的 API Key 数量
 func (r *apiKeyRepository) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	count, err := r.activeQuery().Where(apikey.GroupIDEQ(groupID)).Count(ctx)
+	count, err := r.activeQuery().Where(apiKeyBoundToGroup(groupID)).Count(ctx)
 	return int64(count), err
 }
 
@@ -769,7 +801,7 @@ func (r *apiKeyRepository) ListKeysByUserID(ctx context.Context, userID int64) (
 
 func (r *apiKeyRepository) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
 	keys, err := r.activeQuery().
-		Where(apikey.GroupIDEQ(groupID)).
+		Where(apiKeyBoundToGroup(groupID)).
 		Select(apikey.FieldKey).
 		Strings(ctx)
 	if err != nil {
@@ -908,6 +940,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 		GroupID:          m.GroupID,
+		GroupIDs:         m.GroupIds,
 		Quota:            m.Quota,
 		QuotaUsed:        m.QuotaUsed,
 		ExpiresAt:        m.ExpiresAt,

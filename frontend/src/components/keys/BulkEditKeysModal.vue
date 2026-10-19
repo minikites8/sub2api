@@ -21,14 +21,11 @@
             <input v-model="enabled.group_id" type="checkbox" class="checkbox" data-test="enable-group" />
             {{ t('keys.groupLabel') }}
           </label>
-          <Select
+          <OrderedGroupSelect
             v-if="enabled.group_id"
-            v-model="groupId"
+            v-model="groupIds"
             :options="groupOptions"
-            :placeholder="t('keys.selectGroup')"
             :disabled="submitting"
-            :aria-label="t('keys.groupLabel')"
-            searchable
             data-test="group-input"
           />
         </div>
@@ -156,6 +153,7 @@ import { keysAPI } from '@/api'
 import { useAppStore } from '@/stores/app'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import OrderedGroupSelect from '@/components/keys/OrderedGroupSelect.vue'
 import type { ApiKey, Group, UpdateApiKeyRequest } from '@/types'
 
 type SelectedKey = Pick<ApiKey, 'id' | 'name'>
@@ -190,7 +188,7 @@ const enabled = reactive<Record<EditableField, boolean>>({
   ip_whitelist: false,
   ip_blacklist: false
 })
-const groupId = ref<number | null>(null)
+const groupIds = ref<number[]>([])
 const status = ref<'active' | 'inactive'>('active')
 const limits = reactive<Record<LimitField, string | number>>({
   concurrency_limit: '', quota: '', rate_limit_5h: '', rate_limit_1d: '', rate_limit_7d: ''
@@ -216,7 +214,7 @@ const statusOptions = computed(() => [
 ])
 
 const validationError = computed(() => {
-  if (enabled.group_id && !props.groups.some((group) => group.id === groupId.value)) {
+  if (enabled.group_id && (!groupIds.value.length || groupIds.value.some(id => !props.groups.some(group => group.id === id)))) {
     return t('keys.groupRequired')
   }
   for (const { key } of limitFields) {
@@ -246,7 +244,7 @@ watch(() => props.show, (show) => {
   for (const field of Object.keys(enabled) as EditableField[]) enabled[field] = false
   for (const { key } of limitFields) limits[key] = ''
   for (const { key } of ipFields) ipLists[key] = ''
-  groupId.value = null
+  groupIds.value = []
   status.value = 'active'
   neverExpires.value = false
   expirationDate.value = ''
@@ -264,7 +262,7 @@ const errorMessage = (error: unknown): string => {
 const submit = async () => {
   if (!canSubmit.value) return
   const updates: UpdateApiKeyRequest = {}
-  if (enabled.group_id) updates.group_id = groupId.value
+  if (enabled.group_id) updates.group_ids = groupIds.value
   if (enabled.status) updates.status = status.value
   for (const { key } of limitFields) {
     if (enabled[key]) updates[key] = Number(limits[key])

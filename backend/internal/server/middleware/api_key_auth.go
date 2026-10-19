@@ -160,6 +160,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}
+		var groupSelected bool
+		apiKey, groupSelected = selectOrderedAPIKeyGroup(c, apiKeyService, subscriptionService, apiKey, false)
+		if !groupSelected {
+			return
+		}
 		if abortIfAPIKeyGroupUnavailable(c, apiKey) {
 			return
 		}

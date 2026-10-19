@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 28 // include concurrency limits, stream policy, model allowlists and pinned manifests
+const apiKeyAuthSnapshotVersion = 29 // include ordered group bindings
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -357,6 +357,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		APIKeyID:         apiKey.ID,
 		UserID:           apiKey.UserID,
 		GroupID:          apiKey.GroupID,
+		GroupIDs:         apiKey.OrderedGroupIDs(),
 		Name:             apiKey.Name,
 		Status:           apiKey.Status,
 		IPWhitelist:      apiKey.IPWhitelist,
@@ -497,6 +498,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		ID:               snapshot.APIKeyID,
 		UserID:           snapshot.UserID,
 		GroupID:          snapshot.GroupID,
+		GroupIDs:         append([]int64(nil), snapshot.GroupIDs...),
 		Key:              key,
 		Name:             snapshot.Name,
 		Status:           snapshot.Status,

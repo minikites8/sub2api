@@ -48,6 +48,9 @@ func (APIKey) Fields() []ent.Field {
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
+		field.JSON("group_ids", []int64{}).
+			Optional().
+			Comment("Group IDs in routing priority order; group_id mirrors the first entry"),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),

@@ -216,6 +216,7 @@ type CreateAPIKeyRequest struct {
 	ConcurrencyLimit int      `json:"concurrency_limit"`
 	Name             string   `json:"name"`
 	GroupID          *int64   `json:"group_id"`
+	GroupIDs         []int64  `json:"group_ids"`
 	CustomKey        *string  `json:"custom_key"`   // 可选的自定义key
 	IPWhitelist      []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist      []string `json:"ip_blacklist"` // IP 黑名单
@@ -235,6 +236,7 @@ type UpdateAPIKeyRequest struct {
 	ConcurrencyLimit *int      `json:"concurrency_limit"` // nil = no change, 0 = no additional limit
 	Name             *string   `json:"name"`
 	GroupID          *int64    `json:"group_id"`
+	GroupIDs         *[]int64  `json:"group_ids"` // omitted = unchanged, [] = unbind all
 	Status           *string   `json:"status"`
 	IPWhitelist      *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
 	IPBlacklist      *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
@@ -292,6 +294,7 @@ type APIKeyService struct {
 	apiKeyRepo                APIKeyRepository
 	userRepo                  UserRepository
 	groupRepo                 GroupRepository
+	groupAccounts             orderedGroupAccountSource
 	userSubRepo               UserSubscriptionRepository
 	userGroupRateRepo         UserGroupRateRepository
 	cache                     APIKeyCache
@@ -520,16 +523,9 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	}
 
 	// 验证分组权限（如果指定了分组）
-	if req.GroupID != nil {
-		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
-		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
-		}
-
-		// 检查用户是否可以绑定该分组
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
-		}
+	groupIDs, err := s.validateOrderedGroups(ctx, user, req.GroupID, req.GroupIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	var key string
@@ -576,7 +572,8 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		UserID:           userID,
 		Key:              key,
 		Name:             html.EscapeString(req.Name),
-		GroupID:          req.GroupID,
+		GroupID:          firstAPIKeyGroupID(groupIDs),
+		GroupIDs:         groupIDs,
 		Status:           StatusActive,
 		IPWhitelist:      req.IPWhitelist,
 		IPBlacklist:      req.IPBlacklist,
@@ -884,23 +881,24 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		fields.Name = true
 	}
 
-	if req.GroupID != nil {
+	if req.GroupID != nil || req.GroupIDs != nil {
 		// 验证分组权限
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil {
 			return nil, fmt.Errorf("get user: %w", err)
 		}
 
-		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
+		var requested []int64
+		if req.GroupIDs != nil {
+			requested = append([]int64{}, (*req.GroupIDs)...)
+		}
+		groupIDs, err := s.validateOrderedGroups(ctx, user, req.GroupID, requested)
 		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
+			return nil, err
 		}
-
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
-		}
-
-		apiKey.GroupID = req.GroupID
+		apiKey.GroupIDs = groupIDs
+		apiKey.GroupID = firstAPIKeyGroupID(groupIDs)
+		apiKey.Group = nil
 		fields.GroupID = true
 	}
 

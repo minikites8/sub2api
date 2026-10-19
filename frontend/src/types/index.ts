@@ -822,6 +822,7 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
+  group_ids?: number[]
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -865,6 +866,7 @@ export interface CreateApiKeyRequest {
   name: string
   concurrency_limit?: number // 0 = no additional key limit
   group_id?: number | null
+  group_ids?: number[]
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -879,6 +881,7 @@ export interface UpdateApiKeyRequest {
   name?: string
   concurrency_limit?: number // Omitted = no change, 0 = no additional key limit
   group_id?: number | null
+  group_ids?: number[]
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]

@@ -7,6 +7,17 @@ vi.mock('../client', () => ({ apiClient: { post: vi.fn(), put: vi.fn(), get: vi.
 describe('API key concurrency payloads', () => {
   beforeEach(() => vi.resetAllMocks())
 
+  it('preserves ordered bindings in create, reorder and unbind requests', async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({ data: {} })
+    vi.mocked(apiClient.put).mockResolvedValue({ data: {} })
+    await create('ordered', 42, undefined, undefined, undefined, undefined, undefined, undefined, 0, [42, 7])
+    expect(apiClient.post).toHaveBeenCalledWith('/keys', { name: 'ordered', concurrency_limit: 0, group_id: 42, group_ids: [42, 7] })
+    await update(1, { group_ids: [7, 42] })
+    expect(apiClient.put).toHaveBeenLastCalledWith('/keys/1', { group_ids: [7, 42] })
+    await update(1, { group_ids: [] })
+    expect(apiClient.put).toHaveBeenLastCalledWith('/keys/1', { group_ids: [] })
+  })
+
   it.each([0, 8])('preserves concurrency_limit=%s in create and update requests and responses', async (limit) => {
     const key = { id: 1, name: 'test-key', concurrency_limit: limit }
     vi.mocked(apiClient.post).mockResolvedValue({ data: key })

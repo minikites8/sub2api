@@ -25,7 +25,7 @@ func nextWithAPIKeyAdmissionOwner(c *gin.Context, apiKeyService *service.APIKeyS
 		if isResponsesWebSocketRoute(c) && apiKeyService != nil {
 			// WS sessions must observe revocation even when an auth-cache
 			// invalidation is delayed or lost on this instance.
-			revalidate = newAPIKeyAuthRevalidator(apiKeyService.GetByKeyUncached, credential, trustedClientIP, key)
+			revalidate = newAPIKeyAuthRevalidator(boundGroupAuthLookup(apiKeyService, apiKeyService.GetByKeyUncached, key), credential, trustedClientIP, key)
 		}
 		base := service.WithAPIKeyQueueAuthRevalidator(
 			c.Request.Context(),
@@ -60,9 +60,23 @@ func nextWithAPIKeyAdmissionOwner(c *gin.Context, apiKeyService *service.APIKeyS
 func newAPIKeyQueueAuthRevalidator(apiKeyService *service.APIKeyService, credential string, trustedClientIP string, initial *service.APIKey) service.APIKeyQueueAuthRevalidator {
 	var lookup func(context.Context, string) (*service.APIKey, error)
 	if apiKeyService != nil {
-		lookup = apiKeyService.GetByKey
+		lookup = boundGroupAuthLookup(apiKeyService, apiKeyService.GetByKey, initial)
 	}
 	return newAPIKeyAuthRevalidator(lookup, credential, trustedClientIP, initial)
+}
+
+func boundGroupAuthLookup(keys *service.APIKeyService, lookup func(context.Context, string) (*service.APIKey, error), initial *service.APIKey) func(context.Context, string) (*service.APIKey, error) {
+	if initial == nil || initial.GroupID == nil || len(initial.OrderedGroupIDs()) <= 1 {
+		return lookup
+	}
+	groupID := *initial.GroupID
+	return func(ctx context.Context, credential string) (*service.APIKey, error) {
+		latest, err := lookup(ctx, credential)
+		if err != nil {
+			return nil, err
+		}
+		return keys.APIKeyInBoundGroup(ctx, latest, groupID)
+	}
 }
 
 // Share all identity, permission and expiry gates between cached HTTP queue

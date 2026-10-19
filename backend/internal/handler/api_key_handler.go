@@ -35,7 +35,8 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 type CreateAPIKeyRequest struct {
 	ConcurrencyLimit int      `json:"concurrency_limit" binding:"gte=0"`
 	Name             string   `json:"name" binding:"required"`
-	GroupID          *int64   `json:"group_id"`        // nullable
+	GroupID          *int64   `json:"group_id"` // nullable
+	GroupIDs         []int64  `json:"group_ids"`
 	CustomKey        *string  `json:"custom_key"`      // 可选的自定义key
 	IPWhitelist      []string `json:"ip_whitelist"`    // IP 白名单
 	IPBlacklist      []string `json:"ip_blacklist"`    // IP 黑名单
@@ -53,6 +54,7 @@ type UpdateAPIKeyRequest struct {
 	ConcurrencyLimit *int      `json:"concurrency_limit" binding:"omitempty,gte=0"`
 	Name             string    `json:"name"`
 	GroupID          *int64    `json:"group_id"`
+	GroupIDs         *[]int64  `json:"group_ids"`
 	Status           string    `json:"status" binding:"omitempty,oneof=active inactive"`
 	IPWhitelist      *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
 	IPBlacklist      *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
@@ -203,6 +205,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		ConcurrencyLimit: req.ConcurrencyLimit,
 		Name:             req.Name,
 		GroupID:          req.GroupID,
+		GroupIDs:         req.GroupIDs,
 		CustomKey:        req.CustomKey,
 		IPWhitelist:      req.IPWhitelist,
 		IPBlacklist:      req.IPBlacklist,
@@ -270,6 +273,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		svcReq.Name = &req.Name
 	}
 	svcReq.GroupID = req.GroupID
+	svcReq.GroupIDs = req.GroupIDs
 	if req.Status != "" {
 		svcReq.Status = &req.Status
 	}
