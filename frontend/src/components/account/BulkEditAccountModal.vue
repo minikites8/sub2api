@@ -487,6 +487,24 @@
       </div>
 
       <!-- Header Override (anthropic/openai apikey only) -->
+      <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="flex cursor-pointer items-center justify-between gap-4">
+          <span class="input-label mb-0">{{ t('admin.accounts.upstreamRetry.bulkApply') }}</span>
+          <input
+            v-model="enableUpstreamRetry"
+            type="checkbox"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            data-testid="bulk-upstream-retry-apply"
+          />
+        </label>
+        <UpstreamRetrySettings
+          v-if="enableUpstreamRetry"
+          v-model:enabled="upstreamRetryEnabled"
+          v-model:max-retries="upstreamMaxRetries"
+          class="mt-3"
+        />
+      </div>
+
       <div v-if="allHeaderOverrideCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="flex items-center justify-between">
           <div class="flex-1 pr-4">
@@ -1214,6 +1232,12 @@ import {
   getPresetMappingsByPlatform
 } from '@/composables/useModelWhitelist'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import UpstreamRetrySettings from '@/components/account/UpstreamRetrySettings.vue'
+import {
+  applyUpstreamRetrySettings,
+  isValidUpstreamMaxRetries,
+  type UpstreamMaxRetries
+} from '@/components/account/upstreamRetry'
 import {
   buildHeaderOverridesObject,
   isHeaderOverrideCapable,
@@ -1339,6 +1363,9 @@ const enableBaseUrl = ref(false)
 const enableModelRestriction = ref(false)
 const enableCustomErrorCodes = ref(false)
 const enableInterceptWarmup = ref(false)
+const enableUpstreamRetry = ref(false)
+const upstreamRetryEnabled = ref(false)
+const upstreamMaxRetries = ref<UpstreamMaxRetries>('')
 const enableHeaderOverride = ref(false)
 const enableProxy = ref(false)
 const enableConcurrency = ref(false)
@@ -1626,6 +1653,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     credentialsChanged = true
   }
 
+  if (allOpenAIAPIKey.value && enableUpstreamRetry.value) {
+    applyUpstreamRetrySettings(credentials, upstreamRetryEnabled.value, upstreamMaxRetries.value, 'edit')
+    credentialsChanged = true
+  }
+
   if (enableHeaderOverride.value) {
     // 后端使用 JSONB || merge 语义：关闭时显式写入 false + 空对象以清除旧配置
     credentials[HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY] = headerOverrideEnabled.value
@@ -1757,12 +1789,19 @@ const handleSubmit = async () => {
     return
   }
 
+  if (allOpenAIAPIKey.value && enableUpstreamRetry.value && upstreamRetryEnabled.value &&
+      !isValidUpstreamMaxRetries(upstreamMaxRetries.value)) {
+    appStore.showError(t('admin.accounts.upstreamRetry.invalidLimit'))
+    return
+  }
+
   const hasAnyFieldEnabled =
     enableBaseUrl.value ||
     enableOpenAIPassthrough.value ||
     enableModelRestriction.value ||
     enableCustomErrorCodes.value ||
     enableInterceptWarmup.value ||
+    (allOpenAIAPIKey.value && enableUpstreamRetry.value) ||
     enableHeaderOverride.value ||
     enableProxy.value ||
     enableConcurrency.value ||
@@ -1890,6 +1929,9 @@ watch(
       enableModelRestriction.value = false
       enableCustomErrorCodes.value = false
       enableInterceptWarmup.value = false
+      enableUpstreamRetry.value = false
+      upstreamRetryEnabled.value = false
+      upstreamMaxRetries.value = ''
       enableHeaderOverride.value = false
       enableProxy.value = false
       enableConcurrency.value = false

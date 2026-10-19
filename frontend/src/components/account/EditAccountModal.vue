@@ -602,6 +602,12 @@
         </div>
       </div>
 
+      <UpstreamRetrySettings
+        v-if="account.platform === 'openai' && account.type === 'apikey'"
+        v-model:enabled="upstreamRetryEnabled"
+        v-model:max-retries="upstreamMaxRetries"
+      />
+
       <!-- Header Override Section (anthropic/openai apikey + grok apikey/oauth) -->
       <div v-if="headerOverrideCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -2865,6 +2871,13 @@ import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import UpstreamRetrySettings from '@/components/account/UpstreamRetrySettings.vue'
+import {
+  applyUpstreamRetrySettings,
+  isValidUpstreamMaxRetries,
+  readUpstreamRetrySettings,
+  type UpstreamMaxRetries
+} from '@/components/account/upstreamRetry'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3049,6 +3062,8 @@ const normalizeKiroTransientRetryCount = (value: number) => {
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
+const upstreamRetryEnabled = ref(false)
+const upstreamMaxRetries = ref<UpstreamMaxRetries>('')
 const headerOverrideEnabled = ref(false)
 const headerOverrideRows = ref<HeaderOverrideRow[]>([])
 
@@ -3790,6 +3805,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadQuotaControlSettings(newAccount)
 
   loadTempUnschedRules(credentials)
+
+  const upstreamRetry = readUpstreamRetrySettings(
+    newAccount.platform === 'openai' && newAccount.type === 'apikey' ? credentials : undefined
+  )
+  upstreamRetryEnabled.value = upstreamRetry.enabled
+  upstreamMaxRetries.value = upstreamRetry.maxRetries
 
   // Load header override state (anthropic/openai apikey + grok apikey/oauth)
   headerOverrideEnabled.value = false
@@ -4618,6 +4639,14 @@ const handleSubmit = async () => {
       } else {
         delete newCredentials.custom_error_codes_enabled
         delete newCredentials.custom_error_codes
+      }
+
+      if (props.account.platform === 'openai') {
+        if (upstreamRetryEnabled.value && !isValidUpstreamMaxRetries(upstreamMaxRetries.value)) {
+          appStore.showError(t('admin.accounts.upstreamRetry.invalidLimit'))
+          return
+        }
+        applyUpstreamRetrySettings(newCredentials, upstreamRetryEnabled.value, upstreamMaxRetries.value, 'edit')
       }
 
       // Add header override if enabled (anthropic/openai/grok apikey)

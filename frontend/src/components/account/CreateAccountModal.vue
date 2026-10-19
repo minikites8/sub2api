@@ -2143,6 +2143,12 @@
           </div>
         </div>
 
+        <UpstreamRetrySettings
+          v-if="form.platform === 'openai'"
+          v-model:enabled="upstreamRetryEnabled"
+          v-model:max-retries="upstreamMaxRetries"
+        />
+
         <!-- Header Override Section (anthropic/openai apikey only) -->
         <div
           v-if="isHeaderOverrideCapable(form.platform, 'apikey')"
@@ -4195,6 +4201,12 @@ import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import UpstreamRetrySettings from '@/components/account/UpstreamRetrySettings.vue'
+import {
+  applyUpstreamRetrySettings,
+  isValidUpstreamMaxRetries,
+  type UpstreamMaxRetries
+} from '@/components/account/upstreamRetry'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -4439,6 +4451,8 @@ const normalizeKiroTransientRetryCount = (value: number) => {
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
+const upstreamRetryEnabled = ref(false)
+const upstreamMaxRetries = ref<UpstreamMaxRetries>('')
 const headerOverrideEnabled = ref(false)
 const headerOverrideRows = ref<HeaderOverrideRow[]>([])
 
@@ -5088,6 +5102,8 @@ watch(
     }
     // 请求头覆写为平台相关配置（常用头集合不同），切换平台时清空，
     // 避免上一平台的配置行被提交到新平台账号
+    upstreamRetryEnabled.value = false
+    upstreamMaxRetries.value = ''
     headerOverrideEnabled.value = false
     headerOverrideRows.value = []
     grokOAuthCustomBaseUrlEnabled.value = false
@@ -5536,6 +5552,8 @@ const resetForm = () => {
   customErrorCodesEnabled.value = false
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
+  upstreamRetryEnabled.value = false
+  upstreamMaxRetries.value = ''
   headerOverrideEnabled.value = false
   headerOverrideRows.value = []
   grokOAuthCustomBaseUrlEnabled.value = false
@@ -6138,6 +6156,14 @@ const handleSubmit = async () => {
   if (customErrorCodesEnabled.value) {
     credentials.custom_error_codes_enabled = true
     credentials.custom_error_codes = [...selectedErrorCodes.value]
+  }
+
+  if (form.platform === 'openai') {
+    if (upstreamRetryEnabled.value && !isValidUpstreamMaxRetries(upstreamMaxRetries.value)) {
+      appStore.showError(t('admin.accounts.upstreamRetry.invalidLimit'))
+      return
+    }
+    applyUpstreamRetrySettings(credentials, upstreamRetryEnabled.value, upstreamMaxRetries.value, 'create')
   }
 
   // Add header override if enabled (anthropic/openai/grok apikey)

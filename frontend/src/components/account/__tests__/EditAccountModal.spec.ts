@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -29,6 +29,9 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       update: updateAccountMock,
       checkMixedChannelRisk: checkMixedChannelRiskMock
+    },
+    nodeLeases: {
+      listNodes: vi.fn().mockResolvedValue([{ node_id: 'node-test', status: 'online', region: 'test' }])
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -321,6 +324,12 @@ function buildOpenAISetupTokenAccount() {
 }
 
 function mountModal(account = buildAccount()) {
+  // Account edits require a scheduling node on this branch.
+  account.extra = {
+    node_oauth_assigned_node_id: 'node-test',
+    node_oauth_assigned_node_ids: ['node-test'],
+    ...account.extra
+  }
   return mount(EditAccountModal, {
     props: {
       show: true,
@@ -344,6 +353,44 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it('loads upstream retry values, clears an old limit and preserves other credentials', async () => {
+    const account = buildAccount()
+    account.credentials.openai_upstream_retry_account = true
+    account.credentials.openai_upstream_max_retries = 2
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="upstream-retry-enabled"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-testid="upstream-retry-max-retries"]').element as HTMLInputElement).value).toBe('2')
+    await wrapper.get('[data-testid="upstream-retry-max-retries"]').setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      api_key: 'sk-test',
+      openai_upstream_retry_account: true,
+      openai_upstream_max_retries: null
+    })
+    await wrapper.get('[data-testid="upstream-retry-enabled"]').setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[updateAccountMock.mock.calls.length - 1]?.[1]?.credentials).toMatchObject({
+      openai_upstream_retry_account: false,
+      openai_upstream_max_retries: null
+    })
+  })
+
+  it('resets upstream retry values when another account is opened', async () => {
+    const account = buildAccount()
+    account.credentials.openai_upstream_retry_account = true
+    account.credentials.openai_upstream_max_retries = 0
+    const wrapper = mountModal(account)
+    await wrapper.setProps({ account: buildAccount() })
+    expect((wrapper.get('[data-testid="upstream-retry-enabled"]').element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.find('[data-testid="upstream-retry-max-retries"]').exists()).toBe(false)
+    await wrapper.setProps({ account: buildOpenAISetupTokenAccount() })
+    expect(wrapper.find('[data-testid="upstream-retry-settings"]').exists()).toBe(false)
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {

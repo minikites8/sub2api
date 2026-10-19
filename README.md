@@ -62,6 +62,10 @@ Additional Kiro-focused features in this fork:
   <img src="assets/screenshots/kiro-account-management.png" alt="Kiro account management" width="100%">
 </p>
 
+## OpenAI API Key Upstream Retries
+
+Account creation, editing, and bulk editing support upstream account retries and a maximum retry count. See the [configuration guide](docs/openai-upstream-retry.md).
+
 ## Features
 
 - **Multi-Account Management** - Support multiple upstream account types (OAuth, API Key)

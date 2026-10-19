@@ -180,6 +180,30 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     listNodeLoginTasksMock.mockReset().mockResolvedValue([])
   })
 
+  it('saves the upstream retry panel for OpenAI API Key accounts', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('relay account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-key')
+    await wrapper.get('[data-testid="upstream-retry-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="upstream-retry-max-retries"]').setValue('0')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      openai_upstream_retry_account: true,
+      openai_upstream_max_retries: 0
+    })
+  })
+
+  it('does not expose upstream account retry for Anthropic API Key accounts', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    expect(wrapper.find('[data-testid="upstream-retry-settings"]').exists()).toBe(false)
+  })
+
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
     await submitApiKeyAccount('openai')
 

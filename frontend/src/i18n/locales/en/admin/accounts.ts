@@ -640,6 +640,15 @@ export default {
       interceptWarmupRequests: 'Intercept Warmup Requests',
       interceptWarmupRequestsDesc:
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
+      upstreamRetry: {
+        title: 'Upstream Account Retry',
+        hint: 'When supported, ask the upstream to try another available account if it fails before output. Disabled adds no retry settings. When enabled, these settings take precedence over matching header overrides.',
+        maxRetries: 'Maximum Account Retries',
+        defaultLimit: 'Leave empty for the upstream default',
+        limitHint: 'Excludes the initial request. Zero disables account switching; the upstream server limit still applies.',
+        invalidLimit: 'Maximum account retries must be an integer from 0 to 2147483647, or empty for the default',
+        bulkApply: 'Set Upstream Account Retry in Bulk'
+      },
       headerOverride: {
         title: 'Header Override',
         hint: 'Override same-named request headers on forwarding (case-insensitive)',

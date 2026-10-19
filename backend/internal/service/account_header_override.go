@@ -171,15 +171,12 @@ func (a *Account) HeaderOverrideValue(lowerName string) (string, bool) {
 // ApplyHeaderOverrides 将账号配置的请求头覆写应用到出站请求头。
 // 对每个覆写条目：先删除所有大小写变体（转发链路会以 wire casing 直接写入 map，
 // 可能存在非 canonical key），再按已知 wire casing 写入，避免产生重复头。
-// 账号未启用或不符合条件时为 no-op，可安全地在 OAuth/api_key 共用的构建器中调用。
+// 同时应用 OpenAI API Key 账号的专用上游重试参数，可安全地在共用构建器中调用。
 func (a *Account) ApplyHeaderOverrides(h http.Header) {
 	if h == nil {
 		return
 	}
 	overrides := a.GetHeaderOverrides()
-	if len(overrides) == 0 {
-		return
-	}
 	// 覆写名两两不同（大小写不敏感）且各自只操作同名键，应用顺序不影响结果。
 	// 全量 EqualFold 扫描兜底删除任意 casing 的既有键：透传链路可能保留客户端
 	// 原始 casing，非 canonical/wire casing 的键 deleteHeaderAllForms 覆盖不到。
@@ -191,6 +188,7 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 		}
 		h[resolveWireCasing(name)] = []string{value}
 	}
+	a.applyOpenAIUpstreamRetryHeaders(h)
 }
 
 // NormalizeHeaderOverrideCredentials 校验并原地规范化 credentials 中的请求头覆写字段。

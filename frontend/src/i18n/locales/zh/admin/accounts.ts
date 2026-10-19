@@ -739,6 +739,15 @@ export default {
       errorCodeExists: '该错误码已被选中',
       interceptWarmupRequests: '拦截预热请求',
       interceptWarmupRequestsDesc: '启用后，标题生成等预热请求将返回 mock 响应，不消耗上游 token',
+      upstreamRetry: {
+        title: '上游换号重试',
+        hint: '上游支持时，要求上游在输出内容前报错时尝试其他可用账号。关闭后不额外设置重试参数。开启时，此处配置优先于同名请求头覆写。',
+        maxRetries: '最大换号重试次数',
+        defaultLimit: '留空使用上游默认上限',
+        limitHint: '不含首次请求；0 表示不换号，实际次数受上游配置上限约束。',
+        invalidLimit: '最大换号重试次数必须是 0 至 2147483647 的整数，或留空使用默认值',
+        bulkApply: '批量设置上游换号重试'
+      },
       headerOverride: {
         title: '请求头覆写',
         hint: '转发时用配置值覆盖同名请求头（不区分大小写）',

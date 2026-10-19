@@ -88,6 +88,30 @@ describe('BulkEditAccountModal', () => {
     } as any)
   })
 
+  it('saves only the upstream retry fields when that batch option is enabled', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['apikey'] })
+    await wrapper.get('[data-testid="bulk-upstream-retry-apply"]').setValue(true)
+    await wrapper.get('[data-testid="upstream-retry-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="upstream-retry-max-retries"]').setValue('2')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_upstream_retry_account: true, openai_upstream_max_retries: 2 }
+    })
+  })
+
+  it('clears retry settings in bulk and hides the option for mixed account types', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['apikey'] })
+    await wrapper.get('[data-testid="bulk-upstream-retry-apply"]').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_upstream_retry_account: false, openai_upstream_max_retries: null }
+    })
+    await wrapper.setProps({ selectedTypes: ['apikey', 'oauth'] })
+    expect(wrapper.find('[data-testid="bulk-upstream-retry-apply"]').exists()).toBe(false)
+  })
+
   it('antigravity 白名单包含 Gemini 图片模型且过滤掉普通 GPT 模型', async () => {
     const wrapper = mountModal()
     const selector = wrapper.findComponent(ModelWhitelistSelector)
