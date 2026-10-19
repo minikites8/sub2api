@@ -103,6 +103,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}
+	maxAccountSwitches = requestAccountSwitchLimit(c, maxAccountSwitches)
 	failedAccountIDs := make(map[int64]struct{})
 	switchCount := 0
 	var lastUpstreamErr error

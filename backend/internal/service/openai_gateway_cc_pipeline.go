@@ -88,14 +88,14 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	upstreamMsg string,
 	upstreamModel string,
 ) *UpstreamFailoverError {
-	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody)
+	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody, c)
 	tempUnscheduled := false
 	if c != nil && account != nil && account.Platform != PlatformGrok && !shouldFailover && !IsResponseCommitted(c) && s.rateLimitService != nil {
 		tempUnscheduled = s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody, upstreamModel) == ErrorPolicyTempUnscheduled
 		shouldFailover = tempUnscheduled
 	}
 	if account != nil && account.Platform == PlatformGrok {
-		shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
+		shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) || requestAccountRetryOnError(c, resp.StatusCode, upstreamMsg, respBody)
 	}
 	if account != nil && account.Platform == PlatformGrok {
 		s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, upstreamModel), account, resp.StatusCode, resp.Header, respBody)

@@ -211,6 +211,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}
+	maxAccountSwitches = requestAccountSwitchLimit(c, maxAccountSwitches)
 	routingStart := time.Now()
 	requiredCapability := grokMediaRequiredCapability(endpoint)
 	var accountReleaseFunc func()
@@ -414,7 +415,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					h.handleFailoverExhausted(c, failoverErr, false)
 					return
 				}
-				if failoverErr.RetryableOnSameAccount {
+				if !requestPrefersAccountRetry(c) && failoverErr.RetryableOnSameAccount {
 					retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 					if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
 						sameAccountRetryCount[account.ID]++

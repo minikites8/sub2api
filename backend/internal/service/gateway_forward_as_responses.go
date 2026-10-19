@@ -224,7 +224,7 @@ func (s *GatewayService) ForwardAsResponses(
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		if s.shouldFailoverUpstreamError(resp.StatusCode) || requestAccountRetryOnError(c, resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				ProxyID:            opsUpstreamProxyID(account),
 				ProxyName:          opsUpstreamProxyName(account),

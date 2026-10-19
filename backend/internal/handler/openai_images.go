@@ -147,7 +147,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImagesEndpoint(service.WithOpenAIImageGenerationIntent(c.Request.Context()))
 
-	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches := requestAccountSwitchLimit(c, h.maxAccountSwitches)
 	switchCount := 0
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
@@ -328,7 +328,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						)
 						return
 					}
-					if failoverErr.RetryableOnSameAccount {
+					if !requestPrefersAccountRetry(c) && failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
 							sameAccountRetryCount[account.ID]++

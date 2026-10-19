@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestretry"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,6 +53,7 @@ func CORS(cfg config.CORSConfig) gin.HandlerFunc {
 		allowedSet[origin] = struct{}{}
 	}
 	allowHeaders := []string{
+		requestretry.AccountHeader, requestretry.MaxRetriesHeader,
 		"Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization",
 		"accept", "origin", "Cache-Control", "X-Requested-With", "X-API-Key", "X-Admin-UI-Request", "X-User-UI-Request", "Anthropic-Version", "X-Browser-Fingerprint", "X-Browser-Fingerprints", "X-Browser-Account-Attempts", "X-JA3", "X-JA3-Fingerprint", "X-JA3-Hash", "X-TLS-JA3", "X-Client-JA3", "CF-JA3-Fingerprint", "CF-JA3-Hash", "X-JA4", "X-JA4-Fingerprint", "X-JA4-Hash", "X-TLS-JA4", "X-Client-JA4", "CF-JA4-Fingerprint", "CF-JA4-Hash", "CF-JA4",
 	}

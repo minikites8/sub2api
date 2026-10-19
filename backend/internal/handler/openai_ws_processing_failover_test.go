@@ -31,7 +31,7 @@ func TestOpenAIWSProcessingHandlerFailover(t *testing.T) {
 		}
 	}
 }
-func runWSProcessingFixture(t *testing.T, mode, frame string, metadata, partial bool) {
+func runWSProcessingFixture(t *testing.T, mode, frame string, metadata, partial bool, requestHeaders ...http.Header) {
 	gin.SetMode(gin.TestMode)
 
 	firstHitCh := make(chan []byte, 1)
@@ -207,10 +207,14 @@ func runWSProcessingFixture(t *testing.T, mode, frame string, metadata, partial 
 	defer handlerServer.Close()
 
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	var headers http.Header
+	if len(requestHeaders) > 0 {
+		headers = requestHeaders[0]
+	}
 	clientConn, _, err := coderws.Dial(
 		dialCtx,
 		"ws"+strings.TrimPrefix(handlerServer.URL, "http")+"/openai/v1/responses",
-		&coderws.DialOptions{CompressionMode: coderws.CompressionContextTakeover},
+		&coderws.DialOptions{CompressionMode: coderws.CompressionContextTakeover, HTTPHeader: headers},
 	)
 	cancelDial()
 	require.NoError(t, err)

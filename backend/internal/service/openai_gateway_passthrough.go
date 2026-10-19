@@ -463,7 +463,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			// 透传模式默认保持原样代理；容量错误以及 API-key 上游的瞬时
 			// 5xx 应先触发多账号 failover，且此时尚未写入下游响应。
 			// probeBody 已在上方任务探测时读取过一次，直接复用避免重复读取。
-			if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
+			if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody, c) {
 				return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 			}
 			return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
@@ -502,7 +502,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				if signal, ok := asOpenAICompactFallbackSignal(handleErr); ok {
 					_ = resp.Body.Close()
 					compactResp, compactBody := openAICompactFallbackErrorResponse(resp, signal)
-					if shouldFailoverOpenAIPassthroughResponse(account, compactResp.StatusCode, compactBody) {
+					if shouldFailoverOpenAIPassthroughResponse(account, compactResp.StatusCode, compactBody, c) {
 						return nil, s.handleFailoverErrorResponsePassthrough(ctx, compactResp, c, account, body, compactBody)
 					}
 					return nil, s.handleErrorResponsePassthrough(ctx, compactResp, c, account, body, compactBody)
@@ -547,7 +547,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				if signal, ok := asOpenAICompactFallbackSignal(handleErr); ok {
 					_ = resp.Body.Close()
 					compactResp, compactBody := openAICompactFallbackErrorResponse(resp, signal)
-					if shouldFailoverOpenAIPassthroughResponse(account, compactResp.StatusCode, compactBody) {
+					if shouldFailoverOpenAIPassthroughResponse(account, compactResp.StatusCode, compactBody, c) {
 						return nil, s.handleFailoverErrorResponsePassthrough(ctx, compactResp, c, account, body, compactBody)
 					}
 					return nil, s.handleErrorResponsePassthrough(ctx, compactResp, c, account, body, compactBody)
@@ -858,7 +858,7 @@ func stripOpenAILegacyResponsesBeta(headers http.Header) {
 	}
 }
 
-func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, responseBody []byte) bool {
+func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, responseBody []byte, requestContexts ...*gin.Context) bool {
 	if hit, _, _ := detectOpenAICyberPolicy(responseBody); hit {
 		return false
 	}
@@ -872,6 +872,9 @@ func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, r
 		return true
 	}
 	if isOpenAITransientProcessingError(statusCode, "", responseBody) {
+		return true
+	}
+	if requestAccountRetryFromContexts(requestContexts, statusCode, "", responseBody) {
 		return true
 	}
 	if account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode) {
@@ -1649,12 +1652,15 @@ func applyOpenAIStreamFailedErrorPassthroughRule(
 	)
 }
 
-func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
+func openAIStreamFailedEventShouldFailover(payload []byte, message string, requestContexts ...*gin.Context) bool {
 	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
 		return false
 	}
 	if isOpenAIContextWindowError(message, payload) {
 		return false
+	}
+	if requestAccountRetryFromContexts(requestContexts, http.StatusBadGateway, message, payload) {
+		return true
 	}
 	if isOpenAIUpstreamAccessStateError(message, payload) {
 		return true
@@ -1701,12 +1707,15 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	return true
 }
 
-func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
+func openAIStreamErrorEventShouldFailover(payload []byte, message string, requestContexts ...*gin.Context) bool {
 	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
 		return false
 	}
 	if isOpenAIContextWindowError(message, payload) {
 		return false
+	}
+	if requestAccountRetryFromContexts(requestContexts, http.StatusBadGateway, message, payload) {
+		return true
 	}
 	if isOpenAIUpstreamAccessStateError(message, payload) {
 		return true
@@ -1954,9 +1963,9 @@ func (s *OpenAIGatewayService) nonStreamingTerminalFailureFailover(
 	if account.IsGrok() && isGrokContentPolicyRejection(http.StatusForbidden, payload) {
 		return nil
 	}
-	shouldFailover := openAIStreamFailedEventShouldFailover(payload, message)
+	shouldFailover := openAIStreamFailedEventShouldFailover(payload, message, c)
 	if terminalType == "error" {
-		shouldFailover = openAIStreamErrorEventShouldFailover(payload, message)
+		shouldFailover = openAIStreamErrorEventShouldFailover(payload, message, c)
 	}
 	if !shouldFailover {
 		return nil
@@ -2297,9 +2306,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 					shouldFailover := false
 					if !cyberHit {
 						if eventType == "error" {
-							shouldFailover = openAIStreamErrorEventShouldFailover(dataBytes, failedMessage)
+							shouldFailover = openAIStreamErrorEventShouldFailover(dataBytes, failedMessage, c)
 						} else {
-							shouldFailover = openAIStreamFailedEventShouldFailover(dataBytes, failedMessage)
+							shouldFailover = openAIStreamFailedEventShouldFailover(dataBytes, failedMessage, c)
 						}
 					}
 					if shouldFailover {

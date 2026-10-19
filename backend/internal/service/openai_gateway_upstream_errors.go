@@ -268,7 +268,7 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 	}
 }
 
-func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte, requestContexts ...*gin.Context) bool {
 	// cyber_policy is request-scoped even when an intermediary wraps the
 	// provider response in a retryable 5xx status. Never punish or rotate the
 	// selected credential for it.
@@ -300,7 +300,8 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 	if s.shouldFailoverUpstreamError(statusCode) {
 		return true
 	}
-	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
+	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody) ||
+		requestAccountRetryFromContexts(requestContexts, statusCode, upstreamMsg, upstreamBody)
 }
 
 func isOpenAICompatibleModelNotFound400(respBody []byte) bool {

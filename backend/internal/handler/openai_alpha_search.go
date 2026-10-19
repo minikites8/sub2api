@@ -240,7 +240,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			)
 			return
 		}
-		if failoverErr.RetryableOnSameAccount {
+		if !requestPrefersAccountRetry(c) && failoverErr.RetryableOnSameAccount {
 			retryLimit := account.GetPoolModeRetryCount()
 			if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
 				sameAccountRetryCount[account.ID]++
@@ -263,7 +263,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		h.gatewayService.RecordOpenAIAccountSwitch()
 		failedAccountIDs[account.ID] = struct{}{}
 		lastFailoverErr = failoverErr
-		if switchCount >= h.maxAccountSwitches {
+		if switchCount >= requestAccountSwitchLimit(c, h.maxAccountSwitches) {
 			h.handleFailoverExhausted(c, failoverErr, false)
 			return
 		}

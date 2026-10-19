@@ -150,7 +150,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
 
-	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches := requestAccountSwitchLimit(c, h.maxAccountSwitches)
 	switchCount := 0
 	var forbiddenBudget grokForbiddenFailoverBudget
 	profitVetoCount := 0
@@ -164,12 +164,20 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	writerSizeBeforeForward := -1
 	lastWriterSizeBeforeForward := -1
 	startOrdinaryBPSFallback := func() bool {
+		if requestPrefersAccountRetry(c) && switchCount >= maxAccountSwitches {
+			return false
+		}
 		if ordinaryBPSFallbackStarted || !enterExcelBPSOrdinaryFallback(c) {
 			return false
 		}
 		ordinaryBPSFallbackStarted = true
+		if requestPrefersAccountRetry(c) {
+			switchCount++
+		}
 		clearExcelBPSFailoverMaps(failedAccountIDs, sameAccountRetryCount)
-		switchCount = 0
+		if !requestPrefersAccountRetry(c) {
+			switchCount = 0
+		}
 		profitVetoCount = 0
 		lastFailoverErr = nil
 		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
@@ -401,7 +409,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						return
 					}
 					// Pool mode: retry on the same account
-					if failoverErr.RetryableOnSameAccount {
+					if !requestPrefersAccountRetry(c) && failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
 							sameAccountRetryCount[account.ID]++

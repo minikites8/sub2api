@@ -8,9 +8,9 @@ import (
 	"net/http"
 )
 
-// Only positively identified processing failures enter this recovery route.
-// Shared classifiers retain policy/context-window rejection boundaries.
-func openAIWSProcessingFailure(payload []byte) bool {
+// Existing processing failures and explicitly opted-in upstream errors enter
+// this recovery route. Policy/context-window rejection boundaries still apply.
+func openAIWSProcessingFailure(payload []byte, requestContexts ...*gin.Context) bool {
 	eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
 	if eventType != "error" && eventType != "response.failed" {
 		return false
@@ -19,13 +19,14 @@ func openAIWSProcessingFailure(payload []byte) bool {
 	if isOpenAIContextWindowError(message, payload) {
 		return false
 	}
-	if !isOpenAIProcessingFailureError(http.StatusServiceUnavailable, message, payload) {
+	if !isOpenAIProcessingFailureError(http.StatusServiceUnavailable, message, payload) &&
+		!requestAccountRetryFromContexts(requestContexts, http.StatusBadGateway, message, payload) {
 		return false
 	}
 	if eventType == "error" {
-		return openAIStreamErrorEventShouldFailover(payload, message)
+		return openAIStreamErrorEventShouldFailover(payload, message, requestContexts...)
 	}
-	return openAIStreamFailedEventShouldFailover(payload, message)
+	return openAIStreamFailedEventShouldFailover(payload, message, requestContexts...)
 }
 
 func (s *OpenAIGatewayService) newOpenAIWSProcessingFailoverError(c *gin.Context, account *Account, payload []byte, model string, headers http.Header) *UpstreamFailoverError {
@@ -40,9 +41,10 @@ func (s *OpenAIGatewayService) newOpenAIWSProcessingFailoverError(c *gin.Context
 // or a terminal event commits it. Overflow commits the bounded preamble and
 // closes the replay window. Callers intercept processing failure before flush.
 type openAIWSFirstOutputStage struct {
-	pending   [][]byte
-	bytes     int64
-	committed bool
+	requestContext *gin.Context
+	pending        [][]byte
+	bytes          int64
+	committed      bool
 }
 
 func (s *openAIWSFirstOutputStage) messages(payload []byte) [][]byte {
@@ -50,7 +52,7 @@ func (s *openAIWSFirstOutputStage) messages(payload []byte) [][]byte {
 		return [][]byte{payload}
 	}
 	eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
-	if openAIWSProcessingFailure(payload) {
+	if openAIWSProcessingFailure(payload, s.requestContext) {
 		s.pending = nil
 		s.bytes = 0
 		return [][]byte{payload}

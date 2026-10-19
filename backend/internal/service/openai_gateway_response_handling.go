@@ -597,9 +597,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					shouldFailover := false
 					if !cyberHit {
 						if eventType == "error" {
-							shouldFailover = openAIStreamErrorEventShouldFailover(dataBytes, failedMessage)
+							shouldFailover = openAIStreamErrorEventShouldFailover(dataBytes, failedMessage, c)
 						} else {
-							shouldFailover = openAIStreamFailedEventShouldFailover(dataBytes, failedMessage)
+							shouldFailover = openAIStreamFailedEventShouldFailover(dataBytes, failedMessage, c)
 						}
 					}
 					if account != nil && account.IsGrok() && isGrokContentPolicyRejection(http.StatusForbidden, dataBytes) {

@@ -1703,7 +1703,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		defer finishDrain()
 		ctx := turnCtx
 		wroteDownstream := false
-		firstOutputStage := &openAIWSFirstOutputStage{}
+		firstOutputStage := &openAIWSFirstOutputStage{requestContext: c}
 		if err := s.acquireOpenAIRPMForSend(ctx, latest); err != nil {
 			return nil, err
 		}
@@ -1789,7 +1789,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if eventType == "error" || eventType == "response.failed" {
 				markOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
 			}
-			if !wroteDownstream && !clientDisconnected && openAIWSProcessingFailure(upstreamMessage) {
+			if !wroteDownstream && !clientDisconnected && openAIWSProcessingFailure(upstreamMessage, c) {
 				lease.MarkBroken()
 				failover := s.newOpenAIWSProcessingFailoverError(c, account, upstreamMessage, mappedModel, lease.HandshakeHeaders())
 				if turn > 1 {

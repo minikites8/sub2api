@@ -1,0 +1,35 @@
+# 按请求启用换号重试
+
+调用网关时可以添加以下请求头：
+
+```http
+X-Sub2API-Retry-Account: True
+X-Sub2API-Max-Retries: 2
+```
+
+`X-Sub2API-Retry-Account: True` 为当前请求启用更积极的换号重试。上游在输出内容之前报错时，网关会把失败账号排除，再从当前请求有权使用的可用账号中调度；普通上游 400、408 等原先直接返回的错误也可尝试换号。开启后优先换号，不再执行 handler 层的同账号退避重试。
+
+`X-Sub2API-Max-Retries` 表示首次请求之外允许的最大换号重试次数。例如 `2` 最多尝试 3 个账号，`0` 禁止换号重试。它仅在上述开关为 `True` 时生效；未设置则沿用服务端对应协议的换号上限，超过服务端上限时按服务端上限执行。已有更严格的错误类型限制仍然有效。该次数不包含上游协议兼容修复、凭据刷新等内部步骤。
+
+两个请求头均不透传给模型提供方。浏览器调用所需的 CORS 请求头已放行。
+
+兼容性规则：
+
+- 开关值忽略大小写和首尾空格，仅 `True` 启用；未提供、`False` 或无效值都保持原有重试策略。
+- 最大次数必须是非负十进制整数。负数、小数、溢出、重复值及其他无效值被忽略，沿用服务端上限。重复的开关请求头不启用增强策略。
+- 本地鉴权、余额、模型权限、请求校验、内容审核和明确的上游内容策略拒绝不会因该开关而绕过；上下文超限等既有确定性失败边界保持不变。
+- 已经向客户端输出内容、请求取消、账号池耗尽或达到上限后停止重试。流式请求仅在尚未输出内容的窗口内换号；已开始的 WebSocket 后续回合仍保留原有账号绑定限制。
+- OpenAI Responses、Chat Completions、Messages 兼容入口及现有 Anthropic/Gemini/Antigravity 转发路径复用同一策略。异步任务创建及已经建立的实时通话不新增重放。
+
+示例：
+
+```bash
+curl https://your-sub2api.example/v1/responses \
+  -H "Authorization: Bearer $SUB2API_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -H 'X-Sub2API-Retry-Account: True' \
+  -H 'X-Sub2API-Max-Retries: 2' \
+  -d '{"model":"your-model","input":"你好","stream":true}'
+```
+
+重试会受可用账号、并发、限流和客户端超时影响，不能保证所有请求成功。

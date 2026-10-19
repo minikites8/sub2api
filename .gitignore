@@ -156,6 +156,7 @@ docs/*
 !docs/codex-credits.md
 !docs/account-token-guard.md
 !docs/priority-scheduling.md
+!docs/request-account-retry.md
 !docs/astra-account-scheduling.md
 !docs/legal/
 !docs/legal/*.md

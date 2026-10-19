@@ -116,6 +116,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}
+	maxAccountSwitches = requestAccountSwitchLimit(c, maxAccountSwitches)
 	routingStart := time.Now()
 
 	// 分组利润控制：embeddings 文本入口请求级装门并固定 pricingAt。

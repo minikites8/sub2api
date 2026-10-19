@@ -570,7 +570,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 		}
 		message := openAICompatFailedResponseMessage(finalResponse)
-		if openAIStreamFailedEventShouldFailover(payload, message) {
+		if openAIStreamFailedEventShouldFailover(payload, message, c) {
 			return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, payload, message, upstreamModel, resp.Header)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
@@ -825,9 +825,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 				return true
 			}
-			shouldFailover := openAIStreamFailedEventShouldFailover(payloadBytes, message)
+			shouldFailover := openAIStreamFailedEventShouldFailover(payloadBytes, message, c)
 			if strings.TrimSpace(event.Type) == "error" {
-				shouldFailover = openAIStreamErrorEventShouldFailover(payloadBytes, message)
+				shouldFailover = openAIStreamErrorEventShouldFailover(payloadBytes, message, c)
 			}
 			if !clientOutputStarted && shouldFailover {
 				streamFailoverErr = s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, payloadBytes, message, upstreamModel, resp.Header)

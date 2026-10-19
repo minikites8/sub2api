@@ -85,6 +85,10 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 
 全新自动安装时，`ADMIN_EMAIL` 和 `ADMIN_PASSWORD` 留空会生成随机登录邮箱和密码，可从首次启动日志中的 `Generated admin` 获取。显式指定时，邮箱必须符合登录格式，密码必须为 8–72 字节。已有管理员或已有用户的部署跳过创建与此项校验。详细配置见 [部署说明](deploy/README.md)。
 
+## 请求级换号重试
+
+如需按请求启用更积极的上游换号重试，可使用 `X-Sub2API-Retry-Account: True` 和 `X-Sub2API-Max-Retries`，详见[请求级换号重试](docs/request-account-retry.md)。
+
 ## API Key 并发等待队列
 
 当 API Key 设置了大于 `0` 的 `concurrency_limit` 时，达到上限后的新请求会在原连接上等待空闲槽位。默认值 `0` 不增加 Key 级并发限制。等待策略是全局配置，进程启动时读取：

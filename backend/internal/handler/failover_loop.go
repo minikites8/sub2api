@@ -130,6 +130,7 @@ type FailoverState struct {
 	LastFailoverErr       *service.UpstreamFailoverError
 	ForceCacheBilling     bool
 	hasBoundSession       bool
+	preferNextAccount     bool
 
 	// profitVetoedAccountIDs 记录被分组利润门终检否决的账号，是 FailedAccountIDs
 	// 的子集。之所以单独维护：HandleSelectionExhausted 的 503 退避分支会清空
@@ -210,7 +211,7 @@ func (s *FailoverState) HandleFailoverError(
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
 	retryCount := s.SameAccountRetryCount[accountID]
-	sameAccountRetry := sameAccountRetryAllowed(failoverErr, retryCount, retryLimit)
+	sameAccountRetry := !s.preferNextAccount && sameAccountRetryAllowed(failoverErr, retryCount, retryLimit)
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 	}
@@ -234,7 +235,7 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	// 同账号重试用尽，执行临时封禁
-	if failoverErr.RetryableOnSameAccount {
+	if !s.preferNextAccount && failoverErr.RetryableOnSameAccount {
 		gatewayService.TempUnscheduleRetryableError(ctx, accountID, failoverErr)
 	}
 
@@ -280,7 +281,7 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 		return FailoverCanceled
 	}
 
-	if s.LastFailoverErr != nil &&
+	if !s.preferNextAccount && s.LastFailoverErr != nil &&
 		s.LastFailoverErr.StatusCode == http.StatusServiceUnavailable &&
 		s.SwitchCount <= s.MaxSwitches {
 

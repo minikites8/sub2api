@@ -206,7 +206,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		}
 		evBody := unwrapIfNeeded(account.Type == AccountTypeOAuth, respBody)
 
-		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
+		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) || requestAccountRetryOnError(c, resp.StatusCode, "", evBody) {
 			upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(evBody)))
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				ProxyID:            opsUpstreamProxyID(account),
