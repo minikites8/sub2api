@@ -64,6 +64,79 @@ func TestVerifyCaptchaUsesTencentWhenEnabled(t *testing.T) {
 	require.Equal(t, 1, verifier.calls)
 }
 
+func TestVerifyRequiredCaptchaDispatchesAllProviders(t *testing.T) {
+	for _, provider := range []string{"turnstile", "tencent", "aliyun"} {
+		t.Run(provider, func(t *testing.T) {
+			turnstile := &turnstileVerifierSpy{}
+			tencent := &tencentCaptchaVerifierStub{response: &TencentCaptchaVerifyResponse{CaptchaCode: 1}}
+			aliyun := &aliyunVerifierSpy{}
+			settings := map[string]string{}
+			switch provider {
+			case "turnstile":
+				settings[SettingKeyTurnstileEnabled] = "true"
+				settings[SettingKeyTurnstileSecretKey] = "secret"
+			case "tencent":
+				settings = tencentCaptchaSettings()
+			case "aliyun":
+				settings = aliyunEnabledSettings()
+			}
+			svc := newAuthServiceForCaptchaTest(settings, false, turnstile, tencent)
+			svc.SetAliyunCaptchaService(NewAliyunCaptchaService(svc.settingService, aliyun))
+			svc.cfg.Server.Mode = "debug"
+
+			err := svc.VerifyRequiredCaptcha(context.Background(), CaptchaProof{
+				TurnstileToken: "token-or-param", TencentTicket: "ticket", TencentRandstr: "randstr",
+			}, "203.0.113.10")
+
+			require.NoError(t, err)
+			require.Equal(t, 1, turnstile.called+tencent.calls+aliyun.called)
+			switch provider {
+			case "turnstile":
+				require.Equal(t, 1, turnstile.called)
+			case "tencent":
+				require.Equal(t, TencentCaptchaProof{Ticket: "ticket", Randstr: "randstr"}, tencent.proof)
+			case "aliyun":
+				require.Equal(t, "token-or-param", aliyun.lastParam)
+			}
+		})
+	}
+}
+
+func TestVerifyRequiredCaptchaNeverSkipsWhenProviderIsMissing(t *testing.T) {
+	for _, svc := range []*AuthService{nil, {}, newAuthServiceForCaptchaTest(map[string]string{}, false, nil, nil)} {
+		require.ErrorIs(t, svc.VerifyRequiredCaptcha(context.Background(), CaptchaProof{}, ""), ErrCaptchaNotConfigured)
+	}
+}
+
+func TestVerifyRequiredCaptchaRejectsEmptyProofs(t *testing.T) {
+	turnstile := newAuthServiceForCaptchaTest(map[string]string{
+		SettingKeyTurnstileEnabled: "true", SettingKeyTurnstileSecretKey: "secret",
+	}, false, &turnstileVerifierSpy{}, nil)
+	tencent := newAuthServiceForCaptchaTest(tencentCaptchaSettings(), false, nil, &tencentCaptchaVerifierStub{})
+	aliyun := newAliyunAuthServiceForTest(&config.Config{}, aliyunEnabledSettings(), &aliyunVerifierSpy{})
+	for _, tc := range []struct {
+		svc *AuthService
+		err error
+	}{
+		{turnstile, ErrTurnstileVerificationFailed},
+		{tencent, ErrTencentCaptchaVerificationFailed},
+		{aliyun, ErrAliyunCaptchaVerificationFailed},
+	} {
+		require.ErrorIs(t, tc.svc.VerifyRequiredCaptcha(context.Background(), CaptchaProof{}, ""), tc.err)
+	}
+}
+
+func TestVerifyRequiredCaptchaFailsClosedOnInvalidConfiguration(t *testing.T) {
+	repo := &settingRepoStub{err: errors.New("settings unavailable")}
+	svc := newAuthServiceForCaptchaRepoTest(repo, false, &turnstileVerifierSpy{}, nil)
+	require.ErrorIs(t, svc.VerifyRequiredCaptcha(context.Background(), CaptchaProof{}, ""), ErrServiceUnavailable)
+
+	settings := tencentCaptchaSettings()
+	settings[SettingKeyAliyunCaptchaEnabled] = "true"
+	svc = newAuthServiceForCaptchaTest(settings, false, nil, &tencentCaptchaVerifierStub{})
+	require.ErrorIs(t, svc.VerifyRequiredCaptcha(context.Background(), CaptchaProof{}, ""), ErrCaptchaProviderConflict)
+}
+
 func TestVerifyCaptchaRejectsDirtyDoubleEnabledSettings(t *testing.T) {
 	settings := tencentCaptchaSettings()
 	settings[SettingKeyTurnstileEnabled] = "true"

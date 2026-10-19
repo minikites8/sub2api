@@ -49,6 +49,7 @@ var (
 	ErrInvitationCodeInvalid   = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
 	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
 	ErrCaptchaProviderConflict = infraerrors.ServiceUnavailable("CAPTCHA_PROVIDER_CONFLICT", "multiple captcha providers are enabled")
+	ErrCaptchaNotConfigured    = infraerrors.ServiceUnavailable("CAPTCHA_NOT_CONFIGURED", "captcha not configured")
 )
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -583,12 +584,23 @@ func (s *AuthService) VerifyCaptchaForRegister(ctx context.Context, proof Captch
 }
 
 func (s *AuthService) VerifyCaptcha(ctx context.Context, proof CaptchaProof, remoteIP string) error {
-	required := s.cfg != nil && s.cfg.Server.Mode == "release" && s.cfg.Turnstile.Required
-	if s.settingService == nil {
-		if required {
-			return ErrTurnstileNotConfigured
-		}
-		return nil
+	var missingProviderError error
+	if s.cfg != nil && s.cfg.Server.Mode == "release" && s.cfg.Turnstile.Required {
+		missingProviderError = ErrTurnstileNotConfigured
+	}
+	return s.verifyCaptcha(ctx, proof, remoteIP, missingProviderError)
+}
+
+// VerifyRequiredCaptcha always requires a configured provider and valid proof,
+// including when CAPTCHA is optional for authentication or the server is in debug mode.
+func (s *AuthService) VerifyRequiredCaptcha(ctx context.Context, proof CaptchaProof, remoteIP string) error {
+	return s.verifyCaptcha(ctx, proof, remoteIP, ErrCaptchaNotConfigured)
+}
+
+// A nil missingProviderError allows optional authentication to skip disabled CAPTCHA.
+func (s *AuthService) verifyCaptcha(ctx context.Context, proof CaptchaProof, remoteIP string, missingProviderError error) error {
+	if s == nil || s.settingService == nil {
+		return missingProviderError
 	}
 
 	providerConfig, err := s.settingService.GetCaptchaProviderConfig(ctx)
@@ -620,10 +632,7 @@ func (s *AuthService) VerifyCaptcha(ctx context.Context, proof CaptchaProof, rem
 		}
 		return s.turnstileService.VerifyTokenWithSecret(ctx, providerConfig.TurnstileSecretKey, proof.TurnstileToken, remoteIP)
 	}
-	if required {
-		return ErrTurnstileNotConfigured
-	}
-	return nil
+	return missingProviderError
 }
 
 // captchaProvidersConflict 同一时间仅允许启用一家人机验证服务商

@@ -809,7 +809,7 @@ export default {
       verifyHint: 'Pass the verification to claim today\'s check-in reward.',
       loadingVerification: 'Loading verification settings...',
       verificationRequired: 'Verification required',
-      verificationUnavailable: 'Cloudflare Turnstile is not configured. Contact an administrator.',
+      verificationUnavailable: 'Human verification is unavailable. Contact an administrator to configure a CAPTCHA provider.',
       completeVerification: 'Complete the human verification first',
       turnstileExpired: 'Verification expired, please try again',
       turnstileFailed: 'Verification failed, please try again',
@@ -821,7 +821,13 @@ export default {
         DAILY_CHECKIN_EXHAUSTED: 'Today\'s check-in pool is empty',
         DAILY_CHECKIN_RECHARGE_REQUIRED: 'Your recharge total in the configured window has not reached the check-in requirement',
         TURNSTILE_VERIFICATION_FAILED: 'Verification failed, please try again',
-        TURNSTILE_NOT_CONFIGURED: 'Cloudflare Turnstile is not configured'
+        TURNSTILE_NOT_CONFIGURED: 'Cloudflare Turnstile is not configured',
+        CAPTCHA_NOT_CONFIGURED: 'No CAPTCHA provider is configured',
+        CAPTCHA_PROVIDER_CONFLICT: 'Multiple CAPTCHA providers are enabled. Contact an administrator.',
+        TENCENT_CAPTCHA_VERIFICATION_FAILED: 'Verification failed, please try again',
+        TENCENT_CAPTCHA_NOT_CONFIGURED: 'Tencent CAPTCHA is not configured',
+        ALIYUN_CAPTCHA_VERIFICATION_FAILED: 'Verification failed, please try again',
+        ALIYUN_CAPTCHA_NOT_CONFIGURED: 'Alibaba Cloud CAPTCHA is not configured'
       }
     }
   },
@@ -2048,6 +2054,7 @@ export default {
           title: 'Check-in Settings',
           enabled: 'Enable daily check-in',
           enabledHint: 'Admin only. When disabled, users cannot claim daily check-in rewards.',
+          captchaHint: 'Check-in requires human verification using the provider configured in System Settings: Cloudflare Turnstile, Tencent CAPTCHA, or Alibaba Cloud CAPTCHA. Enable and configure one provider before allowing check-ins.',
           adsEnabled: 'Show check-in ads',
           adsEnabledHint: 'When enabled, ads appear in the user check-in verification area.',
           minReward: 'Minimum reward',

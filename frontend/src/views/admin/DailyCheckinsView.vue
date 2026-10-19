@@ -127,6 +127,9 @@
         {{ t('common.loading') }}
       </div>
       <form v-else id="daily-checkin-settings-form" class="space-y-5" @submit.prevent="saveSettings">
+        <p class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800/60 dark:text-dark-300">
+          {{ t('admin.dailyCheckins.settings.captchaHint') }}
+        </p>
         <label class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
           <span>
             <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dailyCheckins.settings.enabled') }}</span>

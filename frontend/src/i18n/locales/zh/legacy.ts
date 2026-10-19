@@ -808,7 +808,7 @@ export default {
       verifyHint: '验证通过后即可领取今日签到奖励。',
       loadingVerification: '正在加载验证配置...',
       verificationRequired: '需要验证',
-      verificationUnavailable: 'Cloudflare Turnstile 尚未配置，请联系管理员',
+      verificationUnavailable: '人机验证暂不可用，请联系管理员配置验证码服务商',
       completeVerification: '请先完成人机验证',
       turnstileExpired: '验证已过期，请重试',
       turnstileFailed: '验证失败，请重试',
@@ -820,7 +820,13 @@ export default {
         DAILY_CHECKIN_EXHAUSTED: '今日签到额度已发完',
         DAILY_CHECKIN_RECHARGE_REQUIRED: '充值时间窗口内的累计充值金额未达到签到要求',
         TURNSTILE_VERIFICATION_FAILED: '人机验证失败，请重试',
-        TURNSTILE_NOT_CONFIGURED: 'Cloudflare Turnstile 尚未配置'
+        TURNSTILE_NOT_CONFIGURED: 'Cloudflare Turnstile 尚未配置',
+        CAPTCHA_NOT_CONFIGURED: '尚未配置验证码服务商',
+        CAPTCHA_PROVIDER_CONFLICT: '同时启用了多个验证码服务商，请联系管理员',
+        TENCENT_CAPTCHA_VERIFICATION_FAILED: '人机验证失败，请重试',
+        TENCENT_CAPTCHA_NOT_CONFIGURED: '腾讯云验证码尚未配置',
+        ALIYUN_CAPTCHA_VERIFICATION_FAILED: '人机验证失败，请重试',
+        ALIYUN_CAPTCHA_NOT_CONFIGURED: '阿里云验证码尚未配置'
       }
     }
   },
@@ -2069,6 +2075,7 @@ export default {
           title: '签到设置',
           enabled: '开启每日签到',
           enabledHint: '仅管理员可修改；关闭后用户端签到按钮不可领取。',
+          captchaHint: '签到使用系统设置中配置的人机验证服务，支持 Cloudflare Turnstile、腾讯云验证码和阿里云验证码。请先启用并配置一家服务商，用户才能领取签到奖励。',
           adsEnabled: '显示签到广告',
           adsEnabledHint: '开启后用户签到验证区域会展示广告。',
           minReward: '最小签到获取额度',

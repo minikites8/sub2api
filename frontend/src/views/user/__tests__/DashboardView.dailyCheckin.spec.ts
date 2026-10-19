@@ -18,6 +18,9 @@ const fetchPublicSettings = vi.hoisted(() => vi.fn())
 const showError = vi.hoisted(() => vi.fn())
 const showSuccess = vi.hoisted(() => vi.fn())
 const showWarning = vi.hoisted(() => vi.fn())
+const verifyAction = vi.hoisted(() => vi.fn())
+const resetCaptcha = vi.hoisted(() => vi.fn())
+const publicSettings = vi.hoisted(() => ({} as Record<string, boolean | string>))
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -75,10 +78,7 @@ vi.mock('@/stores/auth', () => ({
 
 vi.mock('@/stores', () => ({
   useAppStore: () => ({
-    cachedPublicSettings: {
-      turnstile_enabled: true,
-      turnstile_site_key: 'site-key'
-    },
+    cachedPublicSettings: publicSettings,
     fetchPublicSettings,
     showError,
     showSuccess,
@@ -119,18 +119,29 @@ const IconStub = defineComponent({
 })
 
 const BaseDialogStub = defineComponent({
+  emits: ['close'],
   props: {
     show: { type: Boolean, required: true },
     title: { type: String, required: true }
   },
   template: `
     <section v-if="show" class="dialog-stub">
+      <button data-testid="close-dialog" @click="$emit('close')">Close</button>
       <h3 class="dialog-title">
         <slot name="title">{{ title }}</slot>
       </h3>
       <slot />
     </section>
   `
+})
+
+const CaptchaChallengeStub = defineComponent({
+  inheritAttrs: false,
+  emits: ['verify', 'expire', 'error'],
+  setup(_, { expose }) {
+    expose({ verifyAction, reset: resetCaptcha })
+  },
+  template: '<div data-testid="captcha-challenge" />'
 })
 
 const GoogleAdSenseAdStub = defineComponent({
@@ -165,7 +176,7 @@ async function mountDashboard(status: DailyCheckinStatus) {
         UserDashboardCharts: true,
         UserDashboardRecentUsage: true,
         UserDashboardQuickActions: true,
-        TurnstileWidget: true,
+        CaptchaChallenge: CaptchaChallengeStub,
         GoogleAdSenseAd: GoogleAdSenseAdStub,
         BaseDialog: BaseDialogStub,
         Icon: IconStub,
@@ -181,6 +192,11 @@ async function mountDashboard(status: DailyCheckinStatus) {
 describe('DashboardView daily check-in UI', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    for (const key of Object.keys(publicSettings)) delete publicSettings[key]
+    Object.assign(publicSettings, { turnstile_enabled: true, turnstile_site_key: 'site-key' })
+    verifyAction.mockReset()
+    claimDailyCheckin.mockReset()
+    claimDailyCheckin.mockResolvedValue({ ...statusFixture({ checked_in_today: true }), reward: 0.5, balance: 0.5 })
     refreshUser.mockResolvedValue(undefined)
     getDashboardStats.mockResolvedValue({
       total_api_keys: 1,
@@ -210,7 +226,7 @@ describe('DashboardView daily check-in UI', () => {
     getDashboardModels.mockResolvedValue({ models: [] })
     getByDateRange.mockResolvedValue({ items: [] })
     getMyPlatformQuotas.mockResolvedValue({ platform_quotas: [] })
-    getHistory.mockResolvedValue([])
+    getHistory.mockResolvedValue({ items: [] })
     fetchPublicSettings.mockResolvedValue(undefined)
     window.localStorage.clear()
   })
@@ -262,8 +278,131 @@ describe('DashboardView daily check-in UI', () => {
     expect(disabledWrapper.find('[data-testid="adsense-ad"]').exists()).toBe(false)
   })
 
+  it('requires a fresh Turnstile token and submits the existing payload', async () => {
+    const wrapper = await mountDashboard(statusFixture({ recharge_eligible: true }))
+    await wrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
+    const submit = wrapper.get('[data-testid="daily-checkin-submit"]')
+    const captcha = wrapper.getComponent(CaptchaChallengeStub)
+
+    expect(submit.attributes('disabled')).toBeDefined()
+    captcha.vm.$emit('verify', 'expired-token', '')
+    await flushPromises()
+    expect(submit.attributes('disabled')).toBeUndefined()
+    captcha.vm.$emit('expire')
+    await flushPromises()
+    expect(submit.attributes('disabled')).toBeDefined()
+    captcha.vm.$emit('verify', 'fresh-token', '')
+    await flushPromises()
+    await submit.trigger('click')
+    await flushPromises()
+
+    expect(claimDailyCheckin).toHaveBeenCalledOnce()
+    expect(claimDailyCheckin).toHaveBeenCalledWith({ turnstile_token: 'fresh-token' })
+    expect(verifyAction).not.toHaveBeenCalled()
+    expect(resetCaptcha).toHaveBeenCalledOnce()
+    expect(showSuccess).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    {
+      provider: 'Tencent',
+      settings: { tencent_captcha_enabled: true, tencent_captcha_app_id: 'app-id', tencent_captcha_region: 'intl' },
+      result: { token: 'ticket', randstr: 'randstr' },
+      payload: { tencent_captcha_ticket: 'ticket', tencent_captcha_randstr: 'randstr' }
+    },
+    {
+      provider: 'Aliyun',
+      settings: { aliyun_captcha_enabled: true, aliyun_captcha_scene_id: 'scene', aliyun_captcha_prefix: 'prefix', aliyun_captcha_region: 'sgp' },
+      result: { token: 'verify-param', randstr: '' },
+      payload: { turnstile_token: 'verify-param' }
+    }
+  ])('verifies $provider on demand before claiming', async ({ settings, result, payload }) => {
+    Object.assign(publicSettings, { turnstile_enabled: false }, settings)
+    verifyAction.mockResolvedValue(result)
+    const wrapper = await mountDashboard(statusFixture({ recharge_eligible: true }))
+    await wrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
+    const submit = wrapper.get('[data-testid="daily-checkin-submit"]')
+
+    expect(submit.attributes('disabled')).toBeUndefined()
+    expect(claimDailyCheckin).not.toHaveBeenCalled()
+    await submit.trigger('click')
+    await flushPromises()
+
+    expect(verifyAction).toHaveBeenCalledOnce()
+    expect(claimDailyCheckin).toHaveBeenCalledOnce()
+    expect(claimDailyCheckin).toHaveBeenCalledWith(payload)
+    expect(resetCaptcha).toHaveBeenCalledOnce()
+  })
+
+  it('does not claim when action verification is cancelled, and permits retry', async () => {
+    Object.assign(publicSettings, { turnstile_enabled: false, tencent_captcha_enabled: true, tencent_captcha_app_id: 'app-id' })
+    verifyAction.mockResolvedValueOnce(null).mockResolvedValueOnce({ token: 'new-ticket', randstr: 'new-randstr' })
+    const wrapper = await mountDashboard(statusFixture({ recharge_eligible: true }))
+    await wrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
+    const submit = wrapper.get('[data-testid="daily-checkin-submit"]')
+    await submit.trigger('click')
+    await flushPromises()
+
+    expect(claimDailyCheckin).not.toHaveBeenCalled()
+    expect(submit.attributes('disabled')).toBeUndefined()
+    await submit.trigger('click')
+    await flushPromises()
+    expect(claimDailyCheckin).toHaveBeenCalledOnce()
+    expect(claimDailyCheckin).toHaveBeenCalledWith({ tencent_captcha_ticket: 'new-ticket', tencent_captcha_randstr: 'new-randstr' })
+  })
+
+  it('prevents duplicate submissions while verification is pending and ignores a closed dialog', async () => {
+    Object.assign(publicSettings, { turnstile_enabled: false, aliyun_captcha_enabled: true, aliyun_captcha_scene_id: 'scene', aliyun_captcha_prefix: 'prefix' })
+    let finishVerification!: (result: { token: string; randstr: string }) => void
+    verifyAction.mockImplementation(() => new Promise(resolve => { finishVerification = resolve }))
+    const wrapper = await mountDashboard(statusFixture({ recharge_eligible: true }))
+    await wrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
+    const submit = wrapper.get('[data-testid="daily-checkin-submit"]')
+    await submit.trigger('click')
+    await submit.trigger('click')
+    expect(submit.attributes('disabled')).toBeDefined()
+    expect(verifyAction).toHaveBeenCalledOnce()
+    expect(claimDailyCheckin).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="close-dialog"]').trigger('click')
+    finishVerification({ token: 'cancelled-param', randstr: '' })
+    await flushPromises()
+    expect(claimDailyCheckin).not.toHaveBeenCalled()
+    expect(resetCaptcha).toHaveBeenCalledOnce()
+  })
+
+  it('resets verification after a rejected claim and obtains a new ticket for retry', async () => {
+    Object.assign(publicSettings, { turnstile_enabled: false, tencent_captcha_enabled: true, tencent_captcha_app_id: 'app-id' })
+    verifyAction.mockResolvedValueOnce({ token: 'first', randstr: 'randstr' }).mockResolvedValueOnce({ token: 'second', randstr: 'randstr' })
+    claimDailyCheckin.mockRejectedValueOnce(new Error('invalid ticket'))
+    const wrapper = await mountDashboard(statusFixture({ recharge_eligible: true }))
+    await wrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
+    await wrapper.get('[data-testid="daily-checkin-submit"]').trigger('click')
+    await flushPromises()
+    expect(resetCaptcha).toHaveBeenCalledOnce()
+    expect(showError).toHaveBeenCalledWith('签到失败')
+    await wrapper.get('[data-testid="daily-checkin-submit"]').trigger('click')
+    await flushPromises()
+    expect(verifyAction).toHaveBeenCalledTimes(2)
+    expect(claimDailyCheckin).toHaveBeenLastCalledWith({ tencent_captcha_ticket: 'second', tencent_captcha_randstr: 'randstr' })
+  })
+
+  it.each([
+    { turnstile_enabled: false },
+    { turnstile_site_key: '' },
+    { turnstile_enabled: false, tencent_captcha_enabled: true },
+    { turnstile_enabled: false, aliyun_captcha_enabled: true, aliyun_captcha_scene_id: 'scene' },
+    { tencent_captcha_enabled: true, tencent_captcha_app_id: 'app-id' }
+  ])('blocks claims when CAPTCHA settings are unavailable or conflicting: %j', async settings => {
+    Object.assign(publicSettings, settings)
+    const wrapper = await mountDashboard(statusFixture({ recharge_eligible: true }))
+    await wrapper.get('[data-testid="daily-checkin-entry"]').trigger('click')
+    expect(wrapper.find('[data-testid="captcha-challenge"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="daily-checkin-submit"]').attributes('disabled')).toBeDefined()
+    expect(claimDailyCheckin).not.toHaveBeenCalled()
+  })
+
   it('shows the latest risk-control balance warning and supports dismissal', async () => {
-    getHistory.mockResolvedValue([
+    getHistory.mockResolvedValue({ items: [
       {
         id: 42,
         code: 'risk-record',
@@ -274,7 +413,7 @@ describe('DashboardView daily check-in UI', () => {
         created_at: '2026-06-22T10:00:00Z',
         notes: 'API IP+UA 风控扣除赠金（IP: 192.0.2.1）'
       }
-    ])
+    ] })
 
     const wrapper = await mountDashboard(statusFixture())
     const warning = wrapper.get('[data-testid="risk-control-warning"]')

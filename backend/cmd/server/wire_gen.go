@@ -103,7 +103,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	dailyCheckinRepository := repository.NewDailyCheckinRepository(client, db)
 	dailyCheckinUserRepository := service.ProvideDailyCheckinUserRepository(userRepository)
 	dailyCheckinService := service.ProvideDailyCheckinService(dailyCheckinRepository, dailyCheckinUserRepository, configConfig, billingCacheService, settingService)
-	dailyCheckinHandler := handler.NewDailyCheckinHandler(dailyCheckinService, turnstileService)
+	dailyCheckinHandler := handler.NewDailyCheckinHandler(dailyCheckinService, authService)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageLogRepository := repository.NewUsageLogRepository(client, db)
 	usageService := service.NewUsageService(usageLogRepository, userRepository, client, apiKeyAuthCacheInvalidator)

@@ -14,12 +14,14 @@ import (
 )
 
 type DailyCheckinHandler struct {
-	service          *service.DailyCheckinService
-	turnstileService *service.TurnstileService
+	service     *service.DailyCheckinService
+	authService *service.AuthService
 }
 
 type DailyCheckinClaimRequest struct {
 	TurnstileToken string `json:"turnstile_token"`
+	TencentTicket  string `json:"tencent_captcha_ticket"`
+	TencentRandstr string `json:"tencent_captcha_randstr"`
 }
 
 type DailyCheckinPublicStatus struct {
@@ -43,8 +45,8 @@ type DailyCheckinPublicResult struct {
 	Balance float64 `json:"balance"`
 }
 
-func NewDailyCheckinHandler(service *service.DailyCheckinService, turnstileService *service.TurnstileService) *DailyCheckinHandler {
-	return &DailyCheckinHandler{service: service, turnstileService: turnstileService}
+func NewDailyCheckinHandler(service *service.DailyCheckinService, authService *service.AuthService) *DailyCheckinHandler {
+	return &DailyCheckinHandler{service: service, authService: authService}
 }
 
 // GetStatus returns the current user's daily check-in state.
@@ -108,11 +110,15 @@ func (h *DailyCheckinHandler) Claim(c *gin.Context) {
 		response.ErrorFrom(c, service.ErrDailyCheckinRechargeRequired)
 		return
 	}
-	if h.turnstileService == nil || !h.turnstileService.IsEnabled(c.Request.Context()) {
-		response.ErrorFrom(c, service.ErrTurnstileNotConfigured)
+	if h.authService == nil {
+		response.ErrorFrom(c, service.ErrCaptchaNotConfigured)
 		return
 	}
-	if err := h.turnstileService.VerifyToken(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+	if err := h.authService.VerifyRequiredCaptcha(c.Request.Context(), service.CaptchaProof{
+		TurnstileToken: req.TurnstileToken,
+		TencentTicket:  req.TencentTicket,
+		TencentRandstr: req.TencentRandstr,
+	}, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

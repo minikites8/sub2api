@@ -221,9 +221,7 @@ export interface DailyCheckinResult extends DailyCheckinStatus {
   balance: number
 }
 
-export interface DailyCheckinClaimRequest {
-  turnstile_token?: string
-}
+export type DailyCheckinClaimRequest = ActionCaptchaRequestProof
 
 export interface SendVerifyCodeRequest {
   email: string

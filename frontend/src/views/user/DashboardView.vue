@@ -170,24 +170,25 @@
                 <div v-if="publicSettingsLoading" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-dark-400">
                   {{ t('dashboard.dailyCheckin.loadingVerification') }}
                 </div>
-                <TurnstileWidget
-                  v-else-if="turnstileReady"
-                  ref="turnstileRef"
-                  :site-key="turnstileSiteKey"
-                  @verify="onTurnstileVerify"
-                  @expire="onTurnstileExpire"
-                  @error="onTurnstileError"
+                <CaptchaChallenge
+                  v-else-if="captchaProvider"
+                  ref="captchaRef"
+                  v-bind="captchaConfig"
+                  @verify="onCaptchaVerify"
+                  @expire="onCaptchaExpire"
+                  @error="onCaptchaError"
                 />
                 <div v-else class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
                   {{ t('dashboard.dailyCheckin.verificationUnavailable') }}
                 </div>
 
-                <p v-if="turnstileError" class="text-sm text-rose-600 dark:text-rose-300">
-                  {{ turnstileError }}
+                <p v-if="captchaError" class="text-sm text-rose-600 dark:text-rose-300">
+                  {{ captchaError }}
                 </p>
 
                 <button
                   type="button"
+                  data-testid="daily-checkin-submit"
                   class="btn btn-primary inline-flex w-full items-center justify-center gap-2"
                   :disabled="dailyCheckinDisabled"
                   @click="handleDailyCheckin"
@@ -233,11 +234,11 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserDashboardStats from '@/components/user/dashboard/UserDashboardStats.vue'
 import UserDashboardCharts from '@/components/user/dashboard/UserDashboardCharts.vue'
-import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import CaptchaChallenge from '@/components/CaptchaChallenge.vue'
 import GoogleAdSenseAd from '@/components/ads/GoogleAdSenseAd.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { TrendDataPoint, ModelStat, DailyCheckinStatus } from '@/types'
+import type { TrendDataPoint, ModelStat, DailyCheckinStatus, DailyCheckinClaimRequest } from '@/types'
 import { getDailyCheckinStatus, claimDailyCheckin } from '@/api/user'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isDailyCheckinRechargeEligible } from '@/utils/dailyCheckin'
@@ -258,9 +259,9 @@ const modelStats = ref<ModelStat[]>([])
 const dailyCheckinStatus = ref<DailyCheckinStatus | null>(null)
 const dailyCheckinLoading = ref(false)
 const showDailyCheckinDialog = ref(false)
-const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
-const turnstileToken = ref('')
-const turnstileError = ref('')
+const captchaRef = ref<InstanceType<typeof CaptchaChallenge> | null>(null)
+const captchaToken = ref('')
+const captchaError = ref('')
 const riskControlRecord = ref<RedeemHistoryItem | null>(null)
 const riskControlDismissed = ref(false)
 
@@ -278,8 +279,29 @@ const riskControlWarningKey = computed(() => {
 })
 const riskControlWarningVisible = computed(() => Boolean(riskControlRecord.value && !riskControlDismissed.value))
 
-const turnstileSiteKey = computed(() => appStore.cachedPublicSettings?.turnstile_site_key || '')
-const turnstileReady = computed(() => Boolean(appStore.cachedPublicSettings?.turnstile_enabled && turnstileSiteKey.value))
+const captchaConfig = computed(() => {
+  const settings = appStore.cachedPublicSettings
+  return {
+    turnstileEnabled: Boolean(settings?.turnstile_enabled),
+    turnstileSiteKey: settings?.turnstile_site_key || '',
+    tencentEnabled: Boolean(settings?.tencent_captcha_enabled),
+    tencentAppId: settings?.tencent_captcha_app_id || '',
+    tencentRegion: settings?.tencent_captcha_region,
+    aliyunEnabled: Boolean(settings?.aliyun_captcha_enabled),
+    aliyunSceneId: settings?.aliyun_captcha_scene_id || '',
+    aliyunPrefix: settings?.aliyun_captcha_prefix || '',
+    aliyunRegion: settings?.aliyun_captcha_region
+  }
+})
+const captchaProvider = computed(() => {
+  const config = captchaConfig.value
+  if ([config.turnstileEnabled, config.tencentEnabled, config.aliyunEnabled].filter(Boolean).length !== 1) return null
+  if (config.turnstileEnabled && config.turnstileSiteKey) return 'turnstile'
+  if (config.tencentEnabled && config.tencentAppId) return 'tencent'
+  if (config.aliyunEnabled && config.aliyunSceneId && config.aliyunPrefix) return 'aliyun'
+  return null
+})
+const actionCaptchaEnabled = computed(() => captchaProvider.value === 'tencent' || captchaProvider.value === 'aliyun')
 const dailyCheckinAvailable = computed(() => {
   const status = dailyCheckinStatus.value
   return Boolean(status?.enabled && dailyCheckinRechargeEligible.value && !status.checked_in_today && !status.exhausted_today)
@@ -289,7 +311,7 @@ const dailyCheckinRechargeEligible = computed(() => {
   return status ? isDailyCheckinRechargeEligible(status) : false
 })
 const dailyCheckinDisabled = computed(() => {
-  return dailyCheckinLoading.value || publicSettingsLoading.value || !dailyCheckinAvailable.value || !turnstileReady.value || !turnstileToken.value
+  return dailyCheckinLoading.value || publicSettingsLoading.value || !dailyCheckinAvailable.value || !captchaProvider.value || (!actionCaptchaEnabled.value && !captchaToken.value)
 })
 const dashboardBusy = computed(() => loading.value || loadingCharts.value || dailyCheckinLoading.value)
 const dailyCheckinTitle = computed(() => {
@@ -322,14 +344,14 @@ const dailyCheckinEntryText = computed(() => {
 })
 const dailyCheckinButtonIcon = computed(() => {
   if (dailyCheckinLoading.value) return 'refresh'
-  if (!turnstileToken.value) return 'shield'
+  if (!captchaToken.value) return 'shield'
   return 'gift'
 })
 const dailyCheckinButtonText = computed(() => {
   if (dailyCheckinLoading.value) return t('dashboard.dailyCheckin.checking')
   if (publicSettingsLoading.value) return t('dashboard.dailyCheckin.loadingVerification')
-  if (!turnstileReady.value) return t('dashboard.dailyCheckin.verificationRequired')
-  if (!turnstileToken.value) return t('dashboard.dailyCheckin.completeVerification')
+  if (!captchaProvider.value) return t('dashboard.dailyCheckin.verificationRequired')
+  if (!captchaToken.value) return t('dashboard.dailyCheckin.completeVerification')
   return t('dashboard.dailyCheckin.action')
 })
 
@@ -421,9 +443,9 @@ const refreshAll = () => {
   loadRiskControlWarning()
 }
 
-const resetTurnstile = () => {
-  turnstileRef.value?.reset()
-  turnstileToken.value = ''
+const resetCaptcha = () => {
+  captchaRef.value?.reset()
+  captchaToken.value = ''
 }
 
 const openDailyCheckinDialog = () => {
@@ -432,23 +454,23 @@ const openDailyCheckinDialog = () => {
 
 const closeDailyCheckinDialog = () => {
   showDailyCheckinDialog.value = false
-  resetTurnstile()
-  turnstileError.value = ''
+  resetCaptcha()
+  captchaError.value = ''
 }
 
-const onTurnstileVerify = (token: string) => {
-  turnstileToken.value = token
-  turnstileError.value = ''
+const onCaptchaVerify = (token: string) => {
+  captchaToken.value = token
+  captchaError.value = ''
 }
 
-const onTurnstileExpire = () => {
-  turnstileToken.value = ''
-  turnstileError.value = t('dashboard.dailyCheckin.turnstileExpired')
+const onCaptchaExpire = () => {
+  captchaToken.value = ''
+  captchaError.value = t('dashboard.dailyCheckin.turnstileExpired')
 }
 
-const onTurnstileError = () => {
-  turnstileToken.value = ''
-  turnstileError.value = t('dashboard.dailyCheckin.turnstileFailed')
+const onCaptchaError = () => {
+  captchaToken.value = ''
+  captchaError.value = t('dashboard.dailyCheckin.turnstileFailed')
 }
 
 const goRecharge = () => {
@@ -457,31 +479,43 @@ const goRecharge = () => {
 }
 
 const handleDailyCheckin = async () => {
+  if (dailyCheckinLoading.value || publicSettingsLoading.value) return
   if (!dailyCheckinAvailable.value) {
     if (dailyCheckinStatus.value && !dailyCheckinRechargeEligible.value) {
       goRecharge()
     }
     return
   }
-  if (!turnstileReady.value) {
+  const provider = captchaProvider.value
+  if (!provider) {
     appStore.showError(t('dashboard.dailyCheckin.verificationUnavailable'))
     return
   }
-  if (!turnstileToken.value) {
-    turnstileError.value = t('dashboard.dailyCheckin.completeVerification')
-    appStore.showWarning(turnstileError.value)
+  if (!actionCaptchaEnabled.value && !captchaToken.value) {
+    captchaError.value = t('dashboard.dailyCheckin.completeVerification')
+    appStore.showWarning(captchaError.value)
     return
   }
 
   dailyCheckinLoading.value = true
+  captchaError.value = ''
   try {
-    const result = await claimDailyCheckin({ turnstile_token: turnstileToken.value })
+    let proof: DailyCheckinClaimRequest = { turnstile_token: captchaToken.value }
+    if (actionCaptchaEnabled.value) {
+      const config = captchaConfig.value
+      const result = await captchaRef.value?.verifyAction()
+      if (!result || !showDailyCheckinDialog.value || config !== captchaConfig.value) return
+      proof = provider === 'tencent'
+        ? { tencent_captcha_ticket: result.token, tencent_captcha_randstr: result.randstr }
+        : { turnstile_token: result.token }
+    }
+    const result = await claimDailyCheckin(proof)
     dailyCheckinStatus.value = result
     appStore.showSuccess(t('dashboard.dailyCheckin.success', { amount: formatCurrency(result.reward) }))
-    resetTurnstile()
+    resetCaptcha()
     await authStore.refreshUser()
   } catch (error) {
-    resetTurnstile()
+    resetCaptcha()
     appStore.showError(extractI18nErrorMessage(error, t, 'dashboard.dailyCheckin.errors', t('dashboard.dailyCheckin.failed')))
     await loadDailyCheckin()
   } finally {
