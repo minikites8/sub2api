@@ -10,6 +10,25 @@ vi.mock('@/composables/useClipboard', () => ({
   useClipboard: () => ({ copyToClipboard: vi.fn() }),
 }))
 
+vi.mock('@/utils/featureFlags', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/utils/featureFlags')>(),
+  isChannelMonitorV3Mode: () => false,
+}))
+
+vi.mock('vue-i18n', async (importOriginal) => ({
+  ...await importOriginal<typeof import('vue-i18n')>(),
+  useI18n: () => ({
+    t: (key: string, params: Record<string, string | number> = {}) => {
+      const message = key.split('.').reduce<unknown>((value, part) => (
+        value && typeof value === 'object' ? Reflect.get(value, part) : undefined
+      ), zh)
+      return typeof message === 'string'
+        ? message.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
+        : key
+    },
+  }),
+}))
+
 describe('ChannelStatusView model marketplace', () => {
   it('renders pricing, model developers, and monitoring status from the public snapshot', () => {
     const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh } })
@@ -282,7 +301,73 @@ describe('ChannelStatusView model marketplace', () => {
 
     const insufficientSamples = wrapper.findAll('[data-monitor-state="insufficient-samples"]')
     expect(insufficientSamples.length).toBeGreaterThan(0)
-    expect(insufficientSamples.every((square) => square.classes().includes('health-unknown'))).toBe(true)
+    expect(insufficientSamples.every((square) => square.classes().includes('health-score10'))).toBe(true)
+    expect(insufficientSamples.every((square) => square.attributes('title')?.includes('样本不足'))).toBe(true)
+    expect(insufficientSamples.every((square) => square.attributes('title')?.includes('95.00%'))).toBe(true)
+  })
+
+  it.each([
+    { window: '90m', label: '90min', intervalMs: 5 * 60_000 },
+    { window: '12h', label: '12h', intervalMs: 30 * 60_000 },
+    { window: '1d', label: '1d', intervalMs: 60 * 60_000 },
+    { window: '15d', label: '15d', intervalMs: 12 * 60 * 60_000 },
+  ])('colors observed $window buckets below the health sample threshold', async ({ window, label, intervalMs }) => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const monitor = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+    const start = Date.parse('2026-08-01T00:00:00Z')
+    const health = {
+      overall: 'unknown' as const,
+      error_rate: 'unknown' as const,
+      ttft: 'unknown' as const,
+      cache: 'unknown' as const,
+      minimum_sample: 50,
+    }
+    monitor.windows = {
+      [window]: {
+        status: 'operational',
+        availability: 100,
+        data_through: new Date(start + 3.5 * intervalMs).toISOString(),
+        coverage_complete: true,
+        health: { ...health, overall: 'healthy', score: 100 },
+        metrics: { has_requests: true, success_rate: 1, error_rate: 0, cache_rate: 0, ttft: {}, duration: {} },
+        buckets: [1, 0.5, 0, null].map((rate, index) => ({
+          bucket_start: new Date(start + index * intervalMs).toISOString(),
+          status: 'unmonitored',
+          success_rate: (rate ?? 0) * 100,
+          health: rate == null ? { ...health, overall: 'healthy', score: 100 } : health,
+          metrics: {
+            has_requests: rate != null,
+            success_rate: rate ?? 0,
+            error_rate: rate == null ? 0 : 1 - rate,
+            cache_rate: 0,
+            ttft: {},
+            duration: {},
+          },
+        })),
+      },
+    }
+    const wrapper = mount(ChannelStatusView, {
+      props: { previewSnapshot: snapshot },
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'zh', messages: { zh } })],
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          PublicSiteFooter: true,
+          Icon: true,
+          ModelIcon: true,
+        },
+      },
+    })
+    await wrapper.findAll('button').find((button) => button.text() === label)!.trigger('click')
+
+    const row = wrapper.findAll('.market-row').find((candidate) => candidate.text().includes('gpt-4.1'))!
+    const squares = row.find('.monitor-track').findAll(':scope > span')
+    expect(squares.slice(-4).map((square) => square.classes().find((name) => name.startsWith('health-')))).toEqual([
+      'health-score10', 'health-score5', 'health-score0', 'health-unknown',
+    ])
+    expect(squares.slice(-4, -1).every((square) => square.attributes('data-monitor-state') === 'insufficient-samples')).toBe(true)
+    expect(squares.slice(0, -4).every((square) => square.classes().includes('health-unknown'))).toBe(true)
+    expect(squares.at(-1)!.attributes('data-monitor-state')).toBe('no-traffic')
   })
 
   it('uses the V2 green-to-red score bands for timeline health scores', () => {

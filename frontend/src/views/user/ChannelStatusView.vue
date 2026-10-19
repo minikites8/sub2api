@@ -323,7 +323,7 @@ import {
   type MarketplaceWindow,
   type TokenPriceField,
 } from '@/utils/modelMarketplace'
-import { healthScoreClass } from '@/features/channel-monitor-v2/monitorFormat'
+import { healthScoreClass, scoreToBand } from '@/features/channel-monitor-v2/monitorFormat'
 
 const props = defineProps<{ previewSnapshot?: PublicTransitSnapshot }>()
 const { t } = useI18n()
@@ -364,6 +364,7 @@ interface MonitorSquare {
   hasRequests?: boolean
   health?: PublicTransitMonitorHealth
   healthScore?: number
+  successRate?: number
 }
 
 const models = computed(() => snapshot.value ? buildMarketplaceModels(snapshot.value) : [])
@@ -449,9 +450,12 @@ function statusLabel(status: MarketplaceStatus): string {
   return t(`modelMarketplace.status.${status}`)
 }
 
-function passiveStatusLabel(status: MarketplaceStatus, hasRequests?: boolean, health?: PublicTransitMonitorHealth): string {
+function passiveStatusLabel(status: MarketplaceStatus, hasRequests?: boolean, health?: PublicTransitMonitorHealth, availability?: number): string {
   if (hasRequests === false) return t('modelMarketplace.noTraffic')
   if (hasRequests === true && health?.overall === 'unknown') {
+    if (availability != null && Number.isFinite(availability)) {
+      return t('modelMarketplace.insufficientSamplesAvailability', { availability: availability.toFixed(2) })
+    }
     return t('modelMarketplace.insufficientSamples')
   }
   return statusLabel(status)
@@ -472,9 +476,16 @@ function statusTextClass(status: MarketplaceStatus): string {
   return 'text-dark-400'
 }
 
-function statusSquareClass(sample: Pick<MonitorSquare, 'status' | 'hasRequests' | 'health'>): string {
-  if (sample.health) return healthScoreClass(sample.health, 'overall', sample.hasRequests === false ? 0 : 1)
-  if (sample.hasRequests === false || sample.status === 'unmonitored') return 'health-unknown'
+function statusSquareClass(sample: Pick<MonitorSquare, 'status' | 'hasRequests' | 'health' | 'successRate'>): string {
+  if (sample.hasRequests === false) return 'health-unknown'
+  // Short buckets often have traffic but too few samples for a V2 health score.
+  // Show the observed availability without treating missing traffic as success.
+  if (sample.hasRequests === true && sample.health?.overall === 'unknown' && sample.health.score == null
+    && sample.successRate != null && Number.isFinite(sample.successRate)) {
+    return `health-${scoreToBand(sample.successRate)}`
+  }
+  if (sample.health) return healthScoreClass(sample.health, 'overall', 1)
+  if (sample.status === 'unmonitored') return 'health-unknown'
   if (sample.status === 'unavailable') return 'health-score0'
   return sample.status === 'degraded' ? 'health-score5' : 'health-score10'
 }
@@ -581,9 +592,10 @@ function monitorSquaresForMonitoring(monitoring: MarketplaceMonitoringWindow): M
         hasRequests: sample.hasRequests,
         health: sample.health,
         healthScore: sample.healthScore,
+        successRate: sample.successRate,
         title: t('modelMarketplace.checkTooltip', {
           time: formatDateTime(sample.checkedAt),
-          status: passiveStatusLabel(sample.status, sample.hasRequests, sample.health),
+          status: passiveStatusLabel(sample.status, sample.hasRequests, sample.health, sample.successRate),
         }),
       }
     }

@@ -369,6 +369,16 @@ function shouldReplaceMonitorSample(
     return candidate.healthScore < existing.healthScore
   }
   if (candidate.healthScore != null && existing.healthScore == null) return true
+  // Sparse aliases can both lack health scores. Preserve the worse observed
+  // availability instead of letting the slower successful alias hide failures.
+  if (candidate.hasRequests === true && existing.hasRequests === true
+    && candidate.health?.overall === 'unknown' && existing.health?.overall === 'unknown'
+    && candidate.healthScore == null && existing.healthScore == null
+    && candidate.successRate != null && existing.successRate != null
+    && Number.isFinite(candidate.successRate) && Number.isFinite(existing.successRate)
+    && candidate.successRate !== existing.successRate) {
+    return candidate.successRate < existing.successRate
+  }
   return (candidate.ttftMs ?? 0) > (existing.ttftMs ?? 0)
 }
 

@@ -21,6 +21,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/admin/__tests__/SupportTicketsAdmin.spec.ts \
 	src/stores/__tests__/supportTickets.spec.ts \
 	src/views/admin/__tests__/ChannelMonitorView.modeSwitch.spec.ts \
+	src/views/user/__tests__/ChannelStatusView.spec.ts \
+	src/utils/__tests__/modelMarketplace.spec.ts \
 	src/views/admin/__tests__/AccountQualityView.spec.ts \
 	src/views/admin/__tests__/AccountsView.bulkEdit.spec.ts \
 	src/utils/__tests__/qualityRulePatch.spec.ts \

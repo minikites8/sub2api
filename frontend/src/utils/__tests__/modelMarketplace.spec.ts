@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createModelMarketplacePreviewSnapshot } from '@/mocks/modelMarketplacePreview'
+import type { PublicTransitMonitor } from '@/api/publicTransit'
 import {
   availabilityForWindow,
   applyGroupMultiplier,
@@ -11,6 +12,44 @@ import {
 } from '@/utils/modelMarketplace'
 
 describe('model marketplace aggregation', () => {
+  it.each([false, true])('keeps worse sparse availability across aliases (reverse=%s)', (reverse) => {
+    const snapshot = createModelMarketplacePreviewSnapshot()
+    const base = snapshot.monitoring.find((item) => item.model === 'gpt-4.1')!
+    const health = {
+      overall: 'unknown' as const, error_rate: 'unknown' as const,
+      ttft: 'unknown' as const, cache: 'unknown' as const, minimum_sample: 50,
+    }
+    const monitors = [1, 0].map((rate, index): PublicTransitMonitor => {
+      const metrics = {
+        has_requests: true, success_rate: rate, error_rate: 1 - rate, cache_rate: 0,
+        ttft: { p50_ms: rate === 1 ? 900 : 100 }, duration: {},
+      }
+      return {
+        ...base,
+        model: index === 0 ? 'gpt-4.1' : 'gpt-4.1-2025-04-14',
+        availability_7d: rate * 100,
+        buckets: [],
+        windows: {
+          '90m': {
+            status: 'unmonitored', availability: rate * 100, coverage_complete: true, metrics, health,
+            buckets: [{
+              bucket_start: snapshot.generated_at, status: 'unmonitored', success_rate: rate * 100,
+              metrics, health,
+            }],
+          },
+        },
+      }
+    })
+    snapshot.monitoring = reverse ? monitors.reverse() : monitors
+
+    const model = buildMarketplaceModels(snapshot).find((item) => item.name === 'gpt-4.1')!
+    const window = monitoringForWindow(model.monitoring, '90m')
+    expect(window.availability).toBe(0)
+    expect(window.samples).toHaveLength(1)
+    expect(window.samples[0].successRate).toBe(0)
+    expect(window.samples[0].ttftMs).toBe(100)
+  })
+
   it('keeps flattened V1 group monitors separate from site-wide V2 metrics', () => {
     const snapshot = createModelMarketplacePreviewSnapshot()
     const before = buildMarketplaceModels(snapshot).find((model) => model.name === 'gpt-4.1')!
