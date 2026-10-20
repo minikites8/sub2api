@@ -1057,6 +1057,48 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline'])
   })
 
+  it('offers every built-in upstream platform in the account selector', () => {
+    const wrapper = mountModal()
+    const labels = [
+      '[data-tour="account-form-platform"]',
+      '[data-testid="platform-row-cn"]',
+      '[data-testid="platform-row-aggregators"]',
+    ].flatMap(selector => wrapper.get(selector).findAll('button').map(button => button.text().trim()))
+
+    for (const platform of BUILTIN_PLATFORM_CATALOG.platforms) {
+      expect(labels, platform.id).toContain(platform.display_name)
+    }
+  })
+
+  it.each(['Anthropic', 'Grok'])('creates a Jev API key account after selecting %s', async (previousPlatform) => {
+    createAccountMock.mockResolvedValueOnce({ id: 42, platform: 'typesafe', type: 'apikey' })
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, previousPlatform)
+    await selectButtonByText(wrapper, 'TypeSafe / Jev')
+
+    expect(wrapper.findComponent(OAuthAuthorizationFlowStub).exists()).toBe(false)
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelValue')).toEqual(['jev-latest'])
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('platform')).toBe('typesafe')
+    expect(wrapper.get('input[placeholder="https://api.typesafe.ai"]').element).toHaveProperty('value', 'https://api.typesafe.ai')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Jev account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('ts-test-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      name: 'Jev account',
+      platform: 'typesafe',
+      type: 'apikey',
+      credentials: {
+        api_key: 'ts-test-key',
+        base_url: 'https://api.typesafe.ai',
+        model_mapping: { 'jev-latest': 'jev-latest' },
+      },
+    })
+    expect(wrapper.emitted('created')).toHaveLength(1)
+  })
+
   it('creates a Cline account without an account type and with only the Chat Completions endpoint', async () => {
     const wrapper = mountModal()
     await wrapper.get('[data-testid="platform-button-cline"]').trigger('click')

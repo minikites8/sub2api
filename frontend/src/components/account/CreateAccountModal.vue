@@ -173,7 +173,20 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
-
+          <button
+            type="button"
+            data-testid="platform-button-typesafe"
+            @click="form.platform = 'typesafe'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'typesafe'
+                ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="typesafe" size="sm" />
+            TypeSafe / Jev
+          </button>
         </div>
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-testid="platform-row-cn">
           <button
