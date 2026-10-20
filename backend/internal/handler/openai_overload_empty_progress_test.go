@@ -22,6 +22,8 @@ func TestOpenAIOverloadAfterEmptyProgressSwitchesWithoutOptIn(t *testing.T) {
 				output      bool
 			}{
 				{"metadata_only", "", false},
+				{"response_metadata", `{"type":"response.metadata","sequence_number":2,"metadata":{"request_id":"failed-attempt-metadata"}}`, false},
+				{"codex_response_metadata", `{"type":"codex.response.metadata","headers":{"x-codex-turn-state":"failed-attempt-metadata"}}`, false},
 				{"empty_text", `{"type":"response.output_text.delta","delta":""}`, false},
 				{"empty_reasoning", `{"type":"response.reasoning_summary_text.delta","delta":""}`, false},
 				{"empty_item", `{"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}`, false},
@@ -66,6 +68,7 @@ func TestOpenAIOverloadAfterEmptyProgressSwitchesWithoutOptIn(t *testing.T) {
 					require.Contains(t, rec.Body.String(), "healthy")
 					require.NotContains(t, rec.Body.String(), "resp_failed_attempt")
 					require.NotContains(t, rec.Body.String(), "failed-attempt-ciphertext")
+					require.NotContains(t, rec.Body.String(), "failed-attempt-metadata")
 					require.NotContains(t, rec.Body.String(), "overloaded")
 				})
 			}

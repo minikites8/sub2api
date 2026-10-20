@@ -83,6 +83,8 @@ func TestOpenAINativeMetadataAndKeepaliveDoNotDisarmFirstOutputTimeout(t *testin
 		defer close(writerDone)
 		defer func() { _ = writer.Close() }()
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_test\"}}\n\n")
+		_, _ = io.WriteString(writer, "data: {\"type\":\"response.metadata\",\"metadata\":{\"request_id\":\"metadata_only\"}}\n\n")
+		_, _ = io.WriteString(writer, "data: {\"type\":\"codex.response.metadata\",\"headers\":{\"x-codex-turn-state\":\"metadata_only\"}}\n\n")
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"item_test\",\"type\":\"reasoning\",\"summary\":[]}}\n\n")
 		_, _ = io.WriteString(writer, "data: {\"type\":\"keepalive\"}\n\n")
 		time.Sleep(1200 * time.Millisecond)

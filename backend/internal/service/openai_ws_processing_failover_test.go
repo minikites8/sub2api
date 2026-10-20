@@ -39,15 +39,21 @@ func TestOpenAIWSProcessingClassifier(t *testing.T) {
 }
 func TestOpenAIWSProcessingMetadataStaging(t *testing.T) {
 	metadata := []byte(`{"type":"response.created","response":{"id":"failed_attempt"}}`)
+	responseMetadata := []byte(`{"type":"response.metadata","metadata":{"request_id":"metadata_only"}}`)
+	codexMetadata := []byte(`{"type":"codex.response.metadata","headers":{"x-codex-turn-state":"metadata_only"}}`)
 	delta := []byte(`{"type":"response.output_text.delta","delta":"hello"}`)
 	failure := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error","message":"An error occurred while processing your request"}}}`)
 	var stage openAIWSFirstOutputStage
 	require.Empty(t, stage.messages(metadata))
-	require.Equal(t, [][]byte{metadata, delta}, stage.messages(delta))
+	require.Empty(t, stage.messages(responseMetadata))
+	require.Empty(t, stage.messages(codexMetadata))
+	require.Equal(t, [][]byte{metadata, responseMetadata, codexMetadata, delta}, stage.messages(delta))
 	require.True(t, stage.committed)
 	require.Equal(t, [][]byte{failure}, stage.messages(failure))
 	var failed openAIWSFirstOutputStage
 	require.Empty(t, failed.messages(metadata))
+	require.Empty(t, failed.messages(responseMetadata))
+	require.Empty(t, failed.messages(codexMetadata))
 	require.Equal(t, [][]byte{failure}, failed.messages(failure))
 	require.False(t, failed.committed)
 	require.Empty(t, failed.pending)
