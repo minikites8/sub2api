@@ -22,6 +22,8 @@ type requestAccountRetryUpstream struct {
 	status               int
 	eventType, errorBody string
 	partial, allFail     bool
+	preamble             string
+	failureIDs           map[int64]bool
 	cancel               context.CancelFunc
 	hits                 []int64
 }
@@ -36,7 +38,7 @@ func (u *requestAccountRetryUpstream) Do(req *http.Request, _ string, id int64, 
 	}
 	status, contentType := http.StatusOK, "text/event-stream"
 	body := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"healthy\"}\n\ndata: " + `{"type":"response.completed","response":{"id":"resp_healthy","object":"response","model":"gpt-5.2","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"healthy"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}` + "\n\n"
-	if id == 801 || u.allFail {
+	if id == 801 || u.allFail || u.failureIDs[id] {
 		status, contentType = u.status, "application/json"
 		body = u.errorBody
 		if body == "" {
@@ -53,10 +55,52 @@ func (u *requestAccountRetryUpstream) Do(req *http.Request, _ string, id int64, 
 			if u.partial {
 				prefix += "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"
 			}
+			prefix += u.preamble
 			body = prefix + "data: " + body + "\n\n"
 		}
 	}
 	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {contentType}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+}
+
+func TestRequestAccountRetryOverloadAfterEmptyProgressSwitchesToAPIKey(t *testing.T) {
+	for _, progress := range []string{
+		`{"type":"response.output_text.delta","delta":""}`,
+		`{"type":"response.reasoning_summary_text.delta","delta":""}`,
+		`{"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}`,
+		`{"type":"response.content_part.done","part":{"type":"output_text","text":""}}`,
+	} {
+		for _, stream := range []bool{false, true} {
+			for _, passthrough := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/stream=%t/passthrough=%t", progress, stream, passthrough), func(t *testing.T) {
+					u := &requestAccountRetryUpstream{
+						eventType:  "response.failed",
+						errorBody:  `{"error":{"code":"server_error","message":"Our servers are currently overloaded. Please try again later."}}`,
+						preamble:   "data: {\"type\":\"response.in_progress\"}\n\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"reasoning\",\"summary\":[]}}\n\ndata: " + progress + "\n\n",
+						failureIDs: map[int64]bool{802: true},
+					}
+					accounts := []service.Account{
+						{ID: 801, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true, Concurrency: 1, Priority: 1,
+							Credentials: map[string]any{"access_token": "test-access"}, Extra: map[string]any{"openai_passthrough": passthrough}},
+						{ID: 802, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true, Concurrency: 1, Priority: 2,
+							Credentials: map[string]any{"access_token": "test-access-2"}, Extra: map[string]any{"openai_passthrough": passthrough}},
+						{ID: 803, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Concurrency: 1, Priority: 3,
+							Credentials: map[string]any{"api_key": "test-key", "base_url": "https://api.example.test/v1"}},
+					}
+					router := newOpenAI502503RouterWithAccounts(t, u, accounts)
+					req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":"gpt-5.2","input":"hello","stream":%t}`, stream)))
+					req.Header.Set(requestretry.AccountHeader, "True")
+					req.Header.Set(requestretry.MaxRetriesHeader, "2")
+					rec := httptest.NewRecorder()
+					router.ServeHTTP(rec, req)
+					require.Equal(t, []int64{801, 802, 803}, u.hits, rec.Body.String())
+					require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+					require.Contains(t, rec.Body.String(), "healthy")
+					require.NotContains(t, rec.Body.String(), "resp_failed_attempt")
+					require.NotContains(t, rec.Body.String(), "overloaded")
+				})
+			}
+		}
+	}
 }
 
 var requestAccountRetryEndpoints = []struct{ path, body string }{

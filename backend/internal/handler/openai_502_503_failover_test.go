@@ -68,6 +68,13 @@ func newOpenAI502503Router(t *testing.T, upstream service.HTTPUpstream, accountI
 			Credentials: map[string]any{"access_token": "test-access", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)},
 			Extra:       map[string]any{"openai_passthrough": true}})
 	}
+	return newOpenAI502503RouterWithAccounts(t, upstream, repo.accounts)
+}
+
+func newOpenAI502503RouterWithAccounts(t *testing.T, upstream service.HTTPUpstream, accounts []service.Account) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	repo := &openAI502503AdmissionRepo{grokCredentialHandlerRepo: &grokCredentialHandlerRepo{accounts: accounts}}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	cfg.Gateway.MaxAccountSwitches = 3
 	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)

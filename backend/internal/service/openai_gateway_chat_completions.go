@@ -885,7 +885,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				// Role-only preambles stay buffered so an immediate upstream
 				// 502/503 can retry before a client-visible stream is committed.
 				if !clientOutputStarted && (!refusalDetector.ShouldReleaseClientOutput() ||
-					(!isTerminalEvent && !openAIStreamDataStartsClientOutput(payload, event.Type) && pendingSSEBytes+len(sse) < 64*1024)) {
+					(!isTerminalEvent && !openAIStreamDataStartsClientOutput(payload, event.Type, c) && pendingSSEBytes+len(sse) < 64*1024)) {
 					pendingSSE = append(pendingSSE, sse)
 					pendingSSEBytes += len(sse)
 					continue

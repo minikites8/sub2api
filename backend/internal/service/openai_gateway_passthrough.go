@@ -19,6 +19,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestretry"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -1264,12 +1265,52 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 	}
 }
 
-func openAIStreamDataStartsClientOutput(data, eventType string) bool {
+// Empty content updates can follow the lifecycle preamble without carrying any
+// model output. Keep them staged for opted-in requests so a later upstream
+// failure can still switch accounts. Unknown or malformed events stay conservative.
+func openAIStreamEventHasEmptyOutput(payload []byte, eventType string) bool {
+	if !gjson.ValidBytes(payload) {
+		return false
+	}
+	emptyString := func(path string) bool {
+		value := gjson.GetBytes(payload, path)
+		return value.Type == gjson.String && value.Str == ""
+	}
+	switch eventType {
+	case "response.output_text.delta", "response.reasoning_text.delta", "response.reasoning_summary_text.delta",
+		"response.refusal.delta", "response.function_call_arguments.delta", "response.custom_tool_call_input.delta",
+		"response.audio.delta", "response.audio_transcript.delta", "response.output_audio.delta", "response.output_audio_transcript.delta":
+		return emptyString("delta")
+	case "response.output_text.done", "response.reasoning_text.done", "response.reasoning_summary_text.done",
+		"response.audio_transcript.done", "response.output_audio_transcript.done":
+		return emptyString("text")
+	case "response.refusal.done":
+		return emptyString("refusal")
+	case "response.content_part.done":
+		return !openAIStreamAddedEventStartsClientOutput(payload, "response.content_part.added")
+	case "response.reasoning_summary_part.done":
+		return !openAIStreamAddedEventStartsClientOutput(payload, "response.reasoning_summary_part.added")
+	case "response.output_item.done":
+		switch gjson.GetBytes(payload, "item.type").String() {
+		case "message", "reasoning":
+			return !openAIStreamItemHasVisibleOutput(gjson.GetBytes(payload, "item")) &&
+				!openAIStreamAddedEventStartsClientOutput(payload, "response.output_item.added")
+		}
+	}
+	return false
+}
+
+func openAIStreamDataStartsClientOutput(data, eventType string, requestContexts ...*gin.Context) bool {
 	trimmed := strings.TrimSpace(data)
 	if trimmed == "" {
 		return false
 	}
-	switch strings.TrimSpace(eventType) {
+	eventType = strings.TrimSpace(eventType)
+	if len(requestContexts) > 0 && requestContexts[0] != nil && requestretry.Enabled(requestContexts[0].Request) &&
+		openAIStreamEventHasEmptyOutput([]byte(trimmed), eventType) {
+		return false
+	}
+	switch eventType {
 	case "response.failed":
 		return false
 	case "error":
@@ -2359,7 +2400,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 				trimmedData = strings.TrimSpace(string(sanitizedData))
 				line = "data: " + string(sanitizedData)
 			}
-			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType, c)
 			if lineStartsClientOutput {
 				documentScanner.firstOutputDeadline = time.Time{}
 			}

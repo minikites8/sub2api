@@ -57,7 +57,7 @@ func (s *openAIWSFirstOutputStage) messages(payload []byte) [][]byte {
 		s.bytes = 0
 		return [][]byte{payload}
 	}
-	if eventType == "error" || openAIStreamDataStartsClientOutput(string(payload), eventType) || isOpenAIWSTerminalEvent(eventType) || s.bytes+int64(len(payload)) > openAIFirstOutputStageMaxBytes || len(s.pending) >= 256 {
+	if eventType == "error" || openAIStreamDataStartsClientOutput(string(payload), eventType, s.requestContext) || isOpenAIWSTerminalEvent(eventType) || s.bytes+int64(len(payload)) > openAIFirstOutputStageMaxBytes || len(s.pending) >= 256 {
 		s.committed = true
 		messages := append(s.pending, payload)
 		s.pending = nil

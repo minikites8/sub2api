@@ -13,7 +13,69 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestretry"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+func TestRequestAccountRetryStreamOutputBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		data string
+		want bool
+	}{
+		{`{"type":"response.output_text.delta","delta":""}`, false},
+		{`{"type":"response.reasoning_summary_text.delta","delta":""}`, false},
+		{`{"type":"response.reasoning_text.delta","delta":""}`, false},
+		{`{"type":"response.function_call_arguments.delta","delta":""}`, false},
+		{`{"type":"response.custom_tool_call_input.delta","delta":""}`, false},
+		{`{"type":"response.refusal.delta","delta":""}`, false},
+		{`{"type":"response.audio.delta","delta":""}`, false},
+		{`{"type":"response.output_text.done","text":""}`, false},
+		{`{"type":"response.reasoning_text.done","text":""}`, false},
+		{`{"type":"response.reasoning_summary_text.done","text":""}`, false},
+		{`{"type":"response.content_part.done","part":{"type":"output_text","text":""}}`, false},
+		{`{"type":"response.reasoning_summary_part.done","part":{"type":"summary_text","text":""}}`, false},
+		{`{"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}`, false},
+		{`{"type":"response.output_item.done","item":{"type":"message","content":[]}}`, false},
+		{`{"type":"response.output_text.delta","delta":"partial"}`, true},
+		{`{"type":"response.output_text.delta","delta":" "}`, true},
+		{`{"type":"response.reasoning_summary_text.delta","delta":"thinking"}`, true},
+		{`{"type":"response.function_call_arguments.delta","delta":"{}"}`, true},
+		{`{"type":"response.output_text.done","text":"partial"}`, true},
+		{`{"type":"response.output_item.done","item":{"type":"reasoning","summary":[],"encrypted_content":"ciphertext"}}`, true},
+		{`{"type":"response.output_item.done","item":{"type":"reasoning","content":[{"type":"reasoning_text","text":"thinking"}]}}`, true},
+		{`{"type":"response.output_item.done","item":{"type":"function_call","name":"execute","arguments":""}}`, true},
+		{`{"type":"response.content_part.done","part":{"type":"audio","audio":"bytes"}}`, true},
+		{`{"type":"response.output_text.delta"}`, true},
+		{`{"type":"response.output_text.delta","delta":null}`, true},
+		{`{"type":"response.output_item.done"}`, true},
+		{`{"type":"unknown_event","delta":""}`, true},
+		{`{"type":"response.output_text.delta",`, true},
+	} {
+		t.Run(tc.data, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+			eventType := gjson.Get(tc.data, "type").String()
+			for _, header := range []string{"", "False", "True"} {
+				c.Request.Header.Set(requestretry.AccountHeader, header)
+				want := tc.want || header != "True"
+				require.Equal(t, want, openAIStreamDataStartsClientOutput(tc.data, eventType, c), "header=%q", header)
+			}
+		})
+	}
+}
+
+func TestRequestAccountRetryWSStagesEmptyProgress(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("GET", "/v1/responses", nil)
+	c.Request.Header.Set(requestretry.AccountHeader, "True")
+	stage := &openAIWSFirstOutputStage{requestContext: c}
+	require.Empty(t, stage.messages([]byte(`{"type":"response.created"}`)))
+	require.Empty(t, stage.messages([]byte(`{"type":"response.output_text.delta","delta":""}`)))
+	require.Empty(t, stage.messages([]byte(`{"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}`)))
+	failure := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error","message":"Our servers are currently overloaded. Please try again later."}}}`)
+	require.Equal(t, [][]byte{failure}, stage.messages(failure))
+	require.False(t, stage.committed)
+	require.Empty(t, stage.pending)
+}
 
 func TestRequestAccountRetryAnthropicError(t *testing.T) {
 	for _, retryExhausted := range []bool{false, true} {
