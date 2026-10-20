@@ -151,7 +151,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	switchCount := 0
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
-	sameAccountRetryCount := make(map[int64]int)
+	sameAccountRetrier := newSameAccountRetrier()
 	var lastFailoverErr *service.UpstreamFailoverError
 	var rpmAdmission openAIRPMAdmission
 	stopJSONKeepalive := func() {}
@@ -330,20 +330,16 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					}
 					if !requestPrefersAccountRetry(c) && failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
-						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
-							sameAccountRetryCount[account.ID]++
-							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
+						if retryDelay, ok := sameAccountRetrier.next(requestCtx, account.ID, failoverErr, retryLimit); ok {
 							reqLog.Warn("openai.images.pool_mode_same_account_retry",
 								zap.Int64("account_id", account.ID),
 								zap.Int("upstream_status", failoverErr.StatusCode),
 								zap.Int("retry_limit", retryLimit),
-								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+								zap.Int("retry_count", sameAccountRetrier.counts[account.ID]),
 								zap.Duration("retry_delay", retryDelay),
 							)
-							select {
-							case <-requestCtx.Done():
+							if !sameAccountRetrier.wait(requestCtx, retryDelay) {
 								return
-							case <-time.After(retryDelay):
 							}
 							continue
 						}

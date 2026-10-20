@@ -998,6 +998,125 @@ func TestHandleSelectionExhausted(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// 请求级重试等待预算测试
+// ---------------------------------------------------------------------------
+
+func TestFailoverRetryWaitBudget(t *testing.T) {
+	t.Run("同账号重试计入预算", func(t *testing.T) {
+		fs := NewFailoverState(3, false)
+		mock := &mockTempUnscheduler{}
+
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", maxSameAccountRetries, newTestFailoverErr(400, true, false))
+
+		require.Equal(t, FailoverContinue, action)
+		require.Equal(t, 1, fs.SameAccountRetryCount[100])
+		require.Equal(t, sameAccountRetryDelay, fs.retryBudget.waited)
+	})
+
+	t.Run("预算不足时跳过同账号重试直接换号", func(t *testing.T) {
+		fs := NewFailoverState(3, true)
+		fs.retryBudget.waited = maxRequestRetryWait - 100*time.Millisecond
+		mock := &mockTempUnscheduler{}
+
+		start := time.Now()
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", maxSameAccountRetries, newTestFailoverErr(400, true, false))
+
+		require.Equal(t, FailoverContinue, action)
+		require.Less(t, time.Since(start), 100*time.Millisecond, "不应等待")
+		require.Zero(t, fs.SameAccountRetryCount[100])
+		require.Equal(t, 1, fs.SwitchCount)
+		require.Contains(t, fs.FailedAccountIDs, int64(100))
+		require.Len(t, mock.calls, 1, "放弃同账号重试后仍按原逻辑临时封禁")
+		require.True(t, fs.ForceCacheBilling, "粘性会话实际换号需强制缓存计费")
+	})
+
+	t.Run("Antigravity换号延时被剩余预算截断", func(t *testing.T) {
+		fs := NewFailoverState(5, false)
+		fs.SwitchCount = 3
+		fs.retryBudget.waited = maxRequestRetryWait
+		mock := &mockTempUnscheduler{}
+
+		start := time.Now()
+		action := fs.HandleFailoverError(context.Background(), mock, 100, service.PlatformAntigravity, maxSameAccountRetries, newTestFailoverErr(500, false, false))
+
+		require.Equal(t, FailoverContinue, action)
+		require.Less(t, time.Since(start), 100*time.Millisecond, "预算耗尽后不应再等待")
+		require.Equal(t, maxRequestRetryWait, fs.retryBudget.waited)
+	})
+
+	t.Run("预算不足以覆盖单账号503退避时返回Exhausted", func(t *testing.T) {
+		fs := NewFailoverState(3, false)
+		fs.LastFailoverErr = newTestFailoverErr(503, false, false)
+		fs.FailedAccountIDs[100] = struct{}{}
+		fs.retryBudget.waited = maxRequestRetryWait - time.Second
+
+		start := time.Now()
+		action := fs.HandleSelectionExhausted(context.Background())
+
+		require.Equal(t, FailoverExhausted, action)
+		require.Less(t, time.Since(start), 100*time.Millisecond, "不应等待")
+		require.Contains(t, fs.FailedAccountIDs, int64(100), "不应清空失败列表")
+	})
+}
+
+func TestSameAccountRetrier(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("按次数上限放行并递增计数", func(t *testing.T) {
+		r := newSameAccountRetrier()
+		err := newTestFailoverErr(429, true, false)
+
+		for i := 0; i < 2; i++ {
+			delay, ok := r.next(ctx, 100, err, 2)
+			require.True(t, ok)
+			require.Equal(t, sameAccountRetryDelay, delay)
+		}
+		_, ok := r.next(ctx, 100, err, 2)
+		require.False(t, ok, "达到 retryLimit 后不再重试")
+		require.Equal(t, 2, r.counts[100])
+
+		_, ok = r.next(ctx, 200, err, 2)
+		require.True(t, ok, "计数按账号独立")
+	})
+
+	t.Run("非RetryableOnSameAccount错误不重试", func(t *testing.T) {
+		r := newSameAccountRetrier()
+		_, ok := r.next(ctx, 100, newTestFailoverErr(429, false, false), 3)
+		require.False(t, ok)
+		require.Zero(t, r.counts[100])
+	})
+
+	t.Run("预算不足时拒绝且不计数", func(t *testing.T) {
+		r := newSameAccountRetrier()
+		r.budget.waited = maxRequestRetryWait - 100*time.Millisecond
+
+		_, ok := r.next(ctx, 100, newTestFailoverErr(429, true, false), 3)
+		require.False(t, ok)
+		require.Zero(t, r.counts[100])
+	})
+
+	t.Run("等待计入预算且跨账号共享", func(t *testing.T) {
+		r := newSameAccountRetrier()
+		err := newTestFailoverErr(429, true, false)
+
+		delay, ok := r.next(ctx, 100, err, 3)
+		require.True(t, ok)
+		require.True(t, r.wait(ctx, delay))
+		delay, ok = r.next(ctx, 200, err, 3)
+		require.True(t, ok)
+		require.True(t, r.wait(ctx, delay))
+		require.Equal(t, 2*sameAccountRetryDelay, r.budget.waited)
+	})
+
+	t.Run("context取消时wait返回false", func(t *testing.T) {
+		r := newSameAccountRetrier()
+		canceled, cancel := context.WithCancel(ctx)
+		cancel()
+		require.False(t, r.wait(canceled, time.Second))
+	})
+}
+
+// ---------------------------------------------------------------------------
 // failoverClientGone 测试
 // ---------------------------------------------------------------------------
 

@@ -914,7 +914,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	firstOutputTimeoutSwitchCount := 0
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
-	sameAccountRetryCount := make(map[int64]int)
+	sameAccountRetrier := newSameAccountRetrier()
 	var lastFailoverErr *service.UpstreamFailoverError
 	var lastAdmissionErr error
 	var rpmAdmission openAIRPMAdmission
@@ -935,7 +935,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if requestPrefersAccountRetry(c) {
 			switchCount++
 		}
-		clearExcelBPSFailoverMaps(failedAccountIDs, sameAccountRetryCount)
+		clearExcelBPSFailoverMaps(failedAccountIDs, sameAccountRetrier.counts)
 		if !requestPrefersAccountRetry(c) {
 			switchCount = 0
 		}
@@ -1290,20 +1290,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					// 池模式：同账号重试
 					if !requestPrefersAccountRetry(c) && failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
-						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
-							sameAccountRetryCount[account.ID]++
-							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
+						if retryDelay, ok := sameAccountRetrier.next(c.Request.Context(), account.ID, failoverErr, retryLimit); ok {
 							reqLog.Warn("openai.pool_mode_same_account_retry",
 								zap.Int64("account_id", account.ID),
 								zap.Int("upstream_status", failoverErr.StatusCode),
 								zap.Int("retry_limit", retryLimit),
-								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+								zap.Int("retry_count", sameAccountRetrier.counts[account.ID]),
 								zap.Duration("retry_delay", retryDelay),
 							)
-							select {
-							case <-c.Request.Context().Done():
+							if !sameAccountRetrier.wait(c.Request.Context(), retryDelay) {
 								return
-							case <-time.After(retryDelay):
 							}
 							continue
 						}
@@ -1667,7 +1663,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	var forbiddenBudget grokForbiddenFailoverBudget
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
-	sameAccountRetryCount := make(map[int64]int)
+	sameAccountRetrier := newSameAccountRetrier()
 	var lastFailoverErr *service.UpstreamFailoverError
 	var rpmAdmission openAIRPMAdmission
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
@@ -1911,20 +1907,16 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					// 池模式：同账号重试
 					if !requestPrefersAccountRetry(c) && failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
-						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
-							sameAccountRetryCount[account.ID]++
-							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
+						if retryDelay, ok := sameAccountRetrier.next(c.Request.Context(), account.ID, failoverErr, retryLimit); ok {
 							reqLog.Warn("openai_messages.pool_mode_same_account_retry",
 								zap.Int64("account_id", account.ID),
 								zap.Int("upstream_status", failoverErr.StatusCode),
 								zap.Int("retry_limit", retryLimit),
-								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+								zap.Int("retry_count", sameAccountRetrier.counts[account.ID]),
 								zap.Duration("retry_delay", retryDelay),
 							)
-							select {
-							case <-c.Request.Context().Done():
+							if !sameAccountRetrier.wait(c.Request.Context(), retryDelay) {
 								return
-							case <-time.After(retryDelay):
 							}
 							continue
 						}
@@ -3169,7 +3161,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	var forbiddenBudget grokForbiddenFailoverBudget
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
-	sameAccountRetryCount := make(map[int64]int)
+	sameAccountRetrier := newSameAccountRetrier()
 	var lastFailoverErr *service.UpstreamFailoverError
 	var rpmAdmission openAIRPMAdmission
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
@@ -3182,23 +3174,20 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return false
 		}
 		retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
-		if !sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
+		retryDelay, ok := sameAccountRetrier.next(ctx, account.ID, failoverErr, retryLimit)
+		if !ok {
 			return false
 		}
-		sameAccountRetryCount[account.ID]++
-		retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
 		reqLog.Warn("openai.websocket.same_account_retry",
 			zap.Int64("account_id", account.ID),
 			zap.Int("upstream_status", failoverErr.StatusCode),
-			zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+			zap.Int("retry_count", sameAccountRetrier.counts[account.ID]),
 			zap.Duration("retry_delay", retryDelay),
 		)
-		select {
-		case <-ctx.Done():
+		if !sameAccountRetrier.wait(ctx, retryDelay) {
 			return false
-		case <-time.After(retryDelay):
-			return service.OpenAIWSIngressCanFailover(ctx, c)
 		}
+		return service.OpenAIWSIngressCanFailover(ctx, c)
 	}
 	handleWSFailover := func(account *service.Account, failoverErr *service.UpstreamFailoverError) bool {
 		if ctx.Err() != nil {

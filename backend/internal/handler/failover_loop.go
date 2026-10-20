@@ -49,6 +49,10 @@ const (
 	// 取值与 maxAccountSwitches 默认值一致：混合定价的大分组仍有充分重选机会，
 	// 同时把整池越线时的无谓选号开销限制在常数级。
 	maxProfitVetoAttempts = 10
+	// maxRequestRetryWait 单次请求内 handler 层所有重试等待（同账号退避、换号延时、
+	// 单账号 503 退避）的累计上限。各错误自带的延时/截止时间随错误每次重建，
+	// 无法约束整个请求；取值与 OpenAI OAuth 429 的同账号重试窗口一致，避免截断它。
+	maxRequestRetryWait = 2 * time.Minute
 )
 
 // profitVetoExhaustedMessage 是利润否决次数耗尽时返回给客户端的文案。
@@ -140,6 +144,73 @@ type FailoverState struct {
 	profitVetoedAccountIDs map[int64]struct{}
 	// profitVetoCount 本次请求累计的利润否决次数，用于 maxProfitVetoAttempts 上限。
 	profitVetoCount int
+	retryBudget     retryWaitBudget
+}
+
+// retryWaitBudget 记录单次请求 handler 层已累计的重试等待，受 maxRequestRetryWait 约束。
+type retryWaitBudget struct {
+	waited time.Duration
+}
+
+func (b *retryWaitBudget) remaining() time.Duration {
+	if remaining := maxRequestRetryWait - b.waited; remaining > 0 {
+		return remaining
+	}
+	return 0
+}
+
+// allowsSameAccountRetry 判断剩余预算能否覆盖本次同账号重试等待，不够时记录日志。
+func (b *retryWaitBudget) allowsSameAccountRetry(ctx context.Context, accountID int64, failoverErr *service.UpstreamFailoverError, delay time.Duration) bool {
+	if delay <= b.remaining() {
+		return true
+	}
+	logger.FromContext(ctx).Warn("gateway.failover_retry_wait_budget_exhausted",
+		zap.Int64("account_id", accountID),
+		zap.Int("upstream_status", failoverErr.StatusCode),
+		zap.Duration("retry_waited", b.waited),
+		zap.Duration("retry_delay", delay),
+	)
+	return false
+}
+
+// wait 按剩余预算截断后等待，返回 false 表示 context 已取消。
+func (b *retryWaitBudget) wait(ctx context.Context, d time.Duration) bool {
+	if remaining := b.remaining(); d > remaining {
+		d = remaining
+	}
+	if d <= 0 {
+		return true
+	}
+	b.waited += d
+	return sleepWithContext(ctx, d)
+}
+
+// sameAccountRetrier 供自行维护换号循环的 handler 复用同账号重试判定与请求级等待预算。
+type sameAccountRetrier struct {
+	counts map[int64]int
+	budget retryWaitBudget
+}
+
+func newSameAccountRetrier() *sameAccountRetrier {
+	return &sameAccountRetrier{counts: make(map[int64]int)}
+}
+
+// next 判断能否在同一账号上再重试一次；允许时递增计数并返回本次等待时长。
+func (r *sameAccountRetrier) next(ctx context.Context, accountID int64, failoverErr *service.UpstreamFailoverError, retryLimit int) (time.Duration, bool) {
+	count := r.counts[accountID]
+	if !sameAccountRetryAllowed(failoverErr, count, retryLimit) {
+		return 0, false
+	}
+	delay := sameAccountRetryDelayFor(failoverErr, count+1)
+	if !r.budget.allowsSameAccountRetry(ctx, accountID, failoverErr, delay) {
+		return 0, false
+	}
+	r.counts[accountID] = count + 1
+	return delay, true
+}
+
+func (r *sameAccountRetrier) wait(ctx context.Context, d time.Duration) bool {
+	return r.budget.wait(ctx, d)
 }
 
 // NewFailoverState 创建 failover 状态
@@ -212,6 +283,10 @@ func (s *FailoverState) HandleFailoverError(
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
 	retryCount := s.SameAccountRetryCount[accountID]
 	sameAccountRetry := !s.preferNextAccount && sameAccountRetryAllowed(failoverErr, retryCount, retryLimit)
+	retryDelay := sameAccountRetryDelayFor(failoverErr, retryCount+1)
+	if sameAccountRetry && !s.retryBudget.allowsSameAccountRetry(ctx, accountID, failoverErr, retryDelay) {
+		sameAccountRetry = false
+	}
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 	}
@@ -220,15 +295,15 @@ func (s *FailoverState) HandleFailoverError(
 	// 重试次数上限 retryLimit 由调用方传入（账号级 pool_mode_retry_count 配置）。
 	if sameAccountRetry {
 		s.SameAccountRetryCount[accountID]++
-		retryDelay := sameAccountRetryDelayFor(failoverErr, s.SameAccountRetryCount[accountID])
 		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
 			zap.Int64("account_id", accountID),
 			zap.Int("upstream_status", failoverErr.StatusCode),
 			zap.Int("same_account_retry_count", s.SameAccountRetryCount[accountID]),
 			zap.Int("same_account_retry_max", retryLimit),
 			zap.Duration("retry_delay", retryDelay),
+			zap.Duration("retry_waited", s.retryBudget.waited),
 		)
-		if !sleepWithContext(ctx, retryDelay) {
+		if !s.retryBudget.wait(ctx, retryDelay) {
 			return FailoverCanceled
 		}
 		return FailoverContinue
@@ -259,7 +334,7 @@ func (s *FailoverState) HandleFailoverError(
 	// Antigravity 平台换号线性递增延时
 	if platform == service.PlatformAntigravity {
 		delay := time.Duration(s.SwitchCount-1) * time.Second
-		if !sleepWithContext(ctx, delay) {
+		if !s.retryBudget.wait(ctx, delay) {
 			return FailoverCanceled
 		}
 	}
@@ -295,13 +370,20 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 			)
 			return FailoverExhausted
 		}
+		if s.retryBudget.remaining() < singleAccountBackoffDelay {
+			logger.FromContext(ctx).Warn("gateway.failover_retry_wait_budget_exhausted",
+				zap.Duration("retry_waited", s.retryBudget.waited),
+				zap.Duration("retry_delay", singleAccountBackoffDelay),
+			)
+			return FailoverExhausted
+		}
 
 		logger.FromContext(ctx).Warn("gateway.failover_single_account_backoff",
 			zap.Duration("backoff_delay", singleAccountBackoffDelay),
 			zap.Int("switch_count", s.SwitchCount),
 			zap.Int("max_switches", s.MaxSwitches),
 		)
-		if !sleepWithContext(ctx, singleAccountBackoffDelay) {
+		if !s.retryBudget.wait(ctx, singleAccountBackoffDelay) {
 			return FailoverCanceled
 		}
 		logger.FromContext(ctx).Warn("gateway.failover_single_account_retry",
