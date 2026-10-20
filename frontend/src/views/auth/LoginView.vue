@@ -122,13 +122,14 @@
               <Icon name="exclamationCircle" size="sm" />
               <span>{{ errorMessage }}</span>
             </div>
-            <div v-if="captchaEnabled" class="md3-turnstile">
+            <div v-if="captchaEnabled" :class="turnstileEnabled ? 'md3-turnstile' : 'md3-captcha'">
               <TurnstileWidget
                 ref="turnstileRef"
                 :turnstile-enabled="turnstileEnabled"
                 :turnstile-site-key="turnstileSiteKey"
                 :tencent-enabled="tencentCaptchaEnabled"
                 :tencent-app-id="tencentCaptchaAppId"
+                :tencent-region="tencentCaptchaRegion"
                 :aliyun-enabled="aliyunCaptchaEnabled"
                 :aliyun-scene-id="aliyunCaptchaSceneId"
                 :aliyun-prefix="aliyunCaptchaPrefix"
@@ -138,7 +139,7 @@
                 @error="onTurnstileError"
               />
             </div>
-<button
+            <button
               type="submit"
               :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
               class="md3-primary-button"
@@ -292,6 +293,7 @@ const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const tencentCaptchaEnabled = ref<boolean>(false)
 const tencentCaptchaAppId = ref<string>('')
+const tencentCaptchaRegion = ref<string>('cn')
 const aliyunCaptchaEnabled = ref<boolean>(false)
 const aliyunCaptchaSceneId = ref<string>('')
 const aliyunCaptchaPrefix = ref<string>('')
@@ -443,6 +445,7 @@ onMounted(async () => {
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
     tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    tencentCaptchaRegion.value = settings.tencent_captcha_region || 'cn'
     aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
     aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''

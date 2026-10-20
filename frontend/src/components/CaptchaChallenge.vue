@@ -12,6 +12,7 @@
     ref="tencentRef"
     :app-id="tencentAppId"
     :region="tencentRegion"
+    @error="emit('error')"
   />
   <AliyunCaptchaWidget
     v-else-if="aliyunEnabled && aliyunSceneId && aliyunPrefix"

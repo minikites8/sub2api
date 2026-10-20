@@ -117,4 +117,20 @@ describe('LoginView registration entry', () => {
 
     expect(wrapper.text()).not.toContain('auth.signUp')
   })
+
+  it('passes the configured Tencent region and uses the popup captcha layout', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      ...publicSettings,
+      tencent_captcha_enabled: true,
+      tencent_captcha_app_id: '123456789',
+      tencent_captcha_region: 'intl'
+    })
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    expect(wrapper.getComponent({ name: 'TurnstileWidget' }).props('tencentRegion')).toBe('intl')
+    expect(wrapper.find('.md3-captcha').exists()).toBe(true)
+    expect(wrapper.find('.md3-turnstile').exists()).toBe(false)
+    wrapper.unmount()
+  })
 })

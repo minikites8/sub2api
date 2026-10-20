@@ -1,47 +1,17 @@
 <template>
   <div v-if="sceneId && prefix" class="aliyun-captcha-wrapper">
-    <button
+    <CaptchaTriggerButton
       :id="buttonId"
-      type="button"
-      class="aliyun-captcha-button"
-      :class="state === 'verified' ? 'aliyun-captcha-button--verified' : ''"
-      :disabled="state === 'verified'"
-    >
-      <svg
-        v-if="state === 'verified'"
-        class="aliyun-captcha-icon"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        aria-hidden="true"
-      >
-        <path
-          fill-rule="evenodd"
-          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-          clip-rule="evenodd"
-        />
-      </svg>
-      <svg
-        v-else
-        class="aliyun-captcha-icon"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        aria-hidden="true"
-      >
-        <path
-          fill-rule="evenodd"
-          d="M9.661 2.237a.531.531 0 01.678 0 11.947 11.947 0 007.078 2.749.5.5 0 01.479.425c.069.52.104 1.05.104 1.59 0 5.162-3.26 9.563-7.834 11.256a.48.48 0 01-.332 0C5.26 16.564 2 12.163 2 7c0-.538.035-1.069.104-1.589a.5.5 0 01.48-.425 11.947 11.947 0 007.077-2.75z"
-          clip-rule="evenodd"
-        />
-      </svg>
-      <span>{{ buttonText }}</span>
-    </button>
+      :state="state"
+    />
     <div :id="elementId"></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import CaptchaTriggerButton from '@/components/CaptchaTriggerButton.vue'
 
 interface AliyunCaptchaVerifyResult {
   captchaResult: boolean
@@ -87,7 +57,7 @@ const emit = defineEmits<{
   (e: 'error'): void
 }>()
 
-const { t, locale } = useI18n()
+const { locale } = useI18n()
 
 const uid = Math.random().toString(36).slice(2, 10)
 const buttonId = `aliyun-captcha-button-${uid}`
@@ -95,17 +65,6 @@ const elementId = `aliyun-captcha-element-${uid}`
 
 // idle: 未验证可点击；verifying: 弹窗已拉起（关闭后回到 idle 可重试）；verified: 已通过
 const state = ref<'idle' | 'verifying' | 'verified'>('idle')
-
-const buttonText = computed(() => {
-  switch (state.value) {
-    case 'verified':
-      return t('auth.captchaVerified')
-    case 'verifying':
-      return t('auth.captchaVerifying')
-    default:
-      return t('auth.captchaClickToVerify')
-  }
-})
 
 const SCRIPT_SRC = 'https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js'
 const POPUP_ID = 'aliyunCaptcha-window-popup'
@@ -302,62 +261,5 @@ onUnmounted(() => {
 <style scoped>
 .aliyun-captcha-wrapper {
   width: 100%;
-}
-
-.aliyun-captcha-button {
-  display: flex;
-  width: 100%;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border-radius: 0.5rem;
-  border: 1px solid rgb(209 213 219);
-  background-color: rgb(249 250 251);
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: rgb(55 65 81);
-  transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-
-.aliyun-captcha-button:hover:not(:disabled) {
-  border-color: rgb(156 163 175);
-  background-color: rgb(243 244 246);
-}
-
-.aliyun-captcha-button--verified {
-  border-color: rgb(34 197 94);
-  background-color: rgb(240 253 244);
-  color: rgb(21 128 61);
-}
-
-:root.dark .aliyun-captcha-button,
-.dark .aliyun-captcha-button {
-  border-color: rgb(55 65 81);
-  background-color: rgb(31 41 55);
-  color: rgb(209 213 219);
-}
-
-:root.dark .aliyun-captcha-button:hover:not(:disabled),
-.dark .aliyun-captcha-button:hover:not(:disabled) {
-  border-color: rgb(75 85 99);
-  background-color: rgb(55 65 81);
-}
-
-:root.dark .aliyun-captcha-button--verified,
-.dark .aliyun-captcha-button--verified {
-  border-color: rgb(34 197 94);
-  background-color: rgb(20 83 45 / 0.3);
-  color: rgb(134 239 172);
-}
-
-.aliyun-captcha-icon {
-  height: 1rem;
-  width: 1rem;
-  flex-shrink: 0;
 }
 </style>

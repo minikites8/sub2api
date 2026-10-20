@@ -6,7 +6,7 @@ import { loadTencentCaptcha, resetTencentCaptchaLoaderForTest } from '@/utils/te
 const locale = { value: 'zh' }
 
 vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ locale })
+  useI18n: () => ({ locale, t: (key: string) => key })
 }))
 
 type CaptchaResult = {
@@ -27,10 +27,70 @@ describe('TencentCaptchaGate', () => {
     resetTencentCaptchaLoaderForTest()
   })
 
-  it('does not render a visible verification button', () => {
+  it('renders a click-to-verify button without opening a challenge on mount', () => {
     const wrapper = mount(TencentCaptchaGate, { props: { appId: '123456789' } })
 
-    expect(wrapper.find('button').exists()).toBe(false)
+    expect(wrapper.get('button').text()).toContain('auth.captchaClickToVerify')
+    expect(wrapper.get('button').attributes('type')).toBe('button')
+    expect(document.head.querySelector('script[src*="TJCaptcha.js"]')).toBeNull()
+  })
+
+  it('opens the challenge on click and reuses the proof when the form submits', async () => {
+    const show = vi.fn()
+    let callback: ((result: CaptchaResult) => void) | undefined
+    window.TencentCaptcha = class {
+      constructor(_appId: string, resultCallback: (result: CaptchaResult) => void) {
+        callback = resultCallback
+      }
+      show = show
+      destroy = vi.fn()
+    }
+    const wrapper = mount(TencentCaptchaGate, { props: { appId: '123456789' } })
+
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(show).toHaveBeenCalledOnce()
+    expect(wrapper.get('button').attributes('aria-busy')).toBe('true')
+    callback?.({ ret: 0, ticket: 'ticket-value', randstr: 'rand-value' })
+    await flushPromises()
+
+    expect(wrapper.get('button').text()).toContain('auth.captchaVerified')
+    expect(wrapper.get('button').attributes('disabled')).toBeDefined()
+    await expect(wrapper.vm.verify()).resolves.toEqual({ ticket: 'ticket-value', randstr: 'rand-value' })
+    expect(show).toHaveBeenCalledOnce()
+
+    wrapper.vm.reset()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('button').text()).toContain('auth.captchaClickToVerify')
+    expect(wrapper.get('button').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('allows retrying after closing the popup or failing to load the SDK', async () => {
+    let callback: ((result: CaptchaResult) => void) | undefined
+    window.TencentCaptcha = class {
+      constructor(_appId: string, resultCallback: (result: CaptchaResult) => void) {
+        callback = resultCallback
+      }
+      show = vi.fn()
+      destroy = vi.fn()
+    }
+    const wrapper = mount(TencentCaptchaGate, { props: { appId: '123456789' } })
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    callback?.({ ret: 2, ticket: null })
+    await flushPromises()
+    expect(wrapper.get('button').text()).toContain('auth.captchaClickToVerify')
+
+    delete window.TencentCaptcha
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    document.head.querySelector('script[src*="TJCaptcha.js"]')?.dispatchEvent(new Event('error'))
+    await flushPromises()
+    expect(wrapper.get('button').text()).toContain('auth.turnstileFailed')
+    expect(wrapper.emitted('error')).toHaveLength(1)
+    expect(wrapper.get('button').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
   })
 
   it('resolves proof after Tencent SDK success', async () => {

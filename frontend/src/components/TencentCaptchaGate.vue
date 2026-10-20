@@ -1,19 +1,27 @@
 <template>
-  <div
-    v-if="isInternational"
-    ref="internationalContainerRef"
-    data-testid="tencent-captcha-international-container"
-    :class="
-      internationalContainerVisible
-        ? 'flex min-h-[60px] w-full justify-center'
-        : 'pointer-events-none fixed left-1/2 top-0 flex h-[60px] w-[302px] -translate-x-1/2 scale-[0.01] opacity-0'
-    "
-  />
+  <div class="w-full">
+    <CaptchaTriggerButton
+      v-if="!isInternational || !internationalContainerVisible || state === 'error'"
+      :state="state"
+      @click="handleVerifyClick"
+    />
+    <div
+      v-if="isInternational"
+      ref="internationalContainerRef"
+      data-testid="tencent-captcha-international-container"
+      :class="
+        internationalContainerVisible
+          ? 'flex min-h-[60px] w-full justify-center'
+          : 'pointer-events-none fixed left-1/2 top-0 flex h-[60px] w-[302px] -translate-x-1/2 scale-[0.01] opacity-0'
+      "
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import CaptchaTriggerButton from '@/components/CaptchaTriggerButton.vue'
 import {
   loadTencentCaptcha,
   normalizeTencentCaptchaRegion,
@@ -23,6 +31,8 @@ import {
 
 const { locale } = useI18n()
 const props = withDefaults(defineProps<{ appId: string; region?: string }>(), { region: 'cn' })
+const emit = defineEmits<{ error: [] }>()
+const state = ref<'idle' | 'verifying' | 'verified' | 'error'>('idle')
 const isInternational = computed(
   () => normalizeTencentCaptchaRegion(props.region) === 'intl'
 )
@@ -40,6 +50,7 @@ let isMounted = false
 const cachedProofMaxAgeMs = 4 * 60 * 1000
 
 function createVerificationPromise(revealInternational: boolean = true): Promise<TencentCaptchaProof | null> {
+  state.value = 'verifying'
   return new Promise((resolve, reject) => {
     let settled = false
 
@@ -54,7 +65,10 @@ function createVerificationPromise(revealInternational: boolean = true): Promise
       }
       callback()
     }
-    const cancel = (): void => finish(() => resolve(null))
+    const cancel = (): void => finish(() => {
+      state.value = 'idle'
+      resolve(null)
+    })
 
     cancelPending = cancel
     const region = normalizeTencentCaptchaRegion(props.region)
@@ -70,19 +84,25 @@ function createVerificationPromise(revealInternational: boolean = true): Promise
         const userLanguage = locale.value.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en'
         const handleResult = (result: TencentCaptchaResult): void => {
           if (result.ret === 2) {
-            finish(() => resolve(null))
+            cancel()
             return
           }
 
           const ticket = result.ticket?.trim() || ''
           const randstr = result.randstr?.trim() || ''
           if (!ticket || !randstr || ticket.startsWith('trerror_') || result.errorCode !== undefined) {
-            finish(() => reject(new Error('Tencent Captcha verification failed')))
+            finish(() => {
+              state.value = 'error'
+              reject(new Error('Tencent Captcha verification failed'))
+            })
             return
           }
 
           // 国际站保留已勾选的控件，避免成功回调后页面出现跳动；登录流程结束时由 reset 清理。
-          finish(() => resolve({ ticket, randstr }), region === 'intl')
+          finish(() => {
+            state.value = 'verified'
+            resolve({ ticket, randstr })
+          }, region === 'intl')
         }
 
         if (region === 'intl') {
@@ -94,7 +114,7 @@ function createVerificationPromise(revealInternational: boolean = true): Promise
             throw new Error('Tencent Captcha international container is unavailable')
           }
           instance = new TencentCaptcha(container, props.appId, handleResult, {
-            // 国际站与国内站保持一致：页面加载后显示 Robot checkbox，由用户主动确认。
+            // 国际站使用 SDK 原生 Robot checkbox，由用户点击后弹出挑战。
             enableAutoCheck: false,
             userLanguage,
             type: 'popup'
@@ -104,8 +124,24 @@ function createVerificationPromise(revealInternational: boolean = true): Promise
         }
         instance.show()
       })
-      .catch((error: unknown) => finish(() => reject(error)))
+      .catch((error: unknown) => finish(() => {
+        state.value = 'error'
+        reject(error)
+      }))
   })
+}
+
+async function handleVerifyClick(): Promise<void> {
+  if (pending || cachedProof) return
+  try {
+    const proof = await verify()
+    if (proof && state.value === 'verified') {
+      cachedProof = proof
+      cachedProofCreatedAt = Date.now()
+    }
+  } catch {
+    emit('error')
+  }
 }
 
 function verify(): Promise<TencentCaptchaProof | null> {
@@ -125,11 +161,13 @@ function verify(): Promise<TencentCaptchaProof | null> {
 
   if (pending) {
     const verification = pending
-    internationalContainerVisible.value = true
+    if (isInternational.value) internationalContainerVisible.value = true
     // 预加载阶段可能因容器不可见而被 SDK 延迟绘制，提交时在容器显示后重新触发同一个实例。
-    void nextTick().then(() => {
-      if (pending === verification) instance?.show()
-    })
+    if (isInternational.value) {
+      void nextTick().then(() => {
+        if (pending === verification) instance?.show()
+      })
+    }
     return verification.then((proof) => {
       if (cachedProof === proof) {
         cachedProof = null
@@ -166,7 +204,7 @@ function preload(): void {
         cachedProofCreatedAt = Date.now()
       }
     })
-    .catch(() => undefined)
+    .catch(() => emit('error'))
     .finally(() => {
       if (pending === verification) pending = null
     })
@@ -180,6 +218,7 @@ function reset(reinitialize: boolean = true): void {
   pending = null
   cachedProof = null
   cachedProofCreatedAt = 0
+  state.value = 'idle'
   internationalContainerVisible.value = isInternational.value
 
   // 国际站的票据一次性使用，登录失败后需要立即创建新的 checkbox，
