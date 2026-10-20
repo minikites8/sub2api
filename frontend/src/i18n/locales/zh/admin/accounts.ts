@@ -1099,7 +1099,7 @@ export default {
         wsMode: 'WS mode',
         wsSseAcceleration: 'HTTP 流式 WS 加速',
         wsSseAccelerationDesc:
-          '默认关闭。普通 OAuth 账号的流式 Responses 可通过上游 WS 连接池返回 SSE，并立即发送前置事件。建议选择上下文池模式，需关闭自动透传；全局 WS 开关仍生效，已绑定的传输插件优先。仅握手失败时回退 HTTP，请求发送后不自动重放。前置事件不代表正文已开始生成。',
+          '默认关闭。普通 OAuth 账号的流式 Responses 可通过上游 WS 连接池返回 SSE，实际输出立即发送，前置事件暂存以保留过载时的自动换号机会。建议选择上下文池模式，需关闭自动透传；全局 WS 开关仍生效，已绑定的传输插件优先。仅握手失败时回退 HTTP；已输出内容后不自动重放。',
         wsModeDesc:
           '仅对当前 OpenAI 账号类型生效。选择“关闭”可禁用 WS；其余模式需全局 gateway.openai_ws.mode_router_v2_enabled=true 才按所选方式连接，未开启时统一使用上下文池。',
         wsModeOff: '关闭（off）',

@@ -126,13 +126,17 @@ func wsSSETestService(t *testing.T, d *wsSSETestDialer, upstream HTTPUpstream) *
 
 type wsSSEFlushWriter struct {
 	*httptest.ResponseRecorder
-	flushed chan struct{}
-	once    sync.Once
+	flushed           chan struct{}
+	once              sync.Once
+	metadataOnlyFlush bool
 }
 
 func (w *wsSSEFlushWriter) Flush() {
 	w.ResponseRecorder.Flush()
 	if strings.Contains(w.Body.String(), "response.created") && !strings.Contains(w.Body.String(), "output_text.delta") {
+		w.metadataOnlyFlush = true
+	}
+	if strings.Contains(w.Body.String(), "output_text.delta") {
 		w.once.Do(func() { close(w.flushed) })
 	}
 }
@@ -144,7 +148,7 @@ type wsSSEWaitForFlushConn struct {
 }
 
 func (c *wsSSEWaitForFlushConn) ReadMessage(ctx context.Context) ([]byte, error) {
-	if c.reads.Add(1) == 2 {
+	if c.reads.Add(1) == 3 {
 		select {
 		case <-c.flushed:
 		case <-ctx.Done():
@@ -154,7 +158,7 @@ func (c *wsSSEWaitForFlushConn) ReadMessage(ctx context.Context) ([]byte, error)
 	return c.openAIWSCaptureConn.ReadMessage(ctx)
 }
 
-func TestOpenAIWSSSEAccelerationFlushesMetadataBeforeContent(t *testing.T) {
+func TestOpenAIWSSSEAccelerationFlushesContentBeforeCompletion(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := &wsSSEFlushWriter{ResponseRecorder: httptest.NewRecorder(), flushed: make(chan struct{})}
 	c, _ := gin.CreateTestContext(w)
@@ -174,6 +178,7 @@ func TestOpenAIWSSSEAccelerationFlushesMetadataBeforeContent(t *testing.T) {
 	require.Equal(t, 7, result.Usage.InputTokens)
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.NotNil(t, result.FirstTokenMs)
+	require.False(t, w.metadataOnlyFlush, "metadata must stay buffered until actual output preserves the account failover window")
 	require.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
 	require.Contains(t, w.Body.String(), "response.completed")
 	require.Nil(t, httpUpstream.lastReq)
@@ -211,7 +216,7 @@ func TestOpenAIWSSSEAccelerationDoesNotReplayAfterSend(t *testing.T) {
 			defer conn.mu.Unlock()
 			require.Len(t, conn.writes, 1)
 			if created {
-				require.Contains(t, rec.Body.String(), "response.created")
+				require.NotContains(t, rec.Body.String(), "resp_broken", "discard uncommitted metadata when the upstream stream breaks")
 			}
 		})
 	}

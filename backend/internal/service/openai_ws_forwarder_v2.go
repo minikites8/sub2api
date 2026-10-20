@@ -43,6 +43,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
+	resetOpenAIStreamFirstOutputBoundary(c)
 	responseModelObserver := &upstreamResponseModelObserver{}
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
@@ -431,7 +432,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		handshakeTurnState != "",
 		len(handshakeTurnState),
 	)
-	if handshakeTurnState != "" {
+	// A failed attempt's handshake state must not reach the client or the next
+	// account. Commit it together with the first downstream response event.
+	handshakeStateCommitted := false
+	commitHandshakeState := func() {
+		if handshakeStateCommitted || handshakeTurnState == "" {
+			return
+		}
+		handshakeStateCommitted = true
 		if stateStore != nil && sessionHash != "" {
 			stateStore.BindSessionTurnState(groupID, sessionHash, handshakeTurnState, s.openAIWSSessionStickyTTL())
 		}
@@ -544,7 +552,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		mappedModelBytes = []byte(mappedModel)
 	}
 	bufferedStreamEvents := make([][]byte, 0, 4)
-	flushEarlyEvents := reqStream && decision.Reason == openAIOAuthWSSSEAccelerationReason
+	bufferedStreamBytes := int64(0)
+	flushOutputImmediately := reqStream && decision.Reason == openAIOAuthWSSSEAccelerationReason
 	eventCount := 0
 	tokenEventCount := 0
 	terminalEventCount := 0
@@ -645,6 +654,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if clientDisconnected {
 			return
 		}
+		commitHandshakeState()
 		frame := make([]byte, 0, len(message)+8)
 		frame = append(frame, "data: "...)
 		frame = append(frame, message...)
@@ -668,7 +678,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			emitStreamMessage(buffered, false)
 		}
 		bufferedStreamEvents = bufferedStreamEvents[:0]
-		flushStreamWriter(true)
+		bufferedStreamBytes = 0
 		flushedBufferedEventCount += flushed
 		if debugEnabled {
 			logOpenAIWSModeDebug(
@@ -793,7 +803,7 @@ readLoop:
 			responseID = eventResponseID
 		}
 
-		isTokenEvent := isOpenAIWSTokenEvent(eventType)
+		isTokenEvent := isOpenAIWSTokenEvent(eventType) && openAIStreamDataStartsVisibleOutput(string(message), eventType)
 		if isTokenEvent {
 			tokenEventCount++
 		}
@@ -837,10 +847,20 @@ readLoop:
 
 		if eventType == "error" || eventType == "response.failed" {
 			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)
+			failedMessage := extractOpenAISSEErrorMessage(message)
+			// Explicit overload is a failed request, even when HTTP SSE uses the
+			// WS accelerator. Lifecycle/empty events stay staged so the handler can
+			// retry another account before any response content is committed.
+			if !clientDisconnected && !openAIStreamClientOutputStarted(c, wroteDownstream) &&
+				isOpenAIRequestScopedCapacityShed(failedMessage, message) &&
+				openAIStreamFailedEventShouldFailover(message, failedMessage, c) {
+				lease.MarkBroken()
+				return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, false, lease.HandshakeHeader("x-request-id"), message, failedMessage, mappedModel, lease.HandshakeHeaders())
+			}
 		}
 
 		if eventType == "error" {
-			s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+			s.applyOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
 			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel)
 			errMsg := strings.TrimSpace(errMsgRaw)
@@ -888,39 +908,53 @@ readLoop:
 			}
 			// error 事件后连接不再可复用，避免回池后污染下一请求。
 			lease.MarkBroken()
-			if !wroteDownstream && (errCodeRaw == "server_is_overloaded" || errCodeRaw == "slow_down") {
-				failover := newOpenAIUpstreamFailoverError(http.StatusServiceUnavailable, lease.HandshakeHeaders(), message, errMsg, false)
-				failover.RetryableOnSameAccount = false
-				return nil, failover
-			}
 			if !wroteDownstream && canFallback {
+				s.rateLimitService.observeQualityStatus(ctx, account, openAIStreamFailureStatus(message, errMsg))
 				return nil, wrapOpenAIWSFallback(fallbackReason, errors.New(errMsg))
 			}
 			statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
-			setOpsUpstreamError(c, statusCode, errMsg, "")
+			kind := "http_error"
+			if wroteDownstream {
+				kind = "stream_failed"
+			}
+			s.recordOpenAIStreamUpstreamError(c, account, false, lease.HandshakeHeader("x-request-id"), kind, message, errMsg)
 			if reqStream && !clientDisconnected {
+				markOpenAIWSClientVisibleFailure(c, eventType, message)
 				flushBufferedStreamEvents("error_event")
-				emitStreamMessage(message, true)
+				clientMessage, _ := sanitizeOpenAIResponseFailedEventForClient(message, eventType, wroteDownstream)
+				failedSSE := buildOpenAIResponseFailedSSE(responseID, originalModel, clientMessage, errMsg)
+				commitHandshakeState()
+				if _, writeErr := c.Writer.Write([]byte(failedSSE)); writeErr != nil {
+					markClientDisconnected("downstream_write_error")
+				} else {
+					wroteDownstream = true
+					flusher.Flush()
+				}
+				MarkResponseCommitted(c)
 			}
 			if !reqStream {
+				commitHandshakeState()
 				c.JSON(statusCode, gin.H{
 					"error": gin.H{
 						"type":    "upstream_error",
 						"message": errMsg,
 					},
 				})
+				MarkResponseCommitted(c)
 			}
 			return nil, fmt.Errorf("openai ws error event: %s", errMsg)
 		}
 
 		if reqStream {
-			// 默认缓冲首 token 前的事件，保留既有的早期错误处理窗口。
-			// 显式开启 HTTP SSE 加速时立即刷出，之后不再重放请求。
-			shouldBuffer := !flushEarlyEvents && firstTokenMs == nil && !isTokenEvent && !isTerminalEvent
+			// All WS-backed HTTP streams preserve the same pre-output failover
+			// boundary. Acceleration only changes flushing after actual output.
+			shouldBuffer := !wroteDownstream && !openAIStreamDataStartsClientOutput(string(message), eventType) && !isTerminalEvent &&
+				bufferedStreamBytes+int64(len(message)) <= openAIFirstOutputStageMaxBytes && len(bufferedStreamEvents) < 256
 			if shouldBuffer {
 				buffered := make([]byte, len(message))
 				copy(buffered, message)
 				bufferedStreamEvents = append(bufferedStreamEvents, buffered)
+				bufferedStreamBytes += int64(len(buffered))
 				bufferedEventCount++
 				if debugEnabled && shouldLogOpenAIWSBufferedEvent(bufferedEventCount) {
 					logOpenAIWSModeDebug(
@@ -934,8 +968,11 @@ readLoop:
 					)
 				}
 			} else {
+				if !wroteDownstream && !isTerminalEvent {
+					observeOpenAIStreamFirstOutputBoundary(c, message, eventType)
+				}
 				flushBufferedStreamEvents(eventType)
-				emitStreamMessage(message, isTerminalEvent || flushEarlyEvents)
+				emitStreamMessage(message, isTerminalEvent || flushOutputImmediately)
 			}
 		} else {
 			if responseField.Exists() && responseField.Type == gjson.JSON {
@@ -988,6 +1025,7 @@ readLoop:
 			responseID = strings.TrimSpace(gjson.GetBytes(finalResponse, "id").String())
 		}
 
+		commitHandshakeState()
 		c.Data(http.StatusOK, "application/json", finalResponse)
 	} else {
 		flushStreamWriter(true)

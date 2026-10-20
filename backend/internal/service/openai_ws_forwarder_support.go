@@ -332,6 +332,12 @@ func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx cont
 		return
 	}
 	s.rateLimitService.observeQualityStatus(ctx, account, openAIStreamFailureStatus(payload, extractOpenAISSEErrorMessage(payload)))
+	s.applyOpenAIWSErrorEventTransientFailure(ctx, account, canonicalModel, headers, payload)
+}
+
+// Apply account side effects without observing quality. Callers that record
+// the error through recordOpenAIStreamUpstreamError observe its status there.
+func (s *OpenAIGatewayService) applyOpenAIWSErrorEventTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) {
 	status := openAIWSPayloadTransientStatus(payload)
 	if status != 0 {
 		if status == http.StatusTooManyRequests {
