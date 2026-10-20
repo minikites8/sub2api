@@ -19,7 +19,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/requestretry"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -1266,7 +1265,7 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 }
 
 // Empty content updates can follow the lifecycle preamble without carrying any
-// model output. Keep them staged for opted-in requests so a later upstream
+// model output. Keep them staged for every request so a later upstream
 // failure can still switch accounts. Unknown or malformed events stay conservative.
 func openAIStreamEventHasEmptyOutput(payload []byte, eventType string) bool {
 	if !gjson.ValidBytes(payload) {
@@ -1300,14 +1299,13 @@ func openAIStreamEventHasEmptyOutput(payload []byte, eventType string) bool {
 	return false
 }
 
-func openAIStreamDataStartsClientOutput(data, eventType string, requestContexts ...*gin.Context) bool {
+func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	trimmed := strings.TrimSpace(data)
 	if trimmed == "" {
 		return false
 	}
 	eventType = strings.TrimSpace(eventType)
-	if len(requestContexts) > 0 && requestContexts[0] != nil && requestretry.Enabled(requestContexts[0].Request) &&
-		openAIStreamEventHasEmptyOutput([]byte(trimmed), eventType) {
+	if openAIStreamEventHasEmptyOutput([]byte(trimmed), eventType) {
 		return false
 	}
 	switch eventType {
@@ -2400,7 +2398,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 				trimmedData = strings.TrimSpace(string(sanitizedData))
 				line = "data: " + string(sanitizedData)
 			}
-			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType, c)
+			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
 			if lineStartsClientOutput {
 				documentScanner.firstOutputDeadline = time.Time{}
 			}

@@ -51,14 +51,8 @@ func TestRequestAccountRetryStreamOutputBoundary(t *testing.T) {
 		{`{"type":"response.output_text.delta",`, true},
 	} {
 		t.Run(tc.data, func(t *testing.T) {
-			c, _ := gin.CreateTestContext(httptest.NewRecorder())
-			c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
 			eventType := gjson.Get(tc.data, "type").String()
-			for _, header := range []string{"", "False", "True"} {
-				c.Request.Header.Set(requestretry.AccountHeader, header)
-				want := tc.want || header != "True"
-				require.Equal(t, want, openAIStreamDataStartsClientOutput(tc.data, eventType, c), "header=%q", header)
-			}
+			require.Equal(t, tc.want, openAIStreamDataStartsClientOutput(tc.data, eventType))
 		})
 	}
 }

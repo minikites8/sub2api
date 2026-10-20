@@ -1167,7 +1167,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				// Keep message_start and empty content blocks replayable until
 				// semantic output arrives. Bound memory for noisy upstreams.
 				if !clientOutputStarted && !isTerminalEvent &&
-					!openAIStreamDataStartsClientOutput(payload, eventType, c) && pendingSSEBytes < 64*1024 {
+					!openAIStreamDataStartsClientOutput(payload, eventType) && pendingSSEBytes < 64*1024 {
 					continue
 				}
 				flushPendingSSE()
