@@ -445,6 +445,11 @@ type OpsUpstreamErrorEvent struct {
 	Scope  string `json:"scope,omitempty"`
 	Reason string `json:"reason,omitempty"`
 
+	// Stream failover diagnostics contain event/item types only, never content.
+	FailoverSuppressedReason string `json:"failover_suppressed_reason,omitempty"`
+	FirstOutputEventType     string `json:"first_output_event_type,omitempty"`
+	FirstOutputItemType      string `json:"first_output_item_type,omitempty"`
+
 	Message string `json:"message,omitempty"`
 	Detail  string `json:"detail,omitempty"`
 

@@ -25,6 +25,7 @@ func TestOpenAIOverloadAfterEmptyProgressSwitchesWithoutOptIn(t *testing.T) {
 				{"empty_text", `{"type":"response.output_text.delta","delta":""}`, false},
 				{"empty_reasoning", `{"type":"response.reasoning_summary_text.delta","delta":""}`, false},
 				{"empty_item", `{"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}`, false},
+				{"encrypted_reasoning", `{"type":"response.output_item.added","sequence_number":2,"item":{"id":"rs_failed","type":"reasoning","summary":[]}}` + "\n\ndata: " + `{"type":"response.output_item.done","sequence_number":3,"item":{"id":"rs_failed","type":"reasoning","summary":[],"encrypted_content":"failed-attempt-ciphertext"}}`, false},
 				{"empty_content", `{"type":"response.content_part.done","part":{"type":"output_text","text":""}}`, false},
 				{"real_output", `{"type":"response.output_text.delta","delta":"partial"}`, true},
 			} {
@@ -64,6 +65,7 @@ func TestOpenAIOverloadAfterEmptyProgressSwitchesWithoutOptIn(t *testing.T) {
 					require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 					require.Contains(t, rec.Body.String(), "healthy")
 					require.NotContains(t, rec.Body.String(), "resp_failed_attempt")
+					require.NotContains(t, rec.Body.String(), "failed-attempt-ciphertext")
 					require.NotContains(t, rec.Body.String(), "overloaded")
 				})
 			}

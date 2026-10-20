@@ -1198,7 +1198,10 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 		}
 		switch strings.TrimSpace(item.Get("type").String()) {
 		case "reasoning":
-			if item.Get("encrypted_content").String() != "" {
+			// Opaque reasoning state can be withheld until usable output or a
+			// successful terminal arrives. Forwarding it alone would prevent a
+			// later overload from switching accounts before any text was sent.
+			if openAIStreamItemHasVisibleOutput(item) {
 				return true
 			}
 			summary := item.Get("summary")
@@ -1455,11 +1458,18 @@ func logOpenAICapacityFailoverSuppressed(
 	path string,
 	upstreamRequestID string,
 	eventType string,
+	boundaries ...openAIStreamOutputBoundary,
 ) {
 	fields := []zap.Field{
 		zap.String("path", path),
 		zap.String("event_type", strings.TrimSpace(eventType)),
 		zap.String("upstream_request_id", strings.TrimSpace(upstreamRequestID)),
+	}
+	if len(boundaries) > 0 {
+		fields = append(fields,
+			zap.String("first_output_event_type", boundaries[0].EventType),
+			zap.String("first_output_item_type", boundaries[0].ItemType),
+		)
 	}
 	if account != nil {
 		fields = append(fields,
@@ -1887,6 +1897,12 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 			event.AccountID = account.ID
 			event.AccountName = account.Name
 		}
+		if kind == "stream_failed" {
+			boundary := openAIStreamFirstOutputBoundary(c)
+			event.FailoverSuppressedReason = "downstream_response_committed"
+			event.FirstOutputEventType = boundary.EventType
+			event.FirstOutputItemType = boundary.ItemType
+		}
 		appendOpsUpstreamError(c, event)
 	}
 	return message
@@ -2052,6 +2068,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 	imageBillingModel string,
 	reasoningEfforts ...string,
 ) (*openaiStreamingResultPassthrough, error) {
+	resetOpenAIStreamFirstOutputBoundary(c)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -2288,7 +2305,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 				(eventType == "error" || eventType == "response.failed") &&
 				openAIStreamClientOutputStarted(c, clientOutputStarted) &&
 				isOpenAIUpstreamCapacityShedEvent(dataBytes) {
-				logOpenAICapacityFailoverSuppressed(ctx, account, "passthrough_sse", upstreamRequestID, eventType)
+				logOpenAICapacityFailoverSuppressed(ctx, account, "passthrough_sse", upstreamRequestID, eventType, openAIStreamFirstOutputBoundary(c))
 				capacityFailoverSuppressedLogged = true
 			}
 			cyberHit := false
@@ -2399,6 +2416,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 				line = "data: " + string(sanitizedData)
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			if lineStartsClientOutput && !clientDisconnected && !openAIStreamEventTypeIsTerminal(eventType) {
+				observeOpenAIStreamFirstOutputBoundary(c, dataBytes, eventType)
+			}
 			if lineStartsClientOutput {
 				documentScanner.firstOutputDeadline = time.Time{}
 			}
