@@ -36,15 +36,18 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
-	compositeResolver          *service.CompositeRouteResolver
-	gatewayService             *service.OpenAIGatewayService
-	billingCacheService        *service.BillingCacheService
-	apiKeyService              *service.APIKeyService
-	usageRecordWorkerPool      *service.UsageRecordWorkerPool
-	errorPassthroughService    *service.ErrorPassthroughService
-	promptRuleService          *service.PromptRuleService
-	contentModerationService   *service.ContentModerationService
-	securityAuditCoordinator   *securityaudit.Coordinator
+	compositeResolver        *service.CompositeRouteResolver
+	gatewayService           *service.OpenAIGatewayService
+	billingCacheService      *service.BillingCacheService
+	apiKeyService            *service.APIKeyService
+	usageRecordWorkerPool    *service.UsageRecordWorkerPool
+	errorPassthroughService  *service.ErrorPassthroughService
+	promptRuleService        *service.PromptRuleService
+	contentModerationService *service.ContentModerationService
+	securityAuditCoordinator *securityaudit.Coordinator
+	// gptAutoShadow observes requests for GPT-Auto Phase 1 shadow routing.
+	// Read-only and asynchronous; nil disables observation.
+	gptAutoShadow              *service.GPTAutoShadowService
 	grokMediaEligibilityProber grokMediaEligibilityProber
 	opsService                 *service.OpsService
 	concurrencyHelper          *ConcurrencyHelper
@@ -821,6 +824,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	// Compaction requests summarise context rather than carrying a user task.
+	if !legacyCompact && !nativeV2 {
+		observeGPTAutoShadow(c, h.gptAutoShadow, apiKey, service.GPTAutoEndpointResponses, body)
+	}
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)

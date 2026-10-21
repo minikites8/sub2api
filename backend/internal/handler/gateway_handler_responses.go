@@ -94,6 +94,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	observeGPTAutoShadow(c, h.gptAutoShadow, apiKey, service.GPTAutoEndpointResponses, body)
 	requestCtx := c.Request.Context()
 	// 定价上下文无条件装配：/v1/responses 是 token 计费端点，声明生图工具的
 	// 混合请求同样按 token 计费（外加图片部分），其 token 利润保护不因请求体

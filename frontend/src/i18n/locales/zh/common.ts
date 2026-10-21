@@ -198,6 +198,7 @@ export default {
     subscriptions: '订阅管理',
     accounts: '账号管理',
     harvestFlow: '打票流程',
+    gptAuto: 'GPT Auto 影子路由',
     plugins: '插件管理',
     proxies: 'IP管理',
     redeemCodes: '兑换码',

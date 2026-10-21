@@ -198,6 +198,7 @@ export default {
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     harvestFlow: 'Ticket Flow',
+    gptAuto: 'GPT Auto',
     plugins: 'Plugins',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',

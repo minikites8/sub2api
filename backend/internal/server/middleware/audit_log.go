@@ -151,6 +151,10 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/admin/prompt-audit/events/delete-preview":   "admin.prompt_audit.events.delete_preview",
 	"POST /api/v1/admin/prompt-audit/events/delete-by-filter": "admin.prompt_audit.events.filter_delete",
 	"POST /api/v1/admin/openai/accounts/:id/sessions/revoke":  "admin.openai.sessions.revoke",
+	"PUT /api/v1/admin/gpt-auto/config":                       "admin.gpt_auto.config.update",
+	"POST /api/v1/admin/gpt-auto/test":                        "admin.gpt_auto.test",
+	"POST /api/v1/admin/gpt-auto/decisions/:id/replay":        "admin.gpt_auto.replay",
+	"POST /api/v1/admin/gpt-auto/simulate":                    "admin.gpt_auto.simulate",
 }
 
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。
@@ -170,6 +174,10 @@ var auditBodyOmittedRoutes = map[string]struct{}{
 	"POST /api/v1/admin/prompt-audit/events/delete-preview":     {},
 	"POST /api/v1/admin/prompt-audit/events/delete-by-filter":   {},
 	"POST /api/v1/admin/openai/accounts/:id/sessions/revoke":    {},
+	// Carries the Jev API key.
+	"PUT /api/v1/admin/gpt-auto/config": {},
+	// Carries free-form sample prompts that may contain sensitive text.
+	"POST /api/v1/admin/gpt-auto/test": {},
 }
 
 // NewAuditLogMiddleware 创建审计中间件。

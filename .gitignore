@@ -158,6 +158,9 @@ docs/*
 !docs/priority-scheduling.md
 !docs/request-account-retry.md
 !docs/astra-account-scheduling.md
+!docs/gpt-auto-shadow-routing.md
+!docs/PHASE1_ACCEPTANCE_REPORT.md
+!docs/PHASE1_REMEDIATION_REPORT.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/

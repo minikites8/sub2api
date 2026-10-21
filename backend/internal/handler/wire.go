@@ -44,6 +44,7 @@ func ProvideAdminHandlers(
 	errorPassthroughHandler *admin.ErrorPassthroughHandler,
 	promptRuleHandler *admin.PromptRuleHandler,
 	tlsFingerprintProfileHandler *admin.TLSFingerprintProfileHandler,
+	gptAutoHandler *admin.GPTAutoHandler,
 	pluginHandler *admin.PluginHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
@@ -106,6 +107,7 @@ func ProvideAdminHandlers(
 		ErrorPassthrough:       errorPassthroughHandler,
 		PromptRule:             promptRuleHandler,
 		TLSFingerprintProfile:  tlsFingerprintProfileHandler,
+		GPTAuto:                gptAutoHandler,
 		Plugin:                 pluginHandler,
 		APIKey:                 apiKeyHandler,
 		AccountOps:             accountOpsHandler,
@@ -144,11 +146,13 @@ func ProvideGatewayHandler(
 	cfg *config.Config,
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
+	gptAutoShadow *service.GPTAutoShadowService,
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, promptRuleService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
+	h.gptAutoShadow = gptAutoShadow
 	return h
 }
 
@@ -168,6 +172,7 @@ func ProvideOpenAIGatewayHandler(
 	coordinator *securityaudit.Coordinator,
 	yeTeamClient *yeteam.Client,
 	compositeResolver *service.CompositeRouteResolver,
+	gptAutoShadow *service.GPTAutoShadowService,
 ) *OpenAIGatewayHandler {
 	gatewayService.SetYeTeamClient(yeTeamClient)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
@@ -175,6 +180,7 @@ func ProvideOpenAIGatewayHandler(
 	h.compositeResolver = compositeResolver
 	h.securityAuditCoordinator = coordinator
 	h.grokMediaEligibilityProber = grokQuotaService
+	h.gptAutoShadow = gptAutoShadow
 	return h
 }
 
@@ -338,6 +344,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewErrorPassthroughHandler,
 	admin.NewPromptRuleHandler,
 	admin.NewTLSFingerprintProfileHandler,
+	admin.NewGPTAutoHandler,
 	admin.NewPluginHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,

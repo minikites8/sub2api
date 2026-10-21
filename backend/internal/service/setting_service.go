@@ -180,6 +180,12 @@ type SettingService struct {
 	panelRateLimitCache atomic.Value
 	panelRateLimitSF    singleflight.Group
 
+	// gptAutoConfigCache holds the GPT-Auto shadow routing config
+	// (*cachedGPTAutoShadowConfig). Read on every sampled gateway request, so it
+	// must never block on the DB; gptAutoConfigSF collapses concurrent misses.
+	gptAutoConfigCache atomic.Value
+	gptAutoConfigSF    singleflight.Group
+
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot
 	// path without ever blocking on the DB; when the cached entry expires, a background

@@ -99,6 +99,8 @@ var ProviderSet = wire.NewSet(
 	NewCodexHarvestFlowRepository,
 	NewOpsRepository,
 	NewAuditLogRepository,
+	NewGPTAutoShadowRepository,
+	NewGPTAutoBudgetStore,
 	NewPasskeyRepository,
 	NewPasskeySessionStore,
 	NewUserSubscriptionRepository,

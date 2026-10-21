@@ -132,6 +132,7 @@ func RegisterAdminRoutes(
 
 		// TLS 指纹模板管理
 		registerTLSFingerprintProfileRoutes(admin, h)
+		registerGPTAutoRoutes(admin, h)
 
 		// 本地进程插件管理
 		registerPluginRoutes(admin, h, stepUpAuth)
@@ -985,6 +986,23 @@ func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		rules.POST("", h.Admin.ErrorPassthrough.Create)
 		rules.PUT("/:id", h.Admin.ErrorPassthrough.Update)
 		rules.DELETE("/:id", h.Admin.ErrorPassthrough.Delete)
+	}
+}
+
+// registerGPTAutoRoutes registers the GPT-Auto shadow routing admin APIs.
+// Phase 1 is observation only; nothing here changes live routing or billing.
+func registerGPTAutoRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	gptAuto := admin.Group("/gpt-auto")
+	{
+		gptAuto.GET("/meta", h.Admin.GPTAuto.Meta)
+		gptAuto.GET("/config", h.Admin.GPTAuto.GetConfig)
+		gptAuto.PUT("/config", h.Admin.GPTAuto.UpdateConfig)
+		gptAuto.GET("/overview", h.Admin.GPTAuto.Overview)
+		gptAuto.GET("/decisions", h.Admin.GPTAuto.ListDecisions)
+		gptAuto.GET("/decisions/:id", h.Admin.GPTAuto.GetDecision)
+		gptAuto.POST("/decisions/:id/replay", h.Admin.GPTAuto.ReplayDecision)
+		gptAuto.POST("/test", h.Admin.GPTAuto.RunTest)
+		gptAuto.POST("/simulate", h.Admin.GPTAuto.Simulate)
 	}
 }
 

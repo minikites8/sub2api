@@ -22,6 +22,9 @@ const (
 type Question struct {
 	Type         string `json:"type"`
 	Instructions string `json:"instructions"`
+	// Criteria carries the choice map or score level list required by the
+	// "choice" and "score" question types. It stays nil for "noul".
+	Criteria any `json:"criteria,omitempty"`
 }
 
 type Request struct {

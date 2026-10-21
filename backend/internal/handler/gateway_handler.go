@@ -78,12 +78,15 @@ type GatewayHandler struct {
 	promptRuleService         *service.PromptRuleService
 	contentModerationService  *service.ContentModerationService
 	securityAuditCoordinator  *securityaudit.Coordinator
-	concurrencyHelper         *ConcurrencyHelper
-	userMsgQueueHelper        *UserMsgQueueHelper
-	maxAccountSwitches        int
-	maxAccountSwitchesGemini  int
-	cfg                       *config.Config
-	settingService            *service.SettingService
+	// gptAutoShadow observes requests for GPT-Auto Phase 1 shadow routing.
+	// Read-only and asynchronous; nil disables observation.
+	gptAutoShadow            *service.GPTAutoShadowService
+	concurrencyHelper        *ConcurrencyHelper
+	userMsgQueueHelper       *UserMsgQueueHelper
+	maxAccountSwitches       int
+	maxAccountSwitchesGemini int
+	cfg                      *config.Config
+	settingService           *service.SettingService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
