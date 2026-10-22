@@ -56,21 +56,42 @@ type GPTAutoShadowDecision struct {
 	QueueDelayMS           int     `json:"queue_delay_ms"`
 	Attempts               int     `json:"attempts"`
 
-	EstRevenue        *float64 `json:"est_revenue,omitempty"`
-	EstUpstreamCost   *float64 `json:"est_upstream_cost,omitempty"`
-	EstGrossProfit    *float64 `json:"est_gross_profit,omitempty"`
-	EstGrossMargin    *float64 `json:"est_gross_margin,omitempty"`
-	MarginBelowTarget bool     `json:"margin_below_target"`
+	// Hypothetical economics of the recommendation. EstGrossProfit,
+	// EstGrossMargin and MarginBelowTarget are fully loaded (they include the
+	// Jev cost), as they always were; the model-only margin is separate.
+	// Margins are nil when the estimate had insufficient data.
+	EstRevenue             *float64 `json:"est_revenue,omitempty"`
+	EstUpstreamCost        *float64 `json:"est_upstream_cost,omitempty"`
+	EstGrossProfit         *float64 `json:"est_gross_profit,omitempty"`
+	EstGrossMargin         *float64 `json:"est_gross_margin,omitempty"`
+	MarginBelowTarget      bool     `json:"margin_below_target"`
+	EstModelGrossMargin    *float64 `json:"est_model_gross_margin,omitempty"`
+	ModelMarginBelowTarget bool     `json:"model_margin_below_target"`
+	// EstimateQuality is empty on rows written before estimate sources existed.
+	EstimateQuality string `json:"estimate_quality"`
 
 	PolicyVersion      string `json:"policy_version"`
 	PolicySnapshotHash string `json:"policy_snapshot_hash"`
+	// ClassifierConfigHash identifies the exact Jev questions (instructions,
+	// criteria, model descriptions, state format). Empty on rows classified
+	// before versioning, which used the v1 hard-coded questions.
+	ClassifierConfigHash string `json:"classifier_config_hash"`
 
 	Features       GPTAutoRequestFeatures `json:"features"`
 	Classification *GPTAutoClassification `json:"classification,omitempty"`
 	Decision       *GPTAutoPolicyDecision `json:"decision,omitempty"`
 
-	// ActualUsage is attached by GetDecision from usage_logs; never stored.
-	ActualUsage *GPTAutoActualUsage `json:"actual_usage,omitempty"`
+	// Attached by GetDecision; never stored.
+	//   ActualUsage: the request's usage-log row.
+	//   ObservedEconomics: what that request really earned and cost.
+	//   ActualInputEconomics: the recommendation re-estimated with the request's
+	//     real input tokens and customer rate (output stays an estimate: the
+	//     recommended model was never called).
+	//   ClassifierConfig: the stored questions this decision was asked with.
+	ActualUsage          *GPTAutoActualUsage            `json:"actual_usage,omitempty"`
+	ObservedEconomics    *GPTAutoObservedEconomics      `json:"observed_economics,omitempty"`
+	ActualInputEconomics *GPTAutoEconomics              `json:"actual_input_economics,omitempty"`
+	ClassifierConfig     *GPTAutoClassifierConfigRecord `json:"classifier_config,omitempty"`
 }
 
 // GPTAutoPolicySnapshot is the subset of config that determines a policy
@@ -167,16 +188,29 @@ type GPTAutoStoredStats struct {
 	Adjusted         int64    `json:"adjusted"`
 	NoEligible       int64    `json:"no_eligible"`
 	BelowTargetCount int64    `json:"below_target_count"`
+	// ModelBelowTargetCount counts model-only margins below target (including
+	// losses); BelowTargetCount is fully loaded.
+	ModelBelowTargetCount int64 `json:"model_below_target_count"`
+	InsufficientEstimates int64 `json:"insufficient_estimates"`
+	// PolicyModelChanges/PolicyEffortChanges count decisions where the policy
+	// recommendation differs from Jev's original answer.
+	PolicyModelChanges  int64 `json:"policy_model_changes"`
+	PolicyEffortChanges int64 `json:"policy_effort_changes"`
 
-	FinalModels     []GPTAutoCount      `json:"final_models"`
-	JevModels       []GPTAutoCount      `json:"jev_models"`
-	FinalEfforts    []GPTAutoCount      `json:"final_efforts"`
-	Complexity      []GPTAutoCount      `json:"complexity"`
-	Categories      []GPTAutoCount      `json:"categories"`
-	ErrorClasses    []GPTAutoCount      `json:"error_classes"`
-	ActualVsFinal   []GPTAutoPairCount  `json:"actual_vs_final"`
-	Trend           []GPTAutoTrendPoint `json:"trend"`
-	TrendBucketSize string              `json:"trend_bucket_size"`
+	FinalModels  []GPTAutoCount `json:"final_models"`
+	JevModels    []GPTAutoCount `json:"jev_models"`
+	FinalEfforts []GPTAutoCount `json:"final_efforts"`
+	JevEfforts   []GPTAutoCount `json:"jev_efforts"`
+	// ClassifierConfigs counts successful decisions per classifier config hash
+	// ("" = before versioning), so distributions can be compared across
+	// instruction changes.
+	ClassifierConfigs []GPTAutoCount      `json:"classifier_configs"`
+	Complexity        []GPTAutoCount      `json:"complexity"`
+	Categories        []GPTAutoCount      `json:"categories"`
+	ErrorClasses      []GPTAutoCount      `json:"error_classes"`
+	ActualVsFinal     []GPTAutoPairCount  `json:"actual_vs_final"`
+	Trend             []GPTAutoTrendPoint `json:"trend"`
+	TrendBucketSize   string              `json:"trend_bucket_size"`
 }
 
 // GPTAutoUsageToday backs the daily budget checks.
@@ -220,6 +254,11 @@ type GPTAutoShadowRepository interface {
 	Insert(ctx context.Context, decision *GPTAutoShadowDecision) error
 	UpsertPolicySnapshot(ctx context.Context, hash, policyVersion string, snapshot []byte) error
 	GetPolicySnapshot(ctx context.Context, hash string) (*GPTAutoPolicySnapshot, error)
+	// UpsertClassifierConfig stores a classifier configuration version; an
+	// existing hash keeps its original revision, author and timestamp.
+	UpsertClassifierConfig(ctx context.Context, record GPTAutoClassifierConfigRecord) error
+	GetClassifierConfig(ctx context.Context, hash string) (*GPTAutoClassifierConfigRecord, error)
+	ListClassifierConfigs(ctx context.Context, limit int) ([]GPTAutoClassifierConfigRecord, error)
 	GetByID(ctx context.Context, id int64) (*GPTAutoShadowDecision, error)
 	List(ctx context.Context, filter GPTAutoDecisionFilter) ([]GPTAutoShadowDecision, *pagination.PaginationResult, error)
 	Stats(ctx context.Context, filter GPTAutoStatsFilter) (*GPTAutoStoredStats, error)

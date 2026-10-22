@@ -4,6 +4,7 @@ import { apiClient } from '../client'
 // or billing.
 
 export type GPTAutoEndpoint = 'chat_completions' | 'responses'
+export type GPTAutoContextStrategy = 'task_aware' | 'recent_turns'
 export type GPTAutoEvaluationStatus = 'success' | 'failed'
 export type GPTAutoDecisionStatus = 'accepted' | 'adjusted' | 'no_eligible_candidate'
 
@@ -45,6 +46,8 @@ export interface GPTAutoConfig {
   classifier_daily_cost_limit: number
   classification_max_context_chars: number
   classification_context_messages: number
+  classification_context_strategy?: GPTAutoContextStrategy
+  classification_agent_steps?: number
   worker_count: number
   queue_size: number
   decision_retention_days: number
@@ -52,6 +55,8 @@ export interface GPTAutoConfig {
   profit_safety_buffer: number
   model_profiles: GPTAutoModelProfile[]
   policy_version: string
+  /** Read-only here: edited through the classifier endpoint. */
+  classifier_instructions?: GPTAutoClassifierInstructions
   classifier_api_key_configured: boolean
   classifier_api_key_masked: string
 }
@@ -69,6 +74,10 @@ export interface GPTAutoMeta {
   endpoints: GPTAutoEndpoint[]
   default_profiles: GPTAutoModelProfile[]
   policy_version: string
+  classifier_schema?: string
+  state_version?: string
+  context_strategies?: GPTAutoContextStrategy[]
+  benchmark_samples?: GPTAutoBenchmarkSample[]
   phase: string
   live_routing_active: boolean
 }
@@ -102,10 +111,17 @@ export interface GPTAutoStoredStats {
   classifier_cost: number
   adjusted: number
   no_eligible: number
+  /** Fully loaded margin below target (includes Jev cost). */
   below_target_count: number
+  model_below_target_count?: number
+  insufficient_estimates?: number
+  policy_model_changes?: number
+  policy_effort_changes?: number
   final_models: GPTAutoCount[]
   jev_models: GPTAutoCount[]
   final_efforts: GPTAutoCount[]
+  jev_efforts?: GPTAutoCount[]
+  classifier_configs?: GPTAutoCount[]
   complexity: GPTAutoCount[]
   categories: GPTAutoCount[]
   error_classes: GPTAutoCount[]
@@ -180,30 +196,66 @@ export interface GPTAutoCandidate {
   routing_weight: number
 }
 
+export type GPTAutoMarginStatus = 'unknown' | 'loss' | 'below_target' | 'meets_target'
+export type GPTAutoEstimateQuality = 'historical' | 'admin_assumption' | 'heuristic' | 'insufficient_data'
+
+/**
+ * Hypothetical economics. Fields marked optional are absent on decisions
+ * stored before the model / fully loaded split; `estimated_gross_margin` and
+ * `below_target` have always been fully loaded (Jev cost included).
+ */
 export interface GPTAutoEconomics {
   hypothetical: boolean
   model: string
   effort: string
   billing_multiplier: number
+  effort_billing_multiplier?: number
+  customer_rate_multiplier?: number
+  customer_rate_source?: string
   estimated_input_tokens: number
+  input_estimate_source?: string
+  estimated_cached_input_tokens?: number
+  cached_input_estimate_source?: string
   estimated_output_tokens: number
   output_estimate_source: string
   output_estimate_samples: number
+  estimate_quality?: GPTAutoEstimateQuality
   list_input_per_m: number
+  list_cached_input_per_m?: number
   list_output_per_m: number
   upstream_channel?: string
   upstream_input_per_m: number
+  upstream_cached_input_per_m?: number
   upstream_output_per_m: number
   upstream_cost_source: string
   estimated_revenue: number
   estimated_upstream_cost: number
+  estimated_model_gross_profit?: number
+  model_gross_margin?: number | null
+  model_margin_status?: GPTAutoMarginStatus
+  model_below_target?: boolean
   estimated_classifier_cost: number
+  classifier_cost_source?: string
   estimated_gross_profit: number
-  estimated_gross_margin?: number
+  estimated_gross_margin?: number | null
+  fully_loaded_margin_status?: GPTAutoMarginStatus
   target_margin: number
-  min_required_multiplier?: number
+  min_required_multiplier?: number | null
+  min_required_multiplier_fully_loaded?: number | null
   below_target: boolean
   pricing_available: boolean
+}
+
+export interface GPTAutoObservedEconomics {
+  model: string
+  charged_revenue: number
+  account_cost: number
+  classifier_cost: number
+  model_gross_profit: number
+  model_gross_margin?: number | null
+  fully_loaded_profit: number
+  fully_loaded_margin?: number | null
+  effective_rate?: number | null
 }
 
 export interface GPTAutoPolicyDecision {
@@ -214,7 +266,10 @@ export interface GPTAutoPolicyDecision {
   final_model?: string
   final_effort?: string
   candidates: GPTAutoCandidate[]
+  /** Rules that changed or withheld the recommendation. */
   adjustments?: GPTAutoAdjustment[]
+  /** Informational only; never change the recommendation. */
+  warnings?: GPTAutoAdjustment[]
   capability_warnings?: string[]
   economics?: GPTAutoEconomics
 }
@@ -254,13 +309,21 @@ export interface GPTAutoDecision {
   est_gross_profit?: number
   est_gross_margin?: number
   margin_below_target: boolean
+  est_model_gross_margin?: number
+  model_margin_below_target?: boolean
+  estimate_quality?: GPTAutoEstimateQuality | ''
   policy_version: string
   policy_snapshot_hash: string
-  features: { endpoint: string; has_tools: boolean; estimated_input_tokens: number }
+  /** Empty for decisions classified before classifier versioning (v1 questions). */
+  classifier_config_hash?: string
+  features: { endpoint: string; has_tools: boolean; estimated_input_tokens: number; input_estimate_source?: string; context?: GPTAutoContextInfo }
   classification?: GPTAutoClassification
   decision?: GPTAutoPolicyDecision
   /** Real production outcome from usage_logs; detail endpoint only. */
   actual_usage?: GPTAutoActualUsage
+  observed_economics?: GPTAutoObservedEconomics
+  actual_input_economics?: GPTAutoEconomics
+  classifier_config?: GPTAutoClassifierConfigRecord
 }
 
 export interface GPTAutoActualUsage {
@@ -304,19 +367,29 @@ export interface GPTAutoContextTurn {
   text: string
 }
 
+export interface GPTAutoWorkloadAssumptions {
+  /** Uncached input tokens. */
+  input_tokens?: number
+  cached_input_tokens?: number
+  output_tokens?: number
+}
+
 export interface GPTAutoTestInput {
   prompt: string
   context: GPTAutoContextTurn[]
   endpoint: GPTAutoEndpoint
   has_tools: boolean
   model_profiles?: GPTAutoModelProfile[]
-  estimated_input_tokens?: number
+  assumptions?: GPTAutoWorkloadAssumptions
 }
 
 export interface GPTAutoTestResult {
   classification: GPTAutoClassification
   decision: GPTAutoPolicyDecision
   classifier_cost: number
+  classifier_input_tokens?: number
+  classifier_output_tokens?: number
+  classifier_config_hash?: string
   latency_ms: number
   snapshot_preview: string
   profiles_overridden: boolean
@@ -346,6 +419,7 @@ export interface GPTAutoSimulationInput {
   effort: string
   input_tokens: number
   output_tokens?: number
+  cached_input_tokens?: number
   include_classifier_cost: boolean
   classifier_input_tokens: number
 }
@@ -353,6 +427,137 @@ export interface GPTAutoSimulationInput {
 export interface GPTAutoSimulationResult {
   rows: GPTAutoEconomics[]
   classifier_cost: number
+}
+
+export interface GPTAutoClassifierInstructions {
+  model_selection: string
+  effort_selection: string
+  complexity_scoring: string
+  category_classification: string
+  revision?: number
+  updated_at?: string
+  updated_by?: number
+}
+
+export type GPTAutoInstructionField = 'model_selection' | 'effort_selection' | 'complexity_scoring' | 'category_classification'
+export const gptAutoInstructionFields: GPTAutoInstructionField[] = ['model_selection', 'effort_selection', 'complexity_scoring', 'category_classification']
+
+export interface GPTAutoQuestion {
+  type: string
+  instructions: string
+  criteria?: Record<string, string> | string[]
+}
+
+export interface GPTAutoClassifierSnapshot {
+  schema_version: string
+  state_version: string
+  classifier_model: string
+  questions: Record<string, GPTAutoQuestion>
+}
+
+export interface GPTAutoClassifierConfigRecord {
+  hash: string
+  revision: number
+  snapshot: GPTAutoClassifierSnapshot
+  created_at: string
+  created_by?: number
+}
+
+export interface GPTAutoClassifierView {
+  instructions: GPTAutoClassifierInstructions
+  defaults: GPTAutoClassifierInstructions
+  is_default: boolean
+  hash: string
+  effective: GPTAutoClassifierSnapshot
+  history: GPTAutoClassifierConfigRecord[]
+  limits: { min_runes: number; max_runes: number }
+  legacy_instructions: Record<string, string>
+}
+
+export interface GPTAutoClassifierPreview {
+  hash: string
+  effective: GPTAutoClassifierSnapshot
+  same_as_saved: boolean
+}
+
+export interface GPTAutoCompareInput extends GPTAutoTestInput {
+  draft_instructions: GPTAutoClassifierInstructions
+}
+
+export interface GPTAutoCompareSide {
+  classifier_config_hash: string
+  result?: GPTAutoTestResult
+  error_code?: string
+  error_message?: string
+}
+
+export interface GPTAutoCompareResult {
+  saved: GPTAutoCompareSide
+  draft: GPTAutoCompareSide
+  jev_calls: number
+  total_classifier_cost: number
+  snapshot_preview: string
+}
+
+/** Extraction metadata: counts, budgets and limitations only, no content. */
+export interface GPTAutoContextInfo {
+  state_version: string
+  strategy: GPTAutoContextStrategy
+  items_total: number
+  scanned_bytes: number
+  latest_user_index: number
+  latest_user_kind: 'instruction' | 'follow_up' | 'none'
+  latest_user_truncated: boolean
+  follow_up_anchor_index: number
+  original_request_index: number
+  context_turns_available: number
+  context_turns_included: number
+  agent_events_included: number
+  agent_events_omitted: number
+  budget_chars: number
+  used_chars: number
+  section_chars?: Record<string, number>
+  limitations?: string[]
+}
+
+export interface GPTAutoContextOptions {
+  max_chars: number
+  context_turns: number
+  strategy: GPTAutoContextStrategy
+  agent_steps: number
+}
+
+export interface GPTAutoDebugInput {
+  endpoint: GPTAutoEndpoint
+  /** A synthetic OpenAI-compatible request object. */
+  request: Record<string, unknown>
+  max_chars?: number
+  context_turns?: number
+  strategy?: GPTAutoContextStrategy
+  agent_steps?: number
+}
+
+export interface GPTAutoDebugResult {
+  options: GPTAutoContextOptions
+  classifiable: boolean
+  jev_request: { model: string; state: string; questions: Record<string, GPTAutoQuestion> }
+  state_chars: number
+  estimated_jev_input_tokens: number
+  context: GPTAutoContextInfo
+  effective: GPTAutoClassifierSnapshot
+  classifier_config_hash: string
+  estimated_input_tokens: number
+}
+
+export interface GPTAutoBenchmarkSample {
+  id: string
+  group: string
+  prompt: string
+  context?: GPTAutoContextTurn[]
+  has_tools: boolean
+  expected_tier: 'luna' | 'sol'
+  expected_category: string
+  expected_complexity: [number, number]
 }
 
 const base = '/admin/gpt-auto'
@@ -404,6 +609,32 @@ export async function simulate(payload: GPTAutoSimulationInput): Promise<GPTAuto
   return data
 }
 
+export async function getClassifier(): Promise<GPTAutoClassifierView> {
+  const { data } = await apiClient.get<GPTAutoClassifierView>(`${base}/classifier`)
+  return data
+}
+
+export async function updateClassifier(payload: GPTAutoClassifierInstructions): Promise<GPTAutoClassifierView> {
+  const { data } = await apiClient.put<GPTAutoClassifierView>(`${base}/classifier`, payload)
+  return data
+}
+
+export async function previewClassifier(payload: GPTAutoClassifierInstructions): Promise<GPTAutoClassifierPreview> {
+  const { data } = await apiClient.post<GPTAutoClassifierPreview>(`${base}/classifier/preview`, payload)
+  return data
+}
+
+export async function compareClassifier(payload: GPTAutoCompareInput): Promise<GPTAutoCompareResult> {
+  // Two sequential Jev calls, each up to the classifier timeout (max 60s).
+  const { data } = await apiClient.post<GPTAutoCompareResult>(`${base}/test/compare`, payload, { timeout: 130000 })
+  return data
+}
+
+export async function debugState(payload: GPTAutoDebugInput): Promise<GPTAutoDebugResult> {
+  const { data } = await apiClient.post<GPTAutoDebugResult>(`${base}/debug/state`, payload)
+  return data
+}
+
 export const gptAutoAPI = {
   getMeta,
   getConfig,
@@ -414,6 +645,11 @@ export const gptAutoAPI = {
   replayDecision,
   runTest,
   simulate,
+  getClassifier,
+  updateClassifier,
+  previewClassifier,
+  compareClassifier,
+  debugState,
 }
 
 export default gptAutoAPI

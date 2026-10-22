@@ -19,6 +19,13 @@ export function useGPTAutoLabels() {
     counter: (key?: string | null) => lookup('counters', key),
     costSource: (key?: string | null) => lookup('costSources', key),
     outputSource: (key?: string | null) => lookup('outputSources', key),
+    estimateSource: (key?: string | null) => lookup('estimateSources', key),
+    estimateQuality: (key?: string | null) => lookup('estimateQualities', key),
+    marginStatus: (key?: string | null) => lookup('marginStatuses', key),
+    rateSource: (key?: string | null) => lookup('rateSources', key),
+    classifierCostSource: (key?: string | null) => lookup('classifierCostSources', key),
+    benchmarkGroup: (key?: string | null) => lookup('benchmarkGroups', key),
+    limitation: (key?: string | null) => lookup('limitations', key),
     complexity: (key?: string | null) => (key === '' || key === undefined || key === null ? '—' : lookup('complexityLevels', key)),
   }
 }

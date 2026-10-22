@@ -35,6 +35,7 @@
 
       <GPTAutoOverviewPanel v-if="activeTab === 'overview'" />
       <GPTAutoConfigPanel v-else-if="activeTab === 'config'" />
+      <GPTAutoClassifierPanel v-else-if="activeTab === 'classifier'" />
       <GPTAutoDecisionLog v-else-if="activeTab === 'logs'" />
       <GPTAutoTestLab v-else />
     </div>
@@ -49,11 +50,12 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import SmartOpsNav from '@/components/admin/operations/SmartOpsNav.vue'
 import GPTAutoOverviewPanel from '@/components/admin/gptAuto/GPTAutoOverviewPanel.vue'
 import GPTAutoConfigPanel from '@/components/admin/gptAuto/GPTAutoConfigPanel.vue'
+import GPTAutoClassifierPanel from '@/components/admin/gptAuto/GPTAutoClassifierPanel.vue'
 import GPTAutoDecisionLog from '@/components/admin/gptAuto/GPTAutoDecisionLog.vue'
 import GPTAutoTestLab from '@/components/admin/gptAuto/GPTAutoTestLab.vue'
 
-type Tab = 'overview' | 'config' | 'logs' | 'lab'
-const tabs: Tab[] = ['overview', 'config', 'logs', 'lab']
+type Tab = 'overview' | 'config' | 'classifier' | 'logs' | 'lab'
+const tabs: Tab[] = ['overview', 'config', 'classifier', 'logs', 'lab']
 
 const { t } = useI18n()
 const route = useRoute()

@@ -23,7 +23,7 @@
     </div>
 
     <template v-else-if="overview">
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div v-for="tile in tiles" :key="tile.key" class="card p-4" :data-testid="`gpt-auto-tile-${tile.key}`">
           <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ tile.label }}</p>
           <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{{ tile.value }}</p>
@@ -53,7 +53,7 @@
           </div>
           <div>
             <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.overview.todayBudget') }}</p>
-            <p class="font-medium text-gray-900 dark:text-white" data-testid="gpt-auto-today-budget">{{ formatNumber(overview.runtime.today_calls) }} · {{ formatUSD(overview.runtime.today_cost, 4) }}</p>
+            <p class="font-medium text-gray-900 dark:text-white" data-testid="gpt-auto-today-budget">{{ formatNumber(overview.runtime.today_calls) }} · {{ formatUSD(overview.runtime.today_cost) }}</p>
           </div>
         </div>
         <p v-if="overview.runtime.budget_scope === 'unavailable'" class="mt-3 rounded bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-900/20 dark:text-red-300" data-testid="gpt-auto-budget-unavailable">
@@ -84,9 +84,11 @@
         <GPTAutoBarChart :title="t('gptAuto.overview.charts.finalModels')" :badge="t('gptAuto.common.hypothetical')" :items="overview.stored.final_models" :empty-text="t('gptAuto.common.noData')" :color-index="1" test-id="gpt-auto-chart-final-models" />
         <GPTAutoBarChart :title="t('gptAuto.overview.charts.jevModels')" :badge="t('gptAuto.common.hypothetical')" :items="overview.stored.jev_models" :empty-text="t('gptAuto.common.noData')" :color-index="2" />
         <GPTAutoBarChart :title="t('gptAuto.overview.charts.efforts')" :badge="t('gptAuto.common.hypothetical')" :items="overview.stored.final_efforts" :label-for="labels.effort" :empty-text="t('gptAuto.common.noData')" :color-index="3" />
+        <GPTAutoBarChart :title="t('gptAuto.overview.charts.jevEfforts')" :badge="t('gptAuto.common.hypothetical')" :items="overview.stored.jev_efforts ?? []" :label-for="labels.effort" :empty-text="t('gptAuto.common.noData')" :color-index="4" test-id="gpt-auto-chart-jev-efforts" />
         <GPTAutoBarChart :title="t('gptAuto.overview.charts.complexity')" :items="sortedComplexity" :label-for="labels.complexity" :empty-text="t('gptAuto.common.noData')" :color-index="4" />
         <GPTAutoBarChart :title="t('gptAuto.overview.charts.categories')" :items="overview.stored.categories" :label-for="labels.category" :empty-text="t('gptAuto.common.noData')" :color-index="5" />
         <GPTAutoBarChart :title="t('gptAuto.overview.charts.errors')" :items="overview.stored.error_classes" :label-for="labels.errorClass" :empty-text="t('gptAuto.common.noData')" :color-index="2" />
+        <GPTAutoBarChart :title="t('gptAuto.overview.charts.classifierConfigs')" :items="overview.stored.classifier_configs ?? []" :label-for="classifierLabel" :empty-text="t('gptAuto.common.noData')" :color-index="1" test-id="gpt-auto-chart-classifier-configs" />
       </div>
 
       <div class="card p-4" data-testid="gpt-auto-trend">
@@ -188,15 +190,18 @@ const tiles = computed(() => {
     { key: 'errorRate', label: t('gptAuto.overview.tiles.errorRate'), value: formatPercent(value.error_rate), meta: t('gptAuto.overview.tiles.errorRateMeta', { adjusted: formatNumber(stored.adjusted), noEligible: formatNumber(stored.no_eligible) }) },
     { key: 'latency', label: t('gptAuto.overview.tiles.latency'), value: formatMs(stored.avg_latency_ms), meta: stored.p50_latency_ms !== undefined && stored.p50_latency_ms !== null ? t('gptAuto.overview.tiles.latencyMeta', { p50: formatMs(stored.p50_latency_ms), p95: formatMs(stored.p95_latency_ms) }) : t('gptAuto.overview.tiles.latencyTooFew') },
     { key: 'tokens', label: t('gptAuto.overview.tiles.tokens'), value: formatNumber(stored.input_tokens + stored.output_tokens), meta: t('gptAuto.overview.tiles.tokensMeta', { input: formatNumber(stored.input_tokens), output: formatNumber(stored.output_tokens) }) },
-    { key: 'cost', label: t('gptAuto.overview.tiles.cost'), value: formatUSD(stored.classifier_cost, 4), meta: t('gptAuto.overview.tiles.costMeta') },
+    { key: 'cost', label: t('gptAuto.overview.tiles.cost'), value: formatUSD(stored.classifier_cost), meta: t('gptAuto.overview.tiles.costMeta') },
     { key: 'skipped', label: cluster ? t('gptAuto.overview.tiles.skippedCluster') : t('gptAuto.overview.tiles.skipped'), value: formatNumber(skipped), meta: t('gptAuto.overview.tiles.skippedMeta', { dropped: formatNumber(counters.dropped_queue_full ?? 0) }) },
-    { key: 'belowTarget', label: t('gptAuto.overview.tiles.belowTarget'), value: formatNumber(stored.below_target_count), meta: t('gptAuto.overview.tiles.belowTargetMeta') },
+    { key: 'policyChanges', label: t('gptAuto.overview.tiles.policyChanges'), value: formatNumber(stored.policy_model_changes ?? 0), meta: t('gptAuto.overview.tiles.policyChangesMeta', { effort: formatNumber(stored.policy_effort_changes ?? 0) }) },
+    { key: 'belowTarget', label: t('gptAuto.overview.tiles.belowTarget'), value: `${formatNumber(stored.model_below_target_count ?? 0)} / ${formatNumber(stored.below_target_count)}`, meta: t('gptAuto.overview.tiles.belowTargetMeta', { insufficient: formatNumber(stored.insufficient_estimates ?? 0) }) },
   ]
 })
 
 const clusterCounters = computed(() =>
   Object.entries(overview.value?.runtime.cluster_counters_today ?? {}).sort(([a], [b]) => a.localeCompare(b)),
 )
+
+const classifierLabel = (key: string) => (key ? key.slice(0, 10) : t('gptAuto.detail.classifierLegacy'))
 
 const sortedComplexity = computed(() =>
   [...(overview.value?.stored.complexity ?? [])].sort((a, b) => Number(a.key) - Number(b.key)),

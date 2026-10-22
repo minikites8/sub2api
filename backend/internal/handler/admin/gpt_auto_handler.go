@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -146,6 +147,9 @@ func (h *GPTAutoHandler) UpdateConfig(c *gin.Context) {
 			return
 		}
 	}
+	// Classifier instructions have their own versioned, audited endpoint; a
+	// general config save (possibly from a stale form) never changes them.
+	next.ClassifierInstructions = current.ClassifierInstructions
 	if err := h.settingService.SetGPTAutoShadowConfig(ctx, &next); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -155,7 +159,99 @@ func (h *GPTAutoHandler) UpdateConfig(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	// Model descriptions are part of the Jev questions: record the resulting
+	// classifier version with its author.
+	h.shadowService.RecordClassifierConfig(ctx, gptAutoAdminID(c))
 	response.Success(c, toGPTAutoConfigResponse(saved))
+}
+
+// gptAutoAdminID returns the authenticated admin's user id, if any.
+func gptAutoAdminID(c *gin.Context) *int64 {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		return nil
+	}
+	id := subject.UserID
+	return &id
+}
+
+// GetClassifier returns the Jev classification instructions, defaults,
+// effective questions and version history.
+// GET /api/v1/admin/gpt-auto/classifier
+func (h *GPTAutoHandler) GetClassifier(c *gin.Context) {
+	view, err := h.shadowService.ClassifierView(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, view)
+}
+
+// UpdateClassifier saves new instructions (validated, versioned, audited).
+// PUT /api/v1/admin/gpt-auto/classifier
+func (h *GPTAutoHandler) UpdateClassifier(c *gin.Context) {
+	var req service.GPTAutoClassifierInstructions
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	view, err := h.shadowService.SaveClassifierInstructions(c.Request.Context(), req, gptAutoAdminID(c))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, view)
+}
+
+// PreviewClassifier returns the effective questions for a draft without
+// calling Jev or saving anything.
+// POST /api/v1/admin/gpt-auto/classifier/preview
+func (h *GPTAutoHandler) PreviewClassifier(c *gin.Context) {
+	var req service.GPTAutoClassifierInstructions
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	preview, err := h.shadowService.PreviewClassifier(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
+// DebugState shows the exact Jev state and questions for an administrator's
+// synthetic request, with truncation metadata. No Jev call, nothing stored.
+// POST /api/v1/admin/gpt-auto/debug/state
+func (h *GPTAutoHandler) DebugState(c *gin.Context) {
+	var req service.GPTAutoDebugInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.shadowService.DebugState(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// CompareClassifier runs one sample through the saved and draft instructions
+// (two separate, budgeted Jev calls). The draft is not saved.
+// POST /api/v1/admin/gpt-auto/test/compare
+func (h *GPTAutoHandler) CompareClassifier(c *gin.Context) {
+	var req service.GPTAutoCompareInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.shadowService.CompareClassifierInstructions(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 type gptAutoModelMeta struct {
@@ -177,6 +273,10 @@ func (h *GPTAutoHandler) Meta(c *gin.Context) {
 		"endpoints":           service.GPTAutoSupportedEndpoints(),
 		"default_profiles":    service.DefaultGPTAutoModelProfiles(),
 		"policy_version":      service.GPTAutoPolicyVersionDefault,
+		"classifier_schema":   service.GPTAutoClassifierSchemaVersion,
+		"state_version":       service.GPTAutoClassifierStateVersion,
+		"context_strategies":  service.GPTAutoContextStrategies(),
+		"benchmark_samples":   service.GPTAutoBenchmarkSamples(),
 		"phase":               "shadow",
 		"live_routing_active": false,
 	})

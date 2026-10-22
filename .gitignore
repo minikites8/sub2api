@@ -161,6 +161,7 @@ docs/*
 !docs/gpt-auto-shadow-routing.md
 !docs/PHASE1_ACCEPTANCE_REPORT.md
 !docs/PHASE1_REMEDIATION_REPORT.md
+!docs/GPT_AUTO_CLASSIFIER_AND_MARGIN_FIX_REPORT.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/

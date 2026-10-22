@@ -72,7 +72,7 @@ func (failingBudgetStore) Counters(context.Context, string) (map[string]int64, e
 
 func gptAutoTestTask(svc *GPTAutoShadowService) *gptAutoTask {
 	cfg := svc.settings.GetGPTAutoShadowConfigCached(context.Background())
-	snapshot := BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, gptAutoTestBody, cfg.ClassificationMaxContextChars, cfg.ClassificationContextMessages)
+	snapshot := BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, gptAutoTestBody, cfg.ContextOptions())
 	snapshot.RequestID = "req-task"
 	return &gptAutoTask{snapshot: snapshot, enqueuedAt: svc.now()}
 }
@@ -240,7 +240,7 @@ func TestGPTAutoSnapshotOfHugeBodyIsBoundedAndDetached(t *testing.T) {
 	body := []byte(`{"model":"gpt-6-luna","messages":[{"role":"system","content":"` + filler + `"},{"role":"user","content":"` + content + `"}]}`)
 
 	started := time.Now()
-	snapshot := BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, body, 4000, 4)
+	snapshot := BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, body, GPTAutoContextOptions{MaxChars: 4000, ContextTurns: 4})
 	elapsed := time.Since(started)
 	require.Less(t, elapsed, 2*time.Second, "snapshot cost must not scale with regexes over megabytes")
 	require.LessOrEqual(t, len([]rune(snapshot.LatestUser)), 3000)

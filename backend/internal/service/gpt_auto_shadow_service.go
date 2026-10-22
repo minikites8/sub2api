@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -43,6 +44,7 @@ const (
 	gptAutoCounterSkippedCircit     = "skipped_circuit_open"
 	gptAutoCounterSkippedConfig     = "skipped_not_configured"
 	gptAutoCounterSkippedEmpty      = "skipped_no_text"
+	gptAutoCounterSkippedTooLarge   = "skipped_too_large"
 	gptAutoCounterDropped           = "dropped_queue_full"
 	gptAutoCounterSuccess           = "success"
 	gptAutoCounterFailed            = "failed"
@@ -54,7 +56,7 @@ func gptAutoCounterNames() []string {
 	return []string{
 		gptAutoCounterObserved, gptAutoCounterSampled, gptAutoCounterNotSampled,
 		gptAutoCounterSkippedFilter, gptAutoCounterSkippedBudget, gptAutoCounterSkippedBudgetDown,
-		gptAutoCounterSkippedCircit, gptAutoCounterSkippedConfig, gptAutoCounterSkippedEmpty,
+		gptAutoCounterSkippedCircit, gptAutoCounterSkippedConfig, gptAutoCounterSkippedEmpty, gptAutoCounterSkippedTooLarge,
 		gptAutoCounterDropped, gptAutoCounterSuccess, gptAutoCounterFailed,
 		gptAutoCounterPersistFailed, gptAutoCounterBudgetError,
 	}
@@ -91,9 +93,17 @@ type gptAutoTask struct {
 
 // gptAutoSnapshotBytes approximates the memory a queued snapshot pins.
 func gptAutoSnapshotBytes(snapshot GPTAutoRequestSnapshot) int64 {
-	size := 256 + len(snapshot.LatestUser) + len(snapshot.RequestedModel) + len(snapshot.RequestID)
+	size := 512 + len(snapshot.LatestUser) + len(snapshot.RequestedModel) + len(snapshot.RequestID)
 	for _, turn := range snapshot.RecentContext {
 		size += 32 + len(turn.Text)
+	}
+	if task := snapshot.TaskContext; task != nil {
+		size += len(task.ContinuesRequest) + len(task.OriginalRequest) + len(task.HistorySummary)
+	}
+	if activity := snapshot.AgentActivity; activity != nil {
+		for _, event := range activity.Recent {
+			size += 48 + len(event.Summary) + len(event.Tool)
+		}
 	}
 	return int64(size)
 }
@@ -342,8 +352,12 @@ func (s *GPTAutoShadowService) Observe(ctx context.Context, input GPTAutoObserve
 		return
 	}
 
-	snapshot := BuildGPTAutoSnapshot(input.Endpoint, input.Body, cfg.ClassificationMaxContextChars, cfg.ClassificationContextMessages)
-	if strings.TrimSpace(snapshot.LatestUser) == "" && len(snapshot.RecentContext) == 0 {
+	if len(input.Body) > gptAutoMaxSnapshotBodyBytes {
+		s.incr(gptAutoCounterSkippedTooLarge)
+		return
+	}
+	snapshot := BuildGPTAutoSnapshot(input.Endpoint, input.Body, cfg.ContextOptions())
+	if !snapshot.HasClassifiableContent() {
 		s.incr(gptAutoCounterSkippedEmpty)
 		return
 	}
@@ -604,8 +618,12 @@ func (s *GPTAutoShadowService) buildDecisionRow(cfg GPTAutoShadowConfig, snapsho
 		Endpoint:             snapshot.Endpoint,
 		HasTools:             snapshot.HasTools,
 		EstimatedInputTokens: snapshot.EstimatedInputTokens,
+		InputEstimateSource:  GPTAutoEstimateSourceHeuristic,
+		Context:              gptAutoContextInfoPtr(snapshot.Context),
 	}
+	classifierHash, _, _ := NewGPTAutoClassifierSnapshot(cfg).Hash()
 	row := &GPTAutoShadowDecision{
+		ClassifierConfigHash:   classifierHash,
 		CreatedAt:              s.now().UTC(),
 		RequestID:              snapshot.RequestID,
 		UserID:                 nonZeroInt64(snapshot.UserID),
@@ -666,14 +684,21 @@ func (s *GPTAutoShadowService) applyDecision(row *GPTAutoShadowDecision, classif
 	row.Complexity = float64Ptr(classification.Complexity)
 	row.ModelConfidence = float64Ptr(classification.ModelConfidence)
 	row.EffortConfidence = float64Ptr(classification.EffortConfidence)
-	row.EstRevenue, row.EstUpstreamCost, row.EstGrossProfit, row.EstGrossMargin = nil, nil, nil, nil
-	row.MarginBelowTarget = false
-	if economics := decision.Economics; economics != nil && economics.PricingAvailable {
+	row.EstRevenue, row.EstUpstreamCost, row.EstGrossProfit, row.EstGrossMargin, row.EstModelGrossMargin = nil, nil, nil, nil, nil
+	row.MarginBelowTarget, row.ModelMarginBelowTarget, row.EstimateQuality = false, false, ""
+	economics := decision.Economics
+	if economics == nil {
+		return
+	}
+	row.EstimateQuality = economics.EstimateQuality
+	if economics.PricingAvailable && economics.EstimateQuality != GPTAutoEstimateQualityInsufficient {
 		row.EstRevenue = float64Ptr(economics.EstimatedRevenue)
 		row.EstUpstreamCost = float64Ptr(economics.EstimatedUpstreamCost)
 		row.EstGrossProfit = float64Ptr(economics.EstimatedGrossProfit)
 		row.EstGrossMargin = economics.EstimatedGrossMargin
+		row.EstModelGrossMargin = economics.ModelGrossMargin
 		row.MarginBelowTarget = economics.BelowTarget
+		row.ModelMarginBelowTarget = economics.ModelBelowTarget
 	}
 }
 
@@ -687,6 +712,11 @@ func (s *GPTAutoShadowService) persist(ctx context.Context, cfg GPTAutoShadowCon
 		row.PolicySnapshotHash = hash
 	} else {
 		slog.Warn("gpt_auto.snapshot_persist_failed", "error", err)
+	}
+	if row.ClassifierConfigHash != "" {
+		if err := s.ensureClassifierConfig(persistCtx, cfg, nil); err != nil {
+			slog.Warn("gpt_auto.classifier_config_persist_failed", "error", err)
+		}
 	}
 	if err := s.repo.Insert(persistCtx, row); err != nil {
 		s.incr(gptAutoCounterPersistFailed)
@@ -715,6 +745,32 @@ func (s *GPTAutoShadowService) ensurePolicySnapshot(ctx context.Context, cfg GPT
 
 const gptAutoSnapshotRecheck = time.Hour
 
+// ensureClassifierConfig stores the config's classifier snapshot (idempotent,
+// cached like policy snapshots). author is set when an administrator saves.
+func (s *GPTAutoShadowService) ensureClassifierConfig(ctx context.Context, cfg GPTAutoShadowConfig, author *int64) error {
+	snapshot := NewGPTAutoClassifierSnapshot(cfg)
+	hash, _, err := snapshot.Hash()
+	if err != nil {
+		return err
+	}
+	key := "classifier:" + hash
+	if author == nil {
+		if value, ok := s.snapshots.Load(key); ok {
+			if seenAt, isTime := value.(time.Time); isTime && s.now().Sub(seenAt) < gptAutoSnapshotRecheck {
+				return nil
+			}
+		}
+	}
+	if err := s.repo.UpsertClassifierConfig(ctx, GPTAutoClassifierConfigRecord{
+		Hash: hash, Revision: cfg.ClassifierInstructions.Revision, Snapshot: snapshot,
+		CreatedAt: s.now().UTC(), CreatedBy: cloneInt64Ptr(author),
+	}); err != nil {
+		return err
+	}
+	s.snapshots.Store(key, s.now())
+	return nil
+}
+
 func (s *GPTAutoShadowService) observeLatency(ms int) {
 	s.latencyMu.Lock()
 	s.recentLatency[s.recentLatencyN%gptAutoRecentLatencyWindow] = ms
@@ -731,13 +787,21 @@ func (s *GPTAutoShadowService) outputEstimator() GPTAutoOutputEstimator {
 	byPair, byModel := s.output.byPair, s.output.byModel
 	s.output.mu.Unlock()
 	return func(model, effort string) GPTAutoOutputEstimate {
-		if estimate, ok := byPair[model+"|"+effort]; ok {
+		// Effort-specific history wins only when it has enough samples;
+		// otherwise model-level history may still qualify. The returned
+		// sample count lets the dashboard say why an estimate is missing.
+		pair, hasPair := byPair[model+"|"+effort]
+		if hasPair && pair.Samples >= gptAutoMinOutputHistorySamples {
+			return pair
+		}
+		if estimate, ok := byModel[model]; ok && estimate.Samples >= gptAutoMinOutputHistorySamples {
 			return estimate
 		}
-		if estimate, ok := byModel[model]; ok {
-			return estimate
+		samples := pair.Samples
+		if estimate, ok := byModel[model]; ok && estimate.Samples > samples {
+			samples = estimate.Samples
 		}
-		return GPTAutoOutputEstimate{Source: GPTAutoOutputSourceNone}
+		return GPTAutoOutputEstimate{Source: GPTAutoOutputSourceNone, Samples: samples}
 	}
 }
 
@@ -973,7 +1037,9 @@ func (s *GPTAutoShadowService) ListDecisions(ctx context.Context, filter GPTAuto
 var ErrGPTAutoDecisionNotFound = infraerrors.NotFound("GPT_AUTO_DECISION_NOT_FOUND", "shadow decision not found")
 
 // GetDecision returns one decision with its full JSON payloads and, when the
-// request has been billed, its actual production usage from usage_logs.
+// request has been billed, its actual production usage and observed
+// economics from usage_logs, plus the classifier configuration it was asked
+// with.
 func (s *GPTAutoShadowService) GetDecision(ctx context.Context, id int64) (*GPTAutoShadowDecision, error) {
 	row, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -984,7 +1050,57 @@ func (s *GPTAutoShadowService) GetDecision(ctx context.Context, id int64) (*GPTA
 		slog.Warn("gpt_auto.actual_usage_lookup_failed", "error", err)
 	}
 	row.ActualUsage = actual
+	if actual != nil {
+		row.ObservedEconomics = NewGPTAutoObservedEconomics(actual, row.ClassifierCost)
+		row.ActualInputEconomics = s.actualInputEconomics(ctx, row)
+	}
+	if row.ClassifierConfigHash != "" {
+		record, err := s.repo.GetClassifierConfig(ctx, row.ClassifierConfigHash)
+		if err != nil && !errors.Is(err, ErrGPTAutoDecisionNotFound) {
+			slog.Warn("gpt_auto.classifier_config_lookup_failed", "error", err)
+		}
+		row.ClassifierConfig = record
+	}
 	return row, nil
+}
+
+// actualInputEconomics re-estimates the recommendation with the observed
+// request's real input/cached tokens and customer rate, under the policy the
+// decision was made with. Output tokens remain an estimate: a Jev
+// classification never produces the recommended model's output.
+func (s *GPTAutoShadowService) actualInputEconomics(ctx context.Context, row *GPTAutoShadowDecision) *GPTAutoEconomics {
+	if row.Decision == nil || row.Decision.FinalModel == "" || row.ActualUsage == nil {
+		return nil
+	}
+	cfg, err := s.settings.GetGPTAutoShadowConfig(ctx)
+	if err != nil {
+		return nil
+	}
+	if row.PolicySnapshotHash != "" {
+		if snapshot, err := s.repo.GetPolicySnapshot(ctx, row.PolicySnapshotHash); err == nil {
+			*cfg = snapshot.ApplyTo(*cfg)
+		}
+	}
+	observed := NewGPTAutoObservedEconomics(row.ActualUsage, row.ClassifierCost)
+	input := GPTAutoPolicyInput{
+		Config: *cfg,
+		Features: GPTAutoRequestFeatures{
+			Endpoint:             row.Endpoint,
+			HasTools:             row.HasTools,
+			EstimatedInputTokens: int(row.ActualUsage.InputTokens),
+			CachedInputTokens:    int(row.ActualUsage.CacheReadTokens),
+			InputEstimateSource:  GPTAutoEstimateSourceActual,
+		},
+		Pricing:           s.pricing,
+		OutputEstimate:    s.outputEstimator(),
+		ClassifierCostUSD: row.ClassifierCost,
+	}
+	if observed != nil && observed.EffectiveRate != nil {
+		input.CustomerRateMultiplier = *observed.EffectiveRate
+		input.CustomerRateSource = GPTAutoRateSourceObserved
+	}
+	economics := EstimateGPTAutoEconomics(input, row.Decision.FinalModel, row.Decision.FinalEffort)
+	return &economics
 }
 
 // GPTAutoUsageRequestID returns the request id usage_logs records for the
@@ -1002,51 +1118,91 @@ type GPTAutoTestInput struct {
 	// ModelProfiles optionally replaces the saved profiles for this test only
 	// (capability constraints, weights, multipliers).
 	ModelProfiles []GPTAutoModelProfile `json:"model_profiles,omitempty"`
-	// EstimatedInputTokens overrides the character-based estimate.
+	// EstimatedInputTokens is the legacy spelling of Assumptions.InputTokens.
 	EstimatedInputTokens *int `json:"estimated_input_tokens,omitempty"`
+	// Assumptions describe a hypothetical workload for the economics. Without
+	// them the input estimate is the sample's character count, which omits
+	// everything a real client adds (system prompt, tool schemas, history).
+	Assumptions *GPTAutoWorkloadAssumptions `json:"assumptions,omitempty"`
 }
 
 // GPTAutoTestResult is returned by the test lab. Nothing is persisted.
 type GPTAutoTestResult struct {
-	Classification    *GPTAutoClassification `json:"classification"`
-	Decision          GPTAutoPolicyDecision  `json:"decision"`
-	ClassifierCost    float64                `json:"classifier_cost"`
-	LatencyMS         int                    `json:"latency_ms"`
-	SnapshotPreview   string                 `json:"snapshot_preview"`
-	ProfilesOverriden bool                   `json:"profiles_overridden"`
+	Classification         *GPTAutoClassification `json:"classification"`
+	Decision               GPTAutoPolicyDecision  `json:"decision"`
+	ClassifierCost         float64                `json:"classifier_cost"`
+	ClassifierInputTokens  int                    `json:"classifier_input_tokens"`
+	ClassifierOutputTokens int                    `json:"classifier_output_tokens"`
+	ClassifierConfigHash   string                 `json:"classifier_config_hash"`
+	LatencyMS              int                    `json:"latency_ms"`
+	SnapshotPreview        string                 `json:"snapshot_preview"`
+	ProfilesOverriden      bool                   `json:"profiles_overridden"`
 }
 
 const gptAutoMaxTestPromptRunes = 50000
 
 // RunTest classifies an administrator-supplied sample with Jev and evaluates
 // the policy. It calls only the classifier, never a GPT model, and is not
-// stored. It shares the classifier concurrency limit with shadow traffic.
+// stored. It shares the classifier concurrency limit and the cluster budget
+// with shadow traffic.
 func (s *GPTAutoShadowService) RunTest(ctx context.Context, input GPTAutoTestInput) (*GPTAutoTestResult, error) {
 	cfg, err := s.settings.GetGPTAutoShadowConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(input.Prompt) == "" {
-		return nil, infraerrors.BadRequest("GPT_AUTO_TEST_INVALID", "prompt is required")
+	snapshot, overridden, err := prepareGPTAutoTest(cfg, &input)
+	if err != nil {
+		return nil, err
 	}
-	if len([]rune(input.Prompt)) > gptAutoMaxTestPromptRunes || len(input.Context) > gptAutoMaxContextMessages {
-		return nil, infraerrors.BadRequest("GPT_AUTO_TEST_INVALID", "test input is too large")
+	return s.runTestClassification(ctx, *cfg, snapshot, input, overridden)
+}
+
+// prepareGPTAutoTest validates a test request, applies profile overrides to
+// cfg and builds the sanitized snapshot.
+func prepareGPTAutoTest(cfg *GPTAutoShadowConfig, input *GPTAutoTestInput) (GPTAutoRequestSnapshot, bool, error) {
+	if strings.TrimSpace(input.Prompt) == "" {
+		return GPTAutoRequestSnapshot{}, false, infraerrors.BadRequest("GPT_AUTO_TEST_INVALID", "prompt is required")
+	}
+	if utf8.RuneCountInString(input.Prompt) > gptAutoMaxTestPromptRunes || len(input.Context) > gptAutoMaxContextMessages {
+		return GPTAutoRequestSnapshot{}, false, infraerrors.BadRequest("GPT_AUTO_TEST_INVALID", "test input is too large")
 	}
 	if input.Endpoint == "" {
 		input.Endpoint = GPTAutoEndpointChatCompletions
 	}
 	if !isGPTAutoSupportedEndpoint(input.Endpoint) {
-		return nil, infraerrors.BadRequest("GPT_AUTO_TEST_INVALID", "unsupported endpoint")
+		return GPTAutoRequestSnapshot{}, false, infraerrors.BadRequest("GPT_AUTO_TEST_INVALID", "unsupported endpoint")
+	}
+	if input.EstimatedInputTokens != nil && *input.EstimatedInputTokens >= 0 {
+		if input.Assumptions == nil {
+			input.Assumptions = &GPTAutoWorkloadAssumptions{}
+		}
+		if input.Assumptions.InputTokens == nil {
+			value := *input.EstimatedInputTokens
+			input.Assumptions.InputTokens = &value
+		}
+	}
+	if !input.Assumptions.valid() {
+		return GPTAutoRequestSnapshot{}, false, infraerrors.BadRequest("GPT_AUTO_TEST_INVALID", "token assumptions must be between 0 and 10,000,000")
+	}
+	if input.Assumptions.empty() {
+		input.Assumptions = nil
 	}
 	overridden, err := applyGPTAutoProfileOverride(cfg, input.ModelProfiles)
 	if err != nil {
-		return nil, err
+		return GPTAutoRequestSnapshot{}, false, err
 	}
 	if strings.TrimSpace(cfg.ClassifierAPIKey) == "" {
-		return nil, infraerrors.BadRequest("GPT_AUTO_CLASSIFIER_NOT_CONFIGURED", "configure the Jev API key before running a test")
+		return GPTAutoRequestSnapshot{}, false, infraerrors.BadRequest("GPT_AUTO_CLASSIFIER_NOT_CONFIGURED", "configure the Jev API key before running a test")
 	}
+	return buildGPTAutoTestSnapshot(*cfg, *input), overridden, nil
+}
 
-	snapshot := buildGPTAutoTestSnapshot(*cfg, input)
+// runTestClassification performs exactly one Jev call under the shared
+// concurrency limit and cluster budget, then evaluates the policy.
+func (s *GPTAutoShadowService) runTestClassification(ctx context.Context, cfg GPTAutoShadowConfig, snapshot GPTAutoRequestSnapshot, input GPTAutoTestInput, overridden bool) (*GPTAutoTestResult, error) {
+	if s.classifier == nil {
+		return nil, infraerrors.BadRequest("GPT_AUTO_CLASSIFIER_NOT_CONFIGURED", "classifier unavailable")
+	}
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(cfg.ClassifierTimeoutMS)*time.Millisecond)
 	acquired := s.acquire(waitCtx, cfg.ClassifierMaxConcurrency)
 	cancel()
@@ -1056,7 +1212,7 @@ func (s *GPTAutoShadowService) RunTest(ctx context.Context, input GPTAutoTestInp
 	defer s.release()
 	// Test-lab calls count against the same cluster-wide daily budget as
 	// shadow traffic, so the lab cannot be used to bypass it.
-	reservation, err := s.reserveBudget(ctx, *cfg, s.estimateClassifierCostNano(*cfg, snapshot))
+	reservation, err := s.reserveBudget(ctx, cfg, s.estimateClassifierCostNano(cfg, snapshot))
 	if err != nil {
 		if errors.Is(err, errGPTAutoBudgetUnavailable) {
 			return nil, infraerrors.New(503, "GPT_AUTO_BUDGET_UNAVAILABLE", "budget store unavailable; daily limits cannot be enforced")
@@ -1065,7 +1221,7 @@ func (s *GPTAutoShadowService) RunTest(ctx context.Context, input GPTAutoTestInp
 	}
 	started := s.now()
 	callCtx, callCancel := context.WithTimeout(ctx, time.Duration(cfg.ClassifierTimeoutMS)*time.Millisecond)
-	classification, err := s.classifier.Classify(callCtx, *cfg, snapshot)
+	classification, err := s.classifier.Classify(callCtx, cfg, snapshot)
 	callCancel()
 	latency := int(s.now().Sub(started).Milliseconds())
 	_, billedIn, billedOut := gptAutoBilledUsage(classification, err)
@@ -1079,50 +1235,136 @@ func (s *GPTAutoShadowService) RunTest(ctx context.Context, input GPTAutoTestInp
 		}
 		return nil, infraerrors.New(502, "GPT_AUTO_CLASSIFIER_FAILED", "Jev classification failed: "+class)
 	}
-	features := GPTAutoRequestFeatures{Endpoint: snapshot.Endpoint, HasTools: snapshot.HasTools, EstimatedInputTokens: snapshot.EstimatedInputTokens}
+	features := GPTAutoRequestFeatures{
+		Endpoint: snapshot.Endpoint, HasTools: snapshot.HasTools,
+		EstimatedInputTokens: snapshot.EstimatedInputTokens, InputEstimateSource: GPTAutoEstimateSourceHeuristic,
+	}
 	decision := EvaluateGPTAutoPolicy(GPTAutoPolicyInput{
-		Classification: *classification, Features: features, Config: *cfg,
+		Classification: *classification, Features: features, Config: cfg,
 		Pricing: s.pricing, OutputEstimate: s.outputEstimator(), ClassifierCostUSD: cost,
+		Assumptions: input.Assumptions,
 	})
 	preview, _ := buildGPTAutoClassifierState(snapshot)
+	hash, _, _ := NewGPTAutoClassifierSnapshot(cfg).Hash()
 	return &GPTAutoTestResult{
 		Classification: classification, Decision: decision, ClassifierCost: cost,
+		ClassifierInputTokens: billedIn, ClassifierOutputTokens: billedOut, ClassifierConfigHash: hash,
 		LatencyMS: latency, SnapshotPreview: preview, ProfilesOverriden: overridden,
 	}, nil
 }
 
-func buildGPTAutoTestSnapshot(cfg GPTAutoShadowConfig, input GPTAutoTestInput) GPTAutoRequestSnapshot {
-	turns := make([]GPTAutoContextTurn, 0, len(input.Context))
-	totalChars := utf8.RuneCountInString(input.Prompt)
-	budget := cfg.ClassificationMaxContextChars
-	capture := budget * gptAutoTurnCaptureFactor
-	latest := trimRunesKeepTail(redactGPTAutoText(gptAutoCaptureText(input.Prompt, capture)), budget*3/4)
-	budget -= utf8.RuneCountInString(latest)
-	for _, turn := range input.Context {
-		totalChars += utf8.RuneCountInString(turn.Text)
-		text := strings.TrimSpace(turn.Text)
-		if text == "" || budget <= 0 {
+// GPTAutoCompareInput runs one sample through the saved classifier
+// instructions and an unsaved draft.
+type GPTAutoCompareInput struct {
+	GPTAutoTestInput
+	DraftInstructions GPTAutoClassifierInstructions `json:"draft_instructions"`
+}
+
+// GPTAutoCompareSide is one arm of an A/B comparison. Exactly one of Result
+// and ErrorCode is set.
+type GPTAutoCompareSide struct {
+	ClassifierConfigHash string             `json:"classifier_config_hash"`
+	Result               *GPTAutoTestResult `json:"result,omitempty"`
+	ErrorCode            string             `json:"error_code,omitempty"`
+	ErrorMessage         string             `json:"error_message,omitempty"`
+}
+
+// GPTAutoCompareResult reports both arms. JevCalls is the number of billable
+// classifier requests the comparison made (at most two).
+type GPTAutoCompareResult struct {
+	Saved               GPTAutoCompareSide `json:"saved"`
+	Draft               GPTAutoCompareSide `json:"draft"`
+	JevCalls            int                `json:"jev_calls"`
+	TotalClassifierCost float64            `json:"total_classifier_cost"`
+	SnapshotPreview     string             `json:"snapshot_preview"`
+}
+
+// CompareClassifierInstructions classifies the same sanitized sample twice:
+// once with the saved instructions and once with the draft. Each arm is a
+// separate Jev call that individually takes a concurrency slot and a budget
+// reservation, exactly like any other test-lab call. The draft is never
+// saved or activated.
+func (s *GPTAutoShadowService) CompareClassifierInstructions(ctx context.Context, input GPTAutoCompareInput) (*GPTAutoCompareResult, error) {
+	cfg, err := s.settings.GetGPTAutoShadowConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateGPTAutoClassifierInstructions(input.DraftInstructions); err != nil {
+		return nil, err
+	}
+	if sameGPTAutoInstructionText(cfg.ClassifierInstructions, input.DraftInstructions) {
+		return nil, infraerrors.BadRequest("GPT_AUTO_COMPARE_IDENTICAL", "the draft matches the saved instructions; edit it before comparing")
+	}
+	test := input.GPTAutoTestInput
+	snapshot, overridden, err := prepareGPTAutoTest(cfg, &test)
+	if err != nil {
+		return nil, err
+	}
+	draftCfg := *cfg
+	draftCfg.ClassifierInstructions = input.DraftInstructions
+	normalizeGPTAutoClassifierInstructions(&draftCfg.ClassifierInstructions)
+
+	result := &GPTAutoCompareResult{}
+	result.SnapshotPreview, _ = buildGPTAutoClassifierState(snapshot)
+	arms := []struct {
+		side *GPTAutoCompareSide
+		cfg  GPTAutoShadowConfig
+	}{{&result.Saved, *cfg}, {&result.Draft, draftCfg}}
+	for _, arm := range arms {
+		arm.side.ClassifierConfigHash, _, _ = NewGPTAutoClassifierSnapshot(arm.cfg).Hash()
+		// Sequential, not parallel: a comparison never needs two concurrency
+		// slots at once, so it also works with classifier_max_concurrency 1.
+		out, err := s.runTestClassification(ctx, arm.cfg, snapshot, test, overridden)
+		if err != nil {
+			arm.side.ErrorCode, arm.side.ErrorMessage = "GPT_AUTO_CLASSIFIER_FAILED", "classification failed"
+			if appErr := (*infraerrors.ApplicationError)(nil); errors.As(err, &appErr) {
+				arm.side.ErrorCode, arm.side.ErrorMessage = appErr.Reason, appErr.Message
+				if appErr.Reason == "GPT_AUTO_CLASSIFIER_FAILED" {
+					result.JevCalls++ // the call reached Jev and was billed
+				}
+			}
 			continue
 		}
-		text = trimRunesKeepTail(redactGPTAutoText(gptAutoCaptureText(text, capture)), budget/maxInt(len(input.Context), 1))
-		budget -= utf8.RuneCountInString(text)
-		turns = append(turns, GPTAutoContextTurn{Role: gptAutoNormalizeRole(turn.Role), Text: text})
+		result.JevCalls++
+		result.TotalClassifierCost = gptAutoUSD(gptAutoDecimal(result.TotalClassifierCost).Add(gptAutoDecimal(out.ClassifierCost)))
+		arm.side.Result = out
 	}
-	snapshot := GPTAutoRequestSnapshot{
-		Endpoint:             input.Endpoint,
-		HasTools:             input.HasTools,
-		MessageCount:         len(input.Context) + 1,
-		LatestUser:           latest,
-		RecentContext:        turns,
-		EstimatedInputTokens: (totalChars + gptAutoCharsPerToken - 1) / gptAutoCharsPerToken,
+	return result, nil
+}
+
+func buildGPTAutoTestSnapshot(cfg GPTAutoShadowConfig, input GPTAutoTestInput) GPTAutoRequestSnapshot {
+	// The sample is converted into a request body and goes through exactly the
+	// extractor live traffic uses.
+	return BuildGPTAutoSnapshot(input.Endpoint, gptAutoTestRequestBody(input), cfg.ContextOptions())
+}
+
+// gptAutoTestRequestBody renders a test-lab sample as an OpenAI-compatible
+// request body for the given endpoint.
+func gptAutoTestRequestBody(input GPTAutoTestInput) []byte {
+	type message struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
 	}
+	messages := make([]message, 0, len(input.Context)+1)
+	for _, turn := range input.Context {
+		role := gptAutoNormalizeRole(turn.Role)
+		if role == "other" {
+			role = "user"
+		}
+		messages = append(messages, message{Role: role, Content: turn.Text})
+	}
+	messages = append(messages, message{Role: "user", Content: input.Prompt})
+	body := map[string]any{"model": "gpt-auto-test"}
 	if input.HasTools {
-		snapshot.ToolCount = 1
+		body["tools"] = []any{map[string]any{"type": "function", "function": map[string]any{"name": "tool"}}}
 	}
-	if input.EstimatedInputTokens != nil && *input.EstimatedInputTokens >= 0 {
-		snapshot.EstimatedInputTokens = *input.EstimatedInputTokens
+	if input.Endpoint == GPTAutoEndpointResponses {
+		body["input"] = messages
+	} else {
+		body["messages"] = messages
 	}
-	return snapshot
+	raw, _ := json.Marshal(body)
+	return raw
 }
 
 // applyGPTAutoProfileOverride validates and applies a per-call profile
@@ -1233,6 +1475,7 @@ type GPTAutoSimulationInput struct {
 	Effort               string                `json:"effort"`
 	InputTokens          int                   `json:"input_tokens"`
 	OutputTokens         *int                  `json:"output_tokens,omitempty"`
+	CachedInputTokens    *int                  `json:"cached_input_tokens,omitempty"`
 	IncludeClassifier    bool                  `json:"include_classifier_cost"`
 	ClassifierInputToken int                   `json:"classifier_input_tokens"`
 }
@@ -1266,7 +1509,8 @@ func (s *GPTAutoShadowService) Simulate(ctx context.Context, input GPTAutoSimula
 	}
 	if input.InputTokens < 0 || input.InputTokens > gptAutoMaxSimulationTokens ||
 		input.ClassifierInputToken < 0 || input.ClassifierInputToken > gptAutoMaxSimulationTokens ||
-		(input.OutputTokens != nil && (*input.OutputTokens < 0 || *input.OutputTokens > gptAutoMaxSimulationTokens)) {
+		(input.OutputTokens != nil && (*input.OutputTokens < 0 || *input.OutputTokens > gptAutoMaxSimulationTokens)) ||
+		(input.CachedInputTokens != nil && (*input.CachedInputTokens < 0 || *input.CachedInputTokens > gptAutoMaxSimulationTokens)) {
 		return nil, infraerrors.BadRequest("GPT_AUTO_SIMULATION_INVALID", "token counts must be between 0 and 10,000,000")
 	}
 	effort := strings.ToLower(strings.TrimSpace(input.Effort))
@@ -1276,25 +1520,22 @@ func (s *GPTAutoShadowService) Simulate(ctx context.Context, input GPTAutoSimula
 	if !IsGPTAutoEffort(effort) {
 		return nil, infraerrors.BadRequest("GPT_AUTO_SIMULATION_INVALID", "unknown reasoning effort")
 	}
-	classifierCost := 0.0
+	classifierCost, costSource := 0.0, GPTAutoClassifierCostExcluded
 	if input.IncludeClassifier {
 		classifierCost = gptAutoClassifierCostUSD(s.pricing, cfg.ClassifierModel, input.ClassifierInputToken, 0)
+		costSource = GPTAutoClassifierCostEstimated
 	}
-	estimator := s.outputEstimator()
-	if input.OutputTokens != nil {
-		fixed := float64(*input.OutputTokens)
-		estimator = func(string, string) GPTAutoOutputEstimate {
-			return GPTAutoOutputEstimate{Tokens: fixed, Source: "manual_input"}
-		}
-	}
+	inputTokens := input.InputTokens
+	assumptions := &GPTAutoWorkloadAssumptions{InputTokens: &inputTokens, CachedInputTokens: input.CachedInputTokens, OutputTokens: input.OutputTokens}
 	result := &GPTAutoSimulationResult{ClassifierCost: classifierCost}
 	for _, model := range GPTAutoModelPool() {
 		result.Rows = append(result.Rows, EstimateGPTAutoEconomics(GPTAutoPolicyInput{
-			Config:            *cfg,
-			Features:          GPTAutoRequestFeatures{EstimatedInputTokens: input.InputTokens},
-			Pricing:           s.pricing,
-			OutputEstimate:    estimator,
-			ClassifierCostUSD: classifierCost,
+			Config:               *cfg,
+			Pricing:              s.pricing,
+			OutputEstimate:       s.outputEstimator(),
+			ClassifierCostUSD:    classifierCost,
+			ClassifierCostSource: costSource,
+			Assumptions:          assumptions,
 		}, model, effort))
 	}
 	return result, nil

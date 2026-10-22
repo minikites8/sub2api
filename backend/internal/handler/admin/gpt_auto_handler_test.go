@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -66,7 +67,9 @@ func newGPTAutoTestRouter(t *testing.T, authorized bool) (*gin.Engine, *gptAutoS
 	gin.SetMode(gin.TestMode)
 	repo := &gptAutoSettingRepoStub{values: map[string]string{}}
 	settings := service.NewSettingService(repo, nil)
-	h := NewGPTAutoHandler(settings, nil)
+	shadow := service.NewGPTAutoShadowService(settings, nil, nil, nil)
+	t.Cleanup(shadow.Stop)
+	h := NewGPTAutoHandler(settings, shadow)
 	router := gin.New()
 	adminGroup := router.Group("/api/v1/admin")
 	// Stand-in for the real admin auth middleware mounted by RegisterAdminRoutes.
@@ -81,6 +84,11 @@ func newGPTAutoTestRouter(t *testing.T, authorized bool) (*gin.Engine, *gptAutoS
 	adminGroup.PUT("/gpt-auto/config", h.UpdateConfig)
 	adminGroup.GET("/gpt-auto/meta", h.Meta)
 	adminGroup.GET("/gpt-auto/decisions/:id", h.GetDecision)
+	adminGroup.GET("/gpt-auto/classifier", h.GetClassifier)
+	adminGroup.PUT("/gpt-auto/classifier", h.UpdateClassifier)
+	adminGroup.POST("/gpt-auto/classifier/preview", h.PreviewClassifier)
+	adminGroup.POST("/gpt-auto/test/compare", h.CompareClassifier)
+	adminGroup.POST("/gpt-auto/debug/state", h.DebugState)
 	return router, repo
 }
 
@@ -105,6 +113,15 @@ func TestGPTAutoAdminRoutesRequireAdmin(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, gptAutoDo(router, http.MethodGet, path, nil).Code)
 	}
 	require.Equal(t, http.StatusUnauthorized, gptAutoDo(router, http.MethodPut, "/api/v1/admin/gpt-auto/config", map[string]any{}).Code)
+	require.Equal(t, http.StatusUnauthorized, gptAutoDo(router, http.MethodGet, "/api/v1/admin/gpt-auto/classifier", nil).Code)
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPut, "/api/v1/admin/gpt-auto/classifier"},
+		{http.MethodPost, "/api/v1/admin/gpt-auto/classifier/preview"},
+		{http.MethodPost, "/api/v1/admin/gpt-auto/test/compare"},
+		{http.MethodPost, "/api/v1/admin/gpt-auto/debug/state"},
+	} {
+		require.Equal(t, http.StatusUnauthorized, gptAutoDo(router, route.method, route.path, map[string]any{}).Code, route.path)
+	}
 }
 
 func TestGPTAutoConfigRoundTripMasksKey(t *testing.T) {
@@ -222,4 +239,92 @@ func TestGPTAutoMetaReportsShadowPhase(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"live_routing_active":false`)
 	require.Contains(t, rec.Body.String(), "gpt-6.1-sol")
+}
+
+func gptAutoTestInstructions(prefix string) map[string]any {
+	return map[string]any{
+		"model_selection":         prefix + " model selection instruction text",
+		"effort_selection":        prefix + " effort selection instruction text",
+		"complexity_scoring":      prefix + " complexity scoring instruction text",
+		"category_classification": prefix + " category classification instruction text",
+	}
+}
+
+func TestGPTAutoClassifierInstructionsEndpoints(t *testing.T) {
+	router, repo := newGPTAutoTestRouter(t, true)
+
+	rec := gptAutoDo(router, http.MethodGet, "/api/v1/admin/gpt-auto/classifier", nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var view struct {
+		Data service.GPTAutoClassifierView `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &view))
+	require.True(t, view.Data.IsDefault)
+	require.Len(t, view.Data.Effective.Questions, 4)
+	require.Equal(t, service.DefaultGPTAutoClassifierInstructions().ModelSelection, view.Data.Defaults.ModelSelection)
+
+	// Validation is server-side.
+	bad := gptAutoTestInstructions("A")
+	bad["effort_selection"] = "short"
+	require.Equal(t, http.StatusBadRequest, gptAutoDo(router, http.MethodPut, "/api/v1/admin/gpt-auto/classifier", bad).Code)
+	tooLong := gptAutoTestInstructions("A")
+	tooLong["model_selection"] = strings.Repeat("x", 4001)
+	require.Equal(t, http.StatusBadRequest, gptAutoDo(router, http.MethodPut, "/api/v1/admin/gpt-auto/classifier", tooLong).Code)
+
+	// Preview never saves.
+	rec = gptAutoDo(router, http.MethodPost, "/api/v1/admin/gpt-auto/classifier/preview", gptAutoTestInstructions("PREVIEW"))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "PREVIEW model selection")
+	require.NotContains(t, repo.values[service.SettingKeyGPTAutoShadowConfig], "PREVIEW")
+
+	rec = gptAutoDo(router, http.MethodPut, "/api/v1/admin/gpt-auto/classifier", gptAutoTestInstructions("SAVED"))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Contains(t, repo.values[service.SettingKeyGPTAutoShadowConfig], "SAVED model selection")
+	require.Contains(t, rec.Body.String(), `"revision":1`)
+
+	// A general config save, even with stale or forged instructions, keeps the
+	// saved ones: instructions change only through their own endpoint.
+	cfg := service.DefaultGPTAutoShadowConfig()
+	cfg.ClassifierInstructions.ModelSelection = "STALE model selection instruction from an old form"
+	rec = gptAutoDo(router, http.MethodPut, "/api/v1/admin/gpt-auto/config", cfg)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	stored := repo.values[service.SettingKeyGPTAutoShadowConfig]
+	require.Contains(t, stored, "SAVED model selection")
+	require.NotContains(t, stored, "STALE")
+}
+
+func TestGPTAutoCompareRejectsInvalidDraftWithoutCallingJev(t *testing.T) {
+	router, _ := newGPTAutoTestRouter(t, true)
+	draft := gptAutoTestInstructions("D")
+	draft["category_classification"] = ""
+	rec := gptAutoDo(router, http.MethodPost, "/api/v1/admin/gpt-auto/test/compare", map[string]any{"prompt": "hi", "draft_instructions": draft})
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	// No key configured: refused before any classifier call.
+	rec = gptAutoDo(router, http.MethodPost, "/api/v1/admin/gpt-auto/test/compare", map[string]any{"prompt": "hi", "draft_instructions": gptAutoTestInstructions("D")})
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "GPT_AUTO_CLASSIFIER_NOT_CONFIGURED")
+}
+
+func TestGPTAutoDebugStateEndpoint(t *testing.T) {
+	router, repo := newGPTAutoTestRouter(t, true)
+	request := map[string]any{"model": "gpt-5.6-sol", "messages": []any{
+		map[string]any{"role": "system", "content": "PRIVATE operator prompt"},
+		map[string]any{"role": "user", "content": "Write a haiku about rain"},
+	}}
+	rec := gptAutoDo(router, http.MethodPost, "/api/v1/admin/gpt-auto/debug/state", map[string]any{"endpoint": "chat_completions", "request": request})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var out struct {
+		Data service.GPTAutoDebugResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	require.Contains(t, out.Data.JevRequest.State, "Write a haiku about rain")
+	require.NotContains(t, out.Data.JevRequest.State, "PRIVATE operator prompt")
+	require.Len(t, out.Data.JevRequest.Questions, 4)
+	require.Equal(t, "state-v3", out.Data.Context.StateVersion)
+	require.Empty(t, repo.values[service.SettingKeyGPTAutoShadowConfig], "nothing is saved")
+
+	rec = gptAutoDo(router, http.MethodPost, "/api/v1/admin/gpt-auto/debug/state", map[string]any{"endpoint": "messages", "request": request})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	rec = gptAutoDo(router, http.MethodPost, "/api/v1/admin/gpt-auto/debug/state", map[string]any{"request": "not an object"})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }

@@ -92,6 +92,14 @@
               <input v-model.number="proxyIdInput" type="number" min="0" class="input" />
               <span class="input-hint">{{ t('gptAuto.config.classifier.proxyIdHint') }}</span>
             </label>
+            <label>
+              <span class="input-label">{{ t('gptAuto.config.classifier.contextStrategy') }}</span>
+              <select v-model="form.classification_context_strategy" class="input" data-testid="gpt-auto-context-strategy">
+                <option value="task_aware">{{ t('gptAuto.config.classifier.strategies.task_aware') }}</option>
+                <option value="recent_turns">{{ t('gptAuto.config.classifier.strategies.recent_turns') }}</option>
+              </select>
+              <span class="input-hint">{{ t(`gptAuto.config.classifier.strategyHints.${form.classification_context_strategy ?? 'task_aware'}`) }}</span>
+            </label>
             <label v-for="field in numericFields" :key="field.key">
               <span class="input-label">{{ t(field.label) }}</span>
               <input v-model.number="(form as unknown as Record<string, number>)[field.key]" type="number" :min="field.min" :max="field.max" :step="field.step ?? 1" class="input" />
@@ -216,7 +224,7 @@
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('gptAuto.simulator.hint') }}</p>
         </header>
         <div class="space-y-4 p-6">
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-5">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
             <label>
               <span class="input-label">{{ t('gptAuto.simulator.effort') }}</span>
               <select v-model="sim.effort" class="input">
@@ -226,6 +234,10 @@
             <label>
               <span class="input-label">{{ t('gptAuto.simulator.inputTokens') }}</span>
               <input v-model.number="sim.input_tokens" type="number" min="0" class="input" />
+            </label>
+            <label>
+              <span class="input-label">{{ t('gptAuto.simulator.cachedTokens') }}</span>
+              <input v-model.number="sim.cached_input_tokens" type="number" min="0" class="input" data-testid="gpt-auto-sim-cached" />
             </label>
             <label>
               <span class="input-label">{{ t('gptAuto.simulator.outputTokens') }}</span>
@@ -250,24 +262,26 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-                <tr v-for="row in simResult.rows" :key="row.model" :class="row.below_target ? 'bg-red-50/60 dark:bg-red-900/10' : ''" :data-testid="`gpt-auto-sim-row-${row.model}`">
+                <tr v-for="row in simResult.rows" :key="row.model" :data-testid="`gpt-auto-sim-row-${row.model}`">
                   <td class="px-3 py-2 font-mono">{{ row.model }}</td>
-                  <td class="px-3 py-2 tabular-nums">{{ row.billing_multiplier }}×</td>
-                  <td class="px-3 py-2 tabular-nums">{{ row.pricing_available ? formatUSD(row.estimated_revenue) : '—' }}</td>
+                  <td class="px-3 py-2 tabular-nums">{{ formatMultiplier(row.billing_multiplier) }}</td>
+                  <td class="px-3 py-2 tabular-nums">{{ simKnown(row) ? formatUSD(row.estimated_revenue) : 'N/A' }}</td>
                   <td class="px-3 py-2 tabular-nums">
-                    {{ row.pricing_available ? formatUSD(row.estimated_upstream_cost) : '—' }}
+                    {{ simKnown(row) ? formatUSD(row.estimated_upstream_cost) : 'N/A' }}
                     <span class="block text-[11px] text-gray-500">{{ row.upstream_channel || labels.costSource(row.upstream_cost_source) }}</span>
                   </td>
-                  <td class="px-3 py-2 tabular-nums">{{ formatUSD(row.estimated_classifier_cost, 8) }}</td>
-                  <td class="px-3 py-2 tabular-nums">{{ row.pricing_available ? formatUSD(row.estimated_gross_profit) : '—' }}</td>
-                  <td class="px-3 py-2 tabular-nums" :class="row.below_target ? 'font-semibold text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'">
-                    {{ formatPercent(row.estimated_gross_margin) }}
-                    <span class="block text-[11px] font-normal text-gray-500">{{ t('gptAuto.simulator.target', { value: formatPercent(row.target_margin) }) }}</span>
+                  <td class="px-3 py-2 tabular-nums">{{ formatUSD(row.estimated_classifier_cost) }}</td>
+                  <td class="px-3 py-2 tabular-nums" :class="marginStatusClass(economicsView(row).modelStatus)" :data-testid="`gpt-auto-sim-model-margin-${row.model}`">
+                    {{ economicsView(row).modelMargin === null ? 'N/A' : formatPercent(economicsView(row).modelMargin) }}
+                    <span class="block text-[11px] font-normal">{{ labels.marginStatus(economicsView(row).modelStatus) }} · {{ t('gptAuto.simulator.target', { value: formatPercent(row.target_margin) }) }}</span>
                   </td>
-                  <td class="px-3 py-2 tabular-nums">{{ row.min_required_multiplier !== undefined && row.min_required_multiplier !== null ? `${row.min_required_multiplier}×` : '—' }}</td>
+                  <td class="px-3 py-2 tabular-nums" :class="marginStatusClass(economicsView(row).fullStatus)" :data-testid="`gpt-auto-sim-full-margin-${row.model}`">
+                    {{ economicsView(row).fullMargin === null ? 'N/A' : formatPercent(economicsView(row).fullMargin) }}
+                    <span class="block text-[11px] font-normal">{{ labels.marginStatus(economicsView(row).fullStatus) }}</span>
+                  </td>
+                  <td class="px-3 py-2 tabular-nums">{{ formatMultiplier(row.min_required_multiplier) }}<span class="block text-[11px] text-gray-500">{{ formatMultiplier(row.min_required_multiplier_fully_loaded) }}</span></td>
                   <td class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
                     {{ labels.outputSource(row.output_estimate_source) }}<template v-if="row.output_estimate_samples"> · n={{ row.output_estimate_samples }}</template>
-                    <span v-if="row.below_target" class="block font-medium text-red-600 dark:text-red-400">{{ t('gptAuto.simulator.belowTarget') }}</span>
                     <span v-if="!row.pricing_available" class="block text-amber-600 dark:text-amber-400">{{ t('gptAuto.simulator.noPricing') }}</span>
                   </td>
                 </tr>
@@ -306,10 +320,10 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Toggle from '@/components/common/Toggle.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import { gptAutoAPI, type GPTAutoConfig, type GPTAutoMeta, type GPTAutoModelProfile, type GPTAutoSimulationResult, type UpdateGPTAutoConfig } from '@/api/admin/gptAuto'
+import { gptAutoAPI, type GPTAutoConfig, type GPTAutoEconomics, type GPTAutoMeta, type GPTAutoModelProfile, type GPTAutoSimulationResult, type UpdateGPTAutoConfig } from '@/api/admin/gptAuto'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { cloneProfiles, formatPercent, formatUSD, parseIdList, parseStringList, toEditableConfig } from '@/utils/gptAuto'
+import { cloneProfiles, economicsView, formatMultiplier, formatPercent, formatUSD, marginStatusClass, parseIdList, parseStringList, toEditableConfig } from '@/utils/gptAuto'
 import { useGPTAutoLabels } from '@/composables/useGPTAutoLabels'
 
 const emit = defineEmits<{ (e: 'saved', config: GPTAutoConfig): void }>()
@@ -340,7 +354,8 @@ const numericFields: { key: keyof UpdateGPTAutoConfig; label: string; hint?: str
   { key: 'classifier_daily_call_limit', label: 'gptAuto.config.classifier.dailyCalls', hint: 'gptAuto.config.classifier.zeroUnlimited', min: 0, max: 10000000 },
   { key: 'classifier_daily_cost_limit', label: 'gptAuto.config.classifier.dailyCost', hint: 'gptAuto.config.classifier.zeroUnlimited', min: 0, max: 1000000, step: 0.01 },
   { key: 'classification_max_context_chars', label: 'gptAuto.config.classifier.maxChars', hint: 'gptAuto.config.classifier.maxCharsHint', min: 100, max: 200000, step: 100 },
-  { key: 'classification_context_messages', label: 'gptAuto.config.classifier.contextMessages', min: 0, max: 20 },
+  { key: 'classification_context_messages', label: 'gptAuto.config.classifier.contextMessages', hint: 'gptAuto.config.classifier.contextMessagesHint', min: 0, max: 20 },
+  { key: 'classification_agent_steps', label: 'gptAuto.config.classifier.agentSteps', hint: 'gptAuto.config.classifier.agentStepsHint', min: 1, max: 30 },
   { key: 'worker_count', label: 'gptAuto.config.classifier.workers', min: 1, max: 32 },
   { key: 'queue_size', label: 'gptAuto.config.classifier.queueSize', min: 1, max: 100000 },
   { key: 'decision_retention_days', label: 'gptAuto.config.classifier.retention', min: 1, max: 3650 },
@@ -466,8 +481,9 @@ function addChannel(profile: GPTAutoModelProfile) {
 }
 
 // --- simulator ---
-const simColumns = ['model', 'multiplier', 'revenue', 'upstream', 'classifier', 'profit', 'margin', 'required', 'basis']
-const sim = reactive({ effort: 'medium', input_tokens: 2000, outputTokensText: '', include_classifier_cost: true })
+const simColumns = ['model', 'multiplier', 'revenue', 'upstream', 'classifier', 'modelMargin', 'fullMargin', 'required', 'basis']
+const sim = reactive({ effort: 'medium', input_tokens: 2000, cached_input_tokens: 0, outputTokensText: '', include_classifier_cost: true })
+const simKnown = (row: GPTAutoEconomics) => economicsView(row).quality !== 'insufficient_data'
 const simLoading = ref(false)
 const simError = ref('')
 const simResult = ref<GPTAutoSimulationResult | null>(null)
@@ -485,9 +501,12 @@ async function runSimulation() {
       profit_safety_buffer: payload.profit_safety_buffer,
       effort: sim.effort,
       input_tokens: Number(sim.input_tokens) || 0,
+      cached_input_tokens: Number(sim.cached_input_tokens) || 0,
       output_tokens: output !== undefined && Number.isFinite(output) ? output : undefined,
       include_classifier_cost: sim.include_classifier_cost,
-      classifier_input_tokens: Math.min(Number(sim.input_tokens) || 0, Math.ceil((payload.classification_max_context_chars || 0) / 4)) + 400,
+      // Jev bills the question text (instructions + criteria, about 2k tokens
+      // with the shipped v2 instructions) plus the truncated request excerpt.
+      classifier_input_tokens: Math.min(Number(sim.input_tokens) || 0, Math.ceil((payload.classification_max_context_chars || 0) / 4)) + 2000,
     })
   } catch (err) {
     simError.value = extractApiErrorMessage(err, t('gptAuto.simulator.failed'))

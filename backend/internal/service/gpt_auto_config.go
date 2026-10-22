@@ -119,7 +119,14 @@ type GPTAutoShadowConfig struct {
 	ClassifierDailyCallLimit      int     `json:"classifier_daily_call_limit"`
 	ClassifierDailyCostLimit      float64 `json:"classifier_daily_cost_limit"`
 	ClassificationMaxContextChars int     `json:"classification_max_context_chars"`
-	ClassificationContextMessages int     `json:"classification_context_messages"`
+	// ClassificationContextMessages is how many conversation turns before the
+	// latest user message may be forwarded.
+	ClassificationContextMessages int `json:"classification_context_messages"`
+	// ClassificationContextStrategy is task_aware (default) or recent_turns.
+	ClassificationContextStrategy string `json:"classification_context_strategy"`
+	// ClassificationAgentSteps is how many recent agent events (tool calls,
+	// tool results, assistant notes) may be summarised.
+	ClassificationAgentSteps int `json:"classification_agent_steps"`
 
 	WorkerCount int `json:"worker_count"`
 	QueueSize   int `json:"queue_size"`
@@ -130,6 +137,11 @@ type GPTAutoShadowConfig struct {
 	ProfitSafetyBuffer float64               `json:"profit_safety_buffer"`
 	ModelProfiles      []GPTAutoModelProfile `json:"model_profiles"`
 	PolicyVersion      string                `json:"policy_version"`
+
+	// ClassifierInstructions are the question-level Jev instructions. They are
+	// edited through their own admin endpoint (versioned and audited); the
+	// general config update preserves the stored value.
+	ClassifierInstructions GPTAutoClassifierInstructions `json:"classifier_instructions"`
 }
 
 // Bounds. Validation rejects anything outside these; normalization clamps.
@@ -208,21 +220,37 @@ func DefaultGPTAutoModelProfiles() []GPTAutoModelProfile {
 	return profiles
 }
 
-// gptAutoDefaultModelDescription states only what the identifiers themselves
-// convey (generation and tier). Operators are expected to refine these.
+// gptAutoDefaultModelDescription positions each model by fit and
+// sufficiency. The gateway has no vendor capability metadata for these
+// models, so the text states only the generation/tier positioning and the
+// intended use; operators are expected to refine it. Effort support is not
+// mentioned: reasoning effort is classified separately and constrained by the
+// policy engine.
 func gptAutoDefaultModelDescription(model string) string {
 	switch model {
 	case GPTAutoModelGPT56Luna:
-		return "GPT-5.6 generation, Luna tier: the lighter option of the previous generation."
+		return "GPT-5.6 generation, Luna tier: efficient previous-generation model. Suitable for simple, well-scoped requests such as short answers, rewrites and small edits."
 	case GPTAutoModelGPT56Sol:
-		return "GPT-5.6 generation, Sol tier: the stronger option of the previous generation."
+		return "GPT-5.6 generation, Sol tier: high-capability previous-generation model for demanding reasoning, analysis and engineering that a Luna model would likely get wrong."
 	case GPTAutoModelGPT6Luna:
-		return "GPT-6 generation, Luna tier: the lighter option of the current generation."
+		return "GPT-6 generation, Luna tier: efficient current-generation model. The default fit for everyday questions, writing, routine and well-scoped coding, and standard analysis."
 	case GPTAutoModelGPT61Sol:
-		return "GPT-6.1 generation, Sol tier: the strongest option in the pool, for the hardest tasks; does not run with reasoning disabled."
+		return "GPT-6.1 generation, Sol tier: highest-capability model, for genuinely difficult multi-step reasoning, complex debugging, advanced engineering and long agentic plans. Unnecessary for ordinary tasks."
 	default:
 		return model
 	}
+}
+
+// gptAutoLegacyModelDescriptions are the shipped v1 defaults. They described
+// GPT-6.1 Sol as "the strongest option in the pool" and every other model as
+// "the lighter option", which framed the choice as "most capable wins". A
+// stored description still equal to its v1 default was never customised and
+// is upgraded to the current default on read; edited descriptions are kept.
+var gptAutoLegacyModelDescriptions = map[string]string{
+	GPTAutoModelGPT56Luna: "GPT-5.6 generation, Luna tier: the lighter option of the previous generation.",
+	GPTAutoModelGPT56Sol:  "GPT-5.6 generation, Sol tier: the stronger option of the previous generation.",
+	GPTAutoModelGPT6Luna:  "GPT-6 generation, Luna tier: the lighter option of the current generation.",
+	GPTAutoModelGPT61Sol:  "GPT-6.1 generation, Sol tier: the strongest option in the pool, for the hardest tasks; does not run with reasoning disabled.",
 }
 
 // DefaultGPTAutoShadowConfig is disabled and zero-sampled: deploying this
@@ -244,6 +272,8 @@ func DefaultGPTAutoShadowConfig() *GPTAutoShadowConfig {
 		ClassifierDailyCostLimit:      gptAutoDefaultDailyCostLimit,
 		ClassificationMaxContextChars: gptAutoDefaultContextChars,
 		ClassificationContextMessages: gptAutoDefaultContextMessages,
+		ClassificationContextStrategy: GPTAutoContextTaskAware,
+		ClassificationAgentSteps:      gptAutoDefaultAgentSteps,
 		WorkerCount:                   gptAutoDefaultWorkerCount,
 		QueueSize:                     gptAutoDefaultQueueSize,
 		DecisionRetentionDays:         gptAutoDefaultRetentionDays,
@@ -251,6 +281,7 @@ func DefaultGPTAutoShadowConfig() *GPTAutoShadowConfig {
 		ProfitSafetyBuffer:            gptAutoDefaultSafetyBuffer,
 		ModelProfiles:                 DefaultGPTAutoModelProfiles(),
 		PolicyVersion:                 GPTAutoPolicyVersionDefault,
+		ClassifierInstructions:        DefaultGPTAutoClassifierInstructions(),
 	}
 }
 
@@ -269,6 +300,10 @@ func normalizeGPTAutoShadowConfig(cfg *GPTAutoShadowConfig) {
 	cfg.QueueSize = clampIntDefault(cfg.QueueSize, 1, gptAutoMaxQueueSize, gptAutoDefaultQueueSize)
 	cfg.ClassificationMaxContextChars = clampIntDefault(cfg.ClassificationMaxContextChars, 100, gptAutoMaxContextChars, gptAutoDefaultContextChars)
 	cfg.ClassificationContextMessages = clampInt(cfg.ClassificationContextMessages, 0, gptAutoMaxContextMessages)
+	if cfg.ClassificationContextStrategy != GPTAutoContextRecentTurns {
+		cfg.ClassificationContextStrategy = GPTAutoContextTaskAware
+	}
+	cfg.ClassificationAgentSteps = clampIntDefault(cfg.ClassificationAgentSteps, 1, gptAutoMaxAgentSteps, gptAutoDefaultAgentSteps)
 	cfg.DecisionRetentionDays = clampIntDefault(cfg.DecisionRetentionDays, 1, gptAutoMaxRetentionDays, gptAutoDefaultRetentionDays)
 	cfg.ClassifierDailyCallLimit = clampInt(cfg.ClassifierDailyCallLimit, 0, gptAutoMaxDailyCallLimit)
 	cfg.ClassifierDailyCostLimit = clampFloat(cfg.ClassifierDailyCostLimit, 0, gptAutoMaxDailyCostLimit)
@@ -287,6 +322,7 @@ func normalizeGPTAutoShadowConfig(cfg *GPTAutoShadowConfig) {
 	}
 	cfg.Endpoints = normalizeGPTAutoEndpoints(cfg.Endpoints)
 	cfg.ModelProfiles = normalizeGPTAutoModelProfiles(cfg.ModelProfiles)
+	normalizeGPTAutoClassifierInstructions(&cfg.ClassifierInstructions)
 }
 
 func normalizeGPTAutoEndpoints(in []string) []string {
@@ -336,7 +372,7 @@ func normalizeGPTAutoModelProfiles(in []GPTAutoModelProfile) []GPTAutoModelProfi
 		}
 		profile.Endpoints = normalizeGPTAutoProfileEndpoints(profile.Endpoints)
 		profile.Description = trimRunes(strings.TrimSpace(profile.Description), gptAutoMaxDescriptionRunes)
-		if profile.Description == "" {
+		if profile.Description == "" || profile.Description == gptAutoLegacyModelDescriptions[profile.Model] {
 			profile.Description = fallback.Description
 		}
 		if profile.MinMargin != nil {
@@ -429,6 +465,14 @@ func ValidateGPTAutoShadowConfig(cfg *GPTAutoShadowConfig) error {
 	if cfg.ClassificationContextMessages < 0 || cfg.ClassificationContextMessages > gptAutoMaxContextMessages {
 		return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", "classification_context_messages must be between 0 and 20")
 	}
+	switch cfg.ClassificationContextStrategy {
+	case "", GPTAutoContextTaskAware, GPTAutoContextRecentTurns:
+	default:
+		return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", "classification_context_strategy must be task_aware or recent_turns")
+	}
+	if cfg.ClassificationAgentSteps < 0 || cfg.ClassificationAgentSteps > gptAutoMaxAgentSteps {
+		return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", "classification_agent_steps must be between 1 and 30")
+	}
 	if cfg.DecisionRetentionDays < 1 || cfg.DecisionRetentionDays > gptAutoMaxRetentionDays {
 		return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", "decision_retention_days must be between 1 and 3650")
 	}
@@ -458,6 +502,9 @@ func ValidateGPTAutoShadowConfig(cfg *GPTAutoShadowConfig) error {
 		if !isGPTAutoSupportedEndpoint(endpoint) {
 			return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", "unsupported endpoint: "+endpoint)
 		}
+	}
+	if err := ValidateGPTAutoClassifierInstructions(cfg.ClassifierInstructions); err != nil {
+		return err
 	}
 	if !cfg.AllGroups && len(cfg.GroupIDs) == 0 {
 		return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", "select at least one group or enable all_groups")

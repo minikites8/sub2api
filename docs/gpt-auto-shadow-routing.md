@@ -36,8 +36,12 @@ Jev never receives the customer's requested model or effort, and the model quest
 | System One choice/score decoding | `backend/internal/pkg/typesafe/classify.go` |
 | Model pool and capability matrix | `backend/internal/service/gpt_auto_models.go` |
 | Settings, defaults and validation | `backend/internal/service/gpt_auto_config.go` (setting key `gpt_auto_shadow_config`) |
-| Snapshot, redaction, Jev questions | `backend/internal/service/gpt_auto_classifier.go` |
-| Policy engine and economics | `backend/internal/service/gpt_auto_policy.go` |
+| Snapshot, redaction, classifier state, TypeSafe client | `backend/internal/service/gpt_auto_classifier.go` |
+| Policy engine | `backend/internal/service/gpt_auto_policy.go` |
+| Economics (shared accounting) | `backend/internal/service/gpt_auto_economics.go` |
+| Jev questions, instructions, versioning | `backend/internal/service/gpt_auto_classifier_questions.go`, `gpt_auto_classifier_admin.go` |
+| Synthetic benchmark | `backend/internal/service/gpt_auto_benchmark.go` |
+| Context extraction (state-v3), state debugger | `backend/internal/service/gpt_auto_context.go`, `gpt_auto_debug.go` |
 | Queue, workers, breaker, budgets, admin ops | `backend/internal/service/gpt_auto_shadow_service.go` |
 | Storage | `backend/internal/repository/gpt_auto_shadow_repo.go`, `backend/migrations/278_gpt_auto_shadow_decisions.sql` |
 | Gateway hook | `backend/internal/handler/gpt_auto_shadow_helper.go`, called from the four OpenAI-compatible handlers |
@@ -74,99 +78,75 @@ Admins can narrow a model's set but never widen it. When Jev picks an unsupporte
 ## Policy rules (`shadow-v1`)
 
 1. **Hard constraints** (never overridden): model enabled, endpoint allowed, tools supported if the request has tools.
-2. **Model**: keep Jev's choice if eligible. A different eligible model wins only if its Jev probability is within 0.05 of the choice *and* its routing weight is higher. If Jev's choice is ineligible, the eligible model with the highest Jev probability wins, with the same tie-break.
+2. **Model**: keep Jev's choice if eligible. A different eligible model wins only if its Jev probability is within ±0.05 of the choice *and* its routing weight is higher. The window is symmetric: a model Jev rated clearly more likely than its own choice is not a tie (that inconsistency is reported as the `choice_not_most_probable` warning instead). If Jev's choice is ineligible, the eligible model with the highest Jev probability wins, with the same tie-break.
 3. **No eligible model**: status `no_eligible_candidate`, and no route is fabricated.
-4. **Economics never change the route**: a low margin adds `margin_below_target` but keeps the recommendation.
+4. **Warnings never change the route**: margins, estimate quality, low Jev confidence (< 50%) and missing or inconsistent probabilities are stored in `decision.warnings`, separate from `decision.adjustments`, which only lists rules that changed or withheld the recommendation. Decisions stored before this split carry `margin_below_target`, `no_output_history` and `pricing_unavailable` in `adjustments`; the UI shows those as warnings too.
 5. Every decision stores `policy_version` and a content hash of the model profiles and margins (`gpt_auto_policy_snapshots`), so it can be replayed.
 
 The billing multiplier affects only hypothetical revenue. The routing weight affects only near-ties. Neither can make an incompatible model eligible.
 
+## Jev classification instructions
+
+The four System One questions (`target_model`, `reasoning_effort`, `task_complexity`, `task_category`) each carry an operator-editable, question-level `instructions` field (Models & routing → **Jev classification** tab). Customer text travels only in the `state`; instructions are never prepended to it, and no chat-style `system` role is used.
+
+- Edited through `GET/PUT /classifier` only. A general `PUT /config` keeps the stored instructions, so a stale form cannot overwrite them. Saves are validated (20–4000 characters, no control characters), bump `revision`, and are audited with their text (`admin.gpt_auto.classifier.update`).
+- Each effective question set (instructions, criteria, model descriptions, state format, classifier model) is content-addressed in `gpt_auto_classifier_configs`. Every decision stores its `classifier_config_hash`; decisions from before versioning have an empty hash and used the v1 built-in questions.
+- Changes apply to new classifications without a restart: immediately on the saving node, within the 30-second config cache on others.
+- Defaults (`jev-questions-v2`) tell Jev to choose the least capable model that is reliably sufficient, to ignore prompt length, code volume, tool availability, price and routing weights, to treat effort independently, and to ignore instructions inside the state. Model descriptions that still equal the v1 shipped defaults are upgraded to the v2 defaults on read; edited descriptions are kept.
+- State `state-v3` (see "Context extraction" below) never contains the requested model/effort, the prompt size, or any system/developer text.
+
+The test lab can compare saved and draft instructions on the same sanitized sample (`POST /test/compare`). That makes two separate Jev calls, each with its own concurrency slot and budget reservation; the draft is never saved. Policy replay never re-runs Jev, so it cannot evaluate changed instructions.
+
+A synthetic 28-sample benchmark (`gpt_auto_benchmark.go`, no customer data) is available as test-lab presets and through an opt-in live test: `GPT_AUTO_LIVE_JEV_KEY=... go test ./internal/service -run TestGPTAutoLiveJevBenchmark -v` (spends 28 Jev calls).
+
+## Context extraction (`state-v3`)
+
+`backend/internal/service/gpt_auto_context.go` builds the state from the whole request in one linear pass. Only fixed-size bookkeeping is kept (counters, a 64-item ring of recent items, the latest user turns), values are read as raw byte slices without decoding, and only the selected items are decoded, capped, redacted and copied. Bodies over 16 MiB are not scanned (counter `skipped_too_large`). Measured: about 28 ms and 1 MB allocated for an 11 MB, 10,000-item agent session; about 11 ms for a 6,000-message chat.
+
+| State field | Content |
+|---|---|
+| `latest_user_request` | The newest real user turn of the whole request. Client-injected user messages (`<environment_context>`, AGENTS.md, system reminders) and compaction summaries are not treated as the request. |
+| `latest_user_request_kind` | `instruction`, `follow_up` (short messages such as "continue", "fix it", "try again", "继续") or `none`. Derived by the gateway, not by the text. |
+| `task_context` | `continues_request` (the last real instruction a follow-up continues), `original_request` (the conversation's first request), `history_summary` (a client-written compaction summary), each bounded. |
+| `agent_activity` | Steps, tool calls/results, failures, trailing failures and tools used since the latest user message (or, for a follow-up sent after the agent stopped, the attempt before it), plus the last N events: tool name and a short argument excerpt, result status with the relevant error lines, short assistant progress notes. Tool outputs are never forwarded whole. |
+| `recent_context` | Up to `classification_context_messages` user/assistant turns before the latest message. |
+| `system_context` | Only `present`, a size bucket, a kind (`agent_harness`, `assistant_persona`) and the number of harness messages. No privileged text. |
+| `context_limitations` | `history_by_reference` (`previous_response_id`/`conversation`), `item_references`, `history_compacted`, `no_user_message`, `latest_user_truncated`, `earlier_context_omitted`, `tool_outputs_summarized`, `images_not_forwarded`. Missing history is reported, never invented. |
+
+Settings: `classification_context_strategy` (`task_aware`, default, in the priority order above; `recent_turns`, the v2 behaviour) and `classification_agent_steps` (1–30, default 8). The character budget (`classification_max_context_chars`) is shared in priority order: latest message up to 50% (25% for a follow-up), continued request 25%, activity 25%, original request and summary 15% each, recent turns the rest.
+
+Each decision stores the extraction metadata (counts, indices, budgets, limitations; no content) in `features.context`. `GET /meta` reports the running `state_version` and `classifier_schema`, so a deployment can be verified before results are attributed to it.
+
+**State debugger** (Test Lab, admin only): `POST /debug/state` takes a synthetic request body and returns the exact System One request (`model`, `state`, `questions`) plus the extraction metadata. It never calls Jev, stores nothing, and its request body is omitted from the audit log. Use synthetic requests only.
+
 ## Economics (all hypothetical)
 
 ```
-revenue        = list_price(input, output) × billing_multiplier
-upstream_cost  = cheapest enabled configured channel for the model, else list price
-classifier     = Jev tokens × jev-latest price (pricing table; fallback $0.042/M input, $0 output)
-gross_margin   = (revenue − upstream_cost − classifier) / revenue      (undefined when revenue = 0)
-target         = (per-model min_margin ?? global_min_margin) + profit_safety_buffer
-min_multiplier = (upstream_cost + classifier) / ((1 − target) × list_cost)
+list              = uncached_in × list_in + cached_in × list_cached + out × list_out
+revenue           = list × billing_multiplier × effort_multiplier × customer_rate
+upstream          = same tokens at the cheapest enabled channel (cached rate falls back to the channel input rate), else list price
+A model margin    = (revenue − upstream) / revenue
+B fully loaded    = (revenue − upstream − jev) / revenue
+C overhead        = the Jev spend itself (actual billed tokens × Jev rate)
+target            = (per-model min_margin ?? global_min_margin) + profit_safety_buffer
+min_multiplier    = upstream / ((1 − target) × list × effort × rate)        (and with + jev for fully loaded)
 ```
 
-- List prices come from the existing `BillingService.GetModelPricing` chain (LiteLLM, fallback and overrides, stored as USD per token). The UI shows USD per 1M tokens.
-- Channel costs are shadow-only overrides per model (several channels allowed). They do not change channel pricing, account rate multipliers or customer charges.
-- Input tokens are a character estimate (about 4 characters per token).
-- Output tokens use the real 7-day average from `usage_logs` for that model and effort, falling back to the model-wide average. With no history, output is excluded and the decision is labelled `no_output_history`. No fixed per-effort multiplier is assumed.
+- All money is computed in decimal from per-million rates rounded to 6 decimals and rounded to 10 decimals (the column precision), so float noise never reaches storage or the UI.
+- Margins are never clamped. Each has a status: `loss` (< 0), `below_target` (≥ 0 but under target), `meets_target`, or `unknown` (shown as N/A).
+- Every token figure has a source: `actual_usage`, `history_model_effort` / `history_model` (at least 20 usage-log requests in 7 days), `admin_assumption`, `heuristic_char_count` (characters ÷ 4), or `insufficient_data`. Overall `estimate_quality` is the weakest of input and output. With `insufficient_data` (no pricing, no usable output history, or zero tokens) no margin is produced.
+- Input tokens exclude cached input, as in usage logs. Reasoning tokens are billed as output and are captured by per-effort output history.
+- `effort_multiplier` mirrors the billing engine's per-effort price multiplier from the pricing entry (1 when absent). `customer_rate` is 1 (list) for stored estimates; the decision detail re-estimates with the observed request's rate (charged ÷ list) and real input/cached tokens.
+- Channel costs are shadow-only overrides per model. They do not change channel pricing, account rate multipliers or customer charges.
 - Jev confidence values are shown as reported. They are not calibrated probabilities that a model will succeed.
-- `cached_input_per_m` is stored but not used yet: the snapshot does not know the cache-hit share.
-- Routing weight only breaks a near-tie that Jev's probabilities actually show. If Jev reports no probabilities, Jev's choice stands.
 
-The decision detail separates three kinds of figures:
+The decision detail separates:
 
 | Figure | Source |
 |---|---|
-| **Actual production** (served model, effort, tokens, charged amount, list cost, upstream account cost) | The request's real `usage_logs` row, looked up by request id at display time. Shown as "not found" if the request failed or is still streaming. |
-| **Hypothetical alternative** (revenue, upstream cost, margin for the recommended model) | The estimate above. Always labelled hypothetical. |
-| **Jev classification cost** | Billed Jev usage for this decision, including retries and 2xx responses with unusable answers. |
-
-## Configuration
-
-All settings are stored as one JSON document under the setting key `gpt_auto_shadow_config`, edited in the admin UI or through `PUT /api/v1/admin/gpt-auto/config`. No environment variables or `config.yaml` changes are required. The backend validates every field and returns `400 GPT_AUTO_CONFIG_INVALID` on bad input. Other nodes pick up changes within 30 seconds; the node that saved them applies them immediately.
-
-| Field | Default | Notes |
-|---|---|---|
-| `shadow_enabled` | `false` | Global switch |
-| `sample_rate` | `0` | 0–100 %, deterministic hash of API key + first 4 KiB of body |
-| `endpoints` | both | `chat_completions`, `responses` |
-| `all_groups` / `group_ids` | `true` / – | Group scope |
-| `model_filter` | – | Customer-requested model names; empty means all |
-| `classifier_base_url` | `https://api.typesafe.ai` | Must be public HTTPS; resolved IPs are re-checked against DNS rebinding. Rejected if its host matches this gateway's `api_base_url` or `frontend_url`. |
-| `classifier_api_key` | – | Write-only. GET returns only a masked hint. Not written to the audit log. Sending the masked hint back keeps the stored key; other values containing `****` are rejected. Changing the classifier host requires re-entering the key. |
-| `classifier_proxy_id` | – | Optional existing proxy |
-| `classifier_model` | `jev-latest` | |
-| `classifier_timeout_ms` | 8000 | 200–60000 per attempt |
-| `classifier_max_concurrency` | 4 | Shared with the test lab |
-| `classifier_retry_count` | 1 | Retries transport errors, 5xx and 429 only |
-| `classifier_daily_call_limit` | 10000 | 0 = unlimited (UTC day, all nodes combined) |
-| `classifier_daily_cost_limit` | 5.0 USD | 0 = unlimited (UTC day, all nodes combined) |
-| `classification_max_context_chars` | 4000 | Latest user message gets up to 75 % |
-| `classification_context_messages` | 4 | Previous turns included |
-| `worker_count` / `queue_size` | 2 / 4096 | Per node. Bounded by count and by a 64 MiB snapshot memory cap; overflow is dropped and counted |
-| `decision_retention_days` | 30 | Hourly batched cleanup |
-| `global_min_margin` / `profit_safety_buffer` | 0.30 / 0.05 | Fractions |
-| `model_profiles` | see below | Exactly the four pool models |
-| `policy_version` | `shadow-v1` | Stored on each decision |
-
-Initial profiles are the brief's example values, not tuned optima:
-
-| Model | Billing multiplier | Routing weight |
-|---|---:|---:|
-| gpt-5.6-luna | 1.20 | 60 |
-| gpt-5.6-sol | 1.40 | 55 |
-| gpt-6-luna | 1.10 | 100 |
-| gpt-6.1-sol | 1.50 | 90 |
-
-Each profile also has `description`, which is the capability text Jev sees as that model's choice criterion. The repo has no vendor capability metadata for these models, so the defaults only state generation and tier. **Refine these descriptions before trusting the recommendations.**
-
-## Privacy
-
-When enabled, a redacted, truncated excerpt of sampled requests is sent to the configured Jev provider. The UI shows this notice and asks for confirmation when shadow classification is first enabled. Redaction reuses the content-moderation credential patterns (keys, bearer tokens, JWTs, cookies, long hex/base64 strings, URLs) and also removes emails and phone numbers. Decision rows hold no prompt text. They contain structured features, Jev's answers, the policy decision and user, API key and group IDs for admin filtering. Decisions are visible only through admin-authenticated APIs. Config changes, tests, replays and simulations are recorded in the admin audit log; request bodies are omitted for the config and test routes.
-
-## Reliability
-
-- **Queue**: bounded channel; a full queue drops the sample (`dropped_queue_full`) and never blocks.
-- **Workers**: fixed pool started once, live-resized via `worker_count`, panic-safe. Each attempt has its own timeout. Shutdown cancels in-flight Jev calls and still records their outcome.
-- **Circuit breaker**: opens after 5 consecutive failures for 30 seconds, then allows one half-open probe.
-- **Budgets (cluster-wide)**: every Jev attempt, including retries and test-lab calls, first reserves budget with an atomic Redis Lua script (`gpt_auto:budget:<UTC day>`). The reservation books a pessimistic cost estimate and is then settled to the billed usage, or refunded if no call was sent. Limits therefore do not multiply with the number of gateway nodes. If no shared counter exists for the day (first start or a Redis flush), it is seeded from today's persisted decisions. **If Redis is unreachable while a limit is configured, budgeted classification pauses (fails closed)** and counts `skipped_budget_unavailable`. The request path never waits on Redis or the database: it only reads the last observed cluster usage.
-- **Failure isolation**: Jev outages only add `failed` rows. If config loading fails, the last good config is used and the feature stays disabled by default.
-- **Policy snapshots** are upserted idempotently; the in-memory "already written" cache expires hourly, so a restored or pruned snapshot table heals itself.
-
-| Scope | What |
-|---|---|
-| Cluster (Redis) | Daily call and cost budget; per-day counters (each node flushes its deltas about every 10 seconds) |
-| Per node | Classifier concurrency (`classifier_max_concurrency`, so the cluster total is nodes × limit), queue and snapshot memory cap, circuit breaker, recent latency ring |
-| Database | Decisions, statistics, policy snapshots |
-
-**Overview** shows this node's counters, queue and breaker, the cluster-wide budget for today, and all nodes' counters for today. Logs use the `gpt_auto.*` slog events and never contain prompt text or provider error bodies.
+| **Actual production** (served model, effort, tokens, charged amount, list cost, upstream account cost) plus observed model and fully loaded margins | The request's real `usage_logs` row, looked up at display time. |
+| **Hypothetical recommendation** (A, B, C above) | Always labelled hypothetical, with estimate sources. |
+| **Re-estimate with real input** | The recommendation priced with the observed request's input tokens and rate; output stays an estimate because the recommended model was never called. |
 
 ## Admin API
 
@@ -180,10 +160,16 @@ All routes are under `/api/v1/admin/gpt-auto` behind admin auth, the panel rate 
 | GET | `/decisions?page&page_size&start_time&end_time&actual_model&final_model&final_effort&evaluation_status&decision_status&group_id&request_id` | Paginated log |
 | GET | `/decisions/:id` | Full Jev output, candidates, rules, economics |
 | POST | `/decisions/:id/replay` | `{"mode":"historical"\|"current"\|"custom", ...}`: policy only, no Jev call |
-| POST | `/test` | Test lab: calls Jev only, stores nothing |
+| POST | `/test` | Test lab: calls Jev only, stores nothing. Optional `assumptions` {input_tokens, cached_input_tokens, output_tokens} |
+| POST | `/test/compare` | A/B: same sample through saved and draft instructions (two budgeted Jev calls), stores nothing |
+| GET / PUT | `/classifier` | Jev instructions, defaults, effective questions, history / validate and save (versioned, audited) |
+| POST | `/classifier/preview` | Effective questions for a draft; no Jev call, nothing saved |
+| POST | `/debug/state` | Exact Jev request and extraction metadata for a synthetic request; no Jev call, nothing saved, body not audited |
 | POST | `/simulate` | Per-model hypothetical economics for unsaved edits |
 
 ## Database migration
+
+`backend/migrations/279_gpt_auto_classifier_versioning.sql` is additive too: it creates `gpt_auto_classifier_configs` and adds `classifier_config_hash`, `est_model_gross_margin`, `model_margin_below_target` and `estimate_quality` to the decisions table (existing rows keep defaults).
 
 `backend/migrations/278_gpt_auto_shadow_decisions.sql` is additive. It creates `gpt_auto_policy_snapshots` and `gpt_auto_shadow_decisions` with indexes on `(created_at, id)`, status, actual model, recommended model, group and request ID. It runs automatically at startup. Nothing existing is altered.
 

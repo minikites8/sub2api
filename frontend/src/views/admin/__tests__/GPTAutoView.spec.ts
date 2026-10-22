@@ -4,6 +4,9 @@ import GPTAutoView from '../GPTAutoView.vue'
 import GPTAutoConfigPanel from '@/components/admin/gptAuto/GPTAutoConfigPanel.vue'
 import GPTAutoDecisionLog from '@/components/admin/gptAuto/GPTAutoDecisionLog.vue'
 import GPTAutoTestLab from '@/components/admin/gptAuto/GPTAutoTestLab.vue'
+import GPTAutoClassifierPanel from '@/components/admin/gptAuto/GPTAutoClassifierPanel.vue'
+import GPTAutoDecisionDetail from '@/components/admin/gptAuto/GPTAutoDecisionDetail.vue'
+import GPTAutoStateDebugger from '@/components/admin/gptAuto/GPTAutoStateDebugger.vue'
 import type { GPTAutoConfig, GPTAutoDecision, GPTAutoOverview, GPTAutoPolicyDecision } from '@/api/admin/gptAuto'
 
 const mocks = vi.hoisted(() => ({
@@ -17,13 +20,22 @@ const mocks = vi.hoisted(() => ({
     replayDecision: vi.fn(),
     runTest: vi.fn(),
     simulate: vi.fn(),
+    getClassifier: vi.fn(),
+    updateClassifier: vi.fn(),
+    previewClassifier: vi.fn(),
+    compareClassifier: vi.fn(),
+    debugState: vi.fn(),
   },
   showSuccess: vi.fn(),
   showError: vi.fn(),
   replace: vi.fn(),
 }))
 
-vi.mock('@/api/admin/gptAuto', () => ({ gptAutoAPI: mocks.api, default: mocks.api }))
+vi.mock('@/api/admin/gptAuto', () => ({
+  gptAutoAPI: mocks.api,
+  default: mocks.api,
+  gptAutoInstructionFields: ['model_selection', 'effort_selection', 'complexity_scoring', 'category_classification'],
+}))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: mocks.showSuccess, showError: mocks.showError }) }))
 vi.mock('@/utils/apiError', () => ({ extractApiErrorMessage: (_err: unknown, fallback: string) => fallback }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ replace: mocks.replace }) }))
@@ -78,6 +90,8 @@ const baseConfig = (): GPTAutoConfig => ({
   classifier_daily_cost_limit: 5,
   classification_max_context_chars: 4000,
   classification_context_messages: 4,
+  classification_context_strategy: 'task_aware',
+  classification_agent_steps: 8,
   worker_count: 2,
   queue_size: 4096,
   decision_retention_days: 30,
@@ -175,7 +189,33 @@ beforeEach(() => {
   mocks.api.getDecision.mockResolvedValue(decision())
   mocks.api.replayDecision.mockResolvedValue({ decision_id: 7, mode: 'current', original: policyDecision(), replayed: policyDecision('gpt-6-luna', 'medium'), changed: true })
   mocks.api.runTest.mockResolvedValue({ classification, decision: policyDecision(), classifier_cost: 0.0000126, latency_ms: 410, snapshot_preview: '{"latest_user_request":"hi"}', profiles_overridden: false })
+  mocks.api.getClassifier.mockResolvedValue(classifierView())
+  mocks.api.updateClassifier.mockImplementation(async (payload: Record<string, string>) => ({ ...classifierView(), instructions: { ...payload, revision: 1 }, is_default: false }))
+  mocks.api.previewClassifier.mockImplementation(async (payload: Record<string, string>) => ({
+    hash: 'feedbeef0000', same_as_saved: false,
+    effective: { schema_version: 'jev-questions-v2', state_version: 'state-v2', classifier_model: 'jev-latest', questions: { target_model: { type: 'choice', instructions: payload.model_selection, criteria: { 'gpt-6-luna': 'efficient' } } } },
+  }))
 })
+
+const instructionText = (prefix: string) => ({
+  model_selection: `${prefix} model selection instruction text`,
+  effort_selection: `${prefix} effort selection instruction text`,
+  complexity_scoring: `${prefix} complexity scoring instruction text`,
+  category_classification: `${prefix} category classification instruction text`,
+})
+
+function classifierView() {
+  return {
+    instructions: { ...instructionText('SAVED'), revision: 3 },
+    defaults: instructionText('DEFAULT'),
+    is_default: false,
+    hash: 'abc123def4567890',
+    effective: { schema_version: 'jev-questions-v2', state_version: 'state-v2', classifier_model: 'jev-latest', questions: {} },
+    history: [{ hash: 'abc123def4567890', revision: 3, created_at: '2026-10-21T10:00:00Z', created_by: 1, snapshot: { schema_version: 'jev-questions-v2', state_version: 'state-v2', classifier_model: 'jev-latest', questions: {} } }],
+    limits: { min_runes: 20, max_runes: 4000 },
+    legacy_instructions: {},
+  }
+}
 
 afterEach(() => wrapper?.unmount())
 
@@ -327,5 +367,181 @@ describe('GPTAutoTestLab', () => {
     await wrapper.find('[data-testid="gpt-auto-lab-run"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="gpt-auto-lab-error"]').text()).toBe('gptAuto.lab.failed')
+  })
+})
+
+describe('GPTAutoClassifierPanel', () => {
+  it('edits one instruction independently and saves through its own endpoint', async () => {
+    wrapper = mountWith(GPTAutoClassifierPanel)
+    await flushPromises()
+    expect((wrapper.find('[data-testid="gpt-auto-instr-model_selection"]').element as HTMLTextAreaElement).value).toBe('SAVED model selection instruction text')
+    expect(wrapper.find('[data-testid="gpt-auto-instr-history"]').text()).toContain('abc123def456')
+
+    await wrapper.find('[data-testid="gpt-auto-instr-effort_selection"]').setValue('EDITED effort selection instruction text')
+    await wrapper.find('[data-testid="gpt-auto-instr-save"]').trigger('click')
+    await flushPromises()
+    expect(mocks.api.updateClassifier).toHaveBeenCalledTimes(1)
+    const payload = mocks.api.updateClassifier.mock.calls[0][0]
+    expect(payload).toEqual({ ...instructionText('SAVED'), effort_selection: 'EDITED effort selection instruction text' })
+    expect(mocks.api.updateConfig).not.toHaveBeenCalled()
+    expect(mocks.showSuccess).toHaveBeenCalled()
+  })
+
+  it('restores defaults, validates length and previews without saving', async () => {
+    wrapper = mountWith(GPTAutoClassifierPanel)
+    await flushPromises()
+    await wrapper.find('[data-testid="gpt-auto-instr-default-model_selection"]').trigger('click')
+    expect((wrapper.find('[data-testid="gpt-auto-instr-model_selection"]').element as HTMLTextAreaElement).value).toBe('DEFAULT model selection instruction text')
+
+    await wrapper.find('[data-testid="gpt-auto-instr-complexity_scoring"]').setValue('too short')
+    expect(wrapper.find('[data-testid="gpt-auto-instr-save"]').attributes('disabled')).toBeDefined()
+    await wrapper.find('[data-testid="gpt-auto-instr-restore-all"]').trigger('click')
+    expect(wrapper.find('[data-testid="gpt-auto-instr-save"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.find('[data-testid="gpt-auto-instr-preview"]').trigger('click')
+    await flushPromises()
+    expect(mocks.api.previewClassifier).toHaveBeenCalledWith(instructionText('DEFAULT'))
+    expect(wrapper.find('[data-testid="gpt-auto-instr-preview-result"]').text()).toContain('DEFAULT model selection')
+    expect(mocks.api.updateClassifier).not.toHaveBeenCalled()
+  })
+})
+
+describe('GPTAutoTestLab A/B comparison', () => {
+  it('sends the draft for two Jev calls and shows both arms', async () => {
+    const savedResult = { classification, decision: policyDecision(), classifier_cost: 0.00005292, classifier_input_tokens: 1260, classifier_output_tokens: 233, latency_ms: 400, snapshot_preview: '{}', profiles_overridden: false }
+    const draftResult = { ...savedResult, classification: { ...classification, model: 'gpt-6-luna' }, decision: policyDecision('gpt-6-luna', 'low') }
+    mocks.api.compareClassifier.mockResolvedValue({
+      saved: { classifier_config_hash: 'aaaaaaaaaaaa', result: savedResult },
+      draft: { classifier_config_hash: 'bbbbbbbbbbbb', result: draftResult },
+      jev_calls: 2, total_classifier_cost: 0.00010584, snapshot_preview: '{}',
+    })
+    wrapper = mountWith(GPTAutoTestLab)
+    await flushPromises()
+    await wrapper.find('[data-testid="gpt-auto-lab-compare-toggle"]').setValue(true)
+    await flushPromises()
+    expect(mocks.api.getClassifier).toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="gpt-auto-lab-compare-cost"]').exists()).toBe(true)
+    await wrapper.find('[data-testid="gpt-auto-lab-draft-model_selection"]').setValue('DRAFT model selection instruction text')
+    await wrapper.find('[data-testid="gpt-auto-lab-prompt"]').setValue('Reverse a list in Python')
+    await wrapper.find('[data-testid="gpt-auto-lab-run"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.api.runTest).not.toHaveBeenCalled()
+    const payload = mocks.api.compareClassifier.mock.calls[0][0]
+    expect(payload.draft_instructions).toEqual({ ...instructionText('SAVED'), model_selection: 'DRAFT model selection instruction text' })
+    expect(payload.prompt).toBe('Reverse a list in Python')
+    const modelRow = wrapper.find('[data-testid="gpt-auto-compare-row-model"]').text()
+    expect(modelRow).toContain('gpt-6.1-sol')
+    expect(modelRow).toContain('gpt-6-luna')
+    expect(wrapper.find('[data-testid="gpt-auto-compare-row-tokens"]').text()).toContain('1,260')
+    expect(wrapper.find('[data-testid="gpt-auto-compare-row-cost"]').text()).toContain('$0.00005292')
+    expect(wrapper.find('[data-testid="gpt-auto-lab-compare-summary"]').text()).toContain('gptAuto.lab.compareSummary')
+    expect(mocks.api.updateClassifier).not.toHaveBeenCalled()
+  })
+
+  it('passes explicit workload assumptions to the single test', async () => {
+    wrapper = mountWith(GPTAutoTestLab)
+    await flushPromises()
+    await wrapper.find('[data-testid="gpt-auto-lab-prompt"]').setValue('hi')
+    await wrapper.find('[data-testid="gpt-auto-lab-assume-input_tokens"]').setValue('3000')
+    await wrapper.find('[data-testid="gpt-auto-lab-assume-cached_input_tokens"]').setValue('1000')
+    await wrapper.find('[data-testid="gpt-auto-lab-assume-output_tokens"]').setValue('800')
+    await wrapper.find('[data-testid="gpt-auto-lab-run"]').trigger('click')
+    await flushPromises()
+    expect(mocks.api.runTest).toHaveBeenCalledWith(expect.objectContaining({ assumptions: { input_tokens: 3000, cached_input_tokens: 1000, output_tokens: 800 } }))
+  })
+})
+
+describe('GPTAutoDecisionDetail economics', () => {
+  const economics = {
+    hypothetical: true, model: 'gpt-6-luna', effort: 'none', billing_multiplier: 1.1,
+    estimated_input_tokens: 1, estimated_output_tokens: 10, output_estimate_source: 'admin_assumption', output_estimate_samples: 0,
+    list_input_per_m: 0.09999999999999999, list_output_per_m: 0.55, upstream_input_per_m: 0.5, upstream_output_per_m: 0.45, upstream_cost_source: 'configured_channel',
+    estimated_revenue: 0.000006, estimated_upstream_cost: 0.000005, estimated_classifier_cost: 0.00005292,
+    estimated_gross_profit: -0.00005192, estimated_gross_margin: -8.653333, target_margin: 0.43, below_target: true, pricing_available: true,
+    estimate_quality: 'admin_assumption' as const, model_gross_margin: 0.331, model_margin_status: 'below_target' as const, fully_loaded_margin_status: 'loss' as const,
+  }
+
+  it('shows model, fully loaded and overhead separately with distinct statuses', () => {
+    const decision = { ...policyDecision('gpt-6-luna', 'none'), status: 'accepted' as const, jev_model: 'gpt-6-luna', jev_effort: 'none', adjustments: [], warnings: [{ rule: 'model_margin_below_target' }, { rule: 'fully_loaded_margin_loss' }], economics }
+    wrapper = mountWith({ components: { GPTAutoDecisionDetail }, template: '<GPTAutoDecisionDetail :classification="c" :decision="d" />', data: () => ({ c: classification, d: decision }) })
+    const model = wrapper.find('[data-testid="gpt-auto-model-margin"]')
+    expect(model.text()).toContain('33.1%')
+    expect(model.text()).toContain('below_target')
+    expect(model.find('.text-amber-600').exists()).toBe(true)
+    const full = wrapper.find('[data-testid="gpt-auto-full-margin"]')
+    expect(full.text()).toContain('-865.3%')
+    expect(full.text()).toContain('loss')
+    expect(full.find('.text-red-600').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="gpt-auto-classifier-overhead"]').text()).toContain('$0.00005292')
+    expect(wrapper.find('[data-testid="gpt-auto-economics"]').text()).not.toContain('0.0999999')
+    expect(wrapper.find('[data-testid="gpt-auto-adjustments"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="gpt-auto-no-adjustments"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="gpt-auto-warnings"]').text()).toContain('model_margin_below_target')
+  })
+
+  it('shows N/A instead of a margin when data is insufficient', () => {
+    const insufficient = { ...economics, estimate_quality: 'insufficient_data' as const, estimated_gross_margin: undefined, model_gross_margin: undefined, model_margin_status: 'unknown' as const, fully_loaded_margin_status: 'unknown' as const, output_estimate_source: 'insufficient_data', output_estimate_samples: 3 }
+    const decision = { ...policyDecision(), economics: insufficient }
+    wrapper = mountWith({ components: { GPTAutoDecisionDetail }, template: '<GPTAutoDecisionDetail :classification="c" :decision="d" />', data: () => ({ c: classification, d: decision }) })
+    expect(wrapper.find('[data-testid="gpt-auto-estimate-insufficient"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="gpt-auto-model-margin"]').text()).toContain('N/A')
+    expect(wrapper.find('[data-testid="gpt-auto-full-margin"]').text()).toContain('N/A')
+    expect(wrapper.find('[data-testid="gpt-auto-full-margin"]').text()).not.toContain('%')
+  })
+})
+
+describe('GPTAutoStateDebugger', () => {
+  const debugResult = {
+    options: { max_chars: 4000, context_turns: 4, strategy: 'task_aware', agent_steps: 8 },
+    classifiable: true,
+    jev_request: { model: 'jev-latest', state: '{"latest_user_request":"fix it","latest_user_request_kind":"follow_up"}', questions: { target_model: { type: 'choice', instructions: 'pick least capable' } } },
+    state_chars: 70,
+    estimated_jev_input_tokens: 1900,
+    context: {
+      state_version: 'state-v3', strategy: 'task_aware', items_total: 1203, scanned_bytes: 40000, latest_user_index: 1202, latest_user_kind: 'follow_up',
+      latest_user_truncated: false, follow_up_anchor_index: 1200, original_request_index: 0, context_turns_available: 1000, context_turns_included: 4,
+      agent_events_included: 3, agent_events_omitted: 0, budget_chars: 4000, used_chars: 900, section_chars: { latest_user_request: 6 },
+      limitations: ['earlier_context_omitted'],
+    },
+    effective: { schema_version: 'jev-questions-v2', state_version: 'state-v3', classifier_model: 'jev-latest', questions: {} },
+    classifier_config_hash: 'abcdef0123456789',
+    estimated_input_tokens: 9000,
+  }
+
+  it('sends the synthetic request and shows the exact state with truncation metadata', async () => {
+    mocks.api.debugState.mockResolvedValue(debugResult)
+    wrapper = mountWith(GPTAutoStateDebugger)
+    await wrapper.find('[data-testid="gpt-auto-debug-example-longChat"]').trigger('click')
+    await wrapper.find('[data-testid="gpt-auto-debug-run"]').trigger('click')
+    await flushPromises()
+    const payload = mocks.api.debugState.mock.calls[0][0]
+    expect(payload.endpoint).toBe('chat_completions')
+    expect((payload.request.messages as unknown[]).length).toBeGreaterThan(512)
+    expect(payload.strategy).toBeUndefined()
+    expect(wrapper.find('[data-testid="gpt-auto-debug-state"]').text()).toContain('"latest_user_request_kind": "follow_up"')
+    expect(wrapper.find('[data-testid="gpt-auto-debug-info"]').text()).toContain('1,203')
+    expect(wrapper.findAll('[data-testid="gpt-auto-debug-limitation"]')).toHaveLength(1)
+    expect(mocks.api.runTest).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid JSON without calling the backend', async () => {
+    wrapper = mountWith(GPTAutoStateDebugger)
+    await wrapper.find('[data-testid="gpt-auto-debug-request"]').setValue('[1, 2')
+    await wrapper.find('[data-testid="gpt-auto-debug-run"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="gpt-auto-debug-error"]').text()).toBe('gptAuto.debugger.invalidJson')
+    expect(mocks.api.debugState).not.toHaveBeenCalled()
+  })
+})
+
+describe('GPTAutoConfigPanel context strategy', () => {
+  it('saves the context strategy and agent steps', async () => {
+    wrapper = mountWith(GPTAutoConfigPanel)
+    await flushPromises()
+    await wrapper.find('[data-testid="gpt-auto-context-strategy"]').setValue('recent_turns')
+    await wrapper.find('[data-testid="gpt-auto-save"]').trigger('click')
+    await flushPromises()
+    expect(mocks.api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ classification_context_strategy: 'recent_turns', classification_agent_steps: 8 }))
   })
 })

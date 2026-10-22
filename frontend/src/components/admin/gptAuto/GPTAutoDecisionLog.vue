@@ -71,9 +71,14 @@
                 <td class="px-3 py-2 tabular-nums">{{ item.complexity !== undefined && item.complexity !== null ? item.complexity.toFixed(2) : '—' }}</td>
                 <td class="px-3 py-2 tabular-nums">{{ formatPercent(item.model_confidence, 0) }}</td>
                 <td class="px-3 py-2 tabular-nums">{{ formatMs(item.classifier_latency_ms) }}</td>
-                <td class="px-3 py-2 tabular-nums" :class="item.margin_below_target ? 'text-red-600 dark:text-red-400' : ''">
-                  {{ formatPercent(item.est_gross_margin) }}
-                  <span class="block text-[11px] text-gray-500">{{ formatUSD(item.est_revenue) }}</span>
+                <td class="px-3 py-2 tabular-nums" :data-testid="`gpt-auto-margin-${item.id}`">
+                  <template v-if="rowMargins(item)">
+                    <span :class="marginStatusClass(rowMargins(item)!.model)">{{ formatPercent(item.est_model_gross_margin) }}</span>
+                    <span class="text-gray-400"> / </span>
+                    <span :class="marginStatusClass(rowMargins(item)!.full)">{{ formatPercent(item.est_gross_margin) }}</span>
+                    <span class="block text-[11px] text-gray-500">{{ labels.estimateQuality(item.estimate_quality || 'legacy') }}</span>
+                  </template>
+                  <span v-else class="text-gray-500">N/A</span>
                 </td>
                 <td class="px-3 py-2">
                   <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="statusClass(item)">
@@ -102,15 +107,48 @@
           </div>
         </dl>
 
+        <div v-if="detail.features.context" class="rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600" data-testid="gpt-auto-detail-context">
+          <p class="font-medium text-gray-700 dark:text-gray-300">{{ t('gptAuto.detail.contextTitle') }}</p>
+          <p class="mt-1 text-gray-500 dark:text-gray-400">
+            {{ t('gptAuto.detail.contextSummary', {
+              version: detail.features.context.state_version,
+              kind: t(`gptAuto.debugger.kinds.${detail.features.context.latest_user_kind}`),
+              items: detail.features.context.items_total,
+              turns: detail.features.context.context_turns_included,
+              events: detail.features.context.agent_events_included,
+              used: detail.features.context.used_chars,
+              budget: detail.features.context.budget_chars,
+            }) }}
+          </p>
+          <div v-if="detail.features.context.limitations?.length" class="mt-2 flex flex-wrap gap-1">
+            <span v-for="limitation in detail.features.context.limitations" :key="limitation" class="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{{ labels.limitation(limitation) }}</span>
+          </div>
+        </div>
+        <p v-else-if="detail.evaluation_status === 'success'" class="text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.detail.contextLegacy') }}</p>
+
         <div v-if="detail.evaluation_status === 'failed'" class="rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-900/20 dark:text-red-300">
           {{ t('gptAuto.detail.failed', { error: labels.errorClass(detail.error_class), attempts: detail.attempts }) }}
         </div>
 
-        <GPTAutoDecisionDetail v-if="detail.classification && detail.decision" :classification="detail.classification" :decision="detail.decision" show-actual :actual-usage="detail.actual_usage ?? null" />
+        <GPTAutoDecisionDetail v-if="detail.classification && detail.decision" :classification="detail.classification" :decision="detail.decision" show-actual :actual-usage="detail.actual_usage ?? null" :observed="detail.observed_economics ?? null" :actual-input-economics="detail.actual_input_economics ?? null" />
+
+        <details v-if="detail.evaluation_status === 'success'" class="rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600" data-testid="gpt-auto-detail-classifier">
+          <summary class="cursor-pointer font-medium text-gray-700 dark:text-gray-300">{{ t('gptAuto.detail.classifierConfig') }} · {{ detail.classifier_config_hash ? detail.classifier_config_hash.slice(0, 10) : t('gptAuto.detail.classifierLegacy') }}</summary>
+          <p v-if="!detail.classifier_config_hash" class="mt-2 text-gray-500">{{ t('gptAuto.detail.classifierLegacyHint') }}</p>
+          <p v-else-if="!detail.classifier_config" class="mt-2 text-gray-500">{{ t('gptAuto.detail.classifierMissing') }}</p>
+          <div v-else class="mt-2 space-y-2">
+            <p class="text-gray-500">{{ t('gptAuto.classifier.revision', { revision: detail.classifier_config.revision }) }} · {{ detail.classifier_config.snapshot.schema_version }} · {{ detail.classifier_config.snapshot.state_version }}</p>
+            <div v-for="(question, id) in detail.classifier_config.snapshot.questions" :key="id">
+              <p class="font-mono font-medium text-gray-700 dark:text-gray-300">{{ id }}</p>
+              <p class="whitespace-pre-wrap text-gray-600 dark:text-gray-400">{{ question.instructions }}</p>
+            </div>
+          </div>
+        </details>
 
         <section v-if="detail.evaluation_status === 'success'" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600" data-testid="gpt-auto-replay">
           <h3 class="font-semibold text-gray-900 dark:text-white">{{ t('gptAuto.replay.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.replay.hint') }}</p>
+          <p class="mt-1 text-xs text-amber-700 dark:text-amber-300" data-testid="gpt-auto-replay-instructions-note">{{ t('gptAuto.replay.instructionsNote') }}</p>
           <div class="mt-3 flex flex-wrap items-center gap-3">
             <select v-model="replayMode" class="input w-auto">
               <option value="historical">{{ t('gptAuto.replay.modes.historical') }}</option>
@@ -143,7 +181,7 @@ import GPTAutoDecisionDetail from './GPTAutoDecisionDetail.vue'
 import { gptAutoAPI, type GPTAutoDecision, type GPTAutoReplayMode, type GPTAutoReplayResult } from '@/api/admin/gptAuto'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime } from '@/utils/format'
-import { formatMs, formatNumber, formatPercent, formatUSD } from '@/utils/gptAuto'
+import { formatMs, formatNumber, formatPercent, formatUSD, marginStatusClass, type MarginStatus } from '@/utils/gptAuto'
 import { useGPTAutoLabels } from '@/composables/useGPTAutoLabels'
 
 const { t } = useI18n()
@@ -222,6 +260,16 @@ function statusClass(item: GPTAutoDecision) {
   return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
 }
 
+// Margin colours for a list row: model-only / fully loaded. Rows without a
+// model margin predate the split; their status is derived from the flag.
+function rowMargins(item: GPTAutoDecision): { model: MarginStatus; full: MarginStatus } | null {
+  if (item.est_gross_margin === undefined || item.est_gross_margin === null) return null
+  const full: MarginStatus = item.est_gross_margin < 0 ? 'loss' : item.margin_below_target ? 'below_target' : 'meets_target'
+  const model: MarginStatus = item.est_model_gross_margin === undefined || item.est_model_gross_margin === null
+    ? 'unknown'
+    : item.est_model_gross_margin < 0 ? 'loss' : item.model_margin_below_target ? 'below_target' : 'meets_target'
+  return { model, full }
+}
 // --- detail ---
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -265,9 +313,10 @@ const detailFacts = computed(() => {
     { label: t('gptAuto.detail.groupId'), value: value.group_id ?? '—' },
     { label: t('gptAuto.detail.classifier'), value: value.classifier_model || '—' },
     { label: t('gptAuto.detail.jevTokens'), value: `${formatNumber(value.classifier_input_tokens)} / ${formatNumber(value.classifier_output_tokens)}` },
-    { label: t('gptAuto.detail.jevCost'), value: formatUSD(value.classifier_cost, 8) },
+    { label: t('gptAuto.detail.jevCost'), value: formatUSD(value.classifier_cost) },
     { label: t('gptAuto.detail.latency'), value: `${formatMs(value.classifier_latency_ms)} (+${formatMs(value.queue_delay_ms)})` },
     { label: t('gptAuto.detail.policy'), value: `${value.policy_version} · ${value.policy_snapshot_hash.slice(0, 10) || '—'}` },
+    { label: t('gptAuto.detail.classifierConfig'), value: value.classifier_config_hash ? value.classifier_config_hash.slice(0, 10) : t('gptAuto.detail.classifierLegacy') },
   ]
 })
 

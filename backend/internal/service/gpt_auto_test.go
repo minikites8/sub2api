@@ -97,6 +97,8 @@ type gptAutoTestRepo struct {
 	history   []GPTAutoOutputHistory
 	actual    map[string]*GPTAutoActualUsage
 	inserted  chan struct{}
+	// classifierConfigs records every UpsertClassifierConfig call in order.
+	classifierConfigs []GPTAutoClassifierConfigRecord
 }
 
 func newGPTAutoTestRepo() *gptAutoTestRepo {
@@ -128,6 +130,43 @@ func (r *gptAutoTestRepo) GetPolicySnapshot(_ context.Context, hash string) (*GP
 	}
 	var snapshot GPTAutoPolicySnapshot
 	return &snapshot, json.Unmarshal(raw, &snapshot)
+}
+
+func (r *gptAutoTestRepo) UpsertClassifierConfig(_ context.Context, record GPTAutoClassifierConfigRecord) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.classifierConfigs {
+		if r.classifierConfigs[i].Hash == record.Hash {
+			if r.classifierConfigs[i].CreatedBy == nil {
+				r.classifierConfigs[i].CreatedBy = record.CreatedBy
+			}
+			return nil
+		}
+	}
+	r.classifierConfigs = append(r.classifierConfigs, record)
+	return nil
+}
+
+func (r *gptAutoTestRepo) GetClassifierConfig(_ context.Context, hash string) (*GPTAutoClassifierConfigRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.classifierConfigs {
+		if r.classifierConfigs[i].Hash == hash {
+			record := r.classifierConfigs[i]
+			return &record, nil
+		}
+	}
+	return nil, ErrGPTAutoDecisionNotFound
+}
+
+func (r *gptAutoTestRepo) ListClassifierConfigs(context.Context, int) ([]GPTAutoClassifierConfigRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]GPTAutoClassifierConfigRecord, 0, len(r.classifierConfigs))
+	for i := len(r.classifierConfigs) - 1; i >= 0; i-- {
+		out = append(out, r.classifierConfigs[i])
+	}
+	return out, nil
 }
 
 func (r *gptAutoTestRepo) GetByID(_ context.Context, id int64) (*GPTAutoShadowDecision, error) {
@@ -420,7 +459,7 @@ func gptAutoPolicyInput(cls GPTAutoClassification, mutate func(*GPTAutoShadowCon
 		Config:         *cfg,
 		Pricing:        gptAutoTestPricing,
 		OutputEstimate: func(string, string) GPTAutoOutputEstimate {
-			return GPTAutoOutputEstimate{Tokens: 500, Source: GPTAutoOutputSourceModelEffort, Samples: 10}
+			return GPTAutoOutputEstimate{Tokens: 500, Source: GPTAutoOutputSourceModelEffort, Samples: 50}
 		},
 	}
 }
@@ -537,11 +576,17 @@ func TestGPTAutoProfitCalculation(t *testing.T) {
 	require.InDelta(t, 0.014, economics.EstimatedRevenue, 1e-12)
 	require.InDelta(t, 0.0035, economics.EstimatedUpstreamCost, 1e-12)
 	require.InDelta(t, 0.0095, economics.EstimatedGrossProfit, 1e-12)
-	require.InDelta(t, 0.0095/0.014, *economics.EstimatedGrossMargin, 1e-9)
+	require.InDelta(t, 0.0095/0.014, *economics.EstimatedGrossMargin, 1e-6, "margins are rounded to 6 decimals")
 	require.InDelta(t, 0.35, economics.TargetMargin, 1e-12)
 	require.False(t, economics.BelowTarget)
-	// required multiplier: (0.0035+0.001)/((1-0.35)*0.007)
-	require.InDelta(t, 0.989, *economics.MinRequiredMultiplier, 0.001)
+	// Model-only: margin (0.014-0.0035)/0.014 = 75%.
+	require.InDelta(t, 0.75, *economics.ModelGrossMargin, 1e-9)
+	require.Equal(t, GPTAutoMarginMeetsTarget, economics.ModelMarginStatus)
+	require.Equal(t, GPTAutoMarginMeetsTarget, economics.FullyLoadedMarginStatus)
+	// required multiplier: model-only 0.0035/((1-0.35)*0.007); fully loaded
+	// (0.0035+0.001)/((1-0.35)*0.007)
+	require.InDelta(t, 0.7692, *economics.MinRequiredMultiplier, 0.0001)
+	require.InDelta(t, 0.989, *economics.MinRequiredMultiplierFullyLoaded, 0.001)
 }
 
 func TestGPTAutoProfitNegativeMargin(t *testing.T) {
@@ -559,10 +604,14 @@ func TestGPTAutoProfitNegativeMargin(t *testing.T) {
 	require.True(t, decision.Economics.BelowTarget)
 	require.Equal(t, GPTAutoModelGPT6Luna, decision.FinalModel, "a low margin never changes the recommendation")
 	var rules []string
-	for _, adjustment := range decision.Adjustments {
-		rules = append(rules, adjustment.Rule)
+	for _, warning := range decision.Warnings {
+		rules = append(rules, warning.Rule)
 	}
-	require.Contains(t, rules, GPTAutoRuleMarginBelowTarget)
+	require.Contains(t, rules, GPTAutoRuleModelMarginLoss)
+	require.Equal(t, GPTAutoDecisionAccepted, decision.Status, "a margin warning is not a route modification")
+	for _, adjustment := range decision.Adjustments {
+		require.NotContains(t, []string{GPTAutoRuleModelMarginLoss, GPTAutoRuleMarginBelowTarget}, adjustment.Rule)
+	}
 }
 
 func TestGPTAutoProfitWithoutPricingOrHistory(t *testing.T) {
@@ -689,23 +738,28 @@ func TestGPTAutoClassifierCostIsInternalOnly(t *testing.T) {
 // ---- snapshot + redaction -------------------------------------------------------
 
 func TestGPTAutoSnapshotIsBoundedAndRedacted(t *testing.T) {
-	snapshot := BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, gptAutoTestBody, 4000, 4)
+	snapshot := BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, gptAutoTestBody, GPTAutoContextOptions{MaxChars: 4000, ContextTurns: 4})
 	require.Equal(t, "gpt-5.6-sol", snapshot.RequestedModel)
 	require.Equal(t, "high", snapshot.RequestedEffort)
 	require.True(t, snapshot.Stream)
 	require.Contains(t, snapshot.LatestUser, "race condition")
 	require.NotContains(t, snapshot.LatestUser, "sk-proj-abcdefghijklmnop1234")
 	require.NotContains(t, snapshot.LatestUser, "dev@example.com")
-	require.Len(t, snapshot.RecentContext, 1)
-	require.Equal(t, "system", snapshot.RecentContext[0].Role)
+	// System prompts describe the client application, not the task: only
+	// their presence is forwarded (state-v2).
+	require.Empty(t, snapshot.RecentContext)
+	require.True(t, snapshot.HasSystemPrompt)
+	state, err := buildGPTAutoClassifierState(snapshot)
+	require.NoError(t, err)
+	require.NotContains(t, state, "You are helpful.", "system message text is never forwarded")
 
 	huge := []byte(`{"model":"m","messages":[{"role":"user","content":"` + string(bytes.Repeat([]byte("a"), 50000)) + `"}]}`)
-	snapshot = BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, huge, 1000, 4)
+	snapshot = BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, huge, GPTAutoContextOptions{MaxChars: 1000, ContextTurns: 4})
 	require.LessOrEqual(t, len([]rune(snapshot.LatestUser)), 750)
 	require.Equal(t, 12500, snapshot.EstimatedInputTokens)
 
 	responses := []byte(`{"model":"m","tools":[{"type":"function"}],"input":[{"role":"user","content":[{"type":"input_text","text":"plan a trip"},{"type":"input_image","image_url":"x"}]}]}`)
-	snapshot = BuildGPTAutoSnapshot(GPTAutoEndpointResponses, responses, 1000, 4)
+	snapshot = BuildGPTAutoSnapshot(GPTAutoEndpointResponses, responses, GPTAutoContextOptions{MaxChars: 1000, ContextTurns: 4})
 	require.True(t, snapshot.HasTools)
 	require.True(t, snapshot.HasImages)
 	require.Equal(t, "plan a trip", snapshot.LatestUser)
@@ -713,7 +767,7 @@ func TestGPTAutoSnapshotIsBoundedAndRedacted(t *testing.T) {
 
 func TestGPTAutoQuestionsPassSystemOneValidation(t *testing.T) {
 	cfg := DefaultGPTAutoShadowConfig()
-	state, err := buildGPTAutoClassifierState(BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, gptAutoTestBody, 4000, 4))
+	state, err := buildGPTAutoClassifierState(BuildGPTAutoSnapshot(GPTAutoEndpointChatCompletions, gptAutoTestBody, GPTAutoContextOptions{MaxChars: 4000, ContextTurns: 4}))
 	require.NoError(t, err)
 	require.NotContains(t, state, "gpt-5.6-sol", "requested model is withheld from Jev")
 	raw, err := json.Marshal(typesafe.Request{Model: typesafe.JevLatestModel, State: state, Questions: buildGPTAutoQuestions(*cfg)})

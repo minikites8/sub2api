@@ -30,7 +30,8 @@ actual_model, actual_effort, stream, has_tools, evaluation_status, error_class, 
 jev_model, jev_effort, final_model, final_effort, complexity, category, model_confidence,
 effort_confidence, classifier_model, classifier_input_tokens, classifier_output_tokens,
 classifier_cost, classifier_latency_ms, queue_delay_ms, attempts, est_revenue, est_upstream_cost,
-est_gross_profit, est_gross_margin, margin_below_target, policy_version, policy_snapshot_hash`
+est_gross_profit, est_gross_margin, margin_below_target, policy_version, policy_snapshot_hash,
+classifier_config_hash, est_model_gross_margin, model_margin_below_target, estimate_quality`
 
 func truncateGPTAuto(value string, max int) string {
 	if len(value) <= max {
@@ -74,10 +75,11 @@ INSERT INTO gpt_auto_shadow_decisions (
   classifier_model, classifier_input_tokens, classifier_output_tokens, classifier_cost,
   classifier_latency_ms, queue_delay_ms, attempts, est_revenue, est_upstream_cost,
   est_gross_profit, est_gross_margin, margin_below_target, policy_version, policy_snapshot_hash,
-  features, classification, decision
+  features, classification, decision,
+  classifier_config_hash, est_model_gross_margin, model_margin_below_target, estimate_quality
 ) VALUES (
   $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
-  $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36::jsonb,$37::jsonb,$38::jsonb
+  $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36::jsonb,$37::jsonb,$38::jsonb,$39,$40,$41,$42
 ) RETURNING id`,
 		createdAt,
 		truncateGPTAuto(d.RequestID, 128),
@@ -103,6 +105,8 @@ INSERT INTO gpt_auto_shadow_decisions (
 		truncateGPTAuto(d.PolicyVersion, 64),
 		truncateGPTAuto(d.PolicySnapshotHash, 64),
 		string(features), classification, decision,
+		truncateGPTAuto(d.ClassifierConfigHash, 64), d.EstModelGrossMargin, d.ModelMarginBelowTarget,
+		truncateGPTAuto(d.EstimateQuality, 32),
 	).Scan(&d.ID)
 }
 
@@ -130,6 +134,74 @@ func (r *gptAutoShadowRepository) GetPolicySnapshot(ctx context.Context, hash st
 	return &snapshot, nil
 }
 
+func (r *gptAutoShadowRepository) UpsertClassifierConfig(ctx context.Context, record service.GPTAutoClassifierConfigRecord) error {
+	raw, err := json.Marshal(record.Snapshot)
+	if err != nil {
+		return err
+	}
+	createdAt := record.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	// The first writer of a hash keeps its revision, author and time: a later
+	// shadow decision re-upserting the same content must not erase who saved it.
+	_, err = r.db.ExecContext(ctx, `
+INSERT INTO gpt_auto_classifier_configs (hash, revision, schema_version, snapshot, created_by, created_at)
+VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+ON CONFLICT (hash) DO UPDATE SET created_by = COALESCE(gpt_auto_classifier_configs.created_by, EXCLUDED.created_by)`,
+		truncateGPTAuto(record.Hash, 64), record.Revision, truncateGPTAuto(record.Snapshot.SchemaVersion, 32),
+		string(raw), record.CreatedBy, createdAt)
+	return err
+}
+
+func (r *gptAutoShadowRepository) GetClassifierConfig(ctx context.Context, hash string) (*service.GPTAutoClassifierConfigRecord, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT hash, revision, snapshot, created_by, created_at
+FROM gpt_auto_classifier_configs WHERE hash = $1`, hash)
+	record, err := scanGPTAutoClassifierConfig(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrGPTAutoDecisionNotFound
+	}
+	return record, err
+}
+
+func (r *gptAutoShadowRepository) ListClassifierConfigs(ctx context.Context, limit int) ([]service.GPTAutoClassifierConfigRecord, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT hash, revision, snapshot, created_by, created_at
+FROM gpt_auto_classifier_configs ORDER BY created_at DESC, hash LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []service.GPTAutoClassifierConfigRecord{}
+	for rows.Next() {
+		record, err := scanGPTAutoClassifierConfig(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *record)
+	}
+	return out, rows.Err()
+}
+
+func scanGPTAutoClassifierConfig(row gptAutoRowScanner) (*service.GPTAutoClassifierConfigRecord, error) {
+	var (
+		record service.GPTAutoClassifierConfigRecord
+		raw    []byte
+		author sql.NullInt64
+	)
+	if err := row.Scan(&record.Hash, &record.Revision, &raw, &author, &record.CreatedAt); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &record.Snapshot); err != nil {
+		return nil, err
+	}
+	record.CreatedBy = gptAutoNullInt64(author)
+	record.CreatedAt = record.CreatedAt.UTC()
+	return &record, nil
+}
+
 type gptAutoRowScanner interface {
 	Scan(dest ...any) error
 }
@@ -140,6 +212,7 @@ func scanGPTAutoDecision(row gptAutoRowScanner, extra ...any) (*service.GPTAutoS
 		userID, apiKeyID, groupID                 sql.NullInt64
 		complexity, modelConf, effortConf, margin sql.NullFloat64
 		revenue, upstreamCost, grossProfit        sql.NullFloat64
+		modelMargin                               sql.NullFloat64
 	)
 	dest := []any{
 		&d.ID, &d.CreatedAt, &d.RequestID, &userID, &apiKeyID, &groupID, &d.Endpoint,
@@ -149,6 +222,7 @@ func scanGPTAutoDecision(row gptAutoRowScanner, extra ...any) (*service.GPTAutoS
 		&d.ClassifierOutputTokens, &d.ClassifierCost, &d.ClassifierLatencyMS, &d.QueueDelayMS,
 		&d.Attempts, &revenue, &upstreamCost, &grossProfit, &margin, &d.MarginBelowTarget,
 		&d.PolicyVersion, &d.PolicySnapshotHash,
+		&d.ClassifierConfigHash, &modelMargin, &d.ModelMarginBelowTarget, &d.EstimateQuality,
 	}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -164,6 +238,7 @@ func scanGPTAutoDecision(row gptAutoRowScanner, extra ...any) (*service.GPTAutoS
 	d.EstUpstreamCost = nullFloat64Ptr(upstreamCost)
 	d.EstGrossProfit = nullFloat64Ptr(grossProfit)
 	d.EstGrossMargin = nullFloat64Ptr(margin)
+	d.EstModelGrossMargin = nullFloat64Ptr(modelMargin)
 	d.CreatedAt = d.CreatedAt.UTC()
 	return &d, nil
 }
@@ -302,10 +377,16 @@ func (r *gptAutoShadowRepository) Stats(ctx context.Context, filter service.GPTA
   COALESCE(SUM(classifier_cost), 0)::float8,
   COUNT(*) FILTER (WHERE decision_status = 'adjusted'),
   COUNT(*) FILTER (WHERE decision_status = 'no_eligible_candidate'),
-  COUNT(*) FILTER (WHERE margin_below_target)`+base, where.args...).Scan(
+  COUNT(*) FILTER (WHERE margin_below_target),
+  COUNT(*) FILTER (WHERE model_margin_below_target),
+  COUNT(*) FILTER (WHERE evaluation_status = 'success' AND estimate_quality = 'insufficient_data'),
+  COUNT(*) FILTER (WHERE evaluation_status = 'success' AND final_model <> '' AND final_model <> jev_model),
+  COUNT(*) FILTER (WHERE evaluation_status = 'success' AND final_effort <> '' AND final_effort <> jev_effort)`+base, where.args...).Scan(
 		&stats.Total, &stats.Success, &stats.Failed, &avg, &p50, &p95,
 		&stats.InputTokens, &stats.OutputTokens, &stats.ClassifierCost,
-		&stats.Adjusted, &stats.NoEligible, &stats.BelowTargetCount)
+		&stats.Adjusted, &stats.NoEligible, &stats.BelowTargetCount,
+		&stats.ModelBelowTargetCount, &stats.InsufficientEstimates,
+		&stats.PolicyModelChanges, &stats.PolicyEffortChanges)
 	if err != nil {
 		return nil, err
 	}
@@ -320,6 +401,8 @@ func (r *gptAutoShadowRepository) Stats(ctx context.Context, filter service.GPTA
 		{&stats.FinalModels, "final_model", success},
 		{&stats.JevModels, "jev_model", success},
 		{&stats.FinalEfforts, "final_effort", success},
+		{&stats.JevEfforts, "jev_effort", success},
+		{&stats.ClassifierConfigs, "classifier_config_hash", success},
 		{&stats.Categories, "category", success},
 		{&stats.Complexity, "COALESCE(ROUND(complexity::numeric)::int::text, '')", success},
 		{&stats.ErrorClasses, "error_class", base + " AND evaluation_status = 'failed'"},

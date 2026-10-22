@@ -1002,6 +1002,11 @@ func registerGPTAutoRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		gptAuto.GET("/decisions/:id", h.Admin.GPTAuto.GetDecision)
 		gptAuto.POST("/decisions/:id/replay", h.Admin.GPTAuto.ReplayDecision)
 		gptAuto.POST("/test", h.Admin.GPTAuto.RunTest)
+		gptAuto.POST("/test/compare", h.Admin.GPTAuto.CompareClassifier)
+		gptAuto.GET("/classifier", h.Admin.GPTAuto.GetClassifier)
+		gptAuto.PUT("/classifier", h.Admin.GPTAuto.UpdateClassifier)
+		gptAuto.POST("/classifier/preview", h.Admin.GPTAuto.PreviewClassifier)
+		gptAuto.POST("/debug/state", h.Admin.GPTAuto.DebugState)
 		gptAuto.POST("/simulate", h.Admin.GPTAuto.Simulate)
 	}
 }

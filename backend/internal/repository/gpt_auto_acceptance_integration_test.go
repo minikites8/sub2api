@@ -18,8 +18,9 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-// TestGPTAutoMigrationUpgradeFromPreviousSchema applies every migration up to
-// 277 on an isolated database, then upgrades to 278 and re-runs the full set.
+// TestGPTAutoMigrationUpgradeFromPreviousSchema applies every migration except
+// the GPT-Auto ones (278, 279) on an isolated database, then upgrades and
+// re-runs the full set.
 // The shared harness database already covers the fresh-install path.
 func TestGPTAutoMigrationUpgradeFromPreviousSchema(t *testing.T) {
 	ctx := context.Background()
@@ -35,11 +36,12 @@ func TestGPTAutoMigrationUpgradeFromPreviousSchema(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	const target = "278_gpt_auto_shadow_decisions.sql"
+	gptAutoMigrations := map[string]bool{target: true, "279_gpt_auto_classifier_versioning.sql": true}
 	previous := fstest.MapFS{}
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
 	for _, name := range names {
-		if name == target {
+		if gptAutoMigrations[name] {
 			continue
 		}
 		raw, err := fs.ReadFile(migrations.FS, name)
@@ -85,6 +87,52 @@ WHERE attrelid = 'gpt_auto_shadow_decisions'::regclass AND attname = 'classifier
 	got, err := repo.GetByID(ctx, row.ID)
 	require.NoError(t, err)
 	require.InDelta(t, 1e-10, got.ClassifierCost, 1e-15, "numeric(20,10) keeps sub-cent Jev costs")
+	require.Empty(t, got.ClassifierConfigHash)
+	require.Nil(t, got.EstModelGrossMargin)
+}
+
+func TestGPTAutoClassifierConfigHistoryAndDecisionColumns(t *testing.T) {
+	ctx := context.Background()
+	repo := NewGPTAutoShadowRepository(integrationDB)
+	cfg := service.DefaultGPTAutoShadowConfig()
+	cfg.ClassifierInstructions.ModelSelection = fmt.Sprintf("integration model instruction %d", time.Now().UnixNano())
+	snapshot := service.NewGPTAutoClassifierSnapshot(*cfg)
+	hash, _, err := snapshot.Hash()
+	require.NoError(t, err)
+
+	require.NoError(t, repo.UpsertClassifierConfig(ctx, service.GPTAutoClassifierConfigRecord{Hash: hash, Revision: 3, Snapshot: snapshot}))
+	admin := int64(77)
+	require.NoError(t, repo.UpsertClassifierConfig(ctx, service.GPTAutoClassifierConfigRecord{Hash: hash, Revision: 9, Snapshot: snapshot, CreatedBy: &admin}))
+	record, err := repo.GetClassifierConfig(ctx, hash)
+	require.NoError(t, err)
+	require.Equal(t, 3, record.Revision, "first writer keeps its revision")
+	require.Equal(t, &admin, record.CreatedBy, "a later admin save fills the author")
+	require.Equal(t, cfg.ClassifierInstructions.ModelSelection, record.Snapshot.Questions["target_model"].Instructions)
+	history, err := repo.ListClassifierConfigs(ctx, 10)
+	require.NoError(t, err)
+	require.NotEmpty(t, history)
+	_, err = repo.GetClassifierConfig(ctx, "missing")
+	require.ErrorIs(t, err, service.ErrGPTAutoDecisionNotFound)
+
+	modelMargin := 0.25
+	row := &service.GPTAutoShadowDecision{RequestID: "classifier-hash", Endpoint: service.GPTAutoEndpointChatCompletions,
+		EvaluationStatus: service.GPTAutoEvaluationSuccess, PolicyVersion: "shadow-v1", ClassifierConfigHash: hash,
+		EstModelGrossMargin: &modelMargin, ModelMarginBelowTarget: true, EstimateQuality: service.GPTAutoEstimateQualityHeuristic}
+	require.NoError(t, repo.Insert(ctx, row))
+	got, err := repo.GetByID(ctx, row.ID)
+	require.NoError(t, err)
+	require.Equal(t, hash, got.ClassifierConfigHash)
+	require.InDelta(t, 0.25, *got.EstModelGrossMargin, 1e-12)
+	require.True(t, got.ModelMarginBelowTarget)
+	require.Equal(t, service.GPTAutoEstimateQualityHeuristic, got.EstimateQuality)
+	stats, err := repo.Stats(ctx, service.GPTAutoStatsFilter{StartTime: time.Now().Add(-time.Hour), EndTime: time.Now().Add(time.Hour)})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, stats.ModelBelowTargetCount, int64(1))
+	found := false
+	for _, count := range stats.ClassifierConfigs {
+		found = found || count.Key == hash
+	}
+	require.True(t, found)
 }
 
 func TestGPTAutoShadowRepositoryActualUsageAndPagination(t *testing.T) {

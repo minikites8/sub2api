@@ -75,13 +75,25 @@
       </div>
     </div>
 
-    <div v-if="decision.adjustments?.length" data-testid="gpt-auto-adjustments">
+    <div v-if="rules.adjustments.length" data-testid="gpt-auto-adjustments">
       <p class="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('gptAuto.detail.adjustments') }}</p>
       <ul class="space-y-1">
-        <li v-for="(adjustment, index) in decision.adjustments" :key="index" class="rounded bg-gray-50 px-3 py-1.5 text-xs dark:bg-dark-800">
+        <li v-for="(adjustment, index) in rules.adjustments" :key="index" class="rounded bg-gray-50 px-3 py-1.5 text-xs dark:bg-dark-800">
           <span class="font-medium text-gray-900 dark:text-white">{{ labels.rule(adjustment.rule) }}</span>
           <span v-if="adjustment.from || adjustment.to" class="ml-2 font-mono text-gray-600 dark:text-gray-300">{{ adjustment.from || '—' }} → {{ adjustment.to || '—' }}</span>
           <span v-if="adjustment.detail" class="block text-gray-500">{{ adjustment.detail }}</span>
+        </li>
+      </ul>
+    </div>
+    <p v-else class="text-xs text-gray-500 dark:text-gray-400" data-testid="gpt-auto-no-adjustments">{{ t('gptAuto.detail.noAdjustments') }}</p>
+
+    <div v-if="rules.warnings.length" data-testid="gpt-auto-warnings">
+      <p class="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('gptAuto.detail.warnings') }}</p>
+      <ul class="space-y-1">
+        <li v-for="(warning, index) in rules.warnings" :key="index" class="rounded bg-amber-50/60 px-3 py-1.5 text-xs dark:bg-amber-900/10">
+          <span class="font-medium text-amber-800 dark:text-amber-200">{{ labels.rule(warning.rule) }}</span>
+          <span v-if="warning.rule === 'choice_not_most_probable' && warning.to" class="ml-2 font-mono text-gray-600 dark:text-gray-300">{{ warning.from }} / {{ warning.to }}</span>
+          <span v-if="warning.detail" class="block text-gray-500">{{ warning.detail }}</span>
         </li>
       </ul>
     </div>
@@ -91,20 +103,8 @@
       <p v-for="(warning, index) in decision.capability_warnings" :key="index">{{ labels.rule(warning) }}</p>
     </div>
 
-    <div v-if="economics" class="rounded-lg border border-gray-200 p-3 dark:border-dark-600" data-testid="gpt-auto-economics">
-      <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('gptAuto.detail.economics') }} <span class="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{{ t('gptAuto.common.hypothetical') }}</span></p>
-      <p v-if="!economics.pricing_available" class="mt-2 text-xs text-amber-600">{{ t('gptAuto.simulator.noPricing') }}</p>
-      <dl v-else class="mt-2 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
-        <div><dt class="text-gray-500">{{ t('gptAuto.simulator.columns.revenue') }}</dt><dd class="tabular-nums">{{ formatUSD(economics.estimated_revenue) }} ({{ economics.billing_multiplier }}×)</dd></div>
-        <div><dt class="text-gray-500">{{ t('gptAuto.simulator.columns.upstream') }}</dt><dd class="tabular-nums">{{ formatUSD(economics.estimated_upstream_cost) }} · {{ economics.upstream_channel || labels.costSource(economics.upstream_cost_source) }}</dd></div>
-        <div><dt class="text-gray-500">{{ t('gptAuto.simulator.columns.classifier') }}</dt><dd class="tabular-nums">{{ formatUSD(economics.estimated_classifier_cost, 8) }}</dd></div>
-        <div><dt class="text-gray-500">{{ t('gptAuto.simulator.columns.margin') }}</dt><dd class="tabular-nums" :class="economics.below_target ? 'text-red-600' : 'text-emerald-600'">{{ formatPercent(economics.estimated_gross_margin) }} / {{ formatPercent(economics.target_margin) }}</dd></div>
-        <div><dt class="text-gray-500">{{ t('gptAuto.detail.listPrice') }}</dt><dd class="tabular-nums">${{ economics.list_input_per_m }} / ${{ economics.list_output_per_m }} {{ t('gptAuto.detail.perM') }}</dd></div>
-        <div><dt class="text-gray-500">{{ t('gptAuto.detail.upstreamPrice') }}</dt><dd class="tabular-nums">${{ economics.upstream_input_per_m }} / ${{ economics.upstream_output_per_m }} {{ t('gptAuto.detail.perM') }}</dd></div>
-        <div><dt class="text-gray-500">{{ t('gptAuto.detail.tokenEstimate') }}</dt><dd class="tabular-nums">{{ formatNumber(economics.estimated_input_tokens) }} / {{ formatNumber(Math.round(economics.estimated_output_tokens)) }}</dd></div>
-        <div><dt class="text-gray-500">{{ t('gptAuto.simulator.columns.basis') }}</dt><dd>{{ labels.outputSource(economics.output_estimate_source) }}</dd></div>
-      </dl>
-    </div>
+    <GPTAutoEconomicsPanel v-if="economics" :economics="economics" />
+    <GPTAutoEconomicsPanel v-if="actualInputEconomics" :economics="actualInputEconomics" :title="t('gptAuto.economics.actualInputTitle')" test-id="gpt-auto-actual-input-economics" />
 
     <div v-if="showActual" class="rounded-lg border border-sky-200 p-3 dark:border-sky-800/60" data-testid="gpt-auto-actual-usage">
       <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('gptAuto.detail.actualProduction') }} <span class="ml-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">{{ t('gptAuto.detail.actualBadge') }}</span></p>
@@ -117,6 +117,12 @@
         <div><dt class="text-gray-500">{{ t('gptAuto.detail.actualListCost') }}</dt><dd class="tabular-nums">{{ formatUSD(actualUsage.list_cost) }}</dd></div>
         <div><dt class="text-gray-500">{{ t('gptAuto.detail.actualAccountCost') }}</dt><dd class="tabular-nums">{{ formatUSD(actualUsage.account_cost) }}</dd></div>
       </dl>
+      <dl v-if="observed" class="mt-2 grid grid-cols-2 gap-2 border-t border-sky-100 pt-2 text-xs dark:border-sky-900/40 md:grid-cols-4" data-testid="gpt-auto-observed-economics">
+        <div><dt class="text-gray-500">{{ t('gptAuto.economics.observedModelMargin') }}</dt><dd class="tabular-nums" :class="marginStatusClass(marginStatus(observed.model_gross_margin, 0))">{{ observed.model_gross_margin === null || observed.model_gross_margin === undefined ? 'N/A' : formatPercent(observed.model_gross_margin) }}</dd></div>
+        <div><dt class="text-gray-500">{{ t('gptAuto.economics.observedFullMargin') }}</dt><dd class="tabular-nums" :class="marginStatusClass(marginStatus(observed.fully_loaded_margin, 0))">{{ observed.fully_loaded_margin === null || observed.fully_loaded_margin === undefined ? 'N/A' : formatPercent(observed.fully_loaded_margin) }}</dd></div>
+        <div><dt class="text-gray-500">{{ t('gptAuto.economics.overhead') }}</dt><dd class="tabular-nums">{{ formatUSD(observed.classifier_cost) }}</dd></div>
+        <div><dt class="text-gray-500">{{ t('gptAuto.economics.effectiveRate') }}</dt><dd class="tabular-nums">{{ formatMultiplier(observed.effective_rate) }}</dd></div>
+      </dl>
     </div>
   </div>
 </template>
@@ -124,8 +130,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { GPTAutoActualUsage, GPTAutoClassification, GPTAutoPolicyDecision } from '@/api/admin/gptAuto'
-import { formatNumber, formatPercent, formatUSD, sortedProbabilities } from '@/utils/gptAuto'
+import GPTAutoEconomicsPanel from './GPTAutoEconomicsPanel.vue'
+import type { GPTAutoActualUsage, GPTAutoClassification, GPTAutoEconomics, GPTAutoObservedEconomics, GPTAutoPolicyDecision } from '@/api/admin/gptAuto'
+import { formatMultiplier, formatNumber, formatPercent, formatUSD, marginStatus, marginStatusClass, sortedProbabilities, splitPolicyRules } from '@/utils/gptAuto'
 import { useGPTAutoLabels } from '@/composables/useGPTAutoLabels'
 
 const props = withDefaults(defineProps<{
@@ -135,13 +142,16 @@ const props = withDefaults(defineProps<{
   /** Show the real production outcome (stored decisions only, not the test lab). */
   showActual?: boolean
   actualUsage?: GPTAutoActualUsage | null
-}>(), { compact: false, showActual: false, actualUsage: null })
+  observed?: GPTAutoObservedEconomics | null
+  actualInputEconomics?: GPTAutoEconomics | null
+}>(), { compact: false, showActual: false, actualUsage: null, observed: null, actualInputEconomics: null })
 
 const { t } = useI18n()
 const labels = useGPTAutoLabels()
 
 const adjusted = computed(() => props.decision.status !== 'accepted')
 const economics = computed(() => props.decision.economics)
+const rules = computed(() => splitPolicyRules(props.decision))
 const identity = (key: string) => key
 
 const distributions = computed(() => [

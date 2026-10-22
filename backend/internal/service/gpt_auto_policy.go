@@ -39,8 +39,17 @@ type GPTAutoRequestFeatures struct {
 	Endpoint string `json:"endpoint"`
 	HasTools bool   `json:"has_tools"`
 	// EstimatedInputTokens is a character-based approximation of the
-	// customer's prompt size (see gptAutoEstimateTokens).
+	// customer's prompt size (characters ÷ 4) unless InputEstimateSource says
+	// otherwise.
 	EstimatedInputTokens int `json:"estimated_input_tokens"`
+	// InputEstimateSource is empty on rows written before estimate sources
+	// existed; those were always the character heuristic.
+	InputEstimateSource string `json:"input_estimate_source,omitempty"`
+	// CachedInputTokens is only set from actual usage (never persisted).
+	CachedInputTokens int `json:"-"`
+	// Context is the extraction metadata of the classified request: counts,
+	// budgets and limitations only, never content. Nil on older rows.
+	Context *GPTAutoContextInfo `json:"context,omitempty"`
 }
 
 // GPTAutoOutputEstimate is a historical output-token estimate for a
@@ -56,7 +65,10 @@ type GPTAutoOutputEstimate struct {
 const (
 	GPTAutoOutputSourceModelEffort = "history_model_effort"
 	GPTAutoOutputSourceModel       = "history_model"
-	GPTAutoOutputSourceNone        = "no_history"
+	// GPTAutoOutputSourceNone: no history, or fewer than
+	// gptAutoMinOutputHistorySamples samples. Rows written before the minimum
+	// existed may carry the legacy value "no_history".
+	GPTAutoOutputSourceNone = "insufficient_data"
 )
 
 // GPTAutoPricingLookup returns the gateway pricing-table entry for a model in
@@ -77,6 +89,14 @@ type GPTAutoPolicyInput struct {
 	// ClassifierCostUSD is the cost of the Jev call that produced
 	// Classification, or of a typical call when simulating.
 	ClassifierCostUSD float64
+	// ClassifierCostSource labels ClassifierCostUSD (default: actual call).
+	ClassifierCostSource string
+	// Assumptions override token estimates with administrator-entered values.
+	Assumptions *GPTAutoWorkloadAssumptions
+	// CustomerRateMultiplier is the customer's effective rate; 0 means the
+	// list rate (1×) is assumed.
+	CustomerRateMultiplier float64
+	CustomerRateSource     string
 }
 
 // Decision statuses.
@@ -87,6 +107,7 @@ const (
 )
 
 // Adjustment rule identifiers. Stable strings: the dashboard translates them.
+// Only these rules can change or withhold a recommendation.
 const (
 	GPTAutoRuleModelDisabled       = "model_disabled"
 	GPTAutoRuleModelEndpoint       = "model_endpoint_unsupported"
@@ -95,11 +116,34 @@ const (
 	GPTAutoRuleRoutingWeightTie    = "routing_weight_tiebreak"
 	GPTAutoRuleEffortUnsupported   = "effort_unsupported"
 	GPTAutoRuleEffortUnknown       = "effort_unknown"
-	GPTAutoRuleMarginBelowTarget   = "margin_below_target"
-	GPTAutoRuleNoOutputHistory     = "no_output_history"
-	GPTAutoRulePricingUnavailable  = "pricing_unavailable"
 	GPTAutoRuleNoEligibleCandidate = "no_eligible_candidate"
 )
+
+// Warning identifiers. Warnings are informational: they are stored in
+// GPTAutoPolicyDecision.Warnings and never change the recommendation.
+// Decisions written before the split carry margin_below_target,
+// no_output_history and pricing_unavailable in Adjustments instead.
+const (
+	GPTAutoRuleMarginBelowTarget          = "margin_below_target"
+	GPTAutoRuleNoOutputHistory            = "no_output_history"
+	GPTAutoRulePricingUnavailable         = "pricing_unavailable"
+	GPTAutoRuleModelMarginBelowTarget     = "model_margin_below_target"
+	GPTAutoRuleModelMarginLoss            = "model_margin_loss"
+	GPTAutoRuleFullyLoadedBelowTarget     = "fully_loaded_margin_below_target"
+	GPTAutoRuleFullyLoadedLoss            = "fully_loaded_margin_loss"
+	GPTAutoRuleInsufficientEstimate       = "insufficient_estimate_data"
+	GPTAutoRuleHeuristicEstimate          = "heuristic_estimate"
+	GPTAutoRuleLowModelConfidence         = "low_model_confidence"
+	GPTAutoRuleLowEffortConfidence        = "low_effort_confidence"
+	GPTAutoRuleModelProbabilitiesMissing  = "model_probabilities_missing"
+	GPTAutoRuleChoiceNotMostProbable      = "choice_not_most_probable"
+	GPTAutoRuleEffortProbabilitiesMissing = "effort_probabilities_missing"
+)
+
+// gptAutoLowConfidenceThreshold flags (never overrides) a Jev answer whose
+// self-reported confidence is low. Confidence is not a calibrated success
+// probability, so it is a review signal only.
+const gptAutoLowConfidenceThreshold = 0.5
 
 // GPTAutoAdjustment explains one policy step.
 type GPTAutoAdjustment struct {
@@ -121,45 +165,6 @@ type GPTAutoCandidate struct {
 	probabilityKnown bool
 }
 
-// GPTAutoEconomics is a hypothetical per-request estimate. Nothing here is an
-// observed charge or cost.
-type GPTAutoEconomics struct {
-	Hypothetical bool `json:"hypothetical"`
-
-	Model             string  `json:"model"`
-	Effort            string  `json:"effort"`
-	BillingMultiplier float64 `json:"billing_multiplier"`
-
-	EstimatedInputTokens  float64 `json:"estimated_input_tokens"`
-	EstimatedOutputTokens float64 `json:"estimated_output_tokens"`
-	OutputEstimateSource  string  `json:"output_estimate_source"`
-	OutputEstimateSamples int64   `json:"output_estimate_samples"`
-
-	// List prices from the gateway pricing table, USD per 1M tokens.
-	ListInputPerM  float64 `json:"list_input_per_m"`
-	ListOutputPerM float64 `json:"list_output_per_m"`
-
-	// UpstreamChannel is the preferred hypothetical procurement channel, or
-	// empty when the estimate assumes procurement at list price.
-	UpstreamChannel    string  `json:"upstream_channel,omitempty"`
-	UpstreamInputPerM  float64 `json:"upstream_input_per_m"`
-	UpstreamOutputPerM float64 `json:"upstream_output_per_m"`
-	UpstreamCostSource string  `json:"upstream_cost_source"`
-
-	EstimatedRevenue        float64 `json:"estimated_revenue"`
-	EstimatedUpstreamCost   float64 `json:"estimated_upstream_cost"`
-	EstimatedClassifierCost float64 `json:"estimated_classifier_cost"`
-	EstimatedGrossProfit    float64 `json:"estimated_gross_profit"`
-	// EstimatedGrossMargin is nil when revenue is zero (margin undefined).
-	EstimatedGrossMargin *float64 `json:"estimated_gross_margin,omitempty"`
-	TargetMargin         float64  `json:"target_margin"`
-	// MinRequiredMultiplier is the billing multiplier at which the estimate
-	// would reach TargetMargin. Nil when the list price is zero.
-	MinRequiredMultiplier *float64 `json:"min_required_multiplier,omitempty"`
-	BelowTarget           bool     `json:"below_target"`
-	PricingAvailable      bool     `json:"pricing_available"`
-}
-
 // Upstream cost sources.
 const (
 	GPTAutoCostSourceChannel   = "configured_channel"
@@ -178,8 +183,12 @@ type GPTAutoPolicyDecision struct {
 	FinalModel  string `json:"final_model,omitempty"`
 	FinalEffort string `json:"final_effort,omitempty"`
 
-	Candidates         []GPTAutoCandidate  `json:"candidates"`
-	Adjustments        []GPTAutoAdjustment `json:"adjustments,omitempty"`
+	Candidates []GPTAutoCandidate `json:"candidates"`
+	// Adjustments are the rules that changed or withheld the recommendation.
+	Adjustments []GPTAutoAdjustment `json:"adjustments,omitempty"`
+	// Warnings never change the recommendation (margins, estimate quality,
+	// classifier uncertainty).
+	Warnings           []GPTAutoAdjustment `json:"warnings,omitempty"`
 	CapabilityWarnings []string            `json:"capability_warnings,omitempty"`
 	Economics          *GPTAutoEconomics   `json:"economics,omitempty"`
 }
@@ -202,6 +211,7 @@ func EvaluateGPTAutoPolicy(in GPTAutoPolicyInput) GPTAutoPolicyDecision {
 	}
 
 	decision.Candidates = gptAutoCandidates(cfg, cls, in.Features)
+	decision.Warnings = gptAutoClassificationWarnings(cls)
 	finalModel, modelAdjustments := gptAutoPickModel(decision.Candidates, cls.Model)
 	decision.Adjustments = append(decision.Adjustments, modelAdjustments...)
 	for _, candidate := range decision.Candidates {
@@ -231,27 +241,7 @@ func EvaluateGPTAutoPolicy(in GPTAutoPolicyInput) GPTAutoPolicyDecision {
 
 	economics := EstimateGPTAutoEconomics(in, finalModel, finalEffort)
 	decision.Economics = &economics
-	if !economics.PricingAvailable {
-		decision.Adjustments = append(decision.Adjustments, GPTAutoAdjustment{
-			Rule: GPTAutoRulePricingUnavailable, To: finalModel,
-			Detail: "no pricing-table entry; economics are not estimated",
-		})
-	}
-	if economics.OutputEstimateSource == GPTAutoOutputSourceNone {
-		decision.Adjustments = append(decision.Adjustments, GPTAutoAdjustment{
-			Rule:   GPTAutoRuleNoOutputHistory,
-			Detail: "no historical output usage for this model; output cost is excluded from the estimate",
-		})
-	}
-	// A low margin is recorded but never changes the recommendation: commercial
-	// optimization must not override capability or quality.
-	if economics.BelowTarget {
-		decision.Adjustments = append(decision.Adjustments, GPTAutoAdjustment{
-			Rule: GPTAutoRuleMarginBelowTarget, To: finalModel,
-			Detail: "estimated gross margin is below the configured target; recommendation unchanged",
-		})
-	}
-
+	decision.Warnings = append(decision.Warnings, gptAutoEconomicsWarnings(economics)...)
 	decision.Status = GPTAutoDecisionAccepted
 	if finalModel != cls.Model || finalEffort != cls.Effort {
 		decision.Status = GPTAutoDecisionAdjusted
@@ -328,10 +318,13 @@ func gptAutoPickModel(candidates []GPTAutoCandidate, jevModel string) (string, [
 	})
 
 	// Routing weight may only break a near-tie that Jev's probabilities
-	// actually show; missing probabilities are never treated as a tie.
+	// actually show; missing probabilities are never treated as a tie. The
+	// window is symmetric: a model Jev rated clearly *more* likely than its
+	// own choice is not a tie either (that inconsistency is reported as a
+	// warning instead of being resolved by commercial weight).
 	nearTie := func(anchor float64, anchorKnown bool, candidate GPTAutoCandidate) bool {
 		return anchorKnown && candidate.probabilityKnown &&
-			anchor-candidate.Probability <= gptAutoWeightTieTolerance+1e-12
+			math.Abs(anchor-candidate.Probability) <= gptAutoWeightTieTolerance+1e-12
 	}
 
 	if anchor >= 0 {
@@ -406,88 +399,76 @@ func gptAutoPickEffort(supported []string, jevEffort string) (string, *GPTAutoAd
 	return "", nil
 }
 
-// EstimateGPTAutoEconomics computes hypothetical per-request economics for a
-// model/effort. Revenue is list price × billing multiplier; upstream cost is
-// the cheapest enabled configured channel, else list price.
-//
-//	gross_margin = (revenue - upstream_cost - classifier_cost) / revenue
-func EstimateGPTAutoEconomics(in GPTAutoPolicyInput, model, effort string) GPTAutoEconomics {
-	cfg := in.Config
-	profile, _ := cfg.ProfileFor(model)
-	out := GPTAutoEconomics{
-		Hypothetical:            true,
-		Model:                   model,
-		Effort:                  effort,
-		BillingMultiplier:       profile.BillingMultiplier,
-		EstimatedInputTokens:    float64(in.Features.EstimatedInputTokens),
-		EstimatedClassifierCost: in.ClassifierCostUSD,
-		TargetMargin:            cfg.MinMarginFor(model),
-		OutputEstimateSource:    GPTAutoOutputSourceNone,
-		UpstreamCostSource:      GPTAutoCostSourceNone,
-	}
-	if in.OutputEstimate != nil {
-		estimate := in.OutputEstimate(model, effort)
-		if estimate.Tokens > 0 && estimate.Source != "" {
-			out.EstimatedOutputTokens = estimate.Tokens
-			out.OutputEstimateSource = estimate.Source
-			out.OutputEstimateSamples = estimate.Samples
+// gptAutoClassificationWarnings flags uncertain or internally inconsistent Jev
+// answers. They are recorded for review only: an uncertain answer is kept as
+// Jev's recommendation rather than replaced by a guess.
+func gptAutoClassificationWarnings(cls GPTAutoClassification) []GPTAutoAdjustment {
+	var warnings []GPTAutoAdjustment
+	if len(cls.ModelProbabilities) == 0 {
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleModelProbabilitiesMissing,
+			Detail: "classifier reported no model probabilities; routing weight cannot break ties"})
+	} else {
+		// A missing probability for the chosen model counts as zero here.
+		chosen := cls.ModelProbabilities[cls.Model]
+		best, bestProbability := "", chosen
+		for _, model := range GPTAutoModelPool() {
+			if probability, ok := cls.ModelProbabilities[model]; ok && model != cls.Model && probability > bestProbability+1e-9 {
+				best, bestProbability = model, probability
+			}
+		}
+		if best != "" {
+			warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleChoiceNotMostProbable, From: cls.Model, To: best,
+				Detail: "the selected model is not the most probable one in the reported distribution; Jev's choice is kept"})
 		}
 	}
-
-	var pricing *ModelPricing
-	if in.Pricing != nil {
-		pricing, _ = in.Pricing(model)
+	if len(cls.EffortProbabilities) == 0 {
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleEffortProbabilitiesMissing,
+			Detail: "classifier reported no effort probabilities"})
 	}
-	if pricing == nil || (pricing.InputPricePerToken <= 0 && pricing.OutputPricePerToken <= 0) {
-		return out
+	if cls.ModelConfidence < gptAutoLowConfidenceThreshold {
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleLowModelConfidence, From: cls.Model,
+			Detail: "model confidence below 50%; recommendation kept, review before relying on it"})
 	}
-	out.PricingAvailable = true
-	out.ListInputPerM = pricing.InputPricePerToken * gptAutoTokensPerMillion
-	out.ListOutputPerM = pricing.OutputPricePerToken * gptAutoTokensPerMillion
-
-	upstreamIn, upstreamOut := out.ListInputPerM, out.ListOutputPerM
-	out.UpstreamCostSource = GPTAutoCostSourceListPrice
-	if channel, ok := gptAutoCheapestChannel(profile.UpstreamCosts, out.EstimatedInputTokens, out.EstimatedOutputTokens); ok {
-		upstreamIn, upstreamOut = channel.InputPerM, channel.OutputPerM
-		out.UpstreamChannel = channel.Channel
-		out.UpstreamCostSource = GPTAutoCostSourceChannel
+	if cls.EffortConfidence < gptAutoLowConfidenceThreshold {
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleLowEffortConfidence, From: cls.Effort,
+			Detail: "effort confidence below 50%; recommendation kept, review before relying on it"})
 	}
-	out.UpstreamInputPerM = upstreamIn
-	out.UpstreamOutputPerM = upstreamOut
-
-	listCost := (out.EstimatedInputTokens*out.ListInputPerM + out.EstimatedOutputTokens*out.ListOutputPerM) / gptAutoTokensPerMillion
-	out.EstimatedRevenue = listCost * profile.BillingMultiplier
-	out.EstimatedUpstreamCost = (out.EstimatedInputTokens*upstreamIn + out.EstimatedOutputTokens*upstreamOut) / gptAutoTokensPerMillion
-	out.EstimatedGrossProfit = out.EstimatedRevenue - out.EstimatedUpstreamCost - out.EstimatedClassifierCost
-	if out.EstimatedRevenue > 0 {
-		margin := out.EstimatedGrossProfit / out.EstimatedRevenue
-		out.EstimatedGrossMargin = &margin
-		out.BelowTarget = margin < out.TargetMargin
-	}
-	if listCost > 0 && out.TargetMargin < 1 {
-		required := (out.EstimatedUpstreamCost + out.EstimatedClassifierCost) / ((1 - out.TargetMargin) * listCost)
-		required = math.Round(required*10000) / 10000
-		out.MinRequiredMultiplier = &required
-	}
-	return out
+	return warnings
 }
 
-func gptAutoCheapestChannel(channels []GPTAutoUpstreamCost, inputTokens, outputTokens float64) (GPTAutoUpstreamCost, bool) {
-	var best GPTAutoUpstreamCost
-	bestCost := math.Inf(1)
-	for _, channel := range channels {
-		if !channel.Enabled {
-			continue
-		}
-		cost := inputTokens*channel.InputPerM + outputTokens*channel.OutputPerM
-		// Without a token estimate every channel costs zero; fall back to the
-		// cheaper unit price so the preferred channel is still meaningful.
-		if inputTokens == 0 && outputTokens == 0 {
-			cost = channel.InputPerM + channel.OutputPerM
-		}
-		if cost < bestCost {
-			best, bestCost = channel, cost
-		}
+// gptAutoEconomicsWarnings reports estimate quality and margin status. A low
+// margin is recorded but never changes the recommendation: commercial
+// optimization must not override capability or quality.
+func gptAutoEconomicsWarnings(economics GPTAutoEconomics) []GPTAutoAdjustment {
+	var warnings []GPTAutoAdjustment
+	if !economics.PricingAvailable {
+		return append(warnings, GPTAutoAdjustment{Rule: GPTAutoRulePricingUnavailable,
+			Detail: "no pricing-table entry; economics are not estimated"})
 	}
-	return best, !math.IsInf(bestCost, 1)
+	switch economics.EstimateQuality {
+	case GPTAutoEstimateQualityInsufficient:
+		return append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleInsufficientEstimate,
+			Detail: "not enough token data for a margin estimate (input " + economics.InputEstimateSource +
+				", output " + economics.OutputEstimateSource + "); margins are not shown"})
+	case GPTAutoEstimateQualityHeuristic:
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleHeuristicEstimate,
+			Detail: "input tokens are a character-count heuristic; treat the margin as indicative"})
+	}
+	switch economics.ModelMarginStatus {
+	case GPTAutoMarginLoss:
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleModelMarginLoss,
+			Detail: "estimated model revenue is below upstream model cost"})
+	case GPTAutoMarginBelowTarget:
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleModelMarginBelowTarget,
+			Detail: "estimated model margin is positive but below the effective target"})
+	}
+	switch economics.FullyLoadedMarginStatus {
+	case GPTAutoMarginLoss:
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleFullyLoadedLoss,
+			Detail: "including the Jev classification cost, the estimate is a loss"})
+	case GPTAutoMarginBelowTarget:
+		warnings = append(warnings, GPTAutoAdjustment{Rule: GPTAutoRuleFullyLoadedBelowTarget,
+			Detail: "including the Jev classification cost, the estimated margin is below the effective target"})
+	}
+	return warnings
 }
