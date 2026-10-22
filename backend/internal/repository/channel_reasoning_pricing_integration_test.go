@@ -179,3 +179,37 @@ func TestGroupReasoningPricingRoundTripAndBilling(t *testing.T) {
 		loaded = assertStoredAndBilled(multipliers)
 	}
 }
+
+// Exercise the full SQL argument order against PostgreSQL, including the fields
+// added after priority pricing and reasoning multipliers.
+func TestChannelPricingFieldsPersistTogether(t *testing.T) {
+	ctx := context.Background()
+	channel := &service.Channel{}
+	repo := newReasoningPricingIntegrationChannel(t, channel)
+	number := func(v float64) *float64 { return &v }
+	pricing := &service.ChannelModelPricing{
+		ChannelID: channel.ID, Platform: service.PlatformOpenAI, Models: []string{"synthetic-ci-model"},
+		InputPrice: number(1e-6), CacheWrite1hPrice: number(7e-6),
+		FastMultiplier: number(2), FlexMultiplier: number(.5), PriorityMultiplier: number(3),
+		ReasoningEffortMultipliers: map[string]float64{"high": 4},
+		TimePricing:                &service.ChannelTimePricing{Timezone: "UTC", Periods: []service.ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2}}},
+	}
+	require.NoError(t, repo.CreateModelPricing(ctx, pricing))
+	for _, update := range []bool{false, true} {
+		if update {
+			pricing.TimePricing.Timezone = "Asia/Shanghai"
+			pricing.ReasoningEffortMultipliers["high"] = 5
+			require.NoError(t, repo.UpdateModelPricing(ctx, pricing))
+		}
+		loaded, err := repo.ListModelPricing(ctx, channel.ID)
+		require.NoError(t, err)
+		require.Len(t, loaded, 1)
+		require.Equal(t, pricing.InputPrice, loaded[0].InputPrice)
+		require.Equal(t, pricing.CacheWrite1hPrice, loaded[0].CacheWrite1hPrice)
+		require.Equal(t, pricing.FastMultiplier, loaded[0].FastMultiplier)
+		require.Equal(t, pricing.FlexMultiplier, loaded[0].FlexMultiplier)
+		require.Equal(t, pricing.PriorityMultiplier, loaded[0].PriorityMultiplier)
+		require.Equal(t, pricing.ReasoningEffortMultipliers, loaded[0].ReasoningEffortMultipliers)
+		require.Equal(t, pricing.TimePricing, loaded[0].TimePricing)
+	}
+}

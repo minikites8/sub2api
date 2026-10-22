@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"strings"
 	"testing"
@@ -37,8 +36,7 @@ func (r *initialAdmissionRepo) GetOpenAITurnAdmission(ctx context.Context, id in
 	}
 	a, err := r.GetByID(ctx, id)
 	if a != nil && r.changed[id] {
-		a.Extra = maps.Clone(a.Extra)
-		a.Extra["openai_excel_bps"] = false
+		a.Type = service.AccountTypeAPIKey
 	}
 	return a, nil, err
 }
@@ -102,8 +100,7 @@ func TestOpenAIInitialAdmissionReselectsBeforeSending(t *testing.T) {
 				require.Equal(t, 2, acquired)
 				require.Equal(t, acquired, released, "both rejected and successful attempts release their slots")
 				require.NotContains(t, rec.Body.String(), "admission_unavailable")
-				_, recordedUpstreamError := c.Get(service.OpsUpstreamErrorsKey)
-				require.False(t, recordedUpstreamError, "a local route change is not an upstream failure")
+				require.Zero(t, c.GetInt(service.OpsUpstreamStatusCodeKey), "a local route change has no upstream HTTP status")
 			})
 		}
 	}
@@ -169,7 +166,7 @@ func TestOpenAIInitialAdmissionCannotReplayContinuationOrOutput(t *testing.T) {
 			c, _ := newExcelBPSFailoverTestContext(ctx, false)
 			account, err := repo.GetByID(ctx, 1)
 			require.NoError(t, err)
-			_, admissionErr := h.gatewayService.Forward(ctx, c, account, []byte(`{"model":"gpt-6-astra"}`))
+			_, admissionErr := h.gatewayService.Forward(c.Request.Context(), c, account, []byte(`{"model":"gpt-6-astra"}`))
 			require.True(t, service.IsOpenAIInitialAdmissionRejection(admissionErr))
 			body := []byte(`{"model":"gpt-6-astra","input":"hello"}`)
 			excluded := map[int64]struct{}{}

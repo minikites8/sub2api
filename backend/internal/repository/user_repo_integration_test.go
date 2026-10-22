@@ -533,6 +533,9 @@ func (s *UserRepoSuite) TestDeductAvailableBalance_ClampsToNonnegativeBalance() 
 	} {
 		s.Run(tc.name, func() {
 			user := s.mustCreateUser(&service.User{Email: "available-" + strings.ReplaceAll(tc.name, " ", "-") + "@test.com", Balance: tc.balance})
+			// This fixture represents paid credit; newly inserted non-recharged balance defaults to a gift.
+			_, err := integrationDB.ExecContext(s.ctx, "UPDATE users SET gift_balance = 0 WHERE id = $1", user.ID)
+			s.Require().NoError(err)
 			deducted, err := s.repo.DeductAvailableBalance(s.ctx, user.ID, tc.requested)
 			s.Require().NoError(err)
 			s.Require().InDelta(tc.wantDeduct, deducted, 1e-6)

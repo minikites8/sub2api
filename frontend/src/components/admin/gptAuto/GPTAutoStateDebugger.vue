@@ -63,6 +63,23 @@
           <dd class="font-medium tabular-nums text-gray-900 dark:text-white">{{ fact.value }}</dd>
         </div>
       </dl>
+      <section class="space-y-3" data-testid="gpt-auto-debug-preview">
+        <div>
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('gptAuto.debugger.previewTitle') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.debugger.previewHint') }}</p>
+        </div>
+        <GPTAutoContextDiagnostics :context="result.context" :classifier-hash="result.classifier_config_hash" :classifier-schema="result.effective.schema_version" synthetic />
+        <div data-testid="gpt-auto-debug-excerpts">
+          <p class="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('gptAuto.debugger.excerptsTitle') }}</p>
+          <ul v-if="excerpts.length" class="space-y-1.5">
+            <li v-for="(excerpt, index) in excerpts" :key="index" class="rounded bg-gray-50 px-3 py-1.5 text-xs dark:bg-dark-800">
+              <p class="font-medium text-gray-700 dark:text-gray-300">{{ excerpt.label }}</p>
+              <p class="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-400">{{ excerpt.text }}</p>
+            </li>
+          </ul>
+          <p v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.debugger.noExcerpts') }}</p>
+        </div>
+      </section>
       <div>
         <p class="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('gptAuto.debugger.state') }}</p>
         <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-gray-50 p-3 text-xs text-gray-700 dark:bg-dark-800 dark:text-gray-300" data-testid="gpt-auto-debug-state">{{ prettyState }}</pre>
@@ -72,6 +89,10 @@
         <div v-for="(question, id) in result.jev_request.questions" :key="id" class="mt-2">
           <p class="font-mono font-semibold">{{ id }} ({{ question.type }})</p>
           <p class="whitespace-pre-wrap text-gray-600 dark:text-gray-400">{{ question.instructions }}</p>
+          <p class="mt-1 font-medium text-gray-500 dark:text-gray-400">{{ t('gptAuto.debugger.criteriaTitle') }}</p>
+          <ul class="list-inside list-disc text-gray-600 dark:text-gray-400" :data-testid="`gpt-auto-debug-criteria-${id}`">
+            <li v-for="(criterion, key) in question.criteria" :key="key"><span class="font-mono">{{ key }}</span>: {{ criterion }}</li>
+          </ul>
         </div>
       </details>
       <details class="rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600">
@@ -85,6 +106,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import GPTAutoContextDiagnostics from './GPTAutoContextDiagnostics.vue'
 import { gptAutoAPI, type GPTAutoContextStrategy, type GPTAutoDebugResult, type GPTAutoEndpoint } from '@/api/admin/gptAuto'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatNumber } from '@/utils/gptAuto'
@@ -155,6 +177,36 @@ const prettyState = computed(() => {
   } catch {
     return result.value?.jev_request.state ?? ''
   }
+})
+
+interface StateExcerptSource {
+  latest_user_request?: string
+  task_context?: { continues_request?: string; original_request?: string; history_summary?: string }
+  recent_context?: { role: string; text: string }[]
+  agent_activity?: { recent?: { kind: string; status?: string; summary?: string }[] }
+}
+
+/** The excerpts exactly as they appear in the server-built state. */
+const excerpts = computed(() => {
+  let state: StateExcerptSource
+  try {
+    state = JSON.parse(result.value?.jev_request.state ?? '') as StateExcerptSource
+  } catch {
+    return []
+  }
+  const out: { label: string; text: string }[] = []
+  const add = (label: string, text?: string) => {
+    if (text) out.push({ label, text })
+  }
+  add(t('gptAuto.debugger.excerptLatest'), state.latest_user_request)
+  add(t('gptAuto.debugger.excerptContinues'), state.task_context?.continues_request)
+  for (const event of state.agent_activity?.recent ?? []) {
+    add(t('gptAuto.debugger.excerptEvent', { kind: event.status ? `${event.kind} (${event.status})` : event.kind }), event.summary)
+  }
+  add(t('gptAuto.debugger.excerptOriginal'), state.task_context?.original_request)
+  add(t('gptAuto.debugger.excerptSummary'), state.task_context?.history_summary)
+  for (const turn of state.recent_context ?? []) add(t('gptAuto.debugger.excerptRecent', { role: turn.role }), turn.text)
+  return out
 })
 
 const facts = computed(() => {

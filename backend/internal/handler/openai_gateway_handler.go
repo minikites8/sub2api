@@ -929,7 +929,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var passthroughFailoverState openAIPassthroughFailoverState
 	admissionBindingRetries := make(map[int64]bool)
 	ordinaryBPSFallbackStarted := false
-	writerSizeBeforeForward := -1
+	var writerSizeBeforeForward int
 	lastWriterSizeBeforeForward := -1
 	startOrdinaryBPSFallback := func() bool {
 		if requestPrefersAccountRetry(c) && switchCount >= maxAccountSwitches {
@@ -1142,7 +1142,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}()
 			return h.gatewayService.Forward(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, attemptBody)
 		}()
-		if retryOpenAIInitialAdmission(c, err, result, forwardBody, account.ID, failedAccountIDs, &switchCount, maxAccountSwitches) {
+		if retryOpenAIInitialAdmission(c, err, result, sessionHashBody, account.ID, failedAccountIDs, &switchCount, maxAccountSwitches) {
 			lastAdmissionErr = err
 			reqLog.Info("openai.admission_reselecting", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
 			continue
@@ -1217,7 +1217,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					return
 				}
 				reason := service.OpenAITurnAdmissionReason(err)
-				if openAIHTTPAdmissionMayRetry(c, err, previousResponseID, result, writerSizeBeforeForward, switchCount, maxAccountSwitches) {
+				if !gjson.GetBytes(sessionHashBody, "conversation").Exists() && openAIHTTPAdmissionMayRetry(c, err, previousResponseID, result, writerSizeBeforeForward, switchCount, maxAccountSwitches) {
 					sameAccount := reason == "account_binding_changed" && !admissionBindingRetries[account.ID]
 					if sameAccount {
 						admissionBindingRetries[account.ID] = true

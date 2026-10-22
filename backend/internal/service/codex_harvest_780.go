@@ -225,6 +225,7 @@ func (s *OpenAIGatewayService) requestCodex780Shot(ctx context.Context, account 
 		client, req, err = codexMintHTTPClient(req, proxy, controls.EdgeIP)
 		if err == nil {
 			defer client.CloseIdleConnections()
+			// #nosec G704 -- request uses fixed chatgptCodexURL; edge IP is validated above and redirects are disabled.
 			resp, err = client.Do(req)
 		}
 	} else {

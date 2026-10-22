@@ -91,6 +91,10 @@ CREATE TABLE IF NOT EXISTS user_provider_default_grants (
 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	_, err = db.Exec("ALTER TABLE users ADD COLUMN gift_balance REAL NOT NULL DEFAULT 0")
+	require.NoError(t, err)
+	_, err = db.Exec("ALTER TABLE users ADD COLUMN gift_balance_expires_at TIMESTAMP NULL")
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 
 	repo := repository.NewUserRepository(client, db)

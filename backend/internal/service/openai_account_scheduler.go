@@ -634,7 +634,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		return nil, false, nil
 	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
-	if escapeCfg.enabled && s.shouldRebalancePrioritySticky(ctx, req, account) {
+	if escapeCfg.enabled && !req.DisableStickyEscape && s.shouldRebalancePrioritySticky(ctx, req, account) {
 		slog.Info("sticky_escape_triggered", "account_id", accountID, "reason", "priority_capacity_imbalance")
 		return nil, true, nil
 	}
@@ -664,7 +664,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
 		account.ensureSelectedProxy()
-		if escapeCfg.enabled && acquireErr == nil && result != nil && !result.Acquired {
+		if escapeCfg.enabled && !req.DisableStickyEscape && acquireErr == nil && result != nil && !result.Acquired {
 			errorRate, ttft, _ := s.stats.snapshot(accountID)
 			slog.Info("sticky_escape_triggered",
 				"account_id", accountID,

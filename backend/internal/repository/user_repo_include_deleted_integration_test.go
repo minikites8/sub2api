@@ -15,7 +15,7 @@ func TestUserRepo_ListWithFilters_IncludeDeleted(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
 	client := tx.Client()
-	repo := NewUserRepository(client, integrationDB)
+	repo := newUserRepositoryWithSQL(client, tx)
 
 	active := mustCreateUser(t, client, &service.User{Email: "shared-keyword-active@test.com"})
 	deleted := mustCreateUser(t, client, &service.User{Email: "shared-keyword-deleted@test.com"})
@@ -52,7 +52,7 @@ func TestUserRepo_GetByIDIncludeDeleted(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
 	client := tx.Client()
-	repo := NewUserRepository(client, integrationDB)
+	repo := newUserRepositoryWithSQL(client, tx)
 
 	u := mustCreateUser(t, client, &service.User{Email: "getbyid-deleted@test.com"})
 	require.NoError(t, client.User.DeleteOneID(u.ID).Exec(ctx))

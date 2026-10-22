@@ -567,7 +567,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"rpm_ok", rpmOK,
 				)
 
-				if !clearSticky && platformOK && profitOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
+				if !clearSticky && platformOK && profitOK && channelOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
 					result, err := s.tryAcquireAccountSlot(ctx, account)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
@@ -699,6 +699,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if s.tryRecoverKiroCooldownPool(ctx, accounts, requestedModel, excludedIDs, useMixed) {
 			retryCtx := context.WithValue(ctx, kiroCooldownRecoveryAttemptedKey, true)
 			return s.SelectAccountWithLoadAwareness(retryCtx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+		}
+		if channelRestrictedCount > 0 {
+			return nil, channelPricingRestrictionError(requestedModel)
 		}
 		return nil, ErrNoAvailableAccounts
 	}

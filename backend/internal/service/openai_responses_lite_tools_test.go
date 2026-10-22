@@ -163,7 +163,7 @@ func TestNormalizeOpenAIResponsesLiteTools_KeepsSupportedTopLevelTools(t *testin
 	changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
 
 	require.NoError(t, err)
-	require.True(t, changed)
+	require.False(t, changed, "the supported request already satisfies the Lite contract")
 	require.Len(t, reqBody["tools"], 4)
 	require.Equal(t, false, reqBody["parallel_tool_calls"])
 }

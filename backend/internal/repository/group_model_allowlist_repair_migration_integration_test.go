@@ -53,7 +53,7 @@ func TestMigration236BackfillsWhenBothColumnsExist(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := tx.ExecContext(ctx,
-		"ALTER TABLE groups ADD COLUMN models_list_config JSONB NOT NULL DEFAULT '{}'::jsonb")
+		"ALTER TABLE groups ADD COLUMN IF NOT EXISTS models_list_config JSONB NOT NULL DEFAULT '{}'::jsonb")
 	require.NoError(t, err)
 
 	// 新列仍是默认空值：旧列里的配置应该被补回来。

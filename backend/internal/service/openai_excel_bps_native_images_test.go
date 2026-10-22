@@ -145,7 +145,7 @@ func TestExcelBPSNativeImageForwardAndReplay(t *testing.T) {
 			require.NoError(t, err)
 			form, err := multipart.NewReader(bytes.NewReader(upstream.bodies[0]), params["boundary"]).ReadForm(1 << 20)
 			require.NoError(t, err)
-			defer form.RemoveAll()
+			defer func() { _ = form.RemoveAll() }()
 			require.Equal(t, []string{"vision"}, form.Value["purpose"])
 			require.Len(t, form.File["file"], 1)
 			file, err := form.File["file"][0].Open()

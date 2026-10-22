@@ -104,7 +104,7 @@ func TestForwardOpenAIWSV2_ActualOutputStopsAccountReplay(t *testing.T) {
 			require.NotContains(t, rec.Body.String(), "Upstream request failed")
 			require.Equal(t, 1, strings.Count(rec.Body.String(), "event: response.failed"))
 			require.True(t, IsResponseCommitted(c), "handler must not append a generic 502 after the upstream error")
-			events := c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+			events := requireOpsType[[]*OpsUpstreamErrorEvent](t, c.MustGet(OpsUpstreamErrorsKey))
 			require.Len(t, events, 1)
 			require.Equal(t, "stream_failed", events[0].Kind)
 			require.Equal(t, "downstream_response_committed", events[0].FailoverSuppressedReason)
@@ -168,6 +168,6 @@ func TestOpenAIWSSSEOverloadFallsThroughOAuthPoolToAPIKey(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "failed-metadata")
 	require.NotContains(t, rec.Body.String(), "resp_failed_attempt")
 	require.NotContains(t, rec.Body.String(), "overloaded")
-	events := c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+	events := requireOpsType[[]*OpsUpstreamErrorEvent](t, c.MustGet(OpsUpstreamErrorsKey))
 	require.Len(t, events, 3)
 }

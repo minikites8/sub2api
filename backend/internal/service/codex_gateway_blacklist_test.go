@@ -33,7 +33,9 @@ func TestNormalizeCodexGatewayBlacklist(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, extra[OpenAICodexTicketGatewayBlacklistExtraKey])
-			require.True(t, extra["other"].(bool))
+			other, ok := extra["other"].(bool)
+			require.True(t, ok)
+			require.True(t, other)
 		})
 	}
 	require.NoError(t, NormalizeOpenAICodexTicketGatewayBlacklistExtra(nil))

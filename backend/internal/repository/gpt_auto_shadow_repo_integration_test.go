@@ -92,3 +92,44 @@ func TestGPTAutoShadowRepositoryRoundTrip(t *testing.T) {
 	_, err = repo.OutputHistory(ctx, service.GPTAutoModelPool(), now.Add(-24*time.Hour))
 	require.NoError(t, err, "usage_logs columns used by the estimator must exist")
 }
+
+func TestGPTAutoShadowRepositoryContextDiagnosticsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	repo := NewGPTAutoShadowRepository(integrationDB)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Synthetic request; only its extraction metadata is stored.
+	body := []byte(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"Implement an LRU cache"},` +
+		`{"role":"assistant","content":"Done."},{"role":"user","content":"continue"}]}`)
+	snapshot := service.BuildGPTAutoSnapshot(service.GPTAutoEndpointChatCompletions, body, service.DefaultGPTAutoShadowConfig().ContextOptions())
+	stateChars := 321
+	snapshot.Context.Diagnostics.StateChars = &stateChars
+	context := snapshot.Context
+	withDiagnostics := &service.GPTAutoShadowDecision{
+		CreatedAt: now, RequestID: "req-diag", Endpoint: service.GPTAutoEndpointChatCompletions, EvaluationStatus: service.GPTAutoEvaluationFailed,
+		ErrorClass: service.GPTAutoErrTimeout, PolicyVersion: "shadow-v1",
+		Features: service.GPTAutoRequestFeatures{Endpoint: service.GPTAutoEndpointChatCompletions, Context: &context},
+	}
+	require.NoError(t, repo.Insert(ctx, withDiagnostics))
+	legacy := &service.GPTAutoShadowDecision{
+		CreatedAt: now, RequestID: "req-legacy", Endpoint: service.GPTAutoEndpointChatCompletions, EvaluationStatus: service.GPTAutoEvaluationFailed,
+		ErrorClass: service.GPTAutoErrTimeout, PolicyVersion: "shadow-v1",
+		Features: service.GPTAutoRequestFeatures{Endpoint: service.GPTAutoEndpointChatCompletions},
+	}
+	require.NoError(t, repo.Insert(ctx, legacy))
+
+	got, err := repo.GetByID(ctx, withDiagnostics.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.Features.Context)
+	require.Equal(t, snapshot.Context.Diagnostics, got.Features.Context.Diagnostics)
+	require.Equal(t, service.GPTAutoFollowUpLinked, got.Features.Context.Diagnostics.FollowUp.Resolution)
+
+	var raw string
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT features::text FROM gpt_auto_shadow_decisions WHERE id = $1`, withDiagnostics.ID).Scan(&raw))
+	require.NotContains(t, raw, "LRU cache", "no request text is persisted")
+	require.Contains(t, raw, service.GPTAutoContextDiagnosticsVersion)
+
+	old, err := repo.GetByID(ctx, legacy.ID)
+	require.NoError(t, err)
+	require.Nil(t, old.Features.Context, "rows without diagnostics stay readable and nothing is reconstructed")
+}

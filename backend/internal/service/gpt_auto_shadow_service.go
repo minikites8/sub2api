@@ -93,7 +93,9 @@ type gptAutoTask struct {
 
 // gptAutoSnapshotBytes approximates the memory a queued snapshot pins.
 func gptAutoSnapshotBytes(snapshot GPTAutoRequestSnapshot) int64 {
-	size := 512 + len(snapshot.LatestUser) + len(snapshot.RequestedModel) + len(snapshot.RequestID)
+	// The fixed part covers the snapshot's scalar fields and the bounded
+	// context diagnostics.
+	size := 2048 + len(snapshot.LatestUser) + len(snapshot.RequestedModel) + len(snapshot.RequestID)
 	for _, turn := range snapshot.RecentContext {
 		size += 32 + len(turn.Text)
 	}
@@ -620,6 +622,12 @@ func (s *GPTAutoShadowService) buildDecisionRow(cfg GPTAutoShadowConfig, snapsho
 		EstimatedInputTokens: snapshot.EstimatedInputTokens,
 		InputEstimateSource:  GPTAutoEstimateSourceHeuristic,
 		Context:              gptAutoContextInfoPtr(snapshot.Context),
+	}
+	// Diagnostics record the length of the state Jev was sent. Serializing the
+	// bounded snapshot again here (in the worker, not on the request path)
+	// reproduces it exactly: buildGPTAutoClassifierState is deterministic.
+	if state, err := buildGPTAutoClassifierState(snapshot); err == nil {
+		features.Context = gptAutoContextInfoPtr(snapshot.Context.withStateChars(utf8.RuneCountInString(state)))
 	}
 	classifierHash, _, _ := NewGPTAutoClassifierSnapshot(cfg).Hash()
 	row := &GPTAutoShadowDecision{

@@ -62,6 +62,12 @@ func TestUserPlatformQuotaPlatformCheckFinalStateCoversAllPlatforms(t *testing.T
 	body, err := FS.ReadFile(last)
 	require.NoError(t, err)
 	normalized := strings.Join(strings.Fields(string(body)), " ")
+	// Migration 270 deliberately replaces fixed platform CHECKs with application validation.
+	if last == "270_drop_platform_check_constraints.sql" {
+		require.Contains(t, normalized, "DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check")
+		require.NotContains(t, normalized, "ADD CONSTRAINT user_platform_quotas_platform_check")
+		return
+	}
 
 	// 取该文件里最后一处 CHECK (platform IN (...))，即约束终态。
 	checkRe := regexp.MustCompile(`CHECK \(platform IN \(([^)]*)\)\)`)

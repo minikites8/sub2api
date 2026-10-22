@@ -213,6 +213,11 @@ func (p *ChannelModelPricing) GetTierByLabel(label string) *PricingInterval {
 func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	cp := p
 	cp.ReasoningEffortMultipliers = maps.Clone(p.ReasoningEffortMultipliers)
+	if p.TimePricing != nil {
+		timePricing := *p.TimePricing
+		timePricing.Periods = append([]ChannelTimePricingPeriod(nil), p.TimePricing.Periods...)
+		cp.TimePricing = &timePricing
+	}
 	if p.Models != nil {
 		cp.Models = make([]string, len(p.Models))
 		copy(cp.Models, p.Models)

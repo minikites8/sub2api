@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
@@ -87,7 +88,8 @@ func TestPriorityColdGatewayBalancesCompatibleProtocols(t *testing.T) {
 			gateway.cfg = newSchedulerTestOpenAIWSV2Config()
 			gateway.concurrencyService = NewConcurrencyService(schedulerTestConcurrencyCache{acquiredIDs: &acquired, loadMap: map[int64]*AccountLoadInfo{51001: {AccountID: 51001, CurrentConcurrency: 43}, 51002: {AccountID: 51002}}, acquireResults: map[int64]bool{51001: tc.bpsSlot, 51002: tc.nativeSlot}})
 			scheduler := newDefaultOpenAIAccountScheduler(gateway, nil)
-			selection, _, err := scheduler.Select(context.Background(), OpenAIAccountScheduleRequest{GroupID: &groupID, Platform: PlatformOpenAI, RequestedModel: "gpt-6-sol", UseUpstreamTokenCost: true})
+			ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{ID: groupID, EnableBPS: true})
+			selection, _, err := scheduler.Select(ctx, OpenAIAccountScheduleRequest{GroupID: &groupID, Platform: PlatformOpenAI, RequestedModel: "gpt-6-sol", UseUpstreamTokenCost: true})
 			require.NoError(t, err)
 			require.NotNil(t, selection)
 			require.Equal(t, tc.want, selection.Account.ID)

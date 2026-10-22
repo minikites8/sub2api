@@ -691,6 +691,12 @@ func (s *UsageLogRepoSuite) TestListWithFilters() {
 // --- GetDashboardStats ---
 
 func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
+	// Committed fixtures from other repository suites may not yet be in the
+	// aggregate tables. Isolate this test's source and aggregates in its transaction.
+	for _, table := range []string{"usage_logs", "usage_dashboard_daily_users", "usage_dashboard_hourly_users", "usage_dashboard_daily", "usage_dashboard_hourly"} {
+		_, err := s.tx.ExecContext(s.ctx, "DELETE FROM "+table)
+		s.Require().NoError(err)
+	}
 	now := time.Now().UTC()
 	todayStart := truncateToDayUTC(now)
 	baseStats, err := s.repo.GetDashboardStats(s.ctx)

@@ -240,12 +240,11 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 			cloned := *resolved.BasePricing
 			resolved.BasePricing = &cloned
 		}
-		if chPricing.ImageOutputPrice != nil {
-			resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
-		} else {
-			resolved.BasePricing.ImageOutputPricePerToken = 0
-		}
-		resolved.BasePricing.ImageOutputPriceExplicit = true
+		applyChannelTokenPriceOverrides(resolved.BasePricing, chPricing)
+		resolved.SupportsCacheBreakdown = resolved.SupportsCacheBreakdown || chPricing.CacheWrite1hPrice != nil
+		resolved.BasePricing.FastMultiplier = chPricing.FastMultiplier
+		resolved.BasePricing.FlexMultiplier = chPricing.FlexMultiplier
+		resolved.BasePricing.ReasoningEffortMultipliers = maps.Clone(chPricing.ReasoningEffortMultipliers)
 		if chPricing.PriorityMultiplier != nil {
 			resolved.BasePricing.PriorityMultiplier = normalizeChannelPriorityMultiplier(chPricing.PriorityMultiplier)
 		}

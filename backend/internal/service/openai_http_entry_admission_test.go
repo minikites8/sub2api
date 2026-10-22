@@ -72,7 +72,7 @@ func TestOpenAIHTTPEntryLogsActualReasonWithBPSDisabled(t *testing.T) {
 	require.Empty(t, upstream.requests)
 	eventsValue, ok := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, ok)
-	events := eventsValue.([]*OpsUpstreamErrorEvent)
+	events := requireOpsType[[]*OpsUpstreamErrorEvent](t, eventsValue)
 	require.Len(t, events, 1)
 	require.Equal(t, "admission_error", events[0].Kind)
 	require.Equal(t, "admission", events[0].Stage)

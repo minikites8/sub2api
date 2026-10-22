@@ -168,6 +168,9 @@ func (g *controlledExperimentGateway) Execute(parent context.Context, route Cont
 		d.ResponseModel = result.UpstreamResponseModel
 		d.Usage = result.Usage
 		d.UsageSource = "provider"
+		if recorder.Header().Get("X-Prism-Usage") == "estimated" {
+			d.UsageSource = "estimated"
+		}
 		if result.UsageUnavailable {
 			d.UsageSource = "unavailable"
 		}

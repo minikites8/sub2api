@@ -60,10 +60,7 @@ func (r *userRepository) StoreSignupRiskSignals(ctx context.Context, userID int6
 		return nil
 	}
 	for _, fingerprint := range service.HashBrowserFingerprints(fingerprints) {
-		bucket := fingerprint
-		if strings.HasPrefix(bucket, "b:") {
-			bucket = strings.TrimPrefix(bucket, "b:")
-		}
+		bucket := strings.TrimPrefix(fingerprint, "b:")
 		if len(bucket) > 16 {
 			bucket = bucket[:16]
 		}
@@ -88,7 +85,7 @@ func (r *userRepository) GetUserFingerprints(ctx context.Context, userID int64) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []string
 	for rows.Next() {
 		var value string
@@ -109,7 +106,7 @@ func (r *userRepository) GetUserBrowserFingerprints(ctx context.Context, userID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []string
 	for rows.Next() {
 		var value string
@@ -130,7 +127,7 @@ func (r *userRepository) CountUsersByFingerprintHashes(ctx context.Context, fing
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var count int
 	if rows.Next() {
 		err = rows.Scan(&count)
@@ -147,7 +144,7 @@ func (r *userRepository) ListUsersByFingerprintHashes(ctx context.Context, finge
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []int64
 	for rows.Next() {
 		var userID int64
@@ -196,7 +193,7 @@ func (r *userRepository) CountUsersByTransportFingerprints(ctx context.Context, 
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var count int
 	if rows.Next() {
 		err = rows.Scan(&count)
@@ -263,7 +260,7 @@ func (r *userRepository) RecordAntiAbuseEvent(ctx context.Context, event *servic
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return rows.Err()
 	}
@@ -332,7 +329,7 @@ func (r *userRepository) ListAntiAbuseEvents(ctx context.Context, filter service
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]service.AntiAbuseEvent, 0)
 	for rows.Next() {
 		var item service.AntiAbuseEvent

@@ -48,7 +48,7 @@ func newTwoFATestService(t *testing.T, server *httptest.Server) *AccountTokenGua
 	cfg.ReloginEndpoint = server.URL
 	cfg.ReloginHeaders = map[string]string{
 		"X-Session-Studio-Relogin": "1",
-		"X-Test-Client":           "{{uuid}}",
+		"X-Test-Client":            "{{uuid}}",
 	}
 	raw, err := json.Marshal(cfg)
 	require.NoError(t, err)

@@ -99,6 +99,7 @@ func TestSettingHandler_GetPublicSettings_ExposesEnterpriseBillingContactQR(t *t
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
 
 	h.GetPublicSettings(c)
 	require.Equal(t, http.StatusOK, recorder.Code)

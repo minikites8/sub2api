@@ -339,6 +339,45 @@ describe('GPTAutoDecisionLog', () => {
     expect(wrapper.find('[data-testid="gpt-auto-actual-usage"]').text()).toContain('gptAuto.detail.actualMissing')
   })
 
+  it('shows context diagnostics for a decision and the unavailable notice for older ones', async () => {
+    const withDiagnostics = {
+      ...decision(),
+      classifier_config_hash: 'feedface00112233',
+      features: {
+        endpoint: 'responses', has_tools: true, estimated_input_tokens: 100,
+        context: {
+          state_version: 'state-v3', strategy: 'task_aware' as const, items_total: 9, scanned_bytes: 900, latest_user_index: 8, latest_user_kind: 'instruction' as const,
+          latest_user_truncated: false, follow_up_anchor_index: -1, original_request_index: 0, context_turns_available: 2, context_turns_included: 2,
+          agent_events_included: 0, agent_events_omitted: 0, budget_chars: 4000, used_chars: 300,
+          diagnostics: {
+            diagnostics_version: 'context-diagnostics-v1', scan_status: 'scanned' as const, context_truncated: false,
+            selection: [{ section: 'latest_user_request' as const, status: 'included' as const, chars: 300, items: 1 }],
+            follow_up: { resolution: 'not_follow_up' as const, short_message: false, original_task_available: true, agent_activity_available: false },
+            completeness: 'sufficient' as const,
+          },
+        },
+      },
+    }
+    mocks.api.getDecision.mockResolvedValue(withDiagnostics)
+    wrapper = mountWith(GPTAutoDecisionLog)
+    await flushPromises()
+    expect(mocks.api.getMeta).toHaveBeenCalled()
+    await wrapper.find('[data-testid="gpt-auto-decision-7"]').trigger('click')
+    await flushPromises()
+    const section = wrapper.find('[data-testid="gpt-auto-context-diagnostics"]')
+    expect(section.exists()).toBe(true)
+    expect(section.find('[data-testid="gpt-auto-diagnostics-budget"]').exists()).toBe(true)
+    expect(section.find('[data-testid="gpt-auto-diagnostics-fact-classifierHash"]').text()).toContain('feedface00')
+    expect(section.find('[data-testid="gpt-auto-diagnostics-comparison"]').exists()).toBe(true)
+    expect(section.find('[data-testid="gpt-auto-diagnostics-unavailable"]').exists()).toBe(false)
+
+    mocks.api.getDecision.mockResolvedValue(decision())
+    await wrapper.find('[data-testid="gpt-auto-decision-7"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="gpt-auto-diagnostics-unavailable"]').text()).toContain('gptAuto.diagnostics.unavailable')
+    expect(wrapper.find('[data-testid="gpt-auto-diagnostics-budget"]').exists()).toBe(false)
+  })
+
   it('renders an empty state', async () => {
     mocks.api.listDecisions.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
     wrapper = mountWith(GPTAutoDecisionLog)
@@ -495,7 +534,11 @@ describe('GPTAutoStateDebugger', () => {
   const debugResult = {
     options: { max_chars: 4000, context_turns: 4, strategy: 'task_aware', agent_steps: 8 },
     classifiable: true,
-    jev_request: { model: 'jev-latest', state: '{"latest_user_request":"fix it","latest_user_request_kind":"follow_up"}', questions: { target_model: { type: 'choice', instructions: 'pick least capable' } } },
+    jev_request: {
+      model: 'jev-latest',
+      state: '{"latest_user_request":"fix it","latest_user_request_kind":"follow_up","task_context":{"continues_request":"Implement an LRU cache"},"agent_activity":{"recent":[{"kind":"tool_result","status":"error","summary":"--- FAIL: TestExpiry"}]}}',
+      questions: { target_model: { type: 'choice', instructions: 'pick least capable', criteria: { 'gpt-6-luna': 'efficient general model' } } },
+    },
     state_chars: 70,
     estimated_jev_input_tokens: 1900,
     context: {
@@ -503,6 +546,13 @@ describe('GPTAutoStateDebugger', () => {
       latest_user_truncated: false, follow_up_anchor_index: 1200, original_request_index: 0, context_turns_available: 1000, context_turns_included: 4,
       agent_events_included: 3, agent_events_omitted: 0, budget_chars: 4000, used_chars: 900, section_chars: { latest_user_request: 6 },
       limitations: ['earlier_context_omitted'],
+      diagnostics: {
+        diagnostics_version: 'context-diagnostics-v1', scan_status: 'scanned', context_truncated: false,
+        items: { eligible: 1203, represented: 7, selected_messages: 5, budget_dropped: 0, budget_truncated: 0, not_selected: 1196, privacy: 0, unsupported: 0, external_references: 0, compacted: 0, empty: 0, with_images: 0, conversation_length_known: true },
+        selection: [{ section: 'latest_user_request', status: 'included', chars: 6, items: 1 }, { section: 'continues_request', status: 'included', chars: 22, items: 1 }],
+        follow_up: { resolution: 'linked_request', short_message: true, original_task_available: true, agent_activity_available: true },
+        completeness: 'partial', completeness_reasons: ['earlier_context_omitted'], state_chars: 70,
+      },
     },
     effective: { schema_version: 'jev-questions-v2', state_version: 'state-v3', classifier_model: 'jev-latest', questions: {} },
     classifier_config_hash: 'abcdef0123456789',
@@ -523,6 +573,30 @@ describe('GPTAutoStateDebugger', () => {
     expect(wrapper.find('[data-testid="gpt-auto-debug-info"]').text()).toContain('1,203')
     expect(wrapper.findAll('[data-testid="gpt-auto-debug-limitation"]')).toHaveLength(1)
     expect(mocks.api.runTest).not.toHaveBeenCalled()
+  })
+
+  it('shows the server-built context extraction preview without storing the fixture', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    mocks.api.debugState.mockResolvedValue(debugResult)
+    wrapper = mountWith(GPTAutoStateDebugger)
+    for (const example of ['simple', 'routineCode', 'complexEngineering', 'followUp', 'agentFailure', 'longChat', 'previousResponse', 'multimodal']) {
+      expect(wrapper.find(`[data-testid="gpt-auto-debug-example-${example}"]`).exists()).toBe(true)
+    }
+    await wrapper.find('[data-testid="gpt-auto-debug-example-followUp"]').trigger('click')
+    expect((wrapper.find('[data-testid="gpt-auto-debug-request"]').element as HTMLTextAreaElement).value).toContain('"continue"')
+    await wrapper.find('[data-testid="gpt-auto-debug-run"]').trigger('click')
+    await flushPromises()
+    const preview = wrapper.find('[data-testid="gpt-auto-debug-preview"]')
+    expect(preview.find('[data-testid="gpt-auto-context-diagnostics"]').exists()).toBe(true)
+    expect(preview.find('[data-testid="gpt-auto-diagnostics-synthetic"]').exists()).toBe(true)
+    expect(preview.find('[data-testid="gpt-auto-diagnostics-step-continues_request"]').exists()).toBe(true)
+    const excerpts = wrapper.find('[data-testid="gpt-auto-debug-excerpts"]').text()
+    expect(excerpts).toContain('fix it')
+    expect(excerpts).toContain('Implement an LRU cache')
+    expect(excerpts).toContain('--- FAIL: TestExpiry')
+    expect(wrapper.find('[data-testid="gpt-auto-debug-criteria-target_model"]').text()).toContain('efficient general model')
+    expect(setItem).not.toHaveBeenCalled()
+    setItem.mockRestore()
   })
 
   it('rejects invalid JSON without calling the backend', async () => {

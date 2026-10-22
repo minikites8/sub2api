@@ -231,7 +231,7 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 		require.Equal(t, int64(38101), selection.Account.ID)
 		require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 		require.False(t, decision.StickyPreviousHit)
-		require.Contains(t, released, int64(38102), "the owning account's slot must be released after the proxy quarantine check fails")
+		require.Contains(t, released, AccountProxySlotID(38102, quarantinedProxy), "the owning account/proxy slot must be released after the proxy quarantine check fails")
 	})
 
 	t.Run("all proxies quarantined fails open to the owner", func(t *testing.T) {

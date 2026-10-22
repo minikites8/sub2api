@@ -98,9 +98,6 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	} else if req.OrderType == payment.OrderTypeBalance {
 		// 阈值按支付金额命中。赠金模式：到账 = 基数 + 赠送；折扣模式：到账 = 基数，实付基数按折扣减少。
 		quote := quoteRechargeBonus(cfg, req.Amount, methodCurrency)
-		limitAmount = quote.PayBase
-		bonusAmount = quote.Bonus
-		orderAmount = quote.Credited
 		firstRechargePromo, err := s.resolveFirstRechargePromo(ctx, req.UserID)
 		if err != nil {
 			return nil, err

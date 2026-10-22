@@ -30,7 +30,7 @@ func scopedHarvestOverlap(t *testing.T, secondID int64, secondModel string) {
 	started := make(chan int, 2)
 	proceed := make(chan struct{})
 	s := ticketTestService(t, config.OpenAICodexTicketConfig{TTLSeconds: 3600}, &codexTicketFuncUpstream{do: func(req *http.Request) (*http.Response, error) {
-		tag := req.Context().Value(scopedHarvestTag{}).(int)
+		tag := requireOpsType[int](t, req.Context().Value(scopedHarvestTag{}))
 		started <- tag
 		select {
 		case <-proceed:
@@ -78,7 +78,7 @@ func TestScopedHarvestSameModelResumesAfterRelease(t *testing.T) {
 	started := make(chan int, 2)
 	proceed := make(chan struct{})
 	s := ticketTestService(t, config.OpenAICodexTicketConfig{TTLSeconds: 3600}, &codexTicketFuncUpstream{do: func(req *http.Request) (*http.Response, error) {
-		tag := req.Context().Value(scopedHarvestTag{}).(int)
+		tag := requireOpsType[int](t, req.Context().Value(scopedHarvestTag{}))
 		started <- tag
 		if tag == 1 {
 			select {

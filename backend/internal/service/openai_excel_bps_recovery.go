@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -254,6 +255,17 @@ func (s *OpenAIGatewayService) probeExcelBPS403Recovery(ctx context.Context, acc
 	proxy := ""
 	if account.Proxy != nil {
 		proxy = account.Proxy.URL()
+	}
+	if probe.IsExcelBPSMihomoEnabled() {
+		s.refreshExcelBPSIPPool(ctx)
+		var lease excelBPSLease
+		proxy, lease, err = s.excelBPSAcquireFor(&probe)(ctx, fmt.Sprintf("recovery:account:%d", account.ID))
+		if err != nil {
+			return err
+		}
+		if lease != nil {
+			defer lease.Release()
+		}
 	}
 	ctx = WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileExcelBPS))
 	req, err := newExcelBPSRequest(ctx, body, token, accountID)

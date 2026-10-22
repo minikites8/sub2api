@@ -68,7 +68,11 @@ func OpenAICodexTicketGatewayBlacklist(account *Account) []string {
 	if NormalizeOpenAICodexTicketGatewayBlacklistExtra(extra) != nil {
 		return []string{}
 	}
-	return extra[OpenAICodexTicketGatewayBlacklistExtraKey].([]string)
+	gateways, ok := extra[OpenAICodexTicketGatewayBlacklistExtraKey].([]string)
+	if !ok {
+		return []string{}
+	}
+	return gateways
 }
 
 // CodexGatewayBlacklistRepository appends under a database row lock, preserving

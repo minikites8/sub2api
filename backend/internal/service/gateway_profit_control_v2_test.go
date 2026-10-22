@@ -489,3 +489,7 @@ func (c *sentinelMissGatewayCache) GetSessionAccountID(ctx context.Context, grou
 	}
 	return 0, ErrStickySessionNotFound
 }
+
+func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+	return s.withGatewayProfitControlGateForModel(ctx, groupID, "")
+}

@@ -3,21 +3,28 @@ package basispoints
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 // UpstreamFailure is a safe interpretation of an in-band error. Status is a
 // semantic status, not evidence of the HTTP status returned by the upstream.
 type UpstreamFailure struct {
-	Status  int
-	Code    string
-	Type    string
-	Message string
+	Status     int
+	Code       string
+	Type       string
+	Message    string
+	RetryAfter string
 }
 
 func (f *UpstreamFailure) Error() string { return f.Message }
 
 func (f *UpstreamFailure) Details() map[string]any {
-	return object{"status": f.Status, "code": f.Code, "type": f.Type, "message": f.Message}
+	details := object{"status": f.Status, "code": f.Code, "type": f.Type, "message": f.Message}
+	if f.RetryAfter != "" {
+		details["headers"] = object{"retry-after": f.RetryAfter}
+	}
+	return details
 }
 
 // ParseUpstreamFailure recognizes failure terminals only. Unknown identifiers
@@ -45,6 +52,9 @@ func classifyUpstreamFailure(kind string, payload object) *UpstreamFailure {
 		detail = payload
 	}
 	code := text(detail["code"])
+	if strings.EqualFold(strings.TrimSpace(text(detail["message"])), "Account eligibility changed; please retry with complete context") {
+		code = "account_eligibility_changed"
+	}
 	status := failureIdentifierStatus(code)
 	if status == 0 {
 		code = "basispoints_upstream_error"
@@ -76,8 +86,17 @@ func classifyUpstreamFailure(kind string, payload object) *UpstreamFailure {
 			errorType = "invalid_request_error"
 		}
 	}
-	return &UpstreamFailure{Status: status, Code: code, Type: errorType,
+	failure := &UpstreamFailure{Status: status, Code: code, Type: errorType,
 		Message: "Excel BPS upstream failure: " + code + "; request was not replayed"}
+	if headers, ok := detail["headers"].(object); ok {
+		raw := strings.TrimSpace(text(headers["retry-after"]))
+		seconds, err := strconv.ParseUint(raw, 10, 32)
+		_, dateErr := http.ParseTime(raw)
+		if len(raw) <= 128 && (err == nil && seconds <= 7*24*60*60 || dateErr == nil) {
+			failure.RetryAfter = raw
+		}
+	}
+	return failure
 }
 
 func failureStatus(value any) int {
@@ -103,7 +122,7 @@ func failureIdentifierStatus(identifier string) int {
 		return http.StatusUnauthorized
 	case "permission_error", "permission_denied", "basispoints_model_access_changed":
 		return http.StatusForbidden
-	case "model_not_found", "model_not_found_error":
+	case "model_not_found", "model_not_found_error", "model_not_supported", "unsupported_model", "model_not_available":
 		return http.StatusNotFound
 	case "message_too_big":
 		return http.StatusRequestEntityTooLarge
@@ -111,7 +130,7 @@ func failureIdentifierStatus(identifier string) int {
 		return http.StatusTooManyRequests
 	case "server_error", "internal_server_error":
 		return http.StatusInternalServerError
-	case "overloaded_error", "service_unavailable":
+	case "overloaded_error", "service_unavailable", "account_eligibility_changed":
 		return http.StatusServiceUnavailable
 	case "api_error", "basispoints_upstream_error", "basispoints_upstream_cancelled", "basispoints_protocol_error":
 		return http.StatusBadGateway

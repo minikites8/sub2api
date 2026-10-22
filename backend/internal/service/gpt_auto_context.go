@@ -178,6 +178,8 @@ type GPTAutoContextInfo struct {
 	UsedChars             int            `json:"used_chars"`
 	SectionChars          map[string]int `json:"section_chars,omitempty"`
 	Limitations           []string       `json:"limitations,omitempty"`
+	// Diagnostics is nil on rows written before context diagnostics existed.
+	Diagnostics *GPTAutoContextDiagnostics `json:"diagnostics,omitempty"`
 }
 
 // gptAutoFollowUpPattern matches messages that continue earlier work rather
@@ -648,6 +650,14 @@ type gptAutoScan struct {
 	tail              gptAutoRing
 	beforeLatest      []gptAutoScanItem
 	toolNames         map[string]string
+
+	// Diagnostic item accounting (see GPTAutoContextItemCounts).
+	privacyItems     int
+	unsupportedItems int
+	referenceItems   int
+	compactionItems  int
+	emptyUserItems   int
+	imageItems       int
 }
 
 var gptAutoAgentHarnessHint = regexp.MustCompile(`(?i)\b(?:tools?|shell|terminal|sandbox|repositor(?:y|ies)|codebase|apply_patch|function call|agent|workspace|command line)\b`)
@@ -710,15 +720,19 @@ func (s *gptAutoScan) observe(index int, item gjson.Result) {
 	switch kind {
 	case gptAutoKindReference:
 		s.references = true
+		s.referenceItems++
 		return
 	case gptAutoKindCompaction:
 		s.compaction = true
 		s.conversationItems++
+		s.compactionItems++
 		return
 	case gptAutoKindReasoning:
 		s.current.steps++
+		s.privacyItems++
 		return
 	case gptAutoKindOther:
+		s.unsupportedItems++
 		return
 	case gptAutoKindToolCall:
 		s.conversationItems++
@@ -756,6 +770,7 @@ func (s *gptAutoScan) observe(index int, item gjson.Result) {
 	switch role {
 	case "system":
 		s.observeSystem(fields.content)
+		s.privacyItems++
 		return
 	case "assistant":
 		s.conversationItems++
@@ -771,6 +786,7 @@ func (s *gptAutoScan) observe(index int, item gjson.Result) {
 		return
 	case "user":
 	default:
+		s.unsupportedItems++
 		return
 	}
 
@@ -779,11 +795,16 @@ func (s *gptAutoScan) observe(index int, item gjson.Result) {
 		s.hasImages = true
 	}
 	if strings.TrimSpace(text) == "" && !images {
+		s.emptyUserItems++
 		return
 	}
 	if gptAutoHasPrefixFold(text, gptAutoHarnessPrefixes) {
 		s.system.HarnessMessages++
+		s.privacyItems++
 		return
+	}
+	if images {
+		s.imageItems++
 	}
 	if gptAutoHasPrefixFold(text, gptAutoCompactionPrefixes) {
 		s.compaction = true
@@ -1003,17 +1024,25 @@ func gptAutoItemEvents(entry gptAutoScanItem, toolNames map[string]string) []GPT
 	return nil
 }
 
-// gptAutoRecentEvents returns up to n most recent events from items.
-func gptAutoRecentEvents(items []gptAutoScanItem, toolNames map[string]string, n int) []GPTAutoAgentEvent {
+// gptAutoRecentEvents returns up to n most recent events from items, and for
+// each event the index of the item it came from.
+func gptAutoRecentEvents(items []gptAutoScanItem, toolNames map[string]string, n int) ([]GPTAutoAgentEvent, []int) {
 	var events []GPTAutoAgentEvent
+	var sources []int
 	for i := len(items) - 1; i >= 0 && len(events) < n; i-- {
 		itemEvents := gptAutoItemEvents(items[i], toolNames)
 		events = append(itemEvents, events...)
+		itemSources := make([]int, len(itemEvents))
+		for j := range itemSources {
+			itemSources[j] = items[i].index
+		}
+		sources = append(itemSources, sources...)
 	}
 	if len(events) > n {
 		events = events[len(events)-n:]
+		sources = sources[len(sources)-n:]
 	}
-	return events
+	return events, sources
 }
 
 func gptAutoEventsChars(events []GPTAutoAgentEvent) int {
@@ -1067,6 +1096,7 @@ func BuildGPTAutoSnapshot(endpoint string, body []byte, opts GPTAutoContextOptio
 		snapshot.Limitations = []string{GPTAutoLimitRequestTooLarge}
 		snapshot.Context.Limitations = snapshot.Limitations
 		snapshot.Context.ScannedBytes = 0
+		snapshot.Context.Diagnostics = gptAutoSkippedDiagnostics()
 		return snapshot
 	}
 	snapshot.RequestedEffort = strings.ToLower(strings.TrimSpace(gjson.Get(view, "reasoning.effort").String()))
@@ -1154,17 +1184,57 @@ func gptAutoAssembleContext(snapshot *GPTAutoRequestSnapshot, scan *gptAutoScan,
 	remaining := opts.MaxChars
 	capture := opts.MaxChars * gptAutoTurnCaptureFactor
 	taskAware := opts.Strategy == GPTAutoContextTaskAware
-	take := func(section, text string, limit int) string {
+	external := scan.historyByRef || scan.references || scan.compaction
+
+	// Diagnostics bookkeeping. It records what the selection below does; it
+	// never influences what is selected.
+	diag := &GPTAutoContextDiagnostics{Version: GPTAutoContextDiagnosticsVersion, ScanStatus: GPTAutoScanScanned}
+	var represented, droppedForBudget gptAutoIndexSet
+	selectedMessages, truncatedExcerpts := 0, 0
+	addStep := func(section, status string, items int) *GPTAutoContextSelectionStep {
+		diag.Selection = append(diag.Selection, GPTAutoContextSelectionStep{Section: section, Status: status, Chars: sections[section], Items: items})
+		return &diag.Selection[len(diag.Selection)-1]
+	}
+	// take forwards one excerpt within the budget and reports how it fared:
+	// included, truncated, budget_exhausted, or not_applicable (no text).
+	take := func(section, text string, limit int) (string, string) {
 		limit = minInt(limit, remaining)
-		if limit <= 0 {
-			return ""
+		if strings.TrimSpace(text) == "" {
+			return "", GPTAutoSelectNotApplicable
 		}
-		out := gptAutoSanitize(text, limit)
+		if limit <= 0 {
+			return "", GPTAutoSelectBudgetExhausted
+		}
+		clean := redactGPTAutoText(strings.TrimSpace(text))
+		out := trimRunesKeepTail(clean, limit)
 		used := utf8.RuneCountInString(out)
 		remaining -= used
 		sections[section] += used
-		return out
+		if used < utf8.RuneCountInString(clean) {
+			return out, GPTAutoSelectTruncated
+		}
+		return out, GPTAutoSelectIncluded
 	}
+	// selected records a message excerpt taken from item index.
+	selected := func(index int, out, status string) {
+		switch status {
+		case GPTAutoSelectBudgetExhausted:
+			droppedForBudget.add(index)
+		case GPTAutoSelectIncluded, GPTAutoSelectTruncated:
+			selectedMessages++
+			represented.add(index)
+			if status == GPTAutoSelectTruncated {
+				truncatedExcerpts++
+			}
+		}
+	}
+	itemsIf := func(text string) int {
+		if text == "" {
+			return 0
+		}
+		return 1
+	}
+
 	var limitations []string
 	if scan.historyByRef {
 		limitations = append(limitations, GPTAutoLimitHistoryByReference)
@@ -1191,6 +1261,7 @@ func gptAutoAssembleContext(snapshot *GPTAutoRequestSnapshot, scan *gptAutoScan,
 
 	// 1. Latest user instruction.
 	latest := scan.latestUser
+	latestRunes := 0
 	if latest != nil {
 		info.LatestUserIndex = latest.index
 		snapshot.LatestUserKind = GPTAutoUserKindInstruction
@@ -1203,55 +1274,104 @@ func gptAutoAssembleContext(snapshot *GPTAutoRequestSnapshot, scan *gptAutoScan,
 			share = opts.MaxChars * 3 / 4
 		}
 		text, _ := gptAutoContentText(latest.item.Get("content"), capture)
-		snapshot.LatestUser = take("latest_user_request", text, share)
-		if utf8.RuneCountInString(snapshot.LatestUser) < utf8.RuneCountInString(strings.TrimSpace(text)) ||
-			gptAutoValueChars(latest.item.Get("content")) > capture*6 {
+		latestRunes = utf8.RuneCountInString(strings.TrimSpace(text))
+		var status string
+		snapshot.LatestUser, status = take(GPTAutoSectionLatestUser, text, share)
+		// The latest message is identified (kind, images) even without text.
+		represented.add(latest.index)
+		if snapshot.LatestUser != "" {
+			selectedMessages++
+		}
+		if status == GPTAutoSelectTruncated || gptAutoValueChars(latest.item.Get("content")) > capture*6 {
 			info.LatestUserTruncated = true
 			limitations = append(limitations, GPTAutoLimitLatestUserTrimmed)
+			status = GPTAutoSelectTruncated
+			truncatedExcerpts++
 		}
+		addStep(GPTAutoSectionLatestUser, status, 1)
 		visible++
 	} else {
 		limitations = append(limitations, GPTAutoLimitNoUserMessage)
+		addStep(GPTAutoSectionLatestUser, GPTAutoSelectUnavailable, 0)
 	}
 	info.LatestUserKind = snapshot.LatestUserKind
 
+	var trace gptAutoActivityTrace
 	if taskAware {
 		task := &GPTAutoTaskContext{}
 		// 2. The request a short follow-up continues.
+		continuesStatus := GPTAutoSelectNotApplicable
+		if latest != nil && latest.followUp {
+			continuesStatus = GPTAutoSelectUnavailable
+		}
 		if latest != nil && latest.followUp && scan.anchor != nil {
 			text, _ := gptAutoContentText(scan.anchor.item.Get("content"), capture)
-			task.ContinuesRequest = take("continues_request", text, opts.MaxChars/4)
+			task.ContinuesRequest, continuesStatus = take(GPTAutoSectionContinues, text, opts.MaxChars/4)
 			info.FollowUpAnchorIndex = scan.anchor.index
+			selected(scan.anchor.index, task.ContinuesRequest, continuesStatus)
 			visible++
 		}
+		addStep(GPTAutoSectionContinues, continuesStatus, itemsIf(task.ContinuesRequest))
 		// 3. Current agent activity.
-		snapshot.AgentActivity = gptAutoActivity(scan, opts, remaining, opts.MaxChars/4)
+		snapshot.AgentActivity, trace = gptAutoActivity(scan, opts, remaining, opts.MaxChars/4)
+		activityStatus := GPTAutoSelectNotApplicable
 		if activity := snapshot.AgentActivity; activity != nil {
 			used := gptAutoEventsChars(activity.Recent)
 			remaining -= used
-			sections["agent_activity"] = used
+			sections[GPTAutoSectionAgentActivity] = used
 			info.AgentEventsIncluded = len(activity.Recent)
 			info.AgentEventsOmitted = activity.OmittedSteps
 			visible += len(activity.Recent)
 			if activity.ToolResults > 0 {
 				limitations = append(limitations, GPTAutoLimitToolOutputs)
 			}
+			for _, source := range trace.sources {
+				represented.add(source)
+			}
+			activityStatus = GPTAutoSelectIncluded
+			switch {
+			case len(trace.dropped) > 0 && len(activity.Recent) == 0:
+				activityStatus = GPTAutoSelectBudgetExhausted
+			case len(trace.dropped) > 0:
+				activityStatus = GPTAutoSelectTruncated
+			}
+			diag.Agent = gptAutoAgentDiagnosticsFor(activity, opts, len(trace.dropped))
 		}
+		addStep(GPTAutoSectionAgentActivity, activityStatus, info.AgentEventsIncluded).Dropped = len(trace.dropped)
 		// 4. Original task and any client-provided history summary.
+		originalStatus := GPTAutoSelectNotApplicable
+		if external {
+			originalStatus = GPTAutoSelectUnavailable
+		}
 		if first := scan.firstRequest; first != nil && (latest == nil || first.index != latest.index) &&
 			(scan.anchor == nil || info.FollowUpAnchorIndex != first.index) {
 			text, _ := gptAutoContentText(first.item.Get("content"), capture)
-			task.OriginalRequest = take("original_request", text, opts.MaxChars*15/100)
+			task.OriginalRequest, originalStatus = take(GPTAutoSectionOriginalRequest, text, opts.MaxChars*15/100)
 			info.OriginalRequestIndex = first.index
+			selected(first.index, task.OriginalRequest, originalStatus)
 			visible++
+		} else if first != nil && first.index == info.FollowUpAnchorIndex {
+			// The continued request is the original one; it was forwarded above.
+			originalStatus = GPTAutoSelectNotApplicable
 		}
+		addStep(GPTAutoSectionOriginalRequest, originalStatus, itemsIf(task.OriginalRequest))
+		summaryStatus := GPTAutoSelectNotApplicable
 		if summary := scan.compactionSummary; summary != nil {
 			text, _ := gptAutoContentText(summary.item.Get("content"), capture)
-			task.HistorySummary = take("history_summary", text, opts.MaxChars*15/100)
+			task.HistorySummary, summaryStatus = take(GPTAutoSectionHistorySummary, text, opts.MaxChars*15/100)
+			selected(summary.index, task.HistorySummary, summaryStatus)
 			visible++
 		}
+		addStep(GPTAutoSectionHistorySummary, summaryStatus, itemsIf(task.HistorySummary))
 		if *task != (GPTAutoTaskContext{}) {
 			snapshot.TaskContext = task
+		}
+	} else if latest == nil || scan.current.steps > 0 {
+		// recent_turns does not summarise agent activity; record what exists.
+		if scan.current.steps > 0 {
+			diag.Agent = &GPTAutoAgentDiagnostics{Scope: GPTAutoAgentScopeNotSummarized, StepLimit: opts.AgentSteps,
+				StepsDetected: scan.current.steps, ToolCallsDetected: scan.current.toolCalls, ToolResultsDetected: scan.current.toolResults,
+				ToolFailuresDetected: scan.current.failed, TrailingFailures: scan.current.trailingFailures}
 		}
 	}
 
@@ -1279,8 +1399,13 @@ func gptAutoAssembleContext(snapshot *GPTAutoRequestSnapshot, scan *gptAutoScan,
 	if len(turns) > opts.ContextTurns {
 		turns = turns[len(turns)-opts.ContextTurns:]
 	}
+	recentDropped, recentTruncated := 0, 0
 	for i, entry := range turns {
 		if remaining <= 0 {
+			for _, rest := range turns[i:] {
+				droppedForBudget.add(rest.index)
+			}
+			recentDropped += len(turns) - i
 			break
 		}
 		content := entry.item.Get("content")
@@ -1292,8 +1417,16 @@ func gptAutoAssembleContext(snapshot *GPTAutoRequestSnapshot, scan *gptAutoScan,
 			continue
 		}
 		perTurn := remaining / (len(turns) - i)
-		role := entry.role
-		snapshot.RecentContext = append(snapshot.RecentContext, GPTAutoContextTurn{Role: role, Text: take("recent_context", text, perTurn)})
+		out, status := take(GPTAutoSectionRecentContext, text, perTurn)
+		selected(entry.index, out, status)
+		switch status {
+		case GPTAutoSelectBudgetExhausted:
+			recentDropped++
+			continue
+		case GPTAutoSelectTruncated:
+			recentTruncated++
+		}
+		snapshot.RecentContext = append(snapshot.RecentContext, GPTAutoContextTurn{Role: entry.role, Text: out})
 		if entry.kind == gptAutoKindToolResult {
 			limitations = gptAutoAddLimitation(limitations, GPTAutoLimitToolOutputs)
 		}
@@ -1310,11 +1443,148 @@ func gptAutoAssembleContext(snapshot *GPTAutoRequestSnapshot, scan *gptAutoScan,
 	info.SectionChars = sections
 	snapshot.Limitations = limitations
 	info.Limitations = limitations
+
+	recentStatus := GPTAutoSelectIncluded
+	switch {
+	case info.ContextTurnsAvailable == 0 && external:
+		recentStatus = GPTAutoSelectUnavailable
+	case info.ContextTurnsAvailable == 0:
+		recentStatus = GPTAutoSelectNotApplicable
+	case info.ContextTurnsIncluded == 0 && recentDropped > 0:
+		recentStatus = GPTAutoSelectBudgetExhausted
+	case recentDropped > 0 || recentTruncated > 0:
+		recentStatus = GPTAutoSelectTruncated
+	}
+	recent := addStep(GPTAutoSectionRecentContext, recentStatus, info.ContextTurnsIncluded)
+	recent.Available, recent.Dropped = info.ContextTurnsAvailable, recentDropped
+	externalStatus := GPTAutoSelectNotApplicable
+	if external {
+		externalStatus = GPTAutoSelectUnavailable
+	}
+	addStep(GPTAutoSectionExternalHistory, externalStatus, scan.referenceItems+scan.compactionItems)
+	gptAutoFinishDiagnostics(diag, snapshot, scan, opts, represented, droppedForBudget, trace, selectedMessages, truncatedExcerpts, latestRunes)
+	info.Diagnostics = diag
+}
+
+// gptAutoAgentDiagnosticsFor counts a forwarded agent activity summary.
+func gptAutoAgentDiagnosticsFor(activity *GPTAutoAgentActivity, opts GPTAutoContextOptions, dropped int) *GPTAutoAgentDiagnostics {
+	agent := &GPTAutoAgentDiagnostics{
+		Scope: activity.Scope, StepLimit: opts.AgentSteps, StepsDetected: activity.Steps,
+		ToolCallsDetected: activity.ToolCalls, ToolResultsDetected: activity.ToolResults,
+		ToolFailuresDetected: activity.FailedResults, TrailingFailures: activity.TrailingFailures,
+		EventsDroppedForBudget: dropped,
+	}
+	for _, event := range activity.Recent {
+		kind := gptAutoEventKind(event)
+		if agent.EventKinds == nil {
+			agent.EventKinds = map[string]int{}
+		}
+		agent.EventKinds[kind]++
+		switch event.Kind {
+		case "tool_result":
+			agent.HasToolResultContext = true
+			if event.Status == "error" {
+				agent.FailureSummariesIncluded++
+			}
+		case "assistant_note":
+			agent.HasProgressNote = true
+		}
+	}
+	return agent
+}
+
+// gptAutoFinishDiagnostics fills item accounting, follow-up resolution,
+// notes and completeness once the selection is final.
+func gptAutoFinishDiagnostics(diag *GPTAutoContextDiagnostics, snapshot *GPTAutoRequestSnapshot, scan *gptAutoScan, opts GPTAutoContextOptions,
+	represented, droppedForBudget gptAutoIndexSet, trace gptAutoActivityTrace, selectedMessages, truncatedExcerpts, latestRunes int) {
+	info := &snapshot.Context
+	for _, source := range trace.dropped {
+		droppedForBudget.add(source)
+	}
+	// An item dropped from one section can still be represented by another.
+	budgetDropped := 0
+	for _, index := range droppedForBudget {
+		if !represented.has(index) {
+			budgetDropped++
+		}
+	}
+	eligible := scan.conversationItems - scan.compactionItems
+	diag.Items = &GPTAutoContextItemCounts{
+		Eligible:                eligible,
+		Represented:             len(represented),
+		SelectedMessages:        selectedMessages,
+		BudgetDropped:           budgetDropped,
+		BudgetTruncated:         truncatedExcerpts,
+		NotSelected:             maxInt(eligible-len(represented)-budgetDropped, 0),
+		Privacy:                 scan.privacyItems,
+		Unsupported:             scan.unsupportedItems,
+		ExternalReferences:      scan.referenceItems,
+		Compacted:               scan.compactionItems,
+		Empty:                   scan.emptyUserItems,
+		WithImages:              scan.imageItems,
+		ConversationLengthKnown: !scan.historyByRef && !scan.references && !scan.compaction,
+	}
+
+	latest := scan.latestUser
+	follow := GPTAutoFollowUpDiagnostics{Resolution: GPTAutoFollowUpNone, AgentActivityAvailable: diag.Agent != nil}
+	follow.ShortMessage = latest != nil && latestRunes > 0 && latestRunes <= gptAutoFollowUpMaxRunes
+	follow.OriginalTaskAvailable = scan.firstRequest != nil && (latest == nil || scan.firstRequest.index != latest.index)
+	if latest != nil && latest.followUp {
+		switch {
+		case opts.Strategy != GPTAutoContextTaskAware:
+			follow.Resolution = GPTAutoFollowUpRecentTurns
+		case info.FollowUpAnchorIndex >= 0 && snapshot.TaskContext != nil && snapshot.TaskContext.ContinuesRequest != "":
+			follow.Resolution = GPTAutoFollowUpLinked
+		case snapshot.AgentActivity != nil:
+			follow.Resolution = GPTAutoFollowUpActivityOnly
+		default:
+			follow.Resolution = GPTAutoFollowUpUnresolved
+		}
+	}
+	diag.FollowUp = follow
+
+	var notes []string
+	if scan.unsupportedItems > 0 {
+		notes = append(notes, GPTAutoNoteUnsupportedItems)
+	}
+	if scan.emptyUserItems > 0 {
+		notes = append(notes, GPTAutoNoteEmptyUserMessages)
+	}
+	budgetStep := false
+	for _, step := range diag.Selection {
+		if step.Status == GPTAutoSelectBudgetExhausted || step.Dropped > 0 {
+			budgetStep = true
+		}
+	}
+	if budgetDropped > 0 || budgetStep {
+		notes = append(notes, GPTAutoNoteBudgetExhausted)
+	}
+	if len(trace.dropped) > 0 {
+		notes = append(notes, GPTAutoNoteAgentEventsTrim)
+	}
+	if follow.Resolution == GPTAutoFollowUpUnresolved {
+		notes = append(notes, GPTAutoNoteFollowUpUnlinked)
+	}
+	classifiable := snapshot.HasClassifiableContent()
+	if !classifiable {
+		notes = append(notes, GPTAutoNoteNothingToClassify)
+	}
+	diag.Notes = notes
+	diag.ContextTruncated = info.LatestUserTruncated || truncatedExcerpts > 0 || budgetDropped > 0 || budgetStep
+	gptAutoCompleteness(diag, info.Limitations, classifiable)
+}
+
+// gptAutoActivityTrace records, for diagnostics, which items the forwarded
+// events came from and which were dropped for the budget.
+type gptAutoActivityTrace struct {
+	sources []int
+	dropped []int
 }
 
 // gptAutoActivity summarises the agent loop relevant to the latest user turn
 // within a character budget.
-func gptAutoActivity(scan *gptAutoScan, opts GPTAutoContextOptions, remaining, limit int) *GPTAutoAgentActivity {
+func gptAutoActivity(scan *gptAutoScan, opts GPTAutoContextOptions, remaining, limit int) (*GPTAutoAgentActivity, gptAutoActivityTrace) {
+	var trace gptAutoActivityTrace
 	segment, scope := scan.current, "since_latest_user_request"
 	var items []gptAutoScanItem
 	latest := scan.latestUser
@@ -1337,13 +1607,15 @@ func gptAutoActivity(scan *gptAutoScan, opts GPTAutoContextOptions, remaining, l
 		}
 	}
 	if segment.steps == 0 {
-		return nil
+		return nil, trace
 	}
-	events := gptAutoRecentEvents(items, scan.toolNames, opts.AgentSteps)
+	events, sources := gptAutoRecentEvents(items, scan.toolNames, opts.AgentSteps)
 	limit = minInt(limit, remaining)
 	for len(events) > 0 && gptAutoEventsChars(events) > limit {
-		events = events[1:]
+		trace.dropped = append(trace.dropped, sources[0])
+		events, sources = events[1:], sources[1:]
 	}
+	trace.sources = sources
 	return &GPTAutoAgentActivity{
 		Scope:            scope,
 		Steps:            segment.steps,
@@ -1354,7 +1626,7 @@ func gptAutoActivity(scan *gptAutoScan, opts GPTAutoContextOptions, remaining, l
 		ToolsUsed:        segment.tools,
 		Recent:           events,
 		OmittedSteps:     maxInt(segment.steps-len(events), 0),
-	}
+	}, trace
 }
 
 // HasClassifiableContent reports whether the snapshot carries any text or

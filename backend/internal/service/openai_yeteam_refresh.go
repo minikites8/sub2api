@@ -217,10 +217,6 @@ func boolPointer(value bool) *bool {
 	return &value
 }
 
-func (s *OpenAIGatewayService) failYeTeamReclaim(ctx context.Context, account *Account, event string, err error) bool {
-	return s.failYeTeamReclaimWithFlow(ctx, account, event, err, nil)
-}
-
 func (s *OpenAIGatewayService) failYeTeamReclaimWithFlow(ctx context.Context, account *Account, event string, err error, flow *yeteam.ReclaimFlow) bool {
 	slog.Warn(event, "account_id", account.ID, "error", err)
 	if flow != nil {
@@ -228,10 +224,6 @@ func (s *OpenAIGatewayService) failYeTeamReclaimWithFlow(ctx context.Context, ac
 	}
 	s.recordYeTeamReclaimResultWithFlow(ctx, account, yeTeamRefreshStatusFailed, err, nil, flow)
 	return false
-}
-
-func (s *OpenAIGatewayService) recordYeTeamReclaimResult(ctx context.Context, account *Account, status string, reclaimErr error, extra map[string]any) {
-	s.recordYeTeamReclaimResultWithFlow(ctx, account, status, reclaimErr, extra, nil)
 }
 
 func (s *OpenAIGatewayService) recordYeTeamReclaimResultWithFlow(ctx context.Context, account *Account, status string, reclaimErr error, extra map[string]any, flow *yeteam.ReclaimFlow) {
@@ -346,10 +338,10 @@ func normalizeYeTeamCardCode(value string) string {
 // Keep the mutexes local to the gateway service so independent test services
 // and separate application instances do not share process state.
 func (s *OpenAIGatewayService) yeTeamReclaimLock(accountID int64) *sync.Mutex {
-	if value, ok := s.yeTeamReclaimLocks.Load(accountID); ok {
-		return value.(*sync.Mutex)
+	actual, _ := s.yeTeamReclaimLocks.LoadOrStore(accountID, &sync.Mutex{})
+	lock, ok := actual.(*sync.Mutex)
+	if !ok {
+		panic("invalid YeTeam reclaim lock type")
 	}
-	lock := &sync.Mutex{}
-	actual, _ := s.yeTeamReclaimLocks.LoadOrStore(accountID, lock)
-	return actual.(*sync.Mutex)
+	return lock
 }

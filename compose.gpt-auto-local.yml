@@ -1,0 +1,130 @@
+name: gpt-auto-local
+
+services:
+  postgres:
+    image: postgres:18.1-alpine3.23
+    environment:
+      POSTGRES_USER: gpt_auto_local
+      POSTGRES_DB: gpt_auto_local
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:?Run scripts/test-gpt-auto-local.sh init}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U gpt_auto_local -d gpt_auto_local']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.4-alpine
+    command: [redis-server, --appendonly, 'yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  mock:
+    image: python:3.13-alpine
+    command: [python, -u, /mock/server.py]
+    volumes:
+      - ./scripts/gpt-auto-local/mock.py:/mock/server.py:ro
+      - ./artifacts/gpt-auto-local/tls:/tls:ro
+    ports:
+      - '127.0.0.1:${LOCAL_MOCK_PORT:-18082}:8080'
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  backend:
+    image: sub2api-gpt-auto-local:${LOCAL_IMAGE_TAG:-working-tree}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        COMMIT: ${LOCAL_SOURCE_HASH:-working-tree}
+        VERSION: gpt-auto-local
+        GOPROXY: https://proxy.golang.org,direct
+        GOSUMDB: sum.golang.org
+        NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+    ports:
+      - '127.0.0.1:${LOCAL_BACKEND_PORT:-18081}:8080'
+    volumes:
+      - app_data:/app/data
+      - ./artifacts/gpt-auto-local/tls/ca.crt:/local-ca/ca.crt:ro
+    environment:
+      AUTO_SETUP: 'true'
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: '8080'
+      SERVER_MODE: release
+      RUN_MODE: standard
+      DATABASE_HOST: postgres
+      DATABASE_PORT: '5432'
+      DATABASE_USER: gpt_auto_local
+      DATABASE_DBNAME: gpt_auto_local
+      DATABASE_PASSWORD: ${LOCAL_DB_PASSWORD:?Run scripts/test-gpt-auto-local.sh init}
+      DATABASE_SSLMODE: disable
+      DATABASE_MAX_OPEN_CONNS: '20'
+      DATABASE_MAX_IDLE_CONNS: '5'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_POOL_SIZE: '64'
+      REDIS_MIN_IDLE_CONNS: '4'
+      ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@gpt-auto.local}
+      ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?Run scripts/test-gpt-auto-local.sh init}
+      JWT_SECRET: ${LOCAL_JWT_SECRET:?Run scripts/test-gpt-auto-local.sh init}
+      TOTP_ENCRYPTION_KEY: ${LOCAL_TOTP_KEY:?Run scripts/test-gpt-auto-local.sh init}
+      SSL_CERT_FILE: /local-ca/ca.crt
+      SECURITY_URL_ALLOWLIST_ENABLED: 'false'
+      SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: 'true'
+      SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: 'true'
+      GATEWAY_PRISM_BROWSER_ENABLED: 'false'
+      GATEWAY_FORCE_CODEX_CLI: 'false'
+      GATEWAY_OPENAI_HTTP2_ENABLED: 'false'
+      GATEWAY_OPENAI_WS_FORCE_HTTP: 'true'
+      GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT: '2'
+      GATEWAY_MAX_BODY_SIZE: '33554432'
+      TZ: UTC
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      mock: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -T 3 -O /dev/null http://127.0.0.1:8080/health']
+      start_period: 120s
+      interval: 5s
+      timeout: 4s
+      retries: 30
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+  web:
+    image: nginx:1.28-alpine
+    volumes:
+      - ./scripts/gpt-auto-local/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - '127.0.0.1:${LOCAL_HTTP_PORT:-18080}:8080'
+    depends_on:
+      backend: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -T 3 -O /dev/null http://127.0.0.1:8080/health']
+      interval: 5s
+      timeout: 4s
+      retries: 30
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge
+
+volumes:
+  app_data:
+  postgres_data:
+  redis_data:

@@ -331,6 +331,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if transient {
 		scope = "transient:" + scope
 	}
+
 	if !imageSettings.Enabled && account.IsExcelBPSIgnoreImagesEnabled() {
 		body, err = basispoints.StripInputImages(body)
 		if err != nil {
@@ -900,10 +901,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			if excelBPSFailoverContextEnabled(ctx) && (kind == "response.failed" || kind == "response.incomplete" || kind == "error") && !semanticOutput && excelBPSCanFailover(ctx, c) {
 				code := "basispoints_response_failed"
 				message := "Excel BPS returned a failed response"
-				if kind == "response.incomplete" {
+				switch kind {
+				case "response.incomplete":
 					code = "basispoints_response_incomplete"
 					message = "Excel BPS returned an incomplete response"
-				} else if kind == "error" {
+				case "error":
 					code = "basispoints_stream_error"
 					message = "Excel BPS returned a stream error"
 				}
@@ -1030,10 +1032,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if excelBPSFailoverContextEnabled(ctx) && terminal != "response.completed" && !semanticOutput && excelBPSCanFailover(ctx, c) {
 		code := "basispoints_response_failed"
 		message := "Excel BPS returned a failed response"
-		if terminal == "response.incomplete" {
+		switch terminal {
+		case "response.incomplete":
 			code = "basispoints_response_incomplete"
 			message = "Excel BPS returned an incomplete response"
-		} else if terminal == "error" {
+		case "error":
 			code = "basispoints_stream_error"
 			message = "Excel BPS returned a stream error"
 		}

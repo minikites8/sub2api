@@ -147,6 +147,21 @@ func TestPromptAuditMutationAuditRoutesHaveStableActionsAndOmitBodies(t *testing
 	}
 }
 
+func TestGPTAutoSampleRoutesOmitBodies(t *testing.T) {
+	// These routes carry administrator-supplied sample prompts or synthetic
+	// requests (and the config route the Jev key); none may be persisted.
+	for _, route := range []string{
+		"PUT /api/v1/admin/gpt-auto/config",
+		"POST /api/v1/admin/gpt-auto/test",
+		"POST /api/v1/admin/gpt-auto/test/compare",
+		"POST /api/v1/admin/gpt-auto/debug/state",
+	} {
+		_, omitted := auditBodyOmittedRoutes[route]
+		require.Truef(t, omitted, "%s must not persist its body", route)
+		require.NotEmpty(t, auditActionOverrides[route], route)
+	}
+}
+
 func TestPasskeyLoginAuditUsesCanonicalLoginActionAndOmitsCredentialBody(t *testing.T) {
 	route := "POST /api/v1/auth/passkey/login/finish"
 	require.Equal(t, service.AuditActionLogin, auditActionOverrides[route])

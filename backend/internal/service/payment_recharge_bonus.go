@@ -10,7 +10,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/shopspring/decimal"
@@ -316,22 +315,4 @@ func quoteRechargeBonus(cfg *PaymentConfig, paymentAmount float64, currency stri
 		quote.Percent = tier.BonusPercent
 	}
 	return quote
-}
-
-// paymentOrderAmountWithoutBonus 订单到账金额剔除免费额度后的实付部分（USD），用于推广返利基数。
-func paymentOrderAmountWithoutBonus(o *dbent.PaymentOrder) float64 {
-	if o == nil {
-		return 0
-	}
-	if o.OrderType != payment.OrderTypeBalance || o.BonusAmount <= 0 {
-		return o.Amount
-	}
-	base := decimal.NewFromFloat(o.Amount).
-		Sub(decimal.NewFromFloat(o.BonusAmount)).
-		Round(2).
-		InexactFloat64()
-	if base < 0 {
-		return 0
-	}
-	return base
 }

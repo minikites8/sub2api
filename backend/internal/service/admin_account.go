@@ -590,6 +590,14 @@ func (s *adminServiceImpl) applyAdminAPIKeyAccountDefaults(ctx context.Context, 
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	resolved, err := s.applyAdminAPIKeyAccountDefaults(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	input = resolved
+	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(input.Extra); err != nil {
+		return nil, err
+	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
 		return nil, err
 	}
@@ -705,6 +713,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
 	if input == nil {
 		return nil, errors.New("account input is nil")
+	}
+	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(input.Extra); err != nil {
+		return nil, err
 	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
 		return nil, err
@@ -1137,6 +1148,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(updates); err != nil {
+		return err
+	}
 	if err := ValidateAccountCostMultiplierExtra(updates); err != nil {
 		return err
 	}
@@ -1189,6 +1203,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(input.Extra); err != nil {
+		return nil, err
+	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
 		return nil, err
 	}

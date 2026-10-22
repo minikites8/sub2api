@@ -56,11 +56,11 @@ type DailyCheckinResult struct {
 }
 
 type DailyCheckinRecord struct {
-	UserID          int64
-	Date            string
-	Reward          float64
-	CreatedAt       time.Time
-	ExpiresAt       *time.Time
+	UserID    int64
+	Date      string
+	Reward    float64
+	CreatedAt time.Time
+	ExpiresAt *time.Time
 }
 
 type DailyCheckinAdminRecord struct {

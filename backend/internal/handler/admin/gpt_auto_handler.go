@@ -275,6 +275,7 @@ func (h *GPTAutoHandler) Meta(c *gin.Context) {
 		"policy_version":      service.GPTAutoPolicyVersionDefault,
 		"classifier_schema":   service.GPTAutoClassifierSchemaVersion,
 		"state_version":       service.GPTAutoClassifierStateVersion,
+		"diagnostics_version": service.GPTAutoContextDiagnosticsVersion,
 		"context_strategies":  service.GPTAutoContextStrategies(),
 		"benchmark_samples":   service.GPTAutoBenchmarkSamples(),
 		"phase":               "shadow",

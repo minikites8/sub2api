@@ -986,11 +986,3 @@ func supportTicketConfigChanged(before, after service.SupportTicketConfig) bool 
 	normalizedAfter, errAfter := service.NormalizeSupportTicketConfig(after)
 	return errBefore != nil || errAfter != nil || !reflect.DeepEqual(normalizedBefore, normalizedAfter)
 }
-
-// pelicanShowcaseConfigChanged compares normalized configs: the request may leave limits
-// at zero, which the stored config fills with defaults.
-func pelicanShowcaseConfigChanged(before, after service.PelicanShowcaseConfig) bool {
-	normalizedBefore, errBefore := service.NormalizePelicanShowcaseConfig(before)
-	normalizedAfter, errAfter := service.NormalizePelicanShowcaseConfig(after)
-	return errBefore != nil || errAfter != nil || !reflect.DeepEqual(normalizedBefore, normalizedAfter)
-}

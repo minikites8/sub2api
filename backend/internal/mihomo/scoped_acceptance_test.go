@@ -34,7 +34,7 @@ func TestScopedChannelsCollectionAndPinOverlap(t *testing.T) {
 	m.saved = saved{Secret: "fixture", Nodes: []map[string]any{{"name": "one"}, {"name": "two"}}, Disabled: map[string]string{}}
 	c, err := BeginCollection(t.Context(), Endpoint, 1)
 	require.NoError(t, err)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_, first, err := c.Next(t.Context(), 0)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -64,7 +64,7 @@ func TestScopedChannelsFullCollectionLeavesPinCapacity(t *testing.T) {
 	}
 	c, err := BeginCollection(t.Context(), Endpoint, defaultCollectLanes)
 	require.NoError(t, err)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	require.Equal(t, defaultCollectLanes, c.LaneCount())
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
@@ -89,14 +89,14 @@ func TestScopedChannelsSeparateCollectionsOverlap(t *testing.T) {
 	m.saved = saved{Secret: "fixture", UseOnce: true, Nodes: []map[string]any{{"name": "one"}, {"name": "two"}}, Disabled: map[string]string{}}
 	c, err := BeginCollection(t.Context(), Endpoint, 1)
 	require.NoError(t, err)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	first, proxy1, err := c.Next(t.Context(), 0)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 	other, err := BeginCollection(ctx, Endpoint, 1)
 	if err == nil {
-		defer other.Close()
+		defer func() { _ = other.Close() }()
 	}
 	t.Logf("second collection admission: %v", err)
 	require.NoError(t, err)

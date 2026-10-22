@@ -74,10 +74,10 @@ func TestChangePassword_OnlyDeclaresPasswordHash(t *testing.T) {
 	require.Equal(t, []UserUpdateFields{{PasswordHash: true}}, repo.updateFields)
 }
 
-func TestUpdateStatus_OnlyDeclaresStatus(t *testing.T) {
+func TestUpdateStatusDeclaresStatusAndClearsTemporaryDisable(t *testing.T) {
 	repo := &mockUserRepo{getByIDUser: &User{ID: 7, Balance: 0.30, Status: StatusActive}}
 	svc := NewUserService(repo, nil, nil, nil)
 
 	require.NoError(t, svc.UpdateStatus(context.Background(), 7, StatusDisabled))
-	require.Equal(t, []UserUpdateFields{{Status: true}}, repo.updateFields)
+	require.Equal(t, []UserUpdateFields{{Status: true, DisabledUntil: true}}, repo.updateFields)
 }

@@ -139,7 +139,7 @@ RETURNING id, user_id, min_recharge_amount, discount_percent, total_uses, status
 	if err != nil {
 		return nil, fmt.Errorf("issue recharge discount coupon: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return nil, fmt.Errorf("issue recharge discount coupon: %w", err)
@@ -227,7 +227,7 @@ ORDER BY created_at DESC, id DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list user recharge discount coupons: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	coupons := make([]RechargeDiscountCoupon, 0)
 	for rows.Next() {
@@ -406,7 +406,7 @@ WHERE id = $1 AND user_id = $2`
 	if err != nil {
 		return fmt.Errorf("lock recharge discount coupon: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return infraerrors.Conflict("RECHARGE_COUPON_UNAVAILABLE", "recharge discount coupon is unavailable")
 	}

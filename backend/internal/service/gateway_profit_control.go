@@ -8,13 +8,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
-// withGatewayProfitControlGate installs the gate only for explicitly marked
+// withGatewayProfitControlGateForModel installs the gate only for explicitly marked
 // token requests. This keeps media, metadata, and models-list paths outside
 // the profit-control surface by construction.
-func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64) context.Context {
-	return s.withGatewayProfitControlGateForModel(ctx, groupID, "")
-}
-
 func (s *GatewayService) withGatewayProfitControlGateForModel(ctx context.Context, groupID *int64, requestedModel string) context.Context {
 	if _, ok := gatewayTokenRequestPricingAtFromContext(ctx); !ok || groupID == nil || *groupID <= 0 {
 		return ctx

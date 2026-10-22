@@ -70,12 +70,12 @@ func (w *excelBPSChatWriter) Write(data []byte) (int, error) {
 			err = w.writeFrame(append([]byte("data: "), payload...))
 			return len(data), err
 		}
-		if w.stream && w.ResponseWriter.Written() && gjson.GetBytes(data, "error").Exists() {
+		if w.stream && w.Written() && gjson.GetBytes(data, "error").Exists() {
 			w.done = true
 			_, err := w.ResponseWriter.WriteString("data: " + string(data) + "\n\ndata: [DONE]\n\n")
 			return len(data), err
 		}
-		if !w.ResponseWriter.Written() {
+		if !w.Written() {
 			w.Header().Set("Content-Type", "application/json")
 		}
 		_, err := w.ResponseWriter.Write(data)
@@ -158,7 +158,7 @@ func (w *excelBPSChatWriter) writeFrame(frame []byte) error {
 			return err
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.ResponseWriter.WriteHeader(http.StatusBadGateway)
+		w.WriteHeader(http.StatusBadGateway)
 		raw, _ := json.Marshal(gin.H{"error": gin.H{"type": "upstream_error", "code": code, "message": message}})
 		_, err := w.ResponseWriter.Write(raw)
 		return err
@@ -212,7 +212,7 @@ func (w *excelBPSChatWriter) writeFrame(frame []byte) error {
 
 func (w *excelBPSChatWriter) emit(event *apicompat.ResponsesStreamEvent) error {
 	for _, chunk := range apicompat.ResponsesEventToChatChunks(event, w.state) {
-		if !w.ResponseWriter.Written() {
+		if !w.Written() {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Del("Content-Length")
 		}

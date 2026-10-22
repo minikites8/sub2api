@@ -244,6 +244,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		baseMultiplier = s.ResolveUserGroupRateMultiplierForModel(ctx, user.ID, *apiKey.GroupID, strings.Join(billingModels, "\x00"), apiKey.Group.RateMultiplierForModels(billingModels...))
 	}
+	baseMultiplier *= account.UserGroupRateMultiplier()
 	// token 倍率叠加高峰因子；按次媒体倍率沿用基础倍率。
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, pricingAt)
 	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
@@ -298,6 +299,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			responseBaseMultiplier := baseMultiplier
 			if apiKey.GroupID != nil && apiKey.Group != nil {
 				responseBaseMultiplier = s.ResolveUserGroupRateMultiplierForModel(ctx, user.ID, *apiKey.GroupID, strings.Join(responseModels, "\x00"), apiKey.Group.RateMultiplierForModels(responseModels...))
+			}
+			if apiKey.GroupID != nil && apiKey.Group != nil {
+				responseBaseMultiplier *= account.UserGroupRateMultiplier()
 			}
 			responseMultiplier, responseImageMultiplier := computePeakAwareMultipliers(apiKey, responseBaseMultiplier, pricingAt)
 			responseVideoMultiplier := resolveVideoRateMultiplier(apiKey, responseBaseMultiplier)

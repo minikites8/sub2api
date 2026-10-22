@@ -38,7 +38,7 @@ func TestUserRepo_ListWithFilters_UserIDs(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
 	client := tx.Client()
-	repo := NewUserRepository(client, integrationDB)
+	repo := newUserRepositoryWithSQL(client, tx)
 
 	alice := mustCreateUser(t, client, &service.User{Email: "ids-filter-alice@test.com"})
 	bob := mustCreateUser(t, client, &service.User{Email: "ids-filter-bob@test.com"})

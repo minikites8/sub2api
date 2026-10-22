@@ -72,6 +72,9 @@ func (s *OpenAIGatewayService) withOpenAIGroupRoutingPolicy(ctx context.Context,
 }
 
 func (s *OpenAIGatewayService) openAIAccountForGroup(ctx context.Context, groupID *int64, account *Account) *Account {
+	if excelBPSFallbackContextEnabled(ctx) && account != nil {
+		account = accountForExcelBPSFallback(account)
+	}
 	group := s.openAIRequestGroup(ctx, groupID)
 	if account == nil || group == nil || account.Platform != PlatformOpenAI {
 		return account

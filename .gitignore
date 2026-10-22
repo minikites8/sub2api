@@ -162,6 +162,7 @@ docs/*
 !docs/PHASE1_ACCEPTANCE_REPORT.md
 !docs/PHASE1_REMEDIATION_REPORT.md
 !docs/GPT_AUTO_CLASSIFIER_AND_MARGIN_FIX_REPORT.md
+!docs/GPT_AUTO_CONTEXT_DIAGNOSTICS_REPORT.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/
@@ -225,3 +226,11 @@ issues/
 
 !docs/astra-candy-beta.md
 !docs/screenshots/astra-candy-beta/
+
+# Isolated GPT Auto Docker validation (credentials and evidence stay local).
+.env.gpt-auto-local
+/artifacts/gpt-auto-local/
+!scripts/test-gpt-auto-local.sh
+!scripts/gpt-auto-local/
+scripts/gpt-auto-local/__pycache__/
+!docs/GPT_AUTO_LOCAL_DOCKER_TEST_REPORT.md

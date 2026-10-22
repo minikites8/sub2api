@@ -51,8 +51,8 @@ func (s *SettingService) LookupConfiguredIPReputation(ctx context.Context, ip st
 	}
 	cacheKey := provider + "|" + ip
 	if cached, ok := ipReputationCache.Load(cacheKey); ok {
-		entry := cached.(cachedIPReputation)
-		if time.Now().Before(entry.expiresAt) {
+		entry, valid := cached.(cachedIPReputation)
+		if valid && time.Now().Before(entry.expiresAt) {
 			return entry.score
 		}
 		ipReputationCache.Delete(cacheKey)

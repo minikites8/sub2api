@@ -422,7 +422,7 @@ func TestChannelMonitorV2DefaultHealthThresholdsAreTolerant(t *testing.T) {
 	require.InDelta(t, 100.0, *health.CacheScore, 0.01)
 }
 
-func TestChannelMonitorV2HealthIncludesSuccessForPartialSignals(t *testing.T) {
+func TestChannelMonitorV2HealthCacheSamplesDoNotBypassRequestMinimum(t *testing.T) {
 	thresholds := DefaultChannelMonitorV2HealthThresholds()
 	thresholds.MinimumSample = 50
 	p50 := int64(8000)
@@ -435,16 +435,13 @@ func TestChannelMonitorV2HealthIncludesSuccessForPartialSignals(t *testing.T) {
 		TTFT:                 ChannelMonitorV2Latency{SampleCount: 1, P50Ms: &p50},
 	}, thresholds)
 
-	// The request is below the health sample threshold, while cache data has a
-	// qualified denominator. Success still contributes its 60% weight, keeping
-	// the combined score above the critical band.
+	// Cache observations cannot bypass the request minimum for health scoring.
+	require.Equal(t, "unknown", health.Overall)
 	require.Equal(t, "unknown", health.ErrorRate)
-	require.NotNil(t, health.ErrorRateScore)
-	require.InDelta(t, 100.0, *health.SuccessRateScore, 0.01)
-	require.NotNil(t, health.CacheScore)
-	require.NotNil(t, health.Score)
-	require.GreaterOrEqual(t, *health.Score, 70.0)
-	require.NotEqual(t, "critical", health.Overall)
+	require.Nil(t, health.ErrorRateScore)
+	require.Nil(t, health.SuccessRateScore)
+	require.Nil(t, health.CacheScore)
+	require.Nil(t, health.Score)
 }
 
 func TestErrorRateTTFTAndCacheScoreHelpers(t *testing.T) {

@@ -1364,6 +1364,9 @@ func canonicalModelNameForPricing(model string) string {
 		return "claude-haiku-4-5"
 	default:
 		if canonical := canonicalizeOpenAIModelAliasSpelling(model); canonical != "" {
+			if canonical == "gpt-6" {
+				return "gpt-6-astra"
+			}
 			if canonical == "gpt-5.6" {
 				return "gpt-5.6-sol"
 			}

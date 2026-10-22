@@ -29,12 +29,6 @@ func getShowcaseSettings(t *testing.T, h *SettingHandler) (bool, service.Pelican
 	return envelope.Data.Enabled, envelope.Data.Config
 }
 
-type pelicanShowcaseGroupReader struct{ groups map[int64]*service.Group }
-
-func (r *pelicanShowcaseGroupReader) GetByID(_ context.Context, id int64) (*service.Group, error) {
-	return r.groups[id], nil
-}
-
 func TestSettingsPelicanShowcaseDefaultsRoundTripAndOmission(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
 	enabled, cfg := getShowcaseSettings(t, h)

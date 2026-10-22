@@ -73,7 +73,7 @@ func TestCNProviderBalanceCheckRunOnceProbesCodingPlanQuota(t *testing.T) {
 
 	svc.runOnce()
 
-	require.ElementsMatch(t, []int64{1, 2, 4}, prober.probedIDs())
+	require.ElementsMatch(t, []int64{1, 2, 4, 5}, prober.probedIDs())
 }
 
 // runOnceZhipuQuota 在 quotaService 缺失时安全跳过（Start 门控不启动的老部署路径）。

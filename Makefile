@@ -1,6 +1,8 @@
 .PHONY: build build-backend build-frontend test test-unit test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/views/admin/__tests__/GPTAutoView.spec.ts \
+	src/components/admin/gptAuto/__tests__/GPTAutoContextDiagnostics.spec.ts \
 	src/api/__tests__/groupCacheTest.spec.ts \
 	src/views/admin/__tests__/GroupCacheTestView.spec.ts \
 	src/components/account/__tests__/OpenAIRequestTimezoneField.spec.ts \

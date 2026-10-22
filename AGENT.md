@@ -13,7 +13,7 @@ Sub2API 是一个 AI API gateway，用于把上游 AI 产品订阅额度封装�
 - 数据：PostgreSQL + Redis
 - 部署：Docker、systemd、GoReleaser，配置样例在 `deploy/config.example.yaml`
 
-当前 CI 以 `backend/go.mod` 为准，要求 Go `1.26.4`。部分旧文档仍写 Go `1.25.7`，不要沿用旧版本。前端 CI 使用 Node 20、pnpm 9；必须用 pnpm，不要用 npm/yarn 改 lockfile。
+当前 CI 以 `backend/go.mod` 为准，要求 Go `1.27.3`。部分旧文档仍写 Go `1.25.7`，不要沿用旧版本。前端 CI 使用 Node 20、pnpm 9；必须用 pnpm，不要用 npm/yarn 改 lockfile。
 
 ## 目录地图
 

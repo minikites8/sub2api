@@ -121,7 +121,7 @@ func TestControlledExperimentGatewayWSUsesOneFrameAndNoHTTPFallback(t *testing.T
 	require.Empty(t, upstream.requests)
 }
 
-func TestControlledExperimentGatewayPrismKeepsAdapterEvidenceAndUnavailableUsage(t *testing.T) {
+func TestControlledExperimentGatewayPrismKeepsAdapterEvidenceAndProviderUsage(t *testing.T) {
 	var submissions atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -147,9 +147,9 @@ func TestControlledExperimentGatewayPrismKeepsAdapterEvidenceAndUnavailableUsage
 	require.Equal(t, 1, d.Submissions)
 	require.Equal(t, "prism", d.ActualChannel)
 	require.Equal(t, "adapter_declared", d.EffortEvidence)
-	require.Equal(t, "unavailable", d.UsageSource)
-	require.Nil(t, d.CostUSD)
-	require.True(t, d.CostIncomplete)
+	require.Equal(t, "provider", d.UsageSource)
+	require.NotNil(t, d.CostUSD)
+	require.False(t, d.CostIncomplete)
 }
 
 func TestControlledExperimentGatewayRespectsProtocolSwitchesBeforeSend(t *testing.T) {

@@ -177,7 +177,11 @@ func (s *SettingService) getAntiAbuseRuntime(ctx context.Context) cachedAntiAbus
 	if err != nil {
 		return fallback
 	}
-	return loaded.(cachedAntiAbuseRuntime)
+	runtime, ok := loaded.(cachedAntiAbuseRuntime)
+	if !ok {
+		return fallback
+	}
+	return runtime
 }
 
 func (s *SettingService) GetAntiAbusePolicy(ctx context.Context) AntiAbusePolicy {

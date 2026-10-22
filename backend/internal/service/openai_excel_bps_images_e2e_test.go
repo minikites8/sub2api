@@ -99,8 +99,8 @@ func TestExcelBPSImagesHTTPFlow(t *testing.T) {
 					router := gin.New()
 					router.POST(path, func(c *gin.Context) {
 						account := excelAccount()
-						// A saved legacy opt-in must never strip images anymore.
-						account.Extra["openai_excel_bps_ignore_images"] = true
+						// Exercise image validation with text-only image dropping disabled.
+						account.Extra["openai_excel_bps_ignore_images"] = false
 						body, err := c.GetRawData()
 						if err != nil {
 							c.AbortWithStatus(http.StatusBadRequest)

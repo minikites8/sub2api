@@ -74,7 +74,7 @@ func TestGatewayRoutesPinnedModelsDispatchesOrdinaryAndCodexRequests(t *testing.
 		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, nil, cfg),
 		AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
 	}
-	group := &service.Group{ID: 1, Platform: service.PlatformOpenAI,
+	group := &service.Group{ID: 1, Platform: service.PlatformOpenAI, EnableBPS: true,
 		CodexModelsManifestConfig: service.GroupCodexModelsManifestConfig{Enabled: true, AccountIDs: []int64{7}}}
 	router := gin.New()
 	RegisterGatewayRoutes(router, h, servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
@@ -147,7 +147,7 @@ func TestGatewayRoutesRetrievePinnedModel(t *testing.T) {
 		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, nil, cfg),
 		AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
 	}
-	group := &service.Group{ID: 1, Platform: service.PlatformOpenAI,
+	group := &service.Group{ID: 1, Platform: service.PlatformOpenAI, EnableBPS: true,
 		CodexModelsManifestConfig: service.GroupCodexModelsManifestConfig{Enabled: true, AccountIDs: []int64{7}}}
 	router := gin.New()
 	RegisterGatewayRoutes(router, h, servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {

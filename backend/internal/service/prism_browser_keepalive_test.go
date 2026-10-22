@@ -53,7 +53,7 @@ func TestPrismBrowserKeepaliveArrivesBeforeAdapterSettles(t *testing.T) {
 			response, err := client.Post(gateway.URL+"/v1/responses", "application/json",
 				strings.NewReader(`{"model":"gpt-6.1-sol","input":"fixture","stream":true}`))
 			require.NoError(t, err)
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.Equal(t, "no", response.Header.Get("X-Accel-Buffering"))
 			require.Equal(t, "response-metadata", response.Header.Get("X-Prism-Usage"))

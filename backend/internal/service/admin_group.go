@@ -738,6 +738,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, err
 	}
 
+	manifestConfig := normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig)
+	if err := s.validateCodexModelsManifestConfig(ctx, 0, manifestConfig); err != nil {
+		return nil, err
+	}
+
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
@@ -798,7 +803,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		ModelAllowlist:                  modelAllowlist,
-		CodexModelsManifestConfig:       input.CodexModelsManifestConfig,
+		CodexModelsManifestConfig:       manifestConfig,
 		OpenAIServiceTierMode:           openAIServiceTierMode,
 		OpenAIServiceTier:               openAIServiceTier,
 		RPMLimit:                        input.RPMLimit,
@@ -1250,6 +1255,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.CodexModelsManifestConfig != nil {
 		group.CodexModelsManifestConfig = *input.CodexModelsManifestConfig
+	}
+	group.CodexModelsManifestConfig = normalizeCodexModelsManifestConfig(group.Platform, group.CodexModelsManifestConfig)
+	if input.CodexModelsManifestConfig != nil {
+		if err := s.validateCodexModelsManifestConfig(ctx, group.ID, group.CodexModelsManifestConfig); err != nil {
+			return nil, err
+		}
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
@@ -34,12 +35,13 @@ const excelBPSFailoverRequestBody = `{"model":"gpt-6-astra","stream":%t,"input":
 // every BPS attempt.
 type excelBPSFailoverUpstream struct {
 	service.HTTPUpstream
-	mu         sync.Mutex
-	accountIDs []int64
-	bodies     [][]byte
-	urls       []string
-	answer     func(call int) *http.Response
-	onDo       func(call int)
+	mu             sync.Mutex
+	accountIDs     []int64
+	bodies         [][]byte
+	urls           []string
+	answer         func(call int) *http.Response
+	ordinaryAnswer func() *http.Response
+	onDo           func(call int)
 }
 
 func (u *excelBPSFailoverUpstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
@@ -52,6 +54,9 @@ func (u *excelBPSFailoverUpstream) Do(req *http.Request, _ string, accountID int
 	u.mu.Unlock()
 	if u.onDo != nil {
 		u.onDo(call)
+	}
+	if u.ordinaryAnswer != nil && !strings.Contains(req.URL.Path, "basispoints/api/responses") {
+		return u.ordinaryAnswer(), nil
 	}
 	return u.answer(call), nil
 }
@@ -143,9 +148,10 @@ func newExcelBPSFailoverTestContext(ctx context.Context, stream bool) (*gin.Cont
 	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
 		ID:      99,
 		GroupID: &groupID,
-		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, EnableBPS: true},
 		User:    &service.User{ID: 100},
 	})
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.Group, &service.Group{ID: groupID, Platform: service.PlatformOpenAI, EnableBPS: true}))
 	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 100, Concurrency: 0})
 	return c, rec
 }
@@ -201,7 +207,7 @@ func TestOpenAIResponsesExcelBPS429SwitchesAccountAndCoolsIt(t *testing.T) {
 	}
 }
 
-func TestOpenAIResponsesExcelBPS429OnEveryAccountReturnsRateLimit(t *testing.T) {
+func TestOpenAIResponsesExcelBPS429OnEveryAccountFallsBackToOrdinary(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, tc := range []struct {
 		name, retryAfter, wantRetryAfter string
@@ -214,30 +220,34 @@ func TestOpenAIResponsesExcelBPS429OnEveryAccountReturnsRateLimit(t *testing.T) 
 		{name: "retry after beyond a week", retryAfter: "999999"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			upstream := &excelBPSFailoverUpstream{answer: func(int) *http.Response { return excelBPS429(tc.retryAfter) }}
+			upstream := &excelBPSFailoverUpstream{answer: func(int) *http.Response { return excelBPS429(tc.retryAfter) }, ordinaryAnswer: excelBPSCompleted}
 			handler := newExcelBPSFailoverTestHandler(t, upstream, tc.loadBatch)
 
 			c, rec := newExcelBPSFailoverTestContext(context.Background(), tc.stream)
+			body, err := io.ReadAll(c.Request.Body)
+			require.NoError(t, err)
+			body = []byte(strings.ReplaceAll(string(body), "gpt-6-astra", "gpt-6-sol"))
+			c.Request.Body = io.NopCloser(bytes.NewReader(body))
+			c.Request.ContentLength = int64(len(body))
 			handler.Responses(c)
 
 			calls := upstream.calls()
-			require.Len(t, calls, 2)
+			require.Len(t, calls, 3, "status=%d body=%s", rec.Code, rec.Body.String())
 			require.NotEqual(t, calls[0], calls[1])
-			require.Equal(t, http.StatusTooManyRequests, rec.Code)
-			require.Equal(t, "rate_limit_error", gjson.Get(rec.Body.String(), "error.type").String())
-			require.Equal(t, "basispoints_rate_limited", gjson.Get(rec.Body.String(), "error.code").String())
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			require.Contains(t, rec.Body.String(), "done")
 			require.NotContains(t, rec.Body.String(), "PRIVATE_UPSTREAM")
-			require.NotContains(t, rec.Body.String(), "workspace")
-			require.Equal(t, tc.wantRetryAfter, rec.Header().Get("Retry-After"))
+			require.Contains(t, upstream.urls[2], "/backend-api/codex/responses")
 
-			// Both accounts cool down: the next request is answered without an upstream call.
+			// A fresh request with no eligible BPS accounts fails selection without replaying customer input.
 			c, rec = newExcelBPSFailoverTestContext(context.Background(), tc.stream)
+			c.Request.Body = io.NopCloser(bytes.NewReader(body))
+			c.Request.ContentLength = int64(len(body))
 			handler.Responses(c)
 
-			require.Len(t, upstream.calls(), 2)
-			require.Equal(t, http.StatusTooManyRequests, rec.Code)
-			require.Equal(t, "rate_limit_error", gjson.Get(rec.Body.String(), "error.type").String())
-			require.Contains(t, rec.Body.String(), "rate-limited")
+			require.Len(t, upstream.calls(), 3)
+			require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
+			require.Equal(t, "api_error", gjson.Get(rec.Body.String(), "error.type").String())
 		})
 	}
 }

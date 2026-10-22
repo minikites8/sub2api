@@ -127,7 +127,10 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		SupportTicketEnabled: settings.SupportTicketEnabled,
 
-		AffiliateEnabled: settings.AffiliateEnabled,
+		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
+		PluginManagementEnabled: settings.PluginManagementEnabled,
+		AffiliateEnabled:        settings.AffiliateEnabled,
 
 		RiskControlEnabled: settings.RiskControlEnabled,
 

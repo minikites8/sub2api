@@ -80,7 +80,7 @@ func TestOpenAIEncryptedReasoningStreamReplayBoundary(t *testing.T) {
 					require.Contains(t, rec.Body.String(), "fixture-ciphertext")
 					rawEvents, exists := c.Get(OpsUpstreamErrorsKey)
 					require.True(t, exists)
-					opsEvents := rawEvents.([]*OpsUpstreamErrorEvent)
+					opsEvents := requireOpsType[[]*OpsUpstreamErrorEvent](t, rawEvents)
 					event := opsEvents[len(opsEvents)-1]
 					require.Equal(t, "stream_failed", event.Kind)
 					require.Equal(t, "downstream_response_committed", event.FailoverSuppressedReason)

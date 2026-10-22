@@ -2186,7 +2186,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 		if responseWritten {
 			return err
 		}
-		return s.newOpenAIAccountFailoverError(
+		failover := s.newOpenAIAccountFailoverError(
 			account,
 			upstreamErr.StatusCode,
 			headers,
@@ -2195,6 +2195,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 			false,
 			false,
 		)
+		if upstreamErr.SynthesizedFromModelText {
+			failover.RetryableOnSameAccount = false
+			failover.SameAccountRetryMax = 0
+		}
+		return failover
 	}
 	if !retryable || responseWritten {
 		return err

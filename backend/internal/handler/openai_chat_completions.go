@@ -162,7 +162,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	var rpmAdmission openAIRPMAdmission
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	ordinaryBPSFallbackStarted := false
-	writerSizeBeforeForward := -1
+	var writerSizeBeforeForward int
 	lastWriterSizeBeforeForward := -1
 	startOrdinaryBPSFallback := func() bool {
 		if requestPrefersAccountRetry(c) && switchCount >= maxAccountSwitches {

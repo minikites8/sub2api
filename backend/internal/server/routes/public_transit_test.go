@@ -152,7 +152,7 @@ func TestPublicTransitHTTPDiscovery(t *testing.T) {
 			require.Equal(t, tc.expectedBase+"/api/public/transit/v1/snapshot", payload["snapshot_url"])
 			require.NotContains(t, payload, "data")
 			require.NotContains(t, payload, "homepage_url")
-			_, err := time.Parse(time.RFC3339, payload["generated_at"].(string))
+			_, err := time.Parse(time.RFC3339, requireTransitType[string](t, payload["generated_at"]))
 			require.NoError(t, err)
 			require.Empty(t, monitors.requests)
 		})
@@ -173,7 +173,7 @@ func TestPublicTransitHTTPSnapshotV1Contract(t *testing.T) {
 			monitors, ok := payload["monitoring"].([]any)
 			require.True(t, ok)
 			require.Len(t, monitors, 2)
-			monitor := monitors[0].(map[string]any)
+			monitor := requireTransitType[map[string]any](t, monitors[0])
 			require.Equal(t, "openai / test-model", monitor["name"])
 			require.Equal(t, "openai", monitor["provider"])
 			require.Equal(t, "test-model", monitor["primary_model"])
@@ -184,16 +184,16 @@ func TestPublicTransitHTTPSnapshotV1Contract(t *testing.T) {
 			require.InDelta(t, 97, monitor["availability_30d"], 1e-12)
 			require.Equal(t, float64(1235), monitor["avg_latency_7d_ms"])
 			require.Equal(t, float64(720), monitor["latest_latency_ms"])
-			require.Equal(t, float64(41269.3), monitor["metrics"].(map[string]any)["duration"].(map[string]any)["avg_ms"])
+			require.Equal(t, float64(41269.3), requireTransitType[map[string]any](t, requireTransitType[map[string]any](t, monitor["metrics"])["duration"])["avg_ms"])
 			require.Equal(t, float64(30000), monitor["latest_duration_p50_ms"])
 			require.Equal(t, "2026-09-01T12:00:00Z", monitor["last_checked_at"])
-			model := monitor["models"].([]any)[0].(map[string]any)
+			model := requireTransitType[map[string]any](t, requireTransitType[[]any](t, monitor["models"])[0])
 			require.Equal(t, monitor["primary_model"], model["model"])
 			require.Equal(t, monitor["primary_status"], model["latest_status"])
 			require.Equal(t, monitor["availability_30d"], model["availability_30d"])
 			require.Equal(t, monitor["latest_latency_ms"], model["latest_latency_ms"])
 			require.Equal(t, monitor["avg_latency_7d_ms"], model["avg_latency_7d_ms"])
-			point := monitor["timeline"].([]any)[0].(map[string]any)
+			point := requireTransitType[map[string]any](t, requireTransitType[[]any](t, monitor["timeline"])[0])
 			require.Equal(t, "degraded", point["status"])
 			require.Equal(t, float64(720), point["latency_ms"])
 			require.Equal(t, monitor["last_checked_at"], point["checked_at"])
@@ -202,18 +202,18 @@ func TestPublicTransitHTTPSnapshotV1Contract(t *testing.T) {
 			require.NotContains(t, monitor["metrics"], "request_count")
 			require.Equal(t, "operational", monitor["status"])
 			require.Contains(t, monitor, "windows")
-			group := payload["groups"].([]any)[0].(map[string]any)
+			group := requireTransitType[map[string]any](t, requireTransitType[[]any](t, payload["groups"])[0])
 			require.Equal(t, true, group["monitoring_enabled"])
-			groupMonitor := group["monitoring"].([]any)[0].(map[string]any)
+			groupMonitor := requireTransitType[map[string]any](t, requireTransitType[[]any](t, group["monitoring"])[0])
 			require.Equal(t, "public-group", groupMonitor["group_name"])
 			require.Equal(t, monitor["primary_status"], groupMonitor["primary_status"])
 			require.Equal(t, monitor["latest_latency_ms"], groupMonitor["latest_latency_ms"])
 			require.Equal(t, monitor["avg_latency_7d_ms"], groupMonitor["avg_latency_7d_ms"])
 			require.NotContains(t, groupMonitor, "group_id")
-			endpoints := payload["endpoints"].(map[string]any)
+			endpoints := requireTransitType[map[string]any](t, payload["endpoints"])
 			require.Equal(t, "https://station.example/.well-known/ai-transit.json", endpoints["discovery_url"])
 			require.Equal(t, "https://station.example/api/public/transit/v1/snapshot", endpoints["snapshot_url"])
-			require.Equal(t, true, payload["completeness"].(map[string]any)["has_monitoring"])
+			require.Equal(t, true, requireTransitType[map[string]any](t, payload["completeness"])["has_monitoring"])
 			require.Len(t, repo.requests, 12)
 		})
 	}
@@ -234,16 +234,16 @@ func TestPublicTransitHTTPAvailabilityUsesRequestOutcomes(t *testing.T) {
 				repo.recentMetrics, repo.recentHealth = &tc.metrics, tc.health
 				rec, payload := publicTransitHTTPPayload(t, router, path)
 				require.Equal(t, http.StatusOK, rec.Code)
-				monitor := payload["monitoring"].([]any)[0].(map[string]any)
+				monitor := requireTransitType[map[string]any](t, requireTransitType[[]any](t, payload["monitoring"])[0])
 				require.Equal(t, tc.status, monitor["primary_status"])
-				require.Equal(t, tc.status, monitor["models"].([]any)[0].(map[string]any)["latest_status"])
-				require.Equal(t, tc.status, monitor["timeline"].([]any)[0].(map[string]any)["status"])
+				require.Equal(t, tc.status, requireTransitType[map[string]any](t, requireTransitType[[]any](t, monitor["models"])[0])["latest_status"])
+				require.Equal(t, tc.status, requireTransitType[map[string]any](t, requireTransitType[[]any](t, monitor["timeline"])[0])["status"])
 				// Recent checks and seven-day aggregate availability keep their own windows.
 				require.InDelta(t, 99, monitor["availability_7d"], 1e-12)
 				require.Equal(t, "operational", monitor["status"])
-				require.Equal(t, tc.health, monitor["windows"].(map[string]any)["90m"].(map[string]any)["buckets"].([]any)[0].(map[string]any)["health"].(map[string]any)["overall"])
-				group := payload["groups"].([]any)[0].(map[string]any)
-				require.Equal(t, tc.status, group["monitoring"].([]any)[0].(map[string]any)["primary_status"])
+				require.Equal(t, tc.health, requireTransitType[map[string]any](t, requireTransitType[map[string]any](t, requireTransitType[[]any](t, requireTransitType[map[string]any](t, requireTransitType[map[string]any](t, monitor["windows"])["90m"])["buckets"])[0])["health"])["overall"])
+				group := requireTransitType[map[string]any](t, requireTransitType[[]any](t, payload["groups"])[0])
+				require.Equal(t, tc.status, requireTransitType[map[string]any](t, requireTransitType[[]any](t, group["monitoring"])[0])["primary_status"])
 			})
 		}
 	}
@@ -255,10 +255,10 @@ func TestPublicTransitHTTPV1GroupMonitoring(t *testing.T) {
 			router, _ := newPublicTransitHTTPRouter(nil)
 			rec, payload := publicTransitHTTPPayload(t, router, path)
 			require.Equal(t, http.StatusOK, rec.Code)
-			group := payload["groups"].([]any)[0].(map[string]any)
+			group := requireTransitType[map[string]any](t, requireTransitType[[]any](t, payload["groups"])[0])
 			var groupMonitor map[string]any
-			for _, raw := range payload["monitoring"].([]any) {
-				item := raw.(map[string]any)
+			for _, raw := range requireTransitType[[]any](t, payload["monitoring"]) {
+				item := requireTransitType[map[string]any](t, raw)
 				if item["group_name"] == group["name"] {
 					groupMonitor = item
 				}
@@ -269,7 +269,7 @@ func TestPublicTransitHTTPV1GroupMonitoring(t *testing.T) {
 			require.Len(t, groupMonitor["timeline"], 1)
 			require.Len(t, groupMonitor["models"], 1)
 			require.NotContains(t, groupMonitor, "group_id")
-			require.Equal(t, group["monitoring"].([]any)[0], groupMonitor)
+			require.Equal(t, requireTransitType[[]any](t, group["monitoring"])[0], groupMonitor)
 		})
 	}
 }
@@ -304,7 +304,7 @@ func TestPublicTransitHTTPEmptyMonitoring(t *testing.T) {
 			rec, payload := publicTransitHTTPPayload(t, router, "/api/public/transit/v1/snapshot")
 			require.Equal(t, http.StatusOK, rec.Code)
 			require.Equal(t, []any{}, payload["monitoring"])
-			require.Equal(t, false, payload["completeness"].(map[string]any)["has_monitoring"])
+			require.Equal(t, false, requireTransitType[map[string]any](t, payload["completeness"])["has_monitoring"])
 			require.Empty(t, repo.requests)
 		})
 	}
@@ -324,4 +324,11 @@ func TestPublicTransitHTTPOptionalPublicPage(t *testing.T) {
 	rec, payload := publicTransitHTTPPayload(t, router, "https://station.example/.well-known/ai-transit.json")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "https://station.example/public/transit", payload["homepage_url"])
+}
+
+func requireTransitType[T any](t *testing.T, value any) T {
+	t.Helper()
+	result, ok := value.(T)
+	require.True(t, ok, "unexpected payload type %T", value)
+	return result
 }

@@ -187,7 +187,7 @@ func TestSubscriptionCouponReservationChecksOwnershipAndChanges(t *testing.T) {
 	check := func(userID int64) error {
 		tx, err := client.Tx(ctx)
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 		return svc.checkSubscriptionDiscountCouponOrderLimit(ctx, tx, userID, plan)
 	}
 	require.Equal(t, "SUBSCRIPTION_COUPON_UNAVAILABLE", infraerrors.Reason(check(user.ID+1)))

@@ -76,6 +76,7 @@ export interface GPTAutoMeta {
   policy_version: string
   classifier_schema?: string
   state_version?: string
+  diagnostics_version?: string
   context_strategies?: GPTAutoContextStrategy[]
   benchmark_samples?: GPTAutoBenchmarkSample[]
   phase: string
@@ -518,6 +519,86 @@ export interface GPTAutoContextInfo {
   used_chars: number
   section_chars?: Record<string, number>
   limitations?: string[]
+  /** Absent on decisions created before context diagnostics existed. */
+  diagnostics?: GPTAutoContextDiagnostics
+}
+
+export type GPTAutoContextSection =
+  | 'latest_user_request'
+  | 'continues_request'
+  | 'agent_activity'
+  | 'original_request'
+  | 'history_summary'
+  | 'recent_context'
+  | 'external_history'
+
+export type GPTAutoSelectionStatus = 'included' | 'truncated' | 'budget_exhausted' | 'unavailable' | 'not_applicable'
+
+/** One builder step, in the order the server ran it. */
+export interface GPTAutoContextSelectionStep {
+  section: GPTAutoContextSection
+  status: GPTAutoSelectionStatus
+  /** Budget characters consumed (agent activity includes a per-event overhead). */
+  chars: number
+  items?: number
+  available?: number
+  dropped?: number
+}
+
+/** Every request item is counted once; eligible items are split into represented / budget_dropped / not_selected. */
+export interface GPTAutoContextItemCounts {
+  eligible: number
+  represented: number
+  selected_messages: number
+  budget_dropped: number
+  budget_truncated: number
+  not_selected: number
+  privacy: number
+  unsupported: number
+  external_references: number
+  compacted: number
+  empty: number
+  with_images: number
+  conversation_length_known: boolean
+}
+
+export interface GPTAutoAgentDiagnostics {
+  scope: string
+  step_limit: number
+  steps_detected: number
+  tool_calls_detected: number
+  tool_results_detected: number
+  tool_failures_detected: number
+  trailing_failures: number
+  failure_summaries_included: number
+  events_dropped_for_budget: number
+  event_kinds?: Record<string, number>
+  has_tool_result_context: boolean
+  has_progress_note: boolean
+}
+
+export type GPTAutoCompleteness = 'sufficient' | 'partial' | 'important_unavailable' | 'unable_to_determine'
+
+/** context-diagnostics-v1: counts, statuses and fixed codes only, never request content. */
+export interface GPTAutoContextDiagnostics {
+  diagnostics_version: string
+  scan_status: 'scanned' | 'skipped_too_large'
+  /** Absent when the request was not scanned (counts unknown, not zero). */
+  items?: GPTAutoContextItemCounts
+  selection?: GPTAutoContextSelectionStep[]
+  context_truncated: boolean
+  follow_up: {
+    resolution: 'not_follow_up' | 'linked_request' | 'agent_activity_only' | 'unresolved' | 'recent_turns_only'
+    short_message: boolean
+    original_task_available: boolean
+    agent_activity_available: boolean
+  }
+  agent?: GPTAutoAgentDiagnostics
+  notes?: string[]
+  completeness: GPTAutoCompleteness
+  completeness_reasons?: string[]
+  /** Length of the serialized Jev state; absent where it was not recorded. */
+  state_chars?: number
 }
 
 export interface GPTAutoContextOptions {

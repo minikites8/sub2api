@@ -504,7 +504,7 @@ func (h *OpenAIOAuthHandler) ListWorkspaceInvites(c *gin.Context) {
 	if value := strings.TrimSpace(c.Query("offset")); value != "" {
 		offset, err = strconv.Atoi(value)
 		if err != nil {
-			response.BadRequest(c, "Invalid offset")
+			response.BadRequest(c, "invalid offset")
 			return
 		}
 	}
@@ -512,7 +512,7 @@ func (h *OpenAIOAuthHandler) ListWorkspaceInvites(c *gin.Context) {
 	if value := strings.TrimSpace(c.Query("limit")); value != "" {
 		limit, err = strconv.Atoi(value)
 		if err != nil {
-			response.BadRequest(c, "Invalid limit")
+			response.BadRequest(c, "invalid limit")
 			return
 		}
 	}
@@ -555,14 +555,14 @@ func parseWorkspaceListPagination(c *gin.Context) (offset, limit int, err error)
 	if value := strings.TrimSpace(c.Query("offset")); value != "" {
 		offset, err = strconv.Atoi(value)
 		if err != nil {
-			return 0, 0, fmt.Errorf("Invalid offset")
+			return 0, 0, fmt.Errorf("invalid offset")
 		}
 	}
 	limit = 25
 	if value := strings.TrimSpace(c.Query("limit")); value != "" {
 		limit, err = strconv.Atoi(value)
 		if err != nil {
-			return 0, 0, fmt.Errorf("Invalid limit")
+			return 0, 0, fmt.Errorf("invalid limit")
 		}
 	}
 	return offset, limit, nil

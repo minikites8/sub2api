@@ -115,7 +115,11 @@ A synthetic 28-sample benchmark (`gpt_auto_benchmark.go`, no customer data) is a
 
 Settings: `classification_context_strategy` (`task_aware`, default, in the priority order above; `recent_turns`, the v2 behaviour) and `classification_agent_steps` (1–30, default 8). The character budget (`classification_max_context_chars`) is shared in priority order: latest message up to 50% (25% for a follow-up), continued request 25%, activity 25%, original request and summary 15% each, recent turns the rest.
 
-Each decision stores the extraction metadata (counts, indices, budgets, limitations; no content) in `features.context`. `GET /meta` reports the running `state_version` and `classifier_schema`, so a deployment can be verified before results are attributed to it.
+Each decision stores the extraction metadata (counts, indices, budgets, limitations; no content) in `features.context`. `GET /meta` reports the running `state_version`, `classifier_schema` and `diagnostics_version`, so a deployment can be verified before results are attributed to it.
+
+### Context diagnostics (`context-diagnostics-v1`)
+
+The builder records, while it selects, what it saw and did: `features.context.diagnostics` holds the scan status, an item account (every request item counted once: readable, withheld for privacy, unsupported, external references, compacted, empty; readable items split into reached Jev / dropped for budget / not selected), the selection steps in build order with status (`included`, `truncated`, `budget_exhausted`, `unavailable`, `not_applicable`) and characters charged, follow-up resolution (`linked_request`, `agent_activity_only`, `unresolved`, `recent_turns_only`), agent counts (no tool names), diagnostic notes, a completeness label (a documented deterministic heuristic) and the serialized state length. No text is stored, every list uses a fixed vocabulary, and the object is about 1–1.5 KB. Decisions created before diagnostics show "Diagnostics unavailable"; nothing is reconstructed. The decision dialog and the debugger's Context Extraction Preview render it. See `docs/GPT_AUTO_CONTEXT_DIAGNOSTICS_REPORT.md`.
 
 **State debugger** (Test Lab, admin only): `POST /debug/state` takes a synthetic request body and returns the exact System One request (`model`, `state`, `questions`) plus the extraction metadata. It never calls Jev, stores nothing, and its request body is omitted from the audit log. Use synthetic requests only.
 

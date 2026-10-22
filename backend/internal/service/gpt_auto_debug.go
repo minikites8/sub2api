@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"unicode/utf8"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
@@ -102,7 +103,7 @@ func (s *GPTAutoShadowService) DebugState(ctx context.Context, input GPTAutoDebu
 		JevRequest:           request,
 		StateChars:           len([]rune(state)),
 		EstimatedJevTokens:   (len(raw) + 3) / 4,
-		Context:              snapshot.Context,
+		Context:              snapshot.Context.withStateChars(utf8.RuneCountInString(state)),
 		Effective:            effective,
 		ClassifierConfigHash: hash,
 		EstimatedInputTokens: snapshot.EstimatedInputTokens,

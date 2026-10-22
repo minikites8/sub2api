@@ -95,7 +95,7 @@ func excelBPSStreamEventIsPrelude(payload []byte, kind string) bool {
 		}
 		return true
 	case "response.output_item.added", "response.output_item.done":
-		return !openAIStreamItemHasVisibleOutput(gjson.GetBytes(payload, "item")) &&
+		return gjson.GetBytes(payload, "item.encrypted_content").String() == "" && !openAIStreamItemHasVisibleOutput(gjson.GetBytes(payload, "item")) &&
 			!openAIStreamAddedEventStartsClientOutput(payload, "response.output_item.added")
 	case "response.content_part.added", "response.content_part.done":
 		return !openAIStreamAddedEventStartsClientOutput(payload, "response.content_part.added")

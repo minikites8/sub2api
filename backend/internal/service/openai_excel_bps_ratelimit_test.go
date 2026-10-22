@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -447,6 +448,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ExcelBPSCooldownSkipsOn
 		t.Run(fmt.Sprintf("advanced=%t", advanced), func(t *testing.T) {
 			ctx := context.Background()
 			groupID := int64(101301)
+			ctx = context.WithValue(ctx, ctxkey.Group, &Group{ID: groupID, Platform: PlatformOpenAI, EnableBPS: true})
 			newAccount := func(id int64) Account {
 				return Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1,
 					Credentials: map[string]any{"access_token": "token", "chatgpt_account_id": "chatgpt"},

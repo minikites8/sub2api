@@ -52,7 +52,7 @@ func TestAccountTestStoredTicketBundle(t *testing.T) {
 				if mode == "pelican" {
 					require.Contains(t, string(body), "synthetic quality prompt")
 				}
-				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(harvestProbeCompleteFixture("gpt-6-astra")))}, nil
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(strings.Replace(harvestProbeCompleteFixture("gpt-6-astra"), `"status":"completed"`, `"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}],"usage":{"input_tokens":1,"output_tokens":1}`, 1)))}, nil
 			}}
 			gateway.httpUpstream = upstream
 			svc := &AccountTestService{openaiGatewayService: gateway, httpUpstream: upstream}

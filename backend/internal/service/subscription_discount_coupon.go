@@ -100,7 +100,7 @@ RETURNING id, user_id, min_subscription_amount, discount_percent, total_uses, st
 	if err != nil {
 		return nil, fmt.Errorf("issue subscription discount coupon: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return nil, fmt.Errorf("issue subscription discount coupon: %w", err)
@@ -170,7 +170,7 @@ ORDER BY created_at DESC, id DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list user subscription discount coupons: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	coupons := make([]SubscriptionDiscountCoupon, 0)
 	for rows.Next() {
@@ -360,7 +360,7 @@ WHERE id = $1 AND user_id = $2`
 	if err != nil {
 		return fmt.Errorf("lock subscription discount coupon: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return infraerrors.Conflict("SUBSCRIPTION_COUPON_UNAVAILABLE", "subscription discount coupon is unavailable")
 	}

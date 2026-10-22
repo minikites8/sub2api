@@ -239,6 +239,10 @@ func TestGPTAutoMetaReportsShadowPhase(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"live_routing_active":false`)
 	require.Contains(t, rec.Body.String(), "gpt-6.1-sol")
+	// The node reports the versions compiled into it.
+	require.Contains(t, rec.Body.String(), `"state_version":"`+service.GPTAutoClassifierStateVersion+`"`)
+	require.Contains(t, rec.Body.String(), `"classifier_schema":"`+service.GPTAutoClassifierSchemaVersion+`"`)
+	require.Contains(t, rec.Body.String(), `"diagnostics_version":"`+service.GPTAutoContextDiagnosticsVersion+`"`)
 }
 
 func gptAutoTestInstructions(prefix string) map[string]any {
@@ -321,6 +325,12 @@ func TestGPTAutoDebugStateEndpoint(t *testing.T) {
 	require.NotContains(t, out.Data.JevRequest.State, "PRIVATE operator prompt")
 	require.Len(t, out.Data.JevRequest.Questions, 4)
 	require.Equal(t, "state-v3", out.Data.Context.StateVersion)
+	diagnostics := out.Data.Context.Diagnostics
+	require.NotNil(t, diagnostics)
+	require.Equal(t, service.GPTAutoContextDiagnosticsVersion, diagnostics.Version)
+	require.Equal(t, 1, diagnostics.Items.Privacy, "the system prompt is withheld")
+	require.NotNil(t, diagnostics.StateChars)
+	require.Equal(t, out.Data.StateChars, *diagnostics.StateChars)
 	require.Empty(t, repo.values[service.SettingKeyGPTAutoShadowConfig], "nothing is saved")
 
 	rec = gptAutoDo(router, http.MethodPost, "/api/v1/admin/gpt-auto/debug/state", map[string]any{"endpoint": "messages", "request": request})

@@ -675,6 +675,7 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	args := state.CurrentArgs.String()
 	content := state.CurrentContent
 	summary := state.CurrentSummary
+	thinking := state.CurrentThinking
 
 	// Reset
 	state.CurrentItemType = ""
@@ -712,6 +713,9 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		item.Name = name
 		item.Input = extractCustomToolCallInput(normalizeResponsesFunctionArgs(args))
 	case "reasoning":
+		if state.PreserveThinkingSignatures && strings.TrimSpace(thinking.Signature) != "" {
+			item.EncryptedContent = encodeAnthropicThinking(thinking)
+		}
 		if summary != "" {
 			item.Summary = []ResponsesSummary{{Type: "summary_text", Text: summary}}
 		}

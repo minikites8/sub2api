@@ -29,7 +29,7 @@ func (s *OpenAIGatewayService) admitOpenAIHTTPRequestForModel(ctx context.Contex
 		return nil, err
 	}
 	binding := selected
-	refresh := latest.IsOpenAI() && openAITurnRouteFingerprint(latest) != openAITurnRouteFingerprint(selected) && strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) == ""
+	refresh := !agentIdentityTaskRecoveryWasTried(ctx) && latest.IsOpenAI() && openAITurnRouteFingerprint(latest) != openAITurnRouteFingerprint(selected) && strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) == ""
 	if refresh {
 		binding = latest
 	}

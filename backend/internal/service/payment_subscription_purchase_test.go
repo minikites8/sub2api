@@ -157,7 +157,7 @@ func TestSubscriptionPurchaseCombinedCheckoutAndRenewal(t *testing.T) {
 	require.Equal(t, 23.76, coupon.DiscountedAmount)
 	order, err := svc.createOrderInTx(ctx, CreateOrderRequest{
 		UserID: user.ID, PaymentType: payment.TypeAlipay, OrderType: payment.OrderTypeSubscription,
-		PlanID: plan.ID, Quantity: 3,
+		PlanID: plan.ID, Quantity: 3, RenewalMode: string(SubscriptionRenewalModeExtend),
 	}, &User{ID: user.ID, Email: user.Email, Username: user.Username}, plan,
 		&PaymentConfig{MaxPendingOrders: 3}, coupon.DiscountedAmount, coupon.DiscountedAmount,
 		0, coupon.DiscountedAmount, 0, nil, firstRechargeAmountPlan{}, coupon)

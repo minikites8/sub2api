@@ -83,10 +83,6 @@ func TestApplyPromoCode_ZeroBonusCreatesUsageWithoutBalanceUpdate(t *testing.T) 
 func TestApplyPromoCode_BonusDoesNotCountAsRecharge(t *testing.T) {
 	ctx := context.Background()
 	client := newOrderNotFoundTestClient(t)
-	// This balance field is managed by SQL migrations alongside the Ent schema.
-	_, err := client.ExecContext(ctx, "ALTER TABLE users ADD COLUMN gift_balance DECIMAL(20,8) NOT NULL DEFAULT 0")
-	require.NoError(t, err)
-
 	user, err := client.User.Create().
 		SetEmail("promo-bonus@example.com").
 		SetPasswordHash("hash").

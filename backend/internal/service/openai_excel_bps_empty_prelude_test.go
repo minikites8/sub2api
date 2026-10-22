@@ -34,7 +34,7 @@ func TestExcelBPSRateLimitAfterEmptyEventsFailsOver(t *testing.T) {
 				rec := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(rec)
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-				_, err := svc.Forward(context.Background(), c, excelAccount(), []byte(fmt.Sprintf(`{"model":"gpt-6-sol","input":"test","stream":%t}`, stream)))
+				_, err := svc.Forward(WithExcelBPSFailoverContext(context.Background()), c, excelAccount(), []byte(fmt.Sprintf(`{"model":"gpt-6-sol","input":"test","stream":%t}`, stream)))
 				var failover *UpstreamFailoverError
 				require.ErrorAs(t, err, &failover)
 				require.Equal(t, http.StatusTooManyRequests, failover.StatusCode)
@@ -100,7 +100,7 @@ func TestExcelBPSEmptyEventsPreservedWhenOutputSucceeds(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	result, err := svc.Forward(context.Background(), c, excelAccount(), []byte(`{"model":"gpt-6-sol","input":"test","stream":true}`))
+	result, err := svc.Forward(WithExcelBPSFailoverContext(context.Background()), c, excelAccount(), []byte(`{"model":"gpt-6-sol","input":"test","stream":true}`))
 	require.NoError(t, err)
 	require.NotNil(t, result.FirstTokenMs)
 	body := rec.Body.String()

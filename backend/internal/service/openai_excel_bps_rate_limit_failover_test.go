@@ -31,7 +31,7 @@ func TestExcelBPSRateLimitReturnsAccountFailover(t *testing.T) {
 				rec := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(rec)
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-				_, err := svc.Forward(context.Background(), c, excelAccount(), []byte(fmt.Sprintf("{\"model\":\"gpt-6-astra\",\"input\":\"test\",\"stream\":%t}", stream)))
+				_, err := svc.Forward(WithExcelBPSFailoverContext(context.Background()), c, excelAccount(), []byte(fmt.Sprintf("{\"model\":\"gpt-6-astra\",\"input\":\"test\",\"stream\":%t}", stream)))
 				var failover *UpstreamFailoverError
 				require.ErrorAs(t, err, &failover)
 				require.Equal(t, http.StatusTooManyRequests, failover.StatusCode)
@@ -76,7 +76,7 @@ func TestExcelBPSRateLimitStreamReplayBoundary(t *testing.T) {
 				require.NoError(t, err)
 				c.Writer.Flush()
 			}
-			_, err := svc.Forward(context.Background(), c, excelAccount(), []byte(`{"model":"gpt-6-astra","input":"test","stream":true}`))
+			_, err := svc.Forward(WithExcelBPSFailoverContext(context.Background()), c, excelAccount(), []byte(`{"model":"gpt-6-astra","input":"test","stream":true}`))
 			require.Error(t, err)
 			var failover *UpstreamFailoverError
 			if tc.failover {
@@ -129,7 +129,7 @@ func TestExcelBPSPreludePreservedOnSuccess(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	_, err := svc.Forward(context.Background(), c, excelAccount(), []byte(`{"model":"gpt-6-astra","input":"test","stream":true}`))
+	_, err := svc.Forward(WithExcelBPSFailoverContext(context.Background()), c, excelAccount(), []byte(`{"model":"gpt-6-astra","input":"test","stream":true}`))
 	require.NoError(t, err)
 	body := rec.Body.String()
 	require.Equal(t, 1, strings.Count(body, "event: response.created"))

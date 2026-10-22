@@ -151,7 +151,11 @@ func (s *OpenAIGatewayService) excelBPSImageFileID(ctx context.Context, account 
 		if result.Err != nil {
 			return "", result.Err
 		}
-		return result.Val.(string), nil
+		id, ok := result.Val.(string)
+		if !ok {
+			return "", fmt.Errorf("unexpected image upload result type %T", result.Val)
+		}
+		return id, nil
 	}
 }
 
@@ -199,7 +203,7 @@ func (s *OpenAIGatewayService) uploadExcelBPSImage(ctx context.Context, account 
 	if resp == nil || resp.Body == nil {
 		return "", &excelBPSImageError{http.StatusBadGateway, "Basispoints image upload returned an empty response"}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", &excelBPSImageError{http.StatusBadGateway, fmt.Sprintf("Basispoints image upload returned HTTP %d", resp.StatusCode)}
 	}

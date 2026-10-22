@@ -168,7 +168,7 @@ func TestPelicanOpenAIStreamForwardsFragmentedOutputImmediately(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), "test_complete", "completion is emitted after the gateway returns successfully")
 }
 
-func TestPelicanOpenAIConnectivityKeepsItsDirectProbe(t *testing.T) {
+func TestPelicanOpenAINonTicketModelKeepsItsDirectProbe(t *testing.T) {
 	account, ticket := pelicanReadyTicketAccount()
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
@@ -179,7 +179,7 @@ func TestPelicanOpenAIConnectivityKeepsItsDirectProbe(t *testing.T) {
 	svc := ProvideAccountTestService(&pelicanTicketAccountRepo{account: account}, nil, nil, nil, nil, nil, upstream, gateway.cfg, nil, gateway, nil, nil)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/4242/test", nil)
-	require.NoError(t, svc.TestAccountConnection(c, account.ID, ticket.Model, "", AccountTestModeDefault))
+	require.NoError(t, svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeDefault))
 	require.Len(t, upstream.requests, 1)
 	require.Empty(t, upstream.lastReq.Header.Get(openAICodexTurnStateHeader))
 	require.Empty(t, upstream.lastReq.Header.Get("Cookie"))

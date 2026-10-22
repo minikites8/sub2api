@@ -107,24 +107,14 @@
           </div>
         </dl>
 
-        <div v-if="detail.features.context" class="rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600" data-testid="gpt-auto-detail-context">
-          <p class="font-medium text-gray-700 dark:text-gray-300">{{ t('gptAuto.detail.contextTitle') }}</p>
-          <p class="mt-1 text-gray-500 dark:text-gray-400">
-            {{ t('gptAuto.detail.contextSummary', {
-              version: detail.features.context.state_version,
-              kind: t(`gptAuto.debugger.kinds.${detail.features.context.latest_user_kind}`),
-              items: detail.features.context.items_total,
-              turns: detail.features.context.context_turns_included,
-              events: detail.features.context.agent_events_included,
-              used: detail.features.context.used_chars,
-              budget: detail.features.context.budget_chars,
-            }) }}
-          </p>
-          <div v-if="detail.features.context.limitations?.length" class="mt-2 flex flex-wrap gap-1">
-            <span v-for="limitation in detail.features.context.limitations" :key="limitation" class="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{{ labels.limitation(limitation) }}</span>
-          </div>
-        </div>
-        <p v-else-if="detail.evaluation_status === 'success'" class="text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.detail.contextLegacy') }}</p>
+        <GPTAutoContextDiagnostics
+          :context="detail.features.context ?? null"
+          :classification="detail.classification ?? null"
+          :decision="detail.decision ?? null"
+          :classifier-hash="detail.classifier_config_hash ?? ''"
+          :classifier-schema="detail.classifier_config?.snapshot.schema_version ?? null"
+          :runtime="runtime"
+        />
 
         <div v-if="detail.evaluation_status === 'failed'" class="rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-900/20 dark:text-red-300">
           {{ t('gptAuto.detail.failed', { error: labels.errorClass(detail.error_class), attempts: detail.attempts }) }}
@@ -178,7 +168,8 @@ import Icon from '@/components/icons/Icon.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GPTAutoDecisionDetail from './GPTAutoDecisionDetail.vue'
-import { gptAutoAPI, type GPTAutoDecision, type GPTAutoReplayMode, type GPTAutoReplayResult } from '@/api/admin/gptAuto'
+import GPTAutoContextDiagnostics from './GPTAutoContextDiagnostics.vue'
+import { gptAutoAPI, type GPTAutoDecision, type GPTAutoMeta, type GPTAutoReplayMode, type GPTAutoReplayResult } from '@/api/admin/gptAuto'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime } from '@/utils/format'
 import { formatMs, formatNumber, formatPercent, formatUSD, marginStatusClass, type MarginStatus } from '@/utils/gptAuto'
@@ -333,7 +324,22 @@ async function runReplay() {
   }
 }
 
-onMounted(() => { void load() })
+// Versions compiled into the backend node serving this page. Each decision
+// carries its own versions; these are only shown when they differ.
+const runtime = ref<Pick<GPTAutoMeta, 'state_version' | 'classifier_schema' | 'diagnostics_version'> | null>(null)
+async function loadRuntime() {
+  try {
+    const meta = await gptAutoAPI.getMeta()
+    runtime.value = { state_version: meta.state_version, classifier_schema: meta.classifier_schema, diagnostics_version: meta.diagnostics_version }
+  } catch {
+    runtime.value = null
+  }
+}
+
+onMounted(() => {
+  void load()
+  void loadRuntime()
+})
 
 defineExpose({ load })
 </script>

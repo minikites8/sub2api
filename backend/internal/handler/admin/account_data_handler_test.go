@@ -409,12 +409,12 @@ func TestImportDataRejectsKiroAccountManagerJSON(t *testing.T) {
 func TestReimportCredentialsReplacesOnlyCredentialObject(t *testing.T) {
 	router, adminSvc := setupAccountDataRouter()
 	adminSvc.getAccountResult = &service.Account{
-		ID:          21,
-		Name:        "existing",
-		Platform:    service.PlatformOpenAI,
-		Type:        service.AccountTypeOAuth,
+		ID:       21,
+		Name:     "existing",
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
 		Credentials: map[string]any{
-			"access_token": "old",
+			"access_token":  "old",
 			"refresh_token": "old-refresh",
 			"model_mapping": map[string]any{"gpt-4": "gpt-4o"},
 		},
@@ -430,9 +430,9 @@ func TestReimportCredentialsReplacesOnlyCredentialObject(t *testing.T) {
 			"version": dataVersion,
 			"proxies": []map[string]any{},
 			"accounts": []map[string]any{{
-				"name":        "new-export-name",
-				"platform":    service.PlatformOpenAI,
-				"type":        service.AccountTypeOAuth,
+				"name":     "new-export-name",
+				"platform": service.PlatformOpenAI,
+				"type":     service.AccountTypeOAuth,
 				"credentials": map[string]any{
 					"access_token":  "new",
 					"refresh_token": "new-refresh",

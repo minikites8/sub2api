@@ -62,6 +62,9 @@ func (s *adminServiceImpl) validateCodexModelsManifestConfig(ctx context.Context
 	if len(cfg.AccountIDs) > maxCodexModelsManifestAccounts {
 		return infraerrors.Newf(http.StatusBadRequest, "INVALID_CODEX_MODELS_MANIFEST_CONFIG", "codex models manifest config allows at most %d accounts, got %d", maxCodexModelsManifestAccounts, len(cfg.AccountIDs))
 	}
+	if groupID <= 0 {
+		return infraerrors.BadRequest("INVALID_CODEX_MODELS_MANIFEST_CONFIG", "create the group before enabling pinned accounts")
+	}
 	accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
 	if err != nil {
 		return fmt.Errorf("load group accounts for codex models manifest config: %w", err)

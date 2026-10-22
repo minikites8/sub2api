@@ -46,6 +46,29 @@ func TestUpstreamFailureClassificationBoundaries(t *testing.T) {
 	require.Nil(t, ParseUpstreamFailure([]byte("invalid JSON")))
 }
 
+func TestUpstreamFailureRetainsOnlyBoundedRetryAfter(t *testing.T) {
+	for _, retryAfter := range []string{"60", "Wed, 21 Oct 2026 07:28:00 GMT", "604801", "PRIVATE", "60\r\nAuthorization: PRIVATE", strings.Repeat("1", 129)} {
+		t.Run(retryAfter, func(t *testing.T) {
+			raw, err := json.Marshal(object{"type": "error", "error": object{
+				"code": "rate_limit_exceeded", "message": "PRIVATE",
+				"headers": object{"retry-after": retryAfter, "authorization": "PRIVATE"},
+			}})
+			require.NoError(t, err)
+			failure := ParseUpstreamFailure(raw)
+			require.NotNil(t, failure)
+			if retryAfter == "60" || retryAfter == "Wed, 21 Oct 2026 07:28:00 GMT" {
+				require.Equal(t, retryAfter, failure.RetryAfter)
+			} else {
+				require.Empty(t, failure.RetryAfter)
+			}
+			safe, err := json.Marshal(failure.Details())
+			require.NoError(t, err)
+			require.NotContains(t, string(safe), "PRIVATE")
+			require.NotContains(t, string(safe), "authorization")
+		})
+	}
+}
+
 func TestUpstreamFailureStopsReadersWithoutEOF(t *testing.T) {
 	for _, mode := range []string{"bridge", "tool correction", "unknown tool correction", "compaction"} {
 		t.Run(mode, func(t *testing.T) {

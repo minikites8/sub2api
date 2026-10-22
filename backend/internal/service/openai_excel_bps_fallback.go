@@ -13,9 +13,9 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-var errExcelBPSModelUnavailable = errors.New("Excel BPS model unavailable; continue through the ordinary upstream")
+var errExcelBPSModelUnavailable = errors.New("excel BPS model unavailable; continue through the ordinary upstream")
 
-var errExcelBPSAccountEligibilityChanged = errors.New("Excel BPS account eligibility changed; continue through the ordinary upstream")
+var errExcelBPSAccountEligibilityChanged = errors.New("excel BPS account eligibility changed; continue through the ordinary upstream")
 
 // Match the BPS admission response specifically; local account admission remains
 // authoritative when the ordinary upstream revalidates this request.
@@ -32,6 +32,9 @@ func excelBPSAccountEligibilityChanged(status int, payload []byte) bool {
 	}
 	if !errValue.IsObject() {
 		errValue = gjson.ParseBytes(payload)
+	}
+	if errValue.Get("code").String() == "account_eligibility_changed" {
+		return true
 	}
 	return strings.EqualFold(strings.TrimSpace(errValue.Get("message").String()), "Account eligibility changed; please retry with complete context")
 }

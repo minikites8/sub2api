@@ -472,7 +472,7 @@ func transportFingerprintReputationScore(ja3, ja4 string) int {
 
 func isLowerHex(value string) bool {
 	for _, char := range value {
-		if !(char >= '0' && char <= '9' || char >= 'a' && char <= 'f') {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
 			return false
 		}
 	}

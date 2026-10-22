@@ -587,8 +587,13 @@ func TestOpenAIWSPassthroughBareErrorAuthoritativeUsageSettlesOnce(t *testing.T)
 			client := dialPassthroughLifecycleClient(t, server)
 			defer func() { _ = client.CloseNow() }()
 			requirePassthroughUpstreamWrite(t, upstream, time.Second)
+			// Commit visible output before exercising provisional-error settlement.
+			// Empty metadata is intentionally staged until output arrives.
 			upstream.Send(`{"type":"response.created","response":{"id":"resp_recovered"}}`)
+			upstream.Send(`{"type":"response.output_text.delta","delta":"working"}`)
 			_, err := readPassthroughLifecycleFrame(t, client, time.Second)
+			require.NoError(t, err)
+			_, err = readPassthroughLifecycleFrame(t, client, time.Second)
 			require.NoError(t, err)
 			upstream.Send(`{"type":"error","usage":{"input_tokens":2,"output_tokens":1},"error":{"code":"invalid_request_error","message":"recoverable request error"}}`)
 			event, err := readPassthroughLifecycleFrame(t, client, time.Second)

@@ -68,7 +68,7 @@ func TestExcelBPSAccountEligibilityChangedFallsBack(t *testing.T) {
 			require.Equal(t, openAIResponsesUpstreamEndpoint, GetActualOpenAIUpstreamEndpoint(c))
 			eventsValue, ok := c.Get(OpsUpstreamErrorsKey)
 			require.True(t, ok)
-			events := eventsValue.([]*OpsUpstreamErrorEvent)
+			events := requireOpsType[[]*OpsUpstreamErrorEvent](t, eventsValue)
 			fallback := events[len(events)-1]
 			require.Equal(t, "bps_native_fallback", fallback.Kind)
 			require.Equal(t, "route", fallback.Stage)

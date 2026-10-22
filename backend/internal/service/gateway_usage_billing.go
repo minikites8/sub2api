@@ -884,7 +884,6 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 				logResponseModelBillingApplied("service.gateway", account, result.RequestID, billingModel, responseModel, cost, responseCost)
 				multiplier = responseMultiplier
 				imageMultiplier = responseImageMultiplier
-				baseMultiplier = responseBaseMultiplier
 				cost = responseCost
 			}
 		}

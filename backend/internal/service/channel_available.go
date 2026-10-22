@@ -123,6 +123,9 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 // 当 pricingService 为 nil（测试场景），跳过价格回落。
 // 可用渠道与模型广场共用。
 func fillGlobalPricingFallback(pricingService *PricingService, models []SupportedModel) {
+	if pricingService == nil {
+		return
+	}
 	for i := range models {
 		if !pricingNeedsFallback(models[i].Pricing) {
 			models[i].PricingSource = ModelPriceSourceCustom

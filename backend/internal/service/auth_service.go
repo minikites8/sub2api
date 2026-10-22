@@ -1661,7 +1661,7 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 		if shouldDeduct && item.TotalRecharged <= 0 && item.Balance > 0 {
 			result, err := client.ExecContext(ctx, `
 				UPDATE users
-				SET balance = 0, gift_balance = 0, gift_balance_expires_at = NULL, updated_at = NOW()
+				SET balance = 0, gift_balance = 0, gift_balance_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
 				WHERE id = $1 AND deleted_at IS NULL AND total_recharged <= 0 AND balance > 0`, item.ID)
 			var updated int
 			if err == nil {
@@ -1719,7 +1719,7 @@ func (s *AuthService) applySignupIPRiskControl(ctx context.Context, user *User) 
 		if item.TotalRecharged <= 0 && item.Balance > 0 {
 			result, updateErr := client.ExecContext(ctx, `
 				UPDATE users
-				SET balance = 0, gift_balance = 0, gift_balance_expires_at = NULL, updated_at = NOW()
+				SET balance = 0, gift_balance = 0, gift_balance_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
 				WHERE id = $1 AND deleted_at IS NULL AND total_recharged <= 0 AND balance > 0`, item.ID)
 			updated := 0
 			if updateErr == nil {
