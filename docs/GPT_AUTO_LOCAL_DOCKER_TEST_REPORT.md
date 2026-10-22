@@ -318,3 +318,42 @@ continuity criterion.** The production-only unexplained GPT Auto 502 remains
 unreproduced and its cause unestablished. Merging code is authorized separately
 from production deployment. No production deployment or release tag is made.
 The test stack remains available at http://127.0.0.1:18080/admin/gpt-auto.
+
+### Remote CI follow-up and final dependency patch
+
+The complete GPT Auto/CI repair was fast-forwarded into `main` and pushed as
+`d19a300c3221dc908a6d144af90c6259e867d02c`, preserving the existing GPT Auto
+commits. On GitHub, shell, frontend, Prism, release helpers, golangci-lint and
+the unit-test step passed. Backend Security Scan also passed with Go 1.27.3.
+
+The newly executed frontend Security Scan identified two advisories in the
+locked `follow-redirects` 1.16.0 dependency of Axios:
+[GHSA-q3jh-wrc6-jgq8](https://github.com/advisories/GHSA-q3jh-wrc6-jgq8) and
+[GHSA-8r9p-f939-6h3c](https://github.com/advisories/GHSA-8r9p-f939-6h3c).
+The upstream patched version is 1.16.1. A targeted pnpm override and the
+pnpm-9-generated version/integrity entries now pin it to 1.16.1; unrelated
+lockfile metadata and dependency versions are preserved. No audit exception
+was added or extended. Production audit reports **0 high / 0 critical**,
+with 4 low and 13 moderate findings remaining. The repository audit-exceptions
+checker passed under Python 3.13 (host system Python 3.9 cannot parse its
+existing type annotations).
+
+The dependency patch passed frozen pnpm installation and production frontend /
+embedded backend Docker builds. It was rebuilt and started locally as
+`sub2api-gpt-auto-local:working-tree`, image ID
+`sha256:067e10e699fd0cd1f913d0798a0e7a82356d414935f03565ff83c1682903886b`,
+ARM64, 208177611 bytes, source manifest
+`8909e945d0d4a8a062a763152933ca9a6ad25f11cc79ab89321553692f8e9ee2`.
+The complete 15-group HTTP/failure-injection suite again passed 14 groups,
+with only the same Redis continuity requirement failing. Small-call medians
+were 5.30 ms off / 5.06 ms on, with queue and active calls drained to zero.
+Final evidence is dependency-docker-build.log, dependency-docker-full.log and
+follow-redirects-audit.json. The local stack is left healthy and in shadow mode.
+
+The dependency patch is pushed as a follow-up main commit. Its GitHub checks
+are the authoritative final CI/security/package status:
+[CI](https://github.com/minikites8/sub2api/actions/workflows/backend-ci.yml),
+[Security Scan](https://github.com/minikites8/sub2api/actions/workflows/security-scan.yml),
+[Package](https://github.com/minikites8/sub2api/actions/workflows/package.yml).
+The NO-GO availability qualification above remains; no production deployment
+was performed.
