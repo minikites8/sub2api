@@ -1344,6 +1344,7 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
+import subscriptionsAPI from '@/api/subscriptions'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
@@ -1361,12 +1362,12 @@ import OrderedGroupSelect from '@/components/keys/OrderedGroupSelect.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, ApiKeyConcurrencySnapshot, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+	import type { ApiKey, ApiKeyConcurrencySnapshot, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest, UserSubscription } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { formatMultiplier } from '@/utils/formatters'
-import { getReverseAvailableQuota } from '@/utils/groupQuota'
+import { getReverseAvailableQuota, getSubscriptionAvailableQuota } from '@/utils/groupQuota'
 import { maskApiKey } from '@/utils/maskApiKey'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { platformBadgeLightClass } from '@/utils/platformColors'
@@ -1397,6 +1398,7 @@ interface GroupOption {
   peakRateMultiplier: number
   subscriptionType: SubscriptionType
   platform: GroupPlatform
+  quotaLimits: Pick<Group, 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd'>
 }
 
 const appStore = useAppStore()
@@ -1515,6 +1517,7 @@ const handleBulkUpdated = (succeededIds: number[]) => {
 }
 
 const groups = ref<Group[]>([])
+const activeSubscriptions = ref<UserSubscription[] | null>(null)
 const loading = ref(false)
 const submitting = ref(false)
 const now = ref(new Date())
@@ -1663,18 +1666,27 @@ const getEffectiveGroupRate = (group: Pick<GroupOption, 'value' | 'rate' | 'user
   return group.userRate ?? group.rate ?? null
 }
 
-const formatReverseAvailableQuota = (rate: number | null): string => {
-  const availableQuota = getReverseAvailableQuota(userBalance.value, rate)
+const formatGroupAvailableQuota = (group: GroupOption | null | undefined): string => {
+  const rate = getEffectiveGroupRate(group)
+  let availableQuota: number | null = null
+  if (group?.subscriptionType === 'subscription') {
+    if (activeSubscriptions.value !== null) {
+      const subscription = activeSubscriptions.value.find(sub => sub.group_id === group.value)
+      availableQuota = getSubscriptionAvailableQuota(subscription, group.quotaLimits, rate, now.value.getTime())
+    }
+  } else {
+    availableQuota = getReverseAvailableQuota(userBalance.value, rate)
+  }
   if (availableQuota === null) return '--'
   if (!Number.isFinite(availableQuota)) return t('common.unlimited')
   return formatCurrency(availableQuota)
 }
 
-const buildAvailableQuotaText = (group: Pick<GroupOption, 'value' | 'rate' | 'userRate'> | null | undefined): string | null => {
+const buildAvailableQuotaText = (group: GroupOption | null | undefined): string | null => {
   const effectiveRate = getEffectiveGroupRate(group)
   if (effectiveRate === null) return null
   return t('keys.groupAvailableQuota', {
-    amount: formatReverseAvailableQuota(effectiveRate)
+    amount: formatGroupAvailableQuota(group)
   })
 }
 
@@ -1824,7 +1836,8 @@ const groupOptions = computed(() =>
     peakEnd: group.peak_end,
     peakRateMultiplier: group.peak_rate_multiplier,
     subscriptionType: group.subscription_type,
-    platform: group.platform
+    platform: group.platform,
+    quotaLimits: group
   }))
 )
 
@@ -1851,7 +1864,7 @@ const selectedGroupOption = computed(() => {
 
 const selectedGroupEffectiveRate = computed(() => getEffectiveGroupRate(selectedGroupOption.value))
 
-const selectedGroupAvailableQuota = computed(() => formatReverseAvailableQuota(selectedGroupEffectiveRate.value))
+const selectedGroupAvailableQuota = computed(() => formatGroupAvailableQuota(selectedGroupOption.value))
 
 // Group dropdown search
 const groupSearchQuery = ref('')
@@ -1944,6 +1957,14 @@ const loadGroups = async () => {
     groups.value = await userGroupsAPI.getAvailable()
   } catch (error) {
     console.error('Failed to load groups:', error)
+    return
+  }
+  if (groups.value.some(group => group.subscription_type === 'subscription')) {
+    try {
+      activeSubscriptions.value = await subscriptionsAPI.getActiveSubscriptions()
+    } catch (error) {
+      console.error('Failed to load subscription quotas:', error)
+    }
   }
 }
 

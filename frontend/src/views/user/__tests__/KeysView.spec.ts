@@ -17,6 +17,8 @@ const {
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
+  getActiveSubscriptions,
+  authUser,
   showError,
   showSuccess,
   copyToClipboard,
@@ -31,6 +33,8 @@ const {
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
+  getActiveSubscriptions: vi.fn(),
+  authUser: { balance: 0 },
   showError: vi.fn(),
   showSuccess: vi.fn(),
   copyToClipboard: vi.fn(),
@@ -51,6 +55,9 @@ const messages: Record<string, string> = {
   'keys.created': 'Created',
   'keys.expiresAt': 'Expires',
   'keys.group': 'Group',
+  'keys.groupAvailableQuota': 'Available {amount}',
+  'keys.groupAvailableQuotaLabel': 'Available Quota',
+  'common.unlimited': 'Unlimited',
   'keys.id': 'ID',
   'keys.currentConcurrency': 'Current Concurrency',
   'keys.concurrencyAndWaiting': 'Concurrency / Waiting',
@@ -100,6 +107,10 @@ vi.mock('@/api', () => ({
   },
 }))
 
+vi.mock('@/api/subscriptions', () => ({
+  default: { getActiveSubscriptions },
+}))
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
@@ -109,7 +120,7 @@ vi.mock('@/stores/app', () => ({
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
-    user: { balance: 0 },
+    user: authUser,
   }),
 }))
 
@@ -209,6 +220,7 @@ const DataTableStub = {
         >
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
+        <slot name="cell-group" :value="row.group" :row="row" />
         <slot name="cell-name" :value="row.name" :row="row" />
         <slot name="cell-actions" :row="row" />
         <div data-test="current-concurrency">
@@ -230,7 +242,10 @@ const SelectStub = {
   name: 'Select',
   props: ['modelValue', 'options'],
   emits: ['update:modelValue'],
-  template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"></select>',
+  template: `<div>
+    <select :value="modelValue" @change="$emit('update:modelValue', $event.target.value)"></select>
+    <slot v-for="option in options" name="option" :option="option" :selected="false" />
+  </div>`,
 }
 
 const SearchInputStub = {
@@ -341,6 +356,8 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
+    getActiveSubscriptions.mockReset().mockResolvedValue([])
+    authUser.balance = 0
     showError.mockReset()
     showSuccess.mockReset()
     copyToClipboard.mockReset()
@@ -999,6 +1016,82 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+
+  describe('subscription group available quota', () => {
+    const group = {
+      id: 42, name: 'Subscription group', platform: 'anthropic',
+      subscription_type: 'subscription', rate_multiplier: 2,
+      daily_limit_usd: 10, weekly_limit_usd: 20, monthly_limit_usd: 100,
+    }
+    const subscription = {
+      id: 7, group_id: 42, status: 'active', expires_at: '2099-01-01T00:00:00Z',
+      daily_usage_usd: 4, weekly_usage_usd: 17, monthly_usage_usd: 91,
+    }
+    const quotaOption = (wrapper: VueWrapper) => wrapper.findAllComponents({ name: 'GroupOptionItem' })
+      .find(option => option.props('name') === group.name)!
+
+    beforeEach(() => {
+      getAvailableGroups.mockResolvedValue([group])
+      getActiveSubscriptions.mockResolvedValue([subscription])
+      getUserGroupRates.mockResolvedValue({ 42: 0.5 })
+    })
+
+    it('uses the smallest subscription headroom and custom rate in both selectors and the selected summary', async () => {
+      const wrapper = await mountView()
+      await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+      expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available $6.00')
+      await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available $6.00')
+      await wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', [42])
+      await nextTick()
+      expect(wrapper.get('#key-form').text()).toContain('$6.00')
+    })
+
+    it('does not substitute wallet balance while subscription data is pending', async () => {
+      authUser.balance = 50
+      const request = deferred<typeof subscription[]>()
+      getActiveSubscriptions.mockReturnValue(request.promise)
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available --')
+      request.resolve([subscription])
+      await flushPromises()
+      expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available $6.00')
+    })
+
+    it('shows unknown quota on a failed subscription request instead of the wallet estimate', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      authUser.balance = 50
+      getActiveSubscriptions.mockRejectedValue(new Error('Subscription API unavailable'))
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available --')
+      expect(showError).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      { name: 'exhausted even with a zero rate', daily: 11, rate: 0, limits: group, expected: 'Available $0.00' },
+      { name: 'unlimited without spending windows', daily: 4, rate: 0.5,
+        limits: { ...group, daily_limit_usd: null, weekly_limit_usd: null, monthly_limit_usd: null }, expected: 'Available Unlimited' },
+    ])('shows $name', async ({ daily, rate, limits, expected }) => {
+      getAvailableGroups.mockResolvedValue([limits])
+      getActiveSubscriptions.mockResolvedValue([{ ...subscription, daily_usage_usd: daily }])
+      getUserGroupRates.mockResolvedValue({ 42: rate })
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      expect(quotaOption(wrapper).props('availableQuotaText')).toBe(expected)
+    })
+
+    it('continues to use wallet balance and custom rates for standard groups', async () => {
+      authUser.balance = 20
+      getAvailableGroups.mockResolvedValue([{ ...group, subscription_type: 'standard' }])
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available $40.00')
+      expect(getActiveSubscriptions).not.toHaveBeenCalled()
+    })
   })
 
   describe('create provider selection', () => {
