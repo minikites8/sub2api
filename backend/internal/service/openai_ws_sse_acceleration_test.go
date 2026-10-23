@@ -283,6 +283,7 @@ func TestOpenAIWSSSEAccelerationMetadataDoesNotStartTTFT(t *testing.T) {
 	conn := &openAIWSCaptureConn{events: [][]byte{
 		[]byte(`{"type":"response.created","response":{"id":"resp_metadata"}}`),
 		[]byte(`{"type":"response.in_progress","response":{"id":"resp_metadata"}}`),
+		[]byte(`{"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":25}}}`),
 		[]byte(`{"type":"response.completed","response":{"id":"resp_metadata","usage":{"input_tokens":3,"output_tokens":0}}}`),
 	}}
 	s := wsSSETestService(t, &wsSSETestDialer{conn: conn}, &httpUpstreamRecorder{})
@@ -291,4 +292,5 @@ func TestOpenAIWSSSEAccelerationMetadataDoesNotStartTTFT(t *testing.T) {
 	require.Nil(t, result.FirstTokenMs)
 	require.Contains(t, rec.Body.String(), "response.created")
 	require.Contains(t, rec.Body.String(), "response.in_progress")
+	require.Contains(t, rec.Body.String(), "codex.rate_limits")
 }

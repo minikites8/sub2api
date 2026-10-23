@@ -1357,6 +1357,8 @@ func TestProxyOpenAIWSHTTPBridgeTurnStagesMetadataAndRelaysKeepaliveBeforeCapaci
 		"",
 		`data: {"type":"response.in_progress","response":{"id":"resp_shed"}}`,
 		"",
+		`data: {"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":25}}}`,
+		"",
 		`data: {"type":"keepalive"}`,
 		"",
 		"",

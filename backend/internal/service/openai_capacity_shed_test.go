@@ -127,6 +127,7 @@ func TestOpenAIStreamErrorFrameDoesNotStartClientOutput(t *testing.T) {
 		{`{"type":"response.in_progress","response":{"id":"resp_1"}}`, "response.in_progress", false},
 		{`{"type":"response.metadata","metadata":{"request_id":"metadata_only"}}`, "response.metadata", false},
 		{`{"type":"codex.response.metadata","headers":{"x-codex-turn-state":"metadata_only"}}`, "codex.response.metadata", false},
+		{`{"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":25}}}`, "codex.rate_limits", false},
 		{`{"type":"keepalive"}`, "keepalive", false},
 		{`{"type":"unknown_event"}`, "unknown_event", true},
 		{`{"type":"response.output_item.added","item":{"type":"reasoning","summary":[]}}`, "response.output_item.added", false},

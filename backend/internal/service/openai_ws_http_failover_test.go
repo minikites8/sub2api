@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestForwardOpenAIWSV2_EmptyProgressKeepsAccountFailover(t *testing.T) {
@@ -19,6 +20,7 @@ func TestForwardOpenAIWSV2_EmptyProgressKeepsAccountFailover(t *testing.T) {
 			for _, progress := range []string{
 				`{"type":"response.metadata","metadata":{"trace":"failed-metadata"}}`,
 				`{"type":"codex.response.metadata","headers":{"x-codex-turn-state":"failed-state"}}`,
+				`{"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":25}},"metered_limit_name":"failed-quota"}`,
 				`{"type":"response.output_text.delta","delta":""}`,
 				`{"type":"response.reasoning_summary_text.delta","delta":""}`,
 				`{"type":"response.output_item.done","item":{"type":"reasoning","summary":[],"encrypted_content":"failed-ciphertext"}}`,
@@ -90,6 +92,7 @@ func TestForwardOpenAIWSV2_ActualOutputStopsAccountReplay(t *testing.T) {
 			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
 			conn := &openAIWSCaptureConn{events: [][]byte{
 				[]byte(`{"type":"response.created","response":{"id":"resp_partial"}}`),
+				[]byte(`{"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":25}}}`),
 				[]byte(content),
 				[]byte(`{"type":"error","error":{"code":"server_is_overloaded","type":"service_unavailable_error","message":"Our servers are currently overloaded. Please try again later."}}`),
 			}}
@@ -109,6 +112,7 @@ func TestForwardOpenAIWSV2_ActualOutputStopsAccountReplay(t *testing.T) {
 			require.Equal(t, "stream_failed", events[0].Kind)
 			require.Equal(t, "downstream_response_committed", events[0].FailoverSuppressedReason)
 			require.NotEmpty(t, events[0].FirstOutputEventType)
+			require.Equal(t, gjson.Get(content, "type").String(), events[0].FirstOutputEventType)
 			require.Empty(t, h.requests)
 		})
 	}

@@ -24,6 +24,7 @@ func TestOpenAIOverloadAfterEmptyProgressSwitchesWithoutOptIn(t *testing.T) {
 				{"metadata_only", "", false},
 				{"response_metadata", `{"type":"response.metadata","sequence_number":2,"metadata":{"request_id":"failed-attempt-metadata"}}`, false},
 				{"codex_response_metadata", `{"type":"codex.response.metadata","headers":{"x-codex-turn-state":"failed-attempt-metadata"}}`, false},
+				{"codex_rate_limits", `{"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":25}},"metered_limit_name":"failed-attempt-metadata"}`, false},
 				{"empty_text", `{"type":"response.output_text.delta","delta":""}`, false},
 				{"empty_reasoning", `{"type":"response.reasoning_summary_text.delta","delta":""}`, false},
 				{"empty_item", `{"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}`, false},
