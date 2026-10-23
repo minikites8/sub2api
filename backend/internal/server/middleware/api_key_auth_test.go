@@ -1332,7 +1332,7 @@ func TestAPIKeyAuthBillingInfoSkipsLastUsedInSimpleMode(t *testing.T) {
 	require.Zero(t, touchCalls)
 }
 
-func TestAPIKeyAuthUsageStillTouchesLastUsed(t *testing.T) {
+func TestAPIKeyAuthUsageDoesNotTouchLastUsed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 10}
@@ -1358,7 +1358,7 @@ func TestAPIKeyAuthUsageStillTouchesLastUsed(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, 1, touchCalls)
+	require.Zero(t, touchCalls, "usage polling is read-only")
 }
 
 func TestAPIKeyAuthAllowsBalanceBelowMinimumReserve(t *testing.T) {

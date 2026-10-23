@@ -20,9 +20,11 @@ func TestUsageUnrestrictedIncludesWeeklyWindowStart(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/usage", nil)
 
-	weeklyWindowStart := time.Date(2026, time.July, 13, 0, 30, 0, 0, time.FixedZone("UTC+8", 8*60*60))
+	weeklyWindowStart := time.Now().Add(-time.Hour)
 	c.Set(string(middleware.ContextKeySubscription), &service.UserSubscription{
 		WeeklyWindowStart: &weeklyWindowStart,
+		Status:            service.SubscriptionStatusActive,
+		ExpiresAt:         time.Now().Add(60 * 24 * time.Hour),
 	})
 
 	handler := &GatewayHandler{}

@@ -182,7 +182,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			AbortWithError(c, http.StatusForbidden, "API_KEY_EXPIRED", "API key 已过期")
 			return
 		}
-		metadataReadRequest := billingInfoRequest || pelicanReadRequest || isCCSwitchUsageRequest(c)
+		// /v1/usage reloads its subscription snapshot in the handler, including
+		// simple mode, so polling neither uses the auth cache nor touches last_used.
+		metadataReadRequest := billingInfoRequest || pelicanReadRequest || isCCSwitchUsageRequest(c) || c.Request.URL.Path == "/v1/usage"
 		// Async image task polling only reads data that already belongs to the
 		// authenticated key and must remain available after the completed
 		// generation consumes the key's remaining balance.
