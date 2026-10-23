@@ -116,12 +116,12 @@ describe('CC Switch usage script', () => {
     'https://api.example.com/',
     'https://api.example.com/v1',
     'https://api.example.com/v1/'
-  ])('queries exactly one /v1/usage for base URL %s', (baseUrl) => {
-    expect(usageUrlFor(baseUrl)).toBe('https://api.example.com/v1/usage')
+  ])('queries the authenticated /api/usage endpoint for base URL %s', (baseUrl) => {
+    expect(usageUrlFor(baseUrl)).toBe('https://api.example.com/api/usage')
   })
 
   it('works against the endpoint every platform import stores', () => {
-    for (const platform of ['anthropic', 'openai', 'grok', 'gemini'] as GroupPlatform[]) {
+    for (const platform of ['anthropic', 'openai', 'grok', 'gemini', 'antigravity'] as GroupPlatform[]) {
       const endpoint = paramsFromDeeplink(
         buildCcSwitchImportDeeplink({
           baseUrl: 'https://api.example.com',
@@ -132,7 +132,65 @@ describe('CC Switch usage script', () => {
           usageScript: CC_SWITCH_USAGE_SCRIPT
         })
       ).get('endpoint') as string
-      expect(usageUrlFor(endpoint)).toBe('https://api.example.com/v1/usage')
+      expect(usageUrlFor(endpoint)).toBe('https://api.example.com/api/usage')
     }
   })
+
+  function usageConfig() {
+    const script = CC_SWITCH_USAGE_SCRIPT.replaceAll('{{baseUrl}}', 'https://api.example.com/v1').replaceAll('{{apiKey}}', 'sk-test')
+    // eslint-disable-next-line no-new-func
+    return new Function(`return ${script}`)() as {
+      request: { method: string; headers: Record<string, string> }
+      extractor: (response: unknown) => Record<string, unknown>
+    }
+  }
+
+  it('uses the supplied POST/Bearer contract without a request body or dashboard JWT', () => {
+    expect(usageConfig().request).toMatchObject({
+      method: 'POST', headers: { Authorization: 'Bearer sk-test', 'User-Agent': 'cc-switch/1.0' }
+    })
+  })
+
+  it('also supports the original CC Switch extractor unchanged', () => {
+    // eslint-disable-next-line no-new-func
+    const config = new Function(`return ({
+      request: {
+        url: "{{baseUrl}}/api/usage",
+        method: "POST",
+        headers: { "Authorization": "Bearer {{apiKey}}", "User-Agent": "cc-switch/1.0" }
+      },
+      extractor: function(response) {
+        return { isValid: !response.error, remaining: response.balance, unit: "USD" };
+      }
+    })`)() as { extractor: (response: unknown) => Record<string, unknown> }
+    expect(config.extractor({ balance: 3, isValid: true })).toEqual({ isValid: true, remaining: 3, unit: 'USD' })
+    expect(config.extractor({ balance: 0, error: { code: 'NO_AVAILABLE_GROUP', message: 'No quota' } }))
+      .toEqual({ isValid: false, remaining: 0, unit: 'USD' })
+    expect(config.extractor({ error: { code: 'QUOTA_UNAVAILABLE', message: 'Failed to query group quota' } }).isValid).toBe(false)
+  })
+
+  it('extracts only the selected group quota and plan metadata', () => {
+    expect(usageConfig().extractor({ isValid: true, balance: 6, unit: 'USD', planName: 'Second group', total: 40, used: 34 }))
+      .toMatchObject({ isValid: true, remaining: 6, unit: 'USD', planName: 'Second group', total: 40, used: 34 })
+  })
+
+  it('reports unavailable or unauthorized keys instead of assuming success', () => {
+    expect(usageConfig().extractor({ isValid: false, balance: 0, invalidMessage: 'No available bound group' }))
+      .toMatchObject({ isValid: false, invalidMessage: 'No available bound group', remaining: 0 })
+    expect(usageConfig().extractor({ error: { message: 'Invalid API key' } }))
+      .toMatchObject({ isValid: false, invalidMessage: 'Invalid API key' })
+    expect(usageConfig().extractor({ message: 'Access denied' }))
+      .toMatchObject({ isValid: false, invalidMessage: 'Access denied' })
+  })
+
+  it('represents unlimited plans without displaying a negative dollar balance', () => {
+    expect(usageConfig().extractor({ isValid: true, balance: -1, unlimited: true, planName: 'Unlimited plan' }))
+      .toMatchObject({ isValid: true, remaining: undefined, extra: 'Unlimited' })
+  })
+
+  it('preserves a deployment prefix while stripping provider protocol suffixes', () => {
+    expect(usageUrlFor('https://api.example.com/prefix/antigravity/v1/')).toBe('https://api.example.com/prefix/api/usage')
+    expect(usageUrlFor('https://api.example.com/v1beta/')).toBe('https://api.example.com/api/usage')
+  })
+
 })

@@ -82,6 +82,14 @@ func NewErrorResponse(code, message string) ErrorResponse {
 
 // AbortWithError 中断请求并返回JSON错误
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
+	if isCCSwitchUsageRequest(c) {
+		c.Header("Cache-Control", "no-store")
+		c.AbortWithStatusJSON(statusCode, service.APIKeyGroupQuota{
+			Unit: "USD", InvalidMessage: message,
+			Error: &service.APIKeyQuotaError{Code: code, Message: message},
+		})
+		return
+	}
 	c.JSON(statusCode, NewErrorResponse(code, message))
 	c.Abort()
 }

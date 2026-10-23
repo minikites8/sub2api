@@ -57,6 +57,12 @@ func RegisterGatewayRoutes(
 	imageAdmission := middleware.ExcelBPSImageAdmission()
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
+	// CC Switch queries group quota with the site API key, independently of
+	// inference protocol, platform dispatch and JWT-protected dashboard APIs.
+	ccSwitchUsage := handler.NewCCSwitchUsageHandler(apiKeyService)
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		r.Handle(method, "/api/usage", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), ccSwitchUsage.Usage)
+	}
 	var captureTraffic gin.HandlerFunc
 	if h.Admin != nil && h.Admin.RequestCapture != nil {
 		captureTraffic = middleware.RequestCapture(h.Admin.RequestCapture.Manager)

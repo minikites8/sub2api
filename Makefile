@@ -70,6 +70,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/user/__tests__/UserEditModal.spec.ts \
 	src/views/user/__tests__/KeysView.spec.ts \
 	src/utils/__tests__/groupAvailableQuota.spec.ts \
+	src/utils/__tests__/ccswitchImport.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
 	src/views/auth/__tests__/WechatCallbackView.spec.ts \

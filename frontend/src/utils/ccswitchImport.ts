@@ -20,27 +20,27 @@ export interface CcSwitchImportDeeplinkInput {
   usageScript: string
 }
 
-/**
- * Balance query CC Switch runs against the imported provider. CC Switch fills
- * `{{baseUrl}}` with the provider's base URL as stored — Codex and Grok imports
- * carry a trailing `/v1` (see `withV1Endpoint`), Claude ones do not, and users
- * may edit it either way afterwards — then evaluates the script, so the URL
- * strips an existing `/v1` instead of blindly appending one (`/v1/v1/usage`
- * is a 404 and CC Switch shows "query failed").
- */
+/** CC Switch substitutes the provider URL/key before evaluating this object. */
 export const CC_SWITCH_USAGE_SCRIPT = `({
     request: {
-      url: "{{baseUrl}}".replace(/\\/+$/, "").replace(/\\/v1$/, "") + "/v1/usage",
-      method: "GET",
-      headers: { "Authorization": "Bearer {{apiKey}}" }
+      url: "{{baseUrl}}".replace(/\\/+$/, "").replace(/\\/(v1|v1beta)$/, "").replace(/\\/antigravity$/, "") + "/api/usage",
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer {{apiKey}}",
+        "User-Agent": "cc-switch/1.0"
+      }
     },
     extractor: function(response) {
-      const remaining = response?.remaining ?? response?.quota?.remaining ?? response?.balance;
-      const unit = response?.unit ?? response?.quota?.unit ?? "USD";
+      const isValid = response?.isValid === true && !response?.error;
       return {
-        isValid: response?.is_active ?? response?.isValid ?? true,
-        remaining,
-        unit
+        isValid,
+        invalidMessage: isValid ? undefined : (response?.invalidMessage ?? response?.error?.message ?? response?.message ?? "No available bound group"),
+        remaining: response?.unlimited ? undefined : response?.balance,
+        unit: response?.unit ?? "USD",
+        planName: response?.planName,
+        total: response?.total,
+        used: response?.used,
+        extra: response?.unlimited ? "Unlimited" : undefined
       };
     }
   })`

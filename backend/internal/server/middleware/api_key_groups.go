@@ -15,7 +15,7 @@ func selectOrderedAPIKeyGroup(c *gin.Context, keys *service.APIKeyService, subsc
 	var models []string
 	if model := groupModelAllowlistModelFromParams(c); model != "" {
 		models = []string{model}
-	} else if c.Request.Method == http.MethodPost || c.Request.Method == http.MethodPut || c.Request.Method == http.MethodPatch {
+	} else if !isCCSwitchUsageRequest(c) && (c.Request.Method == http.MethodPost || c.Request.Method == http.MethodPut || c.Request.Method == http.MethodPatch) {
 		var ok bool
 		models, ok = groupModelAllowlistModelsFromBody(c)
 		if !ok {
@@ -26,7 +26,7 @@ func selectOrderedAPIKeyGroup(c *gin.Context, keys *service.APIKeyService, subsc
 	}
 	path := c.Request.URL.Path
 	showcaseRead := (c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead) && isPublicPelicanShowcasePath(path)
-	metadata := path == "/v1/usage" || path == "/v1/sub2api/billing" || isAsyncImageTaskRead(c.Request.Method, path) || showcaseRead
+	metadata := isCCSwitchUsageRequest(c) || path == "/v1/usage" || path == "/v1/sub2api/billing" || isAsyncImageTaskRead(c.Request.Method, path) || showcaseRead
 	capacity := !metadata && (len(models) > 0 || isResponsesWebSocketRoute(c))
 	var requiresNonStreamGroup bool
 	if c.Request.Method == http.MethodPost && streamOnlyJSONRoutes[c.FullPath()] {
