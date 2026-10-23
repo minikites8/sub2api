@@ -1501,6 +1501,7 @@ describe("admin SettingsView payment visible method controls", () => {
         { min_amount: 100, bonus_percent: 20 },
       ],
       payment_recharge_bonus_notice: "满 100 送 20%",
+      payment_subscription_footnote: "* 官方重置规则",
     });
     const wrapper = mountView();
 
@@ -1545,6 +1546,10 @@ describe("admin SettingsView payment visible method controls", () => {
       "admin.settings.payment.rechargeBonus.previewRangeDiscount",
     );
 
+    const footnote = wrapper.get("#subscription-footnote");
+    expect((footnote.element as HTMLTextAreaElement).value).toBe("* 官方重置规则");
+    await footnote.setValue("* 额度仅供参考\n* 跟随官方重置");
+
     const notice = wrapper.get('[data-testid="recharge-bonus-notice-input"]');
     expect((notice.element as HTMLTextAreaElement).value).toBe("满 100 送 20%");
     await notice.setValue("**新活动**");
@@ -1561,6 +1566,7 @@ describe("admin SettingsView payment visible method controls", () => {
         ],
         payment_recharge_bonus_mode: "discount",
         payment_recharge_bonus_notice: "**新活动**",
+        payment_subscription_footnote: "* 额度仅供参考\n* 跟随官方重置",
       }),
     );
   });

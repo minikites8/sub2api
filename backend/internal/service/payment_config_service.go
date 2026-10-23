@@ -33,6 +33,7 @@ const (
 	SettingProductNameSuffix             = "PRODUCT_NAME_SUFFIX"
 	SettingHelpImageURL                  = "PAYMENT_HELP_IMAGE_URL"
 	SettingHelpText                      = "PAYMENT_HELP_TEXT"
+	SettingSubscriptionFootnote          = "PAYMENT_SUBSCRIPTION_FOOTNOTE"
 	SettingCancelRateLimitOn             = "CANCEL_RATE_LIMIT_ENABLED"
 	SettingCancelRateLimitMax            = "CANCEL_RATE_LIMIT_MAX"
 	SettingCancelWindowSize              = "CANCEL_RATE_LIMIT_WINDOW"
@@ -73,6 +74,7 @@ type PaymentConfig struct {
 	ProductNameSuffix    string `json:"product_name_suffix"`
 	HelpImageURL         string `json:"help_image_url"`
 	HelpText             string `json:"help_text"`
+	SubscriptionFootnote string `json:"subscription_footnote"`
 	StripePublishableKey string `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
@@ -102,14 +104,15 @@ type UpdatePaymentConfigRequest struct {
 	SubscriptionUSDToCNYRate  *float64 `json:"subscription_usd_to_cny_rate"`
 	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
 	// RechargeBonusTiers nil 表示不更新；空切片表示清空阶梯。
-	RechargeBonusTiers  *[]RechargeBonusTier `json:"recharge_bonus_tiers"`
-	RechargeBonusMode   *string              `json:"recharge_bonus_mode"`
-	RechargeBonusNotice *string              `json:"recharge_bonus_notice"`
-	LoadBalanceStrategy *string              `json:"load_balance_strategy"`
-	ProductNamePrefix   *string              `json:"product_name_prefix"`
-	ProductNameSuffix   *string              `json:"product_name_suffix"`
-	HelpImageURL        *string              `json:"help_image_url"`
-	HelpText            *string              `json:"help_text"`
+	RechargeBonusTiers   *[]RechargeBonusTier `json:"recharge_bonus_tiers"`
+	RechargeBonusMode    *string              `json:"recharge_bonus_mode"`
+	RechargeBonusNotice  *string              `json:"recharge_bonus_notice"`
+	LoadBalanceStrategy  *string              `json:"load_balance_strategy"`
+	ProductNamePrefix    *string              `json:"product_name_prefix"`
+	ProductNameSuffix    *string              `json:"product_name_suffix"`
+	HelpImageURL         *string              `json:"help_image_url"`
+	HelpText             *string              `json:"help_text"`
+	SubscriptionFootnote *string              `json:"subscription_footnote"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -232,7 +235,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingSubscriptionUSDToCNYRate, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingRechargeBonusTiers, SettingRechargeBonusMode, SettingRechargeBonusNotice,
 		SettingProductNamePrefix, SettingProductNameSuffix,
-		SettingHelpImageURL, SettingHelpText,
+		SettingHelpImageURL, SettingHelpText, SettingSubscriptionFootnote,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
@@ -268,6 +271,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		ProductNameSuffix:         vals[SettingProductNameSuffix],
 		HelpImageURL:              vals[SettingHelpImageURL],
 		HelpText:                  vals[SettingHelpText],
+		SubscriptionFootnote:      vals[SettingSubscriptionFootnote],
 
 		CancelRateLimitEnabled: vals[SettingCancelRateLimitOn] == "true",
 		CancelRateLimitMax:     pcParseInt(vals[SettingCancelRateLimitMax], 10),
@@ -366,6 +370,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_RECHARGE_BONUS_NOTICE", err.Error())
 		}
 	}
+	if req.SubscriptionFootnote != nil && len([]rune(*req.SubscriptionFootnote)) > 10000 {
+		return infraerrors.BadRequest("INVALID_SUBSCRIPTION_FOOTNOTE", "subscription footnote exceeds 10000 characters")
+	}
 	m := make(map[string]string)
 	if req.Enabled != nil {
 		m[SettingPaymentEnabled] = formatBoolOrEmpty(req.Enabled)
@@ -420,6 +427,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	}
 	if req.HelpImageURL != nil {
 		m[SettingHelpImageURL] = derefStr(req.HelpImageURL)
+	}
+	if req.SubscriptionFootnote != nil {
+		m[SettingSubscriptionFootnote] = strings.TrimSpace(*req.SubscriptionFootnote)
 	}
 	if req.HelpText != nil {
 		m[SettingHelpText] = derefStr(req.HelpText)

@@ -330,14 +330,15 @@ type UpdateSettingsRequest struct {
 	PaymentSubscriptionUSDToCNYRate  *float64 `json:"payment_subscription_usd_to_cny_rate"`
 	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
 	// nil 表示不更新；空数组表示清空阶梯
-	PaymentRechargeBonusTiers  *[]dto.RechargeBonusTier `json:"payment_recharge_bonus_tiers"`
-	PaymentRechargeBonusMode   *string                  `json:"payment_recharge_bonus_mode"`
-	PaymentRechargeBonusNotice *string                  `json:"payment_recharge_bonus_notice"`
-	PaymentLoadBalanceStrat    *string                  `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix   *string                  `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix   *string                  `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL        *string                  `json:"payment_help_image_url"`
-	PaymentHelpText            *string                  `json:"payment_help_text"`
+	PaymentRechargeBonusTiers   *[]dto.RechargeBonusTier `json:"payment_recharge_bonus_tiers"`
+	PaymentRechargeBonusMode    *string                  `json:"payment_recharge_bonus_mode"`
+	PaymentRechargeBonusNotice  *string                  `json:"payment_recharge_bonus_notice"`
+	PaymentLoadBalanceStrat     *string                  `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix    *string                  `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix    *string                  `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL         *string                  `json:"payment_help_image_url"`
+	PaymentHelpText             *string                  `json:"payment_help_text"`
+	PaymentSubscriptionFootnote *string                  `json:"payment_subscription_footnote"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -2557,6 +2558,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			ProductNameSuffix:             req.PaymentProductNameSuffix,
 			HelpImageURL:                  req.PaymentHelpImageURL,
 			HelpText:                      req.PaymentHelpText,
+			SubscriptionFootnote:          req.PaymentSubscriptionFootnote,
 			CancelRateLimitEnabled:        req.PaymentCancelRateLimitEnabled,
 			CancelRateLimitMax:            req.PaymentCancelRateLimitMax,
 			CancelRateLimitWindow:         req.PaymentCancelRateLimitWindow,
@@ -2869,6 +2871,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    updatedPaymentCfg.HelpImageURL,
 		PaymentHelpText:                                        updatedPaymentCfg.HelpText,
+		PaymentSubscriptionFootnote:                            updatedPaymentCfg.SubscriptionFootnote,
 		PaymentCancelRateLimitEnabled:                          updatedPaymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              updatedPaymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           updatedPaymentCfg.CancelRateLimitWindow,
@@ -2974,7 +2977,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentRechargeBonusTiers != nil || req.PaymentRechargeBonusMode != nil || req.PaymentRechargeBonusNotice != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
-		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
+		req.PaymentSubscriptionFootnote != nil || req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
 		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
 		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil ||
 		req.PaymentAlipayForceQRCode != nil || req.PaymentAlipayMobilePrecreateDeepLink != nil

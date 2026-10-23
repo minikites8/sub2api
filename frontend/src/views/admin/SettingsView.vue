@@ -8983,6 +8983,18 @@
                     </a>
                   </p>
                 </div>
+                <div>
+                  <label for="subscription-footnote" class="input-label">{{ t('admin.settings.payment.subscriptionFootnote') }}</label>
+                  <textarea
+                    id="subscription-footnote"
+                    v-model="form.payment_subscription_footnote"
+                    rows="3"
+                    maxlength="10000"
+                    class="input"
+                    :placeholder="t('admin.settings.payment.subscriptionFootnotePlaceholder')"
+                  ></textarea>
+                  <p class="input-hint">{{ t('admin.settings.payment.subscriptionFootnoteHint') }}</p>
+                </div>
                 <!-- Row 5: Help image + text -->
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
@@ -10501,6 +10513,7 @@ const form = reactive<SettingsForm>({
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
+  payment_subscription_footnote: "",
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
   payment_load_balance_strategy: "round-robin",
@@ -11819,6 +11832,7 @@ async function loadSettings() {
     form.payment_recharge_bonus_mode = normalizeRechargeBonusMode(
       settings.payment_recharge_bonus_mode,
     );
+    form.payment_subscription_footnote = settings.payment_subscription_footnote || "";
     form.payment_recharge_bonus_notice = settings.payment_recharge_bonus_notice || "";
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.account_scheduling_thresholds = normalizeAccountSchedulingThresholdsMap(
@@ -12507,6 +12521,7 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      payment_subscription_footnote: form.payment_subscription_footnote,
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
         Number(form.payment_cancel_rate_limit_max) || 10,

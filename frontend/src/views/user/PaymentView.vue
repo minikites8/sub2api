@@ -450,8 +450,15 @@
                 <Icon name="gift" size="xl" class="mx-auto mb-3 text-gray-300 dark:text-dark-600" />
                 <p class="text-gray-500 dark:text-gray-400">{{ t('payment.noPlans') }}</p>
               </div>
-              <div v-else :class="planGridClass">
-                <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlan" />
+              <div v-else>
+                <div :class="planGridClass">
+                  <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlan" />
+                </div>
+                <p
+                  v-if="checkout.subscription_footnote?.trim()"
+                  data-test="subscription-footnote"
+                  class="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-500 dark:text-gray-400"
+                >{{ checkout.subscription_footnote.trim() }}</p>
               </div>
               <!-- Active subscriptions (compact, below plan list) -->
               <div v-if="activeSubscriptions.length > 0">

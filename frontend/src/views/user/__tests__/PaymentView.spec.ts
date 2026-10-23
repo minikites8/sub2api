@@ -312,7 +312,7 @@ async function mountSubscriptionConfirm(
   return wrapper
 }
 
-async function mountSubscriptionPlanList(planCount: number) {
+async function mountSubscriptionPlanList(planCount: number, footnote = '') {
   vi.useRealTimers()
   routeState.path = '/purchase'
   routeState.query = { tab: 'subscription' }
@@ -332,7 +332,7 @@ async function mountSubscriptionPlanList(planCount: number) {
     id: index + 1,
     name: `Plan ${index + 1}`,
   }))
-  getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({ plans }))
+  getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({ plans, subscription_footnote: footnote }))
   bridgeInvoke.mockReset()
   window.localStorage.clear()
   ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
@@ -1211,5 +1211,23 @@ describe('PaymentView subscription feature flag', () => {
     expect(wrapper.text()).not.toContain('payment.creditsTitle')
     expect(wrapper.findAllComponents(SubscriptionPlanCard).length).toBeGreaterThan(0)
     wrapper.unmount()
+  })
+})
+
+describe('subscription plan footnote', () => {
+  it('shows multiline explanations as plain text below the plans', async () => {
+    const text = '* Quota follows official resets.\n* <b>Approximate</b> Plus comparison.'
+    const wrapper = await mountSubscriptionPlanList(2, text)
+    const footnote = wrapper.get('[data-test="subscription-footnote"]')
+    expect(footnote.text()).toBe(text)
+    expect(footnote.find('b').exists()).toBe(false)
+    expect(footnote.classes()).toContain('whitespace-pre-wrap')
+    await wrapper.findAll('button').find(button => button.text() === 'payment.tabTopUp')!.trigger('click')
+    expect(wrapper.find('[data-test="subscription-footnote"]').exists()).toBe(false)
+  })
+
+  it.each(['', '   \n '])('hides empty footnotes (%j)', async (text) => {
+    const wrapper = await mountSubscriptionPlanList(2, text)
+    expect(wrapper.find('[data-test="subscription-footnote"]').exists()).toBe(false)
   })
 })

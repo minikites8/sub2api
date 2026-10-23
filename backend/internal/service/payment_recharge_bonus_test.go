@@ -342,3 +342,24 @@ func TestUpdatePaymentConfigRechargeBonusMode(t *testing.T) {
 		require.NoError(t, svc.UpdatePaymentConfig(ctx, UpdatePaymentConfigRequest{RechargeBonusTiers: &tiers}))
 	})
 }
+
+func TestPaymentSubscriptionFootnote(t *testing.T) {
+	ctx := context.Background()
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+	cfg, err := svc.GetPaymentConfig(ctx)
+	require.NoError(t, err)
+	require.Empty(t, cfg.SubscriptionFootnote)
+	note := "  * 官方重置规则\n* Plus 额度仅供参考  "
+	require.NoError(t, svc.UpdatePaymentConfig(ctx, UpdatePaymentConfigRequest{SubscriptionFootnote: &note}))
+	cfg, err = svc.GetPaymentConfig(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "* 官方重置规则\n* Plus 额度仅供参考", cfg.SubscriptionFootnote)
+	require.NoError(t, svc.UpdatePaymentConfig(ctx, UpdatePaymentConfigRequest{}))
+	require.Equal(t, cfg.SubscriptionFootnote, repo.values[SettingSubscriptionFootnote])
+	empty := ""
+	require.NoError(t, svc.UpdatePaymentConfig(ctx, UpdatePaymentConfigRequest{SubscriptionFootnote: &empty}))
+	cfg, err = svc.GetPaymentConfig(ctx)
+	require.NoError(t, err)
+	require.Empty(t, cfg.SubscriptionFootnote)
+}

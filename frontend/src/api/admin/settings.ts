@@ -725,6 +725,7 @@ export interface SystemSettings {
   payment_product_name_prefix: string;
   payment_product_name_suffix: string;
   payment_help_image_url: string;
+  payment_subscription_footnote?: string;
   payment_help_text: string;
   payment_cancel_rate_limit_enabled: boolean;
   payment_cancel_rate_limit_max: number;
@@ -1115,6 +1116,7 @@ export interface UpdateSettingsRequest {
   payment_product_name_prefix?: string;
   payment_product_name_suffix?: string;
   payment_help_image_url?: string;
+  payment_subscription_footnote?: string;
   payment_help_text?: string;
   payment_cancel_rate_limit_enabled?: boolean;
   payment_cancel_rate_limit_max?: number;
