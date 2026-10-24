@@ -113,6 +113,7 @@ class Handler(BaseHTTPRequestHandler):
         model = data.get("model", "gpt-6.1-sol")
         is_chat = self.path.endswith("/chat/completions")
         tool = bool(data.get("tools")) and data.get("tool_choice") != "none"
+        hosted_search = tool and any(t.get("type") in ("web_search", "web_search_preview") for t in data.get("tools", []))
         message = {"role": "assistant", "content": "synthetic local reply"}
         if tool:
             message.update(content=None, tool_calls=[{"id": "call_local", "type": "function", "function": {"name": "local_tool", "arguments": '{"value":1}'}}])
@@ -127,6 +128,8 @@ class Handler(BaseHTTPRequestHandler):
             output = [{"id": "msg_local", "type": "message", "status": "completed", "role": "assistant", "content": [{"type": "output_text", "text": "synthetic local reply", "annotations": []}]}]
             if tool:
                 output = [{"id": "fc_local", "type": "function_call", "call_id": "call_local", "name": "local_tool", "arguments": '{"value":1}', "status": "completed"}]
+            if hosted_search:
+                output = [{"id": "ws_local", "type": "web_search_call", "status": "completed", "action": {"type": "search", "query": "local fixture"}}]
             result = {"id": response_id, "object": "response", "created_at": 1, "status": "completed", "model": model,
                       "output": output, "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}
             if mode["cached"]:
@@ -148,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
                       ("response.output_text.delta", {"type": "response.output_text.delta", "sequence_number": 2, "item_id": "msg_local", "output_index": 0, "content_index": 0, "delta": "synthetic local reply"}),
                       ("response.output_item.done", {"type": "response.output_item.done", "sequence_number": 3, "output_index": 0, "item": result["output"][0]}),
                       ("response.completed", {"type": "response.completed", "sequence_number": 4, "response": result})]
-            if tool:
+            if tool and not hosted_search:
                 events = [("response.created", {"type": "response.created", "sequence_number": 0, "response": {**result, "status": "in_progress", "output": []}}),
                           ("response.output_item.added", {"type": "response.output_item.added", "sequence_number": 1, "output_index": 0, "item": {**result["output"][0], "arguments": "", "status": "in_progress"}}),
                           ("response.function_call_arguments.delta", {"type": "response.function_call_arguments.delta", "sequence_number": 2, "item_id": "fc_local", "output_index": 0, "delta": '{"value":1}'}),

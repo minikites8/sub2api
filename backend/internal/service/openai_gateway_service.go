@@ -227,6 +227,12 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
+	// Observed hosted tool calls, independent of token quantities. Never trust
+	// client tool definitions as billable usage; only upstream completed items.
+	HostedWebSearchCalls int `json:"-"`
+	hostedSearchSeen     map[string]struct{}
+	UnpricedHostedTools  []string `json:"-"`
+
 	InputTokens              int `json:"input_tokens"`
 	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
 	ImageCacheReadTokens     int `json:"image_cache_read_tokens,omitempty"`

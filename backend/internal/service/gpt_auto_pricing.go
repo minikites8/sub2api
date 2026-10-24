@@ -289,22 +289,19 @@ func (t GPTAutoTariff) CustomerCharge(u GPTAutoTariffUsage, tierMultiplier, rate
 }
 
 // gptAutoTariffUnsupportedDimension reports a usage dimension the token
-// tariff cannot price (per-image generation, audio, video). Such requests are
-// rejected before execution in fixed-rate mode; if one still reports these
-// dimensions the ordinary executed-model charge is kept, never zero.
+// tariff cannot price (generated media, audio, video). These dimensions use
+// the existing upstream cost path rather than the virtual text tariff.
 func gptAutoTariffUnsupportedDimension(result *OpenAIForwardResult) string {
 	if result == nil {
 		return ""
 	}
 	switch {
-	case result.ImageCount > 0:
+	case result.ImageCount > 0 || result.Usage.ImageOutputTokens > 0:
 		return "image_generation"
 	case result.AudioUsage != nil:
 		return "audio"
 	case result.VideoCount > 0:
 		return "video"
-	case result.WebSearchCalls > 0 || result.SearchCount > 0:
-		return "hosted_search"
 	}
 	return ""
 }

@@ -1,7 +1,7 @@
 export default {
   pricing: {
   "title": "GPT Auto 定价",
-  "description": "虚拟模型独立零售价；执行模型决定采购成本。",
+  "description": "虚拟模型独立零售价；执行模型决定采购成本。允许托管工具，已计量的工具和生成媒体用量按已配置的上游成本收取。",
   "active": "当前定价模式",
   "mode": "定价模式",
   "ready": "定价已配置",
@@ -18,7 +18,7 @@ export default {
   "cached_input_tokens": "缓存输入 token",
   "output_tokens": "输出 token",
   "savedGroupRates": "已保存的输入 / 缓存 / 输出费率",
-  "estimateHint": "仅为预测。分组倍率与 gpt-auto 精确覆盖生效一次；用户覆盖、高峰定价、账号因子和服务等级可能改变最终费用。未知采购价不代表零成本。",
+  "estimateHint": "仅预测 token 费用，不含额外工具费用。分组倍率与 gpt-auto 精确覆盖生效一次；用户覆盖、高峰定价、账号因子和服务等级可能改变最终费用。未知采购价不代表零成本。",
   "preview": "预览生效费率",
   "customer_charge_usd": "客户费用",
   "estimated_upstream_cost_usd": "预计上游成本",

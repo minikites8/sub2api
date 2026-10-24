@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 )
 
@@ -198,6 +199,34 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		actualInputTokens = 0
 	}
 
+	// Fixed GPT Auto text pricing and hosted search are additive. Strip search
+	// counters from the ordinary calculation so a per-call path cannot replace
+	// token procurement or cause the same tool fee to be charged twice.
+	gptAutoRoute := GPTAutoRouteFromContext(ctx)
+	_, gptAutoFixed := gptAutoRoute.FixedTariff()
+	costResult := result
+	gptAutoToolListCost := decimal.Zero
+	if gptAutoFixed {
+		copyResult := *result
+		copyResult.WebSearchCalls, copyResult.SearchCount = 0, 0
+		costResult = &copyResult
+		calls := result.WebSearchCalls
+		if !account.IsGrok() {
+			calls = max(calls, result.Usage.HostedWebSearchCalls)
+		}
+		if calls > 0 {
+			fee := s.billingService.CalculateWebSearchCost(calls, webSearchPricePerCallFromAPIKey(apiKey), 1)
+			gptAutoToolListCost = gptAutoToolListCost.Add(decimal.NewFromFloat(fee.TotalCost))
+		}
+		if result.SearchCount > 0 {
+			fee := s.billingService.CalculateSearchCost(result.SearchCount, groupSearchPricePer1kFromAPIKey(apiKey), 1)
+			gptAutoToolListCost = gptAutoToolListCost.Add(decimal.NewFromFloat(fee.TotalCost))
+		}
+		if len(result.Usage.UnpricedHostedTools) > 0 {
+			logger.L().Warn("gpt_auto.hosted_tool_cost_unknown", zap.Strings("tool_types", result.Usage.UnpricedHostedTools), zap.String("request_id", result.RequestID))
+		}
+	}
+
 	// Calculate cost
 	tokens := UsageTokens{
 		InputTokens:          actualInputTokens,
@@ -255,7 +284,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	longContextBillingGate := openAILongContextBillingGate(billingAccount)
 	cost, err = s.calculateOpenAIRecordUsageCost(
 		ctx,
-		result,
+		costResult,
 		apiKey,
 		billingModels,
 		multiplier,
@@ -306,7 +335,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			responseMultiplier, responseImageMultiplier := computePeakAwareMultipliers(apiKey, responseBaseMultiplier, pricingAt)
 			responseVideoMultiplier := resolveVideoRateMultiplier(apiKey, responseBaseMultiplier)
 			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
-				ctx, result, apiKey, responseModels, responseMultiplier, responseImageMultiplier,
+				ctx, costResult, apiKey, responseModels, responseMultiplier, responseImageMultiplier,
 				responseVideoMultiplier, responseBaseMultiplier, tokens, serviceTier, longContextBillingGate, pricingAt,
 			)
 			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
@@ -332,7 +361,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if groupBillsOpenAIFastAtStandard(apiKey, billingAccount, serviceTier) {
 		standardCost, standardErr := s.calculateOpenAIRecordUsageCost(
 			ctx,
-			result,
+			costResult,
 			apiKey,
 			billingModels,
 			multiplier,
@@ -365,16 +394,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	//     gpt-auto tariff snapshot captured before execution, with the
 	//     customer's rate for the gpt-auto pricing identity. The profile
 	//     multiplier is not applied (BillingMultiplier is 1).
-	gptAutoRoute := GPTAutoRouteFromContext(ctx)
 	gptAutoMultiplier := gptAutoRoute.BillingMultiplier()
 	gptAutoFixedRate, gptAutoFixedApplied := 0.0, false
 	if tariff, fixed := gptAutoRoute.FixedTariff(); fixed && cost != nil {
-		if dimension := gptAutoTariffUnsupportedDimension(result); dimension != "" {
-			// Rejected before execution; if an upstream still reports it, keep
-			// the ordinary executed-model charge rather than billing zero.
-			logger.L().Warn("gpt_auto.fixed_tariff_unsupported_dimension",
-				zap.String("dimension", dimension), zap.String("request_id", result.RequestID))
-		} else {
+		if gptAutoTariffUnsupportedDimension(result) == "" {
 			tier := configuredServiceTierMultiplier(serviceTier, nil)
 			if gptAutoRoute.freeFast && (normalizeBillingServiceTier(serviceTier) == "priority" || normalizeBillingServiceTier(serviceTier) == "fast") {
 				tier = 1
@@ -573,6 +596,27 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			tokens, cost.TotalCost, pricingAt,
 			accountStatsLongContextPricingEnabled(longContextBillingGate),
 		)
+	}
+
+	if gptAutoFixed && cost != nil {
+		// AccountStatsCost is already a final procurement amount. The fallback
+		// is list cost × account procurement factor, never the customer factor.
+		if !gptAutoFixedApplied {
+			procurement := decimal.NewFromFloat(cost.TotalCost).Mul(decimal.NewFromFloat(accountRateMultiplier))
+			if usageLog.AccountStatsCost != nil {
+				procurement = decimal.NewFromFloat(*usageLog.AccountStatsCost)
+			}
+			cost.ActualCost = procurement.Round(10).InexactFloat64()
+			usageLog.RateMultiplier = accountRateMultiplier
+		}
+		fee := gptAutoToolListCost.Mul(decimal.NewFromFloat(accountRateMultiplier)).Round(10)
+		cost.TotalCost = decimal.NewFromFloat(cost.TotalCost).Add(gptAutoToolListCost).Round(10).InexactFloat64()
+		cost.ActualCost = decimal.NewFromFloat(cost.ActualCost).Add(fee).Round(10).InexactFloat64()
+		usageLog.TotalCost, usageLog.ActualCost = cost.TotalCost, cost.ActualCost
+		if usageLog.AccountStatsCost != nil {
+			amount := decimal.NewFromFloat(*usageLog.AccountStatsCost).Add(fee).Round(10).InexactFloat64()
+			usageLog.AccountStatsCost = &amount
+		}
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)

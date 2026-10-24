@@ -269,7 +269,7 @@ func TestGPTAutoFixedRouteSnapshotsTariff(t *testing.T) {
 
 func TestGPTAutoFixedPricingRejectsUnpricedFeatures(t *testing.T) {
 	svc, repo, classifier := newGPTAutoFixedPricingTestService(t, nil)
-	input := gptAutoLiveInput(`{"model":"gpt-auto","input":"draw a cat","tools":[{"type":"image_generation"}]}`)
+	input := gptAutoLiveInput(`{"model":"gpt-auto","input":[{"type":"input_audio","data":"test"}]}`)
 	input.Endpoint = GPTAutoEndpointResponses
 	route, err := svc.Route(context.Background(), input)
 	require.Nil(t, route)
@@ -279,6 +279,20 @@ func TestGPTAutoFixedPricingRejectsUnpricedFeatures(t *testing.T) {
 	require.Zero(t, classifier.calls.Load())
 	repo.waitRows(t, 1)
 	require.Equal(t, GPTAutoFailureUnpricedFeature, repo.lastRow(t).ErrorCategory)
+}
+
+func TestGPTAutoFixedPricingAllowsHostedTools(t *testing.T) {
+	for _, kind := range []string{"web_search", "web_search_preview", "file_search", "code_interpreter", "image_generation", "mcp", "computer", "function", "custom"} {
+		t.Run(kind, func(t *testing.T) {
+			svc, _, classifier := newGPTAutoFixedPricingTestService(t, nil)
+			input := gptAutoLiveInput(`{"model":"gpt-auto","input":"use a tool","tools":[{"type":"` + kind + `"}]}`)
+			input.Endpoint = GPTAutoEndpointResponses
+			route, err := svc.Route(context.Background(), input)
+			require.NoError(t, err)
+			require.NotNil(t, route)
+			require.EqualValues(t, 1, classifier.calls.Load())
+		})
+	}
 }
 
 func TestGPTAutoLegacyModeKeepsProfileMultiplier(t *testing.T) {
@@ -373,10 +387,8 @@ func TestGPTAutoListedKeyCannotBypassGroupRollout(t *testing.T) {
 	require.False(t, live.AdmitsAPIKey(22, &group))
 }
 
-func TestGPTAutoFixedTariffRejectsAllUnpricedHostedTools(t *testing.T) {
+func TestGPTAutoFixedTariffRetainsAudioRestrictions(t *testing.T) {
 	for _, body := range []string{
-		`{"tools":[{"type":"web_search"}]}`,
-		`{"tools":[{"type":"code_interpreter"}]}`,
 		`{"messages":[{"content":[{"type":"input_audio","input_audio":{"data":"x"}}]}]}`,
 		`{"modalities":["audio"]}`,
 	} {

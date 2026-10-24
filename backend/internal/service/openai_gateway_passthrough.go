@@ -514,7 +514,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				autoPartial := GPTAutoRouteFromContext(ctx) != nil && !errors.As(handleErr, &failover)
 				if (autoPartial || errors.Is(handleErr, errOpenAISSEIdle) || errors.Is(handleErr, errOpenAISSEFirstOutput)) &&
 					result != nil && result.usage != nil &&
-					(result.usage.InputTokens > 0 || result.usage.OutputTokens > 0 || result.imageCount > 0) {
+					(result.usage.InputTokens > 0 || result.usage.OutputTokens > 0 || result.imageCount > 0 || result.usage.HostedWebSearchCalls > 0) {
 					return &OpenAIForwardResult{
 						RequestID: resp.Header.Get("x-request-id"), ResponseID: result.responseID,
 						Usage: *result.usage, Model: reqModel, UpstreamModel: upstreamPassthroughModel,
@@ -2618,6 +2618,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	usageParsed := false
 	if len(body) > 0 {
 		if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(body); ok {
+			preserveOpenAIHostedTools(&parsedUsage, *usage)
 			*usage = parsedUsage
 			usageParsed = true
 		}
@@ -2687,6 +2688,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	usage := s.parseSSEUsageFromBody(bodyText)
 	if ok {
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
+			preserveOpenAIHostedTools(&parsedUsage, *usage)
 			*usage = parsedUsage
 		}
 		// When the terminal event has an empty output array, reconstruct

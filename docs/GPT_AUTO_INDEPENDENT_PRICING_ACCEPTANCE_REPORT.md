@@ -1,5 +1,7 @@
 # GPT Auto Phase 2.1 acceptance report
 
+The initial acceptance below predates the user-requested hosted-tool allowance. Its rejection assertions describe that original version; the follow-up section records the updated behavior and validation.
+
 Date: 2026-10-24. Branch `main`, uncommitted working tree. Implementation details, migration, deployment and rollback instructions: [implementation report](GPT_AUTO_INDEPENDENT_PRICING_IMPLEMENTATION_REPORT.md).
 
 ## Result
@@ -122,3 +124,35 @@ Early runs intentionally did not pass. Fixes were verified by rerunning the affe
 This is local synthetic acceptance, not a production canary. Full repository-wide tests were not run; the targeted regression set covers changed billing, group/channel configuration, permissions, model catalogue, export and UI areas. No real paid upstream or Jev call was made. Real procurement depends on configured account/channel costs; projections cannot guarantee profitability. Existing balance/quota prechecks are not a reservation system. Unknown usage cannot be billed accurately without upstream data. Global tariff/config propagation across backend nodes retains the 30-second cache TTL; fresh persisted group switch revocations do not wait for that cache. Unsupported separately priced media/hosted tools are rejected in independent mode.
 
 Release remains an operator decision. Follow the implementation report's backup, additive migration, explicit tariff confirmation and per-group enrollment procedure. Roll back only after disabling global live routing and draining in-flight requests, because the preceding Phase 2 binary cannot enforce the new group switch. Preserve historical usage and additive columns.
+
+
+## Follow-up: allow hosted tools and pass through metered upstream fees
+
+The user requested removing `gpt_auto_unsupported_feature` for hosted tools after commit `650f9317f`. Hosted tool definitions now pass admission, preserving group/key/pool restrictions. Search is billed only from completed upstream items, never from merely declaring a tool. Text stays on the immutable GPT Auto tariff. Search fees reuse existing per-call configuration (default $0.01/call) and the account procurement multiplier, without customer/peak/tier/profile multiplication. Generated media uses existing upstream procurement accounting. A single existing settlement command deducts the combined customer charge.
+
+JSON and SSE counting excludes function calls named `web_search`, failed/in-progress hosted calls, and deduplicates item.done/terminal snapshots. Metered partial failures retain tool usage. Existing direct-model charging and the three-model pool remain unchanged. The pricing UI notes that its token calculator excludes additional tool fees.
+
+Boundary: this is configured upstream accounting, not reconciliation against an external provider invoice. Code interpreter/file-search/MCP or other tools without separate fee metering are forwarded, with token usage billed normally; completed unpriced tool types emit `gpt_auto.hosted_tool_cost_unknown`. Additional fees for those types remain unknown and are not guessed. Explicit audio/video requests retain the earlier restriction.
+
+Follow-up commands (repository root, except Go from `backend/`):
+
+```sh
+go test -tags=unit ./internal/service ./internal/handler -run 'TestGPTAuto|TestOpenAIHosted|Test.*ParseSSEUsage|Test.*OpenAIUsage|TestCalculateOpenAIRecordUsageCost|TestOpenAIGatewayServiceRecordUsage|TestForwardGrokResponses_PropagatesSearchCount' -count=1 > ../artifacts/gpt-auto-phase21/hosted-tools-tests.log 2>&1
+PATH=/Users/user/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH node frontend/node_modules/vitest/vitest.mjs run --root frontend src/views/admin/__tests__/GPTAutoPricing.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts > artifacts/gpt-auto-phase21/hosted-tools-frontend.log 2>&1
+bash scripts/test-gpt-auto-local.sh build > artifacts/gpt-auto-phase21/hosted-tools-build.log 2>&1
+docker compose --env-file .env.gpt-auto-local -p gpt-auto-local -f compose.gpt-auto-local.yml restart mock
+docker compose --env-file .env.gpt-auto-local -p gpt-auto-local -f compose.gpt-auto-local.yml up -d --wait --wait-timeout 300 backend web
+python3 scripts/gpt-auto-local/verify_phase21.py > artifacts/gpt-auto-phase21/hosted-tools-e2e.log 2>&1
+```
+
+The first targeted test run exposed the old rejection expectation; it was updated to test allowed hosted types while preserving audio restrictions. The tagged build also caught the package's two-argument test `max` helper; the union count now uses nested calls.
+
+Final follow-up Go regression passed in both service and handler packages. Frontend pricing/localization tests passed **6/6**, and the Docker production build passed locale/type checks. A malformed-upstream-event regression verifies that invalid JSON cannot create a tool fee. The final built source manifest is `376ddd14824c7a284772a00d9c5308e11f67fc27bed2cf8e7f64405692baa057`.
+
+The final image passed **19/19 reverse-proxy scenarios**. Each pool model passed JSON and SSE hosted-search billing at `$0.0157000000` (virtual tokens `$0.0057` + one `$0.01` search); an unused declaration retained `$0.0057`. Procurement totals differed by executed model and exports retained the financial ledger values. Subsequent permission, legacy, timeout/fallback, cancellation, concurrency and historical-charge checks passed. Final SQL readback returned global live `false`, internal-only `true` and enabled-group count `0` (`hosted-tools-switch-status.txt`).
+
+```sh
+docker compose --env-file .env.gpt-auto-local -p gpt-auto-local -f compose.gpt-auto-local.yml exec -T postgres psql -U gpt_auto_local -d gpt_auto_local -At -c "SELECT value::jsonb->'live'->>'live_enabled', value::jsonb->'live'->>'internal_only' FROM settings WHERE key='gpt_auto_shadow_config'; SELECT count(*) FROM groups WHERE gpt_auto_enabled;" > artifacts/gpt-auto-phase21/hosted-tools-switch-status.txt
+```
+
+The user subsequently authorized committing and pushing this follow-up to `origin/main`. Deployment was not performed.

@@ -1254,6 +1254,9 @@ func (s *OpenAIGatewayService) parseSSEUsageBytesWithType(data []byte, eventType
 	if usage == nil || len(data) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 		return
 	}
+	if bytes.Contains(data, []byte(`_call"`)) {
+		observeOpenAIHostedTools(data, usage)
+	}
 	// Usage is absent from nearly every delta event. Avoid full JSON validation
 	// and four gjson path scans on that hot path while retaining progressive
 	// usage from compatible upstreams on any event type.
@@ -1268,6 +1271,7 @@ func (s *OpenAIGatewayService) parseSSEUsageBytesWithType(data []byte, eventType
 		if !openAIUsageHasTokens(&parsedUsage) && openAIUsageHasTokens(usage) {
 			return
 		}
+		preserveOpenAIHostedTools(&parsedUsage, *usage)
 		*usage = parsedUsage
 		return
 	}
@@ -1392,10 +1396,13 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	for _, candidate := range candidates {
 		if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, candidate.usagePath)); ok {
 			mergeHostedImageGenToolUsage(gjson.GetBytes(body, candidate.imageUsagePath), &usage)
+			observeOpenAIHostedTools(body, &usage)
 			return usage, true
 		}
 	}
-	return OpenAIUsage{}, false
+	var tools OpenAIUsage
+	observeOpenAIHostedTools(body, &tools)
+	return tools, tools.HostedWebSearchCalls > 0 || len(tools.UnpricedHostedTools) > 0
 }
 
 // openAIResponsesCompletedEventIsEmpty reports whether a response.completed /

@@ -1,7 +1,7 @@
 export default {
   pricing: {
   "title": "GPT Auto pricing",
-  "description": "Independent retail tariff for the virtual model. The executed model determines procurement costs.",
+  "description": "Independent retail tariff for the virtual model. The executed model determines procurement costs. Hosted tools are allowed; metered tool and generated-media usage is charged at configured upstream cost.",
   "active": "Active pricing mode",
   "mode": "Pricing mode",
   "ready": "Pricing configured",
@@ -18,7 +18,7 @@ export default {
   "cached_input_tokens": "Cached input tokens",
   "output_tokens": "Output tokens",
   "savedGroupRates": "Saved input / cached / output rates",
-  "estimateHint": "Projection only. Group rates and exact gpt-auto overrides apply once; user overrides, peak pricing, account factors and service tiers may change the final charge. Unknown procurement is not a zero cost.",
+  "estimateHint": "Token projection only; additional tool costs are excluded. Group rates and exact gpt-auto overrides apply once; user overrides, peak pricing, account factors and service tiers may change the final charge. Unknown procurement is not a zero cost.",
   "preview": "Preview effective tariff",
   "customer_charge_usd": "Customer charge",
   "estimated_upstream_cost_usd": "Estimated upstream cost",

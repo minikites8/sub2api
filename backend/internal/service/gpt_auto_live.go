@@ -436,12 +436,6 @@ func (s *GPTAutoShadowService) refreshAdmissionGroup(ctx context.Context, input 
 }
 
 func gptAutoUnpricedFeature(body []byte) string {
-	for _, tool := range gjson.GetBytes(body, "tools").Array() {
-		kind := tool.Get("type").String()
-		if kind != "function" && kind != "custom" {
-			return "hosted tools"
-		}
-	}
 	var walk func(gjson.Result) bool
 	walk = func(value gjson.Result) bool {
 		kind := value.Get("type").String()

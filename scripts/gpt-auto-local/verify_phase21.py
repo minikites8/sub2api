@@ -183,9 +183,21 @@ def idempotency_and_unsupported():
     assert counts==['1','1'] and before-after==D('0.0114'),(counts,before,after)
     count=','.join(counts)
     v.control(reset=True)
-    r=p.gateway('responses',p.auto_responses(tools=[{'type':'web_search'}]))
-    assert r['status']==400 and not p.mock_requests(),r
-    return {'settlement_rows':count,'balance_delta':str(before-after),'unpriced_tool_status':400,'jev_calls_on_rejection':0}
+    group(web_search_price_per_call=0.01)
+    hosted=[]
+    for model in POOL:
+        for stream in (False,True):
+            v.control(jev_model=model,jev_effort='medium')
+            r=p.gateway('responses',p.auto_responses(tools=[{'type':'web_search'}],stream=stream))
+            assert r['status']==200,r
+            row=p.wait_usage(p.rid(r))
+            assert D(row[2])==D('0.0157'),row
+            hosted.append({'model':model,'stream':stream,'customer_charge':row[2],'procurement_list':row[3]})
+    # A declared but unused hosted tool has no surcharge.
+    r=p.gateway('responses',p.auto_responses(tools=[{'type':'web_search'}],tool_choice='none'))
+    assert r['status']==200,r
+    assert D(p.wait_usage(p.rid(r))[2])==D('0.0057')
+    return {'settlement_rows':count,'balance_delta':str(before-after),'hosted_search':hosted,'unused_tool_charge':'0.0057'}
 
 def legacy_compatibility():
     v.control(input_tokens=None,output_tokens=None,cached=0)
@@ -215,7 +227,7 @@ def historical_unchanged():
 def main():
     try:
         if not p.check('setup',setup):return 1
-        checks=[('migration_and_new_group_off',defaults_and_migration),('disabled_group_no_listing_no_jev',denied_switch),('enabled_group_internal_and_rollout',enabled_and_rollout),('pricing_validation_admin_confirmation',validate_pricing),('same_charge_three_models_procurement_and_balance',fixed_billing),('group_discount_and_override',group_pricing),('midstream_snapshot_and_partial_settlement',snapshot_stream_partial),('underlying_model_permissions',underlying_permissions),('revocation_beats_affinity',revoke_affinity),('generated_request_ids_single_settlement_and_unpriced_tools',idempotency_and_unsupported),('legacy_compatibility',legacy_compatibility),('chat_responses_sse_tools',p.endpoints_streaming_tools),('session_affinity',p.affinity),('timeout_fallback_and_upstream_failure',p.failures),('client_cancellation',p.client_cancellation),('concurrency',p.concurrency),('exports_and_customer_isolation',exports)]
+        checks=[('migration_and_new_group_off',defaults_and_migration),('disabled_group_no_listing_no_jev',denied_switch),('enabled_group_internal_and_rollout',enabled_and_rollout),('pricing_validation_admin_confirmation',validate_pricing),('same_charge_three_models_procurement_and_balance',fixed_billing),('group_discount_and_override',group_pricing),('midstream_snapshot_and_partial_settlement',snapshot_stream_partial),('underlying_model_permissions',underlying_permissions),('revocation_beats_affinity',revoke_affinity),('generated_request_ids_single_settlement_and_hosted_tools',idempotency_and_unsupported),('legacy_compatibility',legacy_compatibility),('chat_responses_sse_tools',p.endpoints_streaming_tools),('session_affinity',p.affinity),('timeout_fallback_and_upstream_failure',p.failures),('client_cancellation',p.client_cancellation),('concurrency',p.concurrency),('exports_and_customer_isolation',exports)]
         for name,fn in checks:p.check(name,fn)
     finally:
         if v.token:
