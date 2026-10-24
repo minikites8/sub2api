@@ -521,6 +521,8 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
+	// A GPT-Auto live route bills the executed model with its multiplier.
+	base = service.WithGPTAutoRoute(base, service.GPTAutoRouteFromContext(parent))
 	return requesttiming.With(base, requesttiming.From(parent))
 }
 
@@ -751,6 +753,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	// GPT-Auto: resolve the virtual model to a pool model before anything
+	// else interprets the model.
+	body, reqModel, gptAutoRoute, ok := resolveGPTAutoLive(c, h.gptAutoShadow, apiKey, service.GPTAutoEndpointResponses, body, reqModel, h.gatewayService)
+	if !ok {
+		return
+	}
+	defer func() { finishGPTAutoLive(c, gptAutoRoute, streamStarted) }()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !openAICompatibleTextTargetAllowed(c, apiKey, reqModel) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
@@ -825,7 +834,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 	// Compaction requests summarise context rather than carrying a user task.
-	if !legacyCompact && !nativeV2 {
+	if !legacyCompact && !nativeV2 && gptAutoRoute == nil {
 		observeGPTAutoShadow(c, h.gptAutoShadow, apiKey, service.GPTAutoEndpointResponses, body)
 	}
 
@@ -1028,6 +1037,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available accounts support /responses/compact", streamStarted)
 					return
 				}
+				if nextBody, nextModel, rerouted := rerouteGPTAutoLive(c, gptAutoRoute, apiKey, service.GPTAutoEndpointResponses, body); rerouted {
+					body, reqModel = nextBody, nextModel
+					channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+					forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+					forwardModel = openAIChannelForwardModel(channelMapping, reqModel)
+					c.Request = c.Request.WithContext(service.WithOpenAIForwardModel(c.Request.Context(), forwardModel, legacyCompact))
+					continue
+				}
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform, err)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -1052,6 +1069,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if selection == nil || selection.Account == nil {
 			if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
 				continue
+			}
+			if len(failedAccountIDs) == 0 {
+				if nextBody, nextModel, rerouted := rerouteGPTAutoLive(c, gptAutoRoute, apiKey, service.GPTAutoEndpointResponses, body); rerouted {
+					body, reqModel = nextBody, nextModel
+					channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+					forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+					forwardModel = openAIChannelForwardModel(channelMapping, reqModel)
+					c.Request = c.Request.WithContext(service.WithOpenAIForwardModel(c.Request.Context(), forwardModel, legacyCompact))
+					continue
+				}
 			}
 			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 			if !cls.ModelNotFound {
@@ -1171,6 +1198,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if res == nil {
 				return
 			}
+			gptAutoRoute.ObserveResult(res)
 			stampOpenAIRequestedReasoningEffort(res, c)
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)

@@ -126,7 +126,8 @@ type openAIProfitControlGate struct {
 	// platform 是利润配置所在分组的平台，用于按平台观测门是否真实生效。
 	platform string
 	// threshold = D(pricingAt) × (1 − margin − buffer)，账号倍率必须 <= 它。
-	threshold float64
+	threshold     float64
+	virtualTariff bool
 	// pricingAt 是本请求的统一定价时刻（D 侧）。
 	pricingAt time.Time
 }
@@ -279,14 +280,38 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGateForModel(ctx contex
 	}
 	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
 
+	virtualTariff := false
+	if route := GPTAutoRouteFromContext(ctx); route != nil {
+		if tariff, fixed := route.FixedTariff(); fixed {
+			virtualTariff = true
+			downstream = 0 // Unknown procurement fails closed for this optional guard.
+			if route.customerRate != nil && s.billingService != nil {
+				price, priceErr := s.billingService.GetModelPricing(route.Model())
+				if priceErr == nil && price != nil {
+					// Conservative per-token bound, independent of output/cache mix.
+					ratio := math.Inf(1)
+					pairs := [][2]float64{{tariff.Input.InexactFloat64() / 1e6, price.InputPricePerToken}, {tariff.CachedInput.InexactFloat64() / 1e6, price.CacheReadPricePerToken}, {tariff.Output.InexactFloat64() / 1e6, price.OutputPricePerToken}}
+					for _, pair := range pairs {
+						if pair[1] > 0 {
+							ratio = math.Min(ratio, pair[0]/pair[1])
+						}
+					}
+					if !math.IsInf(ratio, 1) {
+						downstream = *route.customerRate * ratio
+					}
+				}
+			}
+		}
+	}
 	deduction := group.ProfitMinMargin + group.ProfitSafetyBuffer
 	threshold := clampProfitControlThreshold(downstream * (1 - deduction))
 	return &openAIProfitControlGate{
-		groupID:   *groupID,
-		platform:  group.Platform,
-		model:     strings.TrimSpace(requestedModel),
-		threshold: threshold,
-		pricingAt: pricingAt,
+		groupID:       *groupID,
+		platform:      group.Platform,
+		model:         strings.TrimSpace(requestedModel),
+		threshold:     threshold,
+		virtualTariff: virtualTariff,
+		pricingAt:     pricingAt,
 	}
 }
 
@@ -333,7 +358,11 @@ func openAIProfitControlVetoReason(ctx context.Context, account *Account) (bool,
 		return true, openAIProfitFilterReasonInvalidAccountRate
 	}
 	upstream := *account.RateMultiplier
-	if profitControlOverThreshold(upstream, gate.threshold) {
+	threshold := gate.threshold
+	if gate.virtualTariff {
+		threshold *= account.UserGroupRateMultiplier()
+	}
+	if profitControlOverThreshold(upstream, threshold) {
 		openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, gate.threshold, openAIProfitFilterReasonThreshold)
 		return true, openAIProfitFilterReasonThreshold
 	}

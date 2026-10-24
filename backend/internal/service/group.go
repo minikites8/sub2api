@@ -158,6 +158,12 @@ type Group struct {
 	ProfitMinMargin      float64 // 最低毛利率，小数存储（0.30=30%）
 	ProfitSafetyBuffer   float64 // 安全缓冲，小数，与 margin 相加后从 D 中扣除
 
+	// GPTAutoEnabled allows API keys of this group to request the gpt-auto
+	// virtual model. Default false; the global GPT-Auto live switch never
+	// enables a group. It is necessary, not sufficient: live routing, the
+	// rollout restrictions and the model permissions still apply.
+	GPTAutoEnabled bool
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

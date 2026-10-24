@@ -176,6 +176,8 @@ type Group struct {
 	KiroCacheReadEmulationRatio float64 `json:"kiro_cache_read_emulation_ratio,omitempty"`
 	// Kiro 推理 endpoint：q=AWS Q (q.{region}.amazonaws.com), krs=Kiro Runtime Service (runtime.us-east-1.kiro.dev)
 	KiroEndpointMode string `json:"kiro_endpoint_mode,omitempty"`
+	// 是否允许此分组的 API Key 调用 GPT Auto 智能路由虚拟模型（gpt-auto）；默认关闭
+	GptAutoEnabled bool `json:"gpt_auto_enabled,omitempty"`
 	// 是否启用利润控制：调度时仅允许账号计费倍率满足毛利率要求的账号进入候选池
 	ProfitControlEnabled bool `json:"profit_control_enabled,omitempty"`
 	// 最低毛利率，小数（0.30=30%）；账号准入条件为 U <= D*(1-margin-buffer)
@@ -290,7 +292,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRateMultipliers, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldStreamOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldEnableBps, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldKiroCacheEmulationEnabled, group.FieldKiroAutoStickyEnabled, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldStreamOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldEnableBps, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldKiroCacheEmulationEnabled, group.FieldKiroAutoStickyEnabled, group.FieldGptAutoEnabled, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldKiroCacheEmulationRatio, group.FieldKiroCacheCreationEmulationRatio, group.FieldKiroCacheReadEmulationRatio, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
@@ -828,6 +830,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.KiroEndpointMode = value.String
 			}
+		case group.FieldGptAutoEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field gpt_auto_enabled", values[i])
+			} else if value.Valid {
+				_m.GptAutoEnabled = value.Bool
+			}
 		case group.FieldProfitControlEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field profit_control_enabled", values[i])
@@ -1193,6 +1201,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("kiro_endpoint_mode=")
 	builder.WriteString(_m.KiroEndpointMode)
+	builder.WriteString(", ")
+	builder.WriteString("gpt_auto_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.GptAutoEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("profit_control_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProfitControlEnabled))

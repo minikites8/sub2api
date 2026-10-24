@@ -124,6 +124,11 @@ type GPTAutoEconomics struct {
 	// discounts). 1 unless observed from the request's usage-log row.
 	CustomerRateMultiplier float64 `json:"customer_rate_multiplier"`
 	CustomerRateSource     string  `json:"customer_rate_source"`
+	// RevenueBasis says how EstimatedRevenue was priced: the gpt-auto tariff
+	// (independent pricing; identical for every model) or the executed
+	// model's list price times its GPT-Auto profile multiplier (legacy).
+	RevenueBasis         string `json:"revenue_basis,omitempty"`
+	TariffPricingVersion *int   `json:"tariff_pricing_version,omitempty"`
 
 	EstimatedInputTokens       float64 `json:"estimated_input_tokens"`
 	InputEstimateSource        string  `json:"input_estimate_source"`
@@ -298,7 +303,7 @@ func EstimateGPTAutoEconomics(in GPTAutoPolicyInput, model, effort string) GPTAu
 	if out.ClassifierCostSource == "" {
 		out.ClassifierCostSource = GPTAutoClassifierCostActual
 	}
-	if in.CustomerRateMultiplier > 0 {
+	if in.CustomerRateMultiplier > 0 || in.CustomerRateMultiplier == 0 && in.CustomerRateSource != "" {
 		out.CustomerRateMultiplier = in.CustomerRateMultiplier
 		out.CustomerRateSource = in.CustomerRateSource
 	}
@@ -390,6 +395,23 @@ func EstimateGPTAutoEconomics(in GPTAutoPolicyInput, model, effort string) GPTAu
 		Add(gptAutoTokenCost(out.EstimatedOutputTokens, listOut))
 	pricedList := list.Mul(gptAutoDecimal(out.EffortBillingMultiplier)).Mul(gptAutoDecimal(out.CustomerRateMultiplier))
 	revenue := pricedList.Mul(gptAutoDecimal(profile.BillingMultiplier)).Round(gptAutoUSDScale)
+	out.RevenueBasis = GPTAutoRevenueBasisLegacy
+	if tariff := gptAutoEconomicsTariff(in); tariff != nil {
+		// Independent pricing: the customer pays the gpt-auto tariff whatever
+		// model runs; the profile multiplier and per-effort pricing of the
+		// executed model do not apply. Procurement stays the executed model.
+		pricedList = tariff.ListCharge(GPTAutoTariffUsage{
+			InputTokens:       int(out.EstimatedInputTokens),
+			CachedInputTokens: int(out.EstimatedCachedInputTokens),
+			OutputTokens:      int(out.EstimatedOutputTokens),
+		}).Mul(gptAutoDecimal(out.CustomerRateMultiplier))
+		revenue = pricedList.Round(gptAutoUSDScale)
+		out.BillingMultiplier = 1
+		out.EffortBillingMultiplier = 1
+		out.RevenueBasis = GPTAutoRevenueBasisTariff
+		version := tariff.Version
+		out.TariffPricingVersion = &version
+	}
 	upstream := gptAutoTokenCost(out.EstimatedInputTokens, upIn).
 		Add(gptAutoTokenCost(out.EstimatedCachedInputTokens, upCached)).
 		Add(gptAutoTokenCost(out.EstimatedOutputTokens, upOut)).Round(gptAutoUSDScale)
@@ -410,6 +432,29 @@ func EstimateGPTAutoEconomics(in GPTAutoPolicyInput, model, effort string) GPTAu
 	out.MinRequiredMultiplier = gptAutoRequiredMultiplier(upstream, pricedList, out.TargetMargin)
 	out.MinRequiredMultiplierFullyLoaded = gptAutoRequiredMultiplier(upstream.Add(classifier), pricedList, out.TargetMargin)
 	return out
+}
+
+// Revenue bases of an economics estimate.
+const (
+	GPTAutoRevenueBasisTariff = "gpt_auto_tariff"
+	GPTAutoRevenueBasisLegacy = "executed_model_list_x_profile_multiplier"
+)
+
+func gptAutoEconomicsTariff(in GPTAutoPolicyInput) *GPTAutoTariff {
+	if in.Tariff != nil {
+		if in.Tariff.Mode == GPTAutoPricingModeFixed {
+			return in.Tariff
+		}
+		return nil
+	}
+	if !in.Config.Pricing.IsFixed() {
+		return nil
+	}
+	tariff, ok := in.Config.Pricing.TariffFor(nil)
+	if !ok {
+		return nil
+	}
+	return &tariff
 }
 
 func gptAutoCheapestChannel(channels []GPTAutoUpstreamCost, inputTokens, cachedTokens, outputTokens float64) (GPTAutoUpstreamCost, bool) {

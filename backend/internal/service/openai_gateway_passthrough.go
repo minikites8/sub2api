@@ -508,7 +508,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 					return nil, s.handleErrorResponsePassthrough(ctx, compactResp, c, account, body, compactBody)
 				}
 				_ = resp.Body.Close()
-				if (errors.Is(handleErr, errOpenAISSEIdle) || errors.Is(handleErr, errOpenAISSEFirstOutput)) &&
+				// Preserve metered partial GPT Auto usage on terminal failure, while
+				// retryable pre-output failover still carries no settlement result.
+				var failover *UpstreamFailoverError
+				autoPartial := GPTAutoRouteFromContext(ctx) != nil && !errors.As(handleErr, &failover)
+				if (autoPartial || errors.Is(handleErr, errOpenAISSEIdle) || errors.Is(handleErr, errOpenAISSEFirstOutput)) &&
 					result != nil && result.usage != nil &&
 					(result.usage.InputTokens > 0 || result.usage.OutputTokens > 0 || result.imageCount > 0) {
 					return &OpenAIForwardResult{

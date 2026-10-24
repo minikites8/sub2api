@@ -97,6 +97,16 @@ type GPTAutoPolicyInput struct {
 	// list rate (1×) is assumed.
 	CustomerRateMultiplier float64
 	CustomerRateSource     string
+	// Tariff is the gpt-auto retail tariff when independent pricing is
+	// active (the live route passes its group-resolved snapshot). Nil uses
+	// the global tariff of Config.Pricing in fixed-rate mode, else the
+	// legacy executed-model price times the profile multiplier.
+	Tariff *GPTAutoTariff
+	// Exclusions are additional hard constraints per model, supplied by live
+	// routing (request capabilities, customer permissions, upstream
+	// availability, margin guard). Each listed reason makes the model
+	// ineligible. Shadow evaluation and replay leave it nil.
+	Exclusions map[string][]string
 }
 
 // Decision statuses.
@@ -117,6 +127,16 @@ const (
 	GPTAutoRuleEffortUnsupported   = "effort_unsupported"
 	GPTAutoRuleEffortUnknown       = "effort_unknown"
 	GPTAutoRuleNoEligibleCandidate = "no_eligible_candidate"
+
+	// Live-routing constraints (Exclusions).
+	GPTAutoRuleModelVision       = "model_vision_unsupported"
+	GPTAutoRuleModelStructured   = "model_structured_output_unsupported"
+	GPTAutoRuleModelStateful     = "model_stateful_continuation_unsupported"
+	GPTAutoRuleModelContext      = "model_context_exceeded"
+	GPTAutoRuleModelNotPermitted = "model_not_permitted"
+	GPTAutoRuleModelUnavailable  = "model_no_upstream_available"
+	GPTAutoRuleMarginGuard       = "margin_guard_loss"
+	GPTAutoRuleClientEffort      = "client_effort_honored"
 )
 
 // Warning identifiers. Warnings are informational: they are stored in
@@ -210,7 +230,7 @@ func EvaluateGPTAutoPolicy(in GPTAutoPolicyInput) GPTAutoPolicyDecision {
 		JevEffort:     cls.Effort,
 	}
 
-	decision.Candidates = gptAutoCandidates(cfg, cls, in.Features)
+	decision.Candidates = gptAutoCandidates(cfg, cls, in.Features, in.Exclusions)
 	decision.Warnings = gptAutoClassificationWarnings(cls)
 	finalModel, modelAdjustments := gptAutoPickModel(decision.Candidates, cls.Model)
 	decision.Adjustments = append(decision.Adjustments, modelAdjustments...)
@@ -223,7 +243,7 @@ func EvaluateGPTAutoPolicy(in GPTAutoPolicyInput) GPTAutoPolicyDecision {
 		decision.Status = GPTAutoDecisionNoEligible
 		decision.Adjustments = append(decision.Adjustments, GPTAutoAdjustment{
 			Rule: GPTAutoRuleNoEligibleCandidate, From: cls.Model,
-			Detail: "no enabled model satisfies the request's endpoint and tool requirements",
+			Detail: "no enabled model satisfies the request's capability and permission requirements",
 		})
 		return decision
 	}
@@ -249,7 +269,7 @@ func EvaluateGPTAutoPolicy(in GPTAutoPolicyInput) GPTAutoPolicyDecision {
 	return decision
 }
 
-func gptAutoCandidates(cfg GPTAutoShadowConfig, cls GPTAutoClassification, features GPTAutoRequestFeatures) []GPTAutoCandidate {
+func gptAutoCandidates(cfg GPTAutoShadowConfig, cls GPTAutoClassification, features GPTAutoRequestFeatures, exclusions map[string][]string) []GPTAutoCandidate {
 	candidates := make([]GPTAutoCandidate, 0, len(GPTAutoModelPool()))
 	for _, model := range GPTAutoModelPool() {
 		profile, ok := cfg.ProfileFor(model)
@@ -268,6 +288,11 @@ func gptAutoCandidates(cfg GPTAutoShadowConfig, cls GPTAutoClassification, featu
 		}
 		if features.HasTools && !profile.SupportsTools {
 			candidate.Reasons = append(candidate.Reasons, GPTAutoRuleModelTools)
+		}
+		for _, reason := range exclusions[model] {
+			if !containsString(candidate.Reasons, reason) {
+				candidate.Reasons = append(candidate.Reasons, reason)
+			}
 		}
 		candidate.Eligible = len(candidate.Reasons) == 0
 		candidates = append(candidates, candidate)

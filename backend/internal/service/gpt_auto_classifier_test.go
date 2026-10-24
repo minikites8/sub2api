@@ -388,11 +388,11 @@ func gptAutoWarningRules(decision GPTAutoPolicyDecision) []string {
 }
 
 func TestGPTAutoMissingOrUncertainProbabilities(t *testing.T) {
-	cls := *gptAutoSampleClassification(GPTAutoModelGPT56Sol, GPTAutoEffortHigh)
+	cls := *gptAutoSampleClassification(GPTAutoModelGPT61Sol, GPTAutoEffortHigh)
 	cls.ModelProbabilities, cls.EffortProbabilities = nil, nil
 	cls.ModelConfidence, cls.EffortConfidence = 0.3, 0.2
 	decision := EvaluateGPTAutoPolicy(gptAutoPolicyInput(cls, nil))
-	require.Equal(t, GPTAutoModelGPT56Sol, decision.FinalModel, "uncertainty is flagged, never replaced by a guess")
+	require.Equal(t, GPTAutoModelGPT61Sol, decision.FinalModel, "uncertainty is flagged, never replaced by a guess")
 	require.Equal(t, GPTAutoEffortHigh, decision.FinalEffort)
 	require.Equal(t, GPTAutoDecisionAccepted, decision.Status)
 	require.Empty(t, decision.Adjustments)

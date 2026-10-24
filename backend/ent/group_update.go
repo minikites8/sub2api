@@ -1398,6 +1398,20 @@ func (_u *GroupUpdate) SetNillableKiroEndpointMode(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetGptAutoEnabled sets the "gpt_auto_enabled" field.
+func (_u *GroupUpdate) SetGptAutoEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetGptAutoEnabled(v)
+	return _u
+}
+
+// SetNillableGptAutoEnabled sets the "gpt_auto_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableGptAutoEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetGptAutoEnabled(*v)
+	}
+	return _u
+}
+
 // SetProfitControlEnabled sets the "profit_control_enabled" field.
 func (_u *GroupUpdate) SetProfitControlEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetProfitControlEnabled(v)
@@ -2222,6 +2236,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.KiroEndpointMode(); ok {
 		_spec.SetField(group.FieldKiroEndpointMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GptAutoEnabled(); ok {
+		_spec.SetField(group.FieldGptAutoEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ProfitControlEnabled(); ok {
 		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
@@ -3913,6 +3930,20 @@ func (_u *GroupUpdateOne) SetNillableKiroEndpointMode(v *string) *GroupUpdateOne
 	return _u
 }
 
+// SetGptAutoEnabled sets the "gpt_auto_enabled" field.
+func (_u *GroupUpdateOne) SetGptAutoEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetGptAutoEnabled(v)
+	return _u
+}
+
+// SetNillableGptAutoEnabled sets the "gpt_auto_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableGptAutoEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetGptAutoEnabled(*v)
+	}
+	return _u
+}
+
 // SetProfitControlEnabled sets the "profit_control_enabled" field.
 func (_u *GroupUpdateOne) SetProfitControlEnabled(v bool) *GroupUpdateOne {
 	_u.mutation.SetProfitControlEnabled(v)
@@ -4767,6 +4798,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.KiroEndpointMode(); ok {
 		_spec.SetField(group.FieldKiroEndpointMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GptAutoEnabled(); ok {
+		_spec.SetField(group.FieldGptAutoEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ProfitControlEnabled(); ok {
 		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)

@@ -7,19 +7,40 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
-// GPT-Auto Phase 1 operates in shadow mode only: nothing in this file is
-// allowed to influence a live customer request. The identifiers below are the
-// fixed Phase 1 candidate pool.
+// The identifiers below are the GPT-Auto candidate pool. Shadow routing only
+// observes; live routing (gpt_auto_live.go) may resolve the public virtual
+// model GPTAutoVirtualModel to one of them.
 const (
 	GPTAutoModelGPT56Luna = "gpt-5.6-luna"
-	GPTAutoModelGPT56Sol  = "gpt-5.6-sol"
 	GPTAutoModelGPT6Luna  = "gpt-6-luna"
 	GPTAutoModelGPT61Sol  = "gpt-6.1-sol"
+
+	// GPTAutoModelGPT56Sol was a Phase 1 candidate and was removed from the
+	// pool in model pool version GPTAutoModelPoolVersion. It stays a valid
+	// gateway model everywhere else; only GPT-Auto stops recommending it.
+	// Historical decisions and policy snapshots that reference it are kept
+	// verbatim and remain readable and exportable.
+	GPTAutoModelGPT56Sol = "gpt-5.6-sol"
 )
 
-// GPTAutoModelPool is the ordered Phase 1 candidate pool.
+// GPTAutoModelPoolVersion identifies the active candidate pool. Configs
+// stored before it carried four profiles (pool-v1); normalization moves the
+// retired profile aside instead of deleting it (see RetiredModelProfiles).
+const GPTAutoModelPoolVersion = "pool-v2"
+
+// GPTAutoModelPool is the ordered active candidate pool.
 func GPTAutoModelPool() []string {
-	return []string{GPTAutoModelGPT56Luna, GPTAutoModelGPT56Sol, GPTAutoModelGPT6Luna, GPTAutoModelGPT61Sol}
+	return []string{GPTAutoModelGPT56Luna, GPTAutoModelGPT6Luna, GPTAutoModelGPT61Sol}
+}
+
+// GPTAutoRetiredModels are former candidates. They are never eligible, but
+// stored profiles for them are preserved for audit and rollback.
+func GPTAutoRetiredModels() []string {
+	return []string{GPTAutoModelGPT56Sol}
+}
+
+func isGPTAutoRetiredModel(model string) bool {
+	return containsString(GPTAutoRetiredModels(), strings.ToLower(strings.TrimSpace(model)))
 }
 
 // Reasoning effort candidates Jev may choose from.
@@ -50,10 +71,11 @@ func gptAutoEffortRank(effort string) int {
 	return -1
 }
 
-// IsGPTAutoModel reports whether a model id belongs to the Phase 1 pool.
+// IsGPTAutoModel reports whether a model id belongs to the active pool.
+// Retired candidates (GPTAutoRetiredModels) are not members.
 func IsGPTAutoModel(model string) bool {
 	switch strings.ToLower(strings.TrimSpace(model)) {
-	case GPTAutoModelGPT56Luna, GPTAutoModelGPT56Sol, GPTAutoModelGPT6Luna, GPTAutoModelGPT61Sol:
+	case GPTAutoModelGPT56Luna, GPTAutoModelGPT6Luna, GPTAutoModelGPT61Sol:
 		return true
 	default:
 		return false
@@ -104,7 +126,7 @@ func gptAutoModelSupportsEffort(model, effort string) bool {
 }
 
 // gptAutoModelSupportsMaxEffort mirrors supportsOpenAIReasoningEffortMax for
-// the Phase 1 pool. All four models are GPT-5.6/GPT-6 family members, which
+// the pool. All pool models are GPT-5.6/GPT-6 family members, which
 // that function accepts; keeping the check explicit documents the dependency
 // and fails closed if the pool ever grows.
 func gptAutoModelSupportsMaxEffort(model string) bool {

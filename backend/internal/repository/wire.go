@@ -101,6 +101,7 @@ var ProviderSet = wire.NewSet(
 	NewAuditLogRepository,
 	NewGPTAutoShadowRepository,
 	NewGPTAutoBudgetStore,
+	NewGPTAutoAffinityStore,
 	NewPasskeyRepository,
 	NewPasskeySessionStore,
 	NewUserSubscriptionRepository,

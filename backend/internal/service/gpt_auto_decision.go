@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/shopspring/decimal"
 )
 
 // Evaluation statuses persisted on a decision row. Skipped and dropped
@@ -16,12 +17,52 @@ import (
 const (
 	GPTAutoEvaluationSuccess = "success"
 	GPTAutoEvaluationFailed  = "failed"
+	// GPTAutoEvaluationSkipped: live rows routed without a Jev call
+	// (session affinity) or rejected before classification.
+	GPTAutoEvaluationSkipped = "skipped"
 )
 
-// GPTAutoShadowDecision is one persisted shadow evaluation.
+// Decision modes. Shadow rows describe hypothetical recommendations for a
+// request that ran unchanged; live rows describe a gpt-auto request that was
+// actually executed on FinalModel/FinalEffort.
+const (
+	GPTAutoModeShadow = "shadow"
+	GPTAutoModeLive   = "live"
+)
+
+// Live request statuses (RequestStatus). Shadow rows leave it empty.
+const (
+	GPTAutoRequestSucceeded = "succeeded"
+	GPTAutoRequestFailed    = "failed"
+	GPTAutoRequestRejected  = "rejected"
+	GPTAutoRequestCancelled = "client_cancelled"
+)
+
+// Live routing reasons (RoutingReason).
+const (
+	GPTAutoRouteClassified = "classified"
+	GPTAutoRouteAffinity   = "session_affinity"
+	GPTAutoRouteFallback   = "fallback"
+)
+
+// Session-affinity outcomes (AffinityOutcome).
+const (
+	GPTAutoAffinityDisabled    = "disabled"
+	GPTAutoAffinityNone        = "no_session"
+	GPTAutoAffinityHit         = "hit"
+	GPTAutoAffinityMiss        = "miss"
+	GPTAutoAffinityBroken      = "broken"
+	GPTAutoAffinityUnavailable = "store_unavailable"
+)
+
+// GPTAutoShadowDecision is one persisted GPT-Auto decision: a shadow
+// evaluation (Mode shadow, or empty on rows written before Phase 2) or a live
+// routing decision (Mode live).
 type GPTAutoShadowDecision struct {
 	ID        int64     `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
+	// Mode is shadow or live. Rows written before Phase 2 read as shadow.
+	Mode string `json:"mode"`
 
 	RequestID string `json:"request_id"`
 	UserID    *int64 `json:"user_id,omitempty"`
@@ -76,6 +117,37 @@ type GPTAutoShadowDecision struct {
 	// criteria, model descriptions, state format). Empty on rows classified
 	// before versioning, which used the v1 hard-coded questions.
 	ClassifierConfigHash string `json:"classifier_config_hash"`
+
+	// Live routing outcome. Empty/nil on shadow rows. Customer charges and
+	// upstream costs are not duplicated here: usage_logs (joined on
+	// request_id) stays the financial source of truth.
+	RoutingReason     string   `json:"routing_reason,omitempty"`
+	FallbackReason    string   `json:"fallback_reason,omitempty"`
+	AffinityOutcome   string   `json:"affinity_outcome,omitempty"`
+	ServedModel       string   `json:"served_model,omitempty"`
+	UpstreamAccountID *int64   `json:"upstream_account_id,omitempty"`
+	RequestStatus     string   `json:"request_status,omitempty"`
+	HTTPStatus        *int     `json:"http_status,omitempty"`
+	ErrorCategory     string   `json:"error_category,omitempty"`
+	RetryCount        int      `json:"retry_count"`
+	GatewayLatencyMS  *int     `json:"gateway_latency_ms,omitempty"`
+	UpstreamTTFTMS    *int     `json:"upstream_ttft_ms,omitempty"`
+	TotalLatencyMS    *int     `json:"total_latency_ms,omitempty"`
+	BillingMultiplier *float64 `json:"billing_multiplier,omitempty"`
+	RoutingWeight     *int     `json:"routing_weight,omitempty"`
+	StateVersion      string   `json:"state_version,omitempty"`
+	ClassifierSchema  string   `json:"classifier_schema,omitempty"`
+
+	// Pricing snapshot captured before execution (Phase 2.1; empty on older
+	// rows). The charge itself stays in usage_logs.actual_cost.
+	PricingModel            string           `json:"pricing_model,omitempty"`
+	PricingMode             string           `json:"pricing_mode,omitempty"`
+	PricingConfigVersion    *int             `json:"pricing_config_version,omitempty"`
+	PricingSource           string           `json:"pricing_source,omitempty"`
+	TariffInputPerMTok      *decimal.Decimal `json:"tariff_input_per_mtok,omitempty"`
+	TariffCachedPerMTok     *decimal.Decimal `json:"tariff_cached_input_per_mtok,omitempty"`
+	TariffOutputPerMTok     *decimal.Decimal `json:"tariff_output_per_mtok,omitempty"`
+	TariffCacheWritePerMTok *decimal.Decimal `json:"tariff_cache_write_per_mtok,omitempty"`
 
 	Features       GPTAutoRequestFeatures `json:"features"`
 	Classification *GPTAutoClassification `json:"classification,omitempty"`
@@ -145,6 +217,11 @@ type GPTAutoDecisionFilter struct {
 	DecisionStatus   string
 	GroupID          *int64
 	RequestID        string
+	// Mode filters shadow or live rows; empty means both.
+	Mode string
+	// UserID scopes the log to one owner (customer self-service). Always set
+	// by the server from the authenticated identity, never from input.
+	UserID *int64
 }
 
 // GPTAutoStatsFilter scopes dashboard statistics.
@@ -152,6 +229,8 @@ type GPTAutoStatsFilter struct {
 	StartTime time.Time
 	EndTime   time.Time
 	GroupID   *int64
+	// Mode restricts statistics to shadow or live rows; empty means both.
+	Mode string
 }
 
 // GPTAutoCount is one bucket of a distribution.

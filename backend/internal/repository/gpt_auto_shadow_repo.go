@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+	"github.com/shopspring/decimal"
 )
 
 // gptAutoShadowRepository stores GPT-Auto shadow decisions (raw SQL,
@@ -31,7 +32,29 @@ jev_model, jev_effort, final_model, final_effort, complexity, category, model_co
 effort_confidence, classifier_model, classifier_input_tokens, classifier_output_tokens,
 classifier_cost, classifier_latency_ms, queue_delay_ms, attempts, est_revenue, est_upstream_cost,
 est_gross_profit, est_gross_margin, margin_below_target, policy_version, policy_snapshot_hash,
-classifier_config_hash, est_model_gross_margin, model_margin_below_target, estimate_quality`
+classifier_config_hash, est_model_gross_margin, model_margin_below_target, estimate_quality,
+mode, routing_reason, fallback_reason, affinity_outcome, served_model, upstream_account_id,
+request_status, http_status, error_category, retry_count, gateway_latency_ms, upstream_ttft_ms,
+total_latency_ms, billing_multiplier::float8, routing_weight, state_version, classifier_schema,
+pricing_model, pricing_mode, pricing_config_version, pricing_source, tariff_input_per_mtok,
+tariff_cached_per_mtok, tariff_output_per_mtok, tariff_cache_write_per_mtok`
+
+func gptAutoModeOrShadow(mode string) string {
+	if mode == service.GPTAutoModeLive {
+		return service.GPTAutoModeLive
+	}
+	return service.GPTAutoModeShadow
+}
+
+func gptAutoClampSmallint(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > 32767 {
+		return 32767
+	}
+	return value
+}
 
 func truncateGPTAuto(value string, max int) string {
 	if len(value) <= max {
@@ -76,10 +99,17 @@ INSERT INTO gpt_auto_shadow_decisions (
   classifier_latency_ms, queue_delay_ms, attempts, est_revenue, est_upstream_cost,
   est_gross_profit, est_gross_margin, margin_below_target, policy_version, policy_snapshot_hash,
   features, classification, decision,
-  classifier_config_hash, est_model_gross_margin, model_margin_below_target, estimate_quality
+  classifier_config_hash, est_model_gross_margin, model_margin_below_target, estimate_quality,
+  mode, routing_reason, fallback_reason, affinity_outcome, served_model, upstream_account_id,
+  request_status, http_status, error_category, retry_count, gateway_latency_ms, upstream_ttft_ms,
+  total_latency_ms, billing_multiplier, routing_weight, state_version, classifier_schema,
+  pricing_model, pricing_mode, pricing_config_version, pricing_source, tariff_input_per_mtok,
+  tariff_cached_per_mtok, tariff_output_per_mtok, tariff_cache_write_per_mtok
 ) VALUES (
   $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
-  $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36::jsonb,$37::jsonb,$38::jsonb,$39,$40,$41,$42
+  $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36::jsonb,$37::jsonb,$38::jsonb,$39,$40,$41,$42,
+  $43,$44,$45,$46,$47,$48,$49,$50,$51,$52,$53,$54,$55,$56,$57,$58,$59,
+  $60,$61,$62,$63,$64,$65,$66,$67
 ) RETURNING id`,
 		createdAt,
 		truncateGPTAuto(d.RequestID, 128),
@@ -107,6 +137,26 @@ INSERT INTO gpt_auto_shadow_decisions (
 		string(features), classification, decision,
 		truncateGPTAuto(d.ClassifierConfigHash, 64), d.EstModelGrossMargin, d.ModelMarginBelowTarget,
 		truncateGPTAuto(d.EstimateQuality, 32),
+		gptAutoModeOrShadow(d.Mode),
+		truncateGPTAuto(d.RoutingReason, 32),
+		truncateGPTAuto(d.FallbackReason, 64),
+		truncateGPTAuto(d.AffinityOutcome, 32),
+		truncateGPTAuto(d.ServedModel, 128),
+		d.UpstreamAccountID,
+		truncateGPTAuto(d.RequestStatus, 32),
+		d.HTTPStatus,
+		truncateGPTAuto(d.ErrorCategory, 64),
+		gptAutoClampSmallint(d.RetryCount),
+		d.GatewayLatencyMS, d.UpstreamTTFTMS, d.TotalLatencyMS,
+		d.BillingMultiplier, d.RoutingWeight,
+		truncateGPTAuto(d.StateVersion, 32),
+		truncateGPTAuto(d.ClassifierSchema, 32),
+		truncateGPTAuto(d.PricingModel, 64),
+		truncateGPTAuto(d.PricingMode, 48),
+		d.PricingConfigVersion,
+		truncateGPTAuto(d.PricingSource, 32),
+		gptAutoDecimalArg(d.TariffInputPerMTok), gptAutoDecimalArg(d.TariffCachedPerMTok),
+		gptAutoDecimalArg(d.TariffOutputPerMTok), gptAutoDecimalArg(d.TariffCacheWritePerMTok),
 	).Scan(&d.ID)
 }
 
@@ -208,11 +258,17 @@ type gptAutoRowScanner interface {
 
 func scanGPTAutoDecision(row gptAutoRowScanner, extra ...any) (*service.GPTAutoShadowDecision, error) {
 	var (
-		d                                         service.GPTAutoShadowDecision
-		userID, apiKeyID, groupID                 sql.NullInt64
-		complexity, modelConf, effortConf, margin sql.NullFloat64
-		revenue, upstreamCost, grossProfit        sql.NullFloat64
-		modelMargin                               sql.NullFloat64
+		d                                          service.GPTAutoShadowDecision
+		userID, apiKeyID, groupID                  sql.NullInt64
+		complexity, modelConf, effortConf, margin  sql.NullFloat64
+		revenue, upstreamCost, grossProfit         sql.NullFloat64
+		modelMargin                                sql.NullFloat64
+		accountID                                  sql.NullInt64
+		httpStatus, gatewayMS, ttftMS, totalMS     sql.NullInt64
+		billingMultiplier                          sql.NullFloat64
+		routingWeight                              sql.NullInt64
+		pricingVersion                             sql.NullInt64
+		tariffIn, tariffCached, tariffOut, tariffW decimal.NullDecimal
 	)
 	dest := []any{
 		&d.ID, &d.CreatedAt, &d.RequestID, &userID, &apiKeyID, &groupID, &d.Endpoint,
@@ -223,6 +279,11 @@ func scanGPTAutoDecision(row gptAutoRowScanner, extra ...any) (*service.GPTAutoS
 		&d.Attempts, &revenue, &upstreamCost, &grossProfit, &margin, &d.MarginBelowTarget,
 		&d.PolicyVersion, &d.PolicySnapshotHash,
 		&d.ClassifierConfigHash, &modelMargin, &d.ModelMarginBelowTarget, &d.EstimateQuality,
+		&d.Mode, &d.RoutingReason, &d.FallbackReason, &d.AffinityOutcome, &d.ServedModel, &accountID,
+		&d.RequestStatus, &httpStatus, &d.ErrorCategory, &d.RetryCount, &gatewayMS, &ttftMS,
+		&totalMS, &billingMultiplier, &routingWeight, &d.StateVersion, &d.ClassifierSchema,
+		&d.PricingModel, &d.PricingMode, &pricingVersion, &d.PricingSource,
+		&tariffIn, &tariffCached, &tariffOut, &tariffW,
 	}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -239,8 +300,43 @@ func scanGPTAutoDecision(row gptAutoRowScanner, extra ...any) (*service.GPTAutoS
 	d.EstGrossProfit = nullFloat64Ptr(grossProfit)
 	d.EstGrossMargin = nullFloat64Ptr(margin)
 	d.EstModelGrossMargin = nullFloat64Ptr(modelMargin)
+	d.UpstreamAccountID = gptAutoNullInt64(accountID)
+	d.HTTPStatus = gptAutoNullInt(httpStatus)
+	d.GatewayLatencyMS = gptAutoNullInt(gatewayMS)
+	d.UpstreamTTFTMS = gptAutoNullInt(ttftMS)
+	d.TotalLatencyMS = gptAutoNullInt(totalMS)
+	d.BillingMultiplier = nullFloat64Ptr(billingMultiplier)
+	d.RoutingWeight = gptAutoNullInt(routingWeight)
+	d.PricingConfigVersion = gptAutoNullInt(pricingVersion)
+	d.TariffInputPerMTok = gptAutoNullDecimal(tariffIn)
+	d.TariffCachedPerMTok = gptAutoNullDecimal(tariffCached)
+	d.TariffOutputPerMTok = gptAutoNullDecimal(tariffOut)
+	d.TariffCacheWritePerMTok = gptAutoNullDecimal(tariffW)
 	d.CreatedAt = d.CreatedAt.UTC()
 	return &d, nil
+}
+
+func gptAutoDecimalArg(value *decimal.Decimal) any {
+	if value == nil {
+		return nil
+	}
+	return value.String()
+}
+
+func gptAutoNullDecimal(value decimal.NullDecimal) *decimal.Decimal {
+	if !value.Valid {
+		return nil
+	}
+	out := value.Decimal
+	return &out
+}
+
+func gptAutoNullInt(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+	out := int(value.Int64)
+	return &out
 }
 
 func gptAutoNullInt64(value sql.NullInt64) *int64 {
@@ -326,6 +422,12 @@ func (r *gptAutoShadowRepository) List(ctx context.Context, filter service.GPTAu
 	if filter.RequestID != "" {
 		where.add("request_id = $%d", filter.RequestID)
 	}
+	if filter.Mode != "" {
+		where.add("mode = $%d", filter.Mode)
+	}
+	if filter.UserID != nil {
+		where.add("user_id = $%d", *filter.UserID)
+	}
 
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gpt_auto_shadow_decisions`+where.sql(), where.args...).Scan(&total); err != nil {
@@ -360,6 +462,9 @@ func (r *gptAutoShadowRepository) Stats(ctx context.Context, filter service.GPTA
 	where.add("created_at < $%d", filter.EndTime)
 	if filter.GroupID != nil {
 		where.add("group_id = $%d", *filter.GroupID)
+	}
+	if filter.Mode != "" {
+		where.add("mode = $%d", filter.Mode)
 	}
 	base := ` FROM gpt_auto_shadow_decisions` + where.sql()
 	stats := &service.GPTAutoStoredStats{}

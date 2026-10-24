@@ -36,7 +36,8 @@ func TestGPTAutoMigrationUpgradeFromPreviousSchema(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	const target = "278_gpt_auto_shadow_decisions.sql"
-	gptAutoMigrations := map[string]bool{target: true, "279_gpt_auto_classifier_versioning.sql": true}
+	gptAutoMigrations := map[string]bool{target: true, "279_gpt_auto_classifier_versioning.sql": true,
+		"280_gpt_auto_live_routing.sql": true, gptAutoLiveIndexesMigration: true, "282_gpt_auto_independent_pricing.sql": true}
 	previous := fstest.MapFS{}
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)

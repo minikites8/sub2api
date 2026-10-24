@@ -772,6 +772,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ProfitControlEnabled:            profitControlEnabled,
 		ProfitMinMargin:                 profitMinMargin,
 		ProfitSafetyBuffer:              profitSafetyBuffer,
+		GPTAutoEnabled:                  input.GPTAutoEnabled && platform == PlatformOpenAI,
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
@@ -1110,6 +1111,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.ProfitControlEnabled != nil {
 		group.ProfitControlEnabled = *input.ProfitControlEnabled
+	}
+	if input.GPTAutoEnabled != nil {
+		group.GPTAutoEnabled = *input.GPTAutoEnabled
+	}
+	// gpt-auto is an OpenAI-compatible virtual model; other platforms can
+	// never serve it, so the switch is stored off for them.
+	if group.Platform != PlatformOpenAI {
+		group.GPTAutoEnabled = false
 	}
 	if input.ProfitMinMargin != nil {
 		group.ProfitMinMargin = *input.ProfitMinMargin

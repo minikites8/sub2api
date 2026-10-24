@@ -99,6 +99,10 @@ type gptAutoTestRepo struct {
 	inserted  chan struct{}
 	// classifierConfigs records every UpsertClassifierConfig call in order.
 	classifierConfigs []GPTAutoClassifierConfigRecord
+	// Export fakes (gpt_auto_export_test.go).
+	exportFilters []GPTAutoExportFilter
+	exportUsage   map[GPTAutoExportUsageKey]*GPTAutoExportUsage
+	audits        []GPTAutoExportAudit
 }
 
 func newGPTAutoTestRepo() *gptAutoTestRepo {
@@ -310,7 +314,9 @@ func TestGPTAutoDefaultConfigIsSafe(t *testing.T) {
 	require.False(t, cfg.ShadowEnabled)
 	require.Zero(t, cfg.SampleRate)
 	require.Equal(t, typesafe.JevLatestModel, cfg.ClassifierModel)
-	require.Len(t, cfg.ModelProfiles, 4)
+	require.Len(t, cfg.ModelProfiles, 3)
+	require.False(t, cfg.Live.Enabled, "live routing must be off by default")
+	require.True(t, cfg.Live.InternalOnly, "live routing must be internal-only by default")
 }
 
 func TestGPTAutoShadowDisabledMakesNoClassifierCalls(t *testing.T) {
@@ -663,7 +669,7 @@ func TestGPTAutoConfigValidation(t *testing.T) {
 		"unsupported model":      func(c *GPTAutoShadowConfig) { c.ModelProfiles[0].Model = "gpt-9" },
 		"duplicate model":        func(c *GPTAutoShadowConfig) { c.ModelProfiles[1].Model = c.ModelProfiles[0].Model },
 		"unknown effort":         func(c *GPTAutoShadowConfig) { c.ModelProfiles[0].SupportedEfforts = []string{"ultra"} },
-		"effort model can't run": func(c *GPTAutoShadowConfig) { c.ModelProfiles[3].SupportedEfforts = []string{"none"} },
+		"effort model can't run": func(c *GPTAutoShadowConfig) { c.ModelProfiles[2].SupportedEfforts = []string{"none"} },
 		"margin of 100%":         func(c *GPTAutoShadowConfig) { c.GlobalMinMargin = 1 },
 		"negative upstream cost": func(c *GPTAutoShadowConfig) {
 			c.ModelProfiles[0].UpstreamCosts = []GPTAutoUpstreamCost{{Channel: "a", InputPerM: -1}}

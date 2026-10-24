@@ -1,11 +1,17 @@
 import { apiClient } from '../client'
 
-// GPT-Auto Phase 1: shadow observation only. Nothing here changes live routing
-// or billing.
+// GPT-Auto admin API. Shadow observation never changes routing or billing;
+// live routing of the gpt-auto virtual model is configured under `live` and is
+// disabled and internal-only by default.
 
 export type GPTAutoEndpoint = 'chat_completions' | 'responses'
 export type GPTAutoContextStrategy = 'task_aware' | 'recent_turns'
-export type GPTAutoEvaluationStatus = 'success' | 'failed'
+export type GPTAutoEvaluationStatus = 'success' | 'failed' | 'skipped'
+export type GPTAutoMode = 'shadow' | 'live'
+export type GPTAutoRequestStatus = 'succeeded' | 'failed' | 'rejected' | 'client_cancelled'
+export type GPTAutoFailurePolicy = 'compatible_fallback' | 'reject_request'
+export type GPTAutoClientEffortPolicy = 'jev' | 'honor_client'
+export type GPTAutoExportFormat = 'csv' | 'jsonl'
 export type GPTAutoDecisionStatus = 'accepted' | 'adjusted' | 'no_eligible_candidate'
 
 export interface GPTAutoUpstreamCost {
@@ -27,6 +33,37 @@ export interface GPTAutoModelProfile {
   endpoints?: GPTAutoEndpoint[]
   min_margin?: number | null
   upstream_costs?: GPTAutoUpstreamCost[]
+  capabilities?: GPTAutoModelCapabilities
+}
+
+export interface GPTAutoModelCapabilities {
+  vision: boolean
+  structured_outputs: boolean
+  stateful_responses: boolean
+  /** 0 = not enforced. */
+  max_context_tokens: number
+}
+
+/** Phase 2 live routing of the gpt-auto virtual model. */
+export interface GPTAutoLiveConfig {
+  live_enabled: boolean
+  internal_only: boolean
+  allowed_groups: number[] | null
+  allowed_api_keys: number[] | null
+  endpoints: GPTAutoEndpoint[]
+  classifier_timeout_ms: number
+  classifier_max_concurrency: number
+  classifier_retry_count: number
+  classifier_failure_policy: GPTAutoFailurePolicy
+  fallback_model: string
+  fallback_effort: string
+  client_effort_policy: GPTAutoClientEffortPolicy
+  session_affinity_enabled: boolean
+  session_affinity_ttl_seconds: number
+  margin_guard_enabled: boolean
+  apply_billing_multiplier: boolean
+  live_request_budget: number
+  customer_export_enabled: boolean
 }
 
 export interface GPTAutoConfig {
@@ -57,6 +94,10 @@ export interface GPTAutoConfig {
   policy_version: string
   /** Read-only here: edited through the classifier endpoint. */
   classifier_instructions?: GPTAutoClassifierInstructions
+  model_pool_version?: string
+  /** Profiles of models removed from the pool; kept for audit, never routed to. */
+  retired_model_profiles?: GPTAutoModelProfile[]
+  live?: GPTAutoLiveConfig
   classifier_api_key_configured: boolean
   classifier_api_key_masked: string
 }
@@ -78,6 +119,13 @@ export interface GPTAutoMeta {
   state_version?: string
   diagnostics_version?: string
   context_strategies?: GPTAutoContextStrategy[]
+  virtual_model?: string
+  model_pool_version?: string
+  retired_models?: string[]
+  failure_policies?: GPTAutoFailurePolicy[]
+  client_effort_policies?: GPTAutoClientEffortPolicy[]
+  export_schema_version?: string
+  config_cache_ttl_seconds?: number
   benchmark_samples?: GPTAutoBenchmarkSample[]
   phase: string
   live_routing_active: boolean
@@ -150,6 +198,22 @@ export interface GPTAutoRuntimeStatus {
   recent_p95_ms?: number
   recent_latency_samples: number
   excluded_endpoints: string[]
+  live?: GPTAutoLiveRuntimeStatus
+}
+
+/** This node's live-routing state. */
+export interface GPTAutoLiveRuntimeStatus {
+  enabled: boolean
+  internal_only: boolean
+  circuit_state: 'closed' | 'open' | 'half_open'
+  active_calls: number
+  persist_queue_length: number
+  today_live_requests?: number
+  daily_budget: number
+  failure_policy: GPTAutoFailurePolicy
+  session_affinity_enabled: boolean
+  margin_guard_enabled: boolean
+  apply_billing_multiplier: boolean
 }
 
 export interface GPTAutoOverview {
@@ -278,6 +342,28 @@ export interface GPTAutoPolicyDecision {
 export interface GPTAutoDecision {
   id: number
   created_at: string
+  /** Rows written before Phase 2 read as shadow. */
+  mode?: GPTAutoMode
+  routing_reason?: string
+  fallback_reason?: string
+  affinity_outcome?: string
+  served_model?: string
+  upstream_account_id?: number
+  request_status?: GPTAutoRequestStatus | ''
+  http_status?: number
+  error_category?: string
+  retry_count?: number
+  gateway_latency_ms?: number
+  upstream_ttft_ms?: number
+  total_latency_ms?: number
+  pricing_model?: string
+  pricing_mode?: string
+  pricing_config_version?: number
+  pricing_source?: string
+  billing_multiplier?: number
+  routing_weight?: number
+  state_version?: string
+  classifier_schema?: string
   request_id: string
   user_id?: number
   api_key_id?: number
@@ -353,6 +439,56 @@ export interface ListGPTAutoDecisionsParams {
   decision_status?: GPTAutoDecisionStatus | ''
   group_id?: number
   request_id?: string
+  mode?: GPTAutoMode | ''
+}
+
+/** Server-side export filters (admin). Every filter is applied by the backend. */
+export interface GPTAutoExportParams {
+  format: GPTAutoExportFormat
+  start_time: string
+  end_time: string
+  mode?: GPTAutoMode | ''
+  group_id?: number
+  requested_model?: string
+  jev_model?: string
+  final_model?: string
+  final_effort?: string
+  task_category?: string
+  complexity_min?: number
+  complexity_max?: number
+  confidence_min?: number
+  confidence_max?: number
+  request_status?: GPTAutoRequestStatus | ''
+  evaluation_status?: GPTAutoEvaluationStatus | ''
+  fallback_only?: boolean
+  upstream_account_id?: number
+  classifier_schema?: string
+  state_version?: string
+  policy_version?: string
+}
+
+/** Initial values of the export dialog, taken from the decision log filters. */
+export interface GPTAutoExportPreset {
+  start: Date
+  end: Date
+  mode?: GPTAutoMode | ''
+  final_model?: string
+  final_effort?: string
+  evaluation_status?: string
+  group_id?: number
+}
+
+export interface GPTAutoExportSummary {
+  rows: number
+  truncated: boolean
+  max_rows: number
+}
+
+export interface GPTAutoExportFile {
+  blob: Blob
+  filename: string
+  rows: number | null
+  truncated: boolean
 }
 
 export interface GPTAutoDecisionsResponse {
@@ -658,7 +794,7 @@ export async function updateConfig(payload: UpdateGPTAutoConfig): Promise<GPTAut
   return data
 }
 
-export async function getOverview(params: { start_time?: string; end_time?: string; group_id?: number } = {}): Promise<GPTAutoOverview> {
+export async function getOverview(params: { start_time?: string; end_time?: string; group_id?: number; mode?: GPTAutoMode } = {}): Promise<GPTAutoOverview> {
   const { data } = await apiClient.get<GPTAutoOverview>(`${base}/overview`, { params })
   return data
 }
@@ -716,7 +852,39 @@ export async function debugState(payload: GPTAutoDebugInput): Promise<GPTAutoDeb
   return data
 }
 
+export function cleanGPTAutoParams<T extends object>(params: T): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null && value !== false))
+}
+
+/** Reads the server-chosen file name from Content-Disposition. */
+export function gptAutoExportFilename(disposition: string | undefined, fallback: string): string {
+  const match = /filename="([^"]+)"/.exec(disposition ?? '')
+  return match ? match[1] : fallback
+}
+
+export async function countExport(params: Omit<GPTAutoExportParams, 'format'>): Promise<GPTAutoExportSummary> {
+  const { data } = await apiClient.get<GPTAutoExportSummary>(`${base}/decisions/export/count`, { params: cleanGPTAutoParams(params) })
+  return data
+}
+
+/** Streams the export from the server; the page never assembles rows itself. */
+export async function exportDecisions(params: GPTAutoExportParams): Promise<GPTAutoExportFile> {
+  const response = await apiClient.get(`${base}/decisions/export`, {
+    params: cleanGPTAutoParams(params),
+    responseType: 'blob',
+    timeout: 11 * 60 * 1000,
+  })
+  return {
+    blob: response.data as Blob,
+    filename: gptAutoExportFilename(response.headers?.['content-disposition'], `gpt-auto-routing-admin.${params.format}`),
+    rows: null,
+    truncated: false,
+  }
+}
+
 export const gptAutoAPI = {
+  countExport,
+  exportDecisions,
   getMeta,
   getConfig,
   updateConfig,
@@ -734,3 +902,39 @@ export const gptAutoAPI = {
 }
 
 export default gptAutoAPI
+
+export interface GPTAutoPricing {
+  mode: 'legacy_executed_model_multiplier' | 'virtual_model_fixed_rates'
+  input_price_per_mtok: string | null
+  cached_input_price_per_mtok: string | null
+  output_price_per_mtok: string | null
+  cache_write_price_per_mtok: string | null
+  version: number
+  updated_at?: string
+}
+export interface GPTAutoGroupPrice {
+  group_id: number; name: string; gpt_auto_enabled: boolean; pricing_source: string
+  rate_multiplier: number; effective_input_price_per_mtok?: string
+  effective_cached_input_price_per_mtok?: string; effective_output_price_per_mtok?: string
+  operational: boolean; requires_key_allowlist: boolean; excluded_by_rollout: boolean
+  model_allowlist_blocks_gpt_auto: boolean
+}
+export interface GPTAutoPricingState {
+  pricing: GPTAutoPricing; ready: boolean; live_enabled: boolean; internal_only: boolean
+  groups: GPTAutoGroupPrice[]
+}
+export interface GPTAutoPriceSimulation {
+  pricing_source: string; rate_multiplier: number; warnings: string[]
+  rows: { model: string; customer_charge_usd: string; estimated_upstream_cost_usd?: string
+    estimated_classifier_cost_usd: string; gross_profit_usd?: string; fully_loaded_profit_usd?: string
+    gross_margin?: number; fully_loaded_margin?: number }[]
+}
+export async function getPricing(): Promise<GPTAutoPricingState> {
+  return (await apiClient.get<GPTAutoPricingState>(`${base}/pricing`)).data
+}
+export async function savePricing(pricing: GPTAutoPricing, expected_version: number): Promise<GPTAutoPricingState> {
+  return (await apiClient.put<GPTAutoPricingState>(`${base}/pricing`, { pricing, expected_version, confirm: true })).data
+}
+export async function simulatePricing(payload: { pricing: GPTAutoPricing; group_id?: number; input_tokens: number; cached_input_tokens: number; output_tokens: number; executed_model: string }): Promise<GPTAutoPriceSimulation> {
+  return (await apiClient.post<GPTAutoPriceSimulation>(`${base}/pricing/simulate`, payload)).data
+}

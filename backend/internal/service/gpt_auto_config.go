@@ -12,12 +12,18 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/tidwall/gjson"
 )
 
 // GPTAutoPolicyVersionDefault identifies the shipped policy rule set. Stored on
 // every decision row so historical decisions stay reproducible after the rules
-// or weights change.
-const GPTAutoPolicyVersionDefault = "shadow-v1"
+// or weights change. auto-v2 is the three-model pool with live-routing
+// constraints; shadow-v1 was the four-model Phase 1 pool.
+const GPTAutoPolicyVersionDefault = "auto-v2"
+
+// gptAutoLegacyPolicyVersion is the Phase 1 default. A stored config still on
+// it was never customised and is moved to the current default on read.
+const gptAutoLegacyPolicyVersion = "shadow-v1"
 
 // Inbound endpoints the shadow observer supports. Streaming is irrelevant here
 // because the observer never touches the response, but endpoints whose request
@@ -86,6 +92,9 @@ type GPTAutoModelProfile struct {
 	// enabled channel becomes the preferred hypothetical channel. When empty,
 	// the estimate assumes procurement at the pricing-table list price.
 	UpstreamCosts []GPTAutoUpstreamCost `json:"upstream_costs,omitempty"`
+	// Capabilities are the live-routing request constraints for this model.
+	// Nil on profiles stored before Phase 2; normalization fills defaults.
+	Capabilities *GPTAutoModelCapabilities `json:"capabilities,omitempty"`
 }
 
 // GPTAutoShadowConfig is persisted as one JSON document under
@@ -142,6 +151,22 @@ type GPTAutoShadowConfig struct {
 	// edited through their own admin endpoint (versioned and audited); the
 	// general config update preserves the stored value.
 	ClassifierInstructions GPTAutoClassifierInstructions `json:"classifier_instructions"`
+
+	// ModelPoolVersion records which candidate pool the stored profiles were
+	// normalized against (GPTAutoModelPoolVersion).
+	ModelPoolVersion string `json:"model_pool_version"`
+	// RetiredModelProfiles keeps the last stored profile of every model removed
+	// from the pool, untouched, for audit and rollback. Never routed to.
+	RetiredModelProfiles []GPTAutoModelProfile `json:"retired_model_profiles,omitempty"`
+
+	// Live controls Phase 2 live routing of the public virtual model. It is
+	// disabled and internal-only by default.
+	Live GPTAutoLiveConfig `json:"live"`
+
+	// Pricing is the gpt-auto retail tariff (Phase 2.1). Edited through its
+	// own admin endpoint; the general update preserves it.
+	Pricing     GPTAutoPricingConfig `json:"pricing"`
+	StoredValue *string              `json:"-"`
 }
 
 // Bounds. Validation rejects anything outside these; normalization clamps.
@@ -201,7 +226,6 @@ func DefaultGPTAutoModelProfiles() []GPTAutoModelProfile {
 		weight     int
 	}{
 		GPTAutoModelGPT56Luna: {1.20, 60},
-		GPTAutoModelGPT56Sol:  {1.40, 55},
 		GPTAutoModelGPT6Luna:  {1.10, 100},
 		GPTAutoModelGPT61Sol:  {1.50, 90},
 	}
@@ -215,6 +239,7 @@ func DefaultGPTAutoModelProfiles() []GPTAutoModelProfile {
 			RoutingWeight:     seed[model].weight,
 			SupportedEfforts:  gptAutoNativeSupportedEfforts(model),
 			SupportsTools:     true,
+			Capabilities:      DefaultGPTAutoModelCapabilities(),
 		})
 	}
 	return profiles
@@ -230,8 +255,6 @@ func gptAutoDefaultModelDescription(model string) string {
 	switch model {
 	case GPTAutoModelGPT56Luna:
 		return "GPT-5.6 generation, Luna tier: efficient previous-generation model. Suitable for simple, well-scoped requests such as short answers, rewrites and small edits."
-	case GPTAutoModelGPT56Sol:
-		return "GPT-5.6 generation, Sol tier: high-capability previous-generation model for demanding reasoning, analysis and engineering that a Luna model would likely get wrong."
 	case GPTAutoModelGPT6Luna:
 		return "GPT-6 generation, Luna tier: efficient current-generation model. The default fit for everyday questions, writing, routine and well-scoped coding, and standard analysis."
 	case GPTAutoModelGPT61Sol:
@@ -282,6 +305,9 @@ func DefaultGPTAutoShadowConfig() *GPTAutoShadowConfig {
 		ModelProfiles:                 DefaultGPTAutoModelProfiles(),
 		PolicyVersion:                 GPTAutoPolicyVersionDefault,
 		ClassifierInstructions:        DefaultGPTAutoClassifierInstructions(),
+		ModelPoolVersion:              GPTAutoModelPoolVersion,
+		Live:                          DefaultGPTAutoLiveConfig(),
+		Pricing:                       DefaultGPTAutoPricingConfig(),
 	}
 }
 
@@ -317,11 +343,15 @@ func normalizeGPTAutoShadowConfig(cfg *GPTAutoShadowConfig) {
 		cfg.ClassifierBaseURL = typesafe.DefaultBaseURL
 	}
 	cfg.ClassifierAPIKey = strings.TrimSpace(cfg.ClassifierAPIKey)
-	if strings.TrimSpace(cfg.PolicyVersion) == "" {
+	if strings.TrimSpace(cfg.PolicyVersion) == "" || cfg.PolicyVersion == gptAutoLegacyPolicyVersion {
 		cfg.PolicyVersion = GPTAutoPolicyVersionDefault
 	}
 	cfg.Endpoints = normalizeGPTAutoEndpoints(cfg.Endpoints)
+	cfg.RetiredModelProfiles = retireGPTAutoModelProfiles(cfg.ModelProfiles, cfg.RetiredModelProfiles)
 	cfg.ModelProfiles = normalizeGPTAutoModelProfiles(cfg.ModelProfiles)
+	cfg.ModelPoolVersion = GPTAutoModelPoolVersion
+	normalizeGPTAutoLiveConfig(&cfg.Live)
+	normalizeGPTAutoPricingConfig(&cfg.Pricing)
 	normalizeGPTAutoClassifierInstructions(&cfg.ClassifierInstructions)
 }
 
@@ -391,6 +421,7 @@ func normalizeGPTAutoModelProfiles(in []GPTAutoModelProfile) []GPTAutoModelProfi
 			costs = append(costs, cost)
 		}
 		profile.UpstreamCosts = costs
+		profile.Capabilities = normalizeGPTAutoModelCapabilities(profile.Capabilities)
 		out = append(out, profile)
 	}
 	return out
@@ -509,9 +540,18 @@ func ValidateGPTAutoShadowConfig(cfg *GPTAutoShadowConfig) error {
 	if !cfg.AllGroups && len(cfg.GroupIDs) == 0 {
 		return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", "select at least one group or enable all_groups")
 	}
+	if err := ValidateGPTAutoPricingConfig(cfg.Pricing); err != nil {
+		return err
+	}
+	if err := ValidateGPTAutoLiveConfig(cfg.Live); err != nil {
+		return err
+	}
 	seen := make(map[string]struct{}, len(cfg.ModelProfiles))
 	for _, profile := range cfg.ModelProfiles {
 		model := strings.ToLower(strings.TrimSpace(profile.Model))
+		if isGPTAutoRetiredModel(model) {
+			return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", model+" has been retired from the GPT Auto pool; reload the page")
+		}
 		if !IsGPTAutoModel(model) {
 			return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", "unsupported model: "+profile.Model)
 		}
@@ -593,11 +633,16 @@ func (s *SettingService) GetGPTAutoShadowConfig(ctx context.Context) (*GPTAutoSh
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyGPTAutoShadowConfig)
 	if err != nil {
 		if errors.Is(err, ErrSettingNotFound) {
-			return DefaultGPTAutoShadowConfig(), nil
+			cfg := DefaultGPTAutoShadowConfig()
+			empty := ""
+			cfg.StoredValue = &empty
+			return cfg, nil
 		}
 		return nil, err
 	}
-	return parseGPTAutoShadowConfig(raw), nil
+	cfg := parseGPTAutoShadowConfig(raw)
+	cfg.StoredValue = &raw
+	return cfg, nil
 }
 
 func parseGPTAutoShadowConfig(raw string) *GPTAutoShadowConfig {
@@ -608,6 +653,11 @@ func parseGPTAutoShadowConfig(raw string) *GPTAutoShadowConfig {
 	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
 		slog.Warn("gpt_auto.config_unmarshal_failed", "error", err)
 		return DefaultGPTAutoShadowConfig()
+	}
+	if !gjson.Get(raw, "pricing").Exists() {
+		// An existing installation keeps charging the
+		// way it did until an administrator activates independent pricing.
+		cfg.Pricing = GPTAutoPricingConfig{Mode: GPTAutoPricingModeLegacy}
 	}
 	normalizeGPTAutoShadowConfig(cfg)
 	return cfg
@@ -629,9 +679,21 @@ func (s *SettingService) SetGPTAutoShadowConfig(ctx context.Context, cfg *GPTAut
 	if err != nil {
 		return err
 	}
-	if err := s.settingRepo.Set(ctx, SettingKeyGPTAutoShadowConfig, string(raw)); err != nil {
+	if cas, ok := s.settingRepo.(interface {
+		CompareAndSwap(context.Context, string, string, string) (bool, error)
+	}); ok && cfg.StoredValue != nil {
+		saved, err := cas.CompareAndSwap(ctx, SettingKeyGPTAutoShadowConfig, *cfg.StoredValue, string(raw))
+		if err != nil {
+			return err
+		}
+		if !saved {
+			return infraerrors.Conflict("GPT_AUTO_CONFIG_VERSION_CONFLICT", "configuration changed; reload and review again")
+		}
+	} else if err := s.settingRepo.Set(ctx, SettingKeyGPTAutoShadowConfig, string(raw)); err != nil {
 		return err
 	}
+	value := string(raw)
+	normalized.StoredValue = &value
 	s.storeGPTAutoShadowConfigCache(normalized, gptAutoConfigCacheTTL)
 	return nil
 }
@@ -674,6 +736,10 @@ func (s *SettingService) GetGPTAutoShadowConfigCached(ctx context.Context) GPTAu
 	}
 	return *DefaultGPTAutoShadowConfig()
 }
+
+// GPTAutoConfigCacheTTL is how long a node may serve a cached config; config
+// changes reach every node within this window.
+func GPTAutoConfigCacheTTL() time.Duration { return gptAutoConfigCacheTTL }
 
 func (s *SettingService) loadGPTAutoShadowConfigCache() (GPTAutoShadowConfig, bool) {
 	entry, ok := s.gptAutoConfigCache.Load().(*cachedGPTAutoShadowConfig)

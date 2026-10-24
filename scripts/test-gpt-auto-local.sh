@@ -59,11 +59,18 @@ case "${1:-all}" in
     logs
     exit "$status"
     ;;
+  phase2)
+    status=0
+    python3 scripts/gpt-auto-local/verify_phase2.py || status=$?
+    logs
+    cp "$evidence/containers.log" artifacts/gpt-auto-phase2/containers.log 2>/dev/null || true
+    exit "$status"
+    ;;
   logs) logs ;;
   all)
     "$0" build
     "$0" start
     "$0" full
     ;;
-  *) echo "Usage: $0 {init|build|start|smoke|full|logs|all}" >&2; exit 2 ;;
+  *) echo "Usage: $0 {init|build|start|smoke|full|phase2|logs|all}" >&2; exit 2 ;;
 esac

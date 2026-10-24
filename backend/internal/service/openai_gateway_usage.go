@@ -354,6 +354,41 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 	}
 
+	// GPT-Auto live routing. The request was priced above exactly as if the
+	// customer had named the executed model; TotalCost and its breakdown stay
+	// that executed-model list cost, the basis of the upstream (procurement)
+	// cost. The Jev classification cost is internal and never added here.
+	//
+	//   legacy_executed_model_multiplier: the executed model's GPT-Auto
+	//     profile multiplier is applied once, last, to the customer charge.
+	//   virtual_model_fixed_rates: the customer charge is replaced by the
+	//     gpt-auto tariff snapshot captured before execution, with the
+	//     customer's rate for the gpt-auto pricing identity. The profile
+	//     multiplier is not applied (BillingMultiplier is 1).
+	gptAutoRoute := GPTAutoRouteFromContext(ctx)
+	gptAutoMultiplier := gptAutoRoute.BillingMultiplier()
+	gptAutoFixedRate, gptAutoFixedApplied := 0.0, false
+	if tariff, fixed := gptAutoRoute.FixedTariff(); fixed && cost != nil {
+		if dimension := gptAutoTariffUnsupportedDimension(result); dimension != "" {
+			// Rejected before execution; if an upstream still reports it, keep
+			// the ordinary executed-model charge rather than billing zero.
+			logger.L().Warn("gpt_auto.fixed_tariff_unsupported_dimension",
+				zap.String("dimension", dimension), zap.String("request_id", result.RequestID))
+		} else {
+			tier := configuredServiceTierMultiplier(serviceTier, nil)
+			if gptAutoRoute.freeFast && (normalizeBillingServiceTier(serviceTier) == "priority" || normalizeBillingServiceTier(serviceTier) == "fast") {
+				tier = 1
+			}
+			gptAutoFixedRate, gptAutoFixedApplied = s.gptAutoCustomerRateMultiplier(ctx, user, apiKey, account, pricingAt), true
+			if gptAutoRoute.customerRate != nil {
+				gptAutoFixedRate = *gptAutoRoute.customerRate * account.UserGroupRateMultiplier()
+			}
+			cost.ActualCost = tariff.CustomerCharge(GPTAutoTariffUsageFromTokens(tokens), tier, gptAutoFixedRate).InexactFloat64()
+		}
+	} else if gptAutoRoute != nil && cost != nil && gptAutoMultiplier != 1 {
+		cost.ActualCost = applyGPTAutoBillingMultiplier(cost.ActualCost, gptAutoMultiplier)
+	}
+
 	// Determine billing type
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 	billingType := BillingTypeBalance
@@ -394,6 +429,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	requestedModel := result.Model
 	if input.OriginalModel != "" {
 		requestedModel = input.OriginalModel
+	}
+	if gptAutoRoute != nil {
+		// Display and analytics keep the virtual model the customer asked for;
+		// Model/UpstreamModel record what actually ran.
+		requestedModel = GPTAutoVirtualModel
 	}
 	sentModel := upstreamSentModel(result.Model, result.UpstreamModel)
 	if result.UpstreamResponseModelConflict {
@@ -474,6 +514,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.RateMultiplier = multiplier
 	}
 	usageLog.RateMultiplier *= costModelBillingMultiplier(cost)
+	usageLog.RateMultiplier *= gptAutoMultiplier
+	if gptAutoFixedApplied {
+		// The customer's rate for the gpt-auto pricing identity.
+		usageLog.RateMultiplier = gptAutoFixedRate
+	}
 	usageLog.AccountRateMultiplier = &accountRateMultiplier
 	usageLog.BillingType = billingType
 	usageLog.Stream = result.Stream
@@ -603,6 +648,35 @@ func openAILongContextBillingGate(account *Account) *bool {
 	}
 	enabled := account.IsOpenAILongContextBillingEnabled()
 	return &enabled
+}
+
+// gptAutoCustomerRateMultiplier is the customer's combined rate for the
+// gpt-auto pricing identity: user-specific group rate, else the group's
+// per-model rate for gpt-auto, else the group / system default; times the
+// account's customer rate factor and the group's peak factor; times a model
+// billing rule written for gpt-auto. Each factor is applied exactly once and
+// none depends on the executed model.
+func (s *OpenAIGatewayService) gptAutoCustomerRateMultiplier(ctx context.Context, user *User, apiKey *APIKey, account *Account, pricingAt time.Time) float64 {
+	base := 1.0
+	if s.cfg != nil {
+		base = s.cfg.Default.RateMultiplier
+	}
+	if apiKey != nil && apiKey.GroupID != nil && apiKey.Group != nil && user != nil {
+		base = apiKey.Group.RateMultiplierForModels(GPTAutoVirtualModel)
+		// Resolve the override afresh at the virtual-tariff snapshot boundary.
+		// The ordinary resolver caches the resolved default as well as overrides,
+		// which can otherwise retain an old group factor after an admin save.
+		if resolver := s.userGroupRateResolver; resolver != nil && resolver.repo != nil {
+			if override, err := resolver.repo.GetByUserAndGroup(ctx, user.ID, *apiKey.GroupID); err == nil && override != nil {
+				base = *override
+			}
+		}
+	}
+	if account != nil {
+		base *= account.UserGroupRateMultiplier()
+	}
+	rate, _ := computePeakAwareMultipliers(apiKey, base, pricingAt)
+	return rate * s.settingService.modelBillingConfigForUsage(ctx).multiplier(GPTAutoVirtualModel)
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
@@ -1217,4 +1291,15 @@ func cloneImageSizeBreakdown(input map[string]int) map[string]int {
 		output[key] = value
 	}
 	return output
+}
+
+// GPTAutoCustomerRateSnapshot freezes the virtual model's user/group, peak and
+// model-billing modifiers before Jev/execution. The chosen account's existing
+// customer factor is applied once at settlement from that account snapshot.
+func (s *OpenAIGatewayService) GPTAutoCustomerRateSnapshot(ctx context.Context, key *APIKey, at time.Time) float64 {
+	user := key.User
+	if user == nil {
+		user = &User{ID: key.UserID}
+	}
+	return s.gptAutoCustomerRateMultiplier(ctx, user, key, nil, at)
 }

@@ -106,3 +106,15 @@ func (r *settingRepository) Delete(ctx context.Context, key string) error {
 	_, err := r.client.Setting.Delete().Where(setting.KeyEQ(key)).Exec(ctx)
 	return err
 }
+
+// CompareAndSwap prevents concurrent GPT Auto configuration edits from
+// overwriting a reviewed tariff or reusing its version across backend nodes.
+func (r *settingRepository) CompareAndSwap(ctx context.Context, key, previous, next string) (bool, error) {
+	if previous == "" {
+		if err := r.client.Setting.Create().SetKey(key).SetValue("").OnConflictColumns(setting.FieldKey).DoNothing().Exec(ctx); err != nil {
+			return false, err
+		}
+	}
+	changed, err := r.client.Setting.Update().Where(setting.KeyEQ(key), setting.ValueEQ(previous)).SetValue(next).SetUpdatedAt(time.Now()).Save(ctx)
+	return changed == 1, err
+}

@@ -76,6 +76,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	// GPT-Auto: resolve the virtual model to a pool model before anything
+	// else interprets the model.
+	body, reqModel, gptAutoRoute, ok := resolveGPTAutoLive(c, h.gptAutoShadow, apiKey, service.GPTAutoEndpointChatCompletions, body, reqModel, h.gatewayService)
+	if !ok {
+		return
+	}
+	defer func() { finishGPTAutoLive(c, gptAutoRoute, streamStarted) }()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !openAICompatibleTextTargetAllowed(c, apiKey, reqModel) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
@@ -105,7 +112,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
-	observeGPTAutoShadow(c, h.gptAutoShadow, apiKey, service.GPTAutoEndpointChatCompletions, body)
+	if gptAutoRoute == nil {
+		observeGPTAutoShadow(c, h.gptAutoShadow, apiKey, service.GPTAutoEndpointChatCompletions, body)
+	}
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)
@@ -230,6 +239,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				if nextBody, nextModel, rerouted := rerouteGPTAutoLive(c, gptAutoRoute, apiKey, service.GPTAutoEndpointChatCompletions, body); rerouted {
+					body, reqModel = nextBody, nextModel
+					channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+					forwardModel = openAIChannelForwardModel(channelMapping, reqModel)
+					continue
+				}
 				cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, err)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -253,6 +268,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if selection == nil || selection.Account == nil {
 			if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
 				continue
+			}
+			if len(failedAccountIDs) == 0 {
+				if nextBody, nextModel, rerouted := rerouteGPTAutoLive(c, gptAutoRoute, apiKey, service.GPTAutoEndpointChatCompletions, body); rerouted {
+					body, reqModel = nextBody, nextModel
+					channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+					forwardModel = openAIChannelForwardModel(channelMapping, reqModel)
+					continue
+				}
 			}
 			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 			if !cls.ModelNotFound {
@@ -336,6 +359,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			if res == nil {
 				return
 			}
+			gptAutoRoute.ObserveResult(res)
 			stampOpenAIRequestedReasoningEffort(res, c)
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)

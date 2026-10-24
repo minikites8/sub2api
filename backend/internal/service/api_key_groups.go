@@ -132,6 +132,9 @@ func (s *APIKeyService) SelectOrderedGroup(ctx context.Context, key *APIKey, sel
 		allowed := FirstUserGroupDeniedModel(candidate.DeniedModelsInGroup(), selection.Models) == ""
 		for _, model := range selection.Models {
 			allowed = allowed && group.ModelAllowlist.Allows(model)
+			if IsGPTAutoVirtualModel(model) {
+				allowed = allowed && group.GPTAutoEnabled && group.Platform == PlatformOpenAI
+			}
 		}
 		if !allowed {
 			continue
@@ -185,6 +188,17 @@ func (s *APIKeyService) SelectOrderedGroup(ctx context.Context, key *APIKey, sel
 				supported := true
 				for _, model := range selection.Models {
 					if strings.TrimSpace(model) == "" {
+						continue
+					}
+					if IsGPTAutoVirtualModel(model) {
+						eligible := false
+						for _, candidate := range GPTAutoModelPool() {
+							if group.ModelAllowlist.Allows(candidate) && FirstUserGroupDeniedModel(key.DeniedModelsInGroup(), []string{candidate}) == "" && account.IsModelAllowedInGroup(&groupID, candidate) && accountSupportsGatewayModel(account, candidate) {
+								eligible = true
+								break
+							}
+						}
+						supported = supported && eligible
 						continue
 					}
 					supported = supported && account.IsModelAllowedInGroup(&groupID, model) && !account.modelCapabilityRejectedForRequest(ctx, model)

@@ -154,7 +154,7 @@ func TestGPTAutoCachedInputPricing(t *testing.T) {
 	require.InDelta(t, 2.0/3.0, *economics.ModelGrossMargin, 1e-6)
 
 	// A channel without a cached rate is assumed to charge full input price.
-	input.Config.ModelProfiles[2].UpstreamCosts[0].CachedInputPerM = 0
+	input.Config.ModelProfiles[1].UpstreamCosts[0].CachedInputPerM = 0
 	economics = EstimateGPTAutoEconomics(input, GPTAutoModelGPT6Luna, GPTAutoEffortMedium)
 	require.Equal(t, 1.0, economics.UpstreamCachedInputPerM)
 	require.Equal(t, 1.5, economics.EstimatedUpstreamCost)

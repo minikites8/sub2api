@@ -157,6 +157,8 @@ def startup():
     applied = sql("SELECT filename FROM schema_migrations ORDER BY filename")
     assert "278_gpt_auto_shadow_decisions.sql" in applied
     assert "279_gpt_auto_classifier_versioning.sql" in applied
+    assert "280_gpt_auto_live_routing.sql" in applied
+    assert "281_gpt_auto_live_indexes_notx.sql" in applied
     assert dc("exec", "-T", "redis", "redis-cli", "ping").strip() == "PONG"
     (OUT / "migrations.txt").write_text(applied)
     return {"migration_count": len(applied.splitlines()), "proxy": BASE, "backend": DIRECT, "assets": assets}
@@ -176,7 +178,9 @@ def authenticate():
     assert meta["classifier_schema"] == "jev-questions-v2"
     assert meta["diagnostics_version"] == "context-diagnostics-v1"
     assert meta["phase"] == "shadow" and meta["live_routing_active"] is False
-    assert {m["model"] for m in meta["models"]} == {"gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-luna", "gpt-6.1-sol"}
+    # Phase 2 pool: gpt-5.6-sol is retired from GPT Auto (still a normal model).
+    assert {m["model"] for m in meta["models"]} == {"gpt-5.6-luna", "gpt-6-luna", "gpt-6.1-sol"}
+    assert meta["retired_models"] == ["gpt-5.6-sol"]
     save("runtime-meta.json", meta)
     return {k: meta[k] for k in ("state_version", "classifier_schema", "diagnostics_version", "phase", "live_routing_active")}
 

@@ -213,6 +213,8 @@
         @update:pageSize="onErrorPageSize"
         @ipGeoBatchFailed="handleIpGeoBatchFailed"
       />
+
+      <GPTAutoRoutingHistory />
     </div>
   </AppLayout>
 
@@ -236,6 +238,7 @@ import EndpointDistributionChart from '@/components/charts/EndpointDistributionC
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
+import GPTAutoRoutingHistory from '@/components/user/GPTAutoRoutingHistory.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
 import { getBillingModeLabel, getDisplayBillingMode } from '@/utils/billingMode'

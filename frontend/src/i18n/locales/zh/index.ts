@@ -5,6 +5,7 @@ import autoConfig from './autoConfig'
 import qualityOps from './qualityOps'
 import controlledExperiments from './controlledExperiments'
 import gptAuto from './gptAuto'
+import gptAutoHistory from './gptAutoHistory'
 import accountOps from './accountOps'
 import tokenGuard from './tokenGuard'
 import landing from './landing'
@@ -28,6 +29,7 @@ export default mergeMissingLocaleKeys(mergeMissingLocaleKeys({
   qualityOps,
   controlledExperiments,
   gptAuto,
+  gptAutoHistory,
   accountOps,
   tokenGuard,
   pelicanTests,

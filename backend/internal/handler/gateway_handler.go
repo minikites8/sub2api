@@ -1204,6 +1204,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
 		platform = forcedPlatform
 	}
+	markGPTAutoModelListing(c, h.gptAutoShadow, apiKey, platform)
 
 	if platform == service.PlatformOpenAI && apiKey != nil && apiKey.Group != nil &&
 		apiKey.Group.Platform == service.PlatformOpenAI && apiKey.Group.CodexModelsManifestConfig.Enabled {

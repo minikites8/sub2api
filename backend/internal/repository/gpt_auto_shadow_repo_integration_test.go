@@ -25,7 +25,7 @@ func TestGPTAutoShadowRepositoryRoundTrip(t *testing.T) {
 	require.NoError(t, repo.UpsertPolicySnapshot(ctx, hash, snapshot.PolicyVersion, raw), "upsert is idempotent")
 	loaded, err := repo.GetPolicySnapshot(ctx, hash)
 	require.NoError(t, err)
-	require.Len(t, loaded.ModelProfiles, 4)
+	require.Len(t, loaded.ModelProfiles, 3)
 
 	margin := 0.42
 	complexity := 2.5

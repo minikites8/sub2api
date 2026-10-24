@@ -51,6 +51,14 @@ CREATE TABLE IF NOT EXISTS atlas_schema_revisions (
 const migrationsAdvisoryLockID int64 = 694208311321144027
 const migrationsLockRetryInterval = 500 * time.Millisecond
 const nonTransactionalMigrationSuffix = "_notx.sql"
+
+// GPT-Auto Phase 2 export indexes; a failed concurrent build is dropped and
+// rebuilt instead of being skipped by IF NOT EXISTS.
+const (
+	gptAutoLiveIndexesMigration   = "281_gpt_auto_live_indexes_notx.sql"
+	gptAutoDecisionsModeIndex     = "idx_gpt_auto_decisions_mode_created"
+	gptAutoDecisionsUserLiveIndex = "idx_gpt_auto_decisions_user_live_created"
+)
 const paymentOrdersOutTradeNoUniqueMigration = "120_enforce_payment_orders_out_trade_no_unique_notx.sql"
 const paymentOrdersOutTradeNoUniqueIndex = "paymentorder_out_trade_no_unique"
 const schedulerOutboxPendingDedupKeyMigration = "153_scheduler_outbox_pending_dedup_key_index_notx.sql"
@@ -321,6 +329,13 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 		return nil
 	case usageLogsUpstreamRequestIDIndexMigration:
 		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamRequestIDIndex)
+	case gptAutoLiveIndexesMigration:
+		for _, indexName := range []string{gptAutoDecisionsModeIndex, gptAutoDecisionsUserLiveIndex} {
+			if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
+				return err
+			}
+		}
+		return nil
 	default:
 		return nil
 	}

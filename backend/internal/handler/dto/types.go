@@ -208,6 +208,8 @@ type AdminGroup struct {
 	ModelRateMultipliers  map[string]float64            `json:"model_rate_multipliers,omitempty"`
 	OpenAIServiceTierMode string                        `json:"openai_service_tier_mode"`
 	OpenAIServiceTier     string                        `json:"openai_service_tier"`
+	// GPTAutoEnabled is the explicit per-group gpt-auto switch (admin only).
+	GPTAutoEnabled bool `json:"gpt_auto_enabled"`
 
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`

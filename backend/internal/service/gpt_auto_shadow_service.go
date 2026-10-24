@@ -53,13 +53,13 @@ const (
 )
 
 func gptAutoCounterNames() []string {
-	return []string{
+	return append([]string{
 		gptAutoCounterObserved, gptAutoCounterSampled, gptAutoCounterNotSampled,
 		gptAutoCounterSkippedFilter, gptAutoCounterSkippedBudget, gptAutoCounterSkippedBudgetDown,
 		gptAutoCounterSkippedCircit, gptAutoCounterSkippedConfig, gptAutoCounterSkippedEmpty, gptAutoCounterSkippedTooLarge,
 		gptAutoCounterDropped, gptAutoCounterSuccess, gptAutoCounterFailed,
 		gptAutoCounterPersistFailed, gptAutoCounterBudgetError,
-	}
+	}, gptAutoLiveCounterNames()...)
 }
 
 // Circuit breaker tuning. A run of consecutive classifier failures opens the
@@ -187,12 +187,13 @@ type gptAutoOutputCache struct {
 // cluster-wide (budget store, Redis in production). Classifier concurrency,
 // the queue and the circuit breaker are per node.
 type GPTAutoShadowService struct {
-	settings   *SettingService
-	repo       GPTAutoShadowRepository
-	classifier GPTAutoClassifier
-	pricing    GPTAutoPricingLookup
-	budget     GPTAutoBudgetStore
-	now        func() time.Time
+	settings        *SettingService
+	admissionGroups GroupRepository
+	repo            GPTAutoShadowRepository
+	classifier      GPTAutoClassifier
+	pricing         GPTAutoPricingLookup
+	budget          GPTAutoBudgetStore
+	now             func() time.Time
 
 	queue       chan *gptAutoTask
 	queuedBytes atomic.Int64
@@ -205,6 +206,11 @@ type GPTAutoShadowService struct {
 	budgetView atomic.Pointer[gptAutoBudgetView]
 	output     gptAutoOutputCache
 	snapshots  sync.Map // policy snapshot hash -> time last upserted
+	// outputRefreshing single-flights background history refreshes.
+	outputRefreshing atomic.Bool
+
+	// live holds Phase 2 live-routing state (gpt_auto_live.go).
+	live gptAutoLiveState
 
 	latencyMu      sync.Mutex
 	recentLatency  []int
@@ -243,6 +249,7 @@ func NewGPTAutoShadowService(settings *SettingService, repo GPTAutoShadowReposit
 	for _, name := range gptAutoCounterNames() {
 		s.counters[name] = &atomic.Int64{}
 	}
+	s.initLiveState()
 	s.baseCtx, s.baseCancel = context.WithCancel(context.Background())
 	return s
 }
@@ -258,9 +265,10 @@ func (s *GPTAutoShadowService) Start() {
 			s.wg.Add(1)
 			go s.worker(id)
 		}
-		s.wg.Add(2)
+		s.wg.Add(3)
 		go s.cleanupLoop()
 		go s.maintenanceLoop()
+		go s.livePersistLoop()
 	})
 }
 
@@ -597,6 +605,8 @@ func (s *GPTAutoShadowService) classifyWithRetry(ctx context.Context, cfg GPTAut
 		case <-time.After(time.Duration(attempt) * 200 * time.Millisecond):
 		case <-s.stopCh:
 			return result
+		case <-ctx.Done():
+			return result
 		}
 	}
 	return result
@@ -791,6 +801,32 @@ func (s *GPTAutoShadowService) observeLatency(ms int) {
 // preferred; model-level history is the fallback.
 func (s *GPTAutoShadowService) outputEstimator() GPTAutoOutputEstimator {
 	s.refreshOutputHistory()
+	return s.currentOutputEstimator()
+}
+
+// cachedOutputEstimator never touches the database on the caller's
+// goroutine: a stale history is refreshed in the background and the request
+// uses whatever is cached (possibly nothing, which labels the estimate as
+// insufficient). Used by live routing on the gateway hot path.
+func (s *GPTAutoShadowService) cachedOutputEstimator() GPTAutoOutputEstimator {
+	s.output.mu.Lock()
+	stale := s.output.byPair == nil || s.now().Sub(s.output.loadedAt) >= gptAutoOutputHistoryTTL
+	s.output.mu.Unlock()
+	if stale && s.repo != nil && s.outputRefreshing.CompareAndSwap(false, true) {
+		go func() {
+			defer s.outputRefreshing.Store(false)
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("gpt_auto.output_history_panic", "recover", r)
+				}
+			}()
+			s.refreshOutputHistory()
+		}()
+	}
+	return s.currentOutputEstimator()
+}
+
+func (s *GPTAutoShadowService) currentOutputEstimator() GPTAutoOutputEstimator {
 	s.output.mu.Lock()
 	byPair, byModel := s.output.byPair, s.output.byModel
 	s.output.mu.Unlock()
@@ -814,16 +850,22 @@ func (s *GPTAutoShadowService) outputEstimator() GPTAutoOutputEstimator {
 }
 
 func (s *GPTAutoShadowService) refreshOutputHistory() {
+	// The database query runs outside output.mu so readers of the cached
+	// history (including the live hot path) never wait on it. loadedAt is
+	// claimed first, so concurrent callers do not repeat the query.
 	s.output.mu.Lock()
-	defer s.output.mu.Unlock()
 	now := s.now()
 	if s.repo == nil || (s.output.byPair != nil && now.Sub(s.output.loadedAt) < gptAutoOutputHistoryTTL) {
+		s.output.mu.Unlock()
 		return
 	}
 	s.output.loadedAt = now
+	s.output.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	rows, err := s.repo.OutputHistory(ctx, GPTAutoModelPool(), now.Add(-gptAutoOutputHistoryWindow))
+	s.output.mu.Lock()
+	defer s.output.mu.Unlock()
 	if err != nil {
 		slog.Warn("gpt_auto.output_history_failed", "error", err)
 		if s.output.byPair == nil {
@@ -925,6 +967,8 @@ type GPTAutoRuntimeStatus struct {
 	RecentP95MS          *float64         `json:"recent_p95_ms,omitempty"`
 	RecentLatencyN       int              `json:"recent_latency_samples"`
 	ExcludedReasons      []string         `json:"excluded_endpoints"`
+	// Live is this node's live-routing state.
+	Live GPTAutoLiveRuntimeStatus `json:"live"`
 }
 
 // GPTAutoOverview combines persisted statistics with runtime state.
@@ -1013,6 +1057,7 @@ func (s *GPTAutoShadowService) RuntimeStatus(ctx context.Context) GPTAutoRuntime
 		p50, p95 := gptAutoPercentile(samples, 0.5), gptAutoPercentile(samples, 0.95)
 		status.RecentP50MS, status.RecentP95MS = &p50, &p95
 	}
+	status.Live = s.liveRuntimeStatus(ctx, cfg)
 	return status
 }
 
@@ -1559,7 +1604,7 @@ func nonZeroInt64(value int64) *int64 {
 // ProvideGPTAutoShadowService wires the production classifier (TypeSafe
 // System One, optional proxy), pricing table and cluster-wide budget store,
 // then starts the workers. Stop is registered in cmd/server provideCleanup.
-func ProvideGPTAutoShadowService(settings *SettingService, repo GPTAutoShadowRepository, budget GPTAutoBudgetStore, billing *BillingService, proxyRepo ProxyRepository) *GPTAutoShadowService {
+func ProvideGPTAutoShadowService(settings *SettingService, repo GPTAutoShadowRepository, budget GPTAutoBudgetStore, affinity GPTAutoAffinityStore, billing *BillingService, proxyRepo ProxyRepository, groups GroupRepository) *GPTAutoShadowService {
 	var pricing GPTAutoPricingLookup
 	if billing != nil {
 		pricing = billing.GetModelPricing
@@ -1569,6 +1614,8 @@ func ProvideGPTAutoShadowService(settings *SettingService, repo GPTAutoShadowRep
 	if budget != nil {
 		svc.budget = budget
 	}
+	svc.admissionGroups = groups
+	svc.SetAffinityStore(affinity)
 	svc.Start()
 	return svc
 }

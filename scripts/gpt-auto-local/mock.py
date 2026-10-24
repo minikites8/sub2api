@@ -8,8 +8,14 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 lock = threading.Lock()
-control = {"jev": "ok", "upstream": "ok", "delay": 2.0}
+# Phase 2 knobs are opt-in so Phase 1 checks see byte-identical responses:
+# jev_model/jev_effort choose Jev's answer, unique_ids makes response ids
+# distinct (needed for previous_response_id continuations), cached sets
+# cached prompt tokens in upstream usage.
+control = {"jev": "ok", "upstream": "ok", "delay": 2.0, "jev_model": "gpt-6-luna", "jev_effort": "low",
+           "unique_ids": False, "cached": 0, "input_tokens": None, "output_tokens": None, "stream_delay": 0}
 requests = []
+counter = [0]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -76,12 +82,15 @@ class Handler(BaseHTTPRequestHandler):
             requests.append({"path": self.path, "model": data.get("model"),
                              "effort": data.get("reasoning_effort", data.get("reasoning")),
                              "stream": data.get("stream", False), "bytes": len(raw),
-                             "tools": len(data.get("tools", []))})
+                             "tools": len(data.get("tools", [])),
+                             "previous_response_id": data.get("previous_response_id")})
+            counter[0] += 1
+            serial = counter[0]
             del requests[:-2000]
         if self.path.endswith("/systemone"):
             if mode["jev"] == "delay":
                 time.sleep(mode["delay"])
-            if mode["jev"] in ("401", "403", "500"):
+            if mode["jev"] in ("401", "403", "429", "500"):
                 return self.reply(int(mode["jev"]), {"error": "synthetic Jev error"})
             if mode["jev"] == "malformed":
                 self.send_response(200)
@@ -93,8 +102,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, {"model": "jev-local", "answers": {}})
             return self.reply(200, {"model": "jev-local", "usage": {"input_tokens": 200, "output_tokens": 20},
                                    "answers": {
-                                       "target_model": {"type": "choice", "choice": "gpt-6-luna", "confidence": 0.9, "probabilities": {"gpt-6-luna": 0.9, "gpt-5.6-luna": 0.1}},
-                                       "reasoning_effort": {"type": "choice", "choice": "low", "confidence": 0.9},
+                                       "target_model": {"type": "choice", "choice": mode["jev_model"], "confidence": 0.9, "probabilities": {mode["jev_model"]: 0.9}},
+                                       "reasoning_effort": {"type": "choice", "choice": mode["jev_effort"], "confidence": 0.9},
                                        "task_complexity": {"type": "score", "score": 2, "confidence": 0.9},
                                        "task_category": {"type": "choice", "choice": "coding_debugging", "confidence": 0.9}}})
         if mode["upstream"] == "delay":
@@ -108,6 +117,9 @@ class Handler(BaseHTTPRequestHandler):
         if tool:
             message.update(content=None, tool_calls=[{"id": "call_local", "type": "function", "function": {"name": "local_tool", "arguments": '{"value":1}'}}])
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        response_id = f"resp_local_{serial}" if mode["unique_ids"] else "resp_local"
+        if mode["cached"]:
+            usage = {"prompt_tokens": 100, "completion_tokens": 5, "total_tokens": 105, "prompt_tokens_details": {"cached_tokens": mode["cached"]}}
         if is_chat:
             result = {"id": "chatcmpl-local", "object": "chat.completion", "created": 1, "model": model,
                       "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if tool else "stop"}], "usage": usage}
@@ -115,14 +127,20 @@ class Handler(BaseHTTPRequestHandler):
             output = [{"id": "msg_local", "type": "message", "status": "completed", "role": "assistant", "content": [{"type": "output_text", "text": "synthetic local reply", "annotations": []}]}]
             if tool:
                 output = [{"id": "fc_local", "type": "function_call", "call_id": "call_local", "name": "local_tool", "arguments": '{"value":1}', "status": "completed"}]
-            result = {"id": "resp_local", "object": "response", "created_at": 1, "status": "completed", "model": model,
+            result = {"id": response_id, "object": "response", "created_at": 1, "status": "completed", "model": model,
                       "output": output, "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}
+            if mode["cached"]:
+                result["usage"] = {"input_tokens": 100, "output_tokens": 5, "total_tokens": 105, "input_tokens_details": {"cached_tokens": mode["cached"]}}
+        if mode["input_tokens"] is not None:
+            total, out = int(mode["input_tokens"]), int(mode["output_tokens"] or 0)
+            result["usage"] = ({"prompt_tokens": total, "completion_tokens": out, "total_tokens": total+out, "prompt_tokens_details": {"cached_tokens": mode["cached"]}, "completion_tokens_details": {"reasoning_tokens": min(out, 100)}} if is_chat else {"input_tokens": total, "output_tokens": out, "total_tokens": total+out, "input_tokens_details": {"cached_tokens": mode["cached"]}, "output_tokens_details": {"reasoning_tokens": min(out, 100)}})
         if not data.get("stream"):
             return self.reply(200, result)
         events = []
         if is_chat:
             for delta, finish in [({"role": "assistant"}, None), ({k: v for k, v in message.items() if k != "role"}, None), ({}, "tool_calls" if tool else "stop")]:
                 events.append((None, {"id": "chatcmpl-local", "object": "chat.completion.chunk", "created": 1, "model": model, "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}))
+            events.append((None, {"id":"chatcmpl-local", "object":"chat.completion.chunk", "choices":[], "usage":result["usage"]}))
             events.append((None, "[DONE]"))
         else:
             events = [("response.created", {"type": "response.created", "sequence_number": 0, "response": {**result, "status": "in_progress", "output": []}}),
@@ -137,13 +155,23 @@ class Handler(BaseHTTPRequestHandler):
                           ("response.function_call_arguments.done", {"type": "response.function_call_arguments.done", "sequence_number": 3, "item_id": "fc_local", "output_index": 0, "arguments": '{"value":1}'}),
                           ("response.output_item.done", {"type": "response.output_item.done", "sequence_number": 4, "output_index": 0, "item": result["output"][0]}),
                           ("response.completed", {"type": "response.completed", "sequence_number": 5, "response": result})]
+        if mode["upstream"] == "partial" and not is_chat:
+            events[-1] = ("response.failed", {"type":"response.failed", "sequence_number":4, "response": {**result, "status":"failed", "error":{"code":"server_error", "message":"synthetic partial failure"}}})
         raw = "".join((f"event: {event}\n" if event else "") + "data: " + (data if isinstance(data, str) else json.dumps(data)) + "\n\n" for event, data in events).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
-        self.wfile.write(raw)
-        self.wfile.flush()
+        if mode["stream_delay"]:
+            split = raw.find(b"\n\n") + 2
+            self.wfile.write(raw[:split]); self.wfile.flush()
+            time.sleep(float(mode["stream_delay"]))
+            raw = raw[split:]
+        try:
+            self.wfile.write(raw)
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
 
 threading.Thread(target=ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever, daemon=True).start()

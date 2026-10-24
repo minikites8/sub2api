@@ -1066,6 +1066,20 @@ func (_c *GroupCreate) SetNillableKiroEndpointMode(v *string) *GroupCreate {
 	return _c
 }
 
+// SetGptAutoEnabled sets the "gpt_auto_enabled" field.
+func (_c *GroupCreate) SetGptAutoEnabled(v bool) *GroupCreate {
+	_c.mutation.SetGptAutoEnabled(v)
+	return _c
+}
+
+// SetNillableGptAutoEnabled sets the "gpt_auto_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableGptAutoEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetGptAutoEnabled(*v)
+	}
+	return _c
+}
+
 // SetProfitControlEnabled sets the "profit_control_enabled" field.
 func (_c *GroupCreate) SetProfitControlEnabled(v bool) *GroupCreate {
 	_c.mutation.SetProfitControlEnabled(v)
@@ -1457,6 +1471,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultKiroEndpointMode
 		_c.mutation.SetKiroEndpointMode(v)
 	}
+	if _, ok := _c.mutation.GptAutoEnabled(); !ok {
+		v := group.DefaultGptAutoEnabled
+		_c.mutation.SetGptAutoEnabled(v)
+	}
 	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
 		v := group.DefaultProfitControlEnabled
 		_c.mutation.SetProfitControlEnabled(v)
@@ -1733,6 +1751,9 @@ func (_c *GroupCreate) check() error {
 		if err := group.KiroEndpointModeValidator(v); err != nil {
 			return &ValidationError{Name: "kiro_endpoint_mode", err: fmt.Errorf(`ent: validator failed for field "Group.kiro_endpoint_mode": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.GptAutoEnabled(); !ok {
+		return &ValidationError{Name: "gpt_auto_enabled", err: errors.New(`ent: missing required field "Group.gpt_auto_enabled"`)}
 	}
 	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
 		return &ValidationError{Name: "profit_control_enabled", err: errors.New(`ent: missing required field "Group.profit_control_enabled"`)}
@@ -2081,6 +2102,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.KiroEndpointMode(); ok {
 		_spec.SetField(group.FieldKiroEndpointMode, field.TypeString, value)
 		_node.KiroEndpointMode = value
+	}
+	if value, ok := _c.mutation.GptAutoEnabled(); ok {
+		_spec.SetField(group.FieldGptAutoEnabled, field.TypeBool, value)
+		_node.GptAutoEnabled = value
 	}
 	if value, ok := _c.mutation.ProfitControlEnabled(); ok {
 		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
@@ -3465,6 +3490,18 @@ func (u *GroupUpsert) SetKiroEndpointMode(v string) *GroupUpsert {
 // UpdateKiroEndpointMode sets the "kiro_endpoint_mode" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateKiroEndpointMode() *GroupUpsert {
 	u.SetExcluded(group.FieldKiroEndpointMode)
+	return u
+}
+
+// SetGptAutoEnabled sets the "gpt_auto_enabled" field.
+func (u *GroupUpsert) SetGptAutoEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldGptAutoEnabled, v)
+	return u
+}
+
+// UpdateGptAutoEnabled sets the "gpt_auto_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateGptAutoEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldGptAutoEnabled)
 	return u
 }
 
@@ -4982,6 +5019,20 @@ func (u *GroupUpsertOne) SetKiroEndpointMode(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateKiroEndpointMode() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateKiroEndpointMode()
+	})
+}
+
+// SetGptAutoEnabled sets the "gpt_auto_enabled" field.
+func (u *GroupUpsertOne) SetGptAutoEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetGptAutoEnabled(v)
+	})
+}
+
+// UpdateGptAutoEnabled sets the "gpt_auto_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateGptAutoEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateGptAutoEnabled()
 	})
 }
 
@@ -6673,6 +6724,20 @@ func (u *GroupUpsertBulk) SetKiroEndpointMode(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateKiroEndpointMode() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateKiroEndpointMode()
+	})
+}
+
+// SetGptAutoEnabled sets the "gpt_auto_enabled" field.
+func (u *GroupUpsertBulk) SetGptAutoEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetGptAutoEnabled(v)
+	})
+}
+
+// UpdateGptAutoEnabled sets the "gpt_auto_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateGptAutoEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateGptAutoEnabled()
 	})
 }
 

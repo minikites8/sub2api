@@ -277,13 +277,13 @@ func TestGPTAutoTieBreakRequiresReportedProbabilities(t *testing.T) {
 			}
 		}
 	}
-	cls := *gptAutoSampleClassification(GPTAutoModelGPT56Sol, GPTAutoEffortMedium)
+	cls := *gptAutoSampleClassification(GPTAutoModelGPT61Sol, GPTAutoEffortMedium)
 	cls.ModelProbabilities = nil
 	decision := EvaluateGPTAutoPolicy(gptAutoPolicyInput(cls, weighted))
-	require.Equal(t, GPTAutoModelGPT56Sol, decision.FinalModel, "missing probabilities are not a near-tie")
+	require.Equal(t, GPTAutoModelGPT61Sol, decision.FinalModel, "missing probabilities are not a near-tie")
 	require.Equal(t, GPTAutoDecisionAccepted, decision.Status)
 
-	cls.ModelProbabilities = map[string]float64{GPTAutoModelGPT56Sol: 0.41, GPTAutoModelGPT6Luna: 0.40}
+	cls.ModelProbabilities = map[string]float64{GPTAutoModelGPT61Sol: 0.41, GPTAutoModelGPT6Luna: 0.40}
 	decision = EvaluateGPTAutoPolicy(gptAutoPolicyInput(cls, weighted))
 	require.Equal(t, GPTAutoModelGPT6Luna, decision.FinalModel)
 }

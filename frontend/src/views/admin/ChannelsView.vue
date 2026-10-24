@@ -39,6 +39,7 @@
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
+            <RouterLink to="/admin/gpt-auto?tab=pricing" class="btn btn-secondary">{{ t('gptAuto.pricing.title') }}</RouterLink>
             <button @click="openCreateDialog" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.channels.createChannel', 'Create Channel') }}

@@ -21,11 +21,12 @@ import (
 type GPTAutoHandler struct {
 	settingService *service.SettingService
 	shadowService  *service.GPTAutoShadowService
+	groupRepo      service.GroupRepository
 }
 
 // NewGPTAutoHandler creates the handler.
-func NewGPTAutoHandler(settingService *service.SettingService, shadowService *service.GPTAutoShadowService) *GPTAutoHandler {
-	return &GPTAutoHandler{settingService: settingService, shadowService: shadowService}
+func NewGPTAutoHandler(settingService *service.SettingService, shadowService *service.GPTAutoShadowService, groupRepo service.GroupRepository) *GPTAutoHandler {
+	return &GPTAutoHandler{settingService: settingService, shadowService: shadowService, groupRepo: groupRepo}
 }
 
 // gptAutoConfigResponse never carries the classifier API key.
@@ -97,7 +98,10 @@ func (h *GPTAutoHandler) GetConfig(c *gin.Context) {
 // keeps the stored key; clear_classifier_api_key removes it.
 type updateGPTAutoConfigRequest struct {
 	service.GPTAutoShadowConfig
-	ClearClassifierAPIKey bool `json:"clear_classifier_api_key"`
+	// Live shadows the embedded field so a request that omits it (an older
+	// form) keeps the stored live settings instead of zeroing them.
+	Live                  *service.GPTAutoLiveConfig `json:"live"`
+	ClearClassifierAPIKey bool                       `json:"clear_classifier_api_key"`
 }
 
 // UpdateConfig validates and persists the configuration, then re-reads it.
@@ -150,6 +154,16 @@ func (h *GPTAutoHandler) UpdateConfig(c *gin.Context) {
 	// Classifier instructions have their own versioned, audited endpoint; a
 	// general config save (possibly from a stale form) never changes them.
 	next.ClassifierInstructions = current.ClassifierInstructions
+	// Retired model profiles are preserved for audit; the UI never edits them.
+	next.RetiredModelProfiles = current.RetiredModelProfiles
+	next.Live = current.Live
+	if req.Live != nil {
+		next.Live = *req.Live
+	}
+	// The retail tariff has its own confirmed, versioned endpoint; a general
+	// config save never changes what customers are charged.
+	next.Pricing = current.Pricing
+	next.StoredValue = current.StoredValue
 	if err := h.settingService.SetGPTAutoShadowConfig(ctx, &next); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -266,20 +280,35 @@ func (h *GPTAutoHandler) Meta(c *gin.Context) {
 	for _, profile := range service.DefaultGPTAutoModelProfiles() {
 		models = append(models, gptAutoModelMeta{Model: profile.Model, NativeSupportedEfforts: profile.SupportedEfforts})
 	}
+	// phase/live_routing_active describe the configuration this node has
+	// cached (converges cluster-wide within the config cache TTL); they are
+	// not proof that every node runs this build.
+	cfg := h.settingService.GetGPTAutoShadowConfigCached(c.Request.Context())
+	phase := "shadow"
+	if cfg.Live.Enabled {
+		phase = "live"
+	}
 	response.Success(c, gin.H{
-		"models":              models,
-		"efforts":             service.GPTAutoEffortLadder(),
-		"categories":          service.GPTAutoCategories(),
-		"endpoints":           service.GPTAutoSupportedEndpoints(),
-		"default_profiles":    service.DefaultGPTAutoModelProfiles(),
-		"policy_version":      service.GPTAutoPolicyVersionDefault,
-		"classifier_schema":   service.GPTAutoClassifierSchemaVersion,
-		"state_version":       service.GPTAutoClassifierStateVersion,
-		"diagnostics_version": service.GPTAutoContextDiagnosticsVersion,
-		"context_strategies":  service.GPTAutoContextStrategies(),
-		"benchmark_samples":   service.GPTAutoBenchmarkSamples(),
-		"phase":               "shadow",
-		"live_routing_active": false,
+		"virtual_model":            service.GPTAutoVirtualModel,
+		"model_pool_version":       service.GPTAutoModelPoolVersion,
+		"retired_models":           service.GPTAutoRetiredModels(),
+		"failure_policies":         []string{service.GPTAutoFailureCompatibleFallback, service.GPTAutoFailureRejectRequest},
+		"client_effort_policies":   []string{service.GPTAutoClientEffortJev, service.GPTAutoClientEffortHonor},
+		"export_schema_version":    service.GPTAutoExportSchemaVersion,
+		"config_cache_ttl_seconds": int(service.GPTAutoConfigCacheTTL().Seconds()),
+		"models":                   models,
+		"efforts":                  service.GPTAutoEffortLadder(),
+		"categories":               service.GPTAutoCategories(),
+		"endpoints":                service.GPTAutoSupportedEndpoints(),
+		"default_profiles":         service.DefaultGPTAutoModelProfiles(),
+		"policy_version":           service.GPTAutoPolicyVersionDefault,
+		"classifier_schema":        service.GPTAutoClassifierSchemaVersion,
+		"state_version":            service.GPTAutoClassifierStateVersion,
+		"diagnostics_version":      service.GPTAutoContextDiagnosticsVersion,
+		"context_strategies":       service.GPTAutoContextStrategies(),
+		"benchmark_samples":        service.GPTAutoBenchmarkSamples(),
+		"phase":                    phase,
+		"live_routing_active":      cfg.Live.Enabled,
 	})
 }
 
@@ -294,6 +323,16 @@ func parseGPTAutoTime(c *gin.Context, key string) (*time.Time, bool) {
 		return nil, false
 	}
 	return &parsed, true
+}
+
+func parseGPTAutoMode(c *gin.Context) (string, bool) {
+	switch mode := strings.TrimSpace(c.Query("mode")); mode {
+	case "", service.GPTAutoModeShadow, service.GPTAutoModeLive:
+		return mode, true
+	default:
+		response.BadRequest(c, "Invalid mode, expect shadow or live")
+		return "", false
+	}
 }
 
 func parseGPTAutoGroupID(c *gin.Context) (*int64, bool) {
@@ -327,7 +366,11 @@ func (h *GPTAutoHandler) Overview(c *gin.Context) {
 	if !ok {
 		return
 	}
-	filter := service.GPTAutoStatsFilter{EndTime: time.Now().UTC(), GroupID: groupID}
+	mode, ok := parseGPTAutoMode(c)
+	if !ok {
+		return
+	}
+	filter := service.GPTAutoStatsFilter{EndTime: time.Now().UTC(), GroupID: groupID, Mode: mode}
 	if end != nil {
 		filter.EndTime = end.UTC()
 	}
@@ -378,6 +421,9 @@ func (h *GPTAutoHandler) ListDecisions(c *gin.Context) {
 		GroupID:          groupID,
 		RequestID:        strings.TrimSpace(c.Query("request_id")),
 	}
+	if filter.Mode, ok = parseGPTAutoMode(c); !ok {
+		return
+	}
 	for _, value := range []string{filter.ActualModel, filter.FinalModel, filter.RequestID} {
 		if len(value) > 128 {
 			response.BadRequest(c, "Filter value too long")
@@ -389,7 +435,7 @@ func (h *GPTAutoHandler) ListDecisions(c *gin.Context) {
 		return
 	}
 	switch filter.EvaluationStatus {
-	case "", service.GPTAutoEvaluationSuccess, service.GPTAutoEvaluationFailed:
+	case "", service.GPTAutoEvaluationSuccess, service.GPTAutoEvaluationFailed, service.GPTAutoEvaluationSkipped:
 	default:
 		response.BadRequest(c, "Invalid evaluation_status")
 		return

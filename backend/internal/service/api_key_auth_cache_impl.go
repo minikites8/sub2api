@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 29 // include ordered group bindings
+const apiKeyAuthSnapshotVersion = 30 // include explicit GPT Auto group permission
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -485,6 +485,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ProfitControlEnabled:            groupForSnapshot.ProfitControlEnabled,
 			ProfitMinMargin:                 groupForSnapshot.ProfitMinMargin,
 			ProfitSafetyBuffer:              groupForSnapshot.ProfitSafetyBuffer,
+			GPTAutoEnabled:                  groupForSnapshot.GPTAutoEnabled,
 		}
 	}
 	return snapshot
@@ -608,6 +609,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ProfitControlEnabled:            snapshot.Group.ProfitControlEnabled,
 			ProfitMinMargin:                 snapshot.Group.ProfitMinMargin,
 			ProfitSafetyBuffer:              snapshot.Group.ProfitSafetyBuffer,
+			GPTAutoEnabled:                  snapshot.Group.GPTAutoEnabled,
 		}
 		normalizeKiroCacheEmulationFields(apiKey.Group)
 		normalizeKiroEndpointFields(apiKey.Group)

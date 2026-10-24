@@ -163,6 +163,10 @@ type APIKeyAuthGroupSnapshot struct {
 	ProfitControlEnabled bool    `json:"profit_control_enabled"`
 	ProfitMinMargin      float64 `json:"profit_min_margin"`
 	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
+
+	// GPT-Auto group switch. A snapshot written before this field existed
+	// decodes as false, so a stale cache entry can only deny access.
+	GPTAutoEnabled bool `json:"gpt_auto_enabled"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

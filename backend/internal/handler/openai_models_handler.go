@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -47,6 +48,18 @@ func writeOpenAIModelsError(c *gin.Context, status int, errorType, message strin
 }
 
 func writeOpenAIModelsResponse(c *gin.Context, manifest *service.OpenAIModelsResponse) {
+	if len(manifest.Body) > 0 && (c.GetBool(gptAutoListKey) || strings.Contains(strings.ToLower(string(manifest.Body)), `"gpt-auto"`)) {
+		body, err := gptAutoCatalogue(c, manifest.Body)
+		if err != nil {
+			writeOpenAIModelsError(c, http.StatusBadGateway, "upstream_error", "Invalid model catalogue")
+			return
+		}
+		copy := *manifest
+		copy.Body = body
+		copy.ETag = ""
+		copy.NotModified = false
+		manifest = &copy
+	}
 	if denied := deniedModelsForRequest(c); len(denied) > 0 && len(manifest.Body) > 0 {
 		body, err := removeDeniedCatalogEntries(manifest.Body, denied)
 		if err != nil {
@@ -78,6 +91,7 @@ func writeOpenAIModelsResponse(c *gin.Context, manifest *service.OpenAIModelsRes
 // Both discovery endpoints consume the same final catalogue, after group/platform
 // selection and allowlist filtering. Preserve every field on the selected entry.
 func writeModelsListResponse(c *gin.Context, models any) {
+	models = withGPTAutoVirtualModel(c, models)
 	response := gin.H{"object": "list", "data": models}
 	denied := deniedModelsForRequest(c)
 	if c.Param("model") == "" && len(denied) == 0 {
@@ -114,7 +128,7 @@ func deniedModelsForRequest(c *gin.Context) []string {
 // modelsIfNoneMatch 返回模型目录请求的 If-None-Match；用户有禁用模型时目录要按用户过滤，
 // 不能用分组共享的 ETag 命中 304，因此忽略该请求头。
 func modelsIfNoneMatch(c *gin.Context) string {
-	if len(deniedModelsForRequest(c)) > 0 {
+	if len(deniedModelsForRequest(c)) > 0 || c.GetBool(gptAutoListKey) {
 		return ""
 	}
 	return c.GetHeader("If-None-Match")

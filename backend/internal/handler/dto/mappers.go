@@ -173,6 +173,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		ProfitControlEnabled:        g.ProfitControlEnabled,
 		ProfitMinMargin:             g.ProfitMinMargin,
 		ProfitSafetyBuffer:          g.ProfitSafetyBuffer,
+		GPTAutoEnabled:              g.GPTAutoEnabled,
 		ModelPricing:                g.ModelPricing,
 		ModelRateMultipliers:        g.ModelRateMultipliers,
 		OpenAIServiceTierMode:       g.OpenAIServiceTierMode,

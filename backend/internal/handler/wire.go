@@ -249,6 +249,7 @@ func ProvideHandlers(
 	modelPlazaHandler *ModelPlazaHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	gptAutoUserHandler *GPTAutoUserHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
@@ -281,6 +282,7 @@ func ProvideHandlers(
 		ModelPlaza:       modelPlazaHandler,
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
+		GPTAutoUser:      gptAutoUserHandler,
 	}
 }
 
@@ -293,6 +295,7 @@ var ProviderSet = wire.NewSet(
 	NewDailyCheckinHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
+	NewGPTAutoUserHandler,
 	NewRedeemHandler,
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,

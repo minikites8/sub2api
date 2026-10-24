@@ -118,6 +118,16 @@ func RegisterUserRoutes(
 			usage.POST("/dashboard/api-keys-usage", h.Usage.DashboardAPIKeysUsage)
 		}
 
+		// GPT-Auto routing history (own live requests only; scoped server-side).
+		gptAuto := authenticated.Group("/gpt-auto")
+		gptAuto.Use(panelRateLimiter.Heavy())
+		{
+			gptAuto.GET("/status", h.GPTAutoUser.Status)
+			gptAuto.GET("/routing-logs", h.GPTAutoUser.List)
+			gptAuto.GET("/routing-logs/export", h.GPTAutoUser.Export)
+			gptAuto.GET("/routing-logs/export/count", h.GPTAutoUser.CountExport)
+		}
+
 		// 公告（用户可见）
 		announcements := authenticated.Group("/announcements")
 		{

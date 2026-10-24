@@ -88,27 +88,27 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID                         int64
-	ChannelID                  int64
-	Platform                   string              // 所属平台（anthropic/openai/gemini/...）
-	Models                     []string            // 绑定的模型列表
-	BillingMode                BillingMode         // 计费模式
-	InputPrice                 *float64            // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice                *float64            // 每 token 输出价格（USD）
-	CacheWritePrice            *float64            // 缓存写入价格
-	CacheWrite1hPrice          *float64            // 1h 缓存写入价格
-	CacheReadPrice             *float64            // 缓存读取价格
-	FastMultiplier             *float64            // fast/priority service tier 倍率
-	FlexMultiplier             *float64            // flex service tier 倍率
-	ImageInputPrice            *float64            // 图片输入 token 价格（如 gpt-image-2 图片编辑）；未配置时回退文本输入价
-	ImageOutputPrice           *float64            // 图片输出价格（向后兼容）
-	PerRequestPrice            *float64            // 默认按次计费价格（USD）
+	ID                         int64               `json:"id"`
+	ChannelID                  int64               `json:"channel_id"`
+	Platform                   string              `json:"platform"`             // 所属平台（anthropic/openai/gemini/...）
+	Models                     []string            `json:"models"`               // 绑定的模型列表
+	BillingMode                BillingMode         `json:"billing_mode"`         // 计费模式
+	InputPrice                 *float64            `json:"input_price"`          // 每 token 输入价格（USD）— 向后兼容 flat 定价
+	OutputPrice                *float64            `json:"output_price"`         // 每 token 输出价格（USD）
+	CacheWritePrice            *float64            `json:"cache_write_price"`    // 缓存写入价格
+	CacheWrite1hPrice          *float64            `json:"cache_write_1h_price"` // 1h 缓存写入价格
+	CacheReadPrice             *float64            `json:"cache_read_price"`     // 缓存读取价格
+	FastMultiplier             *float64            `json:"fast_multiplier"`      // fast/priority service tier 倍率
+	FlexMultiplier             *float64            `json:"flex_multiplier"`      // flex service tier 倍率
+	ImageInputPrice            *float64            `json:"image_input_price"`    // 图片输入 token 价格（如 gpt-image-2 图片编辑）；未配置时回退文本输入价
+	ImageOutputPrice           *float64            `json:"image_output_price"`   // 图片输出价格（向后兼容）
+	PerRequestPrice            *float64            `json:"per_request_price"`    // 默认按次计费价格（USD）
 	ReasoningEffortMultipliers map[string]float64  `json:"reasoning_effort_multipliers,omitempty"`
-	PriorityMultiplier         *float64            // priority/fast service tier 倍率（nil 表示沿用现有 tier 定价）
-	Intervals                  []PricingInterval   // 区间定价列表
+	PriorityMultiplier         *float64            `json:"priority_multiplier"` // priority/fast service tier 倍率（nil 表示沿用现有 tier 定价）
+	Intervals                  []PricingInterval   `json:"intervals"`           // 区间定价列表
 	TimePricing                *ChannelTimePricing `json:"time_pricing,omitempty"`
-	CreatedAt                  time.Time
-	UpdatedAt                  time.Time
+	CreatedAt                  time.Time           `json:"created_at"`
+	UpdatedAt                  time.Time           `json:"updated_at"`
 }
 
 // ChannelTimePricing configures time-of-day pricing multipliers.

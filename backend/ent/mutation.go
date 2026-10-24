@@ -22692,6 +22692,7 @@ type GroupMutation struct {
 	kiro_cache_read_emulation_ratio         *float64
 	addkiro_cache_read_emulation_ratio      *float64
 	kiro_endpoint_mode                      *string
+	gpt_auto_enabled                        *bool
 	profit_control_enabled                  *bool
 	profit_min_margin                       *float64
 	addprofit_min_margin                    *float64
@@ -26568,6 +26569,42 @@ func (m *GroupMutation) ResetKiroEndpointMode() {
 	m.kiro_endpoint_mode = nil
 }
 
+// SetGptAutoEnabled sets the "gpt_auto_enabled" field.
+func (m *GroupMutation) SetGptAutoEnabled(b bool) {
+	m.gpt_auto_enabled = &b
+}
+
+// GptAutoEnabled returns the value of the "gpt_auto_enabled" field in the mutation.
+func (m *GroupMutation) GptAutoEnabled() (r bool, exists bool) {
+	v := m.gpt_auto_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGptAutoEnabled returns the old "gpt_auto_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldGptAutoEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGptAutoEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGptAutoEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGptAutoEnabled: %w", err)
+	}
+	return oldValue.GptAutoEnabled, nil
+}
+
+// ResetGptAutoEnabled resets all changes to the "gpt_auto_enabled" field.
+func (m *GroupMutation) ResetGptAutoEnabled() {
+	m.gpt_auto_enabled = nil
+}
+
 // SetProfitControlEnabled sets the "profit_control_enabled" field.
 func (m *GroupMutation) SetProfitControlEnabled(b bool) {
 	m.profit_control_enabled = &b
@@ -27074,7 +27111,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 81)
+	fields := make([]string, 0, 82)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -27309,6 +27346,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.kiro_endpoint_mode != nil {
 		fields = append(fields, group.FieldKiroEndpointMode)
 	}
+	if m.gpt_auto_enabled != nil {
+		fields = append(fields, group.FieldGptAutoEnabled)
+	}
 	if m.profit_control_enabled != nil {
 		fields = append(fields, group.FieldProfitControlEnabled)
 	}
@@ -27482,6 +27522,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.KiroCacheReadEmulationRatio()
 	case group.FieldKiroEndpointMode:
 		return m.KiroEndpointMode()
+	case group.FieldGptAutoEnabled:
+		return m.GptAutoEnabled()
 	case group.FieldProfitControlEnabled:
 		return m.ProfitControlEnabled()
 	case group.FieldProfitMinMargin:
@@ -27653,6 +27695,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldKiroCacheReadEmulationRatio(ctx)
 	case group.FieldKiroEndpointMode:
 		return m.OldKiroEndpointMode(ctx)
+	case group.FieldGptAutoEnabled:
+		return m.OldGptAutoEnabled(ctx)
 	case group.FieldProfitControlEnabled:
 		return m.OldProfitControlEnabled(ctx)
 	case group.FieldProfitMinMargin:
@@ -28213,6 +28257,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetKiroEndpointMode(v)
+		return nil
+	case group.FieldGptAutoEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGptAutoEnabled(v)
 		return nil
 	case group.FieldProfitControlEnabled:
 		v, ok := value.(bool)
@@ -29033,6 +29084,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldKiroEndpointMode:
 		m.ResetKiroEndpointMode()
+		return nil
+	case group.FieldGptAutoEnabled:
+		m.ResetGptAutoEnabled()
 		return nil
 	case group.FieldProfitControlEnabled:
 		m.ResetProfitControlEnabled()

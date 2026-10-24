@@ -69,7 +69,7 @@ func newGPTAutoTestRouter(t *testing.T, authorized bool) (*gin.Engine, *gptAutoS
 	settings := service.NewSettingService(repo, nil)
 	shadow := service.NewGPTAutoShadowService(settings, nil, nil, nil)
 	t.Cleanup(shadow.Stop)
-	h := NewGPTAutoHandler(settings, shadow)
+	h := NewGPTAutoHandler(settings, shadow, nil)
 	router := gin.New()
 	adminGroup := router.Group("/api/v1/admin")
 	// Stand-in for the real admin auth middleware mounted by RegisterAdminRoutes.
@@ -166,7 +166,7 @@ func TestGPTAutoConfigRejectsInvalidInput(t *testing.T) {
 		"sample rate":   func(c *service.GPTAutoShadowConfig) { c.SampleRate = 150 },
 		"multiplier":    func(c *service.GPTAutoShadowConfig) { c.ModelProfiles[0].BillingMultiplier = -2 },
 		"unknown model": func(c *service.GPTAutoShadowConfig) { c.ModelProfiles[0].Model = "gpt-auto" },
-		"bad effort":    func(c *service.GPTAutoShadowConfig) { c.ModelProfiles[3].SupportedEfforts = []string{"none"} },
+		"bad effort":    func(c *service.GPTAutoShadowConfig) { c.ModelProfiles[2].SupportedEfforts = []string{"none"} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg := service.DefaultGPTAutoShadowConfig()

@@ -117,6 +117,7 @@ var auditSensitiveReads = map[string]string{
 	"GET /api/v1/admin/accounts/data":             "admin.accounts.export",
 	"GET /api/v1/admin/proxies/data":              "admin.proxies.export",
 	"GET /api/v1/admin/redeem-codes/export":       "admin.redeem_codes.export",
+	"GET /api/v1/admin/gpt-auto/decisions/export": "admin.gpt_auto.decisions.export",
 	"GET /api/v1/admin/backups/:id/download-url":  "admin.backups.download",
 	"GET /api/v1/admin/settings/admin-api-key":    "admin.admin_api_key.read",
 	"GET /api/v1/admin/users/:id/api-keys":        "admin.users.api_keys.read",
@@ -159,6 +160,8 @@ var auditActionOverrides = map[string]string{
 	"PUT /api/v1/admin/gpt-auto/classifier":                   "admin.gpt_auto.classifier.update",
 	"POST /api/v1/admin/gpt-auto/classifier/preview":          "admin.gpt_auto.classifier.preview",
 	"POST /api/v1/admin/gpt-auto/debug/state":                 "admin.gpt_auto.debug.state",
+	"PUT /api/v1/admin/gpt-auto/pricing":                      "admin.gpt_auto.pricing.update",
+	"POST /api/v1/admin/gpt-auto/pricing/simulate":            "admin.gpt_auto.pricing.simulate",
 }
 
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。

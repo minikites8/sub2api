@@ -1,7 +1,21 @@
 <template>
   <div class="space-y-4" data-testid="gpt-auto-decisions">
     <div class="card">
-      <div class="grid grid-cols-1 gap-3 border-b border-gray-100 p-4 dark:border-dark-700 md:grid-cols-3 xl:grid-cols-7">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.logs.modeHint') }}</p>
+        <button type="button" class="btn btn-secondary btn-sm" data-testid="gpt-auto-export-open" @click="exportOpen = true">
+          <Icon name="download" size="sm" /> {{ t('gptAuto.export.open') }}
+        </button>
+      </div>
+      <div class="grid grid-cols-1 gap-3 border-b border-gray-100 p-4 dark:border-dark-700 md:grid-cols-4 xl:grid-cols-8">
+        <label>
+          <span class="input-label">{{ t('gptAuto.export.mode') }}</span>
+          <select v-model="filters.mode" class="input" data-testid="gpt-auto-logs-mode" @change="reload">
+            <option value="">{{ t('gptAuto.export.modeAll') }}</option>
+            <option value="shadow">{{ t('gptAuto.live.modes.shadow') }}</option>
+            <option value="live">{{ t('gptAuto.live.modes.live') }}</option>
+          </select>
+        </label>
         <label>
           <span class="input-label">{{ t('gptAuto.logs.filters.range') }}</span>
           <select v-model="filters.range" class="input" @change="reload">
@@ -32,6 +46,7 @@
             <option value="">{{ t('gptAuto.common.all') }}</option>
             <option value="success">{{ labels.evaluationStatus('success') }}</option>
             <option value="failed">{{ labels.evaluationStatus('failed') }}</option>
+            <option value="skipped">{{ labels.evaluationStatus('skipped') }}</option>
           </select>
         </label>
         <label>
@@ -62,6 +77,10 @@
             <template v-else>
               <tr v-for="item in items" :key="item.id" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/60" :data-testid="`gpt-auto-decision-${item.id}`" @click="openDetail(item.id)">
                 <td class="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{{ formatDateTime(item.created_at) }}</td>
+                <td class="px-3 py-2" :data-testid="`gpt-auto-mode-${item.id}`">
+                  <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="item.mode === 'live' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'">{{ t(`gptAuto.live.modes.${item.mode === 'live' ? 'live' : 'shadow'}`) }}</span>
+                  <span v-if="item.mode === 'live' && item.request_status" class="block text-[11px] text-gray-500">{{ t(`gptAuto.live.requestStatuses.${item.request_status}`) }}</span>
+                </td>
                 <td class="max-w-[10rem] truncate px-3 py-2 font-mono text-xs" :title="item.request_id">{{ item.request_id || '—' }}</td>
                 <td class="px-3 py-2 font-mono text-xs">{{ item.actual_model || '—' }}<span v-if="item.actual_effort" class="block text-gray-500">{{ item.actual_effort }}</span></td>
                 <td class="px-3 py-2 font-mono text-xs">{{ item.jev_model || '—' }}</td>
@@ -158,6 +177,8 @@
         </section>
       </div>
     </BaseDialog>
+
+    <GPTAutoExportDialog :show="exportOpen" :preset="exportPreset" @close="exportOpen = false" />
   </div>
 </template>
 
@@ -169,7 +190,8 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GPTAutoDecisionDetail from './GPTAutoDecisionDetail.vue'
 import GPTAutoContextDiagnostics from './GPTAutoContextDiagnostics.vue'
-import { gptAutoAPI, type GPTAutoDecision, type GPTAutoMeta, type GPTAutoReplayMode, type GPTAutoReplayResult } from '@/api/admin/gptAuto'
+import GPTAutoExportDialog from './GPTAutoExportDialog.vue'
+import { gptAutoAPI, type GPTAutoDecision, type GPTAutoExportPreset, type GPTAutoMeta, type GPTAutoMode, type GPTAutoReplayMode, type GPTAutoReplayResult } from '@/api/admin/gptAuto'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime } from '@/utils/format'
 import { formatMs, formatNumber, formatPercent, formatUSD, marginStatusClass, type MarginStatus } from '@/utils/gptAuto'
@@ -178,19 +200,20 @@ import { useGPTAutoLabels } from '@/composables/useGPTAutoLabels'
 const { t } = useI18n()
 const labels = useGPTAutoLabels()
 
-const modelPool = ['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-6-luna', 'gpt-6.1-sol']
+const modelPool = ['gpt-5.6-luna', 'gpt-6-luna', 'gpt-6.1-sol']
 const effortLadder = ['none', 'low', 'medium', 'high', 'xhigh', 'max']
-const columns = ['time', 'requestId', 'actualModel', 'jevModel', 'finalModel', 'jevEffort', 'finalEffort', 'complexity', 'confidence', 'latency', 'margin', 'status', 'policy']
+const columns = ['time', 'mode', 'requestId', 'actualModel', 'jevModel', 'finalModel', 'jevEffort', 'finalEffort', 'complexity', 'confidence', 'latency', 'margin', 'status', 'policy']
 type RangeKey = '1h' | '24h' | '7d' | '30d'
 const rangeOptions: RangeKey[] = ['1h', '24h', '7d', '30d']
 const rangeHours: Record<RangeKey, number> = { '1h': 1, '24h': 24, '7d': 168, '30d': 720 }
 
 const filters = reactive({
+  mode: '' as GPTAutoMode | '',
   range: '24h' as RangeKey,
   actual_model: '',
   final_model: '',
   final_effort: '',
-  evaluation_status: '' as '' | 'success' | 'failed',
+  evaluation_status: '' as '' | 'success' | 'failed' | 'skipped',
   group_id: '' as string | number,
   request_id: '',
 })
@@ -219,6 +242,7 @@ async function load() {
       evaluation_status: filters.evaluation_status,
       group_id: Number.isInteger(groupId) && groupId > 0 ? groupId : undefined,
       request_id: filters.request_id,
+      mode: filters.mode,
     })
     if (current !== sequence) return
     items.value = result.items ?? []
@@ -245,7 +269,7 @@ function onPageSize(size: number) {
 }
 
 function statusClass(item: GPTAutoDecision) {
-  if (item.evaluation_status === 'failed') return 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  if (item.evaluation_status === 'failed' || item.request_status === 'failed' || item.request_status === 'rejected') return 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
   if (item.decision_status === 'adjusted') return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
   if (item.decision_status === 'no_eligible_candidate') return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
   return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
@@ -308,7 +332,37 @@ const detailFacts = computed(() => {
     { label: t('gptAuto.detail.latency'), value: `${formatMs(value.classifier_latency_ms)} (+${formatMs(value.queue_delay_ms)})` },
     { label: t('gptAuto.detail.policy'), value: `${value.policy_version} · ${value.policy_snapshot_hash.slice(0, 10) || '—'}` },
     { label: t('gptAuto.detail.classifierConfig'), value: value.classifier_config_hash ? value.classifier_config_hash.slice(0, 10) : t('gptAuto.detail.classifierLegacy') },
+    ...(value.mode === 'live'
+      ? [
+          { label: t('gptAuto.live.detail.routingReason'), value: value.routing_reason || '—' },
+          { label: t('gptAuto.live.detail.fallbackReason'), value: value.fallback_reason || '—' },
+          { label: t('gptAuto.live.detail.affinity'), value: value.affinity_outcome || '—' },
+          { label: t('gptAuto.live.detail.status'), value: `${value.request_status || '—'} · ${value.http_status ?? '—'}${value.error_category ? ` · ${value.error_category}` : ''}` },
+          { label: t('gptAuto.live.detail.servedModel'), value: value.served_model || '—' },
+          { label: t('gptAuto.live.detail.account'), value: value.upstream_account_id ?? '—' },
+          { label: t('gptAuto.live.detail.multiplier'), value: value.billing_multiplier ?? '—' },
+          { label: t('gptAuto.pricing.active'), value: value.pricing_mode ? `${value.pricing_model} · ${t(`gptAuto.pricing.modes.${value.pricing_mode}`)} · v${value.pricing_config_version}` : '—' },
+          { label: t('gptAuto.live.detail.latency'), value: `${formatMs(value.gateway_latency_ms ?? null)} / ${formatMs(value.upstream_ttft_ms ?? null)} / ${formatMs(value.total_latency_ms ?? null)}` },
+          { label: t('gptAuto.live.detail.retries'), value: value.retry_count ?? 0 },
+        ]
+      : []),
   ]
+})
+
+// --- export -----------------------------------------------------------------
+const exportOpen = ref(false)
+const exportPreset = computed<GPTAutoExportPreset>(() => {
+  const end = new Date()
+  const groupId = Number(filters.group_id)
+  return {
+    start: new Date(end.getTime() - rangeHours[filters.range] * 3600 * 1000),
+    end,
+    mode: filters.mode,
+    final_model: filters.final_model,
+    final_effort: filters.final_effort,
+    evaluation_status: filters.evaluation_status,
+    group_id: Number.isInteger(groupId) && groupId > 0 ? groupId : undefined,
+  }
 })
 
 async function runReplay() {

@@ -225,6 +225,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldSupportedModelScopes,
 				group.FieldAllowMessagesDispatch,
 				group.FieldAllowLive,
+				group.FieldGptAutoEnabled,
 				group.FieldForceOpenaiFast,
 				group.FieldFreeOpenaiFast,
 				group.FieldEnableBps,
@@ -250,6 +251,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldProfitControlEnabled,
 				group.FieldProfitMinMargin,
 				group.FieldProfitSafetyBuffer,
+				// GPT-Auto 分组开关：漏选会让 gpt-auto 对所有分组静默不可用（fail closed）。
+				group.FieldGptAutoEnabled,
 			)
 		}).
 		Only(ctx)
@@ -1106,6 +1109,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ProfitControlEnabled:            g.ProfitControlEnabled,
 		ProfitMinMargin:                 g.ProfitMinMargin,
 		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,
+		GPTAutoEnabled:                  g.GptAutoEnabled,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

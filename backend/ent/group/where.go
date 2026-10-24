@@ -395,6 +395,11 @@ func KiroEndpointMode(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldKiroEndpointMode, v))
 }
 
+// GptAutoEnabled applies equality check predicate on the "gpt_auto_enabled" field. It's identical to GptAutoEnabledEQ.
+func GptAutoEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldGptAutoEnabled, v))
+}
+
 // ProfitControlEnabled applies equality check predicate on the "profit_control_enabled" field. It's identical to ProfitControlEnabledEQ.
 func ProfitControlEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldProfitControlEnabled, v))
@@ -3158,6 +3163,16 @@ func KiroEndpointModeEqualFold(v string) predicate.Group {
 // KiroEndpointModeContainsFold applies the ContainsFold predicate on the "kiro_endpoint_mode" field.
 func KiroEndpointModeContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldKiroEndpointMode, v))
+}
+
+// GptAutoEnabledEQ applies the EQ predicate on the "gpt_auto_enabled" field.
+func GptAutoEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldGptAutoEnabled, v))
+}
+
+// GptAutoEnabledNEQ applies the NEQ predicate on the "gpt_auto_enabled" field.
+func GptAutoEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldGptAutoEnabled, v))
 }
 
 // ProfitControlEnabledEQ applies the EQ predicate on the "profit_control_enabled" field.

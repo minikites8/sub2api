@@ -1736,6 +1736,8 @@
         </div>
 
 
+        <GPTAutoGroupControl v-if="createForm.platform === 'openai'" v-model="createForm.gpt_auto_enabled" :allowlist="createModelAllowlistState" @update:allowlist="Object.assign(createModelAllowlistState, $event)" />
+
         <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
@@ -3636,6 +3638,8 @@
         />
 
 
+        <GPTAutoGroupControl v-if="editForm.platform === 'openai'" v-model="editForm.gpt_auto_enabled" :allowlist="editModelAllowlistState" @update:allowlist="Object.assign(editModelAllowlistState, $event)" />
+
         <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
@@ -4829,6 +4833,7 @@ import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
 import DataTable from "@/components/common/DataTable.vue";
 import Pagination from "@/components/common/Pagination.vue";
+import GPTAutoGroupControl from "@/components/admin/gptAuto/GPTAutoGroupControl.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import BaseDialog from "@/components/common/BaseDialog.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
@@ -5589,6 +5594,7 @@ const createForm = reactive({
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
+  gpt_auto_enabled: false,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   free_openai_fast: false,
@@ -6017,6 +6023,7 @@ const editForm = reactive({
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
+  gpt_auto_enabled: false,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   free_openai_fast: false,
@@ -6521,6 +6528,7 @@ const closeCreateModal = () => {
   createForm.video_price_720p = null;
   createForm.video_price_1080p = null;
   createForm.video_model_prices = createVideoModelPricesForm();
+  createForm.gpt_auto_enabled = false;
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
   createForm.free_openai_fast = false;
@@ -6838,6 +6846,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
+  editForm.gpt_auto_enabled = group.gpt_auto_enabled ?? false;
   editForm.long_context_pricing_enabled =
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
@@ -6973,6 +6982,7 @@ const closeEditModal = () => {
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
   editForm.video_model_prices = createVideoModelPricesForm();
+  editForm.gpt_auto_enabled = false;
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;

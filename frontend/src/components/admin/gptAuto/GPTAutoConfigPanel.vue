@@ -53,7 +53,7 @@
           </label>
           <label>
             <span class="input-label">{{ t('gptAuto.config.sampling.modelFilter') }}</span>
-            <input v-model="modelFilterText" type="text" class="input" placeholder="gpt-5.6-sol, gpt-6-luna" />
+            <input v-model="modelFilterText" type="text" class="input" placeholder="gpt-6-luna, gpt-6.1-sol" />
             <span class="input-hint">{{ t('gptAuto.config.sampling.modelFilterHint') }}</span>
           </label>
         </div>

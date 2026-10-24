@@ -7,6 +7,7 @@ import GPTAutoTestLab from '@/components/admin/gptAuto/GPTAutoTestLab.vue'
 import GPTAutoClassifierPanel from '@/components/admin/gptAuto/GPTAutoClassifierPanel.vue'
 import GPTAutoDecisionDetail from '@/components/admin/gptAuto/GPTAutoDecisionDetail.vue'
 import GPTAutoStateDebugger from '@/components/admin/gptAuto/GPTAutoStateDebugger.vue'
+import GPTAutoLivePanel from '@/components/admin/gptAuto/GPTAutoLivePanel.vue'
 import type { GPTAutoConfig, GPTAutoDecision, GPTAutoOverview, GPTAutoPolicyDecision } from '@/api/admin/gptAuto'
 
 const mocks = vi.hoisted(() => ({
@@ -25,6 +26,8 @@ const mocks = vi.hoisted(() => ({
     previewClassifier: vi.fn(),
     compareClassifier: vi.fn(),
     debugState: vi.fn(),
+    countExport: vi.fn(),
+    exportDecisions: vi.fn(),
   },
   showSuccess: vi.fn(),
   showError: vi.fn(),
@@ -60,7 +63,12 @@ const stubs = {
     emits: ['confirm', 'cancel'],
     template: '<div v-if="show" data-testid="confirm-dialog"><button data-testid="confirm-yes" @click="$emit(\'confirm\')" /></div>',
   },
-  BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /></div>' },
+  BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' },
+  Select: {
+    props: ['modelValue', 'options'],
+    emits: ['update:modelValue', 'change'],
+    template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><option v-for="o in options" :key="String(o.value)" :value="o.value">{{ o.label }}</option></select>',
+  },
 }
 
 const profile = (model: string, efforts = ['none', 'low', 'medium', 'high', 'xhigh', 'max']) => ({
@@ -97,11 +105,37 @@ const baseConfig = (): GPTAutoConfig => ({
   decision_retention_days: 30,
   global_min_margin: 0.3,
   profit_safety_buffer: 0.05,
-  model_profiles: [profile('gpt-5.6-luna'), profile('gpt-5.6-sol'), profile('gpt-6-luna'), profile('gpt-6.1-sol', ['low', 'medium', 'high', 'xhigh', 'max'])],
-  policy_version: 'shadow-v1',
+  model_profiles: [profile('gpt-5.6-luna'), profile('gpt-6-luna'), profile('gpt-6.1-sol', ['low', 'medium', 'high', 'xhigh', 'max'])],
+  retired_model_profiles: [profile('gpt-5.6-sol')],
+  model_pool_version: 'pool-v2',
+  live: liveConfig(),
+  policy_version: 'auto-v2',
   classifier_api_key_configured: true,
   classifier_api_key_masked: 'ts-k****1234',
 })
+
+function liveConfig() {
+  return {
+    live_enabled: false,
+    internal_only: true,
+    allowed_groups: [],
+    allowed_api_keys: [12],
+    endpoints: ['chat_completions', 'responses'],
+    classifier_timeout_ms: 2500,
+    classifier_max_concurrency: 16,
+    classifier_retry_count: 0,
+    classifier_failure_policy: 'compatible_fallback',
+    fallback_model: 'gpt-6-luna',
+    fallback_effort: 'medium',
+    client_effort_policy: 'jev',
+    session_affinity_enabled: true,
+    session_affinity_ttl_seconds: 3600,
+    margin_guard_enabled: false,
+    apply_billing_multiplier: true,
+    live_request_budget: 10000,
+    customer_export_enabled: true,
+  } as const
+}
 
 const meta = {
   models: baseConfig().model_profiles.map((p) => ({ model: p.model, native_supported_efforts: p.supported_efforts })),
@@ -266,7 +300,7 @@ describe('GPTAutoConfigPanel', () => {
     expect(wrapper.find('[data-testid="gpt-auto-disclosure"]').exists()).toBe(true)
 
     await wrapper.find('[data-testid="gpt-auto-multiplier-gpt-6-luna"]').setValue('1.7')
-    await wrapper.find('[data-testid="gpt-auto-weight-gpt-5.6-sol"]').setValue('300')
+    await wrapper.find('[data-testid="gpt-auto-weight-gpt-5.6-luna"]').setValue('300')
     await wrapper.find('[data-testid="gpt-auto-save"]').trigger('click')
     await flushPromises()
 
@@ -275,8 +309,10 @@ describe('GPTAutoConfigPanel', () => {
     const byModel = Object.fromEntries(payload.model_profiles.map((p: { model: string }) => [p.model, p]))
     expect(byModel['gpt-6-luna'].billing_multiplier).toBe(1.7)
     expect(byModel['gpt-6-luna'].routing_weight).toBe(60)
-    expect(byModel['gpt-5.6-sol'].routing_weight).toBe(300)
-    expect(byModel['gpt-5.6-sol'].billing_multiplier).toBe(1.2)
+    expect(byModel['gpt-5.6-luna'].routing_weight).toBe(300)
+    expect(byModel['gpt-5.6-luna'].billing_multiplier).toBe(1.2)
+    expect(byModel['gpt-5.6-sol']).toBeUndefined()
+    expect(payload.live).toEqual(liveConfig())
     expect(payload.classifier_api_key).toBe('')
     expect(mocks.showSuccess).toHaveBeenCalled()
   })
@@ -617,5 +653,87 @@ describe('GPTAutoConfigPanel context strategy', () => {
     await wrapper.find('[data-testid="gpt-auto-save"]').trigger('click')
     await flushPromises()
     expect(mocks.api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ classification_context_strategy: 'recent_turns', classification_agent_steps: 8 }))
+  })
+})
+
+describe('GPT Auto Phase 2', () => {
+  it('shows the runtime mode and versions reported by the backend', async () => {
+    wrapper = mountWith(GPTAutoView)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="gpt-auto-phase-badge"]').text()).toBe('gptAuto.phaseBadge')
+    expect(wrapper.find('[data-testid="gpt-auto-tab-live"]').exists()).toBe(true)
+    wrapper.unmount()
+
+    mocks.api.getMeta.mockResolvedValue({ ...meta, live_routing_active: true, phase: 'live', state_version: 'state-v3', classifier_schema: 'jev-questions-v2', model_pool_version: 'pool-v2' })
+    wrapper = mountWith(GPTAutoView)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="gpt-auto-phase-badge"]').text()).toBe('gptAuto.phaseBadgeLive')
+    expect(wrapper.find('[data-testid="gpt-auto-shadow-banner"]').text()).toContain('gptAuto.liveBanner.body')
+    const versions = wrapper.find('[data-testid="gpt-auto-versions"]').text()
+    expect(versions).toContain('state-v3')
+    expect(versions).toContain('pool-v2')
+  })
+
+  it('requires confirmation to enable live routing and saves only through a fresh config', async () => {
+    wrapper = mountWith(GPTAutoLivePanel)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="gpt-auto-live-state"]').text()).toContain('gptAuto.live.stateOff')
+    expect(wrapper.find('[data-testid="gpt-auto-live-cap-gpt-5.6-sol"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="gpt-auto-live-retired"]').text()).toContain('gptAuto.live.capabilities.retired')
+
+    await wrapper.find('[data-testid="gpt-auto-live-toggle"]').trigger('click')
+    await wrapper.find('[data-testid="gpt-auto-live-keys"]').setValue('12, 34, abc, -1')
+    await wrapper.find('[data-testid="gpt-auto-live-save"]').trigger('click')
+    await flushPromises()
+    expect(mocks.api.updateConfig).not.toHaveBeenCalled()
+    await wrapper.find('[data-testid="confirm-yes"]').trigger('click')
+    await flushPromises()
+    expect(mocks.api.updateConfig).toHaveBeenCalledTimes(1)
+    const payload = mocks.api.updateConfig.mock.calls[0][0]
+    expect(payload.live.live_enabled).toBe(true)
+    expect(payload.live.internal_only).toBe(true)
+    expect(payload.live.allowed_api_keys).toEqual([12, 34])
+    expect(payload.classifier_api_key).toBe('')
+    expect(payload.model_profiles.map((p: { model: string }) => p.model)).toEqual(['gpt-5.6-luna', 'gpt-6-luna', 'gpt-6.1-sol'])
+    // Shadow and live comparison uses server-side mode filters.
+    expect(mocks.api.getOverview).toHaveBeenCalledWith(expect.objectContaining({ mode: 'shadow' }))
+    expect(mocks.api.getOverview).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live' }))
+  })
+
+  it('filters by mode and exports through the server with the current filters', async () => {
+    mocks.api.listDecisions.mockResolvedValue({ items: [{ ...decision(), mode: 'live', request_status: 'succeeded', actual_model: 'gpt-auto' }], total: 1, page: 1, page_size: 20, pages: 1 })
+    mocks.api.countExport.mockResolvedValue({ rows: 1200001, truncated: true, max_rows: 1000000 })
+    mocks.api.exportDecisions.mockResolvedValue({ blob: new Blob(['x']), filename: 'gpt-auto-routing-admin-a-b.jsonl', rows: null, truncated: false })
+    const createObjectURL = vi.fn(() => 'blob:test')
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() })
+
+    wrapper = mountWith(GPTAutoDecisionLog)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="gpt-auto-mode-7"]').text()).toContain('gptAuto.live.modes.live')
+    await wrapper.find('[data-testid="gpt-auto-logs-mode"]').setValue('live')
+    await flushPromises()
+    expect(mocks.api.listDecisions).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'live' }))
+
+    await wrapper.find('[data-testid="gpt-auto-export-open"]').trigger('click')
+    await flushPromises()
+    expect((wrapper.find('[data-testid="gpt-auto-export-mode"]').element as HTMLSelectElement).value).toBe('live')
+    await wrapper.find('[data-testid="gpt-auto-export-format"]').setValue('jsonl')
+    await wrapper.find('[data-testid="gpt-auto-export-download"]').trigger('click')
+    await flushPromises()
+    expect(mocks.api.countExport).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live' }))
+    expect(mocks.api.exportDecisions).toHaveBeenCalledWith(expect.objectContaining({ format: 'jsonl', mode: 'live' }))
+    expect(wrapper.find('[data-testid="gpt-auto-export-summary"]').text()).toContain('gptAuto.export.truncated')
+    expect(createObjectURL).toHaveBeenCalled()
+  })
+
+  it('surfaces export validation errors instead of downloading', async () => {
+    mocks.api.countExport.mockRejectedValue(new Error('bad range'))
+    wrapper = mountWith(GPTAutoDecisionLog)
+    await flushPromises()
+    await wrapper.find('[data-testid="gpt-auto-export-open"]').trigger('click')
+    await wrapper.find('[data-testid="gpt-auto-export-download"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="gpt-auto-export-error"]').text()).toBe('gptAuto.export.failed')
+    expect(mocks.api.exportDecisions).not.toHaveBeenCalled()
   })
 })

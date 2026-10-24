@@ -350,6 +350,11 @@ func (Group) Fields() []ent.Field {
 			Comment("Kiro 推理 endpoint：q=AWS Q (q.{region}.amazonaws.com), krs=Kiro Runtime Service (runtime.us-east-1.kiro.dev)"),
 		// 分组利润控制（migration 192/193）：openai/anthropic/gemini/grok/antigravity
 		// 的 token 分组可启用，composite 分组不能直接启用。
+		// GPT Auto（migration 282）：分组必须显式开启才可调用 gpt-auto 虚拟模型；
+		// 默认关闭，全局 live 开关不会替分组开启。
+		field.Bool("gpt_auto_enabled").
+			Default(false).
+			Comment("是否允许此分组的 API Key 调用 GPT Auto 智能路由虚拟模型（gpt-auto）；默认关闭"),
 		field.Bool("profit_control_enabled").
 			Default(false).
 			Comment("是否启用利润控制：调度时仅允许账号计费倍率满足毛利率要求的账号进入候选池"),

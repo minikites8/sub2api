@@ -126,6 +126,7 @@ export function cloneProfiles(profiles: GPTAutoModelProfile[]): GPTAutoModelProf
     supported_efforts: [...(profile.supported_efforts ?? [])],
     endpoints: profile.endpoints ? [...profile.endpoints] : undefined,
     upstream_costs: (profile.upstream_costs ?? []).map((cost) => ({ ...cost })),
+    capabilities: profile.capabilities ? { ...profile.capabilities } : undefined,
   }))
 }
 
@@ -142,6 +143,14 @@ export function toEditableConfig(config: GPTAutoConfig): UpdateGPTAutoConfig {
     group_ids: config.group_ids ? [...config.group_ids] : [],
     model_filter: config.model_filter ? [...config.model_filter] : [],
     model_profiles: cloneProfiles(config.model_profiles ?? []),
+    live: config.live
+      ? {
+          ...config.live,
+          allowed_groups: [...(config.live.allowed_groups ?? [])],
+          allowed_api_keys: [...(config.live.allowed_api_keys ?? [])],
+          endpoints: [...(config.live.endpoints ?? [])],
+        }
+      : undefined,
     classifier_api_key: '',
     clear_classifier_api_key: false,
   }
@@ -164,4 +173,22 @@ export function parseStringList(text: string): string[] {
 /** Sorted [key, probability] pairs, highest first. */
 export function sortedProbabilities(probabilities?: Record<string, number>): [string, number][] {
   return Object.entries(probabilities ?? {}).sort((a, b) => b[1] - a[1])
+}
+
+/** Saves a downloaded blob under the server-chosen file name. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }

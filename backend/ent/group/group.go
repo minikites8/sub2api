@@ -172,6 +172,8 @@ const (
 	FieldKiroCacheReadEmulationRatio = "kiro_cache_read_emulation_ratio"
 	// FieldKiroEndpointMode holds the string denoting the kiro_endpoint_mode field in the database.
 	FieldKiroEndpointMode = "kiro_endpoint_mode"
+	// FieldGptAutoEnabled holds the string denoting the gpt_auto_enabled field in the database.
+	FieldGptAutoEnabled = "gpt_auto_enabled"
 	// FieldProfitControlEnabled holds the string denoting the profit_control_enabled field in the database.
 	FieldProfitControlEnabled = "profit_control_enabled"
 	// FieldProfitMinMargin holds the string denoting the profit_min_margin field in the database.
@@ -331,6 +333,7 @@ var Columns = []string{
 	FieldKiroCacheCreationEmulationRatio,
 	FieldKiroCacheReadEmulationRatio,
 	FieldKiroEndpointMode,
+	FieldGptAutoEnabled,
 	FieldProfitControlEnabled,
 	FieldProfitMinMargin,
 	FieldProfitSafetyBuffer,
@@ -511,6 +514,8 @@ var (
 	DefaultKiroEndpointMode string
 	// KiroEndpointModeValidator is a validator for the "kiro_endpoint_mode" field. It is called by the builders before save.
 	KiroEndpointModeValidator func(string) error
+	// DefaultGptAutoEnabled holds the default value on creation for the "gpt_auto_enabled" field.
+	DefaultGptAutoEnabled bool
 	// DefaultProfitControlEnabled holds the default value on creation for the "profit_control_enabled" field.
 	DefaultProfitControlEnabled bool
 	// DefaultProfitMinMargin holds the default value on creation for the "profit_min_margin" field.
@@ -865,6 +870,11 @@ func ByKiroCacheReadEmulationRatio(opts ...sql.OrderTermOption) OrderOption {
 // ByKiroEndpointMode orders the results by the kiro_endpoint_mode field.
 func ByKiroEndpointMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldKiroEndpointMode, opts...).ToFunc()
+}
+
+// ByGptAutoEnabled orders the results by the gpt_auto_enabled field.
+func ByGptAutoEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGptAutoEnabled, opts...).ToFunc()
 }
 
 // ByProfitControlEnabled orders the results by the profit_control_enabled field.
