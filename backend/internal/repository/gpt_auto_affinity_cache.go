@@ -47,3 +47,19 @@ func (s *gptAutoAffinityStore) Set(ctx context.Context, key string, value servic
 	}
 	return s.rdb.Set(ctx, gptAutoAffinityKeyPrefix+key, raw, ttl).Err()
 }
+
+// Atomic optimistic update: overlapping turns cannot advance the same streak.
+func (s *gptAutoAffinityStore) CompareAndSet(ctx context.Context, key string, expected int64, value service.GPTAutoAffinity, ttl time.Duration) (bool, error) {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return false, err
+	}
+	n, err := s.rdb.Eval(ctx, `
+ local old=redis.call('GET',KEYS[1])
+ local seq=0
+ if old then local ok,v=pcall(cjson.decode,old); if not ok then return 0 end; seq=v.sequence or 0 end
+ if seq~=tonumber(ARGV[1]) then return 0 end
+ redis.call('SET',KEYS[1],ARGV[2],'PX',ARGV[3]); return 1
+ `, []string{gptAutoAffinityKeyPrefix + key}, expected, raw, ttl.Milliseconds()).Int()
+	return n == 1, err
+}

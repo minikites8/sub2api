@@ -94,6 +94,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	} else if changed {
 		body = cappedBody
 	}
+	gptAutoRoute.ApplyExecutionEffort(body)
+	setGPTAutoRouteHeaders(c, gptAutoRoute)
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
@@ -411,6 +413,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					if gptAutoRoute.DynamicRoutingEnabled() {
+						h.handleFailoverExhausted(c, failoverErr, streamStarted || c.Writer.Written())
+						return
+					}
+
 					if failoverClientGone(c) {
 						reqLog.Info("openai_chat_completions.failover_aborted_client_disconnected",
 							zap.Int64("account_id", account.ID),

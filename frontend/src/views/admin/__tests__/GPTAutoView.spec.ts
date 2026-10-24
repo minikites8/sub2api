@@ -116,6 +116,7 @@ const baseConfig = (): GPTAutoConfig => ({
 
 function liveConfig() {
   return {
+    dynamic_routing: { enabled: false, stateless_strategy: 'per_request', stateful_strategy: 'preserve_required_affinity', allow_model_upgrade: true, allow_model_downgrade: true, allow_effort_change: true, downgrade_stability_count: 2, enable_classification_cache: false, preserve_account_affinity_when_required: true, capability_tiers: { 'gpt-5.6-luna': 1, 'gpt-6-luna': 2, 'gpt-6.1-sol': 3 } },
     live_enabled: false,
     internal_only: true,
     allowed_groups: [],
@@ -672,6 +673,20 @@ describe('GPT Auto Phase 2', () => {
     const versions = wrapper.find('[data-testid="gpt-auto-versions"]').text()
     expect(versions).toContain('state-v3')
     expect(versions).toContain('pool-v2')
+  })
+
+  it('keeps dynamic routing off by default and persists explicit per-turn settings', async () => {
+    wrapper = mountWith(GPTAutoLivePanel)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="gpt-auto-dynamic"]').exists()).toBe(true)
+    await wrapper.find('[data-testid="dynamic-enabled"]').trigger('click')
+    await wrapper.find('[data-testid="gpt-auto-live-save"]').trigger('click')
+    await flushPromises()
+    const cfg = mocks.api.updateConfig.mock.calls[0][0]
+    expect(cfg.live.dynamic_routing.enabled).toBe(true)
+    expect(cfg.live.dynamic_routing.stateless_strategy).toBe('per_request')
+    expect(cfg.live.dynamic_routing.downgrade_stability_count).toBe(2)
+    expect(cfg.live.live_enabled).toBe(false)
   })
 
   it('requires confirmation to enable live routing and saves only through a fresh config', async () => {

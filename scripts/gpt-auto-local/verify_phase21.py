@@ -214,7 +214,7 @@ def exports():
     assert fixed
     for r in fixed:
         assert r['pricing_model']=='gpt-auto'
-        assert r['export_schema']=='gpt-auto-export-v2'
+        assert r['export_schema'] in ('gpt-auto-export-v2','gpt-auto-export-v3')
         assert abs(D(r['gross_profit_usd'])-(D(r['customer_charge_usd'])-D(r['upstream_cost_usd'])))<=D('0.0000000001')
     result['fixed_records']=len(fixed)
     return result

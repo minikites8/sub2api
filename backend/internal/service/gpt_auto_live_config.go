@@ -75,6 +75,7 @@ func normalizeGPTAutoModelCapabilities(in *GPTAutoModelCapabilities) *GPTAutoMod
 // GPTAutoLiveConfig controls Phase 2 live routing. Persisted inside the GPT
 // Auto settings document under "live".
 type GPTAutoLiveConfig struct {
+	DynamicRouting *GPTAutoDynamicConfig `json:"dynamic_routing,omitempty"`
 	// Enabled is the live-routing kill switch. Default false: gpt-auto is
 	// then unknown to every customer and every request behaves as before.
 	Enabled bool `json:"live_enabled"`
@@ -134,6 +135,7 @@ const (
 func DefaultGPTAutoLiveConfig() GPTAutoLiveConfig {
 	return GPTAutoLiveConfig{
 		Enabled:                   false,
+		DynamicRouting:            DefaultGPTAutoDynamicConfig(),
 		InternalOnly:              true,
 		Endpoints:                 GPTAutoSupportedEndpoints(),
 		ClassifierTimeoutMS:       gptAutoLiveDefaultTimeoutMS,
@@ -155,6 +157,9 @@ func DefaultGPTAutoLiveConfig() GPTAutoLiveConfig {
 func normalizeGPTAutoLiveConfig(cfg *GPTAutoLiveConfig) {
 	if cfg == nil {
 		return
+	}
+	if cfg.DynamicRouting == nil {
+		cfg.DynamicRouting = DefaultGPTAutoDynamicConfig()
 	}
 	cfg.ClassifierTimeoutMS = clampIntDefault(cfg.ClassifierTimeoutMS, gptAutoMinTimeoutMS, gptAutoLiveMaxClassifierTimeout, gptAutoLiveDefaultTimeoutMS)
 	cfg.ClassifierMaxConcurrency = clampIntDefault(cfg.ClassifierMaxConcurrency, 1, gptAutoLiveMaxConcurrency, gptAutoLiveDefaultConcurrency)
@@ -201,6 +206,9 @@ func normalizeGPTAutoIDs(in []int64) []int64 {
 
 // ValidateGPTAutoLiveConfig rejects invalid administrator input.
 func ValidateGPTAutoLiveConfig(cfg GPTAutoLiveConfig) error {
+	if err := validateGPTAutoDynamic(cfg.DynamicRouting); err != nil {
+		return err
+	}
 	bad := func(msg string) error { return infraerrors.BadRequest("GPT_AUTO_CONFIG_INVALID", msg) }
 	if cfg.ClassifierTimeoutMS < gptAutoMinTimeoutMS || cfg.ClassifierTimeoutMS > gptAutoLiveMaxClassifierTimeout {
 		return bad("live.classifier_timeout_ms must be between 200 and 30000")

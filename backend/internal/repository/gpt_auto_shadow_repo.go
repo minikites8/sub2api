@@ -435,7 +435,7 @@ func (r *gptAutoShadowRepository) List(ctx context.Context, filter service.GPTAu
 	}
 	page, pageSize := filter.Pagination.Page, filter.Pagination.PageSize
 	args := append(append([]any(nil), where.args...), pageSize, (page-1)*pageSize)
-	rows, err := r.db.QueryContext(ctx, `SELECT `+gptAutoDecisionColumns+` FROM gpt_auto_shadow_decisions`+where.sql()+
+	rows, err := r.db.QueryContext(ctx, `SELECT `+gptAutoDecisionColumns+`, features->'switching' FROM gpt_auto_shadow_decisions`+where.sql()+
 		fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d OFFSET $%d`, len(where.args)+1, len(where.args)+2), args...)
 	if err != nil {
 		return nil, nil, err
@@ -443,9 +443,13 @@ func (r *gptAutoShadowRepository) List(ctx context.Context, filter service.GPTAu
 	defer func() { _ = rows.Close() }()
 	items := make([]service.GPTAutoShadowDecision, 0, pageSize)
 	for rows.Next() {
-		d, err := scanGPTAutoDecision(rows)
+		var switching []byte
+		d, err := scanGPTAutoDecision(rows, &switching)
 		if err != nil {
 			return nil, nil, err
+		}
+		if len(switching) > 0 {
+			_ = json.Unmarshal(switching, &d.Features.Switching)
 		}
 		items = append(items, *d)
 	}

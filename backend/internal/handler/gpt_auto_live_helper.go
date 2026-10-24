@@ -100,6 +100,7 @@ func rerouteGPTAutoLive(c *gin.Context, route *service.GPTAutoRoute, apiKey *ser
 	if capped, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, next); err == nil && changed {
 		next = capped
 	}
+	route.ApplyExecutionEffort(next)
 	setGPTAutoRouteHeaders(c, route)
 	return next, route.Model(), true
 }

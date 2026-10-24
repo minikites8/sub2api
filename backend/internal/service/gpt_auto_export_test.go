@@ -365,3 +365,23 @@ func TestGPTAutoCSVFieldEscaping(t *testing.T) {
 	require.Equal(t, "-0.0050000000", gptAutoCSVField(gptAutoExportCell{kind: gptAutoCellNumber, value: "-0.0050000000"}), "numbers are never prefixed")
 	require.Equal(t, "", gptAutoCSVField(gptAutoExportCell{}))
 }
+
+func TestGPTAutoDynamicExportAppendOnlyAndCustomerIsolation(t *testing.T) {
+	svc, repo, base := gptAutoExportFixture(t)
+	repo.rows[1].Features.Switching = &GPTAutoSwitchTelemetry{PreviousModel: GPTAutoModelGPT6Luna, PreviousEffort: "low", ModelSwitched: true, SwitchDirection: "upgrade", ClassificationTrigger: "per_request", AffinityType: "soft", SessionID: "opaque", Sequence: 2}
+	raw, _ := runGPTAutoExport(t, svc, GPTAutoExportRequest{Scope: GPTAutoExportScopeAdmin, Format: GPTAutoExportFormatCSV, ActorID: 1, Filter: gptAutoExportWindow(base)})
+	rows := parseGPTAutoCSV(t, raw)
+	found := false
+	for _, r := range rows {
+		if r["previous_model"] != "" {
+			found = true
+			require.Equal(t, "gpt-auto-export-v3", r["export_schema"])
+			require.Equal(t, "upgrade", r["switch_direction"])
+			require.Equal(t, "2", r["session_decision_sequence"])
+		}
+	}
+	require.True(t, found)
+	// Customer schema has its own builder and never gains internal columns.
+	require.NotContains(t, gptAutoCustomerExportColumns, "session_correlation_id")
+	require.NotContains(t, gptAutoCustomerExportColumns, "switch_block_reason")
+}

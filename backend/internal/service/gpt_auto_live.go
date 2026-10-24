@@ -116,9 +116,14 @@ func gptAutoClassifierUnavailableError(reason string) *GPTAutoRouteError {
 
 // GPTAutoAffinity is the minimal per-session routing memory. No content.
 type GPTAutoAffinity struct {
-	Model     string `json:"model"`
-	Effort    string `json:"effort"`
-	AccountID int64  `json:"account_id,omitempty"`
+	Sequence        int64                `json:"sequence,omitempty"`
+	TaskFingerprint string               `json:"task_fingerprint,omitempty"`
+	DowngradeModel  string               `json:"downgrade_model,omitempty"`
+	DowngradeCount  int                  `json:"downgrade_count,omitempty"`
+	History         []GPTAutoSessionTurn `json:"history,omitempty"`
+	Model           string               `json:"model"`
+	Effort          string               `json:"effort"`
+	AccountID       int64                `json:"account_id,omitempty"`
 }
 
 // GPTAutoAffinityStore keeps session affinity with a bounded TTL. Keys are
@@ -265,7 +270,13 @@ type GPTAutoRoute struct {
 	row  *GPTAutoShadowDecision
 	keys []string
 
-	started time.Time
+	previous        *GPTAutoAffinity
+	hardState       bool
+	requiredAccount int64
+	taskFingerprint string
+	downgradeModel  string
+	downgradeCount  int
+	started         time.Time
 
 	mu                sync.Mutex
 	model             string
@@ -610,6 +621,7 @@ func (s *GPTAutoShadowService) Route(ctx context.Context, input GPTAutoRouteInpu
 	applyGPTAutoTariffToRow(row, tariff)
 	route := &GPTAutoRoute{svc: s, cfg: cfg, row: row, started: started, original: input.Body,
 		endpoint: input.Endpoint, clientEffort: req.clientEffort, tariff: tariff, freeFast: input.Group.FreeOpenAIFast}
+	route.prepareDynamic(snapshot, input, req.stateful)
 	if input.CustomerRate != nil {
 		rate := input.CustomerRate(input.Group, started)
 		route.customerRate = &rate
@@ -629,21 +641,31 @@ func (s *GPTAutoShadowService) Route(ctx context.Context, input GPTAutoRouteInpu
 		return nil, s.rejectRoute(route, GPTAutoFailureNoCompatible, gptAutoNoCompatibleError(gptAutoExclusionSummary(exclusions)))
 	}
 
+	if route.hardState && row.Features.Switching.StateDependency == "unknown" {
+		return nil, s.rejectRoute(route, GPTAutoFailureAffinityModel, gptAutoStateError())
+	}
 	// Session affinity: a continuation stays on the model that holds its
 	// state. Keys are scoped to the authenticated API key.
 	row.AffinityOutcome = GPTAutoAffinityDisabled
-	if live.SessionAffinityEnabled {
+	if live.SessionAffinityEnabled || route.dynamicEnabled() {
 		row.AffinityOutcome = GPTAutoAffinityNone
 		if req.previousResponse != "" {
 			route.keys = append(route.keys, gptAutoAffinityKey(input.APIKeyID, "resp", req.previousResponse))
 		}
-		if session := strings.TrimSpace(input.SessionKey); session != "" {
+		if session := strings.TrimSpace(input.SessionKey); session != "" && !route.hardState {
 			route.keys = append(route.keys, gptAutoAffinityKey(input.APIKeyID, "sess", session))
 		}
 		if len(route.keys) > 0 {
 			affinity, outcome := s.lookupAffinity(ctx, route.keys)
 			row.AffinityOutcome = outcome
-			if affinity != nil {
+			route.rememberPrevious(affinity)
+			if affinity != nil && (!route.dynamicEnabled() || route.hardState) {
+				if route.hardState {
+					route.requiredAccount = affinity.AccountID
+					if affinity.AccountID <= 0 {
+						return nil, s.rejectRoute(route, GPTAutoFailureAffinityModel, gptAutoStateError())
+					}
+				}
 				if containsString(eligible, affinity.Model) {
 					profile, _ := cfg.ProfileFor(affinity.Model)
 					effort, _ := gptAutoPickEffort(profile.SupportedEfforts, affinity.Effort)
@@ -671,6 +693,9 @@ func (s *GPTAutoShadowService) Route(ctx context.Context, input GPTAutoRouteInpu
 		}
 	}
 
+	if route.hardState {
+		return nil, s.rejectRoute(route, GPTAutoFailureAffinityModel, gptAutoStateError())
+	}
 	classification, failure := s.classifyLiveRequest(ctx, cfg, snapshot, row)
 	if failure != "" {
 		s.incr(gptAutoCounterLiveClassifyFail)
@@ -715,6 +740,11 @@ func (s *GPTAutoShadowService) Route(ctx context.Context, input GPTAutoRouteInpu
 		if decision.Status == GPTAutoDecisionAccepted {
 			decision.Status = GPTAutoDecisionAdjusted
 		}
+	}
+	route.switchPolicy(&decision)
+	if route.dynamicEnabled() && decision.FinalModel != "" {
+		economics := EstimateGPTAutoEconomics(policyInput, decision.FinalModel, decision.FinalEffort)
+		decision.Economics = &economics
 	}
 	s.applyDecision(row, classification, &decision)
 	if decision.FinalModel == "" {
@@ -969,6 +999,10 @@ func (s *GPTAutoShadowService) lookupAffinity(ctx context.Context, keys []string
 func (s *GPTAutoShadowService) fallbackRoute(route *GPTAutoRoute, failure string, eligible []string, req gptAutoRequirements) (*GPTAutoRoute, error) {
 	row, live := route.row, route.cfg.Live
 	row.FallbackReason = failure
+	if t := row.Features.Switching; t != nil {
+		t.ClassificationTrigger = "classifier_unavailable"
+		t.SwitchReason = "classifier_failure_fallback"
+	}
 	if row.EvaluationStatus == "" {
 		row.EvaluationStatus = GPTAutoEvaluationFailed
 		row.ErrorClass = failure
@@ -1055,6 +1089,7 @@ func (s *GPTAutoShadowService) applySelectionLocked(route *GPTAutoRoute, model, 
 	}
 	row := route.row
 	row.FinalModel, row.FinalEffort = model, effort
+	route.updateSwitchTelemetry()
 	row.PricingModel = route.cfg.Pricing.PricingModel(model)
 	if route.tariff.Mode == GPTAutoPricingModeFixed {
 		row.PricingModel = GPTAutoVirtualModel
@@ -1103,9 +1138,24 @@ func (r *GPTAutoRoute) Reroute(reason string) bool {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.finished || len(r.remaining) == 0 || r.row.RoutingReason == GPTAutoRouteAffinity ||
+	if r.finished || r.hardState || gjson.GetBytes(r.original, "conversation").Exists() || len(r.remaining) == 0 || r.row.RoutingReason == GPTAutoRouteAffinity ||
 		gjson.GetBytes(r.original, "previous_response_id").String() != "" {
 		return false
+	}
+	// Pre-execution capacity fallback must not undo explicit switch controls.
+	if r.dynamicEnabled() && r.previous != nil {
+		c := r.cfg.Live.DynamicRouting
+		for len(r.remaining) > 0 {
+			delta := c.CapabilityTiers[r.remaining[0]] - c.CapabilityTiers[r.previous.Model]
+			if (delta > 0 && !c.AllowModelUpgrade) || (delta < 0 && !c.AllowModelDowngrade) {
+				r.remaining = r.remaining[1:]
+				continue
+			}
+			break
+		}
+		if len(r.remaining) == 0 {
+			return false
+		}
 	}
 	from := r.model
 	next := r.remaining[0]
@@ -1118,6 +1168,9 @@ func (r *GPTAutoRoute) Reroute(reason string) bool {
 	r.svc.applySelectionLocked(r, next, effort)
 	r.reroutes++
 	r.row.RetryCount = r.reroutes
+	if t := r.row.Features.Switching; t != nil {
+		t.SwitchReason = "no_upstream_available"
+	}
 	r.row.DecisionStatus = GPTAutoDecisionAdjusted
 	if r.row.FallbackReason == "" {
 		r.row.FallbackReason = reason
@@ -1144,6 +1197,14 @@ func (r *GPTAutoRoute) ObserveResult(result *OpenAIForwardResult) {
 		return
 	}
 	r.resultObserved = true
+	if result.ReasoningEffort != nil && IsGPTAutoEffort(*result.ReasoningEffort) {
+		r.effort = *result.ReasoningEffort
+		r.row.FinalEffort = r.effort
+		if r.row.Decision != nil {
+			r.row.Decision.FinalEffort = r.effort
+		}
+		r.updateSwitchTelemetry()
+	}
 	r.responseID = strings.TrimSpace(result.ResponseID)
 	r.servedModel = strings.TrimSpace(result.UpstreamResponseModel)
 	if result.FirstTokenMs != nil {
@@ -1206,16 +1267,44 @@ func (r *GPTAutoRoute) Finish(ctx context.Context, outcome GPTAutoRouteOutcome) 
 	succeeded := row.RequestStatus == GPTAutoRequestSucceeded
 	affinity := GPTAutoAffinity{Model: r.model, Effort: r.effort, AccountID: outcome.AccountID}
 	keys := append([]string(nil), r.keys...)
+	if t := row.Features.Switching; t != nil {
+		affinity.Sequence = t.Sequence
+		affinity.TaskFingerprint = r.taskFingerprint
+		affinity.DowngradeCount = r.downgradeCount
+		affinity.DowngradeModel = r.downgradeModel
+		affinity.History = append(append([]GPTAutoSessionTurn(nil), t.History...), GPTAutoSessionTurn{Sequence: t.Sequence, Model: r.model, Effort: r.effort, Direction: t.SwitchDirection})
+		if len(affinity.History) > 10 {
+			affinity.History = affinity.History[len(affinity.History)-10:]
+		}
+		// Response references are immutable state bindings, never overwrite a parent response.
+		if r.hardState {
+			keys = nil
+		}
+	}
 	if succeeded && r.responseID != "" && row.APIKeyID != nil {
 		keys = append([]string{gptAutoAffinityKey(*row.APIKeyID, "resp", r.responseID)}, keys...)
 	}
 	cfg := r.cfg
 	r.mu.Unlock()
 
-	if succeeded && cfg.Live.SessionAffinityEnabled && r.svc.live.affinity != nil && len(keys) > 0 {
+	if succeeded && (cfg.Live.SessionAffinityEnabled || r.dynamicEnabled()) && r.svc.live.affinity != nil && len(keys) > 0 {
 		opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gptAutoLiveAffinityOpTTL)
 		ttl := time.Duration(cfg.Live.SessionAffinityTTLSeconds) * time.Second
 		for _, key := range keys {
+			if r.dynamicEnabled() && containsString(r.keys, key) && !r.hardState {
+				if cas, ok := r.svc.live.affinity.(GPTAutoAffinityCASStore); ok {
+					expected := int64(0)
+					if r.previous != nil {
+						expected = r.previous.Sequence
+					}
+					_, err := cas.CompareAndSet(opCtx, key, expected, affinity, ttl)
+					if err != nil {
+						slog.Warn("gpt_auto.affinity_cas_failed", "error", err)
+					}
+					continue
+				}
+				continue
+			}
 			if err := r.svc.live.affinity.Set(opCtx, key, affinity, ttl); err != nil {
 				slog.Warn("gpt_auto.affinity_store_failed", "error", err)
 				break

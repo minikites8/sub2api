@@ -36,8 +36,9 @@ type GPTAutoClassification struct {
 // GPTAutoRequestFeatures are the request properties the policy may rely on.
 // They come from the sanitized snapshot, never the raw body.
 type GPTAutoRequestFeatures struct {
-	Endpoint string `json:"endpoint"`
-	HasTools bool   `json:"has_tools"`
+	Switching *GPTAutoSwitchTelemetry `json:"switching,omitempty"`
+	Endpoint  string                  `json:"endpoint"`
+	HasTools  bool                    `json:"has_tools"`
 	// EstimatedInputTokens is a character-based approximation of the
 	// customer's prompt size (characters ÷ 4) unless InputEstimateSource says
 	// otherwise.

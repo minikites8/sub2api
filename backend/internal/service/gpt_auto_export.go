@@ -639,6 +639,7 @@ var gptAutoAdminExportColumns = []string{
 	// tariff. customer_charge_usd stays usage_logs.actual_cost.
 	"executed_model", "pricing_model", "pricing_mode", "pricing_config_version", "pricing_source",
 	"tariff_input_per_mtok", "tariff_cached_input_per_mtok", "tariff_output_per_mtok", "tariff_cache_write_per_mtok",
+	"previous_model", "previous_effort", "policy_model", "policy_effort", "model_switched", "effort_changed", "switch_direction", "switch_reason", "switch_block_reason", "classification_trigger", "classification_cache_hit", "affinity_type", "state_dependency", "session_correlation_id", "session_decision_sequence",
 }
 
 func gptAutoRowMode(row *GPTAutoShadowDecision) string {
@@ -747,7 +748,7 @@ func gptAutoAdminExportRecord(row *GPTAutoShadowDecision, usage *GPTAutoExportUs
 		value := *row.BillingMultiplier
 		multiplier = &value
 	}
-	return []gptAutoExportCell{
+	cells := []gptAutoExportCell{
 		cellString(GPTAutoExportSchemaVersion),
 		cellString(row.CreatedAt.UTC().Format(time.RFC3339Nano)),
 		cellInt(row.ID),
@@ -777,6 +778,13 @@ func gptAutoAdminExportRecord(row *GPTAutoShadowDecision, usage *GPTAutoExportUs
 		cellDecimalPtr(row.TariffInputPerMTok), cellDecimalPtr(row.TariffCachedPerMTok),
 		cellDecimalPtr(row.TariffOutputPerMTok), cellDecimalPtr(row.TariffCacheWritePerMTok),
 	}
+	if t := row.Features.Switching; t != nil {
+		cells[0] = cellString("gpt-auto-export-v3")
+		cells = append(cells, cellString(t.PreviousModel), cellString(t.PreviousEffort), cellString(t.PolicyModel), cellString(t.PolicyEffort), cellBool(t.ModelSwitched), cellBool(t.EffortChanged), cellString(t.SwitchDirection), cellString(t.SwitchReason), cellString(t.SwitchBlockReason), cellString(t.ClassificationTrigger), cellBool(t.ClassificationCacheHit), cellString(t.AffinityType), cellString(t.StateDependency), cellString(t.SessionID), cellInt(t.Sequence))
+	} else {
+		cells = append(cells, make([]gptAutoExportCell, 15)...)
+	}
+	return cells
 }
 
 // gptAutoExecutedModel is the model that actually ran upstream: live rows

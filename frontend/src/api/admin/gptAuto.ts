@@ -45,7 +45,27 @@ export interface GPTAutoModelCapabilities {
 }
 
 /** Phase 2 live routing of the gpt-auto virtual model. */
+export interface GPTAutoDynamicConfig {
+ enabled: boolean
+ stateless_strategy: 'per_request'
+ stateful_strategy: 'preserve_required_affinity'
+ allow_model_upgrade: boolean
+ allow_model_downgrade: boolean
+ allow_effort_change: boolean
+ downgrade_stability_count: number
+ preserve_account_affinity_when_required: boolean
+ enable_classification_cache: boolean
+ capability_tiers: Record<string, number>
+}
+export interface GPTAutoSwitchTelemetry {
+ previous_model?: string; previous_effort?: string; policy_model?: string; policy_effort?: string
+ model_switched: boolean; effort_changed: boolean; switch_direction: string; switch_reason: string
+ switch_block_reason?: string; classification_trigger: string; classification_cache_hit: boolean
+ affinity_type: string; state_dependency: string; session_correlation_id?: string; session_decision_sequence: number
+ history?: { sequence: number; model: string; effort: string; direction: string }[]
+}
 export interface GPTAutoLiveConfig {
+ dynamic_routing?: GPTAutoDynamicConfig
   live_enabled: boolean
   internal_only: boolean
   allowed_groups: number[] | null
@@ -403,7 +423,7 @@ export interface GPTAutoDecision {
   policy_snapshot_hash: string
   /** Empty for decisions classified before classifier versioning (v1 questions). */
   classifier_config_hash?: string
-  features: { endpoint: string; has_tools: boolean; estimated_input_tokens: number; input_estimate_source?: string; context?: GPTAutoContextInfo }
+  features: { switching?: GPTAutoSwitchTelemetry; endpoint: string; has_tools: boolean; estimated_input_tokens: number; input_estimate_source?: string; context?: GPTAutoContextInfo }
   classification?: GPTAutoClassification
   decision?: GPTAutoPolicyDecision
   /** Real production outcome from usage_logs; detail endpoint only. */

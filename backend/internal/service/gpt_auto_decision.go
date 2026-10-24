@@ -169,6 +169,8 @@ type GPTAutoShadowDecision struct {
 // GPTAutoPolicySnapshot is the subset of config that determines a policy
 // result. Content-addressed so identical configs share one row.
 type GPTAutoPolicySnapshot struct {
+	DynamicRouting     *GPTAutoDynamicConfig `json:"dynamic_routing,omitempty"`
+	ClientEffortPolicy string                `json:"client_effort_policy,omitempty"`
 	PolicyVersion      string                `json:"policy_version"`
 	GlobalMinMargin    float64               `json:"global_min_margin"`
 	ProfitSafetyBuffer float64               `json:"profit_safety_buffer"`
@@ -177,12 +179,17 @@ type GPTAutoPolicySnapshot struct {
 
 // NewGPTAutoPolicySnapshot extracts the policy-relevant config.
 func NewGPTAutoPolicySnapshot(cfg GPTAutoShadowConfig) GPTAutoPolicySnapshot {
-	return GPTAutoPolicySnapshot{
+	snapshot := GPTAutoPolicySnapshot{
 		PolicyVersion:      cfg.PolicyVersion,
 		GlobalMinMargin:    cfg.GlobalMinMargin,
 		ProfitSafetyBuffer: cfg.ProfitSafetyBuffer,
 		ModelProfiles:      cfg.ModelProfiles,
 	}
+	if cfg.Live.DynamicRouting != nil && cfg.Live.DynamicRouting.Enabled {
+		snapshot.DynamicRouting = cfg.Live.DynamicRouting
+		snapshot.ClientEffortPolicy = cfg.Live.ClientEffortPolicy
+	}
+	return snapshot
 }
 
 // Hash returns a stable content hash of the snapshot.
@@ -202,6 +209,10 @@ func (s GPTAutoPolicySnapshot) ApplyTo(cfg GPTAutoShadowConfig) GPTAutoShadowCon
 	cfg.GlobalMinMargin = s.GlobalMinMargin
 	cfg.ProfitSafetyBuffer = s.ProfitSafetyBuffer
 	cfg.ModelProfiles = s.ModelProfiles
+	if s.DynamicRouting != nil {
+		cfg.Live.DynamicRouting = s.DynamicRouting
+		cfg.Live.ClientEffortPolicy = s.ClientEffortPolicy
+	}
 	return cfg
 }
 

@@ -101,6 +101,22 @@
         </div>
       </section>
 
+      <section v-if="live.dynamic_routing" class="card" data-testid="gpt-auto-dynamic">
+        <header class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('gptAuto.dynamic.title') }}</h2>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('gptAuto.dynamic.hint') }}</p>
+        </header>
+        <div class="grid grid-cols-1 gap-4 p-6 md:grid-cols-2">
+          <label v-for="key in dynamicToggles" :key="key" class="flex items-center justify-between gap-3 text-sm text-gray-900 dark:text-white">
+            {{ t(`gptAuto.dynamic.${key}`) }}<Toggle v-model="live.dynamic_routing[key]" :data-testid="`dynamic-${key}`" />
+          </label>
+          <label><span class="input-label">{{ t('gptAuto.dynamic.strategy') }}</span><Select v-model="live.dynamic_routing.stateless_strategy" :options="[{ value: 'per_request', label: t('gptAuto.dynamic.perRequest') }]" /></label>
+          <label><span class="input-label">{{ t('gptAuto.dynamic.threshold') }}</span><input v-model.number="live.dynamic_routing.downgrade_stability_count" type="number" min="1" max="20" step="1" class="input" /></label>
+          <label v-for="model in poolModels" :key="model"><span class="input-label">{{ model }} · {{ t('gptAuto.dynamic.tier') }}</span><input v-model.number="live.dynamic_routing.capability_tiers[model]" type="number" min="1" max="100" step="1" class="input" /></label>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.dynamic.constraints') }}</p>
+        </div>
+      </section>
+
       <!-- Sessions, commercial -->
       <section class="card">
         <header class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -112,7 +128,7 @@
               <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('gptAuto.live.sessions.affinity') }}</p>
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('gptAuto.live.sessions.affinityHint') }}</p>
             </div>
-            <Toggle v-model="live.session_affinity_enabled" />
+            <Toggle v-model="live.session_affinity_enabled" :disabled="live.dynamic_routing?.enabled" />
           </div>
           <label>
             <span class="input-label">{{ t('gptAuto.live.sessions.ttl') }}</span>
@@ -244,6 +260,7 @@ const labels = useGPTAutoLabels()
 const appStore = useAppStore()
 
 const endpointOptions = ['chat_completions', 'responses'] as const
+const dynamicToggles = ['enabled', 'allow_model_upgrade', 'allow_model_downgrade', 'allow_effort_change'] as const
 const efforts = ['none', 'low', 'medium', 'high', 'xhigh', 'max']
 
 const loading = ref(true)

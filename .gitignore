@@ -241,3 +241,8 @@ scripts/gpt-auto-local/__pycache__/
 /artifacts/gpt-auto-phase21/
 !docs/GPT_AUTO_INDEPENDENT_PRICING_IMPLEMENTATION_REPORT.md
 !docs/GPT_AUTO_INDEPENDENT_PRICING_ACCEPTANCE_REPORT.md
+
+# GPT Auto Phase 2.2 local validation evidence (may contain test account data)
+/artifacts/gpt-auto-phase22/
+!docs/GPT_AUTO_PHASE22_DYNAMIC_ROUTING_IMPLEMENTATION.md
+!docs/GPT_AUTO_PHASE22_DYNAMIC_ROUTING_ACCEPTANCE.md

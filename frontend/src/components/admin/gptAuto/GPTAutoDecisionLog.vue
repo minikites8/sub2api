@@ -79,6 +79,7 @@
                 <td class="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{{ formatDateTime(item.created_at) }}</td>
                 <td class="px-3 py-2" :data-testid="`gpt-auto-mode-${item.id}`">
                   <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="item.mode === 'live' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'">{{ t(`gptAuto.live.modes.${item.mode === 'live' ? 'live' : 'shadow'}`) }}</span>
+                  <span v-if="item.features?.switching" class="block text-[11px] text-primary-600 dark:text-primary-400">{{ item.features.switching.affinity_type }} · {{ item.features.switching.switch_direction }}<span v-if="item.features.switching.effort_changed"> · {{ t('gptAuto.dynamic.effortChanged') }}</span></span>
                   <span v-if="item.mode === 'live' && item.request_status" class="block text-[11px] text-gray-500">{{ t(`gptAuto.live.requestStatuses.${item.request_status}`) }}</span>
                 </td>
                 <td class="max-w-[10rem] truncate px-3 py-2 font-mono text-xs" :title="item.request_id">{{ item.request_id || '—' }}</td>
@@ -113,11 +114,11 @@
       <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="onPage" @update:pageSize="onPageSize" />
     </div>
 
-    <BaseDialog :show="detailOpen" :title="t('gptAuto.detail.title', { id: detail?.id ?? '' })" width="extra-wide" @close="closeDetail">
+    <BaseDialog :show="detailOpen" :title="t(detail?.mode === 'live' ? 'gptAuto.dynamic.liveTitle' : 'gptAuto.detail.title', { id: detail?.id ?? '' })" width="extra-wide" @close="closeDetail">
       <div v-if="detailLoading" class="flex justify-center py-10"><div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div></div>
       <p v-else-if="detailError" role="alert" class="text-sm text-red-600">{{ detailError }}</p>
       <div v-else-if="detail" class="space-y-5 text-sm" data-testid="gpt-auto-detail">
-        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">{{ t('gptAuto.detail.notice') }}</div>
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">{{ t(detail.mode === 'live' ? 'gptAuto.dynamic.liveNotice' : 'gptAuto.detail.notice') }}</div>
 
         <dl class="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div v-for="fact in detailFacts" :key="fact.label">
@@ -125,6 +126,26 @@
             <dd class="font-medium text-gray-900 dark:text-white">{{ fact.value }}</dd>
           </div>
         </dl>
+
+        <section v-if="detail.features.switching" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600" data-testid="dynamic-decision-detail">
+          <dl class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div><dt>{{ t('gptAuto.dynamic.previous') }}</dt><dd>{{ detail.features.switching.previous_model || '—' }} / {{ detail.features.switching.previous_effort || '—' }}</dd></div>
+            <div><dt>{{ t('gptAuto.dynamic.jev') }}</dt><dd>{{ detail.jev_model || '—' }} / {{ detail.jev_effort || '—' }}</dd></div>
+            <div><dt>{{ t('gptAuto.dynamic.policy') }}</dt><dd>{{ detail.features.switching.policy_model || '—' }} / {{ detail.features.switching.policy_effort || '—' }}</dd></div>
+            <div><dt>{{ t('gptAuto.dynamic.executed') }}</dt><dd>{{ detail.final_model || '—' }} / {{ detail.final_effort || '—' }}</dd></div>
+            <div><dt>{{ t('gptAuto.dynamic.reason') }}</dt><dd>{{ detail.features.switching.switch_direction }} · {{ detail.features.switching.switch_block_reason || detail.features.switching.switch_reason }}</dd></div>
+            <div><dt>{{ t('gptAuto.dynamic.affinity') }}</dt><dd>{{ detail.features.switching.affinity_type }} · {{ detail.features.switching.state_dependency }}</dd></div>
+          </dl>
+          <p v-if="detail.features.switching.model_switched" class="mt-2 text-primary-600">{{ t('gptAuto.dynamic.modelSwitched') }}</p>
+          <p v-if="detail.features.switching.effort_changed" class="mt-2 text-primary-600">{{ t('gptAuto.dynamic.effortChanged') }}</p>
+          <p v-if="detail.evaluation_status === 'skipped' && detail.features.switching.affinity_type === 'hard'" class="mt-2">{{ t('gptAuto.dynamic.skipped') }}</p>
+          <p class="mt-2 font-mono text-xs">{{ detail.features.switching.classification_trigger }}</p>
+          <details v-if="detail.features.switching.history?.length" class="mt-3">
+            <summary>{{ t('gptAuto.dynamic.history') }}</summary>
+            <ol class="mt-2 space-y-1 font-mono text-xs"><li v-for="(turn, index) in detail.features.switching.history" :key="index">#{{ turn.sequence }} · {{ turn.model }} / {{ turn.effort }} · {{ turn.direction }}</li></ol>
+          </details>
+        </section>
+        <p v-else-if="detail.mode === 'live' && detail.routing_reason === 'session_affinity'">{{ t('gptAuto.dynamic.skippedLegacy') }}</p>
 
         <GPTAutoContextDiagnostics
           :context="detail.features.context ?? null"
@@ -322,7 +343,7 @@ const detailFacts = computed(() => {
     { label: t('gptAuto.logs.columns.time'), value: formatDateTime(value.created_at) },
     { label: t('gptAuto.logs.columns.requestId'), value: value.request_id || '—' },
     { label: t('gptAuto.detail.endpoint'), value: labels.endpoint(value.endpoint) },
-    { label: t('gptAuto.detail.actual'), value: `${value.actual_model || '—'} / ${value.actual_effort || '—'}` },
+    { label: t(value.mode === 'live' ? 'gptAuto.dynamic.executed' : 'gptAuto.detail.actual'), value: value.mode === 'live' ? `${value.final_model || '—'} / ${value.final_effort || '—'}` : `${value.actual_model || '—'} / ${value.actual_effort || '—'}` },
     { label: t('gptAuto.detail.stream'), value: value.stream ? t('gptAuto.common.yes') : t('gptAuto.common.no') },
     { label: t('gptAuto.detail.tools'), value: value.has_tools ? t('gptAuto.common.yes') : t('gptAuto.common.no') },
     { label: t('gptAuto.detail.groupId'), value: value.group_id ?? '—' },
