@@ -36,6 +36,9 @@ func controlledHTTPResponse(ctx context.Context, response *http.Response) {
 // The persistent caller reserves one slot before Forward. Every generation send
 // below must pass this guard; compatibility recovery cannot spend a second slot.
 func controlledSubmission(ctx context.Context, channel string) error {
+	if err := MarkGPTQoSSubmission(ctx); err != nil {
+		return err
+	}
 	mode := controlledMode(ctx)
 	if mode == nil {
 		return nil

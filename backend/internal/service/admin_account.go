@@ -590,12 +590,16 @@ func (s *adminServiceImpl) applyAdminAPIKeyAccountDefaults(ctx context.Context, 
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	defer s.refreshGPTQoSRegistryAfterMutation()
 	resolved, err := s.applyAdminAPIKeyAccountDefaults(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	input = resolved
 	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := ValidateQualityExtra(ctx, input.Extra); err != nil {
 		return nil, err
 	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
@@ -669,6 +673,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
+	if err := ValidateGPTQoSAccountCapacity(account); err != nil {
+		return nil, err
+	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
@@ -711,10 +718,14 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
+	defer s.refreshGPTQoSRegistryAfterMutation()
 	if input == nil {
 		return nil, errors.New("account input is nil")
 	}
 	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := ValidateQualityExtra(ctx, input.Extra); err != nil {
 		return nil, err
 	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
@@ -1071,6 +1082,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err := s.validateExcelBPS403GroupSettings(ctx, account); err != nil {
 		return nil, err
 	}
+	if err := ValidateGPTQoSAccountCapacity(account); err != nil {
+		return nil, err
+	}
 	billingSettingsAppliedAtomically := false
 	updater := s.accountBillingRepo
 	if updater == nil {
@@ -1148,11 +1162,30 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	defer s.refreshGPTQoSRegistryAfterMutation()
 	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(updates); err != nil {
+		return err
+	}
+	if err := ValidateQualityExtra(ctx, updates); err != nil {
 		return err
 	}
 	if err := ValidateAccountCostMultiplierExtra(updates); err != nil {
 		return err
+	}
+	if _, changesPool := updates[AccountResourcePoolKey]; changesPool {
+		a, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		copy := *a
+		copy.Extra = maps.Clone(a.Extra)
+		if copy.Extra == nil {
+			copy.Extra = map[string]any{}
+		}
+		maps.Copy(copy.Extra, updates)
+		if err := ValidateGPTQoSAccountCapacity(&copy); err != nil {
+			return err
+		}
 	}
 	_, moveChanged := updates[ExcelBPSAutoMoveOn403Key]
 	_, targetChanged := updates[ExcelBPS403TargetGroupIDKey]
@@ -1203,7 +1236,11 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	defer s.refreshGPTQoSRegistryAfterMutation()
 	if err := NormalizeOpenAICodexTicketGatewayBlacklistExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := ValidateQualityExtra(ctx, input.Extra); err != nil {
 		return nil, err
 	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
@@ -1281,6 +1318,23 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			return nil, err
 		}
 		cachedTargets = loaded
+	}
+	for _, original := range cachedTargets {
+		if original == nil {
+			continue
+		}
+		candidate := *original
+		candidate.Extra = maps.Clone(original.Extra)
+		if candidate.Extra == nil {
+			candidate.Extra = map[string]any{}
+		}
+		maps.Copy(candidate.Extra, input.Extra)
+		if input.Concurrency != nil {
+			candidate.Concurrency = *input.Concurrency
+		}
+		if err := ValidateGPTQoSAccountCapacity(&candidate); err != nil {
+			return nil, err
+		}
 	}
 	targetsByID := make(map[int64]*Account, len(cachedTargets))
 	for _, account := range cachedTargets {
@@ -1553,6 +1607,12 @@ func upstreamBillingProbeIdentity(account *Account) map[string]any {
 }
 
 func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filters *BulkUpdateAccountFilters) ([]int64, error) {
+	if filters != nil && filters.QualityTier != "" {
+		if filters.QualityTier != "strong" && filters.QualityTier != "basic" && filters.QualityTier != "unknown" {
+			return nil, errors.New("invalid quality filter")
+		}
+		ctx = WithAccountQualityFilter(ctx, filters.QualityTier)
+	}
 	if filters == nil {
 		return nil, nil
 	}

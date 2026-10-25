@@ -391,6 +391,9 @@ func (s *OpenAIGatewayService) admitOpenAITurnSnapshot(ctx context.Context, sele
 	if !latest.IsOpenAI() {
 		return latest, nil
 	}
+	if err := s.checkGPTQoSFinalAdmission(ctx, selected, latest); err != nil {
+		return nil, err
+	}
 	if openAITurnRouteFingerprint(latest) != openAITurnRouteFingerprint(selected) {
 		if fallbackAccount, ok := accountForExcelBPSFallbackAdmission(ctx, selected, latest); ok {
 			latest = fallbackAccount

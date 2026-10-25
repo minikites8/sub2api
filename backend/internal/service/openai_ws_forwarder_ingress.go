@@ -1704,6 +1704,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		ctx := turnCtx
 		wroteDownstream := false
 		firstOutputStage := &openAIWSFirstOutputStage{requestContext: c}
+		if err := MarkGPTQoSSubmission(ctx); err != nil {
+			return nil, err
+		}
 		if err := s.acquireOpenAIRPMForSend(ctx, latest); err != nil {
 			return nil, err
 		}

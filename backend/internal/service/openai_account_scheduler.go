@@ -411,16 +411,25 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			req.RequirePrivacySet = true
 		}
 	}
+	qualityAware := s.service.qualityRoutingEnabled(ctx, req)
 	start := time.Now()
 	// 命名返回值保证 defer 写入的耗时同时返回给调用方。
 	defer func() {
 		decision.LatencyMs = time.Since(start).Milliseconds()
 		s.metrics.recordSelect(decision)
+		if qualityAware && selection != nil && selection.Account != nil && (decision.StickyPreviousHit || decision.Layer == openAIAccountScheduleLayerGuardianParent) {
+			s.recordGPTQualitySelection(ctx, req, selection, selection.Account.QualityTier(), false, start)
+			if state, _ := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState); state != nil {
+				state.mu.Lock()
+				state.sticky = decision.Layer
+				state.mu.Unlock()
+			}
+		}
 	}()
 
 	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
 	if previousResponseID != "" && NormalizeOpenAICompatiblePlatform(req.Platform) == PlatformOpenAI &&
-		(!req.StickyWeighted || !req.PreviousResponseCanMove) {
+		((!qualityAware && !req.StickyWeighted) || !req.PreviousResponseCanMove) {
 		selection, err := s.service.selectAccountByPreviousResponseIDForCapability(
 			ctx,
 			req.GroupID,
@@ -478,10 +487,17 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 	}
 
+	if qualityAware && previousResponseID != "" && !req.PreviousResponseCanMove {
+		return nil, decision, fmt.Errorf("%w: continuation owner unavailable", ErrNoAvailableAccounts)
+	}
+
 	if req.GuardianParentAccountID > 0 {
 		parentReq := req
 		parentReq.StickyAccountID = req.GuardianParentAccountID
 		parentReq.PreserveStickyBinding = true
+		if qualityAware {
+			parentReq.DisableStickyEscape = true
+		}
 		selection, _, err := s.selectBySessionHash(ctx, parentReq)
 		if err != nil {
 			return nil, decision, err
@@ -493,9 +509,12 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			decision.SelectedAccountType = selection.Account.Type
 			return selection, decision, nil
 		}
+		if qualityAware && req.PreserveStickyBinding {
+			return nil, decision, fmt.Errorf("%w: parent continuation owner unavailable", ErrNoAvailableAccounts)
+		}
 	}
 
-	if !req.StickyWeighted {
+	if !req.StickyWeighted && !qualityAware {
 		selection, escapedSticky, err := s.selectBySessionHash(ctx, req)
 		if err != nil {
 			return nil, decision, err
@@ -648,6 +667,11 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		return nil, true, nil
 	}
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, account)
+	if acquireErr != nil {
+		if state, _ := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState); state != nil && state.config.Enabled {
+			return nil, false, acquireErr
+		}
+	}
 	if acquireErr == nil && result != nil && result.Acquired {
 		if !req.PreserveStickyBinding {
 			_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
@@ -1695,13 +1719,19 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
 	}
-	filtered = preferNonFallbackAccountPointers(filtered)
+	if !s.service.qualityRoutingEnabled(ctx, req) {
+		filtered = preferNonFallbackAccountPointers(filtered)
+	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
 	if s.service.concurrencyService != nil {
 		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
 			loadMap = batchLoad
 		}
+	}
+
+	if s.service.qualityRoutingEnabled(ctx, req) {
+		return s.selectQualityPools(ctx, req, filtered, loadMap)
 	}
 
 	// Preserve BPS preference across subscription/compact priority partitions,
@@ -2031,6 +2061,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	ctx = withOpenAIProxyQuarantineTransport(ctx, req.RequiredTransport)
 	if account == nil {
 		return false, "account_nil"
+	}
+	if tier, _ := ctx.Value(gptQualityConstraintKey{}).(string); tier != "" && account.QualityTier() != tier {
+		return false, "quality_tier_changed"
 	}
 	if account.IsExcelOAuth() && s != nil && s.service != nil && !s.service.excelBPSGloballyEnabled(ctx) {
 		return false, "excel_bps_disabled"
@@ -2588,13 +2621,20 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}
+	if platform == PlatformOpenAI && s.gptQoSConfigForContext(ctx).unavailable {
+		return nil, decision, fmt.Errorf("%w: scheduling policy unavailable", ErrNoAvailableAccounts)
+	}
 	preserveGuardianParentBinding := preserveOpenAIGuardianParentBinding(ctx, sessionHash)
 	guardianParentAccountID := int64(0)
 	if strings.TrimSpace(previousResponseID) == "" {
 		guardianParentAccountID = s.resolveOpenAIGuardianParentAccountID(ctx, groupID)
 	}
 	priority := s.prioritySchedulingRuntimeConfig()
-	scheduler := s.getOpenAIAccountScheduler(ctx, platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priority.applies(groupID, requestedModel))
+	qualityAware := platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && s.gptQoSConfigForContext(ctx).QualityRoutingEnabled && s.gptQoSConfigForContext(ctx).Applies(groupID)
+	if state, _ := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState); qualityAware && state != nil && int(state.selectionAttempts.Add(1)) > state.config.MaxAttempts && state.config.Enabled {
+		return nil, decision, fmt.Errorf("%w: QoS attempt budget exhausted", ErrNoAvailableAccounts)
+	}
+	scheduler := s.getOpenAIAccountScheduler(ctx, qualityAware || (platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priority.applies(groupID, requestedModel)))
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if selection, hit, err := s.selectLegacyAccountByPreviousResponse(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform); err != nil {
@@ -2825,6 +2865,12 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 	if account == nil {
 		return false
 	}
+	if !success && len(observedErr) > 0 && errors.Is(observedErr[0], ErrGPTQoSUnavailable) {
+		return false
+	}
+	if !success && len(observedErr) > 0 && errors.Is(observedErr[0], context.Canceled) && s.settingService.gptQoSRuntimeConfig().QualityRoutingEnabled {
+		return false
+	}
 	if !success && len(observedErr) > 0 && isGrokRequestScopedFailure(observedErr[0]) {
 		return false
 	}
@@ -2850,7 +2896,7 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 		s.openaiOAuth429RetryStartedAt.Delete(accountID)
 		s.clearOpenAIAccountModelTransientState(accountID, normalizeOpenAIAccountModelTransientModel(model))
 	}
-	scheduler := s.getOpenAIAccountScheduler(context.Background(), s.prioritySchedulingRuntimeConfig().Enabled)
+	scheduler := s.getOpenAIAccountScheduler(context.Background(), s.prioritySchedulingRuntimeConfig().Enabled || s.gptQoSConfigForContext(context.Background()).QualityRoutingEnabled)
 	if scheduler == nil {
 		return healthTripped
 	}
@@ -2868,7 +2914,7 @@ func (s *OpenAIGatewayService) ObserveOpenAIAccountHealthFailure(ctx context.Con
 }
 
 func (s *OpenAIGatewayService) RecordOpenAIAccountSwitch() {
-	scheduler := s.getOpenAIAccountScheduler(context.Background(), s.prioritySchedulingRuntimeConfig().Enabled)
+	scheduler := s.getOpenAIAccountScheduler(context.Background(), s.prioritySchedulingRuntimeConfig().Enabled || s.gptQoSConfigForContext(context.Background()).QualityRoutingEnabled)
 	if scheduler == nil {
 		return
 	}
@@ -2876,7 +2922,7 @@ func (s *OpenAIGatewayService) RecordOpenAIAccountSwitch() {
 }
 
 func (s *OpenAIGatewayService) SnapshotOpenAIAccountSchedulerMetrics() OpenAIAccountSchedulerMetricsSnapshot {
-	scheduler := s.getOpenAIAccountScheduler(context.Background(), s.prioritySchedulingRuntimeConfig().Enabled)
+	scheduler := s.getOpenAIAccountScheduler(context.Background(), s.prioritySchedulingRuntimeConfig().Enabled || s.gptQoSConfigForContext(context.Background()).QualityRoutingEnabled)
 	if scheduler == nil {
 		return OpenAIAccountSchedulerMetricsSnapshot{}
 	}

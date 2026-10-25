@@ -3559,7 +3559,8 @@
           <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" class="input" />
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
-        <div>
+        <AccountQualityFields v-if="form.platform === 'openai'" v-model:tier="qualityTier" v-model:pool="qualityPool" v-model:source="qualitySource" />
+          <div>
           <label class="input-label" for="account-cost-multiplier">{{ t('admin.accounts.costMultiplier') }}</label>
           <input
             id="account-cost-multiplier"
@@ -4591,6 +4592,7 @@
 </template>
 
 <script setup lang="ts">
+import AccountQualityFields from './AccountQualityFields.vue'
 import OpenAIRequestTimezoneField from '@/components/account/OpenAIRequestTimezoneField.vue'
 import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier } from '@/utils/accountCost'
 
@@ -4747,6 +4749,9 @@ const oauthStepTitle = computed(() => {
 
 // Platform-specific hints for API Key type
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
+const qualityTier = ref('unknown')
+const qualityPool = ref('')
+const qualitySource = ref('unknown')
 const costMultiplier = ref(DEFAULT_ACCOUNT_COST_MULTIPLIER)
 const upstreamRequestIdHeader = ref('')
 const withAccountExtraSettings = (extra?: Record<string, unknown>): Record<string, unknown> => {
@@ -4754,7 +4759,7 @@ const withAccountExtraSettings = (extra?: Record<string, unknown>): Record<strin
     throw new Error(t('admin.accounts.costMultiplierInvalid'))
   }
   const name = upstreamRequestIdHeader.value.trim()
-  return { ...(extra || {}), cost_multiplier: costMultiplier.value, ...(name ? { upstream_request_id_header: name } : {}) }
+  return { ...(extra || {}), quality_tier: qualityTier.value, qos_upstream_kind: qualitySource.value, qos_resource_pool: qualityPool.value.trim(), cost_multiplier: costMultiplier.value, ...(name ? { upstream_request_id_header: name } : {}) }
 }
 
 const baseUrlHint = computed(() => {
@@ -6269,6 +6274,9 @@ const resetForm = () => {
   form.concurrency = 10
   form.load_factor = null
   form.priority = 1
+  qualityTier.value = 'unknown'
+  qualityPool.value = ''
+  qualitySource.value = 'unknown'
   costMultiplier.value = DEFAULT_ACCOUNT_COST_MULTIPLIER
   form.rate_multiplier = 1
   form.group_ids = []

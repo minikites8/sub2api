@@ -463,6 +463,9 @@ var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /r
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
+	gptQoSMetricsOnce       sync.Once
+	gptQoSMetricsQueue      chan gptQoSObservation
+	gptQoSMetricsDropped    atomic.Int64
 	stopAstraSetup          func()
 	codexWSAnchors          codexWSAnchorStore
 	priorityScheduling      prioritySchedulingState
@@ -664,6 +667,26 @@ func NewOpenAIGatewayService(
 		openaiModelTransient:  newOpenAIAccountModelTransientState(openAIModelTransientDefaultMax),
 
 		requireLatestTurnAdmission: true,
+	}
+	if settingService != nil && settingService.settingRepo != nil {
+		settingService.gptQoSAccountRepo = accountRepo
+		if store, ok := concurrencyServiceCapacityStore(concurrencyService); ok {
+			settingService.gptQoSCapacityStore = store
+		}
+		bootCtx, bootCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		settingService.gptQoSConfig.mu.Lock()
+		settingService.gptQoSConfig.config = DefaultGPTQoSConfig()
+		settingService.gptQoSConfig.config.unavailable = true
+		settingService.gptQoSConfig.mu.Unlock()
+		if policy, err := settingService.GetGPTQoSConfig(bootCtx); err == nil {
+			if err = settingService.synchronizeGPTQoSCapacity(bootCtx, policy); err == nil {
+				settingService.gptQoSConfig.mu.Lock()
+				settingService.gptQoSConfig.config = policy
+				settingService.gptQoSConfig.expires = time.Now().Add(time.Second)
+				settingService.gptQoSConfig.mu.Unlock()
+			}
+		}
+		bootCancel()
 	}
 	if rateLimitService != nil {
 		rateLimitService.SetAccountRuntimeBlocker(svc)

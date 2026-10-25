@@ -132,6 +132,9 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
+	gptQoSCapacityStore                GPTQoSCapacityStore
+	gptQoSAccountRepo                  AccountRepository
+	gptQoSConfig                       gptQoSConfigCache
 	adminAPIKeysMu                     sync.Mutex
 	Serverless                         *serverless.Manager // Initialized before requests start.
 	modelBillingCache                  modelBillingConfigCache

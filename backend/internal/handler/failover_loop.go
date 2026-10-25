@@ -416,6 +416,12 @@ func failoverClientGone(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.Context().Err() == nil {
 		return false
 	}
+	if status, message := service.GPTQoSLocalCancellation(c.Request.Context()); status != 0 {
+		if !service.StopOpenAICompactSSEKeepaliveCommitted(c) && !c.Writer.Written() {
+			c.JSON(status, gin.H{"type": "error", "error": gin.H{"type": "timeout_error", "message": message}})
+		}
+		return true
+	}
 	// 先停 compact 心跳（接管 ResponseWriter，建立 happens-before），与
 	// handleStreamingAwareError/errorResponse 等终结路径对齐，避免心跳
 	// goroutine 与下面的状态标记并发触碰同一 writer。心跳已提交 200 时

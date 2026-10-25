@@ -1,0 +1,19 @@
+export default {
+  aggregateStrong: 'Deduplicated aggregate strong capacity',
+  queued: 'Queued requests', active: 'Active / effective capacity', strongCapacity: 'Strong active / capacity', reservedUsed: 'Premium reserved used / reserved', premiumActive: 'Premium active', peakReason: 'Peak state reason', downgradeReasons: 'Quality downgrade reasons', upstreamShares: 'Actual upstream request share', firstSuccessRate: 'First success rate %',
+  basicWait: 'Basic fallback wait budget (ms)',
+  strongHitRate: 'Strong hit rate %',
+  rolloutGroups: 'Rollout group IDs (comma separated; empty for all)',
+  upstreamKind: 'Upstream source', direct: 'Direct login', vmShare: 'VM2API requests', directShare: 'Direct requests', metricsDropped: 'Dropped observation events',
+  title: 'GPT quality and QoS scheduling', accountQuality: 'Account quality and shared capacity', qualityTier: 'Quality tier', strong: 'Strong', basic: 'Basic', unknown: 'Unknown',
+  sharedPool: 'Shared pool ID (empty for independent capacity)', accountHint: 'Quality is explicitly verified by an administrator. Accounts sharing VM2API resources must use one pool ID and a single configured concurrency cap.', bulkQuality: 'Update quality and shared pool',
+  qualityRouting: 'Quality-aware routing', qosEnabled: 'Global fair admission', capacityEnabled: 'Shared resource capacity control', peakEnabled: 'Peak protection', strictReserve: 'Strict reserve (borrowing cannot guarantee immediate availability)',
+  enter: 'Peak entry utilization', exit: 'Peak exit utilization', ratio: 'Premium reserve ratio', enterHold: 'Entry hold (ms)', exitHold: 'Exit hold (ms)',
+  premiumWeight: 'Premium default weight', standardWeight: 'Standard default weight', economyWeight: 'Economy default weight', maxWaiting: 'Global queue limit', requestBudget: 'Request budget (ms)', highBudget: 'High-effort budget (ms)', maxAttempts: 'Maximum selection attempts', sampleRate: 'Decision log sample rate',
+  save: 'Save', refresh: 'Refresh observations', rollback: 'Disable all new scheduling features', pools: 'Shared resource pools', poolID: 'Pool ID', concurrency: 'Concurrency cap', addPool: 'Add pool', remove: 'Remove',
+  effective: 'Effective policy order', effectiveHint: 'Permissions/model/hard continuity → QoS and capacity → quality/fallback → existing in-pool scheduler → atomic slots / RPM / final admission', defaultsOff: 'Features default off. QoS requires quality routing; peak protection requires QoS and capacity control. Unknown accounts never enter the strong pool.',
+  saved: 'Configuration saved', failed: 'Operation failed', groupQos: 'Group QoS (independent of pricing)', tier: 'Service tier', weight: 'Group weight', fallback: 'Allow Basic fallback', strongWait: 'Strong wait budget (ms)', groupMaxWaiting: 'Group queue limit', userMaxWaiting: 'User queue limit (across API keys)', protection: 'Participate in Premium protection', groupConcurrency: 'Group concurrency limit (0 for unlimited)',
+  groupHint: 'Premium and Standard default to no downgrade. Hard continuations retain their owner. These scheduling settings are saved separately.', metrics: 'Scheduling observations', redisUnavailable: 'Redis unavailable: QoS admissions fail closed; capacity guarantees are unavailable.', filters: 'Observation filters', model: 'Requested model', effort: 'Reasoning effort', groupID: 'Group ID',
+  requests: 'Requests', attempts: 'Attempts', successes: 'Successful requests', firstSuccess: 'First-attempt successes', canceled: 'Client cancellations', downgrades: 'Downgrades', strongHits: 'Strong requests', average: 'Average wait ms', p50: 'P50 ms', p95: 'P95 ms', p99: 'P99 ms', capacity: 'Global queue and resource state',
+  metricsWindow: 'Last 24 hours, at most 10000 completed requests; requests and retries are separate.', qualityFilter: 'All quality tiers', createFirst: 'Configure QoS in the edit dialog after creating the group.'
+}

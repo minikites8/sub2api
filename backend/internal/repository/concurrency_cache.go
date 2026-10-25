@@ -93,11 +93,53 @@ var (
 		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
 		redis.call('ZREMRANGEBYSCORE', liveKey, '-inf', now - 60)
 
+        -- Optional shared upstream capacity; one atomic claim also covers
+        -- legacy scheduler and non-QoS account-slot callers. No new RTT.
+        local aid=string.match(key,'([^:]+)$')
+        local ns=string.sub(key,1,#key-#aid-#'concurrency:account:')
+        local qp=ns..'gptqos:{v1}:'
+        local sharedPool=false
+        if redis.call('HGET',qp..'capacity_policy','enabled')=='1' then
+            sharedPool=redis.call('HGET',qp..'account_pools',aid)
+            if sharedPool then
+                local poolKey=qp..'pool:'..sharedPool
+                redis.call('ZREMRANGEBYSCORE',poolKey,'-inf',now*1000)
+                local cap=tonumber(redis.call('HGET',qp..'pool_limits',sharedPool) or '0')
+                if not redis.call('ZSCORE',poolKey,requestID) and redis.call('ZCARD',poolKey)>=cap then return {0,now} end
+            end
+        end
+        -- Strict reservations also cover legacy/non-QoS users of these slots.
+        if redis.call('HGET',qp..'capacity_policy','enabled')=='1' and redis.call('HGET',qp..'capacity_policy','peak_enabled')=='1' then
+            local globalRaw=redis.call('GET',qp..'global_peak')
+            if globalRaw and redis.call('HGET',qp..'account_quality',aid)=='strong' then
+                local gp=cjson.decode(globalRaw)
+                redis.call('ZREMRANGEBYSCORE',qp..'all_strong','-inf',now*1000)
+                if gp.peak and (gp.reserved or 0)>0 and (not gp.borrowing or redis.call('ZCARD',qp..'users:premium')>0) and not redis.call('ZSCORE',key,requestID) and redis.call('ZCARD',qp..'all_strong')>=gp.capacity-gp.reserved then return {0,now} end
+            end
+            local pool=sharedPool or ('account:'..aid)
+            local raw=redis.call('HGET',qp..'pools',pool)
+            if raw then
+                local p=cjson.decode(raw)
+                if p.peak and (p.reserved or 0)>0 and (not p.borrowing or redis.call('ZCARD',qp..'users:premium')>0) then
+                    local used=redis.call('ZCARD',key)+redis.call('ZCARD',liveKey)
+                    if sharedPool then used=redis.call('ZCARD',qp..'pool:'..pool) end
+                    if not redis.call('ZSCORE',key,requestID) and (used>=p.capacity-p.reserved or (redis.call('HGET',qp..'account_quality',aid)=='strong' and redis.call('ZCARD',qp..'strong:'..pool)>=(p.strong_capacity or p.capacity)-p.reserved)) then return {0,now} end
+                end
+            end
+        end
+        local function claimPool()
+            if sharedPool then
+                redis.call('ZADD',qp..'pool:'..sharedPool,(now+ttl)*1000,requestID)
+                redis.call('SET',qp..'slot_pool:'..requestID,sharedPool,'EX',ttl+180)
+                if redis.call('HGET',qp..'account_quality',aid)=='strong' then redis.call('ZADD',qp..'strong:'..sharedPool,(now+ttl)*1000,requestID);redis.call('ZADD',qp..'all_strong',(now+ttl)*1000,requestID) end
+            end
+        end
 		-- 检查是否已存在（支持重试场景刷新时间戳）
 		local exists = redis.call('ZSCORE', key, requestID)
 		if exists ~= false then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
+            claimPool()
 			return {1, now}
 		end
 
@@ -106,6 +148,7 @@ var (
 		if count < maxConcurrency then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
+            claimPool()
 			return {1, now}
 		end
 
@@ -845,7 +888,7 @@ func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int
 
 func (c *concurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error {
 	key := accountSlotKey(accountID)
-	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
+	if err := releaseGPTQoSAccountSlot.Run(ctx, c.rdb, []string{key}, requestID).Err(); err != nil {
 		return err
 	}
 	// 释放后用真实负载刷新索引；若没有槽位和等待计数，会移除索引 member。
@@ -1318,6 +1361,11 @@ func (c *concurrencyCache) AcquireLiveLease(
 	if c == nil || c.rdb == nil || accountID <= 0 || userID <= 0 || apiKeyID <= 0 || leaseID == "" {
 		return false, nil
 	}
+	if blocked, err := c.gptQoSSharedLiveBlocked(ctx, accountID); err != nil {
+		return false, err
+	} else if blocked {
+		return false, errors.New("shared QoS pools do not support Live leases")
+	}
 	return c.acquireLiveLease(ctx, accountID, accountMax, userID, userMax, apiKeyID, apiKeyMax, "", leaseID, replacingRegularSlots)
 }
 
@@ -1326,6 +1374,11 @@ func (c *concurrencyCache) AcquireLiveLease(
 // counted twice. A missing required source or an aborted handoff fails closed
 // instead of inventing capacity.
 func (c *concurrencyCache) AcquireLiveLeaseTransferring(ctx context.Context, request service.LiveLeaseTransferRequest) (bool, error) {
+	if blocked, err := c.gptQoSSharedLiveBlocked(ctx, request.AccountID); err != nil {
+		return false, err
+	} else if blocked {
+		return false, errors.New("shared QoS pools do not support Live lease transfer")
+	}
 	if c == nil || c.rdb == nil || request.AccountID <= 0 || request.UserID <= 0 || request.APIKeyID <= 0 || request.LeaseID == "" {
 		return false, nil
 	}

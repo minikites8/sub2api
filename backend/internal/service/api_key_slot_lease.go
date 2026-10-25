@@ -58,6 +58,9 @@ func APIKeySlotLeaseLost(ctx context.Context) bool {
 
 // Detach client cancellation, but never detach the capacity owner's stop signal.
 func detachAPIKeyUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if state, _ := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState); state != nil && state.config.Enabled {
+		return ctx, func() {}
+	}
 	base := context.WithoutCancel(ctx)
 	owner, ok := apiKeyAdmissionOwnerFromContext(ctx)
 	if !ok {

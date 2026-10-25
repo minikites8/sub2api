@@ -544,6 +544,7 @@ type BulkUpdateAccountsInput struct {
 }
 
 type BulkUpdateAccountFilters struct {
+	QualityTier string
 	Platform    string
 	Type        string
 	Status      string

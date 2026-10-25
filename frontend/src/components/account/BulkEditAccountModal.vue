@@ -952,6 +952,7 @@
           </p>
         </div>
         <div>
+          <div class="mb-4"><label class="flex items-center gap-2"><input v-model="enableQualityTier" type="checkbox" />{{ t('gptQos.bulkQuality') }}</label><label v-if="enableQualityTier" class="flex items-center gap-2"><input v-model="enableQualityPool" type="checkbox" />{{ t('gptQos.sharedPool') }}</label><AccountQualityFields v-if="enableQualityTier" :show-pool="enableQualityPool" :show-source="false" v-model:tier="qualityTier" v-model:pool="qualityPool" /></div>
           <div class="mb-3 flex items-center justify-between">
             <label class="input-label mb-0" for="bulk-edit-cost-multiplier-enabled">{{ t('admin.accounts.costMultiplier') }}</label>
             <input id="bulk-edit-cost-multiplier-enabled" v-model="enableCostMultiplier" type="checkbox" aria-controls="bulk-edit-cost-multiplier" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
@@ -1544,6 +1545,7 @@
 </template>
 
 <script setup lang="ts">
+import AccountQualityFields from './AccountQualityFields.vue'
 import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier } from '@/utils/accountCost'
 
 import { ref, watch, computed } from 'vue'
@@ -1740,6 +1742,10 @@ const enableConcurrency = ref(false)
 const enableLoadFactor = ref(false)
 const enablePriority = ref(false)
 const enableCostMultiplier = ref(false)
+const qualityTier = ref('unknown')
+const qualityPool = ref('')
+const enableQualityTier = ref(false)
+const enableQualityPool = ref(false)
 const costMultiplier = ref(DEFAULT_ACCOUNT_COST_MULTIPLIER)
 const enableRateMultiplier = ref(false)
 const enableGroupRateMultiplier = ref(false)
@@ -2095,6 +2101,8 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   if (enablePriority.value) {
     updates.priority = priority.value
   }
+
+  if (enableQualityTier.value) { ensureExtra().quality_tier = qualityTier.value; if (enableQualityPool.value) ensureExtra().qos_resource_pool = qualityPool.value.trim() }
 
   if (enableCostMultiplier.value) {
     ensureExtra().cost_multiplier = costMultiplier.value
@@ -2554,6 +2562,10 @@ watch(
       enableLoadFactor.value = false
       enablePriority.value = false
       enableCostMultiplier.value = false
+      enableQualityTier.value = false
+      enableQualityPool.value = false
+      qualityTier.value = 'unknown'
+      qualityPool.value = ''
       costMultiplier.value = DEFAULT_ACCOUNT_COST_MULTIPLIER
       enableRateMultiplier.value = false
       enableStatus.value = false

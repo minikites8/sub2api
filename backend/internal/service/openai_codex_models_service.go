@@ -1909,6 +1909,11 @@ func (s *OpenAIGatewayService) fetchCachedOpenAIModels(ctx context.Context, requ
 
 func (s *OpenAIGatewayService) refreshCachedOpenAIModels(cacheKey string, request openAIModelsRequest, fetch func(ctx context.Context, ifNoneMatch string) (*OpenAIModelsResponse, error)) <-chan singleflight.Result {
 	return s.openAIModelsCache.refresh.DoChan(cacheKey, func() (any, error) {
+		// Another flight may have filled the cache between the caller's miss
+		// and entering this flight. Do not duplicate that completed refresh.
+		if cached, state := s.openAIModelsCache.get(cacheKey, time.Now()); state == openAIModelsCacheFresh {
+			return cached, nil
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), codexModelsManifestRequestTimeout)
 		defer cancel()
 		return s.fetchAndCacheOpenAIModels(ctx, cacheKey, fetch)

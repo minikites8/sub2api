@@ -1987,6 +1987,7 @@
           </div>
         </div>
         <div>
+          <AccountQualityFields v-if="account?.platform === 'openai'" v-model:tier="qualityTier" v-model:pool="qualityPool" v-model:source="qualitySource" />
           <div class="mb-2 flex items-center justify-between gap-1">
             <label class="input-label mb-0" for="account-cost-multiplier">{{ t('admin.accounts.costMultiplier') }}</label>
             <div v-if="account?.type === 'apikey' && !isNewAPIUpstream" class="flex shrink-0 items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
@@ -3578,6 +3579,7 @@
 </template>
 
 <script setup lang="ts">
+import AccountQualityFields from './AccountQualityFields.vue'
 import OpenAIRequestTimezoneField from '@/components/account/OpenAIRequestTimezoneField.vue'
 import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
 import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier, readAccountCostMultiplier } from '@/utils/accountCost'
@@ -4670,6 +4672,9 @@ const mixedChannelWarningMessageText = computed(() => {
   return mixedChannelWarningRawMessage.value
 })
 
+const qualityTier = ref('unknown')
+const qualityPool = ref('')
+const qualitySource = ref('unknown')
 const costMultiplier = ref(DEFAULT_ACCOUNT_COST_MULTIPLIER)
 const costMultiplierAutoSync = ref(true)
 
@@ -4807,6 +4812,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
   form.is_fallback = newAccount.is_fallback === true
+  qualityTier.value = String(newAccount.extra?.quality_tier || 'unknown')
+  qualityPool.value = String(newAccount.extra?.qos_resource_pool || '')
+  qualitySource.value = String(newAccount.extra?.qos_upstream_kind || 'unknown')
   costMultiplier.value = readAccountCostMultiplier(newAccount.extra)
   costMultiplierAutoSync.value = newAccount.extra?.upstream_billing_provider !== 'new_api' && newAccount.extra?.cost_multiplier_auto_sync !== false
   form.rate_multiplier = newAccount.rate_multiplier ?? 1
@@ -6853,6 +6861,12 @@ const handleSubmit = async () => {
     } else {
       delete costExtra.cost_multiplier_auto_sync
     }
+    if (qualityTier.value !== String(props.account.extra?.quality_tier || 'unknown')) costExtra.quality_tier = qualityTier.value
+    else delete costExtra.quality_tier
+    if (qualityPool.value.trim() !== String(props.account.extra?.qos_resource_pool || '')) costExtra.qos_resource_pool = qualityPool.value.trim()
+    else delete costExtra.qos_resource_pool
+    if (qualitySource.value !== String(props.account.extra?.qos_upstream_kind || 'unknown')) costExtra.qos_upstream_kind = qualitySource.value
+    else delete costExtra.qos_upstream_kind
     updatePayload.extra = costExtra
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

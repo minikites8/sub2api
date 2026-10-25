@@ -361,7 +361,17 @@ func (h *OpenAIGatewayHandler) admitOpenAIWSTurnForPricing(
 	if !userAcquired {
 		return nil, nil, service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "too many concurrent requests, please retry later", nil)
 	}
-	accountRelease, accountAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(ctx, account.ID, accountConcurrency)
+	var accountRelease func()
+	var accountAcquired bool
+	qosSlot, qosHandled, qosErr := h.gatewayService.AcquireGPTQoSBoundAccount(ctx, account)
+	if qosHandled {
+		err = qosErr
+		if qosSlot != nil {
+			accountRelease, accountAcquired = qosSlot.ReleaseFunc, qosSlot.Acquired
+		}
+	} else {
+		accountRelease, accountAcquired, err = h.concurrencyHelper.TryAcquireAccountSlot(ctx, account.ID, accountConcurrency)
+	}
 	if err != nil {
 		if userRelease != nil {
 			userRelease()
@@ -894,6 +904,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+	finishGPTQoS := func() {}
+	if !imageIntent && requestPlatform == service.PlatformOpenAI {
+		finishGPTQoS = h.prepareGPTQoSRequest(c, apiKey.GroupID, body)
+	}
+	defer finishGPTQoS()
 	routingStart := time.Now()
 
 	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, apiKey.ID, apiKey.ConcurrencyLimit, reqStream, &streamStarted, reqLog)
@@ -1178,6 +1193,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}()
 			return h.gatewayService.Forward(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, attemptBody)
 		}()
+		service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
 		if retryOpenAIInitialAdmission(c, err, result, sessionHashBody, account.ID, failedAccountIDs, &switchCount, maxAccountSwitches) {
 			lastAdmissionErr = err
 			reqLog.Info("openai.admission_reselecting", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
@@ -1320,7 +1336,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						streamStarted = true
 					}
 					if failoverErr.ShouldReportAccountScheduleFailure() {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, nil), false, nil, err)
+						service.ObserveGPTQoSOutcome(c.Request.Context(), false)
+						if !service.GPTQoSRequestBudgetExceeded(c.Request.Context()) {
+							h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, nil), false, nil, err)
+						}
 					}
 					if !forbiddenBudget.canRetry(failoverErr, switchCount) {
 						if canStartExcelBPSOrdinaryFallback(c, writerSizeBeforeForward, failoverErr) && startOrdinaryBPSFallback() {
@@ -1391,7 +1410,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					continue
 				}
 				if !service.IsOpenAITurnAdmissionError(err) {
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), false, nil, err)
+					service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
+					service.ObserveGPTQoSOutcome(c.Request.Context(), false)
+					if !service.GPTQoSRequestBudgetExceeded(c.Request.Context()) {
+						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), false, nil, err)
+					}
 				}
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
@@ -1418,9 +1441,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+			service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
+			service.ObserveGPTQoSOutcome(c.Request.Context(), openAIForwardSucceededForScheduling(result))
+			if !service.GPTQoSRequestBudgetExceeded(c.Request.Context()) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+			}
 		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), nil)
+			service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
+			service.ObserveGPTQoSOutcome(c.Request.Context(), openAIForwardSucceededForScheduling(result))
+			if !service.GPTQoSRequestBudgetExceeded(c.Request.Context()) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), nil)
+			}
 		}
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
@@ -1680,6 +1711,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+	finishGPTQoS := func() {}
+	if true {
+		finishGPTQoS = h.prepareGPTQoSRequest(c, apiKey.GroupID, body)
+	}
+	defer finishGPTQoS()
 	routingStart := time.Now()
 
 	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, apiKey.ID, apiKey.ConcurrencyLimit, reqStream, &streamStarted, reqLog)
@@ -1947,7 +1983,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 					if failoverErr.ShouldReportAccountScheduleFailure() {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, nil), false, nil, err)
+						service.ObserveGPTQoSOutcome(c.Request.Context(), false)
+						if !service.GPTQoSRequestBudgetExceeded(c.Request.Context()) {
+							h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, nil), false, nil, err)
+						}
 					}
 					if !forbiddenBudget.canRetry(failoverErr, switchCount) {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
@@ -2001,7 +2040,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 				if !service.IsOpenAITurnAdmissionError(err) {
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), false, nil, err)
+					service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
+					service.ObserveGPTQoSOutcome(c.Request.Context(), false)
+					if !service.GPTQoSRequestBudgetExceeded(c.Request.Context()) {
+						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), false, nil, err)
+					}
 				}
 				wroteFallback := h.ensureAnthropicErrorResponse(c, streamStarted)
 				reqLog.Warn("openai_messages.forward_failed",
@@ -2014,9 +2057,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 		}
 		if result != nil {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, result.FirstTokenMs)
+			service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
+			service.ObserveGPTQoSOutcome(c.Request.Context(), true)
+			if !service.GPTQoSRequestBudgetExceeded(c.Request.Context()) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, result.FirstTokenMs)
+			}
 		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, nil)
+			service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
+			service.ObserveGPTQoSOutcome(c.Request.Context(), true)
+			if !service.GPTQoSRequestBudgetExceeded(c.Request.Context()) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, nil)
+			}
 		}
 
 		submitMessagesUsage(result)
@@ -3243,7 +3294,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return false
 		}
 		if failoverErr.ShouldReportAccountScheduleFailure() {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, failoverErr)
+			service.ObserveGPTQoSOutcome(ctx, false)
+			if !service.GPTQoSRequestBudgetExceeded(ctx) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, failoverErr)
+			}
 		}
 		releaseAccountSlot()
 		if !service.OpenAIWSIngressCanFailover(ctx, c) {
@@ -3293,6 +3347,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 并按最新门复核当前账号（准入与计费同源），峰前建连保活不能让后续 turn
 	// 继续按建连时刻的谷价计费。生图意图只影响能力路由与图片计费，不关门。
 	// 建连时刻只用于选号/准入，不作为任何 turn 的计费定价时刻。
+	var finishGPTQoSWSTurn func(bool) = func(bool) {}
+	if requestPlatform == service.PlatformOpenAI {
+		ctx, finishGPTQoSWSTurn = h.gatewayService.PrepareGPTQoSWebSocket(ctx, apiKey.GroupID, firstMessage)
+	}
+	defer func() { finishGPTQoSWSTurn(false) }()
 	wsPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
 	ctx = wsPricingCtx
 
@@ -3523,6 +3582,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				finishGPTQoSWSTurn = h.gatewayService.BeginGPTQoSWebSocketTurn(ctx, apiKey.GroupID, raw)
 				turnQueuePermissions = openAIWSQueueTurnPermissions(model, raw)
 				permissionsPreflightTurn = turn
 				turnCtx := service.WithAPIKeyQueueRequestPermissions(c.Request.Context(), turnQueuePermissions)
@@ -3705,6 +3765,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return checkSimpleModeTurnBilling()
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				defer func() {
+					if turnErr == nil || !service.OpenAIWSIngressCanFailover(ctx, c) {
+						finishGPTQoSWSTurn(turnErr == nil && openAIForwardSucceededForScheduling(result))
+					}
+				}()
 				turnStart := getTurnStart(turn)
 				cyberTurnContext := takeCyberTurnBody(turn)
 				cyberBlockBody := cyberTurnContext.body
@@ -3780,7 +3845,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if scheduleModel == "" {
 					scheduleModel = turnRequestedModel
 				}
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account, scheduleModel, openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+				service.ObserveGPTQoSForwardResult(ctx, result)
+				service.ObserveGPTQoSOutcome(ctx, openAIForwardSucceededForScheduling(result))
+				if !service.GPTQoSRequestBudgetExceeded(ctx) {
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account, scheduleModel, openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+				}
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -3884,7 +3953,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if waitForWSSameAccountRetry(account, failoverErr) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
+						service.ObserveGPTQoSOutcome(ctx, false)
+						if !service.GPTQoSRequestBudgetExceeded(ctx) {
+							h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
+						}
 					}
 					if !ensureUserSlotHeld() {
 						return
@@ -3964,7 +4036,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			}
 
 			if shouldReportOpenAIWSProxyAccountFailure(err) {
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
+				service.ObserveGPTQoSOutcome(ctx, false)
+				if !service.GPTQoSRequestBudgetExceeded(ctx) {
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
+				}
 			}
 			closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
 			proxyFailedFields := []zap.Field{

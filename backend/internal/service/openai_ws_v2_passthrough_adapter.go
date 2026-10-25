@@ -1253,6 +1253,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if err := s.acquireOpenAIRPMForSend(ctx, account); err != nil {
 					return out, nil, err
 				}
+				if err := MarkGPTQoSSubmission(ctx); err != nil {
+					return out, nil, err
+				}
 				activePolicyModel.Store(&model)
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
@@ -1298,6 +1301,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return admissionErr
 	}
 	if err := s.acquireOpenAIRPMForSend(ctx, latest); err != nil {
+		return err
+	}
+	if err := MarkGPTQoSSubmission(ctx); err != nil {
 		return err
 	}
 	firstWriteCtx, cancelFirstWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())

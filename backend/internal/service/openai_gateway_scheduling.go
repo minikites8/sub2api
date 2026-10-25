@@ -1818,6 +1818,9 @@ func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, target
 		}
 		return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 	}
+	if result, err := s.acquireGPTQoSOwner(ctx, account); result != nil || err != nil {
+		return result, err
+	}
 	if s.concurrencyService == nil {
 		bindings := account.ProxyBindings()
 		if len(bindings) > 0 {

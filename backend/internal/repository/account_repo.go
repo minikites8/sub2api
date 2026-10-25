@@ -1322,6 +1322,16 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := observerAccountQuery(ctx, r.accountListFilteredQuery(platform, accountType, status, search, groupID, privacyMode))
+	if tier := service.AccountQualityFilter(ctx); tier != "" {
+		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
+			path := sqljson.Path(service.AccountQualityTierKey)
+			if tier == "unknown" {
+				s.Where(entsql.Or(entsql.Not(sqljson.HasKey(dbaccount.FieldExtra, path)), sqljson.ValueEQ(dbaccount.FieldExtra, "unknown", path)))
+			} else {
+				s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, tier, path))
+			}
+		}))
+	}
 	// Clone before Count so interceptor-appended predicates (SoftDeleteMixin's
 	// deleted_at IS NULL) don't accumulate on the shared builder and pollute the
 	// subsequent list query. Same pattern used in group_repo/promo_code_repo/user_repo
@@ -1351,7 +1361,18 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 }
 
 func (r *accountRepository) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, error) {
-	accounts, err := observerAccountQuery(ctx, r.accountListFilteredQuery(platform, accountType, status, search, groupID, privacyMode)).All(ctx)
+	q := observerAccountQuery(ctx, r.accountListFilteredQuery(platform, accountType, status, search, groupID, privacyMode))
+	if tier := service.AccountQualityFilter(ctx); tier != "" {
+		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
+			path := sqljson.Path(service.AccountQualityTierKey)
+			if tier == "unknown" {
+				s.Where(entsql.Or(entsql.Not(sqljson.HasKey(dbaccount.FieldExtra, path)), sqljson.ValueEQ(dbaccount.FieldExtra, "unknown", path)))
+			} else {
+				s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, tier, path))
+			}
+		}))
+	}
+	accounts, err := q.All(ctx)
 	if err != nil {
 		return nil, err
 	}

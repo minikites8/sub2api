@@ -12,6 +12,7 @@
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
           />
+          <select v-model="params.quality_tier" class="input w-auto" :aria-label="t('gptQos.qualityTier')" @change="debouncedReload"><option value="">{{ t('gptQos.qualityFilter') }}</option><option value="strong">{{ t('gptQos.strong') }}</option><option value="basic">{{ t('gptQos.basic') }}</option><option value="unknown">{{ t('gptQos.unknown') }}</option></select>
           <AccountTableActions
             :loading="loading"
             @refresh="handleManualRefresh"
@@ -231,6 +232,7 @@
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
+              <span v-if="row.platform === 'openai'" class="mb-1 self-start rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-dark-700">{{ t(`gptQos.${row.extra?.quality_tier || 'unknown'}`) }}<span v-if="row.extra?.qos_resource_pool" class="ml-2 font-mono">{{ row.extra.qos_resource_pool }}</span></span>
               <HelpTooltip
                 v-if="accountHomepageUrl(row)"
                 :content="accountHomepageUrl(row)"
@@ -1212,6 +1214,7 @@ const {
     type: '',
     status: '',
     privacy_mode: '',
+    quality_tier: '',
     group: '',
     search: '',
     lite: '1',
@@ -1313,6 +1316,7 @@ const buildUpstreamBillingRateFilters = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    quality_tier: typeof rawParams.quality_tier === 'string' ? rawParams.quality_tier : '',
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -2244,6 +2248,7 @@ const buildBulkEditFilterSnapshot = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    quality_tier: typeof rawParams.quality_tier === 'string' ? rawParams.quality_tier : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
   }
@@ -2321,6 +2326,7 @@ const buildAccountQueryFilters = () => ({
   status: params.status || '',
   group: params.group || '',
   privacy_mode: params.privacy_mode || '',
+  quality_tier: params.quality_tier || '',
   search: params.search || '',
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
@@ -2362,6 +2368,7 @@ const accountMatchesCurrentFilters = (account: Account) => {
       return false
     }
   }
+  if (filters.quality_tier && String(account.extra?.quality_tier || 'unknown') !== filters.quality_tier) return false
   const privacyMode = typeof account.extra?.privacy_mode === 'string' ? account.extra.privacy_mode : ''
   if (filters.privacy_mode) {
     if (filters.privacy_mode === ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE) {

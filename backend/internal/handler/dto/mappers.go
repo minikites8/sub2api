@@ -285,6 +285,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		openCodeGoUsage = state
 	}
 	out := &Account{
+		QualityTier:             a.QualityTier(),
+		QoSResourcePool:         accountSharedPoolID(a),
 		ID:                      a.ID,
 		Name:                    a.Name,
 		Notes:                   a.Notes,
@@ -535,6 +537,7 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 		return nil
 	}
 	return &AccountListItem{
+		QualityTier: a.QualityTier, QoSResourcePool: a.QoSResourcePool,
 		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
 		ExcelBPSCredentialState: a.ExcelBPSCredentialState,
@@ -1081,4 +1084,12 @@ func AccountForObserver(ctx context.Context, account *Account) *Account {
 	}
 	account.AccountGroups = links
 	return account
+}
+
+func accountSharedPoolID(a *service.Account) string {
+	if a == nil {
+		return ""
+	}
+	id, _ := a.Extra[service.AccountResourcePoolKey].(string)
+	return id
 }

@@ -237,11 +237,13 @@ type AdminGroup struct {
 }
 
 type Account struct {
-	ID       int64   `json:"id"`
-	Name     string  `json:"name"`
-	Notes    *string `json:"notes"`
-	Platform string  `json:"platform"`
-	Type     string  `json:"type"`
+	QualityTier     string  `json:"quality_tier"`
+	QoSResourcePool string  `json:"qos_resource_pool"`
+	ID              int64   `json:"id"`
+	Name            string  `json:"name"`
+	Notes           *string `json:"notes"`
+	Platform        string  `json:"platform"`
+	Type            string  `json:"type"`
 	// Credentials 经 RedactCredentials 处理后只含非敏感子键；敏感 token / api_key / 私钥
 	// 的存在性通过 CredentialsStatus（has_<key>）暴露，原始值不返回前端。
 	Credentials             map[string]any                    `json:"credentials"`
@@ -381,11 +383,13 @@ type AccountProxyBinding struct {
 // repeated account_groups and groups object graphs. Fetch /admin/accounts/:id
 // for the complete Account DTO when editing or inspecting an account.
 type AccountListItem struct {
-	ID       int64   `json:"id"`
-	Name     string  `json:"name"`
-	Notes    *string `json:"notes"`
-	Platform string  `json:"platform"`
-	Type     string  `json:"type"`
+	QualityTier     string  `json:"quality_tier"`
+	QoSResourcePool string  `json:"qos_resource_pool"`
+	ID              int64   `json:"id"`
+	Name            string  `json:"name"`
+	Notes           *string `json:"notes"`
+	Platform        string  `json:"platform"`
+	Type            string  `json:"type"`
 
 	Credentials             map[string]any                    `json:"credentials,omitempty"`
 	ExcelBPSCredentialState *service.ExcelBPSCredentialState  `json:"excel_bps_credential_state,omitempty"`

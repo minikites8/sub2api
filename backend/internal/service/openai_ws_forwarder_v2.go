@@ -577,7 +577,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		clientDisconnected = true
 		clientDisconnectDrainStartedAt = time.Now()
 		if !upstreamReadDetached {
-			upstreamReadCtx = context.WithoutCancel(ctx)
+			if state, _ := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState); state != nil && state.config.Enabled {
+				upstreamReadCtx = ctx
+			} else {
+				upstreamReadCtx = context.WithoutCancel(ctx)
+			}
 			upstreamReadDetached = true
 		}
 		logOpenAIWSModeInfo(

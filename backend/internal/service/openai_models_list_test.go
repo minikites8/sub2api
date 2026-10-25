@@ -293,6 +293,24 @@ func TestPinnedOpenAIModelsListMixedAccountsShareColdCacheAcrossGroups(t *testin
 	require.EqualValues(t, 1, oauthCalls.Load())
 }
 
+func TestOpenAIModelsLateSingleflightReusesCompletedRefresh(t *testing.T) {
+	s := newCodexModelsAPIKeyTestService(nil)
+	request := openAIModelsRequest{url: "https://fixture.invalid/v1/models", accountID: 1}
+	key := buildOpenAIModelsCacheKey(request)
+	want := &OpenAIModelsResponse{Body: []byte(`{"data":[]}`)}
+	s.openAIModelsCache.set(key, want, time.Now())
+	var calls atomic.Int32
+	// Simulate a caller that observed a miss before the other caller filled
+	// the cache, then entered singleflight after the first flight completed.
+	result := <-s.refreshCachedOpenAIModels(key, request, func(context.Context, string) (*OpenAIModelsResponse, error) {
+		calls.Add(1)
+		return want, nil
+	})
+	require.NoError(t, result.Err)
+	require.Equal(t, want, result.Val)
+	require.Zero(t, calls.Load())
+}
+
 func TestFetchOpenAIModelsListResolvesShadowOAuthCredentials(t *testing.T) {
 	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"parent-model"}]}`)
 	parent := newCodexModelsTestAccount()

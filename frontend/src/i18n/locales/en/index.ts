@@ -1,3 +1,4 @@
+import gptQos from './gptQos'
 import priorityScheduling from './priorityScheduling'
 import pelicanTests from './pelicanTests'
 import tokenGuardV2 from './tokenGuardV2'
@@ -26,6 +27,7 @@ import requestTiming from './requestTiming'
 export default mergeMissingLocaleKeys(mergeMissingLocaleKeys({
   autoConfig,
   priorityScheduling,
+  gptQos,
   qualityOps,
   controlledExperiments,
   gptAuto,

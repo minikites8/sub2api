@@ -743,6 +743,12 @@ func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, acc
 }
 
 func (h *AccountHandler) resolveExportAccounts(ctx context.Context, ids []int64, c *gin.Context) ([]service.Account, error) {
+	if tier := c.Query("quality_tier"); tier != "" {
+		if tier != "strong" && tier != "basic" && tier != "unknown" {
+			return nil, fmt.Errorf("invalid quality filter")
+		}
+		ctx = service.WithAccountQualityFilter(ctx, tier)
+	}
 	if len(ids) > 0 {
 		accounts, err := h.adminService.GetAccountsByIDs(ctx, ids)
 		if err != nil {

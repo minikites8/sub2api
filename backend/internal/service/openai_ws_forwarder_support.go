@@ -497,6 +497,11 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 	}
 
 	result, acquireErr := s.tryAcquireAccountSlot(ctx, account)
+	if acquireErr != nil {
+		if state, _ := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState); state != nil && state.config.Enabled {
+			return nil, acquireErr
+		}
+	}
 	if acquireErr == nil && result.Acquired {
 		logOpenAIWSBindResponseAccountWarn(
 			derefGroupID(groupID),

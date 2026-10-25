@@ -31,6 +31,12 @@ func RegisterAdminRoutes(
 
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
+	admin.Use(func(c *gin.Context) {
+		if subject, ok := middleware.GetAuthSubjectFromContext(c); ok {
+			c.Request = c.Request.WithContext(service.WithQualityAuditActor(c.Request.Context(), subject.UserID))
+		}
+		c.Next()
+	})
 	// 面板全局按用户限流（默认管理员豁免，可在系统设置中关闭豁免）
 	admin.Use(panelRateLimiter.Global())
 	// 审计中间件挂在认证之后：所有管理面变更类操作 + 敏感读取入审计日志
@@ -888,6 +894,9 @@ func registerUserAttributeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerScheduledTestRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/gpt-qos/config", h.Admin.Setting.GetGPTQoSConfig)
+	admin.PUT("/gpt-qos/config", h.Admin.Setting.SaveGPTQoSConfig)
+	admin.GET("/gpt-qos/snapshot", h.Admin.Account.GPTQoSSnapshot)
 	admin.GET("/priority-scheduling/config", h.Admin.Setting.GetPriorityScheduling)
 	admin.PUT("/priority-scheduling/config", h.Admin.Setting.SavePriorityScheduling)
 	admin.GET("/priority-scheduling/snapshot", h.Admin.Account.PrioritySchedulingSnapshot)

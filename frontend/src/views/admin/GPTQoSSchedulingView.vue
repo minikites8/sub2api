@@ -1,0 +1,76 @@
+<template>
+  <AppLayout>
+    <div class="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
+      <h1 class="text-2xl font-semibold">{{ t('gptQos.title') }}</h1>
+      <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('gptQos.defaultsOff') }}</p>
+      <p v-if="error" role="alert" class="rounded bg-red-50 p-3 text-red-700">{{ error }}</p>
+      <form v-if="config" class="space-y-5" @submit.prevent="save">
+        <label class="block"><span class="input-label">{{ t('gptQos.rolloutGroups') }}</span><input v-model="rolloutGroups" class="input" pattern="[0-9, ]*" /></label>
+        <fieldset class="grid gap-4 rounded-lg border p-4 sm:grid-cols-2 dark:border-dark-700">
+          <label v-for="flag in flags" :key="flag.key" class="flex items-center gap-2"><input v-model="config[flag.key]" type="checkbox" />{{ t(`gptQos.${flag.label}`) }}</label>
+          <label class="flex items-center gap-2"><input v-model="config.peak.enabled" type="checkbox" />{{ t('gptQos.peakEnabled') }}</label>
+          <label class="flex items-center gap-2"><input v-model="config.peak.strict_reserve" type="checkbox" />{{ t('gptQos.strictReserve') }}</label>
+          <label v-for="field in numberFields" :key="field.key"><span class="input-label">{{ t(`gptQos.${field.label}`) }}</span><input v-model.number="config[field.key]" class="input" type="number" :min="field.min" :max="field.max" :step="'step' in field ? field.step : 1" required /></label>
+          <label v-for="field in peakFields" :key="field.key"><span class="input-label">{{ t(`gptQos.${field.label}`) }}</span><input v-model.number="config.peak[field.key]" class="input" type="number" :min="field.min" :max="field.max" :step="field.step" required /></label>
+        </fieldset>
+        <fieldset class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
+          <legend class="px-1 font-medium">{{ t('gptQos.pools') }}</legend>
+          <div v-for="(pool, index) in pools" :key="index" class="flex flex-wrap items-end gap-3">
+            <label class="min-w-40 flex-1"><span class="input-label">{{ t('gptQos.poolID') }}</span><input v-model="pool.id" class="input" pattern="[a-zA-Z0-9_-]{1,64}" maxlength="64" required /></label>
+            <label><span class="input-label">{{ t('gptQos.concurrency') }}</span><input v-model.number="pool.concurrency" class="input" type="number" min="1" max="100000" required /></label>
+            <button type="button" class="btn btn-secondary" @click="pools.splice(index, 1)">{{ t('gptQos.remove') }}</button>
+          </div>
+          <button type="button" class="btn btn-secondary" @click="pools.push({ id: '', concurrency: 1 })">{{ t('gptQos.addPool') }}</button>
+        </fieldset>
+        <div class="rounded-lg border p-4 dark:border-dark-700"><strong>{{ t('gptQos.effective') }}</strong><p class="mt-2 text-sm">{{ t('gptQos.effectiveHint') }}</p><p class="mt-2 text-xs">Version: {{ config.version }}</p></div>
+        <div class="flex flex-wrap items-center gap-3"><button class="btn btn-primary" :disabled="saving">{{ t('gptQos.save') }}</button><button type="button" class="btn btn-secondary" :disabled="saving" @click="rollback">{{ t('gptQos.rollback') }}</button><span v-if="saved" role="status" class="text-green-600">{{ t('gptQos.saved') }}</span></div>
+      </form>
+      <section class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
+        <h2 class="text-lg font-semibold">{{ t('gptQos.metrics') }}</h2><p class="input-hint">{{ t('gptQos.metricsWindow') }}</p>
+        <div class="flex flex-wrap items-end gap-3"><label v-for="field in filterFields" :key="field"><span class="input-label">{{ t(`gptQos.${field}`) }}</span><input v-model="filters[field]" class="input" maxlength="128" /></label><button class="btn btn-secondary" type="button" @click="refresh">{{ t('gptQos.refresh') }}</button></div>
+        <p v-if="snapshot?.metrics_dropped" role="alert" class="text-amber-700">{{ t('gptQos.metricsDropped') }}: {{ snapshot.metrics_dropped }}</p>
+        <p v-if="snapshot && !snapshot.available" role="alert" class="text-amber-700">{{ t('gptQos.redisUnavailable') }}</p>
+        <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr><th class="p-2">QoS</th><th v-for="field in metricFields" :key="field.key" class="whitespace-nowrap p-2">{{ t(`gptQos.${field.label}`) }}</th></tr></thead><tbody><tr v-for="(row, tier) in snapshot?.tiers" :key="tier"><td class="p-2">{{ tier }}</td><td v-for="field in metricFields" :key="field.key" class="p-2">{{ Math.round(row[field.key] || 0) }}</td></tr></tbody></table></div>
+        <h3 class="font-medium">{{ t('gptQos.capacity') }}</h3>
+        <p class="text-sm">{{ t('gptQos.queued') }}: {{ snapshot?.capacity?.queued || 0 }} · {{ t('gptQos.active') }}: {{ snapshot?.capacity?.active || 0 }}</p>
+        <p v-if="snapshot?.capacity?.strong_pool?.capacity" class="text-sm">{{ t('gptQos.aggregateStrong') }}: {{ snapshot.capacity.strong_pool.active || 0 }} / {{ snapshot.capacity.strong_pool.capacity }} · {{ t('gptQos.reservedUsed') }}: {{ snapshot.capacity.strong_pool.premium_reserved_used || 0 }} / {{ snapshot.capacity.strong_pool.reserved || 0 }} · {{ snapshot.capacity.strong_pool.reason }}</p>
+        <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr><th v-for="label in poolLabels" :key="label" class="whitespace-nowrap p-2">{{ t(`gptQos.${label}`) }}</th></tr></thead><tbody><tr v-for="pool in snapshot?.capacity?.pools || []" :key="pool.id"><td class="p-2">{{ pool.id }}</td><td class="p-2">{{ pool.active }} / {{ pool.capacity }}</td><td class="p-2">{{ pool.strong_active }} / {{ pool.strong_capacity }}</td><td class="p-2">{{ pool.premium_reserved_used }} / {{ pool.reserved }}</td><td class="p-2">{{ pool.premium_active }}</td><td class="p-2">{{ pool.peak ? t('common.enabled') : t('common.disabled') }}</td><td class="p-2">{{ pool.reason }}</td></tr></tbody></table></div>
+        <div class="grid gap-3 sm:grid-cols-2"><div><h3 class="font-medium">{{ t('gptQos.downgradeReasons') }}</h3><p v-for="(count, reason) in snapshot?.downgrade_reasons || {}" :key="reason" class="text-sm">{{ reason }}: {{ count }}</p></div><div><h3 class="font-medium">{{ t('gptQos.upstreamShares') }}</h3><p v-for="(count, source) in snapshot?.upstream_requests || {}" :key="source" class="text-sm">{{ source }}: {{ count }} ({{ sourceShare(count) }}%)</p></div></div>
+        <details><summary class="cursor-pointer">{{ t('gptQos.capacity') }}</summary><pre class="mt-3 max-h-80 overflow-auto rounded bg-gray-50 p-3 text-xs dark:bg-dark-800">{{ JSON.stringify(snapshot?.capacity || {}, null, 2) }}</pre></details>
+      </section>
+    </div>
+  </AppLayout>
+</template>
+<script setup lang="ts">
+import { onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import AppLayout from '@/components/layout/AppLayout.vue'
+import { getQoSConfig, getQoSSnapshot, saveQoSConfig, type QoSConfig, type QoSSnapshot } from '@/api/admin/gptQos'
+const { t } = useI18n()
+const config = ref<QoSConfig | null>(null), snapshot = ref<QoSSnapshot | null>(null)
+const rolloutGroups = ref('')
+const error = ref(''), saving = ref(false), saved = ref(false)
+const pools = ref<Array<{ id: string; concurrency: number }>>([])
+const filters = reactive({ groupID: '', model: '', effort: '' })
+const filterFields = ['groupID', 'model', 'effort'] as const
+const poolLabels = ['poolID', 'active', 'strongCapacity', 'reservedUsed', 'premiumActive', 'peakEnabled', 'peakReason'] as const
+const sourceShare = (count: number) => { const total = Object.values(snapshot.value?.upstream_requests || {}).reduce((sum, n) => sum + n, 0); return total ? Math.round(count * 1000 / total) / 10 : 0 }
+const flags = [{ key: 'quality_routing_enabled', label: 'qualityRouting' }, { key: 'enabled', label: 'qosEnabled' }, { key: 'capacity_enabled', label: 'capacityEnabled' }] as const
+const numberFields = [
+  { key: 'premium_weight', label: 'premiumWeight', min: 1, max: 100 }, { key: 'standard_weight', label: 'standardWeight', min: 1, max: 100 }, { key: 'economy_weight', label: 'economyWeight', min: 1, max: 100 },
+  { key: 'max_waiting', label: 'maxWaiting', min: 1, max: 2000 }, { key: 'request_budget_ms', label: 'requestBudget', min: 1000, max: 3600000 }, { key: 'high_effort_budget_ms', label: 'highBudget', min: 1000, max: 7200000 },
+  { key: 'max_attempts', label: 'maxAttempts', min: 1, max: 20 }, { key: 'log_sample_rate', label: 'sampleRate', min: 0, max: 1, step: 0.01 }
+] as const
+const peakFields = [
+  { key: 'enter_utilization', label: 'enter', min: 0.01, max: 1, step: 0.01 }, { key: 'exit_utilization', label: 'exit', min: 0, max: 0.99, step: 0.01 }, { key: 'protection_ratio', label: 'ratio', min: 0, max: 0.9, step: 0.01 },
+  { key: 'enter_hold_ms', label: 'enterHold', min: 100, max: 600000, step: 100 }, { key: 'exit_hold_ms', label: 'exitHold', min: 100, max: 600000, step: 100 }
+] as const
+const metricFields = [
+  { key: 'Requests', label: 'requests' }, { key: 'Attempts', label: 'attempts' }, { key: 'Successes', label: 'successes' }, { key: 'FirstSuccesses', label: 'firstSuccess' }, { key: 'first_success_rate', label: 'firstSuccessRate' }, { key: 'Canceled', label: 'canceled' }, { key: 'StrongRequests', label: 'strongHits' }, { key: 'strong_hit_rate', label: 'strongHitRate' }, { key: 'Downgrades', label: 'downgrades' }, { key: 'VM2APIRequests', label: 'vmShare' }, { key: 'DirectRequests', label: 'directShare' },
+  { key: 'average_queue_ms', label: 'average' }, { key: 'p50_queue_ms', label: 'p50' }, { key: 'p95_queue_ms', label: 'p95' }, { key: 'p99_queue_ms', label: 'p99' }
+] as const
+async function refresh() { try { snapshot.value = await getQoSSnapshot({ group_id: filters.groupID, model: filters.model, effort: filters.effort }) } catch { error.value = t('gptQos.failed') } }
+async function save() { if (!config.value) return; saving.value = true; error.value = ''; saved.value = false; try { if (new Set(pools.value.map(p => p.id)).size !== pools.value.length) throw new Error('Duplicate pool ID'); config.value.group_ids = rolloutGroups.value.split(',').map(s => s.trim()).filter(Boolean).map(Number); config.value.resource_pools = Object.fromEntries(pools.value.map(p => [p.id, { concurrency: p.concurrency }])); config.value = await saveQoSConfig(config.value); saved.value = true } catch (e: unknown) { error.value = e instanceof Error ? e.message : t('gptQos.failed') } finally { saving.value = false } }
+async function rollback() { if (!config.value) return; config.value.enabled = false; config.value.quality_routing_enabled = false; config.value.capacity_enabled = false; config.value.peak.enabled = false; await save() }
+onMounted(async () => { try { config.value = await getQoSConfig(); rolloutGroups.value = (config.value.group_ids || []).join(','); pools.value = Object.entries(config.value.resource_pools).map(([id, p]) => ({ id, ...p })); await refresh() } catch { error.value = t('gptQos.failed') } })
+</script>

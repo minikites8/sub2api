@@ -2414,6 +2414,7 @@
         @submit.prevent="handleUpdateGroup"
         class="space-y-5"
       >
+        <GroupQoSEditor v-if="editingGroup.platform === 'openai'" :group-id="editingGroup.id" />
         <div>
           <label class="input-label">{{ t("admin.groups.form.name") }}</label>
           <input
@@ -4807,6 +4808,7 @@
 </template>
 
 <script setup lang="ts">
+import GroupQoSEditor from '@/components/group/GroupQoSEditor.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";

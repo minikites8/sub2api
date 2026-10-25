@@ -147,6 +147,8 @@ func NewAccountHandler(
 
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
+	QualityTier             *string                            `json:"quality_tier"`
+	QoSResourcePool         *string                            `json:"qos_resource_pool"`
 	Name                    string                             `json:"name" binding:"required"`
 	Notes                   *string                            `json:"notes"`
 	Platform                string                             `json:"platform" binding:"required"`
@@ -171,6 +173,8 @@ type CreateAccountRequest struct {
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
+	QualityTier             *string                             `json:"quality_tier"`
+	QoSResourcePool         *string                             `json:"qos_resource_pool"`
 	Name                    string                              `json:"name"`
 	Notes                   *string                             `json:"notes"`
 	Type                    string                              `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
@@ -196,6 +200,8 @@ type UpdateAccountRequest struct {
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
+	QualityTier             *string                   `json:"quality_tier"`
+	QoSResourcePool         *string                   `json:"qos_resource_pool"`
 	AccountIDs              []int64                   `json:"account_ids"`
 	Filters                 *BulkUpdateAccountFilters `json:"filters"`
 	Name                    string                    `json:"name"`
@@ -215,6 +221,7 @@ type BulkUpdateAccountsRequest struct {
 }
 
 type BulkUpdateAccountFilters struct {
+	QualityTier string `json:"quality_tier"`
 	Platform    string `json:"platform"`
 	Type        string `json:"type"`
 	Status      string `json:"status"`
@@ -803,6 +810,13 @@ func (h *AccountHandler) listAccountSchedulerScoreFilterPool(
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
+	if tier := c.Query("quality_tier"); tier != "" {
+		if tier != "strong" && tier != "basic" && tier != "unknown" {
+			response.BadRequest(c, "Invalid quality tier")
+			return
+		}
+		c.Request = c.Request.WithContext(service.WithAccountQualityFilter(c.Request.Context(), tier))
+	}
 	page, pageSize := response.ParsePagination(c)
 	platform := c.Query("platform")
 	accountType := c.Query("type")
@@ -1224,6 +1238,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
+	req.Extra = mergeQualityRequestExtra(req.Extra, req.QualityTier, req.QoSResourcePool)
 	sanitizeExtraBaseRPM(req.Extra)
 	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
 		response.ErrorFrom(c, err)
@@ -1368,6 +1383,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
+	req.Extra = mergeQualityRequestExtra(req.Extra, req.QualityTier, req.QoSResourcePool)
 	sanitizeExtraBaseRPM(req.Extra)
 	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
 		response.ErrorFrom(c, err)
@@ -2707,6 +2723,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
+	req.Extra = mergeQualityRequestExtra(req.Extra, req.QualityTier, req.QoSResourcePool)
 	sanitizeExtraBaseRPM(req.Extra)
 	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
 		response.ErrorFrom(c, err)
@@ -2786,6 +2803,7 @@ func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *servi
 		Group:       filters.Group,
 		Search:      filters.Search,
 		PrivacyMode: filters.PrivacyMode,
+		QualityTier: filters.QualityTier,
 	}
 }
 
