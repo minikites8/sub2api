@@ -478,7 +478,8 @@
               <button
                 v-if="!publicSettings?.hide_ccs_import_button"
                 @click="importToCcswitch(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
+                :disabled="!publicSettings"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-dark-700 dark:hover:text-white"
               >
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
@@ -1214,17 +1215,50 @@
       @close="closeCodexQuickConfigModal"
     />
 
+    <BaseDialog
+      :show="showCcsEndpointSelect"
+      :title="t('keys.ccsEndpointSelect.title')"
+      width="narrow"
+      @close="closeCcsImport"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600 dark:text-gray-400">{{ t('keys.ccsEndpointSelect.description') }}</p>
+        <label
+          v-for="endpoint in ccsEndpoints"
+          :key="endpoint.endpoint"
+          class="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3 dark:border-dark-600"
+        >
+          <input v-model="pendingCcsEndpoint" type="radio" name="ccs-import-endpoint" :value="endpoint.endpoint" class="mt-1" />
+          <span class="min-w-0 space-y-1">
+            <span class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+              {{ endpoint.name }}
+              <span v-if="endpoint.isDefault" class="rounded bg-primary-50 px-1 text-xs text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">{{ t('keys.endpoints.default') }}</span>
+            </span>
+            <code class="block break-all text-xs text-gray-600 dark:text-gray-300">{{ endpoint.endpoint }}</code>
+            <span v-if="endpoint.description" class="block text-xs text-gray-500 dark:text-gray-400">{{ endpoint.description }}</span>
+          </span>
+        </label>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeCcsImport">{{ t('common.cancel') }}</button>
+          <button type="button" class="btn btn-primary" :disabled="!ccsEndpoints.some(ep => ep.endpoint === pendingCcsEndpoint)" @click="handleCcsEndpointSelect">{{ t('keys.ccsEndpointSelect.continue') }}</button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- CCS Client Selection Dialog for Antigravity -->
     <BaseDialog
       :show="showCcsClientSelect"
       :title="t('keys.ccsClientSelect.title')"
       width="narrow"
-      @close="closeCcsClientSelect"
+      @close="closeCcsImport"
     >
       <div class="space-y-4">
         <p class="text-sm text-gray-600 dark:text-gray-400">
           {{ t('keys.ccsClientSelect.description') }}
 	        </p>
+          <code class="block break-all text-xs text-gray-500 dark:text-gray-400">{{ pendingCcsEndpoint }}</code>
 	        <div class="grid grid-cols-2 gap-3">
 	          <button
 	            @click="handleCcsClientSelect('claude')"
@@ -1254,7 +1288,7 @@
 	      </div>
       <template #footer>
         <div class="flex justify-end">
-          <button @click="closeCcsClientSelect" class="btn btn-secondary">
+          <button @click="closeCcsImport" class="btn btn-secondary">
             {{ t('common.cancel') }}
           </button>
         </div>
@@ -1636,9 +1670,11 @@ const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
 const showUseKeyModal = ref(false)
 const showCodexQuickConfigModal = ref(false)
+const showCcsEndpointSelect = ref(false)
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
+const pendingCcsEndpoint = ref('')
 const selectedKey = ref<ApiKey | null>(null)
 const selectedCodexQuickConfigPlatform = computed(() => {
   const platform = selectedKey.value?.group?.platform
@@ -1647,6 +1683,23 @@ const selectedCodexQuickConfigPlatform = computed(() => {
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
+const ccsEndpoints = computed(() => {
+  const endpoints: Array<{ name: string; endpoint: string; description: string; isDefault: boolean }> = []
+  const seen = new Set<string>()
+  const add = (name: string, endpoint: string, description = '', isDefault = false) => {
+    const url = endpoint.trim()
+    const identity = url.replace(/\/+$/, '')
+    if (!url || seen.has(identity)) return
+    seen.add(identity)
+    endpoints.push({ name: name || t('keys.endpoints.title'), endpoint: url, description, isDefault })
+  }
+  add(t('keys.endpoints.title'), publicSettings.value?.api_base_url || '', '', true)
+  for (const endpoint of publicSettings.value?.custom_endpoints || []) {
+    add(endpoint.name, endpoint.endpoint, endpoint.description)
+  }
+  if (!endpoints.length) add(t('keys.endpoints.title'), window.location.origin, '', true)
+  return endpoints
+})
 const dropdownRef = ref<HTMLElement | null>(null)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
@@ -2361,21 +2414,31 @@ const resetRateLimitUsage = async () => {
 }
 
 const importToCcswitch = (row: ApiKey) => {
-  const platform = row.group?.platform || 'anthropic'
+  if (!publicSettings.value) return
+  closeCcsImport()
+  pendingCcsRow.value = row
+  pendingCcsEndpoint.value = ccsEndpoints.value[0].endpoint
+  if (ccsEndpoints.value.length > 1) {
+    showCcsEndpointSelect.value = true
+    return
+  }
+  handleCcsEndpointSelect()
+}
 
-  // For antigravity platform, show client selection dialog
+const handleCcsEndpointSelect = () => {
+  const row = pendingCcsRow.value
+  if (!row || !ccsEndpoints.value.some(ep => ep.endpoint === pendingCcsEndpoint.value)) return
+  showCcsEndpointSelect.value = false
+  const platform = row.group?.platform || 'anthropic'
   if (platform === 'antigravity') {
-    pendingCcsRow.value = row
     showCcsClientSelect.value = true
     return
   }
-
-  // For other platforms, execute directly
-  executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
+  executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude', pendingCcsEndpoint.value)
+  closeCcsImport()
 }
 
-const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
-  const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType, baseUrl: string) => {
   const platform = row.group?.platform || 'anthropic'
 
   const usageScript = CC_SWITCH_USAGE_SCRIPT
@@ -2406,15 +2469,16 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
 
 const handleCcsClientSelect = (clientType: CcSwitchClientType) => {
   if (pendingCcsRow.value) {
-    executeCcsImport(pendingCcsRow.value, clientType)
+    executeCcsImport(pendingCcsRow.value, clientType, pendingCcsEndpoint.value)
   }
-  showCcsClientSelect.value = false
-  pendingCcsRow.value = null
+  closeCcsImport()
 }
 
-const closeCcsClientSelect = () => {
+const closeCcsImport = () => {
+  showCcsEndpointSelect.value = false
   showCcsClientSelect.value = false
   pendingCcsRow.value = null
+  pendingCcsEndpoint.value = ''
 }
 
 function formatResetTime(resetAt: string | null): string {

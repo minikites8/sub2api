@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
-import type { ApiKey, ApiKeyConcurrencySnapshot } from '@/types'
+import type { ApiKey, ApiKeyConcurrencySnapshot, GroupPlatform } from '@/types'
 import { keysAPI } from '@/api'
 import KeysView from '../KeysView.vue'
 
@@ -376,6 +376,123 @@ describe('user KeysView column settings', () => {
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+  })
+
+  describe('CCS endpoint selection', () => {
+    const settings = {
+      api_base_url: 'https://default.example.test', site_name: 'Test gateway',
+      custom_endpoints: [{ name: 'Fast endpoint', endpoint: 'https://fast.example.test', description: 'Regional access' }],
+    }
+    const keyFor = (platform: GroupPlatform): ApiKey => ({ ...createApiKey(), group: { id: 1, name: 'Fixture', platform, rate_multiplier: 1, subscription_type: 'standard' } as ApiKey['group'] })
+    const importParams = () => {
+      const call = vi.mocked(window.open).mock.calls[0]
+      expect(call[1]).toBe('_self')
+      return new URLSearchParams(String(call[0]).split('?')[1])
+    }
+    beforeEach(() => {
+      vi.spyOn(window, 'open').mockReturnValue(null)
+      getPublicSettings.mockResolvedValue(settings)
+      setKeys(keyFor('openai'))
+    })
+
+    it('waits for an endpoint choice and imports the selected URL with the selected key', async () => {
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'keys.importToCcSwitch').trigger('click')
+      expect(window.open).not.toHaveBeenCalled()
+      expect(wrapper.findAll('input[name="ccs-import-endpoint"]')).toHaveLength(2)
+      expect(wrapper.get('[role="dialog"]').text()).toContain('Fast endpoint')
+      expect(wrapper.get('[role="dialog"]').text()).not.toContain('sk-test-key')
+      await wrapper.findAll('input[name="ccs-import-endpoint"]')[1].setValue(true)
+      await getButtonByText(wrapper, 'keys.ccsEndpointSelect.continue').trigger('click')
+      expect(window.open).toHaveBeenCalledOnce()
+      const params = importParams()
+      expect(params.get('endpoint')).toBe('https://fast.example.test')
+      expect(params.get('homepage')).toBe('https://fast.example.test')
+      expect(params.get('app')).toBe('codex')
+      expect(params.get('apiKey')).toBe('sk-test-key')
+    })
+
+    it.each([
+      { name: 'default only', configured: { ...settings, custom_endpoints: [] }, url: 'https://default.example.test' },
+      { name: 'custom only', configured: { ...settings, api_base_url: '' }, url: 'https://fast.example.test' },
+      { name: 'no configured endpoints', configured: { api_base_url: '', custom_endpoints: [] }, url: window.location.origin },
+      { name: 'duplicate URL', configured: { ...settings, custom_endpoints: [{ name: 'Duplicate', endpoint: settings.api_base_url + '/', description: '' }] }, url: 'https://default.example.test' },
+    ])('imports directly with $name', async ({ configured, url }) => {
+      getPublicSettings.mockResolvedValue(configured)
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'keys.importToCcSwitch').trigger('click')
+      expect(window.open).toHaveBeenCalledOnce()
+      expect(wrapper.findAll('input[name="ccs-import-endpoint"]')).toHaveLength(0)
+      expect(importParams().get('endpoint')).toBe(url)
+    })
+
+    it.each(['claude', 'gemini'] as const)('preserves the endpoint through Antigravity %s client selection', async client => {
+      setKeys(keyFor('antigravity'))
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'keys.importToCcSwitch').trigger('click')
+      await wrapper.findAll('input[name="ccs-import-endpoint"]')[1].setValue(true)
+      await getButtonByText(wrapper, 'keys.ccsEndpointSelect.continue').trigger('click')
+      expect(window.open).not.toHaveBeenCalled()
+      expect(wrapper.get('[role="dialog"]').text()).toContain('https://fast.example.test')
+      await getButtonByText(wrapper, `keys.ccsClientSelect.${client === 'gemini' ? 'geminiCli' : 'claudeCode'}`).trigger('click')
+      expect(importParams().get('app')).toBe(client)
+      expect(importParams().get('endpoint')).toBe('https://fast.example.test/antigravity')
+    })
+
+    it.each([
+      ['anthropic', 'claude', 'https://fast.example.test'],
+      ['gemini', 'gemini', 'https://fast.example.test'],
+      ['grok', 'grokbuild', 'https://fast.example.test/v1'],
+    ] as const)('retains %s client endpoint conventions', async (platform, app, endpoint) => {
+      setKeys(keyFor(platform))
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'keys.importToCcSwitch').trigger('click')
+      await wrapper.findAll('input[name="ccs-import-endpoint"]')[1].setValue(true)
+      await getButtonByText(wrapper, 'keys.ccsEndpointSelect.continue').trigger('click')
+      expect(importParams().get('app')).toBe(app)
+      expect(importParams().get('endpoint')).toBe(endpoint)
+    })
+
+    it('waits for public endpoint settings before allowing import', async () => {
+      const pending = deferred<typeof settings>()
+      getPublicSettings.mockReturnValue(pending.promise)
+      const wrapper = await mountView()
+      const button = getButtonByText(wrapper, 'keys.importToCcSwitch')
+      expect((button.element as HTMLButtonElement).disabled).toBe(true)
+      await button.trigger('click')
+      expect(window.open).not.toHaveBeenCalled()
+      pending.resolve(settings)
+      await flushPromises()
+      expect((button.element as HTMLButtonElement).disabled).toBe(false)
+      await button.trigger('click')
+      expect(wrapper.findAll('input[name="ccs-import-endpoint"]')).toHaveLength(2)
+    })
+
+    it('preserves single-endpoint Antigravity client choice and cancellation', async () => {
+      getPublicSettings.mockResolvedValue({ ...settings, custom_endpoints: [] })
+      setKeys(keyFor('antigravity'))
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'keys.importToCcSwitch').trigger('click')
+      expect(wrapper.findAll('input[name="ccs-import-endpoint"]')).toHaveLength(0)
+      expect(wrapper.get('[role="dialog"]').text()).toContain(settings.api_base_url)
+      await wrapper.get('[role="dialog"] [data-test="close-dialog"]').trigger('click')
+      expect(window.open).not.toHaveBeenCalled()
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    })
+
+    it('cancels without importing and resets the choice when another key is opened', async () => {
+      setKeys(keyFor('openai'), { ...keyFor('openai'), id: 2, key: 'sk-other-fixture' })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'keys.importToCcSwitch').trigger('click')
+      await wrapper.findAll('input[name="ccs-import-endpoint"]')[1].setValue(true)
+      await wrapper.get('[role="dialog"] [data-test="close-dialog"]').trigger('click')
+      expect(window.open).not.toHaveBeenCalled()
+      await wrapper.findAll('button').filter(b => b.text().includes('keys.importToCcSwitch'))[1].trigger('click')
+      expect(wrapper.findAll<HTMLInputElement>('input[name="ccs-import-endpoint"]')[0].element.checked).toBe(true)
+      await getButtonByText(wrapper, 'keys.ccsEndpointSelect.continue').trigger('click')
+      expect(importParams().get('endpoint')).toBe(settings.api_base_url)
+      expect(importParams().get('apiKey')).toBe('sk-other-fixture')
+    })
   })
 
   it.each([

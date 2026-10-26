@@ -338,6 +338,11 @@ export default {
       geminiCli: 'Gemini CLI',
       geminiCliDesc: 'Import as Gemini CLI configuration',
     },
+    ccsEndpointSelect: {
+      title: 'Select Import Endpoint',
+      description: 'Choose the API endpoint to use when importing to CCS.',
+      continue: 'Continue Import',
+    },
     // Quota and expiration
     quotaLimit: 'Quota Limit',
     quotaAmount: 'Quota Amount (USD)',

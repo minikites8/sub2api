@@ -343,6 +343,11 @@ export default {
       geminiCli: 'Gemini CLI',
       geminiCliDesc: '导入为 Gemini CLI 配置'
     },
+    ccsEndpointSelect: {
+      title: '选择导入端点',
+      description: '请选择导入到 CCS 时使用的 API 端点。',
+      continue: '继续导入'
+    },
     // 配额和有效期
     quotaLimit: '额度限制',
     quotaAmount: '额度金额 (USD)',
