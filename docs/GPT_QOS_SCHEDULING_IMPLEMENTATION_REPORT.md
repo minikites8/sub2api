@@ -116,7 +116,7 @@ HTTP、SSE、Responses/Chat Completions/Messages/Embeddings/alpha search 的新�
 
 决策记录字段包含 request_id/user_id/group_id、等级、请求/生效模型与 effort、最终质量/账号/池、策略/粘性原因、排队和选号耗时、提交次数、降级原因、峰值状态、配置版本及结果。不记录密钥、OAuth token、正文或完整会话。固定长度标签、有界 1024 条后台通道，写日志/Redis 不阻塞模型路径；丢弃与写失败计数可见。决策日志默认采样 10%，沿用既有日志轮转/保留设置（默认 100MB、10 份备份、7 天），需运维配置实际日志输出与采集。
 
-观测按完成请求计数，不把重试重复记为用户请求；展示各等级请求/提交/成功/首次成功率、强池命中率、平均等待与 P50/P95/P99、取消、降级及原因、显式来源占比、聚合/物理池并发和 Premium 预留使用、高峰触发原因。支持 group/model/effort 筛选；容量状态为全局资源事实，筛选只作用于请求统计。此窗口有界且可能丢弃，不是永久账务统计或审计账本。
+观测按完成请求计数，不把重试重复记为用户请求；展示各等级请求/提交/成功/首次成功率、强池命中率、平均等待与 P50/P95/P99、取消、降级及原因、实际 API/OAuth 请求占比、聚合/物理池并发和 Premium 预留使用、高峰触发原因。支持 group/model/effort 筛选；容量状态为全局资源事实，筛选只作用于请求统计。此窗口有界且可能丢弃，不是永久账务统计或审计账本。
 
 ## 9. 配置与回滚兼容性
 
@@ -278,3 +278,11 @@ Redis 不增加键：在 `gptqos:{v1}:fair` 增加 `dispatch_sequence` 字段，
 快照接口增加可选的 `display_name`。只在管理快照请求中通过一次批量 SQL 投影获取可见账号/共享成员的 ID、名称、显式质量等级和共享池关系，不读取 Credentials/OAuth Token，不进入模型请求热路径。账号改名后刷新可读取新名称；查询有 2 秒上限，名称不可读或新前端连接旧后端时回退原标识，容量和峰值观测仍可使用。
 
 新增 `backend/internal/service/openai_qos_pool_labels.go`、`backend/internal/repository/gpt_qos_pool_labels.go`，接入 `openai_qos_metrics.go`；更新前端 API 类型及 `GPTQoSSchedulingView.vue`。没有数据库迁移、Redis 键变化、账号写入、调度排序或计费变化。
+
+## 18. API/OAuth 统计与 QoS 可折叠分组明细（2026-10-27）
+
+- 观测表将 VM2API 请求数和直接登录请求数替换为 API 请求数、OAuth 请求数；下方请求占比也使用实际账号类型。调度选择记录账号 Type，实际 transport 提交边界冻结本次提交的类型，完成事件新增可选 `account_type`。每个用户请求仅计一次，多次尝试按最后一次实际提交的账号类型归类；未发送的请求不计入 API/OAuth 数量。后续选号但未发送不会覆盖之前的提交类型。原手动来源字段与旧统计响应仍保留兼容，不用于推断 API/OAuth。
+- 历史 Redis 事件缺少账号类型时保留未分类，不根据 VM2API、direct 或质量标签反推。无需清空 Redis、补写历史或修改数据库；原 24 小时/10000 条窗口与异步有界采集保持不变。
+- 快照增加 `groups: { [qos_tier]: [{ group_id, group_name?, ...metrics }] }` 和 `account_type_requests`。各 QoS 行默认收起，点击展开同列的分组统计，显示名称和 ID，支持分别展开/收起。汇总与明细使用同一筛选后的事件集；分组修改 QoS 后，历史请求保留原始等级。分组分位数直接从该组请求计算。
+- 管理接口通过一次有界的元数据读取补齐包含已停用分组的名称；已删除/名称不可读时显示分组 ID。该查询仅发生在管理观测接口，不增加模型请求的同步数据库查询。旧后端缺少新字段时前端显示缺失提示，不将旧来源计数伪装成账号类型计数。
+- 修改 `openai_qos_metrics.go`、`openai_quality_router.go`、`openai_qos_observation.go`、`openai_qos_websocket.go`、管理快照 Handler、前端 API/页面和中英文文案；新增 service、repository、admin 与真实双服务观测回归。测试证据见最终验收报告第 11 节。调度、容量、RPM 与计费规则没有变更。

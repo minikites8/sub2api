@@ -21,6 +21,9 @@ func MarkGPTQoSSubmission(ctx context.Context) error {
 		return fmt.Errorf("%w: upstream attempt budget exhausted", ErrGPTQoSUnavailable)
 	}
 	state.mu.Lock()
+	// Attribute one request to its last submitted account, not a later selection
+	// that might fail admission before any upstream transport is attempted.
+	state.submittedAccountType = state.accountType
 	state.outcomeKnown = true
 	state.lastSucceeded = false
 	state.mu.Unlock()

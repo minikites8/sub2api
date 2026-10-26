@@ -4,7 +4,7 @@
 
 结论：**CONDITIONAL PASS — 有条件灰度**。仅允许下述已验证范围，不能将本报告理解为全功能验收通过。
 
-- 审计分支 `main`，开始 Commit `f11fe920c3cb1813d10f5136eb72a230e4f8f0e3`；第 1–8 节的受测源代码提交为 `d8075aa6afb5ed3f8e49740bdc5d2b9011b200a7`；后续账号标签保存与排队超时补丁及其独立回归见第 9–10 节。旧版本对照为 QoS 引入前的 `21f675138`，从 Git archive 独立构建。
+- 审计分支 `main`，开始 Commit `f11fe920c3cb1813d10f5136eb72a230e4f8f0e3`；第 1–8 节的受测源代码提交为 `d8075aa6afb5ed3f8e49740bdc5d2b9011b200a7`；后续账号标签保存、排队超时及分组观测补丁的独立回归见第 9–11 节。旧版本对照为 QoS 引入前的 `21f675138`，从 Git archive 独立构建。
 - 时间：2026-10-26；macOS arm64；Go 1.27.3；Docker Desktop；真实 PostgreSQL `18.1-alpine3.23`、Redis `8.4-alpine`；两个独立 `cmd/server` OS 进程，共用临时数据库和 Redis。
 - 标准余额计费模式，31 个合成用户、3 个服务组、Strong 两账号共 20 槽、Basic 两账号共 30 槽；账号类型均为本地模拟 APIKey。没有调用真实付费模型，没有读取/修改生产余额或账号，没有部署。
 - 每个测试服务显式配置数据库最大连接 20、空闲 10；测试 Redis 前置可控 TCP 转发器，用于真实断连。全部模型地址为 loopback 模拟上游；定价使用仓库 fallback 文件。仅临时数据库关闭同 IP 合成多用户触发的独立反滥用策略。
@@ -253,3 +253,25 @@ Redis 继续使用 `gptqos:{v1}:` 下 requests/waiting/leases/fair、tier/user/g
 - 复现命令：构建 `cmd/server` 后设置 `SUB2API_ACCEPTANCE_BINARY`，执行 `go test -tags=integration ./internal/repository -run '^TestGPTQoSAcceptanceTimeoutDiagnostics$' -count=1 -v`；该场景已加入 `scripts/test-gpt-qos-acceptance.sh`。原始证据在 `artifacts/gpt-qos-final-admission-fix/`。
 
 这修复了已证实的误分类及截止时间边界处理；不表示容量不足时可以保证请求成功。真正等满预算仍会明确拒绝，Premium 的质量保证、原子并发、次数上限和计费语义不变。本节未重新运行第4节完整60秒压力场景，原灰度限制仍适用。需更新后端服务二进制使内嵌 Lua 生效。
+
+## 11. API/OAuth 请求数与可折叠分组观测（2026-10-27）
+
+基于 `41f282064` 增加观测能力，未改动调度准入、账号优先级、容量上限及扣费。原列按 `qos_upstream_kind=vm2api/direct` 统计，不能仅改名为 API/OAuth。本次从实际账号选择和提交边界记录账号类型，按一个完成请求的最后一次上游提交归类；旧事件保留未分类，未提交请求不计入两类请求数。
+
+每个 QoS 的可折叠分组子行与汇总共用分组/模型/推理强度筛选、同一观测窗口。分组名称仅在管理快照读取，支持已停用分组，已删除分组或读取失败时保留 ID。组内平均数、成功率和分位数直接从对应请求计算；修改分组等级不会把历史请求迁移到新等级。
+
+已执行验证：
+
+| 命令 / 测试 | 实际结果 |
+| --- | --- |
+| `go test -race -tags=unit ./internal/service ./internal/handler/admin ./internal/repository -run 'TestGPT(QoS\|Quality)' -count=1 -json` | 3 包通过，89 个含父/子测试的通过事件，0 失败/跳过；涵盖新增协议计数、请求/尝试区分、分组聚合、名称读取失败、Redis 序列化/筛选以及既有 QoS/质量回归 |
+| `vitest run src/views/admin/__tests__/GPTQoSSchedulingView.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts` | 2 文件、24 项通过；含各 QoS 独立折叠、分组各列数值、ID 回退、名称转义、筛选刷新、旧快照兼容和双语键完整性 |
+| `vue-tsc --noEmit`、变更前端文件 ESLint、`git diff --check`、`bash -n scripts/test-gpt-qos-acceptance.sh` | 通过 |
+| `go build -o ../artifacts/gpt-qos-final-observation-update/server ./cmd/server` | 通过 |
+| `SUB2API_ACCEPTANCE_BINARY=.../server SUB2API_ACCEPTANCE_EVIDENCE=.../two-processes go test -tags=integration ./internal/repository -run '^TestGPTQoSAcceptanceObservationGroups$' -count=1 -v -timeout=3m` | 真实两个服务进程、隔离 PostgreSQL 18.1 和 Redis 8.4、本地模拟上游，根测试通过；测试本身约 4.69 秒，包含容器准备约 10.94 秒 |
+
+双实例实测共 7 次请求（含 3 次 SSE）：初始 Premium/Standard/Economy 各 2 次，再将原 Premium 分组改成 Standard 并发送 1 次。两个实例均返回 Premium=2、Standard=3、Economy=2，API 请求数=7、OAuth=0；Standard 下同时显示原 Standard 分组与原 Premium 分组。按原 Premium 分组 ID、模型 `gpt-5.2`、`effort=high` 同时筛选后，两个实例都返回 Premium=2、Standard=1，API=3，分组名称和原始 QoS 归属一致。队列和运行计数排空。请求仅命中回环模拟上游。
+
+证据位于 `artifacts/gpt-qos-final-observation-update/`：`go-race.json`、`integration.log`、`two-processes/observation-groups-instance-{0,1}.json` 与服务日志。测试源码新增 `openai_qos_metrics_test.go`、`gpt_qos_metrics_test.go`（admin/repository）、`gpt_qos_acceptance_metrics_test.go`；复现入口已加入验收脚本的 `ObservationGroups` 场景。首次运行测试时修正了一处测试代码引用的不存在状态常量，最终 Race 与真实双实例回归均已通过。
+
+本节没有运行真实 OAuth/付费上游，OAuth 类型记录通过调度器/提交边界单测验证；也未重跑第 4 节 60 秒压力、旧二进制差分和完整浏览器视觉验收，不将此次有限的双实例观测检查视作这些场景通过。原有全功能 CONDITIONAL PASS 限制不变。需同步更新前后端；无需数据库迁移或清空观测记录，升级前未记录的账号类型只能显示未分类。

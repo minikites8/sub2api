@@ -37,6 +37,7 @@ func (s *OpenAIGatewayService) BeginGPTQoSWebSocketTurn(ctx context.Context, gro
 	state.selectionAttempts.Store(0)
 	state.outcomeKnown = false
 	state.lastSucceeded = false
+	state.submittedAccountType = ""
 	state.queueWait = 0
 	state.selectionDuration = 0
 	state.accountID = 0

@@ -2,10 +2,11 @@ package service
 
 import (
 	"context"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"log/slog"
 	"sort"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 type gptQoSObservation struct {
@@ -20,6 +21,7 @@ type GPTQoSMetric struct {
 	Model        string `json:"model"`
 	Effort       string `json:"reasoning_effort"`
 	Quality      string `json:"quality_tier"`
+	AccountType  string `json:"account_type,omitempty"`
 	UpstreamKind string `json:"upstream_kind"`
 	QueueMs      int64  `json:"queue_ms"`
 	Attempts     int32  `json:"attempts"`
@@ -34,12 +36,42 @@ type GPTQoSMetricFilter struct {
 }
 type GPTQoSTierMetrics struct {
 	Requests, Attempts, Successes, FirstSuccesses, Canceled, Downgrades, StrongRequests, VM2APIRequests, DirectRequests, SentRequests int
+	APIRequests, OAuthRequests                                                                                                        int
 	StrongHitRate                                                                                                                     float64 `json:"strong_hit_rate"`
 	FirstSuccessRate                                                                                                                  float64 `json:"first_success_rate"`
 	AverageQueueMs                                                                                                                    float64 `json:"average_queue_ms"`
 	P50QueueMs                                                                                                                        int64   `json:"p50_queue_ms"`
 	P95QueueMs                                                                                                                        int64   `json:"p95_queue_ms"`
 	P99QueueMs                                                                                                                        int64   `json:"p99_queue_ms"`
+}
+
+type GPTQoSGroupMetrics struct {
+	GroupID   int64  `json:"group_id"`
+	GroupName string `json:"group_name,omitempty"`
+	GPTQoSTierMetrics
+}
+
+// Reuse the request-level aggregation so group percentiles and success rates
+// use the same population as the tier totals, including canceled/unsent requests.
+func summarizeGPTQoSGroupMetrics(events []GPTQoSMetric) map[string][]GPTQoSGroupMetrics {
+	byGroup := make(map[int64][]GPTQoSMetric)
+	for _, event := range events {
+		byGroup[event.GroupID] = append(byGroup[event.GroupID], event)
+	}
+	ids := make([]int64, 0, len(byGroup))
+	for id := range byGroup {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	out := make(map[string][]GPTQoSGroupMetrics)
+	for _, id := range ids {
+		// A group's QoS can change within the observation window. Attribute each
+		// event to the tier in effect when it ran, rather than today's group tier.
+		for tier, metrics := range summarizeGPTQoSMetrics(byGroup[id]) {
+			out[tier] = append(out[tier], GPTQoSGroupMetrics{GroupID: id, GPTQoSTierMetrics: metrics})
+		}
+	}
+	return out
 }
 
 func summarizeGPTQoSMetrics(events []GPTQoSMetric) map[string]GPTQoSTierMetrics {
@@ -51,6 +83,12 @@ func summarizeGPTQoSMetrics(events []GPTQoSMetric) map[string]GPTQoSTierMetrics 
 		v.Attempts += int(e.Attempts)
 		if e.Attempts > 0 {
 			v.SentRequests++
+			switch e.AccountType {
+			case AccountTypeAPIKey:
+				v.APIRequests++
+			case AccountTypeOAuth:
+				v.OAuthRequests++
+			}
 		}
 		if e.Success {
 			v.Successes++
@@ -98,7 +136,7 @@ func (s *OpenAIGatewayService) recordGPTQoSMetrics(ctx context.Context, groupID 
 	if store == nil {
 		return
 	}
-	e := GPTQoSMetric{At: time.Now().UnixMilli(), GroupID: derefGroupID(groupID), Tier: state.group.Tier, Model: truncateQoSLabel(state.model, 128), Effort: truncateQoSLabel(state.effort, 16), Quality: state.quality, UpstreamKind: state.upstreamKind, QueueMs: state.queueWait.Milliseconds(), Attempts: state.attempts.Load(), Success: success, Canceled: GPTQoSClientCanceled(ctx), Downgraded: state.downgraded, Fallback: state.fallback}
+	e := GPTQoSMetric{At: time.Now().UnixMilli(), GroupID: derefGroupID(groupID), Tier: state.group.Tier, Model: truncateQoSLabel(state.model, 128), Effort: truncateQoSLabel(state.effort, 16), Quality: state.quality, AccountType: state.submittedAccountType, UpstreamKind: state.upstreamKind, QueueMs: state.queueWait.Milliseconds(), Attempts: state.attempts.Load(), Success: success, Canceled: GPTQoSClientCanceled(ctx), Downgraded: state.downgraded, Fallback: state.fallback}
 	// Bounded, non-blocking worker queue, initialized lazily on the gateway.
 	s.gptQoSMetricsOnce.Do(func() {
 		s.gptQoSMetricsQueue = make(chan gptQoSObservation, 1024)
@@ -142,7 +180,7 @@ func (s *OpenAIGatewayService) GPTQoSSnapshotFiltered(ctx context.Context, filte
 		return map[string]any{"available": false}
 	}
 	cfg := s.gptQoSConfigForContext(ctx)
-	out := map[string]any{"config": cfg, "available": false, "metrics_window": "last 24 hours, at most 10000 completed requests", "metrics_dropped": s.gptQoSMetricsDropped.Load(), "tiers": map[string]GPTQoSTierMetrics{}}
+	out := map[string]any{"config": cfg, "available": false, "metrics_window": "last 24 hours, at most 10000 completed requests", "metrics_dropped": s.gptQoSMetricsDropped.Load(), "tiers": map[string]GPTQoSTierMetrics{}, "groups": map[string][]GPTQoSGroupMetrics{}}
 	if store := s.gptQoSStore(); store != nil {
 		state, err := store.GPTQoSState(ctx)
 		if err != nil {
@@ -155,12 +193,19 @@ func (s *OpenAIGatewayService) GPTQoSSnapshotFiltered(ctx context.Context, filte
 		events, err := store.GPTQoSMetrics(ctx, filter)
 		if err == nil {
 			out["tiers"] = summarizeGPTQoSMetrics(events)
+			out["groups"] = summarizeGPTQoSGroupMetrics(events)
 			reasons, sources := map[string]int{}, map[string]int{}
+			accountTypes := map[string]int{}
 			for _, event := range events {
 				if event.Downgraded {
 					reasons[event.Fallback]++
 				}
 				if event.Attempts > 0 {
+					accountType := event.AccountType
+					if accountType != AccountTypeAPIKey && accountType != AccountTypeOAuth {
+						accountType = "unknown"
+					}
+					accountTypes[accountType]++
 					source := event.UpstreamKind
 					if source == "" {
 						source = "unknown"
@@ -169,6 +214,7 @@ func (s *OpenAIGatewayService) GPTQoSSnapshotFiltered(ctx context.Context, filte
 				}
 			}
 			out["downgrade_reasons"], out["upstream_requests"] = reasons, sources
+			out["account_type_requests"] = accountTypes
 		} else {
 			out["metrics_error"] = "redis_unavailable"
 		}

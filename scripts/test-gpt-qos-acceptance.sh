@@ -16,7 +16,7 @@ export SUB2API_ACCEPTANCE_BINARY="$TASK_EVIDENCE/server"
 export SUB2API_ACCEPTANCE_BASELINE_BINARY="$TASK_EVIDENCE/server-baseline"
 cd "$TASK_ROOT/backend"
 # Each command creates and destroys its own real Redis and PostgreSQL containers.
-for TASK_TEST in TwoProcesses ProcessCrashLeaseRecovery SSEAfterContentNoReplay TimeoutDiagnostics; do
+for TASK_TEST in TwoProcesses ProcessCrashLeaseRecovery SSEAfterContentNoReplay TimeoutDiagnostics ObservationGroups; do
   export SUB2API_ACCEPTANCE_EVIDENCE="$TASK_EVIDENCE/$TASK_TEST"
   go test -tags=integration ./internal/repository -run "^TestGPTQoSAcceptance${TASK_TEST}\$" -count=1 -v -timeout=5m | tee "$TASK_EVIDENCE/$TASK_TEST.log"
 done

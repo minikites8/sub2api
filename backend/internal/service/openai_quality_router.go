@@ -27,6 +27,7 @@ type gptQoSRequestState struct {
 	selectionAttempts                                                        atomic.Int32
 	outcomeKnown, lastSucceeded                                              bool
 	upstreamKind                                                             string
+	accountType, submittedAccountType                                        string
 	queueWait                                                                time.Duration
 	selectionDuration                                                        time.Duration
 	accountID                                                                int64
@@ -206,6 +207,7 @@ func (s *defaultOpenAIAccountScheduler) recordGPTQualitySelection(ctx context.Co
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		state.accountID = result.Account.ID
+		state.accountType = result.Account.Type
 		state.upstreamKind, _ = result.Account.Extra["qos_upstream_kind"].(string)
 		if state.upstreamKind == "" && result.Account.IsOpenAIOAuth() {
 			state.upstreamKind = "direct"
