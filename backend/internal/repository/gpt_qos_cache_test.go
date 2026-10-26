@@ -549,3 +549,31 @@ func TestGPTQoSAggregateReserveAcrossSingleSlotAccounts(t *testing.T) {
 	require.EqualValues(t, 6, global["reserved"])
 	require.EqualValues(t, 1, global["premium_reserved_used"])
 }
+
+func TestGPTQoSStrongStandbyBeforeBasic(t *testing.T) {
+	c, _ := qosTestCache(t)
+	ctx := context.Background()
+	e := qosEntry("standby-primary", 42, "economy")
+	e.Candidates = []service.GPTQoSCandidate{
+		{AccountID: 3, SlotID: 3, Concurrency: 1, PoolID: "account:3", PoolCapacity: 1, Quality: "basic"},
+		{AccountID: 2, SlotID: 2, Concurrency: 1, PoolID: "account:2", PoolCapacity: 1, Quality: "strong", IsFallback: true},
+		{AccountID: 1, SlotID: 1, Concurrency: 1, PoolID: "account:1", PoolCapacity: 1, Quality: "strong"},
+	}
+	g, err := c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "granted", g.Status)
+	require.Equal(t, int64(1), g.Candidate.AccountID)
+	e.ID = "standby-secondary"
+	g, err = c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "granted", g.Status)
+	require.Equal(t, int64(2), g.Candidate.AccountID)
+	e.ID = "standby-basic"
+	g, err = c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "granted", g.Status)
+	require.Equal(t, int64(3), g.Candidate.AccountID)
+	for _, id := range []string{"standby-primary", "standby-secondary", "standby-basic"} {
+		require.NoError(t, c.GPTQoSClose(ctx, id))
+	}
+}

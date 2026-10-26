@@ -199,10 +199,11 @@ local function available(r)
     -- Shared roots use one load and one idle-turn history regardless of how
     -- many API keys point at the same physical resource.
     local quality=c.quality=='strong' and 0 or (c.quality=='basic' and 1 or 2)
+    local standby=c.is_fallback and 1 or 0
     local load=math.max(accountUsed/c.concurrency,used/effectiveCapacity)
     local last=p.last_dispatch or 0
-    if not choice or quality<choice.quality or (quality==choice.quality and (load<choice.load or (load==choice.load and last<choice.last))) then
-     choice={candidate=c,quality=quality,load=load,last=last,peak=p.peak or (r.peak.enabled and gp.peak),reserve=reserve}
+    if not choice or quality<choice.quality or (quality==choice.quality and (standby<choice.standby or (standby==choice.standby and (load<choice.load or (load==choice.load and last<choice.last))))) then
+     choice={candidate=c,quality=quality,standby=standby,load=load,last=last,peak=p.peak or (r.peak.enabled and gp.peak),reserve=reserve}
     end
    end
   end

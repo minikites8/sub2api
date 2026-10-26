@@ -82,7 +82,6 @@ func (s *OpenAIGatewayService) PrepareGPTQoSRequest(ctx context.Context, groupID
 
 func (s *defaultOpenAIAccountScheduler) qualityPoolOrder(ctx context.Context, req OpenAIAccountScheduleRequest, pool []*Account, load map[int64]*AccountLoadInfo) []openAIAccountCandidateScore {
 	req.StickyWeighted = false
-	pool = preferNonFallbackAccountPointers(pool)
 	build := func(accounts []*Account) []openAIAccountCandidateScore {
 		plan := s.buildOpenAIAccountLoadPlan(ctx, req, accounts, load)
 		plan.includeOverflowFallback = true
@@ -101,6 +100,9 @@ func (s *defaultOpenAIAccountScheduler) qualityPoolOrder(ctx context.Context, re
 	// and rotates physical roots atomically, independent of this snapshot.
 	sort.SliceStable(order, func(i, j int) bool {
 		a, b := order[i], order[j]
+		if a.account.IsFallback != b.account.IsFallback {
+			return !a.account.IsFallback
+		}
 		if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 			return a.loadInfo.LoadRate < b.loadInfo.LoadRate
 		}

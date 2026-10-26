@@ -281,3 +281,39 @@ func TestGPTQoSRealRedisLatencySample(t *testing.T) {
 		t.Logf("qos=%t n=%d mean=%s p50=%s p95=%s sequential_pairs_per_second=%.1f", qos, len(durations), total/time.Duration(len(durations)), durations[99], durations[189], float64(len(durations))/total.Seconds())
 	}
 }
+
+func TestGPTQoSRealRedisCapacitySameRevisionAccountMutation(t *testing.T) {
+	ctx := context.Background()
+	rdb := testRedis(t)
+	c := NewConcurrencyCache(rdb, 15, 60).(*concurrencyCache)
+	cfg := service.DefaultGPTQoSConfig()
+	cfg.Version = 1793031000000087654
+	cfg.CapacityEnabled = true
+	cfg.Peak.Enabled = true
+	cfg.ResourcePools["fixture"] = service.GPTQoSResourcePool{Concurrency: 10}
+	accounts := []service.Account{}
+	for id := int64(1); id <= 2; id++ {
+		accounts = append(accounts, service.Account{ID: id, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Concurrency: 10, Extra: map[string]any{service.AccountQualityTierKey: "strong"}})
+	}
+	require.NoError(t, c.GPTQoSConfigureCapacity(ctx, cfg, accounts))
+	require.Equal(t, "20", rdb.HGet(ctx, "gptqos:{v1}:capacity_policy", "strong_capacity").Val())
+	for i := range accounts {
+		accounts[i].Extra[service.AccountResourcePoolKey] = "fixture"
+	}
+	require.NoError(t, c.GPTQoSConfigureCapacity(ctx, cfg, accounts))
+	require.Equal(t, "10", rdb.HGet(ctx, "gptqos:{v1}:capacity_policy", "strong_capacity").Val(), "same policy revision must still apply account/pool mutations")
+	require.Equal(t, "shared:fixture", rdb.HGet(ctx, "gptqos:{v1}:account_pools", "1").Val())
+	require.Equal(t, "1793031000000087654", rdb.HGet(ctx, "gptqos:{v1}:capacity_policy", "version").Val())
+	// A genuinely older revision must not overwrite the current registry.
+	cfg.Version--
+	for i := range accounts {
+		delete(accounts[i].Extra, service.AccountResourcePoolKey)
+	}
+	require.NoError(t, c.GPTQoSConfigureCapacity(ctx, cfg, accounts))
+	require.Equal(t, "10", rdb.HGet(ctx, "gptqos:{v1}:capacity_policy", "strong_capacity").Val())
+	// Migrate a registry written in Redis Lua's former scientific notation.
+	cfg.Version++
+	require.NoError(t, rdb.HSet(ctx, "gptqos:{v1}:capacity_policy", "version", "1.7930310000001e+18").Err())
+	require.NoError(t, c.GPTQoSConfigureCapacity(ctx, cfg, accounts))
+	require.Equal(t, "20", rdb.HGet(ctx, "gptqos:{v1}:capacity_policy", "strong_capacity").Val())
+}

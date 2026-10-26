@@ -191,3 +191,23 @@ func TestGPTQoSBoundSingleProxyUsesExistingSemaphoreID(t *testing.T) {
 	_, ok = qosCandidate(a, DefaultGPTQoSConfig())
 	require.False(t, ok, "explicit multi-binding capacity requires a separate lifecycle")
 }
+
+// A standby remains in its quality pool; primary saturation must not force
+// a downgrade while a compatible Strong standby has capacity.
+func TestGPTQualityStrongStandbyBeforeBasicOnPrimarySaturation(t *testing.T) {
+	for _, allow := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allow_basic=%t", allow), func(t *testing.T) {
+			svc, req := qualityTestGateway(allow)
+			repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			repo.accounts[1].Extra[AccountQualityTierKey] = "strong"
+			repo.accounts[1].IsFallback = true
+			repo.accounts = append(repo.accounts, Account{ID: 4, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 2, GroupIDs: []int64{1}, Extra: map[string]any{AccountQualityTierKey: "basic"}})
+			svc.accountRepo = repo
+			svc.concurrencyService = NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{1: false, 2: true, 4: true}})
+			selected, _, err := newDefaultOpenAIAccountScheduler(svc, nil).Select(context.Background(), req)
+			require.NoError(t, err)
+			require.Equal(t, int64(2), selected.Account.ID)
+			selected.ReleaseFunc()
+		})
+	}
+}

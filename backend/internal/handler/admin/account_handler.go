@@ -1382,6 +1382,17 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "group_rate_multiplier must be >= 0")
 		return
 	}
+	// Independent quality fields are a partial update. Preserve the complete
+	// existing extra object when the caller did not submit one (including
+	// passthrough and capacity metadata unrelated to the edited label).
+	if req.Extra == nil && (req.QualityTier != nil || req.QoSResourcePool != nil) {
+		current, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		req.Extra = current.Extra
+	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	req.Extra = mergeQualityRequestExtra(req.Extra, req.QualityTier, req.QoSResourcePool)
 	sanitizeExtraBaseRPM(req.Extra)

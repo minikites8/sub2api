@@ -17,7 +17,18 @@ local tm=redis.call('TIME');local now=tonumber(tm[1])*1000+math.floor(tonumber(t
 local prefix=string.sub(KEYS[1],1,#KEYS[1]-#'capacity_policy')
 local namespace=string.sub(prefix,1,#prefix-#'gptqos:{v1}:')
 local previous=redis.call('HGET',KEYS[1],'version')
-if previous and tonumber(previous)>cfg.version then return 0 end
+-- UnixNano revisions exceed Lua's exact integer range. Keep decimal strings:
+-- tostring(number) in Redis Lua rounds to 14 significant digits and can make
+-- a policy appear newer than itself, discarding every later account mutation.
+if previous then
+ if string.match(previous,'^%d+$') then
+  if #previous>#cfg.version or (#previous==#cfg.version and previous>cfg.version) then return 0 end
+ else
+  -- One-time compatibility with the earlier scientific-notation registry.
+  -- Its formatting error is below 100us at present UnixNano magnitudes.
+  if tonumber(previous)>tonumber(cfg.version)+100000 then return 0 end
+ end
+end
 redis.call('DEL',prefix..'account_pools')
 redis.call('DEL',prefix..'pool_limits',prefix..'account_quality',prefix..'strong_limits')
 for _,a in ipairs(cfg.accounts) do
@@ -39,7 +50,7 @@ for _,a in ipairs(cfg.accounts) do
   end
  end
 end
-redis.call('HSET',KEYS[1],'enabled',cfg.enabled and '1' or '0','version',tostring(cfg.version),'peak_enabled',cfg.peak_enabled and '1' or '0','strong_capacity',cfg.strong_capacity)
+redis.call('HSET',KEYS[1],'enabled',cfg.enabled and '1' or '0','version',cfg.version,'peak_enabled',cfg.peak_enabled and '1' or '0','strong_capacity',cfg.strong_capacity)
 if not cfg.peak_enabled then redis.call('DEL',prefix..'global_peak') end
 return 1
 `)
@@ -64,13 +75,13 @@ func (c *concurrencyCache) GPTQoSConfigureCapacity(ctx context.Context, cfg serv
 		Quality  string `json:"quality"`
 	}
 	data := struct {
-		Version        int64          `json:"version"`
+		Version        string         `json:"version"`
 		Enabled        bool           `json:"enabled"`
 		PeakEnabled    bool           `json:"peak_enabled"`
 		Accounts       []binding      `json:"accounts"`
 		StrongLimits   map[string]int `json:"strong_limits"`
 		StrongCapacity int            `json:"strong_capacity"`
-	}{Version: cfg.Version, Enabled: cfg.CapacityEnabled, PeakEnabled: cfg.Peak.Enabled, Accounts: []binding{}, StrongLimits: map[string]int{}}
+	}{Version: strconv.FormatInt(cfg.Version, 10), Enabled: cfg.CapacityEnabled, PeakEnabled: cfg.Peak.Enabled, Accounts: []binding{}, StrongLimits: map[string]int{}}
 	active := map[string]int{}
 	strong := map[string]int{}
 	for _, a := range accounts {

@@ -29,6 +29,7 @@ func ReliableUpstreamCapacity(v UpstreamCapacitySnapshot, now time.Time) bool {
 }
 
 type GPTQoSCandidate struct {
+	IsFallback   bool   `json:"is_fallback,omitempty"`
 	AccountID    int64  `json:"account_id,string"`
 	SlotID       int64  `json:"slot_id,string"`
 	Concurrency  int    `json:"concurrency"`
@@ -86,7 +87,7 @@ func qosCandidate(account *Account, cfg GPTQoSConfig) (GPTQoSCandidate, bool) {
 		p := cfg.ResourcePools[strings.TrimPrefix(pool, "shared:")]
 		cap = p.Concurrency
 	}
-	return GPTQoSCandidate{AccountID: account.ID, SlotID: GPTQoSAccountSlotID(account), Concurrency: account.Concurrency, PoolID: pool, PoolCapacity: cap, Quality: account.QualityTier()}, true
+	return GPTQoSCandidate{IsFallback: account.IsFallback, AccountID: account.ID, SlotID: GPTQoSAccountSlotID(account), Concurrency: account.Concurrency, PoolID: pool, PoolCapacity: cap, Quality: account.QualityTier()}, true
 }
 
 func gptQoSCapacityIneligibleReason(a *Account, cfg GPTQoSConfig) string {

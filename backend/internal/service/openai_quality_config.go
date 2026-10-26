@@ -202,12 +202,13 @@ func ValidateGPTQoSConfig(c GPTQoSConfig) error {
 }
 
 type gptQoSConfigCache struct {
-	mu         sync.Mutex
-	applyMu    sync.Mutex // serialize policy writes/refreshes without blocking request reads
-	config     GPTQoSConfig
-	expires    time.Time
-	refreshing bool
-	revision   uint64
+	mu              sync.Mutex
+	applyMu         sync.Mutex // serialize policy writes/refreshes without blocking request reads
+	config          GPTQoSConfig
+	expires         time.Time
+	capacityExpires time.Time
+	refreshing      bool
+	revision        uint64
 }
 
 func (s *SettingService) GetGPTQoSConfig(ctx context.Context) (GPTQoSConfig, error) {
@@ -247,6 +248,7 @@ func (s *SettingService) SaveGPTQoSConfig(ctx context.Context, c GPTQoSConfig) e
 	cache.revision++
 	cache.config = c
 	cache.expires = time.Now().Add(time.Second)
+	cache.capacityExpires = time.Now().Add(5 * time.Second)
 	return nil
 }
 
@@ -266,13 +268,18 @@ func (s *SettingService) gptQoSRuntimeConfig() GPTQoSConfig {
 		cache.refreshing = true
 		revision := cache.revision
 		lastVersion := cache.config.Version
+		capacityExpired := time.Now().After(cache.capacityExpires)
 		go func() {
 			cache.applyMu.Lock()
 			defer cache.applyMu.Unlock()
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			c, err := s.GetGPTQoSConfig(ctx)
-			if err == nil && c.Version != lastVersion {
+			// Cooldown and account expiry change effective Strong capacity without
+			// changing the administrator's policy revision. Refresh off the request
+			// goroutine, coalesced per instance, while peak protection is enabled.
+			refreshCapacity := err == nil && (c.Version != lastVersion || (c.CapacityEnabled && c.Peak.Enabled && capacityExpired))
+			if refreshCapacity {
 				err = s.synchronizeGPTQoSCapacity(ctx, c)
 			}
 			cache.mu.Lock()
@@ -281,6 +288,9 @@ func (s *SettingService) gptQoSRuntimeConfig() GPTQoSConfig {
 			if cache.revision == revision {
 				if err == nil {
 					cache.config = c
+					if refreshCapacity {
+						cache.capacityExpires = time.Now().Add(5 * time.Second)
+					}
 				}
 				cache.expires = time.Now().Add(time.Second)
 			}

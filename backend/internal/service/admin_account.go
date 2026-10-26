@@ -782,6 +782,16 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := ValidateUpstreamRequestIDHeaderExtra(normalizedExtra); err != nil {
 			return nil, err
 		}
+		// Older editors replace extra for quota/RPM changes. Quality and shared
+		// capacity labels are independent configuration: change or clear them
+		// explicitly, never as a side effect of an unrelated account edit.
+		for _, key := range []string{AccountQualityTierKey, AccountResourcePoolKey, "qos_upstream_kind"} {
+			if _, supplied := input.Extra[key]; !supplied {
+				if value, exists := account.Extra[key]; exists {
+					normalizedExtra[key] = value
+				}
+			}
+		}
 	}
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)

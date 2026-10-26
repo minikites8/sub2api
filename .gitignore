@@ -248,3 +248,8 @@ scripts/gpt-auto-local/__pycache__/
 /artifacts/gpt-auto-phase22/
 !docs/GPT_AUTO_PHASE22_DYNAMIC_ROUTING_IMPLEMENTATION.md
 !docs/GPT_AUTO_PHASE22_DYNAMIC_ROUTING_ACCEPTANCE.md
+
+# Independent GPT QoS acceptance: reproducible harness, local-only evidence.
+!docs/GPT_QOS_SCHEDULING_FINAL_ACCEPTANCE.md
+!scripts/test-gpt-qos-acceptance.sh
+/artifacts/gpt-qos-final-*/
