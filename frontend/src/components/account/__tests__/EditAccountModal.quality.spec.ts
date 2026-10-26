@@ -73,6 +73,15 @@ describe('EditAccountModal quality metadata', () => {
     updateAccountMock.mockResolvedValue(account())
   })
 
+  it.each([
+    ['openai', 'fallbackAccountCapacityDesc'],
+    ['anthropic', 'fallbackAccountDesc']
+  ])('describes the actual standby policy for %s', (platform, description) => {
+    const wrapper = mountModal({ platform })
+    expect(wrapper.text()).toContain(`admin.accounts.${description}`)
+    wrapper.unmount()
+  })
+
   it('loads Strong from the typed account field when extra is partial', () => {
     const wrapper = mountModal({
       platform: 'openai', type: 'apikey', quality_tier: 'strong',

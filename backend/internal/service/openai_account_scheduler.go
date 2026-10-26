@@ -69,6 +69,9 @@ var openAIAdvancedSchedulerSettingCache atomic.Value // *cachedOpenAIAdvancedSch
 var openAIAdvancedSchedulerSettingSF singleflight.Group
 
 type OpenAIAccountScheduleRequest struct {
+	// A mixed primary/standby pool must exhaust primary Top-K overflow before
+	// using standby. This is internal policy, never supplied by the client.
+	checkPrimaryCapacity    bool
 	GroupID                 *int64
 	Platform                string
 	SessionHash             string
@@ -457,6 +460,12 @@ func (s *defaultOpenAIAccountScheduler) Select(
 				selection = nil
 			}
 		}
+		if selection != nil && selection.Account != nil && selection.Account.IsFallback && req.PreviousResponseCanMove {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			selection = nil // complete context permits normal capacity recovery
+		}
 		if selection != nil && selection.Account != nil && selection.Account.IsOpenAIOAuth() {
 			allowed, _, rpmErr := s.service.OpenAIRPMSchedulable(ctx, selection.Account, req.PreviousResponseCanMove)
 			if rpmErr != nil {
@@ -591,7 +600,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		return nil, false, nil
 	}
 	account = s.service.openAIAccountForGroup(ctx, req.GroupID, account)
-	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
+	if shouldClearStickySessionForContinuity(account, req.RequestedModel, req.GuardianParentAccountID > 0 || req.DisableStickyEscape && req.PreserveStickyBinding) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
 		clearBinding()
 		return nil, false, nil
 	}
@@ -685,6 +694,12 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	}
 
 	cfg := s.service.schedulingConfig()
+	if !req.DisableStickyEscape && req.GuardianParentAccountID == 0 {
+		if accounts, err := s.service.listSchedulableAccountsForRequest(ctx, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.ExcludedIDs); err == nil && hasOpenAIFallbackAccount(accounts) {
+			// Preserve the primary soft binding while trying overflow capacity.
+			return nil, true, nil
+		}
+	}
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
 		account.ensureSelectedProxy()
@@ -1484,6 +1499,10 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if err != nil || account == nil {
 			continue
 		}
+		if account.IsFallback {
+			// Movable weighted stickiness must not bypass primary recovery.
+			continue
+		}
 		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport, req.RequestedModel) {
 			continue
 		}
@@ -1719,10 +1738,6 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
 	}
-	if !s.service.qualityRoutingEnabled(ctx, req) {
-		filtered = preferNonFallbackAccountPointers(filtered)
-	}
-
 	loadMap := map[int64]*AccountLoadInfo{}
 	if s.service.concurrencyService != nil {
 		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
@@ -1731,9 +1746,16 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	}
 
 	if s.service.qualityRoutingEnabled(ctx, req) {
+		if !s.service.gptQoSConfigForContext(ctx).Enabled {
+			loadMap = s.service.refreshSaturatedOpenAIPrimaryLoad(ctx, filtered, loadMap)
+		}
 		return s.selectQualityPools(ctx, req, filtered, loadMap)
 	}
+	loadMap = s.service.refreshSaturatedOpenAIPrimaryLoad(ctx, filtered, loadMap)
+	return s.selectByOpenAIFallbackPools(ctx, req, filtered, loadMap, budget, filterStats)
+}
 
+func (s *defaultOpenAIAccountScheduler) selectByLoadBalancePoolPreferences(ctx context.Context, req OpenAIAccountScheduleRequest, filtered []*Account, loadMap map[int64]*AccountLoadInfo, budget *openAISelectionProbeBudget, filterStats openAISelectionFilterStats) (*AccountSelectionResult, int, int, float64, error) {
 	// Preserve BPS preference across subscription/compact priority partitions,
 	// but try native capacity before committing a request to a BPS wait plan.
 	if req.Platform == PlatformOpenAI && strings.TrimSpace(req.RequestedModel) != "" && !s.service.balancesPriorityProtocols(req) {
@@ -1848,6 +1870,10 @@ func (s *defaultOpenAIAccountScheduler) trySelectByLoadBalancePool(
 	budget *openAISelectionProbeBudget,
 ) openAIAccountLoadSelectionAttempt {
 	plan := s.buildOpenAIAccountLoadPlan(ctx, req, filtered, loadMap)
+	if req.checkPrimaryCapacity {
+		plan.includeOverflowFallback = true
+		plan.selectionOrder = s.buildOpenAISelectionOrder(req, plan)
+	}
 	if openAICostOverflowExpanded(req, plan) {
 		budget.enableLimit()
 	}
@@ -1887,6 +1913,10 @@ func (s *defaultOpenAIAccountScheduler) trySelectByLoadBalancePool(
 		loadReq := buildOpenAIAccountLoadRequest(filtered)
 		if freshLoadMap, loadErr := s.service.concurrencyService.GetAccountsLoadBatchFresh(ctx, loadReq); loadErr == nil {
 			freshPlan := s.buildOpenAIAccountLoadPlan(ctx, req, filtered, freshLoadMap)
+			if req.checkPrimaryCapacity {
+				freshPlan.includeOverflowFallback = true
+				freshPlan.selectionOrder = s.buildOpenAISelectionOrder(req, freshPlan)
+			}
 			if openAICostOverflowExpanded(req, freshPlan) {
 				budget.enableLimit()
 			}
@@ -2640,7 +2670,13 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		if selection, hit, err := s.selectLegacyAccountByPreviousResponse(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform); err != nil {
 			return nil, decision, err
 		} else if hit {
-			if selection != nil && selection.Account != nil && selection.Account.IsOpenAIOAuth() {
+			if selection != nil && selection.Account != nil && selection.Account.IsFallback && previousResponseCanMove {
+				if selection.ReleaseFunc != nil {
+					selection.ReleaseFunc()
+				}
+				hit = false
+			}
+			if hit && selection != nil && selection.Account != nil && selection.Account.IsOpenAIOAuth() {
 				allowed, _, rpmErr := s.OpenAIRPMSchedulable(ctx, selection.Account, previousResponseCanMove)
 				if rpmErr != nil {
 					if selection.ReleaseFunc != nil {

@@ -1394,6 +1394,7 @@ export default {
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
       fallbackAccount: '后备账号',
       fallbackAccountDesc: '仅在当前调度池的普通账号全部不可用时接收请求；普通账号恢复后，新请求会自动回流。',
+      fallbackAccountCapacityDesc: '普通账号无可用容量（包括并发已满、限流或不可用）时接收请求；恢复空位后，新请求优先回流普通账号。仍遵守质量分池与降级许可，必须续链的请求保留原账号。',
       fallbackAccountBadge: '后备',
 	  yeTeamRefresh: {
 	    notRefreshed: 'ye.team 未刷新',

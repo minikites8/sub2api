@@ -1315,6 +1315,7 @@ export default {
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
       fallbackAccount: 'Fallback account',
       fallbackAccountDesc: 'Receives requests when every regular account in the scheduling pool is unavailable. New requests return to regular accounts after recovery.',
+      fallbackAccountCapacityDesc: 'Receives requests when regular accounts have no available capacity, including full concurrency, rate limits or unavailability. New requests prefer regular accounts as slots return. Quality and downgrade permissions still apply; required continuations retain their owner.',
       fallbackAccountBadge: 'Fallback',
 	  yeTeamRefresh: {
 	    notRefreshed: 'ye.team not refreshed',

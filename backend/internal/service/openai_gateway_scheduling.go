@@ -1318,6 +1318,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		var account *Account
 		var stickyHit bool
 		var headroomFallback *Account
+		var firstBusy *Account
+		var firstBusySticky bool
+		var standbyChecked, standbyAvailable bool
+		var acquiredAccountID int64
+		var lastAcquire *AcquireResult
+		var lastAcquireErr error
 		rpmEligible := 0
 		rpmExhausted := 0
 		for {
@@ -1330,6 +1336,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if headroomFallback != nil {
 					account = headroomFallback
 					stickyHit = false
+					break
+				}
+				if firstBusy != nil {
+					account, stickyHit = firstBusy, firstBusySticky
 					break
 				}
 				if rpmEligible > 0 && rpmExhausted == rpmEligible {
@@ -1351,7 +1361,31 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				}
 			}
 			if allowed {
-				break
+				result, acquireErr := s.tryAcquireAccountSlot(ctx, account)
+				acquiredAccountID, lastAcquire, lastAcquireErr = account.ID, result, acquireErr
+				if acquireErr == nil && result != nil && result.Acquired {
+					selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc, result.RequestID)
+					return markStickySessionHit(selection, stickyHit), selectErr
+				}
+				if acquireErr != nil {
+					break // retain the existing wait/error behavior; never bypass Redis
+				}
+				if !standbyChecked {
+					candidates, listErr := s.listSchedulableAccountsForRequest(ctx, groupID, platform, requestedModel, requireCompact, excludedIDs)
+					standbyAvailable = listErr == nil && hasOpenAIFallbackAccount(candidates)
+					standbyChecked = true
+				}
+				if !standbyAvailable {
+					break
+				}
+				if firstBusy == nil {
+					firstBusy, firstBusySticky = account, stickyHit
+				}
+				if effectiveExcludedIDs == nil {
+					effectiveExcludedIDs = make(map[int64]struct{})
+				}
+				effectiveExcludedIDs[account.ID] = struct{}{}
+				continue
 			}
 			if rpmState.Current < rpmState.Limit && headroomFallback == nil {
 				headroomFallback = account
@@ -1361,7 +1395,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 			effectiveExcludedIDs[account.ID] = struct{}{}
 		}
-		result, err := s.tryAcquireAccountSlot(ctx, account)
+		result, err := lastAcquire, lastAcquireErr
+		if acquiredAccountID != account.ID {
+			result, err = s.tryAcquireAccountSlot(ctx, account)
+		}
 		if err == nil && result != nil && result.Acquired {
 			selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc, result.RequestID)
 			return markStickySessionHit(selection, stickyHit), selectErr
@@ -1461,7 +1498,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						}
 
 						waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
-						if waitingCount < cfg.StickySessionMaxWaiting {
+						if waitingCount < cfg.StickySessionMaxWaiting && !hasOpenAIFallbackAccount(accounts) {
 							selection, selectErr := s.newSelectionResult(ctx, account, false, nil, "", &AccountWaitPlan{
 								AccountID:      accountID,
 								MaxConcurrency: account.Concurrency,
@@ -1554,7 +1591,6 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		return nil, noAvailableOpenAISelectionError(requestedModel, false, filterStats.summary(""))
 	}
-	candidates = preferNonFallbackAccountPointers(candidates)
 	rateOrder := openAILegacyUpstreamRateOrder{}
 	if preferLowUpstreamRate {
 		rateOrder = newOpenAILegacyUpstreamRateOrder(candidates, time.Now(), s.openAIOAuthSchedulingRateMultiplier(ctx))
@@ -1648,6 +1684,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		} else {
 			selectionOrder = append(selectionOrder, available...)
 		}
+		sort.SliceStable(selectionOrder, func(i, j int) bool {
+			return !selectionOrder[i].account.IsFallback && selectionOrder[j].account.IsFallback
+		})
 
 		for _, item := range selectionOrder {
 			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, groupID, platform, requestedModel, false, requiredCapability, requireCompact)
@@ -1691,6 +1730,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
+		regularOpenAIAccountsFirst(ordered)
 		for _, acc := range ordered {
 			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, groupID, platform, requestedModel, false, requiredCapability, requireCompact)
 			if fresh == nil {
@@ -1716,6 +1756,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 		}
 	} else {
+		loadMap = s.refreshSaturatedOpenAIPrimaryLoad(ctx, candidates, loadMap)
 		if selection, attempted, selectErr := tryAcquireFromLoadMap(loadMap); selectErr != nil {
 			return nil, selectErr
 		} else if selection != nil {
@@ -1744,6 +1785,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
+	regularOpenAIAccountsFirst(candidates)
 	for _, acc := range candidates {
 		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, groupID, platform, requestedModel, false, requiredCapability, requireCompact)
 		if fresh == nil {

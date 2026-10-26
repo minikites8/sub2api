@@ -577,10 +577,14 @@ func prefetchedStickyAccountIDFromContext(ctx context.Context, groupID *int64) i
 // and the sticky session binding should be cleared.
 // Delegates to IsSchedulable() for account-level checks, plus model-level rate limiting.
 func shouldClearStickySession(account *Account, requestedModel string) bool {
+	return shouldClearStickySessionForContinuity(account, requestedModel, false)
+}
+
+func shouldClearStickySessionForContinuity(account *Account, requestedModel string, requiredContinuation bool) bool {
 	if account == nil {
 		return false
 	}
-	if account.IsFallback {
+	if account.IsFallback && !requiredContinuation {
 		return true
 	}
 	if !account.IsSchedulable() {

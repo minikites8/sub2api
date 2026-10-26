@@ -578,6 +578,40 @@ func TestGPTQoSStrongStandbyBeforeBasic(t *testing.T) {
 	}
 }
 
+func TestGPTQoSStandbyOverflowReturnsToPrimaryWithoutPreemption(t *testing.T) {
+	c, m := qosTestCache(t)
+	r2 := redis.NewClient(&redis.Options{Addr: m.Addr()})
+	defer r2.Close()
+	peer := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	ctx := context.Background()
+	e := qosEntry("primary-running", 42, "premium")
+	e.Candidates = []service.GPTQoSCandidate{
+		{AccountID: 2, SlotID: 2, Concurrency: 2, PoolID: "account:2", PoolCapacity: 2, Quality: "strong", IsFallback: true},
+		{AccountID: 1, SlotID: 1, Concurrency: 1, PoolID: "account:1", PoolCapacity: 1, Quality: "strong"},
+	}
+	g, err := c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), g.Candidate.AccountID)
+	e.ID = "backup-long-running"
+	g, err = peer.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "granted", g.Status)
+	require.Equal(t, int64(2), g.Candidate.AccountID)
+	require.NoError(t, c.GPTQoSClose(ctx, "primary-running"))
+	e.ID = "primary-recovered"
+	g, err = peer.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "granted", g.Status)
+	require.Equal(t, int64(1), g.Candidate.AccountID)
+	running, err := c.GPTQoSRefresh(ctx, "backup-long-running")
+	require.NoError(t, err)
+	require.True(t, running, "primary recovery must not reclaim a running standby lease")
+	require.Equal(t, int64(1), c.rdb.ZCard(ctx, "concurrency:account:1").Val())
+	require.Equal(t, int64(1), c.rdb.ZCard(ctx, "concurrency:account:2").Val())
+	require.NoError(t, c.GPTQoSClose(ctx, "backup-long-running"))
+	require.NoError(t, peer.GPTQoSClose(ctx, "primary-recovered"))
+}
+
 func TestGPTQoSExpiredWaitIsTimeoutAcrossPollers(t *testing.T) {
 	c, m := qosTestCache(t)
 	ctx := context.Background()

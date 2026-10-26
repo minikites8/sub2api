@@ -2986,7 +2986,7 @@
           <div class="min-w-0">
             <label class="input-label mb-0">{{ t('admin.accounts.fallbackAccount') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.fallbackAccountDesc') }}
+              {{ t(account.platform === 'openai' ? 'admin.accounts.fallbackAccountCapacityDesc' : 'admin.accounts.fallbackAccountDesc') }}
             </p>
           </div>
           <button

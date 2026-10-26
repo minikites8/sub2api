@@ -4,7 +4,7 @@
 
 结论：**CONDITIONAL PASS — 有条件灰度**。仅允许下述已验证范围，不能将本报告理解为全功能验收通过。
 
-- 审计分支 `main`，开始 Commit `f11fe920c3cb1813d10f5136eb72a230e4f8f0e3`；第 1–8 节的受测源代码提交为 `d8075aa6afb5ed3f8e49740bdc5d2b9011b200a7`；后续账号标签保存、排队超时及分组观测补丁的独立回归见第 9–11 节。旧版本对照为 QoS 引入前的 `21f675138`，从 Git archive 独立构建。
+- 审计分支 `main`，开始 Commit `f11fe920c3cb1813d10f5136eb72a230e4f8f0e3`；第 1–8 节的受测源代码提交为 `d8075aa6afb5ed3f8e49740bdc5d2b9011b200a7`；后续账号标签保存、排队超时、分组观测及后备容量补丁的独立回归见第 9–12 节。旧版本对照为 QoS 引入前的 `21f675138`，从 Git archive 独立构建。
 - 时间：2026-10-26；macOS arm64；Go 1.27.3；Docker Desktop；真实 PostgreSQL `18.1-alpine3.23`、Redis `8.4-alpine`；两个独立 `cmd/server` OS 进程，共用临时数据库和 Redis。
 - 标准余额计费模式，31 个合成用户、3 个服务组、Strong 两账号共 20 槽、Basic 两账号共 30 槽；账号类型均为本地模拟 APIKey。没有调用真实付费模型，没有读取/修改生产余额或账号，没有部署。
 - 每个测试服务显式配置数据库最大连接 20、空闲 10；测试 Redis 前置可控 TCP 转发器，用于真实断连。全部模型地址为 loopback 模拟上游；定价使用仓库 fallback 文件。仅临时数据库关闭同 IP 合成多用户触发的独立反滥用策略。
@@ -275,3 +275,41 @@ Redis 继续使用 `gptqos:{v1}:` 下 requests/waiting/leases/fair、tier/user/g
 证据位于 `artifacts/gpt-qos-final-observation-update/`：`go-race.json`、`integration.log`、`two-processes/observation-groups-instance-{0,1}.json` 与服务日志。测试源码新增 `openai_qos_metrics_test.go`、`gpt_qos_metrics_test.go`（admin/repository）、`gpt_qos_acceptance_metrics_test.go`；复现入口已加入验收脚本的 `ObservationGroups` 场景。首次运行测试时修正了一处测试代码引用的不存在状态常量，最终 Race 与真实双实例回归均已通过。
 
 本节没有运行真实 OAuth/付费上游，OAuth 类型记录通过调度器/提交边界单测验证；也未重跑第 4 节 60 秒压力、旧二进制差分和完整浏览器视觉验收，不将此次有限的双实例观测检查视作这些场景通过。原有全功能 CONDITIONAL PASS 限制不变。需同步更新前后端；无需数据库迁移或清空观测记录，升级前未记录的账号类型只能显示未分类。
+
+## 12. 后备容量溢出及普通账号恢复回流（2026-10-27）
+
+基于 `3fb07954f` 独立修正后备语义。问题是普通/高级路径在抢槽之前删除后备，健康但满载的普通账号会让请求继续等待；质量路由原已支持同质量后备，本次保留并补充回流测试。另外发现强制 Responses/父任务续链共用了清除后备软粘性的规则，后备身份会错误丢弃必须续链的所有者；现在仅普通软粘性自动回流，强制续链继续原账号，安全校验保留。
+
+实现在 `service/openai_fallback_scheduling.go`、`openai_account_scheduler.go`、`openai_gateway_scheduling.go`；硬续链区分在 `gateway_service.go` 和 `openai_ws_forwarder_support.go`。UI 为 OpenAI 账号新增/编辑提供容量后备说明。无数据库迁移、Redis 键/Lua、计费修改。既有 `is_fallback` 明确改为容量溢出标记，因此新 QoS 开关全部关闭时也生效；这项行为变化由本次需求明确授权，不声称有后备池仍与旧版本完全等价。其他平台独立调度不在此次改造范围。
+
+实际执行：
+
+```bash
+# backend：定向规则回归
+go test -tags=unit ./internal/service -run '^TestOpenAIFallback' -count=1 -v
+
+# backend：关联回归与 Race Detector
+go test -race -tags=unit ./internal/service ./internal/repository ./internal/handler -run 'Test(OpenAIFallback|GPTQoS|GPTQuality|PreferNonFallback|FallbackAccount|OpenAIAccountPreference|Sticky|OpenAI.*(Scheduler|LoadAware|PreviousResponse|Guardian)|PriorityScheduling|PriorityOAuth|StreamWrittenGuard|FailoverRetryWaitBudget|FailoverClientGone)' -count=1 -json
+# 补充可迁移续链及修正新夹具后，重新执行 service（其余两包已通过）
+go test -race -tags=unit ./internal/service -run 'Test(OpenAIFallback|GPTQoS|GPTQuality|PreferNonFallback|FallbackAccount|OpenAIAccountPreference|Sticky|OpenAI.*(Scheduler|LoadAware|PreviousResponse|Guardian)|PriorityScheduling|PriorityOAuth|StreamWrittenGuard|FailoverRetryWaitBudget|FailoverClientGone)' -count=1 -json
+
+# frontend：账号表单与双语键
+vitest run src/components/account/__tests__/CreateAccountModal.spec.ts src/components/account/__tests__/EditAccountModal.spec.ts src/components/account/__tests__/EditAccountModal.quality.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts
+vue-tsc --noEmit
+# 另执行所有变更前端文件 ESLint、git diff --check 与验收脚本 bash -n
+
+# backend：构建并执行真实双服务测试
+go build -o ../artifacts/gpt-qos-final-standby-overflow/server-final ./cmd/server
+SUB2API_ACCEPTANCE_BINARY=.../server SUB2API_ACCEPTANCE_EVIDENCE=.../two-processes go test -tags=integration ./internal/repository -run '^TestGPTQoSAcceptanceStandbyOverflow$' -count=1 -v -timeout=3m
+```
+
+结果：
+
+- 定向 `TestOpenAIFallbackCapacityOverflowAndPrimaryRecovery` 的非批量旧调度、批量旧调度、高级、优先、质量路由 5 种模式通过；Top-K 普通池剩余容量优先、模型不支持后备不能被选、Responses/父任务后备所有者保留通过。`previous_response_id` 另按网关的 `PreviousResponseCanMove` 许可区分完整可迁移上下文与必须留原账号的续链，前者可以重新选号。
+- 首次 Race 关联回归 3 包、372 个含父/子测试的通过事件。补充可迁移续链后，最终 repository 30 项、handler 51 项通过；新夹具修正后 service 完整关联回归 295 项通过、0 失败/跳过，三包最终各自成功运行合计 376 项，不将中途夹具失败那一轮标为通过。新增 `TestGPTQoSStandbyOverflowReturnsToPrimaryWithoutPreemption` 通过：两个独立 Redis client，普通满后获取后备，普通释放后下一请求回普通，后备租约仍有效，槽位计数保持正确。`TestOpenAIFallbackMovablePreviousResponseReturnsToPrimary` 的旧调度、高级及质量路由三个子场景通过。
+- 前端最终 4 文件、219 项通过；类型检查、ESLint、脚本语法与差异空白检查通过。类型检查期间修正编辑表单从账号对象读取平台，并补充 OpenAI/其他平台说明分支回归。
+- 真实 PostgreSQL 18.1、Redis 8.4、两个独立服务 OS 进程，`qos=false` 和 `qos=true` 子场景均通过；初次通过根测试约 7.66 秒，包含容器准备约 13.05 秒；补充可迁移续链分支后最终二进制再次通过，根测试约 16.03 秒，含当次较慢的容器准备约 88.15 秒。每次仅发送 14 次回环模拟上游请求：每场景普通空闲 1 次；保持普通账号健康且占满其 10 个实际槽后，两实例各 1 次请求都走后备；另启 1 次 2 秒后备流；释放普通槽后，两实例各 1 次新请求都回普通，同时原后备流仍在运行并最终正常结束；最后 1 次 `previous_response_id` 续链仍回后备。最终队列与运行计数排空。
+
+证据在 `artifacts/gpt-qos-final-standby-overflow/`：`focused.log`、`race.json`、`race-final.json`、`race-service-final.json`、`frontend-accounts-final.log`、`integration-final.log`、`two-processes-final/standby-overflow-qos-{false,true}.json`、实际 `upstream-events.json` 和两个服务日志。夹具准备阶段曾误用账号状态值及通用编辑端点，已改为实际支持的 `/accounts/:id/schedulable`，保留 `integration-fixture-*-failure.log` 和对应夹具日志；补充可迁移续链用例时混入了第三个更高优先级的普通账号，最终夹具限定为一主一备，仍断言回流至具体普通账号 ID，原失败保留于 `race-final.json`。没有降低最终调度或续链断言。
+
+本次未重新执行 60 秒综合压力、旧版本随机分布差分、真实 OAuth/VM2API 或付费上游验证，未给出性能改善百分比。满载且存在后备时可能多一次新鲜负载读取；大池继续受既有有界探测限制。质量降级许可、全局原子槽、RPM 与结算约束不变；强制续链不会为了普通容量恢复而迁移。此次后备修复通过定向验收，全功能 CONDITIONAL PASS 的原有验证边界仍然有效；没有部署生产。
