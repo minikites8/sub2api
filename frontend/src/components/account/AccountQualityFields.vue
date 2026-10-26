@@ -15,7 +15,10 @@
 </template>
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-defineProps<{ tier: string; pool: string; source?: string; showPool?: boolean; showSource?: boolean }>()
+withDefaults(defineProps<{ tier: string; pool: string; source?: string; showPool?: boolean; showSource?: boolean }>(), {
+  showPool: true,
+  showSource: true
+})
 defineEmits<{ 'update:tier': [value: string]; 'update:pool': [value: string]; 'update:source': [value: string] }>()
 const { t } = useI18n()
 </script>

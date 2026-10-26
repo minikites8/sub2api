@@ -11,9 +11,72 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+type gptQoSSnapshotAccountRepo struct {
+	service.AccountRepository
+	account service.Account
+}
+
+func (r gptQoSSnapshotAccountRepo) GetByID(_ context.Context, id int64) (*service.Account, error) {
+	if id != r.account.ID {
+		return nil, fmt.Errorf("fixture account not found")
+	}
+	a := r.account
+	return &a, nil
+}
+
+func TestGPTQoSRealRedisCachedProxySelectionSharesLegacySlot(t *testing.T) {
+	ctx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+	rdb := testRedis(t)
+	cache := NewConcurrencyCache(rdb, 15, 60)
+	// Separate service/cache owners contend on the same Redis semaphore.
+	legacy := NewConcurrencyCache(rdb, 15, 60)
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	settings := service.NewSettingService(NewSettingRepository(testEntTx(t).Client()), cfg)
+	policy := service.DefaultGPTQoSConfig()
+	policy.Enabled, policy.QualityRoutingEnabled = true, true
+	policy.LogSampleRate = 0
+	require.NoError(t, settings.SaveGPTQoSConfig(ctx, policy))
+	proxyID := int64(12)
+	account := service.Account{ID: 802, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Concurrency: 1, ProxyID: &proxyID, Credentials: map[string]any{"model_mapping": map[string]any{"public-model": "upstream-model"}}, Extra: map[string]any{service.AccountQualityTierKey: "strong"}}
+	repo := gptQoSSnapshotAccountRepo{account: account}
+	snapshotCache := NewSchedulerCache(rdb)
+	bucket := service.SchedulerBucket{Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	token, err := snapshotCache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, snapshotCache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+	meta, hit, err := snapshotCache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, meta, 1)
+	require.Nil(t, meta[0].ProxyID, "the candidate projection must remain stripped; QoS hydrates before admission")
+	snapshot := service.NewSchedulerSnapshotService(snapshotCache, nil, repo, nil, cfg)
+	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, snapshot, service.NewConcurrencyService(cache), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, settings, nil, nil)
+	selection, _, err := gateway.SelectAccountWithScheduler(ctx, nil, "", "", "public-model", nil, service.OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.True(t, selection.Acquired)
+	t.Cleanup(selection.ReleaseFunc)
+	require.Equal(t, account.ID, selection.Account.ID)
+	slot := service.AccountProxySlotID(account.ID, proxyID)
+	require.Equal(t, int64(1), rdb.ZCard(ctx, fmt.Sprintf("concurrency:account:%d", slot)).Val())
+	require.Zero(t, rdb.ZCard(ctx, "concurrency:account:802").Val())
+	ok, err := legacy.AcquireAccountSlot(ctx, slot, 1, "other-instance")
+	require.NoError(t, err)
+	require.False(t, ok, "the other instance cannot oversell the hydrated proxy slot")
+	selection.ReleaseFunc()
+	selection.ReleaseFunc() // Public release remains idempotent.
+	require.Zero(t, rdb.ZCard(ctx, "gptqos:{v1}:leases").Val())
+	require.Zero(t, rdb.ZCard(ctx, "gptqos:{v1}:waiting").Val())
+	ok, err = legacy.AcquireAccountSlot(ctx, slot, 1, "after-release")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, legacy.ReleaseAccountSlot(ctx, slot, "after-release"))
+}
 
 func TestGPTQoSRealRedisAtomicAdmission(t *testing.T) {
 	rdb := testRedis(t)

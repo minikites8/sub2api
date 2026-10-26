@@ -192,3 +192,33 @@ go test -tags=unit ./internal/service -run 'TestPinnedOpenAIModelsListMixedAccou
 - 前端类型检查通过，生产构建通过（23.18s），`git diff --check` 通过；本次后端仅增加持久化验证测试，没有修改后端运行逻辑，未重复运行上文八包完整回归。
 
 本次不访问生产数据库，不发送真实模型调用，不执行生产部署。旧版本的临时使用方法是点击 QoS 区域独立的“保存”；升级此修复后统一使用底部“更新分组”。日志保存在 `artifacts/gpt-qos-group-save-20261026/`。
+
+## 12. 账号字段隐藏与 QoS 503 修复补充验收（2026-10-26）
+
+本次只读查看了管理员账号编辑界面、错误详情和按请求 ID 过滤的系统日志，没有修改生产设置。用户提供的那条请求日志为 `QoS selected account changed`，未到达上游。旧日志无法区分其具体终检条件，因此没有把单一生产请求强行归因为共享池配置或代理绑定。
+
+修复前的自动化复现：
+
+- 账号质量组件默认挂载时应显示共享池及上游来源；新增测试实际失败，显式隐藏选项测试通过，确认是可选布尔属性默认值缺陷。
+- 使用实际 `schedulerCache.SetSnapshot/GetSnapshot`、miniredis、Responses Handler 与进程内假上游：单代理 Strong 的非流式、流式两项均返回 503，期望 200。复现日志明确包含原来的泛化客户端错误，未发送外部模型请求。
+
+已执行并通过：
+
+- `go test -tags=unit ./internal/service ./internal/handler ./internal/repository -count=1`：三包通过，分别 238.231s / 102.489s / 15.763s。
+- `go test -race -tags=unit ./internal/service ./internal/handler ./internal/repository -run 'TestGPT(QoS|Quality)' -count=1`：三包通过，分别 4.932s / 7.195s / 42.642s，无竞态报告。
+- `go test -tags=integration ./internal/repository -run 'TestGPTQoSRealRedis(AtomicAdmission|CachedProxySelectionSharesLegacySlot)$' -count=1 -v`：通过（4.601s），日志确认临时 PostgreSQL 18.1 / Redis 8.4 实际启动，两个测试实际运行，没有因 Docker 不可用跳过。新增用例经过实际调度入口、候选元数据和完整快照；QoS 持有代理槽时，另一 cache 实例的普通抢槽被拒绝，重复释放无残留，释放后可重新获取。账号终检使用固定仓库 fixture，设置保存使用临时 PostgreSQL；不是生产多进程压测。
+- 账号管理、QoS 页面、分组 QoS 及语言键前端回归：52 个文件 / 781 项测试通过；新增组件测试验证默认显示、显式隐藏和池/来源编辑事件。
+- `vue-tsc --noEmit` 通过；调整中英文容量提示后的 Vite 生产构建通过（18.12s）。构建有既有大 chunk 提示，不是构建失败。
+- `git diff --check` 通过。
+
+关键断言：
+
+- 模型筛选发生在公平队列之前；完整快照的模型白名单、分组模型限制、分组授权、质量标签和账号状态变化会在入队前剔除。明确允许降级时，不兼容 Strong 不阻塞合格 Basic；禁止降级时 Basic/Unknown 不进入队列。
+- 保留映射模型支持；候选投影缺失代理信息时，完整快照决定负数代理绑定槽，不能误抢正数账号槽。非流式与流式均成功，已有槽满载时仍拒绝，完成后没有队列/租约残留。
+- 抢槽后账号禁用、代理变化、并发变化、共享池变化仍拒绝，释放原准入并提供固定细分原因；没有为通过测试绕开终检。
+- 队列满、超时、关闭、状态不可读、账号变化等返回固定安全错误码及说明；已开始的 Responses SSE 使用 `response.failed`，不追加普通 JSON 或错误重放。
+- 三包竞态回归同时覆盖既有加权份额、用户公平、防饥饿、Premium 保障、取消清理和槽位安全测试。没有把重试计作多个用户请求或改变计费路径。
+
+新增成本是 QoS 启用时批量读取完整候选快照。未重新测量生产规模全链路 P95/TTFT，也没有把旧的纯准入微基准当作本修复性能结果。没有执行付费模型、真实长 SSE/网络分区、生产部署或全量上线；显式多代理池仍是已有功能边界。应先更新所有实例及前端，再按第 7 节小范围灰度；回滚继续使用第 8 节关闭全部新开关并等待租约自然释放。
+
+日志目录：`artifacts/gpt-qos-503-20261026/`。本修复不增加数据库迁移，不改变 Redis 键或 Lua 脚本，不需要清理已有并发键。

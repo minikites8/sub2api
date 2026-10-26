@@ -153,7 +153,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
-				h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
+				h.handleStreamingAwareErrorWithCode(c, cls.Status, cls.ErrType, cls.Code, cls.Message, false, false)
 				return
 			}
 			if lastFailoverErr != nil {
@@ -168,7 +168,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
-			h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
+			h.handleStreamingAwareErrorWithCode(c, cls.Status, cls.ErrType, cls.Code, cls.Message, false, false)
 			return
 		}
 		account := selection.Account

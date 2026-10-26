@@ -222,3 +222,27 @@ HTTP、SSE、Responses/Chat Completions/Messages/Embeddings/alpha search 的新�
 修复将 QoS 编辑器接入分组主保存流程，移除嵌入场景中的第二个保存按钮，并在写入返回后核对服务端确认的字段。仅基本字段修改时不重写 QoS；QoS 保存失败保留修改并显示部分保存提示。加载时忽略此前分组的迟到响应，保存时固定原分组/编辑器引用，避免切换弹窗后写错分组或关闭新弹窗。全局调度页面在保存前读取最新 groups，保留该页面打开后从分组弹窗保存的配置。
 
 相关分组回归同时发现原 Codex Manifest 表单缺失保存前校验及重开后的草稿重置，按现有精确断言补齐，未降低测试要求。没有改动调度算法、计费、账号质量或默认开关。
+
+## 14. 账号容量字段与 QoS 503 修复（2026-10-26）
+
+只读核对用户提供的请求后，系统日志中的实际错误为 `QoS selected account changed`，该请求没有进入上游。旧日志把多个终检条件合并为同一错误，不能据此确定该生产请求具体命中了哪个比较项；没有把它归因为共享容量开关，也没有修改生产配置或发送模型探测。
+
+本地使用真实候选投影、完整 Redis 快照、Handler 和假上游复现了一个确定缺陷：`sched:meta` 不包含代理绑定，队列按正数账号 ID 抢槽；完整账号使用负数 `AccountProxySlotID`，因此终检拒绝。修复在入队前复用 `SchedulerSnapshotService.GetAccounts` 批量读取完整快照，再确定候选模型资格和真实槽位。Redis 使用现有分批 MGET；缓存缺失沿用有上限的批量数据库回退，没有新增逐候选 SQL 查询。
+
+实际顺序保持为：模型映射及现有候选资格筛选 → 质量池内部排序 → 完整快照的模型/分组/隐私/端点/质量复核 → QoS 公平准入及原子账号槽 → 完整账号与数据库终检 → 原有 RPM、额度及发送前准入。完整快照中的质量若已变化，剔除该候选，不能借缓存变化把 Basic 放进 Strong 池；模型不兼容的 Strong 不占公平服务机会，也不延迟明确允许的 Basic 后备。
+
+终检没有放宽。账号禁用、并发上限变化、代理槽绑定变化和资源池变化仍拒绝并释放原租约；增加了 `account_unavailable`、`concurrency_changed`、`slot_binding_changed`、`resource_pool_changed` 等服务端原因。无候选时记录排除原因计数，包括不支持的显式代理池、无限/未知并发、未启用或未配置的共享容量。日志仅含请求/分组/账号 ID 和固定原因，不包含令牌、密钥或正文。
+
+增加 `GPTQoSSelectionError`，Responses、Chat Completions 和 Embeddings 的选号失败返回允许列表内的 `error.code` 及说明，例如 `gpt_qos_account_changed`、`gpt_qos_queue_timeout`、`gpt_qos_no_eligible_capacity`、`gpt_qos_unavailable`。已开始的 Responses SSE 使用 `response.failed` 终止事件，不追加普通 JSON，也不重放上游请求。原有非 QoS 错误保留原分类；客户端取消不会误记为 Redis 故障。
+
+账号表单的 `showPool` / `showSource` 是可选布尔属性，Vue 会将缺省值转为 false，导致新增/编辑页只显示质量等级。显式默认 true 后恢复共享池及上游来源输入；批量编辑仍遵守显式隐藏选项。中英文提示说明：独立容量留空；确认共用底层资源才填写相同池标识，并在公平排队前配置池总并发、启用共享容量控制。Strong 不要求填写池标识。
+
+主要改动文件：
+
+- `backend/internal/service/openai_qos_admission.go`、`openai_qos_error.go`、`openai_qos_admission_test.go`
+- `backend/internal/handler/no_account_error.go`、`openai_gateway_handler.go`、`openai_chat_completions.go`、`openai_embeddings.go`、`gpt_qos_handler_test.go`
+- `backend/internal/repository/gpt_qos_integration_test.go`：真实 Redis 的完整快照/代理槽/另一 cache 实例竞争回归
+- `frontend/src/components/account/AccountQualityFields.vue` 及对应组件回归测试
+- `frontend/src/i18n/locales/zh/gptQos.ts`、`frontend/src/i18n/locales/en/gptQos.ts`
+
+本修复不增加迁移，不改变 Redis 键或 Lua 原子槽协议，不修改计费。所有开关关闭时不执行新增完整候选读取。显式多代理池的独立生命周期仍未实现，继续拒绝参与公平容量保障；普通单代理账号使用原有代理绑定槽。性能新增成本为 QoS 启用时对合格候选的批量快照读取，未将先前准入微基准当作本修复的全链路性能结果。

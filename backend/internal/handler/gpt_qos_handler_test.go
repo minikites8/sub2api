@@ -50,11 +50,14 @@ func TestGPTQoSResponsesSSEAndFallbackIntegration(t *testing.T) {
 			enabled, busy, allow bool
 			wantAccount          int64
 			wantStatus           int
+			proxy                bool
 		}{
-			{"strong beats basic priority", true, false, false, 802, 200},
-			{"quality guarantee refuses basic", true, true, false, 0, 503},
-			{"explicit downgrade uses basic", true, true, true, 803, 200},
-			{"all flags off retains legacy priority", false, false, false, 803, 200},
+			{"strong beats basic priority", true, false, false, 802, 200, false},
+			{"quality guarantee refuses basic", true, true, false, 0, 503, false},
+			{"explicit downgrade uses basic", true, true, true, 803, 200, false},
+			{"all flags off retains legacy priority", false, false, false, 803, 200, false},
+			{"cached single proxy retains its semaphore", true, false, false, 802, 200, true},
+			{"cached busy proxy cannot bypass concurrency", true, true, false, 0, 503, true},
 		} {
 			t.Run(fmt.Sprintf("%s/stream=%t", tc.name, stream), func(t *testing.T) {
 				gin.SetMode(gin.TestMode)
@@ -81,17 +84,32 @@ func TestGPTQoSResponsesSSEAndFallbackIntegration(t *testing.T) {
 					{ID: 802, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Concurrency: 1, Priority: 100, GroupIDs: []int64{901}, Credentials: map[string]any{"api_key": "fixture-only", "base_url": "https://fixture.invalid/v1"}, Extra: map[string]any{service.AccountQualityTierKey: "strong", "openai_passthrough": true}},
 					{ID: 803, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{901}, Credentials: map[string]any{"api_key": "fixture-only", "base_url": "https://fixture.invalid/v1"}, Extra: map[string]any{service.AccountQualityTierKey: "basic", "openai_passthrough": true}},
 				}
+				strongSlot := int64(802)
+				if tc.proxy {
+					proxyID := int64(12)
+					accounts[0].ProxyID = &proxyID
+					accounts[0].Proxy = &service.Proxy{ID: proxyID, Status: service.StatusActive, Protocol: "http", Host: "fixture.invalid", Port: 8080}
+					strongSlot = service.AccountProxySlotID(802, proxyID)
+				}
 				repo := &qosHandlerAccountRepo{&openAI502503AdmissionRepo{grokCredentialHandlerRepo: &grokCredentialHandlerRepo{accounts: accounts}}}
+				// Production lists stripped candidate metadata, then hydrates the
+				// complete account. Exercise both representations, not just a DB stub.
+				snapshotCache := repository.NewSchedulerCache(rdb)
+				bucket := service.SchedulerBucket{Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+				token, err := snapshotCache.CaptureBucketWriteToken(context.Background(), bucket)
+				require.NoError(t, err)
+				require.NoError(t, snapshotCache.SetSnapshot(context.Background(), bucket, token, accounts))
+				snapshot := service.NewSchedulerSnapshotService(snapshotCache, nil, repo, nil, cfg)
 				upstream := &openAI502503Upstream{status: 503}
 				billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 				defer billing.Stop()
-				gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, nil, concurrency, service.NewBillingService(cfg, nil), nil, billing, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, settings, nil, nil)
+				gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, snapshot, concurrency, service.NewBillingService(cfg, nil), nil, billing, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, settings, nil, nil)
 				h := NewOpenAIGatewayHandler(gateway, concurrency, billing, &service.APIKeyService{}, nil, nil, nil, nil, nil, cfg)
 				if tc.busy {
-					ok, err := cache.AcquireAccountSlot(context.Background(), 802, 1, "fixture-busy")
+					ok, err := cache.AcquireAccountSlot(context.Background(), strongSlot, 1, "fixture-busy")
 					require.NoError(t, err)
 					require.True(t, ok)
-					defer cache.ReleaseAccountSlot(context.Background(), 802, "fixture-busy")
+					defer cache.ReleaseAccountSlot(context.Background(), strongSlot, "fixture-busy")
 				}
 				groupID := int64(901)
 				key := &service.APIKey{ID: 902, GroupID: &groupID, User: &service.User{ID: 903, Status: service.StatusActive}, Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive}}
@@ -110,11 +128,54 @@ func TestGPTQoSResponsesSSEAndFallbackIntegration(t *testing.T) {
 				require.Equal(t, tc.wantStatus, rec.Code, rec.Body.String())
 				if tc.wantAccount == 0 {
 					require.Empty(t, upstream.hits)
+					var response struct {
+						Error struct{ Code, Message string }
+					}
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+					require.Equal(t, "gpt_qos_queue_timeout", response.Error.Code)
+					require.Contains(t, response.Error.Message, "wait budget")
 				} else {
 					require.Equal(t, []int64{tc.wantAccount}, upstream.hits)
 				}
 				require.Zero(t, rdb.ZCard(context.Background(), "gptqos:{v1}:waiting").Val())
 				require.Zero(t, rdb.ZCard(context.Background(), "gptqos:{v1}:leases").Val())
+				if tc.proxy {
+					require.Zero(t, rdb.ZCard(context.Background(), "concurrency:account:802").Val(), "a proxy-bound account must not acquire the plain account semaphore")
+				}
+				if !tc.busy {
+					require.Zero(t, rdb.ZCard(context.Background(), fmt.Sprintf("concurrency:account:%d", strongSlot)).Val())
+				}
+			})
+		}
+	}
+}
+
+func TestGPTQoSSelectionErrorsHaveSafeJSONAndResponsesSSEDiagnostics(t *testing.T) {
+	for _, reason := range []string{"account_changed", "no_eligible_capacity", "queue_full", "queue_timeout", "queue_closed", "snapshot_unavailable", "unavailable"} {
+		for _, started := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream_started=%t", reason, started), func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				err := fmt.Errorf("outer wrapper: %w", &service.GPTQoSSelectionError{Reason: reason})
+				cls := classifyNoAccountErrorFromGin(c, nil, nil, "gpt-test", "gpt-test", service.PlatformOpenAI, err)
+				require.Equal(t, http.StatusServiceUnavailable, cls.Status)
+				require.Equal(t, "gpt_qos_"+reason, cls.Code)
+				h := &OpenAIGatewayHandler{}
+				h.handleStreamingAwareErrorWithCode(c, cls.Status, cls.ErrType, cls.Code, cls.Message, started, false)
+				if started {
+					require.Contains(t, rec.Body.String(), "event: response.failed")
+					require.Contains(t, rec.Body.String(), cls.Code)
+					require.NotContains(t, rec.Body.String(), "event: error\n")
+				} else {
+					require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+					var response struct {
+						Error struct{ Code, Message string }
+					}
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+					require.Equal(t, cls.Code, response.Error.Code)
+					require.Equal(t, cls.Message, response.Error.Message)
+				}
 			})
 		}
 	}

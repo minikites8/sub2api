@@ -32,6 +32,7 @@ type noAccountErrorClassification struct {
 	Status        int
 	ErrType       string
 	Message       string
+	Code          string
 	ModelNotFound bool // true when this is a 404 model_not_found classification
 }
 
@@ -137,6 +138,13 @@ func classifyNoAccountError(
 			ErrType:       "model_not_found",
 			Message:       channelPricingModelRestrictedMessage,
 			ModelNotFound: true,
+		}
+	}
+	for _, cause := range causes {
+		var qosErr *service.GPTQoSSelectionError
+		if errors.As(cause, &qosErr) {
+			code, message := qosErr.ClientError()
+			return noAccountErrorClassification{Status: http.StatusServiceUnavailable, ErrType: "api_error", Message: message, Code: code}
 		}
 	}
 

@@ -77,29 +77,41 @@ func (s *OpenAIGatewayService) gptQoSStore() GPTQoSAdmissionStore {
 	return store
 }
 func qosCandidate(account *Account, cfg GPTQoSConfig) (GPTQoSCandidate, bool) {
-	if account == nil || account.Concurrency <= 0 {
-		return GPTQoSCandidate{}, false
-	}
-	// Proxy pools have per-binding slots and cannot be flattened to account.ID.
-	// Until a binding is selected, leave them out of guaranteed capacity.
-	if len(account.ProxyPool) > 0 || account.ProxyPoolConfigured {
+	if gptQoSCapacityIneligibleReason(account, cfg) != "" {
 		return GPTQoSCandidate{}, false
 	}
 	cap := account.Concurrency
 	pool := account.QoSResourcePool()
 	if strings.HasPrefix(pool, "shared:") {
-		p, ok := cfg.ResourcePools[strings.TrimPrefix(pool, "shared:")]
-		if !ok || !cfg.CapacityEnabled {
-			return GPTQoSCandidate{}, false
-		}
+		p := cfg.ResourcePools[strings.TrimPrefix(pool, "shared:")]
 		cap = p.Concurrency
 	}
 	return GPTQoSCandidate{AccountID: account.ID, SlotID: GPTQoSAccountSlotID(account), Concurrency: account.Concurrency, PoolID: pool, PoolCapacity: cap, Quality: account.QualityTier()}, true
 }
+
+func gptQoSCapacityIneligibleReason(a *Account, cfg GPTQoSConfig) string {
+	if a == nil || a.Concurrency <= 0 {
+		return "unbounded_account_capacity"
+	}
+	// Explicit proxy pools need a per-binding lifecycle; a single legacy proxy
+	// remains supported through its existing account/proxy semaphore.
+	if len(a.ProxyPool) > 0 || a.ProxyPoolConfigured {
+		return "proxy_pool_unsupported"
+	}
+	if pool := a.QoSResourcePool(); strings.HasPrefix(pool, "shared:") {
+		if !cfg.CapacityEnabled {
+			return "shared_capacity_disabled"
+		}
+		if p, ok := cfg.ResourcePools[strings.TrimPrefix(pool, "shared:")]; !ok || p.Concurrency <= 0 {
+			return "shared_capacity_not_configured"
+		}
+	}
+	return ""
+}
 func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, req OpenAIAccountScheduleRequest, cfg GPTQoSConfig, group GPTQoSGroupConfig, strong, basic []openAIAccountCandidateScore, deadline time.Time) (*AccountSelectionResult, int, int, float64, error) {
 	store := s.service.gptQoSStore()
 	if store == nil {
-		return nil, 0, 0, 0, fmt.Errorf("%w: %w", ErrNoAvailableAccounts, ErrGPTQoSUnavailable)
+		return nil, 0, 0, 0, newGPTQoSSelectionError("unavailable", "", ErrGPTQoSUnavailable)
 	}
 	uid, _ := ctx.Value(ctxkey.UserID).(int64)
 	if uid <= 0 {
@@ -107,15 +119,60 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 	}
 	entry := GPTQoSEntry{ID: generateRequestID(), UserID: uid, GroupID: derefGroupID(req.GroupID), Tier: group.Tier, Weight: group.Weight, GroupLimit: group.Concurrency, MaxWaiting: cfg.MaxWaiting, GroupMaxWaiting: group.MaxWaiting, UserMaxWaiting: group.UserMaxWaiting, WaitMs: max(1, int(time.Until(deadline).Milliseconds())), StrongWaitMs: max(0, int(time.Until(deadline).Milliseconds())), Peak: cfg.Peak, Protected: group.CapacityProtection, Weights: [3]int{cfg.PremiumWeight, cfg.StandardWeight, cfg.EconomyWeight}}
 	accounts := map[int64]*Account{}
+	// Candidate lists contain sched:meta projections, which deliberately omit
+	// proxy bindings. Read complete snapshots in bounded batches before queueing:
+	// the queue must acquire the same semaphore as the final hydrated account.
+	// GetAccounts uses Redis MGET and the existing bounded DB fallback policy.
+	var full map[int64]*Account
+	if s.service.schedulerSnapshot != nil {
+		ids := make([]int64, 0, len(strong)+len(basic))
+		for _, pool := range [][]openAIAccountCandidateScore{strong, basic} {
+			for _, item := range pool {
+				if item.account != nil {
+					ids = append(ids, item.account.ID)
+				}
+			}
+		}
+		var err error
+		full, err = s.service.schedulerSnapshot.GetAccounts(ctx, ids)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, 0, 0, 0, ctx.Err()
+			}
+			return nil, 0, 0, 0, newGPTQoSSelectionError("snapshot_unavailable", "", ErrGPTQoSUnavailable)
+		}
+	}
+	excluded := make(map[string]int)
 	for _, pool := range [][]openAIAccountCandidateScore{strong, basic} {
 		for _, item := range pool {
-			if c, ok := qosCandidate(item.account, cfg); ok {
+			account := item.account
+			if account == nil {
+				continue
+			}
+			if full != nil {
+				account = full[account.ID]
+			}
+			account = s.service.openAIAccountForGroup(ctx, req.GroupID, account)
+			reason := s.gptQoSCandidateIneligibleReason(ctx, req, account, item.account.QualityTier())
+			if reason != "" {
+				excluded[reason]++
+				continue
+			}
+			if c, ok := qosCandidate(account, cfg); ok {
 				entry.Candidates = append(entry.Candidates, c)
-				accounts[item.account.ID] = item.account
+				accounts[account.ID] = account
+			} else {
+				excluded[gptQoSCapacityIneligibleReason(account, cfg)]++
 			}
 		}
 	}
-	if len(strong) == 0 {
+	entry.WaitMs = max(1, int(time.Until(deadline).Milliseconds()))
+	entry.StrongWaitMs = max(0, int(time.Until(deadline).Milliseconds()))
+	hasStrong := false
+	for _, candidate := range entry.Candidates {
+		hasStrong = hasStrong || candidate.Quality == "strong"
+	}
+	if !hasStrong {
 		entry.StrongWaitMs = 0
 	}
 	if group.AllowBasicFallback && !req.PreserveStickyBinding {
@@ -125,10 +182,11 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 		entry.StrongWaitMs = 0
 	}
 	if len(entry.Candidates) == 0 {
-		return nil, 0, 0, 0, fmt.Errorf("%w: no bounded eligible quality capacity", ErrNoAvailableAccounts)
+		slog.WarnContext(ctx, "gpt_qos_no_eligible_capacity", "request_id", ctx.Value(ctxkey.RequestID), "group_id", entry.GroupID, "excluded", excluded)
+		return nil, 0, 0, 0, newGPTQoSSelectionError("no_eligible_capacity", "", nil)
 	}
 	if len(entry.Candidates) > 256 {
-		return nil, 0, 0, 0, fmt.Errorf("%w: QoS candidate limit exceeded", ErrNoAvailableAccounts)
+		return nil, 0, 0, 0, newGPTQoSSelectionError("candidate_limit", "", nil)
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		entry.WaitMs = min(entry.WaitMs, max(1, int(time.Until(deadline).Milliseconds())))
@@ -152,8 +210,11 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 	for {
 		grant, err := store.GPTQoSPoll(ctx, entry)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, 0, 0, 0, ctx.Err()
+			}
 			slog.Error("gpt_qos_redis_unavailable", "operation", "admission")
-			return nil, 0, 0, 0, fmt.Errorf("%w: %w", ErrNoAvailableAccounts, ErrGPTQoSUnavailable)
+			return nil, 0, 0, 0, newGPTQoSSelectionError("unavailable", "", ErrGPTQoSUnavailable)
 		}
 		switch grant.Status {
 		case "granted":
@@ -161,7 +222,9 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 			qctx := context.WithValue(ctx, gptQualityConstraintKey{}, grant.Candidate.Quality)
 			fresh := s.service.resolveFreshSchedulableOpenAIAccount(qctx, account, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability, req.RequireCompact)
 			fresh = s.service.recheckSelectedOpenAIAccountFromDB(qctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability, req.RequireCompact)
-			if fresh == nil || fresh.Concurrency != grant.Candidate.Concurrency || GPTQoSAccountSlotID(fresh) != grant.Candidate.SlotID || len(fresh.ProxyPool) > 0 || fresh.ProxyPoolConfigured || fresh.QoSResourcePool() != grant.Candidate.PoolID || !s.isAccountRequestCompatible(qctx, fresh, req) || !s.isAccountTransportCompatible(fresh, req.RequiredTransport, req.RequestedModel) || (req.RequireCompact && openAICompactSupportTier(fresh) == 0) {
+			reason := s.gptQoSGrantChangedReason(qctx, req, fresh, grant.Candidate)
+			if reason != "" {
+				slog.WarnContext(ctx, "gpt_qos_selected_account_changed", "request_id", ctx.Value(ctxkey.RequestID), "group_id", entry.GroupID, "account_id", grant.Candidate.AccountID, "reason", reason)
 				closeGPTQoSEntry(store, entry.ID)
 				rechecks++
 				next := make([]GPTQoSCandidate, 0, len(entry.Candidates)-1)
@@ -174,7 +237,7 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 				entry.WaitMs = initialWaitMs - int(time.Since(started).Milliseconds())
 				entry.StrongWaitMs = max(0, int(time.Until(deadline).Milliseconds()))
 				if len(next) == 0 || rechecks >= cfg.MaxAttempts || entry.WaitMs <= 0 {
-					return nil, 0, 0, 0, fmt.Errorf("%w: QoS selected account changed", ErrNoAvailableAccounts)
+					return nil, 0, 0, 0, newGPTQoSSelectionError("account_changed", reason, nil)
 				}
 				entry.ID = generateRequestID()
 				continue
@@ -200,15 +263,62 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 			}
 			return attachSelectionProfitGate(ctx, result), len(entry.Candidates), len(entry.Candidates), 0, nil
 		case "full", "timeout", "closed":
-			return nil, 0, 0, 0, fmt.Errorf("%w: QoS queue %s", ErrNoAvailableAccounts, grant.Status)
+			return nil, 0, 0, 0, newGPTQoSSelectionError("queue_"+grant.Status, "", nil)
 		}
 		if !group.AllowBasicFallback && !time.Now().Before(deadline) {
-			return nil, 0, 0, 0, fmt.Errorf("%w: strong wait budget exhausted", ErrNoAvailableAccounts)
+			return nil, 0, 0, 0, newGPTQoSSelectionError("queue_timeout", "", nil)
 		}
 		if !waitGPTQoS(ctx, min(25*time.Millisecond, time.Duration(max(1, entry.WaitMs))*time.Millisecond)) {
 			return nil, 0, 0, 0, ctx.Err()
 		}
 	}
+}
+
+// Model mapping, group authorization and endpoint compatibility are checked
+// before an account enters the fair queue. Recheck after hydration too: cached
+// metadata can be older than the complete snapshot used for slot identity.
+func (s *defaultOpenAIAccountScheduler) gptQoSCandidateIneligibleReason(ctx context.Context, req OpenAIAccountScheduleRequest, a *Account, quality string) string {
+	if a == nil || !a.IsSchedulable() {
+		return "account_unavailable"
+	}
+	if a.QualityTier() != quality {
+		return "quality_tier_changed"
+	}
+	if a.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !s.service.openAIAccountMatchesSchedulingGroup(a, req.GroupID) {
+		return "group_or_platform_changed"
+	}
+	if s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) && !a.IsPrivacySet() {
+		return "privacy_not_set"
+	}
+	if ok, reason := s.isAccountRequestCompatibleReason(ctx, a, req); !ok {
+		return reason
+	}
+	if !s.isAccountTransportCompatible(a, req.RequiredTransport, req.RequestedModel) {
+		return "transport_incompatible"
+	}
+	if req.RequireCompact && openAICompactSupportTier(a) == 0 {
+		return "compact_unsupported"
+	}
+	return ""
+}
+
+func (s *defaultOpenAIAccountScheduler) gptQoSGrantChangedReason(ctx context.Context, req OpenAIAccountScheduleRequest, a *Account, c GPTQoSCandidate) string {
+	if reason := s.gptQoSCandidateIneligibleReason(ctx, req, a, c.Quality); reason != "" {
+		return reason
+	}
+	if a.Concurrency != c.Concurrency {
+		return "concurrency_changed"
+	}
+	if len(a.ProxyPool) > 0 || a.ProxyPoolConfigured {
+		return "proxy_pool_unsupported"
+	}
+	if GPTQoSAccountSlotID(a) != c.SlotID {
+		return "slot_binding_changed"
+	}
+	if a.QoSResourcePool() != c.PoolID {
+		return "resource_pool_changed"
+	}
+	return ""
 }
 func closeGPTQoSEntry(store GPTQoSAdmissionStore, id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

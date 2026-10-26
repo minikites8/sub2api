@@ -6,7 +6,7 @@ export default {
   rolloutGroups: '灰度分组 ID（逗号分隔，留空应用于全部分组）',
   upstreamKind: '上游来源', direct: '直接登录', vmShare: 'VM2API 请求数', directShare: '直接登录请求数', metricsDropped: '丢弃的观测事件数',
   title: 'GPT 质量与 QoS 调度', accountQuality: '账号质量与共享容量', qualityTier: '质量等级', strong: '高质量 Strong', basic: '普通质量 Basic', unknown: '未验证 Unknown',
-  sharedPool: '共享资源池标识（独立容量留空）', accountHint: '质量由管理员显式标记。共享同一 VM2API 底层资源的账号填写相同池标识，并在调度页配置该池的总并发上限。', bulkQuality: '批量修改质量与共享池',
+  sharedPool: '共享资源池标识（独立容量留空）', accountHint: '质量由管理员显式标记，独立容量无需填写共享池。确认共用 VM2API 底层资源的账号填写相同池标识，并在调度页配置该池总并发、启用共享资源池容量控制后再使用公平排队。', bulkQuality: '批量修改质量与共享池',
   qualityRouting: '质量优先路由', qosEnabled: '全局公平排队', capacityEnabled: '共享资源池容量控制', peakEnabled: '高峰保护', strictReserve: '严格预留（允许借用时无法保证立即获得槽位）',
   enter: '高峰进入占用率', exit: '高峰退出占用率', ratio: 'Premium 预留比例', enterHold: '进入稳定窗口（毫秒）', exitHold: '退出稳定窗口（毫秒）',
   premiumWeight: 'Premium 默认权重', standardWeight: 'Standard 默认权重', economyWeight: 'Economy 默认权重', maxWaiting: '全局最大排队数', requestBudget: '普通请求总预算（毫秒）', highBudget: '长推理总预算（毫秒）', maxAttempts: '最大上游提交次数', sampleRate: '决策日志采样率',
