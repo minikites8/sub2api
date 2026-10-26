@@ -1382,6 +1382,10 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "group_rate_multiplier must be >= 0")
 		return
 	}
+	// Preserve the distinction between a submitted field and metadata copied
+	// from the account below, so the row lock can keep concurrent label edits.
+	c.Request = c.Request.WithContext(service.WithAccountQualityUpdate(c.Request.Context(), accountID,
+		mergeQualityRequestExtra(req.Extra, req.QualityTier, req.QoSResourcePool)))
 	// Independent quality fields are a partial update. Preserve the complete
 	// existing extra object when the caller did not submit one (including
 	// passthrough and capacity metadata unrelated to the edited label).

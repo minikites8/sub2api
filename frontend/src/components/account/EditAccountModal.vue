@@ -4672,6 +4672,10 @@ const mixedChannelWarningMessageText = computed(() => {
   return mixedChannelWarningRawMessage.value
 })
 
+const readQualityTier = (account: Account): string => {
+  const tier = account.quality_tier ?? account.extra?.quality_tier
+  return tier === 'strong' || tier === 'basic' ? tier : 'unknown'
+}
 const qualityTier = ref('unknown')
 const qualityPool = ref('')
 const qualitySource = ref('unknown')
@@ -4812,7 +4816,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
   form.is_fallback = newAccount.is_fallback === true
-  qualityTier.value = String(newAccount.extra?.quality_tier || 'unknown')
+  qualityTier.value = readQualityTier(newAccount)
   qualityPool.value = String(newAccount.extra?.qos_resource_pool || '')
   qualitySource.value = String(newAccount.extra?.qos_upstream_kind || 'unknown')
   costMultiplier.value = readAccountCostMultiplier(newAccount.extra)
@@ -6861,7 +6865,7 @@ const handleSubmit = async () => {
     } else {
       delete costExtra.cost_multiplier_auto_sync
     }
-    if (qualityTier.value !== String(props.account.extra?.quality_tier || 'unknown')) costExtra.quality_tier = qualityTier.value
+    if (qualityTier.value !== readQualityTier(props.account)) costExtra.quality_tier = qualityTier.value
     else delete costExtra.quality_tier
     if (qualityPool.value.trim() !== String(props.account.extra?.qos_resource_pool || '')) costExtra.qos_resource_pool = qualityPool.value.trim()
     else delete costExtra.qos_resource_pool

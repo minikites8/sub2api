@@ -805,6 +805,7 @@ func lockAndMergeAccountProbeExtra(
 	}
 	extra := service.MergeOpenAICodexTicketExtra(copyJSONMap(normalizeJSONMap(account.Extra)), currentExtra)
 	extra = service.MergeExcelBPS403Marker(extra, currentExtra)
+	extra = service.MergeAccountQualityMetadata(ctx, account.ID, extra, currentExtra)
 	// Omitted cost means an unrelated edit. Keep the value under the row lock,
 	// including a probe update committed after the edit form was loaded.
 	for _, key := range []string{service.AccountCostMultiplierExtraKey, service.AccountCostAutoSyncExtraKey} {

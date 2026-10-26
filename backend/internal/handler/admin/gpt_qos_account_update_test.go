@@ -14,16 +14,20 @@ import (
 
 type qosAccountUpdateStub struct {
 	service.AdminService
-	account *service.Account
-	updated map[string]any
+	account     *service.Account
+	updated     map[string]any
+	lockedExtra map[string]any
 }
 
 func (s *qosAccountUpdateStub) GetAccount(context.Context, int64) (*service.Account, error) {
 	return s.account, nil
 }
-func (s *qosAccountUpdateStub) UpdateAccount(_ context.Context, _ int64, in *service.UpdateAccountInput) (*service.Account, error) {
+func (s *qosAccountUpdateStub) UpdateAccount(ctx context.Context, _ int64, in *service.UpdateAccountInput) (*service.Account, error) {
 	s.updated = in.Extra
-	s.account.Extra = in.Extra
+	if s.lockedExtra != nil {
+		s.updated = service.MergeAccountQualityMetadata(ctx, s.account.ID, in.Extra, s.lockedExtra)
+	}
+	s.account.Extra = s.updated
 	return s.account, nil
 }
 
@@ -48,6 +52,32 @@ func TestGPTQoSIndependentAccountFieldUpdatePreservesExtra(t *testing.T) {
 			} else {
 				require.Equal(t, "basic", svc.updated[service.AccountQualityTierKey])
 			}
+		})
+	}
+}
+
+func TestGPTQoSAccountFieldIntentCapturedBeforeHydration(t *testing.T) {
+	for _, tc := range []struct{ body, wantTier, wantPool string }{
+		{`{"qos_resource_pool":"new-pool"}`, "strong", "new-pool"},
+		{`{"extra":{"base_rpm":30}}`, "strong", "current-pool"},
+		{`{"quality_tier":"unknown"}`, "unknown", "current-pool"},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			svc := &qosAccountUpdateStub{
+				account:     &service.Account{ID: 41, Name: "fixture", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Extra: map[string]any{service.AccountQualityTierKey: "unknown", service.AccountResourcePoolKey: "old-pool"}},
+				lockedExtra: map[string]any{service.AccountQualityTierKey: "strong", service.AccountResourcePoolKey: "current-pool"},
+			}
+			handler := &AccountHandler{adminService: svc}
+			gin.SetMode(gin.TestMode)
+			r := gin.New()
+			r.PUT("/accounts/:id", handler.Update)
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPut, "/accounts/41", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			r.ServeHTTP(w, req)
+			require.Equal(t, 200, w.Code, w.Body.String())
+			require.Equal(t, tc.wantTier, svc.updated[service.AccountQualityTierKey])
+			require.Equal(t, tc.wantPool, svc.updated[service.AccountResourcePoolKey])
 		})
 	}
 }

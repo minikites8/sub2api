@@ -1430,6 +1430,8 @@ export interface ExcelBPSCredentialState {
 }
 
 export interface Account {
+  quality_tier?: 'strong' | 'basic' | 'unknown'
+  qos_resource_pool?: string
  excel_bps_credential_state?: ExcelBPSCredentialState
   id: number
   name: string

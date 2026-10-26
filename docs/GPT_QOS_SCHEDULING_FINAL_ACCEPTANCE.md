@@ -4,7 +4,7 @@
 
 结论：**CONDITIONAL PASS — 有条件灰度**。仅允许下述已验证范围，不能将本报告理解为全功能验收通过。
 
-- 审计分支 `main`，开始 Commit `f11fe920c3cb1813d10f5136eb72a230e4f8f0e3`；受测源代码提交为 `d8075aa6afb5ed3f8e49740bdc5d2b9011b200a7`；本报告为其文档补充，未改动受测源代码。旧版本对照为 QoS 引入前的 `21f675138`，从 Git archive 独立构建。
+- 审计分支 `main`，开始 Commit `f11fe920c3cb1813d10f5136eb72a230e4f8f0e3`；第 1–8 节的受测源代码提交为 `d8075aa6afb5ed3f8e49740bdc5d2b9011b200a7`；后续账号标签保存补丁及其独立回归见第 9 节。旧版本对照为 QoS 引入前的 `21f675138`，从 Git archive 独立构建。
 - 时间：2026-10-26；macOS arm64；Go 1.27.3；Docker Desktop；真实 PostgreSQL `18.1-alpine3.23`、Redis `8.4-alpine`；两个独立 `cmd/server` OS 进程，共用临时数据库和 Redis。
 - 标准余额计费模式，31 个合成用户、3 个服务组、Strong 两账号共 20 槽、Basic 两账号共 30 槽；账号类型均为本地模拟 APIKey。没有调用真实付费模型，没有读取/修改生产余额或账号，没有部署。
 - 每个测试服务显式配置数据库最大连接 20、空闲 10；测试 Redis 前置可控 TCP 转发器，用于真实断连。全部模型地址为 loopback 模拟上游；定价使用仓库 fallback 文件。仅临时数据库关闭同 IP 合成多用户触发的独立反滥用策略。
@@ -207,3 +207,28 @@ Redis 继续使用 `gptqos:{v1}:` 下 requests/waiting/leases/fair、tier/user/g
 8. 不删除审计表、质量元数据或 financial 表；这些新增元数据不要求回滚扣费数据。必要时回滚二进制前排空队列并核对所有实例版本，禁止混合版本对未排空的容量注册表进行管理变更。
 
 首批允许灰度的结论以本报告明确范围和部署检查为前提。没有自动部署。
+
+## 9. 账号配置保存的补充修复（2026-10-26）
+
+用户继续反馈修改账号配置后 Strong 变回 Unknown。上一轮 F2 只保护了管理服务层，未完整覆盖底层通用更新与旧快照写入，本次补齐，不将上一轮测试当作这条遗漏路径已通过的证据。
+
+新复现的两个问题：
+
+- 账号刷新/配置流程持有旧的 `extra` 后，通用 `AccountRepository.Update` 仍会写回整个对象。真实 PostgreSQL 测试证明，旧快照中的缺失标签、Unknown、Basic 都会覆盖数据库里后来设置的 Strong。
+- 编辑弹窗只读取 `extra.quality_tier`；接口仅在顶层返回 `quality_tier=strong`、extra 不完整时，会错误显示 Unknown。
+
+修复：
+
+1. 管理请求在补齐旧 extra 之前记录实际提交的质量字段；服务层保留这份修改意图。
+2. 在已有数据库行锁内部，以当前行的质量、共享池、来源及审计管理员为准保留未显式修改的元数据。普通配置保存及后台旧对象更新不能改写这些标签。
+3. 管理员主动设置 Strong/Basic/Unknown 或清空共享池仍可持久化；显式等级修改继续产生审计记录。
+4. 前端使用接口顶层质量字段，兼容旧接口的 extra 回退；普通修改不提交质量等级。
+
+回归与证据：
+
+- `go test -tags=unit ./internal/service ./internal/repository ./internal/handler/admin -run 'Test(AccountQuality|AccountUpdate|GPTQualityMetadata|GPTQoSIndependentAccountField|UpdateAccount|LockAndMergeAccountProbeExtra)' -count=1 -json`：3 包通过，87 个含父/子测试的通过事件；最终代码的 Race 回归 3 包、92 个父/子测试事件通过，包含关联账号隔离和管理字段意图回归。
+- `go test -tags=integration ./internal/repository -run '^Test(AccountUpdate(StaleConfigurationPreservesCurrentQuality|ExplicitQualityChangeStillPersists)|GPTQualityAuditMigrationPersistsActorAndOldNew)$' -count=1 -v`：3 个根测试通过，含 3 个旧快照场景、显式三级标签变更与真实 PG 审计检查。
+- 前端所有 `EditAccountModal*.spec.ts` 与 `AccountQualityFields.spec.ts`：8 文件、189 项通过；`vue-tsc --noEmit` 与本次变更文件 ESLint 通过。
+- 修复前后日志保存在 `artifacts/gpt-qos-final-quality-label-fix/`。没有修改生产账号或自动将 Unknown 提升为 Strong；已经被旧版本实际清空的标签需要管理员根据验证记录重新设置。
+
+本节只补充账号标签保存回归，没有重新执行第 4 节完整压力场景，也没有改变其灰度限制。部署修复需同步更新后端与前端。
