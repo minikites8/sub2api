@@ -13,7 +13,11 @@ export default {
   save: '保存', refresh: '刷新观测', rollback: '关闭全部新调度功能', pools: '共享资源池', poolID: '池标识', concurrency: '并发上限', addPool: '添加资源池', remove: '移除',
   effective: '实际执行顺序', effectiveHint: '权限/模型/硬续链 → QoS 与容量 → 质量池/降级许可 → 池内原调度 → 原子槽位 / RPM / 发送前复核', defaultsOff: '新功能默认关闭。QoS 依赖质量路由，高峰保护依赖 QoS 和容量控制。未标记账号不进入强池。',
   saved: '配置已保存', failed: '操作失败', groupQos: '分组 QoS（独立于销售倍率）', tier: '服务等级', weight: '分组权重', fallback: '允许降级至 Basic', strongWait: '强池最大等待（毫秒）', groupMaxWaiting: '分组最大排队数', userMaxWaiting: '单用户最大排队数（跨 API Key）', protection: '参与 Premium 容量保障', groupConcurrency: '分组并发限制（0 为不限制）',
-  groupHint: 'Premium 和 Standard 默认禁止降级。硬续链保留原账号。此处单独保存调度配置。', metrics: '调度观测', redisUnavailable: 'Redis 不可用：QoS 请求失败关闭，容量保障不可用。', filters: '观测筛选', model: '请求模型', effort: '推理强度', groupID: '分组 ID',
+  groupHint: '点击底部“更新分组”会同时保存 QoS。Premium 和 Standard 默认禁止降级，硬续链保留原账号；QoS 与销售倍率独立。',
+  groupStandaloneHint: 'Premium 和 Standard 默认禁止降级，硬续链保留原账号。此处仅保存调度配置。',
+  groupPartialSave: '分组基本设置已保存，但 QoS 保存失败。请保留当前修改并重试。',
+  saveNotConfirmed: '服务端未确认 QoS 修改，尚未显示保存成功。请重试。',
+  metrics: '调度观测', redisUnavailable: 'Redis 不可用：QoS 请求失败关闭，容量保障不可用。', filters: '观测筛选', model: '请求模型', effort: '推理强度', groupID: '分组 ID',
   requests: '请求数', attempts: '尝试次数', successes: '成功请求', firstSuccess: '首次成功', canceled: '客户端取消', downgrades: '质量降级', strongHits: '强池请求', average: '平均等待 ms', p50: 'P50 ms', p95: 'P95 ms', p99: 'P99 ms', capacity: '全局队列与资源池状态',
   metricsWindow: '近 24 小时最多 10000 个完成请求；请求与重试分开统计。', qualityFilter: '全部质量等级', createFirst: '创建分组后可在编辑界面配置 QoS。'
 }

@@ -70,7 +70,29 @@ const metricFields = [
   { key: 'average_queue_ms', label: 'average' }, { key: 'p50_queue_ms', label: 'p50' }, { key: 'p95_queue_ms', label: 'p95' }, { key: 'p99_queue_ms', label: 'p99' }
 ] as const
 async function refresh() { try { snapshot.value = await getQoSSnapshot({ group_id: filters.groupID, model: filters.model, effort: filters.effort }) } catch { error.value = t('gptQos.failed') } }
-async function save() { if (!config.value) return; saving.value = true; error.value = ''; saved.value = false; try { if (new Set(pools.value.map(p => p.id)).size !== pools.value.length) throw new Error('Duplicate pool ID'); config.value.group_ids = rolloutGroups.value.split(',').map(s => s.trim()).filter(Boolean).map(Number); config.value.resource_pools = Object.fromEntries(pools.value.map(p => [p.id, { concurrency: p.concurrency }])); config.value = await saveQoSConfig(config.value); saved.value = true } catch (e: unknown) { error.value = e instanceof Error ? e.message : t('gptQos.failed') } finally { saving.value = false } }
+async function save() {
+  if (!config.value) return
+  saving.value = true
+  error.value = ''
+  saved.value = false
+  try {
+    if (new Set(pools.value.map(p => p.id)).size !== pools.value.length) throw new Error('Duplicate pool ID')
+    const latest = await getQoSConfig()
+    config.value = await saveQoSConfig({
+      ...config.value,
+      // This page edits global policy only. Preserve group QoS saved from a
+      // group dialog after this page was opened.
+      groups: latest.groups,
+      group_ids: rolloutGroups.value.split(',').map(s => s.trim()).filter(Boolean).map(Number),
+      resource_pools: Object.fromEntries(pools.value.map(p => [p.id, { concurrency: p.concurrency }]))
+    })
+    saved.value = true
+  } catch (e: unknown) {
+    error.value = e && typeof e === 'object' && 'message' in e && typeof e.message === 'string' ? e.message : t('gptQos.failed')
+  } finally {
+    saving.value = false
+  }
+}
 async function rollback() { if (!config.value) return; config.value.enabled = false; config.value.quality_routing_enabled = false; config.value.capacity_enabled = false; config.value.peak.enabled = false; await save() }
 onMounted(async () => { try { config.value = await getQoSConfig(); rolloutGroups.value = (config.value.group_ids || []).join(','); pools.value = Object.entries(config.value.resource_pools).map(([id, p]) => ({ id, ...p })); await refresh() } catch { error.value = t('gptQos.failed') } })
 </script>

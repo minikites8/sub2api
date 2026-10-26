@@ -2414,7 +2414,7 @@
         @submit.prevent="handleUpdateGroup"
         class="space-y-5"
       >
-        <GroupQoSEditor v-if="editingGroup.platform === 'openai'" :group-id="editingGroup.id" />
+        <GroupQoSEditor v-if="editForm.platform === 'openai'" ref="editQoSRef" :group-id="editingGroup.id" embedded :disabled="submitting" />
         <div>
           <label class="input-label">{{ t("admin.groups.form.name") }}</label>
           <input
@@ -5470,6 +5470,7 @@ const showSortModal = ref(false);
 const submitting = ref(false);
 const sortSubmitting = ref(false);
 const editingGroup = ref<AdminGroup | null>(null);
+const editQoSRef = ref<InstanceType<typeof GroupQoSEditor> | null>(null);
 const deletingGroup = ref<AdminGroup | null>(null);
 const deletingCompositeRoute = ref<CompositeModelRoute | null>(null);
 const duplicatingGroupIds = reactive(new Set<number>());
@@ -6837,6 +6838,12 @@ const handleCreateGroup = async () => {
 
 const handleEdit = async (group: AdminGroup) => {
   editingGroup.value = group;
+  editCodexManifestConfig.value = {
+    ...createCodexManifestDefaults(),
+    ...group.codex_models_manifest_config,
+    account_ids: [...(group.codex_models_manifest_config?.account_ids || [])],
+  };
+  editCodexManifestAccountNames.value = {};
   editForm.name = group.name;
   editForm.description = group.description || "";
   editForm.platform = group.platform;
@@ -7008,8 +7015,13 @@ const closeEditModal = () => {
 
 const handleUpdateGroup = async () => {
   if (!editingGroup.value) return;
+  const groupId = editingGroup.value.id;
+  const qosEditor = editQoSRef.value;
   if (!editForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
+    return;
+  }
+  if (editForm.platform === "openai" && editCodexManifestRef.value && !editCodexManifestRef.value.validate()) {
     return;
   }
   if (
@@ -7030,6 +7042,7 @@ const handleUpdateGroup = async () => {
   }
 
   submitting.value = true;
+  let groupFieldsSaved = false;
   try {
     const {
       model_rate_multiplier_entries: _editFormModelRateMultiplierEntries,
@@ -7172,13 +7185,17 @@ const handleUpdateGroup = async () => {
           description: editForm.description,
         }
       : payload;
-    await adminAPI.groups.update(editingGroup.value.id, requestData);
+    await adminAPI.groups.update(groupId, requestData);
+    groupFieldsSaved = true;
+    await qosEditor?.save();
     appStore.showSuccess(t("admin.groups.groupUpdated"));
-    closeEditModal();
+    if (editingGroup.value?.id === groupId) closeEditModal();
     loadGroups();
   } catch (error: any) {
     appStore.showError(
-      extractApiErrorMessage(error, t("admin.groups.failedToUpdate")),
+      groupFieldsSaved
+        ? `${t("gptQos.groupPartialSave")} ${extractApiErrorMessage(error, t("gptQos.failed"))}`
+        : extractApiErrorMessage(error, t("admin.groups.failedToUpdate")),
     );
     console.error("Error updating group:", error);
   } finally {

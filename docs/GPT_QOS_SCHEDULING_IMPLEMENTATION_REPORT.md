@@ -108,7 +108,7 @@ HTTP、SSE、Responses/Chat Completions/Messages/Embeddings/alpha search 的新�
 
 ## 8. 后台与观测
 
-新增 `/api/v1/admin/gpt-qos/config` GET/PUT、`/api/v1/admin/gpt-qos/snapshot` GET；管理页 `/admin/gpt-qos`。账号新增/编辑/批量质量、池标识、来源，账号列表支持质量筛选、徽标与筛选后的批量/导出。分组编辑内单独保存 QoS，不改分组销售倍率。
+新增 `/api/v1/admin/gpt-qos/config` GET/PUT、`/api/v1/admin/gpt-qos/snapshot` GET；管理页 `/admin/gpt-qos`。账号新增/编辑/批量质量、池标识、来源，账号列表支持质量筛选、徽标与筛选后的批量/导出。分组编辑点击底部“更新分组”会同时保存已修改的 QoS；与销售倍率仍使用独立的调度配置存储。QoS 写入失败保留弹窗和修改，明确提示分组基本字段已保存、QoS 尚未保存，不显示全部成功。
 
 独立开关：`quality_routing_enabled`、`enabled`（公平队列）、`capacity_enabled`、`peak.enabled`，全部 false；公平队列依赖质量路由，峰值保护依赖队列和容量控制。`group_ids` 可限定质量/QoS 灰度；共享物理 cap 是全局资源约束，启用后同池旧流量也受限，不能将它误解为仅灰度分组生效。
 
@@ -211,5 +211,14 @@ HTTP、SSE、Responses/Chat Completions/Messages/Embeddings/alpha search 的新�
 - `frontend/src/views/admin/GroupsView.vue`
 - `frontend/src/views/admin/__tests__/AccountsView.selectAllResults.spec.ts`
 - `frontend/src/views/admin/__tests__/GPTQoSSchedulingView.spec.ts`
+- `frontend/src/views/admin/__tests__/GroupsView.qos.spec.ts`
 
 交付文档：本报告与 `GPT_QOS_SCHEDULING_ACCEPTANCE_REPORT.md`。
+
+## 13. 分组 QoS 保存/回显修复（2026-10-26）
+
+用户反馈修改分组 QoS 后重新打开仍显示 Standard。复现确认旧版“更新分组”按钮只调用原 groups.update，未保存 QoS；原独立保存按钮与主按钮的语义不一致。
+
+修复将 QoS 编辑器接入分组主保存流程，移除嵌入场景中的第二个保存按钮，并在写入返回后核对服务端确认的字段。仅基本字段修改时不重写 QoS；QoS 保存失败保留修改并显示部分保存提示。加载时忽略此前分组的迟到响应，保存时固定原分组/编辑器引用，避免切换弹窗后写错分组或关闭新弹窗。全局调度页面在保存前读取最新 groups，保留该页面打开后从分组弹窗保存的配置。
+
+相关分组回归同时发现原 Codex Manifest 表单缺失保存前校验及重开后的草稿重置，按现有精确断言补齐，未降低测试要求。没有改动调度算法、计费、账号质量或默认开关。

@@ -179,3 +179,16 @@ go test -tags=unit ./internal/service -run 'TestPinnedOpenAIModelsListMixedAccou
 核心文本场景具备进入小范围预发布/受控灰度的代码条件；生产容量保障须完成第 6 节人工检查及高负载故障演练。不能宣称可直接全量上线或真实上游容量已经验证。计费公式、余额、价格倍率未改；新开关默认关闭。最终提交与远程状态在交付回复中记录。
 
 本地证据目录：`artifacts/gpt-qos-20261026/`（测试日志，未将大日志提交 Git）。资源竞争时的失败记录为 `integration-contended.log`，最终通过记录为 `integration-final.log`；补充 service 验证为 `service-final.log`。
+
+
+## 11. 分组 QoS 保存/回显修复补充验收（2026-10-26）
+
+修复前新增复现测试：Premium/Economy 使用主“更新分组”保存时 QoS 请求次数为 0，两项重开验证和一项失败反馈验证失败。修复后保留这些断言并通过：
+
+- 分组页面、全局调度页面和语言键回归：10 个文件 / 42 项测试全部通过（`GroupsView*.spec.ts`、`GPTQoSSchedulingView.spec.ts`、locale completeness）。
+- 验证主保存后关闭重开仍为 Premium/Economy、保留其他分组、基本字段不变更 QoS、保存失败保留弹窗及明确提示。
+- 验证旧全局页面保存不覆盖较新分组配置、迟到 GET 不覆盖当前分组、旧分组请求完成不写入或关闭新分组弹窗、服务端未确认时不显示成功。
+- PostgreSQL 集成 `TestGPTQoSGroupConfigPersistsAcrossServiceInstances` 通过（repository 4.545s）；创建新的 SettingService 后读回 Premium，保存另一 Economy 后原 Premium 保持不变，功能开关不会被保存动作打开。
+- 前端类型检查通过，生产构建通过（23.18s），`git diff --check` 通过；本次后端仅增加持久化验证测试，没有修改后端运行逻辑，未重复运行上文八包完整回归。
+
+本次不访问生产数据库，不发送真实模型调用，不执行生产部署。旧版本的临时使用方法是点击 QoS 区域独立的“保存”；升级此修复后统一使用底部“更新分组”。日志保存在 `artifacts/gpt-qos-group-save-20261026/`。

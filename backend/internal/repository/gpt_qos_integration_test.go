@@ -69,6 +69,30 @@ func TestGPTQualityAuditMigrationPersistsActorAndOldNew(t *testing.T) {
 	require.NoError(t, rows.Err())
 }
 
+func TestGPTQoSGroupConfigPersistsAcrossServiceInstances(t *testing.T) {
+	ctx := context.Background()
+	repo := NewSettingRepository(testEntTx(t).Client())
+	writer := service.NewSettingService(repo, nil)
+	cfg := service.DefaultGPTQoSConfig()
+	cfg.Groups["42"] = service.DefaultGPTQoSGroupConfig("premium")
+	require.NoError(t, writer.SaveGPTQoSConfig(ctx, cfg))
+
+	// A reopened editor reads persistent configuration, not the writer's
+	// process-local snapshot or the ordinary group's subscription_type.
+	reader := service.NewSettingService(repo, nil)
+	reopened, err := reader.GetGPTQoSConfig(ctx)
+	require.NoError(t, err)
+	id := int64(42)
+	require.Equal(t, service.DefaultGPTQoSGroupConfig("premium"), reopened.Group(&id))
+	require.False(t, reopened.Enabled, "saving a group must not enable scheduling")
+	reopened.Groups["43"] = service.DefaultGPTQoSGroupConfig("economy")
+	require.NoError(t, reader.SaveGPTQoSConfig(ctx, reopened))
+	final, err := service.NewSettingService(repo, nil).GetGPTQoSConfig(ctx)
+	require.NoError(t, err)
+	require.Equal(t, service.DefaultGPTQoSGroupConfig("premium"), final.Groups["42"])
+	require.Equal(t, service.DefaultGPTQoSGroupConfig("economy"), final.Groups["43"])
+}
+
 // An isolated local Redis latency sample, including acquire + release. It is
 // evidence of admission overhead only, never a production/model load result.
 func TestGPTQoSRealRedisLatencySample(t *testing.T) {
