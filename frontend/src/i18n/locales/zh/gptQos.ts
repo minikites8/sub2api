@@ -1,4 +1,7 @@
 export default {
+  peakStatus: '高峰保护状态', peakOff: '已关闭', peakWaiting: '已启用，待触发', peakActive: '保护中', peakNotApplicable: '不参与（无强池容量）', peakUnknown: '状态不可用', peakNoData: '暂无观测', peakConfigMismatch: '配置与观测不同步，请刷新',
+  peakBelowThreshold: '未达到阈值，或稳定窗口尚未结束', peakAggregateTriggered: '强池总占用持续达到高峰阈值', peakPoolTriggered: '池内强容量占用持续达到高峰阈值',
+  peakStatusHint: '开关决定是否启用；下方显示当前是否触发。占用达到 {enter}% 并持续 {enterSeconds} 秒进入保护，降至 {exit}% 或以下并持续 {exitSeconds} 秒退出。保存后自动刷新，其他时间可点击“刷新观测”。',
   aggregateStrong: '去重后强池总容量',
   queued: '等待请求', active: '执行并发 / 有效容量', strongCapacity: '强池并发 / 有效容量', reservedUsed: 'Premium 保障使用 / 预留', premiumActive: 'Premium 在用', peakReason: '高峰状态原因', downgradeReasons: '质量降级原因', upstreamShares: '上游实际请求占比', firstSuccessRate: '首次成功率 %',
   basicWait: 'Basic 降级池等待预算（毫秒）',

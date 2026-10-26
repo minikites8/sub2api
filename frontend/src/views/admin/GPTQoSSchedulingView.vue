@@ -32,9 +32,10 @@
         <p v-if="snapshot && !snapshot.available" role="alert" class="text-amber-700">{{ t('gptQos.redisUnavailable') }}</p>
         <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr><th class="p-2">QoS</th><th v-for="field in metricFields" :key="field.key" class="whitespace-nowrap p-2">{{ t(`gptQos.${field.label}`) }}</th></tr></thead><tbody><tr v-for="(row, tier) in snapshot?.tiers" :key="tier"><td class="p-2">{{ tier }}</td><td v-for="field in metricFields" :key="field.key" class="p-2">{{ Math.round(row[field.key] || 0) }}</td></tr></tbody></table></div>
         <h3 class="font-medium">{{ t('gptQos.capacity') }}</h3>
+        <p v-if="appliedPeak" class="input-hint">{{ t('gptQos.peakStatusHint', { enter: Math.round(appliedPeak.enter_utilization * 100), enterSeconds: appliedPeak.enter_hold_ms / 1000, exit: Math.round(appliedPeak.exit_utilization * 100), exitSeconds: appliedPeak.exit_hold_ms / 1000 }) }}</p>
         <p class="text-sm">{{ t('gptQos.queued') }}: {{ snapshot?.capacity?.queued || 0 }} · {{ t('gptQos.active') }}: {{ snapshot?.capacity?.active || 0 }}</p>
-        <p v-if="snapshot?.capacity?.strong_pool?.capacity" class="text-sm">{{ t('gptQos.aggregateStrong') }}: {{ snapshot.capacity.strong_pool.active || 0 }} / {{ snapshot.capacity.strong_pool.capacity }} · {{ t('gptQos.reservedUsed') }}: {{ snapshot.capacity.strong_pool.premium_reserved_used || 0 }} / {{ snapshot.capacity.strong_pool.reserved || 0 }} · {{ snapshot.capacity.strong_pool.reason }}</p>
-        <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr><th v-for="label in poolLabels" :key="label" class="whitespace-nowrap p-2">{{ t(`gptQos.${label}`) }}</th></tr></thead><tbody><tr v-for="pool in snapshot?.capacity?.pools || []" :key="pool.id"><td class="p-2">{{ pool.id }}</td><td class="p-2">{{ pool.active }} / {{ pool.capacity }}</td><td class="p-2">{{ pool.strong_active }} / {{ pool.strong_capacity }}</td><td class="p-2">{{ pool.premium_reserved_used }} / {{ pool.reserved }}</td><td class="p-2">{{ pool.premium_active }}</td><td class="p-2">{{ pool.peak ? t('common.enabled') : t('common.disabled') }}</td><td class="p-2">{{ pool.reason }}</td></tr></tbody></table></div>
+        <p v-if="snapshot?.capacity?.strong_pool?.capacity" class="text-sm">{{ t('gptQos.aggregateStrong') }}: {{ snapshot.capacity.strong_pool.active || 0 }} / {{ snapshot.capacity.strong_pool.capacity }} · {{ t('gptQos.reservedUsed') }}: {{ snapshot.capacity.strong_pool.premium_reserved_used || 0 }} / {{ snapshot.capacity.strong_pool.reserved || 0 }} · {{ t('gptQos.peakStatus') }}: {{ peakStatus(snapshot.capacity.strong_pool, true) }} · {{ peakReason(snapshot.capacity.strong_pool.reason) }}</p>
+        <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr><th v-for="label in poolLabels" :key="label" class="whitespace-nowrap p-2">{{ t(`gptQos.${label}`) }}</th></tr></thead><tbody><tr v-for="pool in snapshot?.capacity?.pools || []" :key="pool.id"><td class="p-2">{{ pool.id }}</td><td class="p-2">{{ pool.active }} / {{ pool.capacity }}</td><td class="p-2">{{ pool.strong_active || 0 }} / {{ pool.strong_capacity ?? '—' }}</td><td class="p-2">{{ pool.premium_reserved_used || 0 }} / {{ pool.reserved ?? '—' }}</td><td class="p-2">{{ pool.premium_active || 0 }}</td><td class="p-2">{{ peakStatus(pool) }}</td><td class="p-2">{{ peakReason(pool.reason, pool) }}</td></tr></tbody></table></div>
         <div class="grid gap-3 sm:grid-cols-2"><div><h3 class="font-medium">{{ t('gptQos.downgradeReasons') }}</h3><p v-for="(count, reason) in snapshot?.downgrade_reasons || {}" :key="reason" class="text-sm">{{ reason }}: {{ count }}</p></div><div><h3 class="font-medium">{{ t('gptQos.upstreamShares') }}</h3><p v-for="(count, source) in snapshot?.upstream_requests || {}" :key="source" class="text-sm">{{ source }}: {{ count }} ({{ sourceShare(count) }}%)</p></div></div>
         <details><summary class="cursor-pointer">{{ t('gptQos.capacity') }}</summary><pre class="mt-3 max-h-80 overflow-auto rounded bg-gray-50 p-3 text-xs dark:bg-dark-800">{{ JSON.stringify(snapshot?.capacity || {}, null, 2) }}</pre></details>
       </section>
@@ -42,18 +43,43 @@
   </AppLayout>
 </template>
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import { getQoSConfig, getQoSSnapshot, saveQoSConfig, type QoSConfig, type QoSSnapshot } from '@/api/admin/gptQos'
+import { getQoSConfig, getQoSSnapshot, saveQoSConfig, type QoSConfig, type QoSPoolState, type QoSSnapshot } from '@/api/admin/gptQos'
 const { t } = useI18n()
 const config = ref<QoSConfig | null>(null), snapshot = ref<QoSSnapshot | null>(null)
+// The form is a draft. Runtime labels use the observed server policy, with a
+// saved-policy fallback for older snapshot responses that omit config.
+const savedPeak = ref<QoSConfig['peak'] | null>(null)
+const savedVersion = ref(0)
+const appliedPeak = computed(() => snapshot.value?.config?.peak ?? savedPeak.value)
+const observationFailed = ref(false)
 const rolloutGroups = ref('')
 const error = ref(''), saving = ref(false), saved = ref(false)
 const pools = ref<Array<{ id: string; concurrency: number }>>([])
 const filters = reactive({ groupID: '', model: '', effort: '' })
 const filterFields = ['groupID', 'model', 'effort'] as const
-const poolLabels = ['poolID', 'active', 'strongCapacity', 'reservedUsed', 'premiumActive', 'peakEnabled', 'peakReason'] as const
+const poolLabels = ['poolID', 'active', 'strongCapacity', 'reservedUsed', 'premiumActive', 'peakStatus', 'peakReason'] as const
+function peakStatus(pool: Partial<QoSPoolState>, aggregate = false): string {
+  if (observationFailed.value || !snapshot.value?.available || !appliedPeak.value) return t('gptQos.peakUnknown')
+  if (snapshot.value.config && savedPeak.value && snapshot.value.config.version <= savedVersion.value && snapshot.value.config.peak.enabled !== savedPeak.value.enabled) return t('gptQos.peakConfigMismatch')
+  if (!appliedPeak.value.enabled) return t('gptQos.peakOff')
+  const capacity = aggregate ? pool.capacity : pool.strong_capacity
+  if (capacity === 0) return t('gptQos.peakNotApplicable')
+  if (capacity === undefined) return t('gptQos.peakNoData')
+  if (pool.peak || (!aggregate && snapshot.value.capacity?.strong_pool?.peak)) return t('gptQos.peakActive')
+  return t('gptQos.peakWaiting')
+}
+function peakReason(reason?: string, pool?: Partial<QoSPoolState>): string {
+  if (observationFailed.value || !snapshot.value?.available) return t('gptQos.peakUnknown')
+  if (appliedPeak.value && !appliedPeak.value.enabled) return t('gptQos.peakOff')
+  if (pool && !pool.peak && (pool.strong_capacity || 0) > 0 && snapshot.value.capacity?.strong_pool?.peak) return t('gptQos.peakAggregateTriggered')
+  if (reason === 'below_threshold_or_hysteresis_hold') return t('gptQos.peakBelowThreshold')
+  if (reason === 'aggregate_strong_utilization_above_threshold_stable') return t('gptQos.peakAggregateTriggered')
+  if (reason === 'strong_utilization_above_threshold_stable') return t('gptQos.peakPoolTriggered')
+  return reason || t('gptQos.peakNoData')
+}
 const sourceShare = (count: number) => { const total = Object.values(snapshot.value?.upstream_requests || {}).reduce((sum, n) => sum + n, 0); return total ? Math.round(count * 1000 / total) / 10 : 0 }
 const flags = [{ key: 'quality_routing_enabled', label: 'qualityRouting' }, { key: 'enabled', label: 'qosEnabled' }, { key: 'capacity_enabled', label: 'capacityEnabled' }] as const
 const numberFields = [
@@ -69,7 +95,20 @@ const metricFields = [
   { key: 'Requests', label: 'requests' }, { key: 'Attempts', label: 'attempts' }, { key: 'Successes', label: 'successes' }, { key: 'FirstSuccesses', label: 'firstSuccess' }, { key: 'first_success_rate', label: 'firstSuccessRate' }, { key: 'Canceled', label: 'canceled' }, { key: 'StrongRequests', label: 'strongHits' }, { key: 'strong_hit_rate', label: 'strongHitRate' }, { key: 'Downgrades', label: 'downgrades' }, { key: 'VM2APIRequests', label: 'vmShare' }, { key: 'DirectRequests', label: 'directShare' },
   { key: 'average_queue_ms', label: 'average' }, { key: 'p50_queue_ms', label: 'p50' }, { key: 'p95_queue_ms', label: 'p95' }, { key: 'p99_queue_ms', label: 'p99' }
 ] as const
-async function refresh() { try { snapshot.value = await getQoSSnapshot({ group_id: filters.groupID, model: filters.model, effort: filters.effort }) } catch { error.value = t('gptQos.failed') } }
+let observationGeneration = 0
+async function refresh() {
+  const generation = ++observationGeneration
+  try {
+    const next = await getQoSSnapshot({ group_id: filters.groupID, model: filters.model, effort: filters.effort })
+    if (generation !== observationGeneration) return
+    snapshot.value = next
+    observationFailed.value = false
+  } catch {
+    if (generation !== observationGeneration) return
+    observationFailed.value = true
+    error.value = t('gptQos.failed')
+  }
+}
 async function save() {
   if (!config.value) return
   saving.value = true
@@ -86,7 +125,10 @@ async function save() {
       group_ids: rolloutGroups.value.split(',').map(s => s.trim()).filter(Boolean).map(Number),
       resource_pools: Object.fromEntries(pools.value.map(p => [p.id, { concurrency: p.concurrency }]))
     })
+    savedPeak.value = { ...config.value.peak }
+    savedVersion.value = config.value.version
     saved.value = true
+    await refresh()
   } catch (e: unknown) {
     error.value = e && typeof e === 'object' && 'message' in e && typeof e.message === 'string' ? e.message : t('gptQos.failed')
   } finally {
@@ -94,5 +136,5 @@ async function save() {
   }
 }
 async function rollback() { if (!config.value) return; config.value.enabled = false; config.value.quality_routing_enabled = false; config.value.capacity_enabled = false; config.value.peak.enabled = false; await save() }
-onMounted(async () => { try { config.value = await getQoSConfig(); rolloutGroups.value = (config.value.group_ids || []).join(','); pools.value = Object.entries(config.value.resource_pools).map(([id, p]) => ({ id, ...p })); await refresh() } catch { error.value = t('gptQos.failed') } })
+onMounted(async () => { try { config.value = await getQoSConfig(); savedPeak.value = { ...config.value.peak }; savedVersion.value = config.value.version; rolloutGroups.value = (config.value.group_ids || []).join(','); pools.value = Object.entries(config.value.resource_pools).map(([id, p]) => ({ id, ...p })); await refresh() } catch { error.value = t('gptQos.failed') } })
 </script>

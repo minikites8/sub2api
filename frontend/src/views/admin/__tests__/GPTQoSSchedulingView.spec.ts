@@ -10,6 +10,96 @@ vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<div
 function config(): QoSConfig { return { version: 1, quality_routing_enabled: false, enabled: false, capacity_enabled: false, premium_weight: 6, standard_weight: 3, economy_weight: 1, max_waiting: 1000, request_budget_ms: 300000, high_effort_budget_ms: 900000, max_attempts: 4, log_sample_rate: 0.1, peak: { enabled: false, strict_reserve: true, enter_utilization: 0.8, exit_utilization: 0.65, protection_ratio: 0.3, enter_hold_ms: 5000, exit_hold_ms: 15000 }, groups: {}, resource_pools: {} } }
 beforeEach(() => { vi.clearAllMocks(); mocks.get.mockResolvedValue(config()); mocks.save.mockImplementation(async c => c); mocks.snapshot.mockResolvedValue({ available: true, tiers: {}, capacity: { active: 0, queued: 0 } }) })
 describe('GPT QoS controls', () => {
+  it('shows enabled but untriggered peak protection as waiting, not disabled', async () => {
+    const applied = config()
+    applied.enabled = applied.quality_routing_enabled = applied.capacity_enabled = applied.peak.enabled = true
+    mocks.get.mockResolvedValue(structuredClone(applied))
+    mocks.snapshot.mockResolvedValue({ available: true, config: applied, tiers: {}, capacity: { active: 0, queued: 0, strong_pool: { peak: false, capacity: 26 }, pools: [{ id: 'account:1', strong_capacity: 10, peak: false, reason: 'below_threshold_or_hysteresis_hold' }] } })
+    const wrapper = mount(View)
+    await flushPromises()
+    const row = wrapper.findAll('tr').find(r => r.text().includes('account:1'))!
+    expect(row.text()).toContain('gptQos.peakWaiting')
+    expect(row.text()).toContain('gptQos.peakBelowThreshold')
+    expect(row.text()).not.toContain('common.disabled')
+    expect(wrapper.text()).toContain('gptQos.peakStatusHint')
+    wrapper.unmount()
+  })
+
+  it('does not treat unsaved checkbox changes as applied peak configuration', async () => {
+    mocks.snapshot.mockResolvedValue({ available: true, config: config(), tiers: {}, capacity: { active: 0, queued: 0, pools: [{ id: 'account:1', strong_capacity: 10, peak: false }] } })
+    const wrapper = mount(View)
+    await flushPromises()
+    await wrapper.findAll('input[type="checkbox"]')[3]!.setValue(true)
+    const row = wrapper.findAll('tr').find(r => r.text().includes('account:1'))!
+    expect(row.text()).toContain('gptQos.peakOff')
+    expect(row.text()).not.toContain('gptQos.peakWaiting')
+    wrapper.unmount()
+  })
+
+  it('shows aggregate protection for eligible strong pools even below the individual threshold', async () => {
+    const applied = config()
+    applied.enabled = applied.quality_routing_enabled = applied.capacity_enabled = applied.peak.enabled = true
+    mocks.get.mockResolvedValue(structuredClone(applied))
+    mocks.snapshot.mockResolvedValue({ available: true, config: applied, tiers: {}, capacity: { active: 9, queued: 0, strong_pool: { peak: true, capacity: 10 }, pools: [{ id: 'strong', strong_capacity: 3, peak: false }, { id: 'basic', strong_capacity: 0, peak: false }] } })
+    const wrapper = mount(View)
+    await flushPromises()
+    expect(wrapper.findAll('tbody tr').find(r => r.get('td').text() === 'strong')!.text()).toContain('gptQos.peakActive')
+    expect(wrapper.findAll('tbody tr').find(r => r.get('td').text() === 'strong')!.text()).toContain('gptQos.peakAggregateTriggered')
+    expect(wrapper.findAll('tbody tr').find(r => r.get('td').text() === 'basic')!.text()).toContain('gptQos.peakNotApplicable')
+    wrapper.unmount()
+  })
+
+  it('refreshes runtime observations after saving peak configuration', async () => {
+    const wrapper = mount(View)
+    await flushPromises()
+    const checks = wrapper.findAll('input[type="checkbox"]')
+    for (const check of checks.slice(0, 4)) await check.setValue(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.snapshot).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it.each([
+    { name: 'stale instance policy', saved: true, version: 2, observed: false, observedVersion: 1, available: true, expected: 'peakConfigMismatch' },
+    { name: 'newer disabled policy', saved: true, version: 2, observed: false, observedVersion: 3, available: true, expected: 'peakOff' },
+    { name: 'disabled policy with old peak sample', saved: false, version: 2, observed: false, observedVersion: 2, available: true, expected: 'peakOff' },
+    { name: 'unavailable Redis', saved: true, version: 2, observed: true, observedVersion: 2, available: false, expected: 'peakUnknown' }
+  ])('reports $name without claiming active protection', async tc => {
+    const stored = config()
+    stored.version = tc.version
+    stored.peak.enabled = tc.saved
+    const observed = config()
+    observed.version = tc.observedVersion
+    observed.peak.enabled = tc.observed
+    mocks.get.mockResolvedValue(stored)
+    mocks.snapshot.mockResolvedValue({ available: tc.available, config: observed, tiers: {}, capacity: { active: 0, queued: 0, pools: [{ id: 'account:1', strong_capacity: 10, peak: true }] } })
+    const wrapper = mount(View)
+    await flushPromises()
+    const row = wrapper.findAll('tr').find(r => r.text().includes('account:1'))!
+    expect(row.text()).toContain(`gptQos.${tc.expected}`)
+    expect(row.text()).not.toContain('gptQos.peakActive')
+    wrapper.unmount()
+  })
+
+  it('ignores a slow pre-save observation after the post-save refresh finishes', async () => {
+    let resolveOld!: (value: unknown) => void
+    mocks.snapshot.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
+    const wrapper = mount(View)
+    await flushPromises()
+    const applied = config()
+    applied.enabled = applied.quality_routing_enabled = applied.capacity_enabled = applied.peak.enabled = true
+    const capacity = { active: 9, queued: 0, pools: [{ id: 'account:1', strong_capacity: 10, peak: true }] }
+    mocks.snapshot.mockResolvedValue({ available: true, config: applied, capacity, tiers: {} })
+    for (const check of wrapper.findAll('input[type="checkbox"]').slice(0, 4)) await check.setValue(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    resolveOld({ available: true, config: config(), capacity, tiers: {} })
+    await flushPromises()
+    expect(wrapper.findAll('tr').find(r => r.text().includes('account:1'))!.text()).toContain('gptQos.peakActive')
+    wrapper.unmount()
+  })
+
   it('starts with all new behavior off and saves explicit changes', async () => {
     const wrapper = mount(View, { global: { stubs: { AppLayout: { template: '<div><slot /></div>' } } } }); await flushPromises()
     const checks = wrapper.findAll('input[type="checkbox"]'); expect((checks[0].element as HTMLInputElement).checked).toBe(false); expect((checks[1].element as HTMLInputElement).checked).toBe(false)

@@ -1,4 +1,7 @@
 export default {
+  peakStatus: 'Peak protection status', peakOff: 'Off', peakWaiting: 'Enabled, awaiting trigger', peakActive: 'Protecting', peakNotApplicable: 'Not applicable (no strong capacity)', peakUnknown: 'Status unavailable', peakNoData: 'No observations yet', peakConfigMismatch: 'Configuration and observations differ; refresh',
+  peakBelowThreshold: 'Below threshold or stability window pending', peakAggregateTriggered: 'Aggregate strong utilization stayed above the peak threshold', peakPoolTriggered: 'Pool strong utilization stayed above the peak threshold',
+  peakStatusHint: 'The switch enables the feature; the status below shows whether protection has triggered. Enter at {enter}% utilization sustained for {enterSeconds} seconds; exit at or below {exit}% for {exitSeconds} seconds. Observations refresh after saving; use Refresh observations to update again.',
   aggregateStrong: 'Deduplicated aggregate strong capacity',
   queued: 'Queued requests', active: 'Active / effective capacity', strongCapacity: 'Strong active / capacity', reservedUsed: 'Premium reserved used / reserved', premiumActive: 'Premium active', peakReason: 'Peak state reason', downgradeReasons: 'Quality downgrade reasons', upstreamShares: 'Actual upstream request share', firstSuccessRate: 'First success rate %',
   basicWait: 'Basic fallback wait budget (ms)',
