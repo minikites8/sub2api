@@ -150,6 +150,7 @@ local function available(r)
   redis.call('SET',prefix..'global_peak',cjson.encode(gp))
   globalBlocked=not (r.tier=='premium' and r.protected) and reserve>0 and (r.peak.strict_reserve or redis.call('ZCARD',prefix..'users:premium')>0) and globalUsed>=globalCapacity-reserve
  end
+ local choice=nil
  for _,c in ipairs(r.candidates) do
   if c.quality~='basic' or now>=r.strong_after then
    local ak=accountkey(c);local lk=namespace..'concurrency:live:account:'..c.slot_id
@@ -169,7 +170,7 @@ local function available(r)
    local strongUsed=redis.call('ZCARD',strongKey)
    local strongCapacity=tonumber(redis.call('HGET',prefix..'strong_limits',c.pool_id) or tostring(effectiveCapacity))
    if string.sub(c.pool_id,1,8)=='account:' then strongUsed=used end
-   local p=decode(redis.call('HGET',pools,c.pool_id))
+   local p=decode(redis.call('HGET',pools,c.pool_id)) or {capacity=c.pool_capacity,peak=false,since=0,updated=now}
    local peak=r.peak
    local protected=false;local reserve=0
    if not peak.enabled then p.peak=false;p.since=0;p.reserved=0 end
@@ -191,9 +192,22 @@ local function available(r)
     protected=not premium and reserve>0 and (peak.strict_reserve or redis.call('ZCARD',prefix..'users:premium')>0) and (used>=effectiveCapacity-reserve or (c.quality=='strong' and strongUsed>=strongCapacity-reserve))
    end
    p.updated=now;p.capacity=effectiveCapacity;p.strong_capacity=strongCapacity;p.strong_active=strongUsed;p.reserved=reserve;p.reason=p.peak and 'strong_utilization_above_threshold_stable' or 'below_threshold_or_hysteresis_hold';p.borrowing=(not peak.strict_reserve);redis.call('HSET',pools,c.pool_id,cjson.encode(p))
-   if accountUsed<c.concurrency and used<effectiveCapacity and not protected and not (c.quality=='strong' and globalBlocked) then return c,p.peak or (r.peak.enabled and gp.peak),reserve end
+   if accountUsed<c.concurrency and used<effectiveCapacity and not protected and not (c.quality=='strong' and globalBlocked) then
+    -- Candidate order contains soft cost/protocol preferences, not a capacity
+    -- mandate. Compare live Redis occupancy inside the atomic grant instead
+    -- of sending every short request to the first account with spare slots.
+    -- Shared roots use one load and one idle-turn history regardless of how
+    -- many API keys point at the same physical resource.
+    local quality=c.quality=='strong' and 0 or (c.quality=='basic' and 1 or 2)
+    local load=math.max(accountUsed/c.concurrency,used/effectiveCapacity)
+    local last=p.last_dispatch or 0
+    if not choice or quality<choice.quality or (quality==choice.quality and (load<choice.load or (load==choice.load and last<choice.last))) then
+     choice={candidate=c,quality=quality,load=load,last=last,peak=p.peak or (r.peak.enabled and gp.peak),reserve=reserve}
+    end
+   end
   end
  end
+ if choice then return choice.candidate,choice.peak,choice.reserve end
  return nil
 end
 local best=nil
@@ -239,6 +253,9 @@ if best then
  if c.quality=='strong' and r.tier=='premium' and r.protected then redis.call('ZADD',prefix..'all_strong_premium',now+ttl*1000,r.id) end
  redis.call('ZADD',groupkey(r),now+ttl*1000,r.id)
  redis.call('ZADD',leases,now+ttl*1000,r.id)
+ local selectedPool=decode(redis.call('HGET',pools,c.pool_id))
+ selectedPool.last_dispatch=redis.call('HINCRBY',fair,'dispatch_sequence',1)
+ redis.call('HSET',pools,c.pool_id,cjson.encode(selectedPool))
  unqueue(r)
  if redis.call('ZCARD',userkey(r))>0 then redis.call('ZADD',users(r),tostring(best.userScore+1/best.userWeight),tostring(r.user_id)) end
  redis.call('HSET',fair,'tier:'..r.tier,tostring(best.finish),'virtual',tostring(best.finish),'user:'..r.tier,tostring(best.userScore))

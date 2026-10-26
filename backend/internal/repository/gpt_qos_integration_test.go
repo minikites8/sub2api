@@ -106,6 +106,75 @@ func TestGPTQoSRealRedisAtomicAdmission(t *testing.T) {
 	}
 	require.Zero(t, rdb.ZCard(ctx, "concurrency:account:1").Val())
 }
+
+func TestGPTQoSRealRedisLoadRouting(t *testing.T) {
+	rdb := testRedis(t)
+	c := NewConcurrencyCache(rdb, 15, 60).(*concurrencyCache)
+	ctx := context.Background()
+	counts := map[int64]int{}
+	for i := 0; i < 60; i++ {
+		e := qosEntry(fmt.Sprintf("load-serial-%d", i), 42, "premium")
+		e.Candidates = []service.GPTQoSCandidate{
+			{AccountID: 1, SlotID: 1, Concurrency: 10, PoolID: "account:1", PoolCapacity: 10, Quality: "strong"},
+			{AccountID: 2, SlotID: 2, Concurrency: 3, PoolID: "account:2", PoolCapacity: 3, Quality: "strong"},
+			{AccountID: 3, SlotID: 3, Concurrency: 3, PoolID: "account:3", PoolCapacity: 3, Quality: "strong"},
+		}
+		g, err := c.GPTQoSPoll(ctx, e)
+		require.NoError(t, err)
+		require.Equal(t, "granted", g.Status)
+		counts[g.Candidate.AccountID]++
+		require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+	}
+	require.Equal(t, map[int64]int{1: 20, 2: 20, 3: 20}, counts)
+	t.Logf("60 completed idle-pool turns: %v", counts)
+	for i := 0; i < 6; i++ {
+		ok, err := c.AcquireAccountSlot(ctx, 1, 10, fmt.Sprintf("load-in-use-%d", i))
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+	e := qosEntry("load-new-request", 43, "standard")
+	e.Candidates = []service.GPTQoSCandidate{
+		{AccountID: 1, SlotID: 1, Concurrency: 10, PoolID: "account:1", PoolCapacity: 10, Quality: "strong"},
+		{AccountID: 2, SlotID: 2, Concurrency: 3, PoolID: "account:2", PoolCapacity: 3, Quality: "strong"},
+	}
+	g, err := c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), g.Candidate.AccountID, "the busy first pool must yield to the idle peer")
+	require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+	for i := 0; i < 6; i++ {
+		require.NoError(t, c.ReleaseAccountSlot(ctx, 1, fmt.Sprintf("load-in-use-%d", i)))
+	}
+	require.Zero(t, rdb.ZCard(ctx, "gptqos:{v1}:leases").Val())
+	require.Zero(t, rdb.ZCard(ctx, "gptqos:{v1}:waiting").Val())
+}
+
+func TestGPTQoSRealRedisCandidateScanLatencySample(t *testing.T) {
+	for _, n := range []int{1, 16, 64, 256} {
+		t.Run(fmt.Sprintf("candidates=%d", n), func(t *testing.T) {
+			c := NewConcurrencyCache(testRedis(t), 15, 60).(*concurrencyCache)
+			ctx := context.Background()
+			var elapsed []time.Duration
+			for i := 0; i < 25; i++ {
+				e := qosEntry(fmt.Sprintf("scan-%d", i), 42, "standard")
+				e.Candidates = nil
+				for j := 1; j <= n; j++ {
+					id := int64(j)
+					e.Candidates = append(e.Candidates, service.GPTQoSCandidate{AccountID: id, SlotID: id, Concurrency: 10, PoolID: fmt.Sprintf("account:%d", j), PoolCapacity: 10, Quality: "strong"})
+				}
+				started := time.Now()
+				g, err := c.GPTQoSPoll(ctx, e)
+				require.NoError(t, err)
+				require.Equal(t, "granted", g.Status)
+				require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+				if i >= 5 {
+					elapsed = append(elapsed, time.Since(started))
+				}
+			}
+			sort.Slice(elapsed, func(i, j int) bool { return elapsed[i] < elapsed[j] })
+			t.Logf("20 local Redis acquire+release samples after 5 warmups: P50=%s P95=%s", elapsed[9], elapsed[18])
+		})
+	}
+}
 func TestGPTQualityAuditMigrationPersistsActorAndOldNew(t *testing.T) {
 	tx := testEntTx(t)
 	client := tx.Client()

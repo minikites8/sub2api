@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,6 +38,45 @@ func TestGPTQualityStrongBeforePriorityProtocolAndSubscription(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int64(1), selection.Account.ID)
 		selection.ReleaseFunc()
+	}
+}
+
+func TestGPTQualityLoadPrecedesProtocolAndSubscriptionPreferences(t *testing.T) {
+	for _, queue := range []bool{false, true} {
+		for _, tc := range []struct {
+			name               string
+			apiLoad, oauthLoad int
+			subscription       bool
+			wantID             int64
+		}{
+			{"idle OAuth beats busy API key", 80, 0, false, 2},
+			{"idle API key beats busy subscribed OAuth", 0, 80, true, 1},
+		} {
+			t.Run(fmt.Sprintf("%s/queue=%t", tc.name, queue), func(t *testing.T) {
+				svc, req := qualityTestGateway(false)
+				svc.settingService.gptQoSConfig.config.Enabled = queue
+				req.SubscriptionPriority = tc.subscription
+				req.RequiredTransport = OpenAIUpstreamTransportAny
+				repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+				repo.accounts[0].Priority = -100
+				repo.accounts[0].Extra["qos_upstream_kind"] = "vm2api"
+				repo.accounts[1].Priority = 100
+				repo.accounts[1].Credentials = map[string]any{"plan_type": "plus"}
+				repo.accounts[1].Extra = map[string]any{AccountQualityTierKey: "strong", "qos_upstream_kind": "direct"}
+				svc.accountRepo = repo
+				loads := schedulerTestConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{1: {AccountID: 1, LoadRate: tc.apiLoad}, 2: {AccountID: 2, LoadRate: tc.oauthLoad}}}
+				if queue {
+					svc.concurrencyService = NewConcurrencyService(&qosAdmissionRecordingCache{schedulerTestConcurrencyCache: loads})
+				} else {
+					svc.concurrencyService = NewConcurrencyService(loads)
+				}
+				ctx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+				selection, _, err := newDefaultOpenAIAccountScheduler(svc, nil).Select(ctx, req)
+				require.NoError(t, err)
+				require.Equal(t, tc.wantID, selection.Account.ID)
+				selection.ReleaseFunc()
+			})
+		}
 	}
 }
 func TestGPTQualityFallbackPermissionAndUnknown(t *testing.T) {

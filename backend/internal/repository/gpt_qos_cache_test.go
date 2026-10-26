@@ -25,6 +25,140 @@ func qosEntry(id string, uid int64, tier string) service.GPTQoSEntry {
 	cfg := service.DefaultGPTQoSConfig()
 	return service.GPTQoSEntry{ID: id, UserID: uid, GroupID: 1, Tier: tier, Weight: g.Weight, MaxWaiting: 2000, GroupMaxWaiting: 2000, UserMaxWaiting: 100, WaitMs: 120000, StrongWaitMs: 0, Protected: g.CapacityProtection, Weights: [3]int{6, 3, 1}, Peak: cfg.Peak, Candidates: []service.GPTQoSCandidate{{AccountID: 1, SlotID: 1, Concurrency: 1, PoolID: "account:1", PoolCapacity: 1, Quality: "strong"}}}
 }
+
+func TestGPTQoSChoosesLowerLiveLoadWithinQualityPool(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		busyID int64
+		wantID int64
+	}{
+		{"first candidate busy second idle", 1, 2},
+		{"second candidate busy first idle", 2, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := qosTestCache(t)
+			ctx := context.Background()
+			ok, err := c.AcquireAccountSlot(ctx, tc.busyID, 10, "existing")
+			require.NoError(t, err)
+			require.True(t, ok)
+			e := qosEntry("load-choice", 42, "standard")
+			e.Candidates = []service.GPTQoSCandidate{
+				{AccountID: 1, SlotID: 1, Concurrency: 10, PoolID: "account:1", PoolCapacity: 10, Quality: "strong"},
+				{AccountID: 2, SlotID: 2, Concurrency: 10, PoolID: "account:2", PoolCapacity: 10, Quality: "strong"},
+			}
+			g, err := c.GPTQoSPoll(ctx, e)
+			require.NoError(t, err)
+			require.Equal(t, "granted", g.Status)
+			require.Equal(t, tc.wantID, g.Candidate.AccountID, "an available first candidate must not hide a less-loaded peer")
+			require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+			require.NoError(t, c.ReleaseAccountSlot(ctx, tc.busyID, "existing"))
+		})
+	}
+}
+
+func TestGPTQoSEqualLoadRotatesPhysicalPoolsAcrossInstances(t *testing.T) {
+	c, m := qosTestCache(t)
+	r2 := redis.NewClient(&redis.Options{Addr: m.Addr()})
+	defer r2.Close()
+	c2 := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	ctx := context.Background()
+	counts := map[string]int{}
+	for i := 0; i < 60; i++ {
+		e := qosEntry(fmt.Sprintf("serial-%d", i), 42, "standard")
+		// Two API keys can share one physical root. They must not earn two
+		// idle-pool turns against one independent OAuth account.
+		e.Candidates = []service.GPTQoSCandidate{
+			{AccountID: 1, SlotID: 1, Concurrency: 10, PoolID: "shared:fixture", PoolCapacity: 10, Quality: "strong"},
+			{AccountID: 2, SlotID: 2, Concurrency: 10, PoolID: "shared:fixture", PoolCapacity: 10, Quality: "strong"},
+			{AccountID: 3, SlotID: 3, Concurrency: 3, PoolID: "account:3", PoolCapacity: 3, Quality: "strong"},
+		}
+		owner := c
+		if i%2 != 0 {
+			owner = c2
+		}
+		g, err := owner.GPTQoSPoll(ctx, e)
+		require.NoError(t, err)
+		require.Equal(t, "granted", g.Status)
+		counts[g.Candidate.PoolID]++
+		require.NoError(t, owner.GPTQoSClose(ctx, e.ID))
+	}
+	require.Equal(t, 30, counts["shared:fixture"])
+	require.Equal(t, 30, counts["account:3"], "serial short requests must not all return to the first pool")
+}
+
+func TestGPTQoSLoadDoesNotOverrideQuality(t *testing.T) {
+	c, _ := qosTestCache(t)
+	ctx := context.Background()
+	ok, err := c.AcquireAccountSlot(ctx, 1, 10, "strong-in-use")
+	require.NoError(t, err)
+	require.True(t, ok)
+	e := qosEntry("quality-before-load", 42, "economy")
+	e.Candidates = []service.GPTQoSCandidate{
+		{AccountID: 2, SlotID: 2, Concurrency: 10, PoolID: "account:2", PoolCapacity: 10, Quality: "basic"},
+		{AccountID: 1, SlotID: 1, Concurrency: 10, PoolID: "account:1", PoolCapacity: 10, Quality: "strong"},
+	}
+	g, err := c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), g.Candidate.AccountID)
+	require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+	require.NoError(t, c.ReleaseAccountSlot(ctx, 1, "strong-in-use"))
+}
+
+func TestGPTQoSComparesNormalizedAccountAndSharedPoolLoad(t *testing.T) {
+	c, _ := qosTestCache(t)
+	ctx := context.Background()
+	cfg := service.DefaultGPTQoSConfig()
+	cfg.Version, cfg.CapacityEnabled = 1, true
+	cfg.ResourcePools["fixture"] = service.GPTQoSResourcePool{Concurrency: 10}
+	accounts := []service.Account{}
+	for _, id := range []int64{1, 2} {
+		accounts = append(accounts, service.Account{ID: id, Concurrency: 10, Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, Extra: map[string]any{service.AccountQualityTierKey: "strong", service.AccountResourcePoolKey: "fixture"}})
+	}
+	require.NoError(t, c.GPTQoSConfigureCapacity(ctx, cfg, accounts))
+	for i := 0; i < 8; i++ {
+		ok, err := c.AcquireAccountSlot(ctx, 2, 10, fmt.Sprintf("shared-busy-%d", i))
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+	ok, err := c.AcquireAccountSlot(ctx, 3, 3, "independent-busy")
+	require.NoError(t, err)
+	require.True(t, ok)
+	e := qosEntry("shared-load", 42, "premium")
+	e.Candidates = []service.GPTQoSCandidate{
+		{AccountID: 1, SlotID: 1, Concurrency: 10, PoolID: "shared:fixture", PoolCapacity: 10, Quality: "strong"},
+		{AccountID: 3, SlotID: 3, Concurrency: 3, PoolID: "account:3", PoolCapacity: 3, Quality: "strong"},
+	}
+	g, err := c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), g.Candidate.AccountID, "an idle API key must still reflect its busy shared physical root")
+	require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+	for i := 0; i < 8; i++ {
+		require.NoError(t, c.ReleaseAccountSlot(ctx, 2, fmt.Sprintf("shared-busy-%d", i)))
+	}
+	require.NoError(t, c.ReleaseAccountSlot(ctx, 3, "independent-busy"))
+
+	for _, id := range []string{"wide-1", "wide-2"} {
+		ok, err := c.AcquireAccountSlot(ctx, 4, 10, id)
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+	ok, err = c.AcquireAccountSlot(ctx, 5, 2, "narrow-1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	e = qosEntry("normalized-load", 42, "standard")
+	e.Candidates = []service.GPTQoSCandidate{
+		{AccountID: 5, SlotID: 5, Concurrency: 2, PoolID: "account:5", PoolCapacity: 2, Quality: "strong"},
+		{AccountID: 4, SlotID: 4, Concurrency: 10, PoolID: "account:4", PoolCapacity: 10, Quality: "strong"},
+	}
+	g, err = c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, int64(4), g.Candidate.AccountID, "2/10 load is lower than 1/2; raw active counts do not measure saturation")
+	require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+	for _, id := range []string{"wide-1", "wide-2"} {
+		require.NoError(t, c.ReleaseAccountSlot(ctx, 4, id))
+	}
+	require.NoError(t, c.ReleaseAccountSlot(ctx, 5, "narrow-1"))
+}
 func TestGPTQoSAtomicAdmissionNoOversellAcrossInstances(t *testing.T) {
 	c, m := qosTestCache(t)
 	r2 := redis.NewClient(&redis.Options{Addr: m.Addr()})

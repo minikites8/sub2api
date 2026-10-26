@@ -232,3 +232,30 @@ go test -tags=unit ./internal/service -run 'TestPinnedOpenAIModelsListMixedAccou
 生产只读刷新显示强池 0/26，默认阈值 80%/65%，进入/退出窗口 5 秒/15 秒，因此“尚未触发”符合当时负载。没有发送模型请求制造高峰，没有保存线上开关，也没有部署。本次仅修改前端展示/刷新与 API 类型，没有重复运行后端调度单元或 Redis 压测；高峰算法和账务路径保持原样。后端算法测试证据见前述章节，不将它们冒充本次重新运行的结果。
 
 日志目录：`artifacts/gpt-qos-peak-ui-20261026/`。本修复部署前端即可生效；关闭全部新功能的回滚入口及后端行为不变。
+
+## 14. 来源无关的同质量池负载分配补充验收（2026-10-26）
+
+修复前实际复现：第一个 Strong 有占用但仍有空位、第二个 Strong 空闲时，返回第一个账号；两个 Key 共用的根池与一个独立池串行完成 60 次时，前者占 60 次，后者为 0。修复后保持精确断言，通过低负载选择及 30/30 空闲池轮转测试，没有通过修改账号标签或降低断言掩盖问题。
+
+已执行的三包完整单元回归：`go test -tags=unit ./internal/service ./internal/handler ./internal/repository -count=1`，service 239.366s / handler 98.727s / repository 13.665s 全部通过。覆盖普通及高级/优先调度、既有 OAuth 额度偏好、模型/分组限制、硬续链、SSE、Failover、RPM、额度与 Feature Flag 关闭路径。
+
+新回归还覆盖：正常 OAuth 与 API Key 都是 Strong 时，较低负载者胜出（包括旧优先级、订阅偏好相反的情况）；完整队列与只质量路由两种模式；2/10 占用优于 1/2；同一共享根下空闲 Key 不能掩盖 8/10 的根池拥塞；多个 Key 不增加物理池空闲轮转份额；Basic 更空闲也不能越过合格 Strong。原有 Premium/Standard/Economy 份额、用户公平、防饥饿、容量保护和跨 cache 实例并发断言保留并通过。
+
+前端账号字段及中英文键/消息编译回归 3 个文件、8 项通过，类型检查通过，最终 Vite 生产构建通过（19.02s，保留既有 chunk 体积提示）。没有修改线上账号质量标签或生产开关，没有发送真实模型请求；正常 OAuth 是否标为 Strong 仍由管理员显式验证。来源字段只影响统计。
+
+`go test -race -tags=unit ./internal/service ./internal/handler ./internal/repository -run 'TestGPT(QoS|Quality)' -count=1`：三包通过，分别 7.636s / 3.855s / 48.890s，无竞态报告。
+
+真实 Redis 集成：`go test -tags=integration ./internal/repository -run 'TestGPTQoSRealRedis(AtomicAdmission|CachedProxySelectionSharesLegacySlot|LoadRouting|CandidateScanLatencySample)$' -count=1 -v` 通过（4.834s）。日志确认临时 PostgreSQL 18.1 / Redis 8.4 实际启动、用例实际执行，没有跳过。32 路单槽争抢、完整快照代理槽与另一 cache 的普通抢槽、60 次三池空闲分配 20/20/20、首池占用 6/10 时选择空闲第二池均通过，无队列/租约残留。
+
+本机真实 Redis 顺序“准入 + 释放”小样本：各候选数预热 5 次后统计 20 次，最近秩分位数：
+
+| 候选账号数 | P50 | P95 |
+| --- | ---: | ---: |
+| 1 | 0.340ms | 0.394ms |
+| 16 | 0.616ms | 0.657ms |
+| 64 | 1.241ms | 1.258ms |
+| 256 | 3.724ms | 3.823ms |
+
+这是修改后不同候选规模的本地顺序测量，不是改造前后对照，也不是全链路 P95、CPU 饱和吞吐或模型 TTFT。新路径比较全部有界候选，空闲时脚本工作量较原“首个可用”增加；没有新增网络往返。未测满 2000 等待请求、多模型阻塞及 Redis 故障切换时的生产规模吞吐，灰度仍应限制队列/候选规模并监控脚本耗时。未执行生产部署，未宣称流量必按固定比例分配：空闲同负载才轮转，运行中按占用率分配，并且必须先满足模型、状态与容量约束。
+
+日志目录：`artifacts/gpt-qos-load-routing-20261026/`。没有数据库迁移或新 Redis 键；新增的哈希/池元数据字段兼容旧记录。全部实例更新后再验收一致的负载行为，回滚仍使用关闭新开关及自然排空步骤。

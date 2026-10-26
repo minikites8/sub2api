@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -87,11 +88,31 @@ func (s *defaultOpenAIAccountScheduler) qualityPoolOrder(ctx context.Context, re
 		plan.includeOverflowFallback = true
 		return s.buildOpenAISelectionOrder(req, plan)
 	}
+	var order []openAIAccountCandidateScore
 	if req.SubscriptionPriority {
 		sub, regular := partitionOpenAIChatGPTSubscriptionAccounts(pool)
-		return append(build(sub), build(regular)...)
+		order = append(build(sub), build(regular)...)
+	} else {
+		order = build(pool)
 	}
-	return build(pool)
+	// Quality is an explicit account label. Within that pool, load and queue
+	// pressure precede cost, protocol, subscription and account-score tastes.
+	// Idle peers use last-used order; the distributed queue rechecks live slots
+	// and rotates physical roots atomically, independent of this snapshot.
+	sort.SliceStable(order, func(i, j int) bool {
+		a, b := order[i], order[j]
+		if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
+			return a.loadInfo.LoadRate < b.loadInfo.LoadRate
+		}
+		if a.loadInfo.WaitingCount != b.loadInfo.WaitingCount {
+			return a.loadInfo.WaitingCount < b.loadInfo.WaitingCount
+		}
+		if a.account.LastUsedAt == nil || b.account.LastUsedAt == nil {
+			return a.account.LastUsedAt == nil && b.account.LastUsedAt != nil
+		}
+		return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
+	})
+	return order
 }
 
 func splitGPTQualityPools(accounts []*Account) (strong, basic []*Account) {
