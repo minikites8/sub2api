@@ -41,7 +41,7 @@ func (e *GPTQoSSelectionError) ClientError() (code, message string) {
 	case "queue_timeout":
 		return "gpt_qos_queue_timeout", "No eligible account capacity became available within the scheduling wait budget. Please retry later."
 	case "queue_closed":
-		return "gpt_qos_queue_closed", "Scheduling admission expired or was closed. Please retry."
+		return "gpt_qos_queue_closed", "Scheduling admission was closed before capacity could be assigned. Please retry."
 	case "candidate_limit":
 		return "gpt_qos_candidate_limit", "The eligible account pool exceeds the scheduling queue limit. Please contact the administrator."
 	case "snapshot_unavailable":

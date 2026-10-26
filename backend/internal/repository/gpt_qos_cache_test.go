@@ -341,7 +341,7 @@ func TestGPTQoSCancelTimeoutAndLatePollFence(t *testing.T) {
 	m.SetTime(time.Now().Add(time.Second))
 	g, err = c.GPTQoSPoll(ctx, e)
 	require.NoError(t, err)
-	require.Equal(t, "closed", g.Status)
+	require.Equal(t, "timeout", g.Status)
 	require.Zero(t, c.rdb.ZCard(ctx, "gptqos:{v1}:waiting").Val())
 	require.Equal(t, int64(1), c.rdb.ZCard(ctx, "concurrency:account:1").Val())
 }
@@ -576,4 +576,91 @@ func TestGPTQoSStrongStandbyBeforeBasic(t *testing.T) {
 	for _, id := range []string{"standby-primary", "standby-secondary", "standby-basic"} {
 		require.NoError(t, c.GPTQoSClose(ctx, id))
 	}
+}
+
+func TestGPTQoSExpiredWaitIsTimeoutAcrossPollers(t *testing.T) {
+	c, m := qosTestCache(t)
+	ctx := context.Background()
+	now := time.Now()
+	m.SetTime(now)
+	ok, err := c.AcquireAccountSlot(ctx, 1, 1, "existing")
+	require.NoError(t, err)
+	require.True(t, ok)
+	e := qosEntry("wait-expired", 42, "standard")
+	e.WaitMs = 100
+	g, err := c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "waiting", g.Status)
+	m.SetTime(now.Add(150 * time.Millisecond))
+	// A different instance or an admin snapshot can clean the entry before its
+	// owner sees the last poll. Expiration must not become an unexplained close.
+	_, err = c.GPTQoSState(ctx)
+	require.NoError(t, err)
+	g, err = c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "timeout", g.Status)
+	require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+	require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+	require.NoError(t, c.ReleaseAccountSlot(ctx, 1, "existing"))
+	g, err = c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "timeout", g.Status, "late polling may not resurrect an expired request")
+	require.Zero(t, c.rdb.ZCard(ctx, "gptqos:{v1}:waiting").Val())
+	require.Zero(t, c.rdb.ZCard(ctx, "gptqos:{v1}:leases").Val())
+	require.Zero(t, c.rdb.ZCard(ctx, "concurrency:account:1").Val())
+}
+
+func TestGPTQoSGrantOutlivesQueueWaitBudget(t *testing.T) {
+	c, m := qosTestCache(t)
+	ctx := context.Background()
+	now := time.Now()
+	m.SetTime(now)
+	e := qosEntry("handoff-grant", 42, "standard")
+	e.WaitMs = 10
+	g, err := c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "granted", g.Status)
+	m.SetTime(now.Add(time.Second))
+	_, err = c.GPTQoSState(ctx)
+	require.NoError(t, err)
+	g, err = c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "granted", g.Status, "an assigned slot is controlled by its execution lease, not its former queue deadline")
+	require.Equal(t, int64(1), c.rdb.ZCard(ctx, "concurrency:account:1").Val())
+	other := qosEntry("handoff-other", 43, "premium")
+	g, err = c.GPTQoSPoll(ctx, other)
+	require.NoError(t, err)
+	require.Equal(t, "waiting", g.Status)
+	require.NoError(t, c.GPTQoSClose(ctx, e.ID))
+	g, err = c.GPTQoSPoll(ctx, other)
+	require.NoError(t, err)
+	require.Equal(t, "granted", g.Status)
+	require.NoError(t, c.GPTQoSClose(ctx, other.ID))
+	require.Zero(t, c.rdb.ZCard(ctx, "concurrency:account:1").Val())
+	require.Zero(t, c.rdb.ZCard(ctx, "gptqos:{v1}:leases").Val())
+}
+
+func TestGPTQoSTimeoutReasonFenceIsBounded(t *testing.T) {
+	c, m := qosTestCache(t)
+	ctx := context.Background()
+	now := time.Now()
+	m.SetTime(now)
+	_, err := c.AcquireAccountSlot(ctx, 1, 1, "busy")
+	require.NoError(t, err)
+	e := qosEntry("terminal-reason", 42, "standard")
+	e.WaitMs = 10
+	g, err := c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "waiting", g.Status)
+	m.SetTime(now.Add(time.Second))
+	g, err = c.GPTQoSPoll(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "timeout", g.Status)
+	require.Equal(t, int64(1), c.rdb.ZCard(ctx, "gptqos:{v1}:timed_out").Val())
+	m.SetTime(now.Add(122 * time.Second))
+	_, err = c.GPTQoSState(ctx)
+	require.NoError(t, err)
+	require.Zero(t, c.rdb.ZCard(ctx, "gptqos:{v1}:timed_out").Val())
+	require.Zero(t, c.rdb.HLen(ctx, "gptqos:{v1}:requests").Val())
+	require.NoError(t, c.ReleaseAccountSlot(ctx, 1, "busy"))
 }

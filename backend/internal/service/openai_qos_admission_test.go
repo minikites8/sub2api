@@ -163,3 +163,67 @@ func TestGPTQoSFinalRecheckStillRejectsChangedAccountAndReleases(t *testing.T) {
 		})
 	}
 }
+
+type qosTerminalStatusCache struct {
+	qosAdmissionRecordingCache
+	poll func(context.Context, GPTQoSEntry) GPTQoSGrant
+}
+
+func (c *qosTerminalStatusCache) GPTQoSPoll(ctx context.Context, e GPTQoSEntry) (GPTQoSGrant, error) {
+	c.entries = append(c.entries, e)
+	return c.poll(ctx, e), nil
+}
+
+func TestGPTQoSClosedMarkerDoesNotHideWaitTimeoutOrRestartQueue(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		elapsed bool
+		want    string
+	}{
+		{"legacy expiration", true, "queue_timeout"},
+		{"early explicit close", false, "queue_closed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, req := qualityTestGateway(false)
+			req.RequiredTransport = OpenAIUpstreamTransportAny
+			a := svc.accountRepo.(schedulerTestOpenAIAccountRepo).accounts[0]
+			cache := &qosTerminalStatusCache{poll: func(_ context.Context, e GPTQoSEntry) GPTQoSGrant {
+				if tc.elapsed {
+					time.Sleep(time.Duration(e.WaitMs+2) * time.Millisecond)
+				}
+				return GPTQoSGrant{Status: "closed"}
+			}}
+			svc.concurrencyService = NewConcurrencyService(cache)
+			ctx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+			d := time.Now().Add(time.Second)
+			if tc.elapsed {
+				d = time.Now().Add(5 * time.Millisecond)
+			}
+			selection, _, _, _, err := (&defaultOpenAIAccountScheduler{service: svc}).selectGPTQoSQueue(ctx, req, DefaultGPTQoSConfig(), DefaultGPTQoSGroupConfig("premium"), []openAIAccountCandidateScore{{account: &a}}, nil, d)
+			require.Nil(t, selection)
+			var qosErr *GPTQoSSelectionError
+			require.ErrorAs(t, err, &qosErr)
+			require.Equal(t, tc.want, qosErr.Reason)
+			require.Len(t, cache.entries, 1, "closed/expired admission must not silently re-enqueue or reset fairness")
+			require.Equal(t, []string{cache.entries[0].ID}, cache.closed)
+		})
+	}
+}
+
+func TestGPTQoSCanceledGrantIsReleasedBeforeAccountRecheck(t *testing.T) {
+	svc, req := qualityTestGateway(false)
+	req.RequiredTransport = OpenAIUpstreamTransportAny
+	a := svc.accountRepo.(schedulerTestOpenAIAccountRepo).accounts[0]
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxkey.UserID, int64(42)))
+	defer cancel()
+	cache := &qosTerminalStatusCache{poll: func(_ context.Context, e GPTQoSEntry) GPTQoSGrant {
+		cancel()
+		return GPTQoSGrant{Status: "granted", Candidate: e.Candidates[0]}
+	}}
+	svc.concurrencyService = NewConcurrencyService(cache)
+	selection, _, _, _, err := (&defaultOpenAIAccountScheduler{service: svc}).selectGPTQoSQueue(ctx, req, DefaultGPTQoSConfig(), DefaultGPTQoSGroupConfig("premium"), []openAIAccountCandidateScore{{account: &a}}, nil, time.Now().Add(time.Second))
+	require.Nil(t, selection)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Len(t, cache.entries, 1)
+	require.Equal(t, []string{cache.entries[0].ID}, cache.closed)
+}

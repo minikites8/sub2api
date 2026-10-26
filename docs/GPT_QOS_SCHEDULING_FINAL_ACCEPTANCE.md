@@ -4,7 +4,7 @@
 
 结论：**CONDITIONAL PASS — 有条件灰度**。仅允许下述已验证范围，不能将本报告理解为全功能验收通过。
 
-- 审计分支 `main`，开始 Commit `f11fe920c3cb1813d10f5136eb72a230e4f8f0e3`；第 1–8 节的受测源代码提交为 `d8075aa6afb5ed3f8e49740bdc5d2b9011b200a7`；后续账号标签保存补丁及其独立回归见第 9 节。旧版本对照为 QoS 引入前的 `21f675138`，从 Git archive 独立构建。
+- 审计分支 `main`，开始 Commit `f11fe920c3cb1813d10f5136eb72a230e4f8f0e3`；第 1–8 节的受测源代码提交为 `d8075aa6afb5ed3f8e49740bdc5d2b9011b200a7`；后续账号标签保存与排队超时补丁及其独立回归见第 9–10 节。旧版本对照为 QoS 引入前的 `21f675138`，从 Git archive 独立构建。
 - 时间：2026-10-26；macOS arm64；Go 1.27.3；Docker Desktop；真实 PostgreSQL `18.1-alpine3.23`、Redis `8.4-alpine`；两个独立 `cmd/server` OS 进程，共用临时数据库和 Redis。
 - 标准余额计费模式，31 个合成用户、3 个服务组、Strong 两账号共 20 槽、Basic 两账号共 30 槽；账号类型均为本地模拟 APIKey。没有调用真实付费模型，没有读取/修改生产余额或账号，没有部署。
 - 每个测试服务显式配置数据库最大连接 20、空闲 10；测试 Redis 前置可控 TCP 转发器，用于真实断连。全部模型地址为 loopback 模拟上游；定价使用仓库 fallback 文件。仅临时数据库关闭同 IP 合成多用户触发的独立反滥用策略。
@@ -232,3 +232,24 @@ Redis 继续使用 `gptqos:{v1}:` 下 requests/waiting/leases/fair、tier/user/g
 - 修复前后日志保存在 `artifacts/gpt-qos-final-quality-label-fix/`。没有修改生产账号或自动将 Unknown 提升为 Strong；已经被旧版本实际清空的标签需要管理员根据验证记录重新设置。
 
 本节只补充账号标签保存回归，没有重新执行第 4 节完整压力场景，也没有改变其灰度限制。部署修复需同步更新后端与前端。
+
+## 10. 排队到期被误报为 closed 的补充修复（2026-10-26）
+
+复现用户反馈的 `Scheduling admission expired or was closed. Please retry.`：等待记录达到截止时间时，Lua 清理逻辑和主动取消共用 `closed` 标记。任一实例、后续请求或管理观测读先清理记录后，原请求再次轮询就只看到 closed，无法识别正常排队超时。
+
+本次修复：
+
+- 等待到期保留独立的 `gptqos:{v1}:timed_out` ZSET 原因索引，与原 closed 防复活围栏共存。原因和围栏均保留 120 秒、键空闲 TTL180 秒，并随脚本调用有界清理；重复 close 不抹掉 timeout 原因。没有数据库迁移，也不要求清空 Redis。
+- 原请求即使不在本次批量清理的前 32 项中，也会检查自身等待截止时间。已经取得的 grant 仍由执行租约控制，不会因先前排队时间到期而被收回。
+- Go 保留同一个等待预算，轮询等待按剩余时间裁剪；兼容旧实例留下的 closed 过期标记，映射为 `gpt_qos_queue_timeout`。真正提前关闭仍保留独立的 `gpt_qos_queue_closed`，不会通过重新排队重置预算或公平进度。
+- 在轮询前后检查取消，已取消请求刚拿到的 grant 会释放，不再继续账号复核/提交。
+
+验证：
+
+- 修复前 `TestGPTQoSExpiredWaitIsTimeoutAcrossPollers` 可复现：期待 timeout，实际 closed。失败日志保留。
+- 普通相关单测 3 包、65 个父/子测试事件通过；最终 `-race -tags=unit` 的 QoS/质量/Handler 回归 3 包、94 个测试事件通过。原取消/超卖断言保留，排队到期断言更新为明确 timeout；新增已获槽位晚交接和原因索引到期清理测试。
+- 真实 Redis `TestGPTQoSRealRedisWaitExpirationRemainsTimeout`、原子抢槽、60 次负载轮转通过，验证其他 owner 清理后返回 timeout，晚到轮询不能复活或占用下一请求槽位。
+- 新增真实双服务 `TestGPTQoSAcceptanceTimeoutDiagnostics`，共用隔离 Redis/PG：配置 Strong 等待80ms、占满20个 Strong 槽，第二实例持续观测清理。Premium 约119ms端到端返回503及 `gpt_qos_queue_timeout`，上游调用/账单0；Economy 获准走 Basic 返回200；释放 Strong 后 Premium 返回200；最终仅2条成功用量、排队/运行计数排空。
+- 复现命令：构建 `cmd/server` 后设置 `SUB2API_ACCEPTANCE_BINARY`，执行 `go test -tags=integration ./internal/repository -run '^TestGPTQoSAcceptanceTimeoutDiagnostics$' -count=1 -v`；该场景已加入 `scripts/test-gpt-qos-acceptance.sh`。原始证据在 `artifacts/gpt-qos-final-admission-fix/`。
+
+这修复了已证实的误分类及截止时间边界处理；不表示容量不足时可以保证请求成功。真正等满预算仍会明确拒绝，Premium 的质量保证、原子并发、次数上限和计费语义不变。本节未重新运行第4节完整60秒压力场景，原灰度限制仍适用。需更新后端服务二进制使内嵌 Lua 生效。

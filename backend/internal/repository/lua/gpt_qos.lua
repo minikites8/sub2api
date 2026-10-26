@@ -7,6 +7,7 @@ local requests=prefix..'requests'
 local waiting=prefix..'waiting'
 local leases=prefix..'leases'
 local closed=prefix..'closed'
+local timedout=prefix..'timed_out'
 local fair=prefix..'fair'
 local pools=prefix..'pools'
 local op=ARGV[1]
@@ -28,7 +29,7 @@ local function unqueue(r)
  redis.call('ZREM',userkey(r),r.id)
  if redis.call('ZCARD',userkey(r))==0 then redis.call('ZREM',users(r),tostring(r.user_id)) end
 end
-local function close(rid)
+local function close(rid,reason)
  local r=decode(redis.call('HGET',requests,rid))
  if r then
   unqueue(r)
@@ -46,11 +47,19 @@ local function close(rid)
  end
  redis.call('ZADD',closed,now+120000,rid)
  redis.call('PEXPIRE',closed,180000)
+ -- Retain expiration separately from cancellation/lease closure. Other
+ -- instances (including dashboard reads) may reap an expired wait before its
+ -- owner polls again. A subsequent idempotent close must preserve that reason.
+ if reason=='timeout' or redis.call('ZSCORE',timedout,rid) then
+  redis.call('ZADD',timedout,now+120000,rid)
+  redis.call('PEXPIRE',timedout,180000)
+ end
 end
 -- Bounded orphan cleanup, including grants whose owner process disappeared.
-for _,rid in ipairs(redis.call('ZRANGEBYSCORE',waiting,'-inf',now,'LIMIT',0,32)) do close(rid) end
+for _,rid in ipairs(redis.call('ZRANGEBYSCORE',waiting,'-inf',now,'LIMIT',0,32)) do close(rid,'timeout') end
 for _,rid in ipairs(redis.call('ZRANGEBYSCORE',leases,'-inf',now,'LIMIT',0,32)) do close(rid) end
 redis.call('ZREMRANGEBYSCORE',closed,'-inf',now)
+redis.call('ZREMRANGEBYSCORE',timedout,'-inf',now)
 -- Bound historical pool metadata after account deletion/pool changes. A small
 -- incremental scan avoids an unbounded full registry walk on request admission.
 local scan=redis.call('HSCAN',pools,redis.call('HGET',fair,'pool_scan') or '0','COUNT',16)
@@ -99,6 +108,9 @@ if op=='state' then
  return cjson.encode(out)
 end
 if own and own.grant then return cjson.encode(own.grant) end
+-- Do not let the bounded batch above hide this owner's own expiration.
+if own and own.deadline<=now then close(id,'timeout');return '{"status":"timeout"}' end
+if redis.call('ZSCORE',timedout,id) then return '{"status":"timeout"}' end
 if redis.call('ZSCORE',closed,id) then return '{"status":"closed"}' end
 if not own then
  own=cjson.decode(ARGV[4])

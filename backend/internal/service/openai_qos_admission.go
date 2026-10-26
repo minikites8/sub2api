@@ -201,6 +201,7 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 		}
 	}()
 	initialWaitMs := entry.WaitMs
+	waitDeadline := started.Add(time.Duration(initialWaitMs) * time.Millisecond)
 	rechecks := 0
 	owned := false
 	defer func() {
@@ -209,6 +210,9 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 		}
 	}()
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, 0, 0, 0, err
+		}
 		grant, err := store.GPTQoSPoll(ctx, entry)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -216,6 +220,9 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 			}
 			slog.Error("gpt_qos_redis_unavailable", "operation", "admission")
 			return nil, 0, 0, 0, newGPTQoSSelectionError("unavailable", "", ErrGPTQoSUnavailable)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, 0, 0, 0, err
 		}
 		switch grant.Status {
 		case "granted":
@@ -263,13 +270,20 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 				state.mu.Unlock()
 			}
 			return attachSelectionProfitGate(ctx, result), len(entry.Candidates), len(entry.Candidates), 0, nil
-		case "full", "timeout", "closed":
+		case "closed":
+			// Older instances may have reaped this entry using the former shared
+			// close marker. Never re-enqueue it or reset its fairness/budget.
+			if !time.Now().Before(waitDeadline) {
+				return nil, 0, 0, 0, newGPTQoSSelectionError("queue_timeout", "expired_close_marker", nil)
+			}
+			return nil, 0, 0, 0, newGPTQoSSelectionError("queue_closed", "closed_before_wait_deadline", nil)
+		case "full", "timeout":
 			return nil, 0, 0, 0, newGPTQoSSelectionError("queue_"+grant.Status, "", nil)
 		}
-		if !group.AllowBasicFallback && !time.Now().Before(deadline) {
+		if !time.Now().Before(waitDeadline) {
 			return nil, 0, 0, 0, newGPTQoSSelectionError("queue_timeout", "", nil)
 		}
-		if !waitGPTQoS(ctx, min(25*time.Millisecond, time.Duration(max(1, entry.WaitMs))*time.Millisecond)) {
+		if !waitGPTQoS(ctx, min(25*time.Millisecond, time.Until(waitDeadline))) {
 			return nil, 0, 0, 0, ctx.Err()
 		}
 	}
