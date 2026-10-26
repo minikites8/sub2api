@@ -10,6 +10,23 @@ vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<div
 function config(): QoSConfig { return { version: 1, quality_routing_enabled: false, enabled: false, capacity_enabled: false, premium_weight: 6, standard_weight: 3, economy_weight: 1, max_waiting: 1000, request_budget_ms: 300000, high_effort_budget_ms: 900000, max_attempts: 4, log_sample_rate: 0.1, peak: { enabled: false, strict_reserve: true, enter_utilization: 0.8, exit_utilization: 0.65, protection_ratio: 0.3, enter_hold_ms: 5000, exit_hold_ms: 15000 }, groups: {}, resource_pools: {} } }
 beforeEach(() => { vi.clearAllMocks(); mocks.get.mockResolvedValue(config()); mocks.save.mockImplementation(async c => c); mocks.snapshot.mockResolvedValue({ available: true, tiers: {}, capacity: { active: 0, queued: 0 } }) })
 describe('GPT QoS controls', () => {
+  it('shows quality and account names while preserving shared pools as one row', async () => {
+    mocks.snapshot.mockResolvedValue({ available: true, tiers: {}, capacity: { active: 2, queued: 0, pools: [
+      { id: 'account:1', display_name: 'Strong:正常 OAuth', active: 0, capacity: 3 },
+      { id: 'shared:fixture', display_name: 'Strong:账号 A / Basic:账号 B', active: 0, capacity: 10 }
+    ] } })
+    const wrapper = mount(View)
+    await flushPromises()
+    const single = wrapper.get('tr[data-pool-id="account:1"]')
+    const shared = wrapper.get('tr[data-pool-id="shared:fixture"]')
+    expect(single.get('td').text()).toBe('Strong:正常 OAuth')
+    expect(single.get('td').text()).not.toContain('account:1')
+    expect(shared.get('td').text()).toBe('Strong:账号 A / Basic:账号 B')
+    expect(wrapper.findAll('tr[data-pool-id]')).toHaveLength(2)
+    expect(shared.findAll('td')[1]!.text()).toBe('0 / 10')
+    wrapper.unmount()
+  })
+
   it('shows enabled but untriggered peak protection as waiting, not disabled', async () => {
     const applied = config()
     applied.enabled = applied.quality_routing_enabled = applied.capacity_enabled = applied.peak.enabled = true

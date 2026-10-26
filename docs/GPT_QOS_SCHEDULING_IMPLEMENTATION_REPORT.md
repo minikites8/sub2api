@@ -270,3 +270,11 @@ HTTP、SSE、Responses/Chat Completions/Messages/Embeddings/alpha search 的新�
 Redis 不增加键：在 `gptqos:{v1}:fair` 增加 `dispatch_sequence` 字段，在已有池元数据增加 `last_dispatch` 字段；复用原有池元数据回收。旧记录缺字段按 0 兼容。WDRR/QoS 用户份额、原子槽获取/释放、RPM、额度、续链、SSE 和计费没有改写。新规则由现有质量路由/公平排队开关限定，全部关闭时不执行这些选择逻辑。
 
 主要修改为 `openai_quality_router.go`、`repository/lua/gpt_qos.lua` 及对应 service/repository/真实 Redis 集成回归。管理界面来源字段改为“仅统计”，容量提示改为通用共享资源表述。Lua 需要比较全部有界候选，既有上限仍为 256，网络往返次数没有增加，但空闲场景 Redis 脚本工作量增加；候选规模耗时实测见验收补充。混合旧/新实例期间可能仍有旧实例采用首个可用规则，全部实例升级后才能获得一致的负载选择行为。无需迁移或清空 Redis；回滚继续关闭新开关并等待运行中租约自然释放。
+
+## 17. 管理页池名称展示（2026-10-26）
+
+资源池表格优先显示 `账号质量等级:账号名`，例如 `Strong:正常 OAuth`、`Basic:账号 B`、`Unknown:账号 C`。共享池在同一行显示成员名称，使用 ` / ` 分隔，不拆分容量行。内部 `account:id` / `shared:pool` 保留为稳定身份、表格 key 和诊断数据，不以可变名称作为调度或并发键。
+
+快照接口增加可选的 `display_name`。只在管理快照请求中通过一次批量 SQL 投影获取可见账号/共享成员的 ID、名称、显式质量等级和共享池关系，不读取 Credentials/OAuth Token，不进入模型请求热路径。账号改名后刷新可读取新名称；查询有 2 秒上限，名称不可读或新前端连接旧后端时回退原标识，容量和峰值观测仍可使用。
+
+新增 `backend/internal/service/openai_qos_pool_labels.go`、`backend/internal/repository/gpt_qos_pool_labels.go`，接入 `openai_qos_metrics.go`；更新前端 API 类型及 `GPTQoSSchedulingView.vue`。没有数据库迁移、Redis 键变化、账号写入、调度排序或计费变化。

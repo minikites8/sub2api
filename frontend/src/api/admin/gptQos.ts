@@ -16,7 +16,7 @@ export interface QoSTierMetrics {
   Downgrades: number; StrongRequests: number; VM2APIRequests: number; DirectRequests: number
   strong_hit_rate: number; first_success_rate: number; average_queue_ms: number; p50_queue_ms: number; p95_queue_ms: number; p99_queue_ms: number
 }
-export interface QoSPoolState { id: string; capacity: number; active: number; strong_capacity: number; strong_active: number; peak: boolean; reserved: number; premium_active: number; premium_reserved_used: number; reason: string }
+export interface QoSPoolState { id: string; display_name?: string; capacity: number; active: number; strong_capacity: number; strong_active: number; peak: boolean; reserved: number; premium_active: number; premium_reserved_used: number; reason: string }
 export interface QoSSnapshot { available: boolean; config?: QoSConfig; capacity?: { queued: number; active: number; pools: QoSPoolState[]; strong_pool?: Partial<QoSPoolState> }; tiers: Record<string, QoSTierMetrics>; metrics_window: string; metrics_dropped: number; downgrade_reasons?: Record<string, number>; upstream_requests?: Record<string, number> }
 export const defaultQoSGroup = (qos_tier: QoSTier = 'standard'): QoSGroup => ({ qos_tier, weight: { premium: 6, standard: 3, economy: 1 }[qos_tier], strong_wait_ms: { premium: 5000, standard: 2000, economy: 500 }[qos_tier], basic_wait_ms: 1000, allow_basic_fallback: qos_tier === 'economy', capacity_protection: qos_tier === 'premium', max_waiting: 200, user_max_waiting: 4, concurrency: 0 })
 export async function getQoSConfig(): Promise<QoSConfig> { return (await apiClient.get('/admin/gpt-qos/config')).data }

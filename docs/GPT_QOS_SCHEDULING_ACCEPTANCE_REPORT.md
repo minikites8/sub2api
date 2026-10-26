@@ -259,3 +259,12 @@ go test -tags=unit ./internal/service -run 'TestPinnedOpenAIModelsListMixedAccou
 这是修改后不同候选规模的本地顺序测量，不是改造前后对照，也不是全链路 P95、CPU 饱和吞吐或模型 TTFT。新路径比较全部有界候选，空闲时脚本工作量较原“首个可用”增加；没有新增网络往返。未测满 2000 等待请求、多模型阻塞及 Redis 故障切换时的生产规模吞吐，灰度仍应限制队列/候选规模并监控脚本耗时。未执行生产部署，未宣称流量必按固定比例分配：空闲同负载才轮转，运行中按占用率分配，并且必须先满足模型、状态与容量约束。
 
 日志目录：`artifacts/gpt-qos-load-routing-20261026/`。没有数据库迁移或新 Redis 键；新增的哈希/池元数据字段兼容旧记录。全部实例更新后再验收一致的负载行为，回滚仍使用关闭新开关及自然排空步骤。
+
+## 15. 管理页池名称补充验收（2026-10-26）
+
+- `go test -tags=unit ./internal/service -run 'TestGPTQoSAdminPoolLabel' -count=1` 通过（1.355s，2 项）：覆盖等级/名称、一次批量读取、共享池保留单行和容量、内部 ID 不变、响应不含凭据字段，以及名称读取失败时保留容量观测。
+- 临时 PostgreSQL 18.1 / Redis 8.4 集成 `TestGPTQoSPoolLabelProjectionUsesCurrentNamesAndSharedMembers` 实际运行通过（repository 5.320s）：验证独立/共享成员合并、缺失质量为 Unknown、排除其他平台、不重复返回账号，改名后读取新名称。未跳过，未连接生产。
+- `GPTQoSSchedulingView.spec.ts` 16 项通过，新增断言第一列精确显示 `Strong:正常 OAuth`，共享成员同格显示，仍为两行且共享容量维持 10；原高峰状态、保存及回滚断言保留。
+- `vue-tsc --noEmit` 通过，Vite 生产构建通过（21.94s，保留既有 chunk 提示），`git diff --check` 通过。本次只改管理读取/展示，没有重复模型热路径单元、并发压测或付费模型验收。
+
+日志目录：`artifacts/gpt-qos-pool-labels-20261026/`。后端提供可选展示字段、前端优先使用该字段；内部稳定池 ID、Redis 原子槽及共享容量去重完全保留。没有部署生产或修改线上账号。

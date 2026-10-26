@@ -150,6 +150,7 @@ func (s *OpenAIGatewayService) GPTQoSSnapshotFiltered(ctx context.Context, filte
 			return out
 		}
 		out["available"] = true
+		s.labelGPTQoSPools(ctx, state)
 		out["capacity"] = state
 		events, err := store.GPTQoSMetrics(ctx, filter)
 		if err == nil {

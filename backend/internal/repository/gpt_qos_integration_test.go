@@ -107,6 +107,29 @@ func TestGPTQoSRealRedisAtomicAdmission(t *testing.T) {
 	require.Zero(t, rdb.ZCard(ctx, "concurrency:account:1").Val())
 }
 
+func TestGPTQoSPoolLabelProjectionUsesCurrentNamesAndSharedMembers(t *testing.T) {
+	tx := testEntTx(t)
+	ctx := context.Background()
+	client := tx.Client()
+	a := mustCreateAccount(t, client, &service.Account{Name: "正常 OAuth", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Credentials: map[string]any{"access_token": "fixture-secret-not-for-display"}, Extra: map[string]any{service.AccountQualityTierKey: "strong"}})
+	b := mustCreateAccount(t, client, &service.Account{Name: "共享 A", Platform: service.PlatformOpenAI, Extra: map[string]any{service.AccountQualityTierKey: "basic", service.AccountResourcePoolKey: "fixture"}})
+	c := mustCreateAccount(t, client, &service.Account{Name: "共享 B", Platform: service.PlatformOpenAI, Extra: map[string]any{service.AccountResourcePoolKey: "fixture"}})
+	mustCreateAccount(t, client, &service.Account{Name: "其他平台", Platform: service.PlatformAnthropic, Extra: map[string]any{service.AccountResourcePoolKey: "fixture"}})
+	repo := newAccountRepositoryWithSQL(client, tx, nil)
+	rows, err := repo.GetGPTQoSPoolAccounts(ctx, []string{fmt.Sprintf("account:%d", a.ID), "shared:fixture", fmt.Sprintf("account:%d", b.ID)})
+	require.NoError(t, err)
+	require.Equal(t, []service.GPTQoSPoolAccount{
+		{ID: a.ID, Name: "正常 OAuth", Quality: "strong", PoolID: fmt.Sprintf("account:%d", a.ID)},
+		{ID: b.ID, Name: "共享 A", Quality: "basic", PoolID: "shared:fixture"},
+		{ID: c.ID, Name: "共享 B", Quality: "unknown", PoolID: "shared:fixture"},
+	}, rows)
+	_, err = client.Account.UpdateOneID(a.ID).SetName("已改名").Save(ctx)
+	require.NoError(t, err)
+	rows, err = repo.GetGPTQoSPoolAccounts(ctx, []string{fmt.Sprintf("account:%d", a.ID)})
+	require.NoError(t, err)
+	require.Equal(t, "已改名", rows[0].Name)
+}
+
 func TestGPTQoSRealRedisLoadRouting(t *testing.T) {
 	rdb := testRedis(t)
 	c := NewConcurrencyCache(rdb, 15, 60).(*concurrencyCache)
