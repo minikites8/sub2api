@@ -95,14 +95,20 @@ func (s *defaultOpenAIAccountScheduler) qualityPoolOrder(ctx context.Context, re
 	} else {
 		order = build(pool)
 	}
-	// Quality is an explicit account label. Within that pool, load and queue
-	// pressure precede cost, protocol, subscription and account-score tastes.
-	// Idle peers use last-used order; the distributed queue rechecks live slots
-	// and rotates physical roots atomically, independent of this snapshot.
+	for i := range order {
+		order[i].cacheAffinity = s.qualityCacheAffinity(req, order[i].account.ID)
+	}
+	// Retain a healthy conversation owner within the same quality/standby
+	// class. This is only a candidate preference: slot/RPM/quota checks still
+	// apply, and the fair queue rechecks capacity atomically before granting.
+	// New conversations and escaped owners retain load/last-used balancing.
 	sort.SliceStable(order, func(i, j int) bool {
 		a, b := order[i], order[j]
 		if a.account.IsFallback != b.account.IsFallback {
 			return !a.account.IsFallback
+		}
+		if a.cacheAffinity != b.cacheAffinity {
+			return a.cacheAffinity > b.cacheAffinity
 		}
 		if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 			return a.loadInfo.LoadRate < b.loadInfo.LoadRate
@@ -116,6 +122,28 @@ func (s *defaultOpenAIAccountScheduler) qualityPoolOrder(ctx context.Context, re
 		return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
 	})
 	return order
+}
+
+// Values are server-derived from existing bindings, never from client account
+// preferences. A movable response owner is the most recent known cache target;
+// a session binding is the next preference. Required owners use the hard path.
+func (s *defaultOpenAIAccountScheduler) qualityCacheAffinity(req OpenAIAccountScheduleRequest, accountID int64) int {
+	if accountID <= 0 || req.PreserveStickyBinding {
+		return 0
+	}
+	affinity := 0
+	if req.SessionHash != "" && req.StickyAccountID == accountID {
+		affinity = 1
+	}
+	if req.PreviousResponseCanMove && req.PreviousResponseID != "" && req.StickyPreviousAccountID == accountID {
+		affinity = 2
+	}
+	if affinity > 0 {
+		if _, _, _, escape := s.shouldEscapeStickyAccount(accountID, s.service.openAIStickyEscapeConfig()); escape {
+			return 0
+		}
+	}
+	return affinity
 }
 
 func splitGPTQualityPools(accounts []*Account) (strong, basic []*Account) {
@@ -213,6 +241,13 @@ func (s *defaultOpenAIAccountScheduler) recordGPTQualitySelection(ctx context.Co
 			state.upstreamKind = "direct"
 		}
 		state.strategy = "quality_pool_existing_scheduler"
+		state.sticky = ""
+		switch s.qualityCacheAffinity(req, result.Account.ID) {
+		case 2:
+			state.sticky = "cache_affinity_previous_response"
+		case 1:
+			state.sticky = "cache_affinity_session"
+		}
 		state.quality = quality
 		state.pool = result.Account.QoSResourcePool()
 		state.downgraded = state.downgraded || downgraded

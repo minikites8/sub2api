@@ -29,13 +29,16 @@ func ReliableUpstreamCapacity(v UpstreamCapacitySnapshot, now time.Time) bool {
 }
 
 type GPTQoSCandidate struct {
-	IsFallback   bool   `json:"is_fallback,omitempty"`
-	AccountID    int64  `json:"account_id,string"`
-	SlotID       int64  `json:"slot_id,string"`
-	Concurrency  int    `json:"concurrency"`
-	PoolID       string `json:"pool_id"`
-	PoolCapacity int    `json:"pool_capacity"`
-	Quality      string `json:"quality"`
+	// CacheAffinity ranks already-qualified conversation owners (2=response,
+	// 1=session). It changes account choice, not the request's fair-queue turn.
+	CacheAffinity int    `json:"cache_affinity,omitempty"`
+	IsFallback    bool   `json:"is_fallback,omitempty"`
+	AccountID     int64  `json:"account_id,string"`
+	SlotID        int64  `json:"slot_id,string"`
+	Concurrency   int    `json:"concurrency"`
+	PoolID        string `json:"pool_id"`
+	PoolCapacity  int    `json:"pool_capacity"`
+	Quality       string `json:"quality"`
 }
 type GPTQoSEntry struct {
 	ID                                          string `json:"id"`
@@ -160,6 +163,7 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 				continue
 			}
 			if c, ok := qosCandidate(account, cfg); ok {
+				c.CacheAffinity = item.cacheAffinity
 				entry.Candidates = append(entry.Candidates, c)
 				accounts[account.ID] = account
 			} else {

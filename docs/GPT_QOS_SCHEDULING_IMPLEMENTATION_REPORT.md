@@ -299,3 +299,17 @@ Redis 不增加键：在 `gptqos:{v1}:fair` 增加 `dispatch_sequence` 字段，
 - 无数据库迁移、Redis 键或 Lua 更改，无余额、倍率、Token 结算修改。最终原子槽、资源池 cap、发送前复核和 Failover 预算保持原有约束。后端需更新二进制；关闭后备标记可停止该账号接收新的普通溢出请求，必须续链和在途请求不强迁移。完整回滚可在排空请求后回退二进制。
 
 新增 `openai_fallback_scheduling_test.go`、真实双实例 `gpt_qos_acceptance_standby_test.go`，扩展全局 Redis 后备回流回归并将 `StandbyOverflow` 接入验收脚本；最终测试证据见最终验收报告第 12 节。
+
+## 20. 质量路由与全局 QoS 的会话缓存亲和（2026-11-01）
+
+质量路由此前跳过普通 session 粘性；可迁移 `previous_response_id` 也只在高级调度的粘性加权开关开启时解析。Go 池内排序优先负载，Redis Lua 又按实时负载和空闲轮转重新选号，导致有余量的原账号也会被换掉。本次修正该路径，不改变已有会话 ID/内容指纹算法、缓存键、计费与强制续链语义。
+
+- **实际顺序**：模型、分组、权限、能力、状态、额度/RPM 等资格过滤 → 原有公平队列与容量保护 → Strong/许可 Basic → 普通/后备角色 → 健康会话账号的缓存亲和 → 负载、等待和最近使用等池内排序。强制续链仍走原所有者约束。软粘性没有独立抢槽捷径，也不会提升用户的 QoS 权重或插队。
+- `openai_quality_router.go` 为已过滤候选生成内部 `cacheAffinity`：已知可迁移 response 所有者为 2，已有 session 绑定为 1，其他为 0；健康判断复用原粘性逃逸的错误率/TTFT 配置。只有实际会话信号/绑定存在时才产生亲和，未绑定的新对话仍按负载分散。没有新客户端参数。
+- `openai_account_scheduler.go` 在质量路由生效时也解析可迁移 response 的所有者，并记录真实 session/response 命中。软 response 命中不会被诊断日志误写为强制续链或覆盖全局排队策略；`sticky_reason` 增加 `cache_affinity_session` / `cache_affinity_previous_response`。
+- `openai_qos_admission.go` 和 `repository/lua/gpt_qos.lua` 将亲和作为可选 `cache_affinity` 候选字段传递。在 Redis **同一次原子准入**内，先确认账号槽、共享池、分组上限和高峰预留允许，再比较同质量同角色的亲和。满载所有者不阻塞空闲合格账号；Strong 不会被 Basic/Unknown 粘性越过；后备粘性不能阻止普通容量恢复后的回流。新旧实例混跑时旧 Lua 忽略该字段，亲和效果仅在所有实例更新后保持一致，原容量限制不变。
+- 安全换号后复用已有成功准入绑定逻辑，后续请求跟随新账号，避免每轮再次轮转；利润门延迟绑定、父任务绑定保护、Failover 排除列表继续生效。不会抢占运行中的 SSE。
+- 本次仅改变**开启质量路由的 GPT/OpenAI 文本调度**；公平排队关闭时 Go 排序仍有亲和，开启时在全局 Lua 中生效。质量路由关闭时旧调度/原粘性加权设置保持原语义。无数据库迁移、无新 Redis key、无后台表单变更；复用现有质量路由开关灰度/回退。
+- Sub2API 账号复用属于缓存命中的必要辅助条件，不等于上游实际缓存命中保证；内容变化、客户端未保持会话标识、缓存过期和上游内部选号均可影响最终命中率。本次模拟验证实际选号，不将其包装为真实 Token 缓存命中率。
+
+新增 service 会话/续链/资格/诊断测试、repository Lua 容量与亲和测试，以及 `gpt_qos_acceptance_affinity_test.go` 双进程模拟。`scripts/test-gpt-qos-acceptance.sh` 增加 `ConversationAffinity` 场景；测试与回滚证据见最终验收报告第 13 节。

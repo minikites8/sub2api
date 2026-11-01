@@ -205,17 +205,19 @@ local function available(r)
    end
    p.updated=now;p.capacity=effectiveCapacity;p.strong_capacity=strongCapacity;p.strong_active=strongUsed;p.reserved=reserve;p.reason=p.peak and 'strong_utilization_above_threshold_stable' or 'below_threshold_or_hysteresis_hold';p.borrowing=(not peak.strict_reserve);redis.call('HSET',pools,c.pool_id,cjson.encode(p))
    if accountUsed<c.concurrency and used<effectiveCapacity and not protected and not (c.quality=='strong' and globalBlocked) then
-    -- Candidate order contains soft cost/protocol preferences, not a capacity
-    -- mandate. Compare live Redis occupancy inside the atomic grant instead
-    -- of sending every short request to the first account with spare slots.
+    -- Retain a server-resolved conversation owner only after live capacity
+    -- and protection checks, and only within its quality/standby class.
+    -- This does not advance the request's weighted fair-queue position.
+    -- Unbound conversations still compare live load and rotate idle roots.
     -- Shared roots use one load and one idle-turn history regardless of how
     -- many API keys point at the same physical resource.
     local quality=c.quality=='strong' and 0 or (c.quality=='basic' and 1 or 2)
     local standby=c.is_fallback and 1 or 0
+    local affinity=c.cache_affinity or 0
     local load=math.max(accountUsed/c.concurrency,used/effectiveCapacity)
     local last=p.last_dispatch or 0
-    if not choice or quality<choice.quality or (quality==choice.quality and (standby<choice.standby or (standby==choice.standby and (load<choice.load or (load==choice.load and last<choice.last))))) then
-     choice={candidate=c,quality=quality,standby=standby,load=load,last=last,peak=p.peak or (r.peak.enabled and gp.peak),reserve=reserve}
+    if not choice or quality<choice.quality or (quality==choice.quality and (standby<choice.standby or (standby==choice.standby and (affinity>choice.affinity or (affinity==choice.affinity and (load<choice.load or (load==choice.load and last<choice.last))))))) then
+     choice={candidate=c,quality=quality,standby=standby,affinity=affinity,load=load,last=last,peak=p.peak or (r.peak.enabled and gp.peak),reserve=reserve}
     end
    end
   end

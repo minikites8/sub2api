@@ -313,3 +313,45 @@ SUB2API_ACCEPTANCE_BINARY=.../server SUB2API_ACCEPTANCE_EVIDENCE=.../two-process
 证据在 `artifacts/gpt-qos-final-standby-overflow/`：`focused.log`、`race.json`、`race-final.json`、`race-service-final.json`、`frontend-accounts-final.log`、`integration-final.log`、`two-processes-final/standby-overflow-qos-{false,true}.json`、实际 `upstream-events.json` 和两个服务日志。夹具准备阶段曾误用账号状态值及通用编辑端点，已改为实际支持的 `/accounts/:id/schedulable`，保留 `integration-fixture-*-failure.log` 和对应夹具日志；补充可迁移续链用例时混入了第三个更高优先级的普通账号，最终夹具限定为一主一备，仍断言回流至具体普通账号 ID，原失败保留于 `race-final.json`。没有降低最终调度或续链断言。
 
 本次未重新执行 60 秒综合压力、旧版本随机分布差分、真实 OAuth/VM2API 或付费上游验证，未给出性能改善百分比。满载且存在后备时可能多一次新鲜负载读取；大池继续受既有有界探测限制。质量降级许可、全局原子槽、RPM 与结算约束不变；强制续链不会为了普通容量恢复而迁移。此次后备修复通过定向验收，全功能 CONDITIONAL PASS 的原有验证边界仍然有效；没有部署生产。
+
+## 13. 同一对话缓存亲和增量验收（2026-11-01）
+
+审计/修复基线：`main` / `667b52260`。原质量路由在 Go 中跳过会话粘性，Lua 又依据实时负载/空闲轮转重新选择账号；可迁移 response 所有者也未在未开启粘性加权的质量路径解析。新增回归从实际 service 入口复现：普通 session 和可迁移 `previous_response_id`，分别在公平队列开启/关闭时，原账号 ID 2 有空位但最终选择 ID 1。基线四个子场景均失败（退出 1），不是仅凭候选评分判断。
+
+### 实际修改与约束
+
+`openai_quality_router.go` / `openai_account_scheduler.go` 将已验证的会话账号作为同质量、同普通/后备角色内的优先候选；`openai_qos_admission.go` 传递可选 `cache_affinity`；`repository/lua/gpt_qos.lua` 在原子检查容量与保护规则后采用该偏好。公平队列选择哪个用户先服务的算法未改动，不存在额外的粘性直通抢槽。模型/状态/Failover 排除/质量降级限制/共享池/高峰保护都先于亲和；强制续链、已有 SSE 和计费流程不改动。未绑定的新对话继续负载均衡。质量路由关闭时不启用本次新偏好。
+
+新增测试文件：
+- `backend/internal/service/openai_quality_affinity_test.go`
+- `backend/internal/repository/gpt_qos_affinity_test.go`
+- `backend/internal/repository/gpt_qos_acceptance_affinity_test.go`
+
+### 已执行测试与结果
+
+```bash
+# backend，修复前后相同的核心回归输入
+go test -tags=unit ./internal/service -run '^TestGPTQuality(ConversationAffinity|MovableResponseAffinity)ThroughScheduler$' -count=1 -v
+# 新增场景，包括不可绕过的资格/容量/保护约束
+go test -tags=unit ./internal/service ./internal/repository -run '^Test(GPTQuality(ConversationAffinity|MovableResponseAffinity|CacheAffinity)|GPTQoSCacheAffinity)' -count=1 -v
+# 关联回归与竞态检测
+go test -race -tags=unit ./internal/service ./internal/repository ./internal/handler -run 'Test(OpenAIFallback|GPTQoS|GPTQuality|PreferNonFallback|FallbackAccount|OpenAIAccountPreference|Sticky|OpenAI.*(Scheduler|LoadAware|PreviousResponse|Guardian|SessionHash|ContentSession)|GenerateSessionHash|PriorityScheduling|PriorityOAuth|StreamWrittenGuard|FailoverRetryWaitBudget|FailoverClientGone)' -count=1 -json
+# 无显式标识时的既有内容会话指纹
+go test -tags=unit ./internal/service -run '^TestDeriveOpenAIContentSessionSeed' -count=1 -v
+# 本地二进制与真实双进程；分别运行两个场景，避免复用测试数据库状态
+go build -o ../artifacts/gpt-qos-final-session-affinity/server ./cmd/server
+SUB2API_ACCEPTANCE_BINARY="$PWD/../artifacts/gpt-qos-final-session-affinity/server" SUB2API_ACCEPTANCE_EVIDENCE="$PWD/../artifacts/gpt-qos-final-session-affinity/ConversationAffinity" go test -tags=integration ./internal/repository -run '^TestGPTQoSAcceptanceConversationAffinity$' -count=1 -v -timeout=3m
+SUB2API_ACCEPTANCE_BINARY="$PWD/../artifacts/gpt-qos-final-session-affinity/server" SUB2API_ACCEPTANCE_EVIDENCE="$PWD/../artifacts/gpt-qos-final-session-affinity/StandbyOverflow" go test -tags=integration ./internal/repository -run '^TestGPTQoSAcceptanceStandbyOverflow$' -count=1 -v -timeout=3m
+```
+
+- 新增定向回归 24 个含父/子测试通过。最终关联 Race：service 376、repository 36、handler 51，共 **463** 个通过事件，3 包退出 0，无失败/跳过。原公平性测试 100 次实际授权为 Premium 60 / Standard 30 / Economy 10；同等级两个用户分别 30/30、15/15、5/5。该份额来自原公平性场景，不将它当成真实生产吞吐份额。
+- 内容指纹测试另 39 个含父/子测试通过；新代码不更改会话标识、请求正文或上游缓存键。`git diff --check`、脚本语法检查、服务构建通过；未修改前端，未重复执行前端测试。
+- **真实双服务会话场景 PASS**：共 44 次回环上游请求，全部 200。公平队列关闭/开启各 22 次：1 次建立会话；占用原账号 5/10 槽后两实例轮流发送 12 次均复用原账号；占满 10/10 后 1 次安全转至另一个 Strong；释放原槽后 8 次继续复用新绑定账号。两个场景均检查队列与运行资源排空。根测试 35.08 秒，含容器准备总 60.758 秒，属于功能测试墙钟时间而非性能基准。
+- **真实双服务后备兼容 PASS**：另 14 次回环请求，全部 200；QoS 开关两种状态下，普通满载进入后备、恢复后回普通，运行中的后备 SSE 未抢占，必须续链保留后备所有者。根测试 10.19 秒，含容器准备总 29.194 秒。
+- Redis 定向测试用两个独立 client 验证 24 轮复用、原账号满载逃逸及计数排空；另验证 Basic 粘性、后备粘性、共享池满载和高峰预留不能越过其约束。它与上述真实双 OS 进程测试分开记录，不混称。
+
+### 证据、回滚与边界
+
+证据集中于 `artifacts/gpt-qos-final-session-affinity/`，初始执行时目录名为 `gpt-qos-session-affinity`，测试结束后归入既有忽略规则；原始日志未改写：`baseline.log`、`modified-focused.log`、`race.jsonl`、`content-session.log`、`integration-ConversationAffinity.log`、`integration-StandbyOverflow.log`、两组真实 `upstream-events.json`、服务日志及分场景 JSON。`MODIFIED_FILE` 为实际修改的 Lua 副本，`DIFF_FILE` 含完整本任务改动，`VERIFICATION.txt` 记录命令/输入/输出/退出码；`original-hashes.json` 保存原文件 SHA-256，`ROLLBACK.sh --root /absolute/repository-copy` 先检查哈希再逐项恢复，不改 Git 历史或运行状态。脚本已在独立副本验证恢复 10 个目标文件的原哈希；原负载/协议和跨实例空闲轮转测试在该副本通过（退出 0）。回滚副本临时重放相同新增会话回归，四个子场景再次得到 `expected: 2 / actual: 1`（退出 1），确认旧选号行为已恢复；临时测试随后移除。修复后的主工作区以同一核心命令通过（退出 0），并保留新实现。
+
+本增量验收通过；原全功能 **CONDITIONAL PASS** 的既有边界不变。未重新执行完整 60 秒压力矩阵或生产真实 OAuth/VM2API 缓存测量，不声称 Token 缓存命中率提升百分比。逻辑账号亲和不保证上游内部物理账号/缓存状态一致；配置的错误率/TTFT 健康逃逸仍可能主动迁移对话。无需迁移或清空 Redis，更新所有服务实例即可在质量路由开启时生效，混合版本期间旧脚本仍可能负载轮转。回退可关闭质量路由（依赖它的公平队列按现有配置校验一起关闭）恢复既有调度，或排空后回退二进制；关闭公平排队但保留质量路由时，本次 Go 亲和仍生效。未部署生产、未发送付费模型请求。

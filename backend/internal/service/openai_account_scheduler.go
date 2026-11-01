@@ -420,7 +420,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	defer func() {
 		decision.LatencyMs = time.Since(start).Milliseconds()
 		s.metrics.recordSelect(decision)
-		if qualityAware && selection != nil && selection.Account != nil && (decision.StickyPreviousHit || decision.Layer == openAIAccountScheduleLayerGuardianParent) {
+		if qualityAware && selection != nil && selection.Account != nil && (decision.Layer == openAIAccountScheduleLayerPreviousResponse || decision.Layer == openAIAccountScheduleLayerGuardianParent) {
 			s.recordGPTQualitySelection(ctx, req, selection, selection.Account.QualityTier(), false, start)
 			if state, _ := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState); state != nil {
 				state.mu.Lock()
@@ -551,7 +551,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	if selection != nil && selection.Account != nil {
 		decision.SelectedAccountID = selection.Account.ID
 		decision.SelectedAccountType = selection.Account.Type
-		if req.StickyWeighted {
+		if req.StickyWeighted || qualityAware {
 			if req.StickyPreviousAccountID > 0 && selection.Account.ID == req.StickyPreviousAccountID {
 				decision.StickyPreviousHit = true
 			}
@@ -772,6 +772,7 @@ func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccountAt(accountID in
 }
 
 type openAIAccountCandidateScore struct {
+	cacheAffinity         int
 	priorityOAuthSpare    int
 	priorityAPIStandby    bool
 	priorityLatencyFactor float64
@@ -2810,7 +2811,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	stickyWeighted := s.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx)
 	subscriptionPriority := s.isOpenAIAdvancedSchedulerSubscriptionPriorityEnabled(ctx)
 	stickyPreviousAccountID := int64(0)
-	if stickyWeighted && previousResponseCanMove && strings.TrimSpace(previousResponseID) != "" && platform == PlatformOpenAI {
+	if (stickyWeighted || qualityAware) && previousResponseCanMove && strings.TrimSpace(previousResponseID) != "" && platform == PlatformOpenAI {
 		stickyPreviousAccountID = s.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
 	}
 
