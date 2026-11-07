@@ -25,6 +25,7 @@
     <!-- Right: rate pill + checkmark (vertically centered to first row) -->
     <div class="flex shrink-0 items-start gap-2 pt-0.5">
       <div class="flex shrink-0 flex-col items-end gap-1">
+        <GroupUnavailableTime :fields="unavailableTime" />
         <!-- Rate pill (platform color) -->
         <span v-if="rateMultiplier !== undefined" :class="['inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', ratePillClass]">
           <template v-if="hasCustomRate">
@@ -65,6 +66,8 @@
 </template>
 
 <script setup lang="ts">
+import GroupUnavailableTime from "./GroupUnavailableTime.vue"
+import type { UnavailableTimeFields } from "@/utils/unavailable-time"
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
@@ -81,6 +84,7 @@ interface Props {
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   userRateMultiplier?: number | null
+  unavailableTime?: UnavailableTimeFields | null
   peakRateEnabled?: boolean
   peakStart?: string
   peakEnd?: string

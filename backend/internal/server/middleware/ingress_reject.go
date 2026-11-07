@@ -24,6 +24,7 @@ const (
 	IngressRejectUserInactive           IngressRejectReason = "user_inactive"
 	IngressRejectGroupDeleted           IngressRejectReason = "group_deleted"
 	IngressRejectGroupDisabled          IngressRejectReason = "group_disabled"
+	IngressRejectGroupUnavailableTime   IngressRejectReason = "group_unavailable_time"
 	IngressRejectGroupNotAllowed        IngressRejectReason = "group_not_allowed"
 	IngressRejectGroupBanned            IngressRejectReason = "group_banned"
 	IngressRejectGroupUnassigned        IngressRejectReason = "group_unassigned"

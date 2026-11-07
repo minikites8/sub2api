@@ -638,6 +638,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, infraerrors.BadRequest("INVALID_PEAK_RATE_CONFIG", err.Error())
 	}
 
+	unavailableEnabled, unavailableStart, unavailableEnd := NormalizeUnavailableTimeConfig(subscriptionType, input.UnavailableTimeEnabled, input.UnavailableStart, input.UnavailableEnd)
+	if err := ValidateUnavailableTimeConfig(subscriptionType, unavailableEnabled, unavailableStart, unavailableEnd); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_UNAVAILABLE_TIME_CONFIG", err.Error())
+	}
+
 	profitMinMargin := 0.0
 	if input.ProfitMinMargin != nil {
 		profitMinMargin = *input.ProfitMinMargin
@@ -765,6 +770,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
 		VideoRateIndependent:            input.VideoRateIndependent,
 		VideoRateMultiplier:             videoRateMultiplier,
+		UnavailableTimeEnabled:          unavailableEnabled,
+		UnavailableStart:                unavailableStart,
+		UnavailableEnd:                  unavailableEnd,
 		PeakRateEnabled:                 peakRateEnabled,
 		PeakStart:                       peakStart,
 		PeakEnd:                         peakEnd,
@@ -1089,6 +1097,19 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("video_rate_multiplier must be >= 0")
 		}
 		group.VideoRateMultiplier = *input.VideoRateMultiplier
+	}
+	if input.UnavailableTimeEnabled != nil {
+		group.UnavailableTimeEnabled = *input.UnavailableTimeEnabled
+	}
+	if input.UnavailableStart != nil {
+		group.UnavailableStart = *input.UnavailableStart
+	}
+	if input.UnavailableEnd != nil {
+		group.UnavailableEnd = *input.UnavailableEnd
+	}
+	group.UnavailableTimeEnabled, group.UnavailableStart, group.UnavailableEnd = NormalizeUnavailableTimeConfig(group.SubscriptionType, group.UnavailableTimeEnabled, group.UnavailableStart, group.UnavailableEnd)
+	if err := ValidateUnavailableTimeConfig(group.SubscriptionType, group.UnavailableTimeEnabled, group.UnavailableStart, group.UnavailableEnd); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_UNAVAILABLE_TIME_CONFIG", err.Error())
 	}
 	if input.PeakRateEnabled != nil {
 		group.PeakRateEnabled = *input.PeakRateEnabled

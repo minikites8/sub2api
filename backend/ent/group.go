@@ -34,6 +34,12 @@ type Group struct {
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
 	// 按模型覆盖分组倍率；模型名大小写不敏感精确匹配
 	ModelRateMultipliers map[string]float64 `json:"model_rate_multipliers,omitempty"`
+	// UnavailableTimeEnabled holds the value of the "unavailable_time_enabled" field.
+	UnavailableTimeEnabled bool `json:"unavailable_time_enabled,omitempty"`
+	// 每日不可用开始时间 HH:MM（含），按系统时区，支持跨午夜
+	UnavailableStart string `json:"unavailable_start,omitempty"`
+	// 每日不可用结束时间 HH:MM（不含）
+	UnavailableEnd string `json:"unavailable_end,omitempty"`
 	// 是否启用高峰时段倍率
 	PeakRateEnabled bool `json:"peak_rate_enabled,omitempty"`
 	// 高峰开始时间 HH:MM（含），如 14:00；空表示未配置；不支持跨天
@@ -292,13 +298,13 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRateMultipliers, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldStreamOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldEnableBps, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldKiroCacheEmulationEnabled, group.FieldKiroAutoStickyEnabled, group.FieldGptAutoEnabled, group.FieldProfitControlEnabled:
+		case group.FieldUnavailableTimeEnabled, group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldStreamOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldEnableBps, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldKiroCacheEmulationEnabled, group.FieldKiroAutoStickyEnabled, group.FieldGptAutoEnabled, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldKiroCacheEmulationRatio, group.FieldKiroCacheCreationEmulationRatio, group.FieldKiroCacheReadEmulationRatio, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit, group.FieldKiroStickySessionTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldSchedulingStrategy, group.FieldDefaultMappedModel, group.FieldOpenaiServiceTierMode, group.FieldOpenaiServiceTier, group.FieldMaxReasoningEffort, group.FieldMaxReasoningEffortOverLimit, group.FieldKiroCacheEmulationMode, group.FieldKiroEndpointMode:
+		case group.FieldName, group.FieldDescription, group.FieldUnavailableStart, group.FieldUnavailableEnd, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldSchedulingStrategy, group.FieldDefaultMappedModel, group.FieldOpenaiServiceTierMode, group.FieldOpenaiServiceTier, group.FieldMaxReasoningEffort, group.FieldMaxReasoningEffortOverLimit, group.FieldKiroCacheEmulationMode, group.FieldKiroEndpointMode:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -368,6 +374,24 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.ModelRateMultipliers); err != nil {
 					return fmt.Errorf("unmarshal field model_rate_multipliers: %w", err)
 				}
+			}
+		case group.FieldUnavailableTimeEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field unavailable_time_enabled", values[i])
+			} else if value.Valid {
+				_m.UnavailableTimeEnabled = value.Bool
+			}
+		case group.FieldUnavailableStart:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field unavailable_start", values[i])
+			} else if value.Valid {
+				_m.UnavailableStart = value.String
+			}
+		case group.FieldUnavailableEnd:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field unavailable_end", values[i])
+			} else if value.Valid {
+				_m.UnavailableEnd = value.String
 			}
 		case group.FieldPeakRateEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -954,6 +978,15 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("model_rate_multipliers=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ModelRateMultipliers))
+	builder.WriteString(", ")
+	builder.WriteString("unavailable_time_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UnavailableTimeEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("unavailable_start=")
+	builder.WriteString(_m.UnavailableStart)
+	builder.WriteString(", ")
+	builder.WriteString("unavailable_end=")
+	builder.WriteString(_m.UnavailableEnd)
 	builder.WriteString(", ")
 	builder.WriteString("peak_rate_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PeakRateEnabled))

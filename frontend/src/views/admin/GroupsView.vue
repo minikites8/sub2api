@@ -134,6 +134,7 @@
               data-testid="group-stream-only-badge"
               >{{ t("admin.groups.form.streamOnlyBadge") }}</span
             >
+            <GroupUnavailableTime :fields="row" class="mt-1 block" />
           </template>
 
           <template #cell-id="{ value }">
@@ -1431,6 +1432,13 @@
             </div>
           </div>
         </div>
+
+        <GroupUnavailableTimeEditor
+          v-if="createForm.subscription_type === 'subscription'"
+          v-model:enabled="createForm.unavailable_time_enabled"
+          v-model:start="createForm.unavailable_start"
+          v-model:end="createForm.unavailable_end"
+        />
 
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
         <div v-if="createForm.subscription_type === 'subscription'" class="border-t pt-4">
@@ -3325,6 +3333,13 @@
           </div>
         </div>
 
+        <GroupUnavailableTimeEditor
+          v-if="editForm.subscription_type === 'subscription'"
+          v-model:enabled="editForm.unavailable_time_enabled"
+          v-model:start="editForm.unavailable_start"
+          v-model:end="editForm.unavailable_end"
+        />
+
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
         <div v-if="editForm.subscription_type === 'subscription'" class="border-t pt-4">
           <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -4808,6 +4823,8 @@
 </template>
 
 <script setup lang="ts">
+import GroupUnavailableTimeEditor from "@/components/group/GroupUnavailableTimeEditor.vue";
+import GroupUnavailableTime from "@/components/common/GroupUnavailableTime.vue";
 import GroupQoSEditor from '@/components/group/GroupQoSEditor.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -5627,6 +5644,10 @@ const createForm = reactive({
   audio_realtime_price_per_min: null as number | null,
   audio_tts_price_per_million_chars: null as number | null,
   audio_stt_price_per_hour: null as number | null,
+  // 每日不可用时段
+  unavailable_time_enabled: false,
+  unavailable_start: "",
+  unavailable_end: "",
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -6056,6 +6077,10 @@ const editForm = reactive({
   audio_realtime_price_per_min: null as number | null,
   audio_tts_price_per_million_chars: null as number | null,
   audio_stt_price_per_hour: null as number | null,
+  // 每日不可用时段
+  unavailable_time_enabled: false,
+  unavailable_start: "",
+  unavailable_end: "",
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -6543,6 +6568,9 @@ const closeCreateModal = () => {
   createForm.audio_realtime_price_per_min = null;
   createForm.audio_tts_price_per_million_chars = null;
   createForm.audio_stt_price_per_hour = null;
+  createForm.unavailable_time_enabled = false;
+  createForm.unavailable_start = "";
+  createForm.unavailable_end = "";
   createForm.peak_rate_enabled = false;
   createForm.peak_start = "";
   createForm.peak_end = "";
@@ -6887,6 +6915,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.audio_realtime_price_per_min = group.audio_realtime_price_per_min ?? null;
   editForm.audio_tts_price_per_million_chars = group.audio_tts_price_per_million_chars ?? null;
   editForm.audio_stt_price_per_hour = group.audio_stt_price_per_hour ?? null;
+  editForm.unavailable_time_enabled = group.unavailable_time_enabled ?? false;
+  editForm.unavailable_start = group.unavailable_start ?? "";
+  editForm.unavailable_end = group.unavailable_end ?? "";
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
@@ -6978,6 +7009,9 @@ const closeEditModal = () => {
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
+  editForm.unavailable_time_enabled = false;
+  editForm.unavailable_start = "";
+  editForm.unavailable_end = "";
   editForm.peak_rate_enabled = false;
   editForm.peak_start = "";
   editForm.peak_end = "";
@@ -7486,6 +7520,9 @@ watch(
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
     } else {
+      createForm.unavailable_time_enabled = false;
+      createForm.unavailable_start = "";
+      createForm.unavailable_end = "";
       createForm.peak_rate_enabled = false;
       createForm.peak_start = "";
       createForm.peak_end = "";
@@ -7499,6 +7536,9 @@ watch(
   () => editForm.subscription_type,
   (newVal) => {
     if (newVal !== "subscription") {
+      editForm.unavailable_time_enabled = false;
+      editForm.unavailable_start = "";
+      editForm.unavailable_end = "";
       editForm.peak_rate_enabled = false;
       editForm.peak_start = "";
       editForm.peak_end = "";

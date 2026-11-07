@@ -491,6 +491,8 @@ export default {
     planFeatures: 'Features',
     planCard: {
       rate: 'Rate',
+      unavailableTime: 'Unavailable daily',
+      nextDay: 'next day',
       peakRate: 'Peak Rate',
       dailyLimit: 'Daily',
       weeklyLimit: 'Weekly',

@@ -85,6 +85,21 @@ func RateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRateMultiplier, v))
 }
 
+// UnavailableTimeEnabled applies equality check predicate on the "unavailable_time_enabled" field. It's identical to UnavailableTimeEnabledEQ.
+func UnavailableTimeEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUnavailableTimeEnabled, v))
+}
+
+// UnavailableStart applies equality check predicate on the "unavailable_start" field. It's identical to UnavailableStartEQ.
+func UnavailableStart(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUnavailableStart, v))
+}
+
+// UnavailableEnd applies equality check predicate on the "unavailable_end" field. It's identical to UnavailableEndEQ.
+func UnavailableEnd(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUnavailableEnd, v))
+}
+
 // PeakRateEnabled applies equality check predicate on the "peak_rate_enabled" field. It's identical to PeakRateEnabledEQ.
 func PeakRateEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPeakRateEnabled, v))
@@ -733,6 +748,146 @@ func ModelRateMultipliersIsNil() predicate.Group {
 // ModelRateMultipliersNotNil applies the NotNil predicate on the "model_rate_multipliers" field.
 func ModelRateMultipliersNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldModelRateMultipliers))
+}
+
+// UnavailableTimeEnabledEQ applies the EQ predicate on the "unavailable_time_enabled" field.
+func UnavailableTimeEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUnavailableTimeEnabled, v))
+}
+
+// UnavailableTimeEnabledNEQ applies the NEQ predicate on the "unavailable_time_enabled" field.
+func UnavailableTimeEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldUnavailableTimeEnabled, v))
+}
+
+// UnavailableStartEQ applies the EQ predicate on the "unavailable_start" field.
+func UnavailableStartEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUnavailableStart, v))
+}
+
+// UnavailableStartNEQ applies the NEQ predicate on the "unavailable_start" field.
+func UnavailableStartNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldUnavailableStart, v))
+}
+
+// UnavailableStartIn applies the In predicate on the "unavailable_start" field.
+func UnavailableStartIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldUnavailableStart, vs...))
+}
+
+// UnavailableStartNotIn applies the NotIn predicate on the "unavailable_start" field.
+func UnavailableStartNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldUnavailableStart, vs...))
+}
+
+// UnavailableStartGT applies the GT predicate on the "unavailable_start" field.
+func UnavailableStartGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldUnavailableStart, v))
+}
+
+// UnavailableStartGTE applies the GTE predicate on the "unavailable_start" field.
+func UnavailableStartGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldUnavailableStart, v))
+}
+
+// UnavailableStartLT applies the LT predicate on the "unavailable_start" field.
+func UnavailableStartLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldUnavailableStart, v))
+}
+
+// UnavailableStartLTE applies the LTE predicate on the "unavailable_start" field.
+func UnavailableStartLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldUnavailableStart, v))
+}
+
+// UnavailableStartContains applies the Contains predicate on the "unavailable_start" field.
+func UnavailableStartContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldUnavailableStart, v))
+}
+
+// UnavailableStartHasPrefix applies the HasPrefix predicate on the "unavailable_start" field.
+func UnavailableStartHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldUnavailableStart, v))
+}
+
+// UnavailableStartHasSuffix applies the HasSuffix predicate on the "unavailable_start" field.
+func UnavailableStartHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldUnavailableStart, v))
+}
+
+// UnavailableStartEqualFold applies the EqualFold predicate on the "unavailable_start" field.
+func UnavailableStartEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldUnavailableStart, v))
+}
+
+// UnavailableStartContainsFold applies the ContainsFold predicate on the "unavailable_start" field.
+func UnavailableStartContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldUnavailableStart, v))
+}
+
+// UnavailableEndEQ applies the EQ predicate on the "unavailable_end" field.
+func UnavailableEndEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndNEQ applies the NEQ predicate on the "unavailable_end" field.
+func UnavailableEndNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndIn applies the In predicate on the "unavailable_end" field.
+func UnavailableEndIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldUnavailableEnd, vs...))
+}
+
+// UnavailableEndNotIn applies the NotIn predicate on the "unavailable_end" field.
+func UnavailableEndNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldUnavailableEnd, vs...))
+}
+
+// UnavailableEndGT applies the GT predicate on the "unavailable_end" field.
+func UnavailableEndGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndGTE applies the GTE predicate on the "unavailable_end" field.
+func UnavailableEndGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndLT applies the LT predicate on the "unavailable_end" field.
+func UnavailableEndLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndLTE applies the LTE predicate on the "unavailable_end" field.
+func UnavailableEndLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndContains applies the Contains predicate on the "unavailable_end" field.
+func UnavailableEndContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndHasPrefix applies the HasPrefix predicate on the "unavailable_end" field.
+func UnavailableEndHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndHasSuffix applies the HasSuffix predicate on the "unavailable_end" field.
+func UnavailableEndHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndEqualFold applies the EqualFold predicate on the "unavailable_end" field.
+func UnavailableEndEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldUnavailableEnd, v))
+}
+
+// UnavailableEndContainsFold applies the ContainsFold predicate on the "unavailable_end" field.
+func UnavailableEndContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldUnavailableEnd, v))
 }
 
 // PeakRateEnabledEQ applies the EQ predicate on the "peak_rate_enabled" field.

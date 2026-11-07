@@ -174,6 +174,9 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetKiroCacheCreationEmulationRatio(groupIn.KiroCacheCreationEmulationRatio).
 		SetKiroCacheReadEmulationRatio(groupIn.KiroCacheReadEmulationRatio).
 		SetKiroEndpointMode(groupIn.KiroEndpointMode).
+		SetUnavailableTimeEnabled(groupIn.UnavailableTimeEnabled).
+		SetUnavailableStart(groupIn.UnavailableStart).
+		SetUnavailableEnd(groupIn.UnavailableEnd).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).
 		SetPeakEnd(groupIn.PeakEnd).
@@ -382,6 +385,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetKiroCacheCreationEmulationRatio(groupIn.KiroCacheCreationEmulationRatio).
 		SetKiroCacheReadEmulationRatio(groupIn.KiroCacheReadEmulationRatio).
 		SetKiroEndpointMode(groupIn.KiroEndpointMode).
+		SetUnavailableTimeEnabled(groupIn.UnavailableTimeEnabled).
+		SetUnavailableStart(groupIn.UnavailableStart).
+		SetUnavailableEnd(groupIn.UnavailableEnd).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).
 		SetPeakEnd(groupIn.PeakEnd).

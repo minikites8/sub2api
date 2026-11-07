@@ -52,16 +52,19 @@ func (h *AvailableChannelHandler) featureEnabled(c *gin.Context) bool {
 // 订阅视觉加深），并展示默认倍率与高峰倍率规则；用户专属倍率前端走
 // /groups/rates，和 API 密钥页面保持一致。
 type userAvailableGroup struct {
-	ID                 int64   `json:"id"`
-	Name               string  `json:"name"`
-	Platform           string  `json:"platform"`
-	SubscriptionType   string  `json:"subscription_type"`
-	RateMultiplier     float64 `json:"rate_multiplier"`
-	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
-	PeakStart          string  `json:"peak_start"`
-	PeakEnd            string  `json:"peak_end"`
-	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
-	IsExclusive        bool    `json:"is_exclusive"`
+	ID                     int64   `json:"id"`
+	Name                   string  `json:"name"`
+	Platform               string  `json:"platform"`
+	SubscriptionType       string  `json:"subscription_type"`
+	RateMultiplier         float64 `json:"rate_multiplier"`
+	UnavailableTimeEnabled bool    `json:"unavailable_time_enabled"`
+	UnavailableStart       string  `json:"unavailable_start"`
+	UnavailableEnd         string  `json:"unavailable_end"`
+	PeakRateEnabled        bool    `json:"peak_rate_enabled"`
+	PeakStart              string  `json:"peak_start"`
+	PeakEnd                string  `json:"peak_end"`
+	PeakRateMultiplier     float64 `json:"peak_rate_multiplier"`
+	IsExclusive            bool    `json:"is_exclusive"`
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
@@ -252,16 +255,19 @@ func filterUserVisibleGroups(
 			continue
 		}
 		visible = append(visible, userAvailableGroup{
-			ID:                 g.ID,
-			Name:               g.Name,
-			Platform:           g.Platform,
-			SubscriptionType:   g.SubscriptionType,
-			RateMultiplier:     g.RateMultiplier,
-			PeakRateEnabled:    g.PeakRateEnabled,
-			PeakStart:          g.PeakStart,
-			PeakEnd:            g.PeakEnd,
-			PeakRateMultiplier: g.PeakRateMultiplier,
-			IsExclusive:        g.IsExclusive,
+			ID:                     g.ID,
+			Name:                   g.Name,
+			Platform:               g.Platform,
+			SubscriptionType:       g.SubscriptionType,
+			RateMultiplier:         g.RateMultiplier,
+			UnavailableTimeEnabled: g.UnavailableTimeEnabled,
+			UnavailableStart:       g.UnavailableStart,
+			UnavailableEnd:         g.UnavailableEnd,
+			PeakRateEnabled:        g.PeakRateEnabled,
+			PeakStart:              g.PeakStart,
+			PeakEnd:                g.PeakEnd,
+			PeakRateMultiplier:     g.PeakRateMultiplier,
+			IsExclusive:            g.IsExclusive,
 		})
 	}
 	return visible

@@ -122,6 +122,8 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
 			if code == "GROUP_DELETED" {
 				MarkIngressRejected(c, IngressRejectGroupDeleted)
+			} else if code == "GROUP_UNAVAILABLE_TIME" {
+				MarkIngressRejected(c, IngressRejectGroupUnavailableTime)
 			} else {
 				MarkIngressRejected(c, IngressRejectGroupDisabled)
 			}

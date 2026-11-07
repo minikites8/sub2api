@@ -25,6 +25,11 @@ type Group struct {
 	// ModelRateMultipliers overrides the group multiplier for exact model names.
 	// Keys are matched case-insensitively after trimming whitespace.
 	ModelRateMultipliers map[string]float64
+	// 每日不可用时段（按系统时区，支持跨午夜）。
+	UnavailableTimeEnabled bool
+	UnavailableStart       string
+	UnavailableEnd         string
+
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool

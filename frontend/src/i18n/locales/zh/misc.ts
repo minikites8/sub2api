@@ -515,6 +515,8 @@ export default {
     planFeatures: '功能特性',
     planCard: {
       rate: '倍率',
+      unavailableTime: '每日不可用',
+      nextDay: '次日',
       peakRate: '高峰倍率',
       dailyLimit: '日限额',
       weeklyLimit: '周限额',

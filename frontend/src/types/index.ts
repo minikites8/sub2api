@@ -670,6 +670,10 @@ export interface Group {
   audio_realtime_price_per_min: number | null
   audio_tts_price_per_million_chars: number | null
   audio_stt_price_per_hour: number | null
+  // 每日不可用时段（按系统时区，支持跨午夜）
+  unavailable_time_enabled?: boolean
+  unavailable_start?: string
+  unavailable_end?: string
   // 高峰时段倍率配置
   peak_rate_enabled: boolean
   peak_start: string
@@ -934,6 +938,9 @@ export interface CreateGroupRequest {
   audio_realtime_price_per_min?: number | null
   audio_tts_price_per_million_chars?: number | null
   audio_stt_price_per_hour?: number | null
+  unavailable_time_enabled?: boolean
+  unavailable_start?: string
+  unavailable_end?: string
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
@@ -1016,6 +1023,9 @@ export interface UpdateGroupRequest {
   audio_realtime_price_per_min?: number | null
   audio_tts_price_per_million_chars?: number | null
   audio_stt_price_per_hour?: number | null
+  unavailable_time_enabled?: boolean
+  unavailable_start?: string
+  unavailable_end?: string
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string

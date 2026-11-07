@@ -30,6 +30,12 @@ const (
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldModelRateMultipliers holds the string denoting the model_rate_multipliers field in the database.
 	FieldModelRateMultipliers = "model_rate_multipliers"
+	// FieldUnavailableTimeEnabled holds the string denoting the unavailable_time_enabled field in the database.
+	FieldUnavailableTimeEnabled = "unavailable_time_enabled"
+	// FieldUnavailableStart holds the string denoting the unavailable_start field in the database.
+	FieldUnavailableStart = "unavailable_start"
+	// FieldUnavailableEnd holds the string denoting the unavailable_end field in the database.
+	FieldUnavailableEnd = "unavailable_end"
 	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
 	FieldPeakRateEnabled = "peak_rate_enabled"
 	// FieldPeakStart holds the string denoting the peak_start field in the database.
@@ -262,6 +268,9 @@ var Columns = []string{
 	FieldDescription,
 	FieldRateMultiplier,
 	FieldModelRateMultipliers,
+	FieldUnavailableTimeEnabled,
+	FieldUnavailableStart,
+	FieldUnavailableEnd,
 	FieldPeakRateEnabled,
 	FieldPeakStart,
 	FieldPeakEnd,
@@ -376,6 +385,16 @@ var (
 	NameValidator func(string) error
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
+	// DefaultUnavailableTimeEnabled holds the default value on creation for the "unavailable_time_enabled" field.
+	DefaultUnavailableTimeEnabled bool
+	// DefaultUnavailableStart holds the default value on creation for the "unavailable_start" field.
+	DefaultUnavailableStart string
+	// UnavailableStartValidator is a validator for the "unavailable_start" field. It is called by the builders before save.
+	UnavailableStartValidator func(string) error
+	// DefaultUnavailableEnd holds the default value on creation for the "unavailable_end" field.
+	DefaultUnavailableEnd string
+	// UnavailableEndValidator is a validator for the "unavailable_end" field. It is called by the builders before save.
+	UnavailableEndValidator func(string) error
 	// DefaultPeakRateEnabled holds the default value on creation for the "peak_rate_enabled" field.
 	DefaultPeakRateEnabled bool
 	// DefaultPeakStart holds the default value on creation for the "peak_start" field.
@@ -560,6 +579,21 @@ func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 // ByRateMultiplier orders the results by the rate_multiplier field.
 func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
+}
+
+// ByUnavailableTimeEnabled orders the results by the unavailable_time_enabled field.
+func ByUnavailableTimeEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUnavailableTimeEnabled, opts...).ToFunc()
+}
+
+// ByUnavailableStart orders the results by the unavailable_start field.
+func ByUnavailableStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUnavailableStart, opts...).ToFunc()
+}
+
+// ByUnavailableEnd orders the results by the unavailable_end field.
+func ByUnavailableEnd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUnavailableEnd, opts...).ToFunc()
 }
 
 // ByPeakRateEnabled orders the results by the peak_rate_enabled field.

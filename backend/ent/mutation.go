@@ -22590,6 +22590,9 @@ type GroupMutation struct {
 	rate_multiplier                         *float64
 	addrate_multiplier                      *float64
 	model_rate_multipliers                  *map[string]float64
+	unavailable_time_enabled                *bool
+	unavailable_start                       *string
+	unavailable_end                         *string
 	peak_rate_enabled                       *bool
 	peak_start                              *string
 	peak_end                                *string
@@ -23129,6 +23132,114 @@ func (m *GroupMutation) ModelRateMultipliersCleared() bool {
 func (m *GroupMutation) ResetModelRateMultipliers() {
 	m.model_rate_multipliers = nil
 	delete(m.clearedFields, group.FieldModelRateMultipliers)
+}
+
+// SetUnavailableTimeEnabled sets the "unavailable_time_enabled" field.
+func (m *GroupMutation) SetUnavailableTimeEnabled(b bool) {
+	m.unavailable_time_enabled = &b
+}
+
+// UnavailableTimeEnabled returns the value of the "unavailable_time_enabled" field in the mutation.
+func (m *GroupMutation) UnavailableTimeEnabled() (r bool, exists bool) {
+	v := m.unavailable_time_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnavailableTimeEnabled returns the old "unavailable_time_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldUnavailableTimeEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnavailableTimeEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnavailableTimeEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnavailableTimeEnabled: %w", err)
+	}
+	return oldValue.UnavailableTimeEnabled, nil
+}
+
+// ResetUnavailableTimeEnabled resets all changes to the "unavailable_time_enabled" field.
+func (m *GroupMutation) ResetUnavailableTimeEnabled() {
+	m.unavailable_time_enabled = nil
+}
+
+// SetUnavailableStart sets the "unavailable_start" field.
+func (m *GroupMutation) SetUnavailableStart(s string) {
+	m.unavailable_start = &s
+}
+
+// UnavailableStart returns the value of the "unavailable_start" field in the mutation.
+func (m *GroupMutation) UnavailableStart() (r string, exists bool) {
+	v := m.unavailable_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnavailableStart returns the old "unavailable_start" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldUnavailableStart(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnavailableStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnavailableStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnavailableStart: %w", err)
+	}
+	return oldValue.UnavailableStart, nil
+}
+
+// ResetUnavailableStart resets all changes to the "unavailable_start" field.
+func (m *GroupMutation) ResetUnavailableStart() {
+	m.unavailable_start = nil
+}
+
+// SetUnavailableEnd sets the "unavailable_end" field.
+func (m *GroupMutation) SetUnavailableEnd(s string) {
+	m.unavailable_end = &s
+}
+
+// UnavailableEnd returns the value of the "unavailable_end" field in the mutation.
+func (m *GroupMutation) UnavailableEnd() (r string, exists bool) {
+	v := m.unavailable_end
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnavailableEnd returns the old "unavailable_end" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldUnavailableEnd(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnavailableEnd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnavailableEnd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnavailableEnd: %w", err)
+	}
+	return oldValue.UnavailableEnd, nil
+}
+
+// ResetUnavailableEnd resets all changes to the "unavailable_end" field.
+func (m *GroupMutation) ResetUnavailableEnd() {
+	m.unavailable_end = nil
 }
 
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
@@ -27111,7 +27222,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 82)
+	fields := make([]string, 0, 85)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -27132,6 +27243,15 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.model_rate_multipliers != nil {
 		fields = append(fields, group.FieldModelRateMultipliers)
+	}
+	if m.unavailable_time_enabled != nil {
+		fields = append(fields, group.FieldUnavailableTimeEnabled)
+	}
+	if m.unavailable_start != nil {
+		fields = append(fields, group.FieldUnavailableStart)
+	}
+	if m.unavailable_end != nil {
+		fields = append(fields, group.FieldUnavailableEnd)
 	}
 	if m.peak_rate_enabled != nil {
 		fields = append(fields, group.FieldPeakRateEnabled)
@@ -27380,6 +27500,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.RateMultiplier()
 	case group.FieldModelRateMultipliers:
 		return m.ModelRateMultipliers()
+	case group.FieldUnavailableTimeEnabled:
+		return m.UnavailableTimeEnabled()
+	case group.FieldUnavailableStart:
+		return m.UnavailableStart()
+	case group.FieldUnavailableEnd:
+		return m.UnavailableEnd()
 	case group.FieldPeakRateEnabled:
 		return m.PeakRateEnabled()
 	case group.FieldPeakStart:
@@ -27553,6 +27679,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRateMultiplier(ctx)
 	case group.FieldModelRateMultipliers:
 		return m.OldModelRateMultipliers(ctx)
+	case group.FieldUnavailableTimeEnabled:
+		return m.OldUnavailableTimeEnabled(ctx)
+	case group.FieldUnavailableStart:
+		return m.OldUnavailableStart(ctx)
+	case group.FieldUnavailableEnd:
+		return m.OldUnavailableEnd(ctx)
 	case group.FieldPeakRateEnabled:
 		return m.OldPeakRateEnabled(ctx)
 	case group.FieldPeakStart:
@@ -27760,6 +27892,27 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelRateMultipliers(v)
+		return nil
+	case group.FieldUnavailableTimeEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnavailableTimeEnabled(v)
+		return nil
+	case group.FieldUnavailableStart:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnavailableStart(v)
+		return nil
+	case group.FieldUnavailableEnd:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnavailableEnd(v)
 		return nil
 	case group.FieldPeakRateEnabled:
 		v, ok := value.(bool)
@@ -28871,6 +29024,15 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldModelRateMultipliers:
 		m.ResetModelRateMultipliers()
+		return nil
+	case group.FieldUnavailableTimeEnabled:
+		m.ResetUnavailableTimeEnabled()
+		return nil
+	case group.FieldUnavailableStart:
+		m.ResetUnavailableStart()
+		return nil
+	case group.FieldUnavailableEnd:
+		m.ResetUnavailableEnd()
 		return nil
 	case group.FieldPeakRateEnabled:
 		m.ResetPeakRateEnabled()

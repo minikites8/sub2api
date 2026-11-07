@@ -742,6 +742,9 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
 	defer requesttiming.Observe(ctx, "billing_check")()
+	if group.IsUnavailableAt(time.Now()) {
+		return ErrGroupUnavailableTime
+	}
 	// 简易模式默认跳过所有计费检查. An explicit key-window opt-in keeps
 	// balance/subscription/platform checks bypassed while enforcing the three
 	// API-key monetary windows from the database source of truth.

@@ -52,6 +52,16 @@ const mountPlanCard = (groupPlatform: string, overrides: Partial<SubscriptionPla
   });
 
 describe("SubscriptionPlanCard", () => {
+  it("discloses daily unavailable hours before purchase", () => {
+    const wrapper = mountPlanCard("openai", {
+      unavailable_time_enabled: true,
+      unavailable_start: "08:00",
+      unavailable_end: "22:00",
+    });
+    expect(wrapper.text()).toContain("payment.planCard.unavailableTime");
+    expect(wrapper.text()).toContain("08:00–22:00");
+    expect(mountPlanCard("openai").text()).not.toContain("payment.planCard.unavailableTime");
+  });
   it("does not show Antigravity model scopes for OpenAI plans", () => {
     const text = mountPlanCard("openai").text();
 

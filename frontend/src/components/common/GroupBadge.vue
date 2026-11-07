@@ -20,6 +20,7 @@
         {{ labelText }}
       </template>
     </span>
+    <GroupUnavailableTime :fields="unavailableTime" />
     <span v-if="hasPeakRate" :class="peakRateClass" :title="peakRateTitle">
       {{ peakRateText }}
     </span>
@@ -27,6 +28,8 @@
 </template>
 
 <script setup lang="ts">
+import GroupUnavailableTime from "./GroupUnavailableTime.vue"
+import type { UnavailableTimeFields } from "@/utils/unavailable-time"
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SubscriptionType, GroupPlatform } from '@/types'
@@ -41,6 +44,7 @@ interface Props {
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   userRateMultiplier?: number | null // 用户专属倍率
+  unavailableTime?: UnavailableTimeFields | null
   peakRateEnabled?: boolean
   peakStart?: string
   peakEnd?: string

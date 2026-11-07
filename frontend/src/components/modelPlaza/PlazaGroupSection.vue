@@ -12,6 +12,7 @@
           :subscription-type="(group.subscription_type || 'standard') as SubscriptionType"
           :rate-multiplier="group.rate_multiplier"
           :user-rate-multiplier="group.user_rate_multiplier ?? null"
+          :unavailable-time="group"
           :peak-rate-enabled="group.peak_rate_enabled"
           :peak-start="group.peak_start"
           :peak-end="group.peak_end"

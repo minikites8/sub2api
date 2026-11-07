@@ -285,6 +285,7 @@
                       <span :class="['text-lg font-bold', planTextClass]">×{{ selectedPlan.rate_multiplier ?? 1 }}</span>
                     </div>
                   </div>
+                  <GroupUnavailableTime :fields="selectedPlan" class="col-span-2" />
                   <div v-if="planHasPeakRate(selectedPlan)">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.peakRate') }}</span>
                     <div class="text-sm font-semibold text-amber-700 dark:text-amber-300">
@@ -474,6 +475,7 @@
                       </div>
                       <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
                         <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
+                        <GroupUnavailableTime :fields="sub.group" />
                         <span v-if="subscriptionHasPeakRate(sub)">{{ t('payment.planCard.peakRate') }}: {{ subscriptionPeakRateLabel(sub) }}</span>
                         <span v-if="sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
                         <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
@@ -547,6 +549,7 @@
 </template>
 
 <script setup lang="ts">
+import GroupUnavailableTime from "@/components/common/GroupUnavailableTime.vue"
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'

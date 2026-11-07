@@ -49,6 +49,7 @@
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.rate') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ rateDisplay }}</span>
         </div>
+        <GroupUnavailableTime :fields="plan" class="col-span-2" />
         <div v-if="hasPeakRate" class="col-span-2 flex items-center justify-between gap-2">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.peakRate') }}</span>
           <span class="text-right font-medium text-amber-700 dark:text-amber-300">{{ peakRateDisplay }}</span>
@@ -105,6 +106,7 @@
 </template>
 
 <script setup lang="ts">
+import GroupUnavailableTime from "@/components/common/GroupUnavailableTime.vue"
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SubscriptionPlan } from '@/types/payment'

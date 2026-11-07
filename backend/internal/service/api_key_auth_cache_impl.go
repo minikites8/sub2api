@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 30 // include explicit GPT Auto group permission
+const apiKeyAuthSnapshotVersion = 31 // include subscription group unavailable hours
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -478,6 +478,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			KiroCacheCreationEmulationRatio: groupForSnapshot.KiroCacheCreationEmulationRatio,
 			KiroCacheReadEmulationRatio:     groupForSnapshot.KiroCacheReadEmulationRatio,
 			KiroEndpointMode:                groupForSnapshot.EffectiveKiroEndpointMode(),
+			UnavailableTimeEnabled:          groupForSnapshot.UnavailableTimeEnabled,
+			UnavailableStart:                groupForSnapshot.UnavailableStart,
+			UnavailableEnd:                  groupForSnapshot.UnavailableEnd,
 			PeakRateEnabled:                 groupForSnapshot.PeakRateEnabled,
 			PeakStart:                       groupForSnapshot.PeakStart,
 			PeakEnd:                         groupForSnapshot.PeakEnd,
@@ -602,6 +605,9 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			KiroCacheCreationEmulationRatio: snapshot.Group.KiroCacheCreationEmulationRatio,
 			KiroCacheReadEmulationRatio:     snapshot.Group.KiroCacheReadEmulationRatio,
 			KiroEndpointMode:                snapshot.Group.KiroEndpointMode,
+			UnavailableTimeEnabled:          snapshot.Group.UnavailableTimeEnabled,
+			UnavailableStart:                snapshot.Group.UnavailableStart,
+			UnavailableEnd:                  snapshot.Group.UnavailableEnd,
 			PeakRateEnabled:                 snapshot.Group.PeakRateEnabled,
 			PeakStart:                       snapshot.Group.PeakStart,
 			PeakEnd:                         snapshot.Group.PeakEnd,

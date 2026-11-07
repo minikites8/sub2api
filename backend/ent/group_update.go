@@ -130,6 +130,48 @@ func (_u *GroupUpdate) ClearModelRateMultipliers() *GroupUpdate {
 	return _u
 }
 
+// SetUnavailableTimeEnabled sets the "unavailable_time_enabled" field.
+func (_u *GroupUpdate) SetUnavailableTimeEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetUnavailableTimeEnabled(v)
+	return _u
+}
+
+// SetNillableUnavailableTimeEnabled sets the "unavailable_time_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableUnavailableTimeEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetUnavailableTimeEnabled(*v)
+	}
+	return _u
+}
+
+// SetUnavailableStart sets the "unavailable_start" field.
+func (_u *GroupUpdate) SetUnavailableStart(v string) *GroupUpdate {
+	_u.mutation.SetUnavailableStart(v)
+	return _u
+}
+
+// SetNillableUnavailableStart sets the "unavailable_start" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableUnavailableStart(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetUnavailableStart(*v)
+	}
+	return _u
+}
+
+// SetUnavailableEnd sets the "unavailable_end" field.
+func (_u *GroupUpdate) SetUnavailableEnd(v string) *GroupUpdate {
+	_u.mutation.SetUnavailableEnd(v)
+	return _u
+}
+
+// SetNillableUnavailableEnd sets the "unavailable_end" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableUnavailableEnd(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetUnavailableEnd(*v)
+	}
+	return _u
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_u *GroupUpdate) SetPeakRateEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetPeakRateEnabled(v)
@@ -1738,6 +1780,16 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UnavailableStart(); ok {
+		if err := group.UnavailableStartValidator(v); err != nil {
+			return &ValidationError{Name: "unavailable_start", err: fmt.Errorf(`ent: validator failed for field "Group.unavailable_start": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UnavailableEnd(); ok {
+		if err := group.UnavailableEndValidator(v); err != nil {
+			return &ValidationError{Name: "unavailable_end", err: fmt.Errorf(`ent: validator failed for field "Group.unavailable_end": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.PeakStart(); ok {
 		if err := group.PeakStartValidator(v); err != nil {
 			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
@@ -1867,6 +1919,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ModelRateMultipliersCleared() {
 		_spec.ClearField(group.FieldModelRateMultipliers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.UnavailableTimeEnabled(); ok {
+		_spec.SetField(group.FieldUnavailableTimeEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.UnavailableStart(); ok {
+		_spec.SetField(group.FieldUnavailableStart, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UnavailableEnd(); ok {
+		_spec.SetField(group.FieldUnavailableEnd, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -2659,6 +2720,48 @@ func (_u *GroupUpdateOne) SetModelRateMultipliers(v map[string]float64) *GroupUp
 // ClearModelRateMultipliers clears the value of the "model_rate_multipliers" field.
 func (_u *GroupUpdateOne) ClearModelRateMultipliers() *GroupUpdateOne {
 	_u.mutation.ClearModelRateMultipliers()
+	return _u
+}
+
+// SetUnavailableTimeEnabled sets the "unavailable_time_enabled" field.
+func (_u *GroupUpdateOne) SetUnavailableTimeEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetUnavailableTimeEnabled(v)
+	return _u
+}
+
+// SetNillableUnavailableTimeEnabled sets the "unavailable_time_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableUnavailableTimeEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetUnavailableTimeEnabled(*v)
+	}
+	return _u
+}
+
+// SetUnavailableStart sets the "unavailable_start" field.
+func (_u *GroupUpdateOne) SetUnavailableStart(v string) *GroupUpdateOne {
+	_u.mutation.SetUnavailableStart(v)
+	return _u
+}
+
+// SetNillableUnavailableStart sets the "unavailable_start" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableUnavailableStart(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetUnavailableStart(*v)
+	}
+	return _u
+}
+
+// SetUnavailableEnd sets the "unavailable_end" field.
+func (_u *GroupUpdateOne) SetUnavailableEnd(v string) *GroupUpdateOne {
+	_u.mutation.SetUnavailableEnd(v)
+	return _u
+}
+
+// SetNillableUnavailableEnd sets the "unavailable_end" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableUnavailableEnd(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetUnavailableEnd(*v)
+	}
 	return _u
 }
 
@@ -4283,6 +4386,16 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UnavailableStart(); ok {
+		if err := group.UnavailableStartValidator(v); err != nil {
+			return &ValidationError{Name: "unavailable_start", err: fmt.Errorf(`ent: validator failed for field "Group.unavailable_start": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UnavailableEnd(); ok {
+		if err := group.UnavailableEndValidator(v); err != nil {
+			return &ValidationError{Name: "unavailable_end", err: fmt.Errorf(`ent: validator failed for field "Group.unavailable_end": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.PeakStart(); ok {
 		if err := group.PeakStartValidator(v); err != nil {
 			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
@@ -4429,6 +4542,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.ModelRateMultipliersCleared() {
 		_spec.ClearField(group.FieldModelRateMultipliers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.UnavailableTimeEnabled(); ok {
+		_spec.SetField(group.FieldUnavailableTimeEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.UnavailableStart(); ok {
+		_spec.SetField(group.FieldUnavailableStart, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UnavailableEnd(); ok {
+		_spec.SetField(group.FieldUnavailableEnd, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)

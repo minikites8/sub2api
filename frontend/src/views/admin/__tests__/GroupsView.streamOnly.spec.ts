@@ -85,7 +85,7 @@ function mountView() {
 const buttonByText = (wrapper: ReturnType<typeof mountView>, text: string) =>
   wrapper.findAll('button').find((button) => button.text() === text)
 
-describe('GroupsView stream-only switch', () => {
+describe('GroupsView request restrictions', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -140,4 +140,30 @@ describe('GroupsView stream-only switch', () => {
     expect(mocks.updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({ stream_only: false }))
     wrapper.unmount()
   })
+  it('loads subscription unavailable hours, saves midnight crossing, and allows disabling', async () => {
+    mocks.listGroups.mockResolvedValue({ items: [{ ...baseGroup, subscription_type: 'subscription', unavailable_time_enabled: true, unavailable_start: '08:00', unavailable_end: '22:00' }], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="group-row-42"]').text()).toContain('08:00–22:00')
+    await wrapper.get('[data-testid="group-row-42"]').findAll('button').find((b) => b.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+    const editor = wrapper.findComponent({ name: 'GroupUnavailableTimeEditor' })
+    expect(editor.exists()).toBe(true)
+    const times = editor.findAll('input[type="time"]')
+    expect((times[0]!.element as HTMLInputElement).value).toBe('08:00')
+    expect((times[1]!.element as HTMLInputElement).value).toBe('22:00')
+    await times[0]!.setValue('22:00')
+    await times[1]!.setValue('08:00')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(mocks.updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({ unavailable_time_enabled: true, unavailable_start: '22:00', unavailable_end: '08:00' }))
+    await wrapper.get('[data-testid="group-row-42"]').findAll('button').find((b) => b.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+    await wrapper.findComponent({ name: 'GroupUnavailableTimeEditor' }).get('input[type="checkbox"]').setValue(false)
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(mocks.updateGroup).toHaveBeenLastCalledWith(42, expect.objectContaining({ unavailable_time_enabled: false }))
+    wrapper.unmount()
+  })
+
 })

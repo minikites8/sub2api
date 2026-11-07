@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -117,7 +118,7 @@ func (s *APIKeyService) SelectOrderedGroup(ctx context.Context, key *APIKey, sel
 			return nil, err
 		}
 		group, user := candidate.Group, candidate.User
-		if !group.IsActive() || user.IsGroupBanned(groupID) {
+		if !group.IsActive() || group.IsUnavailableAt(time.Now()) || user.IsGroupBanned(groupID) {
 			continue
 		}
 		if selection.AcceptGroup != nil && !selection.AcceptGroup(group) {

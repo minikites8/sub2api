@@ -51,6 +51,11 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("按模型覆盖分组倍率；模型名大小写不敏感精确匹配"),
+		field.Bool("unavailable_time_enabled").Default(false),
+		field.String("unavailable_start").MaxLen(5).Default("").
+			Comment("每日不可用开始时间 HH:MM（含），按系统时区，支持跨午夜"),
+		field.String("unavailable_end").MaxLen(5).Default("").
+			Comment("每日不可用结束时间 HH:MM（不含）"),
 		// 高峰时段倍率（added by migration 158）
 		field.Bool("peak_rate_enabled").
 			Default(false).

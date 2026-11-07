@@ -188,6 +188,7 @@
                   :subscription-type="row.group.subscription_type"
                   :rate-multiplier="row.group.rate_multiplier"
                   :user-rate-multiplier="userGroupRates[row.group.id]"
+                  :unavailable-time="row.group"
                   :peak-rate-enabled="row.group.peak_rate_enabled"
                   :peak-start="row.group.peak_start"
                   :peak-end="row.group.peak_end"
@@ -626,6 +627,7 @@
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                :unavailable-time="(option as unknown as GroupOption).unavailableTime"
                 :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
                 :peak-start="(option as unknown as GroupOption).peakStart"
                 :peak-end="(option as unknown as GroupOption).peakEnd"
@@ -641,6 +643,7 @@
                 :rate-multiplier="(option as unknown as GroupOption).rate"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
                 :available-quota-text="buildAvailableQuotaText(option as unknown as GroupOption)"
+                :unavailable-time="(option as unknown as GroupOption).unavailableTime"
                 :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
                 :peak-start="(option as unknown as GroupOption).peakStart"
                 :peak-end="(option as unknown as GroupOption).peakEnd"
@@ -1346,6 +1349,7 @@ class="group-selector-dropdown animate-in fade-in slide-in-from-top-2 fixed z-[1
               :rate-multiplier="option.rate"
               :user-rate-multiplier="option.userRate"
               :available-quota-text="buildAvailableQuotaText(option)"
+              :unavailable-time="option.unavailableTime"
               :peak-rate-enabled="option.peakRateEnabled"
               :peak-start="option.peakStart"
               :peak-end="option.peakEnd"
@@ -1426,6 +1430,7 @@ interface GroupOption {
   description: string | null
   rate: number
   userRate: number | null
+  unavailableTime: Group
   peakRateEnabled: boolean
   peakStart: string
   peakEnd: string
@@ -1884,6 +1889,7 @@ const groupOptions = computed(() =>
     description: group.description,
     rate: group.rate_multiplier,
     userRate: userGroupRates.value[group.id] ?? null,
+    unavailableTime: group,
     peakRateEnabled: group.peak_rate_enabled,
     peakStart: group.peak_start,
     peakEnd: group.peak_end,

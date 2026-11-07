@@ -7,6 +7,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -427,6 +428,8 @@ func abortIfAPIKeyGroupUnavailable(c *gin.Context, apiKey *service.APIKey) bool 
 	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
 	if code == "GROUP_DELETED" {
 		MarkIngressRejected(c, IngressRejectGroupDeleted)
+	} else if code == "GROUP_UNAVAILABLE_TIME" {
+		MarkIngressRejected(c, IngressRejectGroupUnavailableTime)
 	} else {
 		MarkIngressRejected(c, IngressRejectGroupDisabled)
 	}
@@ -475,6 +478,9 @@ func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool)
 	}
 	if !group.IsActive() {
 		return "GROUP_DISABLED", "API Key 所属分组已停用", false
+	}
+	if group.IsUnavailableAt(time.Now()) {
+		return "GROUP_UNAVAILABLE_TIME", "当前订阅分组处于每日不可用时段", false
 	}
 	return "", "", true
 }

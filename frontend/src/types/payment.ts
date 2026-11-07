@@ -180,6 +180,9 @@ export interface SubscriptionPlan {
   group_platform?: string
   group_name?: string
   rate_multiplier?: number
+  unavailable_time_enabled?: boolean
+  unavailable_start?: string
+  unavailable_end?: string
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string

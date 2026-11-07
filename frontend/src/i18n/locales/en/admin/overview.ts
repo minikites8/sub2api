@@ -1225,6 +1225,12 @@ export default {
           'Leave empty to use the default $0.01 per call (official pricing: $10 per 1,000 calls); 0 means free. The group rate multiplier is applied on top.',
         finalPricePreview: 'Per-call price after current multiplier: {price}'
       },
+      unavailableTime: {
+        enable: 'Enable daily unavailable hours',
+        start: 'Unavailable from',
+        end: 'Unavailable until',
+        hint: 'Repeats daily in the system timezone {timezone}, including the start and excluding the end. Supports midnight crossing. Set 08:00–22:00 for access only from 22:00 to 08:00 the next day. Subscription expiry continues as usual.'
+      },
       peakRate: {
         enable: 'Enable peak rate multiplier',
         peakStart: 'Peak start',

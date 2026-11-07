@@ -112,6 +112,48 @@ func (_c *GroupCreate) SetModelRateMultipliers(v map[string]float64) *GroupCreat
 	return _c
 }
 
+// SetUnavailableTimeEnabled sets the "unavailable_time_enabled" field.
+func (_c *GroupCreate) SetUnavailableTimeEnabled(v bool) *GroupCreate {
+	_c.mutation.SetUnavailableTimeEnabled(v)
+	return _c
+}
+
+// SetNillableUnavailableTimeEnabled sets the "unavailable_time_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableUnavailableTimeEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetUnavailableTimeEnabled(*v)
+	}
+	return _c
+}
+
+// SetUnavailableStart sets the "unavailable_start" field.
+func (_c *GroupCreate) SetUnavailableStart(v string) *GroupCreate {
+	_c.mutation.SetUnavailableStart(v)
+	return _c
+}
+
+// SetNillableUnavailableStart sets the "unavailable_start" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableUnavailableStart(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetUnavailableStart(*v)
+	}
+	return _c
+}
+
+// SetUnavailableEnd sets the "unavailable_end" field.
+func (_c *GroupCreate) SetUnavailableEnd(v string) *GroupCreate {
+	_c.mutation.SetUnavailableEnd(v)
+	return _c
+}
+
+// SetNillableUnavailableEnd sets the "unavailable_end" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableUnavailableEnd(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetUnavailableEnd(*v)
+	}
+	return _c
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_c *GroupCreate) SetPeakRateEnabled(v bool) *GroupCreate {
 	_c.mutation.SetPeakRateEnabled(v)
@@ -1267,6 +1309,18 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.UnavailableTimeEnabled(); !ok {
+		v := group.DefaultUnavailableTimeEnabled
+		_c.mutation.SetUnavailableTimeEnabled(v)
+	}
+	if _, ok := _c.mutation.UnavailableStart(); !ok {
+		v := group.DefaultUnavailableStart
+		_c.mutation.SetUnavailableStart(v)
+	}
+	if _, ok := _c.mutation.UnavailableEnd(); !ok {
+		v := group.DefaultUnavailableEnd
+		_c.mutation.SetUnavailableEnd(v)
+	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		v := group.DefaultPeakRateEnabled
 		_c.mutation.SetPeakRateEnabled(v)
@@ -1508,6 +1562,25 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Group.rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.UnavailableTimeEnabled(); !ok {
+		return &ValidationError{Name: "unavailable_time_enabled", err: errors.New(`ent: missing required field "Group.unavailable_time_enabled"`)}
+	}
+	if _, ok := _c.mutation.UnavailableStart(); !ok {
+		return &ValidationError{Name: "unavailable_start", err: errors.New(`ent: missing required field "Group.unavailable_start"`)}
+	}
+	if v, ok := _c.mutation.UnavailableStart(); ok {
+		if err := group.UnavailableStartValidator(v); err != nil {
+			return &ValidationError{Name: "unavailable_start", err: fmt.Errorf(`ent: validator failed for field "Group.unavailable_start": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.UnavailableEnd(); !ok {
+		return &ValidationError{Name: "unavailable_end", err: errors.New(`ent: missing required field "Group.unavailable_end"`)}
+	}
+	if v, ok := _c.mutation.UnavailableEnd(); ok {
+		if err := group.UnavailableEndValidator(v); err != nil {
+			return &ValidationError{Name: "unavailable_end", err: fmt.Errorf(`ent: validator failed for field "Group.unavailable_end": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		return &ValidationError{Name: "peak_rate_enabled", err: errors.New(`ent: missing required field "Group.peak_rate_enabled"`)}
@@ -1818,6 +1891,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelRateMultipliers(); ok {
 		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
 		_node.ModelRateMultipliers = value
+	}
+	if value, ok := _c.mutation.UnavailableTimeEnabled(); ok {
+		_spec.SetField(group.FieldUnavailableTimeEnabled, field.TypeBool, value)
+		_node.UnavailableTimeEnabled = value
+	}
+	if value, ok := _c.mutation.UnavailableStart(); ok {
+		_spec.SetField(group.FieldUnavailableStart, field.TypeString, value)
+		_node.UnavailableStart = value
+	}
+	if value, ok := _c.mutation.UnavailableEnd(); ok {
+		_spec.SetField(group.FieldUnavailableEnd, field.TypeString, value)
+		_node.UnavailableEnd = value
 	}
 	if value, ok := _c.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -2368,6 +2453,42 @@ func (u *GroupUpsert) UpdateModelRateMultipliers() *GroupUpsert {
 // ClearModelRateMultipliers clears the value of the "model_rate_multipliers" field.
 func (u *GroupUpsert) ClearModelRateMultipliers() *GroupUpsert {
 	u.SetNull(group.FieldModelRateMultipliers)
+	return u
+}
+
+// SetUnavailableTimeEnabled sets the "unavailable_time_enabled" field.
+func (u *GroupUpsert) SetUnavailableTimeEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldUnavailableTimeEnabled, v)
+	return u
+}
+
+// UpdateUnavailableTimeEnabled sets the "unavailable_time_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateUnavailableTimeEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldUnavailableTimeEnabled)
+	return u
+}
+
+// SetUnavailableStart sets the "unavailable_start" field.
+func (u *GroupUpsert) SetUnavailableStart(v string) *GroupUpsert {
+	u.Set(group.FieldUnavailableStart, v)
+	return u
+}
+
+// UpdateUnavailableStart sets the "unavailable_start" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateUnavailableStart() *GroupUpsert {
+	u.SetExcluded(group.FieldUnavailableStart)
+	return u
+}
+
+// SetUnavailableEnd sets the "unavailable_end" field.
+func (u *GroupUpsert) SetUnavailableEnd(v string) *GroupUpsert {
+	u.Set(group.FieldUnavailableEnd, v)
+	return u
+}
+
+// UpdateUnavailableEnd sets the "unavailable_end" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateUnavailableEnd() *GroupUpsert {
+	u.SetExcluded(group.FieldUnavailableEnd)
 	return u
 }
 
@@ -3710,6 +3831,48 @@ func (u *GroupUpsertOne) UpdateModelRateMultipliers() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearModelRateMultipliers() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearModelRateMultipliers()
+	})
+}
+
+// SetUnavailableTimeEnabled sets the "unavailable_time_enabled" field.
+func (u *GroupUpsertOne) SetUnavailableTimeEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUnavailableTimeEnabled(v)
+	})
+}
+
+// UpdateUnavailableTimeEnabled sets the "unavailable_time_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateUnavailableTimeEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUnavailableTimeEnabled()
+	})
+}
+
+// SetUnavailableStart sets the "unavailable_start" field.
+func (u *GroupUpsertOne) SetUnavailableStart(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUnavailableStart(v)
+	})
+}
+
+// UpdateUnavailableStart sets the "unavailable_start" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateUnavailableStart() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUnavailableStart()
+	})
+}
+
+// SetUnavailableEnd sets the "unavailable_end" field.
+func (u *GroupUpsertOne) SetUnavailableEnd(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUnavailableEnd(v)
+	})
+}
+
+// UpdateUnavailableEnd sets the "unavailable_end" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateUnavailableEnd() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUnavailableEnd()
 	})
 }
 
@@ -5415,6 +5578,48 @@ func (u *GroupUpsertBulk) UpdateModelRateMultipliers() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearModelRateMultipliers() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearModelRateMultipliers()
+	})
+}
+
+// SetUnavailableTimeEnabled sets the "unavailable_time_enabled" field.
+func (u *GroupUpsertBulk) SetUnavailableTimeEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUnavailableTimeEnabled(v)
+	})
+}
+
+// UpdateUnavailableTimeEnabled sets the "unavailable_time_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateUnavailableTimeEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUnavailableTimeEnabled()
+	})
+}
+
+// SetUnavailableStart sets the "unavailable_start" field.
+func (u *GroupUpsertBulk) SetUnavailableStart(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUnavailableStart(v)
+	})
+}
+
+// UpdateUnavailableStart sets the "unavailable_start" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateUnavailableStart() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUnavailableStart()
+	})
+}
+
+// SetUnavailableEnd sets the "unavailable_end" field.
+func (u *GroupUpsertBulk) SetUnavailableEnd(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUnavailableEnd(v)
+	})
+}
+
+// UpdateUnavailableEnd sets the "unavailable_end" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateUnavailableEnd() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUnavailableEnd()
 	})
 }
 
