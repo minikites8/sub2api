@@ -391,6 +391,7 @@
         v-if="!isKiroImportMode"
         ref="oauthFlowRef"
         :add-method="addMethod"
+        :excel-oauth="isExcelOAuth"
         :auth-url="currentAuthUrl"
         :session-id="currentSessionId"
         :loading="currentLoading"
@@ -495,7 +496,8 @@ import {
 } from '@/composables/useAccountOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useKiroOAuth } from '@/composables/useKiroOAuth'
-import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
+import { OPENAI_EXCEL_OAUTH_CLIENT_ID, useOpenAIOAuth, type OpenAITokenInfo } from '@/composables/useOpenAIOAuth'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform, AdminDataPayload } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
@@ -565,6 +567,8 @@ const kiroImportTokenPlaceholder = computed(() => {
 })
 
 const isOpenAI = computed(() => props.account?.platform === 'openai')
+const isExcelOAuth = computed(() => isOpenAI.value &&
+  String(props.account?.credentials?.client_id ?? '').trim() === OPENAI_EXCEL_OAUTH_CLIENT_ID)
 const isOpenAILike = computed(() => isOpenAI.value)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
@@ -870,6 +874,13 @@ const buildUpdatedCredentials = (next: Record<string, unknown>) => ({
   ...next
 })
 
+const buildOpenAIReauthCredentials = (tokenInfo: OpenAITokenInfo) => {
+  if (isExcelOAuth.value && tokenInfo.client_id !== OPENAI_EXCEL_OAUTH_CLIENT_ID) {
+    throw new Error(t('admin.accounts.oauth.openai.excelSessionMismatch'))
+  }
+  return openaiOAuth.buildCredentials(tokenInfo)
+}
+
 const updateAccountCredentials = async (payload: {
   type: 'oauth' | 'setup-token'
   credentials: Record<string, unknown>
@@ -887,7 +898,7 @@ const handleGenerateUrl = async () => {
   if (!props.account) return
 
   if (isOpenAILike.value) {
-    await openaiOAuth.generateAuthUrl(props.account.proxy_id)
+    await openaiOAuth.generateAuthUrl(props.account.proxy_id, undefined, isExcelOAuth.value ? 'excel' : 'codex')
     return
   }
 
@@ -953,11 +964,11 @@ const handleExchangeCode = async () => {
     try {
       await updateAccountCredentials({
         type: 'oauth',
-        credentials: buildUpdatedCredentials(openaiOAuth.buildCredentials(tokenInfo)),
+        credentials: buildUpdatedCredentials(buildOpenAIReauthCredentials(tokenInfo)),
         extra: openaiOAuth.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
       })
     } catch (error: any) {
-      openaiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+      openaiOAuth.error.value = extractApiErrorMessage(error, t('admin.accounts.oauth.authFailed'))
       appStore.showError(openaiOAuth.error.value)
     }
     return
@@ -1237,23 +1248,20 @@ const handleValidateRefreshToken = async (refreshTokenInput: string) => {
     openaiOAuth.loading.value = true
     openaiOAuth.error.value = ''
     try {
-      const tokenInfo = await openaiOAuth.validateRefreshToken(refreshToken, props.account.proxy_id)
+      const tokenInfo = await openaiOAuth.validateRefreshToken(
+        refreshToken,
+        props.account.proxy_id,
+        isExcelOAuth.value ? OPENAI_EXCEL_OAUTH_CLIENT_ID : undefined
+      )
       if (!tokenInfo) return
 
-      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      await updateAccountCredentials({
         type: 'oauth',
-        credentials: openaiOAuth.buildCredentials(tokenInfo),
+        credentials: buildOpenAIReauthCredentials(tokenInfo),
         extra: openaiOAuth.buildExtraInfo(tokenInfo)
       })
-      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-      emit('reauthorized', updatedAccount)
-      handleClose()
     } catch (error: any) {
-      openaiOAuth.error.value =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        error.message ||
-        t('admin.accounts.oauth.authFailed')
+      openaiOAuth.error.value = extractApiErrorMessage(error, t('admin.accounts.oauth.authFailed'))
       appStore.showError(openaiOAuth.error.value)
     } finally {
       openaiOAuth.loading.value = false

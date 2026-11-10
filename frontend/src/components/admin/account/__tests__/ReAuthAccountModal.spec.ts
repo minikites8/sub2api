@@ -1,10 +1,17 @@
-import { defineComponent } from 'vue'
+import { defineComponent, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { generateKiroIDCAuthUrlMock, reimportCredentialsMock } = vi.hoisted(() => ({
+const {
+  generateKiroIDCAuthUrlMock, reimportCredentialsMock, generateAuthUrlMock,
+  exchangeCodeMock, refreshOpenAITokenMock, applyOAuthCredentialsMock,
+} = vi.hoisted(() => ({
   generateKiroIDCAuthUrlMock: vi.fn(),
   reimportCredentialsMock: vi.fn(),
+  generateAuthUrlMock: vi.fn(),
+  exchangeCodeMock: vi.fn(),
+  refreshOpenAITokenMock: vi.fn(),
+  applyOAuthCredentialsMock: vi.fn(),
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -20,8 +27,11 @@ vi.mock('@/api/admin', () => ({
       generateIDCAuthUrl: generateKiroIDCAuthUrlMock,
     },
     accounts: {
-      applyOAuthCredentials: vi.fn(),
+      applyOAuthCredentials: applyOAuthCredentialsMock,
       reimportCredentials: reimportCredentialsMock,
+      generateAuthUrl: generateAuthUrlMock,
+      exchangeCode: exchangeCodeMock,
+      refreshOpenAIToken: refreshOpenAITokenMock,
     },
   },
 }))
@@ -35,6 +45,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import ReAuthAccountModal from '../ReAuthAccountModal.vue'
+import { OPENAI_EXCEL_OAUTH_CLIENT_ID } from '@/composables/useOpenAIOAuth'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -44,8 +55,20 @@ const BaseDialogStub = defineComponent({
 
 const OAuthAuthorizationFlowStub = defineComponent({
   name: 'OAuthAuthorizationFlow',
-  props: { platform: { type: String, default: '' } },
-  emits: ['generate-url'],
+  props: {
+    platform: { type: String, default: '' },
+    excelOauth: { type: Boolean, default: false },
+    error: { type: String, default: '' },
+  },
+  emits: ['generate-url', 'validate-refresh-token'],
+  setup(_, { expose }) {
+    expose({
+      authCode: ref('new-code'),
+      oauthState: ref('test-state'),
+      inputMethod: ref('manual'),
+      reset: vi.fn(),
+    })
+  },
   template: '<button data-testid="reauth-generate-url" @click="$emit(\'generate-url\')">generate</button>',
 })
 
@@ -201,5 +224,124 @@ describe('ReAuthAccountModal platform routing', () => {
     const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
     expect(flow.props('platform')).toBe('grok')
     expect(wrapper.text()).toContain('admin.accounts.grokAccount')
+  })
+})
+
+describe('ReAuthAccountModal BPS reauthorization', () => {
+  const excelClientID = OPENAI_EXCEL_OAUTH_CLIENT_ID
+  const codexClientID = 'app_EMoamEEZ73f0CkXaXp7hrann'
+  const buildOpenAIAccount = (clientID = excelClientID) => ({
+    id: 52,
+    name: 'BPS OAuth',
+    platform: 'openai',
+    type: 'oauth',
+    credentials: { client_id: clientID, model_mapping: { 'gpt-5.6-sol': 'gpt-5.6-sol' } },
+    extra: { openai_excel_bps: true, openai_excel_bps_models: ['gpt-5.6-sol'] },
+    proxy_id: 27,
+  })
+  const tokens = (clientID: string | undefined = excelClientID) => ({
+    access_token: 'new-access-token', refresh_token: 'new-refresh-token',
+    id_token: 'new-id-token', client_id: clientID, expires_at: 1900000000,
+    email: 'bps@example.com',
+  })
+
+  beforeEach(() => {
+    generateAuthUrlMock.mockReset().mockResolvedValue({
+      auth_url: 'https://auth.openai.com/authorize?state=test-state', session_id: 'excel-session',
+    })
+    exchangeCodeMock.mockReset().mockResolvedValue(tokens())
+    refreshOpenAITokenMock.mockReset().mockResolvedValue(tokens())
+    applyOAuthCredentialsMock.mockReset().mockResolvedValue(buildOpenAIAccount())
+  })
+
+  it('uses the Excel authorization flow even after BPS was automatically disabled', async () => {
+    const account = buildOpenAIAccount(' ' + excelClientID + ' ')
+    account.extra.openai_excel_bps = false
+    const wrapper = mountModal(account)
+    await wrapper.setProps({ show: true })
+    expect(wrapper.getComponent(OAuthAuthorizationFlowStub).props('excelOauth')).toBe(true)
+
+    await wrapper.get('[data-testid="reauth-generate-url"]').trigger('click')
+    await flushPromises()
+    expect(generateAuthUrlMock).toHaveBeenCalledWith('/admin/openai/generate-auth-url', {
+      proxy_id: 27, oauth_client: 'excel',
+    })
+  })
+
+  it('exchanges the Excel callback and applies credentials to the existing account', async () => {
+    const account = buildOpenAIAccount()
+    const wrapper = mountModal(account)
+    await wrapper.setProps({ show: true })
+    await wrapper.get('[data-testid="reauth-generate-url"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('button.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(exchangeCodeMock).toHaveBeenCalledWith('/admin/openai/exchange-code', {
+      code: 'new-code', session_id: 'excel-session', state: 'test-state', proxy_id: 27,
+    })
+    expect(applyOAuthCredentialsMock).toHaveBeenCalledWith(52, {
+      type: 'oauth',
+      credentials: expect.objectContaining({
+        ...tokens(), model_mapping: account.credentials.model_mapping,
+      }),
+      extra: { email: 'bps@example.com' },
+    })
+    expect(wrapper.emitted('reauthorized')).toHaveLength(1)
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    expect(account.extra).toEqual({ openai_excel_bps: true, openai_excel_bps_models: ['gpt-5.6-sol'] })
+  })
+
+  it('validates a BPS refresh token with the Excel client before applying it', async () => {
+    const wrapper = mountModal(buildOpenAIAccount())
+    await wrapper.setProps({ show: true })
+    wrapper.getComponent(OAuthAuthorizationFlowStub).vm.$emit('validate-refresh-token', ' excel-rt ')
+    await flushPromises()
+
+    expect(refreshOpenAITokenMock).toHaveBeenCalledWith('excel-rt', 27, '/admin/openai/refresh-token', excelClientID)
+    expect(applyOAuthCredentialsMock).toHaveBeenCalledWith(52, {
+      type: 'oauth', credentials: expect.objectContaining(tokens()), extra: { email: 'bps@example.com' },
+    })
+    expect(wrapper.emitted('reauthorized')).toHaveLength(1)
+  })
+
+  it.each([
+    ['manual', codexClientID], ['refresh_token', codexClientID],
+    ['manual', undefined], ['refresh_token', undefined],
+  ])('rejects an incompatible client %s / %s in the BPS flow', async (method, clientID) => {
+    const incompatibleTokens = { ...tokens(), client_id: clientID }
+    exchangeCodeMock.mockResolvedValue(incompatibleTokens)
+    refreshOpenAITokenMock.mockResolvedValue(incompatibleTokens)
+    const wrapper = mountModal(buildOpenAIAccount())
+    await wrapper.setProps({ show: true })
+    if (method === 'manual') {
+      await wrapper.get('[data-testid="reauth-generate-url"]').trigger('click')
+      await flushPromises()
+      await wrapper.get('button.btn-primary').trigger('click')
+    } else {
+      wrapper.getComponent(OAuthAuthorizationFlowStub).vm.$emit('validate-refresh-token', 'excel-rt')
+    }
+    await flushPromises()
+
+    expect(applyOAuthCredentialsMock).not.toHaveBeenCalled()
+    expect(wrapper.emitted('reauthorized')).toBeUndefined()
+    expect(wrapper.getComponent(OAuthAuthorizationFlowStub).props('error')).toBe('admin.accounts.oauth.openai.excelSessionMismatch')
+  })
+
+  it('retains Codex authorization for a Codex account with BPS enabled', async () => {
+    refreshOpenAITokenMock.mockResolvedValue(tokens(codexClientID))
+    const wrapper = mountModal(buildOpenAIAccount(codexClientID))
+    await wrapper.setProps({ show: true })
+    expect(wrapper.getComponent(OAuthAuthorizationFlowStub).props('excelOauth')).toBe(false)
+    await wrapper.get('[data-testid="reauth-generate-url"]').trigger('click')
+    await flushPromises()
+    expect(generateAuthUrlMock).toHaveBeenCalledWith('/admin/openai/generate-auth-url', { proxy_id: 27 })
+
+    wrapper.getComponent(OAuthAuthorizationFlowStub).vm.$emit('validate-refresh-token', 'codex-rt')
+    await flushPromises()
+    expect(refreshOpenAITokenMock).toHaveBeenCalledWith('codex-rt', 27, '/admin/openai/refresh-token', undefined)
+    expect(applyOAuthCredentialsMock).toHaveBeenCalledWith(52, expect.objectContaining({
+      credentials: expect.objectContaining({ client_id: codexClientID }),
+    }))
   })
 })

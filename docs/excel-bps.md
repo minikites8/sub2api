@@ -13,7 +13,7 @@
 1. 生成授权链接，在官方页面登录并选择工作区。
 2. 页面返回 `bps.openai.com/.../auth/callback?code=...&state=...` 后，复制完整回调 URL 到本后台的授权输入框。独立浏览器缺少 Office 对话窗口时，官方页面可能显示“无法登录”；只要已经得到本轮 code/state，后台仍可核对 state 并兑换。回调 URL 含一次性凭据，不要贴到聊天或日志。
 3. 完成后创建 `openai/oauth` 账号，保存 Excel 客户端的完整 Token 配对，开启所选模型的 BPS。无需数据库新账号类型；编辑、分组、计费仍沿用 OAuth 账号。
-4. 已保存 Excel 客户端的账号重新授权时继续使用 Excel 流程。手动 RT 输入在 BPS OAuth 入口使用 Excel 客户端，普通 OAuth 入口保持 Codex 客户端；不要把两类 RT 混用。
+4. 账号列表的「重新授权」按保存的 `client_id` 识别 Excel 账号，授权链接、回调提示和手动 RT 校验都使用 Excel 流程，即使 BPS 协议已被自动关闭也可重新授权。返回的会话必须明确属于 Excel 客户端才会保存，避免覆盖成 Codex 凭据。普通 Codex 账号（包括启用了 BPS 独立授权的账号）仍按 Codex 流程重新授权；不要把两类 RT 混用。
 
 已有完整会话也可从普通 OAuth 的「OAuth 会话 JSON / AT 导入」导入：保留同次会话的 `access_token`、`refresh_token`、`id_token`、`chatgpt_account_id`、`expires_at` 和原 `client_id`。支持顶层及 `tokens`、`credentials`、`session_info` 容器，`tokens.account_id` 也可作为工作区 ID。导入保留客户端身份；不同客户端分开建号，非 Codex 客户端还按工作区隔离，避免覆盖原 Codex 账号。此通用导入入口的 BPS 开关仍由管理员配置。
 

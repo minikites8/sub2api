@@ -88,6 +88,7 @@ interface Props {
   platform: AccountPlatform
   type: AccountType
   authMode?: string
+  excelOAuth?: boolean
   planType?: string
   overagesEnabled?: boolean
   privacyMode?: string
@@ -116,6 +117,7 @@ const typeLabel = computed(() => {
   if (props.platform === 'openai' && props.type === 'oauth') {
     if (normalizedAuthMode.value === 'agentidentity') return 'Agent Identity'
     if (normalizedAuthMode.value === 'personalaccesstoken') return 'PAT'
+    if (props.excelOAuth) return 'BPS'
   }
   switch (props.type) {
     case 'oauth':
