@@ -37,7 +37,11 @@
 
 自动模式仅有声明就足以触发默认回退，不要求模型本轮实际调用工具；推理强度 `high` 不是回退条件。保持 BPS 复用现有适配层的工具省略逻辑，模型会收到能力不可用提示，不能声称已经搜索或生成图片。客户端 function/custom 工具继续可用。BPS 仍只支持 `tool_choice=auto/none`，其他强制选择（包括 `required`）返回 `basispoints_request_invalid`，不会静默忽略。
 
-默认回退返回 `X-Codex2API-Upstream: codex` 和 `X-Codex2API-Basispoints-Bypass`，并记录 `excel_bps.native_fallback` 诊断日志。日志沿用请求上下文的 request ID，增加 `account_id`、`policy`、`reason` 和 `upstream_endpoint`，不记录请求正文、工具参数或凭据。原因值为 `web_search`、`image_generation` 或 `tool_choice`。这是发送上游前的路由决定，日志出现不代表原生请求已经成功。
+默认回退在发送上游前重新调度到当前分组内支持 Responses 的普通账号，跳过本模型配置为走 BPS 的账号和仅有 Excel OAuth 凭据的账号；没有可用普通账号时返回 HTTP 503。原始模型、输入和工具声明交由新账号的原生通道处理，沿用分组权限、模型支持、配额和并发检查。该路由切换不消耗上游重试次数，也不计入 BPS 账号健康失败。开启「保持 BPS，省略不支持的托管工具」的账号继续走 BPS。
+
+默认回退返回 `X-Codex2API-Basispoints-Bypass`，普通 OAuth 账号另返回 `X-Codex2API-Upstream: codex`，并记录 `excel_bps.native_fallback` 诊断日志。日志沿用请求上下文的 request ID，增加 `account_id`、`policy`、`reason` 和 `upstream_endpoint`，不记录请求正文、工具参数或凭据。原因值为 `web_search`、`image_generation` 或 `tool_choice`。这是发送上游前的路由决定，日志出现不代表原生请求已经成功。
+
+BPS 无法找到工具结果对应的原始调用（`original tool item is unavailable`）时，也在发送上游前切换到普通账号，原因标记为 `tool_history_unavailable`。HTTP 请求中缺少 `call_id` 的工具结果提前走普通账号，原因标记为 `tool_result_missing_call_id`。无法配对的结果原文保留为明确标注的历史工具数据消息，不伪造调用或参数；完整配对的调用与结果不改写。显式携带 `previous_response_id` 的请求继续沿用原有归属和续链校验，账号连接探测不进行这类自动回退。
 
 使用记录仍显示最终上游接口；本次没有新增使用记录字段。日志中的 `/v1/responses` 是原生 Responses 通道标记，OAuth 的实际目标为 Codex Responses 接口，不能把标记当成完整 URL。保持 BPS 不会提供网关搜索执行能力，也未验证 BPS 上游是否支持其他原生搜索协议。
 

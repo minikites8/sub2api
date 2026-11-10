@@ -245,7 +245,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
-			if len(failedAccountIDs) == 0 {
+			// Capability bypass exclusions have not made an upstream attempt.
+			if len(failedAccountIDs) == 0 || (lastFailoverErr == nil && lastAdmissionErr == nil) {
 				if nextBody, nextModel, rerouted := rerouteGPTAutoLive(c, gptAutoRoute, apiKey, service.GPTAutoEndpointChatCompletions, body); rerouted {
 					body, reqModel = nextBody, nextModel
 					channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
@@ -336,6 +337,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardAsChatCompletions(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, forwardBody, promptCacheKey, "")
 		}()
+		if reselectExcelBPSNativeBypass(c, writerSizeBeforeForward, err, account.ID, failedAccountIDs) {
+			lastFailoverErr = nil
+			lastAdmissionErr = nil
+			continue
+		}
 		service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
 		if retryOpenAIInitialAdmission(c, err, result, body, account.ID, failedAccountIDs, &switchCount, maxAccountSwitches) {
 			lastAdmissionErr = err

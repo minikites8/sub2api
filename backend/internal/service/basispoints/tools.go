@@ -22,6 +22,16 @@ type tool struct {
 	Schema     *jsonschema.Schema
 }
 
+// ToolHistoryUnavailableError identifies a local replay-cache miss without
+// exposing the tool's identifier or result in routing diagnostics.
+type ToolHistoryUnavailableError struct {
+	InputIndex int
+}
+
+func (e *ToolHistoryUnavailableError) Error() string {
+	return fmt.Sprintf("basispoints original tool item is unavailable for this tool result (path=input[%d]); resend the matching complete tool call with its result, or start a new conversation", e.InputIndex)
+}
+
 const (
 	replayCacheMaxEntries = 1024
 	replayCacheMaxBytes   = 16 << 20
@@ -470,7 +480,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 					return nil, err
 				}
 				if native == nil {
-					return nil, fmt.Errorf("basispoints original tool item is unavailable for this tool result (path=input[%d]); resend the matching complete tool call with its result, or start a new conversation", index)
+					return nil, &ToolHistoryUnavailableError{InputIndex: index}
 				}
 				result = append(result, native)
 				seenCalls[id] = true

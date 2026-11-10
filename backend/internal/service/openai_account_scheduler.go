@@ -2093,6 +2093,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if account == nil {
 		return false, "account_nil"
 	}
+	if excelBPSNativeBypassExcludesAccount(ctx, account, req.RequestedModel) {
+		return false, "bps_native_bypass"
+	}
 	if tier, _ := ctx.Value(gptQualityConstraintKey{}).(string); tier != "" && account.QualityTier() != tier {
 		return false, "quality_tier_changed"
 	}

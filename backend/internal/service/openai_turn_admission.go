@@ -382,6 +382,9 @@ func (s *OpenAIGatewayService) admitOpenAITurnSnapshot(ctx context.Context, sele
 		latest = fallbackAccount
 		selected = accountForExcelBPSFallback(selected)
 	}
+	if excelBPSNativeBypassExcludesAccount(ctx, latest, outboundModel) {
+		return nil, denyOpenAITurn("bps_native_bypass")
+	}
 	if err := s.validateExcelOAuthRoute(ctx, latest, outboundModel); err != nil {
 		return nil, &OpenAITurnAdmissionError{Reason: excelOAuthRouteErrorCode, cause: err}
 	}

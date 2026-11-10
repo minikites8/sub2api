@@ -21,7 +21,8 @@ import (
 
 type excelBPSRateLimitAccountRepo struct {
 	service.AccountRepository
-	accounts []service.Account
+	accounts     []service.Account
+	admissionIDs []int64
 }
 
 func (r *excelBPSRateLimitAccountRepo) ListSchedulableByPlatform(_ context.Context, platform string) ([]service.Account, error) {
@@ -39,6 +40,17 @@ func (r *excelBPSRateLimitAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx c
 func (r *excelBPSRateLimitAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	return r.ListSchedulableByPlatform(ctx, platform)
 }
+func (r *excelBPSRateLimitAccountRepo) ListModelAvailabilityCandidates(ctx context.Context, _ *int64, platforms []string, _ bool) ([]service.Account, error) {
+	var accounts []service.Account
+	for _, platform := range platforms {
+		candidates, err := r.ListSchedulableByPlatform(ctx, platform)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, candidates...)
+	}
+	return accounts, nil
+}
 func (r *excelBPSRateLimitAccountRepo) GetByID(_ context.Context, id int64) (*service.Account, error) {
 	for _, account := range r.accounts {
 		if account.ID == id {
@@ -50,6 +62,7 @@ func (r *excelBPSRateLimitAccountRepo) GetByID(_ context.Context, id int64) (*se
 }
 
 func (r *excelBPSRateLimitAccountRepo) GetOpenAITurnAdmission(ctx context.Context, id int64) (*service.Account, *service.Account, error) {
+	r.admissionIDs = append(r.admissionIDs, id)
 	account, err := r.GetByID(ctx, id)
 	return account, nil, err
 }
@@ -61,6 +74,7 @@ type excelBPSRateLimitUpstream struct {
 	transportFailure bool
 	hits             []int64
 	paths            []string
+	bodies           [][]byte
 	prefix           string
 	streamBody       string
 	ordinaryStatus   int
@@ -69,6 +83,11 @@ type excelBPSRateLimitUpstream struct {
 func (u *excelBPSRateLimitUpstream) Do(req *http.Request, _ string, id int64, _ int) (*http.Response, error) {
 	u.hits = append(u.hits, id)
 	u.paths = append(u.paths, req.URL.Path)
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	u.bodies = append(u.bodies, bodyBytes)
 	isBPSRequest := strings.Contains(req.URL.Path, "basispoints/api/responses")
 	if !isBPSRequest && u.ordinaryStatus != 0 {
 		return &http.Response{StatusCode: u.ordinaryStatus, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"ordinary upstream rejected request"}}`))}, nil
@@ -105,7 +124,7 @@ func (u *excelBPSRateLimitUpstream) Do(req *http.Request, _ string, id int64, _ 
 	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: " + body + "\n\n"))}, nil
 }
 
-func newExcelBPSRateLimitRouter(t *testing.T, upstream *excelBPSRateLimitUpstream) *gin.Engine {
+func newExcelBPSRateLimitRouter(t *testing.T, upstream *excelBPSRateLimitUpstream, configure ...func(*excelBPSRateLimitAccountRepo, *service.Group)) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	repo := &excelBPSRateLimitAccountRepo{}
@@ -129,6 +148,9 @@ func newExcelBPSRateLimitRouter(t *testing.T, upstream *excelBPSRateLimitUpstrea
 	groupID := int64(901)
 	key := &service.APIKey{ID: 902, GroupID: &groupID, User: &service.User{ID: 903, Status: service.StatusActive},
 		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive, AllowMessagesDispatch: true, EnableBPS: true}}
+	for _, configureRepo := range configure {
+		configureRepo(repo, key.Group)
+	}
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), key)

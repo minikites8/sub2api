@@ -17,6 +17,48 @@ var errExcelBPSModelUnavailable = errors.New("excel BPS model unavailable; conti
 
 var errExcelBPSAccountEligibilityChanged = errors.New("excel BPS account eligibility changed; continue through the ordinary upstream")
 
+// ErrExcelBPSNativeBypass asks the HTTP handler to select an ordinary account
+// before sending a request that requires capabilities unavailable through BPS.
+var ErrExcelBPSNativeBypass = errors.New("excel BPS native capability requires an ordinary account")
+
+type excelBPSNativeBypassContextKey struct{}
+
+// WithExcelBPSNativeBypassContext keeps subsequent selections on ordinary
+// accounts. Unlike exhausted-BPS fallback, it must not turn a BPS account into
+// a native account by hiding its protocol settings.
+func WithExcelBPSNativeBypassContext(ctx context.Context, reason string) context.Context {
+	return context.WithValue(ctx, excelBPSNativeBypassContextKey{}, reason)
+}
+
+func excelBPSNativeBypassReason(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	reason, _ := ctx.Value(excelBPSNativeBypassContextKey{}).(string)
+	return reason
+}
+
+func excelBPSNativeBypassExcludesAccount(ctx context.Context, account *Account, model string) bool {
+	if excelBPSNativeBypassReason(ctx) == "" || account == nil {
+		return false
+	}
+	// Inspect the configured route even if a group-scoped scheduler view has
+	// disabled BPS; authoritative HTTP admission can restore the account flags.
+	configured := *account
+	configured.bpsDisabledByGroup = false
+	return configured.IsExcelOAuth() || configured.IsExcelBPSEnabledForModel(model) ||
+		!configured.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses)
+}
+
+func restoreExcelBPSNativeBypassHeaders(ctx context.Context, c *gin.Context, account *Account) {
+	if reason := excelBPSNativeBypassReason(ctx); reason != "" {
+		c.Header("X-Codex2API-Basispoints-Bypass", reason)
+		if account.IsOpenAIOAuthLike() {
+			c.Header("X-Codex2API-Upstream", "codex")
+		}
+	}
+}
+
 // Match the BPS admission response specifically; local account admission remains
 // authoritative when the ordinary upstream revalidates this request.
 func excelBPSAccountEligibilityChanged(status int, payload []byte) bool {
@@ -147,7 +189,7 @@ func withExcelBPSFailoverContext(ctx context.Context) context.Context {
 }
 
 func excelBPSFallbackContextEnabled(ctx context.Context) bool {
-	if ctx == nil {
+	if ctx == nil || excelBPSNativeBypassReason(ctx) != "" {
 		return false
 	}
 	enabled, _ := ctx.Value(excelBPSFallbackContextKey{}).(bool)

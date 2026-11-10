@@ -87,6 +87,14 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	ClearActualOpenAIUpstreamEndpoint(c)
 	c.Writer.Header().Del("X-Codex2API-Basispoints-Bypass")
 	c.Writer.Header().Del("X-Codex2API-Upstream")
+	restoreExcelBPSNativeBypassHeaders(ctx, c, account)
+	if openAIToolHistoryFallbackReason(excelBPSNativeBypassReason(ctx)) {
+		normalized, _, err := NormalizeOpenAIOrphanToolResults(body)
+		if err != nil {
+			return nil, fmt.Errorf("normalize historical tool results: %w", err)
+		}
+		body = normalized
+	}
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}

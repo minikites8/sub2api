@@ -878,6 +878,21 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	body = injectMatchingPromptRules(reqLog, h.promptRuleService, apiKey.GroupID, reqModel, service.PromptRuleProtocolOpenAIResponses, body)
 
+	if openAICompatibleRequestPlatform(c.Request.Context(), apiKey) == service.PlatformOpenAI {
+		if reason := service.OpenAIHTTPToolHistoryFallbackReason(body); reason != "" {
+			normalized, changed, normalizeErr := service.NormalizeOpenAIOrphanToolResults(body)
+			if normalizeErr != nil {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Could not preserve historical tool results")
+				return
+			}
+			if changed {
+				body = normalized
+				c.Request = c.Request.WithContext(service.WithExcelBPSNativeBypassContext(c.Request.Context(), reason))
+				reqLog.Info("openai.tool_history_ordinary_routing", zap.String("reason", reason))
+			}
+		}
+	}
+
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
@@ -1048,7 +1063,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
-			if len(failedAccountIDs) == 0 {
+			// Capability bypass exclusions have not made an upstream attempt.
+			if len(failedAccountIDs) == 0 || (lastFailoverErr == nil && lastAdmissionErr == nil) {
 				if legacyCompact && errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available accounts support /responses/compact", streamStarted)
@@ -1193,6 +1209,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}()
 			return h.gatewayService.Forward(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, attemptBody)
 		}()
+		if reselectExcelBPSNativeBypass(c, writerSizeBeforeForward, err, account.ID, failedAccountIDs) {
+			lastFailoverErr = nil
+			lastAdmissionErr = nil
+			continue
+		}
 		service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
 		if retryOpenAIInitialAdmission(c, err, result, sessionHashBody, account.ID, failedAccountIDs, &switchCount, maxAccountSwitches) {
 			lastAdmissionErr = err

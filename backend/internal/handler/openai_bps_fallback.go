@@ -1,9 +1,29 @@
 package handler
 
 import (
+	"errors"
+
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
+
+// Native capability bypass is a routing decision, so it neither consumes an
+// upstream retry nor reports an account health failure. Slots are released by
+// the caller before this helper runs.
+func reselectExcelBPSNativeBypass(c *gin.Context, writerSizeBeforeForward int, err error, accountID int64, failedAccountIDs map[int64]struct{}) bool {
+	if !errors.Is(err, service.ErrExcelBPSNativeBypass) || !openAIRequestAllowsFailoverReplay(c) ||
+		!openAIForwardMayFailover(c, writerSizeBeforeForward, nil) {
+		return false
+	}
+	reason := c.Writer.Header().Get("X-Codex2API-Basispoints-Bypass")
+	if reason == "" {
+		return false
+	}
+	c.Request = c.Request.WithContext(service.WithExcelBPSNativeBypassContext(c.Request.Context(), reason))
+	service.ResetExcelBPSFallbackContext(c)
+	failedAccountIDs[accountID] = struct{}{}
+	return true
+}
 
 // canStartExcelBPSOrdinaryFallback keeps the replay within the pre-output
 // window. SSE keepalive bytes remain eligible for the same request replay.
