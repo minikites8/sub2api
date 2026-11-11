@@ -104,8 +104,11 @@ func TestNativeImagesValidateAllBeforeUpload(t *testing.T) {
 	require.NoError(t, err)
 	_, err = PrepareNativeImages(nativeTestRequest(t, strings.Fields(strings.Repeat(url+" ", 21))...))
 	require.EqualError(t, err, "local gateway is configured for at most 20 inline images per request")
+	var limitErr *InlineImageLimitError
+	require.ErrorAs(t, err, &limitErr)
 	_, err = PrepareNativeImagesWithLimit(nativeTestRequest(t, url, url), 1)
 	require.EqualError(t, err, "local gateway is configured for at most 1 inline images per request")
+	require.ErrorAs(t, err, &limitErr)
 	raw := nativeTestRequest(t, url)
 	_, err = PrepareNativeImages(bytes.ReplaceAll(raw, []byte("original"), []byte("invalid")))
 	require.Error(t, err)

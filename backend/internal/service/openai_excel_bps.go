@@ -28,6 +28,11 @@ import (
 var excelBPSReplay basispoints.ReplayCache
 var excelBPSCatalog basispoints.CatalogCache
 
+const (
+	ExcelBPSInlineImageLimitReason         = "inline_image_limit"
+	ExcelBPSEncryptedAgentAssignmentReason = "encrypted_agent_assignment"
+)
+
 // Independently authorized Excel grants never quarantine the primary Codex
 // account. Legacy single-grant accounts retain their authentication policy.
 func (s *OpenAIGatewayService) handleExcelBPSUnauthorized(ctx context.Context, account *Account, status int, headers http.Header, raw []byte, tokens ...string) {
@@ -341,6 +346,13 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 
 	if err = basispoints.ValidateNewAgentMessage(body); err != nil {
+		var contentErr *basispoints.ContentValidationError
+		if errors.As(err, &contentErr) && contentErr.ContentType == "encrypted_content" && excelBPSFailoverContextEnabled(ctx) && excelBPSCanFailover(ctx, c) {
+			c.Header("X-Codex2API-Basispoints-Bypass", ExcelBPSEncryptedAgentAssignmentReason)
+			logBPSNativeCapabilityBypass(c, account, originalModel, model, ExcelBPSEncryptedAgentAssignmentReason, canonicalBody)
+			recordExcelBPSNativeFallback(ctx, account, ExcelBPSEncryptedAgentAssignmentReason)
+			return nil, ErrExcelBPSNativeBypass
+		}
 		return fail(400, "basispoints_request_invalid", err.Error())
 	}
 	if account.IsExcelBPSIgnoreEncryptedContentEnabled() {
@@ -412,6 +424,13 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		body, err = relay.RewriteWithImageLimit(body, scope, imagePolicy.maxImages)
 	}
 	if err != nil {
+		var imageLimitErr *basispoints.InlineImageLimitError
+		if errors.As(err, &imageLimitErr) && excelBPSFailoverContextEnabled(ctx) && excelBPSCanFailover(ctx, c) {
+			c.Header("X-Codex2API-Basispoints-Bypass", ExcelBPSInlineImageLimitReason)
+			logBPSNativeCapabilityBypass(c, account, originalModel, model, ExcelBPSInlineImageLimitReason, canonicalBody)
+			recordExcelBPSNativeFallback(ctx, account, ExcelBPSInlineImageLimitReason)
+			return nil, ErrExcelBPSNativeBypass
+		}
 		if errors.Is(err, basispoints.ErrImageRelayFull) {
 			return fail(503, "basispoints_image_relay_full", err.Error())
 		}

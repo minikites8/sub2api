@@ -43,6 +43,10 @@
 
 BPS 无法找到工具结果对应的原始调用（`original tool item is unavailable`）时，也在发送上游前切换到普通账号，原因标记为 `tool_history_unavailable`。HTTP 请求中缺少 `call_id` 的工具结果提前走普通账号，原因标记为 `tool_result_missing_call_id`。无法配对的结果原文保留为明确标注的历史工具数据消息，不伪造调用或参数；完整配对的调用与结果不改写。显式携带 `previous_response_id` 的请求继续沿用原有归属和续链校验，账号连接探测不进行这类自动回退。
 
+内联图片数量超过 BPS 本地配置上限（如 `local gateway is configured for at most 20 inline images per request`）时，原生附件和图片中转模式均在发送 BPS 上游前切换到普通账号，原因标记为 `inline_image_limit`。切换保留完整原始图片，沿用上述普通账号调度规则；没有可用普通账号时返回 HTTP 503。连接探测仍返回本地图片数量校验错误，不自动切换。
+
+当前代理任务含 BPS 无法读取的加密分派（`cannot read a new encrypted agent assignment`）时，同样在发送上游前切换到普通账号，原因标记为 `encrypted_agent_assignment`。原始任务和密文完整保留，即使开启忽略历史加密内容也不会省略当前任务；没有可用普通账号时返回 HTTP 503，连接探测仍保留原来的校验错误。
+
 使用记录仍显示最终上游接口；本次没有新增使用记录字段。日志中的 `/v1/responses` 是原生 Responses 通道标记，OAuth 的实际目标为 Codex Responses 接口，不能把标记当成完整 URL。保持 BPS 不会提供网关搜索执行能力，也未验证 BPS 上游是否支持其他原生搜索协议。
 
 ## BPS 403 自动调整分组

@@ -262,6 +262,8 @@ func TestImageRelayBatchValidationAndLimitsAreAtomic(t *testing.T) {
 	require.NoError(t, err)
 	_, err = r.Rewrite(raw, "scope")
 	require.ErrorContains(t, err, "at most 20")
+	var limitErr *InlineImageLimitError
+	require.ErrorAs(t, err, &limitErr)
 	require.Empty(t, r.entries)
 	limited, err := newTestImageRelay(t, "https://images.example")
 	require.NoError(t, err)
@@ -280,6 +282,7 @@ func TestImageRelayBatchValidationAndLimitsAreAtomic(t *testing.T) {
 	require.NoError(t, err)
 	_, err = limited.Rewrite(raw, "scope")
 	require.ErrorContains(t, err, "at most 1")
+	require.ErrorAs(t, err, &limitErr)
 	require.Len(t, limited.entries, entriesBeforeLimit)
 	r.bytes = imageRelayMaxBytes
 	_, err = r.Rewrite(relayTestRequest(t, relayTestPNG(t)), "scope")

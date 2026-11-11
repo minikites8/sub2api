@@ -31,6 +31,10 @@ var (
 	ErrImageRelayStorage = errors.New("basispoints temporary image storage is unavailable")
 )
 
+// InlineImageLimitError identifies a local image count limit before any BPS
+// upload or generation, allowing the gateway to choose another protocol.
+type InlineImageLimitError struct{ error }
+
 const (
 	ImageRelayPath             = "/api/bps-images/"
 	imageRelayTTL              = 30 * time.Minute
@@ -237,7 +241,7 @@ func (r *ImageRelay) RewriteWithImageLimit(raw []byte, scope string, maxImages i
 					continue
 				}
 				if len(staged) >= limits.MaxImages {
-					return nil, fmt.Errorf("image relay is configured for at most %d inline images per request", limits.MaxImages)
+					return nil, &InlineImageLimitError{fmt.Errorf("image relay is configured for at most %d inline images per request", limits.MaxImages)}
 				}
 				img, token, err := r.storeImageWithLimit(rawURL, scope, limits.MaxImageMiB)
 				if err != nil {
