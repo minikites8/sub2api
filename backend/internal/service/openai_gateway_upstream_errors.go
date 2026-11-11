@@ -340,6 +340,24 @@ func isOpenAIRequestBodyTooLargeError(statusCode int, upstreamMsg string, upstre
 	return statusCode == http.StatusRequestEntityTooLarge && !isOpenAIContextWindowError(upstreamMsg, upstreamBody)
 }
 
+func isOpenAIUpstreamRequestFailed(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if statusCode < 500 || statusCode >= 600 {
+		return false
+	}
+	match := func(message string) bool {
+		return strings.EqualFold(strings.TrimSpace(message), "Upstream request failed")
+	}
+	if match(upstreamMsg) {
+		return true
+	}
+	for _, path := range []string{"error.message", "response.error.message", "message"} {
+		if match(gjson.GetBytes(upstreamBody, path).String()) {
+			return true
+		}
+	}
+	return !gjson.ValidBytes(upstreamBody) && match(string(upstreamBody))
+}
+
 func newOpenAIUpstreamFailoverError(
 	statusCode int,
 	responseHeaders http.Header,
@@ -352,7 +370,7 @@ func newOpenAIUpstreamFailoverError(
 		StatusCode:             statusCode,
 		ResponseBody:           responseBody,
 		ResponseHeaders:        responseHeaders.Clone(),
-		RetryableOnSameAccount: retryableOnSameAccount && !requestScopedCapacity,
+		RetryableOnSameAccount: retryableOnSameAccount && !requestScopedCapacity && !isOpenAIUpstreamRequestFailed(statusCode, upstreamMsg, responseBody),
 		RequestScopedTransient: requestScopedCapacity,
 	}
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, responseBody) {
@@ -416,13 +434,14 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
 	}
-	// Generic OAuth 502/503 failures get two short retries before account
-	// selection. Recognized request-scoped overload switches accounts
-	// immediately; pool budgets and disabled-credential handling retain
+	// Other OAuth 502/503 failures get two short retries before account
+	// selection. Generic upstream request failures and request-scoped overload
+	// switch accounts immediately; pool budgets and disabled credentials retain
 	// their own behavior.
 	if isOpenAIOAuthAccount(account) && !shouldDisable && !failoverErr.IsCredentialFailure() &&
 		!failoverErr.RetryableOnSameAccount &&
 		!failoverErr.RequestScopedTransient &&
+		!isOpenAIUpstreamRequestFailed(statusCode, upstreamMsg, responseBody) &&
 		(statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable) {
 		failoverErr.RetryableOnSameAccount = true
 		failoverErr.SameAccountRetryMax = 2

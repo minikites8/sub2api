@@ -43,10 +43,8 @@ func TestOpenAI502503HTTPFailover(t *testing.T) {
 						require.True(t, failover.ShouldRetryNextAccount())
 						require.False(t, c.Writer.Written())
 						require.Empty(t, rec.Body.String())
-						if accountType == AccountTypeOAuth {
-							require.True(t, failover.RetryableOnSameAccount)
-							require.Equal(t, 2, failover.SameAccountRetryMax)
-						}
+						require.False(t, failover.RetryableOnSameAccount)
+						require.Zero(t, failover.SameAccountRetryMax)
 					})
 				}
 			}
@@ -111,7 +109,8 @@ func TestOpenAI502503StreamFailover(t *testing.T) {
 				require.ErrorAs(t, err, &failover)
 				require.Equal(t, p.status, failover.StatusCode)
 				require.True(t, failover.ShouldRetryNextAccount())
-				require.Equal(t, p.name != "overload", failover.RetryableOnSameAccount)
+				wantSameAccount := p.name == "unavailable" || p.name == "processing" || p.name == "failed_503"
+				require.Equal(t, wantSameAccount, failover.RetryableOnSameAccount)
 				require.False(t, c.Writer.Written())
 				require.Empty(t, rec.Body.String())
 			})

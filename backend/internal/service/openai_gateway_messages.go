@@ -620,6 +620,11 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, c, "openai messages buffered", requestID)
 	if err != nil {
+		classifiedErr := s.newOpenAICompatBufferedReadFailoverError(c, account, resp, requestID, err)
+		var failoverErr *UpstreamFailoverError
+		if errors.As(classifiedErr, &failoverErr) {
+			return nil, failoverErr
+		}
 		var readErr *openAICompatBufferedReadError
 		if errors.As(err, &readErr) && readErr != nil {
 			return nil, readErr.cause
@@ -1224,6 +1229,17 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			)
 		}
 	}
+	handleReadError := func(err error) (*OpenAIForwardResult, error) {
+		handleScanErr(err)
+		if !clientDisconnected && !clientOutputStarted {
+			classifiedErr := s.newOpenAICompatBufferedReadFailoverError(c, account, resp, requestID, &openAICompatBufferedReadError{cause: err})
+			var failoverErr *UpstreamFailoverError
+			if errors.As(classifiedErr, &failoverErr) {
+				return nil, failoverErr
+			}
+		}
+		return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+	}
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
 		result := resultWithUsage()
 		if clientDisconnected {
@@ -1264,8 +1280,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			handleScanErr(err)
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+			return handleReadError(err)
 		}
 		if frame, ok := parser.Finish(); ok {
 			if strings.TrimSpace(frame.Data) == "[DONE]" {
@@ -1337,8 +1352,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				return missingTerminalErr()
 			}
 			if ev.err != nil {
-				handleScanErr(ev.err)
-				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
+				return handleReadError(ev.err)
 			}
 			lastDataAt = time.Now()
 			line := ev.line

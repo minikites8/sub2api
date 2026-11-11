@@ -105,8 +105,10 @@ func TestOpenAI502503HandlerRetriesAndSwitches(t *testing.T) {
 	for _, endpoint := range []struct{ path, body string }{
 		{"/v1/responses", `{"model":"gpt-5.2","input":"hello","stream":false}`},
 		{"/v1/responses", `{"model":"gpt-5.2","input":"hello","stream":true}`},
+		{"/v1/messages", `{"model":"gpt-5.2","messages":[{"role":"user","content":"hello"}],"max_tokens":32,"stream":false}`},
 		{"/v1/messages", `{"model":"gpt-5.2","messages":[{"role":"user","content":"hello"}],"max_tokens":32,"stream":true}`},
 		{"/v1/chat/completions", `{"model":"gpt-5.2","messages":[{"role":"user","content":"hello"}],"stream":true}`},
+		{"/v1/chat/completions", `{"model":"gpt-5.2","messages":[{"role":"user","content":"hello"}],"stream":false}`},
 	} {
 		for _, status := range []int{502, 503} {
 			for _, sse := range []bool{false, true} {
@@ -118,7 +120,7 @@ func TestOpenAI502503HandlerRetriesAndSwitches(t *testing.T) {
 					req.Header.Set("Content-Type", "application/json")
 					r.ServeHTTP(rec, req)
 					require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-					require.Equal(t, []int64{801, 801, 801, 802}, u.hits)
+					require.Equal(t, []int64{801, 802}, u.hits)
 					require.NotContains(t, rec.Body.String(), "Upstream request failed")
 					require.NotContains(t, rec.Body.String(), "resp_failed_attempt")
 				})
@@ -142,10 +144,10 @@ func TestOpenAI502503HandlerRetryBoundaries(t *testing.T) {
 			r.ServeHTTP(rec, req)
 			switch mode {
 			case "recovery":
-				require.Equal(t, []int64{801, 801}, u.hits)
+				require.Equal(t, []int64{801, 802}, u.hits)
 				require.Equal(t, 200, rec.Code)
 			case "exhausted":
-				require.Equal(t, []int64{801, 801, 801, 802, 802, 802}, u.hits)
+				require.Equal(t, []int64{801, 802}, u.hits)
 				require.GreaterOrEqual(t, rec.Code, 500)
 			case "cancelled":
 				require.Equal(t, []int64{801}, u.hits)

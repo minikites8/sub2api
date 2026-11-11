@@ -122,7 +122,7 @@ func TestChatCompletionsBufferedResponsesOversizedLineDoesNotFailover(t *testing
 	require.NotErrorAs(t, err, &failoverErr)
 }
 
-func TestAnthropicBufferedResponsesReadErrorKeepsExistingBehavior(t *testing.T) {
+func TestAnthropicBufferedResponsesReadErrorReturnsFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -144,9 +144,10 @@ func TestAnthropicBufferedResponsesReadErrorKeepsExistingBehavior(t *testing.T) 
 		time.Now(),
 	)
 
-	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
-	require.Equal(t, io.ErrUnexpectedEOF, err, "Messages 路径必须保持原始读取错误，不引入 Chat failover 包装")
+	require.Error(t, err)
 	require.Nil(t, result)
 	var failoverErr *UpstreamFailoverError
-	require.NotErrorAs(t, err, &failoverErr)
+	require.ErrorAs(t, err, &failoverErr)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Empty(t, rec.Body.String())
 }

@@ -682,6 +682,9 @@ func (s *OpenAIGatewayService) newOpenAICompatBufferedReadFailoverError(
 		responseHeaders = resp.Header
 	}
 	failoverErr := s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message, responseHeaders)
+	// A failed response-body read should use another account immediately.
+	failoverErr.RetryableOnSameAccount = false
+	failoverErr.SameAccountRetryMax = 0
 	// 保留稳定错误码，确保重试耗尽后客户端和错误透传规则仍能识别传输故障。
 	failoverErr.ResponseBody = payload
 	return failoverErr
