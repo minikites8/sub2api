@@ -49,6 +49,8 @@ BPS 无法找到工具结果对应的原始调用（`original tool item is unava
 
 当前代理任务含 BPS 无法读取的加密分派（`cannot read a new encrypted agent assignment`）时，同样在发送上游前切换到普通账号，原因标记为 `encrypted_agent_assignment`。原始任务和密文完整保留，即使开启忽略历史加密内容也不会省略当前任务；没有可用普通账号时返回 HTTP 503，连接探测仍保留原来的校验错误。
 
+输入中包含 BPS 不支持的 `configuration_update` 时，同样在发送上游前切换到普通账号，原因标记为 `configuration_update`。完整保留原始输入、配置更新项和推理配置，交由普通通道处理；没有可用普通账号时返回 HTTP 503，连接探测仍返回原来的协议校验错误。
+
 使用记录仍显示最终上游接口；本次没有新增使用记录字段。日志中的 `/v1/responses` 是原生 Responses 通道标记，OAuth 的实际目标为 Codex Responses 接口，不能把标记当成完整 URL。保持 BPS 不会提供网关搜索执行能力，也未验证 BPS 上游是否支持其他原生搜索协议。
 
 ## BPS 403 自动调整分组

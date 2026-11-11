@@ -32,6 +32,7 @@ const (
 	ExcelBPSInlineImageLimitReason         = "inline_image_limit"
 	ExcelBPSInlineImageMediaTypeReason     = "inline_image_media_type_mismatch"
 	ExcelBPSEncryptedAgentAssignmentReason = "encrypted_agent_assignment"
+	ExcelBPSConfigurationUpdateReason      = "configuration_update"
 )
 
 // Independently authorized Excel grants never quarantine the primary Codex
@@ -471,10 +472,17 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	if err != nil {
 		var historyErr *basispoints.ToolHistoryUnavailableError
-		if errors.As(err, &historyErr) && excelBPSFailoverContextEnabled(ctx) && excelBPSCanFailover(ctx, c) {
-			c.Header("X-Codex2API-Basispoints-Bypass", OpenAIToolHistoryUnavailableReason)
-			logBPSNativeCapabilityBypass(c, account, originalModel, model, OpenAIToolHistoryUnavailableReason, canonicalBody)
-			recordExcelBPSNativeFallback(ctx, account, OpenAIToolHistoryUnavailableReason)
+		reason := ""
+		switch {
+		case errors.As(err, &historyErr):
+			reason = OpenAIToolHistoryUnavailableReason
+		case errors.Is(err, basispoints.ErrConfigurationUpdateUnsupported):
+			reason = ExcelBPSConfigurationUpdateReason
+		}
+		if reason != "" && excelBPSFailoverContextEnabled(ctx) && excelBPSCanFailover(ctx, c) {
+			c.Header("X-Codex2API-Basispoints-Bypass", reason)
+			logBPSNativeCapabilityBypass(c, account, originalModel, model, reason, canonicalBody)
+			recordExcelBPSNativeFallback(ctx, account, reason)
 			return nil, ErrExcelBPSNativeBypass
 		}
 		if errors.Is(err, basispoints.ErrStateUnavailable) {

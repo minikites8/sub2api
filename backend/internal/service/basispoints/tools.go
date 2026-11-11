@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -21,6 +22,10 @@ type tool struct {
 	Catalog    object
 	Schema     *jsonschema.Schema
 }
+
+// ErrConfigurationUpdateUnsupported marks a local protocol incompatibility
+// before any BPS generation has been submitted.
+var ErrConfigurationUpdateUnsupported = errors.New("basispoints does not support configuration_update; start a new request with the desired effort")
 
 // ToolHistoryUnavailableError identifies a local replay-cache miss without
 // exposing the tool's identifier or result in routing diagnostics.
@@ -501,7 +506,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 			item["id"] = itemID
 			toolImages = separateToolImages(item)
 		case "configuration_update":
-			return nil, fmt.Errorf("basispoints does not support configuration_update; start a new request with the desired effort")
+			return nil, ErrConfigurationUpdateUnsupported
 		}
 		if err := b.validateHistoryContent(item["content"], index, "content"); err != nil {
 			return nil, err
