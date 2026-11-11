@@ -1781,6 +1781,12 @@ func applyOpsUpstreamErrorEvents(entry *service.OpsInsertErrorLogInput, events [
 	entry.UpstreamStatusCode = nil
 	entry.UpstreamErrorMessage = nil
 	entry.UpstreamErrorDetail = nil
+	// A capability bypass is a routing notice, not a failed upstream attempt.
+	// Keep it in the history without masking the final client error (for
+	// example, QoS admission timing out while selecting an ordinary account).
+	if last.Kind == "bps_native_bypass" {
+		return
+	}
 	if last.Stage == string(service.GatewayFailureStageAccountAuth) {
 		code := 0
 		entry.UpstreamStatusCode = &code

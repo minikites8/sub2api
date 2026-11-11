@@ -1706,6 +1706,41 @@ func TestApplyOpsUpstreamFieldsFinalStatuslessAttemptClearsStaleContext(t *testi
 	require.Equal(t, "connection reset", *entry.UpstreamErrorDetail)
 }
 
+func TestApplyOpsUpstreamFieldsCapabilityBypassDoesNotMaskFinalError(t *testing.T) {
+	for _, earlierFailure := range []bool{false, true} {
+		for _, laterFailure := range []bool{false, true} {
+			t.Run(fmt.Sprintf("earlier=%t/later=%t", earlierFailure, laterFailure), func(t *testing.T) {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				service.SetOpsUpstreamError(c, http.StatusBadGateway, "stale response", "stale body")
+				var events []*service.OpsUpstreamErrorEvent
+				if earlierFailure {
+					events = append(events, &service.OpsUpstreamErrorEvent{UpstreamStatusCode: http.StatusBadGateway, Message: "earlier failure"})
+				}
+				events = append(events, &service.OpsUpstreamErrorEvent{Kind: "bps_native_bypass", Stage: "route", Scope: "bps",
+					Reason: "encrypted_agent_assignment", Message: "Excel BPS bypassed for native Codex capability", Detail: "request_path=/responses"}, nil)
+				if laterFailure {
+					events = append(events, &service.OpsUpstreamErrorEvent{Kind: "request_error", Message: "ordinary transport failure", Detail: "connection reset"})
+				}
+				c.Set(service.OpsUpstreamErrorsKey, events)
+				entry := &service.OpsInsertErrorLogInput{ErrorMessage: "No eligible account capacity became available within the scheduling wait budget."}
+
+				applyOpsUpstreamFieldsFromContext(c, entry)
+
+				require.Equal(t, events, entry.UpstreamErrors)
+				require.Nil(t, entry.UpstreamStatusCode)
+				if laterFailure {
+					require.Equal(t, "ordinary transport failure", *entry.UpstreamErrorMessage)
+					require.Equal(t, "connection reset", *entry.UpstreamErrorDetail)
+				} else {
+					require.Nil(t, entry.UpstreamErrorMessage)
+					require.Nil(t, entry.UpstreamErrorDetail)
+				}
+				require.Contains(t, entry.ErrorMessage, "wait budget")
+			})
+		}
+	}
+}
+
 func TestOpsCaptureWriter_ProtocolLevelTerminalFrameDetection(t *testing.T) {
 	state := &opsCaptureWriterState{limit: opsCaptureWriterLimit}
 	chunks := []string{
