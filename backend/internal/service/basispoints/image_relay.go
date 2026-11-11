@@ -35,6 +35,10 @@ var (
 // upload or generation, allowing the gateway to choose another protocol.
 type InlineImageLimitError struct{ error }
 
+// InlineImageMediaTypeError identifies image content rejected by BPS local
+// format validation before any upload or generation.
+type InlineImageMediaTypeError struct{ error }
+
 const (
 	ImageRelayPath             = "/api/bps-images/"
 	imageRelayTTL              = 30 * time.Minute
@@ -383,7 +387,7 @@ func (r *ImageRelay) storeImageWithLimit(raw, scope string, maxImageMiB int) (*r
 		return nil, "", fmt.Errorf("basispoints inline image is invalid or exceeds 64 megapixels")
 	}
 	if "image/"+format != declared {
-		return nil, "", fmt.Errorf("basispoints inline image media type does not match its contents")
+		return nil, "", &InlineImageMediaTypeError{fmt.Errorf("basispoints inline image media type does not match its contents")}
 	}
 	if err := file.Close(); err != nil {
 		return nil, "", ErrImageRelayStorage

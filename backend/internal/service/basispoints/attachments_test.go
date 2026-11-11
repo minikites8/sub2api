@@ -96,6 +96,13 @@ func TestNativeImagesValidateAllBeforeUpload(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, err := PrepareNativeImages(nativeTestRequest(t, urls...))
 			require.Error(t, err)
+			var mediaTypeErr *InlineImageMediaTypeError
+			if name == "mime mismatch" || name == "bad image bytes" {
+				require.ErrorAs(t, err, &mediaTypeErr)
+				require.EqualError(t, err, "basispoints inline image content does not match its media type")
+			} else {
+				require.NotErrorAs(t, err, &mediaTypeErr)
+			}
 			require.NotContains(t, err.Error(), "PRIVATE_INVALID")
 		})
 	}

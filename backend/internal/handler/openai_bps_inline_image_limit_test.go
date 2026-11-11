@@ -32,6 +32,15 @@ func (excelBPSInlineImageLimitSettings) GetValue(context.Context, string) (strin
 }
 
 func TestExcelBPSInlineImageLimitReselectsOrdinaryAccount(t *testing.T) {
+	testExcelBPSInlineImageValidationFallback(t, 21, "image/png", service.ExcelBPSInlineImageLimitReason)
+}
+
+func TestExcelBPSInlineImageMediaTypeReselectsOrdinaryAccount(t *testing.T) {
+	testExcelBPSInlineImageValidationFallback(t, 1, "image/jpeg", service.ExcelBPSInlineImageMediaTypeReason)
+}
+
+func testExcelBPSInlineImageValidationFallback(t *testing.T, imageCount int, mediaType, reason string) {
+	t.Helper()
 	t.Setenv("DATA_DIR", t.TempDir())
 	for _, mode := range []string{service.ExcelBPSImageModeNative, service.ExcelBPSImageModeRelay} {
 		for _, path := range []string{"/v1/responses", "/v1/chat/completions"} {
@@ -50,8 +59,8 @@ func TestExcelBPSInlineImageLimitReselectsOrdinaryAccount(t *testing.T) {
 								repo.accounts = append(repo.accounts, ordinary)
 							}
 						})
-						const dataURL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg=="
-						parts := make([]any, 21)
+						dataURL := "data:" + mediaType + ";base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg=="
+						parts := make([]any, imageCount)
 						for i := range parts {
 							if path == "/v1/chat/completions" {
 								parts[i] = map[string]any{"type": "image_url", "image_url": map[string]any{"url": dataURL}}
@@ -75,8 +84,8 @@ func TestExcelBPSInlineImageLimitReselectsOrdinaryAccount(t *testing.T) {
 						router.ServeHTTP(rec, req)
 
 						require.Contains(t, accounts.admissionIDs, int64(801))
-						require.NotContains(t, accounts.admissionIDs, int64(802), "all other BPS routes share the image count limit")
-						require.Equal(t, service.ExcelBPSInlineImageLimitReason, rec.Header().Get("X-Codex2API-Basispoints-Bypass"))
+						require.NotContains(t, accounts.admissionIDs, int64(802), "all other BPS routes share the local image validation")
+						require.Equal(t, reason, rec.Header().Get("X-Codex2API-Basispoints-Bypass"))
 						if !ordinaryAvailable {
 							require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 							require.Empty(t, upstream.hits)
@@ -87,7 +96,7 @@ func TestExcelBPSInlineImageLimitReselectsOrdinaryAccount(t *testing.T) {
 						require.Equal(t, []string{"/backend-api/codex/responses"}, upstream.paths)
 						require.Contains(t, rec.Body.String(), "ok")
 						images := gjson.GetBytes(upstream.bodies[0], "input.0.content").Array()
-						require.Len(t, images, 21)
+						require.Len(t, images, imageCount)
 						for _, image := range images {
 							require.Equal(t, dataURL, image.Get("image_url").String(), "fallback must preserve the original images")
 						}

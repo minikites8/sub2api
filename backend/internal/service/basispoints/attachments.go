@@ -132,7 +132,7 @@ func PrepareNativeImagesWithLimit(raw []byte, maxImages int) (*NativeImages, err
 			}
 			config, format, err := image.DecodeConfig(base64.NewDecoder(base64.StdEncoding, strings.NewReader(payload)))
 			if err != nil || "image/"+format != mimeType {
-				return nil, fmt.Errorf("basispoints inline image content does not match its media type")
+				return nil, &InlineImageMediaTypeError{fmt.Errorf("basispoints inline image content does not match its media type")}
 			}
 			if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > imageRelayMaxPixels {
 				return nil, fmt.Errorf("basispoints inline image dimensions exceed the 64 megapixel limit")

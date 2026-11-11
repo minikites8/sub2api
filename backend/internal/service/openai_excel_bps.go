@@ -30,6 +30,7 @@ var excelBPSCatalog basispoints.CatalogCache
 
 const (
 	ExcelBPSInlineImageLimitReason         = "inline_image_limit"
+	ExcelBPSInlineImageMediaTypeReason     = "inline_image_media_type_mismatch"
 	ExcelBPSEncryptedAgentAssignmentReason = "encrypted_agent_assignment"
 )
 
@@ -425,10 +426,18 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	if err != nil {
 		var imageLimitErr *basispoints.InlineImageLimitError
-		if errors.As(err, &imageLimitErr) && excelBPSFailoverContextEnabled(ctx) && excelBPSCanFailover(ctx, c) {
-			c.Header("X-Codex2API-Basispoints-Bypass", ExcelBPSInlineImageLimitReason)
-			logBPSNativeCapabilityBypass(c, account, originalModel, model, ExcelBPSInlineImageLimitReason, canonicalBody)
-			recordExcelBPSNativeFallback(ctx, account, ExcelBPSInlineImageLimitReason)
+		var imageMediaTypeErr *basispoints.InlineImageMediaTypeError
+		reason := ""
+		switch {
+		case errors.As(err, &imageLimitErr):
+			reason = ExcelBPSInlineImageLimitReason
+		case errors.As(err, &imageMediaTypeErr):
+			reason = ExcelBPSInlineImageMediaTypeReason
+		}
+		if reason != "" && excelBPSFailoverContextEnabled(ctx) && excelBPSCanFailover(ctx, c) {
+			c.Header("X-Codex2API-Basispoints-Bypass", reason)
+			logBPSNativeCapabilityBypass(c, account, originalModel, model, reason, canonicalBody)
+			recordExcelBPSNativeFallback(ctx, account, reason)
 			return nil, ErrExcelBPSNativeBypass
 		}
 		if errors.Is(err, basispoints.ErrImageRelayFull) {

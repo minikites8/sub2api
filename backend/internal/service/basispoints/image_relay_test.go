@@ -233,6 +233,27 @@ func TestImageRelayRejectsUnsafeOrOversizedData(t *testing.T) {
 	}
 }
 
+func TestImageRelayMediaTypeMismatchReleasesStorage(t *testing.T) {
+	r, err := newTestImageRelay(t, "https://images.example")
+	require.NoError(t, err)
+	url := "data:image/png;base64," + base64.StdEncoding.EncodeToString(relayTestPNG(t))
+	raw, err := json.Marshal(object{"input": []any{object{"role": "user", "content": []any{
+		object{"type": "input_image", "image_url": url},
+		object{"type": "input_image", "image_url": strings.Replace(url, "image/png", "image/jpeg", 1)},
+	}}}})
+	require.NoError(t, err)
+	_, err = r.Rewrite(raw, "scope")
+	var mediaTypeErr *InlineImageMediaTypeError
+	require.ErrorAs(t, err, &mediaTypeErr)
+	require.EqualError(t, err, "basispoints inline image media type does not match its contents")
+	require.Empty(t, r.entries)
+	require.Zero(t, r.reservedBytes)
+	require.Zero(t, r.reservedEntries)
+	files, err := os.ReadDir(r.dir)
+	require.NoError(t, err)
+	require.Empty(t, files)
+}
+
 func TestImageRelayBatchValidationAndLimitsAreAtomic(t *testing.T) {
 	r, err := newTestImageRelay(t, "https://images.example")
 	require.NoError(t, err)
