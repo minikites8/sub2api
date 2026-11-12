@@ -821,21 +821,20 @@ func (s *BillingCacheService) checkSimpleModeAPIKeyRateLimits(ctx context.Contex
 	return nil
 }
 
-// checkRPM 执行并行 RPM 限流，所有适用的限制同时生效，任一超限即拒绝：
+// checkRPM 按优先级选择一层 RPM 限流，命中后不再检查更低优先级的限额：
 //
 //  1. (用户, 分组) rpm_override       — 最细粒度：管理员为特定用户在特定分组设定的专属限额。
-//     override=0 表示该用户在该分组免检（绿灯），但 user 级全局上限仍然生效。
-//  2. group.rpm_limit                 — 分组级：该分组的统一 RPM 容量（仅当无 override 时生效）。
-//  3. user.rpm_limit                  — 用户级全局硬上限：无论 override/group 如何配置，始终生效。
+//     override=0 表示该用户在该分组不限制 RPM，也不回落到用户级限额。
+//  2. group.rpm_limit                 — 每用户在该分组的 RPM 上限，仅在无 override 且值大于 0 时生效。
+//  3. user.rpm_limit                  — 用户级兜底，仅在无 override 且分组未配置正数限额时生效。
 //
-// 与旧版"级联互斥"设计不同，新版确保 user.rpm_limit 作为全局天花板不会被 group 或 override 覆盖。
 // Redis 故障一律 fail-open（打 warning，不阻塞业务）。
 func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *Group) error {
 	if s == nil || s.userRPMCache == nil || user == nil {
 		return nil
 	}
 
-	// ── 第一层：分组级检查（override 或 group.rpm_limit） ──
+	// 优先检查专属限额或分组限额。
 	if group != nil {
 		// 解析 override：优先从 auth cache snapshot，nil 时回退 DB。
 		var override *int
@@ -855,7 +854,7 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 		}
 
 		if override != nil {
-			// override=0 → 该用户在该分组免检（但 user 级仍会在下面检查）。
+			// override=0 → 该用户在该分组不限制 RPM。
 			if *override > 0 {
 				count, incErr := s.userRPMCache.IncrementUserGroupRPM(ctx, user.ID, group.ID)
 				if incErr != nil {
@@ -869,7 +868,7 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 					return ErrGroupRPMExceeded
 				}
 			}
-			// override 命中后跳过 group.rpm_limit（override 替代 group），但不 return——继续检查 user 级。
+			return nil // 专属限额覆盖分组和用户限额，包括显式配置为 0 的情况。
 		} else if group.RPMLimit > 0 {
 			// 无 override，检查 group.rpm_limit。
 			count, err := s.userRPMCache.IncrementUserGroupRPM(ctx, user.ID, group.ID)
@@ -883,10 +882,11 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 			} else if count > group.RPMLimit {
 				return ErrGroupRPMExceeded
 			}
+			return nil // 分组限额覆盖用户限额，不消耗用户兜底计数。
 		}
 	}
 
-	// ── 第二层：用户级全局硬上限（始终生效） ──
+	// 无专属限额且分组未设限时，使用用户级兜底。
 	if user.RPMLimit > 0 {
 		count, err := s.userRPMCache.IncrementUserRPM(ctx, user.ID)
 		if err != nil {
