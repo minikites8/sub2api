@@ -39,6 +39,7 @@ func controlledSubmission(ctx context.Context, channel string) error {
 	if err := MarkGPTQoSSubmission(ctx); err != nil {
 		return err
 	}
+	ObserveOpenAIDefaultRetrySubmission(ctx)
 	mode := controlledMode(ctx)
 	if mode == nil {
 		return nil

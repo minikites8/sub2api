@@ -218,7 +218,11 @@ func TestPoolCapacityExplicitPolicyCooldownDoesNotSlideAndRecovers(t *testing.T)
 			}}
 			router := newPoolCapacityRouter(t, repo, upstream)
 			require.Equal(t, 200, servePoolCapacity(router, false).Code)
-			require.Equal(t, []int64{11, 12}, upstream.hits)
+			wantHits := []int64{11, 11, 12}
+			if pool {
+				wantHits = []int64{11, 12} // Explicit pool retry count zero remains authoritative.
+			}
+			require.Equal(t, wantHits, upstream.hits)
 			require.Equal(t, 1, repo.modelWrites, "generic unavailable still honors explicit model policy")
 			limits := repo.accounts[0].Extra["model_rate_limits"].(map[string]any)
 			entry := limits["gpt-6.1-sol"].(map[string]any)
@@ -229,7 +233,7 @@ func TestPoolCapacityExplicitPolicyCooldownDoesNotSlideAndRecovers(t *testing.T)
 			for request := 0; request < 2; request++ {
 				require.Equal(t, 200, servePoolCapacity(router, false).Code)
 			}
-			require.Equal(t, []int64{11, 12, 12, 12}, upstream.hits)
+			require.Equal(t, append(wantHits, 12, 12), upstream.hits)
 			require.Equal(t, 1, repo.modelWrites)
 			require.Equal(t, reset, entry["rate_limit_reset_at"], "reads must not renew the absolute cooldown")
 			// Advance the persisted mock deadline without a sleep or clearing the

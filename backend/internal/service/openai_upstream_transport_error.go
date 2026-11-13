@@ -18,6 +18,9 @@ import (
 // unscheduled after a durable transport failure (matches tokenRefreshTempUnschedDuration).
 const openAITransportErrorTempUnschedDuration = 10 * time.Minute
 
+// A network failure is not evidence that the provider rejected inference.
+const OpenAITransportFailureReason GatewayFailureReason = "openai_transport_error"
+
 // openAITransportFailoverBody is the OpenAI-format error body attached to the
 // failover error for a transport-level failure. Kept identical to the legacy
 // inline 502 body so the client-visible payload is unchanged if failover is
@@ -174,6 +177,7 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 	return &UpstreamFailoverError{
 		StatusCode:   http.StatusBadGateway,
 		ResponseBody: openAITransportFailoverBody,
+		Reason:       OpenAITransportFailureReason,
 	}
 }
 

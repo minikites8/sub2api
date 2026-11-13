@@ -1240,7 +1240,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.Forward(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, attemptBody)
+			return forwardOpenAIWithDefaultRetry(c, account, func() (*service.OpenAIForwardResult, error) {
+				return h.gatewayService.Forward(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, attemptBody)
+			}, &sameAccountRetrier.budget)
 		}()
 		if result != nil {
 			result.HeaderTimeoutRetries = headerTimeoutRetries
@@ -1961,7 +1963,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardAsAnthropic(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+			return forwardOpenAIWithDefaultRetry(c, account, func() (*service.OpenAIForwardResult, error) {
+				return h.gatewayService.ForwardAsAnthropic(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+			}, &sameAccountRetrier.budget)
 		}()
 		if result != nil {
 			result.HeaderTimeoutRetries = headerTimeoutRetries

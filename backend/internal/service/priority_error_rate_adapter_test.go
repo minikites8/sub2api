@@ -171,6 +171,12 @@ func TestPriorityErrorRateBPSActualAdapter(t *testing.T) {
 				wire = "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"mock upstream failure\"}}}\n\n"
 			}
 			upstream := &httpUpstreamRecorder{resp: priorityMockResponse(200, wire, true)}
+			if failed {
+				upstream.responses = []*http.Response{
+					priorityMockResponse(200, wire, true),
+					priorityMockResponse(200, wire, true),
+				}
+			}
 			svc := openAIClientToolsTestService(upstream)
 			a := excelAccount()
 			a.Extra["openai_excel_bps_mihomo"] = false
@@ -185,9 +191,11 @@ func TestPriorityErrorRateBPSActualAdapter(t *testing.T) {
 			require.Equal(t, "bps.openai.com", upstream.lastReq.URL.Host)
 			got := svc.openaiAccountStats.attempts.snapshot(priorityAttemptKey{accountID: a.ID, model: "gpt-5.6-sol", endpoint: "/v1/responses"}, time.Now(), 10, 5)
 			if failed {
-				require.Equal(t, int64(1), got.Failures)
+				require.Len(t, upstream.requests, 2, "count the initial rejection and its one same-account retry")
+				require.Equal(t, int64(2), got.Failures)
 				require.Zero(t, got.Successes)
 			} else {
+				require.Len(t, upstream.requests, 1)
 				require.Equal(t, int64(1), got.Successes)
 				require.Zero(t, got.Failures)
 			}

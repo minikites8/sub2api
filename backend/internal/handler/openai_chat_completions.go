@@ -321,7 +321,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardAsChatCompletions(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, forwardBody, promptCacheKey, "")
+			return forwardOpenAIWithDefaultRetry(c, account, func() (*service.OpenAIForwardResult, error) {
+				return h.gatewayService.ForwardAsChatCompletions(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, forwardBody, promptCacheKey, "")
+			}, &sameAccountRetrier.budget)
 		}()
 		service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
 		if retryOpenAIInitialAdmission(c, err, result, body, account.ID, failedAccountIDs, &switchCount, maxAccountSwitches) {

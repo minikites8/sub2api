@@ -19,6 +19,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// OpenAIFirstOutputTimeoutReason identifies a submitted request with an unknown outcome.
+const OpenAIFirstOutputTimeoutReason GatewayFailureReason = "openai_first_output_timeout"
+
 const (
 	openAIFirstOutputStageMemoryLimit        = 64 * 1024
 	openAIFirstOutputStageMaxBytes           = 8 * 1024 * 1024
@@ -281,6 +284,7 @@ func (s *OpenAIGatewayService) newOpenAIFirstOutputTimeoutError(
 	}
 	return &UpstreamFailoverError{
 		StatusCode:      http.StatusGatewayTimeout,
+		Reason:          OpenAIFirstOutputTimeoutReason,
 		ResponseBody:    []byte(`{"error":{"type":"first_output_timeout","message":"Upstream produced no output before the deadline"}}`),
 		ResponseHeaders: responseHeaders.Clone(), SafeToFailoverAfterWrite: true,
 	}

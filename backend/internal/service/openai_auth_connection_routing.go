@@ -94,7 +94,12 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 			managed = current
 		}
 	}
+	pinnedRetry := openAIDefaultRetryPinnedConnection(ctx)
 	if !managed {
+		if pinnedRetry != nil && pinnedRetry.AuthConnectionID != "" {
+			return nil, connectionChanged()
+		}
+		observeOpenAIDefaultRetryConnection(ctx, account)
 		return account, nil
 	}
 
@@ -118,6 +123,12 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 		pinned = selected.AuthConnectionID
 	}
 	var chosen *OpenAIAuthConnection
+	if pinnedRetry != nil {
+		if pinnedRetry.ID != account.ID || pinnedRetry.AuthConnectionID == "" {
+			return nil, connectionChanged()
+		}
+		pinned = pinnedRetry.AuthConnectionID
+	}
 	if pinned == "" {
 		for _, candidate := range connections {
 			if candidate.Preferred && !candidate.Legacy && supports(candidate) && !s.excelBPSConnectionCoolingDown(account.ID, candidate, model) {
@@ -146,6 +157,9 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 		if err != nil {
 			return nil, err
 		}
+		if pinnedRetry != nil && pinned != pinnedRetry.AuthConnectionID {
+			return nil, connectionChanged()
+		}
 	}
 	for _, candidate := range connections {
 		if candidate.Legacy {
@@ -168,6 +182,9 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 	chosen, err = s.excelOAuthReauth.authConnection(ctx, account.ID, chosen.ID)
 	if err != nil {
 		return nil, err
+	}
+	if pinnedRetry != nil && (chosen.ID != pinnedRetry.AuthConnectionID || chosen.Revision != pinnedRetry.AuthConnectionRevision) {
+		return nil, connectionChanged()
 	}
 	if !supports(chosen) || s.excelBPSConnectionCoolingDown(account.ID, chosen, model) {
 		return nil, connectionChanged()
@@ -229,6 +246,7 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 		c.Set("openai_auth_connection_id", chosen.ID)
 		c.Set(codexAccountIdentitySourceContextKey, &out)
 	}
+	observeOpenAIDefaultRetryConnection(ctx, &out)
 	return &out, nil
 }
 

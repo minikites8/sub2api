@@ -70,7 +70,7 @@ func TestOpenAIOverloadAfterEmptyProgressSwitchesWithoutOptIn(t *testing.T) {
 						require.NotContains(t, rec.Body.String(), "healthy")
 						return
 					}
-					require.Equal(t, []int64{801, 802, 803}, upstream.hits, rec.Body.String())
+					require.Equal(t, []int64{801, 801, 802, 802, 803}, upstream.hits, rec.Body.String())
 					require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 					require.Contains(t, rec.Body.String(), "healthy")
 					require.NotContains(t, rec.Body.String(), "resp_failed_attempt")

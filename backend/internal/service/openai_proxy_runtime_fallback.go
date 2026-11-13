@@ -143,6 +143,7 @@ func (s *OpenAIGatewayService) doOpenAIProxyAttempt(req *http.Request, account *
 	if err := s.acquireOpenAIRPMForSend(req.Context(), account); err != nil {
 		return nil, err
 	}
+	observeOpenAIDefaultRetryConnection(req.Context(), account)
 	if err := controlledSubmission(req.Context(), "native_http"); err != nil {
 		return nil, err
 	}

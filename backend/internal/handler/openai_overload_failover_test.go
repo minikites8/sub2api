@@ -71,7 +71,13 @@ func TestOpenAIOverloadHandlerAutoSwitch(t *testing.T) {
 				require.Equal(t, 200, rec.Code, rec.Body.String())
 				require.Equal(t, int64(801), u.hits[0])
 				require.Equal(t, int64(802), u.hits[len(u.hits)-1])
-				require.Equal(t, []int64{801, 802}, u.hits)
+				wantHits := []int64{801, 802}
+				// HTTP 400 keeps its request-error classification. An unwritten
+				// SSE capacity rejection gets one retry on the selected account.
+				if sse {
+					wantHits = []int64{801, 801, 802}
+				}
+				require.Equal(t, wantHits, u.hits)
 				require.NotContains(t, rec.Body.String(), overloadHandlerFixture)
 				require.NotContains(t, rec.Body.String(), "resp_failed_attempt")
 				t.Logf("overload route=%s sse=%t scheduled_accounts=%v final_status=%d", endpoint.path, sse, u.hits, rec.Code)
@@ -126,7 +132,7 @@ func (u *loggedOverloadUpstream) Do(req *http.Request, proxy string, id int64, c
 	}
 	return (&overloadUpstream{}).Do(req, proxy, id, concurrency)
 }
-func TestOpenAIOverloadLoggedSequenceImmediateSwitch(t *testing.T) {
+func TestOpenAIOverloadLoggedSequenceRetriesOnceBeforeSwitch(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, single := range []bool{false, true} {
 			t.Run(fmt.Sprintf("stream_%t/single_%t", stream, single), func(t *testing.T) {
@@ -141,10 +147,10 @@ func TestOpenAIOverloadLoggedSequenceImmediateSwitch(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 				r.ServeHTTP(rec, req)
 				if single {
-					require.Equal(t, []int64{1350}, u.hits)
+					require.Equal(t, []int64{1350, 1350}, u.hits)
 					require.Equal(t, 503, rec.Code)
 				} else {
-					require.Equal(t, []int64{1350, 1351}, u.hits)
+					require.Equal(t, []int64{1350, 1350, 1351}, u.hits)
 					require.Equal(t, 200, rec.Code)
 				}
 				t.Logf("logged overload account=1350 model=gpt-6.1-sol scheduled_accounts=%v final_status=%d", u.hits, rec.Code)

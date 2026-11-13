@@ -97,8 +97,14 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		var disabledOn429 bool
 		ctx, disabledOn429 = s.rateLimitService.maybeDisableOpenAISchedulingOn429(ctx, account, statusCode, headers)
 		if disabledOn429 {
+			// An explicit disable-on-429 policy takes precedence over a default
+			// in-place retry and must not be deferred by the observation context.
+			FinishOpenAIDefaultRetryState(ctx, false)
 			defer func() { shouldDisable = true }()
 		}
+	}
+	if s != nil && s.deferOpenAIDefaultRetryState(ctx, account, statusCode, headers, responseBody, canonicalModel...) {
+		return false
 	}
 	if isOpenAIUpstreamSessionBlocked(responseBody) {
 		return false

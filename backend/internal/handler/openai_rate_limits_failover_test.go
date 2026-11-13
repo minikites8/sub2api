@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpenAICodexRateLimitsBeforeBareOverloadSwitchesAccounts(t *testing.T) {
+func TestOpenAICodexRateLimitsBeforeBareOverloadRetriesOnceThenSwitchesAccounts(t *testing.T) {
 	for _, endpoint := range requestAccountRetryEndpoints {
 		for _, passthrough := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/%s/passthrough=%t", endpoint.path, endpoint.body, passthrough), func(t *testing.T) {
@@ -41,7 +41,7 @@ func TestOpenAICodexRateLimitsBeforeBareOverloadSwitchesAccounts(t *testing.T) {
 				rec := httptest.NewRecorder()
 				req := httptest.NewRequest(http.MethodPost, endpoint.path, strings.NewReader(endpoint.body))
 				router.ServeHTTP(rec, req)
-				require.Equal(t, []int64{801, 802, 803}, upstream.hits, rec.Body.String())
+				require.Equal(t, []int64{801, 801, 802, 802, 803}, upstream.hits, rec.Body.String())
 				require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 				require.Contains(t, rec.Body.String(), "healthy")
 				require.NotContains(t, rec.Body.String(), "failed-quota")
