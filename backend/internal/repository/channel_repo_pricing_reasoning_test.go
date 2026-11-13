@@ -56,7 +56,7 @@ func TestChannelReasoningEffortMultipliersRoundTrip(t *testing.T) {
 				}
 				stored := &capturedReasoningMultipliersJSON{}
 				if operation == "update" {
-					mock.ExpectExec(`(?s)UPDATE channel_model_pricing.*reasoning_effort_multipliers = \$11.*WHERE id = \$17`).
+					mock.ExpectExec(`(?s)UPDATE channel_model_pricing.*reasoning_effort_multipliers = \$11.*WHERE id = \$18`).
 						WithArgs([]byte(`["custom-model"]`), service.BillingModeToken,
 							nil, nil, nil, nil, nil, nil, nil, nil, stored, nil, nil, nil, nil, nil, "openai", int64(11)).
 						WillReturnResult(sqlmock.NewResult(0, 1))
@@ -67,7 +67,7 @@ func TestChannelReasoningEffortMultipliersRoundTrip(t *testing.T) {
 						mock.ExpectExec(`DELETE FROM channel_model_pricing WHERE channel_id = \$1`).
 							WithArgs(int64(7)).WillReturnResult(sqlmock.NewResult(0, 1))
 					}
-					mock.ExpectQuery(`INSERT INTO channel_model_pricing .*reasoning_effort_multipliers`).
+					mock.ExpectQuery(`(?s)INSERT INTO channel_model_pricing .*reasoning_effort_multipliers.*VALUES \([^)]*\$18\) RETURNING`).
 						WithArgs(int64(7), "openai", []byte(`["custom-model"]`), service.BillingModeToken,
 							nil, nil, nil, nil, nil, nil, nil, nil, stored, nil, nil, nil, nil, nil).
 						WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(int64(11), time.Time{}, time.Time{}))
@@ -146,7 +146,7 @@ func TestAccountStatsReasoningEffortMultipliersRoundTrip(t *testing.T) {
 	mock.ExpectBegin()
 	tx, err := repo.db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	mock.ExpectQuery(`INSERT INTO channel_account_stats_model_pricing .*reasoning_effort_multipliers`).
+	mock.ExpectQuery(`(?s)INSERT INTO channel_account_stats_model_pricing .*reasoning_effort_multipliers.*VALUES \([^)]*\$14\) RETURNING`).
 		WithArgs(int64(9), "anthropic", []byte(`["custom-model"]`), service.BillingModeToken,
 			nil, nil, nil, nil, nil, nil, stored, nil, nil, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(int64(11), time.Time{}, time.Time{}))

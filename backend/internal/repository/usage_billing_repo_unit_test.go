@@ -17,9 +17,9 @@ import (
 const (
 	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET gift_balance = GREATEST\(COALESCE\(gift_balance, 0\) - \$1, 0\),\s+balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance`
 	overdraftBalanceDeductSQL   = `(?s)UPDATE users\s+SET gift_balance = GREATEST\(COALESCE\(gift_balance, 0\) - \$1, 0\),\s+balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING balance`
-	reserveBatchImageHoldSQL    = `(?s)WITH target AS .*gift_balance.*UPDATE users.*frozen_gift_balance.*RETURNING balance, frozen_balance`
-	captureBatchImageHoldSQL    = `(?s)WITH target AS .*frozen_gift_balance.*amounts AS .*gift_release.*UPDATE users.*gift_balance.*RETURNING balance, frozen_balance`
-	releaseBatchImageHoldSQL    = `(?s)WITH target AS .*frozen_gift_balance.*UPDATE users.*gift_balance.*RETURNING balance, frozen_balance`
+	reserveBatchImageHoldSQL    = `(?s)WITH target AS .*gift_balance.*UPDATE users.*frozen_gift_balance.*RETURNING users\.balance, users\.frozen_balance`
+	captureBatchImageHoldSQL    = `(?s)WITH target AS .*frozen_gift_balance.*amounts AS .*gift_release.*UPDATE users.*gift_balance.*RETURNING users\.balance, users\.frozen_balance`
+	releaseBatchImageHoldSQL    = `(?s)WITH target AS .*frozen_gift_balance.*UPDATE users.*gift_balance.*RETURNING users\.balance, users\.frozen_balance`
 	userExistsForBillingSQL     = `(?s)SELECT 1\s+FROM users\s+WHERE id = \$1 AND deleted_at IS NULL`
 	apiKeyQuotaIncrementSQL     = `(?s)UPDATE api_keys\s+SET quota_used = quota_used \+ \$1,.*WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING`
 	apiKeyRateLimitIncrementSQL = `(?s)UPDATE api_keys SET\s+usage_5h = .*WHERE id = \$2 AND deleted_at IS NULL`

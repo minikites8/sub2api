@@ -189,7 +189,9 @@ func TestChannelPricingFieldsPersistTogether(t *testing.T) {
 	number := func(v float64) *float64 { return &v }
 	pricing := &service.ChannelModelPricing{
 		ChannelID: channel.ID, Platform: service.PlatformOpenAI, Models: []string{"synthetic-ci-model"},
-		InputPrice: number(1e-6), CacheWrite1hPrice: number(7e-6),
+		InputPrice: number(1e-6), OutputPrice: number(2e-6),
+		CacheWritePrice: number(3e-6), CacheWrite1hPrice: number(7e-6), CacheWrite12hPrice: number(9e-6), CacheReadPrice: number(4e-7),
+		ImageInputPrice: number(5e-6), ImageOutputPrice: number(6e-6), PerRequestPrice: number(0.125),
 		FastMultiplier: number(2), FlexMultiplier: number(.5), PriorityMultiplier: number(3),
 		ReasoningEffortMultipliers: map[string]float64{"high": 4},
 		TimePricing:                &service.ChannelTimePricing{Timezone: "UTC", Periods: []service.ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2}}},
@@ -199,13 +201,23 @@ func TestChannelPricingFieldsPersistTogether(t *testing.T) {
 		if update {
 			pricing.TimePricing.Timezone = "Asia/Shanghai"
 			pricing.ReasoningEffortMultipliers["high"] = 5
+			pricing.CacheWrite12hPrice = number(12e-6)
+			pricing.PerRequestPrice = number(0.25)
+			pricing.PriorityMultiplier = number(4)
 			require.NoError(t, repo.UpdateModelPricing(ctx, pricing))
 		}
 		loaded, err := repo.ListModelPricing(ctx, channel.ID)
 		require.NoError(t, err)
 		require.Len(t, loaded, 1)
 		require.Equal(t, pricing.InputPrice, loaded[0].InputPrice)
+		require.Equal(t, pricing.OutputPrice, loaded[0].OutputPrice)
+		require.Equal(t, pricing.CacheWritePrice, loaded[0].CacheWritePrice)
 		require.Equal(t, pricing.CacheWrite1hPrice, loaded[0].CacheWrite1hPrice)
+		require.Equal(t, pricing.CacheWrite12hPrice, loaded[0].CacheWrite12hPrice)
+		require.Equal(t, pricing.CacheReadPrice, loaded[0].CacheReadPrice)
+		require.Equal(t, pricing.ImageInputPrice, loaded[0].ImageInputPrice)
+		require.Equal(t, pricing.ImageOutputPrice, loaded[0].ImageOutputPrice)
+		require.Equal(t, pricing.PerRequestPrice, loaded[0].PerRequestPrice)
 		require.Equal(t, pricing.FastMultiplier, loaded[0].FastMultiplier)
 		require.Equal(t, pricing.FlexMultiplier, loaded[0].FlexMultiplier)
 		require.Equal(t, pricing.PriorityMultiplier, loaded[0].PriorityMultiplier)

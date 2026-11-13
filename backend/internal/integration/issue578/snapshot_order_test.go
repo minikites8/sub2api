@@ -69,7 +69,7 @@ func setup(t *testing.T) *fixture {
 func gateway(repo service.AccountRepository, snapshot *service.SchedulerSnapshotService) *service.OpenAIGatewayService {
 	cfg := &config.Config{}
 	cfg.Runtime.Role = config.RuntimeRoleGateway
-	return service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, snapshot, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, snapshot, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 func quota(t *testing.T, repo service.AccountRepository, handler http.HandlerFunc) *service.OpenAIQuotaService {
 	t.Helper()

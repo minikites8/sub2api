@@ -43,6 +43,9 @@ func TestSmartProtocolPassthroughPartialBilling(t *testing.T) {
 	}
 }
 func runPassthroughPartialBilling(t *testing.T, failure string, prior bool) {
+	// Cancellation fixtures commit real content before synchronizing on metadata.
+	// EOF separately verifies billing for observed usage before any client output.
+	partialOutput := failure == "client_cancel" || failure == "drain_timeout" || failure == "control_cancel"
 	f := newConnectionHTTPFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -103,6 +106,9 @@ func runPassthroughPartialBilling(t *testing.T, failure string, prior bool) {
 				continue
 			}
 			if failure == "missing_usage" {
+				return
+			}
+			if partialOutput && !write(`{"type":"response.output_text.delta","delta":"partial"}`) {
 				return
 			}
 			if !write(`{"type":"response.in_progress","response":{"id":"resp_partial","model":"gpt-5.4","usage":{"input_tokens":3,"output_tokens":2}}}`) {
@@ -186,7 +192,7 @@ func runPassthroughPartialBilling(t *testing.T, failure string, prior bool) {
 		readType("response.completed")
 	}
 	send("partial", "")
-	if failure != "missing_usage" {
+	if failure != "missing_usage" && (prior || failure != "eof") {
 		readType("response.in_progress")
 	}
 	switch failure {
@@ -206,6 +212,9 @@ func runPassthroughPartialBilling(t *testing.T, failure string, prior bool) {
 	default:
 		for {
 			_, _, e := conn.Read(ctx)
+			if !prior && failure == "eof" {
+				require.Error(t, e, "metadata-only usage must stay staged before EOF")
+			}
 			if e != nil {
 				break
 			}

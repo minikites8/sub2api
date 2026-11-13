@@ -145,13 +145,17 @@ func (r *apiKeyRepository) changeOrderedGroupBindings(ctx context.Context, userI
 	var commit func() error
 	if dbent.TxFromContext(ctx) == nil {
 		tx, err := client.Tx(ctx)
-		if err != nil {
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 			return 0, err
 		}
-		defer func() { _ = tx.Rollback() }()
-		ctx = dbent.NewTxContext(ctx, tx)
-		client = clientFromContext(ctx, r.client)
-		commit = tx.Commit
+		// A transaction-scoped client may be supplied directly without a
+		// context value. Keep both binding stores inside that existing transaction.
+		if err == nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = clientFromContext(ctx, r.client)
+			commit = tx.Commit
+		}
 	}
 	query := client.APIKey.Query().Where(apikey.DeletedAtIsNil(), apikey.Or(apiKeyBoundToGroup(oldID), apiKeyInGroup(oldID)))
 	if userID != 0 {

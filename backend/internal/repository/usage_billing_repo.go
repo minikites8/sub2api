@@ -427,7 +427,7 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		FROM target
 		WHERE users.id = target.id AND users.deleted_at IS NULL
-		RETURNING balance, frozen_balance
+		RETURNING users.balance, users.frozen_balance
 	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
@@ -475,7 +475,7 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		FROM amounts
 		WHERE users.id = amounts.id AND users.deleted_at IS NULL
-		RETURNING balance, frozen_balance
+		RETURNING users.balance, users.frozen_balance
 	`, cmd.HoldAmount, cmd.ActualAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
@@ -525,7 +525,7 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		FROM target
 		WHERE users.id = target.id AND users.deleted_at IS NULL
-		RETURNING balance, frozen_balance
+		RETURNING users.balance, users.frozen_balance
 	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil

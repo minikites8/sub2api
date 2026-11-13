@@ -65,8 +65,8 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 	}
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE channel_model_pricing
-			 SET models = $1, billing_mode = $2, input_price = $3, output_price = $4, cache_write_price = $5, cache_write_1h_price = $6, cache_write_12h_price = $7, cache_read_price = $8, fast_multiplier = $9, flex_multiplier = $10, reasoning_effort_multipliers = $11, image_input_price = $12, image_output_price = $13, per_request_price = $14, priority_multiplier = $14, time_pricing = $15, platform = $16, updated_at = NOW()
-			 WHERE id = $17`,
+			 SET models = $1, billing_mode = $2, input_price = $3, output_price = $4, cache_write_price = $5, cache_write_1h_price = $6, cache_write_12h_price = $7, cache_read_price = $8, fast_multiplier = $9, flex_multiplier = $10, reasoning_effort_multipliers = $11, image_input_price = $12, image_output_price = $13, per_request_price = $14, priority_multiplier = $15, time_pricing = $16, platform = $17, updated_at = NOW()
+			 WHERE id = $18`,
 		modelsJSON, billingMode, pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheWrite1hPrice, pricing.CacheWrite12hPrice, pricing.CacheReadPrice,
 		pricing.FastMultiplier, pricing.FlexMultiplier, reasoningEffortMultipliersJSON, pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.PriorityMultiplier, timePricingJSON, pricing.Platform, pricing.ID,
 	)
@@ -260,7 +260,7 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 	}
 	err = exec.QueryRowContext(ctx,
 		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_write_12h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, priority_multiplier, time_pricing)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id, created_at, updated_at`,
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id, created_at, updated_at`,
 		pricing.ChannelID, platform, modelsJSON, billingMode,
 		pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheWrite1hPrice, pricing.CacheWrite12hPrice, pricing.CacheReadPrice,
 		pricing.FastMultiplier, pricing.FlexMultiplier, reasoningEffortMultipliersJSON, pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.PriorityMultiplier, timePricingJSON,

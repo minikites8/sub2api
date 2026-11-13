@@ -811,6 +811,10 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 }
 
 func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
+	// Other integration fixtures may commit logs. Isolate global aggregation
+	// inside this test transaction, which rolls back without deleting their data.
+	_, cleanupErr := s.client.UsageLog.Delete().Exec(s.ctx)
+	s.Require().NoError(cleanupErr)
 	now := time.Now().UTC()
 	todayStart := truncateToDayUTC(now)
 	rangeStart := todayStart.Add(-24 * time.Hour)
