@@ -46,7 +46,7 @@ func TestRegionalBudgetScopeReservesEveryDimension(t *testing.T) {
 			}
 			require.NoError(t, err)
 			primary, _, _ := NewRegionalFundsAuthorities(integrationDB, func(context.Context, *sql.Tx) error { return nil })
-			first := regionalLedgerLease(fmt.Sprintf("scope-first-%d", user), user, 4_000_000_000)
+			first := regionalLedgerLease(t, fmt.Sprintf("scope-first-%d", user), user, 4_000_000_000)
 			first.APIKeyID = key.ID
 			first.AccountID = account.ID
 			if dimension == "subscription" {
@@ -56,7 +56,7 @@ func TestRegionalBudgetScopeReservesEveryDimension(t *testing.T) {
 			second := first
 			second.LeaseID = fmt.Sprintf("scope-second-%d", user)
 			second.RegionID = "eu"
-			second.IssuedAt = time.Now().Add(-time.Second).Truncate(time.Microsecond)
+			second.IssuedAt = regionalLedgerNow(t).Add(-time.Second).Truncate(time.Microsecond)
 			second.ExpiresAt = second.IssuedAt.Add(time.Hour)
 			require.ErrorIs(t, primary.Issue(ctx, second), ledger.ErrExhausted)
 			var balance string
@@ -89,8 +89,8 @@ func TestRegionalSubscriptionCanonicalUsesDurableFundingMetadata(t *testing.T) {
 	_, holds, _ := NewRegionalFundsAuthorities(integrationDB, func(context.Context, *sql.Tx) error { return nil })
 	price := ledger.Price{Model: "mock-subscription", Input: 1_000_000_000, Output: 2_000_000_000, MaxInput: 100, MaxOutput: 100}
 	require.NoError(t, ledger.InstallPrice(ctx, integrationDB, price))
-	lease := regionalLedgerLease("not-used", user, 1_000_000_000)
-	request := regionalLedgerReservation(lease, "sub-"+uuid.NewString(), 1_000_000_000)
+	lease := regionalLedgerLease(t, "not-used", user, 1_000_000_000)
+	request := regionalLedgerReservation(t, lease, "sub-"+uuid.NewString(), 1_000_000_000)
 	request.LeaseID = ""
 	request.APIKeyID = key.ID
 	request.AccountID = account.ID
@@ -104,7 +104,7 @@ func TestRegionalSubscriptionCanonicalUsesDurableFundingMetadata(t *testing.T) {
 	require.NoError(t, err)
 	charge, err := price.Charge(10, 5, 0, 0)
 	require.NoError(t, err)
-	event := regionalLedgerEvent(request, charge)
+	event := regionalLedgerEvent(t, request, charge)
 	require.NoError(t, holds.Complete(ctx, event))
 	require.NoError(t, holds.Complete(ctx, event))
 	var actualGroup, actualSubscription int64
@@ -137,8 +137,8 @@ func TestRegionalLegacyUnknownAllocationKeepsMoneyAndDrainsBeforeNewAdmission(t 
 	_, holds, _ := NewRegionalFundsAuthorities(integrationDB, func(context.Context, *sql.Tx) error { return nil })
 	price := ledger.Price{Model: "mock-legacy-allocation", Input: 1_000_000_000, Output: 2_000_000_000, MaxInput: 100, MaxOutput: 100}
 	require.NoError(t, ledger.InstallPrice(ctx, integrationDB, price))
-	lease := regionalLedgerLease("not-used", user, 1_000_000_000)
-	request := regionalLedgerReservation(lease, "legacy-"+uuid.NewString(), 1_000_000_000)
+	lease := regionalLedgerLease(t, "not-used", user, 1_000_000_000)
+	request := regionalLedgerReservation(t, lease, "legacy-"+uuid.NewString(), 1_000_000_000)
 	request.LeaseID = ""
 	request.APIKeyID = key.ID
 	request.AccountID = account.ID
@@ -159,7 +159,7 @@ func TestRegionalLegacyUnknownAllocationKeepsMoneyAndDrainsBeforeNewAdmission(t 
 	require.Equal(t, "9.00000000", balance)
 	charge, err := price.Charge(10, 5, 0, 0)
 	require.NoError(t, err)
-	event := regionalLedgerEvent(request, charge)
+	event := regionalLedgerEvent(t, request, charge)
 	require.NoError(t, holds.Complete(ctx, event))
 	require.NoError(t, holds.Complete(ctx, event))
 	var actualGroup sql.NullInt64

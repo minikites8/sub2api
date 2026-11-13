@@ -20,7 +20,7 @@ func slotLeaseFixture(t *testing.T) (*slots.Primary, *slots.Local, slots.Grant) 
 	_, err := integrationDB.Exec(`UPDATE users SET concurrency=4 WHERE id=$1`, user)
 	require.NoError(t, err)
 	r := slots.Resource{Kind: "user", ID: user}
-	n := time.Now().UTC().Add(-time.Millisecond).Truncate(time.Microsecond)
+	n := regionalLedgerNow(t).Add(-time.Millisecond).Truncate(time.Microsecond)
 	grant := slots.Grant{LeaseID: fmt.Sprintf("slots-%d", user), Region: "us", Resource: r, Slots: 2, Revision: 1, IssuedAt: n, ExpiresAt: n.Add(time.Hour)}
 	p := NewRegionalSlotAuthority(integrationDB)
 	l := &slots.Local{DB: integrationDB, Region: "us"}
@@ -111,7 +111,7 @@ func TestRegionalSlotLeaseSharedPoolPrimaryAndUSCannotOversubscribe(t *testing.T
 func TestRegionalSlotLeaseRenewalConflictAndExpiry(t *testing.T) {
 	ctx := context.Background()
 	p, l, g := slotLeaseFixture(t)
-	g.ExpiresAt = time.Now().UTC().Add(10 * time.Second).Truncate(time.Microsecond)
+	g.ExpiresAt = regionalLedgerNow(t).Add(10 * time.Second).Truncate(time.Microsecond)
 	require.NoError(t, p.Issue(ctx, g))
 	require.NoError(t, l.Install(ctx, g))
 	conflict := g
@@ -139,8 +139,8 @@ func TestRegionalSlotLeaseRenewalConflictAndExpiry(t *testing.T) {
 	expired := renewed
 	expired.LeaseID += "-expired"
 	expired.Revision = 1
-	expired.IssuedAt = time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
-	expired.ExpiresAt = time.Now().UTC().Add(-time.Second).Truncate(time.Microsecond)
+	expired.IssuedAt = regionalLedgerNow(t).Add(-time.Minute).Truncate(time.Microsecond)
+	expired.ExpiresAt = regionalLedgerNow(t).Add(-time.Second).Truncate(time.Microsecond)
 	require.NoError(t, l.Install(ctx, expired))
 	_, err := l.Acquire(ctx, expired.LeaseID, "expired")
 	require.ErrorIs(t, err, slots.ErrUnavailable)

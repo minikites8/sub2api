@@ -30,21 +30,30 @@ func regionalLedgerUser(t *testing.T) int64 {
 	})
 	return id
 }
-func regionalLedgerLease(id string, user int64, amount regional.Amount) regional.Lease {
-	now := time.Now().UTC().Add(-time.Second).Truncate(time.Microsecond)
+
+// Regional authority rejects future timestamps. Use the same PostgreSQL
+// clock as production instead of relying on host/VM clock synchronization.
+func regionalLedgerNow(t *testing.T) time.Time {
+	t.Helper()
+	var now time.Time
+	require.NoError(t, integrationDB.QueryRow("SELECT clock_timestamp()").Scan(&now))
+	return now.UTC()
+}
+func regionalLedgerLease(t *testing.T, id string, user int64, amount regional.Amount) regional.Lease {
+	now := regionalLedgerNow(t).Add(-time.Second).Truncate(time.Microsecond)
 	return regional.Lease{SchemaVersion: 1, LeaseID: id, RegionID: "us", UserID: user, Granted: amount, IssuedAt: now, ExpiresAt: now.Add(time.Hour)}
 }
-func regionalLedgerReservation(l regional.Lease, id string, maximum regional.Amount) ledger.Reservation {
-	return ledger.Reservation{RequestID: id, LeaseID: l.LeaseID, RegionID: l.RegionID, UserID: l.UserID, APIKeyID: 1, AccountID: 2, AdmittedAt: time.Now().UTC().Add(-time.Millisecond), Maximum: maximum, PayloadSHA256: strings.Repeat("a", 64), PricingVersion: "test-1", Model: "test-model"}
+func regionalLedgerReservation(t *testing.T, l regional.Lease, id string, maximum regional.Amount) ledger.Reservation {
+	return ledger.Reservation{RequestID: id, LeaseID: l.LeaseID, RegionID: l.RegionID, UserID: l.UserID, APIKeyID: 1, AccountID: 2, AdmittedAt: regionalLedgerNow(t).Add(-time.Millisecond), Maximum: maximum, PayloadSHA256: strings.Repeat("a", 64), PricingVersion: "test-1", Model: "test-model"}
 }
-func regionalLedgerEvent(r ledger.Reservation, charge regional.Amount) ledger.Event {
-	return ledger.Event{Usage: regional.UsageEvent{SchemaVersion: 1, EventID: r.RequestID, LeaseID: r.LeaseID, RegionID: r.RegionID, UserID: r.UserID, APIKeyID: r.APIKeyID, AccountID: r.AccountID, AdmittedAt: r.AdmittedAt, CompletedAt: time.Now().UTC(), Charge: charge}, Model: r.Model, PricingVersion: r.PricingVersion, PayloadSHA256: r.PayloadSHA256, InputTokens: 10, OutputTokens: 5}
+func regionalLedgerEvent(t *testing.T, r ledger.Reservation, charge regional.Amount) ledger.Event {
+	return ledger.Event{Usage: regional.UsageEvent{SchemaVersion: 1, EventID: r.RequestID, LeaseID: r.LeaseID, RegionID: r.RegionID, UserID: r.UserID, APIKeyID: r.APIKeyID, AccountID: r.AccountID, AdmittedAt: r.AdmittedAt, CompletedAt: regionalLedgerNow(t), Charge: charge}, Model: r.Model, PricingVersion: r.PricingVersion, PayloadSHA256: r.PayloadSHA256, InputTokens: 10, OutputTokens: 5}
 }
 func TestRegionalLedgerIssuanceIdempotencyAndRegions(t *testing.T) {
 	ctx := context.Background()
 	user := regionalLedgerUser(t)
 	p := &ledger.Primary{DB: integrationDB}
-	l := regionalLedgerLease(fmt.Sprintf("lease-%d", user), user, 6_000_000_000)
+	l := regionalLedgerLease(t, fmt.Sprintf("lease-%d", user), user, 6_000_000_000)
 	var wg sync.WaitGroup
 	errorsCh := make(chan error, 8)
 	for i := 0; i < 8; i++ {
@@ -62,7 +71,7 @@ func TestRegionalLedgerIssuanceIdempotencyAndRegions(t *testing.T) {
 	conflict := l
 	conflict.Granted = 5_000_000_000
 	require.ErrorIs(t, p.Issue(ctx, conflict), ledger.ErrConflict)
-	second := regionalLedgerLease(fmt.Sprintf("lease-other-%d", user), user, 6_000_000_000)
+	second := regionalLedgerLease(t, fmt.Sprintf("lease-other-%d", user), user, 6_000_000_000)
 	second.RegionID = "eu"
 	require.ErrorIs(t, p.Issue(ctx, second), ledger.ErrExhausted)
 	local := &ledger.Local{DB: integrationDB, Region: "us"}
@@ -76,10 +85,10 @@ func TestRegionalLedgerOutboxRecoveryLateSettlementAndClosure(t *testing.T) {
 	user := regionalLedgerUser(t)
 	p := &ledger.Primary{DB: integrationDB}
 	local := &ledger.Local{DB: integrationDB, Region: "us"}
-	l := regionalLedgerLease(fmt.Sprintf("recovery-%d", user), user, 5_000_000_000)
+	l := regionalLedgerLease(t, fmt.Sprintf("recovery-%d", user), user, 5_000_000_000)
 	require.NoError(t, p.Issue(ctx, l))
 	require.NoError(t, local.Install(ctx, l))
-	r := regionalLedgerReservation(l, fmt.Sprintf("req-%d", user), 4_000_000_000)
+	r := regionalLedgerReservation(t, l, fmt.Sprintf("req-%d", user), 4_000_000_000)
 	fresh, err := local.Reserve(ctx, r)
 	require.NoError(t, err)
 	require.True(t, fresh)
@@ -99,7 +108,7 @@ func TestRegionalLedgerOutboxRecoveryLateSettlementAndClosure(t *testing.T) {
 	require.NoError(t, local.Drain(ctx, l.LeaseID))
 	_, err = local.Close(ctx, l.LeaseID)
 	require.Error(t, err)
-	e := regionalLedgerEvent(r, 2_000_000_000)
+	e := regionalLedgerEvent(t, r, 2_000_000_000)
 	e.Usage.CompletedAt = l.ExpiresAt.Add(time.Minute)
 	// Completing AFTER expiry is allowed for a previously admitted request.
 	require.NoError(t, local.Complete(ctx, e))
@@ -141,7 +150,7 @@ func TestRegionalLedgerOutboxRecoveryLateSettlementAndClosure(t *testing.T) {
 	require.NoError(t, integrationDB.QueryRow(`SELECT balance::text FROM users WHERE id=$1`, user).Scan(&balance))
 	require.Equal(t, "8.00000000", balance)
 	// Closed local leases cannot dispatch newly submitted work even after restore.
-	r2 := regionalLedgerReservation(l, fmt.Sprintf("req-after-%d", user), 10)
+	r2 := regionalLedgerReservation(t, l, fmt.Sprintf("req-after-%d", user), 10)
 	_, err = local.Reserve(ctx, r2)
 	require.ErrorIs(t, err, ledger.ErrExhausted)
 }
@@ -149,7 +158,7 @@ func TestRegionalLedgerConcurrentReservationsCannotOverspend(t *testing.T) {
 	ctx := context.Background()
 	user := regionalLedgerUser(t)
 	local := &ledger.Local{DB: integrationDB, Region: "us"}
-	l := regionalLedgerLease(fmt.Sprintf("concurrent-%d", user), user, 1_000_000_000)
+	l := regionalLedgerLease(t, fmt.Sprintf("concurrent-%d", user), user, 1_000_000_000)
 	require.NoError(t, local.Install(ctx, l))
 	type outcome struct {
 		r   ledger.Reservation
@@ -161,7 +170,7 @@ func TestRegionalLedgerConcurrentReservationsCannotOverspend(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			r := regionalLedgerReservation(l, fmt.Sprintf("concurrent-%d-%d", user, i), 250_000_000)
+			r := regionalLedgerReservation(t, l, fmt.Sprintf("concurrent-%d-%d", user, i), 250_000_000)
 			_, err := local.Reserve(ctx, r)
 			results <- outcome{r, err}
 		}(i)
@@ -205,17 +214,17 @@ func (c *regionalLedgerSettlementClient) Settle(ctx context.Context, e ledger.Ev
 func TestRegionalLedgerOutboxDisconnectAndAcknowledgementLoss(t *testing.T) {
 	ctx := context.Background()
 	user := regionalLedgerUser(t)
-	l := regionalLedgerLease(fmt.Sprintf("worker-%d", user), user, 1_000_000_000)
+	l := regionalLedgerLease(t, fmt.Sprintf("worker-%d", user), user, 1_000_000_000)
 	p := &ledger.Primary{DB: integrationDB}
 	local := &ledger.Local{DB: integrationDB, Region: "us"}
 	require.NoError(t, p.Issue(ctx, l))
 	require.NoError(t, local.Install(ctx, l))
-	r := regionalLedgerReservation(l, fmt.Sprintf("worker-req-%d", user), 1_000_000_000)
+	r := regionalLedgerReservation(t, l, fmt.Sprintf("worker-req-%d", user), 1_000_000_000)
 	fresh, err := local.Reserve(ctx, r)
 	require.NoError(t, err)
 	require.True(t, fresh)
 	require.NoError(t, local.Start(ctx, r.RequestID))
-	e := regionalLedgerEvent(r, 500_000_000)
+	e := regionalLedgerEvent(t, r, 500_000_000)
 	require.NoError(t, local.Complete(ctx, e))
 	client := &regionalLedgerSettlementClient{p: p, disconnected: true}
 	_, err = local.Flush(ctx, client, 100)

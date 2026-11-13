@@ -99,10 +99,10 @@ func TestRegionalFundsCloseRestartAndUnknownHold(t *testing.T) {
 	user := regionalLedgerUser(t)
 	p := &ledger.Primary{DB: integrationDB}
 	local := &ledger.Local{DB: integrationDB, Region: "us"}
-	lease := regionalLedgerLease(fmt.Sprintf("funds-close-%d", user), user, 1_000_000_000)
+	lease := regionalLedgerLease(t, fmt.Sprintf("funds-close-%d", user), user, 1_000_000_000)
 	require.NoError(t, p.Issue(ctx, lease))
 	require.NoError(t, local.Install(ctx, lease))
-	request := regionalLedgerReservation(lease, fmt.Sprintf("funds-unknown-%d", user), lease.Granted)
+	request := regionalLedgerReservation(t, lease, fmt.Sprintf("funds-unknown-%d", user), lease.Granted)
 	_, err := local.Reserve(ctx, request)
 	require.NoError(t, err)
 	require.NoError(t, local.Start(ctx, request.RequestID))
@@ -116,7 +116,7 @@ func TestRegionalFundsCloseRestartAndUnknownHold(t *testing.T) {
 	var count int
 	require.NoError(t, integrationDB.QueryRow("SELECT COUNT(*) FROM regional_broker_operations WHERE operation_id=$1", "close:"+lease.LeaseID).Scan(&count))
 	require.Zero(t, count)
-	e := regionalLedgerEvent(request, 100_000_000)
+	e := regionalLedgerEvent(t, request, 100_000_000)
 	require.NoError(t, local.Complete(ctx, e))
 	_, err = p.Settle(ctx, "us", e, func(context.Context, *sql.Tx, ledger.Event) error { return nil })
 	require.NoError(t, err)

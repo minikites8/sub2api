@@ -32,7 +32,7 @@ func TestRegionalFundsReserveAndCanonicalSettlementAvoidFKDeadlock(t *testing.T)
 		_, _ = integrationDB.Exec("DELETE FROM regional_budget_allocations WHERE user_id=$1", user)
 	})
 	primary, holds, _ := NewRegionalFundsAuthorities(integrationDB, func(context.Context, *sql.Tx) error { return nil })
-	lease := regionalLedgerLease("fk-"+uuid.NewString(), user, 1_000_000_000)
+	lease := regionalLedgerLease(t, "fk-"+uuid.NewString(), user, 1_000_000_000)
 	lease.APIKeyID = key.ID
 	lease.AccountID = account.ID
 	require.NoError(t, primary.Issue(ctx, lease))
@@ -40,7 +40,7 @@ func TestRegionalFundsReserveAndCanonicalSettlementAvoidFKDeadlock(t *testing.T)
 	require.NoError(t, local.Install(ctx, lease))
 	price := ledger.Price{Model: "mock-fk", Input: 1_000_000_000, Output: 2_000_000_000, MaxInput: 100, MaxOutput: 100}
 	require.NoError(t, ledger.InstallPrice(ctx, integrationDB, price))
-	request := regionalLedgerReservation(lease, "fk-event-"+uuid.NewString(), 1_000_000_000)
+	request := regionalLedgerReservation(t, lease, "fk-event-"+uuid.NewString(), 1_000_000_000)
 	request.APIKeyID = key.ID
 	request.AccountID = account.ID
 	request.Model = price.Model
@@ -50,7 +50,7 @@ func TestRegionalFundsReserveAndCanonicalSettlementAvoidFKDeadlock(t *testing.T)
 	require.NoError(t, local.Start(ctx, request.RequestID))
 	charge, err := price.Charge(10, 5, 0, 0)
 	require.NoError(t, err)
-	event := regionalLedgerEvent(request, charge)
+	event := regionalLedgerEvent(t, request, charge)
 	require.NoError(t, local.Complete(ctx, event))
 	locked := make(chan struct{})
 	allowInsert := make(chan struct{})
@@ -84,7 +84,7 @@ func TestRegionalFundsReserveAndCanonicalSettlementAvoidFKDeadlock(t *testing.T)
 	next := request
 	next.RequestID = "fk-main-" + uuid.NewString()
 	next.LeaseID = ""
-	next.AdmittedAt = time.Now()
+	next.AdmittedAt = regionalLedgerNow(t)
 	reserved := make(chan error, 1)
 	go func() { _, err := holds.Reserve(ctx, next); reserved <- err }()
 	blocked := false

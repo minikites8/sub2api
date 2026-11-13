@@ -30,8 +30,8 @@ func TestRegionalBudgetWindowResetRetainsUnknownAndAttributesLateUsage(t *testin
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = integrationDB.Exec("DELETE FROM regional_budget_allocations WHERE user_id=$1", user) })
 	scope := RegionalBudgetScope{}
-	oldTime := time.Now().Add(-48 * time.Hour)
-	now := time.Now()
+	oldTime := regionalLedgerNow(t).Add(-48 * time.Hour)
+	now := regionalLedgerNow(t)
 	first := "window-old-" + uuid.NewString()
 	second := "window-new-" + uuid.NewString()
 	withTx := func(f func(*sql.Tx) error) error {
@@ -83,7 +83,7 @@ func TestRegionalBudgetWindowsResetEveryPeriodAndFixedAccountPolicy(t *testing.T
 	group := mustCreateGroup(t, client, &service.Group{Name: "all-windows-" + uuid.NewString(), Platform: service.PlatformOpenAI, RateMultiplier: 1})
 	key := mustCreateApiKey(t, client, &service.APIKey{UserID: user, GroupID: &group.ID, Key: "sk-mock-" + uuid.NewString(), Name: "windows"})
 	account := mustCreateAccount(t, client, &service.Account{Name: "fixed-" + uuid.NewString(), Type: service.AccountTypeAPIKey, Platform: service.PlatformOpenAI})
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := regionalLedgerNow(t).Truncate(time.Microsecond)
 	old := now.Add(-90 * 24 * time.Hour)
 	_, err := integrationDB.Exec("UPDATE api_keys SET usage_5h=6,usage_1d=6,usage_7d=6,window_5h_start=$2,window_1d_start=$2,window_7d_start=$2 WHERE id=$1", key.ID, old)
 	require.NoError(t, err)

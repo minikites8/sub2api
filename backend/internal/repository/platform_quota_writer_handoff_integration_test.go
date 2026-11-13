@@ -72,7 +72,7 @@ func TestPlatformQuotaOrdinaryRegionalHandoffPreservesRollingMonthAndMoney(t *te
 		require.NoError(t, err)
 		require.True(t, fresh)
 		require.NoError(t, holds.Start(ctx, r.RequestID))
-		e := regionalLedgerEvent(r, 500_000_000)
+		e := regionalLedgerEvent(t, r, 500_000_000)
 		e.InputTokens, e.OutputTokens = 1, 0
 		e.Usage.CompletedAt = at.Add(time.Millisecond)
 		require.NoError(t, holds.Complete(ctx, e))
