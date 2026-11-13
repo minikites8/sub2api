@@ -97,12 +97,13 @@ type ChannelModelPricing struct {
 	OutputPrice                *float64            `json:"output_price"`         // 每 token 输出价格（USD）
 	CacheWritePrice            *float64            `json:"cache_write_price"`    // 缓存写入价格
 	CacheWrite1hPrice          *float64            `json:"cache_write_1h_price"` // 1h 缓存写入价格
-	CacheReadPrice             *float64            `json:"cache_read_price"`     // 缓存读取价格
-	FastMultiplier             *float64            `json:"fast_multiplier"`      // fast/priority service tier 倍率
-	FlexMultiplier             *float64            `json:"flex_multiplier"`      // flex service tier 倍率
-	ImageInputPrice            *float64            `json:"image_input_price"`    // 图片输入 token 价格（如 gpt-image-2 图片编辑）；未配置时回退文本输入价
-	ImageOutputPrice           *float64            `json:"image_output_price"`   // 图片输出价格（向后兼容）
-	PerRequestPrice            *float64            `json:"per_request_price"`    // 默认按次计费价格（USD）
+	CacheWrite12hPrice         *float64            `json:"cache_write_12h_price"`
+	CacheReadPrice             *float64            `json:"cache_read_price"`   // 缓存读取价格
+	FastMultiplier             *float64            `json:"fast_multiplier"`    // fast/priority service tier 倍率
+	FlexMultiplier             *float64            `json:"flex_multiplier"`    // flex service tier 倍率
+	ImageInputPrice            *float64            `json:"image_input_price"`  // 图片输入 token 价格（如 gpt-image-2 图片编辑）；未配置时回退文本输入价
+	ImageOutputPrice           *float64            `json:"image_output_price"` // 图片输出价格（向后兼容）
+	PerRequestPrice            *float64            `json:"per_request_price"`  // 默认按次计费价格（USD）
 	ReasoningEffortMultipliers map[string]float64  `json:"reasoning_effort_multipliers,omitempty"`
 	PriorityMultiplier         *float64            `json:"priority_multiplier"` // priority/fast service tier 倍率（nil 表示沿用现有 tier 定价）
 	Intervals                  []PricingInterval   `json:"intervals"`           // 区间定价列表
@@ -135,6 +136,7 @@ type PricingInterval struct {
 	OutputPrice          *float64  `json:"output_price"`
 	CacheWritePrice      *float64  `json:"cache_write_price"`
 	CacheWrite1hPrice    *float64  `json:"cache_write_1h_price"`
+	CacheWrite12hPrice   *float64  `json:"cache_write_12h_price"`
 	CacheReadPrice       *float64  `json:"cache_read_price"`
 	InputMultiplier      *float64  `json:"input_multiplier"`
 	OutputMultiplier     *float64  `json:"output_multiplier"`
@@ -379,6 +381,7 @@ func validateIntervalPrices(iv *PricingInterval, idx int) error {
 		{"output_price", iv.OutputPrice},
 		{"cache_write_price", iv.CacheWritePrice},
 		{"cache_write_1h_price", iv.CacheWrite1hPrice},
+		{"cache_write_12h_price", iv.CacheWrite12hPrice},
 		{"cache_read_price", iv.CacheReadPrice},
 		{"per_request_price", iv.PerRequestPrice},
 	}
@@ -438,8 +441,12 @@ type ChannelUsageFields struct {
 	ChannelID          int64  // 渠道 ID（0 = 无渠道）
 	OriginalModel      string // 用户原始请求模型（渠道映射前）
 	ChannelMappedModel string // 渠道映射后的模型名（无映射时等于 OriginalModel）
-	BillingModelSource string // 计费模型来源："requested" / "upstream" / "channel_mapped"
-	ModelMappingChain  string // 映射链描述，如 "a→b→c"
+	// APIKeyMappedModel records the target actually applied to this request.
+	// Empty means no key rewrite; billing must not infer it from current settings.
+	APIKeyMappedModel     string
+	ChannelMappingApplied bool   // Preserves explicit channel mappings back to OriginalModel.
+	BillingModelSource    string // 计费模型来源："requested" / "upstream" / "channel_mapped"
+	ModelMappingChain     string // 映射链描述，如 "a→b→c"
 }
 
 // SupportedModel 渠道的一个支持模型条目（无通配符、可直接展示给用户）

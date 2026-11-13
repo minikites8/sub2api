@@ -1,7 +1,11 @@
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach as setupPiniaBeforeEach } from 'vitest'
+setupPiniaBeforeEach(() => setActivePinia(createPinia()))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import IQTestModal from '../IQTestModal.vue'
 import TestModelSelect from '../TestModelSelect.vue'
+import { apiClient } from '@/api/client'
 
 const { probeOpenAICodexState, getAvailableModels, getModelReasoning } = vi.hoisted(() => ({
   probeOpenAICodexState: vi.fn(), getAvailableModels: vi.fn(), getModelReasoning: vi.fn()
@@ -82,6 +86,39 @@ describe('IQTestModal', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('freezes one random question across samples and stores its version with the actual prompt', async () => {
+    const question = { id: 'pelican-bicycle', version: 'svg-motion-v1', round_id: 'manual:00000000000000000000000000000000', source: 'builtin:svg-motion', prompt: 'Draw fixture', criteria: ['Fixture rubric'] }
+    vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { prompt: question.prompt, actual_prompt: 'Draw fixture\n\nHTML only', pelican_question: question } })
+    const wrapper = mountModal()
+    const vm = wrapper.vm as any
+    vm.selectQuestion('pelican')
+    vm.selectPromptMode('random')
+    await flushPromises()
+    vm.parallelCount = 2
+    await vm.startTest()
+    const requests = vi.mocked(global.fetch).mock.calls.filter(([url]) => String(url).includes('/pelican-test'))
+    expect(requests).toHaveLength(2)
+    for (const [, options] of requests) {
+      expect(JSON.parse(options!.body as string)).toMatchObject({ prompt: 'Draw fixture\n\nHTML only', prompt_mode: 'random', pelican_question: question })
+    }
+    const record = JSON.parse(localStorage.getItem('sub2api-pelican-test:42')!)[0]
+    expect(record.pelicanQuestion).toEqual(question)
+    expect(record.actualPrompt).toBe('Draw fixture\n\nHTML only')
+    vm.prompt = 'Later edit'
+    expect(record.prompt).toBe('Draw fixture')
+    await wrapper.setProps({ account: { id: 43, name: 'Second fixture', platform: 'openai', type: 'oauth', status: 'active' } as any })
+    vm.selectQuestion('pelican')
+    vm.selectPromptMode('random')
+    await flushPromises()
+    await vm.startTest()
+    const comparison = vi.mocked(global.fetch).mock.calls.find(([url]) => String(url).includes('/43/pelican-test'))
+    expect(JSON.parse(comparison![1]!.body as string).pelican_question).toEqual(question)
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+    const secondRecord = JSON.parse(localStorage.getItem('sub2api-pelican-test:43')!)[0]
+    expect(secondRecord.pelicanQuestion).toEqual(record.pelicanQuestion)
+    wrapper.unmount()
   })
 
   it('keeps all eight configured model IDs when discovery only returns six', async () => {
@@ -264,6 +301,18 @@ describe('Intelligence question selection', () => {
     expect((wrapper.vm as any).questionKind).toBe('candy')
     wrapper.unmount()
   })
+  it('previews generated reasoning as text without changing the manual question mode', async () => {
+    const wrapper = mountModal()
+    const manualKind = (wrapper.vm as any).questionKind
+    ;(wrapper.vm as any).previewScheduled({ id: 1, status: 'success', response_text: '{"example":0}', error_message: '', latency_ms: 100, started_at: new Date().toISOString(), pelican_config: { question_kind: 'random_reasoning', prompt: 'Synthetic generated question', reasoning_effort: 'medium', parallel_count: 1 } })
+    await flushPromises()
+    expect((wrapper.vm as any).questionKind).toBe(manualKind)
+    expect((wrapper.vm as any).runs[0].questionKind).toBe('random_reasoning')
+    expect((wrapper.vm as any).runs[0].html).toBe('')
+    expect(wrapper.find('iframe').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('previews scheduled candy results without marking text as invalid HTML', async () => {
     const wrapper = mountModal()
     ;(wrapper.vm as any).previewScheduled({ id: 1, status: 'success', response_text: '29', error_message: '', latency_ms: 100, started_at: new Date().toISOString(), pelican_config: { question_kind: 'candy', prompt: 'question', reasoning_effort: 'medium', parallel_count: 1 } })
@@ -272,6 +321,33 @@ describe('Intelligence question selection', () => {
     expect((wrapper.vm as any).runs[0].status).toBe('success')
     expect(wrapper.find('iframe').exists()).toBe(false)
     expect(wrapper.text()).toContain('29')
+    wrapper.unmount()
+  })
+})
+
+describe('IQTestModal test records', () => {
+  it('opens only this account over the dialog and returns to the test on close', async () => {
+    const wrapper = mount(IQTestModal, {
+      props: { show: true, account: { id: 42, name: 'Astra account', platform: 'openai', type: 'oauth', status: 'active' } as any, accounts: [{ id: 7, name: 'Other account' }] as any },
+      global: { stubs: { BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }, Input: true, TextArea: true, Select: true, Icon: true, PelicanRecordsDashboard: true } }
+    })
+    await flushPromises()
+    const records = () => wrapper.findComponent({ name: 'PelicanRecordsDashboard' })
+    expect(records().exists()).toBe(false)
+    await wrapper.get('[data-testid="open-records"]').trigger('click')
+    expect(records().props('accountOnly')).toBe(true)
+    expect(records().props('account')).toMatchObject({ id: 42 })
+    records().vm.$emit('showAll')
+    await flushPromises()
+    expect(records().props('accountOnly')).toBe(false)
+    records().vm.$emit('close')
+    await flushPromises()
+    expect(records().exists()).toBe(false)
+    expect(wrapper.emitted('close')).toBeUndefined()
+    // A records window left open closes with the dialog.
+    await wrapper.get('[data-testid="open-records"]').trigger('click')
+    await wrapper.setProps({ show: false })
+    expect(records().exists()).toBe(false)
     wrapper.unmount()
   })
 })

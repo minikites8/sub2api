@@ -117,7 +117,11 @@ func accountCodexToolCapabilities(account *Account, modelID string) map[string]j
 	// implement Codex's native encrypted multi-agent message contract, even
 	// when the underlying ChatGPT model advertises it. Explicit nulls override
 	// synced/bundled declarations without disabling ordinary plaintext tools.
-	if account.isExcelBPSUpstreamModelEnabled(modelID) {
+	if account.isExcelBPSUpstreamModelEnabled(modelID) ||
+		(account.IsOpenAI() && shouldForwardOpenAIResponsesViaRawChatCompletions(account)) {
+		// The Chat Completions bridge can concatenate plaintext collaboration
+		// messages, but cannot consume native encrypted agent payloads. A synced
+		// native manifest must not enable v2 on a different wire protocol.
 		capabilities["multi_agent_version"] = json.RawMessage("null")
 		capabilities["multi_agent_reasoning_effort"] = json.RawMessage("null")
 	}
@@ -134,6 +138,12 @@ func codexModelRoutingAccountIDs(group *Group, modelID string) []int64 {
 		return nil
 	}
 	return group.GetRoutingAccountIDs(strings.TrimSpace(modelID))
+}
+
+func codexAccountServesPlatformModel(account *Account, platform, modelID string) bool {
+	return account.Platform == platform ||
+		(account.Platform == PlatformAntigravity && mixedListingAccountAllowed(platform, account) &&
+			mixedListingModelAllowed(platform, modelID))
 }
 
 func groupCodexModelMetadata(
@@ -181,7 +191,7 @@ func groupCodexModelMetadata(
 			if routed && !containsInt64(routedAccountIDs, account.ID) {
 				continue
 			}
-			if account.Platform == platform && codexExplicitModelMappingClaims(*account, modelID) {
+			if codexAccountServesPlatformModel(account, platform, modelID) && codexExplicitModelMappingClaims(*account, modelID) {
 				explicitClaims = true
 				break
 			}
@@ -196,7 +206,7 @@ func groupCodexModelMetadata(
 	missingMetadata := false
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Platform != platform {
+		if !codexAccountServesPlatformModel(account, platform, modelID) {
 			continue
 		}
 		if routed && !containsInt64(routedAccountIDs, account.ID) {
@@ -264,7 +274,7 @@ func codexExplicitModelTargetsConflictForPlatform(accounts []Account, platform, 
 	targets := make(map[string]struct{})
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Platform != platform {
+		if !codexAccountServesPlatformModel(account, platform, modelID) {
 			continue
 		}
 		mappedModel, matched := account.ResolveMappedModel(modelID)

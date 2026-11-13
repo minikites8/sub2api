@@ -44,7 +44,9 @@ func TestPelicanTestUsageStreams(t *testing.T) {
 			want: UsageTokens{InputTokens: 200, OutputTokens: 200, CacheReadTokens: 800},
 		},
 		{
-			name: "chat reads usage-only final chunk", process: svc.processOpenAIChatCompletionsStream,
+			name: "chat reads usage-only final chunk", process: func(c *gin.Context, body io.Reader) error {
+				return svc.processOpenAIChatCompletionsStream(c, body, nil)
+			},
 			events: []string{
 				`{"choices":[{"delta":{"content":"<svg/>"},"finish_reason":"stop"}]}`,
 				`{"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":200,"prompt_tokens_details":{"cached_tokens":800}}}`,
@@ -129,7 +131,7 @@ func TestPelicanGroupCostIncludesFailedAttempts(t *testing.T) {
 		u.read(`{"type":"message_start","message":{"model":"claude-sonnet-4","usage":{"input_tokens":1000,"output_tokens":500}}}`)
 		u.read(`{"type":"message_stop"}`)
 		if id == 11 {
-			return &ScheduledTestResult{Status: "failed", ErrorMessage: "upstream error"}, nil
+			return &ScheduledTestResult{Status: "failed", ResponseText: "<html>partial", ErrorMessage: "The service is temporarily unavailable. Please retry later."}, nil
 		}
 		return &ScheduledTestResult{Status: "failed", ResponseText: "not HTML", ErrorMessage: "Model did not return HTML or SVG"}, nil
 	})

@@ -35,6 +35,14 @@ const (
 	FieldGroupIds = "group_ids"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldModelMapping holds the string denoting the model_mapping field in the database.
+	FieldModelMapping = "model_mapping"
+	// FieldReasoningEffort holds the string denoting the reasoning_effort field in the database.
+	FieldReasoningEffort = "reasoning_effort"
+	// FieldAllowLongContext holds the string denoting the allow_long_context field in the database.
+	FieldAllowLongContext = "allow_long_context"
+	// FieldContextTokenLimit holds the string denoting the context_token_limit field in the database.
+	FieldContextTokenLimit = "context_token_limit"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
@@ -109,6 +117,10 @@ var Columns = []string{
 	FieldGroupID,
 	FieldGroupIds,
 	FieldStatus,
+	FieldModelMapping,
+	FieldReasoningEffort,
+	FieldAllowLongContext,
+	FieldContextTokenLimit,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
@@ -162,6 +174,18 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultModelMapping holds the default value on creation for the "model_mapping" field.
+	DefaultModelMapping map[string]string
+	// DefaultReasoningEffort holds the default value on creation for the "reasoning_effort" field.
+	DefaultReasoningEffort string
+	// ReasoningEffortValidator is a validator for the "reasoning_effort" field. It is called by the builders before save.
+	ReasoningEffortValidator func(string) error
+	// DefaultAllowLongContext holds the default value on creation for the "allow_long_context" field.
+	DefaultAllowLongContext bool
+	// DefaultContextTokenLimit holds the default value on creation for the "context_token_limit" field.
+	DefaultContextTokenLimit int
+	// ContextTokenLimitValidator is a validator for the "context_token_limit" field. It is called by the builders before save.
+	ContextTokenLimitValidator func(int) error
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
@@ -231,6 +255,21 @@ func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByReasoningEffort orders the results by the reasoning_effort field.
+func ByReasoningEffort(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReasoningEffort, opts...).ToFunc()
+}
+
+// ByAllowLongContext orders the results by the allow_long_context field.
+func ByAllowLongContext(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowLongContext, opts...).ToFunc()
+}
+
+// ByContextTokenLimit orders the results by the context_token_limit field.
+func ByContextTokenLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContextTokenLimit, opts...).ToFunc()
 }
 
 // ByLastUsedAt orders the results by the last_used_at field.

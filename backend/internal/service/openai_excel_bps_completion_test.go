@@ -58,7 +58,7 @@ func TestExcelBPSNativeAttachmentsUseSelectedTransport(t *testing.T) {
 			require.Equal(t, pngBytes.Bytes(), data)
 			require.Contains(t, string(upstream.bodies[1]), `"file_id":"file-native"`)
 			require.NotContains(t, string(upstream.bodies[1]), "data:image")
-			require.Nil(t, svc.excelBPSRelay, "native mode must not create disk relay")
+			require.Nil(t, svc.excelBPSImages, "native mode must not create disk relay")
 		})
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -64,12 +65,17 @@ const (
 // 若编辑 Key 时无条件整行回写，并发累计的配额与限流计数就会被旧快照覆盖。
 // 因此调用方必须显式声明要改的列。
 type APIKeyUpdateFields struct {
-	ConcurrencyLimit bool
-	Name             bool
-	Status           bool
-	Quota            bool
-	GroupID          bool
-	ExpiresAt        bool
+	// Administrator-only policy fields have independent masks to preserve concurrent edits.
+	ModelMapping      bool
+	ReasoningEffort   bool
+	ContextTokenLimit bool
+	AllowLongContext  bool
+	ConcurrencyLimit  bool
+	Name              bool
+	Status            bool
+	Quota             bool
+	GroupID           bool
+	ExpiresAt         bool
 	// QuotaUsed 仅供"重置配额用量"路径声明；常规计费走 IncrementQuotaUsed。
 	QuotaUsed bool
 	// RateLimits 覆盖 rate_limit_5h / _1d / _7d 三个阈值。
@@ -77,7 +83,10 @@ type APIKeyUpdateFields struct {
 	// RateLimitUsage 覆盖 usage_5h/_1d/_7d 与三个窗口起点，
 	// 仅供"重置限流用量"路径声明；常规计费走 IncrementRateLimitUsage。
 	RateLimitUsage bool
-	// IPRules 覆盖 ip_whitelist 与 ip_blacklist。
+	// IPWhitelist / IPBlacklist only write the explicitly requested ACL column.
+	IPWhitelist bool
+	IPBlacklist bool
+	// IPRules retains the legacy opt-in to write both ACL columns.
 	IPRules bool
 }
 
@@ -131,6 +140,8 @@ type apiKeyAllByUserIDLister interface {
 
 // APIKeyRateLimitData holds rate limit usage and window state for an API key.
 type APIKeyRateLimitData struct {
+	// QuotaUsed 是总额度已用量（quota_used）。
+	QuotaUsed     float64
 	Usage5h       float64
 	Usage1d       float64
 	Usage7d       float64
@@ -215,8 +226,8 @@ type APIKeyAuthCacheInvalidator interface {
 type CreateAPIKeyRequest struct {
 	ConcurrencyLimit int      `json:"concurrency_limit"`
 	Name             string   `json:"name"`
-	GroupID          *int64   `json:"group_id"`
 	GroupIDs         []int64  `json:"group_ids"`
+	GroupID          *int64   `json:"group_id"`
 	CustomKey        *string  `json:"custom_key"`   // 可选的自定义key
 	IPWhitelist      []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist      []string `json:"ip_blacklist"` // IP 黑名单
@@ -235,8 +246,8 @@ type CreateAPIKeyRequest struct {
 type UpdateAPIKeyRequest struct {
 	ConcurrencyLimit *int      `json:"concurrency_limit"` // nil = no change, 0 = no additional limit
 	Name             *string   `json:"name"`
+	GroupIDs         *[]int64  `json:"group_ids"`
 	GroupID          *int64    `json:"group_id"`
-	GroupIDs         *[]int64  `json:"group_ids"` // omitted = unchanged, [] = unbind all
 	Status           *string   `json:"status"`
 	IPWhitelist      *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
 	IPBlacklist      *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
@@ -291,8 +302,16 @@ type RateLimitCacheInvalidator interface {
 }
 
 type APIKeyService struct {
+	groupAntiDistillation     *GroupAntiDistillationService
+	autoCredit                AutoCreditRepository
+	autoCreditBilling         *BillingCacheService
+	balanceRejectionNotifier  BalanceRejectionNotifier
+	localAuth                 *RegionalAuthReader
+	regionalAuthRuntime       *regionalSchedulerRuntime
 	apiKeyRepo                APIKeyRepository
 	userRepo                  UserRepository
+	groupRouter               APIKeyGroupRouter
+	securityPenalties         *SecurityPenaltyService
 	groupRepo                 GroupRepository
 	groupAccounts             orderedGroupAccountSource
 	userSubRepo               UserSubscriptionRepository
@@ -315,6 +334,7 @@ type APIKeyService struct {
 	authInvalidationCancel    context.CancelFunc
 	authInvalidationWG        sync.WaitGroup
 	authInvalidationConnected atomic.Bool
+	authCacheL1Epoch          atomic.Uint64
 	authInvalidationFailures  atomic.Uint64
 	lastUsedTouchL1           sync.Map // keyID -> nextAllowedAt(time.Time)
 	lastUsedTouchSF           singleflight.Group
@@ -487,6 +507,9 @@ func (s *APIKeyService) incrementAPIKeyErrorCount(ctx context.Context, userID in
 func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) bool {
 	// 订阅类型分组：需要有效订阅
 	if group.IsSubscriptionType() {
+		if s.userSubRepo == nil {
+			return false
+		}
 		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
 		return err == nil // 有有效订阅则允许
 	}
@@ -527,7 +550,6 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	if err != nil {
 		return nil, err
 	}
-
 	var key string
 
 	// 判断是否使用自定义Key
@@ -572,9 +594,10 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		UserID:           userID,
 		Key:              key,
 		Name:             html.EscapeString(req.Name),
-		GroupID:          firstAPIKeyGroupID(groupIDs),
 		GroupIDs:         groupIDs,
+		GroupID:          firstAPIKeyGroupID(groupIDs),
 		Status:           StatusActive,
+		AllowLongContext: true,
 		IPWhitelist:      req.IPWhitelist,
 		IPBlacklist:      req.IPBlacklist,
 		Quota:            req.Quota,
@@ -655,11 +678,7 @@ func paginateAPIKeys(keys []APIKey, params pagination.PaginationParams) []APIKey
 		return []APIKey{}
 	}
 	limit := params.Limit()
-	page := params.Page
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * limit
+	offset := params.Offset()
 	if offset >= len(keys) {
 		return []APIKey{}
 	}
@@ -759,7 +778,14 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 
 // GetByKey 根据Key字符串获取API Key（用于认证）
 func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, error) {
-	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes {
+	if s.localAuth != nil {
+		return s.localAuth.GetByKey(ctx, key)
+	}
+	if s.cfg != nil && s.cfg.Runtime.Role == config.RuntimeRoleGateway && s.cfg.Runtime.RegionalAuthFile != "" {
+		return nil, ErrRegionalAuthUnavailable
+	}
+	// Reject malformed credentials before any cache or PostgreSQL lookup.
+	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes || !utf8.ValidString(key) {
 		return nil, ErrAPIKeyNotFound
 	}
 	cacheKey := s.authCacheKey(key)
@@ -818,7 +844,13 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 // not a prerequisite for revocation. The normal auth lookup concurrency bound
 // and the caller's admission timeout still apply.
 func (s *APIKeyService) GetByKeyUncached(ctx context.Context, key string) (*APIKey, error) {
-	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes {
+	if s.localAuth != nil {
+		return s.localAuth.GetByKey(ctx, key)
+	}
+	if s.cfg != nil && s.cfg.Runtime.Role == config.RuntimeRoleGateway && s.cfg.Runtime.RegionalAuthFile != "" {
+		return nil, ErrRegionalAuthUnavailable
+	}
+	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes || !utf8.ValidString(key) {
 		return nil, ErrAPIKeyNotFound
 	}
 	apiKey, err := s.lookupAPIKeyForAuth(ctx, key)
@@ -882,7 +914,6 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 
 	if req.GroupID != nil || req.GroupIDs != nil {
-		// 验证分组权限
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil {
 			return nil, fmt.Errorf("get user: %w", err)
@@ -943,11 +974,11 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	// 更新 IP 限制（nil 不修改，空数组清空设置）
 	if req.IPWhitelist != nil {
 		apiKey.IPWhitelist = *req.IPWhitelist
-		fields.IPRules = true
+		fields.IPWhitelist = true
 	}
 	if req.IPBlacklist != nil {
 		apiKey.IPBlacklist = *req.IPBlacklist
-		fields.IPRules = true
+		fields.IPBlacklist = true
 	}
 
 	// Update rate limit configuration

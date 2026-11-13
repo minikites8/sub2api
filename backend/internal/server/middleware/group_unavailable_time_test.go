@@ -58,7 +58,7 @@ func TestGroupUnavailableTimeQueueRevalidation(t *testing.T) {
 	current.Group.UnavailableTimeEnabled = false
 	repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) { return current, nil }}
 	svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{})
-	revalidate := newAPIKeyQueueAuthRevalidator(svc, current.Key, "", current)
+	revalidate := newAPIKeyAuthRevalidator(svc.GetByKey, current.Key, "", current)
 	current = unavailableTimeTestKey()
 	_, err := revalidate(context.Background())
 	require.Error(t, err)

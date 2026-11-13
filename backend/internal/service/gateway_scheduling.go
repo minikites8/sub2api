@@ -440,7 +440,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			for _, acc := range routingCandidates {
 				routingLoads = append(routingLoads, AccountWithConcurrency{
 					ID:             acc.ID,
-					MaxConcurrency: acc.EffectiveLoadFactor(),
+					MaxConcurrency: acc.Concurrency,
 				})
 			}
 			routingLoadMap, _ := s.concurrencyService.GetAccountsLoadBatch(ctx, routingLoads)
@@ -464,8 +464,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					if a.account.Priority != b.account.Priority {
 						return a.account.Priority < b.account.Priority
 					}
-					if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
-						return a.loadInfo.LoadRate < b.loadInfo.LoadRate
+					aLoad := accountLoadPreferenceRate(a.account, a.loadInfo.LoadRate)
+					bLoad := accountLoadPreferenceRate(b.account, b.loadInfo.LoadRate)
+					if aLoad != bLoad {
+						return aLoad < bLoad
 					}
 					switch {
 					case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
@@ -711,7 +713,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	for _, acc := range candidates {
 		accountLoads = append(accountLoads, AccountWithConcurrency{
 			ID:             acc.ID,
-			MaxConcurrency: acc.EffectiveLoadFactor(),
+			MaxConcurrency: acc.Concurrency,
 		})
 	}
 
@@ -857,7 +859,13 @@ func (s *GatewayService) resolveGroupByID(ctx context.Context, groupID int64) (*
 	if group := s.groupFromContext(ctx, groupID); group != nil {
 		return group, nil
 	}
-	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	var group *Group
+	var err error
+	if s.schedulerSnapshot != nil && s.schedulerSnapshot.localSnapshotReader != nil {
+		group, err = s.schedulerSnapshot.GetGroupByIDLite(ctx, groupID)
+	} else {
+		group, err = s.groupRepo.GetByIDLite(ctx, groupID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get group failed: %w", err)
 	}
@@ -1125,10 +1133,22 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	return accounts, useMixed, nil
 }
 
-// IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
-// 用于 Handler 层在首次请求时提前设置 SingleAccountRetry context，
-// 避免单账号分组收到 503 时错误地设置模型限流标记导致后续请求连续快速失败。
-func (s *GatewayService) IsSingleAntigravityAccountGroup(ctx context.Context, groupID *int64) bool {
+// WithSingleAntigravityAccountGroupProbe 为请求挂载「分组是否只有一个 antigravity 可调度账号」的延迟判定。
+// 只有 antigravity 账号遇到 503 或模型限流预检查时才会查询；其他平台的请求不读取该判定。
+func (s *GatewayService) WithSingleAntigravityAccountGroupProbe(ctx context.Context, groupID *int64) context.Context {
+	var probeGroupID *int64
+	if groupID != nil {
+		id := *groupID
+		probeGroupID = &id
+	}
+	return WithSingleAccountRetryProbe(ctx, func(probeCtx context.Context) bool {
+		return s.isSingleAntigravityAccountGroup(probeCtx, probeGroupID)
+	})
+}
+
+// isSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
+// 单账号分组收到 503 时原地重试而不设置模型限流，避免后续请求连续快速失败。
+func (s *GatewayService) isSingleAntigravityAccountGroup(ctx context.Context, groupID *int64) bool {
 	accounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformAntigravity, true)
 	if err != nil {
 		return false
@@ -1422,9 +1442,9 @@ func (s *GatewayService) withWindowCostPrefetch(ctx context.Context, accounts []
 }
 
 // isAccountSchedulableForQuota 检查账号是否在配额限制内
-// 适用于配置了 quota_limit 的 apikey 和 bedrock 类型账号
+// 适用于配置了 quota_limit 的 apikey、bedrock 和 service_account 类型账号
 func (s *GatewayService) isAccountSchedulableForQuota(account *Account) bool {
-	if !account.IsAPIKeyOrBedrock() {
+	if !account.SupportsAccountQuota() {
 		return true
 	}
 	return !account.IsQuotaExceeded()
@@ -1662,6 +1682,11 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 	}
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
+		// release 只在成功结果里返回给调用方；hydrate 失败时这里不释放的话，
+		// 已从 Redis 占用的槽位会一直泄漏到 TTL 到期。
+		if release != nil {
+			release()
+		}
 		return nil, err
 	}
 	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
@@ -1697,15 +1722,16 @@ func filterByMinLoadRate(accounts []accountWithLoad) []accountWithLoad {
 	if len(accounts) == 0 {
 		return accounts
 	}
-	minLoadRate := accounts[0].loadInfo.LoadRate
+	minLoadRate := accountLoadPreferenceRate(accounts[0].account, accounts[0].loadInfo.LoadRate)
 	for _, acc := range accounts[1:] {
-		if acc.loadInfo.LoadRate < minLoadRate {
-			minLoadRate = acc.loadInfo.LoadRate
+		loadRate := accountLoadPreferenceRate(acc.account, acc.loadInfo.LoadRate)
+		if loadRate < minLoadRate {
+			minLoadRate = loadRate
 		}
 	}
 	result := make([]accountWithLoad, 0, len(accounts))
 	for _, acc := range accounts {
-		if acc.loadInfo.LoadRate == minLoadRate {
+		if accountLoadPreferenceRate(acc.account, acc.loadInfo.LoadRate) == minLoadRate {
 			result = append(result, acc)
 		}
 	}
@@ -1861,7 +1887,7 @@ func sameAccountWithLoadGroup(a, b accountWithLoad, strategies ...string) bool {
 	if a.account.Priority != b.account.Priority {
 		return false
 	}
-	if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
+	if accountLoadPreferenceRate(a.account, a.loadInfo.LoadRate) != accountLoadPreferenceRate(b.account, b.loadInfo.LoadRate) {
 		return false
 	}
 	return sameLastUsedAt(a.account.LastUsedAt, b.account.LastUsedAt)
@@ -1989,8 +2015,16 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	// require_privacy_set: 获取分组配置。GetByID 会聚合账号计数，旧选号路径不能用它。
 	var schedGroup *Group
-	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
+	if groupID != nil {
+		if s.schedulerSnapshot != nil && s.schedulerSnapshot.localSnapshotReader != nil {
+			var groupErr error
+			schedGroup, groupErr = s.schedulerSnapshot.GetGroupByIDLite(ctx, *groupID)
+			if groupErr != nil {
+				return nil, groupErr
+			}
+		} else if s.groupRepo != nil {
+			schedGroup, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
+		}
 	}
 
 	var accounts []Account
@@ -2267,8 +2301,16 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	// require_privacy_set: 获取分组配置。GetByID 会聚合账号计数，旧选号路径不能用它。
 	var schedGroup *Group
-	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
+	if groupID != nil {
+		if s.schedulerSnapshot != nil && s.schedulerSnapshot.localSnapshotReader != nil {
+			var groupErr error
+			schedGroup, groupErr = s.schedulerSnapshot.GetGroupByIDLite(ctx, *groupID)
+			if groupErr != nil {
+				return nil, groupErr
+			}
+		} else if s.groupRepo != nil {
+			schedGroup, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
+		}
 	}
 
 	var accounts []Account
@@ -2730,6 +2772,9 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
 // 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
 func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
+	if account.Platform == PlatformAntigravity && account.hasOAuthInitialModelSelection() && !account.IsModelSupported(strings.TrimPrefix(requestedModel, "models/")) {
+		return false
+	}
 	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
 		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !explicitModelMappingClaims(*account, publicModel) {
 			return false
@@ -2770,6 +2815,15 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 
 // accountSupportsGatewayModel is shared by ordered group admission and account scheduling.
 func accountSupportsGatewayModel(account *Account, requestedModel string) bool {
+	if account.Platform == PlatformAnthropic && account.Type == AccountTypeOAuth {
+		requestedModel = claude.NormalizeModelID(requestedModel)
+	}
+	if account.Platform == PlatformAntigravity {
+		requestedModel = strings.TrimPrefix(requestedModel, "models/")
+	}
+	if account.hasOAuthInitialModelSelection() && !account.IsModelSupported(requestedModel) {
+		return false
+	}
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true

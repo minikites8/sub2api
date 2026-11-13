@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/keyrisk"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -52,6 +53,11 @@ func firstNonEmpty(values ...string) string {
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
+	keyRisk                  *keyrisk.Service
+	keyRiskKeys              keyRiskAPIKeys
+	ipAuditPenaltyRelease    func(context.Context, int64, int64, string) (service.SecurityPenaltySummary, error)
+	ipAuditLogs              *service.AuditLogService
+	ipAuditPenaltySummary    func(context.Context, int64) (service.SecurityPenaltySummary, error)
 	settingService           *service.SettingService
 	emailService             *service.EmailService
 	turnstileService         *service.TurnstileService
@@ -63,8 +69,6 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
-	autoSupplyService        *service.AutoSupplyService
-	yeTeam                   *yeteam.Client
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -101,18 +105,6 @@ func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userSer
 	h.userService = userService
 }
 
-// SetAutoSupplyService attaches the runtime-backed automatic supply settings.
-func (h *SettingHandler) SetAutoSupplyService(autoSupplyService *service.AutoSupplyService) {
-	h.autoSupplyService = autoSupplyService
-}
-
-// SetYeTeamClient attaches the shared client used by imports and 401 reclaim.
-func (h *SettingHandler) SetYeTeamClient(client *yeteam.Client) {
-	h.yeTeam = client
-}
-
-// GetSettings 获取所有系统设置
-// GET /api/v1/admin/settings
 func (h *SettingHandler) GetSettings(c *gin.Context) {
 	settings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -147,8 +139,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
+		LoginRateLimitEnabled:                                  settings.LoginRateLimitEnabled,
+		RegistrationIPLimitEnabled:                             settings.RegistrationIPLimitEnabled,
 		EmailVerifyEnabled:                                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       settings.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailAliasBlockEnabled:                     settings.RegistrationEmailAliasBlockEnabled,
 		RegistrationEmailDomainQuotaEnabled:                    settings.RegistrationEmailDomainQuotaEnabled,
 		PromoCodeEnabled:                                       settings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   settings.PasswordResetEnabled,
@@ -335,6 +330,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexClientVersionSynced:                         settings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
 		OpenAIRequestTimezoneEnabled:                           settings.OpenAIRequestTimezoneEnabled,
+		OpenAIRequestTimezoneAuto:                              settings.OpenAIRequestTimezoneAuto,
 		OpenAICodexTicketEnabled:                               settings.OpenAICodexTicketEnabled,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(settings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketStaticProxyURL:                        service.MaskProxyURL(settings.OpenAICodexTicketStaticProxyURL),
@@ -386,6 +382,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost:     settings.OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost,
 		OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse: settings.OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse,
 		OpenAIAdvancedSchedulerEffectiveWeightSessionSticky:    settings.OpenAIAdvancedSchedulerEffectiveWeightSessionSticky,
+		BalanceForecastEnabled:                                 settings.BalanceForecastEnabled,
+		BalanceForecastThresholdHours:                          settings.BalanceForecastThresholdHours,
+		BalanceForecastMaxNotifications:                        settings.BalanceForecastMaxNotifications,
 		BalanceLowNotifyEnabled:                                settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:                              settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:                            settings.BalanceLowNotifyRechargeURL,
@@ -426,17 +425,16 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
-		YeTeamEnabled:                        settings.YeTeamEnabled,
-		YeTeamAutoRefresh401:                 settings.YeTeamAutoRefresh401,
 		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
 		PrismBrowserEnabled:                  settings.PrismBrowserEnabled,
 		PrismBrowserBaseURL:                  settings.PrismBrowserBaseURL,
 		PrismBrowserAPIKeyConfigured:         settings.PrismBrowserAPIKeyConfigured,
 
-		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
-		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,
-		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
-		GrokVideoSourceURLEnabled:      settings.GrokVideoSourceURLEnabled,
+		GrokDefaultTextModel:                 settings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled:       settings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:               settings.GrokDefaultBaseURLMode,
+		GrokVideoSourceURLEnabled:            settings.GrokVideoSourceURLEnabled,
+		OpenAI409OmitEncryptedHistoryEnabled: settings.OpenAI409OmitEncryptedHistoryEnabled,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 		PelicanShowcaseEnabled:   settings.PelicanShowcaseEnabled,
@@ -454,27 +452,31 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
-		AccountSchedulingThresholds:   settings.AccountSchedulingThresholds,
-		AllowUserViewErrorRequests:    settings.AllowUserViewErrorRequests,
-		UsageShowLongContextBadge:     settings.UsageShowLongContextBadge,
-		RequestCaptureEnabled:         settings.RequestCaptureEnabled,
-		RequestCaptureQuotaMiB:        settings.RequestCaptureQuotaMiB,
-		RequestCaptureRetentionDays:   settings.RequestCaptureRetentionDays,
-		ExcelBPSImageMode:             settings.ExcelBPSImageMode,
-		ExcelBPSImageRelayEnabled:     settings.ExcelBPSImageRelayEnabled,
-		ExcelBPSImageBaseURL:          settings.ExcelBPSImageBaseURL,
-		ExcelBPSImageBodyLimitMiB:     settings.ExcelBPSImageBodyLimitMiB,
-		ExcelBPSImageBudgetMiB:        settings.ExcelBPSImageBudgetMiB,
-		ExcelBPSImageMaxRequests:      settings.ExcelBPSImageMaxRequests,
-		ExcelBPSImageMaxImageMiB:      settings.ExcelBPSImageMaxImageMiB,
-		ExcelBPSImageLimitPolicy:      settings.ExcelBPSImageLimitPolicy,
-		ExcelBPSImageWarningRemaining: settings.ExcelBPSImageWarningRemaining,
-		ExcelBPSImageCompactReserve:   settings.ExcelBPSImageCompactReserve,
-		ExcelBPSImageMaxImages:        settings.ExcelBPSImageMaxImages,
-		ExcelBPSImageMaxTotalMiB:      settings.ExcelBPSImageMaxTotalMiB,
-		ExcelBPSImageStorageMiB:       settings.ExcelBPSImageStorageMiB,
-		ExcelBPSImageStorageEntries:   settings.ExcelBPSImageStorageEntries,
-		ExcelBPSImageTTLMinutes:       settings.ExcelBPSImageTTLMinutes,
+		AccountSchedulingThresholds:           settings.AccountSchedulingThresholds,
+		AllowUserViewErrorRequests:            settings.AllowUserViewErrorRequests,
+		UsageShowLongContextBadge:             settings.UsageShowLongContextBadge,
+		UsageShowCacheRate:                    settings.UsageShowCacheRate,
+		UsageShowCacheRateToUsers:             settings.UsageShowCacheRateToUsers,
+		UsageShowUpstreamResponseModelToUsers: settings.UsageShowUpstreamResponseModelToUsers,
+		SmartOpsHiddenMenuItems:               settings.SmartOpsHiddenMenuItems,
+		RequestCaptureEnabled:                 settings.RequestCaptureEnabled,
+		RequestCaptureQuotaMiB:                settings.RequestCaptureQuotaMiB,
+		RequestCaptureRetentionDays:           settings.RequestCaptureRetentionDays,
+		ExcelBPSImageMode:                     settings.ExcelBPSImageMode,
+		ExcelBPSImageRelayEnabled:             settings.ExcelBPSImageRelayEnabled,
+		ExcelBPSImageBaseURL:                  settings.ExcelBPSImageBaseURL,
+		ExcelBPSImageBodyLimitMiB:             settings.ExcelBPSImageBodyLimitMiB,
+		ExcelBPSImageBudgetMiB:                settings.ExcelBPSImageBudgetMiB,
+		ExcelBPSImageMaxRequests:              settings.ExcelBPSImageMaxRequests,
+		ExcelBPSImageMaxImageMiB:              settings.ExcelBPSImageMaxImageMiB,
+		ExcelBPSImageLimitPolicy:              settings.ExcelBPSImageLimitPolicy,
+		ExcelBPSImageWarningRemaining:         settings.ExcelBPSImageWarningRemaining,
+		ExcelBPSImageCompactReserve:           settings.ExcelBPSImageCompactReserve,
+		ExcelBPSImageMaxImages:                settings.ExcelBPSImageMaxImages,
+		ExcelBPSImageMaxTotalMiB:              settings.ExcelBPSImageMaxTotalMiB,
+		ExcelBPSImageStorageMiB:               settings.ExcelBPSImageStorageMiB,
+		ExcelBPSImageStorageEntries:           settings.ExcelBPSImageStorageEntries,
+		ExcelBPSImageTTLMinutes:               settings.ExcelBPSImageTTLMinutes,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

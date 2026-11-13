@@ -14,16 +14,15 @@ import uuid
 from pathlib import Path
 
 from tool_state import digest
-from history_prompt import compact_results
-from tool_limits import MAX_HISTORY_CALLS, MAX_TOOLS, MAX_TOOL_PAYLOAD_BYTES
-from catalog_prompt import (encoded, shared_catalog, tool_index, MAX_PRISM_PROMPT_BYTES,
-                            CATALOG_COMPACTION_BYTES, MAX_CATALOG_INSPECTIONS)
 
 NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_.-]{0,127}$')
 CALL = re.compile(r'^call_prism_[a-f0-9]{32}$')
 VALIDATORS = threading.BoundedSemaphore(1)
+MAX_TOOLS = 96
 MAX_CALLS = 8
+MAX_HISTORY_CALLS = 64
 MAX_TOOL_CHARS = 32000
+MAX_BRIDGE_CHARS = 128000
 
 
 def strict_json(raw):
@@ -43,7 +42,7 @@ def validate_batch(commands, error, status=422):
     if not commands:
         return
     raw = json.dumps(commands, allow_nan=False, ensure_ascii=False).encode()
-    if len(raw) > MAX_TOOL_PAYLOAD_BYTES:
+    if len(raw) > 1 << 20:
         raise error(status, 'invalid_tool_payload', 'Tool validation payload exceeds the limit')
     if not VALIDATORS.acquire(timeout=5):
         raise error(429, 'tool_validation_busy', 'Tool validation is busy; request was not submitted')
@@ -70,17 +69,11 @@ def has_tools(payload):
 
 
 class ToolBridge:
-    def __init__(self, payload, api, *, relay=False):
+    def __init__(self, payload, api):
         self.api, self.error = api, api.AdapterError
-        self.relay = relay
         self.marker = 'PRISM_CLIENT_TOOLS_V1:' + uuid.uuid4().hex
         self.lease = uuid.uuid4().hex
         self.tools, self.calls, self.results = {}, {}, {}
-        self.result_positions = []
-        self.call_positions = []
-        self.assistant_positions = []
-        self.compacted_results = 0
-        self.compacted_history = 0
         self.unavailable = set()
         self.commands = []
         if payload.get('model') != 'gpt-6.1-sol':
@@ -114,12 +107,9 @@ class ToolBridge:
         base = copy.deepcopy(payload)
         base.update(input=translated, tools=[], additional_tools=[], tool_choice='none')
         # The ordinary parser still owns model/options/message validation.
-        self.history_payload = base
-        self.history_prompt, self.stream = api.parse_prompt(base,
-            max_bytes=2 * MAX_TOOL_PAYLOAD_BYTES if relay else MAX_TOOL_PAYLOAD_BYTES)
-        self.history_bytes_before = len(self.history_prompt.encode('utf-8'))
+        self.prompt, self.stream = api.parse_prompt(base)
         catalog = [tool['catalog'] for tool in self.tools.values()]
-        self.policy = (
+        policy = (
             'You are producing a response for an external client. All client tools run on the client, '
             'under its permission system. Never use Prism built-in terminal, file, patch, sandbox or other tools. '
             'Never claim an operation completed without its matching client result in the history. '
@@ -137,139 +127,14 @@ class ToolBridge:
             + ('Request at most 8 tools per response. ' if self.parallel else 'Request exactly one tool at a time. ')
             + 'tool_choice=' + json.dumps(self.choice, ensure_ascii=False) + '. '
             'With none return only final; with required return calls; with a named choice call exactly that tool. '
-            'Client tool catalog:\n')
+            'Client tool catalog:\n' + json.dumps(catalog, ensure_ascii=False, separators=(',', ':')))
         if self.unavailable:
-            self.policy += ('\nUnavailable hosted tools: '+', '.join(sorted(self.unavailable))+
+            policy += ('\nUnavailable hosted tools: '+', '.join(sorted(self.unavailable))+
                        '. They are not callable through this bridge. State the limitation if the user needs one; never claim to have used one.')
-        self.catalog = catalog
-        self.loaded = set()
-        self.inspections = 0
-        self.catalog_mode = 'inline'
-        self.prompt = self.build_prompt(encoded(catalog))
-        if not self.relay and len(self.prompt.encode('utf-8')) > MAX_TOOL_PAYLOAD_BYTES:
-            self.reject('tool_request_too_large', 'Tool catalog and history exceed the Prism bridge limit of 1 MiB UTF-8')
-        if self.relay:
-            # Transport splits preserve the current user and tool outputs.
-            # Choose a catalog representation by its own size, independently
-            # of accumulated history that can be continued or sent in parts.
-            if len(self.build_prompt(encoded(catalog), history='').encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
-                return
-            packed_catalog = ('Shared catalog: shared_description/shared_parameters/shared_format '
-                'references use the exact value in shared; expand these fields before reading the declaration.\n'
-                + shared_catalog(catalog))
-            if len(self.build_prompt(packed_catalog, history='').encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
-                self.prompt, self.catalog_mode = self.build_prompt(packed_catalog), 'shared'
-            else:
-                self.catalog_mode = 'indexed'
-                if self.target:
-                    self.loaded.add(self.target['catalog']['name'])
-                self.prompt = self.indexed_prompt(status=422)
-            return
-        if len(self.prompt.encode('utf-8')) > CATALOG_COMPACTION_BYTES:
-            # A small catalog needs no inspection to recover a long tool turn.
-            if len(encoded(catalog).encode('utf-8')) <= 8192:
-                self.prompt = self.fit_history(encoded(catalog))
-                if len(self.prompt.encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
-                    return
-            packed = self.build_prompt('Shared catalog: shared_description/shared_parameters/shared_format '
-                'references use the exact value in shared; expand these fields before reading the declaration.\n'
-                + shared_catalog(catalog))
-            if len(packed.encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
-                self.prompt, self.catalog_mode = packed, 'shared'
-            else:
-                self.catalog_mode = 'indexed'
-                if self.target:
-                    self.loaded.add(self.target['catalog']['name'])
-                self.prompt = self.indexed_prompt(status=422)
-
-    def build_prompt(self, catalog, history=None):
-        self.prompt_catalog = catalog
-        return self.policy + catalog + '\n\nBEGIN_CLIENT_HISTORY\n' + (self.history_prompt if history is None else history) + '\nEND_CLIENT_HISTORY\n' + (
+        self.prompt = policy + '\n\nBEGIN_CLIENT_HISTORY\n' + self.prompt + '\nEND_CLIENT_HISTORY\n' + (
             'Respond using ' + self.marker + ' and the JSON protocol above. Do not execute any remote sandbox tool.')
-
-    def fit_history(self, catalog, budget=CATALOG_COMPACTION_BYTES):
-        available = budget - len(self.build_prompt(catalog, history='').encode('utf-8'))
-        if available > 0:
-            (self.history_prompt, self.compacted_results, self.history_bytes_before,
-             self.compacted_history) = compact_results(
-                self.history_payload, self.result_positions, self.api.parse_prompt, available,
-                call_positions=self.call_positions, assistant_positions=self.assistant_positions)
-        return self.build_prompt(catalog)
-
-    def indexed_prompt(self, status=502):
-        definitions = [self.tools[name]['catalog'] for name in self.tools if name in self.loaded]
-        # Prefer a compact catalog; long history may need the larger transport
-        # budget. Keep previews removed before using that additional room.
-        minimal = None
-        for preview in (120, 60, 0):
-            catalog = ('The index lists every declared client tool. Description previews are navigation hints. '
-                'Read the full declaration before calling a tool. To load full declarations return '
-                '{"kind":"inspect","names":["exact tool name"]}, at most 8 names per inspection. '
-                'Inspections are internal catalog lookups; only kind=calls emits client operations. '
-                'Use full_declarations for authoritative descriptions, parameters and custom grammar.\n'
-                + encoded({'index': tool_index(self.catalog, preview), 'full_declarations': definitions}))
-            if self.relay:
-                if len(self.build_prompt(catalog, history='').encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
-                    return self.build_prompt(catalog)
-                continue
-            minimal = self.build_prompt(catalog)
-            if len(minimal.encode('utf-8')) <= CATALOG_COMPACTION_BYTES:
-                return minimal
-        if self.relay:
-            # Full declarations are validated against the request budget;
-            # transport splits also carry an unusually large selected schema.
-            return self.build_prompt(catalog)
-        minimal = self.fit_history(catalog)
-        if len(minimal.encode('utf-8')) > CATALOG_COMPACTION_BYTES:
-            minimal = self.fit_history(catalog, MAX_PRISM_PROMPT_BYTES)
-        if len(minimal.encode('utf-8')) <= MAX_PRISM_PROMPT_BYTES:
-            return minimal
-        raise self.error(status, 'tool_prompt_too_large',
-            f'Prism tool prompt exceeds the {MAX_PRISM_PROMPT_BYTES // 1024} KiB submission budget; reduce tool descriptions, schemas or history')
-
-    def expand_catalog(self, answer):
-        if self.catalog_mode != 'indexed':
-            return False
-        try:
-            prefix = self.marker + '\n'
-            if not isinstance(answer, str) or not answer.strip().startswith(prefix):
-                return False
-            data = strict_json(answer.strip()[len(prefix):])
-            if not isinstance(data, dict):
-                return False
-            if data.get('kind') == 'inspect':
-                names = data.get('names')
-                if set(data) != {'kind', 'names'} or self.choice == 'none':
-                    raise ValueError('inspection')
-            elif data.get('kind') == 'calls':
-                calls = data.get('calls')
-                if not isinstance(calls, list) or set(data) != {'kind', 'calls'} or self.choice == 'none':
-                    raise ValueError('calls')
-                if not 1 <= len(calls) <= (MAX_CALLS if self.parallel else 1):
-                    raise ValueError('parallel calls')
-                names = [call.get('name') if isinstance(call, dict) else None for call in calls]
-            else:
-                return False
-            if (not isinstance(names, list) or not 1 <= len(names) <= MAX_CALLS
-                    or any(not isinstance(name, str) or name not in self.tools for name in names)):
-                raise ValueError('names')
-            if self.target and any(self.tools[name] != self.target for name in names):
-                raise ValueError('forced tool')
-            if data.get('kind') == 'inspect' and len(set(names)) != len(names):
-                raise ValueError('duplicate names')
-            missing = set(names) - self.loaded
-            if not missing:
-                if data.get('kind') == 'inspect':
-                    raise ValueError('duplicate inspection')
-                return False
-            if self.inspections >= MAX_CATALOG_INSPECTIONS:
-                raise self.error(502, 'tool_catalog_inspection_limit', 'Prism tool catalog inspection limit reached')
-            self.loaded.update(missing)
-            self.prompt = self.indexed_prompt()
-            self.inspections += 1
-            return True
-        except (ValueError, TypeError, KeyError, RecursionError):
-            raise self.error(502, 'invalid_tool_output', 'Prism returned an invalid client tool catalog inspection') from None
+        if len(self.prompt) > MAX_BRIDGE_CHARS:
+            self.reject('tool_request_too_large', 'Tool catalog and history exceed the Prism bridge limit')
 
     def reject(self, code, message):
         raise self.error(422, code, message)
@@ -277,10 +142,8 @@ class ToolBridge:
     def collect(self, value, namespace='', depth=0):
         if value is None:
             return
-        if not isinstance(value, list) or depth > 8:
+        if not isinstance(value, list) or len(value) > MAX_TOOLS or depth > 8:
             self.reject('invalid_tools', 'Tool declarations exceed their shape or nesting limits')
-        if len(value) > MAX_TOOLS:
-            self.reject('too_many_tools', f'Client tool catalog exceeds the limit of {MAX_TOOLS} tools')
         for definition in value:
             if not isinstance(definition, dict):
                 self.reject('invalid_tools', 'Tool declaration must be an object')
@@ -329,7 +192,7 @@ class ToolBridge:
             self.tools[qualified] = tool
             self.commands.append(command)
             if len(self.tools) > MAX_TOOLS:
-                self.reject('too_many_tools', f'Client tool catalog exceeds the limit of {MAX_TOOLS} tools')
+                self.reject('too_many_tools', 'Client tool catalog exceeds the limit')
 
     def lookup(self, namespace, name):
         if not isinstance(namespace, str) or not isinstance(name, str):
@@ -366,7 +229,7 @@ class ToolBridge:
         if not isinstance(items, list) or not items:
             self.reject('invalid_input', 'Tool request requires input')
         translated = []
-        fresh_user_turn = False
+        last_kind = None
         for item in items:
             if not isinstance(item, dict):
                 self.reject('invalid_input', 'Responses input items must be objects')
@@ -380,15 +243,11 @@ class ToolBridge:
                 if not isinstance(summary, list) or any(not isinstance(p,dict) or p.get('type')!='summary_text' or not isinstance(p.get('text'),str) for p in summary):
                     self.reject('unsupported_reasoning_history', 'Reasoning history requires readable summary text')
                 if summary:
-                    self.assistant_positions.append(len(translated))
                     translated.append({'role':'assistant','content':'PREVIOUS_REASONING_SUMMARY '+json.dumps(summary,ensure_ascii=False)})
                 continue
             if kind == 'message':
-                if item.get('role') == 'assistant':
-                    self.assistant_positions.append(len(translated))
                 translated.append(item)
-                if item.get('role', 'user') == 'user':
-                    fresh_user_turn = True
+                last_kind = 'user' if item.get('role','user') in ('user','developer','system') else 'assistant'
             elif kind in ('function_call','custom_tool_call'):
                 tool = self.lookup(item.get('namespace',''), item.get('name'))
                 expected = 'function_call' if tool['kind']=='function' else 'custom_tool_call'
@@ -401,9 +260,8 @@ class ToolBridge:
                     call['namespace'] = tool['namespace']
                 call[field] = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',',':')) if field=='arguments' else value
                 self.calls[call_id] = call
-                self.call_positions.append(len(translated))
                 translated.append({'role':'assistant','content':'CLIENT_TOOL_CALL '+json.dumps(call,ensure_ascii=False)})
-                fresh_user_turn = False
+                last_kind = kind
             elif kind in ('function_call_output','custom_tool_call_output'):
                 call_id = item.get('call_id')
                 call = self.calls.get(call_id) if isinstance(call_id,str) else None
@@ -416,16 +274,13 @@ class ToolBridge:
                 elif not isinstance(output,str):
                     self.reject('invalid_tool_result', 'Tool result must be text or text parts')
                 self.results[call_id] = {'type':kind,'call_id':call_id,'output':output}
-                self.result_positions.append(len(translated))
                 translated.append({'role':'user','content':'CLIENT_TOOL_RESULT '+json.dumps(self.results[call_id],ensure_ascii=False)})
-                fresh_user_turn = False
+                last_kind = kind
             else:
                 self.reject('unsupported_input', 'Unsupported Responses item in tool history')
         if set(self.calls) != set(self.results) or len(self.calls) > MAX_HISTORY_CALLS:
             self.reject('missing_tool_result', 'Tool history requires exactly one result per call and at most 64 calls')
-        # Codex may append assistant progress and updated context to a new
-        # user turn. Only user messages and tool items advance this boundary.
-        self.needs_fresh = bool(self.results) and not fresh_user_turn
+        self.needs_fresh = bool(self.results) and last_kind != 'user'
         return translated
 
     def output(self, answer, request_id):
@@ -459,8 +314,6 @@ class ToolBridge:
                 tool = self.tools.get(item['name'])
                 if not tool or (self.target and tool != self.target):
                     raise ValueError('unknown')
-                if self.catalog_mode == 'indexed' and item['name'] not in self.loaded:
-                    raise ValueError('uninspected tool')
                 field, value = self.value(item, tool)
                 if set(item) != {'name',field}:
                     raise ValueError('fields')

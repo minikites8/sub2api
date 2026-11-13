@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/iprisk"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/singleflight"
@@ -136,6 +137,8 @@ type SettingService struct {
 	gptQoSAccountRepo                  AccountRepository
 	gptQoSConfig                       gptQoSConfigCache
 	adminAPIKeysMu                     sync.Mutex
+	scopedAdminKeyRepo                 ScopedAdminKeyRepository
+	IPRisk                             *iprisk.Manager     // Initialized before requests start.
 	Serverless                         *serverless.Manager // Initialized before requests start.
 	modelBillingCache                  modelBillingConfigCache
 	prioritySchedulingConfig           priorityConfigCache
@@ -159,7 +162,9 @@ type SettingService struct {
 	openAICodexVersionSF               singleflight.Group
 	openAICodexTicketEnabledCache      atomic.Value // *cachedOpenAICodexTicketEnabled
 	openAIRequestTimezoneEnabledCache  atomic.Value // *cachedOpenAIRequestTimezoneEnabled
+	openAIRequestTimezoneAutoCache     atomic.Value // *cachedOpenAIRequestTimezoneAuto
 	openAIRequestTimezoneEnabledSF     singleflight.Group
+	openAIRequestTimezoneAutoSF        singleflight.Group
 	openAICodexTicketEnabledSF         singleflight.Group
 	openAICodexTicketFailClosedCache   atomic.Value // *cachedOpenAICodexTicketFailClosed
 	openAICodexTicketFailClosedSF      singleflight.Group
@@ -177,6 +182,7 @@ type SettingService struct {
 	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
+	safetyPromptRuntimeCache      atomic.Value // *cachedSafetyPromptRuntime
 
 	// panelRateLimitCache 面板 API 限流配置进程内缓存（*cachedPanelRateLimitSettings）。
 	// 面板每个认证请求都会读取，禁止在热路径上直接访问 DB。
@@ -198,6 +204,14 @@ type SettingService struct {
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
 	openAIAPIKeyHealthBreakerCache    atomic.Value // *cachedOpenAIAPIKeyHealthBreakerSettings
+
+	// openAIResponseHeaderTimeoutCache lets the HTTP upstream client read the
+	// admin-configurable OpenAI response-header timeout without a DB hit per
+	// request. SetOpenAIResponseHeaderTimeoutSettings refreshes it immediately.
+	openAIResponseHeaderTimeoutCache atomic.Value // *cachedOpenAIResponseHeaderTimeoutSettings
+	openAIResponseHeaderTimeoutSF    singleflight.Group
+	openAIResponseHeaderTimeoutMu    sync.Mutex
+	openAIResponseHeaderTimeoutGen   uint64 // guarded by Mu; successful saves supersede in-flight reads
 
 	channelMonitorRuntimeListenersMu sync.Mutex
 	channelMonitorRuntimeListeners   []func()

@@ -444,6 +444,7 @@ func populateOpenAIUsageFromResponseJSON(body []byte, usage *OpenAIUsage) {
 		return
 	}
 	if parsed, ok := extractOpenAIUsageFromJSONBytes(body); ok {
+		mergeOpenAIProtectionUsageEvidence(*usage, &parsed)
 		*usage = parsed
 	}
 }
@@ -581,7 +582,6 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
-	account = s.openAIAccountForGroup(ctx, groupID, account)
 	// OAuth/SetupToken continuation state lives on the WSv2 session and cannot
 	// survive an HTTP fallback. Official API-key Responses HTTP requests are
 	// different: previous_response_id is supported by the provider and scoped to
@@ -597,7 +597,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
-	if requestedModel != "" && !account.IsModelSupportedInGroup(groupID, requestedModel) {
+	if requestedModel != "" && (!supportsOpenAIRequestModel(account, requestedModel, requireCompact) || !account.IsModelAllowedInGroup(groupID, requestedModel)) {
 		return 0, nil, "", nil
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -622,7 +622,6 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		latest = s.openAIAccountForGroup(ctx, groupID, latest)
 		if shouldClearStickySessionForContinuity(latest, requestedModel, true) || !latest.IsOpenAI() || !latest.IsSchedulable() {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
@@ -637,7 +636,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		if requestedModel != "" && !latest.IsModelSupportedInGroup(groupID, requestedModel) {
+		if requestedModel != "" && (!supportsOpenAIRequestModel(latest, requestedModel, requireCompact) || !latest.IsModelAllowedInGroup(groupID, requestedModel)) {
 			return 0, nil, "", nil
 		}
 		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {

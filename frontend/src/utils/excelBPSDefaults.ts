@@ -7,13 +7,14 @@ export interface ExcelBPSDefaults {
   all_models: boolean
   models: string[]
   omit_unsupported_tools: boolean
-  ignore_images: boolean
   ignore_encrypted_content: boolean
   auto_disable_on_403: boolean
   auto_recover_on_403: boolean
   recovery_interval_minutes: number
   auto_move_on_403: boolean
   target_group_id: number
+  session_proxy: boolean
+  proxy_source: 'mihomo' | 'ip_pool'
   cache_creation_as_input: boolean
 }
 
@@ -21,10 +22,10 @@ export function defaultExcelBPSDefaults(): ExcelBPSDefaults {
   return {
     ws_sse_acceleration: false, auto_enable_on_degradation: false,
     all_models: false, models: [...DEFAULT_EXCEL_BPS_MODELS],
-    omit_unsupported_tools: false, ignore_images: false, ignore_encrypted_content: true,
+    omit_unsupported_tools: false, ignore_encrypted_content: true,
     auto_disable_on_403: true, auto_recover_on_403: false,
     recovery_interval_minutes: DEFAULT_BPS_RECOVERY_INTERVAL_MINUTES,
-    auto_move_on_403: false, target_group_id: -1,
+    auto_move_on_403: false, target_group_id: -1, session_proxy: false, proxy_source: 'mihomo',
     cache_creation_as_input: true
   }
 }

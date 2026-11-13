@@ -22,7 +22,8 @@ func TestOpenAIFallbackCapacityOverflowAndPrimaryRecovery(t *testing.T) {
 				svc.settingService.prioritySchedulingConfig.expires = time.Now().Add(time.Hour)
 				svc.usageLogRepo = &priorityReaderStub{}
 			}
-			repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			repo, ok := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			require.True(t, ok)
 			repo.accounts = repo.accounts[:2]
 			repo.accounts[1].Type = AccountTypeAPIKey
 			repo.accounts[1].IsFallback = true
@@ -65,7 +66,8 @@ func TestOpenAIFallbackCannotBypassRemainingPrimaryOutsideTopK(t *testing.T) {
 	svc.settingService.gptQoSConfig.config.QualityRoutingEnabled = false
 	req.RequiredTransport = OpenAIUpstreamTransportAny
 	req.SessionHash = "fixed-seed"
-	repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+	repo, ok := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+	require.True(t, ok)
 	repo.accounts[1].Type = AccountTypeAPIKey
 	repo.accounts[1].IsFallback = true
 	repo.accounts[1].Priority = -1000
@@ -85,7 +87,8 @@ func TestOpenAIFallbackDoesNotBreakRequiredContinuation(t *testing.T) {
 		t.Run(owner, func(t *testing.T) {
 			svc, req := qualityTestGateway(false)
 			svc.cache = &schedulerTestGatewayCache{}
-			repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			repo, ok := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			require.True(t, ok)
 			repo.accounts[1].Type = AccountTypeAPIKey
 			repo.accounts[1].IsFallback = true
 			svc.accountRepo = repo
@@ -110,7 +113,8 @@ func TestOpenAIFallbackUnsupportedModelStillWaitsOnPrimary(t *testing.T) {
 	svc, req := qualityTestGateway(false)
 	svc.settingService.gptQoSConfig.config.QualityRoutingEnabled = false
 	req.RequiredTransport = OpenAIUpstreamTransportAny
-	repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+	repo, ok := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+	require.True(t, ok)
 	repo.accounts = repo.accounts[:2]
 	repo.accounts[1].IsFallback = true
 	repo.accounts[1].Credentials = map[string]any{"model_mapping": map[string]any{"other": "other"}}
@@ -129,7 +133,8 @@ func TestOpenAIFallbackMovablePreviousResponseReturnsToPrimary(t *testing.T) {
 			svc, req := qualityTestGateway(false)
 			svc.settingService.gptQoSConfig.config.QualityRoutingEnabled = mode == "quality"
 			svc.cache = &schedulerTestGatewayCache{}
-			repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			repo, ok := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			require.True(t, ok)
 			repo.accounts = repo.accounts[:2]
 			repo.accounts[1].Type = AccountTypeAPIKey
 			repo.accounts[1].IsFallback = true

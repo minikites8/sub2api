@@ -53,6 +53,7 @@ func TestHandleCCStreamingFromAnthropic_PingFlushesImmediately(t *testing.T) {
 		flushed:          make(chan string, 32),
 	}
 	context, _ := gin.CreateTestContext(writer)
+	disableCCPingHold(context)
 	reader, upstream := io.Pipe()
 	type outcome struct {
 		result *ForwardResult
@@ -159,6 +160,7 @@ func TestHandleCCStreamingFromAnthropic_PingFlushesImmediately(t *testing.T) {
 func TestHandleCCStreamingFromAnthropic_PingDoesNotSetFirstToken(t *testing.T) {
 	writer := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(writer)
+	disableCCPingHold(context)
 	result, err := (&GatewayService{}).handleCCStreamingFromAnthropic(
 		&http.Response{Body: io.NopCloser(strings.NewReader("event: ping\ndata: {\"type\":\"ping\"}\n\n"))},
 		context, "gpt-5", "claude-sonnet-4.5", nil, time.Now(),
@@ -177,6 +179,7 @@ func TestHandleCCStreamingFromAnthropic_PingWriteFailureStopsDownstream(t *testi
 		t.Run(name, func(t *testing.T) {
 			writer := &ccPingResponseWriter{ResponseRecorder: httptest.NewRecorder(), failPing: true}
 			context, _ := gin.CreateTestContext(writer)
+			disableCCPingHold(context)
 			stream := ""
 			if withUsage {
 				stream += "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_failure\",\"usage\":{\"input_tokens\":10}}}\n\n"
@@ -190,16 +193,23 @@ func TestHandleCCStreamingFromAnthropic_PingWriteFailureStopsDownstream(t *testi
 			)
 			require.NoError(t, err)
 			require.True(t, writer.failed)
+			require.True(t, result.ClientDisconnect)
 			require.Zero(t, writer.writesAfterError)
 			require.Zero(t, writer.flushesAfterError)
 			require.NotContains(t, writer.Body.String(), "[DONE]")
-			require.Zero(t, result.Usage.OutputTokens)
+			require.Equal(t, 7, result.Usage.OutputTokens)
+			require.NotNil(t, result.FirstTokenMs)
 			if withUsage {
 				require.Equal(t, 10, result.Usage.InputTokens)
 			} else {
 				require.Zero(t, result.Usage.InputTokens)
-				require.Nil(t, result.FirstTokenMs)
 			}
 		})
 	}
+}
+
+// disableCCPingHold 关闭首段输出前的 ping 保留窗口，
+// 让心跳测试覆盖「收到上游 ping 立即转发」这条路径。
+func disableCCPingHold(c *gin.Context) {
+	c.Set(ccPingHoldContextKey, time.Duration(0))
 }

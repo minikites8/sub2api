@@ -108,6 +108,9 @@ func (s *SettingService) refreshCachedSettingsAfterWrite(ctx context.Context, se
 }
 
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+	if err := settings.normalizeBalanceForecastSettings(); err != nil {
+		return nil, err
+	}
 	captureConfig := settings.requestCaptureConfig()
 	if err := captureConfig.Validate(); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_REQUEST_CAPTURE_SETTINGS", err.Error())
@@ -226,12 +229,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// 注册设置
 	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
+	updates[SettingKeyLoginRateLimitEnabled] = strconv.FormatBool(settings.LoginRateLimitEnabled)
+	updates[SettingKeyRegistrationIPLimitEnabled] = strconv.FormatBool(settings.RegistrationIPLimitEnabled)
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
 	registrationEmailSuffixWhitelistJSON, err := json.Marshal(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, fmt.Errorf("marshal registration email suffix whitelist: %w", err)
 	}
 	updates[SettingKeyRegistrationEmailSuffixWhitelist] = string(registrationEmailSuffixWhitelistJSON)
+	updates[SettingKeyRegistrationEmailAliasBlockEnabled] = strconv.FormatBool(settings.RegistrationEmailAliasBlockEnabled)
 	updates[SettingKeyRegistrationEmailDomainQuotaEnabled] = strconv.FormatBool(settings.RegistrationEmailDomainQuotaEnabled)
 	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
@@ -510,8 +516,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyChannelMonitorHideThroughput] = strconv.FormatBool(settings.ChannelMonitorHideThroughput)
 	updates[SettingKeyChannelMonitorShowQuota] = strconv.FormatBool(settings.ChannelMonitorShowQuota)
-	updates[SettingKeyYeTeamEnabled] = strconv.FormatBool(settings.YeTeamEnabled)
-	updates[SettingKeyYeTeamAutoRefresh401] = strconv.FormatBool(settings.YeTeamAutoRefresh401)
 	updates[SettingKeyChannelMonitorHideUserRanking] = strconv.FormatBool(settings.ChannelMonitorHideUserRanking)
 	updates[SettingKeyPrismBrowserEnabled] = strconv.FormatBool(settings.PrismBrowserEnabled)
 	baseURL := strings.TrimSpace(settings.PrismBrowserBaseURL)
@@ -532,6 +536,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyGrokCrossClientModelMapEnabled] = strconv.FormatBool(settings.GrokCrossClientModelMapEnabled)
 	updates[SettingKeyGrokDefaultBaseURLMode] = normalizeGrokDefaultBaseURLMode(settings.GrokDefaultBaseURLMode)
 	updates[SettingKeyGrokVideoSourceURLEnabled] = strconv.FormatBool(settings.GrokVideoSourceURLEnabled)
+	updates[SettingKeyOpenAI409OmitEncryptedHistoryEnabled] = strconv.FormatBool(settings.OpenAI409OmitEncryptedHistoryEnabled)
 
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
@@ -609,6 +614,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAICodexClientVersion] = NormalizeCodexClientVersion(settings.OpenAICodexClientVersion)
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
 	updates[SettingKeyOpenAIRequestTimezoneEnabled] = strconv.FormatBool(settings.OpenAIRequestTimezoneEnabled)
+	updates[SettingKeyOpenAIRequestTimezoneAuto] = strconv.FormatBool(settings.OpenAIRequestTimezoneAuto)
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
 	updates[SettingKeyOpenAICodexTicketFailClosed] = strconv.FormatBool(settings.OpenAICodexTicketFailClosed)
 	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
@@ -692,6 +698,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky] = settings.OpenAIAdvancedSchedulerWeightSessionSticky
 
 	// 余额、订阅到期与账号限额通知
+	updates[SettingKeyBalanceForecastEnabled] = strconv.FormatBool(settings.BalanceForecastEnabled)
+	updates[SettingKeyBalanceForecastThresholdHours] = strconv.FormatFloat(settings.BalanceForecastThresholdHours, 'f', -1, 64)
+	updates[SettingKeyBalanceForecastMaxNotifications] = strconv.Itoa(settings.BalanceForecastMaxNotifications)
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
 	updates[SettingKeyBalanceLowNotifyThreshold] = strconv.FormatFloat(settings.BalanceLowNotifyThreshold, 'f', 8, 64)
 	updates[SettingKeyBalanceLowNotifyRechargeURL] = settings.BalanceLowNotifyRechargeURL
@@ -724,6 +733,14 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 	updates[SettingKeyUsageShowLongContextBadge] = strconv.FormatBool(settings.UsageShowLongContextBadge)
+	updates[SettingKeyUsageShowCacheRate] = strconv.FormatBool(settings.UsageShowCacheRate)
+	updates[SettingKeyUsageShowCacheRateToUsers] = strconv.FormatBool(settings.UsageShowCacheRateToUsers)
+	updates[SettingKeyUsageShowUpstreamResponseModelToUsers] = strconv.FormatBool(settings.UsageShowUpstreamResponseModelToUsers)
+	hiddenMenuItems, err := json.Marshal(normalizeSmartOpsHiddenMenuItems(settings.SmartOpsHiddenMenuItems))
+	if err != nil {
+		return nil, fmt.Errorf("marshal smart ops hidden menu items: %w", err)
+	}
+	updates[SettingKeySmartOpsHiddenMenuItems] = string(hiddenMenuItems)
 	updates[SettingKeyRequestCaptureEnabled] = strconv.FormatBool(captureConfig.Enabled)
 	updates[SettingKeyRequestCaptureQuotaMiB] = strconv.FormatInt(captureConfig.QuotaMiB, 10)
 	updates[SettingKeyRequestCaptureRetentionDays] = strconv.Itoa(captureConfig.RetentionDays)
@@ -946,6 +963,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// 这里没有它的最新值，重算会把同步结果覆盖成陈旧值。
 	s.InvalidateOpenAICodexClientVersionCache()
 	s.InvalidateOpenAIRequestTimezoneEnabledCache()
+	s.InvalidateOpenAIRequestTimezoneAutoCache()
 	s.InvalidateOpenAICodexTicketEnabledCache()
 	s.InvalidateOpenAICodexTicketFailClosedCache()
 	s.InvalidateOpenAICodexTicketModelsCache()

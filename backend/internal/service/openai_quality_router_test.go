@@ -11,6 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func qualityTestAccountRepo(t *testing.T, svc *OpenAIGatewayService) schedulerTestOpenAIAccountRepo {
+	t.Helper()
+	repo, ok := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+	require.True(t, ok, "quality test gateway must use the scheduler account repository fixture")
+	return repo
+}
+
 func qualityTestGateway(allow bool) (*OpenAIGatewayService, OpenAIAccountScheduleRequest) {
 	group := int64(1)
 	cfg := DefaultGPTQoSConfig()
@@ -57,7 +64,7 @@ func TestGPTQualityLoadPrecedesProtocolAndSubscriptionPreferences(t *testing.T) 
 				svc.settingService.gptQoSConfig.config.Enabled = queue
 				req.SubscriptionPriority = tc.subscription
 				req.RequiredTransport = OpenAIUpstreamTransportAny
-				repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+				repo := qualityTestAccountRepo(t, svc)
 				repo.accounts[0].Priority = -100
 				repo.accounts[0].Extra["qos_upstream_kind"] = "vm2api"
 				repo.accounts[1].Priority = 100
@@ -96,7 +103,7 @@ func TestGPTQualityFallbackPermissionAndUnknown(t *testing.T) {
 }
 func TestGPTQualityIncompatibleStrongDoesNotBlockBasic(t *testing.T) {
 	svc, req := qualityTestGateway(true)
-	repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+	repo := qualityTestAccountRepo(t, svc)
 	repo.accounts[0].Credentials = map[string]any{"model_mapping": map[string]any{"other": "other"}}
 	svc.accountRepo = repo
 	selection, _, err := newDefaultOpenAIAccountScheduler(svc, nil).Select(context.Background(), req)
@@ -124,7 +131,7 @@ func TestGPTQualityForcedContinuationRetainsBasicOwner(t *testing.T) {
 	svc.cfg.Gateway.OpenAIWS.Enabled = true
 	svc.cfg.Gateway.OpenAIWS.APIKeyEnabled = true
 	svc.cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
-	repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+	repo := qualityTestAccountRepo(t, svc)
 	repo.accounts[1].Type = AccountTypeAPIKey
 	repo.accounts[1].Extra["openai_apikey_responses_websockets_v2_enabled"] = true
 	svc.accountRepo = repo
@@ -198,7 +205,7 @@ func TestGPTQualityStrongStandbyBeforeBasicOnPrimarySaturation(t *testing.T) {
 	for _, allow := range []bool{false, true} {
 		t.Run(fmt.Sprintf("allow_basic=%t", allow), func(t *testing.T) {
 			svc, req := qualityTestGateway(allow)
-			repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			repo := qualityTestAccountRepo(t, svc)
 			repo.accounts[1].Extra[AccountQualityTierKey] = "strong"
 			repo.accounts[1].IsFallback = true
 			repo.accounts = append(repo.accounts, Account{ID: 4, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 2, GroupIDs: []int64{1}, Extra: map[string]any{AccountQualityTierKey: "basic"}})

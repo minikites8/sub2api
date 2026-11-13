@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminUser } from '@/types'
 
-const { post, deleteRequest } = vi.hoisted(() => ({
+const { post, deleteRequest, put } = vi.hoisted(() => ({
   post: vi.fn(),
   deleteRequest: vi.fn(),
+  put: vi.fn(),
 }))
 
 vi.mock('@/api/client', () => ({
   apiClient: {
     post,
     delete: deleteRequest,
+    put,
   },
 }))
 
@@ -20,6 +22,7 @@ import {
   bindUserAuthIdentity,
   unbanGroup,
   unbanUser,
+  update,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
   type BatchUpdateUserLimitsRequest,
@@ -92,6 +95,7 @@ describe('admin users api auth identity binding', () => {
   beforeEach(() => {
     post.mockReset()
     deleteRequest.mockReset()
+    put.mockReset()
   })
 
   it('posts the backend-compatible auth identity bind payload and returns the backend response shape', async () => {
@@ -170,5 +174,14 @@ describe('admin users api auth identity binding', () => {
     expect(post).toHaveBeenNthCalledWith(2, '/admin/users/9/group-bans/12', { duration_hours: 72 })
     expect(deleteRequest).toHaveBeenNthCalledWith(1, '/admin/users/9/ban')
     expect(deleteRequest).toHaveBeenNthCalledWith(2, '/admin/users/9/group-bans/12')
+  })
+
+  it('uses the existing user management update endpoint with only status and audit reason', async () => {
+    const user = { id: 306, status: 'active' }
+    put.mockResolvedValue({ data: user })
+    expect(await update(306, { status: 'active', reason: 'reviewed disable source' })).toEqual(user)
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(put).toHaveBeenCalledWith('/admin/users/306', { status: 'active', reason: 'reviewed disable source' })
+    expect(post).not.toHaveBeenCalled()
   })
 })

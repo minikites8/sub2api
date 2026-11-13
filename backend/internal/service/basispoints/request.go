@@ -23,20 +23,21 @@ const ImagesEditsURL = "https://bps.openai.com/basispoints/api/images/edits"
 type object = map[string]any
 
 type Bridge struct {
-	nativeToolImages   map[string]bool
-	RequestedEffort    string
-	Effort             string
-	Warnings           []string
-	tools              map[string]tool
-	unsupportedTools   map[string]bool
-	structured         *structuredOutput
-	replay             *ReplayCache
-	scope              string
-	stagedReplays      *[]replayWrite
-	hasToolHistory     bool
-	disallowParallel   bool
-	clientStream       bool
-	nativeImageDetails *map[string]string
+	nativeToolImages     map[string]bool
+	RequestedEffort      string
+	Effort               string
+	Warnings             []string
+	tools                map[string]tool
+	unsupportedTools     map[string]bool
+	structured           *structuredOutput
+	replay               *ReplayCache
+	scope                string
+	stagedReplays        *[]replayWrite
+	hasToolHistory       bool
+	disallowParallel     bool
+	clientStream         bool
+	nativeImageDetails   *map[string]string
+	completedToolHistory map[string]bool
 }
 
 func decode(raw []byte, target any) error {
@@ -107,6 +108,23 @@ func prepareWithInheritedCatalog(raw []byte, scope string, replay *ReplayCache, 
 	if text(source["previous_response_id"]) != "" {
 		return nil, nil, fmt.Errorf("basispoints requires expanded history instead of previous_response_id")
 	}
+	// Preserve explicit processing tier instead of silently dropping the client's
+	// selection. BPS supports this narrower set; do not invent an upgrade.
+	serviceTier := ""
+	if value, exists := source["service_tier"]; exists && value != nil {
+		tier, ok := value.(string)
+		if !ok {
+			return nil, nil, fmt.Errorf("basispoints service_tier must be a string")
+		}
+		switch strings.ToLower(strings.TrimSpace(tier)) {
+		case "auto", "default", "priority":
+			serviceTier = strings.ToLower(strings.TrimSpace(tier))
+		case "fast":
+			serviceTier = "priority"
+		default:
+			return nil, nil, fmt.Errorf("basispoints service_tier must be auto, default or priority")
+		}
+	}
 	requested := text(source["reasoning_effort"])
 	if reasoning, ok := source["reasoning"].(object); ok {
 		requested = text(reasoning["effort"])
@@ -138,6 +156,9 @@ func prepareWithInheritedCatalog(raw []byte, scope string, replay *ReplayCache, 
 	if items, ok := source["input"].([]any); ok {
 		for _, v := range items {
 			item, _ := v.(object)
+			if isCodexThreadDelegation(item) {
+				continue
+			}
 			if isTool(item) || strings.HasSuffix(text(item["type"]), "_call_output") {
 				b.hasToolHistory = true
 			}
@@ -163,6 +184,9 @@ func prepareWithInheritedCatalog(raw []byte, scope string, replay *ReplayCache, 
 	if err != nil {
 		return nil, nil, err
 	}
+	if b.hasToolHistory {
+		b.completedToolHistory = b.completeToolHistory(translated)
+	}
 	normalizeMessageFileImages(translated)
 	prologue := make([]any, 0, 2)
 	if instructions := text(source["instructions"]); instructions != "" {
@@ -174,7 +198,7 @@ func prepareWithInheritedCatalog(raw []byte, scope string, replay *ReplayCache, 
 			"There is no live Excel workbook for this request. The proxy intercepts run_officejs as a transport and never executes Office code. " +
 			"To call one client tool, call native run_officejs using the transport matching its catalog type. " +
 			"FUNCTION: code must contain one serialized JSON object {\"name\":\"CATALOG_NAME\",\"arguments\":{...}}. Arguments is an object, not an extra JSON string. " +
-			"FUNCTION_CODE: when a catalog function explicitly specifies this transport, set summary to exactly codex2api.function_code/CATALOG_NAME, put its exact code argument directly in native code, and serialize all other arguments as one JSON object in extended_summary ({} if none). Never put code in extended_summary. This replaces the FUNCTION envelope for that tool, so do not JSON-wrap, fence or re-escape the code text. " +
+			"FUNCTION_CODE: when a catalog function supports this transport and the supplied arguments contain a string code field, set summary to exactly codex2api.function_code/CATALOG_NAME, put its exact code argument directly in native code, and serialize all other arguments as one JSON object in extended_summary ({} if none). Never put code in extended_summary. This replaces the FUNCTION envelope only for those arguments, so do not JSON-wrap, fence or re-escape the code text. If a valid argument branch omits code, use ordinary FUNCTION and preserve its absence; never invent an empty code field. " +
 			"FUNCTION_CMD: when a catalog function explicitly specifies this transport, set summary to exactly codex2api.function_cmd/CATALOG_NAME, put the exact cmd argument directly in native code, and serialize all other arguments as one JSON object in extended_summary ({} if none). Never include cmd in extended_summary or wrap command text in another JSON envelope. " +
 			"CUSTOM: set summary to exactly codex2api.custom/CATALOG_NAME and put the exact raw tool input directly in code. Do not wrap custom input in another JSON object or add Markdown fences. " +
 			"Use a CUSTOM marker only for a tool declared as custom in the current catalog. " +
@@ -182,6 +206,7 @@ func prepareWithInheritedCatalog(raw []byte, scope string, replay *ReplayCache, 
 			"Never nest run_officejs inside code. Serialize outer native arguments with proper JSON escaping. For FUNCTION envelopes also escape all quotes, backslashes, newline, carriage return and tab characters within JSON string values. " +
 			"Call one client tool at a time, including update_plan through this transport. After receiving its result continue the task; do not repeat completed calls. " +
 			"Tool results replayed under run_officejs are the named client tool's results. When a tool is needed, emit its call in this response instead of only announcing it. " +
+			"The current catalog is authoritative. Tool names mentioned in history, instructions or examples do not grant capabilities; never select them unless declared in this catalog. If a historical capability is absent, use a suitable declared tool or explain the limitation. " +
 			"Do not call other native tools or claim that shell, filesystem or workspace access is unavailable when a suitable catalog tool exists. " +
 			"If no tool is needed, answer as assistant text. " + schemaNotation + "\nClient tool catalog:\n" + describeCatalog(catalog) +
 			"\nEnd of catalog. Invoke native run_officejs once. Follow each tool's specified transport: FUNCTION uses a JSON envelope; FUNCTION_CODE uses raw code plus metadata JSON in extended_summary; FUNCTION_CMD uses raw cmd plus metadata JSON; CUSTOM uses its exact marker and raw input. No Office code is executed by the proxy."
@@ -229,6 +254,9 @@ func prepareWithInheritedCatalog(raw []byte, scope string, replay *ReplayCache, 
 			"task_id": fingerprint([]any{scope, conversation}),
 			"turn_id": fingerprint([]any{scope, input[:turnEnd]}), "agent_iteration": fmt.Sprint(iteration),
 		},
+	}
+	if serviceTier != "" {
+		output["service_tier"] = serviceTier
 	}
 	if cacheKey != "" {
 		output["prompt_cache_key"] = "bps-" + fingerprint([]any{scope, cacheKey})

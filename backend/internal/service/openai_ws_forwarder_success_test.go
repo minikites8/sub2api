@@ -93,7 +93,7 @@ func TestOpenAIGatewayService_Forward_WSv2_SuccessAndBindSticky(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
 	c.Request.Header.Set("User-Agent", "unit-test-agent/1.0")
 	groupID := int64(1001)
-	c.Set("api_key", &APIKey{GroupID: &groupID})
+	c.Set("api_key", &APIKey{GroupID: &groupID, AllowLongContext: true})
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false
@@ -719,7 +719,7 @@ func TestOpenAIGatewayService_Forward_WSv2_PoolReuseNotOneToOne(t *testing.T) {
 		c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
 		c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0")
 		groupID := int64(2001)
-		c.Set("api_key", &APIKey{GroupID: &groupID})
+		c.Set("api_key", &APIKey{GroupID: &groupID, AllowLongContext: true})
 
 		body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_prev_reuse","input":[{"type":"input_text","text":"hello"}]}`)
 		result, err := svc.Forward(context.Background(), c, account, body)
@@ -1034,9 +1034,9 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthHonorsAccountUserAgent(t *testin
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, "codex-tui", captureDialer.lastHeaders.Get("originator"))
+	require.Equal(t, openai.CodexCLIOriginator, captureDialer.lastHeaders.Get("originator"))
 	require.Equal(t,
-		"codex-tui/"+codexCLIVersion+" (Mac OS X 15.1.0; arm64) iTerm.app",
+		"codex_cli_rs/"+codexCLIVersion+" (Mac OS X 15.1.0; arm64) iTerm.app",
 		captureDialer.lastHeaders.Get("user-agent"),
 	)
 	require.Equal(t, codexCLIVersion, captureDialer.lastHeaders.Get("version"))

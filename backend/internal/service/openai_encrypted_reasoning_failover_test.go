@@ -68,14 +68,6 @@ func TestOpenAIEncryptedReasoningStreamReplayBoundary(t *testing.T) {
 					}
 					require.Error(t, err)
 					var failover *UpstreamFailoverError
-					if tc.output == "" {
-						require.ErrorAs(t, err, &failover)
-						require.True(t, failover.ShouldRetryNextAccount())
-						require.False(t, failover.RetryableOnSameAccount)
-						require.Empty(t, rec.Body.String())
-						require.False(t, c.Writer.Written())
-						return
-					}
 					require.NotErrorAs(t, err, &failover)
 					require.Contains(t, rec.Body.String(), "fixture-ciphertext")
 					rawEvents, exists := c.Get(OpsUpstreamErrorsKey)
@@ -84,15 +76,15 @@ func TestOpenAIEncryptedReasoningStreamReplayBoundary(t *testing.T) {
 					event := opsEvents[len(opsEvents)-1]
 					require.Equal(t, "stream_failed", event.Kind)
 					require.Equal(t, "downstream_response_committed", event.FailoverSuppressedReason)
-					require.Equal(t, tc.firstEvent, event.FirstOutputEventType)
-					require.Equal(t, tc.firstItem, event.FirstOutputItemType)
+					require.Equal(t, "response.output_item.done", event.FirstOutputEventType)
+					require.Equal(t, "reasoning", event.FirstOutputItemType)
 					require.LessOrEqual(t, len(event.Detail), 64)
 					// The diagnostic remains available even when the raw response was truncated.
 					rawJSON := marshalOpsUpstreamErrors(opsEvents)
 					require.NotNil(t, rawJSON)
 					parsed, parseErr := ParseOpsUpstreamErrors(*rawJSON)
 					require.NoError(t, parseErr)
-					require.Equal(t, tc.firstEvent, parsed[len(parsed)-1].FirstOutputEventType)
+					require.Equal(t, "response.output_item.done", parsed[len(parsed)-1].FirstOutputEventType)
 				})
 			}
 		}

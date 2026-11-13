@@ -23,6 +23,7 @@
         <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 10.5-7.5 10.5S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
       </svg>
     </CapacityBadge>
+    <AccountAdmissionProgress :account="account" />
     <AccountConcurrencyProgress v-if="concurrencyUpgradeEnabled" :account="account" />
 
     <!-- 5h窗口费用限制 -->
@@ -58,6 +59,8 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import AccountConcurrencyProgress from './AccountConcurrencyProgress.vue'
+import AccountAdmissionProgress from './AccountAdmissionProgress.vue'
+import { supportsAccountQuota } from '@/utils/accountQuota'
 import CapacityBadge from '@/components/account/CapacityBadge.vue'
 import QuotaBadge from '@/components/account/QuotaBadge.vue'
 
@@ -228,7 +231,7 @@ const formatCost = (value: number | null | undefined) => {
 }
 
 // ====== 配额 ======
-const isQuotaEligible = computed(() => props.account.type === 'apikey' || props.account.type === 'bedrock')
+const isQuotaEligible = computed(() => supportsAccountQuota(props.account.type))
 
 const showDailyQuota = computed(() =>
   isQuotaEligible.value && props.account.quota_daily_limit != null && props.account.quota_daily_limit > 0

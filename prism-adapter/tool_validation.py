@@ -4,8 +4,6 @@ import math
 import re
 import sys
 
-from tool_limits import MAX_TOOL_PAYLOAD_BYTES, MAX_VALIDATION_COMMANDS
-
 
 def bounded(value, depth=0):
     if depth > 64:
@@ -56,7 +54,7 @@ def validate(commands):
     def unavailable(uri):
         raise NoSuchResource(ref=uri)
 
-    if not isinstance(commands, list) or len(commands) > MAX_VALIDATION_COMMANDS:
+    if not isinstance(commands, list) or len(commands) > 192:
         raise ValueError('command budget')
     for command in commands:
         if command['kind'] == 'function':
@@ -83,8 +81,8 @@ if __name__ == '__main__':
         resource.setrlimit(resource.RLIMIT_CPU, (2, 2))
         if sys.platform.startswith('linux'):
             resource.setrlimit(resource.RLIMIT_AS, (192 << 20, 192 << 20))
-        raw = sys.stdin.buffer.read(MAX_TOOL_PAYLOAD_BYTES + 1)
-        if len(raw) > MAX_TOOL_PAYLOAD_BYTES:
+        raw = sys.stdin.buffer.read((1 << 20) + 1)
+        if len(raw) > 1 << 20:
             raise ValueError('byte budget')
         validate(json.loads(raw))
     except BaseException:

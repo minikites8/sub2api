@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // Keep the existing idle listeners stable for directed harvest and ticket pinning.
@@ -19,20 +20,18 @@ const collectPort = 17893
 func collectionGroup(lane int) string { return fmt.Sprintf("CODEX-COLLECT-%d", lane) }
 func collectionProxy(lane int) string { return fmt.Sprintf("http://127.0.0.1:%d", collectPort+lane) }
 
-// Collection leases distinct selectors for its workers. The shared epoch keeps
-// configuration reloads behind all live channel leases.
+// Collection owns the management gate for the whole round. Each worker owns
+// one selector/listener; management and use-once probes cannot change its exit.
 type Collection struct {
-	m               *Manager
-	mu              sync.Mutex
-	nodes           []string
-	next            int
-	ports           []int
-	lanes           []int
-	releaseChannels func() error
-	extended        bool
-	closed          bool
-	closeErr        error
-	once            sync.Once
+	m        *Manager
+	mu       sync.Mutex
+	nodes    []string
+	next     int
+	ports    []int
+	extended bool
+	closed   bool
+	closeErr error
+	once     sync.Once
 }
 
 func managedManager() *Manager {
@@ -62,9 +61,13 @@ func BeginCollection(ctx context.Context, proxy string, requestedLanes ...int) (
 	if m == nil {
 		return nil, errors.New("managed Mihomo is not running")
 	}
+	if err := m.acquire(ctx); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	if m.closed || !m.state.Running {
 		m.mu.Unlock()
+		m.release()
 		return nil, errors.New("managed Mihomo is not running")
 	}
 	c := &Collection{m: m}
@@ -82,8 +85,10 @@ func BeginCollection(ctx context.Context, proxy string, requestedLanes ...int) (
 			c.nodes = append(c.nodes, name)
 		}
 	}
+	snapshot := m.saved
 	m.mu.Unlock()
 	if len(c.nodes) == 0 {
+		m.release()
 		return nil, errors.New("no eligible proxy nodes")
 	}
 	lanes := defaultCollectLanes
@@ -92,12 +97,17 @@ func BeginCollection(ctx context.Context, proxy string, requestedLanes ...int) (
 	}
 	lanes = min(lanes, len(c.nodes))
 	if lanes < 1 {
+		m.release()
 		return nil, errors.New("collection requires at least one lane")
 	}
-	var err error
-	c.lanes, c.ports, c.releaseChannels, err = m.reserveCollectionChannels(ctx, lanes)
-	if err != nil {
-		return nil, err
+	c.ports = make([]int, lanes)
+	for lane := range c.ports {
+		c.ports[lane] = collectPort + lane
+	}
+	if lanes > defaultCollectLanes {
+		if err := c.extend(ctx, snapshot); err != nil {
+			return nil, errors.Join(err, c.Close())
+		}
 	}
 	return c, nil
 }
@@ -160,20 +170,10 @@ func (c *Collection) Next(ctx context.Context, lane int) (node, proxy string, er
 	if c.next >= len(c.nodes) {
 		return "", "", nil
 	}
+	node = c.nodes[c.next]
+	c.next++
 	c.m.mu.Lock()
 	next := c.m.saved
-	for c.next < len(c.nodes) {
-		candidate := c.nodes[c.next]
-		c.next++
-		if next.Disabled[candidate] == "" && countryAllowed(next, candidate) {
-			node = candidate
-			break
-		}
-	}
-	if node == "" {
-		c.m.mu.Unlock()
-		return "", "", nil
-	}
 	if next.UseOnce {
 		next.Disabled = copyNodeStates(next.Disabled)
 		next.Disabled[node] = "used"
@@ -193,7 +193,7 @@ func (c *Collection) Next(ctx context.Context, lane int) (node, proxy string, er
 		return "", "", errors.New("cannot reserve collection node")
 	}
 	payload, _ := json.Marshal(map[string]string{"name": node})
-	if err = c.m.control(ctx, http.MethodPut, "/proxies/"+collectionGroup(c.lanes[lane]), next.Secret, payload); err != nil {
+	if err = c.m.control(ctx, http.MethodPut, "/proxies/"+collectionGroup(lane), next.Secret, payload); err != nil {
 		return "", "", err
 	}
 	return node, fmt.Sprintf("http://127.0.0.1:%d", c.ports[lane]), nil
@@ -212,7 +212,23 @@ func (c *Collection) Close() error {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		c.closed = true
-		c.closeErr = c.releaseChannels()
+		defer c.m.release()
+		c.m.mu.Lock()
+		next := c.m.saved
+		c.m.mu.Unlock()
+		if !next.UseOnce && !c.extended {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		config, err := c.m.config(next)
+		if err == nil {
+			err = c.m.reload(ctx, config, next.Secret)
+		}
+		if err != nil {
+			c.m.stop()
+			c.closeErr = errors.New("cannot restore collection configuration; managed proxy stopped")
+		}
 	})
 	return c.closeErr
 }
@@ -225,8 +241,7 @@ func PinNode(ctx context.Context, name string) (string, func(), error) {
 	if m == nil {
 		return "", noop, errors.New("managed Mihomo is not running")
 	}
-	lanes, ports, release, err := m.reserveCollectionChannels(ctx, 1)
-	if err != nil {
+	if err := m.acquire(ctx); err != nil {
 		return "", noop, err
 	}
 	m.mu.Lock()
@@ -241,14 +256,14 @@ func PinNode(ctx context.Context, name string) (string, func(), error) {
 		}
 	}
 	if !allowed || closed || !running {
-		_ = release()
+		m.release()
 		return "", noop, errors.New("ticket exit is unavailable")
 	}
 	payload, _ := json.Marshal(map[string]string{"name": name})
-	if err := m.control(ctx, http.MethodPut, "/proxies/"+collectionGroup(lanes[0]), snapshot.Secret, payload); err != nil {
-		_ = release()
+	if err := m.control(ctx, http.MethodPut, "/proxies/"+collectionGroup(0), snapshot.Secret, payload); err != nil {
+		m.release()
 		return "", noop, err
 	}
 	var once sync.Once
-	return fmt.Sprintf("http://127.0.0.1:%d", ports[0]), func() { once.Do(func() { _ = release() }) }, nil
+	return collectionProxy(0), func() { once.Do(m.release) }, nil
 }

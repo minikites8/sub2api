@@ -101,33 +101,37 @@ type AccountOpsService struct {
 	newAPIGroupReader      interface {
 		GetBinding(context.Context, int64) (*NewAPIAccountBinding, error)
 	}
-	newAPIGroupCache sync.Map
-	accounts         AccountRepository
-	usageCache       *UsageCache
-	encryptor        SecretEncryptor
-	fixedKey         bool
-	timezone         *time.Location
-	robotClient      *http.Client
-	robotMu          sync.Mutex
-	robotLast        map[string]time.Time
-	autoSeen         map[int64]bool
-	autoConfigMu     sync.Mutex
-	autoGroups       GroupRepository
-	autoAccounts     AccountConcurrencyRepository
-	autoConfig       atomic.Value
-	autoBlocked      atomic.Bool
-	autoResults      chan AccountConcurrencyResult
-	settings         SettingRepository
-	repo             AccountOpsRepository
-	email            accountOpsEmailSender
-	config           atomic.Value
-	queue            chan AccountOpsEvent
-	cancel           context.CancelFunc
-	wg               sync.WaitGroup
-	lifecycle        sync.Mutex
-	settingsMu       sync.Mutex
-	dropped          atomic.Uint64
-	failures         atomic.Uint64
+	newAPIGroupCache   sync.Map
+	accounts           AccountRepository
+	usageCache         *UsageCache
+	encryptor          SecretEncryptor
+	fixedKey           bool
+	timezone           *time.Location
+	robotClient        *http.Client
+	robotMu            sync.Mutex
+	robotLast          map[string]time.Time
+	degradationCursor  int64
+	autoSeen           map[int64]bool
+	autoConfigMu       sync.Mutex
+	autoGroups         GroupRepository
+	autoAccounts       AccountConcurrencyRepository
+	autoConfig         atomic.Value
+	autoBlocked        atomic.Bool
+	fallbackSharedJobs atomic.Bool
+	fallbackSLAReader  atomic.Value
+	fallbackStatus     atomic.Value
+	autoResults        chan AccountConcurrencyResult
+	settings           SettingRepository
+	repo               AccountOpsRepository
+	email              accountOpsEmailSender
+	config             atomic.Value
+	queue              chan AccountOpsEvent
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
+	lifecycle          sync.Mutex
+	settingsMu         sync.Mutex
+	dropped            atomic.Uint64
+	failures           atomic.Uint64
 }
 
 func NewAccountOpsService(settings SettingRepository, repo AccountOpsRepository, email accountOpsEmailSender) *AccountOpsService {
@@ -181,7 +185,7 @@ func (s *AccountOpsService) Observe(account *Account, status int, headers http.H
 	if len(name) > 120 {
 		name = name[:120]
 	}
-	group := s.cachedAccountOpsGroupAssignment(account, c)
+	group := accountOpsGroupAssignment(account, c)
 	event := AccountOpsEvent{AccountID: account.ID, AccountName: string(name), GroupID: group.ID, GroupName: group.Name, Kind: kind, Signal: signal, HTTPStatus: status}
 	// The hot request path never waits for SMTP or the database. Raw errors and credentials do not enter the queue.
 	select {
@@ -195,8 +199,9 @@ func (s *AccountOpsService) Start() {
 }
 
 // Request observations and auto-configuration must drain on every replica.
-// Only the primary delivers the shared notification queue.
-func (s *AccountOpsService) start(deliverNotifications bool) {
+// Only the full node reconciles shared manual groups and delivers the shared
+// notification queue; gateways still reload settings and persist local events.
+func (s *AccountOpsService) start(runSharedJobs bool) {
 	s.lifecycle.Lock()
 	defer s.lifecycle.Unlock()
 	if s.cancel != nil {
@@ -204,11 +209,15 @@ func (s *AccountOpsService) start(deliverNotifications bool) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	s.fallbackSharedJobs.Store(runSharedJobs)
 	s.wg.Add(2)
 	go s.runAutoConfig(ctx)
 	go func() {
 		defer s.wg.Done()
-		s.refreshConfig(ctx)
+		s.refreshConfig(ctx, runSharedJobs)
+		if runSharedJobs {
+			s.evaluateOpenAIAPIKeyFallback(ctx)
+		}
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -226,7 +235,10 @@ func (s *AccountOpsService) start(deliverNotifications bool) {
 					s.failures.Add(1)
 				}
 			case <-ticker.C:
-				if s.refreshConfig(ctx) && deliverNotifications {
+				if runSharedJobs {
+					s.evaluateOpenAIAPIKeyFallback(ctx)
+				}
+				if s.refreshConfig(ctx, runSharedJobs) && runSharedJobs {
 					s.scanBalances(ctx)
 					s.deliver(ctx)
 				}
@@ -243,7 +255,7 @@ func (s *AccountOpsService) Stop() {
 		s.wg.Wait()
 	}
 }
-func (s *AccountOpsService) refreshConfig(ctx context.Context) bool {
+func (s *AccountOpsService) refreshConfig(ctx context.Context, reconcileGroups bool) bool {
 	query, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	c, err := s.GetConfig(query)
@@ -252,7 +264,7 @@ func (s *AccountOpsService) refreshConfig(ctx context.Context) bool {
 		s.failures.Add(1)
 		return false
 	}
-	if s.accounts != nil {
+	if reconcileGroups && s.accounts != nil {
 		if reconciled, reconcileErr := s.ensureManualAccountOpsGroups(query); reconcileErr != nil {
 			s.failures.Add(1)
 			return false
@@ -278,11 +290,8 @@ func (s *AccountOpsService) deliver(ctx context.Context) {
 		if event == nil {
 			return
 		}
-		s.deliverEvent(ctx, event)
+		s.deliverNotification(ctx, event)
 	}
-}
-func (s *AccountOpsService) deliverEvent(ctx context.Context, event *AccountOpsEvent) {
-	s.deliverNotification(ctx, event)
 }
 
 func (s *AccountOpsService) List(ctx context.Context, offset, limit int) ([]AccountOpsEvent, error) {

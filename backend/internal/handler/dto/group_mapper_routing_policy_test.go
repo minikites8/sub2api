@@ -8,9 +8,8 @@ import (
 )
 
 func TestGroupMapperRoutingPolicy(t *testing.T) {
-	group := &service.Group{ID: 7, EnableBPS: true, SchedulingStrategy: service.GroupSchedulingPriorityWeekly}
+	group := &service.Group{ID: 7, SchedulingStrategy: service.GroupSchedulingPriorityWeekly}
 	admin := GroupFromServiceAdmin(group)
-	require.True(t, admin.EnableBPS)
 	require.Equal(t, service.GroupSchedulingPriorityWeekly, admin.SchedulingStrategy)
 	encoded, err := json.Marshal(GroupFromService(group))
 	require.NoError(t, err)

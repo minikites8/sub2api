@@ -78,12 +78,7 @@ func accountHasAntigravityPaidTier(account *Account) bool {
 	if !ok {
 		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(planType)) {
-	case "pro", "ultra":
-		return true
-	default:
-		return false
-	}
+	return antigravity.IsPaidPlanType(planType)
 }
 
 // smartRetryAction 智能重试的处理结果
@@ -543,6 +538,9 @@ urlFallbackLoop:
 				return nil, err
 			}
 
+			if err := checkAPIKeyLongContextBeforeForward(p.ctx, p.c, nil, p.body, extractOpenAICodexTicketModel(p.body)); err != nil {
+				return nil, err
+			}
 			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			s.rateLimitService.observeQualityResponse(upstreamReq.Context(), p.account, resp, err)
 			if err == nil && resp == nil {
@@ -858,10 +856,12 @@ func sleepAntigravityBackoffWithContext(ctx context.Context, attempt int) bool {
 	}
 }
 
-// isSingleAccountRetry 检查 context 中是否设置了单账号退避重试标记
+// isSingleAccountRetry 检查是否处于单账号退避重试模式：显式标记优先，否则使用请求挂载的延迟判定。
 func isSingleAccountRetry(ctx context.Context) bool {
-	v, _ := SingleAccountRetryFromContext(ctx)
-	return v
+	if v, ok := SingleAccountRetryFromContext(ctx); ok {
+		return v
+	}
+	return singleAccountRetryProbeResult(ctx)
 }
 
 // setModelRateLimitByModelName 使用官方模型 ID 设置模型级限流
@@ -888,7 +888,7 @@ func (s *AntigravityGatewayService) setAntigravityModelRateLimits(ctx context.Co
 	if account == nil || repo == nil {
 		return false
 	}
-	keys := antigravityModelRateLimitKeys(modelName)
+	keys := antigravityModelRateLimitKeys(account, modelName)
 	if len(keys) == 0 {
 		return false
 	}

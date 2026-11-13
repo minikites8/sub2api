@@ -41,10 +41,6 @@
                 <Icon name="refresh" size="sm" />
                 {{ t('admin.accounts.refreshToken') }}
               </button>
-              <button v-if="hasYeTeamBinding" @click="$emit('ye-team-reset', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-cyan-600 hover:bg-gray-100 dark:hover:bg-dark-700">
-                <Icon name="refresh" size="sm" />
-                {{ t('admin.accounts.yeTeamReset') }}
-              </button>
             </template>
             <button v-if="isOpenAIOAuthParent" @click="$emit('create-spark-shadow', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-amber-600 hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="sparkles" size="sm" />
@@ -84,9 +80,10 @@ import { useResizeObserver, useWindowSize } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/icons'
 import type { Account } from '@/types'
+import { supportsAccountQuota } from '@/utils/accountQuota'
 
 const props = defineProps<{ show: boolean; account: Account | null; anchorRect: DOMRect | null }>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'ye-team-reset', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'sessions', 'workspace-info', 'iq-test'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'sessions', 'workspace-info', 'iq-test'])
 const { t } = useI18n()
 const menuRef = ref<HTMLElement | null>(null)
 const { width: viewportWidth, height: viewportHeight } = useWindowSize()
@@ -157,14 +154,9 @@ const isTeamWorkspaceAccount = computed(() => {
     typeof credentials.team_account_id === 'string' ||
     typeof credentials.team_name === 'string'
 })
-const hasYeTeamBinding = computed(() => {
-  if (props.account?.platform !== 'openai') return false
-  const cardCode = props.account?.extra?.ye_team_card_code
-  return typeof cardCode === 'string' && cardCode.trim().length > 0
-})
 const supportsPrivacy = computed(() => (isAntigravityOAuth.value || isOpenAIOAuth.value) && !isShadow.value)
 const hasQuotaLimit = computed(() => {
-  return (props.account?.type === 'apikey' || props.account?.type === 'bedrock') && (
+  return supportsAccountQuota(props.account?.type) && (
     (props.account?.quota_limit ?? 0) > 0 ||
     (props.account?.quota_daily_limit ?? 0) > 0 ||
     (props.account?.quota_weekly_limit ?? 0) > 0

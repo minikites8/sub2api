@@ -21,6 +21,9 @@ import (
 
 func normalizeOpenAIWSLogValue(value string) string {
 	trimmed := strings.TrimSpace(value)
+	if trimmed != "invalid_encrypted_content" && trimmed != "thinking_signature_invalid" {
+		trimmed = redactOpenAIEncryptedDiagnostic(trimmed)
+	}
 	if trimmed == "" {
 		return "-"
 	}
@@ -199,10 +202,17 @@ func openAIWSMessageLikelyContainsToolCalls(message []byte) bool {
 }
 
 func parseOpenAIWSResponseUsageFromCompletedEvent(message []byte, usage *OpenAIUsage) {
-	if usage == nil || len(message) == 0 || !bytes.Contains(message, []byte(`"usage"`)) {
+	if usage == nil || len(message) == 0 {
+		return
+	}
+	if openAIStreamEventTypeIsTerminal(effectiveOpenAISSEEventType(message, "")) {
+		usage.CacheReadKnown = false
+	}
+	if !bytes.Contains(message, []byte(`"usage"`)) {
 		return
 	}
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(message); ok {
+		mergeOpenAIProtectionUsageEvidence(*usage, &parsedUsage)
 		if openAIStreamEventTypeIsTerminal(effectiveOpenAISSEEventType(message, "")) {
 			if !openAIUsageHasTokens(&parsedUsage) && openAIUsageHasTokens(usage) {
 				return
@@ -225,6 +235,9 @@ func parseOpenAIWSErrorEventFields(message []byte) (code string, errType string,
 func summarizeOpenAIWSErrorEventFieldsFromRaw(codeRaw, errTypeRaw, errMessageRaw string) (code string, errType string, errMessage string) {
 	code = truncateOpenAIWSLogValue(codeRaw, openAIWSLogValueMaxLen)
 	errType = truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen)
+	if openAIEncryptedErrorCode(codeRaw) {
+		errMessageRaw = openAIEncryptedErrorRedacted
+	}
 	errMessage = truncateOpenAIWSLogValue(errMessageRaw, openAIWSLogValueMaxLen)
 	return code, errType, errMessage
 }

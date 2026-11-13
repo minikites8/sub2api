@@ -23,7 +23,7 @@
         {{ errorMessage }}
       </div>
 
-      <HarvestPolicyPanel :models="snapshot?.harvest.models" @saved="fetchFlow" />
+      <HarvestPolicyPanel @saved="fetchFlow" />
       <HarvestControlsPanel
         :refresh-key="snapshot?.generated_at"
         :runtime="snapshot?.runtime"

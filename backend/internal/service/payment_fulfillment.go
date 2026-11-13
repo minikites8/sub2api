@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 )
 
 // ErrOrderNotFound is returned by HandlePaymentNotification when the webhook
@@ -54,6 +55,33 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 		return fmt.Errorf("lookup order failed for out_trade_no %s: %w", n.OrderID, err)
 	}
 	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk, n.Metadata)
+}
+
+// ConfirmNotificationUpstream asks providers that implement
+// payment.NotificationConfirmer to confirm a verified success notification
+// against the upstream order, using the same instance that verified it.
+// Failures are recorded on the order's audit trail and returned so the webhook
+// answers non-success and the gateway retries.
+func (s *PaymentService) ConfirmNotificationUpstream(ctx context.Context, prov payment.Provider, n *payment.PaymentNotification) error {
+	confirmer, ok := prov.(payment.NotificationConfirmer)
+	if !ok || n == nil || n.Status != payment.NotificationStatusSuccess {
+		return nil
+	}
+	notifiedTradeNo := n.TradeNo
+	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
+	err := confirmer.ConfirmNotification(ctx, n)
+	finishProviderCall()
+	if err == nil {
+		return nil
+	}
+	if order, lookupErr := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx); lookupErr == nil {
+		s.writeAuditLog(ctx, order.ID, "PAYMENT_UPSTREAM_UNCONFIRMED", prov.ProviderKey(), map[string]any{
+			"detail":  err.Error(),
+			"tradeNo": notifiedTradeNo,
+			"amount":  n.Amount,
+		})
+	}
+	return err
 }
 
 func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
@@ -109,7 +137,17 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		})
 		return fmt.Errorf("invalid paid amount from provider: %v", paid)
 	}
-	if math.Abs(paid-o.PayAmount) > paymentAmountToleranceForCurrency(PaymentOrderCurrency(o)) {
+	amountMatches := math.Abs(paid-o.PayAmount) <= paymentAmountToleranceForCurrency(PaymentOrderCurrency(o))
+	if pk == payment.TypeBEpusdt {
+		currency := PaymentOrderCurrency(o)
+		paidMinor, paidErr := payment.AmountToMinorUnit(strconv.FormatFloat(paid, 'f', -1, 64), currency)
+		expectedMinor, expectedErr := payment.AmountToMinorUnit(strconv.FormatFloat(o.PayAmount, 'f', -1, 64), currency)
+		amountMatches = paidErr == nil && expectedErr == nil && paidMinor == expectedMinor
+		if o.PaymentTradeNo != "" && o.PaymentTradeNo != tradeNo {
+			return fmt.Errorf("bepusdt transaction ID mismatch")
+		}
+	}
+	if !amountMatches {
 		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
 		return fmt.Errorf("amount mismatch: expected %s, got %s", strconv.FormatFloat(o.PayAmount, 'f', -1, 64), strconv.FormatFloat(paid, 'f', -1, 64))
 	}
@@ -151,16 +189,27 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 	previousStatus := o.Status
 	now := time.Now()
 	grace := now.Add(-paymentGraceMinutes * time.Minute)
+	if pk == payment.TypeBEpusdt && psSnapshotStringValue(o.ProviderSnapshot["collection_mode"]) == "embedded" {
+		// Match the collection engine's three-hour historical scan window.
+		// Chain confirmations and callback retries can exceed the fiat grace.
+		grace = now.Add(-bepusdtOrderRecoveryWindow)
+	}
+	expired := paymentorder.And(paymentorder.StatusEQ(OrderStatusExpired), paymentorder.UpdatedAtGTE(grace))
+	if payment.GetBasePaymentType(pk) == payment.TypeEasyPay {
+		expired = paymentorder.And(paymentorder.StatusEQ(OrderStatusExpired), paymentorder.ExpiresAtGTE(now.Add(-easyPayOrderRecoveryWindow)))
+	}
+	eligible := paymentorder.Or(paymentorder.StatusEQ(OrderStatusPending), paymentorder.StatusEQ(OrderStatusCancelled), expired)
+	if payment.GetBasePaymentType(pk) == payment.TypeEasyPay {
+		eligible = paymentorder.And(eligible, paymentorder.ExpiresAtGTE(now.Add(-easyPayOrderRecoveryWindow)))
+		if background, _ := ctx.Value(easyPayBackgroundRecoveryKey{}).(bool); background {
+			// Recheck at the atomic update boundary: a manual cancellation or
+			// refund racing a scan must not be reversed by the worker.
+			eligible = paymentorder.And(eligible, paymentorder.StatusIn(OrderStatusPending, OrderStatusExpired))
+		}
+	}
 	c, err := s.entClient.PaymentOrder.Update().Where(
 		paymentorder.IDEQ(o.ID),
-		paymentorder.Or(
-			paymentorder.StatusEQ(OrderStatusPending),
-			paymentorder.StatusEQ(OrderStatusCancelled),
-			paymentorder.And(
-				paymentorder.StatusEQ(OrderStatusExpired),
-				paymentorder.UpdatedAtGTE(grace),
-			),
-		),
+		eligible,
 	).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(ctx)
 	if err != nil {
 		return fmt.Errorf("update to PAID: %w", err)
@@ -202,11 +251,16 @@ func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentO
 			"status", cur.Status,
 			"updatedAt", cur.UpdatedAt,
 		)
-		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_EXPIRY", "system", map[string]any{
+		detail := map[string]any{
 			"status":    cur.Status,
 			"updatedAt": cur.UpdatedAt,
 			"reason":    "payment arrived after expiry grace period",
-		})
+		}
+		if payment.GetBasePaymentType(expectedNotificationProviderKeyForOrder(s.registry, cur, "")) == payment.TypeEasyPay {
+			detail["reason"] = "EasyPay recovery deadline elapsed; manual reconciliation required"
+			detail["recovery_until"] = cur.ExpiresAt.Add(easyPayOrderRecoveryWindow)
+		}
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_EXPIRY", "system", detail)
 		return nil
 	default:
 		return nil
@@ -218,16 +272,47 @@ func (s *PaymentService) executeFulfillment(ctx context.Context, oid int64) erro
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 	}
-	if o.OrderType == payment.OrderTypeSubscription {
+	switch o.OrderType {
+	case payment.OrderTypeSubscription:
 		return s.ExecuteSubscriptionFulfillment(ctx, oid)
+	case payment.OrderTypeBalance:
+		return s.ExecuteBalanceFulfillment(ctx, oid)
+	default:
+		// 不支持的订单类型不履约：标记 FAILED 后正常返回，避免支付回调持续 500 重试。
+		s.rejectUnsupportedOrderType(ctx, o)
+		return nil
 	}
-	return s.ExecuteBalanceFulfillment(ctx, oid)
+}
+
+func isSupportedPaymentOrderType(orderType string) bool {
+	return orderType == payment.OrderTypeBalance || orderType == payment.OrderTypeSubscription
+}
+
+func (s *PaymentService) rejectUnsupportedOrderType(ctx context.Context, o *dbent.PaymentOrder) {
+	reason := "unsupported order type: " + o.OrderType
+	c, err := s.entClient.PaymentOrder.Update().
+		Where(
+			paymentorder.IDEQ(o.ID),
+			paymentorder.StatusIn(OrderStatusPaid, OrderStatusRecharging),
+		).
+		SetStatus(OrderStatusFailed).SetFailedAt(time.Now()).SetFailedReason(reason).Save(ctx)
+	if err != nil {
+		slog.Error("mark unsupported order type FAILED", "orderID", o.ID, "error", err)
+		return
+	}
+	if c > 0 {
+		slog.Warn("payment order with unsupported order type not fulfilled", "orderID", o.ID, "orderType", o.OrderType)
+		s.writeAuditLog(ctx, o.ID, "FULFILLMENT_FAILED", "system", map[string]any{"reason": reason})
+	}
 }
 
 func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int64) error {
 	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
 	if err != nil {
 		return infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	if o.OrderType != payment.OrderTypeBalance {
+		return infraerrors.BadRequest("INVALID_ORDER_TYPE", "order is not a balance order")
 	}
 	if o.Status == OrderStatusCompleted {
 		return nil
@@ -430,7 +515,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, l
 			"rechargeCode":   o.RechargeCode,
 		})
 	}
-	if _, err := s.redeemService.redeemForPaymentFulfillment(ctx, o.UserID, o.RechargeCode); err != nil {
+	if _, err := s.redeemService.redeemForPaymentFulfillment(contextSkipLotteryRecharge(ctx), o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
@@ -470,8 +555,21 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 	if lease == nil {
 		return errors.New("missing payment fulfillment lease")
 	}
+	client := s.entClient
+	originalCtx := ctx
+	var tx *dbent.Tx
+	if s.lottery != nil {
+		var err error
+		tx, err = s.entClient.Tx(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		ctx = dbent.NewTxContext(ctx, tx)
+		client = tx.Client()
+	}
 	now := time.Now()
-	updated, err := s.entClient.PaymentOrder.Update().Where(
+	updated, err := client.PaymentOrder.Update().Where(
 		paymentorder.IDEQ(o.ID),
 		paymentorder.StatusEQ(OrderStatusRecharging),
 		paymentorder.UpdatedAtEQ(lease.version),
@@ -480,11 +578,22 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		return fmt.Errorf("mark completed: %w", err)
 	}
 	if updated == 0 {
-		current, getErr := s.entClient.PaymentOrder.Get(ctx, o.ID)
+		current, getErr := client.PaymentOrder.Get(ctx, o.ID)
 		if getErr == nil && current.Status == OrderStatusCompleted {
 			return nil
 		}
 		return infraerrors.Conflict("CONFLICT", "fulfillment lease was lost before completion")
+	}
+	if tx != nil {
+		if o.OrderType == payment.OrderTypeBalance {
+			if err := s.lottery.RecordRechargeTx(ctx, o.UserID, "payment", strconv.FormatInt(o.ID, 10), o.Amount); err != nil {
+				return err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		ctx = originalCtx
 	}
 	if !s.hasAuditLog(ctx, o.ID, auditAction) {
 		s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{
@@ -942,6 +1051,9 @@ func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error 
 	}
 	if o.Status != OrderStatusFailed && o.Status != OrderStatusPaid && o.Status != OrderStatusRecharging {
 		return infraerrors.BadRequest("INVALID_STATUS", "only paid, failed, and recoverable recharging orders can retry")
+	}
+	if !isSupportedPaymentOrderType(o.OrderType) {
+		return infraerrors.BadRequest("INVALID_ORDER_TYPE", "unsupported order type")
 	}
 	s.writeAuditLog(ctx, oid, "RECHARGE_RETRY", "admin", map[string]any{"detail": "admin manual retry"})
 	return s.executeFulfillment(ctx, oid)

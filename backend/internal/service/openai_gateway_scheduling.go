@@ -4,6 +4,7 @@ package service
 // 负载感知调度、配额自动暂停判定、并发槽位获取。仅做代码搬迁，无任何行为变更。
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -107,7 +108,8 @@ func explicitOpenAIRequestSessionID(c *gin.Context, body []byte) string {
 	if sessionID == "" && isGrokRequestContext(c) {
 		sessionID = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
 	}
-	if sessionID == "" && len(body) > 0 {
+	// Escaped keys still require the original envelope-aware lookup.
+	if sessionID == "" && (bytes.Contains(body, []byte("prompt_cache_key")) || bytes.Contains(body, []byte(`\u`))) {
 		sessionID = strings.TrimSpace(openAIRequestPayloadView(body).Get("prompt_cache_key").String())
 	}
 	if sessionID == "" && isGrokRequestContext(c) && len(body) > 0 {
@@ -142,6 +144,9 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
+	if c != nil {
+		c.Set("openai_auth_connection_session_hash", currentHash)
+	}
 	return currentHash
 }
 
@@ -181,6 +186,9 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
+	if c != nil {
+		c.Set("openai_auth_connection_session_hash", currentHash)
+	}
 	return currentHash
 }
 
@@ -217,6 +225,9 @@ func (s *OpenAIGatewayService) GenerateSessionHashWithFallback(c *gin.Context, b
 
 	currentHash, legacyHash := deriveOpenAISessionHashes(seed)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
+	if c != nil {
+		c.Set("openai_auth_connection_session_hash", currentHash)
+	}
 	return currentHash
 }
 
@@ -241,7 +252,7 @@ func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *i
 	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
 		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
 	}
-	return s.setStickySessionAccountID(ctx, groupID, sessionHash, accountID, ttl)
+	return s.setStickySessionAccountIDIfUnchanged(ctx, groupID, sessionHash, accountID, ttl)
 }
 
 // SelectAccount selects an OpenAI account with sticky session support
@@ -392,9 +403,6 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	if account == nil {
 		return "account_nil"
 	}
-	if excelBPSNativeBypassExcludesAccount(ctx, account, requestedModel) {
-		return "bps_native_bypass"
-	}
 	// account_model composite routes publish an alias that only accounts with an
 	// explicit model mapping own. Both scheduler modes (advanced and legacy) must
 	// enforce ownership before any priority/sticky/transport consideration; a
@@ -407,6 +415,9 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	}
 	if account.Platform != platform || !account.IsOpenAICompatible() {
 		return "platform_mismatch"
+	}
+	if reason := openAIImageRequestRejection(ctx, account, requestedModel); reason != "" {
+		return reason
 	}
 	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 		if account.IsSchedulable() {
@@ -444,13 +455,16 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 			return "quota_auto_pause"
 		}
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
 		return "model_not_supported"
+	}
+	if requestedModel != "" && !pelicanGroupTestModelAllowed(ctx, account, requestedModel) {
+		return "model_not_selected_for_pelican"
 	}
 	if requestedModel != "" && !account.IsModelAllowedInGroup(groupID, requestedModel) {
 		return "model_not_allowed_in_group"
 	}
-	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+	if !account.supportsOpenAIEndpointCapabilityForRequest(ctx, requiredCapability) {
 		if account.IsGrok() && requiredCapability == OpenAIEndpointCapabilityGrokMediaGeneration {
 			_, reason := account.GrokMediaGenerationEligibility()
 			slog.Debug("grok_media_account_ineligible", "account_id", account.ID, "reason", reason)
@@ -963,7 +977,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHit(ctx 
 	// 4. 设置粘性会话绑定（利润门下推迟到 handler 终检通过后再绑定，
 	// 终检否决的账号不得成为新的粘性目标；无门保持既有 eager 绑定与 TTL）
 	// Set sticky session binding (deferred until terminal admission under a profit gate)
-	if sessionHash != "" && !gatewayProfitControlGateActive(ctx) {
+	if sessionHash != "" && !gatewayProfitControlGateActive(ctx) && openAIStickyBindingSnapshotFromContext(ctx, groupID, sessionHash) == nil {
 		_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, selected.ID, openaiStickySessionTTL)
 	}
 
@@ -999,7 +1013,6 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		return nil
 	}
 
-	account = s.openAIAccountForGroup(ctx, groupID, account)
 	// 检查账号是否需要清理粘性会话
 	// Check if sticky session should be cleared
 	if shouldClearStickySession(account, requestedModel) {
@@ -1126,6 +1139,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 	if len(eligible) == 0 {
 		return nil, compactBlocked, filterStats
 	}
+	feedback := s.defaultFeedbackPenalties(ctx, groupID, requestedModel, eligible)
 	rateOrder := openAILegacyUpstreamRateOrder{}
 	if preferLowUpstreamRate {
 		rateOrder = newOpenAILegacyUpstreamRateOrder(eligible, time.Now(), s.openAIOAuthSchedulingRateMultiplier(ctx))
@@ -1150,7 +1164,8 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			return rateCmp < 0
 		}
 		if a.Priority == b.Priority {
-			aRPM, bRPM := openAIRPMEffectiveLoad(ctx, a, 0), openAIRPMEffectiveLoad(ctx, b, 0)
+			aRPM := float64(openAIRPMEffectiveLoad(ctx, a, 0)) + feedback[a.ID]
+			bRPM := float64(openAIRPMEffectiveLoad(ctx, b, 0)) + feedback[b.ID]
 			if aRPM != bRPM {
 				return aRPM < bRPM
 			}
@@ -1293,10 +1308,10 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	// 分组利润控制：legacy 公共入口同样装门，保证不经
 	// selectAccountWithScheduler 的调用方也无法绕过利润准入。
 	ctx = s.withOpenAIProfitControlGateForModel(ctx, groupID, requestedModel)
-	return s.selectAccountWithLoadAwareness(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true)
+	return s.selectAccountWithLoadAwareness(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true, nil)
 }
 
-func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool) (*AccountSelectionResult, error) {
+func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool, stickyBindingAllowed ...func(*Account) bool) (*AccountSelectionResult, error) {
 	ctx = s.withOpenAIGroupRoutingPolicy(ctx, groupID)
 	strategy := s.openAIRequestGroup(ctx, groupID).EffectiveSchedulingStrategy()
 	platform = NormalizeOpenAICompatiblePlatform(platform)
@@ -1311,10 +1326,24 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	preferLowUpstreamRate := useUpstreamTokenCost && s.isOpenAILowUpstreamRatePriorityEnabled(ctx)
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var stickyAccountID int64
-	if sessionHash != "" && s.cache != nil {
+	var stickyReadErr error
+	if snapshot := openAIStickyBindingSnapshotFromContext(ctx, groupID, sessionHash); snapshot != nil {
+		stickyAccountID = snapshot.accountID
+	} else if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil {
 			stickyAccountID = accountID
+		} else {
+			stickyReadErr = err
 		}
+	}
+	if openAIStickyBindingSnapshotFromContext(ctx, groupID, sessionHash) == nil {
+		ctx = withOpenAIStickyBindingSnapshot(ctx, groupID, sessionHash, stickyAccountID, stickyReadErr == nil || errors.Is(stickyReadErr, ErrStickySessionNotFound))
+	}
+	// The scheduler wrapper may reject a candidate after slot acquisition. Do
+	// not publish that candidate: its write would make the final account conflict
+	// with this selection's original CAS snapshot. Slot release stays with the caller.
+	canBindSticky := func(account *Account) bool {
+		return len(stickyBindingAllowed) == 0 || stickyBindingAllowed[0] == nil || stickyBindingAllowed[0](account)
 	}
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
 		effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
@@ -1368,6 +1397,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				acquiredAccountID, lastAcquire, lastAcquireErr = account.ID, result, acquireErr
 				if acquireErr == nil && result != nil && result.Acquired {
 					selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc, result.RequestID)
+					if selectErr == nil && canBindSticky(selection.Account) {
+						_ = s.bindOpenAIStickySessionDuringSelection(ctx, groupID, sessionHash, account.ID)
+					}
 					return markStickySessionHit(selection, stickyHit), selectErr
 				}
 				if acquireErr != nil {
@@ -1404,6 +1436,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		if err == nil && result != nil && result.Acquired {
 			selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc, result.RequestID)
+			if selectErr == nil && canBindSticky(selection.Account) {
+				_ = s.bindOpenAIStickySessionDuringSelection(ctx, groupID, sessionHash, account.ID)
+			}
 			return markStickySessionHit(selection, stickyHit), selectErr
 		}
 		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
@@ -1449,11 +1484,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	// ============ Layer 1: Sticky session ============
-	// A healthy sticky account whose bounded wait queue is full may be used as a
-	// one-request capacity spillover in Layer 2. Keep that spillover temporary:
-	// rewriting the durable binding here would make a short burst migrate the
-	// whole conversation to a cache-cold account.
-	stickySpillover := false
+	// If a healthy sticky account spills into Layer 2, the next account becomes
+	// sticky only after it acquires a slot. A failed selection keeps the binding.
 	if sessionHash != "" {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
@@ -1467,9 +1499,6 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					stickyRPMAllowed, _, err = s.OpenAIRPMSchedulable(ctx, account, true)
 					if err != nil {
 						return nil, err
-					}
-					if !stickyRPMAllowed {
-						stickySpillover = true
 					}
 				}
 				if clearSticky {
@@ -1510,7 +1539,6 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 							})
 							return markStickySessionHit(selection, true), selectErr
 						}
-						stickySpillover = true
 					}
 				}
 			}
@@ -1594,6 +1622,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		return nil, noAvailableOpenAISelectionError(requestedModel, false, filterStats.summary(""))
 	}
+	feedback := s.defaultFeedbackPenalties(ctx, groupID, requestedModel, candidates)
 	rateOrder := openAILegacyUpstreamRateOrder{}
 	if preferLowUpstreamRate {
 		rateOrder = newOpenAILegacyUpstreamRateOrder(candidates, time.Now(), s.openAIOAuthSchedulingRateMultiplier(ctx))
@@ -1603,7 +1632,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	for _, acc := range candidates {
 		accountLoads = append(accountLoads, AccountWithConcurrency{
 			ID:             acc.ID,
-			MaxConcurrency: acc.EffectiveLoadFactor(),
+			MaxConcurrency: acc.Concurrency,
 		})
 	}
 
@@ -1634,8 +1663,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if a.account.Priority != b.account.Priority {
 				return a.account.Priority < b.account.Priority
 			}
-			if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
-				return a.loadInfo.LoadRate < b.loadInfo.LoadRate
+			aLoad := accountLoadPreferenceRate(a.account, a.loadInfo.LoadRate)
+			bLoad := accountLoadPreferenceRate(b.account, b.loadInfo.LoadRate)
+			if aLoad != bLoad {
+				return aLoad < bLoad
 			}
 			switch {
 			case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
@@ -1657,7 +1688,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if a.account.Priority != b.account.Priority {
 					return a.account.Priority < b.account.Priority
 				}
-				return openAIRPMEffectiveLoad(ctx, a.account, a.loadInfo.LoadRate) < openAIRPMEffectiveLoad(ctx, b.account, b.loadInfo.LoadRate)
+				aLoad := float64(openAIRPMEffectiveLoad(ctx, a.account, accountLoadPreferenceRate(a.account, a.loadInfo.LoadRate))) + feedback[a.account.ID]
+				bLoad := float64(openAIRPMEffectiveLoad(ctx, b.account, accountLoadPreferenceRate(b.account, b.loadInfo.LoadRate))) + feedback[b.account.ID]
+				return aLoad < bLoad
 			})
 		}
 		if rateOrder.enabled || strategy != GroupSchedulingBalanced {
@@ -1709,8 +1742,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if selectErr != nil {
 					return nil, true, selectErr
 				}
-				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
-					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
+				if sessionHash != "" && !gatewayProfitControlGateActive(ctx) && canBindSticky(selection.Account) {
+					_ = s.setStickySessionAccountIDIfUnchanged(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				}
 				return selection, true, nil
 			}
@@ -1722,6 +1755,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
+		orderDefaultFeedback(ordered, feedback)
 		if rateOrder.enabled || strategy != GroupSchedulingBalanced {
 			sort.SliceStable(ordered, func(i, j int) bool {
 				if quotaCmp := compareOpenAIGroupQuotaRank(ordered[i], ordered[j], strategy); quotaCmp != 0 {
@@ -1752,8 +1786,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if selectErr != nil {
 					return nil, selectErr
 				}
-				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
-					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
+				if sessionHash != "" && !gatewayProfitControlGateActive(ctx) && canBindSticky(selection.Account) {
+					_ = s.setStickySessionAccountIDIfUnchanged(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				}
 				return selection, nil
 			}
@@ -1777,6 +1811,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
+	orderDefaultFeedback(candidates, feedback)
 	if rateOrder.enabled || strategy != GroupSchedulingBalanced {
 		sort.SliceStable(candidates, func(i, j int) bool {
 			if quotaCmp := compareOpenAIGroupQuotaRank(candidates[i], candidates[j], strategy); quotaCmp != 0 {
@@ -1921,7 +1956,6 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 		fresh = current
 	}
 
-	fresh = s.openAIAccountForGroup(ctx, groupID, fresh)
 	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, groupID, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
@@ -1973,7 +2007,6 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if account == nil {
 		return nil
 	}
-	account = s.openAIAccountForGroup(ctx, groupID, account)
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
 		if s.openAIGroupRequiresPrivacySet(ctx, groupID) && !account.IsPrivacySet() {
@@ -1998,7 +2031,6 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if err != nil || latest == nil {
 		return nil
 	}
-	latest = s.openAIAccountForGroup(ctx, groupID, latest)
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
 		return nil
 	}

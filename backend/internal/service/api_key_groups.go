@@ -3,218 +3,324 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
-	"slices"
-	"strings"
+	"maps"
+	"math"
+	"math/rand/v2"
+	"sort"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-const MaxAPIKeyGroups = 32
+const maxAPIKeyGroups = 20
 
-var ErrAPIKeyGroupsUnavailable = infraerrors.ServiceUnavailable("API_KEY_GROUPS_UNAVAILABLE", "No available bound group can serve this request")
-
-type orderedGroupAccountSource interface {
-	ListSchedulableAccounts(context.Context, *int64, string, bool) ([]Account, bool, error)
+// APIKeyGroupAvailability describes a snapshot, not a reservation. The selected
+// group's normal admission and account scheduler still own the final checks.
+type APIKeyGroupAvailability struct {
+	Available bool
+	Busy      bool
+	Load      float64
 }
 
-// APIKeyGroupSelection describes the request before protocol dispatch.
-type APIKeyGroupSelection struct {
-	Models        []string
-	GoogleOnly    bool
-	CheckCapacity bool
-	CheckBilling  bool
-	AcceptGroup   func(*Group) bool
+type APIKeyGroupRouter interface {
+	ProbeAPIKeyGroup(context.Context, *Group, string, string) (APIKeyGroupAvailability, error)
 }
 
-func firstAPIKeyGroupID(ids []int64) *int64 {
-	if len(ids) == 0 {
+// SetGroupRouter is called once during gateway route registration.
+func (s *APIKeyService) SetGroupRouter(router APIKeyGroupRouter) { s.groupRouter = router }
+
+func (k *APIKey) ConfiguredGroupIDs() []int64 {
+	if k == nil {
 		return nil
 	}
-	id := ids[0]
-	return &id
+	if len(k.GroupIDs) > 0 {
+		return append([]int64(nil), k.GroupIDs...)
+	}
+	if k.GroupID != nil {
+		return []int64{*k.GroupID}
+	}
+	return []int64{}
 }
 
-func (s *APIKeyService) validateOrderedGroups(ctx context.Context, user *User, legacyID *int64, ids []int64) ([]int64, error) {
-	if ids == nil && legacyID != nil {
-		ids = []int64{*legacyID}
+func normalizeAPIKeyGroupIDs(primary *int64, ids []int64) ([]int64, error) {
+	if len(ids) > maxAPIKeyGroups {
+		return nil, infraerrors.BadRequest("INVALID_API_KEY_GROUPS", "At most 20 groups may be selected")
 	}
-	if len(ids) > MaxAPIKeyGroups || (legacyID != nil && (len(ids) == 0 || ids[0] != *legacyID)) {
-		return nil, infraerrors.BadRequest("INVALID_API_KEY_GROUPS", "group_ids must contain at most 32 groups and group_id must match the first group")
+	if len(ids) == 0 && primary != nil {
+		ids = []int64{*primary}
 	}
 	seen := make(map[int64]bool, len(ids))
 	for _, id := range ids {
 		if id <= 0 || seen[id] {
-			return nil, infraerrors.BadRequest("INVALID_API_KEY_GROUPS", "group_ids must contain unique positive group IDs")
+			return nil, infraerrors.BadRequest("INVALID_API_KEY_GROUPS", "Group IDs must be positive and unique")
 		}
 		seen[id] = true
-		group, err := s.groupRepo.GetByID(ctx, id)
-		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
-		}
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
-		}
 	}
-	return append([]int64{}, ids...), nil
+	if primary != nil && len(ids) > 0 && ids[0] != *primary {
+		return nil, infraerrors.BadRequest("INVALID_API_KEY_GROUPS", "group_id must match the first group_ids entry")
+	}
+	return append([]int64(nil), ids...), nil
 }
 
-// APIKeyInBoundGroup returns a request-local copy, keeping the cached key's
-// binding and user/group permission snapshot immutable. Queue revalidation also
-// uses this to recheck the group actually serving the request.
-func (s *APIKeyService) APIKeyInBoundGroup(ctx context.Context, key *APIKey, groupID int64) (*APIKey, error) {
-	if key == nil {
-		return nil, ErrAPIKeyNotFound
+// PinAPIKeyGroup preserves a request's chosen billing identity across queue/WS
+// revalidation. Never reselect underneath a request that already reserved funds.
+func (s *APIKeyService) PinAPIKeyGroup(ctx context.Context, key *APIKey, id int64) (*APIKey, error) {
+	bound := false
+	for _, candidate := range key.ConfiguredGroupIDs() {
+		if candidate == id {
+			bound = true
+			break
+		}
 	}
-	if !slices.Contains(key.OrderedGroupIDs(), groupID) {
-		return nil, ErrGroupNotAllowed
+	if !bound {
+		return nil, infraerrors.ServiceUnavailable("API_KEY_GROUP_CHANGED", "API key groups changed; please retry")
 	}
-	group, err := s.groupRepo.GetByID(ctx, groupID)
+	group, err := s.groupRepo.GetByIDLite(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if group == nil {
-		return nil, ErrGroupNotFound
+	if key.User == nil || !group.IsActive() || !s.canUserBindGroup(ctx, key.User, group) {
+		return nil, ErrGroupNotAllowed
 	}
+	return s.apiKeyWithGroup(ctx, key, group)
+}
+
+func (s *APIKeyService) apiKeyWithGroup(ctx context.Context, key *APIKey, group *Group) (*APIKey, error) {
 	copyKey := *key
-	copyKey.GroupID = firstAPIKeyGroupID([]int64{groupID})
-	copyKey.Group = group
-	if key.User != nil {
-		user := *key.User
-		copyKey.User = &user
-		user.UserGroupDeniedModels = nil
-		user.UserGroupRPMOverride = nil
-		if err := s.loadUserGroupDeniedModels(ctx, &copyKey); err != nil {
+	copyKey.ModelMapping = maps.Clone(key.ModelMapping)
+	copyUser := *key.User
+	copyKey.User = &copyUser
+	id := group.ID
+	copyKey.GroupID, copyKey.Group = &id, group
+	copyUser.UserGroupRPMOverride = nil
+	copyUser.UserGroupDeniedModels = nil
+	if s.userGroupRateRepo != nil {
+		var err error
+		copyUser.UserGroupRPMOverride, err = s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, key.UserID, id)
+		if err != nil {
 			return nil, err
 		}
-		if s.userGroupRateRepo != nil {
-			override, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, key.UserID, groupID)
-			if err != nil {
-				return nil, err
-			}
-			user.UserGroupRPMOverride = override
+		if err := s.loadUserGroupDeniedModels(ctx, &copyKey); err != nil {
+			return nil, err
 		}
 	}
 	return &copyKey, nil
 }
 
-// SelectOrderedGroup selects before protocol dispatch and billing, so both use
-// the same authorized group. Key-wide quota, expiry and concurrency remain
-// shared by every bound group and are enforced by the existing auth path.
-func (s *APIKeyService) SelectOrderedGroup(ctx context.Context, key *APIKey, selection APIKeyGroupSelection, subscriptions *SubscriptionService) (*APIKey, error) {
-	if len(key.OrderedGroupIDs()) <= 1 || key.User == nil {
-		return key, nil
-	}
-	forcedPlatform, forced := ctx.Value(ctxkey.ForcePlatform).(string)
-	for _, groupID := range key.OrderedGroupIDs() {
-		candidate, err := s.APIKeyInBoundGroup(ctx, key, groupID)
+// BillingGroups exposes only groups bound to this key and still permitted for
+// its owner. Inactive groups remain visible with their status in the declaration.
+func (s *APIKeyService) BillingGroups(ctx context.Context, key *APIKey) ([]*APIKey, error) {
+	var out []*APIKey
+	for _, id := range key.ConfiguredGroupIDs() {
+		group, err := s.groupRepo.GetByIDLite(ctx, id)
 		if errors.Is(err, ErrGroupNotFound) {
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		group, user := candidate.Group, candidate.User
-		if !group.IsActive() || group.IsUnavailableAt(time.Now()) || user.IsGroupBanned(groupID) {
+		if !s.canUserBindGroup(ctx, key.User, group) {
 			continue
 		}
-		if selection.AcceptGroup != nil && !selection.AcceptGroup(group) {
+		copyKey := *key
+		copyKey.ModelMapping = maps.Clone(key.ModelMapping)
+		copyKey.GroupID, copyKey.Group = &group.ID, group
+		out = append(out, &copyKey)
+	}
+	return out, nil
+}
+
+type apiKeyGroupCandidate struct {
+	key          *APIKey
+	rate         float64
+	availability APIKeyGroupAvailability
+}
+
+// ModelListingGroups checks only read entitlements. It never selects a billing
+// group, probes capacity, loads prices, or recovers credit. Each candidate owns
+// its User snapshot so per-group restrictions cannot contaminate auth caches.
+func (s *APIKeyService) ModelListingGroups(ctx context.Context, key *APIKey, accepts func(*APIKey) bool) ([]*APIKey, error) {
+	if key == nil || key.User == nil || s.groupRepo == nil || s.userGroupRateRepo == nil || s.localAuth != nil {
+		return nil, infraerrors.ServiceUnavailable("MODEL_LISTING_UNAVAILABLE", "Model listing authorization is unavailable")
+	}
+	var out []*APIKey
+	for _, id := range key.ConfiguredGroupIDs() {
+		group, err := s.groupRepo.GetByIDLite(ctx, id)
+		if errors.Is(err, ErrGroupNotFound) {
 			continue
 		}
-		if selection.GoogleOnly && !forced && group.Platform != PlatformGemini && group.Platform != PlatformAntigravity && group.Platform != PlatformComposite {
+		if err != nil {
+			return nil, err
+		}
+		if group == nil || !group.IsActive() {
 			continue
 		}
-		if !group.IsSubscriptionType() && !user.CanBindGroup(groupID, group.IsExclusive) {
-			continue
-		}
-		allowed := FirstUserGroupDeniedModel(candidate.DeniedModelsInGroup(), selection.Models) == ""
-		for _, model := range selection.Models {
-			allowed = allowed && group.ModelAllowlist.Allows(model)
-			if IsGPTAutoVirtualModel(model) {
-				allowed = allowed && group.GPTAutoEnabled && group.Platform == PlatformOpenAI
+		if group.IsSubscriptionType() {
+			if s.userSubRepo == nil {
+				return nil, infraerrors.ServiceUnavailable("MODEL_LISTING_UNAVAILABLE", "Subscription authorization is unavailable")
 			}
-		}
-		if !allowed {
-			continue
-		}
-		if selection.CheckBilling && (s.cfg == nil || s.cfg.RunMode != config.RunModeSimple) {
-			if group.IsSubscriptionType() {
-				if subscriptions == nil {
-					continue
-				}
-				sub, err := subscriptions.GetActiveSubscription(ctx, user.ID, groupID)
-				if err != nil {
-					continue
-				}
-				maintenance, limitErr := subscriptions.ValidateAndCheckLimits(sub, group)
-				if maintenance {
-					sub, err = subscriptions.EnsureWindowMaintenance(ctx, sub)
-					if err != nil {
-						return nil, err
-					}
-					_, limitErr = subscriptions.ValidateAndCheckLimits(sub, group)
-				}
-				if limitErr != nil {
-					continue
-				}
-				// The billing precheck rejects an already exhausted window even
-				// when the auth validator's zero-cost check permits equality.
-				if (group.HasDailyLimit() && sub.DailyUsageUSD >= *group.DailyLimitUSD) ||
-					(group.HasWeeklyLimit() && sub.WeeklyUsageUSD >= *group.WeeklyLimitUSD) ||
-					(group.HasMonthlyLimit() && sub.MonthlyUsageUSD >= *group.MonthlyLimitUSD) {
-					continue
-				}
-			} else if user.Balance <= 0 {
+			sub, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, key.UserID, id)
+			if errors.Is(err, ErrSubscriptionNotFound) || errors.Is(err, ErrSubscriptionExpired) {
 				continue
 			}
-		}
-		if selection.CheckCapacity && s.groupAccounts != nil && group.Platform != PlatformComposite {
-			platform := group.Platform
-			if forced {
-				platform = forcedPlatform
-			}
-			accounts, mixed, err := s.groupAccounts.ListSchedulableAccounts(ctx, &groupID, platform, forced)
 			if err != nil {
 				return nil, err
 			}
-			available := false
-			for i := range accounts {
-				account := &accounts[i]
-				if !account.IsSchedulable() || (mixed && account.Platform == PlatformAntigravity && !account.IsMixedSchedulingEnabled()) {
+			if sub == nil || !sub.IsActive() {
+				continue
+			}
+		} else if !key.User.CanBindGroup(id, group.IsExclusive) {
+			continue
+		}
+		candidate, err := s.apiKeyWithGroup(ctx, key, group)
+		if err != nil {
+			return nil, err
+		}
+		if accepts == nil || accepts(candidate) {
+			out = append(out, candidate)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Group.ID < out[j].Group.ID })
+	if len(out) == 0 {
+		return nil, infraerrors.Forbidden("NO_ELIGIBLE_API_KEY_GROUP", "No selected group permits model listing")
+	}
+	return out, nil
+}
+
+// SelectRequestGroup prefers immediately available groups, then the lowest
+// effective token multiplier (including user overrides and peak hours). Equal
+// rates prefer lower load, with randomized ties to avoid a permanent hot group.
+func (s *APIKeyService) SelectRequestGroup(ctx context.Context, key *APIKey, models []string, kind string, subscriptions *SubscriptionService, accepts func(*APIKey) bool, checkBilling bool) (*APIKey, error) {
+	if key == nil || len(key.ConfiguredGroupIDs()) < 2 {
+		return key, nil
+	}
+	if s.groupRouter == nil || s.localAuth != nil {
+		return nil, infraerrors.ServiceUnavailable("MULTI_GROUP_ROUTING_UNAVAILABLE", "Multi-group routing is unavailable on this gateway")
+	}
+	var candidates []apiKeyGroupCandidate
+	now := time.Now()
+	var lastErr error
+	for _, id := range key.ConfiguredGroupIDs() {
+		group, err := s.groupRepo.GetByIDLite(ctx, id)
+		if err != nil {
+			if !errors.Is(err, ErrGroupNotFound) {
+				return nil, err
+			}
+			continue
+		}
+		if !group.IsActive() {
+			continue
+		}
+		if group.IsSubscriptionType() {
+			if s.userSubRepo == nil {
+				continue
+			}
+			sub, subErr := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, key.UserID, id)
+			if subErr != nil {
+				if !errors.Is(subErr, ErrSubscriptionNotFound) && !errors.Is(subErr, ErrSubscriptionExpired) {
+					return nil, subErr
+				}
+				continue
+			}
+			if checkBilling && subscriptions != nil {
+				// Validation adjusts expired windows in memory; normal auth performs
+				// authoritative maintenance after the group is selected.
+				copySub := *sub
+				if _, subErr := subscriptions.ValidateAndCheckLimits(&copySub, group); subErr != nil {
+					lastErr = subErr
 					continue
 				}
-				supported := true
-				for _, model := range selection.Models {
-					if strings.TrimSpace(model) == "" {
-						continue
-					}
-					if IsGPTAutoVirtualModel(model) {
-						eligible := false
-						for _, candidate := range GPTAutoModelPool() {
-							if group.ModelAllowlist.Allows(candidate) && FirstUserGroupDeniedModel(key.DeniedModelsInGroup(), []string{candidate}) == "" && account.IsModelAllowedInGroup(&groupID, candidate) && accountSupportsGatewayModel(account, candidate) {
-								eligible = true
-								break
-							}
-						}
-						supported = supported && eligible
-						continue
-					}
-					supported = supported && account.IsModelAllowedInGroup(&groupID, model) && !account.modelCapabilityRejectedForRequest(ctx, model)
-					supported = supported && accountSupportsGatewayModel(account, model)
-				}
-				if supported {
-					available = true
-					break
-				}
 			}
-			if !available {
+		} else {
+			if !key.User.CanBindGroup(id, group.IsExclusive) {
 				continue
 			}
 		}
-		return candidate, nil
+		candidate, err := s.apiKeyWithGroup(ctx, key, group)
+		if err != nil {
+			return nil, err
+		}
+		permitted := true
+		for _, model := range models {
+			if group.ModelAllowlistEnabled() && !group.ModelAllowlist.Allows(model) {
+				permitted = false
+				break
+			}
+		}
+		if !permitted || FirstUserGroupDeniedModel(candidate.DeniedModelsInGroup(), models) != "" || (accepts != nil && !accepts(candidate)) {
+			continue
+		}
+		rate := group.RateMultiplier
+		if s.userGroupRateRepo != nil {
+			userRate, err := s.userGroupRateRepo.GetByUserAndGroup(ctx, key.UserID, id)
+			if err != nil {
+				return nil, err
+			}
+			if userRate != nil {
+				rate = *userRate
+			}
+		}
+		switch kind {
+		case "image":
+			rate = resolveImageRateMultiplier(candidate, rate)
+		case "video":
+			rate = resolveVideoRateMultiplier(candidate, rate)
+		default:
+			rate *= group.PeakMultiplierAt(now)
+		}
+		if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 {
+			continue
+		}
+		candidates = append(candidates, apiKeyGroupCandidate{key: candidate, rate: rate})
 	}
-	return nil, ErrAPIKeyGroupsUnavailable
+	if len(candidates) == 0 {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, infraerrors.Forbidden("NO_ELIGIBLE_API_KEY_GROUP", "No selected group permits this request or has usable billing entitlement")
+	}
+	// Shuffle before stable sorting so exact ties share traffic.
+	rand.Shuffle(len(candidates), func(i, j int) { candidates[i], candidates[j] = candidates[j], candidates[i] })
+	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].rate < candidates[j].rate })
+	var best *apiKeyGroupCandidate
+	for i := range candidates {
+		candidate := &candidates[i]
+		model := ""
+		if len(models) > 0 {
+			model = models[0]
+		}
+		availability, err := s.groupRouter.ProbeAPIKeyGroup(ctx, candidate.key.Group, model, kind)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if !availability.Available {
+			continue
+		}
+		candidate.availability = availability
+		if best == nil || apiKeyGroupLess(*candidate, *best) {
+			best = candidate
+		}
+		// Every remaining group costs more and cannot beat an idle group.
+		if best != nil && !best.availability.Busy && i+1 < len(candidates) && candidates[i+1].rate > best.rate {
+			break
+		}
+	}
+	if best == nil {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, infraerrors.ServiceUnavailable("NO_AVAILABLE_API_KEY_GROUP", "No selected group currently has accounts available for this model")
+	}
+	return best.key, nil
+}
+
+func apiKeyGroupLess(a, b apiKeyGroupCandidate) bool {
+	if a.availability.Busy != b.availability.Busy {
+		return !a.availability.Busy
+	}
+	if a.rate != b.rate {
+		return a.rate < b.rate
+	}
+	return a.availability.Load < b.availability.Load
 }

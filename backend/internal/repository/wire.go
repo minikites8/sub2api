@@ -15,7 +15,7 @@ import (
 
 // ProvideConcurrencyCache 创建并发控制缓存，从配置读取 TTL 参数
 // 性能优化：TTL 可配置，支持长时间运行的 LLM 请求场景
-func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.ConcurrencyCache {
+func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config, db *sql.DB) (service.ConcurrencyCache, error) {
 	waitTTLSeconds := int(cfg.Gateway.Scheduling.StickySessionWaitTimeout.Seconds())
 	if cfg.Gateway.Scheduling.FallbackWaitTimeout > cfg.Gateway.Scheduling.StickySessionWaitTimeout {
 		waitTTLSeconds = int(cfg.Gateway.Scheduling.FallbackWaitTimeout.Seconds())
@@ -23,7 +23,18 @@ func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.Conc
 	if waitTTLSeconds <= 0 {
 		waitTTLSeconds = cfg.Gateway.ConcurrencySlotTTLMinutes * 60
 	}
-	return NewConcurrencyCache(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds)
+	// 专用 API Key 短租约只作用于普通共享 Redis 实现。regional authority 的
+	// base 缓存仍按旧的三参语义构造（专用值传 0 = 继承共享 slot TTL），其
+	// 统计/续租委托 base 的行为保持不变。
+	apiKeySlotTTLSeconds := 0
+	if cfg.Runtime.RegionalConcurrencyFile == "" {
+		apiKeySlotTTLSeconds = cfg.Gateway.APIKeySlotTTLSeconds
+	}
+	base := NewConcurrencyCacheWithAPIKeyTTL(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds, apiKeySlotTTLSeconds)
+	if cfg.Runtime.RegionalConcurrencyFile == "" {
+		return base, nil
+	}
+	return provideRegionalConcurrencyCache(base, rdb, db, cfg)
 }
 
 // ProvideGitHubReleaseClient 创建 GitHub Release 客户端
@@ -65,16 +76,23 @@ func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.Schedu
 
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
+	ProvideAutoCreditEmailOutboxRepository,
+	ProvideRegionalMetering,
+	NewRegionalSchedulerAuthority,
+	NewRegionalAuthAuthority,
 	NewUserRepository,
 	NewAPIKeyRepository,
 	NewGroupRepository,
+	NewGroupAntiDistillationCache,
 	NewAdminGroupRepository,
 	NewCompositeModelRouteRepository,
 	NewAccountRepository,
+	NewAccountPerformanceRepository,
 	NewAdminAccountRepository,
 	NewAccountOpsRepository,
 	NewAccountTokenGuardRepository,
 	NewOpenAIOAuthReauthRepository,
+	NewOpenAISessionExportRepository,
 	NewAccountTokenGuardV2Repository,
 	NewScheduledTestPlanRepository,   // 定时测试计划仓储
 	NewScheduledTestResultRepository, // 定时测试结果仓储
@@ -91,12 +109,14 @@ var ProviderSet = wire.NewSet(
 	NewUsageLogRepository,
 	NewUsageBillingRepository,
 	NewBatchImageRepository,
+	NewGeminiCachedContentRepository,
 	NewIdempotencyRepository,
 	NewUsageCleanupRepository,
 	NewDashboardAggregationRepository,
 	NewSettingRepository,
 	NewCodexHarvestNodeRepository,
 	NewCodexHarvestFlowRepository,
+	NewScopedAdminKeyRepository,
 	NewOpsRepository,
 	NewAuditLogRepository,
 	NewGPTAutoShadowRepository,
@@ -180,7 +200,7 @@ var ProviderSet = wire.NewSet(
 	NewProxyExitInfoProber,
 	NewClaudeUsageFetcher,
 	NewClaudeOAuthClient,
-	NewHTTPUpstream,
+	ProvideHTTPUpstream,
 	NewOpenAIOAuthClient,
 	NewOpenAIReferralClient,
 	NewGrokOAuthClient,
@@ -190,6 +210,7 @@ var ProviderSet = wire.NewSet(
 
 	ProvideEnt,
 	ProvideSQLDB,
+	NewAutoCreditRepository,
 	ProvideRedis,
 )
 

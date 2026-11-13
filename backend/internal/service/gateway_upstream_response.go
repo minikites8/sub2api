@@ -361,7 +361,58 @@ func (s *GatewayService) readUpstreamErrorBody(resp *http.Response) ([]byte, err
 	return io.ReadAll(io.LimitReader(resp.Body, limit))
 }
 
+const anthropicRequestTooLargeMessage = "Request body is too large. Anthropic Messages requests are limited to 32 MiB. Reduce the request size and try again."
+
+var errAnthropicRequestTooLarge = errors.New("anthropic request body too large")
+
+func isAnthropicRequestTooLarge(account *Account, resp *http.Response) bool {
+	if account == nil || account.Platform != PlatformAnthropic || resp == nil || resp.StatusCode != http.StatusRequestEntityTooLarge {
+		return false
+	}
+	// Bedrock and Vertex have separate limits and protocol handling.
+	return account.Type == AccountTypeAPIKey || account.IsAnthropicOAuthOrSetupToken()
+}
+
+// handleAnthropicRequestTooLarge owns the rejected response body and returns a
+// terminal error, never a failover error. Neither account policies nor error
+// passthrough rules may turn this request rejection into retries or an outage.
+func handleAnthropicRequestTooLarge(c *gin.Context, resp *http.Response) (*ForwardResult, error) {
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	if c.Request != nil && c.Request.Context().Err() != nil {
+		return nil, c.Request.Context().Err()
+	}
+	setOpsUpstreamError(c, http.StatusRequestEntityTooLarge, anthropicRequestTooLargeMessage, "")
+	MarkOpsRequestScopedError(c, "request_too_large")
+	MarkResponseCommitted(c)
+	payload := `{"type":"error","error":{"type":"request_too_large","message":` + strconv.Quote(anthropicRequestTooLargeMessage) + `}}`
+	if !c.Writer.Written() {
+		c.Data(http.StatusRequestEntityTooLarge, "application/json", []byte(payload))
+		return nil, errAnthropicRequestTooLarge
+	}
+
+	// Flushed headers alone commit HTTP status. Record the logical 413 and
+	// append one terminal event only when the existing response is an SSE stream.
+	MarkOpsStreamErrorValue(c, OpsStreamError{
+		ErrType:        "request_too_large",
+		Message:        anthropicRequestTooLargeMessage,
+		IntendedStatus: http.StatusRequestEntityTooLarge,
+		RequestScoped:  true,
+	})
+	if strings.HasPrefix(strings.ToLower(c.Writer.Header().Get("Content-Type")), "text/event-stream") {
+		if _, err := fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", payload); err != nil {
+			_ = c.Error(err)
+		}
+		c.Writer.Flush()
+	}
+	return nil, errAnthropicRequestTooLarge
+}
+
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, requestedModel ...string) (*ForwardResult, error) {
+	if isAnthropicRequestTooLarge(account, resp) {
+		return handleAnthropicRequestTooLarge(c, resp)
+	}
 	// Upstream returned a non-success HTTP status; count Ollama Cloud / OpenCode Go activity.
 	scheduleOllamaCloudUsageActivity(s.deferredService, account)
 	scheduleOpenCodeGoUsageActivity(s.deferredService, account)
@@ -530,13 +581,19 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 }
 
-func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, resp *http.Response, account *Account) {
+// handleRetryExhaustedSideEffects 在重试耗尽后标记账号状态；requestedModel 是实际发往上游的模型，
+// 临时不可调度规则据此按模型隔离。
+func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, resp *http.Response, account *Account, requestedModel ...string) {
 	body, _ := s.readUpstreamErrorBody(resp)
 	statusCode := resp.StatusCode
 
 	// OAuth/Setup Token 账号的 403：标记账号异常
 	if account.IsOAuth() && statusCode == 403 {
-		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
+		if len(requestedModel) > 0 {
+			s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body, requestedModel[0])
+		} else {
+			s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
+		}
 		logger.LegacyPrintf("service.gateway", "Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
 	} else {
 		// API Key 未配置错误码：不标记账号状态
@@ -556,7 +613,7 @@ func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *ht
 // handleRetryExhaustedError 处理重试耗尽后的错误
 // OAuth 403：标记账号异常
 // API Key 未配置错误码：仅返回错误，不标记账号
-func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
+func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, requestedModel ...string) (*ForwardResult, error) {
 	// Capture upstream error body before side-effects consume the stream.
 	respBody, _ := s.readUpstreamErrorBody(resp)
 	_ = resp.Body.Close()
@@ -566,7 +623,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	}
 	MarkResponseCommitted(c)
 
-	s.handleRetryExhaustedSideEffects(ctx, resp, account)
+	s.handleRetryExhaustedSideEffects(ctx, resp, account, requestedModel...)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)

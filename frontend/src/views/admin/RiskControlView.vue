@@ -1,6 +1,7 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
+      <SecurityAuditNav active="/admin/risk-control" />
       <div v-if="loading" class="flex items-center justify-center py-16">
         <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
       </div>
@@ -23,6 +24,22 @@
           </div>
         </div>
 
+        <section class="space-y-3">
+          <h2>
+            <button
+              id="moderation-users-toggle"
+              type="button"
+              class="btn btn-secondary"
+              data-test="moderation-users-toggle"
+              :aria-expanded="moderationUsersExpanded"
+              aria-controls="moderation-users-region"
+              @click="moderationUsersMounted = true; moderationUsersExpanded = !moderationUsersExpanded"
+            >{{ t('admin.moderationUsers.listTitle') }}</button>
+          </h2>
+          <div id="moderation-users-region" v-show="moderationUsersExpanded" role="region" aria-labelledby="moderation-users-toggle">
+            <ModerationUsersSummary v-if="moderationUsersMounted" />
+          </div>
+        </section>
         <p class="text-sm text-gray-600 dark:text-gray-300" data-test="active-audit-engine">
           {{ t('admin.riskControl.activeEngine', { engine: engineLabel(status?.engine ?? savedEngine) }) }}
         </p>
@@ -422,6 +439,7 @@
                         @click="openInputDetail(row)"
                       >
                         <span class="min-w-0 flex-1 truncate">{{ inputSummaryText(row) }}</span>
+                        <span v-if="row.action === 'cyber_policy'" class="text-xs">{{ evidenceStatusLabel(row.evidence_status) }}</span>
                         <Icon name="eye" size="xs" class="flex-shrink-0 text-gray-300 transition-colors group-hover:text-primary-500 dark:text-gray-500" />
                       </button>
                     </td>
@@ -538,7 +556,7 @@
                     <label id="jailbreak-enabled-label" class="input-label">{{ t('admin.riskControl.jailbreakEnabled') }}</label>
                     <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.jailbreakHint') }}</p>
                   </div>
-                  <Toggle v-model="configForm.jailbreak_enabled" data-test="jailbreak-enabled" aria-labelledby="jailbreak-enabled-label" />
+                  <Toggle v-model="configForm.jailbreak_enabled" @update:model-value="syncJailbreakEnabled" data-test="jailbreak-enabled" aria-labelledby="jailbreak-enabled-label" />
                 </div>
                 <div>
                   <label for="audit-prompt-category" class="input-label">{{ t('admin.riskControl.auditPromptCategory') }}</label>
@@ -556,8 +574,9 @@
                 </div>
               </div>
               <div>
-                <label class="input-label">{{ t('admin.riskControl.baseUrl') }}</label>
-                <input v-model.trim="configForm.base_url" data-test="audit-base-url" type="url" class="input" :placeholder="configForm.engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'" />
+                <label class="input-label">{{ t(configForm.engine === 'typesafe' ? 'admin.riskControl.defaultKeyUrl' : 'admin.riskControl.baseUrl') }}</label>
+                <input ref="baseUrlInput" v-model.trim="configForm.base_url" data-test="audit-base-url" type="url" class="input" :placeholder="configForm.engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'" />
+                <p v-if="configForm.engine === 'typesafe'" data-test="audit-base-url-hint" class="input-hint">{{ t('admin.riskControl.typeSafeBaseUrlHint') }}</p>
               </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.model') }}</label>
@@ -747,6 +766,15 @@
                     <div class="min-w-0">
                       <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.apiKeyHealth') }}</p>
                       <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.apiKeyFreezeRule') }}</p>
+                      <button
+                        v-if="configForm.engine === 'typesafe'"
+                        data-test="audit-edit-base-url"
+                        type="button"
+                        class="mt-2 text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                        @click="baseUrlInput?.focus()"
+                      >
+                        {{ t('admin.riskControl.editBaseUrl') }}
+                      </button>
                     </div>
                     <span class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[11px] font-medium leading-5 text-gray-600 shadow-sm dark:bg-dark-800 dark:text-gray-300">
                       {{ t('admin.riskControl.apiKeyRows', { count: apiKeyRows.length }) }}
@@ -795,6 +823,12 @@
                             </button>
                           </div>
                         </div>
+                        <ModerationKeyURLEditor
+                          v-if="configForm.engine === 'typesafe' && row.configured && row.key_hash && row.base_url"
+                          :row="row"
+                          :disabled="saving || configForm.clear_api_key || isStoredApiKeyPendingDelete(row)"
+                          :persist="saveKeyURL"
+                        />
                         <p v-if="row.last_error" class="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs leading-5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
                           {{ row.last_error }}
                         </p>
@@ -844,7 +878,7 @@
                     <div class="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
                       <div v-for="score in moderationScoreRows" :key="score.category">
                         <div class="mb-1 flex items-center justify-between gap-3 text-xs">
-                          <span class="truncate text-gray-600 dark:text-gray-300">{{ score.category }}</span>
+                          <span class="truncate text-gray-600 dark:text-gray-300">{{ score.category }} · {{ t(!score.enabled ? 'admin.riskControl.categoryDisabled' : score.hit ? 'admin.riskControl.categoryHit' : 'admin.riskControl.categoryNoHit') }}</span>
                           <span class="font-mono text-gray-500 dark:text-gray-400">{{ percent(score.score) }} / {{ percent(score.threshold) }}</span>
                         </div>
                         <div class="h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
@@ -1242,6 +1276,13 @@
                     {{ formatThresholdPercent(row.value) }}
                   </span>
                 </div>
+                <template v-if="optionalModerationCategories.some(category => category === row.category)">
+                  <label class="mt-3 flex items-center gap-2 text-sm">
+                    <input v-model="configForm.category_settings[row.category].enabled" @change="row.category === 'jailbreak' && syncJailbreakEnabled(configForm.category_settings[row.category].enabled)" type="checkbox" :aria-label="`${row.category}: ${t('admin.riskControl.categoryEnabled')}`" :data-test="`risk-enabled-${row.category}`" />
+                    {{ t('admin.riskControl.categoryEnabled') }}
+                  </label>
+                  <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">{{ t(`admin.riskControl.categoryDescriptions.${row.category}`) }}</p>
+                </template>
                 <div class="mt-3">
                   <label class="sr-only" :for="`risk-threshold-${row.category}`">
                     {{ t('admin.riskControl.riskThresholdPercent') }}
@@ -1251,6 +1292,7 @@
                       :id="`risk-threshold-${row.category}`"
                       v-model.number="configForm.thresholds[row.category]"
                       :data-test="`risk-threshold-${row.category}`"
+                      :disabled="row.category === 'jailbreak' ? !configForm.jailbreak_enabled && configForm.category_settings[row.category]?.enabled === false : configForm.category_settings[row.category]?.enabled === false"
                       type="number"
                       min="0"
                       max="100"
@@ -1329,6 +1371,7 @@
           </div>
 
           <div v-else class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <CyberEvidenceSettings />
             <div>
               <label class="input-label">{{ t('admin.riskControl.hitRetentionDays') }}</label>
               <input v-model.number="configForm.hit_retention_days" type="number" min="1" max="3650" class="input" />
@@ -1365,6 +1408,7 @@
         @close="closeInputDetail"
       >
         <div v-if="inputDetailRow" class="space-y-5">
+          <CyberEvidencePanel v-if="inputDetailRow.action === 'cyber_policy'" :key="inputDetailRow.id" :log-id="inputDetailRow.id" />
           <div class="text-sm break-words" data-test="audit-engine-meta">
             <span class="font-medium">{{ t('admin.riskControl.auditSource') }}: </span>
             <template v-if="inputDetailRow.engine_meta">
@@ -1400,10 +1444,18 @@
             </div>
           </div>
 
+          <div v-if="logScoreRows.length" class="space-y-2" data-test="audit-score-snapshot">
+            <p class="text-sm font-semibold">{{ t('admin.riskControl.categorySnapshot') }}</p>
+            <div v-for="score in logScoreRows" :key="score.category" class="flex justify-between gap-3 text-sm" :data-test="`audit-score-${score.category}`">
+              <span>{{ score.category }} · {{ t(!score.enabled ? 'admin.riskControl.categoryDisabled' : score.hit ? 'admin.riskControl.categoryHit' : 'admin.riskControl.categoryNoHit') }}</span>
+              <span class="font-mono">{{ percent(score.score) }} / {{ Number.isFinite(score.threshold) ? percent(score.threshold) : '-' }}</span>
+            </div>
+          </div>
+
           <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.inputDetailContent') }}</p>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t(inputDetailRow.action === 'cyber_policy' ? 'admin.riskControl.evidence.input' : 'admin.riskControl.inputDetailContent') }}</p>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {{ inputDetailRow.endpoint || '-' }} · {{ inputDetailRow.provider || '-' }} / {{ inputDetailRow.model || '-' }}
                 </p>
@@ -1413,6 +1465,10 @@
               </span>
             </div>
             <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ inputDetailText }}</pre>
+            <template v-if="inputDetailRow.error">
+              <p class="mt-4 text-sm font-medium">{{ t(inputDetailRow.action === 'cyber_policy' ? 'admin.riskControl.evidence.reason' : 'admin.riskControl.errorDetail') }}</p>
+              <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-words text-sm">{{ inputDetailRow.error }}</pre>
+            </template>
           </div>
         </div>
 
@@ -1423,15 +1479,25 @@
         </template>
       </BaseDialog>
       <ConfirmDialog :show="showClearHashesDialog" :title="t('admin.riskControl.clearFlaggedHashesConfirm')" :message="t('admin.riskControl.clearFlaggedHashesConfirm')" :confirm-text="t('common.confirm')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmClearFlaggedHashes" @cancel="showClearHashesDialog = false" />
+      <BaseDialog :show="recoveryUserID !== null" :title="t('admin.moderationUsers.title')" @close="recoveryUserID = null">
+        <ModerationUserPanel v-if="recoveryUserID !== null" :key="recoveryUserID" :user-id="recoveryUserID" @changed="loadLogs()" />
+      </BaseDialog>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
+import { moderationThresholdDefaults, moderationCategorySettings, moderationScoreRows as buildModerationScoreRows, optionalModerationCategories } from '@/utils/contentModerationCategories'
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import SecurityAuditNav from '@/components/admin/security/SecurityAuditNav.vue'
+import ModerationUsersSummary from '@/components/admin/moderation/ModerationUsersSummary.vue'
+import ModerationUserPanel from '@/components/admin/moderation/ModerationUserPanel.vue'
+import ModerationKeyURLEditor from '@/components/admin/ModerationKeyURLEditor.vue'
+import CyberEvidencePanel from '@/components/admin/CyberEvidencePanel.vue'
+import CyberEvidenceSettings from '@/components/admin/CyberEvidenceSettings.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -1476,12 +1542,6 @@ type OverviewItem = {
   badge?: string
   badgeClass?: string
 }
-type ModerationScoreRow = {
-  category: string
-  score: number
-  threshold: number
-  hit: boolean
-}
 type RiskThresholdRow = {
   category: string
   value: number
@@ -1493,25 +1553,13 @@ const maxModerationTestImages = 1
 const maxModerationTestImageSize = 8 * 1024 * 1024
 const maxVisibleApiKeyRows: number = 3
 const blockedKeywordMax = 10000
-const riskThresholdDefaults: Record<string, number> = {
-  harassment: 98,
-  'harassment/threatening': 90,
-  hate: 65,
-  'hate/threatening': 65,
-  illicit: 95,
-  'illicit/violent': 95,
-  'self-harm': 65,
-  'self-harm/intent': 85,
-  'self-harm/instructions': 65,
-  sexual: 65,
-  'sexual/minors': 65,
-  violence: 95,
-  'violence/graphic': 95,
-  jailbreak: 85,
-}
+const riskThresholdDefaults: Record<string, number> = { ...moderationThresholdDefaults('typesafe'), jailbreak: 85 }
 const riskThresholdCategories = Object.keys(riskThresholdDefaults)
 
 const { t } = useI18n()
+// Mount on first use, then keep the list and any unsubmitted drafts alive.
+const moderationUsersMounted = ref(false)
+const moderationUsersExpanded = ref(false)
 const appStore = useAppStore()
 const defaultBlockMessage = () => t('admin.riskControl.defaultBlockMessage')
 
@@ -1523,6 +1571,7 @@ const apiKeyTesting = ref(false)
 const hashActionLoading = ref(false)
 const unbanningKey = ref<string | null>(null)
 const settingsOpen = ref(false)
+const baseUrlInput = ref<HTMLInputElement | null>(null)
 const activeSettingsTab = ref<SettingsTab>('basic')
 const groupSearch = ref('')
 const cyberGroupSearch = ref('')
@@ -1618,13 +1667,14 @@ const configForm = reactive({
   non_hit_retention_days: 3,
   pre_hash_check_enabled: false,
   thresholds: { ...riskThresholdDefaults } as Record<string, number>,
+  category_settings: moderationCategorySettings('openai'),
   blocked_keywords_text: '',
   keyword_blocking_mode: 'keyword_and_api' as KeywordBlockingMode,
   model_filter_type: 'all' as ContentModerationModelFilterType,
   model_filter_models: [] as string[],
 })
 
-const engineFields = ['base_url', 'model', 'proxy_id', 'api_keys_text', 'api_key_configured', 'api_key_masked', 'api_key_count', 'api_key_masks', 'api_key_statuses', 'api_keys_mode', 'clear_api_key', 'timeout_ms', 'retry_count', 'thresholds', 'jailbreak_enabled', 'category_prompts', 'default_category_prompts'] as const
+const engineFields = ['base_url', 'model', 'proxy_id', 'api_keys_text', 'api_key_configured', 'api_key_masked', 'api_key_count', 'api_key_masks', 'api_key_statuses', 'api_keys_mode', 'clear_api_key', 'timeout_ms', 'retry_count', 'thresholds', 'category_settings', 'jailbreak_enabled', 'category_prompts', 'default_category_prompts'] as const
 type EngineDraft = Pick<typeof configForm, typeof engineFields[number]> & { pendingDeletes: string[] }
 const engineDrafts = ref<Partial<Record<ModerationEngine, EngineDraft>>>({})
 const auditPromptCategory = ref('jailbreak')
@@ -1633,8 +1683,13 @@ const selectedCategoryPrompt = computed({
   set: (value: string) => { configForm.category_prompts[auditPromptCategory.value] = value },
 })
 
+function syncJailbreakEnabled(enabled: boolean) {
+  configForm.jailbreak_enabled = enabled
+  configForm.category_settings.jailbreak = { enabled }
+}
+
 function thresholdCategoriesForEngine(engine: ModerationEngine): string[] {
-  return riskThresholdCategories.filter(category => category !== 'jailbreak' || engine === 'typesafe')
+  return riskThresholdCategories.filter(category => !['jailbreak', 'control_bypass'].includes(category) || engine === 'typesafe')
 }
 
 function captureEngineDraft(): EngineDraft {
@@ -1656,8 +1711,11 @@ function switchEngine(value: string | number | boolean | null) {
 }
 
 function engineDraftFromConfig(config: ContentModerationConfig | undefined, engine: ModerationEngine): EngineDraft {
+  const categorySettings = moderationCategorySettings(engine, config?.category_settings)
+  const jailbreakEnabled = engine === 'typesafe' && (config?.jailbreak_enabled === true || categorySettings.jailbreak?.enabled === true)
+  if (engine === 'typesafe') categorySettings.jailbreak = { enabled: jailbreakEnabled }
   return {
-    jailbreak_enabled: config?.jailbreak_enabled ?? false,
+    jailbreak_enabled: jailbreakEnabled,
     category_prompts: { ...(config?.category_prompts ?? {}) },
     default_category_prompts: { ...(config?.default_category_prompts ?? {}) },
     base_url: config?.base_url || (engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'),
@@ -1667,7 +1725,8 @@ function engineDraftFromConfig(config: ContentModerationConfig | undefined, engi
     api_key_masks: [...(config?.api_key_masks ?? [])], api_key_statuses: [...(config?.api_key_statuses ?? [])],
     api_keys_mode: 'append', clear_api_key: false, pendingDeletes: [],
     timeout_ms: config?.timeout_ms ?? 3000, retry_count: config?.retry_count ?? 2,
-    thresholds: riskThresholdsFromConfig(config?.thresholds),
+    thresholds: riskThresholdsFromConfig(config?.thresholds, engine),
+    category_settings: categorySettings,
   }
 }
 
@@ -1680,6 +1739,7 @@ function engineDraftPayload(draft: EngineDraft, engine: ModerationEngine): Updat
     base_url: draft.base_url, model: draft.model, proxy_id: draft.proxy_id ?? 0,
     timeout_ms: draft.timeout_ms, retry_count: draft.retry_count,
     thresholds: Object.fromEntries(thresholdCategoriesForEngine(engine).map(k => [k, clampPercent(draft.thresholds[k]) / 100])),
+    category_settings: moderationCategorySettings(engine, draft.category_settings),
     clear_api_key: draft.clear_api_key, api_keys: keys.length ? keys : undefined,
     api_keys_mode: draft.api_keys_mode, delete_api_key_hashes: draft.pendingDeletes,
   }
@@ -2006,20 +2066,16 @@ const overviewItems = computed<OverviewItem[]>(() => [
   },
 ])
 
-const moderationScoreRows = computed<ModerationScoreRow[]>(() => {
+const moderationScoreRows = computed(() => {
   const result = moderationTestResult.value
   if (!result) return []
-  return Object.entries(result.category_scores || {})
-    .map(([category, score]) => {
-      const threshold = result.thresholds?.[category] ?? 1
-      return {
-        category,
-        score,
-        threshold,
-        hit: score >= threshold,
-      }
-    })
-    .sort((a, b) => b.score - a.score)
+  return buildModerationScoreRows(result.category_scores || {}, result.thresholds || {}, result.engine_meta?.engine ?? configForm.engine, result.category_settings)
+})
+
+const logScoreRows = computed(() => {
+  const row = inputDetailRow.value
+  if (!row) return []
+  return buildModerationScoreRows(row.category_scores || {}, row.threshold_snapshot || {}, row.engine_meta?.engine ?? 'openai', row.engine_meta?.category_settings)
 })
 
 const riskThresholdRows = computed<RiskThresholdRow[]>(() => (
@@ -2032,7 +2088,8 @@ const riskThresholdRows = computed<RiskThresholdRow[]>(() => (
 
 const inputDetailText = computed(() => {
   if (!inputDetailRow.value) return '-'
-  return inputDetailRow.value.input_excerpt || inputDetailRow.value.error || '-'
+  // Upstream error text is never a substitute for the user's visible input.
+  return inputDetailRow.value.input_excerpt || (inputDetailRow.value.action === 'cyber_policy' ? t('admin.riskControl.evidence.noInputSummary') : '-')
 })
 
 const queueUsagePercent = computed(() => `${Math.min(100, Math.max(0, status.value?.queue_usage_percent ?? 0)).toFixed(1)}%`)
@@ -2201,6 +2258,22 @@ function applyConfig(config: ContentModerationConfig) {
   const { pendingDeletes, ...fields } = structuredClone(toRaw(engineDrafts.value[configForm.engine]!))
   Object.assign(configForm, fields)
   pendingDeleteApiKeyHashes.value = [...pendingDeletes]
+}
+
+async function saveKeyURL(hash: string, baseURL: string, expected: string) {
+  const updated = await adminAPI.riskControl.updateConfig({ engine_configs: { typesafe: {
+    key_url_updates: [{ key_hash: hash, base_url: baseURL, expected_base_url: expected }],
+  } } })
+  const persisted = await adminAPI.riskControl.getConfig()
+  const profile = persisted.engine_configs?.typesafe ?? (persisted.engine === 'typesafe' ? persisted : undefined)
+  const saved = profile?.api_key_statuses.find(row => row.key_hash === hash)
+  const writtenProfile = updated.engine_configs?.typesafe ?? (updated.engine === 'typesafe' ? updated : undefined)
+  const written = writtenProfile?.api_key_statuses.find(row => row.key_hash === hash)
+  if (!saved?.base_url || saved.base_url !== written?.base_url) throw new Error(t('admin.riskControl.keyUrlReadbackFailed'))
+  const merge = (rows: ContentModerationAPIKeyStatus[]) => rows.map(row => row.key_hash === hash ? { ...row, base_url: saved.base_url } : row)
+  if (configForm.engine === 'typesafe') configForm.api_key_statuses = merge(configForm.api_key_statuses)
+  if (engineDrafts.value.typesafe) engineDrafts.value.typesafe.api_key_statuses = merge(engineDrafts.value.typesafe.api_key_statuses)
+  if (status.value?.engine === 'typesafe') status.value.api_key_statuses = merge(status.value.api_key_statuses)
 }
 
 async function loadAll() {
@@ -2422,6 +2495,7 @@ async function saveConfig() {
       non_hit_retention_days: Math.min(Math.max(Number(configForm.non_hit_retention_days) || 3, 1), 3),
       pre_hash_check_enabled: configForm.pre_hash_check_enabled,
       thresholds: buildRiskThresholdPayload(),
+      category_settings: moderationCategorySettings(configForm.engine, configForm.category_settings),
       blocked_keywords: blockedKeywordList.value,
       keyword_blocking_mode: configForm.keyword_blocking_mode,
       model_filter: modelFilterPayload,
@@ -2481,7 +2555,8 @@ async function loadLogs() {
 }
 
 function canUnbanRow(row: ContentModerationLog): boolean {
-  if (!row.auto_banned || !row.user_id) return false
+  if (!row.user_id) return false
+  if (configForm.ban_type !== 'group') return true
   if (configForm.ban_type === 'group') return Boolean(row.group_id)
   return row.user_status === 'disabled'
 }
@@ -2493,11 +2568,18 @@ function unbanRowKey(row: ContentModerationLog): string {
 function unbanLabel(): string {
   return configForm.ban_type === 'group'
     ? t('admin.riskControl.unbanGroup')
-    : t('admin.riskControl.unbanUser')
+    : t('admin.moderationUsers.title')
+}
+
+function evidenceStatusLabel(state?: string): string {
+  const known = ['saved', 'pending', 'expired', 'deleted', 'storage_failed', 'queue_full', 'interrupted', 'disabled', 'encryption_unavailable', 'encryption_failed', 'capture_busy', 'capture_failed', 'request_exceeds_parse_limit', 'input_unavailable_or_invalid', 'no_visible_input', 'structured_input_exceeds_limit', 'unavailable']
+  if (!state) return t('admin.riskControl.evidence.status.historical_unavailable')
+  return t(`admin.riskControl.evidence.status.${known.includes(state) ? state : 'unavailable'}`)
 }
 
 function inputSummaryText(row: ContentModerationLog): string {
-  return row.input_excerpt || row.error || '-'
+  // Never present upstream rejection/error text as the user's input summary.
+  return row.input_excerpt || (row.action === 'cyber_policy' ? t('admin.riskControl.evidence.noInputSummary') : '-')
 }
 
 function openInputDetail(row: ContentModerationLog) {
@@ -2508,17 +2590,17 @@ function closeInputDetail() {
   inputDetailRow.value = null
 }
 
+const recoveryUserID = ref<number | null>(null)
 async function unbanUser(row: ContentModerationLog) {
   if (!row.user_id || unbanningKey.value !== null) return
+  if (configForm.ban_type !== 'group') { recoveryUserID.value = row.user_id; return }
   unbanningKey.value = unbanRowKey(row)
   try {
     if (configForm.ban_type === 'group' && row.group_id) {
       await adminAPI.riskControl.unbanGroup(row.user_id, row.group_id)
       appStore.showSuccess(t('admin.riskControl.unbanGroupSuccess'))
     } else {
-      const result = await adminAPI.riskControl.unbanUser(row.user_id)
-      logs.value = logs.value.map((item) => item.user_id === row.user_id ? { ...item, user_status: result.status } : item)
-      appStore.showSuccess(t('admin.riskControl.unbanSuccess'))
+      recoveryUserID.value = row.user_id
     }
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.unbanFailed')))
@@ -2619,6 +2701,7 @@ async function testApiKeys(useInputKeys: boolean) {
       category_prompts: configForm.engine === 'typesafe' ? { ...configForm.category_prompts } : undefined,
       engine: configForm.engine,
       thresholds: buildRiskThresholdPayload(),
+      category_settings: moderationCategorySettings(configForm.engine, configForm.category_settings),
       api_keys: keys,
       base_url: configForm.base_url,
       model: configForm.model,
@@ -3000,9 +3083,10 @@ function buildGroupModelFiltersPayload(): Record<string, string[]> {
   )
 }
 
-function riskThresholdsFromConfig(thresholds: Record<string, number> | null | undefined): Record<string, number> {
-  const out: Record<string, number> = { ...riskThresholdDefaults }
-  for (const category of riskThresholdCategories) {
+function riskThresholdsFromConfig(thresholds: Record<string, number> | null | undefined, engine: ModerationEngine = configForm.engine): Record<string, number> {
+  const out = moderationThresholdDefaults(engine)
+  if (engine === 'typesafe') out.jailbreak = 85
+  for (const category of Object.keys(out)) {
     const value = thresholds?.[category]
     if (Number.isFinite(value)) {
       out[category] = clampPercent(Number(value) * 100)
@@ -3020,7 +3104,7 @@ function buildRiskThresholdPayload(): Record<string, number> {
 }
 
 function resetRiskThresholds() {
-  configForm.thresholds = { ...riskThresholdDefaults }
+  configForm.thresholds = moderationThresholdDefaults(configForm.engine)
 }
 
 function clampPercent(value: unknown): number {

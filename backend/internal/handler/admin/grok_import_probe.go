@@ -213,6 +213,7 @@ func ProvideAccountHandler(
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 	grokQuotaService *service.GrokQuotaService,
 	openAISessionService *service.OpenAISessionService,
+	performance *service.AccountPerformanceService,
 ) *AccountHandler {
 	handler := NewAccountHandler(
 		adminService,
@@ -236,5 +237,6 @@ func ProvideAccountHandler(
 	if openAISessionService != nil {
 		handler.sessionService = openAISessionService
 	}
+	handler.performance = performance
 	return handler
 }

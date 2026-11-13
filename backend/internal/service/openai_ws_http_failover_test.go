@@ -23,7 +23,6 @@ func TestForwardOpenAIWSV2_EmptyProgressKeepsAccountFailover(t *testing.T) {
 				`{"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":25}},"metered_limit_name":"failed-quota"}`,
 				`{"type":"response.output_text.delta","delta":""}`,
 				`{"type":"response.reasoning_summary_text.delta","delta":""}`,
-				`{"type":"response.output_item.done","item":{"type":"reasoning","summary":[],"encrypted_content":"failed-ciphertext"}}`,
 			} {
 				t.Run(fmt.Sprintf("%s/%s/%s", transport, eventType, progress), func(t *testing.T) {
 					rec := httptest.NewRecorder()
@@ -81,6 +80,7 @@ func TestForwardOpenAIWSV2_EmptyProgressKeepsAccountFailover(t *testing.T) {
 
 func TestForwardOpenAIWSV2_ActualOutputStopsAccountReplay(t *testing.T) {
 	for _, content := range []string{
+		`{"type":"response.output_item.done","item":{"type":"reasoning","summary":[],"encrypted_content":"failed-ciphertext"}}`,
 		`{"type":"response.output_text.delta","delta":"partial"}`,
 		`{"type":"response.reasoning_summary_text.delta","delta":"thinking"}`,
 		`{"type":"response.output_item.added","item":{"type":"function_call","name":"lookup","call_id":"call_1","arguments":"{}"}}`,

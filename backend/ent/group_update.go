@@ -97,6 +97,12 @@ func (_u *GroupUpdate) ClearDescription() *GroupUpdate {
 	return _u
 }
 
+// SetI18n sets the "i18n" field.
+func (_u *GroupUpdate) SetI18n(v domain.GroupI18n) *GroupUpdate {
+	_u.mutation.SetI18n(v)
+	return _u
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_u *GroupUpdate) SetRateMultiplier(v float64) *GroupUpdate {
 	_u.mutation.ResetRateMultiplier()
@@ -417,6 +423,20 @@ func (_u *GroupUpdate) SetAllowBatchImageGeneration(v bool) *GroupUpdate {
 func (_u *GroupUpdate) SetNillableAllowBatchImageGeneration(v *bool) *GroupUpdate {
 	if v != nil {
 		_u.SetAllowBatchImageGeneration(*v)
+	}
+	return _u
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (_u *GroupUpdate) SetImageCountBilling(v bool) *GroupUpdate {
+	_u.mutation.SetImageCountBilling(v)
+	return _u
+}
+
+// SetNillableImageCountBilling sets the "image_count_billing" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageCountBilling(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageCountBilling(*v)
 	}
 	return _u
 }
@@ -942,6 +962,34 @@ func (_u *GroupUpdate) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdate {
 	return _u
 }
 
+// SetBlockSubagents sets the "block_subagents" field.
+func (_u *GroupUpdate) SetBlockSubagents(v bool) *GroupUpdate {
+	_u.mutation.SetBlockSubagents(v)
+	return _u
+}
+
+// SetNillableBlockSubagents sets the "block_subagents" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableBlockSubagents(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetBlockSubagents(*v)
+	}
+	return _u
+}
+
+// SetCodexCliOnly sets the "codex_cli_only" field.
+func (_u *GroupUpdate) SetCodexCliOnly(v bool) *GroupUpdate {
+	_u.mutation.SetCodexCliOnly(v)
+	return _u
+}
+
+// SetNillableCodexCliOnly sets the "codex_cli_only" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCodexCliOnly(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetCodexCliOnly(*v)
+	}
+	return _u
+}
+
 // SetStreamOnly sets the "stream_only" field.
 func (_u *GroupUpdate) SetStreamOnly(v bool) *GroupUpdate {
 	_u.mutation.SetStreamOnly(v)
@@ -1081,20 +1129,6 @@ func (_u *GroupUpdate) SetFreeOpenaiFast(v bool) *GroupUpdate {
 func (_u *GroupUpdate) SetNillableFreeOpenaiFast(v *bool) *GroupUpdate {
 	if v != nil {
 		_u.SetFreeOpenaiFast(*v)
-	}
-	return _u
-}
-
-// SetEnableBps sets the "enable_bps" field.
-func (_u *GroupUpdate) SetEnableBps(v bool) *GroupUpdate {
-	_u.mutation.SetEnableBps(v)
-	return _u
-}
-
-// SetNillableEnableBps sets the "enable_bps" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillableEnableBps(v *bool) *GroupUpdate {
-	if v != nil {
-		_u.SetEnableBps(*v)
 	}
 	return _u
 }
@@ -1908,6 +1942,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(group.FieldDescription, field.TypeString)
 	}
+	if value, ok := _u.mutation.I18n(); ok {
+		_spec.SetField(group.FieldI18n, field.TypeJSON, value)
+	}
 	if value, ok := _u.mutation.RateMultiplier(); ok {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 	}
@@ -1997,6 +2034,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageCountBilling(); ok {
+		_spec.SetField(group.FieldImageCountBilling, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -2168,6 +2208,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
 	}
+	if value, ok := _u.mutation.BlockSubagents(); ok {
+		_spec.SetField(group.FieldBlockSubagents, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CodexCliOnly(); ok {
+		_spec.SetField(group.FieldCodexCliOnly, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.StreamOnly(); ok {
 		_spec.SetField(group.FieldStreamOnly, field.TypeBool, value)
 	}
@@ -2208,9 +2254,6 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.EnableBps(); ok {
-		_spec.SetField(group.FieldEnableBps, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.SchedulingStrategy(); ok {
 		_spec.SetField(group.FieldSchedulingStrategy, field.TypeString, value)
@@ -2690,6 +2733,12 @@ func (_u *GroupUpdateOne) ClearDescription() *GroupUpdateOne {
 	return _u
 }
 
+// SetI18n sets the "i18n" field.
+func (_u *GroupUpdateOne) SetI18n(v domain.GroupI18n) *GroupUpdateOne {
+	_u.mutation.SetI18n(v)
+	return _u
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_u *GroupUpdateOne) SetRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.ResetRateMultiplier()
@@ -3010,6 +3059,20 @@ func (_u *GroupUpdateOne) SetAllowBatchImageGeneration(v bool) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableAllowBatchImageGeneration(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetAllowBatchImageGeneration(*v)
+	}
+	return _u
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (_u *GroupUpdateOne) SetImageCountBilling(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageCountBilling(v)
+	return _u
+}
+
+// SetNillableImageCountBilling sets the "image_count_billing" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageCountBilling(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageCountBilling(*v)
 	}
 	return _u
 }
@@ -3535,6 +3598,34 @@ func (_u *GroupUpdateOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdateOne
 	return _u
 }
 
+// SetBlockSubagents sets the "block_subagents" field.
+func (_u *GroupUpdateOne) SetBlockSubagents(v bool) *GroupUpdateOne {
+	_u.mutation.SetBlockSubagents(v)
+	return _u
+}
+
+// SetNillableBlockSubagents sets the "block_subagents" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableBlockSubagents(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetBlockSubagents(*v)
+	}
+	return _u
+}
+
+// SetCodexCliOnly sets the "codex_cli_only" field.
+func (_u *GroupUpdateOne) SetCodexCliOnly(v bool) *GroupUpdateOne {
+	_u.mutation.SetCodexCliOnly(v)
+	return _u
+}
+
+// SetNillableCodexCliOnly sets the "codex_cli_only" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCodexCliOnly(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCodexCliOnly(*v)
+	}
+	return _u
+}
+
 // SetStreamOnly sets the "stream_only" field.
 func (_u *GroupUpdateOne) SetStreamOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetStreamOnly(v)
@@ -3674,20 +3765,6 @@ func (_u *GroupUpdateOne) SetFreeOpenaiFast(v bool) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableFreeOpenaiFast(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetFreeOpenaiFast(*v)
-	}
-	return _u
-}
-
-// SetEnableBps sets the "enable_bps" field.
-func (_u *GroupUpdateOne) SetEnableBps(v bool) *GroupUpdateOne {
-	_u.mutation.SetEnableBps(v)
-	return _u
-}
-
-// SetNillableEnableBps sets the "enable_bps" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillableEnableBps(v *bool) *GroupUpdateOne {
-	if v != nil {
-		_u.SetEnableBps(*v)
 	}
 	return _u
 }
@@ -4531,6 +4608,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(group.FieldDescription, field.TypeString)
 	}
+	if value, ok := _u.mutation.I18n(); ok {
+		_spec.SetField(group.FieldI18n, field.TypeJSON, value)
+	}
 	if value, ok := _u.mutation.RateMultiplier(); ok {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 	}
@@ -4620,6 +4700,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageCountBilling(); ok {
+		_spec.SetField(group.FieldImageCountBilling, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -4791,6 +4874,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
 	}
+	if value, ok := _u.mutation.BlockSubagents(); ok {
+		_spec.SetField(group.FieldBlockSubagents, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CodexCliOnly(); ok {
+		_spec.SetField(group.FieldCodexCliOnly, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.StreamOnly(); ok {
 		_spec.SetField(group.FieldStreamOnly, field.TypeBool, value)
 	}
@@ -4831,9 +4920,6 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.EnableBps(); ok {
-		_spec.SetField(group.FieldEnableBps, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.SchedulingStrategy(); ok {
 		_spec.SetField(group.FieldSchedulingStrategy, field.TypeString, value)

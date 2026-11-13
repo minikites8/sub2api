@@ -32,6 +32,7 @@
             <p class="mt-1 pl-6 text-xs leading-5 text-gray-500">{{ t('autoConfig.bps.' + item.key + 'Hint') }}</p>
             <label v-if="item.key === 'auto_recover_on_403' && draft.auto_recover_on_403 && draft.auto_disable_on_403" class="mt-3 block pl-6 text-xs">{{ t('admin.accounts.openai.excelBPS403RecoveryInterval') }}<input v-model.number="draft.recovery_interval_minutes" class="input mt-1 w-full" type="number" min="1" :max="MAX_BPS_RECOVERY_INTERVAL_MINUTES" step="1" required data-testid="bps-recovery-interval" /></label>
             <label v-if="item.key === 'auto_move_on_403' && draft.auto_move_on_403" class="mt-3 block pl-6 text-xs">{{ t('admin.accounts.openai.excelBPS403TargetGroup') }}<select v-model.number="draft.target_group_id" class="input mt-1 w-full" data-testid="bps-target-group"><option :value="-1" disabled>{{ t('admin.accounts.openai.excelBPS403SelectTarget') }}</option><option :value="0">{{ t('admin.accounts.openai.excelBPS403LeaveAllGroups') }}</option><option v-for="g in targetGroups" :key="g.id" :value="g.id">{{ g.name }} #{{ g.id }}</option></select></label>
+            <div v-if="item.key === 'session_proxy' && draft.session_proxy" class="mt-3 flex flex-wrap gap-4 pl-6 text-xs" role="radiogroup" :aria-label="t('admin.accounts.openai.excelBPSProxySource')"><label class="flex items-center gap-2"><input v-model="draft.proxy_source" type="radio" value="mihomo" />{{ t('admin.accounts.openai.excelBPSProxySourceMihomo') }}</label><label class="flex items-center gap-2"><input v-model="draft.proxy_source" type="radio" value="ip_pool" />{{ t('admin.accounts.openai.excelBPSProxySourceIPPool') }}</label></div>
           </div>
         </div>
       </details>
@@ -57,7 +58,7 @@ const draft = defineModel<ExcelBPSDefaults>({ required: true })
 const { t } = useI18n()
 const companions = [{ key: 'ws_sse_acceleration', label: 'wsSseAcceleration' }, { key: 'auto_enable_on_degradation', label: 'autoBPS' }] as const
 const recommended = [{ key: 'ignore_encrypted_content', label: 'IgnoreEncryptedContent' }, { key: 'auto_disable_on_403', label: 'AutoDisableOn403' }, { key: 'cache_creation_as_input', label: 'CacheCreationAsInput' }] as const
-const advanced = [{ key: 'omit_unsupported_tools', label: 'OmitUnsupportedTools' }, { key: 'ignore_images', label: 'IgnoreImages' }, { key: 'auto_recover_on_403', label: 'AutoRecoverOn403' }, { key: 'auto_move_on_403', label: 'AutoMoveOn403' }] as const
+const advanced = [{ key: 'omit_unsupported_tools', label: 'OmitUnsupportedTools' }, { key: 'auto_recover_on_403', label: 'AutoRecoverOn403' }, { key: 'auto_move_on_403', label: 'AutoMoveOn403' }, { key: 'session_proxy', label: 'Mihomo' }] as const
 const targetGroups = computed(() => props.groups.filter(g => g.platform === 'openai' || g.platform === 'composite'))
 watch(() => draft.value.auto_disable_on_403, enabled => { if (!enabled) draft.value.auto_recover_on_403 = false })
 function resetOptions() {

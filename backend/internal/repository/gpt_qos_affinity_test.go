@@ -14,7 +14,8 @@ func TestGPTQoSCacheAffinityAcrossInstances(t *testing.T) {
 	c, m := qosTestCache(t)
 	r2 := redis.NewClient(&redis.Options{Addr: m.Addr()})
 	t.Cleanup(func() { _ = r2.Close() })
-	c2 := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	c2, cacheTypeOK := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	require.True(t, cacheTypeOK, "cache fixture must provide the concrete concurrency cache")
 	ctx := context.Background()
 	e := qosEntry("", 42, "standard")
 	e.Candidates = []service.GPTQoSCandidate{

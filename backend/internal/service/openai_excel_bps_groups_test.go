@@ -98,9 +98,6 @@ func TestExcelBPS403GroupActionTrigger(t *testing.T) {
 				rec := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(rec)
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-				if tc.modelError {
-					c.Set(bpsAccountProbeRequiredContextKey, true)
-				}
 				_, err := svc.Forward(context.Background(), c, account, []byte(fmt.Sprintf("{\"model\":\"gpt-6-astra\",\"input\":\"test\",\"stream\":%t}", stream)))
 				require.Error(t, err)
 				triggered := tc.status == 403 && tc.optIn && !tc.modelError

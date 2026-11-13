@@ -11,6 +11,8 @@ import (
 type CustomMenuItem struct {
 	ID             string `json:"id"`
 	Label          string `json:"label"`
+	LabelZh        string `json:"label_zh,omitempty"`
+	LabelEn        string `json:"label_en,omitempty"`
 	IconSVG        string `json:"icon_svg"`
 	URL            string `json:"url"`
 	PageSlug       string `json:"page_slug,omitempty"`
@@ -34,11 +36,14 @@ type SystemSettings struct {
 	OpenAICodexTicketFailClosed         bool                            `json:"openai_codex_ticket_fail_closed"`
 	OpenAICodexTicketStrategy           string                          `json:"openai_codex_ticket_strategy"`
 	RegistrationEnabled                 bool                            `json:"registration_enabled"`
+	LoginRateLimitEnabled               bool                            `json:"login_rate_limit_enabled"`
+	RegistrationIPLimitEnabled          bool                            `json:"registration_ip_limit_enabled"`
 	PrismBrowserEnabled                 bool                            `json:"prism_browser_enabled"`
 	PrismBrowserBaseURL                 string                          `json:"prism_browser_base_url"`
 	PrismBrowserAPIKeyConfigured        bool                            `json:"prism_browser_api_key_configured"`
 	EmailVerifyEnabled                  bool                            `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                        `json:"registration_email_suffix_whitelist"`
+	RegistrationEmailAliasBlockEnabled  bool                            `json:"registration_email_alias_block_enabled"`
 	RegistrationEmailDomainQuotaEnabled bool                            `json:"registration_email_domain_quota_enabled"`
 	PromoCodeEnabled                    bool                            `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                            `json:"password_reset_enabled"`
@@ -227,6 +232,7 @@ type SystemSettings struct {
 	OpenAICodexClientVersionSynced          string   `json:"openai_codex_client_version_synced"`
 	OpenAICodexVersionAutoSyncEnabled       bool     `json:"openai_codex_version_auto_sync_enabled"`
 	OpenAIRequestTimezoneEnabled            bool     `json:"openai_request_timezone_enabled"`
+	OpenAIRequestTimezoneAuto               bool     `json:"openai_request_timezone_auto"`
 	OpenAICodexTicketEnabled                bool     `json:"openai_codex_ticket_enabled"`
 	OpenAICodexTicketHarvestProxyURL        string   `json:"openai_codex_ticket_harvest_proxy_url"`
 	OpenAICodexTicketStaticProxyURL         string   `json:"openai_codex_ticket_static_proxy_url,omitempty"`
@@ -318,6 +324,9 @@ type SystemSettings struct {
 	PaymentAlipayMobilePrecreateDeepLink bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// 余额、订阅到期与账号限额通知
+	BalanceForecastEnabled          bool               `json:"balance_forecast_enabled"`
+	BalanceForecastThresholdHours   float64            `json:"balance_forecast_threshold_hours"`
+	BalanceForecastMaxNotifications int                `json:"balance_forecast_max_notifications"`
 	BalanceLowNotifyEnabled         bool               `json:"balance_low_notify_enabled"`
 	BalanceLowNotifyThreshold       float64            `json:"balance_low_notify_threshold"`
 	BalanceLowNotifyRechargeURL     string             `json:"balance_low_notify_recharge_url"`
@@ -333,14 +342,13 @@ type SystemSettings struct {
 	ChannelMonitorHideThroughput         bool           `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool           `json:"channel_monitor_show_quota"`
 	ChannelMonitorHideUserRanking        bool           `json:"channel_monitor_hide_user_ranking"`
-	YeTeamEnabled                        bool           `json:"ye_team_enabled"`
-	YeTeamAutoRefresh401                 bool           `json:"ye_team_auto_refresh_401"`
 	AccountSchedulingThresholds          map[string]int `json:"account_scheduling_thresholds"`
 
-	GrokDefaultTextModel           string `json:"grok_default_text_model"`
-	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
-	GrokDefaultBaseURLMode         string `json:"grok_default_base_url_mode"`
-	GrokVideoSourceURLEnabled      bool   `json:"grok_video_source_url_enabled"`
+	GrokDefaultTextModel                 string `json:"grok_default_text_model"`
+	GrokCrossClientModelMapEnabled       bool   `json:"grok_cross_client_model_map_enabled"`
+	GrokDefaultBaseURLMode               string `json:"grok_default_base_url_mode"`
+	GrokVideoSourceURLEnabled            bool   `json:"grok_video_source_url_enabled"`
+	OpenAI409OmitEncryptedHistoryEnabled bool   `json:"openai_409_omit_encrypted_history_enabled"`
 
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool                          `json:"available_channels_enabled"`
@@ -379,41 +387,45 @@ type SystemSettings struct {
 	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas,omitempty"`
 
 	// 允许终端用户在用量页查看自己的失败请求
-	AllowUserViewErrorRequests            bool   `json:"allow_user_view_error_requests"`
-	UsageShowLongContextBadge             bool   `json:"usage_show_long_context_badge"`
-	RequestCaptureEnabled                 bool   `json:"request_capture_enabled"`
-	RequestCaptureQuotaMiB                int64  `json:"request_capture_quota_mib"`
-	RequestCaptureRetentionDays           int    `json:"request_capture_retention_days"`
-	ExcelBPSImageMode                     string `json:"excel_bps_image_mode"`
-	ExcelBPSImageRelayEnabled             bool   `json:"excel_bps_image_relay_enabled"`
-	ExcelBPSImageBaseURL                  string `json:"excel_bps_image_base_url"`
-	ExcelBPSImageBodyLimitMiB             int    `json:"excel_bps_image_body_limit_mib"`
-	ExcelBPSImageBudgetMiB                int    `json:"excel_bps_image_budget_mib"`
-	ExcelBPSImageMaxRequests              int    `json:"excel_bps_image_max_requests"`
-	ExcelBPSImageMaxImageMiB              int    `json:"excel_bps_image_max_image_mib"`
-	ExcelBPSImageMaxImages                int    `json:"excel_bps_image_max_images"`
-	ExcelBPSImageLimitPolicy              string `json:"excel_bps_image_limit_policy"`
-	ExcelBPSImageWarningRemaining         int    `json:"excel_bps_image_warning_remaining"`
-	ExcelBPSImageCompactReserve           int    `json:"excel_bps_image_compact_reserve"`
-	ExcelBPSImageMaxTotalMiB              int    `json:"excel_bps_image_max_total_mib"`
-	ExcelBPSImageStorageMiB               int    `json:"excel_bps_image_storage_mib"`
-	ExcelBPSImageStorageEntries           int    `json:"excel_bps_image_storage_entries"`
-	ExcelBPSImageTTLMinutes               int    `json:"excel_bps_image_ttl_minutes"`
-	SignupIPRiskControlThreshold          int    `json:"signup_ip_risk_control_threshold"`
-	SignupIPDisablePreviousAccounts       bool   `json:"signup_ip_disable_previous_accounts"`
-	SignupIPKeepPreviousAccounts          int    `json:"signup_ip_keep_previous_accounts"`
-	APIUsageIPUARiskControlThreshold      int    `json:"api_usage_ip_ua_risk_control_threshold"`
-	APIUsageIPUADisablePreviousAccounts   bool   `json:"api_usage_ip_ua_disable_previous_accounts"`
-	APIUsageIPUAKeepPreviousAccounts      int    `json:"api_usage_ip_ua_keep_previous_accounts"`
-	AntiAbuseEnabled                      bool   `json:"anti_abuse_enabled"`
-	AntiAbuseScoreThreshold               int    `json:"anti_abuse_score_threshold"`
-	AntiAbuseFingerprintWeight            int    `json:"anti_abuse_fingerprint_weight"`
-	AntiAbuseIPWeight                     int    `json:"anti_abuse_ip_weight"`
-	AntiAbuseEmailWeight                  int    `json:"anti_abuse_email_weight"`
-	AntiAbuseUserAgentWeight              int    `json:"anti_abuse_user_agent_weight"`
-	AntiAbuseTLSFingerprintWeight         int    `json:"anti_abuse_tls_fingerprint_weight"`
-	AntiAbuseIPReputationEndpoint         string `json:"anti_abuse_ip_reputation_endpoint"`
-	AntiAbuseIPReputationAPIKeyConfigured bool   `json:"anti_abuse_ip_reputation_api_key_configured"`
+	AllowUserViewErrorRequests            bool     `json:"allow_user_view_error_requests"`
+	UsageShowLongContextBadge             bool     `json:"usage_show_long_context_badge"`
+	RequestCaptureEnabled                 bool     `json:"request_capture_enabled"`
+	RequestCaptureQuotaMiB                int64    `json:"request_capture_quota_mib"`
+	RequestCaptureRetentionDays           int      `json:"request_capture_retention_days"`
+	ExcelBPSImageMode                     string   `json:"excel_bps_image_mode"`
+	ExcelBPSImageRelayEnabled             bool     `json:"excel_bps_image_relay_enabled"`
+	ExcelBPSImageBaseURL                  string   `json:"excel_bps_image_base_url"`
+	ExcelBPSImageBodyLimitMiB             int      `json:"excel_bps_image_body_limit_mib"`
+	ExcelBPSImageBudgetMiB                int      `json:"excel_bps_image_budget_mib"`
+	ExcelBPSImageMaxRequests              int      `json:"excel_bps_image_max_requests"`
+	ExcelBPSImageMaxImageMiB              int      `json:"excel_bps_image_max_image_mib"`
+	ExcelBPSImageMaxImages                int      `json:"excel_bps_image_max_images"`
+	ExcelBPSImageLimitPolicy              string   `json:"excel_bps_image_limit_policy"`
+	ExcelBPSImageWarningRemaining         int      `json:"excel_bps_image_warning_remaining"`
+	ExcelBPSImageCompactReserve           int      `json:"excel_bps_image_compact_reserve"`
+	ExcelBPSImageMaxTotalMiB              int      `json:"excel_bps_image_max_total_mib"`
+	ExcelBPSImageStorageMiB               int      `json:"excel_bps_image_storage_mib"`
+	ExcelBPSImageStorageEntries           int      `json:"excel_bps_image_storage_entries"`
+	ExcelBPSImageTTLMinutes               int      `json:"excel_bps_image_ttl_minutes"`
+	SignupIPRiskControlThreshold          int      `json:"signup_ip_risk_control_threshold"`
+	SignupIPDisablePreviousAccounts       bool     `json:"signup_ip_disable_previous_accounts"`
+	SignupIPKeepPreviousAccounts          int      `json:"signup_ip_keep_previous_accounts"`
+	APIUsageIPUARiskControlThreshold      int      `json:"api_usage_ip_ua_risk_control_threshold"`
+	APIUsageIPUADisablePreviousAccounts   bool     `json:"api_usage_ip_ua_disable_previous_accounts"`
+	APIUsageIPUAKeepPreviousAccounts      int      `json:"api_usage_ip_ua_keep_previous_accounts"`
+	AntiAbuseEnabled                      bool     `json:"anti_abuse_enabled"`
+	AntiAbuseScoreThreshold               int      `json:"anti_abuse_score_threshold"`
+	AntiAbuseFingerprintWeight            int      `json:"anti_abuse_fingerprint_weight"`
+	AntiAbuseIPWeight                     int      `json:"anti_abuse_ip_weight"`
+	AntiAbuseEmailWeight                  int      `json:"anti_abuse_email_weight"`
+	AntiAbuseUserAgentWeight              int      `json:"anti_abuse_user_agent_weight"`
+	AntiAbuseTLSFingerprintWeight         int      `json:"anti_abuse_tls_fingerprint_weight"`
+	AntiAbuseIPReputationEndpoint         string   `json:"anti_abuse_ip_reputation_endpoint"`
+	AntiAbuseIPReputationAPIKeyConfigured bool     `json:"anti_abuse_ip_reputation_api_key_configured"`
+	UsageShowCacheRate                    bool     `json:"usage_show_cache_rate"`
+	UsageShowCacheRateToUsers             bool     `json:"usage_show_cache_rate_to_users"`
+	UsageShowUpstreamResponseModelToUsers bool     `json:"usage_show_upstream_response_model_to_users"`
+	SmartOpsHiddenMenuItems               []string `json:"smart_ops_hidden_menu_items"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -512,6 +524,7 @@ type PublicSettings struct {
 	PluginManagementEnabled bool `json:"plugin_management_enabled"`
 
 	SupportTicketEnabled bool `json:"support_ticket_enabled"`
+	LotteryEnabled       bool `json:"lottery_enabled"`
 
 	AffiliateEnabled         bool `json:"affiliate_enabled"`
 	PublicTransitEnabled     bool `json:"public_transit_enabled"`
@@ -522,6 +535,11 @@ type PublicSettings struct {
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
 
 	UsageShowLongContextBadge bool `json:"usage_show_long_context_badge"`
+	UsageShowCacheRate        bool `json:"usage_show_cache_rate"`
+	UsageShowCacheRateToUsers bool `json:"usage_show_cache_rate_to_users"`
+
+	// 是否向终端用户展示上游响应里声明的实际模型。默认关闭。
+	UsageShowUpstreamResponseModelToUsers bool `json:"usage_show_upstream_response_model_to_users"`
 }
 
 type LoginAgreementDocument struct {

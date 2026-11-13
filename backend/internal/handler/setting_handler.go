@@ -126,6 +126,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		PublicTransitPageEnabled: settings.PublicTransitPageEnabled,
 
 		SupportTicketEnabled: settings.SupportTicketEnabled,
+		LotteryEnabled:       settings.LotteryEnabled,
 
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
@@ -134,8 +135,11 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		RiskControlEnabled: settings.RiskControlEnabled,
 
-		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
-		UsageShowLongContextBadge:  settings.UsageShowLongContextBadge,
+		AllowUserViewErrorRequests:            settings.AllowUserViewErrorRequests,
+		UsageShowLongContextBadge:             settings.UsageShowLongContextBadge,
+		UsageShowCacheRate:                    settings.UsageShowCacheRate,
+		UsageShowCacheRateToUsers:             settings.UsageShowCacheRateToUsers,
+		UsageShowUpstreamResponseModelToUsers: settings.UsageShowUpstreamResponseModelToUsers,
 	})
 }
 

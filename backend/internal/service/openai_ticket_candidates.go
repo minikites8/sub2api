@@ -13,13 +13,7 @@ func (s *OpenAIGatewayService) listSchedulableAccountsForRequest(
 	ctx context.Context, groupID *int64, platform, requestedModel string,
 	requireCompact bool, excludedIDs map[int64]struct{},
 ) ([]Account, error) {
-	ctx = s.withOpenAIGroupRoutingPolicy(ctx, groupID)
 	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
-	// Scope a private slice so shared scheduler snapshots retain account settings.
-	accounts = append([]Account(nil), accounts...)
-	for i := range accounts {
-		accounts[i] = *s.openAIAccountForGroup(ctx, groupID, &accounts[i])
-	}
 	if err != nil || s.schedulerSnapshot == nil || len(accounts) == 0 {
 		return accounts, err
 	}
@@ -62,7 +56,7 @@ func (s *OpenAIGatewayService) listSchedulableAccountsForRequest(
 				continue
 			}
 		}
-		result = append(result, *s.openAIAccountForGroup(ctx, groupID, account))
+		result = append(result, *account)
 	}
 	return result, nil
 }

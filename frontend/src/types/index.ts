@@ -125,6 +125,7 @@ export interface User {
 }
 
 export interface AdminUser extends User {
+  auto_credit_outstanding?: string
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null
@@ -240,6 +241,8 @@ export interface SendVerifyCodeResponse {
 export interface CustomMenuItem {
   id: string
   label: string
+  label_zh?: string
+  label_en?: string
   icon_svg: string
   url: string
   page_slug?: string
@@ -342,11 +345,18 @@ export interface PublicSettings {
   plugin_management_enabled: boolean
   /** Opt-in support tickets (sidebar「网站工单」for users and admins). */
   support_ticket_enabled?: boolean
+  lottery_enabled?: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
   /** Usage 表中长上下文计费 x2 徽标的展示开关（后端默认开启，缺失时按开启处理） */
   usage_show_long_context_badge?: boolean
+  /** 使用记录单条缓存率。缺失时按开启处理。 */
+  usage_show_cache_rate?: boolean
+  /** 是否向终端用户展示单条缓存率。缺失时按关闭处理。 */
+  usage_show_cache_rate_to_users?: boolean
+  /** 是否向终端用户展示上游响应里声明的实际模型。缺失时按关闭处理。 */
+  usage_show_upstream_response_model_to_users?: boolean
 }
 
 export interface AuthResponse {
@@ -625,6 +635,16 @@ export interface ReasoningEffortMapping {
   model?: string
 }
 
+/** 分组名称与描述在某个语言下的译文；字段为空表示沿用分组自身的 name/description。 */
+export interface GroupLocaleText {
+  name?: string
+  description?: string
+}
+
+/** 以语言代码（en、zh…）为键的分组文案译文。 */
+export type GroupI18n = Record<string, GroupLocaleText>
+
+// 用户侧接口返回的 name / description 已由后端按请求语言（Accept-Language）选好
 export interface Group {
   id: number
   name: string
@@ -649,6 +669,7 @@ export interface Group {
   // 图片生成计费配置
   allow_image_generation: boolean
   allow_batch_image_generation: boolean
+  image_count_billing: boolean
   image_rate_independent: boolean
   image_rate_multiplier: number
   batch_image_discount_multiplier: number
@@ -706,12 +727,15 @@ export interface Group {
 export type GroupSchedulingStrategy = 'balanced' | 'priority_5h' | 'priority_weekly'
 
 export interface AdminGroup extends Group {
+  // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
+  i18n?: GroupI18n
   force_openai_fast: boolean
   free_openai_fast: boolean
-  enable_bps: boolean
   scheduling_strategy: GroupSchedulingStrategy
   // 仅允许流式请求（管理端请求策略，用户侧分组不返回）
   stream_only: boolean
+  codex_cli_only?: boolean
+  block_subagents?: boolean
   model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
   // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
   // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
@@ -851,6 +875,10 @@ export interface ApiKey {
   reset_5h_at: string | null
   reset_1d_at: string | null
   reset_7d_at: string | null
+  model_mapping?: Record<string, string>
+  reasoning_effort?: string
+  allow_long_context?: boolean
+  context_token_limit?: number
 }
 
 export interface ApiKeyConcurrencySnapshot {
@@ -878,6 +906,7 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+
 }
 
 export interface UpdateApiKeyRequest {
@@ -895,11 +924,13 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+
 }
 
 export interface CreateGroupRequest {
   name: string
   description?: string | null
+  i18n?: GroupI18n
   platform?: GroupPlatform
   rate_multiplier?: number
   model_rate_multipliers?: Record<string, number>
@@ -914,12 +945,14 @@ export interface CreateGroupRequest {
   long_context_pricing_enabled?: boolean
   force_openai_fast?: boolean
   free_openai_fast?: boolean
-  enable_bps?: boolean
   scheduling_strategy?: GroupSchedulingStrategy
   stream_only?: boolean
+  codex_cli_only?: boolean
+  block_subagents?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
+  image_count_billing?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
@@ -984,6 +1017,7 @@ export interface CreateGroupRequest {
 export interface UpdateGroupRequest {
   name?: string
   description?: string | null
+  i18n?: GroupI18n
   platform?: GroupPlatform
   rate_multiplier?: number
   model_rate_multipliers?: Record<string, number>
@@ -999,12 +1033,14 @@ export interface UpdateGroupRequest {
   long_context_pricing_enabled?: boolean
   force_openai_fast?: boolean
   free_openai_fast?: boolean
-  enable_bps?: boolean
   scheduling_strategy?: GroupSchedulingStrategy
   stream_only?: boolean
+  codex_cli_only?: boolean
+  block_subagents?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
+  image_count_billing?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
@@ -1068,7 +1104,7 @@ export interface UpdateGroupRequest {
 // ==================== Account & Proxy Types ====================
 
 /** 前端内置专属界面（图标、配色、表单等）的平台。 */
-export type KnownAccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'typesafe' | 'command_code' | 'cline'
+export type KnownAccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'typesafe' | 'command_code' | 'cline' | 'mistral'
 /**
  * 账号平台：内置平台，或后端平台清单中新登记的平台（任意字符串）。
  * `string & {}` 保留内置平台的字面量补全。
@@ -1158,6 +1194,7 @@ export interface ProxyQualityCheckResult {
 export interface GeminiCredentials {
   // API Key authentication
   api_key?: string
+  base_url?: string
 
   // OAuth authentication
   access_token?: string
@@ -1182,11 +1219,15 @@ export interface GeminiCredentials {
   model_mapping?: Record<string, string>
 }
 
+export type TempUnschedulableScope = 'account' | 'model'
+
 export interface TempUnschedulableRule {
   error_code: number
   keywords: string[]
   duration_minutes: number
   description: string
+  // 作用范围：account 暂停整个账号，model 只冷却本次请求的模型；缺省时 401 按 account、其余按 model 处理。
+  scope?: TempUnschedulableScope
 }
 
 export interface TempUnschedulableState {
@@ -1194,6 +1235,8 @@ export interface TempUnschedulableState {
   triggered_at_unix: number
   status_code: number
   matched_keyword: string
+  scope?: TempUnschedulableScope
+  model?: string
   rule_index: number
   error_message: string
   trigger_count?: number
@@ -1208,7 +1251,7 @@ export interface TempUnschedulableStatus {
 
 export interface UpstreamBillingData {
   object: 'sub2api.key_billing' | 'new_api.group_billing'
-  schema_version: 1
+  schema_version: 1 | 2
   billing_scope: 'token' | 'group'
   provider?: 'new_api'
   group?: string
@@ -1224,6 +1267,15 @@ export interface UpstreamBillingData {
   effective_rate_multiplier?: number
   timezone?: string
   observed_at: string
+  billing_mode?: 'multi_group'
+  min_rate_multiplier?: number
+  max_rate_multiplier?: number
+  groups?: Array<UpstreamBillingData & {
+    group_id: number
+    group_name: string
+    platform: string
+    status: 'active' | 'inactive'
+  }>
 }
 
 export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
@@ -1439,9 +1491,41 @@ export interface ExcelBPSCredentialState {
  requires_manual_resume?: boolean
 }
 
+export interface GrokCatalogScope {
+  account_id: number
+  account_type: string
+  endpoint: string
+  fingerprint: string
+}
+
+export interface GrokCatalogAttempt {
+  started_at: string
+  finished_at: string
+  status: string
+  error_code?: string
+  scope?: GrokCatalogScope
+}
+
+export interface GrokModelDiagnosticItem {
+  requested: string
+  upstream?: string
+  status: string
+}
+
+export interface GrokModelDiagnostics {
+  state: string
+  endpoint?: string
+  fetched_at?: string
+  expires_at?: string
+  models: string[]
+  last_attempt?: GrokCatalogAttempt
+  mappings: GrokModelDiagnosticItem[]
+}
+
 export interface Account {
   quality_tier?: 'strong' | 'basic' | 'unknown'
   qos_resource_pool?: string
+  upstream_channel_binding?: import('@/api/admin/upstreamChannels').ChannelBinding
  excel_bps_credential_state?: ExcelBPSCredentialState
   id: number
   name: string
@@ -1611,6 +1695,8 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+
+  grok_model_diagnostics?: GrokModelDiagnostics
 }
 
 export type AccountListItem = Omit<Account, 'groups' | 'account_groups'>
@@ -1620,54 +1706,6 @@ export interface GrokMediaEligibilityState {
   mode: GrokMediaEligibilityMode
   eligible: boolean
   reason: string
-}
-
-export interface YeTeamRefreshStage {
-  name: string
-  status: 'running' | 'success' | 'failed'
-  message?: string
-  at: string
-}
-
-export interface YeTeamRefreshBatch {
-  ok: boolean
-  total: number
-  queued: number
-  already_running: number
-  done: number
-  failed: number
-  unreclaimable: number
-  not_owned: number
-  skipped: number
-  cards: number
-  tasks: number
-}
-
-export interface YeTeamRefreshTask {
-  status: string
-  order_no?: string
-  resource_uid?: string
-  message?: string
-  error_code?: string
-  failure_class?: string
-  permanent?: boolean
-  provider_status?: number
-}
-
-export interface YeTeamRefreshFlow {
-  status: 'running' | 'success' | 'failed'
-  trigger?: 'automatic_401' | 'manual' | string
-  started_at: string
-  finished_at?: string
-  fallback_used?: boolean
-  order_no?: string
-  package_count?: number
-  credential_changed?: boolean
-  cache_invalidated?: boolean
-  batch?: YeTeamRefreshBatch
-  task?: YeTeamRefreshTask
-  tasks?: YeTeamRefreshTask[]
-  stages: YeTeamRefreshStage[]
 }
 
 export interface AccountSchedulerGroupScore {
@@ -1702,6 +1740,19 @@ export interface UsageProgress {
 }
 
 // Antigravity 单个模型的配额信息
+export interface AntigravityQuotaWindow {
+  window: string // '5h' or 'weekly'
+  utilization: number // 0-100
+  resets_at: string | null
+}
+
+export interface AntigravityQuotaGroup {
+  key: string // bucket prefix: 'gemini' or '3p' (Claude and GPT)
+  name: string
+  description?: string
+  windows: AntigravityQuotaWindow[]
+}
+
 export interface AntigravityModelQuota {
   utilization: number // 使用率 0-100
   reset_time: string  // 重置时间 ISO8601
@@ -1773,6 +1824,7 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  antigravity_quota_groups?: AntigravityQuotaGroup[] | null
   grok_request_quota?: GrokQuotaWindow | null
   grok_token_quota?: GrokQuotaWindow | null
   grok_retry_after_seconds?: number | null
@@ -1865,6 +1917,8 @@ export interface OpenAIResponsesState {
 }
 
 export interface CreateAccountRequest {
+  upstream_channel_id?: number
+  confirm_upstream_channel_binding?: boolean
   name: string
   notes?: string | null
   platform: AccountPlatform
@@ -2035,6 +2089,7 @@ export interface AdminDataImportResult {
 }
 
 export interface CodexSessionImportRequest {
+  initialize_openai_two_fa?: boolean
   /** Skip matching accounts without replacing their credentials or settings. */
   skip_existing?: boolean
   content?: string
@@ -2129,6 +2184,8 @@ export interface UsageLog {
   cache_read_tokens: number
   cache_creation_5m_tokens: number
   cache_creation_1h_tokens: number
+  cache_creation_30m_tokens?: number
+  cache_creation_12h_tokens?: number
 
   input_cost: number
   output_cost: number
@@ -2146,6 +2203,17 @@ export interface UsageLog {
   native_compaction_v2: boolean
   duration_ms: number | null
   first_token_ms: number | null
+  queue_wait_ms?: number | null
+  queue_timing?: {
+    status: string; source: string; scope: string; queue_clamped: boolean
+    server_first_token_ms: number | null; server_duration_ms: number
+    forward_first_token_ms: number | null; forward_duration_ms: number
+  } | null
+  content_timing?: {
+    sse_event_first_ms?: number | null; semantic_first_ms?: number | null
+    reasoning_first_ms: number | null; visible_text_first_ms: number | null; response_byte_first_ms: number | null
+    status: string; source: string; scope: string; reasoning_streaming_capability: string; capability_source: string
+  }
 
   // 图片生成字段
   image_count: number
@@ -2168,6 +2236,9 @@ export interface UsageLog {
 
   // 计费模式
   billing_mode?: string | null
+
+  // 上游响应声明的实际模型。仅在管理员打开对用户可见时由用户接口返回。
+  upstream_response_model?: string | null
 
   created_at: string
 
@@ -2450,6 +2521,8 @@ export interface ObserverSetupOptions {
 }
 
 export interface UpdateUserRequest {
+  /** Optional operation reason recorded by the admin audit middleware, not user notes. */
+  reason?: string
   email?: string
   password?: string
   username?: string
@@ -2844,11 +2917,15 @@ export interface TotpLogin2FARequest {
 // ==================== Scheduled Test Types ====================
 
 export interface QualityJudgeConfig {
+  kind?: 'llm' | 'jev'
   group_id: number
   model_id: string
   prompt: string
 }
 export interface QualityJudgment {
+  kind?: 'llm' | 'jev'
+  rules_version?: string
+  latency_ms?: number
   verdict: 'correct' | 'incorrect' | 'unknown'
   reason: string
   account_id?: number
@@ -2863,7 +2940,6 @@ export interface QualityBPSPolicy {
   all_models: boolean
   models: string[]
   omit_unsupported_tools: boolean
-  ignore_images: boolean
   ignore_encrypted_content: boolean
   auto_disable_on_403: boolean
   auto_recover_on_403?: boolean
@@ -2878,22 +2954,74 @@ export interface QualityBPSPolicy {
   hold_on_usage: boolean
 }
 export interface QualityPolicy {
+  trigger_on_upstream_5xx?: boolean
+  // OAuth quality rules only: 0 or missing disables automatic rule cleanup.
+  oauth_401_max_rounds?: number
+  admission?: import('@/utils/openaiTwoFAAdmission').OpenAITwoFAAdmissionConfig
   judge?: QualityJudgeConfig
   expected_answer: string
-  action: 'remove_groups' | 'remove_models' | 'disable_scheduling' | 'enable_bps' | 'observe_only'
+  action: 'openai_two_fa_admission' | 'isolate_models' | 'remove_groups' | 'remove_models' | 'disable_scheduling' | 'enable_bps' | 'observe_only'
   remove_group_ids: number[]
   remove_models?: string[]
   recovery_concurrency?: number
+  retest_rest_minutes?: number
   auto_restore: boolean
   bps?: QualityBPSPolicy
 }
 
+export interface QualityRestoreDiagnostic {
+  reason: string
+  disposition: 'manual_required' | 'external_membership_present'
+  scope: string
+  ownership_retained: boolean
+  groups?: { group_id: number; group_exists: boolean; membership_present: boolean }[]
+  models?: string[]
+  changed_fields?: string[]
+  account_status?: string
+  schedulable?: boolean
+  account_version?: string
+  owned_account_version?: string
+  expected_concurrency?: number
+  current_concurrency?: number
+}
+
+export interface PelicanQuestion {
+  id: string
+  version: string
+  round_id: string
+  source: string
+  prompt: string
+  criteria: string[]
+}
+
 export interface PelicanTestConfig {
+  prompt_mode?: 'custom' | 'random'
+  pelican_question?: PelicanQuestion
+  actual_prompt?: string
+  // Optional display name, persisted with the rule's editable configuration.
+  rule_name?: string
+  quality_restore_diagnostic?: QualityRestoreDiagnostic
   quality_model_outcomes?: Record<string, 'passed' | 'failed' | 'inconclusive' | 'skipped'>
   quality_model_actions?: Record<string, string>
   trigger_source?: string
   quality?: QualityPolicy
-  question_kind?: 'candy' | 'pelican' | 'state_probe'
+  question_kind?: 'candy' | 'pelican' | 'state_probe' | 'random_reasoning'
+  // Result-only identity of a runtime-generated question.
+  random_question?: { id: string; family: 'paths' | 'weighted_xor'; version: string }
+  quality_batch?: {
+    route: string
+    mapped_model: string
+    id: string
+    started_at: string
+    start_deadline: string
+    closes_at: string
+    comparison_key: string
+    decision: string
+    peer_accounts: number
+    peer_passed: number
+    peer_failed: number
+    peer_inconclusive: number
+  }
   test_channel?: 'account' | 'bps'
   prompt: string
   reasoning_effort: string
@@ -2946,6 +3074,8 @@ export interface CreateScheduledTestPlanRequest {
 }
 
 export interface UpdateScheduledTestPlanRequest {
+  // Configuration reuse must not implicitly restore or discard target ownership.
+  preserve_quality_state?: boolean
   pelican_config?: PelicanTestConfig
   model_id?: string
   cron_expression?: string

@@ -19,6 +19,7 @@ export type Platform =
   | 'zhipu'
   | 'deepseek'
   | 'minimax'
+  | 'mistral'
   | 'opencode_go'
   | 'typesafe'
   | 'command_code'
@@ -27,7 +28,8 @@ export type Platform =
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
 const BADGE: Record<Platform, string> = {
-  anthropic: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/40',
+  anthropic: 'bg-orange-500/10 text-orange-600 border-orange-500/30 dark:text-orange-400',
+  mistral: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/40',
   openai: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/40',
   antigravity: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/40',
   gemini: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/40',
@@ -47,7 +49,8 @@ const BADGE_DEFAULT = 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-dark-800
 
 // ── Light badge (softer bg, no border) ──────────────────────────────
 const BADGE_LIGHT: Record<Platform, string> = {
-  anthropic: 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300',
+  anthropic: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300',
+  mistral: 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300',
   openai: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300',
   antigravity: 'bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300',
   gemini: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300',
@@ -80,6 +83,7 @@ const GROUP_BADGE: Record<Platform, string> = {
   composite: 'bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-200 dark:ring-cyan-700',
   command_code: 'bg-neutral-500/10 text-neutral-700 dark:bg-neutral-500/10 dark:text-neutral-300',
   cline: 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300',
+  mistral: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
 }
 const GROUP_BADGE_DEFAULT = 'bg-gray-50 text-gray-700 ring-1 ring-gray-100 dark:bg-dark-800 dark:text-gray-300 dark:ring-dark-700'
 
@@ -99,12 +103,14 @@ const GROUP_BADGE_SUBSCRIPTION: Record<Platform, string> = {
   composite: 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-200 dark:ring-cyan-700',
   command_code: 'bg-neutral-500/10 text-neutral-700 dark:bg-neutral-500/10 dark:text-neutral-300',
   cline: 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300',
+  mistral: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
 }
 const GROUP_BADGE_SUBSCRIPTION_DEFAULT = 'bg-gray-100 text-gray-700 ring-1 ring-gray-200 dark:bg-dark-700 dark:text-gray-200 dark:ring-dark-600'
 
 // ── Border ──────────────────────────────────────────────────────────
 const BORDER: Record<Platform, string> = {
   anthropic: 'border-orange-500/20 dark:border-orange-500/20',
+  mistral: 'border-orange-500/20 dark:border-orange-500/20',
   openai: 'border-green-500/20 dark:border-green-500/20',
   antigravity: 'border-purple-500/20 dark:border-purple-500/20',
   gemini: 'border-blue-500/20 dark:border-blue-500/20',
@@ -125,6 +131,7 @@ const BORDER_DEFAULT = 'border-gray-200 dark:border-dark-700'
 // ── Border strong (higher-contrast platform tint, e.g. plaza group cards) ──
 const BORDER_STRONG: Record<Platform, string> = {
   anthropic: 'border-orange-500/35 dark:border-orange-500/30',
+  mistral: 'border-orange-500/35 dark:border-orange-500/30',
   openai: 'border-green-500/35 dark:border-green-500/30',
   antigravity: 'border-purple-500/35 dark:border-purple-500/30',
   gemini: 'border-blue-500/35 dark:border-blue-500/30',
@@ -146,6 +153,7 @@ const BORDER_STRONG_DEFAULT = 'border-gray-300 dark:border-dark-600'
 //    from it via CSS color-mix, e.g. plaza paid-price zone) ──
 const ACCENT: Record<Platform, string> = {
   anthropic: '#f97316', // orange-500
+  mistral: '#FA500F', // official logo orange: mistral.ai/images/logos/logo-mistral.svg
   openai: '#22c55e', // green-500
   antigravity: '#a855f7', // purple-500
   gemini: '#3b82f6', // blue-500
@@ -166,6 +174,7 @@ const ACCENT_DEFAULT = '#14b8a6' // primary-500 (teal)
 // ── Accent bar (gradient) ───────────────────────────────────────────
 const ACCENT_BAR: Record<Platform, string> = {
   anthropic: 'bg-gradient-to-r from-orange-400 to-orange-500',
+  mistral: 'bg-gradient-to-r from-orange-400 to-orange-500',
   openai: 'bg-gradient-to-r from-emerald-400 to-emerald-500',
   antigravity: 'bg-gradient-to-r from-purple-400 to-purple-500',
   gemini: 'bg-gradient-to-r from-blue-400 to-blue-500',
@@ -186,6 +195,7 @@ const ACCENT_BAR_DEFAULT = 'bg-gradient-to-r from-primary-400 to-primary-500'
 // ── Text (price, icon) ─────────────────────────────────────────────
 const TEXT: Record<Platform, string> = {
   anthropic: 'text-orange-600 dark:text-orange-400',
+  mistral: 'text-orange-600 dark:text-orange-400',
   openai: 'text-emerald-600 dark:text-emerald-400',
   antigravity: 'text-purple-600 dark:text-purple-400',
   gemini: 'text-blue-600 dark:text-blue-400',
@@ -206,6 +216,7 @@ const TEXT_DEFAULT = 'text-primary-600 dark:text-primary-400'
 // ── Icon (check mark etc.) ──────────────────────────────────────────
 const ICON: Record<Platform, string> = {
   anthropic: 'text-orange-500 dark:text-orange-400',
+  mistral: 'text-orange-500 dark:text-orange-400',
   openai: 'text-emerald-500 dark:text-emerald-400',
   antigravity: 'text-purple-500 dark:text-purple-400',
   gemini: 'text-blue-500 dark:text-blue-400',
@@ -226,6 +237,7 @@ const ICON_DEFAULT = 'text-primary-500 dark:text-primary-400'
 // ── Button (solid bg) ───────────────────────────────────────────────
 const BUTTON: Record<Platform, string> = {
   anthropic: 'bg-orange-500 text-white hover:bg-orange-600 active:bg-orange-700 dark:bg-orange-500/80 dark:hover:bg-orange-500',
+  mistral: 'bg-orange-500 text-white hover:bg-orange-600 active:bg-orange-700 dark:bg-orange-500/80 dark:hover:bg-orange-500',
   openai: 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800 dark:bg-green-600/80 dark:hover:bg-green-600',
   antigravity: 'bg-purple-500 text-white hover:bg-purple-600 active:bg-purple-700 dark:bg-purple-500/80 dark:hover:bg-purple-500',
   gemini: 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 dark:bg-blue-500/80 dark:hover:bg-blue-500',
@@ -246,6 +258,7 @@ const BUTTON_DEFAULT = 'bg-primary-500 text-white hover:bg-primary-600 dark:bg-p
 // ── Discount badge ──────────────────────────────────────────────────
 const DISCOUNT: Record<Platform, string> = {
   anthropic: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  mistral: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
   openai: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   antigravity: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
   gemini: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
@@ -266,6 +279,7 @@ const DISCOUNT_DEFAULT = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-r
 // ── Header gradient (subscription confirm) ─────────────────────────
 const GRADIENT: Record<Platform, string> = {
   anthropic: 'from-orange-500 to-orange-600',
+  mistral: 'from-orange-500 to-orange-600',
   openai: 'from-emerald-500 to-emerald-600',
   antigravity: 'from-purple-500 to-purple-600',
   gemini: 'from-blue-500 to-blue-600',
@@ -286,6 +300,7 @@ const GRADIENT_DEFAULT = 'from-primary-500 to-primary-600'
 // ── Header text (light text on gradient bg) ────────────────────────
 const GRADIENT_TEXT: Record<Platform, string> = {
   anthropic: 'text-orange-100',
+  mistral: 'text-orange-100',
   openai: 'text-emerald-100',
   antigravity: 'text-purple-100',
   gemini: 'text-blue-100',
@@ -305,6 +320,7 @@ const GRADIENT_TEXT_DEFAULT = 'text-primary-100'
 
 const GRADIENT_SUBTEXT: Record<Platform, string> = {
   anthropic: 'text-orange-200',
+  mistral: 'text-orange-200',
   openai: 'text-emerald-200',
   antigravity: 'text-purple-200',
   gemini: 'text-blue-200',
@@ -336,6 +352,7 @@ function isPlatform(p: string): p is Platform {
     p === 'zhipu' ||
     p === 'deepseek' ||
     p === 'minimax' ||
+    p === 'mistral' ||
     p === 'opencode_go' ||
     p === 'typesafe' ||
     p === 'command_code' ||

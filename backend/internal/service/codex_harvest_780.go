@@ -202,8 +202,9 @@ func (s *OpenAIGatewayService) requestCodex780Shot(ctx context.Context, account 
 	if state != "" {
 		req.Header.Set(openAICodexTurnStateHeader, state)
 	}
-	req.Header.Set("User-Agent", "codex-tui/0.154.0 (Ubuntu 24.04; x86_64) OVH (codex-tui; 0.154.0)")
-	req.Header.Set("originator", "codex-tui")
+	// Share the canonical client identity and model version floor with state
+	// probes instead of pinning harvest traffic to a separate UA/version.
+	applyOpenAICodexTicketHarvestIdentity(req.Header, model)
 	if err = resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, req.Header, account); err != nil {
 		out.Err = errors.New("account identity unavailable")
 		return
@@ -225,7 +226,6 @@ func (s *OpenAIGatewayService) requestCodex780Shot(ctx context.Context, account 
 		client, req, err = codexMintHTTPClient(req, proxy, controls.EdgeIP)
 		if err == nil {
 			defer client.CloseIdleConnections()
-			// #nosec G704 -- request uses fixed chatgptCodexURL; edge IP is validated above and redirects are disabled.
 			resp, err = client.Do(req)
 		}
 	} else {

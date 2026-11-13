@@ -156,7 +156,6 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 			if full != nil {
 				account = full[account.ID]
 			}
-			account = s.service.openAIAccountForGroup(ctx, req.GroupID, account)
 			reason := s.gptQoSCandidateIneligibleReason(ctx, req, account, item.account.QualityTier())
 			if reason != "" {
 				excluded[reason]++

@@ -64,7 +64,7 @@ func TestEasyPayNotificationParameters(t *testing.T) {
 	e := &EasyPay{config: map[string]string{"pid": "1000", "pkey": "test-merchant-secret"}}
 	base := map[string]string{
 		"pid": "1000", "trade_no": "UPSTREAM123", "out_trade_no": "ORDER123", "type": "alipay",
-		"name": "充值 & balance=650", "money": "650.00", "trade_status": "TRADE_SUCCESS", "param": "memo&value=1",
+		"name": "充值 & balance=650", "money": "650.00", "trade_status": "TRADE_SUCCESS", "param": "memo-1",
 	}
 	for _, tc := range []struct {
 		name, extra, value, duplicate string
@@ -72,6 +72,7 @@ func TestEasyPayNotificationParameters(t *testing.T) {
 	}{
 		{name: "standard"},
 		{name: "processor trade number", extra: "api_trade_no", value: "PROCESSOR123"},
+		{name: "ambiguous memo", extra: "param", value: "memo&value=1", wantErr: true},
 		{name: "return URL", extra: "return_url", value: "https://site.example.com/payment/result", wantErr: true},
 		{name: "notify URL", extra: "notify_url", value: "https://site.example.com/notify", wantErr: true},
 		{name: "empty unknown", extra: "device", wantErr: true},

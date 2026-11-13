@@ -51,7 +51,14 @@ func apiKeyBoundToGroup(groupID int64) predicate.APIKey {
 }
 
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
-	builder := r.client.APIKey.Create().
+	if len(key.GroupIDs) > 1 {
+		return r.mutateWithGroups(ctx, key, func(ctx context.Context) error { return r.create(ctx, key) })
+	}
+	return r.create(ctx, key)
+}
+
+func (r *apiKeyRepository) create(ctx context.Context, key *service.APIKey) error {
+	builder := clientFromContext(ctx, r.client).APIKey.Create().
 		SetUserID(key.UserID).
 		SetConcurrencyLimit(key.ConcurrencyLimit).
 		SetKey(key.Key).
@@ -77,6 +84,8 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 	created, err := builder.Save(ctx)
 	if err == nil {
 		key.ID = created.ID
+		key.AllowLongContext = created.AllowLongContext
+		key.ContextTokenLimit = created.ContextTokenLimit
 		key.LastUsedAt = created.LastUsedAt
 		key.CreatedAt = created.CreatedAt
 		key.UpdatedAt = created.UpdatedAt
@@ -96,7 +105,7 @@ func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIK
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return r.entityWithGroupIDs(ctx, m)
 }
 
 // GetKeyAndOwnerID 根据 API Key ID 获取其 key 与所有者（用户）ID。
@@ -134,7 +143,7 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return r.entityWithGroupIDs(ctx, m)
 }
 
 func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
@@ -147,6 +156,10 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldGroupIds,
 			apikey.FieldName,
 			apikey.FieldStatus,
+			apikey.FieldModelMapping,
+			apikey.FieldReasoningEffort,
+			apikey.FieldAllowLongContext,
+			apikey.FieldContextTokenLimit,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -197,6 +210,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldMonthlyLimitUsd,
 				group.FieldAllowImageGeneration,
 				group.FieldAllowBatchImageGeneration,
+				group.FieldImageCountBilling,
 				group.FieldImageRateIndependent,
 				group.FieldImageRateMultiplier,
 				group.FieldImagePrice1k,
@@ -219,6 +233,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
 				group.FieldStreamOnly,
+				group.FieldCodexCliOnly,
+				group.FieldBlockSubagents,
 				group.FieldModelRoutingEnabled,
 				group.FieldModelRouting,
 				group.FieldMcpXMLInject,
@@ -228,7 +244,6 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldGptAutoEnabled,
 				group.FieldForceOpenaiFast,
 				group.FieldFreeOpenaiFast,
-				group.FieldEnableBps,
 				group.FieldSchedulingStrategy,
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
@@ -265,10 +280,17 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return r.entityWithGroupIDs(ctx, m)
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
+	if fields.GroupID {
+		return r.mutateWithGroups(ctx, key, func(ctx context.Context) error { return r.update(ctx, key, fields) })
+	}
+	return r.update(ctx, key, fields)
+}
+
+func (r *apiKeyRepository) update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
 	// 空掩码代表调用方不改任何列，直接返回，避免产生一次无意义的整行写。
 	if fields.IsEmpty() {
 		return nil
@@ -289,6 +311,22 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	}
 	if fields.Name {
 		builder.SetName(key.Name)
+	}
+	if fields.ModelMapping {
+		mapping := key.ModelMapping
+		if mapping == nil {
+			mapping = map[string]string{}
+		}
+		builder.SetModelMapping(mapping)
+	}
+	if fields.ReasoningEffort {
+		builder.SetReasoningEffort(key.ReasoningEffort)
+	}
+	if fields.ContextTokenLimit {
+		builder.SetContextTokenLimit(key.ContextTokenLimit)
+	}
+	if fields.AllowLongContext {
+		builder.SetAllowLongContext(key.AllowLongContext)
 	}
 	if fields.Status {
 		builder.SetStatus(key.Status)
@@ -347,12 +385,14 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	}
 
 	// IP 限制字段
-	if fields.IPRules {
+	if fields.IPRules || fields.IPWhitelist {
 		if len(key.IPWhitelist) > 0 {
 			builder.SetIPWhitelist(key.IPWhitelist)
 		} else {
 			builder.ClearIPWhitelist()
 		}
+	}
+	if fields.IPRules || fields.IPBlacklist {
 		if len(key.IPBlacklist) > 0 {
 			builder.SetIPBlacklist(key.IPBlacklist)
 		} else {
@@ -510,6 +550,9 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 	}
+	if err := r.attachGroupIDs(ctx, outKeys); err != nil {
+		return nil, nil, err
+	}
 	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
 		return nil, nil, err
 	}
@@ -529,6 +572,9 @@ func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, fi
 	outKeys := make([]service.APIKey, 0, len(keys))
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+	}
+	if err := r.attachGroupIDs(ctx, outKeys); err != nil {
+		return nil, err
 	}
 	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
 		return nil, err
@@ -675,6 +721,9 @@ func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, par
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 	}
 
+	if err := r.attachGroupIDs(ctx, outKeys); err != nil {
+		return nil, nil, err
+	}
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
 }
 
@@ -751,41 +800,13 @@ func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyw
 // ClearGroupIDByGroupID removes this group from every binding list and promotes
 // the next group when the primary binding is removed.
 func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, `
-		WITH bindings AS (
-			SELECT id, jsonb_path_query_array(
-				COALESCE(group_ids, jsonb_build_array(group_id)),
-				'$[*] ? (@ != $id)', jsonb_build_object('id', $1::bigint)) AS ids
-			FROM api_keys WHERE deleted_at IS NULL
-			AND (group_id = $1 OR group_ids @> jsonb_build_array($1::bigint))
-		)
-		UPDATE api_keys k SET group_ids = b.ids, group_id = (b.ids->>0)::bigint, updated_at = NOW()
-		FROM bindings b WHERE k.id = b.id`, groupID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	return r.changeOrderedGroupBindings(ctx, 0, groupID, 0)
 }
 
-// UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
+// UpdateGroupIDByUserAndGroup migrates both binding representations while
+// preserving priority and deduplicating replacements under a row lock.
 func (r *apiKeyRepository) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
-	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, `
-		WITH bindings AS (
-			SELECT id, (SELECT jsonb_agg(replacement::bigint ORDER BY first_position) FROM (
-				SELECT CASE WHEN value = $2 THEN $3 ELSE value END AS replacement, MIN(position) AS first_position
-				FROM jsonb_array_elements_text(COALESCE(group_ids, jsonb_build_array(group_id)))
-				WITH ORDINALITY AS e(value, position)
-				GROUP BY CASE WHEN value = $2 THEN $3 ELSE value END
-			) replaced) AS ids
-			FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL
-			AND (group_id = $2::bigint OR group_ids @> jsonb_build_array($2::bigint))
-		)
-		UPDATE api_keys k SET group_ids = b.ids, group_id = (b.ids->>0)::bigint, updated_at = NOW()
-		FROM bindings b WHERE k.id = b.id`, userID, fmt.Sprint(oldGroupID), fmt.Sprint(newGroupID))
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	return r.changeOrderedGroupBindings(ctx, userID, oldGroupID, newGroupID)
 }
 
 // CountByGroupID 获取分组的 API Key 数量
@@ -908,7 +929,7 @@ func (r *apiKeyRepository) ResetRateLimitWindows(ctx context.Context, id int64) 
 // GetRateLimitData returns the current rate limit usage and window start times for an API key.
 func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (result *service.APIKeyRateLimitData, err error) {
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start
+		SELECT quota_used, usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start
 		FROM api_keys
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id)
@@ -924,7 +945,7 @@ func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (resu
 		return nil, service.ErrAPIKeyNotFound
 	}
 	data := &service.APIKeyRateLimitData{}
-	if err := rows.Scan(&data.Usage5h, &data.Usage1d, &data.Usage7d, &data.Window5hStart, &data.Window1dStart, &data.Window7dStart); err != nil {
+	if err := rows.Scan(&data.QuotaUsed, &data.Usage5h, &data.Usage1d, &data.Usage7d, &data.Window5hStart, &data.Window1dStart, &data.Window7dStart); err != nil {
 		return nil, err
 	}
 	return data, rows.Err()
@@ -935,31 +956,35 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:               m.ID,
-		UserID:           m.UserID,
-		Key:              m.Key,
-		Name:             m.Name,
-		Status:           m.Status,
-		IPWhitelist:      m.IPWhitelist,
-		IPBlacklist:      m.IPBlacklist,
-		LastUsedAt:       m.LastUsedAt,
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
-		GroupID:          m.GroupID,
-		GroupIDs:         m.GroupIds,
-		Quota:            m.Quota,
-		QuotaUsed:        m.QuotaUsed,
-		ExpiresAt:        m.ExpiresAt,
-		RateLimit5h:      m.RateLimit5h,
-		ConcurrencyLimit: m.ConcurrencyLimit,
-		RateLimit1d:      m.RateLimit1d,
-		RateLimit7d:      m.RateLimit7d,
-		Usage5h:          m.Usage5h,
-		Usage1d:          m.Usage1d,
-		Usage7d:          m.Usage7d,
-		Window5hStart:    m.Window5hStart,
-		Window1dStart:    m.Window1dStart,
-		Window7dStart:    m.Window7dStart,
+		ID:                m.ID,
+		UserID:            m.UserID,
+		Key:               m.Key,
+		Name:              m.Name,
+		Status:            m.Status,
+		ModelMapping:      m.ModelMapping,
+		ReasoningEffort:   m.ReasoningEffort,
+		AllowLongContext:  m.AllowLongContext,
+		ContextTokenLimit: m.ContextTokenLimit,
+		IPWhitelist:       m.IPWhitelist,
+		IPBlacklist:       m.IPBlacklist,
+		LastUsedAt:        m.LastUsedAt,
+		CreatedAt:         m.CreatedAt,
+		UpdatedAt:         m.UpdatedAt,
+		GroupID:           m.GroupID,
+		GroupIDs:          m.GroupIds,
+		Quota:             m.Quota,
+		QuotaUsed:         m.QuotaUsed,
+		ExpiresAt:         m.ExpiresAt,
+		RateLimit5h:       m.RateLimit5h,
+		ConcurrencyLimit:  m.ConcurrencyLimit,
+		RateLimit1d:       m.RateLimit1d,
+		RateLimit7d:       m.RateLimit7d,
+		Usage5h:           m.Usage5h,
+		Usage1d:           m.Usage1d,
+		Usage7d:           m.Usage7d,
+		Window5hStart:     m.Window5hStart,
+		Window1dStart:     m.Window1dStart,
+		Window7dStart:     m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -1035,6 +1060,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     derefString(g.Description),
+		I18n:                            g.I18n,
 		Platform:                        g.Platform,
 		RateMultiplier:                  g.RateMultiplier,
 		ModelRateMultipliers:            g.ModelRateMultipliers,
@@ -1048,6 +1074,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		MonthlyLimitUSD:                 g.MonthlyLimitUsd,
 		AllowImageGeneration:            g.AllowImageGeneration,
 		AllowBatchImageGeneration:       g.AllowBatchImageGeneration,
+		ImageCountBilling:               g.ImageCountBilling,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		ImagePrice1K:                    g.ImagePrice1k,
@@ -1073,6 +1100,8 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		FallbackGroupID:                 g.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
 		StreamOnly:                      g.StreamOnly,
+		CodexCLIOnly:                    g.CodexCliOnly,
+		BlockSubagents:                  g.BlockSubagents,
 		ModelRouting:                    g.ModelRouting,
 		ModelRoutingEnabled:             g.ModelRoutingEnabled,
 		MCPXMLInject:                    g.McpXMLInject,
@@ -1082,7 +1111,6 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		AllowLive:                       g.AllowLive,
 		ForceOpenAIFast:                 g.ForceOpenaiFast,
 		FreeOpenAIFast:                  g.FreeOpenaiFast,
-		EnableBPS:                       g.EnableBps,
 		SchedulingStrategy:              g.SchedulingStrategy,
 		RequireOAuthOnly:                g.RequireOauthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,

@@ -53,7 +53,7 @@ const baseGroup = {
   peak_rate_enabled: false, peak_start: '', peak_end: '', peak_rate_multiplier: 1,
   claude_code_only: false, fallback_group_id: null, fallback_group_id_on_invalid_request: null,
   allow_messages_dispatch: false, require_oauth_only: false, require_privacy_set: false,
-  force_openai_fast: false, free_openai_fast: false, stream_only: true, enable_bps: true, scheduling_strategy: 'priority_weekly',
+  force_openai_fast: false, free_openai_fast: false, stream_only: true, scheduling_strategy: 'priority_weekly',
   model_routing: null, model_routing_enabled: false, mcp_xml_inject: true, supported_model_scopes: [],
   account_count: 1, active_account_count: 1, rate_limited_account_count: 0, sort_order: 10,
   created_at: '2026-09-24T00:00:00Z', updated_at: '2026-09-24T00:00:00Z'
@@ -108,16 +108,17 @@ describe('GroupsView routing policy', () => {
     const platform = wrapper.findAllComponents({ name: 'Select' }).find(c => c.props('modelValue') === 'anthropic')!
     platform.vm.$emit('update:modelValue', 'openai')
     await flushPromises()
-    expect(wrapper.get('[data-testid="create-enable-bps"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.find('[data-testid="create-enable-bps"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="create-strategy-balanced"]').attributes('aria-pressed')).toBe('true')
     await wrapper.get('#create-group-form input[type="text"]').setValue('New routing group')
     await wrapper.get('#create-group-form').trigger('submit')
     await flushPromises()
-    expect(mocks.createGroup).toHaveBeenCalledWith(expect.objectContaining({ enable_bps: false, scheduling_strategy: 'balanced' }))
+    expect(mocks.createGroup).toHaveBeenCalledWith(expect.objectContaining({ scheduling_strategy: 'balanced' }))
+    expect(mocks.createGroup.mock.calls[0]?.[0]).not.toHaveProperty('enable_bps')
     wrapper.unmount()
   })
 
-  it('creates a BPS-enabled group using the 5h priority strategy', async () => {
+  it('creates a group using the 5h priority strategy', async () => {
     const wrapper = mountView()
     await flushPromises()
     await buttonByText(wrapper, 'admin.groups.createGroup')!.trigger('click')
@@ -125,27 +126,25 @@ describe('GroupsView routing policy', () => {
     const platform = wrapper.findAllComponents({ name: 'Select' }).find(c => c.props('modelValue') === 'anthropic')!
     platform.vm.$emit('update:modelValue', 'openai')
     await flushPromises()
-    await wrapper.get('[data-testid="create-enable-bps"]').trigger('click')
     await wrapper.get('[data-testid="create-strategy-priority_5h"]').trigger('click')
     await wrapper.get('#create-group-form input[type="text"]').setValue('5h group')
     await wrapper.get('#create-group-form').trigger('submit')
     await flushPromises()
-    expect(mocks.createGroup).toHaveBeenCalledWith(expect.objectContaining({ enable_bps: true, scheduling_strategy: 'priority_5h' }))
+    expect(mocks.createGroup).toHaveBeenCalledWith(expect.objectContaining({ scheduling_strategy: 'priority_5h' }))
     wrapper.unmount()
   })
 
-  it('loads saved settings and submits explicit false and balanced values', async () => {
+  it('loads saved settings and submits balanced scheduling', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-testid="group-row-42"]').findAll('button').find(b => b.text() === 'common.edit')!.trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-testid="edit-enable-bps"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-testid="edit-enable-bps"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="edit-strategy-priority_weekly"]').attributes('aria-pressed')).toBe('true')
-    await wrapper.get('[data-testid="edit-enable-bps"]').trigger('click')
     await wrapper.get('[data-testid="edit-strategy-balanced"]').trigger('click')
     await wrapper.get('#edit-group-form').trigger('submit')
     await flushPromises()
-    expect(mocks.updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({ enable_bps: false, scheduling_strategy: 'balanced' }))
+    expect(mocks.updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({ scheduling_strategy: 'balanced' }))
     wrapper.unmount()
   })
 })

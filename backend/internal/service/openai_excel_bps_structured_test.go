@@ -90,29 +90,24 @@ func TestExcelBPSStructuredOutputForwardContract(t *testing.T) {
 	}
 }
 
-func TestExcelBPSStructuredOutputFallsBackOnModelAccess(t *testing.T) {
+func TestExcelBPSStructuredOutputDoesNotOverrideModelAccess(t *testing.T) {
 	for _, model := range []string{"gpt-6-luna", "gpt-6-sol"} {
 		t.Run(model, func(t *testing.T) {
-			ordinaryWire := fmt.Sprintf("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"ordinary-%s\",\"status\":\"completed\",\"model\":\"%s\",\"output\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n", model, model)
-			upstream := &httpUpstreamRecorder{responses: []*http.Response{
-				{StatusCode: http.StatusForbidden, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{\"error\":{\"code\":\"model_not_found\"}}"))},
-				{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(ordinaryWire))},
-			}}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{\"error\":{\"code\":\"basispoints_model_access_changed\"}}"))}}
 			svc := openAIClientToolsTestService(upstream)
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 			account := excelAccount()
-			result, err := svc.Forward(context.Background(), c, account, excelStructuredRequest(t, model, true))
-			require.NoError(t, err)
-			require.NotNil(t, result)
-			require.Len(t, upstream.requests, 2)
-			require.Equal(t, "/basispoints/api/responses", upstream.requests[0].URL.Path)
-			require.Equal(t, chatgptCodexURL, upstream.requests[1].URL.String())
+			_, err := svc.Forward(context.Background(), c, account, excelStructuredRequest(t, model, true))
+			require.Error(t, err)
+			var failover *UpstreamFailoverError
+			require.NotErrorAs(t, err, &failover)
+			require.Len(t, upstream.requests, 1)
 			require.Equal(t, model, gjson.GetBytes(upstream.lastBody, "model").String())
-			require.Equal(t, "json_schema", gjson.GetBytes(upstream.lastBody, "text.format.type").String())
-			require.Contains(t, rec.Body.String(), "ordinary-")
-			require.NotContains(t, rec.Body.String(), "model_not_found")
+			require.Equal(t, http.StatusForbidden, rec.Code)
+			require.Equal(t, "basispoints_model_access_changed", gjson.GetBytes(rec.Body.Bytes(), "error.code").String())
+			require.True(t, IsResponseCommitted(c))
 			require.True(t, account.Schedulable)
 		})
 	}

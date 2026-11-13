@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
+import { createPinia } from 'pinia'
 
-import type { ApiKey, ApiKeyConcurrencySnapshot, GroupPlatform } from '@/types'
+import type { ApiKey, ApiKeyConcurrencySnapshot, Group, GroupPlatform } from '@/types'
 import { keysAPI } from '@/api'
 import KeysView from '../KeysView.vue'
+import DateRangePicker from '@/components/common/DateRangePicker.vue'
+import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
+import { formatDateLocalInput, getBrowserTimeZone } from '@/utils/format'
 
 enableAutoUnmount(afterEach)
 
@@ -24,6 +28,7 @@ const {
   copyToClipboard,
   isCurrentStep,
   nextStep,
+  auth,
 } = vi.hoisted(() => ({
   listKeys: vi.fn(),
   createKey: vi.fn(),
@@ -40,6 +45,7 @@ const {
   copyToClipboard: vi.fn(),
   isCurrentStep: vi.fn(),
   nextStep: vi.fn(),
+  auth: { isAdmin: false, user: { id: 41 } },
 }))
 
 const messages: Record<string, string> = {
@@ -51,6 +57,7 @@ const messages: Record<string, string> = {
   'keys.allGroups': 'All Groups',
   'keys.allStatus': 'All Status',
   'keys.columnSettings': 'Column Settings',
+  'keys.clickToChangeGroup': 'Change group',
   'keys.createKey': 'Create API Key',
   'keys.created': 'Created',
   'keys.expiresAt': 'Expires',
@@ -58,6 +65,8 @@ const messages: Record<string, string> = {
   'keys.groupAvailableQuota': 'Available {amount}',
   'keys.groupAvailableQuotaLabel': 'Available Quota',
   'common.unlimited': 'Unlimited',
+  'keys.selectGroup': 'Select group',
+  'keys.multiGroupCount': '{count} groups',
   'keys.id': 'ID',
   'keys.currentConcurrency': 'Current Concurrency',
   'keys.concurrencyAndWaiting': 'Concurrency / Waiting',
@@ -84,6 +93,10 @@ const messages: Record<string, string> = {
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
   'keys.usage': 'Usage',
+  'keys.today': 'Today',
+  'keys.total': 'Last 30 days',
+  'keys.selectedPeriod': 'Selected period',
+  'keys.quota': 'Quota',
 }
 
 vi.mock('@/api', () => ({
@@ -118,12 +131,7 @@ vi.mock('@/stores/app', () => ({
   }),
 }))
 
-vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({
-    user: authUser,
-  }),
-}))
-
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ get isAdmin() { return auth.isAdmin }, get user() { return { ...auth.user, ...authUser } } }) }))
 vi.mock('@/stores/onboarding', () => ({
   useOnboardingStore: () => ({
     isCurrentStep,
@@ -149,6 +157,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
+      locale: ref('en'),
       t: (key: string, params: Record<string, unknown> = {}) =>
         (messages[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? name)),
     }),
@@ -204,7 +213,7 @@ const TablePageLayoutStub = {
 
 const DataTableStub = {
   name: 'DataTable',
-  props: { columns: Array, data: Array, selectedKeys: Array, selectable: Boolean },
+  props: { columns: Array, data: Array, selectedKeys: Array, selectable: Boolean, loading: Boolean },
   emits: ['sort', 'update:selectedKeys'],
   template: `
     <div>
@@ -222,9 +231,13 @@ const DataTableStub = {
         </div>
         <slot name="cell-group" :value="row.group" :row="row" />
         <slot name="cell-name" :value="row.name" :row="row" />
+        <div data-test="key-group"><slot name="cell-group" :row="row" /></div>
         <slot name="cell-actions" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
+        </div>
+        <div data-test="usage">
+          <slot name="cell-usage" :row="row" />
         </div>
         <div
           v-if="columns.some((col) => col.key === 'last_used_ip')"
@@ -272,13 +285,15 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
-const mountView = async () => {
+const mountView = async (realTable = false, realDatePicker = false) => {
   const wrapper = mount(KeysView, {
     global: {
+      plugins: [createPinia()],
       stubs: {
+        UserKeyRiskNotices: true,
         AppLayout: AppLayoutStub,
         TablePageLayout: TablePageLayoutStub,
-        DataTable: DataTableStub,
+        DataTable: realTable ? false : DataTableStub,
         Pagination: PaginationStub,
         BaseDialog: {
           props: ['show', 'title'],
@@ -289,11 +304,17 @@ const mountView = async () => {
         EmptyState: true,
         Select: SelectStub,
         SearchInput: SearchInputStub,
+        DateRangePicker: !realDatePicker,
         Icon: IconStub,
         UseKeyModal: true,
         BulkEditKeysModal: true,
+        ApiKeyModelPolicyDialog: true,
         EndpointPopover: true,
-        GroupBadge: true,
+        GroupBadge: realTable ? false : {
+          name: 'GroupBadge',
+          props: ['name', 'rateMultiplier', 'userRateMultiplier'],
+          template: '<span>{{ name }} {{ userRateMultiplier ?? rateMultiplier }}x</span>',
+        },
         GroupOptionItem: true,
         Teleport: true,
       },
@@ -338,9 +359,11 @@ describe('user KeysView column settings', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   beforeEach(() => {
+    auth.isAdmin = false
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
     localStorage.clear()
@@ -493,6 +516,112 @@ describe('user KeysView column settings', () => {
       expect(importParams().get('endpoint')).toBe(settings.api_base_url)
       expect(importParams().get('apiKey')).toBe('sk-other-fixture')
     })
+  })
+
+  it('keeps usage available alongside risk notices', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.find('user-key-risk-notices-stub').exists()).toBe(true)
+    expect(wrapper.get('[data-test="columns"]').text()).toContain('usage')
+  })
+
+  it.each([false, true])('keeps long group names, usage and group editing available in mobile cards (multiple groups: %s)', async (multiple) => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })))
+    const group = {
+      id: 42,
+      name: '【演示分组】团队统一接口-多语言超长分组名称-Mobile-Preview-Alpha',
+      platform: 'openai',
+      subscription_type: 'standard',
+      rate_multiplier: 0.7,
+    } as Group
+    const additionalGroup = { ...group, id: 43, name: 'Additional group' }
+    const key = {
+      ...createApiKey(),
+      group_id: group.id,
+      group_ids: multiple ? [group.id, additionalGroup.id] : [group.id],
+      group,
+      quota: 100,
+      quota_used: 42,
+    }
+    setKeys(key)
+    getAvailableGroups.mockResolvedValue([group, additionalGroup])
+    getDashboardApiKeysUsage.mockResolvedValue({
+      stats: { 1: { api_key_id: 1, today_actual_cost: 1.2345, total_actual_cost: 31.5678 } },
+    })
+
+    const wrapper = await mountView(true)
+    const groupField = wrapper.get('[data-field="group"]')
+    expect(groupField.text()).toContain(group.name)
+    expect(groupField.text()).toContain(multiple ? `${group.name} → ${additionalGroup.name}` : 'Select group')
+    const usage = wrapper.get('[data-field="usage"]').text().replace(/\s+/g, '')
+    expect(usage).toContain('Today:$1.2345')
+    expect(usage).toContain('Last30days:$31.5678')
+    expect(usage).toContain('Quota:$42.00/$100.00')
+    expect(wrapper.get('.key-quota-values').findAll('.key-usage-amount').map(amount => amount.text())).toEqual(['$42.00', '$100.00'])
+    expect(getDashboardApiKeysUsage).toHaveBeenCalledWith([key.id], expect.objectContaining({ signal: expect.any(AbortSignal) }))
+
+    await groupField.get('.key-group-control').trigger('click')
+    await flushPromises()
+    if (multiple) {
+      expect(wrapper.get('[role="dialog"]').exists()).toBe(true)
+      expect(wrapper.getComponent('[data-tour="key-form-group"]').props('modelValue')).toEqual([group.id, additionalGroup.id])
+    } else {
+      expect(wrapper.get('input[placeholder="keys.searchGroup"]').exists()).toBe(true)
+    }
+  })
+
+  it('preserves large quota values in independently wrapping amount units', async () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+      matches: false, media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    })))
+    setKeys({ ...createApiKey(), quota: 999999999999.99, quota_used: 888888888888.88 })
+    const wrapper = await mountView(true)
+    const quota = wrapper.get('[data-field="usage"] .key-quota-values')
+    expect(quota.findAll('.key-usage-amount').map(amount => amount.text())).toEqual(['$888888888888.88', '$999999999999.99'])
+    expect(quota.text().replace(/\s+/g, '')).toBe('$888888888888.88/$999999999999.99')
+    expect(quota.classes()).toContain('text-yellow-500')
+  })
+
+  it('shows model policy editing only to administrators', async () => {
+    const ordinaryView = await mountView()
+    await getButtonByText(ordinaryView, 'common.edit').trigger('click')
+    expect(ordinaryView.find('[data-test="edit-key-model-policy"]').exists()).toBe(false)
+    ordinaryView.unmount()
+
+    auth.isAdmin = true
+    const adminView = await mountView()
+    await getButtonByText(adminView, 'common.edit').trigger('click')
+    await adminView.get('[data-test="edit-key-model-policy"]').trigger('click')
+    expect(adminView.getComponent({ name: 'ApiKeyModelPolicyDialog' }).props('show')).toBe(true)
+    expect(adminView.getComponent({ name: 'ApiKeyModelPolicyDialog' }).props('apiKey').id).toBe(1)
+  })
+
+  it('preserves unsaved key details when administrator model settings are saved', async () => {
+    auth.isAdmin = true
+    listKeys.mockResolvedValueOnce({ items: [{ ...createApiKey(), group_id: 42 }], total: 1 })
+    const wrapper = await mountView()
+    await getButtonByText(wrapper, 'common.edit').trigger('click')
+    await wrapper.get('[data-tour="key-form-name"]').setValue('Unsaved name')
+    wrapper.getComponent({ name: 'ApiKeyModelPolicyDialog' }).vm.$emit('updated', {
+      ...createApiKey(), group_id: 42, model_mapping: { 'gpt-6.1-sol': 'gpt-5.6-sol' }, reasoning_effort: 'high', allow_long_context: false
+    })
+    await nextTick()
+    expect((wrapper.get('[data-tour="key-form-name"]').element as HTMLInputElement).value).toBe('Unsaved name')
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+    expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'Unsaved name' }))
+    expect(updateKey.mock.calls[0][1]).not.toHaveProperty('model_mapping')
+    expect(updateKey.mock.calls[0][1]).not.toHaveProperty('reasoning_effort')
+    expect(updateKey.mock.calls[0][1]).not.toHaveProperty('allow_long_context')
   })
 
   it.each([
@@ -938,6 +1067,114 @@ describe('user KeysView column settings', () => {
     expect(getConcurrency).toHaveBeenCalledTimes(3)
   })
 
+  it('queries the default 30 calendar days and keeps the selected range through paging', async () => {
+    const wrapper = await mountView()
+    const end = new Date()
+    const start = new Date(end)
+    start.setDate(start.getDate() - 29)
+    expect(getDashboardApiKeysUsage).toHaveBeenLastCalledWith([1], expect.objectContaining({
+      start_date: formatDateLocalInput(start), end_date: formatDateLocalInput(end), timezone: getBrowserTimeZone(),
+    }))
+    wrapper.findComponent(DateRangePicker).vm.$emit('change', {
+      startDate: '2026-10-01', endDate: '2026-10-31', preset: null,
+    })
+    await flushPromises()
+    await wrapper.get('[data-test="page-2"]').trigger('click')
+    await flushPromises()
+    expect(getDashboardApiKeysUsage).toHaveBeenLastCalledWith([1], expect.objectContaining({
+      start_date: '2026-10-01', end_date: '2026-10-31', timezone: getBrowserTimeZone(),
+    }))
+  })
+
+  it('offers calendar ranges without a 24-hour shortcut in the actual usage picker', async () => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date(2026, 10, 9, 15))
+    const wrapper = await mountView(false, true)
+    const picker = wrapper.findComponent(DateRangePicker)
+    await picker.get('.date-picker-trigger').trigger('click')
+    expect(picker.findAll('.date-picker-preset').map(button => button.text())).not.toContain('dates.last24Hours')
+
+    const inputs = picker.findAll<HTMLInputElement>('input[type="date"]')
+    await inputs[0].setValue('2026-11-08')
+    await inputs[1].setValue('2026-11-09')
+    await picker.get('.date-picker-apply').trigger('click')
+    await flushPromises()
+    expect(getDashboardApiKeysUsage).toHaveBeenLastCalledWith([1], expect.objectContaining({
+      start_date: '2026-11-08', end_date: '2026-11-09', timezone: getBrowserTimeZone()
+    }))
+    expect(picker.emitted('change')?.[0]).toEqual([{
+      startDate: '2026-11-08', endDate: '2026-11-09', preset: null
+    }])
+    expect(picker.get('.date-picker-trigger').text()).not.toContain('dates.last24Hours')
+  })
+
+  it('updates each key amount, ignores an older range response and shows failed usage as unavailable', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const key2 = { ...createApiKey(), id: 2, name: 'second-key' }
+    setKeys(createApiKey(), key2)
+    getDashboardApiKeysUsage.mockResolvedValue({ stats: {
+      1: { api_key_id: 1, today_actual_cost: 1, total_actual_cost: 30 },
+      2: { api_key_id: 2, today_actual_cost: 2, total_actual_cost: 60 },
+    } })
+    const wrapper = await mountView(true)
+    const picker = wrapper.findComponent(DateRangePicker)
+    const old = deferred<{ stats: Record<string, { api_key_id: number; today_actual_cost: number; total_actual_cost: number }> }>()
+    getDashboardApiKeysUsage.mockReturnValueOnce(old.promise)
+    picker.vm.$emit('change', { startDate: '2026-10-01', endDate: '2026-10-02', preset: null })
+    await flushPromises()
+    const oldSignal = getDashboardApiKeysUsage.mock.lastCall?.[1].signal as AbortSignal
+    expect(wrapper.text()).not.toContain('$30.0000')
+
+    getDashboardApiKeysUsage.mockResolvedValueOnce({ stats: {
+      1: { api_key_id: 1, today_actual_cost: 1, total_actual_cost: 4.5 },
+      2: { api_key_id: 2, today_actual_cost: 2, total_actual_cost: 9 },
+    } })
+    picker.vm.$emit('change', { startDate: '2026-10-05', endDate: '2026-10-06', preset: null })
+    await flushPromises()
+    expect(oldSignal.aborted).toBe(true)
+    old.resolve({ stats: { 1: { api_key_id: 1, today_actual_cost: 1, total_actual_cost: 999 } } })
+    await flushPromises()
+    const cells = wrapper.findAll('.key-usage-cell')
+    expect(cells[0].text().replace(/\s+/g, '')).toContain('Selectedperiod:$4.5000')
+    expect(cells[1].text().replace(/\s+/g, '')).toContain('Selectedperiod:$9.0000')
+    expect(cells[0].text()).not.toContain('999')
+
+    getDashboardApiKeysUsage.mockRejectedValueOnce(new Error('offline'))
+    picker.vm.$emit('change', { startDate: '2026-10-10', endDate: '2026-10-11', preset: null })
+    await flushPromises()
+    expect(wrapper.findAll('.key-usage-cell')[0].text()).not.toContain('$4.5000')
+    expect(wrapper.findAll('.key-usage-cell')[0].text()).toContain('—')
+    expect(showError).toHaveBeenCalledWith('keys.failedToLoadUsage')
+  })
+
+  it('rejects incomplete and reversed date ranges before fetching', async () => {
+    const wrapper = await mountView()
+    for (const range of [
+      { startDate: '', endDate: '2026-10-01', preset: null },
+      { startDate: '2026-10-05', endDate: '2026-10-01', preset: null },
+    ]) {
+      wrapper.findComponent(DateRangePicker).vm.$emit('change', range)
+      await flushPromises()
+    }
+    expect(getDashboardApiKeysUsage).toHaveBeenCalledTimes(1)
+    expect(showError).toHaveBeenCalledWith('keys.invalidUsageDateRange')
+  })
+
+  it('persists the admin date-range notice dismissal while older notices stay dismissed', async () => {
+    auth.isAdmin = true
+    localStorage.setItem('sub2api:new-feature-notices:v1:41', JSON.stringify([NEW_FEATURE_NOTICES.apiKeyModelPolicy]))
+    const wrapper = await mountView()
+    await wrapper.get('[data-test="key-usage-date-range"] [data-testid="new-feature-badge"]').trigger('click')
+    expect(wrapper.find('[data-test="key-usage-date-range"] [data-testid="new-feature-badge"]').exists()).toBe(false)
+    wrapper.unmount()
+    const reloaded = await mountView()
+    expect(reloaded.find('[data-test="key-usage-date-range"] [data-testid="new-feature-badge"]').exists()).toBe(false)
+    expect(JSON.parse(localStorage.getItem('sub2api:new-feature-notices:v1:41') ?? '[]')).toEqual([
+      NEW_FEATURE_NOTICES.apiKeyModelPolicy, NEW_FEATURE_NOTICES.apiKeyUsageDateRange,
+    ])
+  })
+
   it('marks old counts and policy stale on failure and removes the full marker until recovery', async () => {
     setKeys({ ...createApiKey(), concurrency_limit: 1 })
     getConcurrency.mockResolvedValue(snapshot(7, 7))
@@ -1156,9 +1393,9 @@ describe('user KeysView column settings', () => {
 
     it('uses the smallest subscription headroom and custom rate in both selectors and the selected summary', async () => {
       const wrapper = await mountView()
-      await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+      await wrapper.get('button[title="Change group"]').trigger('click')
       expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available $6.00')
-      await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+      await wrapper.get('button[title="Change group"]').trigger('click')
       await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
       expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available $6.00')
       await wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', [42])
@@ -1208,6 +1445,92 @@ describe('user KeysView column settings', () => {
       await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
       expect(quotaOption(wrapper).props('availableQuotaText')).toBe('Available $40.00')
       expect(getActiveSubscriptions).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('group pricing refresh', () => {
+    const group = {
+      id: 42, name: 'Example group', platform: 'openai',
+      rate_multiplier: 0.3, subscription_type: 'standard',
+    } as Group
+
+    const formOption = (wrapper: VueWrapper) => wrapper
+      .getComponent('[data-tour="key-form-group"]').props('options')
+      .find((option: { value: number }) => option.value === group.id)
+
+    beforeEach(() => {
+      setKeys({ ...createApiKey(), group_id: group.id, group })
+      getAvailableGroups.mockResolvedValue([group])
+      getUserGroupRates.mockResolvedValue({ 42: 1.3 })
+    })
+
+    it.each([0.5, 0, null])('refreshes the row after an override changes to %s', async (rate) => {
+      const wrapper = await mountView()
+      expect(wrapper.get('[data-test="key-group"]').text()).toContain('1.3x')
+      getUserGroupRates.mockResolvedValue(rate === null ? {} : { 42: rate })
+
+      await wrapper.get('button[title="Refresh"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.get('[data-test="key-group"]').text()).toContain(`${rate ?? 0.3}x`)
+      expect(getAvailableGroups).toHaveBeenCalledTimes(2)
+    })
+
+    it.each(['create', 'edit'])('refreshes pricing when opening the %s dialog', async (mode) => {
+      const wrapper = await mountView()
+      getAvailableGroups.mockResolvedValue([{ ...group, rate_multiplier: 0.4 }])
+      getUserGroupRates.mockResolvedValue({ 42: 0.5 })
+
+      await getButtonByText(wrapper, mode === 'create' ? 'Create API Key' : 'common.edit').trigger('click')
+      await flushPromises()
+
+      expect(formOption(wrapper)).toMatchObject({ rate: 0.4, userRate: 0.5 })
+      expect(wrapper.get('[data-test="key-group"]').text()).toContain('0.5x')
+      expect(getUserGroupRates).toHaveBeenCalledTimes(2)
+    })
+
+    it('refreshes the inline group selector without reloading the page', async () => {
+      const wrapper = await mountView()
+      getUserGroupRates.mockResolvedValue({ 42: 0.5 })
+
+      await wrapper.get('[data-test="key-group"] button').trigger('click')
+      await flushPromises()
+
+      const option = wrapper.findComponent({ name: 'GroupOptionItem' })
+      expect(option.props('userRateMultiplier')).toBe(0.5)
+      expect(wrapper.get('[data-test="key-group"]').text()).toContain('0.5x')
+    })
+
+    it('keeps the previous pricing together and reports a failed refresh', async () => {
+      const wrapper = await mountView()
+      getAvailableGroups.mockResolvedValue([{ ...group, rate_multiplier: 0.4 }])
+      getUserGroupRates.mockRejectedValueOnce(new Error('Unavailable'))
+
+      await wrapper.get('button[title="Refresh"]').trigger('click')
+      await flushPromises()
+
+      expect(showError).toHaveBeenCalledWith('keys.failedToLoad')
+      expect(wrapper.get('[data-test="key-group"]').text()).toContain('1.3x')
+      getUserGroupRates.mockResolvedValue({ 42: 0.5 })
+      await wrapper.get('button[title="Refresh"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.get('[data-test="key-group"]').text()).toContain('0.5x')
+    })
+
+    it('does not let an older refresh overwrite the dialog pricing', async () => {
+      const wrapper = await mountView()
+      const olderRates = deferred<Record<number, number>>()
+      getUserGroupRates.mockReturnValueOnce(olderRates.promise)
+      await wrapper.get('button[title="Refresh"]').trigger('click')
+
+      getUserGroupRates.mockResolvedValue({ 42: 0.5 })
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      await flushPromises()
+      olderRates.resolve({ 42: 1.3 })
+      await flushPromises()
+
+      expect(formOption(wrapper)).toMatchObject({ userRate: 0.5 })
+      expect(wrapper.get('[data-test="key-group"]').text()).toContain('0.5x')
     })
   })
 
@@ -1300,6 +1623,36 @@ describe('user KeysView column settings', () => {
       await getButtonByText(wrapper, 'common.edit').trigger('click')
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
       expect(optionIds(wrapper)).toHaveLength(12)
+    })
+  })
+
+  describe('usage stats loading', () => {
+    it('renders the key list without waiting for slow usage stats', async () => {
+      let resolveUsage!: (value: { stats: Record<string, unknown> }) => void
+      getDashboardApiKeysUsage.mockReturnValue(new Promise((resolve) => { resolveUsage = resolve }))
+      const wrapper = await mountView()
+
+      const table = wrapper.findComponent({ name: 'DataTable' })
+      expect(table.props('loading')).toBe(false)
+      expect(table.props('data')).toHaveLength(1)
+      expect(wrapper.find('[data-test="usage-pending"]').exists()).toBe(true)
+
+      resolveUsage({
+        stats: { 1: { api_key_id: 1, today_actual_cost: 0.5, total_actual_cost: 12.25 } },
+      })
+      await flushPromises()
+      expect(wrapper.find('[data-test="usage-pending"]').exists()).toBe(false)
+      expect(wrapper.get('[data-test="usage"]').text()).toContain('$12.2500')
+    })
+
+    it('stops showing usage placeholders when the usage request fails', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      getDashboardApiKeysUsage.mockRejectedValue(new Error('timeout'))
+      const wrapper = await mountView()
+
+      expect(wrapper.find('[data-test="usage-pending"]').exists()).toBe(false)
+      expect(wrapper.get('[data-test="usage"]').text()).toContain('—')
+      consoleError.mockRestore()
     })
   })
 })

@@ -26,6 +26,7 @@
             </span>
             <div class="md3-usage-copy">
               <strong :title="log.model">{{ log.model }}</strong>
+              <span v-if="visibleResponseModel(log)">{{ t('usage.upstreamResponseModel') }}: {{ visibleResponseModel(log) }}</span>
               <span>{{ formatDateTime(log.created_at) }}</span>
             </div>
           </div>
@@ -47,7 +48,9 @@ import { useI18n } from 'vue-i18n'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/format'
+import { userVisibleUpstreamResponseModel } from '@/utils/upstreamResponseModel'
 import type { UsageLog } from '@/types'
 
 defineProps<{
@@ -55,6 +58,8 @@ defineProps<{
   loading: boolean
 }>()
 const { t } = useI18n()
+const appStore = useAppStore()
+const visibleResponseModel = (log: UsageLog) => userVisibleUpstreamResponseModel(appStore.cachedPublicSettings, log)
 const formatCost = (c: number) => c.toFixed(4)
 </script>
 

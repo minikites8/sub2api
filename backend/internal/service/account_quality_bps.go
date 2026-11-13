@@ -11,12 +11,6 @@ import (
 // 而不是摘分组或停调度。开启时写入的 BPS 选项来自规则里的 BPS 配置。
 const QualityActionEnableBPS = "enable_bps"
 
-const (
-	ExcelBPSProxySourceKey    = "openai_excel_bps_proxy_source"
-	ExcelBPSProxySourceMihomo = "mihomo"
-	ExcelBPSProxySourceIPPool = "ip_pool"
-)
-
 // QualityBPSPolicy 描述「何时开」和「开成什么样」。
 // 触发条件：FailureThreshold = 连续判定降智 N 轮（0 = 不按次数）；UsagePercent = 5h 或 7d
 // 窗口用量 ≥ X%（0 = 不按用量）。两者都配时默认满足任一即开，RequireAll 表示两个都满足才开。
@@ -32,7 +26,6 @@ type QualityBPSPolicy struct {
 	AllModels               bool     `json:"all_models"`
 	Models                  []string `json:"models"`
 	OmitUnsupportedTools    bool     `json:"omit_unsupported_tools"`
-	IgnoreImages            bool     `json:"ignore_images"`
 	IgnoreEncryptedContent  bool     `json:"ignore_encrypted_content"`
 	AutoDisableOn403        bool     `json:"auto_disable_on_403"`
 	AutoRecoverOn403        bool     `json:"auto_recover_on_403"`
@@ -50,7 +43,6 @@ var QualityBPSManagedKeys = []string{
 	"openai_excel_bps",
 	"openai_excel_bps_models",
 	ExcelBPSOmitUnsupportedToolsKey,
-	ExcelBPSIgnoreImagesKey,
 	ExcelBPSIgnoreEncryptedContentKey,
 	"openai_excel_bps_auto_disable_on_403",
 	ExcelBPSAutoRecoverOn403Key,
@@ -139,7 +131,6 @@ func QualityBPSExtra(b *QualityBPSPolicy) map[string]any {
 		"openai_excel_bps":                         true,
 		"openai_excel_bps_models":                  nil,
 		ExcelBPSOmitUnsupportedToolsKey:            b.OmitUnsupportedTools,
-		ExcelBPSIgnoreImagesKey:                    b.IgnoreImages,
 		ExcelBPSIgnoreEncryptedContentKey:          b.IgnoreEncryptedContent,
 		"openai_excel_bps_auto_disable_on_403":     b.AutoDisableOn403,
 		ExcelBPSAutoRecoverOn403Key:                b.AutoDisableOn403 && b.AutoRecoverOn403,

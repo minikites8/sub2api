@@ -16,6 +16,7 @@ import (
 	"time"
 
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
+	"github.com/Wei-Shaw/sub2api/internal/bepusdt"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/mihomo"
@@ -155,11 +156,13 @@ func runSetupServer() {
 }
 
 func runMainServer() {
+	bepusdt.SetDataDir(setup.GetDataDir())
+	defer bepusdt.Stop()
 	cfg, err := config.LoadForBootstrap()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	if err := logger.Init(logger.OptionsFromConfig(cfg.Log)); err != nil {
+	if err := logger.Init(logger.OptionsFromRuntimeConfig(cfg.Log, cfg.Runtime)); err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
 	if cfg.RunMode == config.RunModeSimple {
@@ -176,6 +179,9 @@ func runMainServer() {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
 	defer app.Cleanup()
+	if err := bepusdt.Resume(); err != nil {
+		log.Printf("Built-in BEpusdt unavailable: %v", err)
+	}
 	if app.PluginManager != nil {
 		if err := app.PluginManager.Start(context.Background()); err != nil {
 			log.Printf("Plugin manager started in degraded state: %v", err)

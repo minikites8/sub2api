@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -81,6 +82,12 @@ type APIKey struct {
 	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+
+	ModelMapping      map[string]string `json:"model_mapping"`
+	ReasoningEffort   string            `json:"reasoning_effort"`
+	ContextTokenLimit int               `json:"context_token_limit"`
+	AllowLongContext  bool              `json:"allow_long_context"`
+
 	// CurrentConcurrency is the real-time active request count for this API key.
 	CurrentConcurrency int `json:"current_concurrency"`
 
@@ -112,6 +119,10 @@ type Group struct {
 	IsExclusive    bool    `json:"is_exclusive"`
 	Status         string  `json:"status"`
 
+	// I18n 名称与描述的各语言译文。只有管理端输出；用户侧接口经 Localized 把
+	// name/description 换成请求语言的版本后清空本字段。
+	I18n domain.GroupI18n `json:"i18n,omitempty"`
+
 	SubscriptionType          string   `json:"subscription_type"`
 	DailyLimitUSD             *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD            *float64 `json:"weekly_limit_usd"`
@@ -121,6 +132,7 @@ type Group struct {
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool    `json:"allow_image_generation"`
 	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
+	ImageCountBilling            bool    `json:"image_count_billing"`
 	ImageRateIndependent         bool    `json:"image_rate_independent"`
 	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
@@ -196,10 +208,11 @@ type AdminGroup struct {
 	ForceOpenAIFast bool `json:"force_openai_fast"`
 	// FreeOpenAIFast 是管理端计费策略，用户侧分组 DTO 无需暴露。
 	FreeOpenAIFast     bool   `json:"free_openai_fast"`
-	EnableBPS          bool   `json:"enable_bps"`
 	SchedulingStrategy string `json:"scheduling_strategy"`
 	// StreamOnly 是管理端请求策略（只接受流式的对话生成请求），用户侧分组 DTO 无需暴露。
-	StreamOnly bool `json:"stream_only"`
+	StreamOnly     bool `json:"stream_only"`
+	CodexCLIOnly   bool `json:"codex_cli_only"`
+	BlockSubagents bool `json:"block_subagents"`
 
 	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数存储）。
 	// 仅管理员可见：这三个字段与同响应中的 rate_multiplier 相乘即可反推出
@@ -240,13 +253,14 @@ type AdminGroup struct {
 }
 
 type Account struct {
-	QualityTier     string  `json:"quality_tier"`
-	QoSResourcePool string  `json:"qos_resource_pool"`
-	ID              int64   `json:"id"`
-	Name            string  `json:"name"`
-	Notes           *string `json:"notes"`
-	Platform        string  `json:"platform"`
-	Type            string  `json:"type"`
+	QualityTier            string                          `json:"quality_tier"`
+	QoSResourcePool        string                          `json:"qos_resource_pool"`
+	ID                     int64                           `json:"id"`
+	Name                   string                          `json:"name"`
+	Notes                  *string                         `json:"notes"`
+	Platform               string                          `json:"platform"`
+	Type                   string                          `json:"type"`
+	UpstreamChannelBinding *service.UpstreamChannelBinding `json:"upstream_channel_binding,omitempty"`
 	// Credentials 经 RedactCredentials 处理后只含非敏感子键；敏感 token / api_key / 私钥
 	// 的存在性通过 CredentialsStatus（has_<key>）暴露，原始值不返回前端。
 	Credentials             map[string]any                    `json:"credentials"`
@@ -366,11 +380,12 @@ type Account struct {
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 
-	GroupIDs        []int64                       `json:"group_ids,omitempty"`
-	Groups          []*Group                      `json:"groups,omitempty"`
-	OpenCodeGoUsage *service.OpenCodeGoUsageState `json:"opencode_go_usage,omitempty"`
-	ProxyPool       []AccountProxyBinding         `json:"proxy_pool,omitempty"`
-	IsFallback      bool                          `json:"is_fallback"`
+	GroupIDs             []int64                       `json:"group_ids,omitempty"`
+	Groups               []*Group                      `json:"groups,omitempty"`
+	OpenCodeGoUsage      *service.OpenCodeGoUsageState `json:"opencode_go_usage,omitempty"`
+	ProxyPool            []AccountProxyBinding         `json:"proxy_pool,omitempty"`
+	IsFallback           bool                          `json:"is_fallback"`
+	GrokModelDiagnostics *service.GrokModelDiagnostics `json:"grok_model_diagnostics,omitempty"`
 }
 
 type AccountProxyBinding struct {
@@ -386,13 +401,14 @@ type AccountProxyBinding struct {
 // repeated account_groups and groups object graphs. Fetch /admin/accounts/:id
 // for the complete Account DTO when editing or inspecting an account.
 type AccountListItem struct {
-	QualityTier     string  `json:"quality_tier"`
-	QoSResourcePool string  `json:"qos_resource_pool"`
-	ID              int64   `json:"id"`
-	Name            string  `json:"name"`
-	Notes           *string `json:"notes"`
-	Platform        string  `json:"platform"`
-	Type            string  `json:"type"`
+	QualityTier            string                          `json:"quality_tier"`
+	QoSResourcePool        string                          `json:"qos_resource_pool"`
+	ID                     int64                           `json:"id"`
+	Name                   string                          `json:"name"`
+	Notes                  *string                         `json:"notes"`
+	Platform               string                          `json:"platform"`
+	Type                   string                          `json:"type"`
+	UpstreamChannelBinding *service.UpstreamChannelBinding `json:"upstream_channel_binding,omitempty"`
 
 	Credentials             map[string]any                    `json:"credentials,omitempty"`
 	ExcelBPSCredentialState *service.ExcelBPSCredentialState  `json:"excel_bps_credential_state,omitempty"`
@@ -592,7 +608,8 @@ type RedeemCode struct {
 type AdminRedeemCode struct {
 	RedeemCode
 
-	Notes string `json:"notes"`
+	Notes      string                            `json:"notes"`
+	AutoCredit *service.AutoCreditBalanceHistory `json:"auto_credit,omitempty"`
 }
 
 type NullableTimeField struct {
@@ -650,12 +667,13 @@ type BatchUpdateRedeemCodesRequest struct {
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
 type UsageLog struct {
-	ID        int64  `json:"id"`
-	UserID    int64  `json:"user_id"`
-	APIKeyID  int64  `json:"api_key_id"`
-	AccountID int64  `json:"account_id"`
-	RequestID string `json:"request_id"`
-	Model     string `json:"model"`
+	ContentTiming *requesttiming.ContentObservation `json:"content_timing,omitempty"`
+	ID            int64                             `json:"id"`
+	UserID        int64                             `json:"user_id"`
+	APIKeyID      int64                             `json:"api_key_id"`
+	AccountID     int64                             `json:"account_id"`
+	RequestID     string                            `json:"request_id"`
+	Model         string                            `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the client-requested effort (mapping-hidden, like Model).
@@ -675,8 +693,10 @@ type UsageLog struct {
 	CacheCreationTokens int `json:"cache_creation_tokens"`
 	CacheReadTokens     int `json:"cache_read_tokens"`
 
-	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
-	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
+	CacheCreation5mTokens  int `json:"cache_creation_5m_tokens"`
+	CacheCreation1hTokens  int `json:"cache_creation_1h_tokens"`
+	CacheCreation30mTokens int `json:"cache_creation_30m_tokens"`
+	CacheCreation12hTokens int `json:"cache_creation_12h_tokens"`
 
 	InputCost                 float64 `json:"input_cost"`
 	OutputCost                float64 `json:"output_cost"`
@@ -696,6 +716,10 @@ type UsageLog struct {
 	NativeCompactionV2 bool `json:"native_compaction_v2"`
 	DurationMs         *int `json:"duration_ms"`
 	FirstTokenMs       *int `json:"first_token_ms"`
+	// QueueWaitMs is pre-forward elapsed time, not client E2E. Legacy timers
+	// can overlap it; QueueTiming carries explicit measured server/forward scopes.
+	QueueWaitMs *int                 `json:"queue_wait_ms"`
+	QueueTiming *service.QueueTiming `json:"queue_timing"`
 
 	// 图片生成字段
 	ImageCount         int            `json:"image_count"`
@@ -723,6 +747,11 @@ type UsageLog struct {
 
 	// BillingMode 计费模式：token/image
 	BillingMode *string `json:"billing_mode,omitempty"`
+
+	// UpstreamResponseModel is the model declared by the upstream response.
+	// End-user payloads include it only when the admin visibility setting is on.
+	// Omitted otherwise so mapped models stay hidden by default.
+	UpstreamResponseModel *string `json:"upstream_response_model,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 

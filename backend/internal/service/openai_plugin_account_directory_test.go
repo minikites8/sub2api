@@ -92,17 +92,19 @@ func TestAccountReadableSnapshot_DenylistTripwire(t *testing.T) {
 	// = relational graphs with back-references that would cycle under encoding/json.
 	// InitialQualityPlan = internal creation-only policy, not readable plugin metadata.
 	stripped := map[string]struct{}{
-		"Credentials": {}, "Groups": {}, "AccountGroups": {}, "ProxyPool": {}, "InitialQualityPlan": {},
+		"Credentials": {}, "Groups": {}, "AccountGroups": {}, "ProxyPool": {}, "InitialQualityPlan": {}, "InitialAdmissionPlan": {},
 		"KiroQuotaState": {}, "KiroQuotaReason": {}, "KiroQuotaResetAt": {}, "KiroRuntimeState": {}, "KiroRuntimeReason": {}, "KiroRuntimeResetAt": {},
 	}
 	// Fields intentionally exposed as readable metadata (incl. Extra and Proxy —
 	// the proxy password is already handed out via ResolveOutboundIdentity's URL).
 	safeToExpose := map[string]struct{}{
 		"ID": {}, "Name": {}, "Notes": {}, "Platform": {}, "Type": {}, "Extra": {},
+		// Stable non-secret grant attribution is safe plugin metadata.
+		"AuthConnectionID": {}, "AuthConnectionRevision": {},
 		"Proxy": {}, "ProxyID": {}, "ProxyFallbackOriginID": {}, "ProxyFallbackOriginName": {},
 		"Concurrency": {}, "Priority": {}, "RateMultiplier": {}, "LoadFactor": {}, "IsFallback": {},
 		"GroupRateMultiplier": {}, "ProxyPoolConfigured": {},
-		"Status": {}, "ErrorMessage": {}, "LastUsedAt": {}, "ExpiresAt": {},
+		"Status": {}, "ErrorMessage": {}, "LastUsedAt": {}, "ExpiresAt": {}, "PerformancePaused": {},
 		"AutoPauseOnExpired": {}, "CreatedAt": {}, "UpdatedAt": {}, "Schedulable": {},
 		"RateLimitedAt": {}, "RateLimitResetAt": {}, "OverloadUntil": {},
 		"TempUnschedulableUntil": {}, "TempUnschedulableReason": {},
@@ -127,6 +129,7 @@ func TestAccountReadableSnapshot_DenylistTripwire(t *testing.T) {
 	// The raw Credentials blob must never serialize; Extra and the proxy ARE released.
 	acct := &Account{
 		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive,
+		PerformancePaused:  true,
 		InitialQualityPlan: &ScheduledTestPlan{PelicanConfig: &PelicanTestConfig{Prompt: "PRIVATE-INITIAL-QUALITY-PROMPT"}},
 		Credentials:        map[string]any{"access_token": "AT", "refresh_token": "LEAK-REFRESH"},
 		Extra:              map[string]any{"opaque": "extra-released", "codex_turn_ticket:gpt-6-astra": map[string]any{"state": "private-ticket-state"}},
@@ -136,6 +139,7 @@ func TestAccountReadableSnapshot_DenylistTripwire(t *testing.T) {
 	require.NotNil(t, snap)
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(snap, &m))
+	assert.Equal(t, true, m["PerformancePaused"])
 	assert.NotContains(t, string(snap), "LEAK-REFRESH", "raw Credentials must never appear in metadata")
 	assert.NotContains(t, string(snap), "private-ticket-state")
 	assert.NotContains(t, m, "InitialQualityPlan")

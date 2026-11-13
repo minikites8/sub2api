@@ -2,54 +2,55 @@
 
 package repository
 
-import (
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
-)
+import "github.com/Wei-Shaw/sub2api/internal/service"
 
-func (s *APIKeyRepoSuite) TestOrderedGroupBindings() {
-	user := s.mustCreateUser("ordered-groups@test.com")
-	first := s.mustCreateGroup("ordered-first")
-	second := s.mustCreateGroup("ordered-second")
-	third := s.mustCreateGroup("ordered-third")
-	key := &service.APIKey{UserID: user.ID, Key: "sk-ordered", Name: "ordered", Status: service.StatusActive,
-		GroupID: &first.ID, GroupIDs: []int64{first.ID, second.ID, third.ID}}
+func (s *APIKeyRepoSuite) TestAdditionalGroupReplacementAndPrimaryRemoval() {
+	user := s.mustCreateUser("replace-multi@test.invalid")
+	first := s.mustCreateGroup("multi-first")
+	second := s.mustCreateGroup("multi-second")
+	third := s.mustCreateGroup("multi-third")
+	key := &service.APIKey{UserID: user.ID, Key: "sk-multi-ctes", Name: "multi", Status: service.StatusActive, GroupID: &first.ID, GroupIDs: []int64{first.ID, second.ID}}
 	s.Require().NoError(s.repo.Create(s.ctx, key))
-	auth, err := s.repo.GetByKeyForAuth(s.ctx, key.Key)
+	affected, err := s.repo.UpdateGroupIDByUserAndGroup(s.ctx, user.ID, second.ID, third.ID)
 	s.Require().NoError(err)
-	s.Require().Equal(key.GroupIDs, auth.GroupIDs)
-	keys, _, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 10}, service.APIKeyListFilters{GroupID: &second.ID})
+	s.Equal(int64(1), affected)
+	got, err := s.repo.GetByKeyForAuth(s.ctx, key.Key)
 	s.Require().NoError(err)
-	s.Require().Len(keys, 1)
-	cachedKeys, err := s.repo.ListKeysByGroupID(s.ctx, second.ID)
+	s.Equal([]int64{first.ID, third.ID}, got.GroupIDs)
+	_, err = s.repo.ClearGroupIDByGroupID(s.ctx, first.ID)
 	s.Require().NoError(err)
-	s.Require().Equal([]string{key.Key}, cachedKeys)
-	count, err := s.repo.CountByGroupID(s.ctx, second.ID)
+	got, err = s.repo.GetByID(s.ctx, key.ID)
 	s.Require().NoError(err)
-	s.Require().EqualValues(1, count)
+	s.Require().NotNil(got.GroupID)
+	s.Equal(third.ID, *got.GroupID)
+	s.Equal([]int64{third.ID}, got.GroupIDs)
+}
 
-	// Moving to an already bound group deduplicates while preserving priority.
-	n, err := s.repo.UpdateGroupIDByUserAndGroup(s.ctx, user.ID, first.ID, second.ID)
-	s.Require().NoError(err)
-	s.Require().EqualValues(1, n)
-	updated, err := s.repo.GetByID(s.ctx, key.ID)
-	s.Require().NoError(err)
-	s.Require().Equal([]int64{second.ID, third.ID}, updated.GroupIDs)
-	s.Require().Equal(second.ID, *updated.GroupID)
-
-	n, err = s.repo.ClearGroupIDByGroupID(s.ctx, second.ID)
-	s.Require().NoError(err)
-	s.Require().EqualValues(1, n)
-	updated, err = s.repo.GetByID(s.ctx, key.ID)
-	s.Require().NoError(err)
-	s.Require().Equal([]int64{third.ID}, updated.GroupIDs)
-	s.Require().Equal(third.ID, *updated.GroupID)
-
-	updated.GroupID = nil
-	updated.GroupIDs = []int64{}
-	s.Require().NoError(s.repo.Update(s.ctx, updated, service.APIKeyUpdateFields{GroupID: true}))
-	updated, err = s.repo.GetByID(s.ctx, key.ID)
-	s.Require().NoError(err)
-	s.Require().Empty(updated.OrderedGroupIDs())
-	s.Require().Nil(updated.GroupID)
+func (s *APIKeyRepoSuite) TestGroupDeletionRemovesAdditionalKeyBindings() {
+	for _, guarded := range []bool{false, true} {
+		s.Run(map[bool]string{false: "cascade", true: "if-empty"}[guarded], func() {
+			user := s.mustCreateUser("delete-extra-" + map[bool]string{false: "cascade", true: "empty"}[guarded] + "@test.invalid")
+			primary := s.mustCreateGroup("keep-primary-" + user.Email)
+			deleted := s.mustCreateGroup("delete-extra-" + user.Email)
+			other := s.mustCreateGroup("keep-extra-" + user.Email)
+			key := &service.APIKey{UserID: user.ID, Key: "sk-delete-extra-" + user.Email, Name: "multi", Status: service.StatusActive, GroupID: &primary.ID, GroupIDs: []int64{primary.ID, deleted.ID, other.ID}}
+			s.Require().NoError(s.repo.Create(s.ctx, key))
+			groups := newGroupRepositoryWithSQL(s.client, s.repo.sql)
+			var err error
+			if guarded {
+				_, err = groups.DeleteCascadeIfEmpty(s.ctx, deleted.ID)
+			} else {
+				_, err = groups.DeleteCascade(s.ctx, deleted.ID)
+			}
+			s.Require().NoError(err)
+			var count int
+			s.Require().NoError(scanSingleRow(s.ctx, s.client, "SELECT COUNT(*) FROM api_key_groups WHERE api_key_id=$1 AND group_id=$2", []any{key.ID, deleted.ID}, &count))
+			s.Zero(count)
+			got, err := s.repo.GetByID(s.ctx, key.ID)
+			s.Require().NoError(err)
+			s.Require().NotNil(got.GroupID)
+			s.Equal(primary.ID, *got.GroupID)
+			s.Equal([]int64{primary.ID, other.ID}, got.GroupIDs)
+		})
+	}
 }

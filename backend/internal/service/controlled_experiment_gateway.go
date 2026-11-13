@@ -168,9 +168,6 @@ func (g *controlledExperimentGateway) Execute(parent context.Context, route Cont
 		d.ResponseModel = result.UpstreamResponseModel
 		d.Usage = result.Usage
 		d.UsageSource = "provider"
-		if recorder.Header().Get("X-Prism-Usage") == "estimated" {
-			d.UsageSource = "estimated"
-		}
 		if result.UsageUnavailable {
 			d.UsageSource = "unavailable"
 		}
@@ -180,7 +177,7 @@ func (g *controlledExperimentGateway) Execute(parent context.Context, route Cont
 		d.EffortEvidence = "request_sent"
 		if g.billing != nil && !result.UsageUnavailable {
 			cacheCreation := result.Usage.CacheCreationInputTokens
-			if account.IsExcelBPSCacheCreationAsInputEnabled() && result.UpstreamEndpoint == "/basispoints/api/responses" {
+			if excelBPSCacheCreationBilledAsInput(account, result) {
 				cacheCreation = 0
 			}
 			inputTokens := max(result.Usage.InputTokens-result.Usage.CacheReadInputTokens-cacheCreation, 0)

@@ -28,7 +28,9 @@ var (
 	ErrInvalidCredentials           = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
 	ErrUserNotActive                = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
 	ErrEmailExists                  = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrEmailAliasNotAllowed         = infraerrors.BadRequest("EMAIL_ALIAS_NOT_ALLOWED", "email aliases cannot register; remove dots from Gmail usernames, +tags, and trailing domain dots")
 	ErrEmailReserved                = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
+	ErrRegistrationIPLimit          = infraerrors.Forbidden("REGISTRATION_IP_LIMIT", "this IP address has already registered two accounts; contact support")
 	ErrInvalidToken                 = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
 	ErrTokenExpired                 = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
 	ErrAccessTokenExpired           = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
@@ -82,6 +84,7 @@ type JWTClaims struct {
 
 // AuthService 认证服务
 type AuthService struct {
+	lottery               *LotteryService
 	entClient             *dbent.Client
 	userRepo              UserRepository
 	redeemRepo            RedeemCodeRepository
@@ -263,6 +266,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
 	}
+	rawEmail := email
 	email = normalizeRegistrationEmailAddress(email)
 
 	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
@@ -273,6 +277,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		return "", nil, err
 	}
 
+	if err := s.validateRegistrationEmailAlias(ctx, rawEmail); err != nil {
+		return "", nil, err
+	}
 	// 检查是否需要邀请码
 	var invitationRedeemCode *RedeemCode
 	if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
@@ -364,10 +371,14 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if invitationRedeemCode != nil {
 		if err := s.createUserAndClaimInvitation(ctx, user, invitationRedeemCode); err != nil {
 			switch {
+			case errors.Is(err, ErrEmailAliasNotAllowed):
+				return "", nil, ErrEmailAliasNotAllowed
 			case errors.Is(err, ErrEmailExists):
 				return "", nil, ErrEmailExists
 			case errors.Is(err, ErrEmailDomainRegistrationLimit):
 				return "", nil, ErrEmailDomainRegistrationLimit
+			case errors.Is(err, ErrRegistrationIPLimit):
+				return "", nil, ErrRegistrationIPLimit
 			case errors.Is(err, ErrInvitationCodeInvalid):
 				return "", nil, ErrInvitationCodeInvalid
 			default:
@@ -450,6 +461,9 @@ func (s *AuthService) createUserWithRegistrationPromo(ctx context.Context, user 
 
 func (s *AuthService) createRegistrationUser(ctx context.Context, user *User) error {
 	if err := s.createUserWithRegistrationEmailGuard(ctx, user); err != nil {
+		if errors.Is(err, ErrRegistrationIPLimit) {
+			return ErrRegistrationIPLimit
+		}
 		if errors.Is(err, ErrEmailExists) {
 			return ErrEmailExists
 		}
@@ -485,6 +499,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return ErrRegDisabled
 	}
+	rawEmail := email
 	email = normalizeRegistrationEmailAddress(email)
 
 	if isReservedEmail(email) {
@@ -494,6 +509,9 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		return err
 	}
 
+	if err := s.validateRegistrationEmailAlias(ctx, rawEmail); err != nil {
+		return err
+	}
 	// 检查邮箱是否已存在（含 +别名 / Gmail 点号变体归一化，防止单个收件箱批量派生注册）
 	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
@@ -527,6 +545,7 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		logger.LegacyPrintf("service.auth", "%s", "[Auth] Registration is disabled")
 		return nil, ErrRegDisabled
 	}
+	rawEmail := email
 	email = normalizeRegistrationEmailAddress(email)
 
 	if isReservedEmail(email) {
@@ -536,6 +555,9 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		return nil, err
 	}
 
+	if err := s.validateRegistrationEmailAlias(ctx, rawEmail); err != nil {
+		return nil, err
+	}
 	// 检查邮箱是否已存在（含 +别名 / Gmail 点号变体归一化；在发信前拦截，避免批量脚本消耗发信配额）
 	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
@@ -778,6 +800,10 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				return "", nil, ErrRegDisabled
 			}
 
+			if err := s.validateRegistrationEmailAlias(ctx, email); err != nil {
+				return "", nil, err
+			}
+
 			randomPassword, err := randomHexString(32)
 			if err != nil {
 				logger.LegacyPrintf("service.auth", "[Auth] Failed to generate random password for oauth signup: %v", err)
@@ -810,6 +836,9 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 			}
 
 			if err := s.userRepo.Create(ctx, newUser); err != nil {
+				if errors.Is(err, ErrRegistrationIPLimit) {
+					return "", nil, ErrRegistrationIPLimit
+				}
 				if errors.Is(err, ErrEmailExists) {
 					// 并发场景：GetByEmail 与 Create 之间用户被创建。
 					user, err = s.userRepo.GetByEmail(ctx, email)
@@ -913,6 +942,10 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				return nil, nil, ErrRegDisabled
 			}
 
+			if err := s.validateRegistrationEmailAlias(ctx, email); err != nil {
+				return nil, nil, err
+			}
+
 			// 检查是否需要邀请码
 			var invitationRedeemCode *RedeemCode
 			if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
@@ -974,6 +1007,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				txCtx := dbent.NewTxContext(ctx, tx)
 
 				if err := s.userRepo.Create(txCtx, newUser); err != nil {
+					if errors.Is(err, ErrRegistrationIPLimit) {
+						return nil, nil, ErrRegistrationIPLimit
+					}
 					if errors.Is(err, ErrEmailExists) {
 						user, err = s.userRepo.GetByEmail(ctx, email)
 						if err != nil {
@@ -1010,6 +1046,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				}
 			} else {
 				if err := s.userRepo.Create(ctx, newUser); err != nil {
+					if errors.Is(err, ErrRegistrationIPLimit) {
+						return nil, nil, ErrRegistrationIPLimit
+					}
 					if errors.Is(err, ErrEmailExists) {
 						user, err = s.userRepo.GetByEmail(ctx, email)
 						if err != nil {
@@ -1206,6 +1245,9 @@ func (s *AuthService) postAuthUserBootstrap(ctx context.Context, user *User, sig
 
 	if touchLogin {
 		s.touchUserLogin(ctx, user.ID)
+	}
+	if err := s.lottery.RegisterInvitedUser(ctx, user.ID); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Lottery invitation binding pending: user_id=%d err=%v", user.ID, err)
 	}
 }
 
@@ -1467,6 +1509,9 @@ func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email 
 func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, user *User) error {
 	if s == nil || s.userRepo == nil {
 		return ErrServiceUnavailable
+	}
+	if err := s.validateRegistrationEmailAlias(ctx, user.Email); err != nil {
+		return err
 	}
 	whitelist := []string{}
 	if s.settingService != nil {
@@ -2258,10 +2303,15 @@ func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string)
 		}
 	}
 
-	// Token轮转：立即使旧Token失效
-	if err := s.refreshTokenCache.DeleteRefreshToken(ctx, tokenHash); err != nil {
-		logger.LegacyPrintf("service.auth", "[Auth] Failed to delete old refresh token: %v", err)
-		// 继续处理，不影响主流程
+	// Token轮转：原子消费旧Token。并发刷新时只有一个请求能成功，
+	// 其余请求拿到 ErrRefreshTokenNotFound，避免同一个 Refresh Token 被兑换两次。
+	if _, err := s.refreshTokenCache.ConsumeRefreshToken(ctx, tokenHash); err != nil {
+		if errors.Is(err, ErrRefreshTokenNotFound) {
+			logger.LegacyPrintf("service.auth", "[Auth] Refresh token already consumed, possible reuse attack")
+			return nil, ErrRefreshTokenInvalid
+		}
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to consume old refresh token: %v", err)
+		return nil, ErrServiceUnavailable
 	}
 
 	// 生成新的Token对，保持同一个家族ID

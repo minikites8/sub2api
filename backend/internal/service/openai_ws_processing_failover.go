@@ -1,11 +1,11 @@
 package service
 
 import (
-	"context"
+	"net/http"
+
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
-	"net/http"
 )
 
 // Existing processing failures and explicitly opted-in upstream errors enter
@@ -69,42 +69,21 @@ func (s *openAIWSFirstOutputStage) messages(payload []byte) [][]byte {
 	return nil
 }
 
-// The upstream wrapper observes deadlines before staging; metadata still
-// advances transport activity while the first-output deadline stays armed.
-type openAIWSProcessingStageFrameConn struct {
-	openaiwsv2.FrameConn
-	stage         openAIWSFirstOutputStage
-	ready         [][]byte
-	opaqueType    coderws.MessageType
-	opaquePayload []byte
-	opaqueReady   bool
-}
-
-func (c *openAIWSProcessingStageFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
-	for {
-		if len(c.ready) > 0 {
-			payload := c.ready[0]
-			c.ready = c.ready[1:]
-			return coderws.MessageText, payload, nil
+// frames stages delivery only: the relay has already observed this frame's
+// usage, identity and timing. A transport failure cannot discard that evidence.
+func (s *openAIWSFirstOutputStage) frames(kind coderws.MessageType, payload []byte) []openaiwsv2.RelayFrame {
+	if kind == coderws.MessageText {
+		messages := s.messages(payload)
+		frames := make([]openaiwsv2.RelayFrame, 0, len(messages))
+		for _, message := range messages {
+			frames = append(frames, openaiwsv2.RelayFrame{MessageType: kind, Payload: message})
 		}
-		if c.opaqueReady {
-			c.opaqueReady = false
-			return c.opaqueType, c.opaquePayload, nil
-		}
-		kind, payload, err := c.FrameConn.ReadFrame(ctx)
-		if err != nil {
-			return kind, payload, err
-		}
-		if kind != coderws.MessageText {
-			c.stage.committed = true
-			c.ready = c.stage.pending
-			c.stage.pending = nil
-			c.stage.bytes = 0
-			c.opaqueType = kind
-			c.opaquePayload = payload
-			c.opaqueReady = true
-			continue
-		}
-		c.ready = c.stage.messages(payload)
+		return frames
 	}
+	frames := make([]openaiwsv2.RelayFrame, 0, len(s.pending)+1)
+	for _, message := range s.pending {
+		frames = append(frames, openaiwsv2.RelayFrame{MessageType: coderws.MessageText, Payload: message})
+	}
+	s.pending, s.bytes, s.committed = nil, 0, true
+	return append(frames, openaiwsv2.RelayFrame{MessageType: kind, Payload: payload})
 }

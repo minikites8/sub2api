@@ -71,7 +71,7 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 	}
 
-	responsesRequest, err := apicompat.ChatCompletionsToResponses(&request)
+	responsesRequest, err := chatCompletionsToResponses(settingServiceConfig(s.settingService), &request)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
@@ -225,6 +225,13 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 	thinkingEnabled := claudeRequest.Thinking != nil &&
 		(claudeRequest.Thinking.Type == "enabled" || claudeRequest.Thinking.Type == "adaptive")
 	mappedModel = applyThinkingModelSuffix(mappedModel, thinkingEnabled)
+	if !account.oauthInitialSelectionAllows(mappedModel) {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
+		return nil, s.writeAntigravityCompatError(c, http.StatusForbidden, "permission_error", fmt.Sprintf("model %s not in whitelist", mappedModel))
+	}
+	if geminiImageGenerationDenied(c, nil, request.originalModel, mappedModel) {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", ImageGenerationPermissionMessage())
+	}
 
 	if s.tokenProvider == nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "api_error", "Antigravity token provider not configured")
@@ -266,7 +273,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 	mappedModel string,
 ) ([]byte, error) {
 	if strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
-		body, err := convertClaudeMessagesToGeminiGenerateContent(claudeBody)
+		body, err := convertClaudeMessagesToGeminiGenerateContent(claudeBody, mappedModel)
 		if err != nil {
 			return nil, err
 		}
@@ -602,6 +609,9 @@ func (s *AntigravityGatewayService) mapAntigravityCompatCollectionError(c *gin.C
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
+	}
+	if errors.Is(err, antigravity.ErrMalformedFunctionCall) {
+		return s.writeAntigravityCompatError(c, http.StatusBadGateway, "malformed_function_call", err.Error())
 	}
 	if strings.Contains(err.Error(), "stream data interval timeout") {
 		return s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_timeout", "Upstream stream data interval timeout")

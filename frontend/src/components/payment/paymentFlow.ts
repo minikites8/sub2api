@@ -80,6 +80,7 @@ export interface PaymentLaunchDecision {
 export interface BuildCreateOrderPayloadInput {
   amount: number
   paymentType: string
+  paymentSubtype?: string
   orderType: OrderType
   planId?: number
   quantity?: number
@@ -148,6 +149,9 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
   }
   if (input.promoCode?.trim()) {
     payload.promo_code = input.promoCode.trim()
+  }
+  if (visibleMethod === 'stripe' && input.paymentSubtype) {
+    payload.payment_subtype = input.paymentSubtype
   }
   if (input.orderType === 'subscription' && input.renewalMode) {
     payload.renewal_mode = input.renewalMode

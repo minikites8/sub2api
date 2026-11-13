@@ -92,7 +92,59 @@ func isOpenAIAccount(account *Account) bool {
 
 // handleOpenAIAccountUpstreamError expects canonicalModel to be the model used
 // for scheduling after applying account mapping exactly once.
-func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) bool {
+func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) (shouldDisable bool) {
+	if s != nil {
+		var disabledOn429 bool
+		ctx, disabledOn429 = s.rateLimitService.maybeDisableOpenAISchedulingOn429(ctx, account, statusCode, headers)
+		if disabledOn429 {
+			defer func() { shouldDisable = true }()
+		}
+	}
+	if isOpenAIUpstreamSessionBlocked(responseBody) {
+		return false
+	}
+	// Apply the same exemption before access-state and custom cooldown fast
+	// paths, which can otherwise block the credential before the shared handler.
+	if isOpenAIRequestScoped403(account, statusCode, responseBody) {
+		return false
+	}
+	// Capacity shedding describes this request, not account health. Keep the
+	// account schedulable while the request-local retry budget handles recovery.
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityResponse(statusCode, headers, responseBody) {
+		// This upstream response still breaks an IP-401 streak even though its
+		// request-scoped failure must not disable the selected credential.
+		if s != nil && s.rateLimitService != nil {
+			s.rateLimitService.resetOpenAIIPUnauthorizedStreak(account)
+		}
+		// An explicit model-scoped rule overrides the default retry policy without
+		// turning a request-level overload into an account-wide health failure.
+		model := firstRequestedModel(canonicalModel)
+		if s != nil && s.rateLimitService != nil && model != "" && account.IsTempUnschedulableEnabled() {
+			ruleBody := openAICapacityShedRuleBody(responseBody)
+			matches := matchTempUnschedulableRules(account, statusCode, ruleBody)
+			if len(matches) > 0 && matches[0].rule.Scope == TempUnschedScopeModel {
+				stateCtx, cancel := openAIAccountStateContext(ctx)
+				defer cancel()
+				return s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, ruleBody, model)
+			}
+		}
+		return false
+	}
+	if account != nil && account.AuthConnectionID != "" && !isOpenAIHTTPUpstreamAccessStateError(statusCode, "", responseBody) && statusCode != http.StatusTooManyRequests {
+		if (statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden || statusCode >= 500) && s != nil && s.excelOAuthReauth != nil {
+			stateCtx, cancel := openAIAccountStateContext(ctx)
+			defer cancel()
+			_ = s.excelOAuthReauth.FailAuthConnection(stateCtx, account, statusCode)
+		}
+		return false
+	}
+	// SIWC has independent credentials and limits. Never revoke or relogin the primary Codex grant on its errors.
+	if account.IsSIWCEnabled() && account.AuthConnectionID == "" {
+		return false
+	}
+	if s != nil {
+		ctx = s.rateLimitService.maybeRotateOpenAITOTPOn429(ctx, account, statusCode)
+	}
 	// Observe other HTTP responses before request/model-scoped policies return.
 	// The shared handler below skips this reset to keep one observation per response.
 	if s != nil && s.rateLimitService != nil && !isOpenAIIPUnauthorizedResponse(statusCode, responseBody) {
@@ -105,11 +157,6 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 		scheduleOpenCodeGoUsageActivity(s.deferredService, account)
-	}
-	// Capacity shedding describes this request, not account health. Keep the
-	// account schedulable while the request-local retry budget handles recovery.
-	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
-		return false
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
@@ -145,7 +192,9 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// "tool choice not found in 'tools'" 400 means upstream revoked this account's
 	// image capability. Gated on the self-built marker: passthrough clients control
 	// their own tools/tool_choice and could otherwise poison a healthy account.
-	if isOpenAIImagesSelfBuiltRequest(ctx) && isOpenAIImageCapabilityLossError(statusCode, responseBody) {
+	// A structured 403 image-permission denial is authoritative for passthrough too.
+	if isOpenAIImagePermissionError(statusCode, responseBody) ||
+		(isOpenAIImagesSelfBuiltRequest(ctx) && isOpenAIImageCapabilityLossError(statusCode, responseBody)) {
 		if s != nil && s.rateLimitService != nil {
 			_ = s.rateLimitService.HandleOpenAIImageCapabilityLoss(stateCtx, account, statusCode, responseBody)
 		}
@@ -166,7 +215,8 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// Isolate a custom temporary-unschedulable match to the known upstream
 	// model before entering the generic account error path. This keeps the
 	// account available to other models and avoids the account runtime blocker.
-	if s.rateLimitService != nil && statusCode != http.StatusUnauthorized && len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" &&
+	if s.rateLimitService != nil && len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" &&
+		tempUnschedRulesApply(account, statusCode, responseBody, canonicalModel[0]) &&
 		s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, responseBody, canonicalModel[0]) {
 		return true
 	}
@@ -180,8 +230,9 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if s.rateLimitService == nil {
 		return false
 	}
-	shouldDisable := s.rateLimitService.handleUpstreamErrorAfterStreakReset(stateCtx, account, statusCode, headers, responseBody)
-	modelTempMatched := statusCode != http.StatusUnauthorized && tempUnschedulableModel(stateCtx, nil) != "" &&
+	shouldDisable = s.rateLimitService.handleUpstreamErrorAfterStreakReset(stateCtx, account, statusCode, headers, responseBody)
+	tempModel := tempUnschedulableModel(stateCtx, nil)
+	modelTempMatched := tempModel != "" && tempUnschedRulesApply(account, statusCode, responseBody, tempModel) &&
 		len(matchTempUnschedulableRules(account, statusCode, responseBody)) > 0
 	if shouldDisable && !modelTempMatched {
 		s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")

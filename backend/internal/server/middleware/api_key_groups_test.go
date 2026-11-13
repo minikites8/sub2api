@@ -116,11 +116,26 @@ func TestAPIKeyOrderedGroupsQueueKeepsSelectedIdentity(t *testing.T) {
 	keys := service.NewAPIKeyService(repo, nil, groups, nil, nil, nil, &config.Config{})
 	selected, err := keys.APIKeyInBoundGroup(context.Background(), key, 2)
 	require.NoError(t, err)
-	revalidate := newAPIKeyQueueAuthRevalidator(keys, key.Key, "127.0.0.1", selected)
+	lookup := func(ctx context.Context, credential string) (*service.APIKey, error) {
+		latest, lookupErr := keys.GetByKey(ctx, credential)
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+		return keys.PinAPIKeyGroup(ctx, latest, *selected.GroupID)
+	}
+	revalidate := newAPIKeyAuthRevalidator(lookup, key.Key, "127.0.0.1", selected)
 	limit, err := revalidate(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, 4, limit)
+	key.GroupIDs = []int64{2, 1}
+	key.GroupID = &groups.groups[2].ID
+	key.Group = groups.groups[2]
+	limit, err = revalidate(context.Background())
+	require.NoError(t, err, "reordering bindings must keep the selected group pinned")
+	require.Equal(t, 4, limit)
 	key.GroupIDs = []int64{1}
+	key.GroupID = &primary.ID
+	key.Group = primary
 	_, err = revalidate(context.Background())
 	require.Error(t, err, "removing the selected binding must revoke the queued request")
 }

@@ -1,4 +1,5 @@
 export default {
+  questionBank: {'mode': 'SVG prompt mode', 'random': 'Random bank (shared round)', 'custom': 'Custom prompt', 'hint': 'All accounts and samples in a round share one question. Prepare the next round to draw again. Review results manually against the question criteria; no automatic grading.', 'next': 'Prepare next round', 'snapshot': 'Question and review criteria', 'legacy': 'No question version or review criteria were recorded (older record or custom prompt).', 'error': 'Could not prepare the question. Please retry.'},
   cost: {
     today: 'Today {amount}',
     total: 'Total {amount}',
@@ -40,7 +41,7 @@ export default {
   },
   plans: {
     title: 'Group tests',
-    hint: 'For every question the scheduler picks the account by the same rules as a user request. When that account fails before producing output, another one is tried, as a user request would, up to 3 accounts.',
+    hint: 'The scheduler picks an account for each question. Failures before output, temporary unavailability or interrupted streams restart on another account, up to 3 accounts. Retries may increase test costs.',
     empty: 'No group tests yet. Once you add one, its group appears on the user showcase.',
     modelMissing: 'No model set',
     parallel: '{count} per run',

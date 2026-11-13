@@ -419,7 +419,9 @@ func TestGPTAutoLiveClassifierFailurePolicies(t *testing.T) {
 			repo.waitRows(t, 1)
 			row := repo.lastRow(t)
 			require.Equal(t, GPTAutoRouteFallback, row.RoutingReason)
-			require.Equal(t, failure.(*GPTAutoClassifierError).Class, row.FallbackReason)
+			classifierError, ok := failure.(*GPTAutoClassifierError)
+			require.True(t, ok)
+			require.Equal(t, classifierError.Class, row.FallbackReason)
 			require.Equal(t, GPTAutoEvaluationFailed, row.EvaluationStatus)
 		})
 		t.Run(name+"/reject_request", func(t *testing.T) {

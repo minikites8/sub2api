@@ -2,9 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -13,7 +11,7 @@ import (
 )
 
 func groupPolicyContext(strategy string, bps bool) context.Context {
-	return context.WithValue(context.Background(), ctxkey.Group, &Group{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, EnableBPS: bps, SchedulingStrategy: strategy})
+	return context.WithValue(context.Background(), ctxkey.Group, &Group{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, SchedulingStrategy: strategy})
 }
 
 func TestGroupSchedulingStrategyValidation(t *testing.T) {
@@ -91,61 +89,6 @@ func TestGroupSchedulingStrategyFallbackAndQuotaClassification(t *testing.T) {
 	require.Equal(t, 0, openAIGroupQuotaRank(&accounts[1], GroupSchedulingPriorityWeekly), "explicit no-5h marker overrides stale 5h fields")
 }
 
-func TestGroupBPSForwardRequiresBothSwitches(t *testing.T) {
-	for _, groupEnabled := range []bool{false, true} {
-		for _, accountEnabled := range []bool{false, true} {
-			t.Run(fmt.Sprintf("group=%t/account=%t", groupEnabled, accountEnabled), func(t *testing.T) {
-				account := excelAccount()
-				account.Extra["openai_excel_bps"] = accountEnabled
-				upstream := &httpUpstreamRecorder{responses: []*http.Response{excelBPSOrdinaryResponse()}}
-				svc := openAIClientToolsTestService(upstream)
-				svc.accountRepo = &turnAdmissionRepo{account: account}
-				body := []byte(`{"model":"gpt-5.6-sol","stream":false,"input":"hello"}`)
-				c, _ := newExcelBPSFallbackContext(body, false)
-				result, err := svc.Forward(groupPolicyContext(GroupSchedulingBalanced, groupEnabled), c, account, body)
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				require.Len(t, upstream.requests, 1)
-				if groupEnabled && accountEnabled {
-					require.Equal(t, "/basispoints/api/responses", upstream.requests[0].URL.Path)
-				} else {
-					require.Equal(t, chatgptCodexURL, upstream.requests[0].URL.String())
-				}
-				require.Equal(t, accountEnabled, account.IsExcelBPSEnabled(), "shared account setting remains unchanged")
-			})
-		}
-	}
-}
-
-func TestGroupBPSSchedulerAndManifestUsePlatformWhenDisabled(t *testing.T) {
-	account := excelAccount()
-	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{*account}}}
-	accounts, err := svc.listSchedulableAccountsForRequest(groupPolicyContext(GroupSchedulingBalanced, false), nil, PlatformOpenAI, "gpt-5.6-sol", false, nil)
-	require.NoError(t, err)
-	require.Len(t, accounts, 1)
-	require.False(t, accounts[0].IsExcelBPSEnabled())
-	fresh := svc.recheckSelectedOpenAIAccountFromDBBeforeProfit(groupPolicyContext(GroupSchedulingBalanced, false), account, nil, PlatformOpenAI, "gpt-5.6-sol", false, "")
-	require.NotNil(t, fresh)
-	require.False(t, fresh.IsExcelBPSEnabled())
-	require.True(t, account.IsExcelBPSEnabled())
-	body := []byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"1"}]}`)
-	group := &Group{ID: 7}
-	got, changed, err := restrictExcelBPSCodexModelsManifest(body, []Account{*account}, group)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.JSONEq(t, string(body), string(got))
-	group.EnableBPS = true
-	_, changed, err = restrictExcelBPSCodexModelsManifest(body, []Account{*account}, group)
-	require.NoError(t, err)
-	require.True(t, changed)
-	groupID := int64(99)
-	scoped := svc.openAIAccountForGroup(context.Background(), &groupID, account)
-	require.False(t, scoped.IsExcelBPSEnabled(), "missing group requires explicit opt-in")
-	encoded, err := json.Marshal(scoped)
-	require.NoError(t, err)
-	require.NotContains(t, string(encoded), "bpsDisabledByGroup")
-}
-
 func TestGroupSchedulingAdvancedSelectAndBusyFallback(t *testing.T) {
 	for _, tc := range []struct {
 		strategy  string
@@ -177,27 +120,5 @@ func TestGroupSchedulingAdvancedSelectAndBusyFallback(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestGroupBPSDisabledKeepsNativeWebSocketStickyAccount(t *testing.T) {
-	account := excelAccount()
-	account.Extra["openai_oauth_responses_websockets_v2_enabled"] = true
-	cache := &schedulerTestGatewayCache{}
-	svc := &OpenAIGatewayService{cfg: newSchedulerTestOpenAIWSV2Config(), accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{*account}}, cache: cache}
-	require.NoError(t, svc.BindStickySession(context.Background(), nil, "group-native", account.ID))
-	scheduler := newDefaultOpenAIAccountScheduler(svc, nil)
-	selection, decision, err := scheduler.Select(groupPolicyContext(GroupSchedulingBalanced, false), OpenAIAccountScheduleRequest{
-		Platform: PlatformOpenAI, SessionHash: "group-native", RequestedModel: "gpt-5.6-sol", RequiredTransport: OpenAIUpstreamTransportResponsesWebsocketV2,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, selection)
-	require.Equal(t, account.ID, selection.Account.ID)
-	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
-	require.False(t, selection.Account.IsExcelBPSEnabled())
-	require.True(t, account.IsExcelBPSEnabled())
-	require.Empty(t, cache.deletedSessions)
-	if selection.ReleaseFunc != nil {
-		selection.ReleaseFunc()
 	}
 }

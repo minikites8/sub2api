@@ -10,11 +10,12 @@ import (
 // PlazaOfficialPricing 模型广场展示用的官方参考价（USD per token），与计费同源：
 // LiteLLM → 内置兜底价卡 → 模型策略。字段为 nil 表示该项缺失（0 视为未配置）。
 type PlazaOfficialPricing struct {
-	InputPrice        *float64
-	OutputPrice       *float64
-	CacheWritePrice   *float64 // 5m 缓存写入（= LiteLLM cache_creation）
-	CacheWrite1hPrice *float64 // 1h 缓存写入，仅计费会区分 5m/1h 时给出
-	CacheReadPrice    *float64
+	InputPrice         *float64
+	OutputPrice        *float64
+	CacheWritePrice    *float64 // 5m 缓存写入（= LiteLLM cache_creation）
+	CacheWrite1hPrice  *float64 // 1h 缓存写入，仅计费会区分 5m/1h 时给出
+	CacheWrite12hPrice *float64 // OpenAI 12h cache-write price
+	CacheReadPrice     *float64
 	// Intervals 官方长上下文阶梯（多档时给出），不受分组开关影响。
 	Intervals []PricingInterval
 }
@@ -33,13 +34,13 @@ type PlazaModel struct {
 
 // PlazaGroup 模型广场中以分组为顶层的条目。
 //
-// 与 AvailableGroupRef 相比多了 Description 与 Models；Models 来自该分组关联渠道的
-// 支持模型（普通分组按分组平台隔离，Composite 分组展开关联渠道已配置的
-// 具体平台），与「可用渠道」页口径一致。
+// 与 AvailableGroupRef 相比多了 Description 与 Models；Models 合并该分组的
+// 网关账号目录与关联渠道模型，普通分组按平台隔离，Composite 分组保留具体平台。
 type PlazaGroup struct {
 	ID                     int64
 	Name                   string
 	Description            string
+	I18n                   GroupI18n
 	Platform               string
 	SubscriptionType       string
 	RateMultiplier         float64
@@ -65,7 +66,7 @@ type PlazaGroup struct {
 
 // ModelPlazaService 聚合模型广场数据。
 //
-// 模型枚举来自渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
+// 模型枚举来自网关账号目录及渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
 // 查询给出（与扣费走同一条解析链与计费函数），图片/按次模型沿用渠道/分组档位价。
 type ModelPlazaService struct {
 	channelRepo    ChannelRepository
@@ -73,6 +74,7 @@ type ModelPlazaService struct {
 	pricingService *PricingService
 	billingService *BillingService
 	resolver       *ModelPricingResolver
+	gatewayService *GatewayService
 }
 
 // NewModelPlazaService 创建模型广场服务。
@@ -82,6 +84,7 @@ func NewModelPlazaService(
 	pricingService *PricingService,
 	billingService *BillingService,
 	resolver *ModelPricingResolver,
+	gatewayService *GatewayService,
 ) *ModelPlazaService {
 	return &ModelPlazaService{
 		channelRepo:    channelRepo,
@@ -89,13 +92,13 @@ func NewModelPlazaService(
 		pricingService: pricingService,
 		billingService: billingService,
 		resolver:       resolver,
+		gatewayService: gatewayService,
 	}
 }
 
 // ListGroups 返回模型广场数据：每个活跃分组附带其可用模型与定价。
 //
-// 模型枚举口径与 ListAvailable 一致（Active 渠道、SupportedModels ∪ 全局定价回落、
-// 平台隔离），仅把顶层从渠道换成分组：
+// 合并网关模型目录与 Active 渠道专用模型，按分组平台和模型白名单隔离：
 //   - 渠道按 lower(name) 排序后遍历，保证同名模型去重结果确定；
 //   - 同分组同名模型「先见者胜」，仅当已存条目无定价而新条目有定价时升级替换；
 //   - token 模型的单价与阶梯按实收口径合成（见 ResolveContextPricingSchedule），
@@ -128,6 +131,7 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 			ID:                        g.ID,
 			Name:                      g.Name,
 			Description:               g.Description,
+			I18n:                      g.I18n,
 			Platform:                  g.Platform,
 			SubscriptionType:          g.SubscriptionType,
 			RateMultiplier:            g.RateMultiplier,
@@ -205,6 +209,32 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 	out := make([]PlazaGroup, 0, len(order))
 	for _, gid := range order {
 		pg := byGroup[gid]
+		g := groupEnt[gid]
+		// 渠道提供专用模型与定价；账号模型目录补齐未配置渠道的普通分组。
+		idx := modelIdx[gid]
+		if idx == nil {
+			idx = make(map[modelKey]int)
+		}
+		accountModels, err := s.accountModels(ctx, g)
+		if err != nil {
+			return nil, fmt.Errorf("list account models for group %d: %w", gid, err)
+		}
+		for _, m := range accountModels {
+			key := modelKey{platform: m.Platform, name: m.Name}
+			if _, seen := idx[key]; seen {
+				continue
+			}
+			idx[key] = len(pg.Models)
+			pg.Models = append(pg.Models, PlazaModel{Name: m.Name, Platform: m.Platform})
+		}
+		// 渠道模型同样遵守分组准入限制；通配模式不能作为可调用模型卡片展示。
+		models := make([]PlazaModel, 0, len(pg.Models))
+		for _, m := range pg.Models {
+			if strings.TrimSpace(m.Name) != "" && !strings.Contains(m.Name, "*") && g.ModelAllowlist.Allows(m.Name) {
+				models = append(models, m)
+			}
+		}
+		pg.Models = models
 		if len(pg.Models) == 0 {
 			continue
 		}
@@ -214,7 +244,6 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 			}
 			return pg.Models[i].Platform < pg.Models[j].Platform
 		})
-		g := groupEnt[gid]
 		for j := range pg.Models {
 			s.fillDisplayPricing(ctx, &pg.Models[j], g)
 			pg.Models[j].OfficialPricing = s.lookupOfficialPricing(ctx, pg.Models[j].Name, officialMemo)
@@ -231,12 +260,70 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 	return out, nil
 }
 
+// accountModels 使用网关的账号枚举和平台目录，不向上游发起模型发现请求。
+// 无可调度账号的平台不生成目录；现有渠道条目仍独立展示。
+func (s *ModelPlazaService) accountModels(ctx context.Context, g *Group) ([]SupportedModel, error) {
+	if s.gatewayService == nil || s.gatewayService.accountRepo == nil {
+		return nil, nil
+	}
+	accounts, err := s.gatewayService.accountRepo.ListSchedulableByGroupID(ctx, g.ID)
+	if err != nil {
+		return nil, err
+	}
+	platforms := make(map[string]struct{})
+	for i := range accounts {
+		platform := accounts[i].Platform
+		if g.Platform != PlatformComposite {
+			if platform != g.Platform && !mixedListingAccountAllowed(g.Platform, &accounts[i]) {
+				continue
+			}
+			platform = g.Platform
+		}
+		platforms[platform] = struct{}{}
+	}
+	var out []SupportedModel
+	for platform := range platforms {
+		ids := s.gatewayService.GetAvailableModels(ctx, &g.ID, platform)
+		// 复用 /v1/models 对未映射账号的平台目录；CN 供应商仅枚举账号映射。
+		if ids == nil && !IsMultiProtocolAPIKeyProvider(platform) {
+			ids = DefaultModelIDsForPlatform(platform)
+		}
+		if g.ModelAllowlistEnabled() {
+			source := ids
+			if !IsMultiProtocolAPIKeyProvider(platform) {
+				source = ModelListingSource(platform, ids, DefaultModelIDsForPlatform(platform))
+			}
+			ids = g.ModelAllowlist.FilterForListing(source)
+		}
+		for _, id := range ids {
+			// 默认目录及白名单展开仍须有账号能够在本分组服务该模型，
+			// 不能把空枚举或平台默认值当成账号分组限制的豁免。
+			for i := range accounts {
+				account := &accounts[i]
+				if account.Platform != platform && (!mixedListingAccountAllowed(platform, account) || !mixedListingModelAllowed(platform, id)) {
+					continue
+				}
+				if account.IsModelSupportedInGroup(&g.ID, id) {
+					out = append(out, SupportedModel{Name: id, Platform: platform})
+					break
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
 // fillDisplayPricing 把模型的展示定价换成实收口径：
 // token 模型取计费阶梯表（单价与档位均由真实计费函数得出），
 // 图片/按次模型（或阶梯表不可用时）沿用渠道定价与分组图片档位价。
 func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaModel, g *Group) {
 	if groupPricing := matchGroupModelPricing(g, m.Name); groupPricing != nil {
 		m.Pricing = groupPricing
+		// 分组模型级固定价就是实收价，不能再被分组图片兜底档位覆盖。
+		// 否则模型广场会显示 image_price_1k/2k/4k，而实际按 model_pricing 扣费。
+		if groupPricing.BillingMode == BillingModeImage || groupPricing.BillingMode == BillingModePerRequest {
+			return
+		}
 	}
 	if s.billingService != nil && s.resolver != nil {
 		sched, err := s.billingService.ResolveContextPricingSchedule(ctx, s.resolver, ContextPricingScheduleInput{
@@ -271,6 +358,7 @@ func plazaPricingFromSchedule(raw *ChannelModelPricing, sched *ContextPricingSch
 	out.OutputPrice = first.Output
 	out.CacheWritePrice = first.CacheWrite
 	out.CacheWrite1hPrice = first.CacheWrite1h
+	out.CacheWrite12hPrice = first.CacheWrite12h
 	out.CacheReadPrice = first.CacheRead
 	if len(sched.Tiers) > 1 {
 		out.Intervals = plazaIntervalsFromTiers(sched.Tiers)
@@ -282,15 +370,16 @@ func plazaIntervalsFromTiers(tiers []ContextPricingTier) []PricingInterval {
 	intervals := make([]PricingInterval, 0, len(tiers))
 	for i, t := range tiers {
 		intervals = append(intervals, PricingInterval{
-			MinTokens:         t.MinTokens,
-			MaxTokens:         t.MaxTokens,
-			TierLabel:         t.Label,
-			InputPrice:        t.Input,
-			OutputPrice:       t.Output,
-			CacheWritePrice:   t.CacheWrite,
-			CacheWrite1hPrice: t.CacheWrite1h,
-			CacheReadPrice:    t.CacheRead,
-			SortOrder:         i,
+			MinTokens:          t.MinTokens,
+			MaxTokens:          t.MaxTokens,
+			TierLabel:          t.Label,
+			InputPrice:         t.Input,
+			OutputPrice:        t.Output,
+			CacheWritePrice:    t.CacheWrite,
+			CacheWrite1hPrice:  t.CacheWrite1h,
+			CacheWrite12hPrice: t.CacheWrite12h,
+			CacheReadPrice:     t.CacheRead,
+			SortOrder:          i,
 		})
 	}
 	return intervals
@@ -365,6 +454,7 @@ func (s *ModelPlazaService) lookupOfficialPricing(ctx context.Context, modelName
 		if mp.SupportsCacheBreakdown {
 			result.CacheWrite1hPrice = nonZeroPtr(mp.CacheCreation1hPrice)
 		}
+		result.CacheWrite12hPrice = mp.CacheCreation12hPricePerToken
 		if s.resolver != nil {
 			sched, schedErr := s.billingService.ResolveContextPricingSchedule(ctx, s.resolver, ContextPricingScheduleInput{Model: modelName})
 			if schedErr == nil && sched != nil && len(sched.Tiers) > 1 {
@@ -372,7 +462,7 @@ func (s *ModelPlazaService) lookupOfficialPricing(ctx context.Context, modelName
 			}
 		}
 		if result.InputPrice == nil && result.OutputPrice == nil && result.CacheWritePrice == nil &&
-			result.CacheWrite1hPrice == nil && result.CacheReadPrice == nil && len(result.Intervals) == 0 {
+			result.CacheWrite1hPrice == nil && result.CacheWrite12hPrice == nil && result.CacheReadPrice == nil && len(result.Intervals) == 0 {
 			result = nil
 		}
 	}

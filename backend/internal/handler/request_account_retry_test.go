@@ -231,20 +231,3 @@ func TestRequestAccountRetryWebSocket(t *testing.T) {
 		})
 	}
 }
-
-func TestRequestAccountRetryBPSBudget(t *testing.T) {
-	for _, maxRetries := range []int{0, 1, 2, 3} {
-		t.Run(fmt.Sprint(maxRetries), func(t *testing.T) {
-			u := &excelBPSRateLimitUpstream{allFail: true, failureStatus: 503, ordinaryStatus: 400}
-			router := newExcelBPSRateLimitRouter(t, u)
-			req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"gpt-6-sol","input":"hello","stream":false}`))
-			req.Header.Set(requestretry.AccountHeader, "True")
-			req.Header.Set(requestretry.MaxRetriesHeader, fmt.Sprint(maxRetries))
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
-			require.NotEmpty(t, u.hits)
-			require.LessOrEqual(t, len(u.hits), maxRetries+1, "BPS fallback must not reset the request budget: %v", u.paths)
-			require.Contains(t, rec.Body.String(), "error")
-		})
-	}
-}

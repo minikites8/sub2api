@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -14,6 +16,30 @@ import (
 )
 
 func nextWithAPIKeyAdmissionOwner(c *gin.Context, apiKeyService *service.APIKeyService, credential string, trustedClientIP string, key *service.APIKey, googleStyle bool) {
+	var lookup func(context.Context, string) (*service.APIKey, error)
+	if apiKeyService != nil {
+		lookup = apiKeyService.GetByKey
+		if isResponsesWebSocketRoute(c) {
+			lookup = apiKeyService.GetByKeyUncached
+		}
+	}
+	if apiKeyService != nil && lookup != nil && len(key.ConfiguredGroupIDs()) > 1 && key.GroupID != nil {
+		baseLookup, groupID := lookup, *key.GroupID
+		lookup = func(ctx context.Context, credential string) (*service.APIKey, error) {
+			latest, err := baseLookup(ctx, credential)
+			if err != nil {
+				return nil, err
+			}
+			return apiKeyService.PinAPIKeyGroup(ctx, latest, groupID)
+		}
+	}
+	nextWithAPIKeyAdmissionLookup(c, lookup, credential, trustedClientIP, key, googleStyle)
+}
+
+// A regional lookup uses the authenticated local stream directly. Sharing the
+// owner/revalidation lifecycle preserves revocation and key-slot cancellation
+// without introducing the primary-backed API Key middleware.
+func nextWithAPIKeyAdmissionLookup(c *gin.Context, lookup func(context.Context, string) (*service.APIKey, error), credential string, trustedClientIP string, key *service.APIKey, googleStyle bool) {
 	var writer *apiKeyAdmissionWriter
 	// A WS connection outlives one capacity decision: install the revalidator
 	// (and its lightweight control owner) even when the handshake key is
@@ -21,12 +47,7 @@ func nextWithAPIKeyAdmissionOwner(c *gin.Context, apiKeyService *service.APIKeyS
 	// HTTP non-queue requests keep their existing shape.
 	installRevalidator := key.ConcurrencyLimit > 0 || isResponsesWebSocketRoute(c)
 	if installRevalidator {
-		revalidate := newAPIKeyQueueAuthRevalidator(apiKeyService, credential, trustedClientIP, key)
-		if isResponsesWebSocketRoute(c) && apiKeyService != nil {
-			// WS sessions must observe revocation even when an auth-cache
-			// invalidation is delayed or lost on this instance.
-			revalidate = newAPIKeyAuthRevalidator(boundGroupAuthLookup(apiKeyService, apiKeyService.GetByKeyUncached, key), credential, trustedClientIP, key)
-		}
+		revalidate := newAPIKeyAuthRevalidator(lookup, credential, trustedClientIP, key)
 		base := service.WithAPIKeyQueueAuthRevalidator(
 			c.Request.Context(),
 			revalidate,
@@ -45,37 +66,6 @@ func nextWithAPIKeyAdmissionOwner(c *gin.Context, apiKeyService *service.APIKeyS
 	// return here, while lease loss is distinguishable from normal owner cleanup.
 	if writer != nil {
 		writer.rejectIfLost()
-	}
-}
-
-// newAPIKeyQueueAuthRevalidator re-reads the authenticated key through the
-// existing auth cache (L1, then L2, with at most one database read after an
-// invalidation) and re-applies the same gates as initial authentication,
-// including the captured trusted client IP and the permissions this request
-// actually still needs. The stable key/group identity is captured by value at
-// installation time so a benign group edit (name, pricing, routing, nil vs
-// empty collections) never aborts the wait. A definite rejection stops the
-// queue wait with the same application error the middleware would return; any
-// other failure is classified by the queue as a service error.
-func newAPIKeyQueueAuthRevalidator(apiKeyService *service.APIKeyService, credential string, trustedClientIP string, initial *service.APIKey) service.APIKeyQueueAuthRevalidator {
-	var lookup func(context.Context, string) (*service.APIKey, error)
-	if apiKeyService != nil {
-		lookup = boundGroupAuthLookup(apiKeyService, apiKeyService.GetByKey, initial)
-	}
-	return newAPIKeyAuthRevalidator(lookup, credential, trustedClientIP, initial)
-}
-
-func boundGroupAuthLookup(keys *service.APIKeyService, lookup func(context.Context, string) (*service.APIKey, error), initial *service.APIKey) func(context.Context, string) (*service.APIKey, error) {
-	if initial == nil || initial.GroupID == nil || len(initial.OrderedGroupIDs()) <= 1 {
-		return lookup
-	}
-	groupID := *initial.GroupID
-	return func(ctx context.Context, credential string) (*service.APIKey, error) {
-		latest, err := lookup(ctx, credential)
-		if err != nil {
-			return nil, err
-		}
-		return keys.APIKeyInBoundGroup(ctx, latest, groupID)
 	}
 }
 
@@ -132,6 +122,9 @@ func newAPIKeyAuthRevalidator(lookup func(context.Context, string) (*service.API
 		// route and the new authorization mixed; report a retryable configuration
 		// change instead of forwarding under stale premises. The reason code is
 		// kept for existing callers.
+		if identity.contextTokenLimit != latest.ContextTokenLimit || identity.allowLongContext != latest.AllowLongContext {
+			return 0, service.NewAPIKeyQueueAuthRejected(infraerrors.ServiceUnavailable(service.APIKeyContextPolicyChangedReason, service.APIKeyContextPolicyRetryMessage))
+		}
 		if apiKeyQueueCoreIdentityChanged(identity, latest) {
 			return 0, service.NewAPIKeyQueueAuthRejected(infraerrors.ServiceUnavailable("API_KEY_GROUP_CHANGED", "API key configuration changed; please retry"))
 		}
@@ -158,11 +151,20 @@ func newAPIKeyAuthRevalidator(lookup func(context.Context, string) (*service.API
 // value when the revalidator is installed. It deliberately excludes everything
 // that may legitimately change without affecting this request's permissions.
 type apiKeyQueueInitialIdentity struct {
-	keyID            int64
-	userID           int64
-	groupID          *int64
-	platform         string
-	subscriptionType string
+	keyID              int64
+	userID             int64
+	groupID            *int64
+	platform           string
+	subscriptionType   string
+	codexCLIOnly       bool
+	blockSubagents     bool
+	maxReasoningEffort string
+	reasoningOverLimit string
+	reasoningMappings  []service.ReasoningEffortMapping
+	modelMapping       map[string]string
+	forcedReasoning    string
+	contextTokenLimit  int
+	allowLongContext   bool
 }
 
 func captureAPIKeyQueueIdentity(initial *service.APIKey) apiKeyQueueInitialIdentity {
@@ -172,6 +174,10 @@ func captureAPIKeyQueueIdentity(initial *service.APIKey) apiKeyQueueInitialIdent
 	}
 	identity.keyID = initial.ID
 	identity.userID = initial.UserID
+	identity.modelMapping = maps.Clone(initial.ModelMapping)
+	identity.forcedReasoning = initial.ReasoningEffort
+	identity.allowLongContext = initial.AllowLongContext
+	identity.contextTokenLimit = initial.ContextTokenLimit
 	if initial.GroupID != nil {
 		groupID := *initial.GroupID
 		identity.groupID = &groupID
@@ -179,16 +185,27 @@ func captureAPIKeyQueueIdentity(initial *service.APIKey) apiKeyQueueInitialIdent
 	if initial.Group != nil {
 		identity.platform = initial.Group.Platform
 		identity.subscriptionType = initial.Group.SubscriptionType
+		identity.codexCLIOnly = initial.Group.CodexCLIOnly
+		identity.blockSubagents = initial.Group.BlockSubagents
+		identity.maxReasoningEffort = initial.Group.MaxReasoningEffort
+		identity.reasoningOverLimit = initial.Group.MaxReasoningEffortOverLimit
+		identity.reasoningMappings = append([]service.ReasoningEffortMapping(nil), initial.Group.ReasoningEffortMappings...)
 	}
 	return identity
 }
 
-// apiKeyQueueCoreIdentityChanged reports a genuine binding/platform/charging
-// change. Group existence and ID are compared, but no field snapshots: name,
-// pricing, routing, permission tweaks and nil/empty collection shapes are not
-// authorization identity.
+// apiKeyQueueCoreIdentityChanged reports binding, platform, charging or employee
+// usage policy changes that require fresh admission. Names, pricing, routing,
+// other permissions and nil/empty collection shapes remain outside this
+// identity. A WS session opened before enforcement must re-enter admission.
 func apiKeyQueueCoreIdentityChanged(initial apiKeyQueueInitialIdentity, latest *service.APIKey) bool {
 	if latest == nil {
+		return true
+	}
+	// A queued request or persistent socket has already resolved its route
+	// and request policy. Re-enter authentication after an administrator changes
+	// any setting rather than forwarding an old policy under a fresh key.
+	if initial.contextTokenLimit != latest.ContextTokenLimit || initial.forcedReasoning != latest.ReasoningEffort || initial.allowLongContext != latest.AllowLongContext || !maps.Equal(initial.modelMapping, latest.ModelMapping) {
 		return true
 	}
 	if initial.userID != 0 && latest.UserID != initial.userID {
@@ -201,11 +218,20 @@ func apiKeyQueueCoreIdentityChanged(initial apiKeyQueueInitialIdentity, latest *
 		return true
 	}
 	platform, subscriptionType := "", ""
+	codexCLIOnly := false
+	blockSubagents := false
 	if latest.Group != nil {
 		platform = latest.Group.Platform
 		subscriptionType = latest.Group.SubscriptionType
+		codexCLIOnly = latest.Group.CodexCLIOnly
+		blockSubagents = latest.Group.BlockSubagents
+		if initial.maxReasoningEffort != latest.Group.MaxReasoningEffort || initial.reasoningOverLimit != latest.Group.MaxReasoningEffortOverLimit || !slices.Equal(initial.reasoningMappings, latest.Group.ReasoningEffortMappings) {
+			return true
+		}
 	}
-	return initial.platform != platform || initial.subscriptionType != subscriptionType
+	// A queued request or persistent WS connection must re-enter the public
+	// client gate after this policy changes, including off -> on transitions.
+	return initial.platform != platform || initial.subscriptionType != subscriptionType || initial.codexCLIOnly != codexCLIOnly || initial.blockSubagents != blockSubagents
 }
 
 // apiKeyQueueBlockedModel re-checks only the client-written model candidates
@@ -315,7 +341,11 @@ func (w *apiKeyAdmissionWriter) WriteString(data string) (int, error) {
 	return w.ResponseWriter.WriteString(data)
 }
 
-func (w *apiKeyAdmissionWriter) Flush() {
+func (w *apiKeyAdmissionWriter) Flush() { _ = w.FlushError() }
+func (w *apiKeyAdmissionWriter) FlushError() error {
 	w.rejectIfLost()
-	w.ResponseWriter.Flush()
+	if w.writeErr != nil {
+		return w.writeErr
+	}
+	return service.FlushGatewayResponse(w.ResponseWriter)
 }

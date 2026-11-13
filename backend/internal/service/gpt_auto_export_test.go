@@ -31,7 +31,7 @@ func (r *gptAutoTestRepo) ExportDecisions(_ context.Context, filter GPTAutoExpor
 		if filter.Mode != "" && gptAutoRowMode(&row) != filter.Mode {
 			continue
 		}
-		if cursorTime != nil && !(row.CreatedAt.Before(*cursorTime) || (row.CreatedAt.Equal(*cursorTime) && row.ID < cursorID)) {
+		if cursorTime != nil && (row.CreatedAt.After(*cursorTime) || (row.CreatedAt.Equal(*cursorTime) && row.ID >= cursorID)) {
 			continue
 		}
 		out = append(out, row)
@@ -289,7 +289,8 @@ func TestGPTAutoExportPaginatesAndTruncates(t *testing.T) {
 	for _, line := range strings.Split(strings.TrimSpace(raw), "\n") {
 		var row map[string]any
 		require.NoError(t, json.Unmarshal([]byte(line), &row))
-		id := row["decision_id"].(float64)
+		id, ok := row["decision_id"].(float64)
+		require.True(t, ok, "decision_id must be numeric")
 		require.False(t, seen[id], "no duplicate across pages")
 		seen[id] = true
 	}

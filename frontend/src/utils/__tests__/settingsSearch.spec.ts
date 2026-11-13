@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parse } from 'vue/compiler-sfc'
 import source from '@/views/admin/SettingsView.vue?raw'
+import smartOpsSource from '@/components/settings/SmartOpsSidebarSettings.vue?raw'
 import zh from '@/i18n/locales/zh'
 import en from '@/i18n/locales/en'
 import { buildFeatureSearchEntries, searchFeatures } from '../featureSearch'
@@ -42,11 +43,27 @@ describe('settings feature search', () => {
         expect(anchors.has(id.value.content)).toBe(false)
         anchors.set(id.value.content, tab)
       }
+      if (node.tag === 'SmartOpsSidebarSettings') {
+        const childRoot = parse(smartOpsSource).descriptor.template!.ast!
+        for (const child of childRoot.children) visit(child, tab)
+      }
       for (const child of node.children) visit(child, tab)
     }
     for (const child of root.children) visit(child)
     expect(anchors.size).toBe(SETTINGS_SECTIONS.length)
     for (const section of SETTINGS_SECTIONS) expect(anchors.get(`settings-section-${section.id}`), section.id).toBe(section.tab)
+  })
+
+  it('finds the usage cache rate switches from the usage records card', () => {
+    for (const [locale, messages, query] of [
+      ['zh', zh, '缓存率'],
+      ['en', en, 'cache rate'],
+    ] as const) {
+      const entries = buildFeatureSearchEntries(withSettingsSearch([
+        { path: '/admin/settings', label: 'Settings' }
+      ], key => translate(messages, key), locale))
+      expect(searchFeatures(entries, query).some(item => item.path === '/admin/settings?tab=gateway#settings-section-usage-records'), query).toBe(true)
+    }
   })
 
   it('validates locations and prefers the target card tab over a conflicting query', () => {

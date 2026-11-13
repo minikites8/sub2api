@@ -19,28 +19,37 @@
             @create="showCreate = true"
           >
             <template #after>
+              <a href="/admin/upstream-channels" class="btn btn-secondary" data-testid="manage-upstream-channels">{{ t('upstreamEntities.manage') }}</a>
               <!-- Auto Refresh Dropdown -->
-              <div class="relative" ref="autoRefreshDropdownRef">
-                <button
-                  @click="
-                    showAutoRefreshDropdown = !showAutoRefreshDropdown;
-                    showAccountToolsDropdown = false
-                  "
-                  class="btn btn-secondary px-2 md:px-3"
-                  :title="t('admin.accounts.autoRefresh')"
-                >
-                  <Icon name="refresh" size="sm" :class="[autoRefreshEnabled ? 'animate-spin' : '']" />
-                  <span class="hidden md:inline">
-                    {{
-                      autoRefreshEnabled
-                        ? t('admin.accounts.autoRefreshCountdown', { seconds: autoRefreshCountdown })
-                        : t('admin.accounts.autoRefresh')
-                    }}
-                  </span>
-                </button>
+              <div class="relative" ref="autoRefreshDropdownRef" data-testid="account-auto-refresh">
+                <div class="flex items-center gap-1">
+                  <button
+                    ref="autoRefreshTriggerRef"
+                    @click="toggleAutoRefreshDropdown"
+                    class="btn btn-secondary px-2 md:px-3"
+                    :title="t('admin.accounts.autoRefresh')"
+                  >
+                    <Icon name="refresh" size="sm" :class="[autoRefreshEnabled ? 'animate-spin' : '']" />
+                    <span class="hidden md:inline">
+                      {{
+                        autoRefreshEnabled
+                          ? t('admin.accounts.autoRefreshCountdown', { seconds: autoRefreshCountdown })
+                          : t('admin.accounts.autoRefresh')
+                      }}
+                    </span>
+                  </button>
+                  <NewFeatureBadge
+                    v-if="authStore.isAdmin"
+                    :notice-id="NEW_FEATURE_NOTICES.accountAutoRefreshUpstreamModels"
+                    :user-id="authStore.user?.id"
+                    compact
+                  />
+                </div>
                 <div
                   v-if="showAutoRefreshDropdown"
-                  class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-700 dark:bg-dark-800"
+                  data-testid="auto-refresh-menu"
+                  :style="autoRefreshDropdownStyle"
+                  class="fixed z-50 overflow-y-auto origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-700 dark:bg-dark-800"
                 >
                   <div class="p-2">
                     <button
@@ -60,6 +69,36 @@
                       <span>{{ autoRefreshIntervalLabel(sec) }}</span>
                       <Icon v-if="autoRefreshIntervalSeconds === sec" name="check" size="sm" class="text-primary-500" />
                     </button>
+                    <template v-if="authStore.isAdmin">
+                      <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
+                      <div class="flex items-center gap-1 px-3 py-2 text-sm text-gray-700 dark:text-gray-200">
+                        <span>{{ t('admin.accounts.autoRefreshUpstreamModels') }}</span>
+                        <NewFeatureBadge
+                          :notice-id="NEW_FEATURE_NOTICES.accountAutoRefreshUpstreamModels"
+                          :user-id="authStore.user?.id"
+                        />
+                      </div>
+                      <label
+                        v-for="accountType in upstreamModelSyncAccountTypes"
+                        :key="accountType"
+                        class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
+                      >
+                        <input
+                          type="checkbox"
+                          :data-testid="`auto-refresh-upstream-models-${accountType}`"
+                          :checked="autoRefreshUpstreamModels[accountType]"
+                          @change="setAutoRefreshUpstreamModels(accountType, ($event.target as HTMLInputElement).checked)"
+                          class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
+                        />
+                        <span>{{ t(`admin.accounts.autoRefreshUpstreamModelsAccountTypes.${accountType}`) }}</span>
+                      </label>
+                      <p class="px-3 pb-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.accounts.autoRefreshUpstreamModelsHint') }}
+                      </p>
+                      <p v-if="upstreamModelSyncSummary" class="px-3 pb-2 text-xs text-gray-500 dark:text-gray-400" role="status">
+                        {{ t('admin.accounts.autoRefreshUpstreamModelsResult', { changed: upstreamModelSyncSummary.changed, failed: upstreamModelSyncSummary.failed, skipped: upstreamModelSyncSummary.skipped }) }}
+                      </p>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -101,12 +140,6 @@
                           <Icon name="upload" size="sm" />
                         </span>
                         <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
-                      </button>
-                      <button class="account-tools-menu-item" @click="openYeTeamRedeem">
-                        <span class="account-tools-menu-icon bg-cyan-50 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-300">
-                          <Icon name="key" size="sm" />
-                        </span>
-                        <span class="flex-1 text-left">{{ t('admin.accounts.yeTeamTitle') }}</span>
                       </button>
                       <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
                         <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
@@ -188,23 +221,25 @@
           :total-results="pagination.total"
           :selecting-all="selectingAllResults"
           :all-results-selected="allResultsSelected"
+          :can-export2fa="authStore.isAdmin"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
           @probe-upstream-billing="handleBulkProbeUpstreamBilling"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
+          @export-2fa="export2faIds = [...selIds]"
           @clear="clearSelection"
           @select-page="selectPage"
           @select-all-results="handleSelectAllResults"
           @toggle-schedulable="handleBulkToggleSchedulable"
         />
-        <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden" :aria-busy="loading" :inert="loading && accounts.length > 0">
         <DataTable
           ref="dataTableRef"
           :columns="cols"
           :data="accounts"
-          :loading="loading"
+          :loading="loading && accounts.length === 0"
           row-key="id"
           :server-side-sort="true"
           @sort="handleSort"
@@ -231,6 +266,7 @@
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
           </template>
           <template #cell-name="{ row, value }">
+            <a v-if="row.upstream_channel_binding" href="/admin/upstream-channels" class="block text-xs text-primary-600" data-testid="account-current-upstream">{{ row.upstream_channel_binding.channel ? `${row.upstream_channel_binding.channel.name} · ${row.upstream_channel_binding.channel.code}` : t('upstreamEntities.unbound') }}</a>
             <div class="flex flex-col">
               <span v-if="row.platform === 'openai'" class="mb-1 self-start rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-dark-700">{{ t(`gptQos.${row.extra?.quality_tier || 'unknown'}`) }}<span v-if="row.extra?.qos_resource_pool" class="ml-2 font-mono">{{ row.extra.qos_resource_pool }}</span></span>
               <HelpTooltip
@@ -313,6 +349,12 @@
             </span>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
+          <template #header-capacity="{ column }">
+            <div class="flex items-center">
+              <span>{{ column.label }}</span>
+              <HelpTooltip :content="t('admin.accounts.capacitySortHint')" width-class="w-80" />
+            </div>
+          </template>
           <template #cell-capacity="{ row }">
             <AccountCapacityCell :account="row" :concurrency-upgrade-enabled="concurrencyUpgradeEnabled" />
           </template>
@@ -322,9 +364,15 @@
             </div>
           </template>
           <template #cell-schedulable="{ row }">
-            <button @click="handleToggleSchedulable(row)" :disabled="togglingSchedulable === row.id" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
-              <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
-            </button>
+            <div class="flex flex-col items-start gap-1">
+              <SchedulableTimerControl v-if="authStore.isAdmin" :account-id="row.id" :account-name="row.name" :schedulable="row.schedulable" :switching="togglingSchedulableIds.has(row.id)" :can-manage-timers="authStore.isAdmin" :notice-user-id="authStore.user?.id" :refresh-key="timerRefreshKey" @executed="handleTimerExecuted" @toggle="handleToggleSchedulable(row)" />
+              <button type="button" role="switch" :aria-checked="row.schedulable" :aria-label="t('admin.accounts.schedulable')" @click="handleToggleSchedulable(row)" :disabled="togglingSchedulableIds.has(row.id)" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
+                <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
+              </button>
+            </div>
+          </template>
+          <template #cell-performance="{ row }">
+            <AccountPerformanceCell :metrics="performanceMetrics[row.id]" :unavailable="performanceUnavailable" :can-configure="authStore.isAdmin" :notice-user-id="authStore.isAdmin ? authStore.user?.id : null" :upstream-error-threshold="performanceErrorThreshold" @configure="performanceAccount = row" />
           </template>
           <template #cell-today_stats="{ row }">
             <AccountTodayStatsCell
@@ -351,6 +399,7 @@
                  accountSupportsBatchUsage 不一致（如 Kiro），该账号将永远拿不到用量 -->
             <AccountUsageCell
               :account="row"
+              :notice-user-id="authStore.isAdmin ? authStore.user?.id : null"
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
@@ -400,7 +449,7 @@
             <span class="inline-flex items-center gap-1 text-sm font-mono text-gray-700 dark:text-gray-300">
               <span>{{ formatMultiplier(row.rate_multiplier ?? 1) }}x</span>
               <span
-                v-if="row.extra?.upstream_billing_rate_sync_enabled === true"
+                v-if="row.extra?.upstream_billing_rate_sync_enabled === true && row.extra?.upstream_billing_probe?.data?.billing_mode !== 'multi_group'"
                 class="inline-flex cursor-help text-emerald-600 dark:text-emerald-400"
                 :aria-label="t('admin.accounts.upstreamBilling.syncedRateTooltip')"
                 :title="t('admin.accounts.upstreamBilling.syncedRateTooltip')"
@@ -518,7 +567,6 @@
     <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @iq-test="handleIQTest" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @workspace-info="handleGetWorkspaceInfo" />
     <SyncFromCrsModal v-if="authStore.isAdmin" :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
-    <YeTeamRedeemModal :show="showYeTeamRedeem" @close="showYeTeamRedeem = false" @redeemed="handleYeTeamRedeemed" />
     <BulkEditAccountModal
       :show="showBulkEdit"
       :account-ids="selIds"
@@ -570,6 +618,8 @@
       @confirm="handleBulkRefreshToken"
       @cancel="showBulkRefreshConfirm = false"
     />
+    <AccountPerformanceDialog v-if="performanceAccount" :key="performanceAccount.id" :account-id="performanceAccount.id" :account-name="performanceAccount.name" :notice-user-id="authStore.isAdmin ? authStore.user?.id : null" :upstream-error-threshold="performanceErrorThreshold" @close="performanceAccount = null" @updated="refreshPerformance" />
+    <BulkExport2FADialog v-if="authStore.isAdmin && export2faIds.length" :account-ids="export2faIds" @close="export2faIds = []" />
   </AppLayout>
 </template>
 
@@ -581,6 +631,8 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
+import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { OPENAI_EXCEL_OAUTH_CLIENT_ID } from '@/composables/useOpenAIOAuth'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
@@ -593,13 +645,14 @@ import DataTable from '@/components/common/DataTable.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
 import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
+import BulkExport2FADialog from '@/components/admin/account/BulkExport2FADialog.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
-import YeTeamRedeemModal from '@/components/admin/account/YeTeamRedeemModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
@@ -612,6 +665,10 @@ import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
+import SchedulableTimerControl from '@/components/account/SchedulableTimerControl.vue'
+import AccountPerformanceCell from '@/components/account/AccountPerformanceCell.vue'
+import AccountPerformanceDialog from '@/components/account/AccountPerformanceDialog.vue'
+import { performanceWindowMinutes, type AccountPerformance } from '@/types/accountPerformance'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import ExcelBPS403Badge from '@/components/account/ExcelBPS403Badge.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
@@ -630,6 +687,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import type { OpenAIWorkspaceInfo } from '@/api/admin/accounts'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
+import { createAccountUpstreamModelAutoSync, type UpstreamModelSyncSummary } from '@/utils/accountUpstreamModelAutoSync'
 import { formatMultiplier } from '@/utils/formatters'
 import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
@@ -708,7 +766,7 @@ const showCreate = ref(false)
 const showEdit = ref(false)
 const showSync = ref(false)
 const showImportData = ref(false)
-const showYeTeamRedeem = ref(false)
+const export2faIds = ref<number[]>([])
 const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
@@ -743,7 +801,7 @@ const workspaceInfoLoadingID = ref<number | null>(null)
 const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
-const togglingSchedulable = ref<number | null>(null)
+const togglingSchedulableIds = reactive(new Set<number>())
 const menu = reactive<{show:boolean, acc:Account|null, anchorRect:DOMRect|null}>({ show: false, acc: null, anchorRect: null })
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
@@ -778,6 +836,31 @@ const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
 const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
 
+// Account filter settings
+const ACCOUNT_FILTER_STORAGE_KEY = 'account-filter-values'
+type AccountFilterValues = {
+  platform: string
+  status: string
+}
+const loadInitialAccountFilterValues = (): AccountFilterValues => {
+  const fallback: AccountFilterValues = { platform: '', status: '' }
+  try {
+    const raw = localStorage.getItem(ACCOUNT_FILTER_STORAGE_KEY)
+    if (!raw) return fallback
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return fallback
+    const values = parsed as Record<string, unknown>
+    return {
+      platform: typeof values.platform === 'string' && CONCRETE_PLATFORM_OPTIONS.some(option => option.value === values.platform)
+        ? values.platform : '',
+      status: typeof values.status === 'string' && ['active', 'inactive', 'error', 'rate_limited', 'temp_unschedulable', 'unschedulable'].includes(values.status)
+        ? values.status : ''
+    }
+  } catch {
+    return fallback
+  }
+}
+
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
 type AccountSortOrder = 'asc' | 'desc'
@@ -790,6 +873,7 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'name',
   'status',
   'schedulable',
+  'capacity',
   'priority',
   'rate_multiplier',
   'upstream_billing_rate',
@@ -806,7 +890,7 @@ const loadInitialAccountSortState = (): AccountSortState => {
     const key = typeof parsed.key === 'string' ? parsed.key : ''
     if (!ACCOUNT_SORTABLE_KEYS.has(key)) return fallback
     return {
-      sort_by: key,
+      sort_by: key === 'capacity' ? 'current_concurrency' : key,
       sort_order: parsed.order === 'desc' ? 'desc' : 'asc'
     }
   } catch {
@@ -818,16 +902,47 @@ const sortState = reactive<AccountSortState>(loadInitialAccountSortState())
 // Auto refresh settings
 const showAutoRefreshDropdown = ref(false)
 const autoRefreshDropdownRef = ref<HTMLElement | null>(null)
+const autoRefreshTriggerRef = ref<HTMLElement | null>(null)
+const autoRefreshDropdownPosition = reactive({
+  top: null as number | null,
+  bottom: null as number | null,
+  left: 16,
+  width: 320,
+  maxHeight: 0
+})
+const autoRefreshDropdownStyle = computed(() => ({
+  top: autoRefreshDropdownPosition.top == null ? 'auto' : `${autoRefreshDropdownPosition.top}px`,
+  bottom: autoRefreshDropdownPosition.bottom == null ? 'auto' : `${autoRefreshDropdownPosition.bottom}px`,
+  left: `${autoRefreshDropdownPosition.left}px`,
+  width: `${autoRefreshDropdownPosition.width}px`,
+  maxHeight: `${autoRefreshDropdownPosition.maxHeight}px`
+}))
 const AUTO_REFRESH_STORAGE_KEY = 'account-auto-refresh'
 const autoRefreshIntervals = [5, 10, 15, 30] as const
 const autoRefreshEnabled = ref(false)
+const upstreamModelSyncAccountTypes = ['oauth', 'apikey'] as const
+const autoRefreshUpstreamModels = reactive({ oauth: false, apikey: false })
+const upstreamModelSyncSummary = ref<UpstreamModelSyncSummary | null>(null)
+const upstreamModelAutoSync = createAccountUpstreamModelAutoSync({
+  sync: (id, signal) => adminAPI.accounts.syncUpstreamModels(id, { apply: true, automatic: true }, { signal })
+})
 const autoRefreshIntervalSeconds = ref<(typeof autoRefreshIntervals)[number]>(30)
 const autoRefreshCountdown = ref(0)
 const autoRefreshETag = ref<string | null>(null)
 const autoRefreshFetching = ref(false)
+let autoRefreshAbortController: AbortController | null = null
+let accountViewDisposed = false
+let accountListContextVersion = 0
 const AUTO_REFRESH_SILENT_WINDOW_MS = 15000
 const autoRefreshSilentUntil = ref(0)
 const hasPendingListSync = ref(false)
+const cancelAutoRefreshRequest = () => {
+  autoRefreshAbortController?.abort()
+  upstreamModelAutoSync.cancel()
+  autoRefreshAbortController = null
+  autoRefreshFetching.value = false
+  autoRefreshETag.value = null
+}
 const todayStatsByAccountId = ref<Record<string, WindowStats>>({})
 const todayStatsLoading = ref(false)
 const todayStatsError = ref<string | null>(null)
@@ -1117,8 +1232,20 @@ const loadSavedAutoRefresh = () => {
   try {
     const saved = localStorage.getItem(AUTO_REFRESH_STORAGE_KEY)
     if (!saved) return
-    const parsed = JSON.parse(saved) as { enabled?: boolean; interval_seconds?: number }
+    const parsed = JSON.parse(saved) as {
+      enabled?: boolean
+      interval_seconds?: number
+      sync_upstream_models?: boolean
+      sync_upstream_models_oauth?: boolean
+      sync_upstream_models_apikey?: boolean
+    }
     autoRefreshEnabled.value = parsed.enabled === true
+    for (const accountType of upstreamModelSyncAccountTypes) {
+      const enabled = parsed[`sync_upstream_models_${accountType}`]
+      autoRefreshUpstreamModels[accountType] = typeof enabled === 'boolean'
+        ? enabled
+        : parsed.sync_upstream_models === true
+    }
     const interval = Number(parsed.interval_seconds)
     if (autoRefreshIntervals.includes(interval as any)) {
       autoRefreshIntervalSeconds.value = interval as any
@@ -1134,7 +1261,9 @@ const saveAutoRefreshToStorage = () => {
       AUTO_REFRESH_STORAGE_KEY,
       JSON.stringify({
         enabled: autoRefreshEnabled.value,
-        interval_seconds: autoRefreshIntervalSeconds.value
+        interval_seconds: autoRefreshIntervalSeconds.value,
+        sync_upstream_models_oauth: autoRefreshUpstreamModels.oauth,
+        sync_upstream_models_apikey: autoRefreshUpstreamModels.apikey
       })
     )
   } catch (e) {
@@ -1154,6 +1283,7 @@ const setAutoRefreshEnabled = (enabled: boolean) => {
     autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
     resumeAutoRefresh()
   } else {
+    cancelAutoRefreshRequest()
     pauseAutoRefresh()
     autoRefreshCountdown.value = 0
   }
@@ -1165,6 +1295,13 @@ const setAutoRefreshInterval = (seconds: (typeof autoRefreshIntervals)[number]) 
   if (autoRefreshEnabled.value) {
     autoRefreshCountdown.value = seconds
   }
+}
+
+const setAutoRefreshUpstreamModels = (accountType: (typeof upstreamModelSyncAccountTypes)[number], enabled: boolean) => {
+  autoRefreshUpstreamModels[accountType] = enabled
+  saveAutoRefreshToStorage()
+  upstreamModelAutoSync.cancel()
+  upstreamModelSyncSummary.value = null
 }
 
 const toggleColumn = (key: string) => {
@@ -1212,9 +1349,8 @@ const {
 } = useTableLoader<AccountListItem, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: {
-    platform: '',
+    ...loadInitialAccountFilterValues(),
     type: '',
-    status: '',
     privacy_mode: '',
     quality_tier: '',
     group: '',
@@ -1280,10 +1416,55 @@ useSwipeSelect(accountTableRef, {
 }, swipeVirtualContext)
 
 const resetAutoRefreshCache = () => {
-  autoRefreshETag.value = null
+  accountListContextVersion += 1
+  cancelAutoRefreshRequest()
   upstreamBillingRateETag.value = null
   upstreamBillingRateAbortController?.abort()
 }
+
+// Performance is one bounded batch per visible page, independent of account ETags.
+const performanceMetrics = ref<Record<number, AccountPerformance>>({})
+const performanceMinutes = computed(() => performanceWindowMinutes(Object.values(performanceMetrics.value)[0]))
+const performanceUnavailable = ref(false)
+const performanceAccount = ref<Account | null>(null)
+// Load once for the page, then share the Ops threshold with every row and dialog.
+// undefined means unavailable; null is an explicitly disabled Ops threshold.
+const performanceErrorThreshold = ref<number | null | undefined>(undefined)
+const loadPerformanceErrorThreshold = async () => {
+  try {
+    const thresholds = await adminAPI.ops.getMetricThresholds()
+    if (!accountViewDisposed) performanceErrorThreshold.value = thresholds.upstream_error_rate_percent_max ?? null
+  } catch {
+    if (!accountViewDisposed) performanceErrorThreshold.value = undefined
+  }
+}
+let performanceAbort: AbortController | null = null
+let performanceRequest = 0
+const refreshPerformance = async () => {
+  const ids = accounts.value.map(account => account.id)
+  if (!isColumnVisible('performance') || !ids.length) return
+  performanceAbort?.abort()
+  const request = ++performanceRequest
+  const controller = new AbortController()
+  performanceAbort = controller
+  try {
+    const next: Record<number, AccountPerformance> = {}
+    for (let start = 0; start < ids.length; start += 100) {
+      Object.assign(next, await adminAPI.accounts.getPerformance(ids.slice(start, start + 100), controller.signal))
+    }
+    if (request !== performanceRequest || controller.signal.aborted) return
+    performanceMetrics.value = next
+    performanceUnavailable.value = false
+  } catch {
+    if (request === performanceRequest && !controller.signal.aborted) {
+      performanceMetrics.value = {}
+      performanceUnavailable.value = true
+    }
+  }
+}
+watch(() => accounts.value.map(account => account.id).join(','), () => { void refreshPerformance() })
+watch(() => isColumnVisible('performance'), visible => { if (visible) void refreshPerformance() })
+useIntervalFn(() => { void refreshPerformance() }, 30_000)
 
 type AccountLoadOptions = {
   refreshTodayStats?: boolean
@@ -1342,8 +1523,9 @@ const applyUpstreamBillingRateSnapshots = async (
   const currentIDs = accounts.value.map(account => account.id)
   const currentByID = new Map(accounts.value.map(account => [account.id, account]))
 
-  // Fetch missing rows without replacing the table with its loading skeleton.
-  if (result.total !== pagination.total || nextIDs.length !== currentIDs.length || nextIDs.some(id => !currentByID.has(id))) {
+  // Live concurrency order and its displayed numerators must come from one list
+  // response; billing snapshots alone do not carry those counts.
+  if (sortState.sort_by === 'current_concurrency' || result.total !== pagination.total || nextIDs.length !== currentIDs.length || nextIDs.some(id => !currentByID.has(id))) {
     const page = await adminAPI.accounts.list(
       pagination.page,
       pagination.page_size,
@@ -1394,7 +1576,7 @@ const applyUpstreamBillingRateSnapshots = async (
 }
 
 const refreshUpstreamBillingRates = async (force = false) => {
-  if (upstreamBillingRateRefreshing.value || loading.value || accounts.value.length === 0) return
+  if (accountViewDisposed || upstreamBillingRateRefreshing.value || loading.value || accounts.value.length === 0) return
   if (!force && (
     probingUpstreamBilling.size > 0 ||
     isAnyModalOpen.value ||
@@ -1405,6 +1587,8 @@ const refreshUpstreamBillingRates = async (force = false) => {
   )) return
 
   const controller = new AbortController()
+  // A newer compact read must not be overwritten by an older list response.
+  cancelAutoRefreshRequest()
   upstreamBillingRateAbortController = controller
   upstreamBillingRateRefreshing.value = true
   try {
@@ -1435,7 +1619,19 @@ const refreshUpstreamBillingRates = async (force = false) => {
 
 useIntervalFn(() => { void refreshUpstreamBillingRates() }, 5 * 60_000, { immediate: false })
 
+const saveAccountFilterValues = () => {
+  try {
+    localStorage.setItem(ACCOUNT_FILTER_STORAGE_KEY, JSON.stringify({
+      platform: params.platform,
+      status: params.status
+    }))
+  } catch {
+    // Filtering must remain available when browser storage is unavailable.
+  }
+}
+
 const debouncedReload = () => {
+  saveAccountFilterValues()
   clearSelection()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
@@ -1461,10 +1657,11 @@ const handlePageSizeChange = (size: number) => {
 }
 
 const handleSort = (key: string, order: AccountSortOrder) => {
-  sortState.sort_by = key
+  const sortBy = key === 'capacity' ? 'current_concurrency' : key
+  sortState.sort_by = sortBy
   sortState.sort_order = order
   const requestParams = params as any
-  requestParams.sort_by = key
+  requestParams.sort_by = sortBy
   requestParams.sort_order = order
   syncAccountListDerivedParams()
   pagination.page = 1
@@ -1510,6 +1707,7 @@ const isAnyModalOpen = computed(() => {
     showSync.value ||
     showImportData.value ||
     showExportDataDialog.value ||
+    export2faIds.value.length > 0 ||
     showBulkEdit.value ||
     showTempUnsched.value ||
     showDeleteDialog.value ||
@@ -1522,7 +1720,15 @@ const isAnyModalOpen = computed(() => {
   )
 })
 
+watch(isAnyModalOpen, open => {
+  if (!open) return
+  // A response already in flight must not replace the account backing an edit.
+  cancelAutoRefreshRequest()
+  upstreamBillingRateAbortController?.abort()
+})
+
 const enterAutoRefreshSilentWindow = () => {
+  cancelAutoRefreshRequest()
   autoRefreshSilentUntil.value = Date.now() + AUTO_REFRESH_SILENT_WINDOW_MS
   autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
 }
@@ -1534,6 +1740,14 @@ const inAutoRefreshSilentWindow = () => {
 const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
   return (
     current.updated_at !== next.updated_at ||
+    // Bindings have their own revision; do not rely on the account timestamp
+    // to invalidate the displayed upstream identity or declaration snapshot.
+    JSON.stringify(current.upstream_channel_binding ?? null) !== JSON.stringify(next.upstream_channel_binding ?? null) ||
+    current.credentials?.base_url !== next.credentials?.base_url ||
+    JSON.stringify(current.extra?.upstream_billing_probe ?? null) !== JSON.stringify(next.extra?.upstream_billing_probe ?? null) ||
+    current.extra?.upstream_billing_probe_enabled !== next.extra?.upstream_billing_probe_enabled ||
+    current.extra?.upstream_billing_rate_sync_enabled !== next.extra?.upstream_billing_rate_sync_enabled ||
+    current.extra?.upstream_billing_provider !== next.extra?.upstream_billing_provider ||
     current.current_concurrency !== next.current_concurrency ||
     JSON.stringify(current.extra?.auto_config_concurrency) !== JSON.stringify(next.extra?.auto_config_concurrency) ||
     current.current_window_cost !== next.current_window_cost ||
@@ -1614,8 +1828,13 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
 }
 
 const refreshAccountsIncrementally = async () => {
-  if (autoRefreshFetching.value) return
+  if (accountViewDisposed || autoRefreshFetching.value) return
   syncAccountListDerivedParams()
+  const requestContextVersion = accountListContextVersion
+  const controller = new AbortController()
+  // Both readers write the same rows; the newer request owns the update.
+  upstreamBillingRateAbortController?.abort()
+  autoRefreshAbortController = controller
   autoRefreshFetching.value = true
   const upgradeStateRefresh = loadConcurrencyUpgradeState()
   try {
@@ -1633,8 +1852,11 @@ const refreshAccountsIncrementally = async () => {
         sort_order?: AccountSortOrder
 
       },
-      { etag: autoRefreshETag.value }
+      { etag: autoRefreshETag.value, signal: controller.signal }
     )
+
+    // A sort/filter/page change may finish while this refresh is in flight.
+    if (controller.signal.aborted || !autoRefreshEnabled.value || requestContextVersion !== accountListContextVersion) return
 
     if (result.etag) {
       autoRefreshETag.value = result.etag
@@ -1649,10 +1871,13 @@ const refreshAccountsIncrementally = async () => {
 
     await refreshTodayStatsBatch()
   } catch (error) {
-    console.error('Auto refresh failed:', error)
+    if (!controller.signal.aborted) console.error('Auto refresh failed:', error)
   } finally {
     await upgradeStateRefresh
-    autoRefreshFetching.value = false
+    if (autoRefreshAbortController === controller) {
+      autoRefreshAbortController = null
+      autoRefreshFetching.value = false
+    }
   }
 }
 
@@ -1694,6 +1919,23 @@ const toggleAccountToolsDropdown = () => {
   showAccountToolsDropdown.value = nextVisible
 }
 
+const updateAutoRefreshDropdownPosition = () => {
+  const trigger = autoRefreshTriggerRef.value
+  if (!trigger) return
+  Object.assign(autoRefreshDropdownPosition, getFloatingPanelPosition(
+    trigger.getBoundingClientRect(),
+    document.documentElement.clientWidth || window.innerWidth,
+    window.innerHeight
+  ))
+}
+
+const toggleAutoRefreshDropdown = () => {
+  const nextVisible = !showAutoRefreshDropdown.value
+  showAccountToolsDropdown.value = false
+  if (nextVisible) updateAutoRefreshDropdownPosition()
+  showAutoRefreshDropdown.value = nextVisible
+}
+
 const openSyncFromCrs = () => {
   closeAccountToolsDropdown()
   showSync.value = true
@@ -1704,10 +1946,6 @@ const openImportData = () => {
   showImportData.value = true
 }
 
-const openYeTeamRedeem = () => {
-  closeAccountToolsDropdown()
-  showYeTeamRedeem.value = true
-}
 
 const openExportDataDialogFromMenu = () => {
   closeAccountToolsDropdown()
@@ -1731,6 +1969,28 @@ const syncPendingListChanges = async () => {
   usageManualRefreshToken.value += 1
 }
 
+const refreshCurrentPageUpstreamModels = async () => {
+  const contextVersion = accountListContextVersion
+  const canContinue = () => authStore.isAdmin && autoRefreshEnabled.value &&
+    (autoRefreshUpstreamModels.oauth || autoRefreshUpstreamModels.apikey) &&
+    !accountViewDisposed && contextVersion === accountListContextVersion && !document.hidden &&
+    !loading.value && !isAnyModalOpen.value && !menu.show && !showAccountToolsDropdown.value &&
+    !showAutoRefreshDropdown.value && !inAutoRefreshSilentWindow()
+  const candidates = accounts.value.filter(account =>
+    autoRefreshUpstreamModels[account.type === 'apikey' ? 'apikey' : 'oauth'])
+  const summary = await upstreamModelAutoSync.run(candidates, canContinue)
+  if (!summary || !canContinue()) return
+  upstreamModelSyncSummary.value = summary
+  if (summary.changed) {
+    autoRefreshETag.value = null
+    await refreshAccountsIncrementally()
+  }
+}
+
+const handleModelSyncVisibilityChange = () => {
+  if (document.hidden) upstreamModelAutoSync.cancel()
+}
+
 const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
   async () => {
     if (!autoRefreshEnabled.value) return
@@ -1745,6 +2005,10 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
       )
       return
     }
+
+    // Discovery has its own per-account five-minute budget, independent of the
+    // table's 5–30 second cadence; only this page's eligible accounts are queued.
+    void refreshCurrentPageUpstreamModels()
 
     if (autoRefreshCountdown.value <= 0) {
       autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
@@ -1970,9 +2234,10 @@ const allColumns = computed(() => {
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'online_terminal_count', label: t('admin.accounts.columns.onlineTerminalCount'), sortable: false },
-    { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
+    { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: true },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
+    { key: 'performance', label: t('accountPerformance.column', { minutes: performanceMinutes.value }), sortable: false },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]
   if (!authStore.isSimpleMode) {
@@ -2203,10 +2468,20 @@ const normalizeBulkSchedulableResult = (
     hasCounts: hasExplicitCounts
   }
 }
+const timerRefreshKey = ref(0)
+let timerListRefresh: ReturnType<typeof setTimeout> | undefined
+const handleTimerExecuted = () => {
+  if (timerListRefresh !== undefined) return
+  timerListRefresh = setTimeout(() => {
+    timerListRefresh = undefined
+    void load({ refreshTodayStats: false })
+  }, 150)
+}
 const handleBulkToggleSchedulable = async (schedulable: boolean) => {
   const accountIds = [...selIds.value]
   try {
     const result = await adminAPI.accounts.bulkUpdate(accountIds, { schedulable })
+    timerRefreshKey.value++
     const { successIds, failedIds, successCount, failedCount, hasIds, hasCounts } = normalizeBulkSchedulableResult(result, accountIds)
     if (!hasIds && !hasCounts) {
       appStore.showError(t('admin.accounts.bulkSchedulableResultUnknown'))
@@ -2299,17 +2574,42 @@ const openBulkEditSelected = () => {
 }
 
 const openBulkEditFiltered = async () => {
-  const filters = buildBulkEditFilterSnapshot()
-  const preview = await adminAPI.accounts.list(1, 100, filters)
-  const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(preview.items)
-  bulkEditTarget.value = {
-    mode: 'filtered',
-    filters,
-    previewCount: preview.total,
-    selectedPlatforms,
-    selectedTypes
+  // A checked selection always wins, including queued clicks from the old toolbar.
+  if (selIds.value.length > 0) {
+    openBulkEditSelected()
+    return
   }
-  showBulkEdit.value = true
+  const filters = buildBulkEditFilterSnapshot()
+  const requestVersion = selectionRequestVersion.value
+  try {
+    // Freeze the complete preview as explicit IDs. Saving must never re-resolve
+    // a broader filter or silently include accounts created while editing.
+    const rows: Account[] = []
+    const accountIds = await fetchAllAccountIds(async (page, pageSize, requestFilters) => {
+      const result = await adminAPI.accounts.list(page, pageSize, requestFilters)
+      rows.push(...result.items)
+      return result
+    }, filters)
+    if (requestVersion !== selectionRequestVersion.value) return
+    if (selIds.value.length > 0) {
+      openBulkEditSelected()
+      return
+    }
+    if (accountIds.length === 0) {
+      appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
+      return
+    }
+    const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(rows)
+    bulkEditTarget.value = {
+      mode: 'selected',
+      accountIds,
+      selectedPlatforms,
+      selectedTypes
+    }
+    showBulkEdit.value = true
+  } catch {
+    appStore.showError(t('admin.accounts.bulkActions.selectAllFailed'))
+  }
 }
 
 const handleBulkUpdated = () => {
@@ -2319,7 +2619,6 @@ const handleBulkUpdated = () => {
   reload()
 }
 const handleDataImported = () => { showImportData.value = false; reload() }
-const handleYeTeamRedeemed = () => { showYeTeamRedeem.value = false; reload() }
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
 const buildAccountQueryFilters = () => ({
@@ -2710,17 +3009,19 @@ const confirmCreateSparkShadow = async () => {
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
 const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
 const handleToggleSchedulable = async (a: Account) => {
+  if (togglingSchedulableIds.has(a.id)) return
   const nextSchedulable = !a.schedulable
-  togglingSchedulable.value = a.id
+  togglingSchedulableIds.add(a.id)
   try {
     const updated = await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
+    timerRefreshKey.value++
     updateSchedulableInList([a.id], updated?.schedulable ?? nextSchedulable)
     enterAutoRefreshSilentWindow()
   } catch (error) {
     console.error('Failed to toggle schedulable:', error)
     appStore.showError(t('admin.accounts.failedToToggleSchedulable'))
   } finally {
-    togglingSchedulable.value = null
+    togglingSchedulableIds.delete(a.id)
   }
 }
 const handleShowTempUnsched = (a: Account) => { tempUnschedAcc.value = a; showTempUnsched.value = true }
@@ -2761,10 +3062,12 @@ const handleScroll = (event: Event) => {
   if (event.target instanceof Element && event.target.closest('.action-menu-content')) return
   menu.show = false
   if (showAccountToolsDropdown.value) updateAccountToolsDropdownPosition()
+  if (showAutoRefreshDropdown.value) updateAutoRefreshDropdownPosition()
 }
 
 const handleViewportResize = () => {
   if (showAccountToolsDropdown.value) updateAccountToolsDropdownPosition()
+  if (showAutoRefreshDropdown.value) updateAutoRefreshDropdownPosition()
 }
 
 // 点击外部关闭顶部下拉菜单
@@ -2793,11 +3096,15 @@ onMounted(async () => {
   }
 
   load()
+  void loadPerformanceErrorThreshold()
   loadUpstreamBillingProbeGlobalState()
   const [proxiesResult, groupsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
     adminAPI.groups.getAll()
   ])
+  // Catalog requests can finish after scope disposal; never reattach listeners
+  // or resume the refresh interval for a page that has already been left.
+  if (accountViewDisposed) return
   if (proxiesResult.status === 'fulfilled') {
     proxies.value = proxiesResult.value
   } else {
@@ -2811,6 +3118,7 @@ onMounted(async () => {
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('visibilitychange', handleModelSyncVisibilityChange)
 
   if (autoRefreshEnabled.value) {
     autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
@@ -2821,6 +3129,12 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  accountViewDisposed = true
+  accountListContextVersion++
+  cancelAutoRefreshRequest()
+  performanceRequest++
+  performanceAbort?.abort()
+  clearTimeout(timerListRefresh)
   concurrencyUpgradeRequest++
   upstreamBillingRateAbortController?.abort()
   if (usageBatchFlushTimer !== null) {
@@ -2831,6 +3145,7 @@ onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll, true)
   window.removeEventListener('resize', handleViewportResize)
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('visibilitychange', handleModelSyncVisibilityChange)
   if (desktopViewportMediaQuery && desktopViewportListener) {
     if (typeof desktopViewportMediaQuery.removeEventListener === 'function') {
       desktopViewportMediaQuery.removeEventListener('change', desktopViewportListener)

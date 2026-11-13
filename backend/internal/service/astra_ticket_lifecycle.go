@@ -39,6 +39,9 @@ func (s *OpenAIGatewayService) UnifiedAstraTicketsEnabled(ctx context.Context) b
 }
 
 func astraTicketAccountEligible(ctx context.Context, a *Account) bool {
+	if a != nil && (a.AuthConnectionID != "" || a.HasManagedOpenAIConnections()) {
+		return false
+	}
 	// Explicit preparation can restore a target paused by Astra scheduling, but
 	// never bypasses authentication, expiry, transport or upstream cooldowns.
 	if a == nil || !a.IsActive() || !isOpenAICodexTicketAccount(a, OpenAICodexStateProbeDefaultModel) || a.ParentAccountID != nil {
@@ -212,15 +215,10 @@ func (s *OpenAIGatewayService) acquireStoredAstraTarget(ctx context.Context, id 
 			return account, ticket, nil
 		}
 	}
-	release, err := s.lockCodexHarvest(ctx, id, []string{OpenAICodexStateProbeDefaultModel})
-	if err != nil {
-		return nil, nil, err
+	if !s.codexHarvestRunMu.TryLock() {
+		return nil, nil, errors.New("target_validation_in_progress")
 	}
-	defer release()
-	account, err = s.accountRepo.GetByID(ctx, id)
-	if err != nil || !astraTicketAccountEligible(ctx, account) {
-		return nil, nil, errors.New("account_unavailable")
-	}
+	defer s.codexHarvestRunMu.Unlock()
 	// A collector may have finished between the first read and acquisition.
 	if ticket := s.lookupOpenAICodexTicket(account, OpenAICodexStateProbeDefaultModel); ticket.valid(time.Now(), 780) && ticket.Transport == protocol {
 		return account, ticket, nil

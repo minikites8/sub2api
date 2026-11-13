@@ -18,11 +18,11 @@ func TestOpenAIHTTPEntryRefreshesBPSConfiguration(t *testing.T) {
 			latest := *selected
 			latest.Extra = maps.Clone(selected.Extra)
 			latest.Extra["openai_excel_bps"] = enabled
-			upstream := &httpUpstreamRecorder{responses: []*http.Response{excelBPSOrdinaryResponse()}}
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{admissionOrdinaryResponse()}}
 			svc := openAIClientToolsTestService(upstream)
 			svc.accountRepo = &turnAdmissionRepo{account: &latest}
 			body := []byte(`{"model":"gpt-5.6-sol","stream":false,"input":"complete original history"}`)
-			c, rec := newExcelBPSFallbackContext(body, false)
+			c, rec := newAdmissionTestContext(body, false)
 			result, err := svc.Forward(context.Background(), c, selected, body)
 			require.NoError(t, err)
 			require.NotNil(t, result)
@@ -48,7 +48,7 @@ func TestOpenAIHTTPEntryKeepsContinuationsBound(t *testing.T) {
 	svc := openAIClientToolsTestService(upstream)
 	svc.accountRepo = &turnAdmissionRepo{account: &latest}
 	body := []byte(`{"model":"gpt-5.6-sol","previous_response_id":"resp_bound","input":"continue"}`)
-	c, _ := newExcelBPSFallbackContext(body, false)
+	c, _ := newAdmissionTestContext(body, false)
 	_, err := svc.Forward(context.Background(), c, selected, body)
 	require.Equal(t, "account_binding_changed", OpenAITurnAdmissionReason(err))
 	require.Empty(t, upstream.requests)
@@ -64,7 +64,7 @@ func TestOpenAIHTTPEntryLogsActualReasonWithBPSDisabled(t *testing.T) {
 	svc := openAIClientToolsTestService(upstream)
 	svc.accountRepo = &turnAdmissionRepo{account: &latest}
 	body := []byte(`{"model":"gpt-5.6-sol","input":"private conversation"}`)
-	c, _ := newExcelBPSFallbackContext(body, false)
+	c, _ := newAdmissionTestContext(body, false)
 	c.Set(OpsUpstreamStatusCodeKey, http.StatusServiceUnavailable)
 	_, err := svc.Forward(context.Background(), c, selected, body)
 	require.Zero(t, c.GetInt(OpsUpstreamStatusCodeKey))
@@ -111,7 +111,7 @@ func TestOpenAIHTTPEntryPreservesPerSendAdmission(t *testing.T) {
 	svc := openAIClientToolsTestService(upstream)
 	svc.accountRepo = &httpEntryChangingAdmissionRepo{first: selected, later: &later}
 	body := []byte(`{"model":"gpt-5.6-sol","input":"complete history"}`)
-	c, _ := newExcelBPSFallbackContext(body, false)
+	c, _ := newAdmissionTestContext(body, false)
 	_, err := svc.Forward(context.Background(), c, selected, body)
 	require.Equal(t, "account_ineligible", OpenAITurnAdmissionReason(err))
 	require.Empty(t, upstream.requests)

@@ -10,7 +10,8 @@ import { adminAPI } from '@/api'
 import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
-import { formatNumber } from '@/utils/format'
+import { formatDateTimeLocalInput, formatNumber } from '@/utils/format'
+import { upstreamErrorRateColorClass } from '@/utils/opsMetricThresholds'
 import { formatMemorySizeMB } from '../utils/opsFormatters'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
@@ -178,8 +179,8 @@ function handleTimeRangeChange(val: string | number | boolean | null) {
     // 初始化为最近1小时
     const now = new Date()
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
-    customStartTimeInput.value = oneHourAgo.toISOString().slice(0, 16)
-    customEndTimeInput.value = now.toISOString().slice(0, 16)
+    customStartTimeInput.value = formatDateTimeLocalInput(oneHourAgo.getTime() / 1000)
+    customEndTimeInput.value = formatDateTimeLocalInput(now.getTime() / 1000)
     showCustomTimeRangeDialog.value = true
   } else {
     emit('update:timeRange', newValue)
@@ -248,15 +249,6 @@ function getRequestErrorRateThresholdLevel(errorRatePercent: number | null): Thr
   if (threshold == null) return 'normal'
   if (errorRatePercent >= threshold) return 'critical'
   if (errorRatePercent >= threshold * 0.8) return 'warning'
-  return 'normal'
-}
-
-function getUpstreamErrorRateThresholdLevel(upstreamErrorRatePercent: number | null): ThresholdLevel {
-  if (upstreamErrorRatePercent == null) return 'normal'
-  const threshold = props.thresholds?.upstream_error_rate_percent_max
-  if (threshold == null) return 'normal'
-  if (upstreamErrorRatePercent >= threshold) return 'critical'
-  if (upstreamErrorRatePercent >= threshold * 0.8) return 'warning'
   return 'normal'
 }
 
@@ -1414,7 +1406,7 @@ function handleToolbarRefresh() {
               {{ t('admin.ops.requestDetails.details') }}
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getUpstreamErrorRateThresholdLevel(upstreamErrorRatePercent))">
+          <div class="mt-2 text-3xl font-black" :class="upstreamErrorRateColorClass(upstreamErrorRatePercent, props.thresholds?.upstream_error_rate_percent_max)">
             {{ upstreamErrorRatePercent == null ? '-' : `${upstreamErrorRatePercent.toFixed(2)}%` }}
           </div>
           <div class="mt-3 space-y-1 text-xs">

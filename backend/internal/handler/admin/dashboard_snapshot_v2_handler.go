@@ -38,18 +38,20 @@ type dashboardSnapshotV2Response struct {
 }
 
 type dashboardSnapshotV2Filters struct {
-	UserID             int64
-	APIKeyID           int64
-	AccountID          int64
-	GroupID            int64
-	Model              string
-	RequestType        *int16
-	Stream             *bool
-	NativeCompactionV2 *bool
-	BillingType        *int8
+	UpstreamModelMismatch *bool
+	UserID                int64
+	APIKeyID              int64
+	AccountID             int64
+	GroupID               int64
+	Model                 string
+	RequestType           *int16
+	Stream                *bool
+	NativeCompactionV2    *bool
+	BillingType           *int8
 }
 
 type dashboardSnapshotV2CacheKey struct {
+	UpstreamModelMismatch       *bool  `json:"upstream_model_mismatch"`
 	StartTime                   string `json:"start_time"`
 	EndTime                     string `json:"end_time"`
 	Granularity                 string `json:"granularity"`
@@ -72,7 +74,11 @@ type dashboardSnapshotV2CacheKey struct {
 }
 
 func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
-	startTime, endTime := parseTimeRange(c)
+	startTime, endTime, err := parseTimeRange(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 	granularity := strings.TrimSpace(c.DefaultQuery("granularity", "day"))
 	if granularity != "hour" {
 		granularity = "day"
@@ -98,8 +104,10 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	}
 
 	keyRaw, _ := json.Marshal(dashboardSnapshotV2CacheKey{
-		StartTime:                   startTime.UTC().Format(time.RFC3339),
-		EndTime:                     endTime.UTC().Format(time.RFC3339),
+		NativeCompactionV2:          filters.NativeCompactionV2,
+		UpstreamModelMismatch:       filters.UpstreamModelMismatch,
+		StartTime:                   startTime.UTC().Format(time.RFC3339Nano),
+		EndTime:                     endTime.UTC().Format(time.RFC3339Nano),
 		Granularity:                 granularity,
 		UserID:                      filters.UserID,
 		APIKeyID:                    filters.APIKeyID,
@@ -192,7 +200,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.Stream,
 			filters.NativeCompactionV2,
 			filters.BillingType,
-			nil,
+			filters.UpstreamModelMismatch,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get usage trend")
@@ -214,7 +222,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.Stream,
 			filters.NativeCompactionV2,
 			filters.BillingType,
-			nil,
+			filters.UpstreamModelMismatch,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get model statistics")
@@ -235,7 +243,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.Stream,
 			filters.NativeCompactionV2,
 			filters.BillingType,
-			nil,
+			filters.UpstreamModelMismatch,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get group statistics")
@@ -328,5 +336,12 @@ func parseDashboardSnapshotV2Filters(c *gin.Context) (*dashboardSnapshotV2Filter
 		filters.BillingType = &bt
 	}
 
+	if raw := strings.TrimSpace(c.Query("upstream_model_mismatch")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, err
+		}
+		filters.UpstreamModelMismatch = &value
+	}
 	return filters, nil
 }

@@ -6,6 +6,7 @@
     @close="handleClose"
   >
     <form id="bulk-edit-account-form" class="space-y-5" @submit.prevent="() => handleSubmit()">
+      <AccountUpstreamChannelBinding v-if="show" :account-ids="targetMode === 'selected' ? targetAccountIds : []" />
       <!-- Info -->
       <div class="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
         <p class="text-sm text-blue-700 dark:text-blue-400">
@@ -17,7 +18,7 @@
               d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          {{ t('admin.accounts.bulkEdit.selectionInfo', { count: targetMode === 'filtered' ? targetPreviewCount : accountIds.length }) }}
+          {{ t('admin.accounts.bulkEdit.selectionInfo', { count: targetMode === 'filtered' ? targetPreviewCount : targetAccountIds.length }) }}
         </p>
       </div>
 
@@ -76,15 +77,6 @@
             </div>
             <div class="mt-3">
               <label class="flex items-center gap-2">
-                <input v-model="excelBPSIgnoreImages" type="checkbox"
-                  data-testid="bulk-excel-bps-ignore-images"
-                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500" />
-                <span class="text-sm">{{ t('admin.accounts.openai.excelBPSIgnoreImages') }}</span>
-              </label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSIgnoreImagesDesc') }}</p>
-            </div>
-            <div class="mt-3">
-              <label class="flex items-center gap-2">
                 <input v-model="excelBPSIgnoreEncryptedContent" type="checkbox"
                   data-testid="bulk-excel-bps-ignore-encrypted-content"
                   class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500" />
@@ -132,6 +124,34 @@
                   :aria-label="t('admin.accounts.openai.excelBPS403TargetGroup')"
                   data-testid="bulk-excel-bps-403-target-group" />
               </div>
+            </div>
+            <div class="mt-3">
+              <label class="flex items-center gap-2">
+                <input v-model="excelBPSMihomo" type="checkbox" data-testid="excel-bps-mihomo"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500" />
+                <span class="text-sm">{{ t('admin.accounts.openai.excelBPSMihomo') }}</span>
+              </label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSMihomoDesc') }}</p>
+              <div v-if="excelBPSMihomo" class="mt-2 flex flex-wrap items-center gap-4" role="radiogroup"
+                :aria-label="t('admin.accounts.openai.excelBPSProxySource')">
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSProxySource') }}</span>
+                <label class="flex items-center gap-1.5 text-sm">
+                  <input v-model="excelBPSProxySource" type="radio" value="mihomo"
+                    data-testid="bulk-excel-bps-proxy-source-mihomo"
+                    class="h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500" />
+                  {{ t('admin.accounts.openai.excelBPSProxySourceMihomo') }}
+                </label>
+                <label class="flex items-center gap-1.5 text-sm">
+                  <input v-model="excelBPSProxySource" type="radio" value="ip_pool"
+                    data-testid="bulk-excel-bps-proxy-source-ip-pool"
+                    class="h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500" />
+                  {{ t('admin.accounts.openai.excelBPSProxySourceIPPool') }}
+                </label>
+              </div>
+              <p v-if="excelBPSMihomo && excelBPSProxySource === 'ip_pool'"
+                class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.openai.excelBPSProxySourceIPPoolDesc') }}
+              </p>
             </div>
             <div>
               <label class="flex items-center gap-2">
@@ -1568,6 +1588,7 @@ import type {
   OpenAIResponsesMode
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import AccountUpstreamChannelBinding from './AccountUpstreamChannelBinding.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -1606,6 +1627,7 @@ interface Props {
   selectedTypes: AccountType[]
   target?: {
     mode: 'selected' | 'filtered'
+    accountIds?: number[]
     filters?: Record<string, unknown>
     previewCount?: number
     selectedPlatforms?: AccountPlatform[]
@@ -1628,6 +1650,9 @@ const globalBpsEnabled = computed(() => appStore.cachedPublicSettings?.excel_bps
 
 // Platform awareness
 const targetMode = computed(() => props.target?.mode ?? 'selected')
+const targetAccountIds = computed(() => props.target?.mode === 'selected'
+  ? props.target.accountIds ?? props.accountIds
+  : props.accountIds)
 const targetPreviewCount = computed(() => props.target?.previewCount ?? props.accountIds.length)
 const targetSelectedPlatforms = computed(() => props.target?.selectedPlatforms ?? props.selectedPlatforms)
 const targetSelectedTypes = computed(() => props.target?.selectedTypes ?? props.selectedTypes)
@@ -1792,12 +1817,13 @@ const excelBPSEnabled = ref(false)
 const excelBPSMode = ref<ExcelBPSMode>('initial')
 const excelBPSAllModels = ref(false)
 const excelBPSModels = ref<string[]>([...DEFAULT_EXCEL_BPS_MODELS])
+const excelBPSMihomo = ref(false)
+const excelBPSProxySource = ref<'mihomo' | 'ip_pool'>('mihomo')
 const excelBPSCacheCreationAsInput = ref(false)
 const excelBPSAutoDisableOn403 = ref(false)
 const excelBPSAutoRecoverOn403 = ref(false)
 const excelBPSRecoveryIntervalMinutes = ref<number | string>(DEFAULT_BPS_RECOVERY_INTERVAL_MINUTES)
 const excelBPSOmitUnsupportedTools = ref(false)
-const excelBPSIgnoreImages = ref(false)
 const excelBPSIgnoreEncryptedContent = ref(false)
 const excelBPSAutoMoveOn403 = ref(false)
 const excelBPS403TargetGroupID = ref<number | string>('')
@@ -1808,11 +1834,12 @@ const bpsDefaults = useExcelBPSDefaults({
   context: () => JSON.stringify([props.show, props.accountIds, props.selectedPlatforms, props.selectedTypes, authStore.user?.id, authStore.isObserver]),
   fields: {
     all_models: excelBPSAllModels, models: excelBPSModels,
-    omit_unsupported_tools: excelBPSOmitUnsupportedTools, ignore_images: excelBPSIgnoreImages,
+    omit_unsupported_tools: excelBPSOmitUnsupportedTools,
     ignore_encrypted_content: excelBPSIgnoreEncryptedContent,
     auto_disable_on_403: excelBPSAutoDisableOn403, auto_recover_on_403: excelBPSAutoRecoverOn403,
     recovery_interval_minutes: excelBPSRecoveryIntervalMinutes,
     auto_move_on_403: excelBPSAutoMoveOn403, target_group_id: excelBPS403TargetGroupID,
+    session_proxy: excelBPSMihomo, proxy_source: excelBPSProxySource,
     cache_creation_as_input: excelBPSCacheCreationAsInput
   }
 })
@@ -2139,13 +2166,16 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_excel_bps_models = excelBPSEnabled.value && !excelBPSAllModels.value
       ? [...new Set(excelBPSModels.value.map(model => model.trim()).filter(Boolean))]
       : null
+    extra.openai_excel_bps_mihomo = excelBPSEnabled.value && excelBPSMihomo.value
+    extra.openai_excel_bps_proxy_source = excelBPSEnabled.value && excelBPSMihomo.value
+      ? excelBPSProxySource.value
+      : 'mihomo'
     extra.openai_excel_bps_cache_creation_as_input =
       excelBPSEnabled.value && excelBPSCacheCreationAsInput.value
     extra.openai_excel_bps_auto_disable_on_403 = excelBPSEnabled.value && excelBPSAutoDisableOn403.value
     extra.openai_excel_bps_auto_recover_on_403 = excelBPSEnabled.value && excelBPSAutoDisableOn403.value && excelBPSAutoRecoverOn403.value
     extra.openai_excel_bps_403_recovery_interval_minutes = bpsRecoveryIntervalOrDefault(excelBPSRecoveryIntervalMinutes.value)
     extra.openai_excel_bps_omit_unsupported_tools = excelBPSEnabled.value && excelBPSOmitUnsupportedTools.value
-    extra.openai_excel_bps_ignore_images = excelBPSEnabled.value && excelBPSIgnoreImages.value
     extra.openai_excel_bps_ignore_encrypted_content = excelBPSEnabled.value && excelBPSIgnoreEncryptedContent.value
     extra.openai_excel_bps_auto_move_on_403 = excelBPSEnabled.value && excelBPSAutoMoveOn403.value
     extra.openai_excel_bps_403_target_group_id = excelBPSEnabled.value && excelBPSAutoMoveOn403.value
@@ -2371,7 +2401,7 @@ const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise
 
 const handleSubmit = async () => {
   if (bpsDefaults.loading.value) return
-  if (targetMode.value === 'selected' && props.accountIds.length === 0) {
+  if (targetMode.value === 'selected' && targetAccountIds.value.length === 0) {
     appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
     return
   }
@@ -2482,7 +2512,7 @@ const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
         filters: props.target.filters,
         ...updates
       })
-      : await adminAPI.accounts.bulkUpdate(props.accountIds, updates)
+      : await adminAPI.accounts.bulkUpdate([...targetAccountIds.value], updates)
     const success = res.success || 0
     const failed = res.failed || 0
     const inherited = res.long_context_inherited_count || 0
@@ -2593,12 +2623,13 @@ watch(
       excelBPSMode.value = 'initial'
       excelBPSAllModels.value = false
       excelBPSModels.value = [...DEFAULT_EXCEL_BPS_MODELS]
+      excelBPSMihomo.value = false
+      excelBPSProxySource.value = 'mihomo'
       excelBPSCacheCreationAsInput.value = false
       excelBPSAutoDisableOn403.value = false
       excelBPSAutoRecoverOn403.value = false
       excelBPSRecoveryIntervalMinutes.value = DEFAULT_BPS_RECOVERY_INTERVAL_MINUTES
       excelBPSOmitUnsupportedTools.value = false
-      excelBPSIgnoreImages.value = false
       excelBPSIgnoreEncryptedContent.value = false
       excelBPSAutoMoveOn403.value = false
       excelBPS403TargetGroupID.value = ''

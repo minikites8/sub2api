@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
@@ -58,6 +59,7 @@ func Accepted(c *gin.Context, data any) {
 
 // Error 返回错误响应
 func Error(c *gin.Context, statusCode int, message string) {
+	c.Set(errorReasonContextKey, "")
 	c.JSON(statusCode, Response{
 		Code:     statusCode,
 		Message:  message,
@@ -69,12 +71,21 @@ func Error(c *gin.Context, statusCode int, message string) {
 // ErrorWithDetails returns an error response compatible with the existing envelope while
 // optionally providing structured error fields (reason/metadata).
 func ErrorWithDetails(c *gin.Context, statusCode int, message, reason string, metadata map[string]string) {
+	c.Set(errorReasonContextKey, reason)
 	c.JSON(statusCode, Response{
 		Code:     statusCode,
 		Message:  message,
 		Reason:   reason,
 		Metadata: metadata,
 	})
+}
+
+const errorReasonContextKey = "sub2api.response.error_reason"
+
+// ErrorReason exposes the server-selected reason to middleware without parsing
+// or buffering response bodies. It never comes from a request header or body.
+func ErrorReason(c *gin.Context) string {
+	return c.GetString(errorReasonContextKey)
 }
 
 // ErrorFrom converts an ApplicationError (or any error) into the envelope-compatible error response.
@@ -166,7 +177,8 @@ func PaginatedWithResult(c *gin.Context, items any, pagination *PaginationResult
 	})
 }
 
-// ParsePagination 解析分页参数
+// ParsePagination 解析分页参数。无效或超出 int 范围的值使用默认值；
+// 有效页码按 pageSize 限制上限，返回可安全计算 offset 和 offset+pageSize 的页码。
 func ParsePagination(c *gin.Context) (page, pageSize int) {
 	page = 1
 	pageSize = 20
@@ -188,16 +200,16 @@ func ParsePagination(c *gin.Context) (page, pageSize int) {
 		}
 	}
 
+	// Clamp the page so both offset and offset+pageSize stay within int.
+	if page > math.MaxInt/pageSize {
+		page = math.MaxInt / pageSize
+	}
+
 	return page, pageSize
 }
 
 func parseInt(s string) (int, error) {
-	var result int
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, nil
-		}
-		result = result*10 + int(c-'0')
-	}
-	return result, nil
+	// Parse unsigned decimal digits within the positive range of the native int.
+	value, err := strconv.ParseUint(s, 10, strconv.IntSize-1)
+	return int(value), err
 }

@@ -33,6 +33,9 @@ func (h *SettingHandler) auditSettingsUpdate(c *gin.Context, before *service.Sys
 
 func diffSettings(before *service.SystemSettings, after *service.SystemSettings, beforeAuthSourceDefaults *service.AuthSourceDefaultSettings, afterAuthSourceDefaults *service.AuthSourceDefaultSettings, req UpdateSettingsRequest) []string {
 	changed := make([]string, 0, 20)
+	if !reflect.DeepEqual(before.SmartOpsHiddenMenuItems, after.SmartOpsHiddenMenuItems) {
+		changed = append(changed, "smart_ops_hidden_menu_items")
+	}
 	if before.RequestCaptureEnabled != after.RequestCaptureEnabled {
 		changed = append(changed, "request_capture_enabled")
 	}
@@ -51,6 +54,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
 		changed = append(changed, "registration_email_suffix_whitelist")
+	}
+	if before.RegistrationEmailAliasBlockEnabled != after.RegistrationEmailAliasBlockEnabled {
+		changed = append(changed, "registration_email_alias_block_enabled")
 	}
 	if before.RegistrationEmailDomainQuotaEnabled != after.RegistrationEmailDomainQuotaEnabled {
 		changed = append(changed, "registration_email_domain_quota_enabled")
@@ -111,6 +117,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.FrontendURL != after.FrontendURL {
 		changed = append(changed, "frontend_url")
+	}
+	if before.LoginRateLimitEnabled != after.LoginRateLimitEnabled {
+		changed = append(changed, "login_rate_limit_enabled")
+	}
+	if before.RegistrationIPLimitEnabled != after.RegistrationIPLimitEnabled {
+		changed = append(changed, "registration_ip_limit_enabled")
 	}
 	if before.TotpEnabled != after.TotpEnabled {
 		changed = append(changed, "totp_enabled")
@@ -544,6 +556,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAIRequestTimezoneEnabled != after.OpenAIRequestTimezoneEnabled {
 		changed = append(changed, "openai_request_timezone_enabled")
 	}
+	if before.OpenAIRequestTimezoneAuto != after.OpenAIRequestTimezoneAuto {
+		changed = append(changed, "openai_request_timezone_auto")
+	}
 	if before.OpenAICodexTicketEnabled != after.OpenAICodexTicketEnabled {
 		changed = append(changed, "openai_codex_ticket_enabled")
 	}
@@ -644,6 +659,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 		changed = append(changed, "openai_advanced_scheduler_weight_session_sticky")
 	}
 	// 余额、订阅到期与账号限额通知
+	if before.BalanceForecastEnabled != after.BalanceForecastEnabled {
+		changed = append(changed, "balance_forecast_enabled")
+	}
+	if before.BalanceForecastThresholdHours != after.BalanceForecastThresholdHours {
+		changed = append(changed, "balance_forecast_threshold_hours")
+	}
+	if before.BalanceForecastMaxNotifications != after.BalanceForecastMaxNotifications {
+		changed = append(changed, "balance_forecast_max_notifications")
+	}
 	if before.BalanceLowNotifyEnabled != after.BalanceLowNotifyEnabled {
 		changed = append(changed, "balance_low_notify_enabled")
 	}
@@ -688,12 +712,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
-	}
-	if before.YeTeamEnabled != after.YeTeamEnabled {
-		changed = append(changed, "ye_team_enabled")
-	}
-	if before.YeTeamAutoRefresh401 != after.YeTeamAutoRefresh401 {
-		changed = append(changed, "ye_team_auto_refresh_401")
 	}
 	if before.CyberPolicyUserAllowlist != after.CyberPolicyUserAllowlist {
 		changed = append(changed, "cyber_policy_user_allowlist")

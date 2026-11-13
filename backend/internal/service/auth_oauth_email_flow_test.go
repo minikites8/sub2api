@@ -355,8 +355,10 @@ func TestRegisterOAuthEmailAccountNormalizesEmailAlias(t *testing.T) {
 		&redeemCodeRepoStub{},
 		&refreshTokenCacheStub{},
 		map[string]string{
-			SettingKeyRegistrationEnabled: "true",
-			SettingKeyEmailVerifyEnabled:  "true",
+			// Allow aliases here to exercise canonical storage and verification.
+			SettingKeyRegistrationEmailAliasBlockEnabled: "false",
+			SettingKeyRegistrationEnabled:                "true",
+			SettingKeyEmailVerifyEnabled:                 "true",
 		},
 		emailCache,
 		nil,

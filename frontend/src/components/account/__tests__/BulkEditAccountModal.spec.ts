@@ -151,8 +151,9 @@ describe('BulkEditAccountModal', () => {
       openai_excel_bps_config_mode: 'initial',
       openai_excel_bps: true,
       openai_excel_bps_models: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra'],
+      openai_excel_bps_mihomo: false,
+      openai_excel_bps_proxy_source: 'mihomo',
       openai_excel_bps_cache_creation_as_input: false,
-      openai_excel_bps_ignore_images: false,
       openai_excel_bps_ignore_encrypted_content: false,
       openai_excel_bps_omit_unsupported_tools: false,
       openai_excel_bps_auto_disable_on_403: false,
@@ -249,7 +250,34 @@ describe('BulkEditAccountModal', () => {
       })
     })
 
+    it('saves the session proxy opt-in in bulk', async () => {
+      const wrapper = mountModal(oauthProps)
+      await enableBPS(wrapper)
+      await wrapper.get('[data-testid="excel-bps-mihomo"]').setValue(true)
+      await submit(wrapper)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+        extra: {
+          ...defaultExtra,
+          openai_excel_bps_mihomo: true
+        }
+      })
+    })
 
+    it('saves the IP management pool as the session proxy source in bulk', async () => {
+      const wrapper = mountModal(oauthProps)
+      await enableBPS(wrapper)
+      expect(wrapper.find('[data-testid="bulk-excel-bps-proxy-source-ip-pool"]').exists()).toBe(false)
+      await wrapper.get('[data-testid="excel-bps-mihomo"]').setValue(true)
+      await wrapper.get('[data-testid="bulk-excel-bps-proxy-source-ip-pool"]').setValue(true)
+      await submit(wrapper)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+        extra: {
+          ...defaultExtra,
+          openai_excel_bps_mihomo: true,
+          openai_excel_bps_proxy_source: 'ip_pool'
+        }
+      })
+    })
 
     it('submits normalized selected models and cache creation billing', async () => {
       const wrapper = mountModal(oauthProps)
@@ -297,6 +325,7 @@ describe('BulkEditAccountModal', () => {
       await enableBPS(wrapper)
       await wrapper.get('[data-testid="bulk-excel-bps-omit-unsupported-tools"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-cache-creation-as-input"]').setValue(true)
+      await wrapper.get('[data-testid="excel-bps-mihomo"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-disable-on-403"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-move-on-403"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-403-target-group"]').setValue('0')
@@ -323,6 +352,7 @@ describe('BulkEditAccountModal', () => {
       await wrapper.get('[data-testid="bulk-excel-bps-all-models"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-omit-unsupported-tools"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-cache-creation-as-input"]').setValue(true)
+      await wrapper.get('[data-testid="excel-bps-mihomo"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-disable-on-403"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-move-on-403"]').setValue(true)
       await wrapper.get('[data-testid="bulk-excel-bps-403-target-group"]').setValue('0')
@@ -334,6 +364,7 @@ describe('BulkEditAccountModal', () => {
       expect(wrapper.get('[data-testid="bulk-excel-bps-model-selection"]').getComponent(ModelWhitelistSelector).props('modelValue'))
         .toEqual(defaultExtra.openai_excel_bps_models)
       expect((wrapper.get('[data-testid="bulk-excel-bps-cache-creation-as-input"]').element as HTMLInputElement).checked).toBe(false)
+      expect(wrapper.get<HTMLInputElement>('[data-testid="excel-bps-mihomo"]').element.checked).toBe(false)
       expect(wrapper.get<HTMLInputElement>('[data-testid="bulk-excel-bps-auto-disable-on-403"]').element.checked).toBe(false)
       expect(wrapper.get<HTMLInputElement>('[data-testid="bulk-excel-bps-auto-move-on-403"]').element.checked).toBe(false)
       await wrapper.get('[data-testid="bulk-excel-bps-auto-move-on-403"]').setValue(true)
@@ -1238,6 +1269,33 @@ describe('BulkEditAccountModal', () => {
       }
     })
     expect(wrapper.text()).toContain('admin.accounts.openai.modelRestrictionDisabledByPassthrough')
+  })
+
+  it('uses the frozen OAuth selection for group changes even if live selection changes', async () => {
+    const wrapper = mountModal({
+      accountIds: [101, 102],
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth'],
+      target: {
+        mode: 'selected', accountIds: [101, 102],
+        selectedPlatforms: ['openai'], selectedTypes: ['oauth']
+      }
+    })
+    await wrapper.setProps({ accountIds: [101, 102, 201, 202] })
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    wrapper.findComponent({ name: 'GroupSelector' }).vm.$emit('update:modelValue', [11, 15])
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([101, 102], { group_ids: [11, 15] })
+  })
+
+  it('does not replace an empty frozen selection with live account IDs', async () => {
+    const wrapper = mountModal({ target: { mode: 'selected', accountIds: [] } })
+    await wrapper.get('#bulk-edit-status-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.accounts.bulkEdit.noSelection')
   })
 
   it('filtered-results 模式下应提交 filters 而不是 account_ids', async () => {

@@ -116,9 +116,9 @@ func (s *localGPTAutoAffinityStore) CompareAndSet(_ context.Context, key string,
 }
 func gptAutoPrivateFingerprint(secret, scope, value string) string {
 	h := hmac.New(sha256.New, []byte(secret))
-	h.Write([]byte(scope))
-	h.Write([]byte{0})
-	h.Write([]byte(value))
+	_, _ = h.Write([]byte(scope))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(value))
 	return hex.EncodeToString(h.Sum(nil))
 }
 func (r *GPTAutoRoute) dynamicEnabled() bool {

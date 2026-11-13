@@ -175,6 +175,11 @@ func AllowBatchImageGeneration(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowBatchImageGeneration, v))
 }
 
+// ImageCountBilling applies equality check predicate on the "image_count_billing" field. It's identical to ImageCountBillingEQ.
+func ImageCountBilling(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageCountBilling, v))
+}
+
 // ImageRateIndependent applies equality check predicate on the "image_rate_independent" field. It's identical to ImageRateIndependentEQ.
 func ImageRateIndependent(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateIndependent, v))
@@ -280,6 +285,16 @@ func FallbackGroupIDOnInvalidRequest(v int64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFallbackGroupIDOnInvalidRequest, v))
 }
 
+// BlockSubagents applies equality check predicate on the "block_subagents" field. It's identical to BlockSubagentsEQ.
+func BlockSubagents(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldBlockSubagents, v))
+}
+
+// CodexCliOnly applies equality check predicate on the "codex_cli_only" field. It's identical to CodexCliOnlyEQ.
+func CodexCliOnly(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCodexCliOnly, v))
+}
+
 // StreamOnly applies equality check predicate on the "stream_only" field. It's identical to StreamOnlyEQ.
 func StreamOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStreamOnly, v))
@@ -318,11 +333,6 @@ func ForceOpenaiFast(v bool) predicate.Group {
 // FreeOpenaiFast applies equality check predicate on the "free_openai_fast" field. It's identical to FreeOpenaiFastEQ.
 func FreeOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
-}
-
-// EnableBps applies equality check predicate on the "enable_bps" field. It's identical to EnableBpsEQ.
-func EnableBps(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldEnableBps, v))
 }
 
 // SchedulingStrategy applies equality check predicate on the "scheduling_strategy" field. It's identical to SchedulingStrategyEQ.
@@ -1560,6 +1570,16 @@ func AllowBatchImageGenerationNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowBatchImageGeneration, v))
 }
 
+// ImageCountBillingEQ applies the EQ predicate on the "image_count_billing" field.
+func ImageCountBillingEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageCountBilling, v))
+}
+
+// ImageCountBillingNEQ applies the NEQ predicate on the "image_count_billing" field.
+func ImageCountBillingNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageCountBilling, v))
+}
+
 // ImageRateIndependentEQ applies the EQ predicate on the "image_rate_independent" field.
 func ImageRateIndependentEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateIndependent, v))
@@ -2430,6 +2450,26 @@ func FallbackGroupIDOnInvalidRequestNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldFallbackGroupIDOnInvalidRequest))
 }
 
+// BlockSubagentsEQ applies the EQ predicate on the "block_subagents" field.
+func BlockSubagentsEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldBlockSubagents, v))
+}
+
+// BlockSubagentsNEQ applies the NEQ predicate on the "block_subagents" field.
+func BlockSubagentsNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldBlockSubagents, v))
+}
+
+// CodexCliOnlyEQ applies the EQ predicate on the "codex_cli_only" field.
+func CodexCliOnlyEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCodexCliOnly, v))
+}
+
+// CodexCliOnlyNEQ applies the NEQ predicate on the "codex_cli_only" field.
+func CodexCliOnlyNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCodexCliOnly, v))
+}
+
 // StreamOnlyEQ applies the EQ predicate on the "stream_only" field.
 func StreamOnlyEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStreamOnly, v))
@@ -2548,16 +2588,6 @@ func FreeOpenaiFastEQ(v bool) predicate.Group {
 // FreeOpenaiFastNEQ applies the NEQ predicate on the "free_openai_fast" field.
 func FreeOpenaiFastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldFreeOpenaiFast, v))
-}
-
-// EnableBpsEQ applies the EQ predicate on the "enable_bps" field.
-func EnableBpsEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldEnableBps, v))
-}
-
-// EnableBpsNEQ applies the NEQ predicate on the "enable_bps" field.
-func EnableBpsNEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldNEQ(FieldEnableBps, v))
 }
 
 // SchedulingStrategyEQ applies the EQ predicate on the "scheduling_strategy" field.

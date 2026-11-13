@@ -54,6 +54,8 @@ const (
 	PlatformTypeSafe    = domain.PlatformTypeSafe
 	PlatformCommandCode = domain.PlatformCommandCode
 	PlatformCline       = domain.PlatformCline
+	PlatformMistral     = domain.PlatformMistral
+	PlatformQwen        = domain.PlatformQwen
 	PlatformComposite   = domain.PlatformComposite
 )
 
@@ -90,7 +92,11 @@ const (
 	// Command Code Provider API：Chat Completions / Responses / models 共用 /provider/v1 基址。
 	DefaultCommandCodeBaseURL = "https://api.commandcode.ai/provider/v1"
 	// Cline API：只提供 Chat Completions（{base}/chat/completions）与模型列表。
-	DefaultClineBaseURL = "https://api.cline.bot/api/v1"
+	DefaultClineBaseURL     = "https://api.cline.bot/api/v1"
+	DefaultMistralBaseURL   = "https://api.mistral.ai/v1"
+	DefaultMistralTestModel = "mistral-small-latest"
+	DefaultQwenBaseURL      = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	DefaultQwenTestModel    = "qwen3.8-max"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -143,12 +149,11 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
 	PlatformCommandCode,
+	PlatformMistral,
 }
 
 const (
 	SettingKeyAccountSchedulingThresholds = "account_scheduling_thresholds"
-	SettingKeyAutoSupplySettings          = "auto_supply_settings"
-	SettingKeyAutoSupplyOrders            = "auto_supply_orders"
 )
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
@@ -266,12 +271,18 @@ const (
 	SettingKeyGPTAutoShadowConfig                 = "gpt_auto_shadow_config"             // GPT-Auto 影子路由配置（JSON，Phase 1 仅观测，默认关闭）
 	SettingKeyCyberSessionBlockEnabled            = "cyber_session_block_enabled"        // cyber 命中后会话级自动屏蔽总开关(默认关)
 	SettingKeyCyberSessionIdentityStrictEnabled   = "cyber_session_identity_strict_enabled"
-	SettingKeyCyberSessionBlockTTLSeconds         = "cyber_session_block_ttl_seconds" // 会话屏蔽 TTL 秒数(默认 3600)
-	SettingKeyLoginAgreementEnabled               = "login_agreement_enabled"         // 登录前是否要求同意条款
-	SettingKeyLoginAgreementMode                  = "login_agreement_mode"            // 条款确认展示模式：modal / checkbox
-	SettingKeyLoginAgreementUpdatedAt             = "login_agreement_updated_at"      // 条款更新日期（展示用）
-	SettingKeyLoginAgreementDocuments             = "login_agreement_documents"       // 条款文档列表（JSON，Markdown 内容）
-	SettingKeyCyberPolicyUserAllowlist            = "cyber_policy_user_allowlist"     // Platform user IDs with log-only cyber handling
+	SettingKeyCyberSessionBlockTTLSeconds         = "cyber_session_block_ttl_seconds"        // 会话屏蔽 TTL 秒数(默认 3600)
+	SettingKeyLoginAgreementEnabled               = "login_agreement_enabled"                // 登录前是否要求同意条款
+	SettingKeyLoginAgreementMode                  = "login_agreement_mode"                   // 条款确认展示模式：modal / checkbox
+	SettingKeyLoginAgreementUpdatedAt             = "login_agreement_updated_at"             // 条款更新日期（展示用）
+	SettingKeyLoginAgreementDocuments             = "login_agreement_documents"              // 条款文档列表（JSON，Markdown 内容）
+	SettingKeyCyberPolicyUserAllowlist            = "cyber_policy_user_allowlist"            // Platform user IDs with log-only cyber handling
+	SettingKeyLoginRateLimitEnabled               = "login_rate_limit_enabled"               // 登录频率限制与失败 IP 封禁（默认开启）
+	SettingKeyRegistrationIPLimitEnabled          = "registration_ip_limit_enabled"          // 同一 IP 最多注册两个账号（默认开启）
+	SettingKeyRegistrationEmailAliasBlockEnabled  = "registration_email_alias_block_enabled" // 屏蔽邮箱别名注册（默认开启）
+	SettingKeySafetyPromptEnabled                 = "safety_prompt_enabled"                  // 原生安全提示词注入模块总开关(默认关)
+	SettingKeySafetyPromptSignalEnabled           = "safety_prompt_signal_enabled"           // 原生独立拒绝识别(默认关，仅模块开启时生效)
+	SettingKeySafetyPromptRetentionDays           = "safety_prompt_retention_days"           // 命中事件保留天数(默认 30，范围 1-90)
 
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址
@@ -517,8 +528,6 @@ const (
 	// SettingKeyChannelMonitorEnabled is a DB-backed soft switch for the channel monitor feature.
 	// When false: runner skips scheduling and user-facing endpoints return an empty list.
 	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
-	SettingKeyYeTeamEnabled         = "ye_team_enabled"
-	SettingKeyYeTeamAutoRefresh401  = "ye_team_auto_refresh_401"
 
 	// SettingKeyChannelMonitorMode selects exclusive implementation:
 	// "v1" active probes, "v2" passive aggregation, "v3" component status page.
@@ -574,7 +583,8 @@ const (
 	// SettingKeyGrokVideoSourceURLEnabled, when true, adds the validated xAI
 	// media URL as video.source_url to Grok video status responses. video.url
 	// stays the authenticated Sub2API content proxy. Default false.
-	SettingKeyGrokVideoSourceURLEnabled = "grok_video_source_url_enabled"
+	SettingKeyGrokVideoSourceURLEnabled            = "grok_video_source_url_enabled"
+	SettingKeyOpenAI409OmitEncryptedHistoryEnabled = "openai_409_omit_encrypted_history_enabled"
 
 	// SettingKeyAvailableChannelsEnabled is a DB-backed soft switch for the "Available Channels"
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the
@@ -654,6 +664,9 @@ const (
 	SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings = "openai_images_oauth_unavailable_cooldown_settings"
 	// SettingKeyOpenAIAPIKeyHealthBreakerSettings stores the opt-in OpenAI pool API-key breaker config.
 	SettingKeyOpenAIAPIKeyHealthBreakerSettings = "openai_apikey_health_breaker_settings"
+	// SettingKeyOpenAIResponseHeaderTimeoutSettings stores the admin-configurable
+	// OpenAI/Codex response-header timeout and enable toggle.
+	SettingKeyOpenAIResponseHeaderTimeoutSettings = "openai_response_header_timeout_settings"
 
 	// =========================
 	// Stream Timeout Handling
@@ -779,6 +792,7 @@ const (
 	// SettingKeyOpenAICodexVersionAutoSyncEnabled 是否启用 Codex 客户端版本号自动同步（默认 true）。
 	SettingKeyOpenAICodexVersionAutoSyncEnabled = "openai_codex_version_auto_sync_enabled"
 	SettingKeyOpenAIRequestTimezoneEnabled      = "openai_request_timezone_enabled"
+	SettingKeyOpenAIRequestTimezoneAuto         = "openai_request_timezone_auto"
 	// SettingKeyOpenAICodexTicketEnabled Codex 292 打票总开关（后台可改、热更新）。
 	// 关闭：不打票、不注入 x-codex-turn-state，按原链路转发。
 	// 开启：后台打票并在业务请求中覆盖该头。
@@ -815,6 +829,11 @@ const (
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关
 	SettingKeyBalanceLowNotifyThreshold   = "balance_low_notify_threshold"    // 默认阈值（USD）
 	SettingKeyBalanceLowNotifyRechargeURL = "balance_low_notify_recharge_url" // 充值页面 URL
+
+	// 余额耗尽预测：独立于金额提醒，默认关闭。
+	SettingKeyBalanceForecastEnabled          = "balance_forecast_enabled"
+	SettingKeyBalanceForecastThresholdHours   = "balance_forecast_threshold_hours"
+	SettingKeyBalanceForecastMaxNotifications = "balance_forecast_max_notifications"
 
 	// 订阅到期提醒
 	SettingKeySubscriptionExpiryNotifyEnabled = "subscription_expiry_notify_enabled" // 订阅到期提醒全局开关，默认开启
@@ -854,3 +873,15 @@ const SettingKeyAllowUserViewErrorRequests = "allow_user_view_error_requests"
 // billing "x2" badge is shown next to the cost in usage tables. Default
 // true (opt-out).
 const SettingKeyUsageShowLongContextBadge = "usage_show_long_context_badge"
+
+// SettingKeyUsageShowCacheRate controls the per-request cache-rate row in
+// usage records. Default true. SettingKeyUsageShowCacheRateToUsers controls
+// whether end users see that row; default false (admin only).
+const SettingKeyUsageShowCacheRate = "usage_show_cache_rate"
+const SettingKeyUsageShowCacheRateToUsers = "usage_show_cache_rate_to_users"
+
+// SettingKeyUsageShowUpstreamResponseModelToUsers controls whether end users
+// can see the model declared by the upstream response on their own usage
+// records. Default false. Admins always see it. This does not change billing
+// or the client-facing model rewritten into gateway responses.
+const SettingKeyUsageShowUpstreamResponseModelToUsers = "usage_show_upstream_response_model_to_users"

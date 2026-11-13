@@ -1,7 +1,7 @@
 """Loopback-only Prism browser adapter for OpenAI OAuth accounts.
 
-Prism's web UI initializes sessions, sandboxes and first starts. Confirmed
-conversation continuations use the official browser fetch and listen snapshot.
+Prism's web UI owns session, sandbox, and start/status requests. This adapter
+observes their terminal result and never fabricates token deltas or usage.
 """
 
 import hmac
@@ -26,18 +26,15 @@ from model_selection import MODELS, EFFORTS, CAPABILITIES, request_capabilities,
 from tool_bridge import ToolBridge, has_tools, strict_json
 from tool_state import ToolState, digest
 from response_events import completed_events
-from reasoning_options import resolve_reasoning
-from error_redaction import redact_error
-from catalog_prompt import MAX_PRISM_PROMPT_BYTES
-from relay_prompt import RelayPrompt
 
 
 BASE = "https://prism.openai.com"
 START = "/api/llm/response_with_tools_start"
 STATUS = "/api/llm/response_with_tools_status"
 MAX_REQUEST_BYTES = 1 << 20
-PENDING_LEASE_SECONDS = max(30, int(os.environ.get("PRISM_PENDING_LEASE_SECONDS", "900")))
-
+MAX_PROMPT_CHARS = 32000
+MAX_PROMPT_BYTES = int(os.environ.get('PRISM_MAX_PROMPT_BYTES', '86000'))
+PENDING_LEASE_SECONDS = max(30, int(os.environ.get('PRISM_PENDING_LEASE_SECONDS', '900')))
 SESSION_ID = re.compile(r"^[0-9a-f]{64}$")
 MODEL = "gpt-5.6-sol"
 PROJECT_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f-]{27,}$")
@@ -53,7 +50,7 @@ class AdapterError(Exception):
         self.not_submitted = not_submitted
 
 
-def parse_prompt(payload, *, max_bytes=MAX_PRISM_PROMPT_BYTES):
+def parse_prompt(payload):
     if not isinstance(payload, dict) or not isinstance(payload.get("model"), str) or payload["model"] not in MODELS:
         raise AdapterError(422, "unsupported_model", "Unsupported Prism model; choose " + ", ".join(MODELS))
     unsupported = request_capabilities(payload) - CAPABILITIES[payload['model']]
@@ -71,7 +68,10 @@ def parse_prompt(payload, *, max_bytes=MAX_PRISM_PROMPT_BYTES):
     text_options = payload.get("text") or {}
     if not isinstance(text_options, dict) or text_options.get("format", {"type": "text"}) != {"type": "text"}:
         raise AdapterError(422, "unsupported_request", "Only plain text output is supported")
-    resolve_reasoning(payload, AdapterError)
+    reasoning = payload.get("reasoning") or {}
+    if (not isinstance(reasoning, dict) or not isinstance(reasoning.get("effort", "medium"), str)
+            or reasoning.get("effort", "medium") not in EFFORTS or reasoning.get("summary") not in (None, "none", "auto", "detailed")):
+        raise AdapterError(422, "unsupported_reasoning", "Unsupported Prism reasoning effort")
     if not isinstance(payload.get("stream", False), bool):
         raise AdapterError(400, "invalid_request", "stream must be a boolean")
     items = payload.get("input")
@@ -102,11 +102,8 @@ def parse_prompt(payload, *, max_bytes=MAX_PRISM_PROMPT_BYTES):
             raise AdapterError(400, "invalid_request", "message content must not be empty")
         parts.append("[" + role + "]\n" + text)
     prompt = "\n\n".join(parts)
-    # Text and client-tool requests share the rendered UTF-8 submission budget.
-    # Codex instructions and full history can exceed 32,000 characters.
-    if len(prompt.encode('utf-8')) > max_bytes:
-        raise AdapterError(413, "request_too_large",
-            f"Prism text prompt exceeds the {max_bytes // 1024} KiB UTF-8 submission budget; reduce instructions or message history")
+    if not prompt.strip() or len(prompt.encode('utf-8')) > MAX_PROMPT_BYTES:
+        raise AdapterError(400, "invalid_request", "text input is empty or exceeds the UTF-8 byte budget")
     return prompt, payload.get("stream", False)
 
 
@@ -130,8 +127,7 @@ def terminal_failure_diagnostics(data):
         return {}
     details = payload.get('diagnostics')
     result = {}
-    text = ' '.join(value[:4096].lower() for key in ('message', 'rootCause')
-                    if isinstance(value := payload.get(key), str))
+    text = ' '.join(str(payload.get(key, ''))[:4096].lower() for key in ('message', 'rootCause'))
     hints = [label for label, words in (
         ('rate_limit', ('rate limit', 'rate_limit', 'too many')),
         ('quota', ('quota', 'usage limit')),
@@ -139,15 +135,10 @@ def terminal_failure_diagnostics(data):
         ('sync', ('synchron', 'sync_', 'sync ')),
         ('timeout', ('timeout', 'timed out')),
         ('connection', ('connect', 'network', 'fetch failed')),
-        ('context', ('context length', 'conversation too', 'maximum context', 'too many tokens',
-                     'input too long', 'prompt too long', 'prompt is too long', 'request too large',
-                     'input is too large', '输入过长', '请求过大', '上下文长度')),
+        ('context', ('context length', 'conversation too')),
     ) if any(word in text for word in words)]
     if hints:
         result['upstream_hints'] = hints
-    status = payload.get('httpStatus')
-    if type(status) is int and 400 <= status <= 599:
-        result['upstream_status'] = status
     if not isinstance(details, dict):
         return result
     if details.get('code') in ('server_error', 'sandbox_disconnected', 'timeout',
@@ -161,38 +152,6 @@ def terminal_failure_diagnostics(data):
     return result
 
 
-def terminal_error(data):
-    reason = terminal_failure_reason(data)
-    if reason == 'sandbox_reconnecting':
-        error = AdapterError(503, 'sandbox_reconnecting', 'Prism project runtime is reconnecting')
-    elif reason == 'project_edit_access_required':
-        error = AdapterError(403, 'project_edit_access_required', 'Prism project edit access is required')
-    elif reason == 'conversation_too_large':
-        error = AdapterError(422, 'conversation_too_large', 'Prism conversation exceeds the upstream limit')
-    else:
-        details = terminal_failure_diagnostics(data)
-        codes = {
-            'workspace_sync_timeout': (504, 'prism_workspace_sync_timeout', 'Prism project synchronization timed out'),
-            'workspace_sync_unavailable': (503, 'prism_workspace_sync_unavailable', 'Prism project synchronization is unavailable'),
-            'sandbox_disconnected': (503, 'prism_sandbox_disconnected', 'Prism project runtime disconnected'),
-        }
-        fallback = {
-            400: (400, 'prism_input_rejected', 'Prism rejected the conversation input; see adapter upstream error logs'),
-            413: (413, 'prism_input_too_large', 'Prism rejected the input size; reduce instructions, tool definitions or message history'),
-        }.get(details.get('upstream_status'), (502, 'prism_failed', 'Prism turn failed'))
-        error = AdapterError(*codes.get(details.get('upstream_code'), fallback))
-    error.upstream = terminal_failure_diagnostics(data)
-    return error
-
-
-def terminal_failure_log_fields(data, secrets=()):
-    response = data.get('response') if isinstance(data, dict) else None
-    payload = response.get('payload') if isinstance(response, dict) else None
-    payload = payload if isinstance(payload, dict) else {}
-    return {'upstream_message': redact_error(payload.get('message'), secrets),
-            'upstream_root_cause': redact_error(payload.get('rootCause'), secrets)}
-
-
 def terminal_text(data):
     if not isinstance(data, dict):
         return None
@@ -200,11 +159,18 @@ def terminal_text(data):
     if data.get("status") not in ("completed", "failed", "error"):
         return None
     if data.get("status") in ("failed", "error"):
-        return terminal_error(data)
+        return AdapterError(502, "prism_failed", "Prism turn failed")
     if not isinstance(response, dict) or response.get("status") not in ("success", "failed", "error"):
         return None
     if response.get("status") in ("failed", "error"):
-        return terminal_error(data)
+        reason = terminal_failure_reason(data)
+        if reason == 'sandbox_reconnecting':
+            return AdapterError(503, 'sandbox_reconnecting', 'Prism project runtime is reconnecting')
+        if reason == 'project_edit_access_required':
+            return AdapterError(403, 'project_edit_access_required', 'Prism project edit access is required')
+        if reason == 'conversation_too_large':
+            return AdapterError(422, 'conversation_too_large', 'Prism conversation exceeds the upstream limit')
+        return AdapterError(502, "prism_failed", "Prism turn failed")
     output = (response.get("payload") or {}).get("output") or []
     texts = [part.get("text", "") for item in output if isinstance(item, dict) and item.get("type") == "message"
              for part in item.get("content", []) if isinstance(part, dict) and isinstance(part.get("text"), str)]
@@ -419,8 +385,6 @@ class BrowserRequest:
                 self.state.update(self.account_id, update)
             result = terminal_text(data)
             if result is not None:
-                if isinstance(result, AdapterError) and result.code == 'prism_input_too_large':
-                    result.input_rejected_before_processing = response.url == BASE + START
                 self.terminal = (response.status, result)
         except (ValueError, TypeError):
             pass
@@ -457,7 +421,6 @@ class BrowserRequest:
                            model=self.gate.model, effort=self.gate.effort)
         self.state.finish(self.account_id)
         if isinstance(result, AdapterError):
-            result.terminal_request_id = self.request_id
             raise result
         return self.request_id, result
 
@@ -653,11 +616,6 @@ class BrowserWorker:
             self.stopping.set()
         self.thread.join(timeout=8)
 
-    def health(self):
-        ready = self.ready.is_set() and self.startup_error is None and not self.stopping.is_set() and self.thread.is_alive()
-        return {"status": "ok" if ready else "unavailable", "mode": "browser",
-                "active": int(self.busy.locked()), "queued": 0, "max_inflight": 1}
-
 
 def response_payload(request_id, text, model=MODEL, effort="medium"):
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", request_id)[:100]
@@ -702,32 +660,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_completion(self, response, stream, tool_response=False):
-        if not stream:
-            self.send_json(200, response)
-            return
-        created = dict(response, status="in_progress", output=[])
-        events = [
-            ("response.created", {"type": "response.created", "sequence_number": 0, "response": created}),
-            ("response.completed", {"type": "response.completed", "sequence_number": 1, "response": response}),
-        ]
-        if tool_response:
-            events = completed_events(response)
-        body = "".join("event: " + name + "\ndata: " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n\n"
-                       for name, data in events).encode('utf-8')
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("X-Request-Id", response["id"])
-        self.send_header("Connection", "close")
-        self.close_connection = True
-        self.end_headers()
-        self.wfile.write(body)
-
     def do_GET(self):
         if self.path == "/health":
-            status = self.browser_turn.health() if hasattr(self.browser_turn, "health") else {"status": "ok"}
-            self.send_json(200 if status["status"] == "ok" else 503, status)
+            self.send_json(200, {"status": "ok"})
         else:
             self.send_json(404, {"error": {"type": "not_found"}})
 
@@ -758,10 +693,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise AdapterError(413, "request_too_large", "request body is empty or too large")
             payload = strict_json(self.rfile.read(length))
             bridge = None
-            relay = bool(getattr(self.browser_turn, 'supports_relay', False))
-            relay_prompt = None
             scope = None
-            request_digest = None
             if has_tools(payload):
                 if self.tool_state is None:
                     raise AdapterError(422, 'tools_disabled', 'Prism client tool bridge is disabled')
@@ -769,107 +701,33 @@ class Handler(BaseHTTPRequestHandler):
                 if len(callers) != 1 or not SESSION_ID.fullmatch(callers[0]):
                     raise AdapterError(400, 'invalid_caller', 'Tool requests require a gateway-derived caller identity')
                 scope = digest([account_id, callers[0], session_id])
-                bridge = ToolBridge(payload, SimpleNamespace(AdapterError=AdapterError, parse_prompt=parse_prompt), relay=relay)
-                if bridge.results:
-                    # Transport encoding changes leave the generation intact.
-                    # All semantic request fields participate in the identity.
-                    request_digest = digest({key: value for key, value in payload.items() if key != 'stream'})
-                    cached = self.tool_state.cached_response(scope, request_digest)
-                    if cached is not None:
-                        self.send_completion(cached, bridge.stream, tool_response=True)
-                        return
+                bridge = ToolBridge(payload, SimpleNamespace(AdapterError=AdapterError, parse_prompt=parse_prompt))
                 prompt, stream = bridge.prompt, bridge.stream
-                print(json.dumps({'event': 'prism_tool_catalog_prepared', 'catalog_tools': len(bridge.tools),
-                    'catalog_mode': bridge.catalog_mode, 'prompt_bytes': len(prompt.encode('utf-8'))}),
-                    file=sys.stderr, flush=True)
-                if bridge.compacted_results or bridge.compacted_history:
-                    print(json.dumps({'event': 'prism_tool_history_compacted',
-                        'tool_results': bridge.compacted_results,
-                        'history_items': bridge.compacted_history,
-                        'history_bytes_before': bridge.history_bytes_before,
-                        'history_bytes_after': len(bridge.history_prompt.encode('utf-8'))}),
-                        file=sys.stderr, flush=True)
             else:
-                prompt, stream = parse_prompt(payload, max_bytes=MAX_REQUEST_BYTES if relay else MAX_PRISM_PROMPT_BYTES)
-            model = payload["model"]
-            requested_effort, effort = resolve_reasoning(payload, AdapterError)
+                prompt, stream = parse_prompt(payload)
+            model, effort = payload["model"], (payload.get("reasoning") or {}).get("effort", "medium")
             if self.serialize_requests and not self.lock.acquire(blocking=False):
                 raise AdapterError(429, "prism_busy", "Prism browser is busy; request was not submitted")
             try:
                 if bridge is not None:
-                    try:
-                        self.tool_state.reserve(scope, bridge.calls, bridge.results, bridge.lease, bridge.needs_fresh)
-                    except AdapterError as error:
-                        # A concurrent completion can commit after the first
-                        # cache lookup. Recover its response before returning 409.
-                        cached = (self.tool_state.cached_response(scope, request_digest)
-                                  if error.code == 'tool_result_replayed' else None)
-                        if cached is None:
-                            raise
-                        self.send_completion(cached, stream, tool_response=True)
-                        return
+                    self.tool_state.reserve(scope, bridge.calls, bridge.results, bridge.lease, bridge.needs_fresh)
                 try:
-                    deadline = time.monotonic() + getattr(self.browser_turn, 'request_timeout', 285)
-                    while True:
-                        if relay:
-                            relay_prompt = RelayPrompt(prompt, payload,
-                                SimpleNamespace(AdapterError=AdapterError, parse_prompt=parse_prompt), bridge)
-                            prompt = relay_prompt
-                        args = (account_id, token, prompt, session_id, model, effort)
-                        if bridge is not None and not relay:
-                            # Client results already contain expanded history.
-                            # Each inspection is a fresh, known completed turn.
-                            args += (False,)
-                        run_until = getattr(self.browser_turn, 'run_until', None)
-                        request_id, answer = (run_until(deadline, *args) if (bridge is not None or relay) and run_until
-                                              else self.browser_turn.run(*args))
-                        if bridge is None:
-                            break
-                        try:
-                            expanded = bridge.expand_catalog(answer)
-                        except AdapterError:
-                            self.tool_state.complete(scope, bridge.lease, 'resp_prism_' + request_id, [])
-                            raise
-                        if not expanded:
-                            break
-                        prompt = bridge.prompt
-                        print(json.dumps({'event': 'prism_tool_catalog_inspection',
-                            'inspection': bridge.inspections, 'catalog_tools': len(bridge.tools),
-                            'loaded_tools': len(bridge.loaded), 'prompt_bytes': len(prompt.encode('utf-8'))}),
-                            file=sys.stderr, flush=True)
-                except Exception as error:
+                    args = (account_id, token, prompt, session_id, model, effort)
                     if bridge is not None:
-                        terminal_id = getattr(error, 'terminal_request_id', None)
-                        if terminal_id:
-                            if (getattr(error, 'input_rejected_before_processing', False)
-                                    and getattr(error, 'code', None) == 'prism_input_too_large'):
-                                self.tool_state.reject_input(scope, bridge.lease)
-                            else:
-                                self.tool_state.complete(scope, bridge.lease, 'resp_prism_' + terminal_id, [])
-                        elif (getattr(error,'not_submitted',False) or
-                                getattr(error,'code',None) in ('prism_busy','resource_pressure','credential_rotation')):
-                            self.tool_state.not_sent(scope, bridge.lease)
+                        # Client results already contain expanded history. A
+                        # native chat/project is not their continuation state.
+                        args += (False,)
+                    request_id, answer = self.browser_turn.run(*args)
+                except Exception as error:
+                    if bridge is not None and (getattr(error,'not_submitted',False) or
+                            getattr(error,'code',None) in ('prism_busy','resource_pressure','credential_rotation')):
+                        self.tool_state.not_sent(scope, bridge.lease)
                     raise
             finally:
                 if self.serialize_requests:
                     self.lock.release()
             response = response_payload(request_id, answer, model, effort)
-            if requested_effort is not None and requested_effort != effort:
-                response['metadata'] = {'prism_requested_reasoning_effort': requested_effort,
-                                        'prism_reasoning_effort': effort}
-            if relay_prompt is not None:
-                response.setdefault('metadata', {}).update(prism_relay_mode=relay_prompt.mode,
-                    prism_relay_parts=relay_prompt.parts, prism_relay_transport_bytes=relay_prompt.sent_bytes)
             if bridge is not None:
-                if bridge.compacted_results or bridge.compacted_history:
-                    response.setdefault('metadata', {}).update(
-                        prism_compacted_tool_results=bridge.compacted_results,
-                        prism_compacted_history_items=bridge.compacted_history,
-                        prism_history_bytes_before=bridge.history_bytes_before,
-                        prism_history_bytes_after=len(bridge.history_prompt.encode('utf-8')))
-                if bridge.catalog_mode != 'inline':
-                    response.setdefault('metadata', {}).update(prism_catalog_mode=bridge.catalog_mode,
-                                                               prism_catalog_inspections=bridge.inspections)
                 try:
                     output, calls = bridge.output(answer, request_id)
                 except AdapterError:
@@ -877,21 +735,33 @@ class Handler(BaseHTTPRequestHandler):
                     # is released. These results were already fed to the model.
                     self.tool_state.complete(scope, bridge.lease, response['id'], [])
                     raise
+                self.tool_state.complete(scope, bridge.lease, response['id'], calls)
                 response['output'] = output
                 if bridge.unavailable:
-                    response.setdefault('metadata', {})['prism_unavailable_tools'] = ','.join(sorted(bridge.unavailable))
-                self.tool_state.complete(scope, bridge.lease, response['id'], calls,
-                                         request_digest=request_digest, response=response)
-            if relay_prompt is not None:
-                relay_prompt.commit(response['output'])
-            self.send_completion(response, stream, tool_response=bridge is not None)
+                    response['metadata'] = {'prism_unavailable_tools': ','.join(sorted(bridge.unavailable))}
+            if stream:
+                created = dict(response, status="in_progress", output=[])
+                events = [
+                    ("response.created", {"type": "response.created", "sequence_number": 0, "response": created}),
+                    ("response.completed", {"type": "response.completed", "sequence_number": 1, "response": response}),
+                ]
+                if bridge is not None:
+                    events = completed_events(response)
+                body = "".join("event: " + name + "\ndata: " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n\n" for name, data in events).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("X-Request-Id", response["id"])
+                self.send_header("Connection", "close")
+                self.close_connection = True
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_json(200, response)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except AdapterError as error:
-            details = {"type": error.code, "message": str(error)}
-            if getattr(error, 'upstream', None):
-                details['upstream'] = error.upstream
-            self.send_json(error.status, {"error": details})
+            self.send_json(error.status, {"error": {"type": error.code, "message": str(error)}})
         except (ValueError, TypeError):
             self.send_json(400, {"error": {"type": "invalid_request", "message": "invalid JSON request"}})
         except Exception as error:
@@ -935,33 +805,32 @@ def main():
     if not 1 <= max_sessions <= 2 or not 30 <= idle_seconds <= 900:
         raise SystemExit("session cache limits are out of range")
     mode = os.environ.get("PRISM_ADAPTER_MODE", "browser")
-    if mode not in ("browser", "multiplex"):
+    if mode == "browser":
+        Handler.serialize_requests = True
+        Handler.browser_turn = BrowserWorker(lambda: BrowserTurn(Handler.state, chrome, max_sessions, idle_seconds))
+    elif mode == "multiplex":
+        from multiplex_browser import MultiplexBrowser
+        from multiplex_runtime import AsyncBrowserWorker, Admission
+        active = int(os.environ.get("PRISM_ADAPTER_MAX_INFLIGHT", "20"))
+        per_account = int(os.environ.get("PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT", str(active)))
+        queued = int(os.environ.get("PRISM_ADAPTER_MAX_QUEUED", "30"))
+        bootstrap = int(os.environ.get("PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY", "1"))
+        if not 1 <= bootstrap <= 2:
+            raise SystemExit("PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY must be 1 or 2")
+        # Validate before starting the worker so invalid settings fail startup.
+        api = sys.modules[__name__]
+        Admission(api, active, per_account, queued)
+        Handler.serialize_requests = False
+        Handler.browser_turn = AsyncBrowserWorker(lambda: MultiplexBrowser(
+            Handler.state, chrome, api, active=active, per_account=per_account,
+            queued=queued, bootstrap=bootstrap, idle_seconds=idle_seconds), api)
+    else:
         raise SystemExit("PRISM_ADAPTER_MODE must be browser or multiplex")
-    from multiplex_browser import MultiplexBrowser
-    from multiplex_runtime import AsyncBrowserWorker, Admission
-    from relay_prompt import relay_settings
-    # Browser mode preserves single-request admission while using the same
-    # conversation and transport implementation as the multiplex mode.
-    active = 1 if mode == "browser" else int(os.environ.get("PRISM_ADAPTER_MAX_INFLIGHT", "20"))
-    per_account = 1 if mode == "browser" else int(os.environ.get("PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT", str(active)))
-    queued = 0 if mode == "browser" else int(os.environ.get("PRISM_ADAPTER_MAX_QUEUED", "30"))
-    bootstrap = 1 if mode == "browser" else int(os.environ.get("PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY", "1"))
-    if not 1 <= bootstrap <= 2:
-        raise SystemExit("PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY must be 1 or 2")
-    api = sys.modules[__name__]
-    Admission(api, active, per_account, queued)
-    relay_settings()
-    Handler.serialize_requests = mode == "browser"
-    Handler.browser_turn = AsyncBrowserWorker(lambda: MultiplexBrowser(
-        Handler.state, chrome, api, active=active, per_account=per_account,
-        queued=queued, bootstrap=bootstrap, accounts=max_sessions, idle_seconds=idle_seconds), api, mode=mode)
     port = int(os.environ.get("PRISM_ADAPTER_PORT", "8319"))
     if not 1024 <= port <= 65535:
         raise SystemExit("PRISM_ADAPTER_PORT must be 1024..65535")
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True
-    print(json.dumps({"event": "prism_adapter_listening", "mode": mode,
-                      "max_inflight": 1 if mode == "browser" else active}), flush=True)
     try:
         server.serve_forever()
     finally:

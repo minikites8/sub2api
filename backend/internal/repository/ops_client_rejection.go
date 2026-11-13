@@ -18,10 +18,25 @@ func opsExplicitRequestRejectionSQL(alias, statuses string, phrases []string) st
  AND lower(CONCAT_WS(' ', ` + p + `error_message, ` + p + `upstream_error_message)) LIKE ANY(ARRAY[` + strings.Join(needles, ",") + `]))`
 }
 
+func opsContextLimitRejectionSQL(alias string) string {
+	p := alias + "."
+	standard := opsExplicitRequestRejectionSQL(alias, "400, 413, 422", service.OpsContextLimitRejectionNeedles)
+	// Match the literal code (LIKE would treat underscores as wildcards).
+	// Do not inspect earlier attempts: a later provider failure must stay visible.
+	wrapped := `(COALESCE(` + p + `status_code, 0) >= 400
+ AND COALESCE(` + p + `error_phase, '') <> 'account_auth'
+ AND COALESCE(NULLIF(` + p + `upstream_status_code, 0), ` + p + `status_code, 0) = 502
+ AND strpos(lower(CONCAT_WS(' ', ` + p + `error_message, ` + p + `upstream_error_message, ` + p + `upstream_error_detail)), 'context_length_exceeded') > 0)`
+	// New normalized 400s retain raw HTTP200 SSE or 5xx evidence.
+	normalized := `(` + p + `status_code = 400
+ AND strpos(lower(CONCAT_WS(' ', ` + p + `error_message, ` + p + `upstream_error_message)), 'context_length_exceeded') > 0)`
+	return `(` + standard + ` OR ` + wrapped + ` OR ` + normalized + `)`
+}
+
 func opsClientRejectionSQL(alias string) string {
 	p := alias + "."
 	model := opsExplicitRequestRejectionSQL(alias, "400, 404", service.OpsModelCapabilityRejectionNeedles)
-	contextLimit := opsExplicitRequestRejectionSQL(alias, "400, 413, 422", service.OpsContextLimitRejectionNeedles)
+	contextLimit := opsContextLimitRejectionSQL(alias)
 	return `COALESCE((` + model + ` OR ` + contextLimit + ` OR (
  ((COALESCE(` + p + `is_business_limited, FALSE)
    AND (COALESCE(` + p + `error_owner, '') = 'client'
@@ -37,7 +52,14 @@ func opsClientRejectionSQL(alias string) string {
 }
 
 func opsBusinessLimitedSQL(alias string) string {
-	return `(COALESCE(` + alias + `.is_business_limited, FALSE) OR ` + opsClientRejectionSQL(alias) + `)`
+	p := alias + "."
+	// Older routing logs marked exhausted account pools as business limits.
+	// Capacity is a platform failure; keep local model rejections excluded.
+	capacity := `(COALESCE(` + p + `error_owner, '') = 'platform'
+ AND COALESCE(` + p + `error_phase, '') = 'routing'
+ AND COALESCE(` + p + `error_type, '') <> 'model_not_found'
+ AND COALESCE(` + p + `status_code, 0) IN (429, 503))`
+	return `((COALESCE(` + p + `is_business_limited, FALSE) AND NOT ` + capacity + `) OR ` + opsClientRejectionSQL(alias) + `)`
 }
 
 // Read-time compatibility: old logs keep their original storage, but list and
@@ -52,7 +74,7 @@ func opsEffectivePhaseSQL(alias string) string {
 
 func opsEffectiveTypeSQL(alias string) string {
 	model := opsExplicitRequestRejectionSQL(alias, "400, 404", service.OpsModelCapabilityRejectionNeedles)
-	contextLimit := opsExplicitRequestRejectionSQL(alias, "400, 413, 422", service.OpsContextLimitRejectionNeedles)
+	contextLimit := opsContextLimitRejectionSQL(alias)
 	return `(CASE WHEN ` + model + ` THEN 'model_not_found' WHEN ` + contextLimit + ` THEN 'context_limit' ELSE ` + alias + `.error_type END)`
 }
 

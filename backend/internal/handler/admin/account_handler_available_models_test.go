@@ -88,6 +88,21 @@ func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream servi
 	return router
 }
 
+func TestAccountHandlerSyncUpstreamModelsRejectsInvalidApplyOptionsBeforeUpstream(t *testing.T) {
+	for _, body := range []string{`{"automatic":true}`, `{"apply":"yes"}`, `{"apply":`} {
+		t.Run(body, func(t *testing.T) {
+			upstream := &syncUpstreamHTTPUpstream{}
+			router := setupSyncUpstreamModelsRouter(newStubAdminService(), upstream)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/44/models/sync-upstream", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Empty(t, upstream.requests)
+		})
+	}
+}
+
 func TestAccountHandlerGetAvailableModels_GrokUsesXAIModels(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
@@ -392,11 +407,12 @@ func TestAccountHandlerGetAvailableModels_Antigravity(t *testing.T) {
 		{name: "empty JSON mapping", credentials: map[string]any{"model_mapping": map[string]any{}}, want: defaults},
 		{name: "empty string mapping", credentials: map[string]any{"model_mapping": map[string]string{}}, want: defaults},
 		{name: "blank key", credentials: map[string]any{"model_mapping": map[string]any{" ": "upstream-model"}}, want: defaults},
-		{name: "JSON mapping keys and metadata", credentials: map[string]any{"model_mapping": map[string]any{
-			known.ID: known.ID, custom.ID: "upstream-model",
+		{name: "wildcard only falls back to defaults", credentials: map[string]any{"model_mapping": map[string]any{"claude-*": "claude-sonnet-4-6", "gemini-3*": "gemini-3-flash"}}, want: defaults},
+		{name: "JSON mapping keys and metadata skips wildcards", credentials: map[string]any{"model_mapping": map[string]any{
+			known.ID: known.ID, custom.ID: "upstream-model", "claude-*": "claude-sonnet-4-6",
 		}}, want: []antigravity.ClaudeModel{custom, known}},
-		{name: "string mapping keys and metadata", credentials: map[string]any{"model_mapping": map[string]string{
-			known.ID: known.ID, custom.ID: "upstream-model",
+		{name: "string mapping keys and metadata skips wildcards", credentials: map[string]any{"model_mapping": map[string]string{
+			known.ID: known.ID, custom.ID: "upstream-model", "gemini-*": "gemini-3-flash",
 		}}, want: []antigravity.ClaudeModel{custom, known}},
 	}
 	for _, tc := range cases {
@@ -873,4 +889,22 @@ func TestAccountHandlerSyncUpstreamModels_ConfigErrorReturnsBadRequest(t *testin
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "No OpenAI API key is available")
+}
+
+func TestQualityLiveAvailableModelsReturnsCredentialReasonInsteadOfLocalFallback(t *testing.T) {
+	svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: service.Account{ID: 44, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Credentials: map[string]any{"api_key": "synthetic-key", "base_url": "https://models.example/v1"}}}
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{StatusCode: 401, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":{"code":"token_revoked","message":"synthetic-private-provider-text"}}`))}}
+	cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}}
+	gateway := service.NewOpenAIGatewayService(nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	tests := service.NewAccountTestService(nil, nil, nil, nil, nil, nil, upstream, cfg, nil)
+	tests.SetOpenAIGatewayService(gateway)
+	h := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, tests, nil, nil, nil, nil, nil)
+	r := gin.New()
+	r.GET("/accounts/:id/models", h.GetAvailableModels)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/accounts/44/models", nil))
+	require.Equal(t, 502, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "OPENAI_CODEX_MODELS_CREDENTIALS_INVALID")
+	require.Contains(t, w.Body.String(), `"credential_state":"revoked"`)
+	require.NotContains(t, w.Body.String(), "synthetic-private-provider-text")
 }

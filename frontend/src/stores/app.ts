@@ -378,11 +378,15 @@ export const useAppStore = defineStore('app', () => {
         public_transit_page_enabled: false,
         plugin_management_enabled: false,
         support_ticket_enabled: false,
+        lottery_enabled: false,
         risk_control_enabled: false,
         service_quota_enabled: false,
         affiliate_enabled: false,
         allow_user_view_error_requests: false,
         usage_show_long_context_badge: true,
+        usage_show_cache_rate: true,
+        usage_show_cache_rate_to_users: false,
+        usage_show_upstream_response_model_to_users: false,
       })
     }
 

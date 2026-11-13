@@ -17,8 +17,8 @@ func TestPriorityComparableCapacityFavorsLowerLatency(t *testing.T) {
 	cfg.Mode = "profit"
 	cfg.TargetTTFTMs = 9000
 	reader := &priorityReaderStub{signal: map[int64]PrioritySchedulingSignal{
-		1: {Samples: 20, P90TTFTMs: 27000, QualitySamples: 10, QualityPassed: 10},
-		2: {Samples: 20, P90TTFTMs: 42000, QualitySamples: 10, QualityPassed: 10},
+		1: withAccountPerformanceFixture(PrioritySchedulingSignal{Samples: 20, P90TTFTMs: 27000, QualitySamples: 10, QualityPassed: 10}),
+		2: withAccountPerformanceFixture(PrioritySchedulingSignal{Samples: 20, P90TTFTMs: 42000, QualitySamples: 10, QualityPassed: 10}),
 	}}
 	gateway := priorityGateway(cfg, reader)
 	scheduler := &defaultOpenAIAccountScheduler{service: gateway}
@@ -88,7 +88,7 @@ func TestPriorityColdGatewayBalancesCompatibleProtocols(t *testing.T) {
 			gateway.cfg = newSchedulerTestOpenAIWSV2Config()
 			gateway.concurrencyService = NewConcurrencyService(schedulerTestConcurrencyCache{acquiredIDs: &acquired, loadMap: map[int64]*AccountLoadInfo{51001: {AccountID: 51001, CurrentConcurrency: 43}, 51002: {AccountID: 51002}}, acquireResults: map[int64]bool{51001: tc.bpsSlot, 51002: tc.nativeSlot}})
 			scheduler := newDefaultOpenAIAccountScheduler(gateway, nil)
-			ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{ID: groupID, EnableBPS: true})
+			ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{ID: groupID})
 			selection, _, err := scheduler.Select(ctx, OpenAIAccountScheduleRequest{GroupID: &groupID, Platform: PlatformOpenAI, RequestedModel: "gpt-6-sol", UseUpstreamTokenCost: true})
 			require.NoError(t, err)
 			require.NotNil(t, selection)

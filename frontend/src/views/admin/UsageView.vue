@@ -1,9 +1,15 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <UsageStatsCards :stats="usageStats" />
+      <UsageStatsCards
+        v-if="activeTab !== 'traffic'"
+        :stats="usageStats"
+        show-rate
+        :rate-window="usageStatsWindow"
+        :notice-user-id="props.observerMode ? undefined : authStore.user?.id"
+      />
       <!-- Charts Section -->
-      <div class="space-y-4">
+      <div v-if="activeTab !== 'traffic'" class="space-y-4">
         <div class="card p-4">
           <div class="flex flex-wrap items-center gap-4">
             <div class="flex items-center gap-2">
@@ -11,6 +17,7 @@
               <DateRangePicker
                 v-model:start-date="startDate"
                 v-model:end-date="endDate"
+                :rolling24-hours="!props.observerMode"
                 @change="onDateRangeChange"
               />
             </div>
@@ -86,9 +93,9 @@
           </button>
         </div>
 
-        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+        <UsageFilters v-if="activeTab !== 'traffic'" v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
           <template #after-reset>
-            <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
+            <div v-if="activeTab === 'usage' || activeTab === 'errors'" class="relative" ref="columnDropdownRef">
               <button
                 data-testid="usage-column-settings"
                 @click="showColumnDropdown = !showColumnDropdown"
@@ -128,6 +135,7 @@
         <div v-show="activeTab === 'usage'" class="overflow-hidden rounded-b-2xl">
           <UsageTable
             enable-timing-details
+            :notice-user-id="props.observerMode ? undefined : authStore.user?.id"
             flat
             :data="usageLogs"
             :loading="loading"
@@ -135,6 +143,7 @@
             :server-side-sort="true"
             :default-sort-key="'created_at'"
             :default-sort-order="'desc'"
+            :cache-rate-audience="props.observerMode ? 'user' : 'admin'"
             @sort="handleSort"
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
@@ -155,6 +164,25 @@
             @update:pageSize="onErrPageSize"
             @ipGeoBatchFailed="handleIpGeoBatchFailed" />
         </div>
+        <UsageConnections
+          v-if="!props.observerMode && activeTab === 'connections'"
+          :filters="connectionFilters"
+          :refresh-key="connectionRefreshKey"
+        />
+        <TrafficPanel v-if="!props.observerMode && activeTab === 'traffic'" admin />
+        <LatencyObservabilityPanel
+          v-if="!props.observerMode && activeTab === 'latency'"
+          flat
+          hide-title
+          :start-date="filters.start_date || startDate"
+          :end-date="filters.end_date || endDate"
+          :model="filters.model"
+          :user-id="filters.user_id"
+          :api-key-id="filters.api_key_id"
+          :account-id="filters.account_id"
+          :group-id="filters.group_id"
+          :refresh-token="connectionRefreshKey"
+        />
         <!-- 懒挂载：首次切到该 tab 才请求排行数据，之后随筛选自动刷新 -->
         <div v-if="!props.observerMode && rankingMounted" v-show="activeTab === 'ranking'" class="overflow-hidden rounded-b-2xl">
           <UserTokenRanking
@@ -172,7 +200,7 @@
   </AppLayout>
   <UsageExportProgress :show="exportProgress.show" :progress="exportProgress.progress" :current="exportProgress.current" :total="exportProgress.total" :estimated-time="exportProgress.estimatedTime" @cancel="cancelExport" />
   <UsageCleanupDialog
-    v-if="!props.observerMode"
+    v-if="!props.observerMode && cleanupUsesCalendarDates"
     :show="cleanupDialogVisible"
     :filters="filters"
     :start-date="startDate"
@@ -203,15 +231,21 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch, provide } from 
 import { observerUsageAPI } from '@/api/observerUsage'
 import { observerUsageContext } from '@/components/admin/usage/observerUsageContext'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '@/stores/auth'
 import { saveAs } from 'file-saver'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admin'; import { adminUsageAPI } from '@/api/admin/usage'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
+import { formatUsageCacheRate, showUsageCacheRate } from '@/utils/usageCacheRate'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
+import { resolveUsageStatsWindow, type UsageRateWindow } from '@/utils/usageRate'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+import UsageConnections from '@/components/admin/usage/UsageConnections.vue'
+import LatencyObservabilityPanel from '@/components/admin/usage/LatencyObservabilityPanel.vue'
+import TrafficPanel from '@/components/usage/TrafficPanel.vue'
 import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -229,11 +263,12 @@ const props = withDefaults(defineProps<{ observerMode?: boolean }>(), { observer
 provide(observerUsageContext, props.observerMode)
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 type DistributionMetric = 'tokens' | 'actual_cost'
 type EndpointSource = 'inbound' | 'upstream' | 'path'
 type ModelDistributionSource = 'requested' | 'upstream' | 'mapping'
 const route = useRoute()
-const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = ref<AdminUsageLog[]>([]); const loading = ref(false); const exporting = ref(false)
+const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageStatsWindow = ref<UsageRateWindow | null>(null); const usageLogs = ref<AdminUsageLog[]>([]); const loading = ref(false); const exporting = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const requestedModelStats = ref<ModelStat[]>([]); const upstreamModelStats = ref<ModelStat[]>([]); const mappingModelStats = ref<ModelStat[]>([]); const groupStats = ref<GroupStat[]>([]); const chartsLoading = ref(false); const modelStatsLoading = ref(false); const granularity = ref<'day' | 'hour'>('hour')
 const modelDistributionMetric = ref<DistributionMetric>('tokens')
 const modelDistributionSource = ref<ModelDistributionSource>('requested')
@@ -305,22 +340,27 @@ const formatLD = (d: Date) => {
   const day = String(d.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+const calendarDate = (value: string) => value.includes('T') ? formatLD(new Date(value)) : value
 const getLast24HoursRangeDates = (): { start: string; end: string } => {
   const end = new Date()
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
   return {
-    start: formatLD(start),
-    end: formatLD(end)
+    start: props.observerMode ? formatLD(start) : start.toISOString(),
+    end: props.observerMode ? formatLD(end) : end.toISOString()
   }
 }
 const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
-  const startTime = new Date(`${start}T00:00:00`).getTime()
-  const endTime = new Date(`${end}T00:00:00`).getTime()
+  const startTime = new Date(start.includes('T') ? start : `${start}T00:00:00`).getTime()
+  const endTime = new Date(end.includes('T') ? end : `${end}T00:00:00`).getTime()
   const daysDiff = Math.ceil((endTime - startTime) / (1000 * 60 * 60 * 24))
   return daysDiff <= 1 ? 'hour' : 'day'
 }
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start); const endDate = ref(defaultRange.end)
+const cleanupUsesCalendarDates = computed(() =>
+  /^\d{4}-\d{2}-\d{2}$/.test(startDate.value) && /^\d{4}-\d{2}-\d{2}$/.test(endDate.value)
+)
+const datePreset = ref<string | null>('last24Hours')
 const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, native_compaction_v2: null, billing_type: null, start_date: startDate.value, end_date: endDate.value })
 const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const sortState = reactive({
@@ -344,6 +384,13 @@ const applyRouteQueryFilters = () => {
   const queryStartDate = getSingleQueryValue(route.query.start_date)
   const queryEndDate = getSingleQueryValue(route.query.end_date)
   const queryUserId = props.observerMode ? undefined : getNumericQueryValue(route.query.user_id)
+
+  if (queryStartDate || queryEndDate) {
+    datePreset.value = null
+    // A partial calendar-date link keeps the old default for its missing day.
+    startDate.value = calendarDate(startDate.value)
+    endDate.value = calendarDate(endDate.value)
+  }
 
   if (queryStartDate) {
     startDate.value = queryStartDate
@@ -383,6 +430,7 @@ const loadRouteUserFilterLabel = async () => {
 }
 
 const onDateRangeChange = (range: { startDate: string; endDate: string; preset: string | null }) => {
+  datePreset.value = range.preset
   startDate.value = range.startDate
   endDate.value = range.endDate
   filters.value = {
@@ -392,6 +440,16 @@ const onDateRangeChange = (range: { startDate: string; endDate: string; preset: 
   }
   granularity.value = getGranularityForRange(range.startDate, range.endDate)
   applyFilters()
+}
+
+// Refresh a rolling range once per action so every read shares exactly [now-24h, now).
+// Pagination, sorting and export keep the applied snapshot stable.
+const refreshRollingRange = () => {
+  if (props.observerMode || datePreset.value !== 'last24Hours') return
+  const range = getLast24HoursRangeDates()
+  startDate.value = range.start
+  endDate.value = range.end
+  filters.value = { ...filters.value, start_date: range.start, end_date: range.end }
 }
 
 const buildUsageListParams = (
@@ -424,17 +482,25 @@ const loadLogs = async () => {
 }
 const loadStats = async (force = false) => {
   const seq = ++statsReqSeq
+  // Pin endpoint-specific defaults so the request and RPM/TPM share one range.
+  const rateWindow = resolveUsageStatsWindow(
+    { start: filters.value.start_date, end: filters.value.end_date, now: Date.now() },
+    props.observerMode ? 'observer' : 'admin'
+  )
   endpointStatsLoading.value = true
   try {
     const requestType = filters.value.request_type
     const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
     const s = await (props.observerMode ? observerUsageAPI.getStats : adminAPI.usage.getStats)({
       ...filters.value,
+      start_date: rateWindow.start,
+      end_date: rateWindow.end,
       stream: legacyStream === null ? undefined : legacyStream,
       ...(force ? { nocache: 1 } : {}),
     })
     if (seq !== statsReqSeq) return
     usageStats.value = s
+    usageStatsWindow.value = rateWindow
     inboundEndpointStats.value = s.endpoints || []
     upstreamEndpointStats.value = s.upstream_endpoints || []
     endpointPathStats.value = s.endpoint_paths || []
@@ -542,6 +608,7 @@ const loadChartData = async () => {
   } catch (error) { console.error('Failed to load chart data:', error) } finally { if (seq === chartReqSeq) chartsLoading.value = false }
 }
 const applyFilters = () => {
+  refreshRollingRange()
   pagination.page = 1
   invalidateModelStatsCache()
   loadLogs()
@@ -556,6 +623,8 @@ const applyFilters = () => {
   }
 }
 const refreshData = () => {
+  refreshRollingRange()
+  connectionRefreshKey.value++
   invalidateModelStatsCache()
   loadLogs()
   loadStats(true)
@@ -565,6 +634,7 @@ const refreshData = () => {
   if (rankingMounted.value) rankingRef.value?.reload()
 }
 const resetFilters = () => {
+  datePreset.value = 'last24Hours'
   const range = getLast24HoursRangeDates()
   startDate.value = range.start
   endDate.value = range.end
@@ -588,6 +658,10 @@ const cancelExport = () => exportAbortController?.abort()
 const openCleanupDialog = async () => {
   if (props.observerMode) return
   if (activeTab.value !== 'errors') {
+    if (!cleanupUsesCalendarDates.value) {
+      appStore.showWarning(t('admin.usage.cleanup.calendarRangeRequired'))
+      return
+    }
     cleanupDialogVisible.value = true
     return
   }
@@ -628,6 +702,7 @@ const exportToExcel = async () => {
       t('usage.type'),
       t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
       t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
+      ...(showUsageCacheRate(appStore.cachedPublicSettings, props.observerMode ? 'user' : 'admin') ? [t('usage.latencyCacheRate')] : []),
       t('admin.usage.inputCost'), t('admin.usage.outputCost'),
       t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
       t('usage.rate'), t('usage.accountMultiplier'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
@@ -646,6 +721,7 @@ const exportToExcel = async () => {
         log.upstream_model || log.model, log.upstream_response_model || '', log.upstream_model_mismatch == null ? '' : t(log.upstream_model_mismatch ? 'common.yes' : 'common.no'), formatReasoningEffort(log.reasoning_effort), formatReasoningEffort(log.upstream_reasoning_effort || log.reasoning_effort), log.group?.name || '',
         log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log),
         log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
+        ...(showUsageCacheRate(appStore.cachedPublicSettings, props.observerMode ? 'user' : 'admin') ? [formatUsageCacheRate(log) ?? ''] : []),
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
         log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',
         log.rate_multiplier?.toPrecision(4) || '1.00', (log.account_rate_multiplier ?? 1).toPrecision(4),
@@ -826,15 +902,28 @@ const loadSavedColumns = () => {
 }
 
 // Detail tabs
-type DetailTab = 'usage' | 'errors' | 'ranking'
+type DetailTab = 'usage' | 'errors' | 'connections' | 'ranking' | 'traffic' | 'latency'
 const activeTab = ref<DetailTab>('usage')
 const canViewErrors = computed(() => !props.observerMode || !!appStore.cachedPublicSettings?.allow_user_view_error_requests)
 const detailTabs = computed(() => [
   { key: 'usage' as const, label: t('usage.tabs.usage'), icon: 'document' as const },
   ...(canViewErrors.value ? [{ key: 'errors' as const, label: t('usage.tabs.errors'), icon: 'exclamationTriangle' as const }] : []),
+  ...(!props.observerMode ? [{ key: 'connections' as const, label: t('connections.title'), icon: 'clock' as const }] : []),
   ...(!props.observerMode ? [{ key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const }] : []),
+  ...(!props.observerMode ? [{ key: 'traffic' as const, label: t('traffic.title'), icon: 'chart' as const }] : []),
+  ...(!props.observerMode ? [{ key: 'latency' as const, label: t('latencyObservability.title'), icon: 'clock' as const }] : []),
 ])
 const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
+const connectionRefreshKey = ref(0)
+const connectionFilters = computed(() => ({
+  start_time: toRFC3339(filters.value.start_date),
+  end_time: toRFC3339(filters.value.end_date, true),
+  user_id: filters.value.user_id ?? undefined,
+  api_key_id: filters.value.api_key_id ?? undefined,
+  account_id: filters.value.account_id ?? undefined,
+  group_id: filters.value.group_id ?? undefined,
+  model: filters.value.model || undefined,
+}))
 const rankingMounted = ref(false)
 const rankingRef = ref<InstanceType<typeof UserTokenRanking> | null>(null)
 
@@ -856,9 +945,13 @@ const errSortOrder = ref<'asc' | 'desc'>('desc')
 const showErrorModal = ref(false)
 const selectedErrorId = ref<number | null>(null)
 
-// 注意：'YYYY-MM-DDT00:00:00' 无时区后缀，按本地时区解析后再转 UTC——与页面其它日期处理语义一致，刻意如此，勿改成 'T00:00:00Z'
-const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined =>
-  d ? new Date(d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString() : undefined
+const toRFC3339 = (value: string | undefined, endExclusive = false): string | undefined => {
+  if (!value) return undefined
+  if (value.includes('T')) return value // Preserve the exact instant and exclusive upper bound.
+  const date = new Date(`${value}T00:00:00`) // Calendar dates use the browser's local timezone.
+  if (endExclusive) date.setDate(date.getDate() + 1)
+  return date.toISOString()
+}
 
 const buildAdminErrorLogParams = (includePagination = true): OpsErrorListQueryParams => {
   const params: OpsErrorListQueryParams = {

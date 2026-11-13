@@ -92,7 +92,7 @@ type DataImportRequest struct {
 }
 
 // AccountImportOptions applies the same account defaults used by the
-// automatic supply importer to every account in a one-shot import.
+// selected defaults to every account in a one-shot import.
 type AccountImportOptions struct {
 	GroupIDs                    []int64 `json:"group_ids,omitempty"`
 	Concurrency                 *int    `json:"concurrency,omitempty"`
@@ -536,7 +536,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 		accountExtra := item.Extra
 		if req.AccountOptions != nil && strings.TrimSpace(req.AccountOptions.OpenAIWSMode) != "" {
 			accountExtra = cloneImportExtra(item.Extra)
-			service.ApplyOpenAIWSModeExtra(accountExtra, item.Platform, item.Type, req.AccountOptions.OpenAIWSMode)
+			applyImportOpenAIWSModeExtra(accountExtra, item.Platform, item.Type, req.AccountOptions.OpenAIWSMode)
 		}
 		concurrency := item.Concurrency
 		priority := item.Priority
@@ -549,7 +549,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 			if req.AccountOptions.Priority != nil && *req.AccountOptions.Priority > 0 {
 				priority = *req.AccountOptions.Priority
 			}
-			// The selected ye.team import mode controls the proxy for all imported accounts.
+			// Explicit import options replace any proxy binding in the source bundle.
 			proxyID = nil
 			proxyPool = nil
 			accountExtra = cloneImportExtra(accountExtra)
@@ -1060,4 +1060,24 @@ func normalizeProxyStatus(status string) string {
 	default:
 		return normalized
 	}
+}
+
+func applyImportOpenAIWSModeExtra(extra map[string]any, platform, accountType, mode string) {
+	if extra == nil || strings.ToLower(strings.TrimSpace(platform)) != service.PlatformOpenAI {
+		return
+	}
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	prefix := ""
+	switch strings.ToLower(strings.TrimSpace(accountType)) {
+	case service.AccountTypeOAuth:
+		prefix = "openai_oauth_"
+	case service.AccountTypeAPIKey:
+		prefix = "openai_apikey_"
+	default:
+		return
+	}
+	extra[prefix+"responses_websockets_v2_mode"] = mode
+	extra[prefix+"responses_websockets_v2_enabled"] = mode != service.OpenAIWSIngressModeOff
+	delete(extra, "responses_websockets_v2_enabled")
+	delete(extra, "openai_ws_enabled")
 }

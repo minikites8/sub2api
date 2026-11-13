@@ -115,7 +115,10 @@ func BenchmarkGPTAutoDynamicSessionCAS(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		store.CompareAndSet(ctx, "session", int64(i), GPTAutoAffinity{Sequence: int64(i + 1)}, time.Hour)
+		ok, err := store.CompareAndSet(ctx, "session", int64(i), GPTAutoAffinity{Sequence: int64(i + 1)}, time.Hour)
+		if err != nil || !ok {
+			b.Fatalf("session CAS failed: ok=%t err=%v", ok, err)
+		}
 	}
 }
 

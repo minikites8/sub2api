@@ -180,16 +180,8 @@ func TestExcelBPSInvalidEncryptedContentRetryIsBounded(t *testing.T) {
 				return
 			}
 			var failover *UpstreamFailoverError
-			if status == http.StatusTooManyRequests {
-				require.ErrorAs(t, err, &failover)
-				require.Equal(t, status, failover.StatusCode)
-				require.False(t, c.Writer.Written())
-			} else {
-				require.NotErrorAs(t, err, &failover)
-				require.Equal(t, status, rec.Code)
-			}
-			require.Len(t, upstream.requests, 2)
-			require.True(t, account.Schedulable)
+			require.NotErrorAs(t, err, &failover)
+			require.Equal(t, status, rec.Code)
 			require.NotContains(t, rec.Body.String(), "private upstream diagnostic")
 			if status == 400 {
 				require.Equal(t, "invalid_encrypted_content", gjson.Get(rec.Body.String(), "error.code").String())
@@ -260,14 +252,4 @@ func TestExcelBPSInvalidEncryptedContentStopsOnDisconnect(t *testing.T) {
 			require.NotContains(t, rec.Body.String(), "private")
 		})
 	}
-}
-
-// bpsTestUpstream injects transport results while using the account business proxy.
-type bpsTestUpstream struct {
-	httpUpstreamRecorder
-	send func(*http.Request, string) (*http.Response, error)
-}
-
-func (u *bpsTestUpstream) Do(r *http.Request, proxy string, _ int64, _ int) (*http.Response, error) {
-	return u.send(r, proxy)
 }

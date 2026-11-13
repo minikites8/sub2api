@@ -7,7 +7,7 @@
 #   3. Check logs: docker-compose logs -f sub2api
 #   4. Access: http://localhost:8080
 #
-# All configuration is done via environment variables.
+# Configure via environment variables or the persistent /app/data/config.yaml.
 # No Setup Wizard needed - the system auto-initializes on first run.
 # =============================================================================
 
@@ -38,16 +38,17 @@ services:
       # in config.yaml.
       # - ./codex-instructions.md.tmpl:/app/data/codex-instructions.md.tmpl:ro
     environment:
+      - SUB2API_KIRO_TIME_CONTEXT=${SUB2API_KIRO_TIME_CONTEXT:-}
+      - SUB2API_KIRO_CONVERSATION_ID_MODE=${SUB2API_KIRO_CONVERSATION_ID_MODE:-stable}
+      - DAILY_CHECKIN_ENABLED=${DAILY_CHECKIN_ENABLED:-false}
+      - DAILY_CHECKIN_DAILY_TOTAL_LIMIT=${DAILY_CHECKIN_DAILY_TOTAL_LIMIT:-0}
+      - DAILY_CHECKIN_MIN_REWARD=${DAILY_CHECKIN_MIN_REWARD:-0}
+      - DAILY_CHECKIN_MAX_REWARD=${DAILY_CHECKIN_MAX_REWARD:-0}
+      - DAILY_CHECKIN_MIN_RECHARGE_AMOUNT=${DAILY_CHECKIN_MIN_RECHARGE_AMOUNT:-0}
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
       # =======================================================================
       - AUTO_SETUP=true
-
-      # Prism adapter starts alongside the gateway and reads its persisted bridge key.
-      - GATEWAY_PRISM_BROWSER_ENABLED=${GATEWAY_PRISM_BROWSER_ENABLED:-true}
-      - GATEWAY_PRISM_BROWSER_BASE_URL=http://127.0.0.1:8319/v1
-      - GATEWAY_PRISM_BROWSER_API_KEY=${GATEWAY_PRISM_BROWSER_API_KEY:-${PRISM_ADAPTER_API_KEY:-}}
-      - PRISM_ADAPTER_API_KEY=${PRISM_ADAPTER_API_KEY:-}
 
       # =======================================================================
       # Server Configuration
@@ -55,25 +56,15 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
+      # Pass through only when set; an empty value explicitly disables proxy trust.
+      # Do not add an empty fallback: it would override persistent config.yaml.
+      - SERVER_TRUSTED_PROXIES
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
-      - SUB2API_KIRO_TIME_CONTEXT=${SUB2API_KIRO_TIME_CONTEXT:-}
-      - SUB2API_KIRO_CONVERSATION_ID_MODE=${SUB2API_KIRO_CONVERSATION_ID_MODE:-stable}
+      - SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS=${SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS:-}
+      - SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED=${SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED:-false}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
       - ALIPAY_MOBILE_PRECREATE_DEEP_LINK=${ALIPAY_MOBILE_PRECREATE_DEEP_LINK:-}
-
-      # ye.team integration defaults; normal operation can be managed in the admin UI
-      - YE_TEAM_ENABLED=${YE_TEAM_ENABLED:-false}
-      - YE_TEAM_AUTO_REFRESH_401=${YE_TEAM_AUTO_REFRESH_401:-false}
-
-      # =======================================================================
-      # Daily Check-in Configuration
-      # =======================================================================
-      - DAILY_CHECKIN_ENABLED=${DAILY_CHECKIN_ENABLED:-false}
-      - DAILY_CHECKIN_DAILY_TOTAL_LIMIT=${DAILY_CHECKIN_DAILY_TOTAL_LIMIT:-0}
-      - DAILY_CHECKIN_MIN_REWARD=${DAILY_CHECKIN_MIN_REWARD:-0}
-      - DAILY_CHECKIN_MAX_REWARD=${DAILY_CHECKIN_MAX_REWARD:-0}
-      - DAILY_CHECKIN_MIN_RECHARGE_AMOUNT=${DAILY_CHECKIN_MIN_RECHARGE_AMOUNT:-0}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
@@ -183,9 +174,12 @@ services:
       # Fallbacks mirror Sub2API backend defaults so omitted values preserve behavior.
       - GATEWAY_FORCE_CODEX_CLI=${GATEWAY_FORCE_CODEX_CLI:-false}
       - GATEWAY_OPENAI_COMPACT_MODEL=${GATEWAY_OPENAI_COMPACT_MODEL:-gpt-5.5}
+      - GATEWAY_DISABLE_ENCRYPTED_AGENT_OWNER_BINDING=${GATEWAY_DISABLE_ENCRYPTED_AGENT_OWNER_BINDING:-false}
       - SUB2API_IMAGES_MAIN_MODEL=${SUB2API_IMAGES_MAIN_MODEL:-gpt-5.6-luna}
+      - SUB2API_IMAGE_EDIT_FORM_ACCOUNT_IDS=${SUB2API_IMAGE_EDIT_FORM_ACCOUNT_IDS:-}
       - GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT=${GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT:-0}
       - GATEWAY_OPENAI_WS_FORCE_HTTP=${GATEWAY_OPENAI_WS_FORCE_HTTP:-false}
+      - GATEWAY_OPENAI_PLUGIN_SSE_EARLY_EVENTS_ENABLED=${GATEWAY_OPENAI_PLUGIN_SSE_EARLY_EVENTS_ENABLED:-false}
       - GATEWAY_OPENAI_HTTP2_ENABLED=${GATEWAY_OPENAI_HTTP2_ENABLED:-true}
       - GATEWAY_OPENAI_HTTP2_ALLOW_PROXY_FALLBACK_TO_HTTP1=${GATEWAY_OPENAI_HTTP2_ALLOW_PROXY_FALLBACK_TO_HTTP1:-true}
       - GATEWAY_OPENAI_HTTP2_FALLBACK_ERROR_THRESHOLD=${GATEWAY_OPENAI_HTTP2_FALLBACK_ERROR_THRESHOLD:-2}
@@ -213,19 +207,6 @@ services:
       - GATEWAY_SCHEDULING_OUTBOX_LAG_REBUILD_FAILURES=${GATEWAY_SCHEDULING_OUTBOX_LAG_REBUILD_FAILURES:-3}
       - GATEWAY_SCHEDULING_OUTBOX_BACKLOG_REBUILD_ROWS=${GATEWAY_SCHEDULING_OUTBOX_BACKLOG_REBUILD_ROWS:-10000}
       - GATEWAY_SCHEDULING_FULL_REBUILD_INTERVAL_SECONDS=${GATEWAY_SCHEDULING_FULL_REBUILD_INTERVAL_SECONDS:-300}
-      - SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS=${SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS:-}
-      # Codex 780 cloud mint relay
-      - SUB2API_CODEX_CLOUD_MINT_KEY=${SUB2API_CODEX_CLOUD_MINT_KEY:-}
-      - GATEWAY_OPENAI_CODEX_TICKET_ENABLED=${GATEWAY_OPENAI_CODEX_TICKET_ENABLED:-false}
-      - GATEWAY_OPENAI_CODEX_TICKET_TARGET_LENGTH=${GATEWAY_OPENAI_CODEX_TICKET_TARGET_LENGTH:-780}
-      - GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_ENABLED=${GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_ENABLED:-false}
-      - GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_URL=${GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_URL:-}
-      - GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_KEY=${GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_KEY:-}
-      - GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_KEY_ENV=${GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_KEY_ENV:-SUB2API_CODEX_CLOUD_MINT_KEY}
-      - GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_PROXY_URL=${GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_PROXY_URL:-}
-      - GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_TRANSPORT=${GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_TRANSPORT:-sse}
-      - GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_GATEWAY=${GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_GATEWAY:-any}
-      - GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_TIMEOUT_SECONDS=${GATEWAY_OPENAI_CODEX_TICKET_CLOUD_MINT_TIMEOUT_SECONDS:-25}
       - GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT=${GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT:-900}
       - GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL=${GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL:-10}
       - GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL=${GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL:-0}
@@ -262,45 +243,6 @@ services:
       # The application also retries transient database startup errors. This
       # grace period keeps Compose from declaring it unhealthy during bootstrap.
       start_period: 120s
-
-  # ===========================================================================
-  # Prism Browser Adapter
-  # ===========================================================================
-  # Prism shares the gateway's loopback; its port is private to this namespace.
-  prism-adapter:
-    image: ${PRISM_ADAPTER_IMAGE:-ghcr.io/minikites8/sub2api:prism-main}
-    restart: unless-stopped
-    network_mode: service:sub2api
-    depends_on:
-      sub2api:
-        condition: service_started
-        restart: true
-    security_opt:
-      - no-new-privileges:true
-      - seccomp=./prism-seccomp.json
-    shm_size: 256mb
-    mem_limit: 900m
-    memswap_limit: 900m
-    cpus: 1.0
-    pids_limit: 256
-    volumes:
-      - sub2api_data:/gateway-data:ro
-      - prism_state:/var/lib/sub2api-prism
-    environment:
-      - PRISM_ADAPTER_API_KEY=${PRISM_ADAPTER_API_KEY:-${GATEWAY_PRISM_BROWSER_API_KEY:-}}
-      - PRISM_ADAPTER_API_KEY_FILE=/gateway-data/prism-adapter/bridge.key
-      - PRISM_ADAPTER_STATE_DIR=/var/lib/sub2api-prism
-      - PRISM_ADAPTER_ENABLED=${GATEWAY_PRISM_BROWSER_ENABLED:-true}
-      - PRISM_ADAPTER_CLIENT_TOOLS_ENABLED=${PRISM_ADAPTER_CLIENT_TOOLS_ENABLED:-true}
-      - PRISM_ADAPTER_MODE=${PRISM_ADAPTER_MODE:-multiplex}
-      - PRISM_ADAPTER_MAX_INFLIGHT=${PRISM_ADAPTER_MAX_INFLIGHT:-4}
-      - PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT=${PRISM_ADAPTER_ACCOUNT_MAX_INFLIGHT:-4}
-      - PRISM_ADAPTER_MAX_QUEUED=${PRISM_ADAPTER_MAX_QUEUED:-8}
-      - PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY=${PRISM_ADAPTER_BOOTSTRAP_CONCURRENCY:-1}
-      - PRISM_ADAPTER_TURN_BYTES=${PRISM_ADAPTER_TURN_BYTES:-86000}
-      - PRISM_ADAPTER_MAX_TURN_PARTS=${PRISM_ADAPTER_MAX_TURN_PARTS:-8}
-      - PRISM_ADAPTER_PART_GAP_SECONDS=${PRISM_ADAPTER_PART_GAP_SECONDS:-8}
-      - TZ=${TZ:-Asia/Shanghai}
 
   # ===========================================================================
   # PostgreSQL Database
@@ -390,8 +332,6 @@ services:
 # Volumes
 # =============================================================================
 volumes:
-  prism_state:
-    driver: local
   sub2api_data:
     driver: local
   postgres_data:

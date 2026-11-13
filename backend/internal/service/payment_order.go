@@ -30,6 +30,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if normalized := NormalizeVisibleMethod(req.PaymentType); normalized != "" {
 		req.PaymentType = normalized
 	}
+	if req.PaymentSubtype != "" && (req.PaymentType != payment.TypeStripe || !payment.IsStripePaymentSubtype(req.PaymentSubtype)) {
+		return nil, infraerrors.BadRequest("INVALID_PAYMENT_SUBTYPE", "payment_subtype must be a supported Stripe method")
+	}
 	if req.OrderType == payment.OrderTypeSubscription {
 		renewalMode, err := NormalizeSubscriptionRenewalMode(req.RenewalMode)
 		if err != nil {
@@ -115,7 +118,26 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, err
 	}
-	sel, err := s.selectCreateOrderInstance(ctx, req, cfg, payAmount)
+	if err := s.validateStripeFeeSelection(ctx, req); err != nil {
+		return nil, err
+	}
+	quoteCtx := payment.WithInstanceQuote(ctx, req.PaymentSubtype, func(inst *dbent.PaymentProviderInstance) (*payment.InstanceQuote, error) {
+		rate, source, resolveErr := payment.ResolveOrderInstanceFee(inst, req.PaymentType, req.PaymentSubtype, cfg.RechargeFeeRate)
+		if resolveErr != nil {
+			return nil, infraerrors.BadRequest("PAYMENT_SUBTYPE_REQUIRED", resolveErr.Error())
+		}
+		currency := s.configService.pcInstancePaymentCurrency(inst)
+		amountText, amount, calculateErr := calculateCreateOrderPayAmountForOrderType(limitAmount, rate, currency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
+		if calculateErr != nil {
+			return nil, calculateErr
+		}
+		subtype := req.PaymentSubtype
+		if inst.ProviderKey == payment.TypeStripe && subtype == "" && payment.IsStripePaymentSubtype(req.PaymentType) {
+			subtype = req.PaymentType
+		}
+		return &payment.InstanceQuote{FeeRate: rate, FeeSource: source, PaymentSubtype: subtype, PayAmount: amount, PayAmountText: amountText}, nil
+	})
+	sel, err := s.selectCreateOrderInstance(quoteCtx, req, cfg, payAmount)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +148,11 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if sel != nil {
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
-	if selectedCurrency != methodCurrency {
+	if sel != nil && sel.Quote != nil {
+		feeRate = sel.Quote.FeeRate
+		payAmountStr, payAmount = sel.Quote.PayAmountText, sel.Quote.PayAmount
+		req.PaymentSubtype = sel.Quote.PaymentSubtype
+	} else if selectedCurrency != methodCurrency {
 		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
 		if err != nil {
 			return nil, err
@@ -158,14 +184,19 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 }
 
 func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig) (*dbent.SubscriptionPlan, error) {
-	if req.OrderType == payment.OrderTypeBalance && cfg.BalanceDisabled {
-		return nil, infraerrors.Forbidden("BALANCE_PAYMENT_DISABLED", "balance recharge has been disabled")
-	}
 	if strings.TrimSpace(req.PromoCode) != "" {
 		return nil, ErrPromoCodeWrongType
 	}
-	if req.OrderType == payment.OrderTypeSubscription {
+	// 订单类型必须走白名单：未知类型会跳过充值开关与倍率计算，履约时却仍按余额到账。
+	switch req.OrderType {
+	case payment.OrderTypeBalance:
+		if cfg.BalanceDisabled {
+			return nil, infraerrors.Forbidden("BALANCE_PAYMENT_DISABLED", "balance recharge has been disabled")
+		}
+	case payment.OrderTypeSubscription:
 		return s.validateSubOrder(ctx, req)
+	default:
+		return nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "unsupported order type")
 	}
 	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
@@ -227,6 +258,10 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	tm := cfg.OrderTimeoutMin
 	if tm <= 0 {
 		tm = defaultOrderTimeoutMin
+	}
+	// BEpusdt requires at least two minutes for a transfer.
+	if sel != nil && sel.ProviderKey == payment.TypeBEpusdt && tm < 2 {
+		tm = 2
 	}
 	exp := time.Now().Add(time.Duration(tm) * time.Minute)
 	outTradeNo, err := s.allocateOutTradeNo(ctx, tx)
@@ -374,6 +409,12 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 
 	snapshot := map[string]any{}
 	snapshot["schema_version"] = 2
+	if req.PaymentSubtype != "" {
+		snapshot["payment_subtype"] = req.PaymentSubtype
+	}
+	if sel.Quote != nil {
+		snapshot["fee_source"] = sel.Quote.FeeSource
+	}
 
 	instanceID := strings.TrimSpace(sel.InstanceID)
 	if instanceID != "" {
@@ -409,8 +450,15 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 			snapshot["merchant_id"] = merchantID
 		}
 	}
-	if providerKey == payment.TypeStripe {
+	if providerKey == payment.TypeStripe || providerKey == payment.TypeBEpusdt {
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
+	if providerKey == payment.TypeBEpusdt {
+		mode := strings.TrimSpace(sel.Config["mode"])
+		if mode == "" {
+			mode = "external"
+		}
+		snapshot["collection_mode"] = mode
 	}
 	if providerKey == payment.TypeAirwallex {
 		if accountID := strings.TrimSpace(sel.Config["accountId"]); accountID != "" {
@@ -466,6 +514,10 @@ func (s *PaymentService) selectCreateOrderInstance(ctx context.Context, req Crea
 	}
 	sel, err := s.loadBalancer.SelectInstance(selectCtx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount)
 	if err != nil {
+		var appErr *infraerrors.ApplicationError
+		if errors.As(err, &appErr) {
+			return nil, appErr
+		}
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "method_not_configured").
 			WithMetadata(map[string]string{"payment_type": req.PaymentType})
 	}
@@ -556,13 +608,15 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		return nil, err
 	}
 	providerReq := buildProviderCreatePaymentRequest(CreateOrderRequest{
-		PaymentType: req.PaymentType,
-		OpenID:      req.OpenID,
-		ClientIP:    req.ClientIP,
-		IsMobile:    req.IsMobile,
-		ReturnURL:   providerReturnURL,
+		PaymentType:    req.PaymentType,
+		PaymentSubtype: req.PaymentSubtype,
+		OpenID:         req.OpenID,
+		ClientIP:       req.ClientIP,
+		IsMobile:       req.IsMobile,
+		ReturnURL:      providerReturnURL,
 	}, sel, outTradeNo, payAmountStr, subject)
 	providerReq.AlipayMobilePrecreate = shouldUseAlipayMobilePrecreate(req, cfg, sel)
+	providerReq.ExpiresAt = order.ExpiresAt
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	pr, err := prov.CreatePayment(ctx, providerReq)
 	finishProviderCall()
@@ -629,6 +683,7 @@ func removePostgresTextNUL(value string) string {
 
 func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.InstanceSelection, orderID, amount, subject string) payment.CreatePaymentRequest {
 	return payment.CreatePaymentRequest{
+		PaymentSubtype:     req.PaymentSubtype,
 		OrderID:            orderID,
 		Amount:             amount,
 		PaymentType:        req.PaymentType,
@@ -864,28 +919,29 @@ func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest,
 		paymentMode = sel.PaymentMode
 	}
 	resp := &CreateOrderResponse{
-		OrderID:      order.ID,
-		Quantity:     PaymentOrderQuantity(order),
-		Amount:       order.Amount,
-		PayAmount:    payAmount,
-		FeeRate:      order.FeeRate,
-		BonusAmount:  order.BonusAmount,
-		Status:       OrderStatusPending,
-		ResultType:   resultType,
-		PaymentType:  req.PaymentType,
-		OutTradeNo:   order.OutTradeNo,
-		PayURL:       pr.PayURL,
-		QRCode:       pr.QRCode,
-		ClientSecret: pr.ClientSecret,
-		IntentID:     pr.IntentID,
-		Currency:     pr.Currency,
-		CountryCode:  pr.CountryCode,
-		PaymentEnv:   pr.PaymentEnv,
-		OAuth:        pr.OAuth,
-		JSAPI:        pr.JSAPI,
-		JSAPIPayload: pr.JSAPI,
-		ExpiresAt:    order.ExpiresAt,
-		PaymentMode:  paymentMode,
+		OrderID:        order.ID,
+		Quantity:       PaymentOrderQuantity(order),
+		Amount:         order.Amount,
+		PayAmount:      payAmount,
+		FeeRate:        order.FeeRate,
+		BonusAmount:    order.BonusAmount,
+		Status:         OrderStatusPending,
+		ResultType:     resultType,
+		PaymentType:    req.PaymentType,
+		OutTradeNo:     order.OutTradeNo,
+		PayURL:         pr.PayURL,
+		QRCode:         pr.QRCode,
+		ClientSecret:   pr.ClientSecret,
+		IntentID:       pr.IntentID,
+		Currency:       pr.Currency,
+		CountryCode:    pr.CountryCode,
+		PaymentEnv:     pr.PaymentEnv,
+		OAuth:          pr.OAuth,
+		JSAPI:          pr.JSAPI,
+		JSAPIPayload:   pr.JSAPI,
+		ExpiresAt:      order.ExpiresAt,
+		PaymentMode:    paymentMode,
+		PaymentSubtype: PaymentOrderSubtype(order),
 	}
 	if req.OrderType == payment.OrderTypeBalance {
 		if promoPlan, ok := firstRechargeAmountPlanFromSnapshot(order.ProviderSnapshot); ok {

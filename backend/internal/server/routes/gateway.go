@@ -32,6 +32,8 @@ func RegisterGatewayRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 ) {
+	apiKeyAuth = middleware.ModelListingClientPolicy(settingService, apiKeyAuth)
+	h.Gateway.ConfigureAPIKeyGroupRouting(apiKeyService)
 	// BPS fetches these capability URLs without the client's API key. There is
 	// no public upload route; only authenticated BPS requests can create them.
 	podRoute := func(c *gin.Context) {
@@ -52,8 +54,14 @@ func RegisterGatewayRoutes(
 	}
 	r.GET("/api/bps-images/:token", imageOwner, h.OpenAIGateway.ExcelBPSImage)
 	r.HEAD("/api/bps-images/:token", imageOwner, h.OpenAIGateway.ExcelBPSImage)
-	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
-	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
+	var trafficRecorder middleware.TrafficRecorder
+	if h.Admin != nil && h.Admin.Usage != nil {
+		trafficRecorder = h.Admin.Usage
+	}
+	traffic := middleware.UserTraffic(trafficRecorder)
+	bodyBudget := pkghttputil.NewBodyMemoryBudget(cfg.Gateway.RequestBodyMemoryBudgetBytes)
+	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize, bodyBudget)
+	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize, bodyBudget)
 	imageAdmission := middleware.ExcelBPSImageAdmission()
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
@@ -82,8 +90,27 @@ func RegisterGatewayRoutes(
 	// 保证校验发生在合成路由改写与调度之前，且只看客户端书写的模型名。
 	groupModelAllowlist := middleware.GroupModelAllowlist()
 	requestModelIntegrity := middleware.RequestModelIntegrity(cfg.Gateway.MaxBodySize)
+	apiKeyModelPolicy := middleware.APIKeyModelPolicy()
+	apiKeyLongContext := middleware.APIKeyLongContextPolicy(h.Gateway.CheckAPIKeyLongContext)
+	if cfg.Runtime.RegionalFundsFile != "" {
+		original := groupModelAllowlist
+		groupModelAllowlist = func(c *gin.Context) {
+			path := c.Request.URL.Path
+			discovery := c.Request.Method == http.MethodGet && (strings.Contains(path, "/models") || strings.HasSuffix(path, "/usage"))
+			generation := (c.Request.Method == http.MethodPost && (strings.HasSuffix(path, "/responses") || strings.HasSuffix(path, "/chat/completions"))) || (c.Request.Method == http.MethodGet && strings.HasSuffix(path, "/responses"))
+			key, ok := middleware.GetAPIKeyFromContext(c)
+			if !discovery && (!generation || !ok || key.Group == nil || key.Group.Platform != service.PlatformOpenAI) {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"type": "regional_cost_bound_unavailable", "message": "This protocol has no certified regional cost bound"}})
+				return
+			}
+			original(c)
+		}
+	}
 	// 分组「仅允许流式请求」准入：挂在模型白名单之后，同样早于合成路由改写与调度。
 	groupStreamOnly := middleware.GroupStreamOnly()
+	groupAntiDistillation := middleware.GroupAntiDistillation(apiKeyService.CheckGroupAntiDistillation)
+	groupCodexCLIOnly := middleware.GroupCodexCLIOnly(settingService)
+	groupBlockSubagents := middleware.GroupBlockSubagents()
 
 	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
 		// openai、grok 与多协议 API Key 供应商经 OpenAI 网关转发（平台清单）。
@@ -129,6 +156,10 @@ func RegisterGatewayRoutes(
 		}
 	}
 	videoGenerationHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformMiniMax {
+			h.OpenAIGateway.MiniMaxH3Videos(c)
+			return
+		}
 		// Video status/content lookups below already allow Composite groups; keep
 		// task creation aligned so composite keys that route to Grok accounts can
 		// submit video generation jobs.
@@ -145,6 +176,10 @@ func RegisterGatewayRoutes(
 		})
 	}
 	videoStatusHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformMiniMax {
+			h.OpenAIGateway.MiniMaxH3Videos(c)
+			return
+		}
 		// Video status requests do not carry a model, so composite groups cannot
 		// be resolved by compositeTargetPlatformMiddleware. Route them through
 		// the Grok handler and let scheduler/account selection enforce capacity.
@@ -161,6 +196,10 @@ func RegisterGatewayRoutes(
 		})
 	}
 	videoContentHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformMiniMax {
+			h.OpenAIGateway.MiniMaxH3Videos(c)
+			return
+		}
 		// Video content requests do not carry a model, so composite groups cannot
 		// be resolved by compositeTargetPlatformMiddleware. Route them through
 		// the Grok handler just like video status lookups.
@@ -217,7 +256,7 @@ func RegisterGatewayRoutes(
 
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
-	gateway.Use(bodyLimit)
+	gateway.Use(traffic, bodyLimit)
 	gateway.Use(clientRequestID)
 	gateway.Use(opsErrorLogger)
 	gateway.Use(endpointNorm)
@@ -226,10 +265,15 @@ func RegisterGatewayRoutes(
 	gateway.Use(imageAdmission)
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
 	gateway.Use(requestModelIntegrity)
-	gateway.Use(groupModelAllowlist)
-	gateway.Use(groupStreamOnly)
+	gateway.Use(groupModelAllowlist, apiKeyModelPolicy)
+	gateway.Use(groupCodexCLIOnly, groupBlockSubagents)
+	gateway.Use(groupAntiDistillation, groupStreamOnly)
+	// A serverless route may proxy to an older pod before local target resolution.
+	// Enforce the key policy at the owner and again after local model rewriting.
+	gateway.Use(apiKeyLongContext)
 	gateway.Use(podRoute)
 	gateway.Use(compositeTarget)
+	gateway.Use(apiKeyLongContext)
 	gateway.Use(requireGroupAnthropic)
 	{
 		// /v1/messages: auto-route based on group platform
@@ -337,6 +381,15 @@ func RegisterGatewayRoutes(
 			}
 		}
 		gateway.POST("/tts", voiceHandler("tts"))
+		// Streaming TTS shares the path with batch TTS: GET + Upgrade: websocket.
+		gateway.GET("/tts", func(c *gin.Context) {
+			if getGroupPlatform(c) != service.PlatformGrok {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Voice API is not supported for this platform"}})
+				return
+			}
+			h.OpenAIGateway.GrokTTSStream(c)
+		})
 		gateway.POST("/stt", voiceHandler("stt"))
 		gateway.POST("/custom-voices", voiceHandler("custom-voices"))
 		customVoicePathHandler := func(c *gin.Context) {
@@ -380,7 +433,7 @@ func RegisterGatewayRoutes(
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
 	gemini := r.Group("/v1beta")
-	gemini.Use(bodyLimit)
+	gemini.Use(traffic, bodyLimit)
 	gemini.Use(clientRequestID)
 	gemini.Use(opsErrorLogger)
 	gemini.Use(endpointNorm)
@@ -388,14 +441,30 @@ func RegisterGatewayRoutes(
 	gemini.Use(captureTraffic)
 	gemini.Use(requestModelIntegrity)
 	gemini.Use(groupModelAllowlist)
+	gemini.Use(groupCodexCLIOnly, groupBlockSubagents)
 	gemini.Use(groupStreamOnly)
 	gemini.Use(compositeGeminiTarget)
+	gemini.Use(apiKeyLongContext)
 	gemini.Use(requireGroupGoogle)
 	{
 		gemini.GET("/models", h.Gateway.GeminiV1BetaListModels)
 		gemini.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
 		// Gin treats ":" as a param marker, but Gemini uses "{model}:{action}" in the same segment.
-		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+		// 非 Gemini 分组不打上游 /v1beta/models，而是转成 Chat Completions 后按账号实际协议转发。
+		gemini.POST("/models/*modelAction", func(c *gin.Context) {
+			if handler.GeminiInboundUsesNativeUpstream(c) {
+				h.Gateway.GeminiV1BetaModels(c)
+				return
+			}
+			chat := handler.SelectGeminiChatCompletionsHandler(getGroupPlatform(c), h.OpenAIGateway, h.Gateway)
+			handler.ServeGeminiViaChatCompletions(c, chat)
+		})
+		// 显式上下文缓存：网关自管资源 ID 与账号绑定，list/get 只读本地记录。
+		gemini.POST("/cachedContents", h.Gateway.GeminiCachedContentsCreate)
+		gemini.GET("/cachedContents", h.Gateway.GeminiCachedContentsList)
+		gemini.GET("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsGet)
+		gemini.PATCH("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsPatch)
+		gemini.DELETE("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsDelete)
 	}
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
@@ -409,7 +478,7 @@ func RegisterGatewayRoutes(
 	// 根路径别名共用中间件链：白名单准入在 apiKeyAuth 之后、compositeTarget
 	// 之前，避免逐条路由手工维护链导致漏挂。
 	rootRoute := func(method, path string, limit gin.HandlerFunc, handler gin.HandlerFunc) {
-		r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, requestModelIntegrity, groupModelAllowlist, groupStreamOnly, podRoute, compositeTarget, requireGroupAnthropic, handler)
+		r.Handle(method, path, traffic, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, requestModelIntegrity, groupModelAllowlist, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupAntiDistillation, groupStreamOnly, apiKeyLongContext, podRoute, compositeTarget, apiKeyLongContext, requireGroupAnthropic, handler)
 	}
 	for _, prefix := range []string{"/api/v3", "/v3", "/v1", ""} {
 		rootRoute(http.MethodPost, prefix+"/contents/generations/tasks", bodyLimit, h.OpenAIGateway.SeedanceTasks)
@@ -426,7 +495,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
-	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, requestModelIntegrity, groupModelAllowlist, groupStreamOnly, podRoute, compositeTarget, requireGroupAnthropic)
+	codexDirect.Use(traffic, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, requestModelIntegrity, groupModelAllowlist, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupAntiDistillation, groupStreamOnly, apiKeyLongContext, podRoute, compositeTarget, apiKeyLongContext, requireGroupAnthropic)
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
 		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
@@ -488,6 +557,14 @@ func RegisterGatewayRoutes(
 		}
 	}
 	rootRoute(http.MethodPost, "/tts", bodyLimit, rootVoiceHandler("tts"))
+	rootRoute(http.MethodGet, "/tts", bodyLimit, func(c *gin.Context) {
+		if getGroupPlatform(c) != service.PlatformGrok {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Voice API is not supported for this platform"}})
+			return
+		}
+		h.OpenAIGateway.GrokTTSStream(c)
+	})
 	rootRoute(http.MethodPost, "/stt", bodyLimit, rootVoiceHandler("stt"))
 	rootRoute(http.MethodPost, "/custom-voices", bodyLimit, rootVoiceHandler("custom-voices"))
 	rootCustomVoicePathHandler := func(c *gin.Context) {
@@ -529,11 +606,11 @@ func RegisterGatewayRoutes(
 	})
 
 	// Antigravity 模型列表
-	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.AntigravityModels)
+	r.GET("/antigravity/models", traffic, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.AntigravityModels)
 
 	// Antigravity 专用路由（仅使用 antigravity 账户，不混合调度）
 	antigravityV1 := r.Group("/antigravity/v1")
-	antigravityV1.Use(bodyLimit)
+	antigravityV1.Use(traffic, bodyLimit)
 	antigravityV1.Use(clientRequestID)
 	antigravityV1.Use(opsErrorLogger)
 	antigravityV1.Use(endpointNorm)
@@ -541,8 +618,10 @@ func RegisterGatewayRoutes(
 	antigravityV1.Use(gin.HandlerFunc(apiKeyAuth))
 	antigravityV1.Use(captureTraffic)
 	antigravityV1.Use(requestModelIntegrity)
-	antigravityV1.Use(groupModelAllowlist)
+	antigravityV1.Use(groupModelAllowlist, apiKeyModelPolicy)
+	antigravityV1.Use(groupCodexCLIOnly, groupBlockSubagents)
 	antigravityV1.Use(groupStreamOnly)
+	antigravityV1.Use(apiKeyLongContext)
 	antigravityV1.Use(requireGroupAnthropic)
 	{
 		antigravityV1.POST("/messages", h.Gateway.Messages)
@@ -552,7 +631,7 @@ func RegisterGatewayRoutes(
 	}
 
 	antigravityV1Beta := r.Group("/antigravity/v1beta")
-	antigravityV1Beta.Use(bodyLimit)
+	antigravityV1Beta.Use(traffic, bodyLimit)
 	antigravityV1Beta.Use(clientRequestID)
 	antigravityV1Beta.Use(opsErrorLogger)
 	antigravityV1Beta.Use(endpointNorm)
@@ -561,7 +640,9 @@ func RegisterGatewayRoutes(
 	antigravityV1Beta.Use(captureTraffic)
 	antigravityV1Beta.Use(requestModelIntegrity)
 	antigravityV1Beta.Use(groupModelAllowlist)
+	antigravityV1Beta.Use(groupCodexCLIOnly, groupBlockSubagents)
 	antigravityV1Beta.Use(groupStreamOnly)
+	antigravityV1Beta.Use(apiKeyLongContext)
 	antigravityV1Beta.Use(requireGroupGoogle)
 	{
 		antigravityV1Beta.GET("/models", h.Gateway.GeminiV1BetaListModels)
@@ -614,6 +695,9 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 
 		body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 		if err != nil {
+			if middleware.RejectRequestBodyReadError(c, err) {
+				return
+			}
 			status := http.StatusBadRequest
 			message := "Failed to read request body"
 			var maxErr *http.MaxBytesError
@@ -635,6 +719,14 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"}})
 				c.Abort()
+				return
+			}
+			// 含 OAuth 账号的跨平台歧义是分组配置错误：拒绝而不是放行。否则未解析的
+			// 请求落到默认 Anthropic handler，handler 再按模型名前缀另猜平台，
+			// OAuth 凭据被送进不匹配的协议管线（如 ChatGPT token 发往 Anthropic）。
+			if decision.OAuthAmbiguous() {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": decision.AmbiguousMessage()}})
 				return
 			}
 			if decision.Matched {

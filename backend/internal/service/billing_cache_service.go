@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -105,15 +106,18 @@ type subscriptionCacheInvalidationPubSub interface {
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache                 BillingCache
-	userRepo              UserRepository
-	subRepo               UserSubscriptionRepository
-	apiKeyRateLimitLoader apiKeyRateLimitLoader
-	userRPMCache          UserRPMCache
-	userGroupRateRepo     UserGroupRateRepository
-	cfg                   *config.Config
-	circuitBreaker        *billingCircuitBreaker
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	autoCredit               AutoCreditRepository
+	autoCreditStop           chan struct{}
+	balanceRejectionNotifier BalanceRejectionNotifier
+	cache                    BillingCache
+	userRepo                 UserRepository
+	subRepo                  UserSubscriptionRepository
+	apiKeyRateLimitLoader    apiKeyRateLimitLoader
+	userRPMCache             UserRPMCache
+	userGroupRateRepo        UserGroupRateRepository
+	cfg                      *config.Config
+	circuitBreaker           *billingCircuitBreaker
+	userPlatformQuotaRepo    UserPlatformQuotaRepository
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -159,6 +163,9 @@ func NewBillingCacheService(
 func (s *BillingCacheService) Stop() {
 	s.cacheWriteStopOnce.Do(func() {
 		s.stopped.Store(true)
+		if s.autoCreditStop != nil {
+			close(s.autoCreditStop)
+		}
 
 		s.cacheWriteMu.Lock()
 		ch := s.cacheWriteChan
@@ -315,6 +322,15 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 			return 0, fmt.Errorf("expire daily check-in rewards: %w", err)
 		} else if expired && s.cache != nil {
 			_ = s.cache.InvalidateUserBalance(ctx, userID)
+		}
+	}
+	if s.autoCredit != nil {
+		balance, err := s.autoCredit.CreditUserBalance(ctx, userID)
+		if err != nil {
+			return 0, err
+		}
+		if balance != nil {
+			return strconv.ParseFloat(*balance, 64)
 		}
 	}
 	if s.cache == nil {
@@ -581,6 +597,11 @@ func (s *BillingCacheService) InvalidateAPIKeyRateLimit(ctx context.Context, key
 // resets expired windows in-memory and triggers async DB reset,
 // and returns an error if any window limit is exceeded.
 func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey *APIKey) error {
+	return s.checkAPIKeyRateLimitsWithPending(ctx, apiKey, 0)
+}
+
+// checkAPIKeyRateLimitsWithPending 在窗口用量上叠加 pending（即将扣除的金额）后检查限速窗口。
+func (s *BillingCacheService) checkAPIKeyRateLimitsWithPending(ctx context.Context, apiKey *APIKey, pending float64) error {
 	if s.cache == nil {
 		// No cache: fall back to reading from DB directly
 		if s.apiKeyRateLimitLoader == nil {
@@ -591,7 +612,7 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 			return nil // Don't block requests on DB errors
 		}
 		return s.evaluateRateLimits(ctx, apiKey, data.Usage5h, data.Usage1d, data.Usage7d,
-			data.Window5hStart, data.Window1dStart, data.Window7dStart)
+			data.Window5hStart, data.Window1dStart, data.Window7dStart, pending)
 	}
 
 	cacheData, err := s.cache.GetAPIKeyRateLimit(ctx, apiKey.ID)
@@ -636,11 +657,11 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		t := time.Unix(cacheData.Window7d, 0)
 		w7d = &t
 	}
-	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d)
+	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d, pending)
 }
 
-// evaluateRateLimits checks usage against limits, triggering async resets for expired windows.
-func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time) error {
+// evaluateRateLimits checks usage (plus pending) against limits, triggering async resets for expired windows.
+func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time, pending float64) error {
 	needsReset := false
 
 	// Reset expired windows in-memory for check purposes
@@ -683,13 +704,16 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 	}
 
 	// Check limits
-	if apiKey.RateLimit5h > 0 && usage5h >= apiKey.RateLimit5h {
+	exceeds := func(usage, limit float64) bool {
+		return limit > 0 && (usage >= limit || usage+pending > limit)
+	}
+	if exceeds(usage5h, apiKey.RateLimit5h) {
 		return ErrAPIKeyRateLimit5hExceeded
 	}
-	if apiKey.RateLimit1d > 0 && usage1d >= apiKey.RateLimit1d {
+	if exceeds(usage1d, apiKey.RateLimit1d) {
 		return ErrAPIKeyRateLimit1dExceeded
 	}
-	if apiKey.RateLimit7d > 0 && usage7d >= apiKey.RateLimit7d {
+	if exceeds(usage7d, apiKey.RateLimit7d) {
 		return ErrAPIKeyRateLimit7dExceeded
 	}
 	return nil
@@ -766,7 +790,7 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 			return err
 		}
 	} else {
-		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+		if err := s.checkBalanceEligibility(ctx, user, apiKey); err != nil {
 			return err
 		}
 	}
@@ -790,6 +814,110 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		return err
 	}
 
+	return nil
+}
+
+// ReserveFixedCharge 为扣费前即可确定金额的费用（倍率后 USD，如显式缓存存储费）做准入并登记在途预留。
+//
+// 余额模式要求缓存余额覆盖 amount 及用户的其他在途预留；订阅模式要求日 / 周 / 月剩余额度覆盖 amount；
+// API Key 总额度与限速窗口同样叠加 amount。订阅与 API Key 的用量取库中权威值，并叠加同一订阅 / Key 上其他
+// 在途预留：先登记本次预留再读用量，并发的两笔费用中后读用量的一方必然看到另一方（预留或已落库的扣费）。
+// 返回的句柄可能为 nil（未登记任何预留）；调用方须在 handler 结束时调用 HandlerDone，预留在计费任务落库后释放。
+// 须在 CheckBillingEligibility 通过后调用；简易模式不校验。
+func (s *BillingCacheService) ReserveFixedCharge(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, amount float64) (*InflightReservation, error) {
+	if user == nil || amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return nil, nil
+	}
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		return nil, nil
+	}
+	subscriptionBill := group != nil && group.IsSubscriptionType() && subscription != nil
+	if !subscriptionBill {
+		balance, err := s.GetUserBalance(ctx, user.ID)
+		if err != nil {
+			return nil, ErrBillingServiceUnavailable.WithCause(err)
+		}
+		if balance < amount {
+			return nil, ErrInsufficientBalance
+		}
+	}
+	res, err := s.reserveInflight(ctx, user, group, subscription, amount, false, false)
+	if err != nil {
+		return nil, err
+	}
+	var subscriptionPending, apiKeyPending float64
+	if subscriptionBill && (group.HasDailyLimit() || group.HasWeeklyLimit() || group.HasMonthlyLimit()) {
+		res, subscriptionPending = s.reserveInflightScope(ctx, res, user.ID, inflightSubscriptionScope(subscription.ID), amount)
+	}
+	if apiKey != nil && (apiKey.Quota > 0 || apiKey.HasRateLimits()) {
+		res, apiKeyPending = s.reserveInflightScope(ctx, res, user.ID, inflightAPIKeyScope(apiKey.ID), amount)
+	}
+	if subscriptionBill {
+		err = s.checkFixedChargeSubscription(ctx, user.ID, group, amount+subscriptionPending)
+	}
+	if err == nil && apiKey != nil {
+		err = s.checkFixedChargeAPIKey(ctx, apiKey, amount+apiKeyPending)
+	}
+	if err != nil {
+		res.Release()
+		return nil, err
+	}
+	return res, nil
+}
+
+// checkFixedChargeSubscription 按库中订阅用量校验日 / 周 / 月剩余额度覆盖 pending。
+func (s *BillingCacheService) checkFixedChargeSubscription(ctx context.Context, userID int64, group *Group, pending float64) error {
+	read := s.GetSubscriptionStatus
+	if s.subRepo != nil {
+		read = s.getSubscriptionFromDB
+	}
+	subData, err := read(ctx, userID, group.ID)
+	if err != nil {
+		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+	if group.HasDailyLimit() && subData.DailyUsage+pending > *group.DailyLimitUSD {
+		return ErrDailyLimitExceeded
+	}
+	if group.HasWeeklyLimit() && subData.WeeklyUsage+pending > *group.WeeklyLimitUSD {
+		return ErrWeeklyLimitExceeded
+	}
+	if group.HasMonthlyLimit() && subData.MonthlyUsage+pending > *group.MonthlyLimitUSD {
+		return ErrMonthlyLimitExceeded
+	}
+	return nil
+}
+
+// checkFixedChargeAPIKey 按库中 Key 用量校验总额度与限速窗口覆盖 pending；未接入仓储时使用请求上下文与限速缓存中的用量。
+func (s *BillingCacheService) checkFixedChargeAPIKey(ctx context.Context, apiKey *APIKey, pending float64) error {
+	if apiKey.Quota <= 0 && !apiKey.HasRateLimits() {
+		return nil
+	}
+	if s.apiKeyRateLimitLoader == nil {
+		if apiKey.Quota > 0 && apiKey.QuotaUsed+pending > apiKey.Quota {
+			return ErrAPIKeyQuotaExhausted
+		}
+		if apiKey.HasRateLimits() {
+			return s.checkAPIKeyRateLimitsWithPending(ctx, apiKey, pending)
+		}
+		return nil
+	}
+	data, err := s.apiKeyRateLimitLoader.GetRateLimitData(ctx, apiKey.ID)
+	if err != nil {
+		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+	exceeds := func(usage, limit float64) bool {
+		return limit > 0 && usage+pending > limit
+	}
+	switch {
+	case exceeds(data.QuotaUsed, apiKey.Quota):
+		return ErrAPIKeyQuotaExhausted
+	case exceeds(data.EffectiveUsage5h(), apiKey.RateLimit5h):
+		return ErrAPIKeyRateLimit5hExceeded
+	case exceeds(data.EffectiveUsage1d(), apiKey.RateLimit1d):
+		return ErrAPIKeyRateLimit1dExceeded
+	case exceeds(data.EffectiveUsage7d(), apiKey.RateLimit7d):
+		return ErrAPIKeyRateLimit7dExceeded
+	}
 	return nil
 }
 
@@ -921,7 +1049,8 @@ func (s *BillingCacheService) balanceBelowEligibilityThreshold(balance float64) 
 }
 
 // checkBalanceEligibility 检查余额模式资格
-func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userID int64) error {
+func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, user *User, keys ...*APIKey) error {
+	userID := user.ID
 	balance, err := s.GetUserBalance(ctx, userID)
 	if err != nil {
 		if s.circuitBreaker != nil {
@@ -935,6 +1064,35 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 	}
 
 	if s.balanceBelowEligibilityThreshold(balance) {
+		if s.autoCredit != nil && user.IsActive() {
+			var result *AutoCreditResult
+			var recoveryErr error
+			if len(keys) > 0 && keys[0] != nil {
+				result, recoveryErr = s.autoCredit.EvaluateAdmission(ctx, userID, keys[0].ID)
+			} else {
+				result, recoveryErr = s.autoCredit.Evaluate(ctx, userID)
+			}
+			if recoveryErr != nil {
+				return ErrBillingServiceUnavailable.WithCause(recoveryErr)
+			}
+			if result.Issued {
+				if recoveryErr = s.InvalidateUserBalance(ctx, userID); recoveryErr != nil {
+					return ErrBillingServiceUnavailable.WithCause(recoveryErr)
+				}
+			}
+			// Re-read the authoritative balance once. Existing in-flight reserve
+			// checks still run after eligibility and cannot be bypassed by credit.
+			fresh, recoveryErr := s.userRepo.GetByID(ctx, userID)
+			if recoveryErr != nil {
+				return ErrBillingServiceUnavailable.WithCause(recoveryErr)
+			}
+			if fresh.IsActive() && !s.balanceBelowEligibilityThreshold(fresh.Balance) {
+				return nil
+			}
+		}
+		if s.balanceRejectionNotifier != nil {
+			s.balanceRejectionNotifier.CheckBalanceOnRejection(user, balance)
+		}
 		return ErrInsufficientBalance
 	}
 
@@ -1139,7 +1297,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		cacheErr error
 	)
 	if s.cache != nil {
-		entry, ok, cacheErr = s.cache.GetUserPlatformQuotaCache(ctx, userID, platform)
+		entry, ok, cacheErr = s.getPlatformQuotaCache(ctx, userID, platform)
 	} else {
 		// 标记为"cache 故障"分支：跳过 HIT 路径、不回填、走 DB 一次性检查
 		cacheErr = errBillingCacheUnavailable
@@ -1203,7 +1361,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 			}
 			ttl := time.Duration(s.cfg.Billing.UserPlatformQuotaCacheTTLSeconds) * time.Second
 			setCtx, setCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-			if setErr := s.cache.SetUserPlatformQuotaCache(setCtx, userID, platform, refreshed, ttl); setErr != nil {
+			if setErr := s.setPlatformQuotaCache(setCtx, userID, platform, refreshed, ttl); setErr != nil {
 				logger.LegacyPrintf("service.billing_cache",
 					"Warning: refresh expired user platform quota cache failed user=%d platform=%s: %v",
 					userID, platform, setErr)
@@ -1272,7 +1430,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 				sentinelTTL = time.Hour
 			}
 			setCtx, setCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-			if setErr := s.cache.SetUserPlatformQuotaCache(setCtx, userID, platform, sentinel, sentinelTTL); setErr != nil {
+			if setErr := s.setPlatformQuotaCache(setCtx, userID, platform, sentinel, sentinelTTL); setErr != nil {
 				userPlatformQuotaSentinelSetCacheErrorTotal.Add(1)
 				logger.LegacyPrintf("service.billing_cache", "Warning: set sentinel quota cache failed user=%d platform=%s: %v", userID, platform, setErr)
 			}
@@ -1328,7 +1486,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		// 避免请求 ctx 提前取消（客户端断连/上游超时）导致 cache 回填失败,
 		// 让下一次 preflight 仍然 MISS 并击穿到 DB（高并发下增大 DB 压力）。
 		setCtx, setCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		if setErr := s.cache.SetUserPlatformQuotaCache(setCtx, userID, platform, newEntry, ttl); setErr != nil {
+		if setErr := s.setPlatformQuotaCache(setCtx, userID, platform, newEntry, ttl); setErr != nil {
 			logger.LegacyPrintf("service.billing_cache", "Warning: set user platform quota cache failed user=%d platform=%s: %v", userID, platform, setErr)
 		}
 		setCancel()
@@ -1408,7 +1566,7 @@ func (s *BillingCacheService) HasUserPlatformQuotaLimit(ctx context.Context, use
 	if s.cache == nil {
 		return true
 	}
-	entry, ok, err := s.cache.GetUserPlatformQuotaCache(ctx, userID, platform)
+	entry, ok, err := s.getPlatformQuotaCache(ctx, userID, platform)
 	if err != nil || !ok || entry == nil {
 		return true
 	}

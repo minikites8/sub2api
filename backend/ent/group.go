@@ -30,6 +30,8 @@ type Group struct {
 	Name string `json:"name,omitempty"`
 	// Description holds the value of the "description" field.
 	Description *string `json:"description,omitempty"`
+	// 名称与描述的界面语言译文：语言代码 -> {name, description}；缺失的语言沿用 name/description
+	I18n domain.GroupI18n `json:"i18n,omitempty"`
 	// RateMultiplier holds the value of the "rate_multiplier" field.
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
 	// 按模型覆盖分组倍率；模型名大小写不敏感精确匹配
@@ -70,6 +72,8 @@ type Group struct {
 	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
 	// 是否允许该分组使用批量图片生成能力
 	AllowBatchImageGeneration bool `json:"allow_batch_image_generation,omitempty"`
+	// 图片生成是否按实际出图张数计费
+	ImageCountBilling bool `json:"image_count_billing,omitempty"`
 	// 图片生成是否使用独立倍率；false 表示共享分组有效倍率
 	ImageRateIndependent bool `json:"image_rate_independent,omitempty"`
 	// 图片生成独立倍率，仅 image_rate_independent=true 时生效
@@ -116,6 +120,10 @@ type Group struct {
 	FallbackGroupID *int64 `json:"fallback_group_id,omitempty"`
 	// 无效请求兜底使用的分组 ID
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request,omitempty"`
+	// 是否拒绝员工 API 入口中带子代理标识的请求
+	BlockSubagents bool `json:"block_subagents,omitempty"`
+	// 是否仅允许 Codex 客户端调用本分组
+	CodexCliOnly bool `json:"codex_cli_only,omitempty"`
 	// 是否仅允许流式请求：开启后非流式的对话生成请求在网关入口直接拒绝
 	StreamOnly bool `json:"stream_only,omitempty"`
 	// 模型路由配置：模型模式 -> 优先账号ID列表
@@ -136,8 +144,6 @@ type Group struct {
 	ForceOpenaiFast bool `json:"force_openai_fast,omitempty"`
 	// 是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费
 	FreeOpenaiFast bool `json:"free_openai_fast,omitempty"`
-	// 允许分组使用已开启 BPS 的账户上游；关闭时使用平台上游
-	EnableBps bool `json:"enable_bps,omitempty"`
 	// 分组调度策略：balanced / priority_5h / priority_weekly
 	SchedulingStrategy string `json:"scheduling_strategy,omitempty"`
 	// 仅允许非 apikey 类型账号关联到此分组
@@ -296,9 +302,9 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRateMultipliers, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
+		case group.FieldI18n, group.FieldModelRateMultipliers, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldUnavailableTimeEnabled, group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldStreamOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldEnableBps, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldKiroCacheEmulationEnabled, group.FieldKiroAutoStickyEnabled, group.FieldGptAutoEnabled, group.FieldProfitControlEnabled:
+		case group.FieldUnavailableTimeEnabled, group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageCountBilling, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldBlockSubagents, group.FieldCodexCliOnly, group.FieldStreamOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldKiroCacheEmulationEnabled, group.FieldKiroAutoStickyEnabled, group.FieldGptAutoEnabled, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldKiroCacheEmulationRatio, group.FieldKiroCacheCreationEmulationRatio, group.FieldKiroCacheReadEmulationRatio, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
@@ -360,6 +366,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Description = new(string)
 				*_m.Description = value.String
+			}
+		case group.FieldI18n:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field i18n", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.I18n); err != nil {
+					return fmt.Errorf("unmarshal field i18n: %w", err)
+				}
 			}
 		case group.FieldRateMultiplier:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -486,6 +500,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allow_batch_image_generation", values[i])
 			} else if value.Valid {
 				_m.AllowBatchImageGeneration = value.Bool
+			}
+		case group.FieldImageCountBilling:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_count_billing", values[i])
+			} else if value.Valid {
+				_m.ImageCountBilling = value.Bool
 			}
 		case group.FieldImageRateIndependent:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -642,6 +662,18 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				_m.FallbackGroupIDOnInvalidRequest = new(int64)
 				*_m.FallbackGroupIDOnInvalidRequest = value.Int64
 			}
+		case group.FieldBlockSubagents:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field block_subagents", values[i])
+			} else if value.Valid {
+				_m.BlockSubagents = value.Bool
+			}
+		case group.FieldCodexCliOnly:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_cli_only", values[i])
+			} else if value.Valid {
+				_m.CodexCliOnly = value.Bool
+			}
 		case group.FieldStreamOnly:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field stream_only", values[i])
@@ -705,12 +737,6 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field free_openai_fast", values[i])
 			} else if value.Valid {
 				_m.FreeOpenaiFast = value.Bool
-			}
-		case group.FieldEnableBps:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field enable_bps", values[i])
-			} else if value.Valid {
-				_m.EnableBps = value.Bool
 			}
 		case group.FieldSchedulingStrategy:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -973,6 +999,9 @@ func (_m *Group) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	builder.WriteString("i18n=")
+	builder.WriteString(fmt.Sprintf("%v", _m.I18n))
+	builder.WriteString(", ")
 	builder.WriteString("rate_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RateMultiplier))
 	builder.WriteString(", ")
@@ -1040,6 +1069,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_batch_image_generation=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowBatchImageGeneration))
+	builder.WriteString(", ")
+	builder.WriteString("image_count_billing=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageCountBilling))
 	builder.WriteString(", ")
 	builder.WriteString("image_rate_independent=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageRateIndependent))
@@ -1136,6 +1168,12 @@ func (_m *Group) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
+	builder.WriteString("block_subagents=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BlockSubagents))
+	builder.WriteString(", ")
+	builder.WriteString("codex_cli_only=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CodexCliOnly))
+	builder.WriteString(", ")
 	builder.WriteString("stream_only=")
 	builder.WriteString(fmt.Sprintf("%v", _m.StreamOnly))
 	builder.WriteString(", ")
@@ -1165,9 +1203,6 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("free_openai_fast=")
 	builder.WriteString(fmt.Sprintf("%v", _m.FreeOpenaiFast))
-	builder.WriteString(", ")
-	builder.WriteString("enable_bps=")
-	builder.WriteString(fmt.Sprintf("%v", _m.EnableBps))
 	builder.WriteString(", ")
 	builder.WriteString("scheduling_strategy=")
 	builder.WriteString(_m.SchedulingStrategy)

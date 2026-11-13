@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/serverless"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/google/wire"
@@ -37,6 +38,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	wire.Build(
 		// Infrastructure layer ProviderSets
 		config.ProviderSet,
+		serverless.NewGeoJSResolver,
+		wire.Bind(new(serverless.CountryResolver), new(*serverless.GeoJSResolver)),
 
 		// Business layer ProviderSets
 		repository.ProviderSet,
@@ -84,6 +87,8 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 }
 
 func provideCleanup(
+	balanceNotify *service.BalanceNotifyService,
+	autoCreditEmail *service.AutoCreditEmailWorker,
 	cfg *config.Config,
 	requestCaptures *requestcapture.Manager,
 	entClient *ent.Client,
@@ -102,7 +107,6 @@ func provideCleanup(
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
-	autoSupply *service.AutoSupplyService,
 	openAIAccountGuard *service.OpenAIAccountGuardService,
 	cnProviderBalanceCheck *service.CNProviderBalanceCheckService,
 	codexVersionSync *service.OpenAICodexVersionSyncService,
@@ -111,6 +115,7 @@ func provideCleanup(
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
+	geminiCachedContent *service.GeminiCachedContentService,
 	batchImageCleanup *service.BatchImageCleanupService,
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
@@ -129,6 +134,7 @@ func provideCleanup(
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	controlledExperiment *service.ControlledExperimentService,
 	accountOps *service.AccountOpsService,
+	accountPerformance *service.AccountPerformanceService,
 	accountTokenGuard *service.AccountTokenGuardService,
 	accountTokenGuardV2 *service.AccountTokenGuardV2Service,
 	backupSvc *service.BackupService,
@@ -144,6 +150,7 @@ func provideCleanup(
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
+	cyberModeration *service.ContentModerationService,
 ) func() {
 	if openAIGateway != nil {
 		openAIGateway.StartBPSWarmPool()
@@ -152,8 +159,21 @@ func provideCleanup(
 		}
 	}
 	return func() {
+		if balanceNotify != nil {
+			balanceNotify.Stop()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+
+		if openAIGateway != nil {
+			stopCtx, stopCancel := context.WithTimeout(ctx, 5*time.Second)
+			err := stopRegionalFunds(stopCtx, openAIGateway.RegionalFundsReadiness())
+			stopCancel()
+			if err != nil {
+				log.Printf("[Cleanup] Funds join failed; dependencies retained: %v", err)
+				return
+			}
+		}
 
 		type cleanupStep struct {
 			name string
@@ -162,6 +182,7 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"AutoCreditEmailWorker", func() error { autoCreditEmail.Stop(); return nil }},
 			{"BPSWarmPool", func() error {
 				if openAIGateway != nil {
 					openAIGateway.StopBPS403Recovery()
@@ -214,6 +235,12 @@ func provideCleanup(
 			{"APIKeyQueueWaiters", func() error {
 				if concurrencyService != nil {
 					concurrencyService.StopAPIKeyQueue()
+				}
+				return nil
+			}},
+			{"CyberEvidence", func() error {
+				if cyberModeration != nil && cyberModeration.CyberEvidence() != nil {
+					cyberModeration.CyberEvidence().Close()
 				}
 				return nil
 			}},
@@ -284,6 +311,12 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"GeminiCachedContentService", func() error {
+				if geminiCachedContent != nil {
+					geminiCachedContent.Stop()
+				}
+				return nil
+			}},
 			{"BatchImageCleanupService", func() error {
 				if batchImageCleanup != nil {
 					batchImageCleanup.Stop()
@@ -302,12 +335,6 @@ func provideCleanup(
 			}},
 			{"AccountExpiryService", func() error {
 				accountExpiry.Stop()
-				return nil
-			}},
-			{"AutoSupplyService", func() error {
-				if autoSupply != nil {
-					autoSupply.Stop()
-				}
 				return nil
 			}},
 			{"OpenAIAccountGuardService", func() error {
@@ -407,6 +434,7 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"AccountPerformanceService", func() error { accountPerformance.Stop(); return nil }},
 			{"AccountOpsService", func() error {
 				if accountOps != nil {
 					accountOps.Stop()

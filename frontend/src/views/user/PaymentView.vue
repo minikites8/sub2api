@@ -85,6 +85,7 @@
               </div>
             </section>
 
+            <LotteryRechargeNotice source="recharge" />
             <div v-if="enabledMethods.length === 0" class="purchase-panel purchase-empty-panel">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
@@ -157,13 +158,13 @@
                         <span>{{ t('payment.rechargePromo.discountedPaymentAmount') }}</span>
                         <strong>{{ formatSelectedPaymentAmount(discountedRechargePaymentAmount) }}</strong>
                       </div>
-                      <div v-if="feeRate > 0" class="credits-summary-row">
-                        <span>{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                        <strong>{{ formatSelectedPaymentAmount(feeAmount) }}</strong>
+                      <div v-if="hasFee" class="credits-summary-row">
+                        <span>{{ t('payment.fee') }} ({{ feeRateLabel }}%)</span>
+                        <strong>{{ formatQuoteRange(rechargeQuote, 'fee') }}</strong>
                       </div>
                       <div class="credits-summary-row credits-summary-total">
-                        <span>{{ t('payment.totalDue') }}</span>
-                        <strong>{{ formatSelectedPaymentAmount(totalAmount) }}</strong>
+                        <span>{{ t(feeRangeVaries ? 'payment.estimatedPay' : 'payment.totalDue') }}</span>
+                        <strong>{{ formatQuoteRange(rechargeQuote, 'total') }}</strong>
                       </div>
                       <div v-if="showCreditedAmount" class="credits-summary-row">
                         <span>{{ t('payment.creditedBalance') }}</span>
@@ -174,6 +175,7 @@
                       </p>
                     </div>
 
+                    <p v-if="feeRangeVaries" data-testid="fee-range-hint" class="credits-summary-note">{{ t('payment.feeRangeHint') }}</p>
                     <button type="button" class="credits-purchase-button" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
                       <span v-if="submitting" class="flex items-center justify-center gap-2">
                         <span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
@@ -207,7 +209,8 @@
                       :selected="selectedMethod"
                       @select="selectedMethod = $event"
                     />
-                  </div>
+                    <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && Object.keys(stripeSubMethods).length" v-model="selectedSubtype" :methods="stripeSubMethods" />
+            </div>
                 </article>
               </section>
 
@@ -419,29 +422,31 @@
                   :selected="selectedMethod"
                   @select="selectedMethod = $event"
                 />
+                <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && Object.keys(stripeSubMethods).length" v-model="selectedSubtype" :methods="stripeSubMethods" />
               </div>
-              <div v-if="feeRate > 0 && subPaymentAmount > 0" class="card p-6">
+              <div v-if="hasFee && subPaymentAmount > 0" class="card p-6">
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
                     <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subPaymentAmount) }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subFeeAmount) }}</span>
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRateLabel }}%)</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatQuoteRange(subscriptionQuote, 'fee') }}</span>
                   </div>
                   <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t(feeRangeVaries ? 'payment.estimatedPay' : 'payment.actualPay') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatQuoteRange(subscriptionQuote, 'total') }}</span>
                   </div>
                 </div>
               </div>
-              <button data-test="subscription-submit" :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
+              <p v-if="feeRangeVaries" class="text-xs text-gray-500 dark:text-gray-400" data-testid="fee-range-hint">{{ t('payment.feeRangeHint') }}</p>
+            <button data-test="subscription-submit" :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
                 <span v-if="submitting" class="flex items-center justify-center gap-2">
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
+                <span v-else>{{ t('payment.createOrder') }} {{ formatQuoteRange(subscriptionQuote, 'total') }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
             </template>
@@ -566,9 +571,12 @@ import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiErro
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder, SubscriptionRenewalMode } from '@/types/payment'
-import { formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
+import {  formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import LotteryRechargeNotice from '@/components/lottery/LotteryRechargeNotice.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
+import StripeSubtypeSelector from '@/components/payment/StripeSubtypeSelector.vue'
+import { paymentFeeRange, quotePaymentFee, paymentRangeFitsLimits } from '@/components/payment/fees'
 import { METHOD_ORDER, getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
@@ -586,7 +594,7 @@ import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
+import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, hasPaymentAmountPrecision, normalizePaymentCurrency, paymentCurrencyFractionDigits } from '@/components/payment/currency'
 import { planValiditySuffix as validitySuffixOf } from '@/components/payment/validity'
 import { maxSubscriptionQuantity, subscriptionPeriodDays } from '@/components/payment/subscriptionQuantity'
 import { formatDateTimeToMinute } from '@/utils/format'
@@ -627,6 +635,7 @@ const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const amountInputText = ref('')
 const selectedMethod = ref('')
+const selectedSubtype = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const subscriptionQuantity = ref<number | string>(1)
 const subscriptionQuantityMax = computed(() => selectedPlan.value ? maxSubscriptionQuantity(selectedPlan.value) : 1)
@@ -966,14 +975,62 @@ const planGridClass = computed(() => {
   return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
 })
 
-// Check if an amount fits a method's [min, max]. 0 = no limit.
-function amountFitsMethod(amt: number, methodType: string): boolean {
-  if (amt <= 0) return true
-  const ml = visibleMethods.value[methodType]
-  if (!ml) return false
-  if (ml.single_min > 0 && amt < ml.single_min) return false
-  if (ml.single_max > 0 && amt > ml.single_max) return false
-  return true
+const stripeSubMethods = computed(() => visibleMethods.value.stripe?.sub_methods ?? {})
+watch(stripeSubMethods, (methods) => {
+  if (!(selectedSubtype.value in methods)) selectedSubtype.value = Object.keys(methods)[0] ?? ''
+}, { immediate: true })
+
+function methodFeeRange(method: string) {
+  const limits = visibleMethods.value[method]
+  const rates = method === 'stripe' && selectedSubtype.value
+    ? limits?.sub_methods?.[selectedSubtype.value] ?? limits
+    : limits
+  return paymentFeeRange(rates, checkout.value.recharge_fee_rate)
+}
+
+function methodQuote(base: number, method: string) {
+  const currency = normalizePaymentCurrency(visibleMethods.value[method]?.currency)
+  const rates = methodFeeRange(method)
+  return {
+    min: quotePaymentFee(base, rates.min, currencyFractionDigits(currency)),
+    max: quotePaymentFee(base, rates.max, currencyFractionDigits(currency)),
+  }
+}
+
+// Aggregated limits are a preview; the server checks each candidate with its own quote.
+function amountFitsMethod(base: number, method: string): boolean {
+  if (base <= 0) return true
+  const limits = visibleMethods.value[method]
+  if (!limits) return false
+  const quote = methodQuote(base, method)
+  return paymentRangeFitsLimits(quote.min.total, quote.max.total, limits.single_min, limits.single_max)
+}
+
+// A Stripe button stays selectable if any configured subtype can handle the amount.
+function methodAvailableForAmount(base: number, method: string): boolean {
+  const limits = visibleMethods.value[method]
+  if (!limits || limits.available === false) return false
+  if (method !== 'stripe' || !limits.sub_methods) return amountFitsMethod(base, method)
+  const digits = currencyFractionDigits(normalizePaymentCurrency(limits.currency))
+  return Object.values(limits.sub_methods).some(rates => {
+    const range = paymentFeeRange(rates, checkout.value.recharge_fee_rate)
+    return paymentRangeFitsLimits(
+      quotePaymentFee(base, range.min, digits).total,
+      quotePaymentFee(base, range.max, digits).total,
+      limits.single_min, limits.single_max,
+    )
+  })
+}
+
+function rechargeBaseForMethod(method: string): number {
+  const base = quoteRechargeBonus(rechargeBonusTiers.value, validAmount.value, {
+    multiplier: balanceRechargeMultiplier.value,
+    mode: rechargeBonusMode.value,
+    currencyDigits: currencyFractionDigits(normalizePaymentCurrency(visibleMethods.value[method]?.currency)),
+  }).payBase
+  return rechargeDiscountActive.value
+    ? roundPaymentAmount(base * rechargeDiscountPercent.value / 100, normalizePaymentCurrency(visibleMethods.value[method]?.currency))
+    : base
 }
 
 // Visible methods decide the amount range shown to users.
@@ -1004,26 +1061,13 @@ const localeCode = computed(() => {
 })
 
 function currencyFractionDigits(currency: string): number {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-    }).resolvedOptions().maximumFractionDigits ?? 2
-  } catch {
-    return 2
-  }
+  return paymentCurrencyFractionDigits(currency)
 }
 
 function roundPaymentAmount(value: number, currency: string): number {
   if (!Number.isFinite(value)) return 0
   const factor = 10 ** currencyFractionDigits(currency)
   return Math.round(value * factor) / factor
-}
-
-function ceilPaymentAmount(value: number, currency: string): number {
-  if (!Number.isFinite(value)) return 0
-  const factor = 10 ** currencyFractionDigits(currency)
-  return Math.ceil(value * factor) / factor
 }
 
 function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
@@ -1163,23 +1207,28 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
     return {
       type,
       display_name: ml?.display_name,
-      fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(discountedRechargePaymentAmount.value, type),
+      fee_rate: methodFeeRange(type).min,
+      fee_rate_min: methodFeeRange(type).min,
+      fee_rate_max: methodFeeRange(type).max,
+      available: methodAvailableForAmount(rechargeBaseForMethod(type), type),
     }
   })
 )
 
-const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
-const feeAmount = computed(() =>
-  feeRate.value > 0 && discountedRechargePaymentAmount.value > 0
-    ? Math.ceil(((discountedRechargePaymentAmount.value * feeRate.value) / 100) * 100) / 100
-    : 0
-)
-const totalAmount = computed(() =>
-  validAmount.value > 0
-    ? Math.round((discountedRechargePaymentAmount.value + feeAmount.value) * 100) / 100
-    : 0
-)
+const selectedFeeRange = computed(() => methodFeeRange(selectedMethod.value))
+const feeRangeVaries = computed(() => selectedFeeRange.value.min !== selectedFeeRange.value.max)
+const feeRateLabel = computed(() => feeRangeVaries.value
+  ? `${selectedFeeRange.value.min}–${selectedFeeRange.value.max}`
+  : String(selectedFeeRange.value.min))
+const hasFee = computed(() => selectedFeeRange.value.max > 0)
+const rechargeQuote = computed(() => methodQuote(discountedRechargePaymentAmount.value, selectedMethod.value))
+
+function formatQuoteRange(quote: ReturnType<typeof methodQuote>, field: 'fee' | 'total'): string {
+  const min = formatSelectedPaymentAmount(quote.min[field])
+  const max = formatSelectedPaymentAmount(quote.max[field])
+  return min === max ? min : `${min} – ${max}`
+}
+
 function formatDiscountRate(value: number): string {
   if (!Number.isFinite(value)) return '0'
   return Number((value / 10).toFixed(2)).toString()
@@ -1187,21 +1236,33 @@ function formatDiscountRate(value: number): string {
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
+	if (!hasPaymentAmountPrecision(validAmount.value, selectedCurrency.value)) {
+		return t('payment.amountPrecision', {
+			currency: selectedCurrency.value,
+			digits: currencyFractionDigits(selectedCurrency.value),
+		})
+	}
   // No method can handle this amount
-  if (!enabledMethods.value.some((m) => amountFitsMethod(discountedRechargePaymentAmount.value, m))) {
+  if (!enabledMethods.value.some((m) => methodAvailableForAmount(rechargeBaseForMethod(m), m))) {
     return t('payment.amountNoMethod')
   }
   // Selected method can't handle this amount (but others can)
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && discountedRechargePaymentAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
-    if (ml.single_max > 0 && discountedRechargePaymentAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
+    if (ml.single_min > 0 && rechargeQuote.value.max.total < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
+    if (ml.single_max > 0 && rechargeQuote.value.min.total > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
   }
   return ''
 })
 
+const stripeSubtypeReady = computed(() => selectedMethod.value !== 'stripe'
+  || !selectedLimit.value?.sub_methods
+  || Object.prototype.hasOwnProperty.call(stripeSubMethods.value, selectedSubtype.value))
+
 const canSubmit = computed(() =>
   validAmount.value > 0
+		&& hasPaymentAmountPrecision(validAmount.value, selectedCurrency.value)
+    && stripeSubtypeReady.value
     && amountFitsMethod(discountedRechargePaymentAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
@@ -1224,22 +1285,7 @@ const subPaymentAmount = computed(() =>
   subscriptionPaymentAmountForCurrency(subscriptionDiscountedPrice.value, selectedCurrency.value)
 )
 
-const subFeeAmount = computed(() => {
-  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return 0
-  return ceilPaymentAmount((subPaymentAmount.value * feeRate.value) / 100, selectedCurrency.value)
-})
-
-const subTotalAmount = computed(() => {
-  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return subPaymentAmount.value
-  return roundPaymentAmount(subPaymentAmount.value + subFeeAmount.value, selectedCurrency.value)
-})
-
-function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
-  const paymentAmount = subscriptionPaymentAmountForCurrency(value, currency)
-  if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
-  const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
-  return roundPaymentAmount(paymentAmount + fee, currency)
-}
+const subscriptionQuote = computed(() => methodQuote(subPaymentAmount.value, selectedMethod.value))
 
 // Subscription-specific: method options based on gateway pay amount
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
@@ -1250,8 +1296,10 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
     return {
       type,
       display_name: ml?.display_name,
-      fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(price, currency), type),
+      fee_rate: methodFeeRange(type).min,
+      fee_rate_min: methodFeeRange(type).min,
+      fee_rate_max: methodFeeRange(type).max,
+      available: methodAvailableForAmount(subscriptionPaymentAmountForCurrency(price, currency), type),
     }
   })
 })
@@ -1259,14 +1307,15 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
     && subscriptionQuantityValid.value
-    && amountFitsMethod(subTotalAmount.value, selectedMethod.value)
+    && stripeSubtypeReady.value
+    && amountFitsMethod(subPaymentAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [discountedRechargePaymentAmount.value, selectedMethod.value] as const, ([amt, method]) => {
-  if (amt <= 0 || amountFitsMethod(amt, method)) return
-  const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
+  if (activeTab.value !== 'recharge' || amt <= 0 || methodAvailableForAmount(rechargeBaseForMethod(method), method)) return
+  const available = enabledMethods.value.find((m) => methodAvailableForAmount(rechargeBaseForMethod(m), m))
   if (available) selectedMethod.value = available
 })
 
@@ -1351,6 +1400,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
+      paymentSubtype: requestType === 'stripe' ? selectedSubtype.value : undefined,
       orderType,
       planId,
       quantity: requestQuantity,
@@ -1391,7 +1441,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         path: '/payment/stripe',
         query: {
           order_id: String(result.order_id),
-          client_secret: result.client_secret,
           method: stripeMethod || undefined,
           resume_token: result.resume_token || undefined,
         },
@@ -1617,7 +1666,6 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
         path: '/payment/stripe',
         query: {
           order_id: String(result.order_id),
-          client_secret: result.client_secret,
           method: stripeMethod,
           resume_token: result.resume_token || undefined,
         },

@@ -18,7 +18,9 @@ func qosTestCache(t testing.TB) (*concurrencyCache, *miniredis.Miniredis) {
 	m := miniredis.RunT(t)
 	r := redis.NewClient(&redis.Options{Addr: m.Addr()})
 	t.Cleanup(func() { _ = r.Close() })
-	return NewConcurrencyCache(r, 15, 60).(*concurrencyCache), m
+	cache, cacheTypeOK := NewConcurrencyCache(r, 15, 60).(*concurrencyCache)
+	require.True(t, cacheTypeOK, "cache fixture must provide the concrete concurrency cache")
+	return cache, m
 }
 func qosEntry(id string, uid int64, tier string) service.GPTQoSEntry {
 	g := service.DefaultGPTQoSGroupConfig(tier)
@@ -59,8 +61,9 @@ func TestGPTQoSChoosesLowerLiveLoadWithinQualityPool(t *testing.T) {
 func TestGPTQoSEqualLoadRotatesPhysicalPoolsAcrossInstances(t *testing.T) {
 	c, m := qosTestCache(t)
 	r2 := redis.NewClient(&redis.Options{Addr: m.Addr()})
-	defer r2.Close()
-	c2 := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	defer func() { require.NoError(t, r2.Close()) }()
+	c2, cacheTypeOK := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	require.True(t, cacheTypeOK, "cache fixture must provide the concrete concurrency cache")
 	ctx := context.Background()
 	counts := map[string]int{}
 	for i := 0; i < 60; i++ {
@@ -162,8 +165,9 @@ func TestGPTQoSComparesNormalizedAccountAndSharedPoolLoad(t *testing.T) {
 func TestGPTQoSAtomicAdmissionNoOversellAcrossInstances(t *testing.T) {
 	c, m := qosTestCache(t)
 	r2 := redis.NewClient(&redis.Options{Addr: m.Addr()})
-	defer r2.Close()
-	c2 := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	defer func() { require.NoError(t, r2.Close()) }()
+	c2, cacheTypeOK := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	require.True(t, cacheTypeOK, "cache fixture must provide the concrete concurrency cache")
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	granted := map[string]bool{}
@@ -544,7 +548,8 @@ func TestGPTQoSAggregateReserveAcrossSingleSlotAccounts(t *testing.T) {
 	require.Equal(t, "granted", g.Status)
 	state, err := c.GPTQoSState(ctx)
 	require.NoError(t, err)
-	global := state["strong_pool"].(map[string]any)
+	global, poolTypeOK := state["strong_pool"].(map[string]any)
+	require.True(t, poolTypeOK, "strong pool state must be an object")
 	require.EqualValues(t, 20, global["capacity"])
 	require.EqualValues(t, 6, global["reserved"])
 	require.EqualValues(t, 1, global["premium_reserved_used"])
@@ -581,8 +586,9 @@ func TestGPTQoSStrongStandbyBeforeBasic(t *testing.T) {
 func TestGPTQoSStandbyOverflowReturnsToPrimaryWithoutPreemption(t *testing.T) {
 	c, m := qosTestCache(t)
 	r2 := redis.NewClient(&redis.Options{Addr: m.Addr()})
-	defer r2.Close()
-	peer := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	defer func() { require.NoError(t, r2.Close()) }()
+	peer, cacheTypeOK := NewConcurrencyCache(r2, 15, 60).(*concurrencyCache)
+	require.True(t, cacheTypeOK, "cache fixture must provide the concrete concurrency cache")
 	ctx := context.Background()
 	e := qosEntry("primary-running", 42, "premium")
 	e.Candidates = []service.GPTQoSCandidate{

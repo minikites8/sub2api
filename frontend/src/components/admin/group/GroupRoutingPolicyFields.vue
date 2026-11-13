@@ -3,21 +3,6 @@
     <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
       {{ t('admin.groups.routingPolicy.title') }}
     </h4>
-    <div class="flex items-center justify-between gap-4">
-      <label :for="idPrefix + '-enable-bps'" class="text-sm text-gray-600 dark:text-gray-400">
-        {{ t('admin.groups.routingPolicy.enableBPS') }}
-      </label>
-      <Toggle
-        :id="idPrefix + '-enable-bps'"
-        :data-testid="idPrefix + '-enable-bps'"
-        :aria-label="t('admin.groups.routingPolicy.enableBPS')"
-        :model-value="enableBps"
-        @update:model-value="$emit('update:enableBps', $event)"
-      />
-    </div>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-      {{ t('admin.groups.routingPolicy.bpsHint') }}
-    </p>
     <div class="mt-4">
       <p :id="idPrefix + '-strategy-label'" class="text-sm text-gray-600 dark:text-gray-400 mb-2">
         {{ t('admin.groups.routingPolicy.strategy') }}
@@ -44,12 +29,10 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import Toggle from '@/components/common/Toggle.vue'
 import type { GroupSchedulingStrategy } from '@/types'
 
-defineProps<{ idPrefix: string; enableBps: boolean; schedulingStrategy: GroupSchedulingStrategy }>()
+defineProps<{ idPrefix: string; schedulingStrategy: GroupSchedulingStrategy }>()
 defineEmits<{
-  (e: 'update:enableBps', value: boolean): void
   (e: 'update:schedulingStrategy', value: GroupSchedulingStrategy): void
 }>()
 const { t } = useI18n()

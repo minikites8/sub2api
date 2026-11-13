@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -256,16 +255,13 @@ func (s *OpenAIGatewayService) probeExcelBPS403Recovery(ctx context.Context, acc
 	if account.Proxy != nil {
 		proxy = account.Proxy.URL()
 	}
+	var lease excelBPSLease
 	if probe.IsExcelBPSMihomoEnabled() {
-		s.refreshExcelBPSIPPool(ctx)
-		var lease excelBPSLease
-		proxy, lease, err = s.excelBPSAcquireFor(&probe)(ctx, fmt.Sprintf("recovery:account:%d", account.ID))
+		proxy, lease, err = s.excelBPSAcquireFor(&probe)(ctx, "transient:bps-403-recovery:"+nonce)
 		if err != nil {
 			return err
 		}
-		if lease != nil {
-			defer lease.Release()
-		}
+		defer lease.Release()
 	}
 	ctx = WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileExcelBPS))
 	req, err := newExcelBPSRequest(ctx, body, token, accountID)
@@ -296,6 +292,9 @@ func (s *OpenAIGatewayService) probeExcelBPS403Recovery(ctx context.Context, acc
 	}
 	if !bpsProbeExactText(response, nonce) {
 		return errors.New("BPS recovery response mismatch")
+	}
+	if lease != nil {
+		lease.ReportSuccess()
 	}
 	return nil
 }

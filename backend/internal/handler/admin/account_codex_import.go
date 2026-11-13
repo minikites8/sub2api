@@ -22,6 +22,7 @@ import (
 const codexImportClockSkewSeconds int64 = 120
 
 type CodexSessionImportRequest struct {
+	InitializeOpenAITwoFA   bool           `json:"initialize_openai_two_fa"`
 	Content                 string         `json:"content"`
 	Contents                []string       `json:"contents"`
 	Name                    string         `json:"name"`
@@ -345,6 +346,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		}
 
 		account, createErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
+			InitialOpenAITwoFA:    req.InitializeOpenAITwoFA && !item.IsAgentIdentity,
 			Name:                  accountName,
 			Notes:                 req.Notes,
 			Platform:              service.PlatformOpenAI,
@@ -952,14 +954,16 @@ func buildCodexAgentIdentityKeys(accountID string) []string {
 	return []string{"account:" + accountID}
 }
 
-// buildCodexStoredIdentityKeys 生成存量账号索引键，保留 user/account 维度，
-// 让 accessToken-only 账号后续升级为完整 OAuth 时仍能命中并更新原账号。
+// buildCodexStoredIdentityKeys 生成存量账号索引键，按 workspace/account
+// 和 user 组合隔离身份，避免同一用户在不同 workspace 的账号误合并。
 func buildCodexStoredIdentityKeys(accountID, userID, email, accessToken string) []string {
 	keys := make([]string, 0, 3)
 	accountID = strings.TrimSpace(accountID)
 	userID = strings.TrimSpace(userID)
 	accessToken = strings.TrimSpace(accessToken)
-	if userID != "" {
+	if accountID != "" && userID != "" {
+		keys = append(keys, "account_user:"+codexCompositeIdentityKey(accountID, userID))
+	} else if userID != "" {
 		keys = append(keys, "user:"+userID)
 	}
 	if accountID == "" && userID == "" {
@@ -992,6 +996,10 @@ func scopeCodexOAuthIdentityKeys(keys []string, clientID, accountID string) []st
 		scoped = append(scoped, kind+":"+prefix+identity)
 	}
 	return scoped
+}
+
+func codexCompositeIdentityKey(accountID, userID string) string {
+	return fmt.Sprintf("%d:%s%d:%s", len(accountID), accountID, len(userID), userID)
 }
 
 func buildCodexAccountIndex(accounts []service.Account) *codexAccountIndex {

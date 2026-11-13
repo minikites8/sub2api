@@ -1,6 +1,6 @@
 import type { SearchNavItem } from '@/utils/featureSearch'
 
-export const SETTINGS_TABS = ['general', 'agreement', 'features', 'security', 'users', 'gateway', 'payment', 'email', 'backup', 'supply'] as const
+export const SETTINGS_TABS = ['general', 'agreement', 'features', 'security', 'users', 'gateway', 'payment', 'email', 'backup'] as const
 export type SettingsTab = typeof SETTINGS_TABS[number]
 
 interface SettingsSection {
@@ -17,7 +17,9 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { tab: 'security', id: 'admin-api-key', titleKey: 'admin.settings.adminApiKey.title' },
   { tab: 'gateway', id: 'overload-cooldown', titleKey: 'admin.settings.overloadCooldown.title' },
   { tab: 'gateway', id: 'rate-limit429cooldown', titleKey: 'admin.settings.rateLimit429Cooldown.title' },
+  { tab: 'gateway', id: 'openai-response-header-timeout', titleKey: 'admin.settings.openaiResponseHeaderTimeout.title' },
   { tab: 'gateway', id: 'stream-timeout', titleKey: 'admin.settings.streamTimeout.title' },
+  { tab: 'gateway', id: 'account-performance', titleKey: 'accountPerformance.settings.title', keywordKeys: ['accountPerformance.settings.windowMinutes', 'accountPerformance.settings.description'] },
   { tab: 'gateway', id: 'rectifier', titleKey: 'admin.settings.rectifier.title' },
   { tab: 'gateway', id: 'beta-policy', titleKey: 'admin.settings.betaPolicy.title' },
   { tab: 'gateway', id: 'openai-fast-policy', titleKey: 'admin.settings.openaiFastPolicy.title' },
@@ -40,11 +42,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { tab: 'gateway', id: 'scheduling', titleKey: 'admin.settings.scheduling.title' },
   { tab: 'gateway', id: 'gateway-forwarding', titleKey: 'admin.settings.gatewayForwarding.title' },
   { tab: 'gateway', id: 'web-search-emulation', titleKey: 'admin.settings.webSearchEmulation.title' },
-  { tab: 'gateway', id: 'usage-records', titleKey: 'admin.settings.usageRecords.title' },
+  { tab: 'gateway', id: 'usage-records', titleKey: 'admin.settings.usageRecords.title', keywordKeys: ['admin.settings.cache_rate.label', 'admin.settings.cache_rate_to_users.label'] },
   { tab: 'general', id: 'site', titleKey: 'admin.settings.site.title' },
   { tab: 'general', id: 'custom-menu', titleKey: 'admin.settings.customMenu.title' },
   { tab: 'agreement', id: 'login-agreement', title: ['登录条款确认', 'Login agreement'] },
   { tab: 'features', id: 'request-capture', titleKey: 'admin.requestCapture.title' },
+  { tab: 'features', id: 'smart-ops-sidebar', titleKey: 'admin.settings.features.smartOpsSidebar.title' },
   { tab: 'features', id: 'features-excel-bps-images', titleKey: 'admin.settings.features.excelBpsImages.title' },
   { tab: 'features', id: 'features-channel-monitor', titleKey: 'admin.settings.features.channelMonitor.title' },
   { tab: 'features', id: 'features-available-channels', titleKey: 'admin.settings.features.availableChannels.title' },

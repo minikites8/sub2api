@@ -9,8 +9,7 @@ import (
 
 func TestGroupRoutingPolicyEntityMapping(t *testing.T) {
 	for _, strategy := range []string{service.GroupSchedulingBalanced, service.GroupSchedulingPriority5h, service.GroupSchedulingPriorityWeekly} {
-		group := groupEntityToService(&dbent.Group{ID: 7, EnableBps: true, SchedulingStrategy: strategy})
-		require.True(t, group.EnableBPS)
+		group := groupEntityToService(&dbent.Group{ID: 7, SchedulingStrategy: strategy})
 		require.Equal(t, strategy, group.SchedulingStrategy)
 	}
 }

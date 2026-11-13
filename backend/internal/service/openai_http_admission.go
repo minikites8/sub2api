@@ -33,7 +33,15 @@ func (s *OpenAIGatewayService) admitOpenAIHTTPRequestForModel(ctx context.Contex
 	if refresh {
 		binding = latest
 	}
-	admitted, err := s.admitOpenAITurnSnapshot(ctx, binding, latest, resolveModel(latest), groupID, enforceGroup)
+	outboundModel := resolveModel(latest)
+	if err := s.checkAPIKeyLongContextBeforeSend(ctx, c, body, outboundModel); err != nil {
+		return nil, err
+	}
+	ctx = WithOpenAIImageGenerationRequest(ctx, outboundModel, body)
+	admitted, err := s.admitOpenAITurnSnapshot(ctx, binding, latest, outboundModel, groupID, enforceGroup)
+	if err == nil {
+		admitted, err = s.prepareAuthConnection(ctx, c, admitted, binding, outboundModel)
+	}
 	if err == nil && refresh {
 		logger.FromContext(ctx).Info("openai.http_admission_snapshot_refreshed",
 			zap.Int64("account_id", latest.ID), zap.Bool("bps_before", selected.IsExcelBPSEnabled()), zap.Bool("bps_after", admitted.IsExcelBPSEnabled()))

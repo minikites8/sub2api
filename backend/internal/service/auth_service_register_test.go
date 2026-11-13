@@ -152,6 +152,10 @@ func (s *refreshTokenCacheStub) DeleteTokenFamily(context.Context, string) error
 	return nil
 }
 
+func (s *refreshTokenCacheStub) ConsumeRefreshToken(context.Context, string) (*RefreshTokenData, error) {
+	return nil, ErrRefreshTokenNotFound
+}
+
 func (s *refreshTokenCacheStub) AddToUserTokenSet(context.Context, int64, string, time.Duration) error {
 	return nil
 }
@@ -412,7 +416,8 @@ func TestAuthService_Register_EmailExists(t *testing.T) {
 func TestAuthService_Register_AliasDuplicateRejected(t *testing.T) {
 	repo := &userRepoStub{aliasExists: true}
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled: "true",
+		SettingKeyRegistrationEnabled:                "true",
+		SettingKeyRegistrationEmailAliasBlockEnabled: "false",
 	}, nil, nil)
 
 	_, _, err := service.Register(context.Background(), "some.one+bulk294@gmail.com", "password")
@@ -631,6 +636,18 @@ func TestAuthService_Register_CreateError(t *testing.T) {
 	require.ErrorIs(t, err, ErrServiceUnavailable)
 }
 
+func TestAuthService_Register_IPQuotaErrorIsPreserved(t *testing.T) {
+	repo := &userRepoStub{createErr: ErrRegistrationIPLimit}
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+
+	token, user, err := svc.Register(context.Background(), "user@example.com", "password")
+	require.ErrorIs(t, err, ErrRegistrationIPLimit)
+	require.Empty(t, token)
+	require.Nil(t, user)
+}
+
 func TestAuthService_Register_CreateEmailExistsRace(t *testing.T) {
 	// 模拟竞态条件：ExistsByEmail 返回 false，但 Create 时因唯一约束失败
 	repo := &userRepoStub{createErr: ErrEmailExists}
@@ -666,7 +683,9 @@ func TestAuthService_Register_Success(t *testing.T) {
 func TestAuthService_Register_NormalizesEmailAlias(t *testing.T) {
 	repo := &userRepoStub{nextID: 6}
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled: "true",
+		// Allow aliases here to exercise canonical storage and verification.
+		SettingKeyRegistrationEmailAliasBlockEnabled: "false",
+		SettingKeyRegistrationEnabled:                "true",
 	}, nil, nil)
 
 	_, user, err := service.Register(context.Background(), " Alice.Smith+trial@Example.com ", "password")
@@ -684,8 +703,10 @@ func TestAuthService_Register_VerifiesCodeWithNormalizedEmailAlias(t *testing.T)
 		data: &VerificationCodeData{Code: "123456", Attempts: 0, ExpiresAt: time.Now().Add(time.Minute)},
 	}
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled: "true",
-		SettingKeyEmailVerifyEnabled:  "true",
+		// Allow aliases here to exercise canonical storage and verification.
+		SettingKeyRegistrationEmailAliasBlockEnabled: "false",
+		SettingKeyRegistrationEnabled:                "true",
+		SettingKeyEmailVerifyEnabled:                 "true",
 	}, cache, nil)
 
 	_, user, err := service.RegisterWithVerification(context.Background(), " Alice.Smith+trial@Example.com ", "password", "123456", "", "", "")
@@ -700,7 +721,9 @@ func TestAuthService_SendVerifyCodeAsync_UsesNormalizedEmailAlias(t *testing.T) 
 	repo := &userRepoStub{}
 	queueService := &EmailQueueService{taskChan: make(chan EmailTask, 1)}
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled: "true",
+		// Allow aliases here to exercise canonical storage and verification.
+		SettingKeyRegistrationEmailAliasBlockEnabled: "false",
+		SettingKeyRegistrationEnabled:                "true",
 	}, nil, nil)
 	service.emailQueueService = queueService
 

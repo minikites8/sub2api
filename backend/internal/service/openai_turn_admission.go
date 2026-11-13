@@ -76,7 +76,7 @@ func (s *OpenAIGatewayService) invalidateOpenAIWSTurnStateAfterAdmissionFailure(
 	err error,
 ) {
 	var denied *OpenAITurnAdmissionError
-	if !errors.As(err, &denied) || denied == nil || denied.Reason == "latest_state_unavailable" {
+	if !errors.As(err, &denied) || denied == nil || denied.Reason == "latest_state_unavailable" || errors.Is(err, ErrPriorityLatencyUnavailable) {
 		return
 	}
 
@@ -170,7 +170,7 @@ func denyOpenAITurn(reason string) error { return &OpenAITurnAdmissionError{Reas
 // from other admission failures (credentials, capacity, tickets, or DB reads).
 func IsOpenAIModelCapabilityRejection(err error) bool {
 	var denied *OpenAITurnAdmissionError
-	return errors.As(err, &denied) && denied.Reason == "model_not_supported"
+	return errors.As(err, &denied) && (denied.Reason == "model_not_supported" || denied.Reason == "image_model_not_supported")
 }
 
 func denyOpenAITicket() error {
@@ -194,7 +194,7 @@ func openAITurnRouteFingerprint(a *Account) [32]byte {
 	routeExtra := make(map[string]any)
 	for _, key := range []string{
 		codexFingerprintSeedExtraKey, codexFingerprintModeExtraKey,
-		"openai_passthrough", "openai_oauth_passthrough", "openai_excel_bps", "openai_excel_bps_models", "openai_excel_bps_mihomo",
+		OpenAISIWCEnabledKey, "openai_passthrough", "openai_oauth_passthrough", "openai_excel_bps", "openai_excel_bps_models", "openai_excel_bps_mihomo",
 		"openai_prism_browser", PrismBrowserModelsKey,
 		"openai_oauth_responses_websockets_v2_mode", "openai_apikey_responses_websockets_v2_mode",
 		"openai_oauth_responses_websockets_v2_enabled", "openai_apikey_responses_websockets_v2_enabled",
@@ -258,7 +258,7 @@ func (s *OpenAIGatewayService) latestOpenAITurnAccountForGroup(
 	if selected == nil {
 		return nil, denyOpenAITurn("account_unavailable")
 	}
-	if !selected.IsOpenAI() {
+	if !selected.IsOpenAI() && (s.schedulerSnapshot == nil || s.schedulerSnapshot.localSnapshotReader == nil) {
 		// This patch changes OpenAI Responses admission only, not other
 		// providers which share the generic forwarding implementation.
 		return selected, nil
@@ -266,44 +266,75 @@ func (s *OpenAIGatewayService) latestOpenAITurnAccountForGroup(
 	latest := selected
 	var parent *Account
 	authoritativeRead := false
-	if ttl := s.openAITurnAdmissionCacheTTL(); ttl > 0 {
-		if cached, cachedParent, ok := s.openAITurnAdmissionCache.load(selected.ID, ttl); ok {
-			latest, parent, authoritativeRead = cached, cachedParent, true
+	if s.schedulerSnapshot != nil && s.schedulerSnapshot.localSnapshotReader != nil {
+		// A regional reader is authoritative for every pre-send recheck. Its TTL
+		// and persistence fence must never be bypassed by the process admission
+		// cache, including already established WebSocket turns.
+		var err error
+		latest, err = s.schedulerSnapshot.GetAccount(ctx, selected.ID)
+		if err != nil || latest == nil || latest.ID != selected.ID || latest.IsShadow() {
+			return nil, denyOpenAITurn("latest_state_unavailable")
+		}
+		authoritativeRead = true
+	} else {
+		if ttl := s.openAITurnAdmissionCacheTTL(); ttl > 0 {
+			if cached, cachedParent, ok := s.openAITurnAdmissionCache.load(selected.ID, ttl); ok {
+				latest, parent, authoritativeRead = cached, cachedParent, true
+			}
+		}
+		if s.accountRepo != nil {
+			reader, ok := s.accountRepo.(OpenAITurnAdmissionReader)
+			if !ok {
+				if s.requireLatestTurnAdmission {
+					return nil, denyOpenAITurn("latest_state_unavailable")
+				}
+				// Small direct-call fixtures may provide a repository for
+				// credential-parent resolution without implementing the combined
+				// authoritative admission reader. The production constructor
+				// enables requireLatestTurnAdmission and therefore remains
+				// fail-closed.
+				reader = nil
+			}
+			if reader != nil && !authoritativeRead {
+				authoritativeRead = true
+				readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				var err error
+				latest, parent, err = reader.GetOpenAITurnAdmission(readCtx, selected.ID)
+				cancel()
+				if err != nil || latest == nil || latest.ID != selected.ID {
+					return nil, denyOpenAITurn("latest_state_unavailable")
+				}
+				if s.openAITurnAdmissionCacheTTL() > 0 {
+					s.openAITurnAdmissionCache.store(latest, parent)
+				}
+			}
+		} else if s.requireLatestTurnAdmission {
+			// Real services are constructed with this flag. Small unit-test services
+			// can exercise the pure supplied-account predicate without a database.
+			return nil, denyOpenAITurn("latest_state_unavailable")
 		}
 	}
-	if s.accountRepo != nil {
-		reader, ok := s.accountRepo.(OpenAITurnAdmissionReader)
-		if !ok {
-			if s.requireLatestTurnAdmission {
-				return nil, denyOpenAITurn("latest_state_unavailable")
-			}
-			// Small direct-call fixtures may provide a repository for
-			// credential-parent resolution without implementing the combined
-			// authoritative admission reader. The production constructor
-			// enables requireLatestTurnAdmission and therefore remains
-			// fail-closed.
-			reader = nil
-		}
-		if reader != nil && !authoritativeRead {
-			authoritativeRead = true
-			readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			var err error
-			latest, parent, err = reader.GetOpenAITurnAdmission(readCtx, selected.ID)
-			cancel()
-			if err != nil || latest == nil || latest.ID != selected.ID {
-				return nil, denyOpenAITurn("latest_state_unavailable")
-			}
-			if s.openAITurnAdmissionCacheTTL() > 0 {
-				s.openAITurnAdmissionCache.store(latest, parent)
-			}
-		}
-	} else if s.requireLatestTurnAdmission {
-		// Real services are constructed with this flag. Small unit-test services
-		// can exercise the pure supplied-account predicate without a database.
-		return nil, denyOpenAITurn("latest_state_unavailable")
-	}
-	if latest.Platform != selected.Platform || latest.Type != selected.Type {
+	if latest.Platform != selected.Platform || (latest.Type != selected.Type && selected.AuthConnectionID == "") {
 		return nil, denyOpenAITurn("account_binding_changed")
+	}
+	// Independent AI pauses must be checked at the final send boundary as well
+	// as slot acquisition. The normal account admission cache cannot grant
+	// permission after an AI control transaction paused the selected account.
+	if s != nil && s.accountRepo != nil && (s.schedulerSnapshot == nil || s.schedulerSnapshot.localSnapshotReader == nil) {
+		if guard, ok := s.accountRepo.(interface {
+			AIOpsRuntime(context.Context, []int64) (map[int64]AIOpsRuntime, error)
+		}); ok {
+			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			controls, err := guard.AIOpsRuntime(checkCtx, []int64{latest.ID})
+			cancel()
+			if err != nil {
+				return nil, denyOpenAITurn("latest_state_unavailable")
+			}
+			control, found := controls[latest.ID]
+			if !found || control.Paused {
+				return nil, denyOpenAITurn("account_ineligible")
+			}
+		}
 	}
 	if authoritativeRead && !latest.IsSchedulable() {
 		return nil, denyOpenAITurn("account_ineligible")
@@ -330,18 +361,24 @@ func (s *OpenAIGatewayService) latestOpenAITurnAccountForGroup(
 			return nil, denyOpenAITurn("account_runtime_blocked")
 		}
 	}
-	var requestGroupID *int64
-	if enforceGroup {
-		requestGroupID = &groupID
-	}
-	return s.openAIAccountForGroup(ctx, requestGroupID, latest), nil
+	return latest, nil
 }
 
 // Check every actual send, including retries and skipBeforeTurn paths. This is
 // an admission point, not an atomic transaction spanning SQL and network I/O.
-func (s *OpenAIGatewayService) admitOpenAITurn(ctx context.Context, c *gin.Context, selected *Account, outboundModel string) (*Account, error) {
+func (s *OpenAIGatewayService) admitOpenAITurn(ctx context.Context, c *gin.Context, selected *Account, outboundModel string, payload ...[]byte) (*Account, error) {
+	if len(payload) > 0 {
+		if err := s.checkAPIKeyLongContextBeforeSend(ctx, c, payload[0], outboundModel); err != nil {
+			return nil, err
+		}
+		ctx = WithOpenAIImageGenerationRequest(ctx, outboundModel, payload[0])
+	}
 	groupID, enforceGroup := openAITurnAdmissionGroupFromContext(c)
-	return s.admitOpenAITurnWithGroup(ctx, selected, outboundModel, groupID, enforceGroup)
+	latest, err := s.admitOpenAITurnWithGroup(ctx, selected, outboundModel, groupID, enforceGroup)
+	if err != nil {
+		return nil, err
+	}
+	return s.prepareAuthConnection(ctx, c, latest, selected, outboundModel)
 }
 
 // admitOpenAITurnForGroup is used by connection-pool callbacks, which run
@@ -356,7 +393,11 @@ func (s *OpenAIGatewayService) admitOpenAITurnForGroup(
 	enforceGroup bool,
 	selected *Account,
 	outboundModel string,
+	payload ...[]byte,
 ) (*Account, error) {
+	if len(payload) > 0 {
+		ctx = WithOpenAIImageGenerationRequest(ctx, outboundModel, payload[0])
+	}
 	return s.admitOpenAITurnWithGroup(ctx, selected, outboundModel, groupID, enforceGroup)
 }
 
@@ -378,14 +419,7 @@ func (s *OpenAIGatewayService) admitOpenAITurnWithGroup(
 // WebSocket turns keep their selected binding; a fresh HTTP request can route
 // from the latest snapshot before preparing any upstream-specific state.
 func (s *OpenAIGatewayService) admitOpenAITurnSnapshot(ctx context.Context, selected, latest *Account, outboundModel string, groupID int64, enforceGroup bool) (*Account, error) {
-	if fallbackAccount, ok := accountForExcelBPSFallbackAdmission(ctx, selected, latest); ok {
-		latest = fallbackAccount
-		selected = accountForExcelBPSFallback(selected)
-	}
-	if excelBPSNativeBypassExcludesAccount(ctx, latest, outboundModel) {
-		return nil, denyOpenAITurn("bps_native_bypass")
-	}
-	if err := s.validateExcelOAuthRoute(ctx, latest, outboundModel); err != nil {
+	if err := s.validateExcelOAuthRoute(ctx, latest, outboundModel); err != nil && !latest.HasManagedOpenAIConnections() {
 		return nil, &OpenAITurnAdmissionError{Reason: excelOAuthRouteErrorCode, cause: err}
 	}
 	if enforceGroup && !latest.IsModelAllowedInGroup(&groupID, outboundModel) {
@@ -397,17 +431,19 @@ func (s *OpenAIGatewayService) admitOpenAITurnSnapshot(ctx context.Context, sele
 	if err := s.checkGPTQoSFinalAdmission(ctx, selected, latest); err != nil {
 		return nil, err
 	}
-	if openAITurnRouteFingerprint(latest) != openAITurnRouteFingerprint(selected) {
-		if fallbackAccount, ok := accountForExcelBPSFallbackAdmission(ctx, selected, latest); ok {
-			latest = fallbackAccount
-		} else {
-			return nil, denyOpenAITurn("account_binding_changed")
-		}
+	if openAITurnRouteFingerprint(latest) != openAITurnRouteFingerprint(selected) && (!latest.HasManagedOpenAIConnections() || selected.AuthConnectionID == "") {
+		return nil, denyOpenAITurn("account_binding_changed")
 	}
 	// Preserve the cause of a model-not-found cooldown before the generic
 	// runtime/rate-limit checks erase it.
+	if latest.qualityModelBlocked(ctx, outboundModel) {
+		return nil, denyOpenAITurn("model_runtime_blocked")
+	}
 	if latest.modelCapabilityRejected(outboundModel) {
 		return nil, denyOpenAITurn("model_not_supported")
+	}
+	if reason := openAIImageRequestRejection(ctx, latest, outboundModel); reason != "" {
+		return nil, denyOpenAITurn(reason)
 	}
 	if s.getOpenAIAccountModelTransientState().isBlocked(latest.ID, openAIAccountModelTransientModel(outboundModel), time.Now()) {
 		return nil, denyOpenAITurn("model_runtime_blocked")
@@ -417,7 +453,7 @@ func (s *OpenAIGatewayService) admitOpenAITurnSnapshot(ctx context.Context, sele
 			latest.isRateLimitActiveForKey(openAIImageGenerationRateLimitKey))) {
 		return nil, denyOpenAITurn("model_rate_limited")
 	}
-	if s.openAICodexTicketBlocksAccount(latest, outboundModel) {
+	if !latest.HasManagedOpenAIConnections() && s.openAICodexTicketBlocksAccount(latest, outboundModel) {
 		return nil, denyOpenAITicket()
 	}
 	return latest, nil

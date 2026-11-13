@@ -280,13 +280,10 @@ func TestUnifiedAstraObservesTicketInstalledOnClonedBusinessRequest(t *testing.T
 
 func TestUnifiedAstraOwnTicketWinsAndHarvestLockPreventsDuplicateAcquisition(t *testing.T) {
 	s, repo, seed := unifiedAstraFixture(t)
-	release, err := s.lockCodexHarvest(t.Context(), 2, []string{OpenAICodexStateProbeDefaultModel})
-	require.NoError(t, err)
-	wait, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
-	err = s.VerifyStoredAstraTarget(wait, 2)
-	cancel()
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	release()
+	s.codexHarvestRunMu.Lock()
+	err := s.VerifyStoredAstraTarget(t.Context(), 2)
+	require.EqualError(t, err, "target_validation_in_progress")
+	s.codexHarvestRunMu.Unlock()
 	account, _ := repo.GetByID(t.Context(), 2)
 	own := *seed
 	own.AccountID = 2
@@ -385,11 +382,9 @@ func TestUnifiedAstraConcurrentVerificationDoesNotDuplicateMint(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- s.VerifyStoredAstraTarget(t.Context(), 2) }()
 	<-started
-	second := make(chan error, 1)
-	go func() { second <- s.VerifyStoredAstraTarget(t.Context(), 2) }()
+	require.EqualError(t, s.VerifyStoredAstraTarget(t.Context(), 2), "target_validation_in_progress")
 	close(proceed)
 	require.NoError(t, <-done)
-	require.NoError(t, <-second)
 	require.Equal(t, 2, calls)
 }
 

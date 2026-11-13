@@ -92,6 +92,12 @@ func (_c *GroupCreate) SetNillableDescription(v *string) *GroupCreate {
 	return _c
 }
 
+// SetI18n sets the "i18n" field.
+func (_c *GroupCreate) SetI18n(v domain.GroupI18n) *GroupCreate {
+	_c.mutation.SetI18n(v)
+	return _c
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_c *GroupCreate) SetRateMultiplier(v float64) *GroupCreate {
 	_c.mutation.SetRateMultiplier(v)
@@ -360,6 +366,20 @@ func (_c *GroupCreate) SetAllowBatchImageGeneration(v bool) *GroupCreate {
 func (_c *GroupCreate) SetNillableAllowBatchImageGeneration(v *bool) *GroupCreate {
 	if v != nil {
 		_c.SetAllowBatchImageGeneration(*v)
+	}
+	return _c
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (_c *GroupCreate) SetImageCountBilling(v bool) *GroupCreate {
+	_c.mutation.SetImageCountBilling(v)
+	return _c
+}
+
+// SetNillableImageCountBilling sets the "image_count_billing" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageCountBilling(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageCountBilling(*v)
 	}
 	return _c
 }
@@ -670,6 +690,34 @@ func (_c *GroupCreate) SetNillableFallbackGroupIDOnInvalidRequest(v *int64) *Gro
 	return _c
 }
 
+// SetBlockSubagents sets the "block_subagents" field.
+func (_c *GroupCreate) SetBlockSubagents(v bool) *GroupCreate {
+	_c.mutation.SetBlockSubagents(v)
+	return _c
+}
+
+// SetNillableBlockSubagents sets the "block_subagents" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableBlockSubagents(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetBlockSubagents(*v)
+	}
+	return _c
+}
+
+// SetCodexCliOnly sets the "codex_cli_only" field.
+func (_c *GroupCreate) SetCodexCliOnly(v bool) *GroupCreate {
+	_c.mutation.SetCodexCliOnly(v)
+	return _c
+}
+
+// SetNillableCodexCliOnly sets the "codex_cli_only" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCodexCliOnly(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetCodexCliOnly(*v)
+	}
+	return _c
+}
+
 // SetStreamOnly sets the "stream_only" field.
 func (_c *GroupCreate) SetStreamOnly(v bool) *GroupCreate {
 	_c.mutation.SetStreamOnly(v)
@@ -790,20 +838,6 @@ func (_c *GroupCreate) SetFreeOpenaiFast(v bool) *GroupCreate {
 func (_c *GroupCreate) SetNillableFreeOpenaiFast(v *bool) *GroupCreate {
 	if v != nil {
 		_c.SetFreeOpenaiFast(*v)
-	}
-	return _c
-}
-
-// SetEnableBps sets the "enable_bps" field.
-func (_c *GroupCreate) SetEnableBps(v bool) *GroupCreate {
-	_c.mutation.SetEnableBps(v)
-	return _c
-}
-
-// SetNillableEnableBps sets the "enable_bps" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableEnableBps(v *bool) *GroupCreate {
-	if v != nil {
-		_c.SetEnableBps(*v)
 	}
 	return _c
 }
@@ -1305,6 +1339,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.I18n(); !ok {
+		v := group.DefaultI18n
+		_c.mutation.SetI18n(v)
+	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
@@ -1365,6 +1403,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowBatchImageGeneration
 		_c.mutation.SetAllowBatchImageGeneration(v)
 	}
+	if _, ok := _c.mutation.ImageCountBilling(); !ok {
+		v := group.DefaultImageCountBilling
+		_c.mutation.SetImageCountBilling(v)
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		v := group.DefaultImageRateIndependent
 		_c.mutation.SetImageRateIndependent(v)
@@ -1396,6 +1438,14 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
+	}
+	if _, ok := _c.mutation.BlockSubagents(); !ok {
+		v := group.DefaultBlockSubagents
+		_c.mutation.SetBlockSubagents(v)
+	}
+	if _, ok := _c.mutation.CodexCliOnly(); !ok {
+		v := group.DefaultCodexCliOnly
+		_c.mutation.SetCodexCliOnly(v)
 	}
 	if _, ok := _c.mutation.StreamOnly(); !ok {
 		v := group.DefaultStreamOnly
@@ -1432,10 +1482,6 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		v := group.DefaultFreeOpenaiFast
 		_c.mutation.SetFreeOpenaiFast(v)
-	}
-	if _, ok := _c.mutation.EnableBps(); !ok {
-		v := group.DefaultEnableBps
-		_c.mutation.SetEnableBps(v)
 	}
 	if _, ok := _c.mutation.SchedulingStrategy(); !ok {
 		v := group.DefaultSchedulingStrategy
@@ -1560,6 +1606,9 @@ func (_c *GroupCreate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.I18n(); !ok {
+		return &ValidationError{Name: "i18n", err: errors.New(`ent: missing required field "Group.i18n"`)}
+	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Group.rate_multiplier"`)}
 	}
@@ -1645,6 +1694,9 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_batch_image_generation", err: errors.New(`ent: missing required field "Group.allow_batch_image_generation"`)}
 	}
+	if _, ok := _c.mutation.ImageCountBilling(); !ok {
+		return &ValidationError{Name: "image_count_billing", err: errors.New(`ent: missing required field "Group.image_count_billing"`)}
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
 	}
@@ -1689,6 +1741,12 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
 	}
+	if _, ok := _c.mutation.BlockSubagents(); !ok {
+		return &ValidationError{Name: "block_subagents", err: errors.New(`ent: missing required field "Group.block_subagents"`)}
+	}
+	if _, ok := _c.mutation.CodexCliOnly(); !ok {
+		return &ValidationError{Name: "codex_cli_only", err: errors.New(`ent: missing required field "Group.codex_cli_only"`)}
+	}
 	if _, ok := _c.mutation.StreamOnly(); !ok {
 		return &ValidationError{Name: "stream_only", err: errors.New(`ent: missing required field "Group.stream_only"`)}
 	}
@@ -1715,9 +1773,6 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		return &ValidationError{Name: "free_openai_fast", err: errors.New(`ent: missing required field "Group.free_openai_fast"`)}
-	}
-	if _, ok := _c.mutation.EnableBps(); !ok {
-		return &ValidationError{Name: "enable_bps", err: errors.New(`ent: missing required field "Group.enable_bps"`)}
 	}
 	if _, ok := _c.mutation.SchedulingStrategy(); !ok {
 		return &ValidationError{Name: "scheduling_strategy", err: errors.New(`ent: missing required field "Group.scheduling_strategy"`)}
@@ -1884,6 +1939,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldDescription, field.TypeString, value)
 		_node.Description = &value
 	}
+	if value, ok := _c.mutation.I18n(); ok {
+		_spec.SetField(group.FieldI18n, field.TypeJSON, value)
+		_node.I18n = value
+	}
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
@@ -1963,6 +2022,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
 		_node.AllowBatchImageGeneration = value
+	}
+	if value, ok := _c.mutation.ImageCountBilling(); ok {
+		_spec.SetField(group.FieldImageCountBilling, field.TypeBool, value)
+		_node.ImageCountBilling = value
 	}
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -2056,6 +2119,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
 		_node.FallbackGroupIDOnInvalidRequest = &value
 	}
+	if value, ok := _c.mutation.BlockSubagents(); ok {
+		_spec.SetField(group.FieldBlockSubagents, field.TypeBool, value)
+		_node.BlockSubagents = value
+	}
+	if value, ok := _c.mutation.CodexCliOnly(); ok {
+		_spec.SetField(group.FieldCodexCliOnly, field.TypeBool, value)
+		_node.CodexCliOnly = value
+	}
 	if value, ok := _c.mutation.StreamOnly(); ok {
 		_spec.SetField(group.FieldStreamOnly, field.TypeBool, value)
 		_node.StreamOnly = value
@@ -2095,10 +2166,6 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
 		_node.FreeOpenaiFast = value
-	}
-	if value, ok := _c.mutation.EnableBps(); ok {
-		_spec.SetField(group.FieldEnableBps, field.TypeBool, value)
-		_node.EnableBps = value
 	}
 	if value, ok := _c.mutation.SchedulingStrategy(); ok {
 		_spec.SetField(group.FieldSchedulingStrategy, field.TypeString, value)
@@ -2420,6 +2487,18 @@ func (u *GroupUpsert) ClearDescription() *GroupUpsert {
 	return u
 }
 
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsert) SetI18n(v domain.GroupI18n) *GroupUpsert {
+	u.Set(group.FieldI18n, v)
+	return u
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateI18n() *GroupUpsert {
+	u.SetExcluded(group.FieldI18n)
+	return u
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (u *GroupUpsert) SetRateMultiplier(v float64) *GroupUpsert {
 	u.Set(group.FieldRateMultiplier, v)
@@ -2705,6 +2784,18 @@ func (u *GroupUpsert) SetAllowBatchImageGeneration(v bool) *GroupUpsert {
 // UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowBatchImageGeneration() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowBatchImageGeneration)
+	return u
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsert) SetImageCountBilling(v bool) *GroupUpsert {
+	u.Set(group.FieldImageCountBilling, v)
+	return u
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageCountBilling() *GroupUpsert {
+	u.SetExcluded(group.FieldImageCountBilling)
 	return u
 }
 
@@ -3176,6 +3267,30 @@ func (u *GroupUpsert) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsert {
 	return u
 }
 
+// SetBlockSubagents sets the "block_subagents" field.
+func (u *GroupUpsert) SetBlockSubagents(v bool) *GroupUpsert {
+	u.Set(group.FieldBlockSubagents, v)
+	return u
+}
+
+// UpdateBlockSubagents sets the "block_subagents" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateBlockSubagents() *GroupUpsert {
+	u.SetExcluded(group.FieldBlockSubagents)
+	return u
+}
+
+// SetCodexCliOnly sets the "codex_cli_only" field.
+func (u *GroupUpsert) SetCodexCliOnly(v bool) *GroupUpsert {
+	u.Set(group.FieldCodexCliOnly, v)
+	return u
+}
+
+// UpdateCodexCliOnly sets the "codex_cli_only" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCodexCliOnly() *GroupUpsert {
+	u.SetExcluded(group.FieldCodexCliOnly)
+	return u
+}
+
 // SetStreamOnly sets the "stream_only" field.
 func (u *GroupUpsert) SetStreamOnly(v bool) *GroupUpsert {
 	u.Set(group.FieldStreamOnly, v)
@@ -3305,18 +3420,6 @@ func (u *GroupUpsert) SetFreeOpenaiFast(v bool) *GroupUpsert {
 // UpdateFreeOpenaiFast sets the "free_openai_fast" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateFreeOpenaiFast() *GroupUpsert {
 	u.SetExcluded(group.FieldFreeOpenaiFast)
-	return u
-}
-
-// SetEnableBps sets the "enable_bps" field.
-func (u *GroupUpsert) SetEnableBps(v bool) *GroupUpsert {
-	u.Set(group.FieldEnableBps, v)
-	return u
-}
-
-// UpdateEnableBps sets the "enable_bps" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateEnableBps() *GroupUpsert {
-	u.SetExcluded(group.FieldEnableBps)
 	return u
 }
 
@@ -3792,6 +3895,20 @@ func (u *GroupUpsertOne) ClearDescription() *GroupUpsertOne {
 	})
 }
 
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsertOne) SetI18n(v domain.GroupI18n) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetI18n(v)
+	})
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateI18n() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateI18n()
+	})
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (u *GroupUpsertOne) SetRateMultiplier(v float64) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -4125,6 +4242,20 @@ func (u *GroupUpsertOne) SetAllowBatchImageGeneration(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowBatchImageGeneration() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsertOne) SetImageCountBilling(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageCountBilling(v)
+	})
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageCountBilling() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageCountBilling()
 	})
 }
 
@@ -4674,6 +4805,34 @@ func (u *GroupUpsertOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertOne 
 	})
 }
 
+// SetBlockSubagents sets the "block_subagents" field.
+func (u *GroupUpsertOne) SetBlockSubagents(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBlockSubagents(v)
+	})
+}
+
+// UpdateBlockSubagents sets the "block_subagents" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateBlockSubagents() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBlockSubagents()
+	})
+}
+
+// SetCodexCliOnly sets the "codex_cli_only" field.
+func (u *GroupUpsertOne) SetCodexCliOnly(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexCliOnly(v)
+	})
+}
+
+// UpdateCodexCliOnly sets the "codex_cli_only" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCodexCliOnly() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexCliOnly()
+	})
+}
+
 // SetStreamOnly sets the "stream_only" field.
 func (u *GroupUpsertOne) SetStreamOnly(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -4825,20 +4984,6 @@ func (u *GroupUpsertOne) SetFreeOpenaiFast(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateFreeOpenaiFast() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFreeOpenaiFast()
-	})
-}
-
-// SetEnableBps sets the "enable_bps" field.
-func (u *GroupUpsertOne) SetEnableBps(v bool) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetEnableBps(v)
-	})
-}
-
-// UpdateEnableBps sets the "enable_bps" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateEnableBps() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateEnableBps()
 	})
 }
 
@@ -5539,6 +5684,20 @@ func (u *GroupUpsertBulk) ClearDescription() *GroupUpsertBulk {
 	})
 }
 
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsertBulk) SetI18n(v domain.GroupI18n) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetI18n(v)
+	})
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateI18n() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateI18n()
+	})
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (u *GroupUpsertBulk) SetRateMultiplier(v float64) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -5872,6 +6031,20 @@ func (u *GroupUpsertBulk) SetAllowBatchImageGeneration(v bool) *GroupUpsertBulk 
 func (u *GroupUpsertBulk) UpdateAllowBatchImageGeneration() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsertBulk) SetImageCountBilling(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageCountBilling(v)
+	})
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageCountBilling() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageCountBilling()
 	})
 }
 
@@ -6421,6 +6594,34 @@ func (u *GroupUpsertBulk) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertBul
 	})
 }
 
+// SetBlockSubagents sets the "block_subagents" field.
+func (u *GroupUpsertBulk) SetBlockSubagents(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBlockSubagents(v)
+	})
+}
+
+// UpdateBlockSubagents sets the "block_subagents" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateBlockSubagents() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBlockSubagents()
+	})
+}
+
+// SetCodexCliOnly sets the "codex_cli_only" field.
+func (u *GroupUpsertBulk) SetCodexCliOnly(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexCliOnly(v)
+	})
+}
+
+// UpdateCodexCliOnly sets the "codex_cli_only" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCodexCliOnly() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexCliOnly()
+	})
+}
+
 // SetStreamOnly sets the "stream_only" field.
 func (u *GroupUpsertBulk) SetStreamOnly(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -6572,20 +6773,6 @@ func (u *GroupUpsertBulk) SetFreeOpenaiFast(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateFreeOpenaiFast() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFreeOpenaiFast()
-	})
-}
-
-// SetEnableBps sets the "enable_bps" field.
-func (u *GroupUpsertBulk) SetEnableBps(v bool) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetEnableBps(v)
-	})
-}
-
-// UpdateEnableBps sets the "enable_bps" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateEnableBps() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateEnableBps()
 	})
 }
 

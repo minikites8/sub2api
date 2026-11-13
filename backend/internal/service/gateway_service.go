@@ -20,7 +20,9 @@ import (
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
@@ -218,15 +220,6 @@ func anthropicStreamEventIsTerminal(eventName, data string) bool {
 		return true
 	}
 	return gjson.Get(trimmed, "type").String() == "message_stop"
-}
-
-func cloneStringSlice(src []string) []string {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make([]string, len(src))
-	copy(dst, src)
-	return dst
 }
 
 // IsForceCacheBilling 检查是否启用强制缓存计费
@@ -478,6 +471,19 @@ var ErrStickySessionNotFound = errors.New("sticky session not found")
 // when no cached reasoning content exists for the reasoning item ID.
 var ErrReasoningContentNotFound = errors.New("reasoning content not found")
 
+// SessionAccountBindingSwap advances affinity only while the binding observed
+// by the selection is still current. A missing/expired binding can be rebuilt.
+type SessionAccountBindingSwap struct {
+	SessionHash       string
+	LegacySessionHash string
+	ExpectedAccountID int64
+	AccountID         int64
+	TTL               time.Duration
+	LegacyTTL         time.Duration
+	ReadLegacy        bool
+	WriteLegacy       bool
+}
+
 // GatewayCache 定义网关服务的缓存操作接口。
 // 提供粘性会话（Sticky Session）的存储、查询、刷新和删除功能。
 //
@@ -613,10 +619,14 @@ type AccountSelectionResult struct {
 	WaitPlan         *AccountWaitPlan // nil means no wait allowed
 	// stickySessionHit 标记账号来自会话粘性绑定命中，供非高级调度路径回填决策标签。
 	stickySessionHit bool
+	// stickyBindingSnapshot survives slot waits so an older admission cannot
+	// overwrite affinity advanced by a newer selection.
+	stickyBindingSnapshot *openAIStickyBindingSnapshot
 	// profitGate 携带本次选号真实生效的利润门（无门为 nil）。门安装在调度栈的
 	// 局部 ctx 上，handler 必须经 ContextWithSelectionProfitGate 重放后才能在
 	// 调度栈之外做抢槽后终检与准入后粘性绑定。
-	profitGate *openAIProfitControlGate
+	priorityRequest *OpenAIAccountScheduleRequest
+	profitGate      *openAIProfitControlGate
 }
 
 // ProfitGateActive 报告本次选号是否处于利润门之下。
@@ -672,7 +682,11 @@ type ForwardResult struct {
 	ServiceTier *string
 
 	// 图片生成计费字段（图片生成模型使用）
-	ImageCount         int    // 生成的图片数量
+	ImageCount int // 生成的图片数量
+	// ImageEndpoint 标记请求来自专用图片端点（/v1/images/*、图片模型端点）。
+	// 分组 image_count_billing 开关只对这类请求生效，混合的 Responses/Chat/WS
+	// 请求带图片工具时仍按 token 计费。
+	ImageEndpoint      bool
 	ImageSize          string // 最终计费尺寸 "1K", "2K", "4K"
 	ImageInputSize     string // 请求中的原始图片尺寸
 	ImageOutputSize    string // 上游响应中的图片尺寸
@@ -681,6 +695,13 @@ type ForwardResult struct {
 	ImageSizeBreakdown map[string]int
 	SearchCount        int
 	AudioUsage         *AudioUsage
+	// CacheStorageTokenHours 显式上下文缓存的存储量（缓存 token 数 × 存储小时数），按计费模型的
+	// 存储单价折算为费用后叠加在 token 费用之上。
+	CacheStorageTokenHours float64
+
+	// claudeCodeMimic 记录 Anthropic API Key「模拟 Claude Code」在 system 前补的身份句，
+	// 记账时从用量里扣回（见 deductClaudeCodeMimicUsage）。
+	claudeCodeMimic claudeCodeMimicInjection
 }
 
 // GatewayFailureStage identifies which request stage failed. The zero value is
@@ -728,6 +749,11 @@ type UpstreamFailoverError struct {
 	SameAccountRetryMax      int           // 可选的错误级同账号重试上限，低于 handler 默认预算时优先采用
 	RequestScopedTransient   bool          // 故障因素与账号无关（如上游按客户端身份/模型容量降载）：可同账号重试，但不得据此对账号做临时封禁
 	SafeToFailoverAfterWrite bool          // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
+	// HeaderTimeoutSubmitted marks a failover caused by an OpenAI response-header
+	// timeout after the request was written. The upstream may have billed the
+	// attempt; the successful usage record adds one retry surcharge unit.
+	HeaderTimeoutSubmitted   bool
+	BoundUpstreamPassthrough bool // 绑定显式缓存的请求在上游网关账号上收到的 429 / 5xx：反映持有缓存的上游账号状态，原样回写不走错误映射
 	Stage                    GatewayFailureStage
 	Scope                    GatewayFailureScope
 	Reason                   GatewayFailureReason
@@ -1563,7 +1589,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		if cached, found := s.modelsListCache.Get(cacheKey); found {
 			if models, ok := cached.([]string); ok {
 				modelsListCacheHitTotal.Add(1)
-				return cloneStringSlice(models)
+				return cloneModelCatalogSlice(models)
 			}
 		}
 	}
@@ -1582,6 +1608,17 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		return nil
 	}
 
+	models := availableModelsFromAccounts(accounts, groupID, platform)
+	if s.modelsListCache != nil {
+		s.modelsListCache.Set(cacheKey, cloneModelCatalogSlice(models), s.modelsListCacheTTL)
+		modelsListCacheStoreTotal.Add(1)
+	}
+	return models
+}
+
+// availableModelsFromAccounts is shared by legacy discovery and strict multi-group
+// discovery so mappings, mixed scheduling and account/group limits stay aligned.
+func availableModelsFromAccounts(accounts []Account, groupID *int64, platform string) []string {
 	// Filter by platform if specified. Mixed scheduling (a gemini group routing
 	// to antigravity accounts) is honoured here as well, so the advertised list
 	// stays in sync with what the request path can actually serve.
@@ -1598,6 +1635,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	// Collect unique models from all accounts
 	modelSet := make(map[string]struct{})
 	hasAnyMapping := false
+	hasInitialSelection := false
 
 	for _, acc := range accounts {
 		// Passthrough routing accepts models independently of model_mapping, so a
@@ -1606,10 +1644,17 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		// supplementUnmappedOpenAIModels contribute the default set. Mappings on
 		// the ordinary accounts in the same group still count.
 		mapping := acc.GetModelMapping()
-		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
+		if acc.hasOAuthInitialModelSelection() {
+			hasInitialSelection = true
+			hasAnyMapping = true // an empty selection is an authoritative empty catalog
+		}
+		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() && !acc.hasOAuthInitialModelSelection() {
 			mapping = nil
 		}
 		for model := range mapping {
+			if acc.hasOAuthInitialModelSelection() && !acc.IsModelSupported(model) {
+				continue
+			}
 			// Accounts pulled in through mixed scheduling only contribute the
 			// models that belong to the listing platform (e.g. an antigravity
 			// account's claude-* mappings must not surface on a gemini group).
@@ -1624,7 +1669,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			hasAnyMapping = true
 		}
 		// 没有映射的账号默认支持全部模型；在本分组被限制时改为公布限制清单里的具体模型名。
-		if len(mapping) == 0 {
+		if len(mapping) == 0 && !acc.hasOAuthInitialModelSelection() {
 			for _, model := range groupAllowedConcreteModels(&acc, groupID) {
 				if platform != "" && acc.Platform != platform && !mixedListingModelAllowed(platform, model) {
 					continue
@@ -1634,13 +1679,30 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			}
 		}
 	}
+	// A new account's empty scope cannot suppress the default catalog of an
+	// older unrestricted account in the same group. Pure legacy groups retain
+	// their existing fallback behavior.
+	if hasInitialSelection && platform != PlatformOpenAI {
+		for _, acc := range accounts {
+			if acc.hasOAuthInitialModelSelection() || len(acc.GetModelMapping()) > 0 {
+				continue
+			}
+			for _, model := range DefaultModelIDsForPlatform(acc.Platform) {
+				if (platform == "" || acc.Platform == platform || mixedListingModelAllowed(platform, model)) && acc.IsModelSupported(model) && acc.IsModelAllowedInGroup(groupID, model) {
+					modelSet[model] = struct{}{}
+				}
+			}
+		}
+	}
 
 	// If no account has model_mapping, return nil (use default)
-	if !hasAnyMapping {
-		if s.modelsListCache != nil {
-			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
-			modelsListCacheStoreTotal.Add(1)
+	if !hasAnyMapping && platform == PlatformOpenAI {
+		models := filterRetiredOpenAIModelIDs(accounts, openai.DefaultModelIDs())
+		if len(models) != len(openai.DefaultModels) {
+			return models
 		}
+	}
+	if !hasAnyMapping {
 		return nil
 	}
 
@@ -1653,13 +1715,15 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 
 	if platform == PlatformOpenAI {
 		models = supplementUnmappedOpenAIModels(accounts, groupID, models)
+		models = filterRetiredOpenAIModelIDs(accounts, models)
+		// nil means "use defaults" to listing callers; an empty filtered catalog
+		// must remain authoritative instead of resurrecting retired defaults.
+		if len(models) == 0 {
+			return models
+		}
 	}
 
-	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
-		modelsListCacheStoreTotal.Add(1)
-	}
-	return cloneStringSlice(models)
+	return cloneModelCatalogSlice(models)
 }
 
 func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, groupID int64, model string) (CompositeModelOwnership, error) {
@@ -1677,21 +1741,23 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 		}
 	}
 
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
+	// 归属取决于配置而非运行时健康：限流/临时不可调度不应让同一模型在
+	// 「唯一归属」与「歧义」之间来回翻转，否则配置错误只会间歇暴露。
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, domain.ConcretePlatformIDs(), false)
 	if err != nil {
 		return CompositeModelOwnership{}, err
 	}
 
 	platforms := make(map[string]struct{})
+	ownership := CompositeModelOwnership{}
 	for _, account := range accounts {
-		platform := strings.TrimSpace(account.Platform)
-		if !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, model) {
-			continue
+		if explicitModelMappingClaims(account, model) {
+			platforms[account.Platform] = struct{}{}
+			ownership.OpenAIGatewayOAuthClaimed = ownership.OpenAIGatewayOAuthClaimed ||
+				(account.IsOAuth() && domain.UsesOpenAIGateway(account.Platform))
 		}
-		platforms[platform] = struct{}{}
 	}
 
-	ownership := CompositeModelOwnership{}
 	if len(platforms) == 1 {
 		for platform := range platforms {
 			ownership.TargetPlatform = platform
@@ -1894,4 +1960,12 @@ func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header
 
 	// 写入文件（调试用，并发写入可能交错但不影响可读性）
 	_, _ = f.WriteString(buf.String())
+}
+
+// Model catalogs distinguish an authoritative empty policy from no declaration.
+func cloneModelCatalogSlice(models []string) []string {
+	if models == nil {
+		return nil
+	}
+	return append([]string{}, models...)
 }

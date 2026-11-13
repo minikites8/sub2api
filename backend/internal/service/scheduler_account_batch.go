@@ -16,7 +16,19 @@ type schedulerAccountBatchReader interface {
 // GetAccounts reads complete accounts, never the candidate-list projection.
 // Misses fall back in bounded batches under the existing fallback policy.
 // Results belong to this call; they are not a cross-request authority cache.
-func (s *SchedulerSnapshotService) GetAccounts(ctx context.Context, accountIDs []int64) (map[int64]*Account, error) {
+func (s *SchedulerSnapshotService) GetAccounts(ctx context.Context, accountIDs []int64) (result map[int64]*Account, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			result, resultErr = s.markPerformanceAccounts(ctx, result)
+		}
+	}()
+	if s.localSnapshotReader != nil {
+		reader, ok := s.localSnapshotReader.(LocalSchedulerDetailReader)
+		if !ok {
+			return nil, ErrLocalSchedulerSnapshotUnavailable
+		}
+		return reader.GetLocalAccounts(ctx, accountIDs)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

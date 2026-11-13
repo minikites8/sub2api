@@ -19,7 +19,7 @@ func TestGPTQualityConversationAffinityThroughScheduler(t *testing.T) {
 			defer resetOpenAIAdvancedSchedulerSettingCacheForTest()
 			svc, req := qualityTestGateway(false)
 			svc.settingService.gptQoSConfig.config.Enabled = queue
-			repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			repo := qualityTestAccountRepo(t, svc)
 			repo.accounts[1].Extra[AccountQualityTierKey] = "strong"
 			svc.accountRepo = repo
 			svc.cache = &schedulerTestGatewayCache{sessionBindings: map[string]int64{}}
@@ -57,7 +57,7 @@ func TestGPTQualityMovableResponseAffinityThroughScheduler(t *testing.T) {
 		t.Run(fmt.Sprintf("queue=%t", queue), func(t *testing.T) {
 			svc, req := qualityTestGateway(false)
 			svc.settingService.gptQoSConfig.config.Enabled = queue
-			repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			repo := qualityTestAccountRepo(t, svc)
 			repo.accounts[1].Type = AccountTypeAPIKey
 			repo.accounts[1].Extra[AccountQualityTierKey] = "strong"
 			svc.accountRepo = repo
@@ -92,10 +92,11 @@ func TestGPTQualityCacheAffinityConstraints(t *testing.T) {
 			req.RequiredTransport = OpenAIUpstreamTransportAny
 			req.SessionHash, req.StickyAccountID = "conversation", 2
 			svc.cache = &schedulerTestGatewayCache{sessionBindings: map[string]int64{}}
-			repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+			repo := qualityTestAccountRepo(t, svc)
 			repo.accounts[1].Extra[AccountQualityTierKey] = "strong"
 			acquire := map[int64]bool{1: true, 2: true}
-			scheduler := newDefaultOpenAIAccountScheduler(svc, nil).(*defaultOpenAIAccountScheduler)
+			scheduler, ok := newDefaultOpenAIAccountScheduler(svc, nil).(*defaultOpenAIAccountScheduler)
+			require.True(t, ok, "quality test requires the default scheduler")
 			switch scenario {
 			case "full":
 				acquire[2] = false // stale load snapshot still reports spare capacity
@@ -137,7 +138,7 @@ func TestGPTQualityCacheAffinityRecordsAndRebinds(t *testing.T) {
 	req.RequiredTransport = OpenAIUpstreamTransportAny
 	req.SessionHash, req.StickyAccountID = "conversation", 2
 	svc.cache = &schedulerTestGatewayCache{sessionBindings: map[string]int64{}}
-	repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+	repo := qualityTestAccountRepo(t, svc)
 	repo.accounts[1].Extra[AccountQualityTierKey] = "strong"
 	svc.accountRepo = repo
 	state := &gptQoSRequestState{config: svc.settingService.gptQoSConfig.config}

@@ -36,8 +36,6 @@ const (
 )
 
 type ExcelBPSImageRelaySettings struct {
-	// Preserve account-scoped attachment uploads for existing installations.
-	LegacyNative     bool
 	Mode             string
 	Enabled          bool
 	BaseURL          string
@@ -100,7 +98,7 @@ func parseExcelBPSImageCapacity(value string, fallback int) (int, error) {
 // including on other instances sharing the settings database.
 func (s *SettingService) GetExcelBPSImageRelaySettings(ctx context.Context) (ExcelBPSImageRelaySettings, error) {
 	if s == nil || s.settingRepo == nil {
-		return ExcelBPSImageRelaySettings{LegacyNative: true}, nil
+		return ExcelBPSImageRelaySettings{}, nil
 	}
 	dbCtx, cancel := context.WithTimeout(ctx, gatewayForwardingDBTimeout)
 	defer cancel()
@@ -122,9 +120,6 @@ func (s *SettingService) GetExcelBPSImageRelaySettings(ctx context.Context) (Exc
 	if err != nil {
 		return ExcelBPSImageRelaySettings{}, err
 	}
-	_, enabledConfigured := values[SettingKeyExcelBPSImageRelayEnabled]
-	_, modeConfigured := values[SettingKeyExcelBPSImageMode]
-	settings.LegacyNative = !enabledConfigured && !modeConfigured && values[SettingKeyExcelBPSImageBaseURL] == ""
 	settings.BodyLimitMiB, err = parseExcelBPSImageCapacity(values[SettingKeyExcelBPSImageBodyLimitMiB], DefaultExcelBPSImageBodyLimitMiB)
 	if err == nil {
 		settings.BudgetMiB, err = parseExcelBPSImageCapacity(values[SettingKeyExcelBPSImageBudgetMiB], DefaultExcelBPSImageBudgetMiB)

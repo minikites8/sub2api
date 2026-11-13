@@ -72,6 +72,7 @@ func TestExcelBPSForwardContract(t *testing.T) {
 			c.Request.Header.Set("x-codex-turn-state", "must-not-leak")
 			account := excelAccount()
 			account.Proxy = &Proxy{Protocol: "http", Host: "127.0.0.1", Port: 7890}
+			account.Extra["openai_excel_bps_mihomo"] = false
 			result, err := svc.Forward(context.Background(), c, account, body)
 			require.Equal(t, account.Proxy.URL(), upstream.lastProxyURL)
 			require.NoError(t, err)
@@ -137,27 +138,20 @@ func TestExcelBPSUsagePreservesRequestedEffortBeforeGroupMapping(t *testing.T) {
 	}
 }
 
-func TestExcelBPSModelDeniedFallsBackToOrdinaryUpstream(t *testing.T) {
-	upstream := &httpUpstreamRecorder{responses: []*http.Response{
-		{StatusCode: http.StatusForbidden, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"model_not_found","message":"SECRET_UPSTREAM"}}`))},
-		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"ordinary-response\",\"status\":\"completed\",\"model\":\"gpt-5.6-sol\",\"output\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n"))},
-	}}
+func TestExcelBPSModelDeniedDoesNotFailover(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"basispoints_model_access_changed","message":"SECRET_UPSTREAM"}}`))}}
 	svc := openAIClientToolsTestService(upstream)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
-	account := excelAccount()
-	result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.6-sol","input":"x"}`))
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Len(t, upstream.requests, 2)
-	require.Equal(t, "/basispoints/api/responses", upstream.requests[0].URL.Path)
-	require.Equal(t, chatgptCodexURL, upstream.requests[1].URL.String())
-	require.Contains(t, rec.Body.String(), "ordinary-response")
+	_, err := svc.Forward(context.Background(), c, excelAccount(), []byte(`{"model":"gpt-5.6-sol","input":"x"}`))
+	require.Error(t, err)
+	var failover *UpstreamFailoverError
+	require.NotErrorAs(t, err, &failover)
+	require.Equal(t, 403, rec.Code)
+	require.Contains(t, rec.Body.String(), "basispoints_model_access_changed")
 	require.NotContains(t, rec.Body.String(), "SECRET_UPSTREAM")
-	require.True(t, account.IsExcelBPSEnabled())
-	require.Equal(t, openAIResponsesUpstreamEndpoint, GetActualOpenAIUpstreamEndpoint(c))
-	require.Equal(t, "gpt-5.6-sol", c.GetString(OpsUpstreamModelKey))
+	require.True(t, IsResponseCommitted(c))
 }
 
 func TestExcelBPSHTTPErrorRecordsUpstreamRejection(t *testing.T) {
@@ -256,6 +250,31 @@ func TestExcelBPSThreadScopeSeparatesParallelChildren(t *testing.T) {
 	second, _ := resolveOpenAIWSExecutionScope(c, []byte(`{"client_metadata":{"x-codex-turn-metadata":"{\"thread_id\":\"child-B\"}"}}`), 1)
 	require.NotEmpty(t, first)
 	require.NotEqual(t, first, second)
+}
+
+func TestExcelBPSMihomoFailsClosed(t *testing.T) {
+	for _, identity := range []bool{false, true} {
+		t.Run(fmt.Sprint(identity), func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{}
+			svc := openAIClientToolsTestService(upstream)
+			account := excelAccount()
+			account.Extra["openai_excel_bps_mihomo"] = true
+			body, _ := nativeGatewayBody(t)
+			enableNativeAttachments(svc)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(body))
+			if identity {
+				c.Request.Header.Set("session_id", "sticky-session")
+			}
+			_, err := svc.Forward(context.Background(), c, account, body)
+			require.ErrorContains(t, err, "basispoints_proxy_unavailable")
+			require.Equal(t, 503, rec.Code)
+			require.Nil(t, upstream.lastReq)
+			account.Extra["openai_excel_bps"] = false
+			require.False(t, account.IsExcelBPSMihomoEnabled())
+		})
+	}
 }
 
 func TestExcelBPSAnonymousIdentityIsRequestLocal(t *testing.T) {

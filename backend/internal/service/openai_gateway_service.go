@@ -17,11 +17,10 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/keyedlock"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 	"github.com/Wei-Shaw/sub2api/internal/platform/liveattestation"
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -38,7 +37,7 @@ const (
 	openaiPlatformAPIURL            = "https://api.openai.com/v1/responses"
 	openaiPlatformAPIInputTokensURL = "https://api.openai.com/v1/responses/input_tokens"
 	openaiStickySessionTTL          = time.Hour // 粘性会话TTL
-	// 与真实 Codex TUI 的 User-Agent 结构对齐：
+	// 与真实 Codex CLI 的 User-Agent 结构对齐：
 	// {originator}/{version} ({OS} {OS_version}; {arch}) {terminal}
 	// 缺少 OS/架构/终端后缀的形态易被上游指纹识别为非官方客户端。
 	// 该后缀是 UA 形态的唯一定义处，buildCodexCLIUserAgent 按运行时版本号复用它。
@@ -62,8 +61,8 @@ const (
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	openAIUpstreamEndpointContextKey   = "openai_actual_upstream_endpoint"
 	// codexCLIVersion 是网关对上游声明的 Codex 客户端版本，同时供 codexCLIUserAgent
-	// 与 version 头使用。上游 /backend-api/codex 在容量紧张时按客户端身份分优先级降载，
-	// 陈旧版本会被优先丢弃（HTTP 200 + 流内 server_is_overloaded）；非官方客户端配不出
+	// 与 version 头使用。上游 /backend-api/codex 会按客户端身份进行风控分层，
+	// 陈旧版本可能被优先丢弃（HTTP 200 + 流内 server_is_overloaded）；非官方客户端配不出
 	// 官方身份时整体回退到本常量，因此它必须跟随官方 CLI 的当前发布版本，
 	// 落后多个版本会让这些请求稳定落在被优先丢弃的一侧。
 	codexCLIVersion = "0.146.0"
@@ -233,27 +232,37 @@ type OpenAIUsage struct {
 	hostedSearchSeen     map[string]struct{}
 	UnpricedHostedTools  []string `json:"-"`
 
-	InputTokens              int `json:"input_tokens"`
-	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
-	ImageCacheReadTokens     int `json:"image_cache_read_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
-	KiroCredits              float64
+	InputTokens                 int `json:"input_tokens"`
+	ImageInputTokens            int `json:"image_input_tokens,omitempty"`
+	ImageCacheReadTokens        int `json:"image_cache_read_tokens,omitempty"`
+	OutputTokens                int `json:"output_tokens"`
+	CacheCreationInputTokens    int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens        int `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens           int `json:"image_output_tokens,omitempty"`
+	KiroCredits                 float64
+	CacheReadKnown              bool `json:"-"`
+	cacheReadMediaObserved      bool
+	CacheCreation30mInputTokens int `json:"cache_creation_30m_input_tokens,omitempty"`
+	CacheCreation12hInputTokens int `json:"cache_creation_12h_input_tokens,omitempty"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
-	RequestID  string
-	ResponseID string
+	AuthConnectionID string
+	// RegionalMetered prevents the legacy asynchronous path from double charging.
+	RegionalMetered bool
+	RequestID       string
+	ResponseID      string
 	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
 	UpstreamHeaders http.Header
 	Usage           OpenAIUsage
 	// UsageUnavailable prevents a protocol without upstream usage from being
 	// recorded or billed as if it reported an authoritative zero-token result.
 	UsageUnavailable bool
-	Model            string // 原始模型（用于响应和日志显示）
+	// ObservedUsageOnError permits settlement of authoritative usage on a strict
+	// smart session error, without interpreting absent output as non-execution.
+	ObservedUsageOnError bool
+	Model                string // 原始模型（用于响应和日志显示）
 	// BillingModel is the model used for cost calculation.
 	// When non-empty, CalculateCost uses this instead of Model.
 	// This is set by the Anthropic Messages conversion path where
@@ -285,24 +294,46 @@ type OpenAIForwardResult struct {
 	RequestedReasoningEffort *string
 	Stream                   bool
 	OpenAIWSMode             bool
+	UpstreamProtocol         string
+	ProtocolDecisionReason   string
+	FirstUpstreamEventMs     *int
+	FirstActualContentMs     *int
+	FirstActualContentKind   string
 	// UpstreamTerminalEvent is the normalized terminal event observed on an
 	// upstream Responses WebSocket turn. Empty preserves legacy/non-WS success.
 	UpstreamTerminalEvent string
 	ResponseHeaders       http.Header
 	Duration              time.Duration
 	FirstTokenMs          *int
-	ClientDisconnect      bool
-	ImageCount            int
-	ImageSize             string
-	ImageInputSize        string
-	ImageOutputSize       string
-	ImageOutputSizes      []string
-	ImageSizeSource       string
-	ImageSizeBreakdown    map[string]int
-	VideoCount            int
-	VideoResolution       string
+	// QueueWait records pre-forward elapsed time. Legacy timers have protocol-specific
+	// overlap; consumers use QueueTiming instead of blindly adding it.
+	QueueWait time.Duration
+	// QueueWaitMeasured distinguishes a measured zero wait from a path without
+	// an ingress clock (historical/other endpoints), so usage rows can record
+	// 0 for new non-queued requests and NULL for unknown.
+	QueueTiming       *QueueTiming
+	QueueWaitMeasured bool
+	// HeaderTimeoutRetries counts submitted attempts that timed out waiting for
+	// response headers before the successful attempt. The usage record adds one
+	// 1:1 surcharge unit per retry because the upstream may have billed it.
+	HeaderTimeoutRetries int
+	ClientDisconnect     bool
+	ImageCount           int
+	// ImageEndpoint 标记请求来自专用图片端点；分组 image_count_billing 开关
+	// 只对这类请求生效，混合 Responses/Chat/WS 请求仍按 token 计费。
+	ImageEndpoint      bool
+	ImageSize          string
+	ImageInputSize     string
+	ImageOutputSize    string
+	ImageOutputSizes   []string
+	ImageSizeSource    string
+	ImageSizeBreakdown map[string]int
+	VideoCount         int
+	VideoResolution    string
 	// VideoDurationSeconds 是提交时请求的生成时长（xAI 按输出秒数计费），已归一化到 1-15 秒。
 	VideoDurationSeconds int
+	// MiniMaxH3BaseCost is a server-only create-time tariff snapshot in USD.
+	MiniMaxH3BaseCost *float64
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
 	// 上游不返回 usage 字段，>0 时走按次计费（分组单价 × 次数 × 倍率）。
 	WebSearchCalls int
@@ -316,7 +347,30 @@ type OpenAIForwardResult struct {
 	wsAccountFailoverReplayInput []json.RawMessage
 	// Local stream-read timeout is not an observed upstream terminal event.
 	// Keep observed partial usage without reporting a successful generation.
-	streamReadIncomplete bool
+	streamReadIncomplete      bool
+	antiDistillationRequestID string
+}
+
+const maxOpenAIQueueWait = time.Hour
+
+// openAIQueueWait returns the wait between request arrival and the start of the
+// upstream forward attempt, plus whether an ingress clock was actually present.
+// The logger middleware stores request arrival in ctxkey.RequestStartTime;
+// callers that do not have it (tests, internal jobs) report unmeasured rather
+// than guessing a zero.
+func openAIQueueWait(ctx context.Context, forwardStart time.Time) (time.Duration, bool) {
+	if ctx == nil || forwardStart.IsZero() {
+		return 0, false
+	}
+	requestStart, ok := ctx.Value(ctxkey.RequestStartTime).(time.Time)
+	if !ok || requestStart.IsZero() || forwardStart.Before(requestStart) {
+		return 0, false
+	}
+	wait := forwardStart.Sub(requestStart)
+	if wait > maxOpenAIQueueWait {
+		wait = maxOpenAIQueueWait
+	}
+	return wait, true
 }
 
 // SucceededForScheduling reports whether this result is an upstream success
@@ -421,12 +475,19 @@ type accountWriteThrottle struct {
 	minInterval time.Duration
 	mu          sync.Mutex
 	lastByID    map[int64]time.Time
+	pending     map[codexWriteKey]*codexPendingWrite
+	ctx         context.Context
+	cancel      context.CancelFunc
+	workers     sync.WaitGroup
+	closed      bool
 }
 
 func newAccountWriteThrottle(minInterval time.Duration) *accountWriteThrottle {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &accountWriteThrottle{
 		minInterval: minInterval,
 		lastByID:    make(map[int64]time.Time),
+		ctx:         ctx, cancel: cancel,
 	}
 }
 
@@ -466,9 +527,15 @@ type OpenAIGatewayService struct {
 	gptQoSMetricsOnce       sync.Once
 	gptQoSMetricsQueue      chan gptQoSObservation
 	gptQoSMetricsDropped    atomic.Int64
+	agentMessageRecovery    openAIAgentRecoveryState
+	groupAntiDistillation   *GroupAntiDistillationService
+	smartProtocolHistory    openAISmartProtocolHistory
+	requestTimezoneEgress   openAIRequestTimezoneEgress
+	requestTimezoneProber   ProxyExitInfoProber
 	stopAstraSetup          func()
 	codexWSAnchors          codexWSAnchorStore
 	priorityScheduling      prioritySchedulingState
+	priorityAnalysis        priorityAnalysisFlights
 	excelBPSRecoveryMu      sync.Mutex
 	excelBPSRecoveryCancel  context.CancelFunc
 	excelBPSRecoveryDone    chan struct{}
@@ -479,8 +546,7 @@ type OpenAIGatewayService struct {
 	excelBPSWarmDone       chan struct{}
 	excelBPSWarmStopped    bool
 	excelBPSImagesMu       sync.Mutex
-	excelBPSImages         excelBPSImageCache
-	excelBPSRelay          *basispoints.ImageRelay
+	excelBPSImages         *basispoints.ImageRelay
 	excelBPSImageAdmission excelBPSImageAdmission
 	excelBPSAttachments    basispoints.AttachmentCache
 	excelBPSIPPoolMu       sync.Mutex
@@ -491,7 +557,7 @@ type OpenAIGatewayService struct {
 	harvestIPPoolExits     []harvestIPPoolExit
 	harvestIPPoolSyncedAt  time.Time
 	harvestIPPoolCursor    atomic.Uint64
-	codexHarvestRuns       keyedlock.Pool
+	codexHarvestRunMu      sync.RWMutex
 	accountRepo            AccountRepository
 	proxyRepo              ProxyRepository
 	usageLogRepo           UsageLogRepository
@@ -510,6 +576,7 @@ type OpenAIGatewayService struct {
 	userGroupRateResolver  *userGroupRateResolver
 	httpUpstream           HTTPUpstream
 	pluginManager          *PluginManager
+	safetyPromptStore      *SafetyPromptStore
 	deferredService        *DeferredService
 	openAITokenProvider    *OpenAITokenProvider
 	excelOAuthReauth       *OpenAIOAuthReauthService
@@ -527,6 +594,8 @@ type OpenAIGatewayService struct {
 
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once
+	openaiWSNodeOwnerOnce          sync.Once
+	openaiWSNodeOwnerToken         string
 	openaiSchedulerOnce            sync.Once
 	openaiProxyStreamCircuitOnce   sync.Once
 	openaiWSPassthroughDialerOnce  sync.Once
@@ -555,6 +624,8 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics                openAIWSRetryMetrics
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
+	codexSnapshotMu                     sync.Mutex
+	codexSnapshotClosed                 bool
 	openAIModelsCache                   openAIModelsCache
 	excelBPSModelsCache                 openAIModelsCache
 	openaiCompatSessionResponses        sync.Map
@@ -578,10 +649,9 @@ type OpenAIGatewayService struct {
 	openaiCodexTicketCancel        context.CancelFunc
 	openaiCodexTicketDone          chan struct{}
 	openaiCodexTicketStopped       bool
-	yeTeam                         *yeteam.Client
-	yeTeamReclaimLocks             sync.Map // key: account ID, value: *sync.Mutex
 
 	requireLatestTurnAdmission bool
+	regionalMetering           *RegionalMetering
 	codexHarvest               *CodexHarvestService
 	codexHarvestRoundActive    atomic.Bool
 }
@@ -591,6 +661,12 @@ type OpenAIGatewayOption func(*OpenAIGatewayService)
 // WithOpenAIRPMCache enables strict RPM accounting for OpenAI OAuth accounts.
 func WithOpenAIRPMCache(cache RPMCache) OpenAIGatewayOption {
 	return func(s *OpenAIGatewayService) { s.rpmCache = cache }
+}
+
+// WithOpenAIAuthConnections supplies the durable grant service to standalone
+// gateway embedders. Application Wire supplies it after resolving the cycle.
+func WithOpenAIAuthConnections(connections *OpenAIOAuthReauthService) OpenAIGatewayOption {
+	return func(s *OpenAIGatewayService) { s.excelOAuthReauth = connections }
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -730,7 +806,17 @@ func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Cont
 	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 }
 
+// isCodexImageGenerationBridgeEnabled 决定是否为 Codex 客户端自动注入 hosted
+// image_generation 工具。该工具是 OpenAI Responses 专属能力，Kimi / DeepSeek /
+// MiniMax 等经 OpenAI 网关转发的原生 Responses 上游不识别，注入后会被 400 拒绝，
+// 因此非 OpenAI 平台账号一律不桥接，后续再按账号 → 渠道 → 全局的优先级取开关。
 func (s *OpenAIGatewayService) isCodexImageGenerationBridgeEnabled(ctx context.Context, account *Account, apiKey *APIKey) bool {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
+	if openAIImageRequestRejection(WithOpenAIImageGenerationIntent(ctx), account, "gpt-image-2") != "" {
+		return false
+	}
 	if override := account.CodexImageGenerationBridgeOverride(); override != nil {
 		return *override
 	}
@@ -793,10 +879,18 @@ func (s *OpenAIGatewayService) ReplaceModelInBody(body []byte, newModel string) 
 }
 
 func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
-	if s != nil && s.codexSnapshotThrottle != nil {
-		return s.codexSnapshotThrottle
+	if s == nil {
+		return defaultOpenAICodexSnapshotPersistThrottle
 	}
-	return defaultOpenAICodexSnapshotPersistThrottle
+	s.codexSnapshotMu.Lock()
+	defer s.codexSnapshotMu.Unlock()
+	if s.codexSnapshotThrottle == nil {
+		s.codexSnapshotThrottle = newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval)
+		if s.codexSnapshotClosed {
+			s.codexSnapshotThrottle.close()
+		}
+	}
+	return s.codexSnapshotThrottle
 }
 
 func (s *OpenAIGatewayService) billingDeps() *billingDeps {
@@ -814,6 +908,19 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
+	if s != nil {
+		s.priorityAnalysis.close()
+		s.codexSnapshotMu.Lock()
+		s.codexSnapshotClosed = true
+		throttle := s.codexSnapshotThrottle
+		s.codexSnapshotMu.Unlock()
+		if throttle != nil {
+			throttle.close()
+		}
+	}
+	if s != nil && s.regionalMetering != nil && s.regionalMetering.Stop != nil {
+		s.regionalMetering.Stop()
+	}
 	if s != nil && s.stopAstraSetup != nil {
 		s.stopAstraSetup()
 	}
@@ -1015,6 +1122,10 @@ func resolveOpenAIWSFallbackErrorResponse(err error) (statusCode int, errType st
 }
 
 func (s *OpenAIGatewayService) writeOpenAIWSFallbackErrorResponse(c *gin.Context, account *Account, wsErr error) bool {
+	var incomplete *OpenAIWSSSEIncompleteError
+	if errors.As(wsErr, &incomplete) {
+		return s.writeOpenAIWSSSEIncomplete(c, account, incomplete)
+	}
 	if c == nil || c.Writer == nil || c.Writer.Written() {
 		return false
 	}
@@ -1322,12 +1433,49 @@ func hashSensitiveValueForLog(raw string) string {
 // GetAccessToken gets the access token for an OpenAI account
 func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Account) (string, string, error) {
 	defer requesttiming.Observe(ctx, "upstream_credentials")()
+	if err := validateOpenAIConnectionKind(account); err != nil {
+		return "", "", err
+	}
+	if s.excelOAuthReauth != nil {
+		if err := s.excelOAuthReauth.validateAuthConnectionPolicy(ctx, account); err != nil {
+			return "", "", err
+		}
+	}
+	if account != nil && account.AuthConnectionID != "" {
+		if s.excelOAuthReauth == nil {
+			return "", "", errors.New("authorization connection service unavailable")
+		}
+		token, err := s.excelOAuthReauth.ConnectionAccessToken(ctx, account.ID, account.AuthConnectionID)
+		kind := account.GetExtraString("openai_connection_kind")
+		if kind == "siwc" {
+			return token, "siwc", err
+		}
+		if kind == "api_key" {
+			return token, "apikey", err
+		}
+		return token, "oauth", err
+	}
+	if account.HasManagedOpenAIConnections() {
+		return "", "", errors.New("select a capable authorization connection before requesting credentials")
+	}
+	selectedSIWC := account.IsSIWCEnabled()
 	if account.IsShadow() {
 		credAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
 		if err != nil {
 			return "", "", err
 		}
 		account = credAccount
+	}
+	if selectedSIWC {
+		if s.excelOAuthReauth == nil {
+			return "", "", errors.New("SIWC credential service is unavailable")
+		}
+		var cache OpenAITokenCache
+		if s.openAITokenProvider != nil {
+			cache = s.openAITokenProvider.tokenCache
+		}
+		token, err := s.excelOAuthReauth.SIWCAccessToken(ctx, account, cache)
+		return token, "siwc", err
 	}
 	switch account.Type {
 	case AccountTypeOAuth:

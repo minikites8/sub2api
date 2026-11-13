@@ -55,7 +55,7 @@ func TestContentModerationJailbreakBlocksAndTestsDraftRules(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request typesafe.Request
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		require.Len(t, request.Questions, 14)
+		require.Len(t, request.Questions, 15)
 		require.Equal(t, typeSafeModerationInstruction+"自定义破限审查", request.Questions["jailbreak"].Instructions)
 		require.Equal(t, typeSafeModerationInstruction+"自定义内容规则", request.Questions["sexual"].Instructions)
 		answers := map[string]any{}
@@ -103,8 +103,8 @@ func TestContentModerationJailbreakDisabledAndPromptSnapshots(t *testing.T) {
 	cfg := defaultContentModerationConfig().effectiveEngine("typesafe")
 	cfg.CategoryPrompts = map[string]string{"jailbreak": "draft"}
 	cfg.Thresholds["jailbreak"] = 0
-	require.Len(t, typeSafeModerationQuestions(cfg), 13)
-	flagged, _, _ := evaluateModerationScores(map[string]float64{"sexual": 0.1}, cfg.Thresholds)
+	require.Len(t, typeSafeModerationQuestions(cfg), 15)
+	flagged, _, _, _ := evaluateModerationScores(map[string]float64{"sexual": 0.1}, cfg)
 	require.False(t, flagged)
 	cloned := cloneContentModerationConfig(cfg)
 	cloned.CategoryPrompts["jailbreak"] = "changed"
@@ -122,5 +122,34 @@ func TestContentModerationCustomPromptValidation(t *testing.T) {
 		require.Empty(t, repo.values[SettingKeyContentModerationConfig])
 		_, err = s.TestAPIKeys(context.Background(), TestContentModerationAPIKeysInput{Engine: engine, CategoryPrompts: &prompts})
 		require.Error(t, err)
+	}
+}
+
+func TestContentModerationJailbreakLegacyAndCategorySwitchesCanDisableEachOther(t *testing.T) {
+	for _, legacyDisable := range []bool{true, false} {
+		t.Run(map[bool]string{true: "legacy_disable", false: "category_disable"}[legacyDisable], func(t *testing.T) {
+			repo := &contentModerationTestSettingRepo{values: map[string]string{}}
+			svc := &ContentModerationService{settingRepo: repo}
+			engine, enabled := "typesafe", true
+			_, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{Engine: &engine, JailbreakEnabled: &enabled})
+			require.NoError(t, err)
+			input := UpdateContentModerationConfigInput{}
+			if legacyDisable {
+				enabled = false
+				input.JailbreakEnabled = &enabled
+			} else {
+				settings := map[string]ContentModerationCategorySetting{"jailbreak": {Enabled: false}}
+				input.CategorySettings = &settings
+			}
+			view, err := svc.UpdateConfig(context.Background(), input)
+			require.NoError(t, err)
+			require.False(t, view.JailbreakEnabled)
+			cfg, err := svc.loadConfig(context.Background())
+			require.NoError(t, err)
+			effective := cfg.effectiveEngine(engine)
+			require.Contains(t, typeSafeModerationQuestions(effective), "jailbreak")
+			flagged, _, _, _ := evaluateModerationScores(map[string]float64{"jailbreak": 1}, effective)
+			require.False(t, flagged)
+		})
 	}
 }

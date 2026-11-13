@@ -80,13 +80,14 @@ type GatewayHandler struct {
 	securityAuditCoordinator  *securityaudit.Coordinator
 	// gptAutoShadow observes requests for GPT-Auto Phase 1 shadow routing.
 	// Read-only and asynchronous; nil disables observation.
-	gptAutoShadow            *service.GPTAutoShadowService
-	concurrencyHelper        *ConcurrencyHelper
-	userMsgQueueHelper       *UserMsgQueueHelper
-	maxAccountSwitches       int
-	maxAccountSwitchesGemini int
-	cfg                      *config.Config
-	settingService           *service.SettingService
+	gptAutoShadow              *service.GPTAutoShadowService
+	concurrencyHelper          *ConcurrencyHelper
+	userMsgQueueHelper         *UserMsgQueueHelper
+	maxAccountSwitches         int
+	maxAccountSwitchesGemini   int
+	cfg                        *config.Config
+	settingService             *service.SettingService
+	geminiCachedContentService *service.GeminiCachedContentService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -176,6 +177,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 读取请求体
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
+		if middleware2.RejectRequestBodyReadError(c, err) {
+			return
+		}
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
@@ -257,6 +261,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	if rejectSystemOneOnlyPlatform(c, apiKey, h.errorResponse) {
 		return
 	}
+	if geminiImageGenerationRejected(c, apiKey, nil, reqModel, channelMapping.MappedModel) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", service.ImageGenerationPermissionMessage())
+		return
+	}
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.anthropicSecurityAuditError(c, decision)
@@ -301,6 +309,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
+
+	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
+	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
+	if err != nil {
+		reqLog.Info("gateway.inflight_reservation_rejected", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+	defer inflightRelease()
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
@@ -367,12 +388,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	if platform == service.PlatformGemini {
 		fs := newRequestFailoverState(c, h.maxAccountSwitchesGemini, hasBoundSession)
 
-		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
-		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
-		if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
-			ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
-			c.Request = c.Request.WithContext(ctx)
-		}
+		// 单账号分组首次 503 就不设模型限流标记，避免设 29s 限流导致后续请求连续快速失败；
+		// 是否单账号分组在 antigravity 账号遇到 503 或模型限流预检查时才判定。
+		c.Request = c.Request.WithContext(h.gatewayService.WithSingleAntigravityAccountGroupProbe(c.Request.Context(), apiKey.GroupID))
 
 		for {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
@@ -668,12 +686,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 	fallbackUsed := false
 
-	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
-	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
-	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), currentAPIKey.GroupID) {
-		ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
-		c.Request = c.Request.WithContext(ctx)
-	}
+	// 单账号分组首次 503 就不设模型限流标记，避免设 29s 限流导致后续请求连续快速失败；
+	// 是否单账号分组在 antigravity 账号遇到 503 或模型限流预检查时才判定。
+	c.Request = c.Request.WithContext(h.gatewayService.WithSingleAntigravityAccountGroupProbe(c.Request.Context(), currentAPIKey.GroupID))
 
 	// 会话槽失败释放：failover 链上每个选中的 Anthropic OAuth 账号都注册过同一会话
 	// （checkAndRegisterSession）。若请求最终失败（转发失败/客户端中断/换号耗尽），
@@ -1194,6 +1209,19 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		defer release()
 	}
 
+	if groups, ok := middleware2.GetModelListingGroups(c); ok {
+		if apiKey != nil && apiKey.ConcurrencyLimit > 0 {
+			var err error
+			groups, err = middleware2.RefreshModelListingGroups(c)
+			if err != nil {
+				writeOpenAIModelsError(c, http.StatusServiceUnavailable, "api_error", "Model listing authorization changed; please retry")
+				return
+			}
+		}
+		h.multiGroupModels(c, groups)
+		return
+	}
+
 	var groupID *int64
 	var platform string
 
@@ -1224,17 +1252,17 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		}
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 			source := availableModels
-			if len(source) == 0 {
-				source = defaultModelIDsForPlatform(service.PlatformComposite)
+			if source == nil {
+				source = service.DefaultModelIDsForPlatform(service.PlatformComposite)
 			}
 			writeAllowlistedModelsList(c, service.PlatformComposite, apiKey.Group.ModelAllowlist.FilterForListing(source))
 			return
 		}
-		if len(availableModels) > 0 {
+		if availableModels != nil {
 			writeModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
-		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite))
+		writeModelsList(c, service.PlatformComposite, service.DefaultModelIDsForPlatform(service.PlatformComposite))
 		return
 	}
 
@@ -1250,12 +1278,12 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
-		source := modelListingSource(platform, availableModels, defaultModelIDsForPlatform(platform))
+		source := service.ModelListingSource(platform, availableModels, service.DefaultModelIDsForPlatform(platform))
 		writeAllowlistedModelsList(c, platform, apiKey.Group.ModelAllowlist.FilterForListing(source))
 		return
 	}
 
-	if len(availableModels) > 0 {
+	if availableModels != nil {
 		writeModelsList(c, platform, availableModels)
 		return
 	}
@@ -1334,12 +1362,12 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
 		if group.ModelAllowlistEnabled() {
 			source := availableModels
-			if len(source) == 0 {
+			if source == nil {
 				source = fallbackModels
 			}
 			return group.ModelAllowlist.FilterForListing(source)
 		}
-		if len(availableModels) > 0 {
+		if availableModels != nil {
 			return availableModels
 		}
 		return fallbackModels
@@ -1348,9 +1376,9 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	availableModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 	fallbackModels := defaultCodexModelIDsForPlatform(platform)
 	if group.ModelAllowlistEnabled() {
-		return group.ModelAllowlist.FilterForListing(modelListingSource(platform, availableModels, fallbackModels))
+		return group.ModelAllowlist.FilterForListing(service.ModelListingSource(platform, availableModels, fallbackModels))
 	}
-	if len(availableModels) > 0 {
+	if availableModels != nil {
 		return availableModels
 	}
 	return fallbackModels
@@ -1361,18 +1389,21 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 		return nil
 	}
 	seen := make(map[string]struct{})
-	models := make([]string, 0)
+	var models []string
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
 	for _, platform := range domain.CompositePrecedencePlatformIDs() {
 		if platform == service.PlatformTypeSafe && endpoint != "" {
 			continue
 		}
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
-		if len(platformModels) == 0 {
-			// CN 供应商没有静态默认模型列表（defaultModelIDsForPlatform 的
+		if platformModels != nil && models == nil {
+			models = []string{}
+		}
+		if platformModels == nil {
+			// CN 供应商没有静态默认模型列表（service.DefaultModelIDsForPlatform 的
 			// default 分支是 Claude 列表），composite 下只暴露账号映射键。
 			if _, ok := schedulablePlatforms[platform]; ok && !service.IsMultiProtocolAPIKeyProvider(platform) {
-				platformModels = defaultModelIDsForPlatform(platform)
+				platformModels = service.DefaultModelIDsForPlatform(platform)
 			}
 		}
 		for _, model := range platformModels {
@@ -1401,13 +1432,15 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 }
 
 func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
+	writeModelsListResponse(c, modelsListEntries(platform, modelIDs))
+}
+
+func modelsListEntries(platform string, modelIDs []string) any {
 	if platform == service.PlatformOpenAI {
-		writeOpenAIModelsList(c, modelIDs)
-		return
+		return openAIModelsListEntries(modelIDs)
 	}
 	if platform == service.PlatformGrok {
-		writeGrokModelsList(c, modelIDs)
-		return
+		return grokModelsListEntries(modelIDs)
 	}
 	models := make([]claude.Model, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -1418,7 +1451,7 @@ func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
 			CreatedAt:   "2024-01-01T00:00:00Z",
 		})
 	}
-	writeModelsListResponse(c, models)
+	return models
 }
 
 func writeAllowlistedModelsList(c *gin.Context, platform string, modelIDs []string) {
@@ -1443,6 +1476,10 @@ type grokModelListItem struct {
 }
 
 func writeGrokModelsList(c *gin.Context, modelIDs []string) {
+	writeModelsListResponse(c, grokModelsListEntries(modelIDs))
+}
+
+func grokModelsListEntries(modelIDs []string) []grokModelListItem {
 	defaults := xai.DefaultModels()
 	defaultsByID := make(map[string]xai.Model, len(defaults))
 	for _, model := range defaults {
@@ -1477,7 +1514,7 @@ func writeGrokModelsList(c *gin.Context, modelIDs []string) {
 		models = append(models, item)
 	}
 
-	writeModelsListResponse(c, models)
+	return models
 }
 
 func grokModelSupportsConfigurableReasoning(modelID string) bool {
@@ -1490,6 +1527,10 @@ func grokModelSupportsConfigurableReasoning(modelID string) bool {
 }
 
 func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
+	writeModelsListResponse(c, openAIModelsListEntries(modelIDs))
+}
+
+func openAIModelsListEntries(modelIDs []string) []openai.Model {
 	defaultsByID := make(map[string]openai.Model, len(openai.DefaultModels))
 	for _, model := range openai.DefaultModels {
 		defaultsByID[model.ID] = model
@@ -1510,7 +1551,7 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 			DisplayName: modelID,
 		})
 	}
-	writeModelsListResponse(c, models)
+	return models
 }
 
 // customModelsListSource 计算自定义 /v1/models 列表的“允许集合”。
@@ -1526,19 +1567,6 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 // 某模型后，仍会被默认模型兜底塞回，导致 /v1/models 与账号实际可服务集合不一致。
 func customModelsListSource(platform string, availableModels, fallbackModels []string) []string {
 	if platform == service.PlatformAnthropic && len(availableModels) > 0 {
-		return mergeModelIDs(availableModels, fallbackModels)
-	}
-	return availableModels
-}
-
-// modelListingSource 汇总模型列表过滤的候选来源：账号映射键（availableModels）
-// 与平台默认列表（fallbackModels）。账号映射为空时回落默认列表；Anthropic
-// 平台两者取并集，其余平台以账号映射键为准。
-func modelListingSource(platform string, availableModels, fallbackModels []string) []string {
-	if len(availableModels) == 0 {
-		return fallbackModels
-	}
-	if platform == service.PlatformAnthropic {
 		return mergeModelIDs(availableModels, fallbackModels)
 	}
 	return availableModels
@@ -1610,7 +1638,7 @@ func defaultCodexModelIDsForPlatform(platform string) []string {
 	case service.PlatformMiniMax:
 		return []string{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5"}
 	default:
-		return defaultModelIDsForPlatform(platform)
+		return service.DefaultModelIDsForPlatform(platform)
 	}
 }
 
@@ -2330,6 +2358,9 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	// 读取请求体
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
+		if middleware2.RejectRequestBodyReadError(c, err) {
+			return
+		}
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
@@ -2746,9 +2777,12 @@ func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task serv
 	if task == nil {
 		return
 	}
-	task = wrapUsageRecordTaskContext(parent, task)
-	if h.usageRecordWorkerPool != nil {
+	task, abandon := wrapUsageRecordTaskContext(parent, task)
+	if h.usageRecordWorkerPool != nil && !h.gatewayService.DurableUsageBillingEnabled() {
 		if mode := h.usageRecordWorkerPool.Submit(task); mode != service.UsageRecordSubmitModeDroppedStopped {
+			if mode.Dropped() {
+				abandon()
+			}
 			return
 		}
 		// 池已停止（进程关停窗口）：计费任务不能静默丢失，降级为内联同步执行。
@@ -2776,8 +2810,8 @@ func (h *GatewayHandler) submitMandatoryUsageRecordTask(parent context.Context, 
 	if task == nil {
 		return
 	}
-	task = wrapUsageRecordTaskContext(parent, task)
-	if h.usageRecordWorkerPool != nil {
+	task, _ = wrapUsageRecordTaskContext(parent, task)
+	if h.usageRecordWorkerPool != nil && !h.gatewayService.DurableUsageBillingEnabled() {
 		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {
 			return
 		}

@@ -1,12 +1,8 @@
 package handler
 
 import (
-	"context"
-	"time"
-
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/yeteam"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -20,6 +16,7 @@ func ProvideAdminHandlers(
 	userHandler *admin.UserHandler,
 	groupHandler *admin.GroupHandler,
 	accountHandler *admin.AccountHandler,
+	openaiOAuthReauthService *service.OpenAIOAuthReauthService,
 	announcementHandler *admin.AnnouncementHandler,
 	dataManagementHandler *admin.DataManagementHandler,
 	backupHandler *admin.BackupHandler,
@@ -65,18 +62,19 @@ func ProvideAdminHandlers(
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	opencodeGoUsage *service.OpenCodeGoUsageService,
-	yeTeamClient *yeteam.Client,
 	openAIGateway *service.OpenAIGatewayService,
 	codexHarvest *service.CodexHarvestService,
 	settingService *service.SettingService,
+	autoCredit service.AutoCreditRepository,
 ) *AdminHandlers {
 	accountHandler.SetOpenAIGatewayService(openAIGateway)
 	accountHandler.SetCodexHarvestService(codexHarvest)
 	accountHandler.SetCodexTicketSettings(settingService)
+	userHandler.SetAutoCredit(autoCredit)
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
 	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
-	accountHandler.SetYeTeamClient(yeTeamClient)
+	accountHandler.SetOpenAIOAuthReauthService(openaiOAuthReauthService)
 	return &AdminHandlers{
 		RequestCapture:         requestCaptureHandler,
 		Dashboard:              dashboardHandler,
@@ -147,12 +145,14 @@ func ProvideGatewayHandler(
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
 	gptAutoShadow *service.GPTAutoShadowService,
+	geminiCachedContentService *service.GeminiCachedContentService,
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, promptRuleService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
 	h.gptAutoShadow = gptAutoShadow
+	h.geminiCachedContentService = geminiCachedContentService
 	return h
 }
 
@@ -170,11 +170,9 @@ func ProvideOpenAIGatewayHandler(
 	grokQuotaService *service.GrokQuotaService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
-	yeTeamClient *yeteam.Client,
 	compositeResolver *service.CompositeRouteResolver,
 	gptAutoShadow *service.GPTAutoShadowService,
 ) *OpenAIGatewayHandler {
-	gatewayService.SetYeTeamClient(yeTeamClient)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, promptRuleService, contentModerationService, opsService, cfg)
 	h.compositeResolver = compositeResolver
@@ -210,18 +208,22 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 }
 
 // ProvideAdminSettingHandler creates admin.SettingHandler with notification template APIs.
-func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, aliyunCaptchaService *service.AliyunCaptchaService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService, totpService *service.TotpService, userService *service.UserService, autoSupplyService *service.AutoSupplyService, yeTeamClient *yeteam.Client) *admin.SettingHandler {
+func ProvideAIOpsHandler(ops *service.OpsService, tests *service.AccountTestService) *admin.OpsHandler {
+	ops.SetAIOpsProbeRunner(tests)
+	return admin.NewOpsHandler(ops)
+}
+
+func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, aliyunCaptchaService *service.AliyunCaptchaService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService, totpService *service.TotpService, userService *service.UserService) *admin.SettingHandler {
 	h := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, paymentConfigService, paymentService, userAttributeService)
 	h.SetNotificationEmailService(notificationEmailService)
 	h.SetAliyunCaptchaService(aliyunCaptchaService)
 	h.SetStepUpDeps(totpService, userService)
-	h.SetAutoSupplyService(autoSupplyService)
-	h.SetYeTeamClient(yeTeamClient)
 	return h
 }
 
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
+	lotteryHandler *LotteryHandler,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
 	dailyCheckinHandler *DailyCheckinHandler,
@@ -255,6 +257,7 @@ func ProvideHandlers(
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
 	return &Handlers{
+		Lottery:          lotteryHandler,
 		Auth:             authHandler,
 		User:             userHandler,
 		DailyCheckin:     dailyCheckinHandler,
@@ -288,8 +291,8 @@ func ProvideHandlers(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
-	ProvideYeTeamClient,
 	// Top-level handlers
+	NewLotteryHandler,
 	NewAuthHandler,
 	NewUserHandler,
 	NewDailyCheckinHandler,
@@ -321,7 +324,7 @@ var ProviderSet = wire.NewSet(
 	// Admin handlers
 	admin.NewDashboardHandler,
 	admin.NewUserHandler,
-	admin.NewGroupHandlerWithConfig,
+	admin.ProvideGroupHandlerWithProtection,
 	admin.ProvideAccountHandler,
 	admin.NewAnnouncementHandler,
 	admin.NewDataManagementHandler,
@@ -338,7 +341,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
 	ProvideAdminSettingHandler,
-	admin.NewOpsHandler,
+	ProvideAIOpsHandler,
 	ProvideSystemHandler,
 	admin.NewSubscriptionHandler,
 	admin.NewUsageHandler,
@@ -359,7 +362,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewChannelHandler,
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,
-	admin.NewContentModerationHandler,
+	admin.NewContentModerationHandlerWithSafetyPrompt,
 	admin.NewPaymentHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
@@ -370,27 +373,3 @@ var ProviderSet = wire.NewSet(
 	ProvideAdminHandlers,
 	ProvideHandlers,
 )
-
-// ProvideYeTeamClient adapts application configuration to the small external
-// client package so tests can continue constructing handlers with nil deps.
-func ProvideYeTeamClient(cfg *config.Config, settingService *service.SettingService) *yeteam.Client {
-	client := yeteam.NewClient(yeteam.Config{})
-	if cfg == nil {
-		return client
-	}
-	client = yeteam.NewClient(yeteam.Config{
-		Enabled:         cfg.YeTeam.Enabled,
-		BaseURL:         cfg.YeTeam.BaseURL,
-		AutoRefresh401:  cfg.YeTeam.AutoRefresh401,
-		Timeout:         time.Duration(cfg.YeTeam.TimeoutSeconds) * time.Second,
-		PollInterval:    time.Duration(cfg.YeTeam.PollIntervalSeconds) * time.Second,
-		MaxPollDuration: time.Duration(cfg.YeTeam.MaxPollSeconds) * time.Second,
-	})
-	if settingService != nil {
-		if settings, err := settingService.GetAllSettings(context.Background()); err == nil {
-			client.SetEnabled(settings.YeTeamEnabled)
-			client.SetAutoRefresh401(settings.YeTeamAutoRefresh401)
-		}
-	}
-	return client
-}

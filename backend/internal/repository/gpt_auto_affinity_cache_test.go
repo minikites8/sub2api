@@ -15,7 +15,7 @@ import (
 func TestGPTAutoAffinityConcurrentCAS(t *testing.T) {
 	srv := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer client.Close()
+	defer func() { require.NoError(t, client.Close()) }()
 	store := &gptAutoAffinityStore{rdb: client}
 	ctx := context.Background()
 	require.NoError(t, store.Set(ctx, "session", service.GPTAutoAffinity{Model: service.GPTAutoModelGPT61Sol, Sequence: 1}, time.Hour))

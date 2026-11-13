@@ -1,3 +1,9 @@
+import { apiClient } from '@/api/client'
+import { createPinia, setActivePinia } from 'pinia'
+import { useNewFeatureNoticeStore } from '@/stores/newFeatureNotices'
+import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
+import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
+import type { InternalAxiosRequestConfig } from 'axios'
 import { getAutoConfig } from '@/api/admin/autoConfig'
 import { defaultExcelBPSDefaults } from '@/utils/excelBPSDefaults'
 vi.mock('@/api/admin/autoConfig', () => ({ getAutoConfig: vi.fn() }))
@@ -13,9 +19,11 @@ import {
   setPlatformCatalog
 } from '@/constants/platformCatalog'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, showErrorMock } = vi.hoisted(() => ({
+const { updateAccountMock, syncUpstreamModelsMock, checkMixedChannelRiskMock, authIsSimpleMode, showErrorMock, showWarningMock } = vi.hoisted(() => ({
   showErrorMock: vi.fn(),
+  showWarningMock: vi.fn(),
   updateAccountMock: vi.fn(),
+  syncUpstreamModelsMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
@@ -23,6 +31,7 @@ const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, showErro
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: showErrorMock,
+    showWarning: showWarningMock,
     showSuccess: vi.fn(),
     showInfo: vi.fn()
   })
@@ -30,6 +39,7 @@ vi.mock('@/stores/app', () => ({
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
+    user: { id: 41, role: 'admin' },
     get isSimpleMode() {
       return authIsSimpleMode.value
     }
@@ -41,6 +51,7 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       getManagementCapabilities: vi.fn().mockResolvedValue({ web_search_enabled: false, account_quota_notify_enabled: false }),
       update: updateAccountMock,
+      syncUpstreamModels: syncUpstreamModelsMock,
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     settings: {
@@ -89,7 +100,7 @@ const ModelWhitelistSelectorStub = defineComponent({
       default: () => []
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'update:modelMappings'],
   template: `
     <div>
       <button
@@ -381,6 +392,64 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it.each(['active', 'error'])('omits unchanged OpenAI OAuth status %s from an unrelated edit', async (status) => {
+    const account = { ...buildOpenAIOAuthParentAccount(), status }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await flushPromises()
+    await wrapper.get('[data-tour="edit-account-form-name"]').setValue('Updated name')
+    await wrapper.get('#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledWith(account.id, expect.objectContaining({ name: 'Updated name' }))
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('status')
+  })
+
+  it('sends an explicitly changed OpenAI OAuth status', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockResolvedValue({ ...account, status: 'inactive' })
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await flushPromises()
+    const statusSelect = wrapper.findAll('select').find((select) => select.find('option[value="inactive"]').exists())
+    expect(statusSelect).toBeDefined()
+    await statusSelect!.setValue('inactive')
+    await wrapper.get('#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledWith(account.id, expect.objectContaining({ status: 'inactive' }))
+  })
+
+  it('round-trips and clears API-key image grants without affecting other extra fields', async () => {
+    const account = buildAccount()
+    account.extra = { extra_image_models: ['my-nai'], extra_image_model_prefixes: ['nai-diffusion-'], unrelated: 'preserve' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await flushPromises()
+    expect(wrapper.get<HTMLTextAreaElement>('[data-testid="extra-image-model-ids"]').element.value).toBe('my-nai')
+    expect(wrapper.get<HTMLTextAreaElement>('[data-testid="extra-image-model-prefixes"]').element.value).toBe('nai-diffusion-')
+    await wrapper.get('[data-testid="extra-image-model-ids"]').setValue(' my-nai, other-image\nmy-nai ')
+    await wrapper.get('#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).toMatchObject({ extra_image_models: ['my-nai', 'other-image'], extra_image_model_prefixes: ['nai-diffusion-'], unrelated: 'preserve' })
+    wrapper.unmount()
+    const restored = mountModal({ ...account, extra })
+    await flushPromises()
+    expect(restored.get<HTMLTextAreaElement>('[data-testid="extra-image-model-ids"]').element.value).toBe('my-nai\nother-image')
+    await restored.get('[data-testid="extra-image-model-ids"]').setValue('')
+    await restored.get('[data-testid="extra-image-model-prefixes"]').setValue('')
+    await restored.get('#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[1]?.[1]?.extra).toMatchObject({ extra_image_models: [], extra_image_model_prefixes: [], unrelated: 'preserve' })
+    restored.unmount()
+    for (const type of ['oauth', 'setup-token']) {
+      const oauth = mountModal({ ...account, type })
+      await flushPromises()
+      expect(oauth.find('[data-testid="extra-image-models"]').exists()).toBe(false)
+      oauth.unmount()
+    }
+  })
+
   it('round-trips OAuth alias scope and lets an operator restore a whitelist', async () => {
     const account = { ...buildAccount(), type: 'oauth', credentials: { model_mapping_mode: 'aliases', model_mapping: { 'gpt-5.4': 'gpt-5.6-sol' } } }
     const wrapper = mountModal(account); await flushPromises()
@@ -425,10 +494,63 @@ describe('EditAccountModal', () => {
 
   beforeEach(() => {
     showErrorMock.mockReset()
+    showWarningMock.mockReset()
+    syncUpstreamModelsMock.mockReset()
     authIsSimpleMode.value = true
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('persists the BPS session proxy toggle and clears it when BPS is disabled', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { openai_excel_bps: true, unrelated: 'preserve' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get<HTMLInputElement>('[data-testid="excel-bps-mihomo"]')
+    expect(toggle.element.checked).toBe(false)
+    await toggle.setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra.openai_excel_bps_mihomo).toBe(true)
+    expect(extra.unrelated).toBe('preserve')
+    wrapper.unmount()
+    const restored = mountModal({ ...account, extra })
+    expect(restored.get<HTMLInputElement>('[data-testid="excel-bps-mihomo"]').element.checked).toBe(true)
+    await restored.get('[data-testid="excel-bps-toggle"]').trigger('click')
+    await flushPromises()
+    expect(restored.find('[data-testid="excel-bps-mihomo"]').exists()).toBe(false)
+    await restored.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[1]?.[1]?.extra?.openai_excel_bps_mihomo).toBeUndefined()
+    restored.unmount()
+  })
+
+  it('persists the IP management pool as the session proxy source and drops it with the proxy', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { openai_excel_bps: true, openai_excel_bps_mihomo: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="excel-bps-proxy-source-mihomo"]').element.checked).toBe(true)
+    await wrapper.get('[data-testid="excel-bps-proxy-source-ip-pool"]').setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra.openai_excel_bps_proxy_source).toBe('ip_pool')
+    wrapper.unmount()
+    const restored = mountModal({ ...account, extra })
+    expect(restored.get<HTMLInputElement>('[data-testid="excel-bps-proxy-source-ip-pool"]').element.checked).toBe(true)
+    await restored.get('[data-testid="excel-bps-mihomo"]').setValue(false)
+    expect(restored.find('[data-testid="excel-bps-proxy-source-ip-pool"]').exists()).toBe(false)
+    await restored.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[1]?.[1]?.extra?.openai_excel_bps_proxy_source).toBeUndefined()
+    restored.unmount()
+  })
 
   it('saves and restores Excel BPS independently of existing OAuth settings', async () => {
     const account = buildAccount()
@@ -654,7 +776,7 @@ describe('EditAccountModal', () => {
     const options = {
       openai_excel_bps_403_recovery_interval_minutes: 360,
       openai_excel_bps_models: ['gpt-6-astra'], openai_excel_bps_mihomo: true,
-      openai_excel_bps_proxy_source: 'ip_pool', openai_excel_bps_ignore_images: true,
+      openai_excel_bps_proxy_source: 'ip_pool',
       openai_excel_bps_ignore_encrypted_content: true, openai_excel_bps_cache_creation_as_input: true,
       openai_excel_bps_auto_move_on_403: true, openai_excel_bps_403_target_group_id: 0
     }
@@ -950,6 +1072,152 @@ describe('EditAccountModal', () => {
     expect(mountModal(buildAccount()).find('[data-testid="excel-bps-toggle"]').exists()).toBe(false)
   })
 
+  it('loads and removes Copilot SDK mode without dropping unrelated extra', async () => {
+    const account = buildAccount()
+    account.extra = { openai_copilot_sdk: true, unrelated_setting: 'keep' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="copilot-sdk-toggle"]').element.checked).toBe(true)
+    await wrapper.get('[data-testid="copilot-sdk-toggle"]').setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_copilot_sdk).toBeUndefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.unrelated_setting).toBe('keep')
+  })
+
+  it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
+      { from: 'gpt-latest', to: 'deepseek-chat' }
+    ])
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual(account.credentials.model_mapping)
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true, account: { ...account } })
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
+      { from: 'gpt-latest', to: 'deepseek-chat' }
+    ])
+  })
+
+  it('saves reconciled whitelist and mapping events without restoring stale aliases', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = {
+      old: 'old',
+      'public-old': 'old',
+      'public-live': 'live'
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const selector = wrapper.getComponent(ModelWhitelistSelectorStub)
+
+    selector.vm.$emit('update:modelValue', ['live', 'new'])
+    selector.vm.$emit('update:modelMappings', [{ from: 'public-live', to: 'live' }])
+    await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      live: 'live',
+      new: 'new',
+      'public-live': 'live'
+    })
+  })
+
+  it('sets expiry presets from now instead of extending the saved expiry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2028-02-29T12:34:00'))
+    const account = buildAccount()
+    account.expires_at = new Date('2030-06-15T09:00:00').getTime() / 1000
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
+
+    for (const [label, expected] of [
+      ['payment.oneMonth', '2028-03-29T12:34'],
+      ['payment.oneYear', '2029-02-28T12:34'],
+    ]) {
+      const button = wrapper.findAll('button').find((candidate) => candidate.text() === label)!
+      expect(button.attributes('type')).toBe('button')
+      await button.trigger('click')
+      expect(input.element.value).toBe(expected)
+      expect(updateAccountMock).not.toHaveBeenCalled()
+    }
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.expires_at).toBe(new Date('2029-02-28T12:34:00').getTime() / 1000)
+    wrapper.unmount()
+  })
+
+  it('can clear a selected expiry preset before saving the account', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const button = wrapper.findAll('button').find((candidate) => candidate.text() === 'payment.oneYear')!
+    await button.trigger('click')
+    const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
+    expect(input.element.value).not.toBe('')
+    await input.setValue('')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.expires_at).toBe(0)
+    wrapper.unmount()
+  })
+
+  it('allows removing assigned inactive groups and undoing the selection before saving', async () => {
+    authIsSimpleMode.value = false
+    const account = buildAccount()
+    const activeGroup = {
+      id: 1,
+      name: 'Active group',
+      platform: 'openai',
+      status: 'active',
+      subscription_type: 'standard',
+      rate_multiplier: 1
+    }
+    const inactiveGroup = { ...activeGroup, id: 2, name: 'Paused group', status: 'inactive' }
+    account.group_ids = [1, 2]
+    account.groups = [
+      { ...activeGroup, name: 'Outdated name' },
+      inactiveGroup,
+      inactiveGroup,
+      { ...inactiveGroup, id: 3, name: 'Unassigned paused group' }
+    ]
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account, true)
+    await wrapper.setProps({ groups: [activeGroup] as any })
+    const selector = wrapper.get('[data-tour="account-form-groups"]')
+    expect(selector.findAll('input[type="checkbox"]').map(input => input.attributes('value')))
+      .toEqual(['1', '2'])
+    expect(selector.text()).toContain('Active group')
+    expect(selector.text()).not.toContain('Outdated name')
+    const pausedCheckbox = selector.get<HTMLInputElement>('input[value="2"]')
+    expect(pausedCheckbox.element.checked).toBe(true)
+
+    await pausedCheckbox.setValue(false)
+    expect(selector.get<HTMLInputElement>('input[value="2"]').element.checked).toBe(false)
+    await pausedCheckbox.setValue(true)
+    expect(pausedCheckbox.element.checked).toBe(true)
+    await pausedCheckbox.setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.group_ids).toEqual([1])
+    expect(account.group_ids).toEqual([1, 2])
+  })
+
   it('loads and submits Kiro direct API-key API region', async () => {
     const account = buildKiroAPIKeyAccount()
     account.credentials.api_region = 'eu-central-1'
@@ -1027,6 +1295,34 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
       'gpt-5.2': 'gpt-5.2'
     })
+  })
+
+  it.each([false, true])('preserves Mistral settings and redacted key when rotating=%s', async (rotate) => {
+    const account = buildAccount()
+    account.platform = 'mistral'
+    account.credentials = {
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://relay.example.com/v1',
+      api_base_urls: { chat_completions: 'https://relay.example.com/v1' },
+      model_mapping: { 'public-mistral': 'mistral-small-latest', 'codestral-latest': 'codestral-latest' },
+    }
+    account.credentials_status = { has_api_key: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const keyInput = wrapper.get('form#edit-account-form input[type="password"]')
+    expect((keyInput.element as HTMLInputElement).value).toBe('')
+    if (rotate) await keyInput.setValue('fixture-rotated-mistral-key')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).toMatchObject(account.credentials)
+    expect(credentials.api_base_urls).toEqual({ chat_completions: 'https://relay.example.com/v1' })
+    if (rotate) expect(credentials.api_key).toBe('fixture-rotated-mistral-key')
+    else expect(credentials).not.toHaveProperty('api_key')
   })
 
   it('preserves OpenCode Zen account type and endpoints on submit', async () => {
@@ -1480,6 +1776,43 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('loads and submits the per-account all-model UltraFast billing toggle', async () => {
+    const account = buildAccount()
+    account.extra = { openai_response_tier_billing_enabled: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="edit-openai-ultrafast-billing-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty(
+      'openai_response_tier_billing_enabled'
+    )
+  })
+
+  it('keeps upstream response-tier billing enabled when saving an existing account', async () => {
+    const account = buildAccount()
+    account.extra = { openai_response_tier_billing_enabled: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="edit-openai-ultrafast-billing-toggle"]').attributes('aria-checked')).toBe('true')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_response_tier_billing_enabled).toBe(true)
   })
 
   it('loads and clears the OAuth-only Codex namespace flatten toggle', async () => {
@@ -2333,6 +2666,26 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
   })
 
+  it('shows quota limit card for Vertex SA account and keeps quota limits on save', async () => {
+    const account = buildVertexAccount()
+    account.extra = { quota_limit: 200, quota_daily_limit: 20, quota_used: 35.5 }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.findComponent({ name: 'QuotaLimitCard' }).exists()).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra?.quota_limit).toBe(200)
+    expect(extra?.quota_daily_limit).toBe(20)
+    expect(extra?.quota_weekly_limit).toBeUndefined()
+  })
+
   it('blocks Vertex SA save when neither credentials_status nor legacy json indicates existence', async () => {
     const account = buildVertexAccount()
     account.credentials = {
@@ -2381,6 +2734,62 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.kiro_transient_retry_count).toBe(6)
   })
 
+  it('keeps the redacted Vertex API key when saving without entering a new one', async () => {
+    const account = buildVertexAccount()
+    account.credentials = {
+      auth_mode: 'apikey',
+      project_id: 'demo-project',
+      location: 'us-central1',
+      tier_id: 'vertex'
+    }
+    account.credentials_status = { has_api_key: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="edit-vertex-api-key-input"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="edit-vertex-api-key-project-id-input"]').setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).toMatchObject({ auth_mode: 'apikey', location: 'us-central1', tier_id: 'vertex' })
+    expect(credentials).not.toHaveProperty('api_key')
+    expect(credentials).not.toHaveProperty('project_id')
+  })
+
+  it('submits a rotated Vertex API key', async () => {
+    const account = buildVertexAccount()
+    account.credentials = { auth_mode: 'apikey', location: 'global', tier_id: 'vertex' }
+    account.credentials_status = { has_api_key: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-vertex-api-key-input"]').setValue(' rotated-key ')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.api_key).toBe('rotated-key')
+  })
+
+  it('blocks Vertex API key save when no key exists and none is entered', async () => {
+    const account = buildVertexAccount()
+    account.credentials = { auth_mode: 'apikey', location: 'global', tier_id: 'vertex' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).not.toHaveBeenCalled()
+  })
+
   it('loads and submits Antigravity configured project fallback', async () => {
     const account = buildAntigravityAccount('configured-project')
     updateAccountMock.mockReset()
@@ -2418,6 +2827,174 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty(
       'antigravity_project_id'
     )
+  })
+
+  describe('Antigravity upstream model synchronization', () => {
+    function buildSyncAccount() {
+      const account = buildAntigravityAccount()
+      account.credentials.model_mapping = {
+        old: 'old',
+        live: 'live',
+        'public-old': 'old',
+        'public-live': 'live',
+        'family-*': 'live'
+      }
+      return account
+    }
+
+    function mountSyncModal(account = buildSyncAccount()) {
+      updateAccountMock.mockReset().mockResolvedValue(account)
+      checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+      return mountModal(account)
+    }
+
+    function syncModels(wrapper: ReturnType<typeof mountModal>) {
+      const button = wrapper.findAll('button').find(candidate => candidate.text() === 'admin.accounts.syncUpstreamModels')
+      if (!button) throw new Error('Antigravity upstream model sync button not found')
+      return button.trigger('click')
+    }
+
+    it('replaces stale models in the draft and preserves redirects to live targets on save', async () => {
+      const account = buildSyncAccount()
+      syncUpstreamModelsMock.mockResolvedValue({
+        discovery_source: 'upstream',
+        models: [' live ', 'new', 'live', '*', ' ']
+      })
+      const wrapper = mountSyncModal(account)
+
+      await syncModels(wrapper)
+      await flushPromises()
+      expect(syncUpstreamModelsMock).toHaveBeenCalledWith(account.id)
+      expect(updateAccountMock).not.toHaveBeenCalled()
+      expect(account.credentials.model_mapping).toHaveProperty('old', 'old')
+
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+      expect(updateAccountMock).toHaveBeenCalledTimes(1)
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+        live: 'live',
+        new: 'new',
+        'public-live': 'live',
+        'family-*': 'live'
+      })
+    })
+
+    it.each([
+      { name: 'configured fallback', result: { discovery_source: 'configured_fallback', models: ['new'] } },
+      { name: 'unknown discovery source', result: { discovery_source: undefined, models: ['new'] } },
+      { name: 'empty upstream catalog', result: { discovery_source: 'upstream', models: [] } },
+      { name: 'wildcard-only upstream catalog', result: { discovery_source: 'upstream', models: ['*', 'family-*', ' '] } }
+    ])('preserves the declaration for $name', async ({ result }) => {
+      const account = buildSyncAccount()
+      syncUpstreamModelsMock.mockResolvedValue(result)
+      const wrapper = mountSyncModal(account)
+
+      await syncModels(wrapper)
+      await flushPromises()
+      expect(updateAccountMock).not.toHaveBeenCalled()
+      if (result.discovery_source !== 'upstream') {
+        expect(showWarningMock).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsUnverified')
+      }
+
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual(account.credentials.model_mapping)
+    })
+
+    it('keeps the existing declaration after upstream synchronization fails', async () => {
+      const account = buildSyncAccount()
+      syncUpstreamModelsMock.mockRejectedValue({ message: 'Synthetic upstream unavailable' })
+      const wrapper = mountSyncModal(account)
+
+      await syncModels(wrapper)
+      await flushPromises()
+      expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsError')
+      expect(updateAccountMock).not.toHaveBeenCalled()
+
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual(account.credentials.model_mapping)
+    })
+
+    it('does not overwrite a replacement account draft with a late sync response', async () => {
+      let finishSync!: (result: { discovery_source: string; models: string[] }) => void
+      syncUpstreamModelsMock.mockReturnValue(new Promise(resolve => { finishSync = resolve }))
+      const account = buildSyncAccount()
+      const wrapper = mountSyncModal(account)
+      await syncModels(wrapper)
+
+      const replacement = {
+        ...account,
+        credentials: { ...account.credentials, model_mapping: { replacement: 'replacement' } }
+      }
+      await wrapper.setProps({ account: replacement })
+      finishSync({ discovery_source: 'upstream', models: ['late-upstream'] })
+      await flushPromises()
+      expect(updateAccountMock).not.toHaveBeenCalled()
+
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({ replacement: 'replacement' })
+    })
+
+    it('ignores a sync response after the dialog closes', async () => {
+      let finishSync!: (result: { discovery_source: string; models: string[] }) => void
+      syncUpstreamModelsMock.mockReturnValue(new Promise(resolve => { finishSync = resolve }))
+      const wrapper = mountSyncModal()
+      await syncModels(wrapper)
+
+      await wrapper.setProps({ show: false })
+      finishSync({ discovery_source: 'configured_fallback', models: ['late-upstream'] })
+      await flushPromises()
+      expect(showWarningMock).not.toHaveBeenCalled()
+      expect(updateAccountMock).not.toHaveBeenCalled()
+    })
+
+    it('keeps a reopened dialog draft and its new request busy when an earlier response arrives', async () => {
+      type SyncResult = { discovery_source: string; models: string[] }
+      let finishPrevious!: (result: SyncResult) => void
+      let finishCurrent!: (result: SyncResult) => void
+      syncUpstreamModelsMock
+        .mockReturnValueOnce(new Promise(resolve => { finishPrevious = resolve }))
+        .mockReturnValueOnce(new Promise(resolve => { finishCurrent = resolve }))
+      const account = buildSyncAccount()
+      const wrapper = mountSyncModal(account)
+      const originalAccountProp = wrapper.props('account')
+      await syncModels(wrapper)
+
+      await wrapper.setProps({ show: false })
+      await wrapper.setProps({ show: true })
+      expect(wrapper.props('account')).toBe(originalAccountProp)
+      await syncModels(wrapper)
+      expect(syncUpstreamModelsMock).toHaveBeenCalledTimes(2)
+
+      finishPrevious({ discovery_source: 'upstream', models: ['previous-response'] })
+      await flushPromises()
+      expect(wrapper.findAll<HTMLInputElement>('input[placeholder="admin.accounts.requestModel"]')
+        .map(input => input.element.value)).toEqual(Object.keys(account.credentials.model_mapping))
+      const busyButton = wrapper.findAll('button')
+        .find(button => button.text() === 'admin.accounts.syncUpstreamModelsLoading')
+      expect(busyButton).toBeDefined()
+      expect(busyButton?.attributes('disabled')).toBeDefined()
+      expect(updateAccountMock).not.toHaveBeenCalled()
+
+      finishCurrent({ discovery_source: 'upstream', models: ['live', 'latest'] })
+      await flushPromises()
+      const readyButton = wrapper.findAll('button')
+        .find(button => button.text() === 'admin.accounts.syncUpstreamModels')
+      expect(readyButton).toBeDefined()
+      expect(readyButton?.attributes('disabled')).toBeUndefined()
+      expect(updateAccountMock).not.toHaveBeenCalled()
+
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+        live: 'live',
+        latest: 'latest',
+        'public-live': 'live',
+        'family-*': 'live'
+      })
+    })
   })
 })
 
@@ -2722,3 +3299,315 @@ describe('Excel BPS default template integration', () => {
   })
 
 })
+
+describe('EditAccountModal gemini explicit cache upstream switch', () => {
+  function buildGeminiApiKeyAccount(credentials: Record<string, unknown>) {
+    return {
+      id: 21,
+      name: 'Gemini upstream gateway',
+      notes: '',
+      platform: 'gemini',
+      type: 'apikey',
+      credentials: { api_key: 'sk-upstream', ...credentials },
+      credentials_status: { has_api_key: true },
+      extra: {},
+      proxy_id: null,
+      concurrency: 1,
+      priority: 1,
+      rate_multiplier: 1,
+      status: 'active',
+      group_ids: [],
+      expires_at: null,
+      auto_pause_on_expired: false
+    } as any
+  }
+
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  it('hides the switch for the official AI Studio address', () => {
+    const wrapper = mountModal(buildGeminiApiKeyAccount({ base_url: 'https://generativelanguage.googleapis.com' }))
+    expect(wrapper.find('[data-testid="explicit-cache-upstream-section"]').exists()).toBe(false)
+  })
+
+  it('loads and saves the switch and ttl limit for a custom upstream', async () => {
+    const account = buildGeminiApiKeyAccount({
+      base_url: 'https://upstream.example.com',
+      explicit_cache_upstream: true,
+      explicit_cache_upstream_max_ttl_seconds: 1800
+    })
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="explicit-cache-upstream-section"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="explicit-cache-upstream-toggle"]').attributes('aria-checked')).toBe('true')
+    const ttlInput = wrapper.get('[data-testid="explicit-cache-upstream-max-ttl"]')
+    expect((ttlInput.element as HTMLInputElement).value).toBe('1800')
+
+    await ttlInput.setValue('3600')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      explicit_cache_upstream: true,
+      explicit_cache_upstream_max_ttl_seconds: 3600
+    })
+  })
+
+  it('removes both fields when the switch is turned off', async () => {
+    const account = buildGeminiApiKeyAccount({
+      base_url: 'https://upstream.example.com',
+      explicit_cache_upstream: true,
+      explicit_cache_upstream_max_ttl_seconds: 1800
+    })
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="explicit-cache-upstream-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).not.toHaveProperty('explicit_cache_upstream')
+    expect(credentials).not.toHaveProperty('explicit_cache_upstream_max_ttl_seconds')
+  })
+})
+
+describe('EditAccountModal temp-unschedulable rule scope', () => {
+  function buildAccountWithTempUnschedRules(rules: Array<Record<string, unknown>>) {
+    const account = buildAccount()
+    return {
+      ...account,
+      credentials: {
+        ...account.credentials,
+        temp_unschedulable_enabled: true,
+        temp_unschedulable_rules: rules
+      }
+    } as any
+  }
+
+  const checkedScopes = (wrapper: ReturnType<typeof mountModal>) =>
+    wrapper
+      .findAll('[data-testid^="temp-unsched-scope-"][aria-checked="true"]')
+      .map((radio) => radio.attributes('data-testid'))
+
+  const savedRules = () =>
+    updateAccountMock.mock.calls[0]?.[1]?.credentials?.temp_unschedulable_rules
+
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  it('shows rules without scope the way the backend treats them and keeps that on save', async () => {
+    const account = buildAccountWithTempUnschedRules([
+      { error_code: 401, keywords: ['unauthorized'], duration_minutes: 10 },
+      { error_code: 503, keywords: ['unavailable'], duration_minutes: 30 }
+    ])
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    expect(checkedScopes(wrapper)).toEqual(['temp-unsched-scope-account', 'temp-unsched-scope-model'])
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(savedRules().map((rule: { scope: string }) => rule.scope)).toEqual(['account', 'model'])
+    wrapper.unmount()
+  })
+
+  it('respects an explicit scope and saves the card the operator picks', async () => {
+    const account = buildAccountWithTempUnschedRules([
+      { error_code: 401, keywords: ['unauthorized'], duration_minutes: 10, scope: 'model' },
+      { error_code: 503, keywords: ['unavailable'], duration_minutes: 30, scope: ' Account ' }
+    ])
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    expect(checkedScopes(wrapper)).toEqual(['temp-unsched-scope-model', 'temp-unsched-scope-account'])
+
+    await wrapper.findAll('[data-testid="temp-unsched-scope-model"]')[1].trigger('click')
+    expect(checkedScopes(wrapper)).toEqual(['temp-unsched-scope-model', 'temp-unsched-scope-model'])
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(savedRules().map((rule: { scope: string }) => rule.scope)).toEqual(['model', 'model'])
+    wrapper.unmount()
+  })
+
+  it('defaults a newly added rule to model scope', async () => {
+    const wrapper = mountModal(buildAccountWithTempUnschedRules([]))
+
+    const addRule = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.tempUnschedulable.addRule'))
+    await addRule!.trigger('click')
+
+    expect(checkedScopes(wrapper)).toEqual(['temp-unsched-scope-model'])
+    wrapper.unmount()
+  })
+})
+
+
+describe('OpenAI connection account type boundary in the actual editor', () => {
+  const originalAdapter = apiClient.defaults.adapter
+  const connectionRequests: string[] = []
+  beforeEach(() => {
+    connectionRequests.length = 0
+    apiClient.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+      if (config.url?.includes('/auth-connections')) connectionRequests.push(config.url)
+      return { config, status: 200, statusText: 'OK', headers: {}, data: { code: 0, message: '', data: [] } }
+    }
+  })
+  afterEach(() => { apiClient.defaults.adapter = originalAdapter })
+
+  it('never mounts or fetches connections for API key accounts, including type and dialog changes', async () => {
+    const account = { ...buildAccount(), credentials: { access_token: 'synthetic-misleading-oauth', api_key: 'synthetic-key' }, extra: { openai_connections_managed: true } }
+    const wrapper = mountModal(account)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="auth-connections"]').exists()).toBe(false)
+    expect(connectionRequests).toEqual([])
+    await wrapper.setProps({ show: false }); await wrapper.setProps({ show: true, account: { ...account, id: 43 } }); await flushPromises()
+    expect(connectionRequests).toEqual([])
+    await wrapper.setProps({ account: { ...account, type: 'oauth' } }); await flushPromises()
+    expect(wrapper.find('[data-testid="auth-connections"]').exists()).toBe(true)
+    expect(connectionRequests).toEqual(['/admin/accounts/1/auth-connections'])
+    await wrapper.setProps({ account }); await flushPromises()
+    expect(wrapper.find('[data-testid="auth-connections"]').exists()).toBe(false)
+    await wrapper.setProps({ account: { ...account, id: 44 } }); await flushPromises()
+    expect(connectionRequests).toHaveLength(1)
+  })
+
+  it('keeps OAuth connections available and excludes shadows and other platforms', async () => {
+    const wrapper = mountModal(buildOpenAIOAuthParentAccount())
+    await flushPromises()
+    expect(wrapper.find('[data-testid="auth-connections"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="auth-connections"] option').map(o => o.attributes('value'))).toEqual(['codex', 'bps', 'siwc'])
+    expect(connectionRequests).toEqual(['/admin/accounts/7/auth-connections'])
+    await wrapper.setProps({ account: buildOpenAISparkShadowAccount() }); await flushPromises()
+    expect(wrapper.find('[data-testid="auth-connections"]').exists()).toBe(false)
+    await wrapper.setProps({ account: { ...buildAccount(), platform: 'anthropic', type: 'oauth' } }); await flushPromises()
+    expect(wrapper.find('[data-testid="auth-connections"]').exists()).toBe(false)
+    expect(connectionRequests).toHaveLength(1)
+  })
+
+  it('keeps the Anthropic API key Claude Code mimic switch exclusive with strip identity', async () => {
+    const account = {
+      ...buildAccount(),
+      id: 21,
+      name: 'Claude Code only relay',
+      platform: 'anthropic',
+      type: 'apikey',
+      credentials: { api_key: 'sk-relay', base_url: 'https://relay.example.com' },
+      extra: { anthropic_mimic_claude_code: true, anthropic_mimic_claude_code_deduct_tokens: true, unrelated: 'preserve' }
+    } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    const mimicToggle = () => wrapper.get('[data-testid="anthropic-mimic-claude-code-toggle"]')
+    const stripToggle = () => wrapper.findAll('div.flex.items-center.justify-between')
+      .find(row => row.text().includes('admin.accounts.anthropic.stripClaudeCodeIdentityDesc'))!
+      .get('button')
+    expect(mimicToggle().classes()).toContain('bg-primary-600')
+    expect(stripToggle().classes()).not.toContain('bg-primary-600')
+
+    await stripToggle().trigger('click')
+    await flushPromises()
+    expect(stripToggle().classes()).toContain('bg-primary-600')
+    expect(mimicToggle().classes()).not.toContain('bg-primary-600')
+    await wrapper.get('#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const stripExtra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(stripExtra).toMatchObject({ anthropic_strip_claude_code_identity: true, unrelated: 'preserve' })
+    expect(stripExtra).not.toHaveProperty('anthropic_mimic_claude_code')
+    expect(stripExtra).not.toHaveProperty('anthropic_mimic_claude_code_deduct_tokens')
+
+    await mimicToggle().trigger('click')
+    await flushPromises()
+    expect(stripToggle().classes()).not.toContain('bg-primary-600')
+    await wrapper.get('#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const mimicExtra = updateAccountMock.mock.calls[1]?.[1]?.extra
+    expect(mimicExtra).toMatchObject({ anthropic_mimic_claude_code: true, unrelated: 'preserve' })
+    expect(mimicExtra).not.toHaveProperty('anthropic_strip_claude_code_identity')
+    expect(mimicExtra).not.toHaveProperty('anthropic_mimic_claude_code_deduct_tokens')
+  })
+
+  it.each([false, true])('restores and changes Anthropic estimated deduction from %s', async (deduct) => {
+    const account = {
+      ...buildAccount(),
+      id: 23,
+      platform: 'anthropic',
+      type: 'apikey',
+      credentials: { api_key: 'fixture-key', base_url: 'https://relay.example.com' },
+      extra: { anthropic_mimic_claude_code: true, anthropic_mimic_claude_code_deduct_tokens: deduct, unrelated: 'preserve' }
+    } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await flushPromises()
+    const toggle = wrapper.get('[data-testid="anthropic-mimic-claude-code-deduct-tokens-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe(String(deduct))
+    await toggle.trigger('click')
+    await wrapper.get('#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).toMatchObject({ anthropic_mimic_claude_code: true, unrelated: 'preserve' })
+    if (deduct) {
+      expect(extra).not.toHaveProperty('anthropic_mimic_claude_code_deduct_tokens')
+    } else {
+      expect(extra.anthropic_mimic_claude_code_deduct_tokens).toBe(true)
+    }
+  })
+
+  it('does not restore the Claude Code mimic switch when strip identity is also stored', async () => {
+    const account = {
+      ...buildAccount(),
+      id: 22,
+      platform: 'anthropic',
+      type: 'apikey',
+      credentials: { api_key: 'sk-relay', base_url: 'https://relay.example.com' },
+      extra: { anthropic_mimic_claude_code: true, anthropic_strip_claude_code_identity: true }
+    } as any
+    const wrapper = mountModal(account)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="anthropic-mimic-claude-code-toggle"]').classes()).not.toContain('bg-primary-600')
+  })
+})
+
+
+describe('initial OAuth model scope ownership', () => {
+ it.each([false, true])('shows the saved scope and only releases it on explicit takeover (%s)', async release => {
+  setActivePinia(createPinia())
+  const account = { ...buildAccount(), type: 'oauth', credentials: { model_mapping: {}, model_mapping_mode: 'whitelist', oauth_initial_selected_models: [] } }
+  const wrapper = mountModal(account); await flushPromises()
+  expect(wrapper.get('[data-testid="initial-model-scope-snapshot"]').text()).toContain('autoConfig.selection.accountHint')
+  if (release) await wrapper.get('[data-testid="release-initial-model-selection"]').setValue(true)
+  await wrapper.get('#edit-account-form').trigger('submit.prevent'); await flushPromises()
+  expect(updateAccountMock).toHaveBeenCalledWith(1, expect.objectContaining({ credentials: expect.objectContaining({ oauth_initial_selected_models: release ? null : [] }) }))
+  wrapper.unmount()
+ })
+})
+
+ it('shares the model-selection announcement with the account scope takeover control', async () => {
+  localStorage.clear(); const pinia = createPinia(); setActivePinia(pinia)
+  const notices = useNewFeatureNoticeStore(pinia)
+  notices.dismiss(41, NEW_FEATURE_NOTICES.protocolFeatureSwitches)
+  const account = { ...buildAccount(), type: 'oauth', credentials: { model_mapping: {}, model_mapping_mode: 'whitelist', oauth_initial_selected_models: [] } }
+  const wrapper = mountModal(account); await flushPromises()
+  const scope = wrapper.get('[data-testid="initial-model-scope-snapshot"]')
+  const announcement = wrapper.findAllComponents(NewFeatureBadge).find(b => b.props('noticeId') === NEW_FEATURE_NOTICES.oauthInitialModelSelection)!
+  expect(announcement.props('userId')).toBe(41)
+  expect(scope.find('[data-testid="new-feature-badge"]').exists()).toBe(true)
+  const sibling = mount(NewFeatureBadge, { props: { noticeId: NEW_FEATURE_NOTICES.oauthInitialModelSelection, userId: 41 }, global: { plugins: [pinia] } })
+  await announcement.get('button').trigger('click')
+  expect(sibling.find('button').exists()).toBe(false)
+  expect(wrapper.get<HTMLInputElement>('[data-testid="release-initial-model-selection"]').element.checked).toBe(false)
+  wrapper.unmount(); sibling.unmount(); setActivePinia(createPinia())
+  const reloaded = mountModal(account); await flushPromises()
+  expect(reloaded.get('[data-testid="initial-model-scope-snapshot"]').find('[data-testid="new-feature-badge"]').exists()).toBe(false)
+  expect(useNewFeatureNoticeStore().isDismissed(41, NEW_FEATURE_NOTICES.protocolFeatureSwitches)).toBe(true)
+  reloaded.unmount()
+ })

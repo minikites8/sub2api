@@ -51,6 +51,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
+		if middleware2.RejectRequestBodyReadError(c, err) {
+			return
+		}
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
@@ -113,6 +116,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	setOpsRequestContext(c, reqModel, reqStream)
+	bindOpenAIPriorityObservation(c, apiKey.GroupID, reqModel, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 	if gptAutoRoute == nil {
 		observeGPTAutoShadow(c, h.gptAutoShadow, apiKey, service.GPTAutoEndpointChatCompletions, body)
@@ -130,6 +134,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	forwardModel := openAIChannelForwardModel(channelMapping, reqModel)
+	c.Request = c.Request.WithContext(service.WithOpenAIForwardModel(c.Request.Context(), forwardModel, false))
 
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -154,7 +159,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+	if err := h.checkRegionalBillingEligibility(c.Request.Context(), apiKey, subscription); err != nil {
 		reqLog.Info("openai_chat_completions.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -163,6 +168,19 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
+
+	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
+	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
+	if err != nil {
+		reqLog.Info("openai_chat_completions.inflight_reservation_rejected", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+	defer inflightRelease()
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
@@ -177,31 +195,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	var lastAdmissionErr error
 	var rpmAdmission openAIRPMAdmission
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
-	ordinaryBPSFallbackStarted := false
 	var writerSizeBeforeForward int
-	lastWriterSizeBeforeForward := -1
-	startOrdinaryBPSFallback := func() bool {
-		if requestPrefersAccountRetry(c) && switchCount >= maxAccountSwitches {
-			return false
-		}
-		if ordinaryBPSFallbackStarted || !enterExcelBPSOrdinaryFallback(c) {
-			return false
-		}
-		ordinaryBPSFallbackStarted = true
-		if requestPrefersAccountRetry(c) {
-			switchCount++
-		}
-		clearExcelBPSFailoverMaps(failedAccountIDs, sameAccountRetrier.counts)
-		if !requestPrefersAccountRetry(c) {
-			switchCount = 0
-		}
-		profitVetoCount = 0
-		lastFailoverErr = nil
-		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
-		return true
-	}
-
-	c.Request = c.Request.WithContext(service.WithExcelBPSFailoverContext(c.Request.Context()))
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
@@ -227,11 +221,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			if errors.Is(err, service.ErrPriorityLatencyUnavailable) {
+				h.handleTurnAdmissionError(c, err, streamStarted)
+				return
+			}
+
 			err = rpmAdmission.selectionError(err)
 			if isOpenAIRPMError(err) {
-				if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
-					continue
-				}
 				rpmAdmission.retryAfter(c, err)
 				cls := classifySelectionFailureError(err, noAccountErrorClassification{})
 				h.handleStreamingAwareErrorWithCode(c, cls.Status, cls.ErrType, cls.Code, cls.Message, streamStarted, false)
@@ -260,9 +256,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				h.handleStreamingAwareErrorWithCode(c, cls.Status, cls.ErrType, cls.Code, cls.Message, streamStarted, false)
 				return
 			} else {
-				if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
-					continue
-				}
 				if lastAdmissionErr != nil && lastFailoverErr == nil {
 					h.handleTurnAdmissionError(c, lastAdmissionErr, streamStarted)
 				} else if lastFailoverErr != nil {
@@ -274,9 +267,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
-			if lastFailoverErr != nil && canStartExcelBPSOrdinaryFallback(c, lastWriterSizeBeforeForward, lastFailoverErr) && startOrdinaryBPSFallback() {
-				continue
-			}
 			if len(failedAccountIDs) == 0 {
 				if nextBody, nextModel, rerouted := rerouteGPTAutoLive(c, gptAutoRoute, apiKey, service.GPTAutoEndpointChatCompletions, body); rerouted {
 					body, reqModel = nextBody, nextModel
@@ -323,12 +313,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 
-		forwardBody := body
-		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-		}
+		forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 		writerSizeBeforeForward = c.Writer.Size()
-		lastWriterSizeBeforeForward = writerSizeBeforeForward
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -337,11 +323,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardAsChatCompletions(rpmAdmission.forwardContext(c.Request.Context(), account), c, account, forwardBody, promptCacheKey, "")
 		}()
-		if reselectExcelBPSNativeBypass(c, writerSizeBeforeForward, err, account.ID, failedAccountIDs) {
-			lastFailoverErr = nil
-			lastAdmissionErr = nil
-			continue
-		}
 		service.ObserveGPTQoSForwardResult(c.Request.Context(), result)
 		if retryOpenAIInitialAdmission(c, err, result, body, account.ID, failedAccountIDs, &switchCount, maxAccountSwitches) {
 			lastAdmissionErr = err
@@ -449,9 +430,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						}
 					}
 					if !forbiddenBudget.canRetry(failoverErr, switchCount) {
-						if canStartExcelBPSOrdinaryFallback(c, writerSizeBeforeForward, failoverErr) && startOrdinaryBPSFallback() {
-							continue
-						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -476,17 +454,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						if canStartExcelBPSOrdinaryFallback(c, writerSizeBeforeForward, failoverErr) && startOrdinaryBPSFallback() {
-							continue
-						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
-						if canStartExcelBPSOrdinaryFallback(c, writerSizeBeforeForward, failoverErr) && startOrdinaryBPSFallback() {
-							continue
-						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -534,6 +506,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 
+		h.gatewayService.ObserveGroupAntiDistillationUsage(c.Request.Context(), apiKey, account, result, time.Time{}, body)
 		submitChatUsage(result)
 		reqLog.Debug("openai_chat_completions.request_completed",
 			zap.Int64("account_id", account.ID),

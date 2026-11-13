@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/keyedlock"
 	"io"
 	"net/http"
 	"net/url"
@@ -26,14 +25,13 @@ type HarvestNode struct {
 }
 
 type DirectedSidecar struct {
-	Controller  string
-	Secret      string
-	ProxyURL    string
-	PoolID      string
-	root        string
-	config      directedConfig
-	managed     *Manager
-	managedLane int
+	Controller string
+	Secret     string
+	ProxyURL   string
+	PoolID     string
+	root       string
+	config     directedConfig
+	managed    *Manager
 }
 
 type directedProxy struct {
@@ -46,7 +44,7 @@ type directedProxy struct {
 	All      []string `json:"all"`
 }
 
-var directedLocks keyedlock.Pool
+var directedGate = make(chan struct{}, 1)
 var directedHTTP = &http.Client{
 	Timeout:       5 * time.Second,
 	Transport:     &http.Transport{Proxy: nil, DisableKeepAlives: true},
@@ -199,12 +197,13 @@ func (s *DirectedSidecar) Acquire(ctx context.Context, node HarvestNode) (func()
 	}
 	wait, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	unlock, err := directedLocks.Acquire(wait, s.Controller+"/"+HarvestSelectGroup)
-	if err != nil {
-		return nil, err
+	select {
+	case directedGate <- struct{}{}:
+	case <-wait.Done():
+		return nil, wait.Err()
 	}
 	var once sync.Once
-	release := func() { once.Do(unlock) }
+	release := func() { once.Do(func() { <-directedGate }) }
 	if err := s.control(ctx, http.MethodPut, "/proxies/"+url.PathEscape(HarvestSelectGroup), map[string]string{"name": node.Name}, nil); err != nil {
 		release()
 		return nil, err

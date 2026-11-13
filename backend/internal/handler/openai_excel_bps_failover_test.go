@@ -35,13 +35,12 @@ const excelBPSFailoverRequestBody = `{"model":"gpt-6-astra","stream":%t,"input":
 // every BPS attempt.
 type excelBPSFailoverUpstream struct {
 	service.HTTPUpstream
-	mu             sync.Mutex
-	accountIDs     []int64
-	bodies         [][]byte
-	urls           []string
-	answer         func(call int) *http.Response
-	ordinaryAnswer func() *http.Response
-	onDo           func(call int)
+	mu         sync.Mutex
+	accountIDs []int64
+	bodies     [][]byte
+	urls       []string
+	answer     func(call int) *http.Response
+	onDo       func(call int)
 }
 
 func (u *excelBPSFailoverUpstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
@@ -55,9 +54,7 @@ func (u *excelBPSFailoverUpstream) Do(req *http.Request, _ string, accountID int
 	if u.onDo != nil {
 		u.onDo(call)
 	}
-	if u.ordinaryAnswer != nil && !strings.Contains(req.URL.Path, "basispoints/api/responses") {
-		return u.ordinaryAnswer(), nil
-	}
+
 	return u.answer(call), nil
 }
 
@@ -146,12 +143,13 @@ func newExcelBPSFailoverTestContext(ctx context.Context, stream bool) (*gin.Cont
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = req
 	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		ID:      99,
-		GroupID: &groupID,
-		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, EnableBPS: true},
-		User:    &service.User{ID: 100},
+		ID:               99,
+		GroupID:          &groupID,
+		Group:            &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+		User:             &service.User{ID: 100},
+		AllowLongContext: true,
 	})
-	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.Group, &service.Group{ID: groupID, Platform: service.PlatformOpenAI, EnableBPS: true}))
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.Group, &service.Group{ID: groupID, Platform: service.PlatformOpenAI}))
 	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 100, Concurrency: 0})
 	return c, rec
 }
@@ -203,51 +201,6 @@ func TestOpenAIResponsesExcelBPS429SwitchesAccountAndCoolsIt(t *testing.T) {
 
 			require.Equal(t, []int64{throttled, healthy, healthy}, upstream.calls(), "the cooling account is skipped by the next request")
 			require.Equal(t, http.StatusOK, rec.Code)
-		})
-	}
-}
-
-func TestOpenAIResponsesExcelBPS429OnEveryAccountFallsBackToOrdinary(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	for _, tc := range []struct {
-		name, retryAfter, wantRetryAfter string
-		stream, loadBatch                bool
-	}{
-		{name: "json", retryAfter: "30", wantRetryAfter: "30"},
-		{name: "stream request", retryAfter: "30", wantRetryAfter: "30", stream: true},
-		{name: "load-aware scheduling", retryAfter: "30", wantRetryAfter: "30", loadBatch: true},
-		{name: "invalid retry after", retryAfter: "soon"},
-		{name: "retry after beyond a week", retryAfter: "999999"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			upstream := &excelBPSFailoverUpstream{answer: func(int) *http.Response { return excelBPS429(tc.retryAfter) }, ordinaryAnswer: excelBPSCompleted}
-			handler := newExcelBPSFailoverTestHandler(t, upstream, tc.loadBatch)
-
-			c, rec := newExcelBPSFailoverTestContext(context.Background(), tc.stream)
-			body, err := io.ReadAll(c.Request.Body)
-			require.NoError(t, err)
-			body = []byte(strings.ReplaceAll(string(body), "gpt-6-astra", "gpt-6-sol"))
-			c.Request.Body = io.NopCloser(bytes.NewReader(body))
-			c.Request.ContentLength = int64(len(body))
-			handler.Responses(c)
-
-			calls := upstream.calls()
-			require.Len(t, calls, 3, "status=%d body=%s", rec.Code, rec.Body.String())
-			require.NotEqual(t, calls[0], calls[1])
-			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-			require.Contains(t, rec.Body.String(), "done")
-			require.NotContains(t, rec.Body.String(), "PRIVATE_UPSTREAM")
-			require.Contains(t, upstream.urls[2], "/backend-api/codex/responses")
-
-			// A fresh request with no eligible BPS accounts fails selection without replaying customer input.
-			c, rec = newExcelBPSFailoverTestContext(context.Background(), tc.stream)
-			c.Request.Body = io.NopCloser(bytes.NewReader(body))
-			c.Request.ContentLength = int64(len(body))
-			handler.Responses(c)
-
-			require.Len(t, upstream.calls(), 3)
-			require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
-			require.Equal(t, "api_error", gjson.Get(rec.Body.String(), "error.type").String())
 		})
 	}
 }

@@ -460,6 +460,10 @@
                 {{ t('admin.users.deposit') }}
               </button>
             </div>
+            <div v-if="creditAuth.isAdmin && row.auto_credit_outstanding && !/^0(?:\.0+)?$/.test(row.auto_credit_outstanding)" class="mt-1 flex items-center gap-1">
+              <button type="button" class="text-left text-xs font-semibold text-amber-700 dark:text-amber-300" @click="autoCreditUser = row">{{ t('autoCredit.debt', { amount: Number(row.auto_credit_outstanding).toFixed(2) }) }}</button>
+              <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.vipAutoCredit" :user-id="creditAuth.user?.id" compact />
+            </div>
           </template>
 
           <template #cell-balance_platform_quota="{ row }">
@@ -631,6 +635,10 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
+              <div v-if="creditAuth.isAdmin" class="flex items-center gap-1">
+                <button type="button" class="rounded-lg p-1.5 text-xs text-amber-700 hover:bg-amber-50 dark:text-amber-300" @click="autoCreditUser = row">{{ t('autoCredit.title') }}</button>
+                <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.vipAutoCredit" :user-id="creditAuth.user?.id" compact />
+              </div>
               <!-- Edit Button -->
               <button
                 @click="handleEdit(row)"
@@ -818,6 +826,7 @@
       @close="closeBanModal"
       @success="handleBanSuccess"
     />
+    <UserAutoCreditModal :show="!!autoCreditUser" :user="autoCreditUser" @close="autoCreditUser = null" @success="loadUsers" />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserRechargeDiscountCouponModal :show="showRechargeCouponModal" :user="rechargeCouponUser" @close="closeRechargeCouponModal" @success="loadUsers" />
     <DiscountCouponImportModal :show="showCouponImportModal" @close="showCouponImportModal = false" @success="loadUsers" />
@@ -867,11 +876,17 @@ import UserBanModal from '@/components/admin/user/UserBanModal.vue'
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
 import UserRechargeDiscountCouponModal from '@/components/admin/user/UserRechargeDiscountCouponModal.vue'
 import DiscountCouponImportModal from '@/components/admin/user/DiscountCouponImportModal.vue'
+import UserAutoCreditModal from '@/components/admin/user/UserAutoCreditModal.vue'
+import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
+import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
+import { useAuthStore } from '@/stores/auth'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
 const showCouponImportModal = ref(false)
+const creditAuth = useAuthStore()
+const autoCreditUser = ref<AdminUser | null>(null)
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>

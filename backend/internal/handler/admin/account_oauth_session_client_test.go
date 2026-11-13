@@ -38,7 +38,7 @@ func TestOAuthSessionImportClientIsolationAndReimport(t *testing.T) {
 				Credentials: map[string]any{"chatgpt_account_id": "workspace", "chatgpt_user_id": "member",
 					"access_token": "old-access", "refresh_token": "old-refresh", "client_id": existingClient}}
 			svc := newCodexImportMemoryAdminService([]service.Account{existing})
-			handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+			handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 			raw := buildCodexRefreshImportValue(t, "workspace", "member", "excel-refresh")
 			raw["client_id"] = "excel-client-test"
 			req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)}
@@ -64,7 +64,7 @@ func TestOAuthSessionImportClientIsolationAndReimport(t *testing.T) {
 
 func TestOAuthSessionBatchKeepsDifferentClientsSeparate(t *testing.T) {
 	svc := newCodexImportMemoryAdminService(nil)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	var entries []codexImportEntry
 	for n, client := range []string{openai.ClientID, "excel-client-test", "excel-client-test"} {
 		raw := buildCodexRefreshImportValue(t, "workspace", "member", "paired-refresh")
@@ -89,7 +89,7 @@ func TestOAuthSessionAccessOnlyRetainsExplicitClient(t *testing.T) {
 
 func TestOAuthSessionCustomClientKeepsWorkspacesSeparate(t *testing.T) {
 	svc := newCodexImportMemoryAdminService(nil)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	var entries []codexImportEntry
 	for n, workspace := range []string{"workspace-a", "workspace-b"} {
 		raw := buildCodexRefreshImportValue(t, workspace, "same-user", "refresh")

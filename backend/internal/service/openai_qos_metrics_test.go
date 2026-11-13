@@ -107,7 +107,8 @@ func TestGPTQoSSnapshotIncludesGroupMetricsAndProtocolShares(t *testing.T) {
 	got := svc.GPTQoSSnapshotFiltered(context.Background(), filter)
 	require.Equal(t, filter, store.filter, "one filtered event population drives totals and children")
 	require.Equal(t, map[string]int{"apikey": 1, "oauth": 1, "unknown": 1}, got["account_type_requests"])
-	groups := got["groups"].(map[string][]GPTQoSGroupMetrics)
+	groups, ok := got["groups"].(map[string][]GPTQoSGroupMetrics)
+	require.True(t, ok, "QoS metrics must contain typed group metrics")
 	require.Equal(t, summarizeGPTQoSMetrics(store.events)["premium"], groups["premium"][0].GPTQoSTierMetrics)
 }
 
@@ -118,7 +119,7 @@ func TestGPTQoSMetricsObserveActualSelectionAndSubmission(t *testing.T) {
 				svc, req := qualityTestGateway(false)
 				svc.settingService.gptQoSConfig.config.Enabled = queue
 				svc.settingService.gptQoSConfig.config.LogSampleRate = 0
-				repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+				repo := qualityTestAccountRepo(t, svc)
 				repo.accounts[0].Type = accountType
 				svc.accountRepo = repo
 				store := &qosMetricsTestStore{recorded: make(chan GPTQoSMetric, 1)}
@@ -132,7 +133,8 @@ func TestGPTQoSMetricsObserveActualSelectionAndSubmission(t *testing.T) {
 				require.NoError(t, MarkGPTQoSSubmission(ctx)) // retry: same original user request
 				selection.ReleaseFunc()
 				// A later selection rejected before submission must not rewrite provenance.
-				state := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState)
+				state, ok := ctx.Value(gptQoSRequestKey{}).(*gptQoSRequestState)
+				require.True(t, ok, "QoS request context must contain state")
 				state.mu.Lock()
 				state.accountType = "unsent-account"
 				state.mu.Unlock()

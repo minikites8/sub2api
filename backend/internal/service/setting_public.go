@@ -249,10 +249,14 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyPluginManagementEnabled,
 		SettingKeySupportTicketEnabled,
+		SettingKeyLotteryEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
 		SettingKeyUsageShowLongContextBadge,
+		SettingKeyUsageShowCacheRate,
+		SettingKeyUsageShowCacheRateToUsers,
+		SettingKeyUsageShowUpstreamResponseModelToUsers,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -391,12 +395,17 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
 		SupportTicketEnabled:    settings[SettingKeySupportTicketEnabled] == "true",
+		LotteryEnabled:          settings[SettingKeyLotteryEnabled] == "true",
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
 
 		UsageShowLongContextBadge: settings[SettingKeyUsageShowLongContextBadge] != "false",
+
+		UsageShowCacheRate:                    settings[SettingKeyUsageShowCacheRate] != "false",
+		UsageShowCacheRateToUsers:             settings[SettingKeyUsageShowCacheRateToUsers] == "true",
+		UsageShowUpstreamResponseModelToUsers: settings[SettingKeyUsageShowUpstreamResponseModelToUsers] == "true",
 	}, nil
 }
 
@@ -578,6 +587,21 @@ func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
 	return vals[SettingKeyAllowUserViewErrorRequests] == "true"
 }
 
+// IsUserUpstreamResponseModelVisible reads whether end users may see the
+// model declared by the upstream response. Fail-closed: missing service,
+// read errors, and any value other than "true" stay hidden.
+func (s *SettingService) IsUserUpstreamResponseModelVisible(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyUsageShowUpstreamResponseModelToUsers})
+	if err != nil {
+		slog.Warn("failed to get usage_show_upstream_response_model_to_users setting, defaulting to false", "error", err)
+		return false
+	}
+	return vals[SettingKeyUsageShowUpstreamResponseModelToUsers] == "true"
+}
+
 // PublicSettingsInjectionPayload is the JSON shape embedded into HTML as
 // `window.__APP_CONFIG__` so the frontend can hydrate feature flags & site
 // config before the first XHR finishes.
@@ -673,19 +697,23 @@ type PublicSettingsInjectionPayload struct {
 	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
 	// ChannelMonitorHideUserRanking hides the user ranking tab and /users payload
 	// from non-admin channel-monitor v2 viewers; default false (visible).
-	ChannelMonitorHideUserRanking bool `json:"channel_monitor_hide_user_ranking"`
-	ChannelMonitorShowQuota       bool `json:"channel_monitor_show_quota"`
-	AvailableChannelsEnabled      bool `json:"available_channels_enabled"`
-	PelicanShowcaseEnabled        bool `json:"pelican_showcase_enabled"`
-	SubscriptionEnabled           bool `json:"subscription_enabled"`
-	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
-	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
-	SupportTicketEnabled          bool `json:"support_ticket_enabled"`
-	AffiliateEnabled              bool `json:"affiliate_enabled"`
-	RiskControlEnabled            bool `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
-	UsageShowLongContextBadge     bool `json:"usage_show_long_context_badge"`
+	ChannelMonitorHideUserRanking         bool `json:"channel_monitor_hide_user_ranking"`
+	ChannelMonitorShowQuota               bool `json:"channel_monitor_show_quota"`
+	AvailableChannelsEnabled              bool `json:"available_channels_enabled"`
+	PelicanShowcaseEnabled                bool `json:"pelican_showcase_enabled"`
+	SubscriptionEnabled                   bool `json:"subscription_enabled"`
+	ModelPlazaEnabled                     bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth                 bool `json:"model_plaza_require_auth"`
+	PluginManagementEnabled               bool `json:"plugin_management_enabled"`
+	SupportTicketEnabled                  bool `json:"support_ticket_enabled"`
+	LotteryEnabled                        bool `json:"lottery_enabled"`
+	AffiliateEnabled                      bool `json:"affiliate_enabled"`
+	RiskControlEnabled                    bool `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests            bool `json:"allow_user_view_error_requests"`
+	UsageShowLongContextBadge             bool `json:"usage_show_long_context_badge"`
+	UsageShowCacheRate                    bool `json:"usage_show_cache_rate"`
+	UsageShowCacheRateToUsers             bool `json:"usage_show_cache_rate_to_users"`
+	UsageShowUpstreamResponseModelToUsers bool `json:"usage_show_upstream_response_model_to_users"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -757,30 +785,34 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BalanceLowNotifyThreshold:           settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:         settings.BalanceLowNotifyRechargeURL,
 
-		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
-		ExcelBPSEnabled:                      settings.ExcelBPSEnabled,
-		PrismBrowserEnabled:                  settings.PrismBrowserEnabled,
-		ChannelMonitorMode:                   settings.ChannelMonitorMode,
-		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
-		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
-		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
-		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
-		GrokDefaultTextModel:                 settings.GrokDefaultTextModel,
-		GrokCrossClientModelMapEnabled:       settings.GrokCrossClientModelMapEnabled,
-		GrokDefaultBaseURLMode:               settings.GrokDefaultBaseURLMode,
-		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
-		PublicTransitEnabled:                 settings.PublicTransitEnabled,
-		PublicTransitPageEnabled:             settings.PublicTransitPageEnabled,
-		PelicanShowcaseEnabled:               settings.PelicanShowcaseEnabled,
-		SubscriptionEnabled:                  settings.SubscriptionEnabled,
-		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
-		PluginManagementEnabled:              settings.PluginManagementEnabled,
-		SupportTicketEnabled:                 settings.SupportTicketEnabled,
-		AffiliateEnabled:                     settings.AffiliateEnabled,
-		RiskControlEnabled:                   settings.RiskControlEnabled,
-		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
-		UsageShowLongContextBadge:            settings.UsageShowLongContextBadge,
+		ChannelMonitorEnabled:                 settings.ChannelMonitorEnabled,
+		ExcelBPSEnabled:                       settings.ExcelBPSEnabled,
+		PrismBrowserEnabled:                   settings.PrismBrowserEnabled,
+		ChannelMonitorMode:                    settings.ChannelMonitorMode,
+		ChannelMonitorDefaultIntervalSeconds:  settings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorHideThroughput:          settings.ChannelMonitorHideThroughput,
+		ChannelMonitorShowQuota:               settings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:         settings.ChannelMonitorHideUserRanking,
+		GrokDefaultTextModel:                  settings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled:        settings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:                settings.GrokDefaultBaseURLMode,
+		AvailableChannelsEnabled:              settings.AvailableChannelsEnabled,
+		PublicTransitEnabled:                  settings.PublicTransitEnabled,
+		PublicTransitPageEnabled:              settings.PublicTransitPageEnabled,
+		PelicanShowcaseEnabled:                settings.PelicanShowcaseEnabled,
+		SubscriptionEnabled:                   settings.SubscriptionEnabled,
+		ModelPlazaEnabled:                     settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:                 settings.ModelPlazaRequireAuth,
+		PluginManagementEnabled:               settings.PluginManagementEnabled,
+		SupportTicketEnabled:                  settings.SupportTicketEnabled,
+		LotteryEnabled:                        settings.LotteryEnabled,
+		AffiliateEnabled:                      settings.AffiliateEnabled,
+		RiskControlEnabled:                    settings.RiskControlEnabled,
+		AllowUserViewErrorRequests:            settings.AllowUserViewErrorRequests,
+		UsageShowLongContextBadge:             settings.UsageShowLongContextBadge,
+		UsageShowCacheRate:                    settings.UsageShowCacheRate,
+		UsageShowCacheRateToUsers:             settings.UsageShowCacheRateToUsers,
+		UsageShowUpstreamResponseModelToUsers: settings.UsageShowUpstreamResponseModelToUsers,
 	}, nil
 }
 

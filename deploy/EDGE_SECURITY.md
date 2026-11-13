@@ -49,6 +49,15 @@ headers are ignored completely when the switch is disabled. In that mode Gin's
 CIDR/IP addresses that connect directly to Sub2API. An explicit empty list
 trusts no forwarded client IPs.
 
+When `server.trusted_proxies` is omitted, only `127.0.0.1/32` and `::1/128`
+are trusted, so local Nginx/1Panel proxies can pass the visitor address without
+extra configuration. This trusts forwarding headers supplied by local
+processes; set an explicit empty list to disable that trust. Explicit lists
+replace the defaults. Docker bridge addresses, private subnets and CDN peers
+are never added automatically. Changes require restarting Sub2API. These
+defaults also apply to auth IP guards and IP risk control, which always use
+the trusted proxy chain regardless of the compatibility switch.
+
 On the first upgrade to this mode, a legacy `false` value is changed to `true`
 only when `server.trusted_proxies` was not explicitly configured; explicit
 proxy policies remain in secure mode. New installations persist the configured
@@ -207,3 +216,11 @@ cannot absorb volumetric attacks, TLS floods, bandwidth saturation, or a large
 distributed source set. Those require upstream network capacity, CDN/WAF
 filtering, provider firewall rules, and origin isolation. Avoid high-cardinality
 metrics or per-request database security logs during rejection storms.
+
+## Request-body memory budget
+
+`gateway.request_body_memory_budget_bytes` is one shared instance budget across gateway aliases and text/media routes. When absent from both YAML and a non-empty `GATEWAY_REQUEST_BODY_MEMORY_BUDGET_BYTES`, startup chooses one quarter of the smallest physical RAM, cgroup v1/v2 ancestor limit and GOMEMLIMIT, with a minimum of 1 GiB. Startup logs both detected memory and chosen budget. Explicit values, including `0` (disabled), remain unchanged; remove a pinned 1073741824 value to enable automatic sizing.
+
+Read chunks, assembly, decompression, Zstd workspace and JSON normalization reserve capacity before allocation. Temporary intermediates are released after their phase; final bodies remain charged until handler return, including long SSE responses. Preread borrowed buffers stay charged to their original owner. Accepted asynchronous image tasks take over their body reservation and release it on completion/cancellation. Exhaustion returns 503 with Retry-After: 1; per-request limits remain 413. This admission budget does not bound total heap/RSS: leave headroom for stream frames, conversion state, caches, connections and GC. For example 200 streams retaining 4 MiB use about 800 MiB, before concurrent decoder workspace.
+
+Compressed output is limited to 64 MiB by default; fork callers specifying a different decoded cap retain that cap. Oversize decompression is rejected rather than truncated. Zstd has one decoder worker and an 8 MiB window cap. Cgroup files are opened through os.Root to prevent mount escape, including symlinks.

@@ -30,14 +30,13 @@ PAGE = PICKER + '''<script src="/fixture-app.js"></script><button onclick="docum
 <button role="menuitem" hidden onclick="location.href='/?u='+crypto.randomUUID()">Blank project</button>
 <button onclick="window.chat=[]">New chat tab</button>
 <textarea placeholder="Ask anything"></textarea><script>
-window.chat=[]; window.fixtureConversation='cdx1_'+crypto.randomUUID();
+window.chat=[];
 document.querySelector('textarea').addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter') return;
   e.preventDefault(); window.chat.push(e.target.value);
   let result; do { result = await fetch('/api/llm/response_with_tools_start', {
     method:'POST', body:JSON.stringify({metadata:{model:currentModel,reasoning_effort:currentEffort,
-    projectId:new URL(location.href).searchParams.get('u')},input:window.chat,
-    conversationId:window.fixtureConversation})
+    projectId:new URL(location.href).searchParams.get('u')},input:window.chat})
   }).then(r=>r.json());
   if (result.response?.payload?.reason === 'sandbox_reconnecting') await new Promise(r=>setTimeout(r,20));
   } while (result.response?.payload?.reason === 'sandbox_reconnecting');
@@ -52,15 +51,13 @@ class Fixture(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
 
-    def reply(self, code, body, content_type='application/json', cache=False, retry_after=None):
+    def reply(self, code, body, content_type='application/json', cache=False):
         raw = body.encode()
         self.send_response(code)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(raw)))
         if cache:
             self.send_header('Cache-Control', 'public, max-age=3600')
-        if retry_after is not None:
-            self.send_header('Retry-After', str(retry_after))
         self.end_headers()
         self.wfile.write(raw)
 
@@ -79,16 +76,6 @@ class Fixture(BaseHTTPRequestHandler):
                 self.reply(200, json.dumps({'uuid':body['project_uuid']}))
                 return
             if self.path == api.START:
-                content = body['input'][-1]
-                if isinstance(content, dict):
-                    content = content['content'][0]['text']
-                budget = getattr(self.server, 'max_prompt_bytes', None)
-                if budget and len(content.encode('utf-8')) > budget:
-                    self.server.oversized_starts += 1
-                    self.reply(200, json.dumps({'request_id': uuid.uuid4().hex, 'status': 'completed',
-                        'response': {'status': 'error', 'payload': {'reason': 'unknown', 'httpStatus': 400,
-                            'message': 'Error while processing conversation (400 Bad Request).'}}}))
-                    return
                 project = body['metadata']['projectId']
                 if self.server.reconnect_first and project not in self.server.reconnected:
                     self.server.reconnected.add(project)
@@ -99,20 +86,7 @@ class Fixture(BaseHTTPRequestHandler):
                     self.reply(409, '{"error":"duplicate input"}')
                     return
                 rid = uuid.uuid4().hex
-                previous = body.get('previousResponseId')
-                cursor = 1
-                if previous:
-                    prior = self.server.jobs.get(previous.removeprefix('response_'))
-                    snapshot = json.loads(body['metadata'].get('codex_listen_snapshot', '{}'))
-                    if (prior is None or prior['cid'] != body.get('conversationId')
-                            or snapshot.get('conversation_id') != prior['cid']
-                            or snapshot.get('transcript_cursor') != prior['cursor']):
-                        self.server.mismatches += 1
-                        self.reply(409, '{"error":"invalid conversation continuation"}')
-                        return
-                    cursor = prior['cursor'] + 1
-                self.server.jobs[rid] = {'input':content, 'project':body['metadata']['projectId'],
-                    'cid':body.get('conversationId'), 'cursor':cursor, 'previous':previous,
+                self.server.jobs[rid] = {'input':body['input'][0], 'project':body['metadata']['projectId'],
                     'state':uuid.uuid4().hex, 'polls':0, 'model':body['metadata']['model'],
                     'effort':body['metadata']['reasoning_effort']}
                 # Keep model jobs open until the whole burst has started. A
@@ -127,20 +101,11 @@ class Fixture(BaseHTTPRequestHandler):
                     self.server.mismatches += 1
                     self.reply(409, '{"error":"wrong turn state"}')
                     return
-                job['poll_attempts'] = job.get('poll_attempts', 0) + 1
-                if job['poll_attempts'] <= getattr(self.server, 'poll_failures', 0):
-                    self.server.poll_errors += 1
-                    self.reply(503, '{"error":"temporarily unavailable"}', retry_after=1)
-                    return
                 job['state'] = uuid.uuid4().hex
                 job['polls'] += 1
                 result = {'request_id':rid, 'turn_state':job['state'], 'status':'running'}
                 if self.server.release and time.monotonic() >= self.server.release:
-                    result.update(status='completed', codex_listen_snapshot={
-                        'conversation_id':job['cid'], 'project_id':job['project'],
-                        'codex_session_id':'fixture-session-' + job['cid'], 'transcript_cursor':job['cursor']},
-                        response={'status':'success','payload':{'id':'response_' + rid,
-                        'conversationId':job['cid'], 'output':[
+                    result.update(status='completed', response={'status':'success','payload':{'output':[
                         {'type':'message','content':[{'text':job['input']}]}]}})
             else:
                 self.reply(404, '{}')
@@ -154,7 +119,6 @@ def main():
     parser.add_argument('--concurrency', type=int, default=20, choices=range(1, 31))
     parser.add_argument('--output')
     parser.add_argument('--reconnect-first', action='store_true')
-    parser.add_argument('--poll-failures', type=int, default=0, choices=range(4))
     parser.add_argument('--model', choices=api.MODELS)
     parser.add_argument('--effort', choices=api.EFFORTS, default='xhigh')
     parser.add_argument('--rounds', type=int, default=1, choices=range(1, 5))
@@ -165,7 +129,6 @@ def main():
     upstream.asset_requests = 0
     upstream.reconnect_first = args.reconnect_first
     upstream.reconnected = set()
-    upstream.poll_failures, upstream.poll_errors = args.poll_failures, 0
     upstream.jobs, upstream.release, upstream.mismatches, upstream.target = {}, None, 0, args.concurrency
     threading.Thread(target=upstream.serve_forever, daemon=True).start()
     api.BASE = f'http://127.0.0.1:{upstream.server_port}'
@@ -231,12 +194,10 @@ def main():
             assert peak['pages'] <= 2 and peak['contexts'] == 1
             assert upstream.asset_requests == 1, upstream.asset_requests
             assert peak['active'] == args.concurrency and upstream.mismatches == 0
-            assert upstream.poll_errors == args.concurrency * args.rounds * args.poll_failures
             result = {'result':'passed','scope':'real adapter + real browser + mock upstream',
                 'concurrency':args.concurrency,'rounds':args.rounds,'model':args.model,'effort':args.effort,'completed':len(ids),'starts':len(upstream.jobs),
                 'projects':len({j['project'] for j in upstream.jobs.values()}),'peak':peak,
                 'state_mismatches':upstream.mismatches,'real_prism_requests':0,
-                'transient_poll_503s':upstream.poll_errors,
                 'asset_network_requests':upstream.asset_requests,'reconnects':len(upstream.reconnected),
                 'elapsed_seconds':round(time.monotonic()-started,3)}
             print(json.dumps(result), flush=True)

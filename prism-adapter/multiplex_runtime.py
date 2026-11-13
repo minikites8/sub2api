@@ -120,10 +120,8 @@ class Admission:
 
 class AsyncBrowserWorker:
     """Expose the existing synchronous run() seam to threaded HTTP handlers."""
-    supports_relay = True
-    def __init__(self, factory, api, request_timeout=285, mode='multiplex'):
+    def __init__(self, factory, api, request_timeout=285):
         self.factory, self.api = factory, api
-        self.mode = mode
         self.request_timeout = request_timeout
         self.ready = threading.Event()
         self.lifecycle = threading.Lock()
@@ -174,11 +172,11 @@ class AsyncBrowserWorker:
                 self.stop.set()
                 return
 
-    async def _run(self, args, timeout):
+    async def _run(self, args):
         task = asyncio.current_task()
         self.tasks.add(task)
         try:
-            async with asyncio.timeout(timeout):
+            async with asyncio.timeout(self.request_timeout):
                 return await self.engine.run(*args)
         except TimeoutError:
             raise self.api.AdapterError(504, "unknown_outcome", "Prism request deadline exceeded; inspect pending state") from None
@@ -186,24 +184,14 @@ class AsyncBrowserWorker:
             self.tasks.discard(task)
 
     def run(self, *args):
-        return self._submit(args, self.request_timeout)
-
-    def run_until(self, deadline, *args):
-        timeout = min(self.request_timeout, deadline - time.monotonic())
-        if timeout <= 0:
-            raise self.api.AdapterError(504, 'unknown_outcome', 'Prism tool request deadline exceeded before submission',
-                                        not_submitted=True)
-        return self._submit(args, timeout)
-
-    def _submit(self, args, timeout):
         if not self.ready.wait(5):
             raise self.api.AdapterError(503, "prism_unavailable", "Prism executor did not start", not_submitted=True)
         with self.lifecycle:
             if self.stopping or self.failed or not self.thread.is_alive():
                 raise self.api.AdapterError(503, "prism_unavailable", "Prism executor is unavailable", not_submitted=True)
-            future = asyncio.run_coroutine_threadsafe(self._run(args, timeout), self.loop)
+            future = asyncio.run_coroutine_threadsafe(self._run(args), self.loop)
         try:
-            return future.result(timeout=timeout + 10)
+            return future.result(timeout=self.request_timeout + 10)
         except concurrent.futures.TimeoutError:
             future.cancel()
             raise self.api.AdapterError(504, "unknown_outcome", "Prism executor did not settle; inspect pending state") from None
@@ -219,13 +207,3 @@ class AsyncBrowserWorker:
                 except RuntimeError:
                     pass  # Startup failed or the event loop just finished.
         self.thread.join(timeout=10)
-
-    def health(self):
-        ready = self.ready.is_set() and not self.stopping and not self.failed and self.thread.is_alive()
-        admission = getattr(getattr(self, "engine", None), "admission", None)
-        active = admission.running if admission is not None else len(self.tasks)
-        queued = max(0, admission.outstanding - active) if admission is not None else 0
-        return {"status": "ok" if ready else "unavailable", "mode": self.mode,
-                "active": active, "queued": queued,
-                "max_inflight": admission.limit if admission is not None else 0,
-                "request_deadline_seconds": self.request_timeout}

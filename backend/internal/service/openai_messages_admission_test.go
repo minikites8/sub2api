@@ -19,11 +19,11 @@ func TestMessagesAdmissionRefreshesDisabledBPS(t *testing.T) {
 	latest := *selected
 	latest.Extra = maps.Clone(selected.Extra)
 	latest.Extra["openai_excel_bps"] = false
-	u := &httpUpstreamRecorder{responses: []*http.Response{excelBPSOrdinaryResponse()}}
+	u := &httpUpstreamRecorder{responses: []*http.Response{admissionOrdinaryResponse()}}
 	s := openAIClientToolsTestService(u)
 	s.accountRepo = &turnAdmissionRepo{account: &latest}
 	body := []byte(`{"model":"gpt-5.6-sol","max_tokens":64,"messages":[{"role":"user","content":"keep full context"}],"stream":false}`)
-	c, _ := newExcelBPSFallbackContext(body, false)
+	c, _ := newAdmissionTestContext(body, false)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body)))
 	result, err := s.ForwardAsAnthropic(context.Background(), c, selected, body, "", "")
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestMessagesAdmissionPreservesDetailedReason(t *testing.T) {
 	s := openAIClientToolsTestService(u)
 	s.accountRepo = &turnAdmissionRepo{account: &latest}
 	body := []byte(`{"model":"gpt-5.6-sol","max_tokens":64,"messages":[{"role":"user","content":"private text"}]}`)
-	c, _ := newExcelBPSFallbackContext(body, false)
+	c, _ := newAdmissionTestContext(body, false)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body)))
 	_, err := s.ForwardAsAnthropic(context.Background(), c, selected, body, "", "")
 	require.Equal(t, "account_ineligible", OpenAITurnAdmissionReason(err))
@@ -63,7 +63,7 @@ func TestMessagesAdmissionUsesMappedModel(t *testing.T) {
 	state.recordFailure(account.ID, "gpt-5.6-sol", now)
 	state.recordFailure(account.ID, "gpt-5.6-sol", now)
 	body := []byte(`{"model":"claude-sonnet-4-5","max_tokens":32,"messages":[{"role":"user","content":"hello"}]}`)
-	c, _ := newExcelBPSFallbackContext(body, false)
+	c, _ := newAdmissionTestContext(body, false)
 	_, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.6-sol")
 	require.Equal(t, "model_runtime_blocked", OpenAITurnAdmissionReason(err))
 	require.Empty(t, u.requests)
@@ -91,7 +91,7 @@ func TestMessagesAdmissionRefreshReplaysFullContext(t *testing.T) {
 	}
 	body, err := json.Marshal(map[string]any{"model": "claude-sonnet-4-5", "max_tokens": 32, "messages": messages, "stream": false})
 	require.NoError(t, err)
-	c, _ := newExcelBPSFallbackContext(body, false)
+	c, _ := newAdmissionTestContext(body, false)
 	_, err = svc.ForwardAsAnthropic(context.Background(), c, selected, body, "stable-key", "gpt-5.3-codex")
 	require.NoError(t, err)
 	require.Len(t, u.requests, 1)

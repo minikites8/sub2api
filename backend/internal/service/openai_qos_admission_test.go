@@ -36,7 +36,7 @@ func TestGPTQoSModelFilteringPrecedesQualityAndFairQueue(t *testing.T) {
 		svc, req := qualityTestGateway(allow)
 		req.RequiredTransport = OpenAIUpstreamTransportAny
 		svc.settingService.gptQoSConfig.config.Enabled = true
-		repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+		repo := qualityTestAccountRepo(t, svc)
 		repo.accounts[0].Credentials = map[string]any{"model_mapping": map[string]any{"other-model": "other-model"}}
 		svc.accountRepo = repo
 		cache := &qosAdmissionRecordingCache{}
@@ -81,7 +81,7 @@ func TestGPTQoSFiltersCompleteAccountsBeforeQueueAdmission(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, req := qualityTestGateway(false)
 			req.RequiredTransport = OpenAIUpstreamTransportAny
-			base := svc.accountRepo.(schedulerTestOpenAIAccountRepo).accounts[0]
+			base := qualityTestAccountRepo(t, svc).accounts[0]
 			stale := base
 			tc.change(&base)
 			healthy := stale
@@ -107,7 +107,7 @@ func TestGPTQoSCompleteSnapshotKeepsMappedModelAndProxySlot(t *testing.T) {
 	svc, req := qualityTestGateway(false)
 	req.RequiredTransport = OpenAIUpstreamTransportAny
 	req.RequestedModel = "public-model"
-	a := svc.accountRepo.(schedulerTestOpenAIAccountRepo).accounts[0]
+	a := qualityTestAccountRepo(t, svc).accounts[0]
 	a.Credentials = map[string]any{"model_mapping": map[string]any{"public-model": "upstream-model"}}
 	proxyID := int64(12)
 	a.ProxyID = &proxyID
@@ -141,12 +141,12 @@ func TestGPTQoSFinalRecheckStillRejectsChangedAccountAndReleases(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, req := qualityTestGateway(false)
 			req.RequiredTransport = OpenAIUpstreamTransportAny
-			a := svc.accountRepo.(schedulerTestOpenAIAccountRepo).accounts[0]
+			a := qualityTestAccountRepo(t, svc).accounts[0]
 			stale := a
 			svc.accountRepo = schedulerTestOpenAIAccountRepo{accounts: []Account{a}}
 			svc.schedulerSnapshot = NewSchedulerSnapshotService(&openAISnapshotCacheStub{accountsByID: map[int64]*Account{a.ID: &a}}, nil, svc.accountRepo, nil, nil)
 			cache := &qosAdmissionRecordingCache{onPoll: func() {
-				repo := svc.accountRepo.(schedulerTestOpenAIAccountRepo)
+				repo := qualityTestAccountRepo(t, svc)
 				tc.change(&repo.accounts[0])
 			}}
 			svc.concurrencyService = NewConcurrencyService(cache)
@@ -186,7 +186,7 @@ func TestGPTQoSClosedMarkerDoesNotHideWaitTimeoutOrRestartQueue(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, req := qualityTestGateway(false)
 			req.RequiredTransport = OpenAIUpstreamTransportAny
-			a := svc.accountRepo.(schedulerTestOpenAIAccountRepo).accounts[0]
+			a := qualityTestAccountRepo(t, svc).accounts[0]
 			cache := &qosTerminalStatusCache{poll: func(_ context.Context, e GPTQoSEntry) GPTQoSGrant {
 				if tc.elapsed {
 					time.Sleep(time.Duration(e.WaitMs+2) * time.Millisecond)
@@ -213,7 +213,7 @@ func TestGPTQoSClosedMarkerDoesNotHideWaitTimeoutOrRestartQueue(t *testing.T) {
 func TestGPTQoSCanceledGrantIsReleasedBeforeAccountRecheck(t *testing.T) {
 	svc, req := qualityTestGateway(false)
 	req.RequiredTransport = OpenAIUpstreamTransportAny
-	a := svc.accountRepo.(schedulerTestOpenAIAccountRepo).accounts[0]
+	a := qualityTestAccountRepo(t, svc).accounts[0]
 	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxkey.UserID, int64(42)))
 	defer cancel()
 	cache := &qosTerminalStatusCache{poll: func(_ context.Context, e GPTQoSEntry) GPTQoSGrant {

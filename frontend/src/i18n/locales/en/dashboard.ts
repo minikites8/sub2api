@@ -147,6 +147,9 @@ export default {
     removeGroup: 'Remove group',
     orderedGroupsHint: 'Groups are tried in order. Unavailable groups are skipped. Up to 32 groups.',
     groupLabel: 'Group',
+    additionalGroups: 'Use additional groups',
+    multiGroupHint: 'Each request selects an available group with a lower effective multiplier and is billed by the selected group. Select up to 20 groups.',
+    multiGroupCount: 'Auto · {count} groups',
     providerLabel: 'Provider',
     providers: {
       anthropic: 'Anthropic',
@@ -182,6 +185,10 @@ export default {
     usage: 'Usage',
     today: 'Today',
     total: 'Last 30d',
+    usageDateRange: 'Usage dates',
+    selectedPeriod: 'Selected period',
+    invalidUsageDateRange: 'Select valid start and end dates',
+    failedToLoadUsage: 'Failed to load usage. Refresh to retry.',
     quota: 'Quota',
     lastUsedAt: 'Last Used',
     lastUsedIP: 'Last Used IP',
@@ -411,7 +418,8 @@ export default {
     resetNow: 'Now',
     resetPending: 'Pending refresh',
     accountMultiplier: 'Account rate',
-    avgDuration: 'Avg Duration',
+    avgDuration: 'Avg server duration',
+    rateCardHint: 'Per-minute averages over the selected range: RPM = total requests ÷ minutes, TPM = total tokens ÷ minutes; a range that includes now counts only up to now',
     inSelectedRange: 'in selected range',
     perRequest: 'per request',
     apiKeyFilter: 'API Key',
@@ -450,10 +458,16 @@ export default {
     firstToken: 'First Token',
     duration: 'Duration',
     latency: 'Latency',
-    latencyFirstToken: 'First',
-    latencyDuration: 'Total',
+    latencyFirstTokenShort: 'First token',
+    latencyFirstToken: 'Server TTFT',
+    latencyFirstTokenHint: 'Server TTFT uses sampled server boundaries, including admission and earlier attempts within the recorded scope. This is not client end-to-end time. Records without a measured source retain their legacy timer.',
+    latencyDurationShort: 'Total',
+    latencyDurationHint: 'Server total uses sampled server boundaries within the recorded scope, including internal retries. This is not client end-to-end time. Average TPS uses the unchanged legacy duration.',
+    latencyDuration: 'Server total',
     latencyTps: 'Avg TPS',
     latencyTpsHint: 'Average TPS = output tokens ÷ total duration (seconds). Includes waiting time and any reasoning tokens reported in output usage; not model generation speed.',
+    latencyCacheRate: 'Cache rate',
+    latencyCacheRateHint: 'Cache rate = cache read {read} ÷ (input {input} + cache read {read} + cache write {write}). Same definition as channel monitor and the usage trend.',
     time: 'Time',
     ws: 'WS',
     stream: 'Stream',
@@ -780,6 +794,7 @@ export default {
       cacheWritePrice: 'Cache Write',
       cacheWrite5mPrice: 'Cache Write (5m)',
       cacheWrite1hPrice: 'Cache Write (1h)',
+      cacheWrite12hPrice: 'Cache Write (12h)',
       cacheReadPrice: 'Cache Read',
       imageInputPrice: 'Image Input',
       imageOutputPrice: 'Image Output',
@@ -807,6 +822,71 @@ export default {
     columns: { model: 'Model', billing: 'Billing', pricing: 'Pricing', groups: 'Groups / Rate', latency: 'First Token Latency', actions: 'Actions' },
     detail: { group: 'Group / Provider', mode: 'Billing', multiplier: 'Rate', pricing: 'Pricing', input: 'Input', output: 'Output', cacheWrite: 'Cache Write', cacheRead: 'Cache Read', requestImage: 'Request / Image', source: 'Price Source', tierPricing: 'Tier Pricing', tokenRange: 'Token Range', unitNote: 'Prices include the applicable group rate. Token: $/1M tokens; request and image: $/request.' },
     empty: { title: 'No matching models', description: 'Adjust the search term or filters to see other models.' }
+  },
+
+  // Model Plaza (public group/model pricing showcase)
+  modelPlaza: {
+    title: 'Model Plaza',
+    description: 'Browse available models and pricing by group',
+    loading: 'Loading...',
+    empty: 'No groups to display',
+    loadFailed: 'Failed to load model plaza',
+    noSearchResult: 'No matching models',
+    anonymousHint: 'Sign in to see your exclusive groups and personal rates',
+    filters: {
+      platformLabel: 'Platform',
+      groupLabel: 'Group',
+      rateLabel: 'Rate',
+      modelLabel: 'Model',
+      searchPlaceholder: 'Search models',
+      all: 'All'
+    },
+    badges: {
+      exclusive: 'Exclusive',
+      subscription: 'Subscription'
+    },
+    detail: {
+      noModels: 'No models configured for this group',
+      noPricing: 'Pricing not configured',
+      peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
+      longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
+    },
+    table: {
+      model: 'Model',
+      input: 'Input',
+      output: 'Output',
+      cache: 'Cache',
+      cacheWrite: 'Write',
+      cacheRead: 'Read',
+      cacheWriteShort: 'W',
+      cacheReadShort: 'R',
+      tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
+      tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
+      reasoningMultiplierBadge: '{effort} ×{multiplier}',
+      reasoningMultiplierHint: 'When the forwarded reasoning effort is {effort}, billing and quota usage for the request are multiplied by {multiplier}. Unconfigured levels use 1×',
+      marginalBadge: 'excess-only tiers',
+      timePricingRowHint: 'Requests made within this period ({timezone} time) are billed at the prices in this row',
+      timePricingRowHintWeekdays:
+        'On weekdays (Mon–Fri) only, requests made within this period ({timezone} time) are billed at the prices in this row; weekends use the standard prices',
+      timePricingRowHintPeak:
+        '; prices in this row exclude the peak-hour rate — where this period overlaps the peak hours {window}, the overlapping portion is additionally multiplied by ×{multiplier}',
+      timePricingWeekdays: 'Weekdays',
+      timePricingRateHint: 'Effective rate {rate} × period multiplier {multiplier}',
+      paidPrice: 'Your Price (Discounted)',
+      officialPrice: 'Official Price',
+      rate: 'Rate',
+      unitPerMillion: '$ / 1M tokens',
+      perUnitRequest: '/ request',
+      perUnitImage: '/ image',
+      perUnitSecond: '/ second',
+      perRequest: 'Per request',
+      perSecond: 'Per second',
+      perImage: 'Per image'
+    },
+    nav: {
+      login: 'Sign In',
+      backToDashboard: 'Back to Console'
+    }
   },
 
   affiliate: {

@@ -70,8 +70,8 @@ function mountView() {
         AccountTestModal: true, AccountStatsModal: true, ScheduledTestsPanel: true,
         SyncFromCrsModal: true, TempUnschedStatusModal: true, ErrorPassthroughRulesModal: true,
         TLSFingerprintProfilesModal: true, CreateAccountModal: true, EditAccountModal: true,
-        BulkEditAccountModal: true, YeTeamRedeemModal: true, TotpStepUpDialog: true,
-        PlatformTypeBadge: true, HelpTooltip: true, Icon: true, Teleport: true
+        BulkEditAccountModal: true, TotpStepUpDialog: true,
+        PlatformTypeBadge: true, NewFeatureBadge: true, HelpTooltip: true, Icon: true, Teleport: true
       }
     }
   })

@@ -420,10 +420,17 @@ func defaultModelsListCandidateIDs(platform string) []string {
 	}
 }
 
-func defaultAllowImageGenerationForPlatform(platform string) bool {
-	// Grok image and video generation routes share the legacy image-generation gate.
-	// Older clients send the false zero value, so Grok groups must default enabled.
-	return platform == PlatformGrok
+// DefaultAllowImageGenerationForPlatform reports whether new groups on the platform allow
+// image generation. CreateGroup ORs the requested value with it, so a false in the create
+// request does not turn it off. Composite defaults disabled because the same switch also
+// gates OpenAI image generation there.
+func DefaultAllowImageGenerationForPlatform(platform string) bool {
+	switch platform {
+	case PlatformGrok, PlatformGemini, PlatformAntigravity:
+		return true
+	default:
+		return false
+	}
 }
 
 func compositeDefaultModelsListCandidateIDs() []string {
@@ -502,7 +509,6 @@ func sanitizeGroupOpenAIFast(group *Group) {
 		if group != nil {
 			group.ForceOpenAIFast = false
 			group.FreeOpenAIFast = false
-			group.EnableBPS = false
 		}
 	}
 }
@@ -512,7 +518,7 @@ func normalizeCreateGroupInputForSimpleMode(input *CreateGroupInput) {
 		return
 	}
 	*input = CreateGroupInput{
-		Name: input.Name, Description: input.Description, Platform: input.Platform,
+		Name: input.Name, Description: input.Description, I18n: input.I18n, Platform: input.Platform,
 		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
 	}
 }
@@ -521,7 +527,7 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	if input == nil {
 		return
 	}
-	*input = UpdateGroupInput{Name: input.Name, Description: input.Description}
+	*input = UpdateGroupInput{Name: input.Name, Description: input.Description, I18n: input.I18n}
 }
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
@@ -533,6 +539,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
+	}
+	i18n, err := normalizeGroupI18n(input.I18n)
+	if err != nil {
+		return nil, err
 	}
 
 	platform := NormalizeGroupPlatform(input.Platform)
@@ -684,7 +694,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.KiroAutoStickyEnabled != nil {
 		kiroAutoStickyEnabled = *input.KiroAutoStickyEnabled
 	}
-	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
+	allowImageGeneration := input.AllowImageGeneration || DefaultAllowImageGenerationForPlatform(platform)
+	if input.AllowImageGenerationExplicit != nil {
+		allowImageGeneration = *input.AllowImageGenerationExplicit
+	}
 	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
 	kiroCacheEmulationRatio := 1.0
 	if input.KiroCacheEmulationRatio != nil {
@@ -704,6 +717,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			kiroCacheReadEmulationRatio = *input.KiroCacheReadEmulationRatio
 		}
 	}
+	imageCountBilling := input.ImageCountBilling && allowImageGeneration &&
+		(platform == PlatformComposite || platform == PlatformOpenAI)
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -751,6 +766,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
+		I18n:                            i18n,
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
 		ModelRateMultipliers:            modelRateMultipliers,
@@ -764,6 +780,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ModelPricing:                    modelPricing,
 		AllowImageGeneration:            allowImageGeneration,
 		AllowBatchImageGeneration:       allowBatchImageGeneration,
+		ImageCountBilling:               imageCountBilling,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
 		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
@@ -795,6 +812,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AudioSTTPricePerHour:            audioSTTPricePerHour,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		StreamOnly:                      input.StreamOnly,
+		CodexCLIOnly:                    input.CodexCLIOnly,
+		BlockSubagents:                  input.BlockSubagents,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
@@ -804,7 +823,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowLive:                       input.AllowLive,
 		ForceOpenAIFast:                 input.ForceOpenAIFast,
 		FreeOpenAIFast:                  input.FreeOpenAIFast,
-		EnableBPS:                       input.EnableBPS,
 		SchedulingStrategy:              schedulingStrategy,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
@@ -991,6 +1009,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.Description != nil {
 		group.Description = *input.Description
 	}
+	if input.I18n != nil {
+		i18n, err := normalizeGroupI18n(*input.I18n)
+		if err != nil {
+			return nil, err
+		}
+		group.I18n = i18n
+	}
 	if input.Platform != "" {
 		group.Platform = input.Platform
 	}
@@ -1061,6 +1086,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
 		group.AllowBatchImageGeneration = false
+	}
+	if input.ImageCountBilling != nil {
+		group.ImageCountBilling = *input.ImageCountBilling
+	}
+	if !group.AllowImageGeneration || (group.Platform != PlatformComposite && group.Platform != PlatformOpenAI) {
+		group.ImageCountBilling = false
 	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
@@ -1198,6 +1229,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.StreamOnly != nil {
 		group.StreamOnly = *input.StreamOnly
 	}
+	if input.CodexCLIOnly != nil {
+		group.CodexCLIOnly = *input.CodexCLIOnly
+	}
+	if input.BlockSubagents != nil {
+		group.BlockSubagents = *input.BlockSubagents
+	}
 	if input.FallbackGroupID != nil {
 		// 校验降级分组
 		if *input.FallbackGroupID > 0 {
@@ -1253,9 +1290,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.FreeOpenAIFast != nil {
 		group.FreeOpenAIFast = *input.FreeOpenAIFast
-	}
-	if input.EnableBPS != nil {
-		group.EnableBPS = *input.EnableBPS
 	}
 	if input.SchedulingStrategy != nil {
 		strategy, err := NormalizeGroupSchedulingStrategy(*input.SchedulingStrategy)
@@ -1680,23 +1714,50 @@ func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []
 // AdminUpdateAPIKeyGroupID 管理员修改 API Key 分组绑定
 // groupID: nil=不修改, 指向0=解绑, 指向正整数=绑定到目标分组
 func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
+	return s.AdminUpdateAPIKeySettings(ctx, keyID, AdminUpdateAPIKeySettingsInput{GroupID: groupID})
+}
+
+// AdminUpdateAPIKeySettings writes the selected key's policy and group together.
+// Field masks ensure ordinary user edits and omitted policy fields cannot reset it.
+func (s *adminServiceImpl) AdminUpdateAPIKeySettings(ctx context.Context, keyID int64, input AdminUpdateAPIKeySettingsInput) (*AdminUpdateAPIKeyGroupIDResult, error) {
+	if err := input.Validate(); err != nil {
+		return nil, err
+	}
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
 	if err != nil {
 		return nil, err
 	}
 
-	if groupID == nil {
-		// nil 表示不修改，直接返回
+	groupID := input.GroupID
+	fields := APIKeyUpdateFields{GroupID: groupID != nil, ModelMapping: input.ModelMapping != nil, ReasoningEffort: input.ReasoningEffort != nil, AllowLongContext: input.AllowLongContext != nil, ContextTokenLimit: input.ContextTokenLimit != nil, RateLimitUsage: input.ResetRateLimitUsage}
+	if fields.IsEmpty() {
 		return &AdminUpdateAPIKeyGroupIDResult{APIKey: apiKey}, nil
 	}
-
-	if *groupID < 0 {
-		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group_id must be non-negative")
+	if input.ModelMapping != nil {
+		apiKey.ModelMapping = make(map[string]string, len(*input.ModelMapping))
+		for source, target := range *input.ModelMapping {
+			apiKey.ModelMapping[source] = target
+		}
+	}
+	if input.ReasoningEffort != nil {
+		apiKey.ReasoningEffort = *input.ReasoningEffort
+	}
+	if input.ContextTokenLimit != nil {
+		apiKey.ContextTokenLimit = *input.ContextTokenLimit
+	}
+	if input.AllowLongContext != nil {
+		apiKey.AllowLongContext = *input.AllowLongContext
+	}
+	if input.ResetRateLimitUsage {
+		apiKey.Usage5h, apiKey.Usage1d, apiKey.Usage7d = 0, 0, 0
+		apiKey.Window5hStart, apiKey.Window1dStart, apiKey.Window7dStart = nil, nil, nil
 	}
 
 	result := &AdminUpdateAPIKeyGroupIDResult{}
 
-	if *groupID == 0 {
+	if groupID == nil {
+		// Policy-only updates preserve all configured groups.
+	} else if *groupID == 0 {
 		// 0 表示解绑分组（不修改 user_allowed_groups，避免影响用户其他 Key）
 		apiKey.GroupID = nil
 		apiKey.GroupIDs = []int64{}
@@ -1747,7 +1808,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
 				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
 			}
-			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
+			if err := s.apiKeyRepo.Update(opCtx, apiKey, fields); err != nil {
 				return nil, fmt.Errorf("update api key: %w", err)
 			}
 			if tx != nil {
@@ -1761,9 +1822,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 			result.GrantedGroupName = group.Name
 
 			// 失效认证缓存（在事务提交后执行）
-			if s.authCacheInvalidator != nil {
-				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
-			}
+			s.invalidateAdminAPIKeySettingsCaches(ctx, apiKey, input.ResetRateLimitUsage)
 
 			result.APIKey = apiKey
 			return result, nil
@@ -1771,14 +1830,12 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	}
 
 	// 非专属分组 / 解绑：无需事务，单步更新即可
-	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
+	if err := s.apiKeyRepo.Update(ctx, apiKey, fields); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 
 	// 失效认证缓存
-	if s.authCacheInvalidator != nil {
-		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
-	}
+	s.invalidateAdminAPIKeySettingsCaches(ctx, apiKey, input.ResetRateLimitUsage)
 
 	result.APIKey = apiKey
 	return result, nil

@@ -9,6 +9,7 @@
 
 # Documentation
 *.md
+!THIRD_PARTY_NOTICES.md
 !deploy/DOCKER.md
 docs/
 !docs/
@@ -73,7 +74,6 @@ deploy/sub2api-sudoers
 deploy/data/
 deploy/postgres_data/
 deploy/redis_data/
-deploy/prism_data/
 prism-adapter/venv/
 prism-adapter/.venv/
 prism-adapter/__pycache__/

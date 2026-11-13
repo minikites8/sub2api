@@ -74,6 +74,7 @@ type CreateOrderRequest struct {
 	UserID          int64
 	Amount          float64
 	PaymentType     string
+	PaymentSubtype  string
 	OpenID          string
 	ClientIP        string
 	IsMobile        bool
@@ -91,6 +92,7 @@ type CreateOrderRequest struct {
 }
 
 type CreateOrderResponse struct {
+	PaymentSubtype                string                          `json:"payment_subtype,omitempty"`
 	OrderID                       int64                           `json:"order_id"`
 	Quantity                      int                             `json:"quantity,omitempty"`
 	Amount                        float64                         `json:"amount"`
@@ -142,6 +144,8 @@ type RefundPlan struct {
 	BalanceToDeduct float64
 	SubDaysToDeduct int
 	SubscriptionID  int64
+	// deductionHeld 表示扣减已在进入 REFUND_PENDING 前执行并保留，终态收敛时不再重复扣减。
+	deductionHeld bool
 }
 
 type RefundResult struct {
@@ -194,6 +198,11 @@ type TopUsersByCurrency map[string][]TopUserStat
 // --- Service ---
 
 type PaymentService struct {
+	// This bounded scan cursor is only a fairness hint, never payment evidence.
+	// A restart/leader change starts again at the lowest eligible order ID.
+	easyPayRecoveryMu        sync.Mutex
+	easyPayRecoveryAfter     int64
+	lottery                  *LotteryService
 	providerMu               sync.Mutex
 	providersLoaded          bool
 	entClient                *dbent.Client

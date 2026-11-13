@@ -1,3 +1,4 @@
+import type { AccountPerformance, PerformanceConfig, PerformanceEvent } from '@/types/accountPerformance'
 /**
  * Admin Accounts API endpoints
  * Handles AI platform account management for administrators
@@ -36,9 +37,18 @@ import type {
   OllamaCloudUsageState,
   GrokMediaEligibilityMode,
   GrokMediaEligibilityState,
+  GrokModelDiagnostics,
   OpenCodeGoUsageSettings,
   OpenCodeGoUsageState
 } from '@/types'
+
+/** Current account slots in use, independent of dashboard history and ops settings. */
+export async function getConcurrencySummary(): Promise<{ current_concurrency: number }> {
+  const { data } = await apiClient.get<{ current_concurrency: number }>(
+    '/admin/accounts/concurrency-summary'
+  )
+  return data
+}
 
 /**
  * List all accounts with pagination
@@ -332,16 +342,6 @@ export type RefreshCredentialsResult =
 export async function refreshCredentials(id: number): Promise<RefreshCredentialsResult> {
   const { data } = await apiClient.post<Account | RefreshCredentialsResult>(`/admin/accounts/${id}/refresh`)
   return 'account' in data ? data : { account: data }
-}
-
-/**
- * Force a ye.team credential reset for a bound OpenAI account.
- */
-export async function resetYeTeam(id: number): Promise<Account> {
-  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/ye-team/reset`, undefined, {
-    timeout: 660000
-  })
-  return data
 }
 
 /**
@@ -644,6 +644,17 @@ export interface SyncUpstreamModelsResult {
   models: string[]
   metadata?: Record<string, UpstreamModelMetadata>
   warnings?: UpstreamModelSyncWarning[]
+  discovery_source?: 'upstream' | 'configured_fallback'
+  grok_model_diagnostics?: GrokModelDiagnostics
+  applied?: boolean
+  changed?: boolean
+  skipped?: string
+  next_sync_at?: string
+}
+
+export interface SyncUpstreamModelsOptions {
+  apply?: boolean
+  automatic?: boolean
 }
 
 export interface UpstreamModelSyncWarning {
@@ -669,8 +680,12 @@ export interface UpstreamModelMetadata {
  * @param id - Account ID
  * @returns List of model IDs returned by the upstream
  */
-export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModelsResult> {
-  const { data } = await apiClient.post<SyncUpstreamModelsResult>(`/admin/accounts/${id}/models/sync-upstream`)
+export async function syncUpstreamModels(
+  id: number,
+  options?: SyncUpstreamModelsOptions,
+  request?: { signal?: AbortSignal }
+): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>(`/admin/accounts/${id}/models/sync-upstream`, options, request)
   return data
 }
 
@@ -813,54 +828,10 @@ export async function reimportCredentials(id: number, dataPayload: unknown): Pro
   return data
 }
 
-export interface YeTeamRedeemResult {
-  order_no: string
-  status?: string
-  action?: string
-  account_created: number
-  account_failed: number
-  import_errors?: Array<{ kind: string; name?: string; proxy_key?: string; message: string }>
-}
-
-export interface YeTeamAccountOptions {
-  group_ids?: number[]
-  concurrency?: number
-  priority?: number
-  proxy_mode?: 'none' | 'specified' | 'random'
-  proxy_id?: number
-  codex_fingerprint_mode?: 'off' | 'device' | 'session' | 'full'
-  enable_account_guard?: boolean
-  account_guard_interval_minutes?: number
-  openai_ws_mode?: 'off' | 'ctx_pool' | 'passthrough' | 'http_bridge'
-}
-
-const yeTeamOperationKeys = new Map<string, string>()
-
-export async function redeemYeTeam(payload: {
-  card_code: string
-  target_id?: string
-  client_request_id?: string
-  skip_default_group_bind?: boolean
-  account_options?: YeTeamAccountOptions
-}): Promise<YeTeamRedeemResult> {
-  const cardCode = payload.card_code.trim()
-  const requestID = payload.client_request_id || yeTeamOperationKeys.get(cardCode) ||
-    (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`)
-  yeTeamOperationKeys.set(cardCode, requestID)
-  const { data } = await apiClient.post<YeTeamRedeemResult>('/admin/accounts/ye-team/redeem', {
-    ...payload,
-    client_request_id: requestID
-  }, {
-    timeout: 660000,
-    headers: { 'Idempotency-Key': requestID }
-  })
-  yeTeamOperationKeys.delete(cardCode)
-  return data
-}
-
-export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
+export async function importCodexSession(payload: CodexSessionImportRequest, options?: { signal?: AbortSignal }): Promise<CodexSessionImportResult> {
   const { data } = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload, {
-    timeout: 120000 // 120s timeout for large session imports
+    timeout: 120000, // 120s timeout for large session imports
+    signal: options?.signal
   })
   return data
 }
@@ -1714,6 +1685,8 @@ export async function getOpenAIRequestTimezones(): Promise<{ default: string; ti
 }
 
 export const accountsAPI = {
+  getConcurrencySummary,
+ getPerformance, savePerformance, releasePerformance, getPerformanceEvents,
   getOpenAIRequestTimezones,
   list,
   listWithEtag,
@@ -1729,7 +1702,6 @@ export const accountsAPI = {
   toggleStatus,
   testAccount,
   refreshCredentials,
-  resetYeTeam,
   applyOAuthCredentials,
   getStats,
   clearError,
@@ -1758,7 +1730,6 @@ export const accountsAPI = {
   exportData,
   importData,
   reimportCredentials,
-  redeemYeTeam,
   getManagementCapabilities,
   importCodexSession,
   createOpenAICodexPAT,
@@ -1809,4 +1780,19 @@ export default accountsAPI
 export async function getManagementCapabilities(): Promise<{ web_search_enabled: boolean; account_quota_notify_enabled: boolean; concurrency_upgrade_enabled?: boolean }> {
   const { data } = await apiClient.get('/admin/accounts/management-capabilities')
   return data
+}
+
+export async function getPerformance(accountIds: number[], signal?: AbortSignal): Promise<Record<number, AccountPerformance>> {
+ const {data}=await apiClient.post<Record<number, AccountPerformance>>('/admin/accounts/performance',{account_ids:accountIds},{signal})
+ return data
+}
+export async function savePerformance(id:number,config:PerformanceConfig,revision:number): Promise<void> {
+ await apiClient.put('/admin/accounts/'+id+'/performance',{config,revision})
+}
+export async function releasePerformance(id:number,revision:number,pauseGeneration:number): Promise<void> {
+ await apiClient.post('/admin/accounts/'+id+'/performance/release',{revision,pause_generation:pauseGeneration})
+}
+export async function getPerformanceEvents(id:number): Promise<PerformanceEvent[]> {
+ const {data}=await apiClient.get<PerformanceEvent[]>('/admin/accounts/'+id+'/performance/events')
+ return data
 }

@@ -29,6 +29,7 @@ func normalizeOAuthSignupSource(signupSource string) string {
 // SendPendingOAuthVerifyCode sends a local verification code for pending OAuth
 // account-creation flows without relying on the public registration gate.
 func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email string, locale ...string) (*SendVerifyCodeResult, error) {
+	rawEmail := email
 	email = normalizeRegistrationEmailAddress(email)
 	if email == "" {
 		return nil, ErrEmailVerifyRequired
@@ -38,6 +39,9 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	}
 	if isReservedEmail(email) {
 		return nil, ErrEmailReserved
+	}
+	if err := s.validateRegistrationEmailAlias(ctx, rawEmail); err != nil {
+		return nil, err
 	}
 	if s == nil || s.emailService == nil {
 		return nil, ErrServiceUnavailable
@@ -117,9 +121,13 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, ErrRegDisabled
 	}
 
+	rawEmail := email
 	email = normalizeRegistrationEmailAddress(email)
 	if isReservedEmail(email) {
 		return nil, nil, ErrEmailReserved
+	}
+	if err := s.validateRegistrationEmailAlias(ctx, rawEmail); err != nil {
+		return nil, nil, err
 	}
 	if err := s.VerifyOAuthEmailCode(ctx, email, verifyCode); err != nil {
 		slog.Error("oauth email register: verify code failed", "email", email, "error", err.Error())
@@ -167,10 +175,14 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 
 	if err := s.createUserWithRegistrationEmailGuard(ctx, user); err != nil {
 		switch {
+		case errors.Is(err, ErrEmailAliasNotAllowed):
+			return nil, nil, ErrEmailAliasNotAllowed
 		case errors.Is(err, ErrEmailExists):
 			return nil, nil, ErrEmailExists
 		case errors.Is(err, ErrEmailDomainRegistrationLimit):
 			return nil, nil, ErrEmailDomainRegistrationLimit
+		case errors.Is(err, ErrRegistrationIPLimit):
+			return nil, nil, ErrRegistrationIPLimit
 		default:
 			slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 			return nil, nil, ErrServiceUnavailable
@@ -205,6 +217,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		return nil, nil, ErrRegDisabled
 	}
 
+	rawEmail := email
 	email = normalizeRegistrationEmailAddress(email)
 	if email == "" || len(email) > 255 {
 		return nil, nil, ErrEmailVerifyRequired
@@ -214,6 +227,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	}
 	if isReservedEmail(email) {
 		return nil, nil, ErrEmailReserved
+	}
+	if err := s.validateRegistrationEmailAlias(ctx, rawEmail); err != nil {
+		return nil, nil, err
 	}
 	if strings.TrimSpace(password) == "" {
 		return nil, nil, infraerrors.BadRequest("PASSWORD_REQUIRED", "password is required")
@@ -260,10 +276,14 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 
 	if err := s.createUserWithRegistrationEmailGuard(ctx, user); err != nil {
 		switch {
+		case errors.Is(err, ErrEmailAliasNotAllowed):
+			return nil, nil, ErrEmailAliasNotAllowed
 		case errors.Is(err, ErrEmailExists):
 			return nil, nil, ErrEmailExists
 		case errors.Is(err, ErrEmailDomainRegistrationLimit):
 			return nil, nil, ErrEmailDomainRegistrationLimit
+		case errors.Is(err, ErrRegistrationIPLimit):
+			return nil, nil, ErrRegistrationIPLimit
 		default:
 			return nil, nil, ErrServiceUnavailable
 		}

@@ -35,24 +35,19 @@ func TestGroupRoutingPolicyCreateUpdateAndDuplicate(t *testing.T) {
 	svc := &adminServiceImpl{groupRepo: repo}
 	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{Name: "routing", Platform: PlatformOpenAI, RateMultiplier: 1})
 	require.NoError(t, err)
-	require.False(t, group.EnableBPS)
 	require.Equal(t, GroupSchedulingBalanced, group.SchedulingStrategy)
-	enabled, strategy := true, GroupSchedulingPriorityWeekly
-	group, err = svc.UpdateGroup(context.Background(), group.ID, &UpdateGroupInput{EnableBPS: &enabled, SchedulingStrategy: &strategy})
+	strategy := GroupSchedulingPriorityWeekly
+	group, err = svc.UpdateGroup(context.Background(), group.ID, &UpdateGroupInput{SchedulingStrategy: &strategy})
 	require.NoError(t, err)
-	require.True(t, group.EnableBPS)
 	require.Equal(t, strategy, group.SchedulingStrategy)
 	copy := cloneGroupForDuplicate(group, "routing-copy")
-	require.True(t, copy.EnableBPS)
 	require.Equal(t, strategy, copy.SchedulingStrategy)
 	group, err = svc.UpdateGroup(context.Background(), group.ID, &UpdateGroupInput{Name: "renamed"})
 	require.NoError(t, err)
-	require.True(t, group.EnableBPS)
 	require.Equal(t, strategy, group.SchedulingStrategy)
-	enabled, strategy = false, GroupSchedulingPriority5h
-	group, err = svc.UpdateGroup(context.Background(), group.ID, &UpdateGroupInput{EnableBPS: &enabled, SchedulingStrategy: &strategy})
+	strategy = GroupSchedulingPriority5h
+	group, err = svc.UpdateGroup(context.Background(), group.ID, &UpdateGroupInput{SchedulingStrategy: &strategy})
 	require.NoError(t, err)
-	require.False(t, group.EnableBPS)
 	require.Equal(t, strategy, group.SchedulingStrategy)
 	writes := repo.writes
 	strategy = "invalid"
@@ -65,7 +60,7 @@ func TestGroupRoutingPolicyCreateUpdateAndDuplicate(t *testing.T) {
 
 func TestGroupRoutingPolicyAuthCacheRoundtrip(t *testing.T) {
 	groupID := int64(7)
-	apiKey := &APIKey{ID: 2, UserID: 1, GroupID: &groupID, Key: "sk-group-policy", Status: StatusActive, User: &User{ID: 1, Status: StatusActive}, Group: &Group{ID: groupID, Name: "policy", Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, EnableBPS: true, SchedulingStrategy: GroupSchedulingPriorityWeekly}}
+	apiKey := &APIKey{ID: 2, UserID: 1, GroupID: &groupID, Key: "sk-group-policy", Status: StatusActive, User: &User{ID: 1, Status: StatusActive}, Group: &Group{ID: groupID, Name: "policy", Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, SchedulingStrategy: GroupSchedulingPriorityWeekly}}
 	svc := &APIKeyService{}
 	payload, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: svc.snapshotFromAPIKey(context.Background(), apiKey)})
 	require.NoError(t, err)
@@ -74,6 +69,5 @@ func TestGroupRoutingPolicyAuthCacheRoundtrip(t *testing.T) {
 	restored, used, err := svc.applyAuthCacheEntry(apiKey.Key, &entry)
 	require.NoError(t, err)
 	require.True(t, used)
-	require.True(t, restored.Group.EnableBPS)
 	require.Equal(t, GroupSchedulingPriorityWeekly, restored.Group.SchedulingStrategy)
 }

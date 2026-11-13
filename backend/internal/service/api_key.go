@@ -32,11 +32,19 @@ type APIKey struct {
 	UserID      int64
 	Key         string
 	Name        string
+	GroupIDs    []int64 // Configured groups; GroupID is the selected group for a request.
 	GroupID     *int64
-	GroupIDs    []int64 // Bound groups in routing priority order.
 	Status      string
 	IPWhitelist []string
 	IPBlacklist []string
+
+	// Model, reasoning effort and long context policies are managed only by administrators.
+	// Mapping is an exact, single-step rewrite; empty policy preserves the request.
+	ModelMapping      map[string]string
+	ReasoningEffort   string
+	AllowLongContext  bool // Administrator-managed; new and migrated keys default to true.
+	ContextTokenLimit int  // Positive overrides the legacy policy; zero inherits it.
+
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
@@ -78,6 +86,11 @@ func (k *APIKey) OrderedGroupIDs() []int64 {
 		return []int64{*k.GroupID}
 	}
 	return []int64{}
+}
+
+// RequiresContextCheck includes explicit ceilings even when long context is allowed.
+func (k *APIKey) RequiresContextCheck() bool {
+	return k != nil && (k.ContextTokenLimit > 0 || !k.AllowLongContext)
 }
 
 func (k *APIKey) IsActive() bool {

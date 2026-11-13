@@ -157,11 +157,14 @@ func TestGPTAutoVirtualModelListing(t *testing.T) {
 	models := []openai.Model{{ID: "gpt-6-luna"}}
 	require.Equal(t, models, withGPTAutoVirtualModel(c, models), "not listed unless admitted")
 	c.Set(gptAutoListKey, true)
-	listed := withGPTAutoVirtualModel(c, models).([]openai.Model)
+	listed, ok := withGPTAutoVirtualModel(c, models).([]openai.Model)
+	require.True(t, ok, "virtual model listing must return an OpenAI model slice")
 	require.Len(t, listed, 2)
 	require.Equal(t, service.GPTAutoVirtualModel, listed[1].ID)
 	require.Len(t, models, 1, "the caller's slice is not mutated")
-	require.Len(t, withGPTAutoVirtualModel(c, listed).([]openai.Model), 2, "never listed twice")
+	listedAgain, ok := withGPTAutoVirtualModel(c, listed).([]openai.Model)
+	require.True(t, ok, "repeated virtual model listing must return an OpenAI model slice")
+	require.Len(t, listedAgain, 2, "never listed twice")
 }
 
 func TestResolveGPTAutoLivePassesThroughOtherModels(t *testing.T) {

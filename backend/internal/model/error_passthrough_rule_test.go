@@ -22,5 +22,7 @@ func TestAllPlatformsIncludesEveryConcretePlatform(t *testing.T) {
 		"typesafe",
 		"command_code",
 		"cline",
+		"mistral",
+		"qwen",
 	}, AllPlatforms())
 }

@@ -43,6 +43,11 @@ func (h *PaymentWebhookHandler) EasyPayNotify(c *gin.Context) {
 	h.handleNotify(c, payment.TypeEasyPay)
 }
 
+// BEpusdtNotify handles native BEpusdt signed JSON notifications.
+func (h *PaymentWebhookHandler) BEpusdtNotify(c *gin.Context) {
+	h.handleNotify(c, payment.TypeBEpusdt)
+}
+
 // AlipayNotify handles Alipay payment notifications.
 // POST /api/v1/payment/webhook/alipay
 func (h *PaymentWebhookHandler) AlipayNotify(c *gin.Context) {
@@ -90,7 +95,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	providers, err := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
-		if providerKey == payment.TypeWxpay {
+		if providerKey == payment.TypeWxpay || providerKey == payment.TypeBEpusdt {
 			c.String(http.StatusBadRequest, "verify failed")
 			return
 		}
@@ -103,7 +108,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		headers[strings.ToLower(k)] = c.GetHeader(k)
 	}
 
-	resolvedProviderKey, notification, err := verifyNotificationWithProviders(c.Request.Context(), providers, rawBody, headers)
+	verifiedProvider, notification, err := verifyNotificationWithProviders(c.Request.Context(), providers, rawBody, headers)
 	if err == nil && providerKey == payment.TypeWxpay && notification != nil {
 		// The encrypted body reveals its order only after the first verification.
 		// Reverify with that order's original instance to bind legacy orders too.
@@ -111,7 +116,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		if resolveErr != nil {
 			err = resolveErr
 		} else {
-			resolvedProviderKey, notification, err = verifyNotificationWithProviders(c.Request.Context(), orderProviders, rawBody, headers)
+			verifiedProvider, notification, err = verifyNotificationWithProviders(c.Request.Context(), orderProviders, rawBody, headers)
 		}
 	}
 	if err != nil {
@@ -125,9 +130,17 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		return
 	}
 
+	resolvedProviderKey := verifiedProvider.ProviderKey()
+
 	// nil notification means irrelevant event (e.g. Stripe non-payment event); return success.
 	if notification == nil {
 		writeSuccessResponse(c, resolvedProviderKey)
+		return
+	}
+
+	if err := h.paymentService.ConfirmNotificationUpstream(c.Request.Context(), verifiedProvider, notification); err != nil {
+		slog.Error("[Payment Webhook] upstream confirmation failed", "provider", resolvedProviderKey, "outTradeNo", notification.OrderID, "tradeNo", notification.TradeNo, "error", err)
+		c.String(http.StatusBadGateway, "confirm failed")
 		return
 	}
 
@@ -158,6 +171,13 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 // This allows looking up the correct provider instance before verification.
 func extractOutTradeNo(rawBody, providerKey string) string {
 	switch providerKey {
+	case payment.TypeBEpusdt:
+		var payload struct {
+			OrderID string `json:"order_id"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			return payload.OrderID
+		}
 	case payment.TypeEasyPay, payment.TypeAlipay:
 		values, err := url.ParseQuery(rawBody)
 		if err == nil {
@@ -180,7 +200,10 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 	return ""
 }
 
-func verifyNotificationWithProviders(ctx context.Context, providers []payment.Provider, rawBody string, headers map[string]string) (string, *payment.PaymentNotification, error) {
+// verifyNotificationWithProviders returns the provider instance that verified
+// the notification so later steps (upstream confirmation) use the same
+// merchant configuration.
+func verifyNotificationWithProviders(ctx context.Context, providers []payment.Provider, rawBody string, headers map[string]string) (payment.Provider, *payment.PaymentNotification, error) {
 	var lastErr error
 	for _, provider := range providers {
 		if provider == nil {
@@ -191,12 +214,12 @@ func verifyNotificationWithProviders(ctx context.Context, providers []payment.Pr
 			lastErr = err
 			continue
 		}
-		return provider.ProviderKey(), notification, nil
+		return provider, notification, nil
 	}
 	if lastErr != nil {
-		return "", nil, lastErr
+		return nil, nil, lastErr
 	}
-	return "", nil, fmt.Errorf("no webhook provider could verify notification")
+	return nil, nil, fmt.Errorf("no webhook provider could verify notification")
 }
 
 // wxpaySuccessResponse is the JSON response expected by WeChat Pay webhook.

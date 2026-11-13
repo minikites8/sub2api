@@ -12,6 +12,7 @@ import (
 
 func quotaPriorityFixture(now time.Time) (PrioritySchedulingConfig, openAIAccountCandidateScore, PrioritySchedulingSignal) {
 	cfg := DefaultPrioritySchedulingConfig()
+	cfg.TargetTTFTMs = 3000
 	cfg.Enabled, cfg.OAuthQuotaPriority = true, true
 	item := priorityCandidate(1, .1, 0)
 	item.account.Type, item.account.Status, item.account.Schedulable = AccountTypeOAuth, StatusActive, true
@@ -21,7 +22,7 @@ func quotaPriorityFixture(now time.Time) (PrioritySchedulingConfig, openAIAccoun
 		item.account.Extra["codex_"+w+"_reset_at"] = now.Add(time.Hour).Format(time.RFC3339)
 	}
 	healthy := true
-	signal := PrioritySchedulingSignal{QualitySamples: 10, QualityPassed: 10, LatestQualityPassed: &healthy, Samples: 10, P90TTFTMs: 500, ProfitSamples: 10, Revenue: 10, BaseCost: 10}
+	signal := withAccountPerformanceFixture(PrioritySchedulingSignal{QualitySamples: 10, QualityPassed: 10, LatestQualityPassed: &healthy, Samples: 10, P90TTFTMs: 500, ProfitSamples: 10, Revenue: 10, BaseCost: 10})
 	return cfg, item, signal
 }
 
@@ -67,17 +68,24 @@ func TestPriorityOAuthQuotaEvidenceAndCapacity(t *testing.T) {
 			a.account.Extra["codex_7d_used_percent"] = math.NaN()
 		}, 0},
 		{"unknown_quality", func(_ *PrioritySchedulingConfig, _ *openAIAccountCandidateScore, s *PrioritySchedulingSignal) {
-			s.LatestQualityPassed = nil
+			s.QualitySamples = 0
 		}, 0},
 		{"latest_degraded_despite_good_average", func(_ *PrioritySchedulingConfig, _ *openAIAccountCandidateScore, s *PrioritySchedulingSignal) {
 			bad := false
 			s.LatestQualityPassed = &bad
+			s.QualityPassed = 0
 		}, 0},
 		{"bad_average", func(_ *PrioritySchedulingConfig, _ *openAIAccountCandidateScore, s *PrioritySchedulingSignal) {
 			s.QualityPassed = 1
 		}, 0},
 		{"latency", func(_ *PrioritySchedulingConfig, _ *openAIAccountCandidateScore, s *PrioritySchedulingSignal) {
 			s.P90TTFTMs = 9999
+		}, 0},
+		{"latency_recovery_cannot_displace_healthy_api_capacity", func(_ *PrioritySchedulingConfig, _ *openAIAccountCandidateScore, s *PrioritySchedulingSignal) {
+			s.P90TTFTMs = 9999
+			at := now.Add(-11 * time.Minute)
+			s.LatestLatencyAt = &at
+			s.LatestBadLatencyAt = &at
 		}, 0},
 		{"cold_financial_samples", func(_ *PrioritySchedulingConfig, _ *openAIAccountCandidateScore, s *PrioritySchedulingSignal) {
 			s.Samples = 0
@@ -98,9 +106,10 @@ func TestPriorityOAuthQuotaEvidenceAndCapacity(t *testing.T) {
 		{"unknown_load", func(_ *PrioritySchedulingConfig, a *openAIAccountCandidateScore, _ *PrioritySchedulingSignal) {
 			a.loadKnown = false
 		}, 0},
-		{"errors", func(_ *PrioritySchedulingConfig, a *openAIAccountCandidateScore, _ *PrioritySchedulingSignal) {
+		{"errors", func(c *PrioritySchedulingConfig, a *openAIAccountCandidateScore, _ *PrioritySchedulingSignal) {
+			c.ErrorRateWeight = 0 // Existing account EWMA contract.
 			a.errorRate = .5
-		}, 0},
+		}, 8},
 		{"rpm", func(_ *PrioritySchedulingConfig, a *openAIAccountCandidateScore, _ *PrioritySchedulingSignal) {
 			a.rpmEnabled = true
 			a.rpmLimit = 10
@@ -118,6 +127,7 @@ func TestPriorityOAuthQuotaEvidenceAndCapacity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, item, signal := quotaPriorityFixture(now)
 			tc.mutate(&cfg, &item, &signal)
+			signal = withAccountPerformanceFixture(signal)
 			applyPriorityCandidate(cfg, &item, signal, now)
 			require.Equal(t, tc.want, item.priorityOAuthSpare)
 		})
@@ -299,7 +309,7 @@ func TestPriorityExplorationRequiresQualityForAllAccountTypes(t *testing.T) {
 	api := priorityCandidate(1, .1, 0)
 	applyPriorityCandidate(cfg, &api, PrioritySchedulingSignal{}, time.Now())
 	require.False(t, api.priorityExploration, "unknown quality must not enter the exploration lane")
-	signal := PrioritySchedulingSignal{QualitySamples: 10, QualityPassed: 10}
+	signal := withAccountPerformanceFixture(PrioritySchedulingSignal{QualitySamples: 10, QualityPassed: 10})
 	applyPriorityCandidate(cfg, &api, signal, time.Now())
 	require.True(t, api.priorityExploration, "quality-ready API keys can receive bounded exploration")
 	api.account.Type = AccountTypeOAuth

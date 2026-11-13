@@ -44,6 +44,11 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
+		// 名称与描述的界面语言译文 (added by migration 242)
+		field.JSON("i18n", domain.GroupI18n{}).
+			Default(domain.GroupI18n{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("名称与描述的界面语言译文：语言代码 -> {name, description}；缺失的语言沿用 name/description"),
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
@@ -113,6 +118,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_batch_image_generation").
 			Default(false).
 			Comment("是否允许该分组使用批量图片生成能力"),
+		field.Bool("image_count_billing").
+			Default(false).
+			Comment("图片生成是否按实际出图张数计费"),
 		field.Bool("image_rate_independent").
 			Default(false).
 			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),
@@ -217,6 +225,14 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			Comment("无效请求兜底使用的分组 ID"),
 
+		// 仅限制员工 API 入口，后台账号测试与质量判题沿用内部调用链。
+		field.Bool("block_subagents").
+			Default(false).
+			Comment("是否拒绝员工 API 入口中带子代理标识的请求"),
+		field.Bool("codex_cli_only").
+			Default(false).
+			Comment("是否仅允许 Codex 客户端调用本分组"),
+
 		// 仅允许流式请求 (added by migration 246)
 		field.Bool("stream_only").
 			Default(false).
@@ -262,9 +278,6 @@ func (Group) Fields() []ent.Field {
 		field.Bool("free_openai_fast").
 			Default(false).
 			Comment("是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费"),
-		field.Bool("enable_bps").
-			Default(false).
-			Comment("允许分组使用已开启 BPS 的账户上游；关闭时使用平台上游"),
 		field.String("scheduling_strategy").
 			Default("balanced").
 			MaxLen(32).

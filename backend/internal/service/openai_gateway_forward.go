@@ -20,29 +20,6 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func logBPSNativeCapabilityBypass(c *gin.Context, account *Account, requestedModel, mappedModel, reason string, body []byte) {
-	if account == nil {
-		return
-	}
-	requestPath := ""
-	if c != nil && c.Request != nil && c.Request.URL != nil {
-		requestPath = c.Request.URL.Path
-	}
-	stream := gjson.GetBytes(body, "stream").Bool()
-	hasTools := gjson.GetBytes(body, "tools").IsArray()
-	toolChoiceType := strings.TrimSpace(gjson.GetBytes(body, "tool_choice.type").String())
-	toolChoiceName := truncateString(strings.TrimSpace(gjson.GetBytes(body, "tool_choice.name").String()), 128)
-	detail := fmt.Sprintf("request_path=%s stream=%t has_tools=%t tool_choice_type=%s tool_choice_name=%s", requestPath, stream, hasTools, toolChoiceType, toolChoiceName)
-	logger.LegacyPrintf("service.openai_gateway", "[OpenAI BPS] native capability bypass: account_id=%d requested_model=%s mapped_model=%s reason=%s %s", account.ID, requestedModel, mappedModel, reason, detail)
-	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-		Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
-		RequestedModel: requestedModel, MappedModel: mappedModel, HasTools: hasTools,
-		ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
-		UpstreamURL: chatgptCodexURL, Kind: "bps_native_bypass", Stage: "route", Scope: "bps", Reason: reason,
-		Message: "Excel BPS bypassed for native Codex capability", Detail: detail,
-	})
-}
-
 // normalizeOpenAIResponsesNamespaces keeps initial routing and a late WS-to-HTTP
 // fallback on the same namespace policy, including validation and response names.
 func normalizeOpenAIResponsesNamespaces(c *gin.Context, account *Account, body []byte, transport OpenAIUpstreamTransport, passthroughEnabled, compactPath bool) ([]byte, error) {
@@ -114,6 +91,36 @@ func prismBrowserResponsesURL(baseURL string) string {
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (result *OpenAIForwardResult, resultErr error) {
+	defer func() {
+		if result != nil && c != nil {
+			result.AuthConnectionID = c.GetString("openai_auth_connection_id")
+			s.attributeRegionalConnectionResult(ctx, c, account, result)
+		}
+	}()
+	admittedCtx, admissionErr := s.beginPriorityLatencyTurn(ctx, c, account, gjson.GetBytes(body, "model").String())
+	if admissionErr != nil {
+		return nil, admissionErr
+	}
+	ctx = admittedCtx
+	endpoint := openAIResponsesUpstreamEndpoint
+	if IsOpenAIResponsesCompactPath(c) {
+		endpoint += "/compact"
+	}
+	ctx = WithObservationRequestEffort(ctx, body)
+	ctx, errorScope := withPriorityAttemptScope(ctx, gjson.GetBytes(body, "model").String(), endpoint)
+	defer func() { errorScope.finish(result) }()
+	ctx = s.withOpenAIHTTPBudget(ctx, c)
+	var finishMeter func(*OpenAIForwardResult, error) error
+	var meterErr error
+	ctx, finishMeter, meterErr = s.beginRegionalMeter(ctx, c, account, body)
+	if meterErr != nil {
+		return nil, meterErr
+	}
+	if regionalMeterAttemptFrom(ctx) != nil && c.Request != nil {
+		c.Request = c.Request.WithContext(ctx)
+	}
+	defer func() { resultErr = regionalMeterFinishForward(ctx, result, resultErr, finishMeter) }()
+	ctx = s.withRequestTimezoneEgress(ctx, account)
 	body = s.normalizeRequestTimezone(ctx, account, body, "http")
 	if astraSchedulingAppliesToRequest(s.cfg.AstraRouting(ctx), account, gjson.GetBytes(body, "model").String(), getOpenAIGroupIDFromContext(c)) {
 		if err := s.checkAstraSchedulingRoute(ctx, account); err != nil {
@@ -141,23 +148,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, markOpenAIInitialAdmissionError(admissionErr)
 	}
 	account = latest
-	if excelBPSFallbackContextEnabled(ctx) {
-		account = accountForExcelBPSFallback(account)
-	}
 	clearOpenAIHTTPAdmissionFailure(c)
+	if err := s.checkOpenAIAgentRecoveryDispatch(ctx, c, account, body); err != nil {
+		return nil, err
+	}
+	ctx = withOpenAITransportRoute(ctx, "http", "native", "", "")
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	// A failed account attempt must not leave a bypass reason on a later BPS response.
 	c.Writer.Header().Del("X-Codex2API-Basispoints-Bypass")
 	c.Writer.Header().Del("X-Codex2API-Upstream")
-	restoreExcelBPSNativeBypassHeaders(ctx, c, account)
-	if openAIToolHistoryFallbackReason(excelBPSNativeBypassReason(ctx)) {
-		normalized, _, err := NormalizeOpenAIOrphanToolResults(body)
-		if err != nil {
-			return nil, fmt.Errorf("normalize historical tool results: %w", err)
-		}
-		body = normalized
-	}
 	if shouldForwardOpenAIResponsesViaChatCompletions(account, body) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
@@ -173,7 +173,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
 	}
-	startTime := time.Now()
+	startTime := requesttiming.Now(ctx)
+	// Record the pre-forward wait for the usage log without changing the
+	// forward-scope Duration/FirstTokenMs used by scheduling and ops.
+	defer func() {
+		if result != nil {
+			applyOpenAIQueueTiming(result, openAIIngressStart(ctx), startTime, startTime, "http_ingress_responses", "pre_final_forward")
+		}
+	}()
 	// 固定渠道映射后的请求级 canonical body；账号 normalize/strip 不得改写跨 failover hint。
 	canonicalImageIntentBody := body
 
@@ -199,41 +206,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if err := s.checkControlledRoute(ctx, c, account, modelForBPS); err != nil {
 		return nil, err
 	}
+	if account.IsSIWCEnabled() {
+		return s.forwardSIWC(ctx, c, account, body, startTime)
+	}
 	if !account.IsExcelOAuth() && account.IsPrismBrowserEnabledForModel(modelForBPS) && s.prismBrowserGloballyEnabled(ctx) {
-		return s.forwardPrismBrowser(ctx, c, account, body, startTime)
+		return s.forwardPrismBrowser(withOpenAITransportMode(ctx, "prism_browser"), c, account, body, startTime)
 	}
 	if c.GetBool(bpsAccountProbeRequiredContextKey) &&
 		(!account.IsExcelBPSEnabledForModel(modelForBPS) || account.excelBPSNativeFallbackReason(body) != "") {
 		return nil, errors.New("bps probe path is unavailable")
 	}
 	if account.IsExcelBPSEnabledForModel(modelForBPS) && s.excelBPSGloballyEnabled(ctx) {
-		reason := account.excelBPSNativeFallbackReason(body)
-		if reason == "" {
-			bpsResult, bpsErr := s.forwardExcelBPS(ctx, c, account, body, startTime)
-			if !errors.Is(bpsErr, errExcelBPSModelUnavailable) && !errors.Is(bpsErr, errExcelBPSAccountEligibilityChanged) {
-				return bpsResult, bpsErr
-			}
-			// Continue once with the original canonical request. BPS adaptation and
-			// attachment IDs belong exclusively to the completed BPS attempt.
-			account = accountForExcelBPSFallback(account)
-			ctx = withExcelBPSFallbackContext(ctx)
-			resetExcelBPSFallbackContext(c)
-			if errors.Is(bpsErr, errExcelBPSAccountEligibilityChanged) {
-				c.Header("X-Codex2API-Upstream", "codex")
-				c.Header("X-Codex2API-Basispoints-Bypass", "account_eligibility_changed")
-			}
-			if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
-				return nil, err
-			}
-		} else {
-			c.Header("X-Codex2API-Upstream", "codex")
-			c.Header("X-Codex2API-Basispoints-Bypass", reason)
-			logBPSNativeCapabilityBypass(c, account, modelForBPS, account.GetMappedModel(modelForBPS), reason, body)
-			recordExcelBPSNativeFallback(ctx, account, reason)
-			if excelBPSFailoverContextEnabled(ctx) {
-				return nil, ErrExcelBPSNativeBypass
-			}
-		}
+		return s.forwardExcelBPS(withOpenAITransportMode(ctx, "bps"), c, account, body, startTime)
 	}
 
 	if account.IsOpenAIOAuthLike() {
@@ -262,7 +246,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if normalized {
 		body = normalizedBody
 	}
-	legacyIngressBody, legacyIngressChanged, legacyIngressErr := normalizeOpenAIResponsesLegacyIngress(body)
+	legacyIngressBody, legacyIngressChanged, legacyIngressErr := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)
 	if legacyIngressErr != nil {
 		return nil, legacyIngressErr
 	}
@@ -308,15 +292,24 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	// HTTP SSE may opt into the native WS pool on ordinary OAuth accounts.
 	wsDecision = s.resolveOpenAIHTTPWSSSEDecision(c, account, body, wsDecision)
-	accelerateHTTPSSE := wsDecision.Reason == openAIOAuthWSSSEAccelerationReason
-	anchorCtx, anchorFinish, anchorErr := s.prepareCodexWSAnchor(ctx, c, account, body)
-	if anchorErr != nil {
-		return nil, anchorErr
+	if openAIAgentRecoveryBound(ctx) {
+		// The observation was made at an actual HTTP send. Preserve that wire
+		// instead of letting a later WS preference change its continuation.
+		wsDecision = openAIWSHTTPDecision("encrypted_agent_continuation")
 	}
-	if anchorFinish != nil {
-		ctx = anchorCtx
-		defer func() { anchorFinish(result, resultErr) }()
-		wsDecision = OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2, Reason: "private_astra_ws_anchor"}
+	accelerateHTTPSSE := wsDecision.Reason == openAIOAuthWSSSEAccelerationReason
+	var anchorFinish func(*OpenAIForwardResult, error)
+	if !openAIAgentRecoveryBound(ctx) {
+		anchorCtx, finish, anchorErr := s.prepareCodexWSAnchor(ctx, c, account, body)
+		if anchorErr != nil {
+			return nil, anchorErr
+		}
+		anchorFinish = finish
+		if anchorFinish != nil {
+			ctx = anchorCtx
+			defer func() { anchorFinish(result, resultErr) }()
+			wsDecision = OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2, Reason: "private_astra_ws_anchor"}
+		}
 	}
 	if mode := controlledMode(ctx); mode != nil {
 		switch mode.channel {
@@ -394,7 +387,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	if (isOpenAINativeCompactionV2(c) && shouldForwardDeepSeekResponsesCompactViaChatCompletions(account, body)) ||
 		shouldForwardDeepSeekResponsesLiteViaChatCompletions(account, body) {
-		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, startTime)
 	}
 	// 上游协议统一由 resolveUpstreamProtocol 判定（按模型分流时带上游模型目录）。OpenAI API Key 账号只会落到
 	// Responses / Chat Completions，上面的归一化对两条路径都生效。
@@ -409,7 +402,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// 账号映射未命中时以去除首尾空白的请求模型兜底，计费名与上游模型名一致。
 		return s.forwardResponsesViaNativeAnthropic(ctx, c, account, body, reqModel)
 	case APIProtocolChatCompletions:
-		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, startTime)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
 	if account.IsOpenAI() && (account.IsOpenAIApiKey() || account.IsOpenAIOAuthLike()) {
@@ -466,6 +459,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		c.Set("openai_ws_transport_decision", string(wsDecision.Transport))
 		c.Set("openai_ws_transport_reason", wsDecision.Reason)
 	}
+	ctx = withOpenAITransportRoute(ctx, "http", "native", wsDecision.Reason, "")
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
 		logOpenAIWSModeDebug(
 			"selected account_id=%d account_type=%s transport=%s reason=%s model=%s stream=%v",
@@ -828,7 +822,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		maxOutputTokens := gjson.GetBytes(body, "max_output_tokens")
 		if maxOutputTokens.Exists() {
 			switch account.Platform {
-			case PlatformOpenAI, PlatformDeepseek:
+			case PlatformOpenAI, PlatformDeepseek, PlatformQwen:
 				// Preserve Responses-native output limits unless the selected upstream
 				// explicitly rejects the field in the bounded HTTP retry loop below.
 			case PlatformAnthropic:
@@ -877,7 +871,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("max_output_tokens", clampedCap)
 	}
 	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 &&
-		!account.IsOpenAIApiKey() && gjson.GetBytes(body, "previous_response_id").Exists() {
+		!account.IsOpenAIApiKey() && !account.QwenSessionCacheEnabled() && gjson.GetBytes(body, "previous_response_id").Exists() {
 		markPatchDelete("previous_response_id")
 	}
 	if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
@@ -986,8 +980,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	lineageGroupID := getOpenAIGroupIDFromContext(c)
 	lineageEntryBody := body
 	lineageSessionHash := ""
-	if stateStore := s.getOpenAIWSStateStore(); stateStore != nil && stateStore.HasAnySessionInvalidEncryptedContent() {
-		lineageSessionHash = s.GenerateSessionHash(c, body)
+	if stateStore := s.getOpenAIWSStateStore(); !openAIAgentRecoveryPreservesHistory(ctx) && stateStore != nil && stateStore.HasAnySessionInvalidEncryptedContent() {
+		lineageSessionHash = openAIEncryptedLineageKey(c, account.ID, s.openAIWSLineageSessionHashFromContext(c, body))
 		if invalidDigests := stateStore.GetSessionInvalidEncryptedContentDigests(lineageGroupID, lineageSessionHash); len(invalidDigests) > 0 {
 			strippedBody, strippedCount := s.stripSessionInvalidEncryptedContentLogged(
 				body, invalidDigests, "invalid_encrypted_lineage_strip", account.ID, 0,
@@ -998,6 +992,27 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				reqBody = nil
 			}
 		}
+	}
+	// 上游通过 WS/SSE 拒绝密文时，安全的一次恢复及无法恢复的出口都记录
+	// 可明确归属的进场密文摘要，供后续 turn 使用同一 lineage 会话键。
+	markInvalidEncryptedContentLineage := func(transport string, rejectedBody, rejection []byte) {
+		if isControlledExperiment(ctx) || openAIAgentRecoveryPreservesHistory(ctx) {
+			return
+		}
+		invalidDigests := openAIRejectedEncryptedDigests(rejectedBody, rejection)
+		if len(invalidDigests) == 0 {
+			return
+		}
+		if lineageSessionHash == "" {
+			lineageSessionHash = openAIEncryptedLineageKey(c, account.ID, s.openAIWSLineageSessionHashFromContext(c, lineageEntryBody))
+		}
+		s.markOpenAIWSInvalidEncryptedContentLineage(lineageGroupID, lineageSessionHash, invalidDigests)
+		logOpenAIWSModeInfo(
+			"invalid_encrypted_content_lineage_mark account_id=%d transport=%s digests=%d",
+			account.ID,
+			transport,
+			len(invalidDigests),
+		)
 	}
 	imageBillingModel := ""
 	imageSizeTier := ""
@@ -1087,15 +1102,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			)
 			return true
 		}
-		recoverInvalidEncryptedContent := func(attempt int) bool {
-			if wsInvalidEncryptedContentRecoveryTried {
+		recoverInvalidEncryptedContent := func(attempt int, rejection []byte) bool {
+			rejectedBody := openAIEncryptedAttemptBody(wsReqBody)
+			if wsInvalidEncryptedContentRecoveryTried || isControlledExperiment(ctx) || ctx.Err() != nil {
 				return false
 			}
-			// 写入 lineage 后，同一失效密文在后续 turn 进场时被预剥离，不再重复
-			// 触发上游拒绝与重连。摘要取自进场形态的 body（密文项只可能来自
-			// 客户端进场请求，重复摘要幂等）。
-			invalidDigests := collectOpenAIEncryptedContentDigestsRaw(lineageEntryBody)
-			removedReasoningItems := trimOpenAIEncryptedReasoningItems(wsReqBody)
+			// Attribute only the rejected item from this attempt; later failures
+			// cannot poison unrelated ciphertexts from the original input.
+			invalidDigests := openAIRejectedEncryptedDigests(rejectedBody, rejection)
+			removedReasoningItems := stripOpenAIInvalidEncryptedContentItems(wsReqBody, openAIEncryptedDigestSet(invalidDigests)) > 0
 			if !removedReasoningItems {
 				logOpenAIWSModeInfo(
 					"reconnect_invalid_encrypted_content_recovery_skip account_id=%d attempt=%d reason=missing_encrypted_reasoning_items",
@@ -1106,7 +1121,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			if len(invalidDigests) > 0 {
 				if lineageSessionHash == "" {
-					lineageSessionHash = s.GenerateSessionHash(c, lineageEntryBody)
+					lineageSessionHash = openAIEncryptedLineageKey(c, account.ID, s.openAIWSLineageSessionHashFromContext(c, lineageEntryBody))
 				}
 				s.markOpenAIWSInvalidEncryptedContentLineage(lineageGroupID, lineageSessionHash, invalidDigests)
 			}
@@ -1133,6 +1148,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	wsRetryLoop:
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			wsAttempts = attempt
+			c.Set(openAIStreamEncryptedRejectionContextKey, []byte(nil))
+			_ = takeOpenAIStreamInvalidEncryptedContent(c)
 			wsResult, wsErr = s.forwardOpenAIWSV2(
 				ctx,
 				c,
@@ -1161,10 +1178,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if IsOpenAITurnAdmissionError(wsErr) {
 				return nil, wsErr
 			}
-			if c != nil && c.Writer != nil && c.Writer.Written() {
-				break
-			}
-			if accelerateHTTPSSE {
+			streamRejectedEncryptedContent := takeOpenAIStreamInvalidEncryptedContent(c)
+			if (c != nil && c.Writer != nil && c.Writer.Written()) || accelerateHTTPSSE {
+				// 下方的剥离重试在这里不可达，只补记 lineage 供下一轮进场预剥离。
+				if streamRejectedEncryptedContent && codexWSAnchorFromContext(ctx) == nil {
+					markInvalidEncryptedContentLineage("ws", openAIEncryptedAttemptBody(wsReqBody), openAIStreamEncryptedRejection(c))
+				}
 				break
 			}
 			var taskRecoveredErr *agentIdentityTaskRecoveredError
@@ -1181,7 +1200,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if codexWSAnchorFromContext(ctx) == nil && reason == "previous_response_not_found" && recoverPrevResponseNotFound(attempt) {
 				continue
 			}
-			if codexWSAnchorFromContext(ctx) == nil && reason == "invalid_encrypted_content" && recoverInvalidEncryptedContent(attempt) {
+			if codexWSAnchorFromContext(ctx) == nil && reason == "invalid_encrypted_content" && recoverInvalidEncryptedContent(attempt, openAIStreamEncryptedRejection(c)) {
 				continue
 			}
 			if codexWSAnchorFromContext(ctx) != nil {
@@ -1284,6 +1303,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		if fallbackReason == "" {
 			s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
+			if accelerateHTTPSSE && wsResult != nil {
+				wsResult.UpstreamModel = upstreamModel
+				if wsResult.BillingModel == "" {
+					wsResult.BillingModel = billingModel
+				}
+				if wsResult.ImageCount > 0 {
+					wsResult.ImageSize = imageSizeTier
+					wsResult.ImageInputSize = imageInputSize
+					wsResult.BillingModel = imageBillingModel
+				}
+			}
+			if accelerateHTTPSSE {
+				return wsResult, wsErr
+			}
 			return nil, wsErr
 		}
 		// Discard the unused WS handshake header before HTTP commits its own.
@@ -1305,6 +1338,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		reqBody = nil
 		c.Set("openai_ws_transport_decision", string(OpenAIUpstreamTransportHTTPSSE))
 		c.Set("openai_ws_transport_reason", fallbackReason)
+		ctx = withOpenAITransportRoute(ctx, "http", "native", fallbackReason, fallbackReason)
 	}
 
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
@@ -1323,8 +1357,44 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
+	// HTTP 400 and pre-output SSE rejection share one same-account retry.
+	recoverInvalidEncryptedContentHTTP := func(resp *http.Response, rejection []byte) (bool, error) {
+		if isControlledExperiment(ctx) || openAIAgentRecoveryPreservesHistory(ctx) || httpInvalidEncryptedContentRetryTried || ctx.Err() != nil ||
+			(c != nil && c.Request != nil && c.Request.Context().Err() != nil) || openAIStreamClientOutputStarted(c, false) {
+			return false, nil
+		}
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return false, decodeErr
+		}
+		if stripOpenAIInvalidEncryptedContentItems(decoded, openAIEncryptedDigestSet(openAIRejectedEncryptedDigests(body, rejection))) == 0 {
+			return false, nil
+		}
+		retryBody, marshalErr := marshalOpenAIUpstreamJSON(decoded)
+		if marshalErr != nil {
+			return false, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", marshalErr)
+		}
+		body = retryBody
+		requestView = newOpenAIRequestView(body)
+		reqBody = nil
+		httpInvalidEncryptedContentRetryTried = true
+		rejectedFieldRetryState.remember(body)
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
+			Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+			UpstreamStatusCode: resp.StatusCode, UpstreamRequestID: resp.Header.Get("x-request-id"),
+			Kind: "retry", Reason: "invalid_encrypted_content",
+			Message: "Upstream rejected encrypted reasoning; retrying once on the same account",
+		})
+		beginUpstreamResponseModelObservation(c)
+		logger.LegacyPrintf("service.openai_gateway", "invalid_encrypted_content_same_account_retry account_id=%d", account.ID)
+		return true, nil
+	}
 	for {
-		latest, admissionErr := s.admitOpenAITurn(ctx, c, account, extractOpenAICodexTicketModel(body))
+		latest, admissionErr := s.admitOpenAITurn(ctx, c, account, extractOpenAICodexTicketModel(body), body)
 		if admissionErr != nil {
 			return nil, admissionErr
 		}
@@ -1366,9 +1436,29 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			return nil, err
 		}
+		completeAgentRecovery, recoveryErr := s.prepareOpenAIAgentRecoveryAttempt(ctx, account, upstreamReq)
+		if recoveryErr != nil {
+			if headerGuard != nil {
+				headerGuard.close()
+			}
+			return nil, recoveryErr
+		}
+		defer completeAgentRecovery(false) // revoke pending exposure on every early return
 		upstreamStart := time.Now()
-		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		resp, err := func() (*http.Response, error) {
+			stop := s.startOpenAIHeaderWaitKeepalive(c, reqStream)
+			defer stop()
+			return s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		}()
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		var phaseTimeout *openAIHTTPPhaseTimeout
+		if errors.As(err, &phaseTimeout) {
+			if headerGuard != nil {
+				headerGuard.close()
+			}
+			return nil, handleOpenAIHTTPPhaseError(c, account, err)
+		}
+
 		if errors.Is(err, ErrCodexTicketResponseRejected) {
 			if headerGuard != nil {
 				headerGuard.close()
@@ -1421,34 +1511,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			respBody = s.redactAgentIdentitySensitiveBody(ctx, account, respBody)
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
-			invalidEncryptedContentError := upstreamCode == "invalid_encrypted_content" ||
-				(upstreamCode == "thinking_signature_invalid" &&
-					strings.Contains(upstreamMsg, "The encrypted content") &&
-					strings.Contains(upstreamMsg, "could not be verified") &&
-					strings.Contains(upstreamMsg, "could not be decrypted or parsed"))
-			if !isControlledExperiment(ctx) && !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && invalidEncryptedContentError {
-				decoded, decodeErr := ensureReqBody()
-				if decodeErr != nil {
-					return nil, decodeErr
-				}
-				invalidDigests := collectOpenAIEncryptedContentDigestsRaw(lineageEntryBody)
-				if trimOpenAIEncryptedReasoningItems(decoded) {
-					body, err = marshalOpenAIUpstreamJSON(decoded)
-					if err != nil {
-						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
-					}
-					if len(invalidDigests) > 0 {
-						if lineageSessionHash == "" {
-							lineageSessionHash = s.GenerateSessionHash(c, lineageEntryBody)
-						}
-						s.markOpenAIWSInvalidEncryptedContentLineage(lineageGroupID, lineageSessionHash, invalidDigests)
-					}
-					httpInvalidEncryptedContentRetryTried = true
-					rejectedFieldRetryState.remember(body)
-					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
+			if openAIAgentRecoveryPreservesHistory(ctx) {
+				// The administrator allowed one intact cross-account attempt. An
+				// actual rejection is not permission to rewrite or resubmit it.
+				return s.handleErrorResponse(ctx, resp, c, account, body, resolveOpenAIErrorSchedulingModel(billingModel, upstreamModel))
+			}
+			if resp.StatusCode == http.StatusBadRequest && isOpenAIInvalidEncryptedContentError(upstreamCode, extractUpstreamErrorMessage(respBody)) {
+				markInvalidEncryptedContentLineage("http", body, respBody)
+				if retry, retryErr := recoverInvalidEncryptedContentHTTP(resp, respBody); retryErr != nil {
+					return nil, retryErr
+				} else if retry {
 					continue
 				}
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
+				// The explicit error code takes precedence over arbitrary message
+				// text. Do not borrow field/compact/failover retry budgets here.
+				return s.handleErrorResponse(ctx, resp, c, account, body, resolveOpenAIErrorSchedulingModel(billingModel, upstreamModel))
 			}
 			if retryBody, reason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, body, respBody); retryErr != nil {
 				return nil, fmt.Errorf("normalize rejected Responses field retry body: %w", retryErr)
@@ -1498,18 +1575,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					Message:            upstreamMsg,
 					Detail:             upstreamDetail,
 				})
-				if resp.StatusCode == http.StatusUnauthorized && s.reclaimOpenAIAccount401(ctx, account) {
-					return nil, &UpstreamFailoverError{
-						StatusCode:             resp.StatusCode,
-						ResponseBody:           respBody,
-						ResponseHeaders:        resp.Header.Clone(),
-						RetryableOnSameAccount: true,
-						NextAccountAction:      NextAccountRetry,
-						Stage:                  GatewayFailureStageAccountAuth,
-						Scope:                  GatewayFailureScopeAccount,
-						Reason:                 GatewayFailureReason("ye_team_reclaim"),
-					}
-				}
 
 				shouldDisable := s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
 				return nil, s.newOpenAIAccountFailoverError(
@@ -1531,7 +1596,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 				maxLineSize = s.cfg.Gateway.MaxLineSize
 			}
-			resp.Body = newResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
+			resp.Body = newResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize, requesttiming.ResponseContext(ctx, resp))
 		}
 
 		serviceTier := extractOpenAIServiceTierFromBody(body)
@@ -1541,17 +1606,62 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
+		var clientDisconnected bool
+		var downstreamDeliveryErr error
+		agentCompleted := false
 		responseID := ""
 		imageCount := 0
 		searchCount := 0
 		var imageOutputSizes []string
 		if reqStream {
-			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
+			c.Set(openAIStreamEncryptedRejectionContextKey, []byte(nil))
+			_ = takeOpenAIStreamInvalidEncryptedContent(c)
+			streamCtx := ctx
+			if account.Platform == PlatformOpenAI && !isControlledExperiment(ctx) && !httpInvalidEncryptedContentRetryTried {
+				streamCtx = context.WithValue(ctx, openAIEncryptedContentRecoveryContextKey{}, openAIEncryptedContentRecoveryPolicy{body: body})
+			}
+			streamResult, err := s.handleStreamingResponseWithReasoning(streamCtx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
+			if phaseErr := openAIHTTPPhaseError(resp); phaseErr != nil {
+				return nil, handleOpenAIHTTPPhaseError(c, account, phaseErr)
+			}
+
+			var agentRecoveryErr *OpenAIAgentRecoveryError
+			if streamResult != nil && errors.As(err, &agentRecoveryErr) {
+				downstreamDeliveryErr = err
+				streamResult.agentCompleted = false
+				err = nil
+			}
 			if err != nil {
+				var encryptedSignal *openAIEncryptedContentRecoverySignal
+				if errors.As(err, &encryptedSignal) {
+					markInvalidEncryptedContentLineage("http", body, encryptedSignal.payload)
+					if retry, retryErr := recoverInvalidEncryptedContentHTTP(resp, encryptedSignal.payload); retryErr != nil {
+						return nil, retryErr
+					} else if retry {
+						continue
+					}
+					// Cancellation can revoke recovery after the scanner's signal.
+					if resp.Body != nil {
+						_ = resp.Body.Close()
+					}
+					if ctx.Err() != nil {
+						markInvalidEncryptedContentLineage("http", body, openAIStreamEncryptedRejection(c))
+						return nil, ctx.Err()
+					}
+					// Preserve the actual upstream terminal if recovery is revoked.
+					resp.Body = io.NopCloser(strings.NewReader("event: " + encryptedSignal.eventType + "\ndata: " + string(encryptedSignal.payload) + "\n\n"))
+					_, err = s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
+					if err == nil {
+						return nil, encryptedSignal
+					}
+				}
+				if takeOpenAIStreamInvalidEncryptedContent(c) {
+					markInvalidEncryptedContentLineage("http", body, openAIStreamEncryptedRejection(c))
+				}
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
 						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
-					); retry {
+					); retry && !openAIAgentRecoveryPreservesHistory(ctx) {
 						s.appendOpenAICompactFallbackRetryOps(c, account, resp, signal.payload, signal.message, false)
 						body = retryBody
 						requestView = newOpenAIRequestView(body)
@@ -1586,6 +1696,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 				return nil, err
 			}
+			clientDisconnected = streamResult.clientDisconnect
+			agentCompleted = streamResult.agentCompleted
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
 			responseID = strings.TrimSpace(streamResult.responseID)
@@ -1594,11 +1706,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			searchCount = streamResult.searchCount
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
-			if err != nil {
+			if phaseErr := openAIHTTPPhaseError(resp); phaseErr != nil {
+				return nil, handleOpenAIHTTPPhaseError(c, account, phaseErr)
+			}
+			var deliveryErr *openAINonStreamingDeliveryError
+			if nonStreamResult != nil && errors.As(err, &deliveryErr) {
+				downstreamDeliveryErr = err
+				var recoveryErr *OpenAIAgentRecoveryError
+				clientDisconnected = !errors.As(err, &recoveryErr)
+			} else if err != nil {
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
 						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
-					); retry {
+					); retry && !openAIAgentRecoveryPreservesHistory(ctx) {
 						s.appendOpenAICompactFallbackRetryOps(c, account, resp, signal.payload, signal.message, false)
 						body = retryBody
 						requestView = newOpenAIRequestView(body)
@@ -1611,12 +1731,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				return nil, err
 			}
 			usage = nonStreamResult.usage
+			agentCompleted = nonStreamResult.agentCompleted
 			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
 			searchCount = nonStreamResult.searchCount
 		}
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
+		completeAgentRecovery(agentCompleted && !clientDisconnected && c.Request.Context().Err() == nil && !OpenAIHeaderWaitDisconnected(c))
 
 		// Extract and save Codex usage snapshot from response headers (for OAuth accounts).
 		// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
@@ -1649,6 +1771,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:                  false,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			ClientDisconnect:              clientDisconnected,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount
@@ -1664,7 +1787,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			forwardResult.SearchCount = searchCount
 		}
 		stampOpenAIResponsesUpstreamEndpoint(c, forwardResult)
-		return forwardResult, nil
+		return forwardResult, downstreamDeliveryErr
 	}
 }
 
@@ -1863,6 +1986,9 @@ func shouldAdaptDeepSeekResponsesClientTools(account *Account, body []byte, comp
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
 	defer requesttiming.Observe(ctx, "build_upstream_request")()
+	if account.IsSIWCEnabled() {
+		return s.buildSIWCRequest(ctx, c, body, token)
+	}
 	if codexAccountIdentitySource(c, account).IsExcelOAuth() {
 		return nil, errExcelOAuthRouteUnavailable
 	}
@@ -1941,7 +2067,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// 客户端回带的 x-codex-turn-state 若已知由其他账号铸造（failover 换号），
 	// 剥离后再出站——异账号 blob 与本账号的（指纹收敛后）出站身份自相矛盾。
 	s.guardOpenAICodexTurnStateEcho(c, account, req.Header)
-	if err := s.applyOpenAICodexTicket(ctx, account, gjson.GetBytes(body, "model").String(), req.Header); err != nil {
+	if err := s.applyOpenAICodexTicket(ctx, account, extractOpenAICodexTicketModel(body), req.Header); err != nil {
 		return nil, err
 	}
 	if account.UsesOpenAICodexProtocol() {
@@ -2025,12 +2151,18 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
+	if account.QwenSessionCacheEnabled() {
+		req.Header.Set("x-dashscope-session-cache", "enable")
+	}
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, body, openCodeSessionHintBody(promptCacheKey))
 	// x-codex-beta-features：按真实 Codex 的会话级行为补注（在账号级覆写之后，
 	// 保证不被覆盖丢失）。
 	applyOpenAICodexBetaFeatures(c, account, req.Header)
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http", req.Header, body, "not_applicable")
+	if c != nil && c.Request != nil {
+		s.requestTimezoneHeaders(ctx, account, c.Request.Header, req.Header)
+	}
 	s.pinBoundCodexTicketHarvestIdentity(req, account)
 
 	if err := applyMappedGPT55LiteCompatibility(req, account, body); err != nil {

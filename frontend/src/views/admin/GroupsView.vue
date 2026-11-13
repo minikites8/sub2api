@@ -129,6 +129,12 @@
               value
             }}</span>
             <span
+              v-if="row.codex_cli_only"
+              class="badge badge-warning ml-2"
+              data-testid="group-codex-cli-only-badge"
+              >{{ t("admin.groups.form.codexCLIOnly") }}</span
+            >
+            <span
               v-if="row.stream_only"
               class="badge badge-warning ml-2"
               data-testid="group-stream-only-badge"
@@ -524,26 +530,26 @@
         class="space-y-5"
       >
         <div>
-          <label class="input-label">{{ t("admin.groups.form.name") }}</label>
-          <input
+          <GroupI18nField
             v-model="createForm.name"
-            type="text"
+            v-model:i18n="createForm.i18n"
+            :label="t('admin.groups.form.name')"
+            field="name"
             required
-            class="input"
             :placeholder="t('admin.groups.enterGroupName')"
             data-tour="group-form-name"
           />
         </div>
         <div>
-          <label class="input-label">{{
-            t("admin.groups.form.description")
-          }}</label>
-          <textarea
+          <GroupI18nField
             v-model="createForm.description"
+            v-model:i18n="createForm.i18n"
+            :label="t('admin.groups.form.description')"
+            field="description"
+            multiline
             rows="3"
-            class="input"
             :placeholder="t('admin.groups.optionalDescription')"
-          ></textarea>
+          />
         </div>
         <div>
           <label class="input-label">{{
@@ -556,6 +562,7 @@
             @change="createForm.copy_accounts_from_group_ids = []"
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
+          <QwenPlatformNotice :user-id="authStore.user?.id" />
         </div>
         <!-- 从分组复制账号 -->
         <div v-if="!authStore.isSimpleMode && copyAccountsGroupOptions.length > 0">
@@ -677,6 +684,39 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div v-if="createForm.platform === 'openai'" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex flex-wrap items-center gap-2">
+            <h4 class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ t("admin.groups.antiDistillation.title") }}</h4>
+            <NewFeatureBadge
+              v-if="authStore.user?.id != null"
+              :notice-id="NEW_FEATURE_NOTICES.groupAntiDistillation"
+              :user-id="authStore.user?.id"
+            />
+          </div>
+          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.antiDistillation.createHint") }}</p>
+        </div>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <label class="input-label">{{ t("admin.groups.form.codexCLIOnly") }}</label>
+            <p class="input-hint">{{ t("admin.groups.form.codexCLIOnlyHint") }}</p>
+          </div>
+          <Toggle
+            data-testid="create-codex-cli-only"
+            :aria-label="t('admin.groups.form.codexCLIOnly')"
+            v-model="createForm.codex_cli_only"
+          />
+        </div>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <label class="input-label">{{ t("admin.groups.form.blockSubagents") }}</label>
+            <p class="input-hint">{{ t("admin.groups.form.blockSubagentsHint") }}</p>
+          </div>
+          <Toggle
+            data-testid="create-block-subagents"
+            :aria-label="t('admin.groups.form.blockSubagents')"
+            v-model="createForm.block_subagents"
+          />
         </div>
         <div class="flex items-start justify-between gap-4">
           <div>
@@ -1180,6 +1220,20 @@
               />
               {{ t(imagePricingI18nKey(createForm.platform, "independentMultiplier")) }}
             </label>
+            <label
+              v-if="
+                createForm.allow_image_generation &&
+                (createForm.platform === 'composite' || createForm.platform === 'openai')
+              "
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="createForm.image_count_billing"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.perImageBilling") }}
+            </label>
           </div>
           <div
             v-if="createForm.image_rate_independent"
@@ -1302,6 +1356,11 @@
           </p>
         </div>
 
+        <MiniMaxH3VideoPricing
+          v-if="createForm.platform === 'minimax'"
+          v-model="createForm.video_model_prices"
+          :multiplier="createForm.rate_multiplier"
+        />
         <!-- 视频生成计费配置（仅 Grok 平台） -->
         <div
           v-if="supportsVideoPricingPlatform(createForm.platform)"
@@ -1761,7 +1820,7 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard :notice-user-id="authStore.user?.id" v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
 
@@ -1830,7 +1889,6 @@
         <GroupRoutingPolicyFields
           v-if="supportsGroupOpenAIFast(createForm.platform)"
           id-prefix="create"
-          v-model:enable-bps="createForm.enable_bps"
           v-model:scheduling-strategy="createForm.scheduling_strategy"
         />
         <!-- OpenAI Fast 开关（OpenAI 与 Composite 平台） -->
@@ -2424,24 +2482,24 @@
       >
         <GroupQoSEditor v-if="editForm.platform === 'openai'" ref="editQoSRef" :group-id="editingGroup.id" embedded :disabled="submitting" />
         <div>
-          <label class="input-label">{{ t("admin.groups.form.name") }}</label>
-          <input
+          <GroupI18nField
             v-model="editForm.name"
-            type="text"
+            v-model:i18n="editForm.i18n"
+            :label="t('admin.groups.form.name')"
+            field="name"
             required
-            class="input"
             data-tour="edit-group-form-name"
           />
         </div>
         <div>
-          <label class="input-label">{{
-            t("admin.groups.form.description")
-          }}</label>
-          <textarea
+          <GroupI18nField
             v-model="editForm.description"
+            v-model:i18n="editForm.i18n"
+            :label="t('admin.groups.form.description')"
+            field="description"
+            multiline
             rows="3"
-            class="input"
-          ></textarea>
+          />
         </div>
         <div>
           <label class="input-label">{{
@@ -2454,6 +2512,7 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+          <QwenPlatformNotice v-if="editForm.platform === 'qwen'" :user-id="authStore.user?.id" />
         </div>
         <template v-if="!authStore.isSimpleMode">
         <!-- 从分组复制账号（编辑时） -->
@@ -2575,6 +2634,34 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <GroupAntiDistillationSettings
+          v-if="editForm.platform === 'openai'"
+          :group-id="editingGroup.id"
+          :user-id="authStore.user?.id"
+          :active="showEditModal"
+        />
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <label class="input-label">{{ t("admin.groups.form.codexCLIOnly") }}</label>
+            <p class="input-hint">{{ t("admin.groups.form.codexCLIOnlyHint") }}</p>
+          </div>
+          <Toggle
+            data-testid="edit-codex-cli-only"
+            :aria-label="t('admin.groups.form.codexCLIOnly')"
+            v-model="editForm.codex_cli_only"
+          />
+        </div>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <label class="input-label">{{ t("admin.groups.form.blockSubagents") }}</label>
+            <p class="input-hint">{{ t("admin.groups.form.blockSubagentsHint") }}</p>
+          </div>
+          <Toggle
+            data-testid="edit-block-subagents"
+            :aria-label="t('admin.groups.form.blockSubagents')"
+            v-model="editForm.block_subagents"
+          />
         </div>
         <div class="flex items-start justify-between gap-4">
           <div>
@@ -3080,6 +3167,20 @@
               />
               {{ t(imagePricingI18nKey(editForm.platform, "independentMultiplier")) }}
             </label>
+            <label
+              v-if="
+                editForm.allow_image_generation &&
+                (editForm.platform === 'composite' || editForm.platform === 'openai')
+              "
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="editForm.image_count_billing"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.perImageBilling") }}
+            </label>
           </div>
           <div
             v-if="editForm.image_rate_independent"
@@ -3202,6 +3303,11 @@
           </p>
         </div>
 
+        <MiniMaxH3VideoPricing
+          v-if="editForm.platform === 'minimax'"
+          v-model="editForm.video_model_prices"
+          :multiplier="editForm.rate_multiplier"
+        />
         <!-- 视频生成计费配置（仅 Grok 平台） -->
         <div
           v-if="supportsVideoPricingPlatform(editForm.platform)"
@@ -3671,7 +3777,7 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard :notice-user-id="authStore.user?.id" v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
 
@@ -3740,7 +3846,6 @@
         <GroupRoutingPolicyFields
           v-if="supportsGroupOpenAIFast(editForm.platform)"
           id-prefix="edit"
-          v-model:enable-bps="editForm.enable_bps"
           v-model:scheduling-strategy="editForm.scheduling_strategy"
         />
         <!-- OpenAI Fast 开关（OpenAI 与 Composite 平台） -->
@@ -4826,6 +4931,7 @@
 import GroupUnavailableTimeEditor from "@/components/group/GroupUnavailableTimeEditor.vue";
 import GroupUnavailableTime from "@/components/common/GroupUnavailableTime.vue";
 import GroupQoSEditor from '@/components/group/GroupQoSEditor.vue'
+import QwenPlatformNotice from '@/components/common/QwenPlatformNotice.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
@@ -4840,6 +4946,7 @@ import type {
   CompositeRouteDecision,
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
+  GroupI18n,
   GroupPlatform,
   SubscriptionType,
 } from "@/types";
@@ -4849,6 +4956,7 @@ import {
 } from "@/constants/platforms";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
+import MiniMaxH3VideoPricing from "./MiniMaxH3VideoPricing.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
 import DataTable from "@/components/common/DataTable.vue";
 import Pagination from "@/components/common/Pagination.vue";
@@ -4863,8 +4971,12 @@ import type { GroupSchedulingStrategy } from "@/types";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import { platformLabel } from "@/utils/platformColors";
 import Icon from "@/components/icons/Icon.vue";
+import GroupI18nField from "@/components/admin/group/GroupI18nField.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import GroupAntiDistillationSettings from "@/components/admin/group/GroupAntiDistillationSettings.vue";
+import NewFeatureBadge from "@/components/common/NewFeatureBadge.vue";
+import { NEW_FEATURE_NOTICES } from "@/constants/newFeatureNotices";
 import GroupUserDeniedModelsModal from "@/components/admin/group/GroupUserDeniedModelsModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import KiroCacheRatioField from "@/components/admin/group/KiroCacheRatioField.vue";
@@ -4935,6 +5047,7 @@ import {
   type ReasoningEffortMappingRow,
 } from "./groupsReasoningEffort";
 import {
+  defaultAllowImageGenerationForPlatform,
   getDefaultImagePreviewPrice,
   getDefaultVideoPreviewPrice,
   getImagePricePlaceholder,
@@ -4961,6 +5074,7 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   output_price: null,
   cache_write_price: null,
   cache_write_1h_price: null,
+  cache_write_12h_price: null,
   cache_read_price: null,
   reasoning_effort_multipliers: null,
   image_input_price: null,
@@ -5013,6 +5127,7 @@ const groupPricingFromAPI = (
     output_price: perTokenToMTok(entry.output_price),
     cache_write_price: perTokenToMTok(entry.cache_write_price),
     cache_write_1h_price: perTokenToMTok(entry.cache_write_1h_price),
+    cache_write_12h_price: perTokenToMTok(entry.cache_write_12h_price),
     cache_read_price: perTokenToMTok(entry.cache_read_price),
     reasoning_effort_multipliers: entry.reasoning_effort_multipliers
       ? { ...entry.reasoning_effort_multipliers }
@@ -5039,6 +5154,7 @@ const groupPricingToAPI = (
       output_price: mTokToPerToken(entry.output_price),
       cache_write_price: mTokToPerToken(entry.cache_write_price),
       cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
+      cache_write_12h_price: mTokToPerToken(entry.cache_write_12h_price),
       cache_read_price: mTokToPerToken(entry.cache_read_price),
       reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(
         entry.reasoning_effort_multipliers,
@@ -5606,6 +5722,7 @@ const submitEditAllowlistCustomEntry = () => {
 const createForm = reactive({
   name: "",
   description: "",
+  i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   model_rate_multiplier_entries: [] as ModelRateMultiplierEntry[],
@@ -5618,12 +5735,12 @@ const createForm = reactive({
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   free_openai_fast: false,
-  enable_bps: false,
   scheduling_strategy: "balanced" as GroupSchedulingStrategy,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
+  image_count_billing: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
@@ -5675,6 +5792,8 @@ const createForm = reactive({
   require_privacy_set: false,
   // 仅允许流式请求
   stream_only: false,
+  codex_cli_only: false,
+  block_subagents: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -6038,6 +6157,7 @@ const convertApiFormatToRoutingRules = async (
 const editForm = reactive({
   name: "",
   description: "",
+  i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   model_rate_multiplier_entries: [] as ModelRateMultiplierEntry[],
@@ -6051,12 +6171,12 @@ const editForm = reactive({
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   free_openai_fast: false,
-  enable_bps: false,
   scheduling_strategy: "balanced" as GroupSchedulingStrategy,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
+  image_count_billing: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
@@ -6109,6 +6229,8 @@ const editForm = reactive({
   require_privacy_set: false,
   // 仅允许流式请求
   stream_only: false,
+  codex_cli_only: false,
+  block_subagents: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -6137,6 +6259,7 @@ type ImagePricingFormState = {
   platform: GroupPlatform;
   allow_image_generation: boolean;
   allow_batch_image_generation: boolean;
+  image_count_billing: boolean;
   rate_multiplier: number;
   image_rate_independent: boolean;
   image_rate_multiplier: number;
@@ -6283,7 +6406,12 @@ const editWebSearchFinalPricePreview = computed(() =>
 const resetDisabledBatchImagePricing = (
   form: Pick<
     ImagePricingFormState,
-    "platform" | "allow_image_generation" | "allow_batch_image_generation" | "batch_image_discount_multiplier" | "batch_image_hold_multiplier"
+    | "platform"
+    | "allow_image_generation"
+    | "allow_batch_image_generation"
+    | "image_count_billing"
+    | "batch_image_discount_multiplier"
+    | "batch_image_hold_multiplier"
   >,
 ) => {
   if (form.platform !== "gemini" || !form.allow_image_generation) {
@@ -6292,6 +6420,12 @@ const resetDisabledBatchImagePricing = (
   if (!form.allow_batch_image_generation) {
     form.batch_image_discount_multiplier = 0.5;
     form.batch_image_hold_multiplier = 0.6;
+  }
+  if (
+    !form.allow_image_generation ||
+    (form.platform !== "composite" && form.platform !== "openai")
+  ) {
+    form.image_count_billing = false;
   }
 };
 
@@ -6533,6 +6667,7 @@ const closeCreateModal = () => {
   clearAllAccountSearchState();
   createForm.name = "";
   createForm.description = "";
+  createForm.i18n = {};
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.model_rate_multiplier_entries = [];
@@ -6543,6 +6678,7 @@ const closeCreateModal = () => {
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
   createForm.allow_batch_image_generation = false;
+  createForm.image_count_billing = false;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
   createForm.batch_image_discount_multiplier = 0.5;
@@ -6560,7 +6696,6 @@ const closeCreateModal = () => {
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
   createForm.free_openai_fast = false;
-  createForm.enable_bps = false;
   createForm.scheduling_strategy = "balanced";
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
@@ -6588,6 +6723,8 @@ const closeCreateModal = () => {
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
   createForm.stream_only = false;
+  createForm.codex_cli_only = false;
+  createForm.block_subagents = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
@@ -6842,6 +6979,7 @@ const handleCreateGroup = async () => {
       ? {
           name: createForm.name,
           description: createForm.description,
+          i18n: createForm.i18n,
           platform: createForm.platform,
         }
       : requestData;
@@ -6874,6 +7012,12 @@ const handleEdit = async (group: AdminGroup) => {
   editCodexManifestAccountNames.value = {};
   editForm.name = group.name;
   editForm.description = group.description || "";
+  editForm.i18n = Object.fromEntries(
+    Object.entries(group.i18n ?? {}).map(([locale, text]) => [
+      locale,
+      { ...text },
+    ]),
+  );
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.model_rate_multiplier_entries = modelRateMultipliersFromAPI(group.model_rate_multipliers);
@@ -6888,12 +7032,12 @@ const handleEdit = async (group: AdminGroup) => {
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
-  editForm.enable_bps = group.enable_bps ?? false;
   editForm.scheduling_strategy = group.scheduling_strategy ?? "balanced";
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
+  editForm.image_count_billing = group.image_count_billing ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.batch_image_discount_multiplier =
@@ -6950,6 +7094,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.require_oauth_only = group.require_oauth_only ?? false;
   editForm.require_privacy_set = group.require_privacy_set ?? false;
   editForm.stream_only = group.stream_only ?? false;
+  editForm.codex_cli_only = group.codex_cli_only ?? false;
+  editForm.block_subagents = group.block_subagents ?? false;
   editForm.model_routing_enabled = group.model_routing_enabled || false;
   editForm.supported_model_scopes = group.supported_model_scopes || [
     "claude",
@@ -7029,7 +7175,6 @@ const closeEditModal = () => {
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;
-  editForm.enable_bps = false;
   editForm.scheduling_strategy = "balanced";
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
@@ -7217,6 +7362,7 @@ const handleUpdateGroup = async () => {
       ? {
           name: editForm.name,
           description: editForm.description,
+          i18n: editForm.i18n,
         }
       : payload;
     await adminAPI.groups.update(groupId, requestData);
@@ -7584,6 +7730,7 @@ watch(
       createForm.require_oauth_only = false;
       createForm.require_privacy_set = false;
     }
+    createForm.allow_image_generation = defaultAllowImageGenerationForPlatform(newVal);
     resetDisabledBatchImagePricing(createForm);
     resetModelAllowlistState(createModelAllowlistState);
     loadModelAllowlistCandidates("create", 0, newVal);

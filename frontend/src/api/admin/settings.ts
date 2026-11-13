@@ -54,11 +54,12 @@ export type SchedulingThresholdPlatformType =
   | "minimax"
   | "opencode_go"
   | "command_code"
+  | "mistral"
 
 export type AccountSchedulingThresholdsMap = Record<SchedulingThresholdPlatformType, number>
 
 // 与后端 AllowedSchedulingThresholdPlatforms 保持一致（deepseek 为余额型，
-// 走余额检测而非用量阈值；minimax Coding/Token Plan、OpenCode GO 与 Command Code 有滚动窗口）。
+// 走余额检测而非用量阈值；minimax Coding/Token Plan、OpenCode GO、Command Code 与 Mistral 有滚动/月度窗口）。
 export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] = [
   "openai",
   "anthropic",
@@ -68,6 +69,7 @@ export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] =
   "minimax",
   "opencode_go",
   "command_code",
+  "mistral",
 ]
 
 export function normalizeAccountSchedulingThresholdsMap(
@@ -419,8 +421,11 @@ export interface SystemSettings {
 	prism_browser_api_key_configured: boolean;
   // Registration settings
   registration_enabled: boolean;
+  login_rate_limit_enabled: boolean;
+  registration_ip_limit_enabled: boolean;
   email_verify_enabled: boolean;
   registration_email_suffix_whitelist: string[];
+  registration_email_alias_block_enabled: boolean;
   registration_email_domain_quota_enabled: boolean;
   promo_code_enabled: boolean;
   password_reset_enabled: boolean;
@@ -638,6 +643,7 @@ export interface SystemSettings {
   grok_cross_client_model_map_enabled: boolean;
   grok_default_base_url_mode: string;
   grok_video_source_url_enabled: boolean;
+  openai_409_omit_encrypted_history_enabled: boolean;
 
   // Per-platform account auto-pause thresholds (100 = disabled)
   account_scheduling_thresholds: AccountSchedulingThresholdsMap;
@@ -676,6 +682,7 @@ export interface SystemSettings {
   openai_codex_client_version_synced: string;
   openai_codex_version_auto_sync_enabled: boolean;
   openai_request_timezone_enabled: boolean;
+  openai_request_timezone_auto: boolean;
   openai_codex_ticket_enabled: boolean;
   openai_codex_ticket_fail_closed: boolean;
   openai_codex_ticket_strategy?: 'fixed' | 'standby';
@@ -768,6 +775,9 @@ export interface SystemSettings {
   openai_advanced_scheduler_effective_weight_session_sticky?: string;
 
   // 余额、订阅到期与账号限额通知
+  balance_forecast_enabled: boolean;
+  balance_forecast_threshold_hours: number;
+  balance_forecast_max_notifications: number;
   balance_low_notify_enabled: boolean;
   balance_low_notify_threshold: number;
   balance_low_notify_recharge_url: string;
@@ -808,9 +818,6 @@ export interface SystemSettings {
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
-  // ye.team CDK account supply and 401 reclaim integration
-  ye_team_enabled: boolean;
-  ye_team_auto_refresh_401: boolean;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
@@ -818,6 +825,10 @@ export interface SystemSettings {
   // Allow user view error requests
   allow_user_view_error_requests: boolean;
   usage_show_long_context_badge: boolean;
+  usage_show_cache_rate: boolean;
+  usage_show_cache_rate_to_users: boolean;
+  usage_show_upstream_response_model_to_users: boolean;
+  smart_ops_hidden_menu_items: string[];
   request_capture_enabled: boolean;
   request_capture_quota_mib: number;
   request_capture_retention_days: number;
@@ -845,8 +856,11 @@ export interface UpdateSettingsRequest {
 	prism_browser_base_url?: string;
 	prism_browser_api_key?: string;
   registration_enabled?: boolean;
+  login_rate_limit_enabled?: boolean;
+  registration_ip_limit_enabled?: boolean;
   email_verify_enabled?: boolean;
   registration_email_suffix_whitelist?: string[];
+  registration_email_alias_block_enabled?: boolean;
   registration_email_domain_quota_enabled?: boolean;
   promo_code_enabled?: boolean;
   password_reset_enabled?: boolean;
@@ -1046,6 +1060,7 @@ export interface UpdateSettingsRequest {
   grok_cross_client_model_map_enabled?: boolean;
   grok_default_base_url_mode?: string;
   grok_video_source_url_enabled?: boolean;
+  openai_409_omit_encrypted_history_enabled?: boolean;
   account_scheduling_thresholds?: AccountSchedulingThresholdsMap;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;
@@ -1071,6 +1086,7 @@ export interface UpdateSettingsRequest {
   openai_codex_client_version?: string;
   openai_codex_version_auto_sync_enabled?: boolean;
   openai_request_timezone_enabled?: boolean;
+  openai_request_timezone_auto?: boolean;
   openai_codex_ticket_enabled?: boolean;
   openai_codex_ticket_fail_closed?: boolean;
   openai_codex_ticket_strategy?: 'fixed' | 'standby';
@@ -1147,6 +1163,9 @@ export interface UpdateSettingsRequest {
   openai_advanced_scheduler_weight_previous_response?: string;
   openai_advanced_scheduler_weight_session_sticky?: string;
   // 余额、订阅到期与账号限额通知
+  balance_forecast_enabled?: boolean;
+  balance_forecast_threshold_hours?: number;
+  balance_forecast_max_notifications?: number;
   balance_low_notify_enabled?: boolean;
   balance_low_notify_threshold?: number;
   balance_low_notify_recharge_url?: string;
@@ -1185,15 +1204,16 @@ export interface UpdateSettingsRequest {
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;
 
-  // ye.team CDK account supply and 401 reclaim integration
-  ye_team_enabled?: boolean;
-  ye_team_auto_refresh_401?: boolean;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
   allow_user_view_error_requests?: boolean;
   usage_show_long_context_badge?: boolean;
+  usage_show_cache_rate?: boolean;
+  usage_show_cache_rate_to_users?: boolean;
+  usage_show_upstream_response_model_to_users?: boolean;
+  smart_ops_hidden_menu_items?: string[];
   request_capture_enabled?: boolean;
   request_capture_quota_mib?: number;
   request_capture_retention_days?: number;
@@ -1403,32 +1423,6 @@ export interface AdminApiKeyStatus {
   masked_key: string;
 }
 
-export type AdminApiKeyPermission = "full" | "auto_pool";
-export type AdminApiKeyProxyMode = "none" | "fixed" | "random";
-export type AdminApiKeyCodexFingerprintMode = "off" | "device" | "session" | "full";
-
-export interface AdminApiKeyAccountDefaults {
-  proxy_mode: AdminApiKeyProxyMode;
-  proxy_id?: number;
-  codex_fingerprint_mode: AdminApiKeyCodexFingerprintMode;
-  enable_account_guard: boolean;
-  account_guard_interval_minutes: number;
-}
-
-export interface AdminApiKey {
-  id: string;
-  name: string;
-  permission: AdminApiKeyPermission;
-  masked_key: string;
-  account_defaults: AdminApiKeyAccountDefaults;
-  created_at: string | null;
-}
-
-export interface AdminApiKeyCreation {
-  key: string;
-  api_key: AdminApiKey;
-}
-
 /**
  * Get admin API key status
  * @returns Status indicating if key exists and masked version
@@ -1462,51 +1456,6 @@ export async function deleteAdminApiKey(): Promise<{ message: string }> {
   return data;
 }
 
-/** List named administrator API keys without returning their secrets. */
-export async function listAdminApiKeys(): Promise<AdminApiKey[]> {
-  const { data } = await apiClient.get<AdminApiKey[]>(
-    "/admin/settings/admin-api-keys",
-  );
-  return data;
-}
-
-/** Create a named administrator API key; the secret is returned once. */
-export async function createAdminApiKey(payload: {
-  name: string;
-  permission: AdminApiKeyPermission;
-  account_defaults: AdminApiKeyAccountDefaults;
-}): Promise<AdminApiKeyCreation> {
-  const { data } = await apiClient.post<AdminApiKeyCreation>(
-    "/admin/settings/admin-api-keys",
-    payload,
-  );
-  return data;
-}
-
-/** Update a named administrator API key and its account import defaults. */
-export async function updateAdminApiKey(
-  id: string,
-  payload: {
-    name: string;
-    permission: AdminApiKeyPermission;
-    account_defaults: AdminApiKeyAccountDefaults;
-  },
-): Promise<AdminApiKey> {
-  const { data } = await apiClient.put<AdminApiKey>(
-    `/admin/settings/admin-api-keys/${encodeURIComponent(id)}`,
-    payload,
-  );
-  return data;
-}
-
-/** Delete one named administrator API key. */
-export async function deleteAdminApiKeyById(id: string): Promise<{ message: string }> {
-  const { data } = await apiClient.delete<{ message: string }>(
-    `/admin/settings/admin-api-keys/${encodeURIComponent(id)}`,
-  );
-  return data;
-}
-
 // ==================== Overload Cooldown Settings ====================
 
 /**
@@ -1530,92 +1479,6 @@ export async function updateOverloadCooldownSettings(
   const { data } = await apiClient.put<OverloadCooldownSettings>(
     "/admin/settings/overload-cooldown",
     settings,
-  );
-  return data;
-}
-
-// ==================== Automatic Account Supply Settings ====================
-
-export interface AutoSupplyGroupSettings {
-  group_id: number;
-  deploy_group_ids: number[];
-  product: string;
-  min_available: number;
-  quantity: number;
-  platform: string;
-  account_type: string;
-  priority: number;
-  concurrency: number;
-  openai_ws_mode: 'off' | 'ctx_pool' | 'passthrough' | 'http_bridge';
-  proxy_mode: 'none' | 'specified' | 'random';
-  proxy_id?: number | null;
-  codex_fingerprint_mode: 'off' | 'device' | 'session' | 'full';
-  enable_account_guard: boolean;
-  account_guard_interval_minutes: number;
-}
-
-export interface AutoSupplySettings {
-  enabled: boolean;
-  base_url: string;
-  customer_token_configured: boolean;
-  encryption_key_configured: boolean;
-  interval_seconds: number;
-  request_timeout_seconds: number;
-  max_quantity_per_run: number;
-  usage_forecast_enabled: boolean;
-  usage_lookback_minutes: number;
-  usage_forecast_minutes: number;
-  usage_safety_factor: number;
-  usage_min_samples: number;
-  groups: AutoSupplyGroupSettings[];
-}
-
-export interface UpdateAutoSupplySettingsRequest {
-  enabled: boolean;
-  base_url: string;
-  customer_token?: string;
-  interval_seconds: number;
-  request_timeout_seconds: number;
-  max_quantity_per_run: number;
-  usage_forecast_enabled: boolean;
-  usage_lookback_minutes: number;
-  usage_forecast_minutes: number;
-  usage_safety_factor: number;
-  usage_min_samples: number;
-  groups: AutoSupplyGroupSettings[];
-}
-
-export interface AutoSupplyOrder {
-  id: string;
-  group_id: number;
-  product: string;
-  quantity: number;
-  status: string;
-  error?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export async function getAutoSupplySettings(): Promise<AutoSupplySettings> {
-  const { data } = await apiClient.get<AutoSupplySettings>(
-    "/admin/settings/auto-supply",
-  );
-  return data;
-}
-
-export async function updateAutoSupplySettings(
-  settings: UpdateAutoSupplySettingsRequest,
-): Promise<AutoSupplySettings> {
-  const { data } = await apiClient.put<AutoSupplySettings>(
-    "/admin/settings/auto-supply",
-    settings,
-  );
-  return data;
-}
-
-export async function getAutoSupplyOrders(): Promise<AutoSupplyOrder[]> {
-  const { data } = await apiClient.get<AutoSupplyOrder[]>(
-    "/admin/settings/auto-supply/orders",
   );
   return data;
 }
@@ -1710,6 +1573,53 @@ export async function updateStreamTimeoutSettings(
 ): Promise<StreamTimeoutSettings> {
   const { data } = await apiClient.put<StreamTimeoutSettings>(
     "/admin/settings/stream-timeout",
+    settings,
+  );
+  return data;
+}
+
+// ==================== OpenAI Response Header Timeout ====================
+
+export interface OpenAIResponseHeaderTimeoutSettings {
+  enabled: boolean;
+  seconds: number;
+  image_group_ids: number[];
+  image_seconds: number;
+}
+
+export async function getOpenAIResponseHeaderTimeoutSettings(): Promise<OpenAIResponseHeaderTimeoutSettings> {
+  const { data } = await apiClient.get<OpenAIResponseHeaderTimeoutSettings>(
+    "/admin/settings/openai-response-header-timeout",
+  );
+  return data;
+}
+
+export async function updateOpenAIResponseHeaderTimeoutSettings(
+  settings: OpenAIResponseHeaderTimeoutSettings,
+): Promise<OpenAIResponseHeaderTimeoutSettings> {
+  const { data } = await apiClient.put<OpenAIResponseHeaderTimeoutSettings>(
+    "/admin/settings/openai-response-header-timeout",
+    settings,
+  );
+  return data;
+}
+
+export interface AccountPerformanceSettings {
+  window_minutes: number;
+}
+
+export async function getAccountPerformanceSettings(): Promise<AccountPerformanceSettings> {
+  const { data } = await apiClient.get<AccountPerformanceSettings>(
+    "/admin/settings/account-performance",
+  );
+  return data;
+}
+
+export async function updateAccountPerformanceSettings(
+  settings: AccountPerformanceSettings,
+): Promise<AccountPerformanceSettings> {
+  const { data } = await apiClient.put<AccountPerformanceSettings>(
+    "/admin/settings/account-performance",
     settings,
   );
   return data;
@@ -1829,7 +1739,7 @@ export async function updateBetaPolicySettings(
 // --- Web Search Emulation Config ---
 
 export interface WebSearchProviderConfig {
-  type: "brave" | "tavily";
+  type: "brave" | "tavily" | "deepseek";
   api_key: string;
   api_key_configured: boolean;
   quota_limit: number | null;
@@ -1899,21 +1809,18 @@ export const settingsAPI = {
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,
-  listAdminApiKeys,
-  createAdminApiKey,
-  updateAdminApiKey,
-  deleteAdminApiKeyById,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
-  getAutoSupplySettings,
-  updateAutoSupplySettings,
-  getAutoSupplyOrders,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
   getPanelRateLimitSettings,
   updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
+  getOpenAIResponseHeaderTimeoutSettings,
+  updateOpenAIResponseHeaderTimeoutSettings,
+  getAccountPerformanceSettings,
+  updateAccountPerformanceSettings,
   getRectifierSettings,
   updateRectifierSettings,
   getBetaPolicySettings,

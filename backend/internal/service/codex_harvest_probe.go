@@ -30,8 +30,6 @@ type codexHarvestProbeResult struct {
 	Sent          bool
 	Terminal      bool
 	Cookies       []string
-	ProxyURL      string `json:"-"`
-	ProxySID      string `json:"-"`
 }
 
 func responseCookiePairs(resp *http.Response) []string {
@@ -81,10 +79,7 @@ func bindCodexHarvestEgress(ticket *openAICodexTicket, attempt codexHarvestAttem
 	if ticket == nil {
 		return
 	}
-	// A fresh SID probe binds the concrete rotated URL before node metadata.
-	if codexHarvestProxySID(ticket.HarvestProxyURL) == "" {
-		ticket.HarvestProxyURL = strings.TrimSpace(attempt.proxy)
-	}
+	ticket.HarvestProxyURL = strings.TrimSpace(attempt.proxy)
 	if attempt.node.Provider == "managed" {
 		// Lane listeners are temporary leases; a stored ticket must reacquire
 		// its node through the manager before reusing the exit.
@@ -104,13 +99,6 @@ func (s *OpenAIGatewayService) harvestAttemptSession(account *Account, model str
 }
 
 func (s *OpenAIGatewayService) executeCodexHarvestProbe(ctx context.Context, account *Account, token, model, proxy string, timeout time.Duration, reserve func() bool, sessionID string) (result codexHarvestProbeResult) {
-	// Fresh collection rotates the proxy username once for the complete
-	// mint/confirmation pair. Borrowed seeds retain their issuing exit.
-	proxySID := ""
-	if _, borrowed := ctx.Value(codex780SeedContextKey{}).(codex780Seed); !borrowed {
-		proxy, proxySID = rotateCodexHarvestProxySID(proxy)
-	}
-	defer func() { result.ProxyURL, result.ProxySID = proxy, proxySID }()
 	release, err := mihomo.Lease(ctx, proxy)
 	if err != nil {
 		return codexHarvestProbeResult{Err: err, Kind: "network_error"}
@@ -256,7 +244,7 @@ func codexHarvestTicket(account *Account, model string, r codexHarvestProbeResul
 			transport = "sse"
 		}
 	}
-	return &openAICodexTicket{HarvestProxyURL: r.ProxyURL, Acquisition: "self", ProbeVerified: r.ProbeVerified, EdgeIP: r.EdgeIP, Transport: transport, Gateway: r.Gateway, AccountID: account.ID, Model: model, State: r.State, Length: len(r.State),
+	return &openAICodexTicket{Acquisition: "self", ProbeVerified: r.ProbeVerified, EdgeIP: r.EdgeIP, Transport: transport, Gateway: r.Gateway, AccountID: account.ID, Model: model, State: r.State, Length: len(r.State),
 		CapturedAt: now, ExpiresAt: expires, Attempts: attempts, Blocks: r.Shape.Blocks, IssuedAt: r.Shape.IssuedAt,
 		HarvestLite: len(r.State) != 780, HarvestCookies: append([]string(nil), r.Cookies...), HarvestCookiesAt: now}
 }

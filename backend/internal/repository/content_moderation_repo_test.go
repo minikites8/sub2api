@@ -17,7 +17,7 @@ func TestContentModerationRepositoryEngineMetaInsert(t *testing.T) {
 	for _, meta := range []*service.ContentModerationEngineMeta{nil, {Engine: "typesafe", Model: "jev-fixed", RulesVersion: "rules-v1", SkippedImages: 1}} {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
-		args := make([]driver.Value, 26)
+		args := make([]driver.Value, 27)
 		for i := range args {
 			args[i] = sqlmock.AnyArg()
 		}
@@ -40,8 +40,8 @@ func TestContentModerationRepositoryEngineMetaRead(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
 		mock.ExpectQuery("SELECT COUNT").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		columns := []string{"id", "request_id", "user_id", "user_email", "api_key_id", "api_key_name", "group_id", "group_name", "account_id", "account_name", "endpoint", "provider", "model", "mode", "action", "flagged", "highest_category", "highest_score", "category_scores", "threshold_snapshot", "input_excerpt", "upstream_latency_ms", "error", "violation_count", "auto_banned", "email_sent", "status", "queue_delay_ms", "matched_keyword", "created_at", "engine_meta"}
-		mock.ExpectQuery("SELECT[\\s\\S]*l.engine_meta").WillReturnRows(sqlmock.NewRows(columns).AddRow(1, "req", nil, "", nil, "", nil, "", nil, "", "/v1/responses", "business", "gpt-model", "observe", "allow", false, "sexual", 0.1, `{"sexual":0.1}`, `{"sexual":0.8}`, "sample", 10, "", 0, false, false, "active", nil, "", time.Now(), meta))
+		columns := []string{"id", "request_id", "user_id", "user_email", "api_key_id", "api_key_name", "group_id", "group_name", "account_id", "account_name", "endpoint", "provider", "model", "mode", "action", "flagged", "highest_category", "highest_score", "category_scores", "threshold_snapshot", "input_excerpt", "upstream_latency_ms", "error", "violation_count", "auto_banned", "email_sent", "status", "queue_delay_ms", "matched_keyword", "created_at", "engine_meta", "evidence_status"}
+		mock.ExpectQuery("SELECT[\\s\\S]*l.engine_meta").WillReturnRows(sqlmock.NewRows(columns).AddRow(1, "req", nil, "", nil, "", nil, "", nil, "", "/v1/responses", "business", "gpt-model", "observe", "allow", false, "sexual", 0.1, `{"sexual":0.1}`, `{"sexual":0.8}`, "sample", 10, "", 0, false, false, "active", nil, "", time.Now(), meta, ""))
 		logs, _, err := NewContentModerationRepository(db).ListLogs(context.Background(), service.ContentModerationLogFilter{})
 		require.NoError(t, err)
 		require.Len(t, logs, 1)
@@ -118,12 +118,12 @@ func TestContentModerationRepositoryListLogs_ResolvesRoutedAccount(t *testing.T)
 			"account_id", "account_name", "endpoint", "provider", "model", "mode", "action", "flagged",
 			"highest_category", "highest_score", "category_scores", "threshold_snapshot", "input_excerpt",
 			"upstream_latency_ms", "error", "violation_count", "auto_banned", "email_sent", "user_status",
-			"queue_delay_ms", "matched_keyword", "created_at", "engine_meta",
+			"queue_delay_ms", "matched_keyword", "created_at", "engine_meta", "evidence_status",
 		}).AddRow(
 			int64(7), "req-routed", int64(1001), "user@example.com", int64(88), "key-a", int64(9), "openai",
 			int64(42), "upstream-account", "/v1/responses", "openai", "gpt-5.5", "observe", "allow", false,
 			"", 0.0, []byte(`{}`), []byte(`{}`), "hello", int64(120), "", 0, false, false, "active",
-			int64(3), "", createdAt, nil,
+			int64(3), "", createdAt, `{"engine":"typesafe","model":"jev-fixed","rules_version":"content-audit-15-zh-v2","skipped_images":0,"category_settings":{"jailbreak":{"enabled":true}},"matched_categories":["jailbreak"]}`, "pending",
 		))
 
 	repo := NewContentModerationRepository(db)
@@ -134,6 +134,11 @@ func TestContentModerationRepositoryListLogs_ResolvesRoutedAccount(t *testing.T)
 	require.NotNil(t, items[0].AccountID)
 	require.Equal(t, int64(42), *items[0].AccountID)
 	require.Equal(t, "upstream-account", items[0].AccountName)
+	require.Equal(t, "pending", items[0].EvidenceStatus)
+	require.NotNil(t, items[0].EngineMeta)
+	require.Equal(t, "typesafe", items[0].EngineMeta.Engine)
+	require.Equal(t, map[string]service.ContentModerationCategorySetting{"jailbreak": {Enabled: true}}, items[0].EngineMeta.CategorySettings)
+	require.Equal(t, []string{"jailbreak"}, items[0].EngineMeta.MatchedCategories)
 	require.Equal(t, int64(1), page.Total)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

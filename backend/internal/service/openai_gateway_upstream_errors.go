@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -146,6 +148,9 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 		return true
 	}
 
+	if isOpenAIRequestScopedCapacityShed(upstreamMsg, upstreamBody) {
+		return true
+	}
 	hasOpenAIServerOverloadedCode := func(payload []byte) bool {
 		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
 		if code == "" {
@@ -200,15 +205,90 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 
 func isOpenAICapacityShedMessage(text string) bool {
 	lower := strings.ToLower(strings.TrimSpace(text))
-	return strings.Contains(lower, "server is overloaded") ||
+	return strings.Contains(lower, "selected model is at capacity") ||
+		strings.Contains(lower, "server is overloaded") ||
 		strings.Contains(lower, "servers are overloaded") ||
 		strings.Contains(lower, "servers are currently overloaded")
 }
 
 func isOpenAIRequestScopedCapacityShed(upstreamMsg string, upstreamBody []byte) bool {
-	return isOpenAIUpstreamCapacityShedEvent(upstreamBody) ||
-		isOpenAICapacityShedMessage(upstreamMsg) ||
-		(!gjson.ValidBytes(upstreamBody) && isOpenAICapacityShedMessage(string(upstreamBody)))
+	if gjson.ValidBytes(upstreamBody) {
+		return isOpenAIUpstreamCapacityShedEvent(upstreamBody)
+	}
+	return isOpenAICapacityShedMessage(upstreamMsg) || isOpenAICapacityShedMessage(string(upstreamBody))
+}
+
+// OpenAIUpstreamCapacityCode preserves transient capacity across relay hops.
+// model_capacity_exhausted already denotes persisted quota in selection errors.
+const OpenAIUpstreamCapacityCode = "upstream_capacity_exhausted"
+
+func isOpenAIRequestScopedCapacityResponse(status int, headers http.Header, body []byte, message ...string) bool {
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return false
+	}
+	if status == http.StatusTooManyRequests {
+		if disposition, _ := classifyOpenAIOAuth429(headers, body); disposition != openAIOAuth429Transient {
+			return false
+		}
+	}
+	return isOpenAIRequestScopedCapacityShed(firstNonEmpty(message...), body)
+}
+
+const openAIRequestScopedRetryMaxDelay = 8 * time.Second
+
+func openAIRequestScopedRetryDelay(responseHeaders http.Header, responseBody []byte) time.Duration {
+	type retryAfterValue struct {
+		raw          string
+		milliseconds bool
+	}
+	for _, value := range []retryAfterValue{
+		{raw: responseHeaders.Get("Retry-After")},
+		{raw: responseHeaders.Get("Retry-After-Ms"), milliseconds: true},
+		{raw: gjson.GetBytes(responseBody, "error.headers.retry-after").String()},
+		{raw: gjson.GetBytes(responseBody, "response.error.headers.retry-after").String()},
+		{raw: gjson.GetBytes(responseBody, "error.headers.retry-after-ms").String(), milliseconds: true},
+		{raw: gjson.GetBytes(responseBody, "response.error.headers.retry-after-ms").String(), milliseconds: true},
+	} {
+		raw := strings.TrimSpace(value.raw)
+		if raw == "" {
+			continue
+		}
+		var delay time.Duration
+		var ok bool
+		if value.milliseconds {
+			delay, ok = parseOpenAIRequestScopedRetryDelayMilliseconds(raw)
+		} else {
+			delay, ok = parseOpenAIRequestScopedRetryDelay(raw)
+		}
+		if !ok || delay <= 0 {
+			continue
+		}
+		if delay > openAIRequestScopedRetryMaxDelay {
+			return openAIRequestScopedRetryMaxDelay
+		}
+		return delay
+	}
+	return 0
+}
+
+func parseOpenAIRequestScopedRetryDelay(raw string) (time.Duration, bool) {
+	if seconds, err := strconv.ParseFloat(raw, 64); err == nil && seconds > 0 {
+		return time.Duration(seconds * float64(time.Second)), true
+	}
+	if resetAt, err := http.ParseTime(raw); err == nil {
+		delay := time.Until(resetAt)
+		if delay > 0 {
+			return delay, true
+		}
+	}
+	return 0, false
+}
+
+func parseOpenAIRequestScopedRetryDelayMilliseconds(raw string) (time.Duration, bool) {
+	if millis, err := strconv.ParseFloat(raw, 64); err == nil && millis > 0 {
+		return time.Duration(millis * float64(time.Millisecond)), true
+	}
+	return 0, false
 }
 
 func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
@@ -269,6 +349,9 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte, requestContexts ...*gin.Context) bool {
+	if isOpenAIUpstreamSessionBlocked(upstreamBody) {
+		return false
+	}
 	// cyber_policy is request-scoped even when an intermediary wraps the
 	// provider response in a retryable 5xx status. Never punish or rotate the
 	// selected credential for it.
@@ -365,13 +448,16 @@ func newOpenAIUpstreamFailoverError(
 	upstreamMsg string,
 	retryableOnSameAccount bool,
 ) *UpstreamFailoverError {
-	requestScopedCapacity := isOpenAIRequestScopedCapacityShed(upstreamMsg, responseBody)
+	requestScopedCapacity := isOpenAIRequestScopedCapacityResponse(statusCode, responseHeaders, responseBody, upstreamMsg)
 	failoverErr := &UpstreamFailoverError{
 		StatusCode:             statusCode,
 		ResponseBody:           responseBody,
 		ResponseHeaders:        responseHeaders.Clone(),
 		RetryableOnSameAccount: retryableOnSameAccount && !requestScopedCapacity && !isOpenAIUpstreamRequestFailed(statusCode, upstreamMsg, responseBody),
 		RequestScopedTransient: requestScopedCapacity,
+	}
+	if requestScopedCapacity {
+		failoverErr.SameAccountRetryDelay = openAIRequestScopedRetryDelay(responseHeaders, responseBody)
 	}
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, responseBody) {
 		failoverErr.RetryableOnSameAccount = false
@@ -430,6 +516,10 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		upstreamMsg,
 		retryableOnSameAccount || oauth429Retry,
 	)
+	if shouldDisable && account != nil && account.Platform == PlatformOpenAI && failoverErr.RequestScopedTransient {
+		// A configured model cooldown takes precedence over capacity-shed replay.
+		failoverErr.RetryableOnSameAccount = false
+	}
 	if oauth429Retry {
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
@@ -520,7 +610,7 @@ func (e *UpstreamFailoverError) IsOpenAIRequestBodyTooLarge() bool {
 // IsOpenAICapacityShed reports whether typed client fields were derived from a
 // recognized provider overload rather than supplied by an unrelated failure.
 func (e *UpstreamFailoverError) IsOpenAICapacityShed() bool {
-	return e != nil && e.RequestScopedTransient && isOpenAIRequestScopedCapacityShed("", e.ResponseBody)
+	return e != nil && e.RequestScopedTransient && isOpenAIRequestScopedCapacityResponse(e.StatusCode, e.ResponseHeaders, e.ResponseBody)
 }
 
 func marshalOpenAIUpstreamJSON(v any) ([]byte, error) {
@@ -557,6 +647,20 @@ func (s *OpenAIGatewayService) readUpstreamErrorBody(resp *http.Response) []byte
 	return body
 }
 
+// opsUpstreamErrorDetail returns the trimmed upstream error body for an ops
+// event when gateway.log_upstream_error_body is enabled, so failover attempts
+// keep the provider's own wording (e.g. an unclassified xAI 403).
+func (s *OpenAIGatewayService) opsUpstreamErrorDetail(body []byte) string {
+	if s == nil || s.cfg == nil || !s.cfg.Gateway.LogUpstreamErrorBody {
+		return ""
+	}
+	maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+	if maxBytes <= 0 {
+		maxBytes = 2048
+	}
+	return truncateString(string(body), maxBytes)
+}
+
 func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, responseBody []byte, canonicalModel ...string) bool {
 	if len(canonicalModel) > 0 {
 		return s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, responseBody, canonicalModel[0])
@@ -574,6 +678,18 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
 	body = s.redactAgentIdentitySensitiveBody(ctx, account, body)
+
+	// This conversation is blocked by the upstream, not the selected credential.
+	// Preserve the actionable error without retrying accounts or recording a new
+	// cyber-policy violation against the local user.
+	if isOpenAIUpstreamSessionBlocked(body) {
+		message := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(body))
+		setOpsUpstreamError(c, resp.StatusCode, message, truncateString(string(body), 2048))
+		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		MarkResponseCommitted(c)
+		writeOpenAIUpstreamClientError(c, resp.StatusCode, body, message)
+		return nil, fmt.Errorf("upstream response failed: %s", message)
+	}
 
 	// cyber_policy 硬阻断：透传上游原始错误体给客户端（不重包成通用 502），不冷却账号。
 	// 当前请求恒透传（需求1）；标记供 handler 事后写风控/邮件。400 cyber 不可 failover
@@ -605,10 +721,16 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
 		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 		MarkResponseCommitted(c)
-		c.JSON(http.StatusForbidden, gin.H{
+		// A passthrough rule may still localize the refusal; the request stays
+		// on this account either way.
+		status, errType, errMsg, _ := applyErrorPassthroughRule(
+			c, account.Platform, resp.StatusCode, body,
+			http.StatusForbidden, "invalid_request_error", clientMsg,
+		)
+		c.JSON(status, gin.H{
 			"error": gin.H{
-				"type":    "invalid_request_error",
-				"message": clientMsg,
+				"type":    errType,
+				"message": errMsg,
 			},
 		})
 		return nil, &grokContentPolicyError{message: clientMsg}
@@ -616,6 +738,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	if openAIEncryptedErrorCode(extractUpstreamErrorCode(body)) {
+		upstreamMsg = openAIEncryptedErrorRedacted
+	}
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
@@ -625,6 +750,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+	if s.writeOpenAIContextLimitError(resp, c, account, body, false) {
+		return nil, fmt.Errorf("upstream context limit: %d", resp.StatusCode)
+	}
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -725,18 +853,6 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	// A ye.team-backed OpenAI account can reclaim a replacement credential
 	// after an upstream 401. The failover loop retries the same account with
 	// the persisted credentials; unsuccessful reclaim follows the normal path.
-	if resp.StatusCode == http.StatusUnauthorized && s.reclaimOpenAIAccount401(ctx, account) {
-		return nil, &UpstreamFailoverError{
-			StatusCode:             resp.StatusCode,
-			ResponseBody:           body,
-			ResponseHeaders:        resp.Header.Clone(),
-			RetryableOnSameAccount: true,
-			NextAccountAction:      NextAccountRetry,
-			Stage:                  GatewayFailureStageAccountAuth,
-			Scope:                  GatewayFailureScopeAccount,
-			Reason:                 GatewayFailureReason("ye_team_reclaim"),
-		}
-	}
 	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, reqModel)
 	kind := "http_error"
 	if shouldDisable {
@@ -844,6 +960,14 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	body := s.readUpstreamErrorBody(resp)
 	body = s.redactAgentIdentitySensitiveBody(context.Background(), account, body)
 
+	if isOpenAIUpstreamSessionBlocked(body) {
+		message := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(body))
+		setOpsUpstreamError(c, resp.StatusCode, message, truncateString(string(body), 2048))
+		MarkResponseCommitted(c)
+		writeError(c, resp.StatusCode, "permission_error", message)
+		return nil, fmt.Errorf("upstream response failed: %s", message)
+	}
+
 	// cyber_policy：兼容路径（Chat Completions / Anthropic）以各自格式回写错误，
 	// 不原样透传 responses 格式的 cyber body（否则对下游格式不合法）。cyber 是上游网络
 	// 安全策略拦截，不冷却账号，故标记后直接以兼容格式回写错误并返回，跳过下方
@@ -873,7 +997,11 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		clientMsg := grokContentPolicyClientMessage(body)
 		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
 		MarkResponseCommitted(c)
-		writeError(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		status, errType, errMsg, _ := applyErrorPassthroughRule(
+			c, account.Platform, resp.StatusCode, body,
+			http.StatusForbidden, "invalid_request_error", clientMsg,
+		)
+		writeError(c, status, errType, errMsg)
 		return nil, &grokContentPolicyError{message: clientMsg}
 	}
 
@@ -882,6 +1010,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		upstreamMsg = fmt.Sprintf("Upstream error: %d", resp.StatusCode)
 	}
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	if openAIEncryptedErrorCode(extractUpstreamErrorCode(body)) {
+		upstreamMsg = openAIEncryptedErrorRedacted
+	}
 
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -936,18 +1067,6 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	var modelForCooldown string
 	if len(requestedModel) > 0 {
 		modelForCooldown = requestedModel[0]
-	}
-	if resp.StatusCode == http.StatusUnauthorized && s.reclaimOpenAIAccount401(c.Request.Context(), account) {
-		return nil, &UpstreamFailoverError{
-			StatusCode:             resp.StatusCode,
-			ResponseBody:           body,
-			ResponseHeaders:        resp.Header.Clone(),
-			RetryableOnSameAccount: true,
-			NextAccountAction:      NextAccountRetry,
-			Stage:                  GatewayFailureStageAccountAuth,
-			Scope:                  GatewayFailureScopeAccount,
-			Reason:                 GatewayFailureReason("ye_team_reclaim"),
-		}
 	}
 	shouldDisable := s.handleOpenAIAccountUpstreamError(
 		c.Request.Context(), account, resp.StatusCode, resp.Header, body, modelForCooldown,

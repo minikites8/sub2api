@@ -296,17 +296,6 @@ func (s *OpenAIGatewayService) forwardPrismBrowser(ctx context.Context, c *gin.C
 		fail(http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
-	if stream {
-		c.Header("X-Prism-Usage", "response-metadata")
-		interval := 10 * time.Second
-		if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
-			interval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
-		}
-		// Browser preparation and reasoning can outlast a proxy's idle timeout.
-		// The shared writer stops heartbeats before any response is written.
-		stopKeepalive := startOpenAISSEKeepalive(c, interval)
-		defer stopKeepalive()
-	}
 	if err := controlledSubmission(ctx, "prism"); err != nil {
 		return nil, err
 	}
@@ -316,10 +305,6 @@ func (s *OpenAIGatewayService) forwardPrismBrowser(ctx context.Context, c *gin.C
 		mode.httpStatus.Store(int32(status))
 	}
 	if err != nil {
-		if ctx.Err() != nil {
-			StopOpenAICompactSSEKeepaliveCommitted(c)
-			return nil, err
-		}
 		fail(http.StatusBadGateway, "prism_unavailable", "Prism adapter unavailable; request was not replayed")
 		return nil, err
 	}
@@ -340,45 +325,22 @@ func (s *OpenAIGatewayService) forwardPrismBrowser(ctx context.Context, c *gin.C
 		fail(http.StatusBadGateway, "invalid_prism_response", "Prism adapter returned an undeclared client tool")
 		return nil, err
 	}
-	responseBody, usage, usageSource, err := prismBrowserUsage(body, responseBody, upstreamModel, stream)
-	if err != nil {
-		fail(http.StatusBadGateway, "invalid_prism_usage", "Prism response usage could not be counted")
-		return nil, err
-	}
-	reasoningEffort := optionalTrimmedStringPtr(gjson.GetBytes(responseBody, "reasoning.effort").String())
-	if stream {
-		for _, line := range bytes.Split(responseBody, []byte("\n")) {
-			if bytes.HasPrefix(line, []byte("data:")) {
-				data := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
-				if gjson.GetBytes(data, "type").String() == "response.completed" {
-					reasoningEffort = optionalTrimmedStringPtr(gjson.GetBytes(data, "response.reasoning.effort").String())
-				}
-			}
-		}
-	}
-	requestedEffort := optionalTrimmedStringPtr(gjson.GetBytes(body, "reasoning.effort").String())
-	if reasoningEffort == nil {
-		reasoningEffort = requestedEffort
-	}
-	StopOpenAICompactSSEKeepaliveCommitted(c)
 	contentType := "application/json"
 	if stream {
 		contentType = "text/event-stream"
 	}
 	SetActualOpenAIUpstreamEndpoint(c, "/v1/responses")
-	c.Header("X-Prism-Usage", usageSource)
+	c.Header("X-Prism-Usage", "unavailable")
 	c.Data(http.StatusOK, contentType, responseBody)
 	return &OpenAIForwardResult{
-		RequestID:                "prism:" + responseID,
-		ResponseID:               responseID,
-		UpstreamHeaders:          upstreamHeaders,
-		Usage:                    usage,
-		Model:                    model,
-		UpstreamModel:            upstreamModel,
-		ReasoningEffort:          reasoningEffort,
-		RequestedReasoningEffort: requestedEffort,
-		Stream:                   stream,
-		Duration:                 time.Since(started),
+		RequestID:        responseID,
+		ResponseID:       responseID,
+		UpstreamHeaders:  upstreamHeaders,
+		Model:            model,
+		UpstreamModel:    upstreamModel,
+		Stream:           stream,
+		Duration:         time.Since(started),
+		UsageUnavailable: true,
 	}, nil
 }
 

@@ -58,6 +58,12 @@ func TestOpenAIOverloadAfterEmptyProgressSwitchesWithoutOptIn(t *testing.T) {
 					req := httptest.NewRequest(http.MethodPost, endpoint.path, strings.NewReader(endpoint.body))
 					rec := httptest.NewRecorder()
 					router.ServeHTTP(rec, req)
+					if streaming && endpoint.path != "/v1/chat/completions" && progress.name == "encrypted_reasoning" {
+						require.Equal(t, []int64{801}, upstream.hits, "emitted encrypted reasoning commits the response stream")
+						require.Contains(t, rec.Body.String(), "failed-attempt-ciphertext")
+						require.NotContains(t, rec.Body.String(), "healthy")
+						return
+					}
 					if progress.output {
 						require.Equal(t, []int64{801}, upstream.hits, rec.Body.String())
 						require.Contains(t, rec.Body.String(), "partial")

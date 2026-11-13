@@ -38,11 +38,12 @@ func NewModelPlazaHandler(
 
 // modelPlazaOfficialPricing 官方参考价（USD per token，与计费目录同源）。
 type modelPlazaOfficialPricing struct {
-	InputPrice        *float64 `json:"input_price"`
-	OutputPrice       *float64 `json:"output_price"`
-	CacheWritePrice   *float64 `json:"cache_write_price"`
-	CacheWrite1hPrice *float64 `json:"cache_write_1h_price,omitempty"`
-	CacheReadPrice    *float64 `json:"cache_read_price"`
+	InputPrice         *float64 `json:"input_price"`
+	OutputPrice        *float64 `json:"output_price"`
+	CacheWritePrice    *float64 `json:"cache_write_price"`
+	CacheWrite1hPrice  *float64 `json:"cache_write_1h_price,omitempty"`
+	CacheWrite12hPrice *float64 `json:"cache_write_12h_price,omitempty"`
+	CacheReadPrice     *float64 `json:"cache_read_price"`
 	// Intervals 官方长上下文阶梯，仅多档模型给出。
 	Intervals []userPricingIntervalDTO `json:"intervals,omitempty"`
 }
@@ -161,10 +162,9 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 
 	visible := filterPlazaVisibleGroups(groups, allowedGroups, restrictPublicGroups)
 
-	out := make([]modelPlazaGroup, 0, len(visible))
-	for i := range visible {
-		out = append(out, toModelPlazaGroupDTO(&visible[i], userRates, deniedModels[visible[i].ID]))
-	}
+	// 追加语言缓存维度，保留 CORS 的 Vary: Origin 和用户模型限制。
+	c.Writer.Header().Add("Vary", "Accept-Language")
+	out := toLocalizedModelPlazaGroups(visible, userRates, c.GetHeader("Accept-Language"), deniedModels)
 	response.Success(c, modelPlazaResponse{
 		Description: rt.Description,
 		Groups:      out,
@@ -195,7 +195,22 @@ func filterPlazaVisibleGroups(
 	return visible
 }
 
-// toModelPlazaGroupDTO 将 service 层广场分组映射为白名单 DTO,合并用户专属倍率并隐藏该用户被禁用的模型。
+// toLocalizedModelPlazaGroups 本地化可见分组，同时保留用户模型限制。
+func toLocalizedModelPlazaGroups(visible []service.PlazaGroup, userRates map[int64]float64, acceptLanguage string, deniedByGroup ...map[int64][]string) []modelPlazaGroup {
+	out := make([]modelPlazaGroup, 0, len(visible))
+	for i := range visible {
+		var denied []string
+		if len(deniedByGroup) > 0 {
+			denied = deniedByGroup[0][visible[i].ID]
+		}
+		group := toModelPlazaGroupDTO(&visible[i], userRates, denied)
+		group.Name, group.Description = visible[i].I18n.Localize(acceptLanguage, group.Name, group.Description)
+		out = append(out, group)
+	}
+	return out
+}
+
+// toModelPlazaGroupDTO 合并用户专属倍率并隐藏该用户被禁用的模型。
 func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64, deniedModels []string) modelPlazaGroup {
 	models := make([]modelPlazaModel, 0, len(g.Models))
 	for i := range g.Models {
@@ -262,11 +277,12 @@ func toModelPlazaOfficialPricing(p *service.PlazaOfficialPricing) *modelPlazaOff
 		return nil
 	}
 	return &modelPlazaOfficialPricing{
-		InputPrice:        p.InputPrice,
-		OutputPrice:       p.OutputPrice,
-		CacheWritePrice:   p.CacheWritePrice,
-		CacheWrite1hPrice: p.CacheWrite1hPrice,
-		CacheReadPrice:    p.CacheReadPrice,
-		Intervals:         toUserPricingIntervals(p.Intervals),
+		InputPrice:         p.InputPrice,
+		OutputPrice:        p.OutputPrice,
+		CacheWritePrice:    p.CacheWritePrice,
+		CacheWrite1hPrice:  p.CacheWrite1hPrice,
+		CacheWrite12hPrice: p.CacheWrite12hPrice,
+		CacheReadPrice:     p.CacheReadPrice,
+		Intervals:          toUserPricingIntervals(p.Intervals),
 	}
 }
