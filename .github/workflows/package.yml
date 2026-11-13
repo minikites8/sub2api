@@ -123,6 +123,9 @@ jobs:
             VERSION=main
             COMMIT=${{ github.sha }}
             DATE=${{ github.event.head_commit.timestamp }}
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+            NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v7

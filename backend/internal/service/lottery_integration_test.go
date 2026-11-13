@@ -496,7 +496,7 @@ func TestLotteryPostgres(t *testing.T) {
 		require.NoError(t, e)
 		_, e = admin.UpdateUserBalance(opctx, f.uid, 100, "set", "")
 		require.NoError(t, e)
-		payments := service.ProvidePaymentService(c, payment.NewRegistry(), nil, redeem, f.subs, nil, f.users, nil, nil, nil, f.s)
+		payments := service.ProvidePaymentService(c, payment.NewRegistry(), nil, redeem, f.subs, nil, f.users, nil, nil, nil, nil, f.s)
 		order, e := c.PaymentOrder.Create().SetUserID(f.uid).SetUserEmail("lottery@test.invalid").SetUserName("Test").SetAmount(150).SetPayAmount(100).SetRechargeCode(fmt.Sprintf("lottery-pay-%d", f.uid)).SetOutTradeNo(fmt.Sprintf("lottery-order-%d", f.uid)).SetPaymentType("alipay").SetPaymentTradeNo("").SetStatus(service.OrderStatusPaid).SetOrderType(payment.OrderTypeBalance).SetClientIP("127.0.0.1").SetSrcHost("localhost").SetExpiresAt(time.Now().Add(time.Hour)).Save(ctx)
 		require.NoError(t, e)
 		require.NoError(t, payments.ExecuteBalanceFulfillment(ctx, order.ID))

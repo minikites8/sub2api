@@ -116,7 +116,7 @@ func TestIssue594SIWCFinalEgressFencesRevocationAndRevision(t *testing.T) {
 			}))
 			defer server.Close()
 			upstream := &siwcBoundaryHTTP{target: strings.TrimPrefix(server.URL, "http://")}
-			gateway := service.NewOpenAIGatewayService(accounts, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, service.NewBillingService(cfg, nil), nil, nil, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil, service.WithOpenAIAuthConnections(svc))
+			gateway := service.NewOpenAIGatewayService(accounts, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, service.NewBillingService(cfg, nil), nil, nil, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil, nil, service.WithOpenAIAuthConnections(svc))
 			defer gateway.StopOpenAICodexTicketHarvester()
 			defer gateway.CloseOpenAIWSPool()
 			var prepared atomic.Bool
