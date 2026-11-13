@@ -83,7 +83,11 @@ func TestExcelBPS401PersistsAfterCancellationAndBlocksOnWriteFailure(t *testing.
 				c, _ := gin.CreateTestContext(httptest.NewRecorder())
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil).WithContext(ctx)
 				_, err := svc.Forward(ctx, c, account, []byte(`{"model":"gpt-5.6-sol","input":"test"}`))
-				require.Error(t, err)
+				require.ErrorIs(t, err, context.Canceled)
+				var failover *UpstreamFailoverError
+				require.NotErrorAs(t, err, &failover)
+				require.Len(t, upstream.requests, 1, "credential persistence cannot resend a canceled request")
+				require.False(t, c.Writer.Written())
 				require.ErrorIs(t, ctx.Err(), context.Canceled)
 				require.NoError(t, repo.ctxErr)
 				require.Equal(t, 1, repo.tempCalls+repo.errorCalls)
@@ -168,6 +172,10 @@ func TestExcelBPS401AppliesAuthenticationPolicy(t *testing.T) {
 						first = &excelBPSRepairBody{Reader: strings.NewReader(excelBPSRepairWire(t, "auth", summary, code))}
 						upstream.responses = append(upstream.responses, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: first})
 					}
+					if route == "responses" {
+						wantRequests = 2
+						upstream.responses = append(upstream.responses, &http.Response{StatusCode: http.StatusUnauthorized, Header: excelBPSQuotaHeaders("100", "100"), Body: io.NopCloser(strings.NewReader(tc.raw))})
+					}
 					upstream.responses = append(upstream.responses, &http.Response{StatusCode: http.StatusUnauthorized, Header: excelBPSQuotaHeaders("100", "100"), Body: rejected})
 					rec := httptest.NewRecorder()
 					c, _ := gin.CreateTestContext(rec)
@@ -176,14 +184,20 @@ func TestExcelBPS401AppliesAuthenticationPolicy(t *testing.T) {
 					_, err := svc.Forward(context.Background(), c, account, body)
 					require.Error(t, err)
 					var failover *UpstreamFailoverError
-					require.NotErrorAs(t, err, &failover, "authentication state updates must not replay BPS requests")
+					if route == "responses" {
+						require.ErrorAs(t, err, &failover)
+						require.Equal(t, http.StatusUnauthorized, failover.StatusCode)
+						require.False(t, c.Writer.Written())
+					} else {
+						require.NotErrorAs(t, err, &failover, "attachments and tool corrections are not replayed")
+					}
 					require.Len(t, upstream.requests, wantRequests)
 					require.True(t, rejected.closed.Load())
 					if first != nil {
 						require.True(t, first.closed.Load())
 					}
-					require.True(t, IsResponseCommitted(c))
-					if wantRequests == 1 {
+					require.Equal(t, route != "responses", IsResponseCommitted(c))
+					if route == "attachment" {
 						require.Equal(t, http.StatusUnauthorized, rec.Code)
 						require.Contains(t, rec.Body.String(), "authentication failed")
 					}

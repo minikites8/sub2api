@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,6 +12,30 @@ import (
 // still compile this scheduling bridge against them.
 
 type openAIConnectionCapabilityContextKey struct{}
+type openAIChatCompletionsConnectionContextKey struct{}
+type openAIBPSChatBridgeEnabledContextKey struct{}
+
+func isOpenAIChatCompletionsConnectionRequest(c *gin.Context) bool {
+	return c != nil && c.Request != nil && c.Request.URL != nil && strings.HasSuffix(strings.TrimRight(c.Request.URL.Path, "/"), "/chat/completions")
+}
+
+func openAIConnectionRequestedCapability(capability string, candidate *OpenAIAuthConnection, allowBPSChatBridge bool) string {
+	if allowBPSChatBridge && capability == "chat_completions" && candidate.Kind == "bps" {
+		return "responses"
+	}
+	return capability
+}
+
+func (s *OpenAIGatewayService) withOpenAIBPSChatBridgeScheduling(ctx context.Context) context.Context {
+	if _, ready := ctx.Value(openAIBPSChatBridgeEnabledContextKey{}).(bool); ready {
+		return ctx
+	}
+	isChat, _ := ctx.Value(openAIChatCompletionsConnectionContextKey{}).(bool)
+	if !isChat {
+		return ctx
+	}
+	return context.WithValue(ctx, openAIBPSChatBridgeEnabledContextKey{}, s.excelBPSGloballyEnabled(ctx))
+}
 
 // WithOpenAIConnectionCapabilityForRequest records, for account selection, the
 // connection capability that prepareAuthConnection will require for this
@@ -24,6 +49,7 @@ func WithOpenAIConnectionCapabilityForRequest(ctx context.Context, c *gin.Contex
 	if ctx == nil || c == nil || c.Request == nil || c.Request.URL == nil {
 		return ctx
 	}
+	ctx = context.WithValue(ctx, openAIChatCompletionsConnectionContextKey{}, isOpenAIChatCompletionsConnectionRequest(c))
 	return context.WithValue(ctx, openAIConnectionCapabilityContextKey{}, connectionCapabilityForRequest(c))
 }
 
@@ -44,7 +70,8 @@ func (a *Account) supportsOpenAIEndpointCapabilityForRequest(ctx context.Context
 		switch capability {
 		case OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityResponses, OpenAIEndpointCapabilityResponsesCompact:
 			if required, ok := openAIConnectionCapabilityFromContext(ctx); ok {
-				return a.managedConnectionSupports(required)
+				allowBPSChatBridge, _ := ctx.Value(openAIBPSChatBridgeEnabledContextKey{}).(bool)
+				return a.managedConnectionSupports(required, allowBPSChatBridge)
 			}
 		}
 	}

@@ -196,10 +196,11 @@ func TestToolRepairDoesNotRetryOtherFailures(t *testing.T) {
 			})
 			out, err := io.ReadAll(body)
 			_ = body.Close()
+			require.NoError(t, err)
 			if name == "truncated" {
-				require.ErrorIs(t, err, io.ErrUnexpectedEOF)
-			} else {
-				require.NoError(t, err)
+				require.Equal(t, 1, strings.Count(string(out), "event: response.failed\n"))
+				require.Contains(t, string(out), `"retryable":false`)
+				require.NotContains(t, string(out), text(item["arguments"]))
 			}
 			require.Zero(t, calls)
 			require.NotContains(t, string(out), "response.custom_tool_call_input")

@@ -136,10 +136,16 @@ if not own then
   redis.call('HSET',pools,c.pool_id,cjson.encode(p))
  end
 end
+local waitReasons={}
+local ownExamined=false
+local function blocked(r,reason)
+ if r.id==id then waitReasons[reason]=(waitReasons[reason] or 0)+1 end
+end
 local function available(r)
+ if r.id==id then ownExamined=true end
  if r.group_limit>0 then
   redis.call('ZREMRANGEBYSCORE',groupkey(r),'-inf',now)
-  if redis.call('ZCARD',groupkey(r))>=r.group_limit then return nil end
+  if redis.call('ZCARD',groupkey(r))>=r.group_limit then blocked(r,'group_capacity');return nil end
  end
  -- Aggregate protection covers many one-slot independent accounts as well as
  -- shared upstream roots. Strong capacities are deduplicated by the registry.
@@ -181,11 +187,14 @@ local function available(r)
    redis.call('ZREMRANGEBYSCORE',strongKey,'-inf',now)
    local strongUsed=redis.call('ZCARD',strongKey)
    local strongCapacity=tonumber(redis.call('HGET',prefix..'strong_limits',c.pool_id) or tostring(effectiveCapacity))
-   if string.sub(c.pool_id,1,8)=='account:' then strongUsed=used end
+   if string.sub(c.pool_id,1,8)=='account:' then
+    if c.quality=='strong' then strongUsed=used
+    else strongCapacity=0;strongUsed=0 end
+   end
    local p=decode(redis.call('HGET',pools,c.pool_id)) or {capacity=c.pool_capacity,peak=false,since=0,updated=now}
    local peak=r.peak
    local protected=false;local reserve=0
-   if not peak.enabled then p.peak=false;p.since=0;p.reserved=0 end
+   if not peak.enabled or strongCapacity<=0 then p.peak=false;p.since=0;p.reserved=0 end
    if strongCapacity>0 and peak.enabled then
     local utilization=strongUsed/math.max(1,strongCapacity)
     if not p.peak then
@@ -204,6 +213,9 @@ local function available(r)
     protected=not premium and reserve>0 and (peak.strict_reserve or redis.call('ZCARD',prefix..'users:premium')>0) and (used>=effectiveCapacity-reserve or (c.quality=='strong' and strongUsed>=strongCapacity-reserve))
    end
    p.updated=now;p.capacity=effectiveCapacity;p.strong_capacity=strongCapacity;p.strong_active=strongUsed;p.reserved=reserve;p.reason=p.peak and 'strong_utilization_above_threshold_stable' or 'below_threshold_or_hysteresis_hold';p.borrowing=(not peak.strict_reserve);redis.call('HSET',pools,c.pool_id,cjson.encode(p))
+   if accountUsed>=c.concurrency then blocked(r,'account_capacity') end
+   if used>=effectiveCapacity then blocked(r,string.sub(c.pool_id,1,7)=='shared:' and 'shared_pool_capacity' or 'account_pool_capacity') end
+   if protected or (c.quality=='strong' and globalBlocked) then blocked(r,'strong_capacity_protection') end
    if accountUsed<c.concurrency and used<effectiveCapacity and not protected and not (c.quality=='strong' and globalBlocked) then
     -- Retain a server-resolved conversation owner only after live capacity
     -- and protection checks, and only within its quality/standby class.
@@ -234,9 +246,11 @@ for ti,tier in ipairs({'premium','standard','economy'}) do
  local found=false
  for _,uid in ipairs(redis.call('ZRANGE',uk,offset,offset+63)) do
   local q=prefix..'user:'..tier..':'..uid
-  local heads=redis.call('ZRANGE',q,0,0)
-  if #heads>0 then
-   local r=decode(redis.call('HGET',requests,heads[1]))
+  -- Inspect a bounded prefix in FIFO order. A blocked model must not hide
+  -- ready capacity for the same user; charge only the one granted fair turn.
+  local heads=redis.call('ZRANGE',q,0,7)
+  for _,rid in ipairs(heads) do
+   local r=decode(redis.call('HGET',requests,rid))
    if r and not r.grant and r.deadline>now then
     local candidate,peak,reserve=available(r)
     if candidate then
@@ -249,6 +263,7 @@ for ti,tier in ipairs({'premium','standard','economy'}) do
     end
    end
   end
+  if found then break end
  end
  if not found and count>64 then redis.call('HSET',fair,'scan:'..tier,tostring((offset+64)%count)) else redis.call('HSET',fair,'scan:'..tier,'0') end
 end
@@ -277,4 +292,6 @@ if best then
  redis.call('HSET',requests,r.id,encoded)
  if r.id==id then return cjson.encode(r.grant) end
 end
-return '{"status":"waiting"}'
+if not ownExamined then waitReasons.user_queue_head_or_scan_limit=1
+elseif next(waitReasons)==nil then waitReasons.fair_turn=1 end
+return cjson.encode({status='waiting',wait_reasons=waitReasons})

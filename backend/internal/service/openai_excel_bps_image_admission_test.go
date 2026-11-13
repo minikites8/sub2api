@@ -247,6 +247,9 @@ func TestExcelBPSImageAdmissionOnlyAppliesToBPSForwards(t *testing.T) {
 			require.True(t, ok)
 			defer hold()
 			c := excelBPSImageAdmissionTestContext(tt.marked)
+			if tt.name == "internal BPS check" {
+				c.Set(bpsAccountProbeRequiredContextKey, true)
+			}
 
 			_, err := svc.Forward(context.Background(), c, tt.account, body)
 

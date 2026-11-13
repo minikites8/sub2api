@@ -226,7 +226,8 @@ func TestExcelBPS429FailsOverWithoutChangingCodexState(t *testing.T) {
 				if tc.cancelOnRead {
 					reader = &excelBPSCancelReader{Reader: reader, cancel: cancel}
 				}
-				upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusTooManyRequests, Header: tc.headers, Body: io.NopCloser(reader)}}
+				upstream := excelBPSRepeatedResponse(http.StatusTooManyRequests, tc.headers, raw, 2)
+				upstream.responses[0].Body = io.NopCloser(reader)
 				svc := openAIClientToolsTestService(upstream)
 				repo := &excelBPSQuotaRepo{writes: make(chan excelBPSQuotaWrite, 4)}
 				svc.accountRepo = repo
@@ -252,13 +253,21 @@ func TestExcelBPS429FailsOverWithoutChangingCodexState(t *testing.T) {
 					require.True(t, ok)
 					require.Equal(t, OpsClientCanceledCode, marked.Code)
 					require.False(t, c.Writer.Written())
+					require.Len(t, upstream.requests, 1)
+					require.False(t, svc.isExcelBPSCoolingDown(account, "gpt-6-astra"), "cancellation must not punish an account")
+					requireNoExcelBPSQuotaWrite(t, repo)
+					return
 				} else {
 					requireExcelBPSRateLimitFailover(t, err, c)
 					var failover *UpstreamFailoverError
 					require.ErrorAs(t, err, &failover)
 					require.Equal(t, tc.wantRetryAfter, failover.ResponseHeaders.Get("Retry-After"))
 				}
-				require.Len(t, upstream.requests, 1)
+				if tc.cancelOnRead {
+					require.Len(t, upstream.requests, 1)
+				} else {
+					require.Len(t, upstream.requests, 2)
+				}
 				require.NotContains(t, rec.Body.String(), "PRIVATE_UPSTREAM")
 				_, finalUpstreamError := c.Get(OpsUpstreamStatusCodeKey)
 				require.False(t, finalUpstreamError, "a failover attempt is not the final upstream error")
@@ -266,7 +275,13 @@ func TestExcelBPS429FailsOverWithoutChangingCodexState(t *testing.T) {
 				require.True(t, ok)
 				events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
 				require.True(t, ok)
-				require.Len(t, events, 1)
+				if tc.cancelOnRead {
+					require.Len(t, events, 1)
+				} else {
+					require.Len(t, events, 3)
+					require.Equal(t, "same_account_retry", events[1].Kind)
+					require.Equal(t, "failover", events[2].Kind)
+				}
 				require.Equal(t, "failover", events[0].Kind)
 				require.Equal(t, http.StatusTooManyRequests, events[0].UpstreamStatusCode)
 				require.NotContains(t, events[0].Message+events[0].Detail, "PRIVATE_UPSTREAM")
@@ -303,7 +318,14 @@ func TestExcelBPSNon429DoesNotChangeQuotaState(t *testing.T) {
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 			_, err := svc.Forward(context.Background(), c, account, []byte("{\"model\":\"gpt-6-astra\",\"input\":\"test\"}"))
 			require.Error(t, err)
-			require.Equal(t, status, rec.Code)
+			if status >= 500 || status == 401 || status == 403 {
+				var failure *UpstreamFailoverError
+				require.ErrorAs(t, err, &failure)
+				require.Equal(t, status, failure.StatusCode)
+				require.False(t, c.Writer.Written())
+			} else {
+				require.Equal(t, status, rec.Code)
+			}
 			requireNoExcelBPSQuotaWrite(t, repo)
 			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 			require.True(t, account.IsSchedulable())

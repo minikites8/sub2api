@@ -24,7 +24,10 @@ func TestExcelBPSModelPermissionForward(t *testing.T) {
 				account.Credentials["model_mapping"] = map[string]any{"alias": "gpt-6-astra", "second-alias": "gpt-6-astra", "gpt-5.6-sol": "gpt-5.6-sol"}
 				account.Extra["openai_excel_bps_models"] = []any{"gpt-6-astra", "gpt-5.6-sol"}
 				account.Extra["openai_excel_bps_auto_disable_on_403"] = true
-				upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"` + code + `"}}`))}}
+				upstream := &httpUpstreamRecorder{responses: []*http.Response{
+					{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"` + code + `"}}`))},
+					{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"` + code + `"}}`))},
+				}}
 				svc := openAIClientToolsTestService(upstream)
 				svc.accountRepo = &excelBPSAutoDisableRepo{disable: func(context.Context, *Account) (bool, error) {
 					t.Fatal("model rejection must not disable the account")
@@ -38,7 +41,7 @@ func TestExcelBPSModelPermissionForward(t *testing.T) {
 				require.True(t, svc.isExcelBPSModelCoolingDown(account, "second-alias"))
 				require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "alias", false))
 				require.False(t, svc.isExcelBPSModelCoolingDown(account, "gpt-5.6-sol"))
-				require.Len(t, upstream.requests, 1)
+				require.Len(t, upstream.requests, 2)
 				account.Extra["openai_excel_bps"] = false
 				require.False(t, svc.isExcelBPSModelCoolingDown(account, "alias"))
 			})

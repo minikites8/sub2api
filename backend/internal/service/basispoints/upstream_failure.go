@@ -10,17 +10,21 @@ import (
 // UpstreamFailure is a safe interpretation of an in-band error. Status is a
 // semantic status, not evidence of the HTTP status returned by the upstream.
 type UpstreamFailure struct {
-	Status     int
-	Code       string
-	Type       string
-	Message    string
-	RetryAfter string
+	Status       int
+	Code         string
+	Type         string
+	Message      string
+	RetryAfter   string
+	ReplayUnsafe bool
 }
 
 func (f *UpstreamFailure) Error() string { return f.Message }
 
 func (f *UpstreamFailure) Details() map[string]any {
 	details := object{"status": f.Status, "code": f.Code, "type": f.Type, "message": f.Message}
+	if f.ReplayUnsafe {
+		details["retryable"] = false
+	}
 	if f.RetryAfter != "" {
 		details["headers"] = object{"retry-after": f.RetryAfter}
 	}
@@ -58,6 +62,14 @@ func classifyUpstreamFailure(kind string, payload object) *UpstreamFailure {
 	if strings.EqualFold(strings.TrimSpace(text(detail["message"])), "Account eligibility changed; please retry with complete context") {
 		code = "account_eligibility_changed"
 	}
+	// This fixed refusal concerns the request's Cyber program/model pairing,
+	// never credential health. Trust only the active error envelope, not input
+	// or arbitrary echoed fields accompanying another error.
+	if (code == "" || code == "permission_denied") &&
+		(text(detail["type"]) == "" || text(detail["type"]) == "invalid_request_error" || text(detail["type"]) == "permission_error") &&
+		strings.EqualFold(strings.TrimSpace(text(detail["message"])), "The requested Cyber access program is not authorized for this model.") {
+		code = "cyber_access_model_denied"
+	}
 	status := failureIdentifierStatus(code)
 	if status == 0 {
 		code = "basispoints_upstream_error"
@@ -89,7 +101,7 @@ func classifyUpstreamFailure(kind string, payload object) *UpstreamFailure {
 			errorType = "invalid_request_error"
 		}
 	}
-	failure := &UpstreamFailure{Status: status, Code: code, Type: errorType,
+	failure := &UpstreamFailure{Status: status, Code: code, Type: errorType, ReplayUnsafe: detail["retryable"] == false || payload["retryable"] == false,
 		Message: "Excel BPS upstream failure: " + code + "; request was not replayed"}
 	if headers, ok := detail["headers"].(object); ok {
 		raw := strings.TrimSpace(text(headers["retry-after"]))
@@ -119,7 +131,7 @@ func failureIdentifierStatus(identifier string) int {
 	case "invalid_request", "invalid_request_error", "bad_request_error", "invalid_argument", "invalid_value",
 		"unsupported_value", "invalid_prompt", "context_length_exceeded", "string_above_max_length",
 		"previous_response_not_found", "thinking_signature_invalid", "invalid_encrypted_content",
-		"cyber_policy", "content_policy_violation":
+		"cyber_policy", "content_policy_violation", "session_blocked_by_cyber_policy", "cyber_access_model_denied":
 		return http.StatusBadRequest
 	case "authentication_error", "invalid_api_key", "token_expired":
 		return http.StatusUnauthorized

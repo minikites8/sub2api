@@ -94,10 +94,14 @@ func (r excelBPSFailoverAccountRepo) ListModelAvailabilityCandidates(_ context.C
 
 // loadBatch selects the production default (load-aware) scheduling path;
 // otherwise the simple priority path is used.
-func newExcelBPSFailoverTestHandler(t *testing.T, upstream service.HTTPUpstream, loadBatch bool) *OpenAIGatewayHandler {
+func newExcelBPSFailoverTestHandler(t *testing.T, upstream service.HTTPUpstream, loadBatch bool, accountCount ...int) *OpenAIGatewayHandler {
 	t.Helper()
 	var accounts []service.Account
-	for _, id := range []int64{1, 2} {
+	count := 2
+	if len(accountCount) > 0 {
+		count = accountCount[0]
+	}
+	for id := int64(1); id <= int64(count); id++ {
 		accounts = append(accounts, service.Account{
 			ID: id, Name: fmt.Sprintf("bps-account-%d", id), Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
 			Status: service.StatusActive, Schedulable: true, GroupIDs: []int64{3131},
@@ -163,7 +167,7 @@ func TestOpenAIResponsesExcelBPS429SwitchesAccountAndCoolsIt(t *testing.T) {
 		stream := tc.stream
 		t.Run(fmt.Sprintf("load_batch=%t/stream=%t", tc.loadBatch, stream), func(t *testing.T) {
 			upstream := &excelBPSFailoverUpstream{answer: func(call int) *http.Response {
-				if call == 0 {
+				if call < 2 {
 					return excelBPS429("30")
 				}
 				return excelBPSCompleted()
@@ -174,9 +178,10 @@ func TestOpenAIResponsesExcelBPS429SwitchesAccountAndCoolsIt(t *testing.T) {
 			handler.Responses(c)
 
 			calls := upstream.calls()
-			require.Len(t, calls, 2)
-			throttled, healthy := calls[0], calls[1]
-			require.NotEqual(t, throttled, healthy, "the throttled account must not be retried in this request")
+			require.Len(t, calls, 3)
+			throttled, healthy := calls[0], calls[2]
+			require.Equal(t, throttled, calls[1], "retry the initial account exactly once before switching")
+			require.NotEqual(t, throttled, healthy)
 			require.Equal(t, http.StatusOK, rec.Code)
 			require.Contains(t, rec.Body.String(), "done")
 			require.NotContains(t, rec.Body.String(), "PRIVATE_UPSTREAM")
@@ -191,15 +196,17 @@ func TestOpenAIResponsesExcelBPS429SwitchesAccountAndCoolsIt(t *testing.T) {
 			require.True(t, ok)
 			events, ok := rawEvents.([]*service.OpsUpstreamErrorEvent)
 			require.True(t, ok)
-			require.Len(t, events, 1)
+			require.Len(t, events, 3)
 			require.Equal(t, "failover", events[0].Kind)
 			require.Equal(t, throttled, events[0].AccountID)
 			require.Equal(t, http.StatusTooManyRequests, events[0].UpstreamStatusCode)
+			require.Equal(t, "same_account_retry", events[1].Kind)
+			require.Equal(t, "failover", events[2].Kind)
 
 			c, rec = newExcelBPSFailoverTestContext(context.Background(), stream)
 			handler.Responses(c)
 
-			require.Equal(t, []int64{throttled, healthy, healthy}, upstream.calls(), "the cooling account is skipped by the next request")
+			require.Equal(t, []int64{throttled, throttled, healthy, healthy}, upstream.calls(), "the cooling account is skipped by the next request")
 			require.Equal(t, http.StatusOK, rec.Code)
 		})
 	}

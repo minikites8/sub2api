@@ -138,8 +138,11 @@ func TestExcelBPSUsagePreservesRequestedEffortBeforeGroupMapping(t *testing.T) {
 	}
 }
 
-func TestExcelBPSModelDeniedDoesNotFailover(t *testing.T) {
-	upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"basispoints_model_access_changed","message":"SECRET_UPSTREAM"}}`))}}
+func TestExcelBPSModelDeniedRetriesThenFailsOverWithoutLeakingError(t *testing.T) {
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		bpsCompletionResponse(http.StatusForbidden, `{"error":{"code":"basispoints_model_access_changed","message":"SECRET_UPSTREAM"}}`),
+		bpsCompletionResponse(http.StatusForbidden, `{"error":{"code":"basispoints_model_access_changed","message":"SECRET_UPSTREAM"}}`),
+	}}
 	svc := openAIClientToolsTestService(upstream)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -147,11 +150,13 @@ func TestExcelBPSModelDeniedDoesNotFailover(t *testing.T) {
 	_, err := svc.Forward(context.Background(), c, excelAccount(), []byte(`{"model":"gpt-5.6-sol","input":"x"}`))
 	require.Error(t, err)
 	var failover *UpstreamFailoverError
-	require.NotErrorAs(t, err, &failover)
-	require.Equal(t, 403, rec.Code)
-	require.Contains(t, rec.Body.String(), "basispoints_model_access_changed")
-	require.NotContains(t, rec.Body.String(), "SECRET_UPSTREAM")
-	require.True(t, IsResponseCommitted(c))
+	require.ErrorAs(t, err, &failover)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, 403, failover.StatusCode)
+	require.Contains(t, string(failover.ResponseBody), "basispoints_model_access_changed")
+	require.NotContains(t, string(failover.ResponseBody), "SECRET_UPSTREAM")
+	require.Empty(t, rec.Body.String())
+	require.False(t, IsResponseCommitted(c))
 }
 
 func TestExcelBPSHTTPErrorRecordsUpstreamRejection(t *testing.T) {

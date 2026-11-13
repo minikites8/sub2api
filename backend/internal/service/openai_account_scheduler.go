@@ -2007,7 +2007,7 @@ func (s *defaultOpenAIAccountScheduler) loadOpenAIEligibleAccounts(ctx context.C
 			filterStats.exclude(excelBPSRateLimitedFilterReason)
 			continue
 		}
-		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel, req.RequireCompact) {
+		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel, req.RequireCompact, ctx) {
 			filterStats.exclude("runtime_blocked")
 			continue
 		}
@@ -2448,7 +2448,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
 		return false, "privacy_not_set"
 	}
-	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel, req.RequireCompact) {
+	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel, req.RequireCompact, ctx) {
 		return false, "runtime_blocked"
 	}
 	if s != nil && s.service != nil && s.service.isOpenAIProxyStreamQuarantined(ctx, account) {
@@ -2851,6 +2851,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
+	ctx = s.withOpenAIBPSChatBridgeScheduling(ctx)
 	selection, decision, err = s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
 		return selection, decision, err

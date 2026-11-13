@@ -57,7 +57,7 @@ func TestExcelBPSAutoDisableOn403(t *testing.T) {
 					raw = `{"error":{"code":"basispoints_model_access_changed"}}`
 					wantCode = "basispoints_model_access_changed"
 				}
-				upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: tc.status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(raw))}}
+				upstream := excelBPSRepeatedResponse(tc.status, http.Header{}, raw, 2)
 				svc := openAIClientToolsTestService(upstream)
 				calls := 0
 				svc.accountRepo = &excelBPSAutoDisableRepo{disable: func(ctx context.Context, got *Account) (bool, error) {
@@ -74,15 +74,28 @@ func TestExcelBPSAutoDisableOn403(t *testing.T) {
 					// The handler answers after trying other accounts.
 					requireExcelBPSRateLimitFailover(t, err, c)
 					wantCode = ""
+				} else if tc.status == 401 || tc.status == 403 || tc.status >= 500 {
+					var failover *UpstreamFailoverError
+					require.ErrorAs(t, err, &failover)
+					require.Equal(t, tc.status, failover.StatusCode)
+					require.Equal(t, wantCode, string(failover.Reason))
+					require.False(t, c.Writer.Written())
+					wantCode = ""
 				} else {
 					require.EqualError(t, err, "excel BPS: "+wantCode)
 					require.Equal(t, tc.status, rec.Code)
 				}
 				require.Equal(t, wantCode, gjson.Get(rec.Body.String(), "error.code").String())
-				require.Equal(t, tc.changed && tc.writeErr == nil, strings.Contains(rec.Body.String(), "automatically disabled"))
+				if tc.status != http.StatusBadRequest {
+					require.Empty(t, rec.Body.String(), "retryable rejection must not commit a client response")
+				}
 				require.NotContains(t, rec.Body.String(), "PRIVATE_UPSTREAM")
 				require.Equal(t, tc.wantCalls, calls)
-				require.Len(t, upstream.requests, 1, "do not replay the failed request")
+				if tc.status == http.StatusBadRequest {
+					require.Len(t, upstream.requests, 1)
+				} else {
+					require.Len(t, upstream.requests, 2, "one same-account retry before switching")
+				}
 				require.True(t, account.IsExcelBPSEnabled(), "do not mutate a shared scheduler snapshot")
 				require.True(t, account.Schedulable)
 				require.Equal(t, StatusActive, account.Status)

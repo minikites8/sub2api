@@ -36,7 +36,7 @@ func (c *OpenAIAuthConnection) Supports(capability string) bool {
 	return false
 }
 
-func (a *Account) managedConnectionSupports(capability string) bool {
+func (a *Account) managedConnectionSupports(capability string, allowBPSChatBridge ...bool) bool {
 	raw, err := json.Marshal(a.Extra["openai_auth_connections"])
 	if err != nil {
 		return false
@@ -45,13 +45,16 @@ func (a *Account) managedConnectionSupports(capability string) bool {
 	if json.Unmarshal(raw, &connections) != nil {
 		return false
 	}
+	supports := func(c *OpenAIAuthConnection) bool {
+		return c.Supports(openAIConnectionRequestedCapability(capability, c, len(allowBPSChatBridge) > 0 && allowBPSChatBridge[0]))
+	}
 	for _, c := range connections {
-		if c != nil && c.Preferred {
-			return c.Supports(capability)
+		if c != nil && c.Preferred && supports(c) {
+			return true
 		}
 	}
 	for _, c := range connections {
-		if c != nil && c.Supports(capability) {
+		if c != nil && supports(c) {
 			return true
 		}
 	}
@@ -106,6 +109,10 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 		return nil, err
 	}
 	capability := connectionCapabilityForRequest(c)
+	allowBPSChatBridge := isOpenAIChatCompletionsConnectionRequest(c) && s.excelBPSGloballyEnabled(ctx)
+	supports := func(candidate *OpenAIAuthConnection) bool {
+		return candidate.Supports(openAIConnectionRequestedCapability(capability, candidate, allowBPSChatBridge))
+	}
 	pinned := ""
 	if selected != nil {
 		pinned = selected.AuthConnectionID
@@ -113,7 +120,18 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 	var chosen *OpenAIAuthConnection
 	if pinned == "" {
 		for _, candidate := range connections {
-			if candidate.Preferred && !candidate.Legacy {
+			if candidate.Preferred && !candidate.Legacy && supports(candidate) && !s.excelBPSConnectionCoolingDown(account.ID, candidate, model) {
+				pinned = candidate.ID
+				break
+			}
+		}
+	}
+	// Even when the preferred grant is cooling, consult the session affinity
+	// before using another grant. New sessions can bind a healthy fallback;
+	// existing sessions must retain their original authorization identity.
+	if pinned == "" && c != nil && c.GetString("openai_auth_connection_session_hash") != "" {
+		for _, candidate := range connections {
+			if !candidate.Legacy && supports(candidate) && !s.excelBPSConnectionCoolingDown(account.ID, candidate, model) {
 				pinned = candidate.ID
 				break
 			}
@@ -136,7 +154,7 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 		if pinned != "" && candidate.ID != pinned {
 			continue
 		}
-		if candidate.Supports(capability) && (chosen == nil || candidate.Preferred) {
+		if supports(candidate) && !s.excelBPSConnectionCoolingDown(account.ID, candidate, model) && (chosen == nil || candidate.Preferred) {
 			chosen = candidate
 		}
 	}
@@ -151,7 +169,7 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 	if err != nil {
 		return nil, err
 	}
-	if !chosen.Supports(capability) {
+	if !supports(chosen) || s.excelBPSConnectionCoolingDown(account.ID, chosen, model) {
 		return nil, connectionChanged()
 	}
 	creds, err := s.excelOAuthReauth.readConnectionCredentials(chosen)

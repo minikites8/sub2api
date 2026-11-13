@@ -934,6 +934,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 // selectAccountForModelWithExclusionsStickyHit 与 selectAccountForModelWithExclusions 相同，
 // 另返回账号是否来自粘性会话命中。
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHit(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, bool, error) {
+	ctx = s.withOpenAIBPSChatBridgeScheduling(ctx)
 	ctx = s.withOpenAIGroupRoutingPolicy(ctx, groupID)
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
@@ -1029,7 +1030,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact) {
+	if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact, ctx) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
@@ -1510,7 +1511,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact) {
+					} else if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact, ctx) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1590,7 +1591,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			filterStats.exclude(excelBPSRateLimitedFilterReason)
 			continue
 		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel, requireCompact) {
+		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel, requireCompact, ctx) {
 			filterStats.exclude("runtime_blocked")
 			continue
 		}
@@ -1966,7 +1967,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 	if len(ticketCompactOverride) > 0 {
 		ticketCompact = ticketCompactOverride[0]
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel, ticketCompact) {
+	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel, ticketCompact, ctx) {
 		return nil
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, fresh) {
@@ -2047,7 +2048,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if len(ticketCompactOverride) > 0 {
 		ticketCompact = ticketCompactOverride[0]
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel, ticketCompact) {
+	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel, ticketCompact, ctx) {
 		return nil
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, latest) {

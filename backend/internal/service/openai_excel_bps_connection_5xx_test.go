@@ -41,9 +41,8 @@ func forwardManagedBPS(t *testing.T, gateway *OpenAIGatewayService, parent *Acco
 	return gateway.Forward(context.Background(), c, parent, body)
 }
 
-// One transient BPS server failure must fail only that request. Cooling the
-// managed connection blocks every following request on the account (the
-// scheduler reports capability_mismatch) although BPS has already recovered.
+// Transient BPS failures must cool only the failed route briefly; they never
+// change persisted authorization state or require manual account recovery.
 func TestManagedBPSConnectionTransientServerErrorKeepsConnectionSchedulable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	completed := `data: {"type":"response.completed","response":{"id":"resp_after_bps_5xx","status":"completed","model":"gpt-6-astra","output":[],"usage":{"input_tokens":10,"output_tokens":2}}}` + "\n\n"
@@ -51,6 +50,7 @@ func TestManagedBPSConnectionTransientServerErrorKeepsConnectionSchedulable(t *t
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
 			reauth, repo, connection := managedBPSConnectionFailureFixture(t)
 			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"temporarily unavailable"}}`))},
 				{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"temporarily unavailable"}}`))},
 				{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(completed))},
 			}}
@@ -65,10 +65,12 @@ func TestManagedBPSConnectionTransientServerErrorKeepsConnectionSchedulable(t *t
 			require.Equal(t, int64(1), repo.rows[0].Revision)
 			require.True(t, repo.rows[0].Supports("responses"))
 
+			require.True(t, gateway.excelBPSConnectionCoolingDown(parent.ID, connection, "gpt-6-astra"))
+			gateway.excelBPSCooldownUntil.Store(excelBPSConnectionCooldownKey{accountID: parent.ID, connectionID: connection.ID}, time.Now().Add(-time.Second))
 			result, err := forwardManagedBPS(t, gateway, parent)
 			require.NoError(t, err, "the next request must still be sent through the connection")
 			require.NotNil(t, result)
-			require.Len(t, upstream.requests, 2)
+			require.Len(t, upstream.requests, 3)
 			require.Equal(t, "Bearer synthetic-connection-token", upstream.lastReq.Header.Get("Authorization"))
 			require.Equal(t, connection.ID, repo.rows[0].ID)
 		})

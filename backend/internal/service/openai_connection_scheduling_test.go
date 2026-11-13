@@ -134,8 +134,15 @@ func TestManagedBPSConnectionIsScheduledForResponsesTurns(t *testing.T) {
 					require.Equal(t, int64(891), selection.Account.ID, capability)
 				}
 
-				_, err := selectFor(connectionRouteContext("/v1/chat/completions"), OpenAIEndpointCapabilityChatCompletions)
-				require.True(t, errors.Is(err, ErrNoAvailableAccounts), "a BPS grant must not be offered Chat Completions: %v", err)
+				selection, err := selectFor(connectionRouteContext("/v1/chat/completions"), OpenAIEndpointCapabilityChatCompletions)
+				require.NoError(t, err, "Chat Completions has a request-scoped BPS bridge")
+				require.Equal(t, int64(891), selection.Account.ID)
+				_, err = selectFor(connectionRouteContext("/v1/messages"), OpenAIEndpointCapabilityChatCompletions)
+				require.ErrorIs(t, err, ErrNoAvailableAccounts, "the Chat bridge does not authorize Messages")
+				svc.settingService = NewSettingService(&excelBPSImageSettingsRepo{values: map[string]string{SettingKeyExcelBPSEnabled: "false"}}, cfg)
+				_, err = selectFor(connectionRouteContext("/v1/chat/completions"), OpenAIEndpointCapabilityChatCompletions)
+				require.ErrorIs(t, err, ErrNoAvailableAccounts, "global BPS off must fail closed")
+				svc.settingService = nil
 
 				_, err = selectFor(connectionRouteContext("/v1/responses/compact"), OpenAIEndpointCapabilityResponses)
 				require.True(t, errors.Is(err, ErrNoAvailableAccounts), "a BPS grant must not be offered the legacy compact endpoint: %v", err)
@@ -156,7 +163,7 @@ func TestManagedConnectionSchedulingAgreesWithPreparation(t *testing.T) {
 		{"/v1/responses", OpenAIEndpointCapabilityResponsesCompact, true},
 		{"/v1/responses", OpenAIEndpointCapabilityResponses, true},
 		{"/v1/responses/compact", OpenAIEndpointCapabilityResponses, false},
-		{"/v1/chat/completions", OpenAIEndpointCapabilityChatCompletions, false},
+		{"/v1/chat/completions", OpenAIEndpointCapabilityChatCompletions, true},
 		{"/v1/messages", OpenAIEndpointCapabilityChatCompletions, false},
 	}
 	for _, kind := range []string{"bps", "codex"} {
@@ -188,7 +195,7 @@ func TestManagedConnectionSchedulingAgreesWithPreparation(t *testing.T) {
 				if prepareErr == nil {
 					require.Equal(t, connection.ID, projected.AuthConnectionID)
 				}
-				admitted := scheduled.supportsOpenAIEndpointCapabilityForRequest(WithOpenAIConnectionCapabilityForRequest(context.Background(), c), route.capability)
+				admitted := scheduled.supportsOpenAIEndpointCapabilityForRequest(gateway.withOpenAIBPSChatBridgeScheduling(WithOpenAIConnectionCapabilityForRequest(context.Background(), c)), route.capability)
 				require.Equal(t, prepareErr == nil, admitted, "%s %s as %s: prepare error %v", kind, route.path, route.capability, prepareErr)
 			}
 		})

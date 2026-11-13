@@ -108,7 +108,7 @@ func TestExcelBPSFailureClassification(t *testing.T) {
 					require.NoError(t, err)
 					wire = "data: " + string(prefix) + "\n\n" + wire
 				}
-				upstream := &httpUpstreamRecorder{resp: bpsCompletionResponse(http.StatusOK, wire)}
+				upstream := excelBPSRepeatedResponse(http.StatusOK, http.Header{}, wire, 2)
 				svc := openAIClientToolsTestService(upstream)
 				account := excelAccount()
 				account.Extra["openai_excel_bps_auto_disable_on_403"] = true
@@ -119,6 +119,16 @@ func TestExcelBPSFailureClassification(t *testing.T) {
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 				result, err := svc.Forward(context.Background(), c, account, body)
 				require.Error(t, err)
+				if tc.event == "error" && !stream {
+					var failover *UpstreamFailoverError
+					require.ErrorAs(t, err, &failover)
+					require.Equal(t, tc.status, failover.StatusCode)
+					require.Len(t, upstream.requests, 2, "only failures without output or usage can retry")
+					require.False(t, c.Writer.Written())
+					require.Empty(t, rec.Body.String())
+					require.NotContains(t, string(failover.ResponseBody), "PRIVATE_")
+					return
+				}
 				require.NotNil(t, result)
 				require.Equal(t, tc.event, result.UpstreamTerminalEvent)
 				require.Len(t, upstream.requests, 1, "never replay a request after an upstream terminal")

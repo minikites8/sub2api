@@ -55,11 +55,12 @@ type GPTQoSEntry struct {
 	Weights                                     [3]int            `json:"weights"`
 }
 type GPTQoSGrant struct {
-	Status    string          `json:"status"`
-	Candidate GPTQoSCandidate `json:"candidate"`
-	Peak      bool            `json:"peak"`
-	Reserved  int             `json:"reserved"`
-	WaitMs    int64           `json:"wait_ms"`
+	WaitReasons map[string]int  `json:"wait_reasons,omitempty"`
+	Status      string          `json:"status"`
+	Candidate   GPTQoSCandidate `json:"candidate"`
+	Peak        bool            `json:"peak"`
+	Reserved    int             `json:"reserved"`
+	WaitMs      int64           `json:"wait_ms"`
 }
 
 // Admission and the existing Redis account slot are acquired in one atomic
@@ -147,18 +148,28 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 		}
 	}
 	excluded := make(map[string]int)
+	excludedByQuality := map[string]map[string]int{"strong": {}, "basic": {}, "unknown": {}}
+	recordExcluded := func(quality, reason string) {
+		if quality != "strong" && quality != "basic" {
+			quality = "unknown"
+		}
+		excluded[reason]++
+		excludedByQuality[quality][reason]++
+	}
 	for _, pool := range [][]openAIAccountCandidateScore{strong, basic} {
 		for _, item := range pool {
 			account := item.account
 			if account == nil {
+				recordExcluded("unknown", "account_unavailable")
 				continue
 			}
+			quality := account.QualityTier()
 			if full != nil {
 				account = full[account.ID]
 			}
 			reason := s.gptQoSCandidateIneligibleReason(ctx, req, account, item.account.QualityTier())
 			if reason != "" {
-				excluded[reason]++
+				recordExcluded(quality, reason)
 				continue
 			}
 			if c, ok := qosCandidate(account, cfg); ok {
@@ -166,7 +177,7 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 				entry.Candidates = append(entry.Candidates, c)
 				accounts[account.ID] = account
 			} else {
-				excluded[gptQoSCapacityIneligibleReason(account, cfg)]++
+				recordExcluded(quality, gptQoSCapacityIneligibleReason(account, cfg))
 			}
 		}
 	}
@@ -203,6 +214,45 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 			state.mu.Unlock()
 		}
 	}()
+	var waitReasons map[string]int
+	queueTimedOut := false
+	defer func() {
+		if queueTimedOut {
+			strongCount, basicCount := 0, 0
+			for _, candidate := range entry.Candidates {
+				switch candidate.Quality {
+				case "strong":
+					strongCount++
+				case "basic":
+					basicCount++
+				}
+			}
+			slog.WarnContext(ctx, "gpt_qos_queue_timeout", "request_id", ctx.Value(ctxkey.RequestID), "group_id", entry.GroupID, "tier", entry.Tier, "group_limit", entry.GroupLimit, "candidate_count", len(entry.Candidates), "strong_candidate_count", strongCount, "basic_candidate_count", basicCount, "allow_basic_fallback", group.AllowBasicFallback, "basic_wait_ms", group.BasicWaitMs, "excluded_by_quality", excludedByQuality, "wait_ms", time.Since(started).Milliseconds(), "wait_reasons", waitReasons)
+		}
+	}()
+	// Zero Basic wait still authorizes one immediate atomic admission after the
+	// Strong budget. Use a fresh, one-poll entry rather than resurrecting an
+	// expired queue record or extending its configured waiting window.
+	var finalBasicCandidates []GPTQoSCandidate
+	if group.AllowBasicFallback && group.BasicWaitMs == 0 && !req.PreserveStickyBinding && entry.StrongWaitMs > 0 {
+		for _, candidate := range entry.Candidates {
+			if candidate.Quality == "basic" {
+				finalBasicCandidates = append(finalBasicCandidates, candidate)
+			}
+		}
+	}
+	finalBasicAttempted := false
+	tryFinalBasic := func() bool {
+		if finalBasicAttempted || len(finalBasicCandidates) == 0 || ctx.Err() != nil {
+			return false
+		}
+		finalBasicAttempted = true
+		closeGPTQoSEntry(store, entry.ID)
+		entry.ID = generateRequestID()
+		entry.Candidates = finalBasicCandidates
+		entry.WaitMs, entry.StrongWaitMs = 1, 0
+		return true
+	}
 	initialWaitMs := entry.WaitMs
 	waitDeadline := started.Add(time.Duration(initialWaitMs) * time.Millisecond)
 	rechecks := 0
@@ -227,6 +277,9 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 		if err := ctx.Err(); err != nil {
 			return nil, 0, 0, 0, err
 		}
+		if grant.WaitReasons != nil {
+			waitReasons = grant.WaitReasons
+		}
 		switch grant.Status {
 		case "granted":
 			account := accounts[grant.Candidate.AccountID]
@@ -247,7 +300,7 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 				entry.Candidates = next
 				entry.WaitMs = initialWaitMs - int(time.Since(started).Milliseconds())
 				entry.StrongWaitMs = max(0, int(time.Until(deadline).Milliseconds()))
-				if len(next) == 0 || rechecks >= cfg.MaxAttempts || entry.WaitMs <= 0 {
+				if finalBasicAttempted || len(next) == 0 || rechecks >= cfg.MaxAttempts || entry.WaitMs <= 0 {
 					return nil, 0, 0, 0, newGPTQoSSelectionError("account_changed", reason, nil)
 				}
 				entry.ID = generateRequestID()
@@ -277,13 +330,25 @@ func (s *defaultOpenAIAccountScheduler) selectGPTQoSQueue(ctx context.Context, r
 			// Older instances may have reaped this entry using the former shared
 			// close marker. Never re-enqueue it or reset its fairness/budget.
 			if !time.Now().Before(waitDeadline) {
+				if tryFinalBasic() {
+					continue
+				}
+				queueTimedOut = true
 				return nil, 0, 0, 0, newGPTQoSSelectionError("queue_timeout", "expired_close_marker", nil)
 			}
 			return nil, 0, 0, 0, newGPTQoSSelectionError("queue_closed", "closed_before_wait_deadline", nil)
 		case "full", "timeout":
+			if grant.Status == "timeout" && tryFinalBasic() {
+				continue
+			}
+			queueTimedOut = grant.Status == "timeout"
 			return nil, 0, 0, 0, newGPTQoSSelectionError("queue_"+grant.Status, "", nil)
 		}
-		if !time.Now().Before(waitDeadline) {
+		if finalBasicAttempted || !time.Now().Before(waitDeadline) {
+			if tryFinalBasic() {
+				continue
+			}
+			queueTimedOut = true
 			return nil, 0, 0, 0, newGPTQoSSelectionError("queue_timeout", "", nil)
 		}
 		if !waitGPTQoS(ctx, min(25*time.Millisecond, time.Until(waitDeadline))) {

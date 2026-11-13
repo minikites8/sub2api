@@ -2,7 +2,6 @@ package basispoints
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -259,8 +258,9 @@ func TestStructuredOutputRequiresAuthoritativeCompletion(t *testing.T) {
 	stream := bridge.Stream(io.NopCloser(strings.NewReader(sse(object{"type": "response.output_text.delta", "delta": "UNVALIDATED"}))))
 	defer func() { _ = stream.Close() }()
 	body, err := io.ReadAll(stream)
-	if !errors.Is(err, io.ErrUnexpectedEOF) || len(body) != 0 {
-		t.Fatalf("interrupted structured output leaked: %s, %v", body, err)
+	if err != nil || strings.Contains(string(body), "UNVALIDATED") ||
+		strings.Count(string(body), "event: response.failed\n") != 1 || !strings.Contains(string(body), `"retryable":false`) {
+		t.Fatalf("interrupted structured output must fail without exposing text or permitting replay: %s, %v", body, err)
 	}
 }
 

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"strings"
 	"sync"
 	"time"
@@ -30,10 +29,8 @@ func (s *OpenAIGatewayService) coolDownExcelBPSModel(account *Account, upstreamM
 	if s == nil || account == nil || strings.TrimSpace(upstreamModel) == "" {
 		return
 	}
-	if account.AuthConnectionID != "" && s.excelOAuthReauth != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = s.excelOAuthReauth.FailAuthConnection(ctx, account, 403)
+	if account.AuthConnectionID != "" {
+		s.storeExcelBPSFailureCooldown(excelBPSConnectionCooldownKey{accountID: account.ID, connectionID: account.AuthConnectionID, model: upstreamModel}, time.Now().Add(excelBPSModelPermissionCooldown))
 		return
 	}
 	cache := &s.excelBPSModelCooldowns
@@ -65,6 +62,9 @@ func (s *OpenAIGatewayService) coolDownExcelBPSModel(account *Account, upstreamM
 func (s *OpenAIGatewayService) isExcelBPSModelCoolingDown(account *Account, requestedModel string) bool {
 	if s == nil || account == nil || !account.IsExcelBPSEnabledForModel(requestedModel) {
 		return false
+	}
+	if account.AuthConnectionID != "" {
+		return s.excelBPSFailureCooldownActive(excelBPSConnectionCooldownKey{accountID: account.ID, connectionID: account.AuthConnectionID, model: account.GetMappedModel(requestedModel)})
 	}
 	key := excelBPSModelKey{account.ID, account.GetMappedModel(requestedModel)}
 	cache := &s.excelBPSModelCooldowns

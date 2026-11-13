@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"sync"
 )
@@ -92,6 +93,7 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 	sequence := 0
 	terminal := false
 	visibleContent := false
+	replayUnsafe := false
 	rejectedTool, repairSkippedReason := "", ""
 	failureStage := "bridge_protocol_conversion"
 	var terminalResponse object
@@ -110,6 +112,11 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 			visibleContent = true
 		}
 		return err
+	}
+	finishUnreplayable := func() error {
+		failure := &UpstreamFailure{Status: http.StatusBadGateway, Code: "basispoints_upstream_error", Type: "server_error", ReplayUnsafe: true,
+			Message: "Excel BPS stream ended after producing output; request was not replayed"}
+		return emit("response.failed", object{"response": object{"status": "failed", "output": []any{}, "error": failure.Details()}})
 	}
 	emitTool := func(item object, index any) error {
 		id := text(item["id"])
@@ -149,6 +156,12 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 		if kind == "" {
 			kind = event
 		}
+		// Observe before tool/structured buffering so hidden generated work cannot
+		// become a fresh inference merely because no client frame was emitted.
+		if hasVisibleStreamContent(kind, payload) || isToolEvent(kind) &&
+			(text(payload["delta"]) != "" || text(payload["arguments"]) != "" || text(payload["input"]) != "") {
+			replayUnsafe = true
+		}
 		if b.structured != nil && kind == "response.completed" {
 			if response, ok := payload["response"].(object); !ok || response == nil {
 				return fmt.Errorf("basispoints structured output is missing its terminal response")
@@ -158,6 +171,9 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 			return nil
 		}
 		item, _ := payload["item"].(object)
+		if isTool(item) && (text(item["arguments"]) != "" || text(item["input"]) != "") {
+			replayUnsafe = true
+		}
 		if b.structured != nil && isStructuredMessageEvent(kind, item) {
 			return nil
 		}
@@ -165,6 +181,7 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 			return nil
 		}
 		if kind == "response.output_item.done" && isTool(item) {
+			replayUnsafe = true
 			// Only the terminal response contains the authoritative native item.
 			// Text keeps streaming; tool calls wait until the whole response validates.
 			if len(pendingTools) >= 1024 {
@@ -174,6 +191,15 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 			return nil
 		}
 		if response, ok := payload["response"].(object); ok {
+			if kind != "response.completed" {
+				output, _ := response["output"].([]any)
+				for _, raw := range output {
+					item, _ := raw.(object)
+					if isTool(item) || hasVisibleStreamContent("response.output_item.done", object{"item": item}) {
+						replayUnsafe = true
+					}
+				}
+			}
 			if b.structured != nil {
 				config, _ := response["text"].(object)
 				if config == nil {
@@ -279,7 +305,18 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 			}
 		}
 		terminal = kind == "response.completed" || kind == "response.incomplete" || kind == "response.failed" || kind == "response.cancelled" || kind == "error"
-		return emit(kind, normalizeFailureEvent(kind, payload))
+		normalized := normalizeFailureEvent(kind, payload)
+		if replayUnsafe && kind != "response.completed" && terminal {
+			response, _ := normalized["response"].(object)
+			detail, _ := response["error"].(object)
+			if detail == nil {
+				detail, _ = normalized["error"].(object)
+			}
+			if detail != nil {
+				detail["retryable"] = false
+			}
+		}
+		return emit(kind, normalized)
 	}
 	err := readEvents(reader, func(event string, data []byte) error {
 		if terminal {
@@ -295,7 +332,13 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 	})
 	if err != nil && !errors.Is(err, io.EOF) {
 		var invalid protocolError
-		if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &invalid) {
+		if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		if !errors.As(err, &invalid) {
+			if replayUnsafe {
+				return finishUnreplayable()
+			}
 			return err
 		}
 		failed := object{
@@ -319,6 +362,9 @@ func (b *Bridge) transformWithRepairs(ctx context.Context, reader io.Reader, wri
 		return emit("response.failed", object{"response": failed})
 	}
 	if !terminal {
+		if replayUnsafe {
+			return finishUnreplayable()
+		}
 		return io.ErrUnexpectedEOF
 	}
 	return nil

@@ -76,7 +76,7 @@ func TestExcelBPS403GroupActionTrigger(t *testing.T) {
 				if tc.modelError {
 					raw = "{\"error\":{\"code\":\"basispoints_model_access_changed\"}}"
 				}
-				upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: tc.status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(raw))}}
+				upstream := excelBPSRepeatedResponse(tc.status, http.Header{}, raw, 2)
 				svc := openAIClientToolsTestService(upstream)
 				var actions []string
 				svc.accountRepo = &excelBPSGroupActionRepo{
@@ -109,8 +109,12 @@ func TestExcelBPS403GroupActionTrigger(t *testing.T) {
 					want = append(want, "disable")
 				}
 				require.Equal(t, want, actions)
-				require.Equal(t, triggered && !tc.fail, strings.Contains(rec.Body.String(), "account groups were"))
-				require.Len(t, upstream.requests, 1)
+				var failover *UpstreamFailoverError
+				require.ErrorAs(t, err, &failover)
+				require.Equal(t, tc.status, failover.StatusCode)
+				require.False(t, c.Writer.Written())
+				require.Empty(t, rec.Body.String())
+				require.Len(t, upstream.requests, 2)
 				require.Equal(t, []int64{1, 2}, account.GroupIDs)
 				require.True(t, account.IsExcelBPSEnabled())
 			})

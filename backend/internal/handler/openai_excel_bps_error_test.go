@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,9 +20,11 @@ type excelBPSErrorUpstream struct {
 	service.HTTPUpstream
 	status int
 	body   string
+	paths  []string
 }
 
-func (u *excelBPSErrorUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+func (u *excelBPSErrorUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	u.paths = append(u.paths, req.URL.Path)
 	return &http.Response{StatusCode: u.status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(u.body))}, nil
 }
 
@@ -56,14 +59,28 @@ func TestExcelBPSErrorDoesNotAppendFallback(t *testing.T) {
 			before := c.Writer.Size()
 			_, err := gateway.Forward(context.Background(), c, account, []byte(body))
 			require.Error(t, err)
+			h := &OpenAIGatewayHandler{}
+			var failover *service.UpstreamFailoverError
+			if errors.As(err, &failover) {
+				require.Empty(t, rec.Body.String(), "a rejected attempt must leave the handler free to select another account")
+				require.False(t, c.Writer.Written())
+				// Once the account pool is exhausted, the handler owns the single
+				// final response; service errors must not append a second one.
+				h.handleFailoverExhausted(c, failover, false)
+			}
 			response := rec.Body.String()
 			require.NotEmpty(t, response, "forward error: %v", err)
-			h := &OpenAIGatewayHandler{}
-			if !openAIForwardErrorAlreadyCommunicated(c, before, err) {
+			if failover == nil && !openAIForwardErrorAlreadyCommunicated(c, before, err) {
 				require.False(t, h.ensureForwardErrorResponse(c, false))
 			}
 			require.Equal(t, response, rec.Body.String())
-			if tt.name == "incomplete_stream" || tt.name == "failed_stream" {
+			for _, path := range upstream.paths {
+				require.Equal(t, "/basispoints/api/responses", path, "BPS failure must not append a native-route attempt")
+			}
+			if failover != nil {
+				require.Len(t, upstream.paths, 2, "retry the BPS account once before returning the failover")
+			}
+			if failover == nil && (tt.name == "incomplete_stream" || tt.name == "failed_stream") {
 				require.Equal(t, 1, strings.Count(response, "event: response.failed"))
 			} else {
 				require.True(t, json.Valid([]byte(response)), response)

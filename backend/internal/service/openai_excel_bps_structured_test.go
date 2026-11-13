@@ -93,7 +93,10 @@ func TestExcelBPSStructuredOutputForwardContract(t *testing.T) {
 func TestExcelBPSStructuredOutputDoesNotOverrideModelAccess(t *testing.T) {
 	for _, model := range []string{"gpt-6-luna", "gpt-6-sol"} {
 		t.Run(model, func(t *testing.T) {
-			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{\"error\":{\"code\":\"basispoints_model_access_changed\"}}"))}}
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				bpsCompletionResponse(http.StatusForbidden, `{"error":{"code":"basispoints_model_access_changed"}}`),
+				bpsCompletionResponse(http.StatusForbidden, `{"error":{"code":"basispoints_model_access_changed"}}`),
+			}}
 			svc := openAIClientToolsTestService(upstream)
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
@@ -102,12 +105,14 @@ func TestExcelBPSStructuredOutputDoesNotOverrideModelAccess(t *testing.T) {
 			_, err := svc.Forward(context.Background(), c, account, excelStructuredRequest(t, model, true))
 			require.Error(t, err)
 			var failover *UpstreamFailoverError
-			require.NotErrorAs(t, err, &failover)
-			require.Len(t, upstream.requests, 1)
+			require.ErrorAs(t, err, &failover)
+			require.Len(t, upstream.requests, 2)
 			require.Equal(t, model, gjson.GetBytes(upstream.lastBody, "model").String())
-			require.Equal(t, http.StatusForbidden, rec.Code)
-			require.Equal(t, "basispoints_model_access_changed", gjson.GetBytes(rec.Body.Bytes(), "error.code").String())
-			require.True(t, IsResponseCommitted(c))
+			require.Equal(t, http.StatusForbidden, failover.StatusCode)
+			require.Equal(t, "basispoints_model_access_changed", gjson.GetBytes(failover.ResponseBody, "error.code").String())
+			require.Empty(t, rec.Body.String())
+			require.False(t, IsResponseCommitted(c))
+			require.True(t, svc.isExcelBPSModelCoolingDown(account, model))
 			require.True(t, account.Schedulable)
 		})
 	}

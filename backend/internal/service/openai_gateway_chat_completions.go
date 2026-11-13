@@ -280,6 +280,20 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		}
 	}
 
+	// Reuse the canonical BPS route after converting the client protocol. Keep
+	// the canonical model here: Forward applies account mappings exactly once.
+	canonicalModel := originalModel
+	if _, matched := account.ResolveMappedModel(originalModel); !matched && strings.TrimSpace(defaultMappedModel) != "" {
+		canonicalModel = billingModel
+	}
+	if account.IsExcelBPSEnabledForModel(canonicalModel) && s.excelBPSGloballyEnabled(ctx) {
+		responsesBody, err = sjson.SetBytes(responsesBody, "model", canonicalModel)
+		if err != nil {
+			return nil, err
+		}
+		return s.forwardExcelBPSChatCompletions(ctx, c, account, responsesBody, originalModel, billingModel, promptCacheKey, clientStream)
+	}
+
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
