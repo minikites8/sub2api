@@ -717,7 +717,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 			// A failover attempt is only an event; the handler records the final state.
 			kind := "failover"
-			if resp.StatusCode != http.StatusTooManyRequests && !(replayable && !openAIUsageHasTokens(&compactUsage) && excelBPSCanReplayFailure(ctx, c)) {
+			if resp.StatusCode != http.StatusTooManyRequests && (!replayable || openAIUsageHasTokens(&compactUsage) || !excelBPSCanReplayFailure(ctx, c)) {
 				kind = "http_error"
 				setOpsUpstreamError(c, resp.StatusCode, upstreamMessage, upstreamDetail)
 			}
