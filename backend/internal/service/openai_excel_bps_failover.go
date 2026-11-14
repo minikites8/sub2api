@@ -13,6 +13,10 @@ import (
 
 const excelBPSFailureScope GatewayFailureScope = "bps"
 
+// ExcelBPSLocalCapabilityReason describes a BPS-only rejection before inference
+// submission. The handler can select a native route without changing health.
+const ExcelBPSLocalCapabilityReason = "bps_local_capability_unavailable"
+
 // A rejected BPS route can change accounts without penalizing the parent's
 // independent native grant. Request errors and already-metered work cannot.
 func excelBPSReplayableRejection(account *Account, status int, body []byte) bool {

@@ -2434,6 +2434,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if account == nil {
 		return false, "account_nil"
 	}
+	if !s.service.openAIBPSRouteCompatibleWithRequest(ctx, account, req.RequestedModel) {
+		return false, "bps_local_capability_unavailable"
+	}
 	if tier, _ := ctx.Value(gptQualityConstraintKey{}).(string); tier != "" && account.QualityTier() != tier {
 		return false, "quality_tier_changed"
 	}
@@ -3099,7 +3102,8 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 			legacySessionHash = ""
 		}
 		acceptLegacyAccount := func(account *Account) bool {
-			return s.isOpenAIAccountTransportCompatible(account, requiredTransport, requestedModel) &&
+			return s.openAIBPSRouteCompatibleWithRequest(ctx, account, requestedModel) &&
+				s.isOpenAIAccountTransportCompatible(account, requiredTransport, requestedModel) &&
 				accountSupportsOpenAICapabilitiesForRequest(ctx, account, requestedModel, requiredCapability, requiredImageCapability)
 		}
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {

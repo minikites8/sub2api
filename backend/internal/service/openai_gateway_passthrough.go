@@ -1622,6 +1622,9 @@ func sanitizeOpenAICapacityShedErrorCodeForClient(payload []byte) ([]byte, bool)
 // openAIStreamTransientServerStatus reads explicit upstream error fields. A
 // generic semantic fallback to 502 alone is insufficient evidence for replay.
 func openAIStreamTransientServerStatus(payload []byte) int {
+	if openAIStreamWebSocketRestart(payload) {
+		return http.StatusBadGateway
+	}
 	for _, path := range []string{"response.error.status_code", "error.status_code", "status_code"} {
 		switch status := int(gjson.GetBytes(payload, path).Int()); status {
 		case http.StatusBadGateway, http.StatusServiceUnavailable:
@@ -2062,6 +2065,8 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 			event.FailoverSuppressedReason = "downstream_response_committed"
 			event.FirstOutputEventType = boundary.EventType
 			event.FirstOutputItemType = boundary.ItemType
+			event.FirstOutputHasEncryptedContent = boundary.HasEncryptedContent
+			event.FirstOutputHasVisibleContent = boundary.HasVisibleContent
 		}
 		appendOpsUpstreamError(c, event)
 	}

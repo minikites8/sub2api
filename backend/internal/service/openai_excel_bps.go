@@ -407,6 +407,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		body, err = relay.RewriteWithImageLimit(body, scope, imagePolicy.maxImages)
 	}
 	if err != nil {
+		var imageLimit *basispoints.InlineImageLimitError
+		if errors.As(err, &imageLimit) && excelBPSCanReplayFailure(ctx, c) {
+			return nil, newExcelBPSRequestFailover(http.StatusBadRequest, nil, ExcelBPSLocalCapabilityReason, "The selected Excel BPS route cannot accept this request's inline image count")
+		}
 		if errors.Is(err, basispoints.ErrImageRelayFull) {
 			return fail(503, "basispoints_image_relay_full", err.Error())
 		}

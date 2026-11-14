@@ -46,7 +46,7 @@ func (a *Account) managedConnectionSupports(capability string, allowBPSChatBridg
 		return false
 	}
 	supports := func(c *OpenAIAuthConnection) bool {
-		return c.Supports(openAIConnectionRequestedCapability(capability, c, len(allowBPSChatBridge) > 0 && allowBPSChatBridge[0]))
+		return (len(allowBPSChatBridge) <= 1 || !allowBPSChatBridge[1] || c.Kind != "bps") && c.Supports(openAIConnectionRequestedCapability(capability, c, len(allowBPSChatBridge) > 0 && allowBPSChatBridge[0]))
 	}
 	for _, c := range connections {
 		if c != nil && c.Preferred && supports(c) {
@@ -116,7 +116,7 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 	capability := connectionCapabilityForRequest(c)
 	allowBPSChatBridge := isOpenAIChatCompletionsConnectionRequest(c) && s.excelBPSGloballyEnabled(ctx)
 	supports := func(candidate *OpenAIAuthConnection) bool {
-		return candidate.Supports(openAIConnectionRequestedCapability(capability, candidate, allowBPSChatBridge))
+		return (!OpenAIBPSNativeFallback(ctx) || candidate.Kind != "bps") && candidate.Supports(openAIConnectionRequestedCapability(capability, candidate, allowBPSChatBridge))
 	}
 	pinned := ""
 	if selected != nil {

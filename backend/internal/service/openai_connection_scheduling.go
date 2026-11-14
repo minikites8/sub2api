@@ -71,7 +71,7 @@ func (a *Account) supportsOpenAIEndpointCapabilityForRequest(ctx context.Context
 		case OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityResponses, OpenAIEndpointCapabilityResponsesCompact:
 			if required, ok := openAIConnectionCapabilityFromContext(ctx); ok {
 				allowBPSChatBridge, _ := ctx.Value(openAIBPSChatBridgeEnabledContextKey{}).(bool)
-				return a.managedConnectionSupports(required, allowBPSChatBridge)
+				return a.managedConnectionSupports(required, allowBPSChatBridge, OpenAIBPSNativeFallback(ctx))
 			}
 		}
 	}
