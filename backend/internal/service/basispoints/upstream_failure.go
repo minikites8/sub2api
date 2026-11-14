@@ -102,7 +102,7 @@ func classifyUpstreamFailure(kind string, payload object) *UpstreamFailure {
 		}
 	}
 	failure := &UpstreamFailure{Status: status, Code: code, Type: errorType, ReplayUnsafe: detail["retryable"] == false || payload["retryable"] == false,
-		Message: "Excel BPS upstream failure: " + code + "; request was not replayed"}
+		Message: "Excel BPS upstream failure: " + code}
 	if headers, ok := detail["headers"].(object); ok {
 		raw := strings.TrimSpace(text(headers["retry-after"]))
 		seconds, err := strconv.ParseUint(raw, 10, 32)

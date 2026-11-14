@@ -981,6 +981,13 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 					result.UpstreamResponseModel = gjson.GetBytes(payload, "response.model").String()
 					result.UpstreamResponseServiceTier = normalizeObservedOpenAIServiceTier(gjson.GetBytes(payload, "response.service_tier").String())
 					upstreamFailure = basispoints.ParseUpstreamFailure(payload)
+					failureHeaders := resp.Header.Clone()
+					if upstreamFailure != nil && upstreamFailure.RetryAfter != "" {
+						if failureHeaders == nil {
+							failureHeaders = make(http.Header)
+						}
+						failureHeaders.Set("Retry-After", upstreamFailure.RetryAfter)
+					}
 					if upstreamFailure != nil && upstreamFailure.ReplayUnsafe {
 						semanticOutput = true
 					}
@@ -991,7 +998,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 						}
 						if status == http.StatusTooManyRequests {
 							recordStreamRetry(status, message)
-							return failoverRateLimited(resp.Header.Get("Retry-After"), resp.Header)
+							return failoverRateLimited(failureHeaders.Get("Retry-After"), failureHeaders)
 						}
 						if excelBPSReplayableRejection(account, status, payload) {
 							recordStreamRetry(status, message)
@@ -1029,8 +1036,30 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 							ErrType: upstreamFailure.Type, Code: upstreamFailure.Code, Message: upstreamFailure.Message,
 							IntendedStatus: upstreamFailure.Status, CountTowardsSLA: true, NonStream: !stream,
 						})
+						if upstreamFailure.Status == http.StatusTooManyRequests && !canReplayStream() {
+							reason := "request_not_replayable"
+							switch {
+							case upstreamFailure.ReplayUnsafe:
+								reason = "upstream_generated_work"
+							case meteredUsageObserved:
+								reason = "metered_usage_observed"
+							case openAIUsageHasTokens(&compactUsage):
+								reason = "compact_usage_observed"
+							case semanticOutput:
+								reason = "semantic_output_observed"
+							case c.Writer.Written() || IsResponseCommitted(c):
+								reason = "downstream_response_committed"
+							case isExcelBPSClientCancellation(c, ctx.Err()):
+								reason = "client_canceled"
+							}
+							appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+								Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+								UpstreamStatusCode: upstreamFailure.Status, UpstreamURL: basispoints.ResponsesURL,
+								Kind: "stream_failed", Reason: reason, Message: upstreamFailure.Message,
+							})
+						}
 						if upstreamFailure.Status == http.StatusTooManyRequests && !isQualityObservation(ctx) {
-							s.coolDownExcelBPS(ctx, account, resp.Header.Get("Retry-After"), resp.Header)
+							s.coolDownExcelBPS(ctx, account, failureHeaders.Get("Retry-After"), failureHeaders)
 						}
 					}
 				}
