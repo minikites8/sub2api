@@ -103,6 +103,20 @@ request-level reasoning, and unsupported request parameters are removed.
 Function/custom tools are grouped in namespaces; unsupported hosted tools return
 a local error. HTTP requests carry their conversation history explicitly.
 
+Namespace descriptions required by the public Responses schema are supplied
+when missing, including generated `functions` groups and declarations inside
+`additional_tools`. Existing descriptions and namespace-qualified calls are
+preserved. Unsupported Codex history item types return
+`OPENAI_SIWC_UNSUPPORTED_INPUT` with their input index and schema type before
+inference; history and encrypted content are not silently dropped. A Codex
+client can use local tools through supported function/custom calls, but its
+other native capabilities are not automatically available through SIWC.
+
+Administrator connection tests use an internal `/v1/responses` request rather
+than the administrator endpoint for connection capability selection. Managed
+text tests use the selected connection even when the retained legacy protocol
+is Codex. The original administrator request is left intact.
+
 This integration uses HTTP/SSE. WebSocket selection is disabled for SIWC.
 Compression (`/responses/compact`), native image generation, hosted `tool_search`
 and other unsupported endpoint/tool requests are rejected. Input token counting

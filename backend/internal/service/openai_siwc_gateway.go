@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -33,7 +34,7 @@ func normalizeSIWCBody(body []byte) ([]byte, error) {
 	}
 	if items, ok := payload["input"].([]any); ok {
 		kept := make([]any, 0, len(items))
-		for _, raw := range items {
+		for index, raw := range items {
 			if item, ok := raw.(map[string]any); ok {
 				if item["type"] == "configuration_update" {
 					if update, ok := item["reasoning"].(map[string]any); ok {
@@ -51,54 +52,94 @@ func normalizeSIWCBody(body []byte) ([]byte, error) {
 				if item["role"] == "system" {
 					item["role"] = "developer"
 				}
+				if err := normalizeSIWCInputItem(item, index); err != nil {
+					return nil, err
+				}
 			}
 			kept = append(kept, raw)
 		}
 		payload["input"] = kept
 	}
 	if tools, ok := payload["tools"].([]any); ok {
-		var local []any
-		grouped := make([]any, 0, len(tools))
-		for _, raw := range tools {
-			tool, ok := raw.(map[string]any)
-			if !ok {
-				return nil, errors.New("invalid SIWC tool declaration")
-			}
-			switch tool["type"] {
-			case "function", "custom":
-				local = append(local, tool)
-			case "namespace":
-				children, _ := tool["tools"].([]any)
-				for _, child := range children {
-					entry, ok := child.(map[string]any)
-					if !ok || (entry["type"] != "function" && entry["type"] != "custom") {
-						return nil, infraerrors.BadRequest("OPENAI_SIWC_UNSUPPORTED_TOOL", "SIWC namespaces support function/custom tools")
-					}
-				}
-				grouped = append(grouped, tool)
-			case "web_search", "web_search_preview":
-				grouped = append(grouped, tool)
-			default:
-				return nil, infraerrors.BadRequest("OPENAI_SIWC_UNSUPPORTED_TOOL", "SIWC does not support this hosted tool; select Codex or use function/custom tools")
-			}
-		}
-		if len(local) > 0 {
-			merged := false
-			for _, raw := range grouped {
-				if namespace, ok := raw.(map[string]any); ok && namespace["type"] == "namespace" && namespace["name"] == "functions" {
-					children, _ := namespace["tools"].([]any)
-					namespace["tools"] = append(children, local...)
-					merged = true
-					break
-				}
-			}
-			if !merged {
-				grouped = append(grouped, map[string]any{"type": "namespace", "name": "functions", "tools": local})
-			}
+		grouped, err := normalizeSIWCTools(tools)
+		if err != nil {
+			return nil, err
 		}
 		payload["tools"] = grouped
 	}
 	return json.Marshal(payload)
+}
+
+func normalizeSIWCInputItem(item map[string]any, index int) error {
+	kind, _ := item["type"].(string)
+	switch kind {
+	case "", "message", "item_reference", "compaction", "compaction_summary", "reasoning", "web_search_call",
+		"function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output",
+		"programmatic_tool_call", "programmatic_tool_call_output":
+		return nil
+	case "additional_tools":
+		tools, ok := item["tools"].([]any)
+		if !ok {
+			return infraerrors.BadRequest("OPENAI_SIWC_INVALID_REQUEST", fmt.Sprintf("input[%d].tools must be an array", index))
+		}
+		normalized, err := normalizeSIWCTools(tools)
+		if err != nil {
+			return err
+		}
+		item["tools"] = normalized
+		return nil
+	default:
+		// Report schema names only, never history text, encrypted content or
+		// arbitrary strings supplied in a malformed type field.
+		if len(kind) > 64 || strings.IndexFunc(kind, func(r rune) bool { return r != '_' && (r < 'a' || r > 'z') }) >= 0 {
+			kind = "unknown"
+		}
+		return infraerrors.BadRequest("OPENAI_SIWC_UNSUPPORTED_INPUT", fmt.Sprintf("SIWC does not support input[%d] of type %q. Use a Codex connection for this history or start a new SIWC session without this capability; history was not discarded.", index, kind))
+	}
+}
+
+func normalizeSIWCTools(tools []any) ([]any, error) {
+	var local []any
+	grouped := make([]any, 0, len(tools))
+	for _, raw := range tools {
+		tool, ok := raw.(map[string]any)
+		if !ok {
+			return nil, infraerrors.BadRequest("OPENAI_SIWC_INVALID_REQUEST", "Invalid SIWC tool declaration")
+		}
+		switch tool["type"] {
+		case "function", "custom":
+			local = append(local, tool)
+		case "namespace":
+			children, _ := tool["tools"].([]any)
+			for _, child := range children {
+				entry, ok := child.(map[string]any)
+				if !ok || (entry["type"] != "function" && entry["type"] != "custom") {
+					return nil, infraerrors.BadRequest("OPENAI_SIWC_UNSUPPORTED_TOOL", "SIWC namespaces support function/custom tools")
+				}
+			}
+			// The public Responses schema requires namespace descriptions,
+			// including groups synthesized from client tool declarations.
+			if _, ok := tool["description"].(string); !ok {
+				tool["description"] = "Client tools in this namespace."
+			}
+			grouped = append(grouped, tool)
+		case "web_search", "web_search_preview":
+			grouped = append(grouped, tool)
+		default:
+			return nil, infraerrors.BadRequest("OPENAI_SIWC_UNSUPPORTED_TOOL", "SIWC does not support this hosted tool; select Codex or use function/custom tools")
+		}
+	}
+	if len(local) > 0 {
+		for _, raw := range grouped {
+			if namespace, ok := raw.(map[string]any); ok && namespace["type"] == "namespace" && namespace["name"] == "functions" {
+				children, _ := namespace["tools"].([]any)
+				namespace["tools"] = append(children, local...)
+				return grouped, nil
+			}
+		}
+		grouped = append(grouped, map[string]any{"type": "namespace", "name": "functions", "description": "Client function and custom tools.", "tools": local})
+	}
+	return grouped, nil
 }
 
 func (s *OpenAIGatewayService) buildSIWCRequest(ctx context.Context, c *gin.Context, body []byte, token string) (*http.Request, error) {
@@ -141,6 +182,11 @@ func (s *OpenAIGatewayService) forwardSIWC(ctx context.Context, c *gin.Context, 
 	// Validate before acquiring tokens. Preserve the downstream stream preference;
 	// the shared parser converts the upstream SSE terminal response to JSON.
 	if _, err = normalizeSIWCBody(upstream); err != nil {
+		if infraerrors.Code(err) == http.StatusBadRequest {
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+				"type": "invalid_request_error", "code": infraerrors.Reason(err), "message": infraerrors.Message(err),
+			}})
+		}
 		return nil, err
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)

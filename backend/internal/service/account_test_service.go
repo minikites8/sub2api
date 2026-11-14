@@ -1092,6 +1092,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	recordQualityBatchRoute(c, account, modelID, "openai:account")
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
+	// A managed text test must exercise its selected grant even if the
+	// retained legacy protocol still says Codex or has no side grant.
+	if account.HasManagedOpenAIConnections() && mode == AccountTestModeDefault && !isOpenAIImageModel(account.GetMappedModel(strings.TrimSpace(modelID))) {
+		if s.openaiGatewayService == nil {
+			return s.sendErrorAndEnd(c, "OpenAI authorization connection gateway is unavailable")
+		}
+		recordQualityBatchRoute(c, account, modelID, "openai:connection")
+		return s.testResponsesGatewayAccountConnection(c, account, modelID, prompt)
+	}
 	if account.IsExcelOAuth() {
 		model := strings.TrimSpace(modelID)
 		if model == "" {
@@ -1354,6 +1363,21 @@ func (s *AccountTestService) testExcelBPSAccountConnection(c *gin.Context, accou
 	return s.testResponsesGatewayAccountConnection(c, account, modelID, prompt)
 }
 
+func (s *AccountTestService) newResponsesAccountTestContext(c *gin.Context, recorder *httptest.ResponseRecorder) *gin.Context {
+	probeCtx, _ := gin.CreateTestContext(recorder)
+	probeCtx.Request = c.Request.Clone(s.withBPSTestEvidence(c.Request.Context(), c))
+	// The admin test endpoint is not an inference capability. Present the
+	// internal probe as Responses so managed grants use the same checks as
+	// real traffic, including tests started without an HTTP request URL.
+	probeCtx.Request.Method = http.MethodPost
+	probeCtx.Request.URL = &url.URL{Path: "/v1/responses"}
+	probeCtx.Request.RequestURI = "/v1/responses"
+	if probeCtx.Request.Header == nil {
+		probeCtx.Request.Header = make(http.Header)
+	}
+	return probeCtx
+}
+
 func (s *AccountTestService) testResponsesGatewayAccountConnection(c *gin.Context, account *Account, modelID, prompt string) error {
 	model := strings.TrimSpace(modelID)
 	if model == "" {
@@ -1369,11 +1393,7 @@ func (s *AccountTestService) testResponsesGatewayAccountConnection(c *gin.Contex
 	}
 
 	probe := httptest.NewRecorder()
-	probeCtx, _ := gin.CreateTestContext(probe)
-	probeCtx.Request = c.Request.Clone(s.withBPSTestEvidence(c.Request.Context(), c))
-	if probeCtx.Request.Header == nil {
-		probeCtx.Request.Header = make(http.Header)
-	}
+	probeCtx := s.newResponsesAccountTestContext(c, probe)
 	// Manual one-shot tests have no client conversation. Give them a scoped
 	// identity so enabling the session proxy does not break the test button.
 	// Explicit identities (including load-test sessions) remain unchanged.
