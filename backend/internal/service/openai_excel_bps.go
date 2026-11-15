@@ -273,6 +273,23 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		// No response or metered usage exists before headers; do not create a usage row.
 		return nil, context.Canceled
 	}
+	// Selection may have used an older quota snapshot. Check the authoritative
+	// account again before uploads, compaction or inference can consume work.
+	if paused, decision := shouldAutoPauseOpenAIAccountByQuota(s.withOpenAIQuotaAutoPauseContext(ctx), account); paused {
+		if isExcelBPSClientCancellation(c, ctx.Err()) {
+			return clientCanceled()
+		}
+		retryAfter := ""
+		if resetAt, ok := openAICodexWindowResetAt(account.Extra, decision.window); ok && time.Now().Before(resetAt) {
+			retryAfter = fmt.Sprint(int64(time.Until(resetAt)/time.Second) + 1)
+		}
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+			Kind: "failover", Stage: "route", Scope: string(excelBPSFailureScope),
+			Reason: "quota_auto_pause_" + decision.window, Message: "Excel BPS quota is currently unavailable",
+		})
+		return nil, newExcelBPSRateLimitedFailoverError(retryAfter)
+	}
 	// No output exists yet, so the handler may replay the request on another
 	// account within its switch budget unless the client is already gone.
 	canRetryBPSInference := func(headers http.Header) bool {

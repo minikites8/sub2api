@@ -661,6 +661,17 @@ func resolveOpenAIQuotaAutoPauseThresholds(ctx context.Context, account *Account
 	if threshold7d <= 0 {
 		threshold7d = clamp01(settings.DefaultThreshold7d)
 	}
+	// BPS shares the persisted Codex quota windows. With no configured early
+	// pause, a fully exhausted account must still leave the candidate pool.
+	// Per-window explicit-disable flags are applied by the caller as usual.
+	if account.IsExcelBPSEnabled() {
+		if threshold5h <= 0 {
+			threshold5h = 1
+		}
+		if threshold7d <= 0 {
+			threshold7d = 1
+		}
+	}
 	return threshold5h, threshold7d
 }
 
