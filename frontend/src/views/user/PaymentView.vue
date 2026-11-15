@@ -1494,7 +1494,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       openWindow(decision.paymentState.payUrl)
       return
     }
-    if (decision.kind === 'stripe_route') {
+    if (decision.kind === 'stripe_route' || decision.kind === 'stripe_checkout') {
       window.location.href = decision.paymentState.payUrl
       return
     }

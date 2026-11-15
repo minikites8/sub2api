@@ -19,6 +19,8 @@ const messages: Record<string, string> = {
   'admin.settings.payment.wxpayGuideSummary': 'Desktop prefers Native QR; mobile routes to JSAPI or H5 based on browser context.',
   'admin.settings.payment.airwallexGuideSummary': 'Use Payment Acceptance read/write only.',
   'admin.settings.payment.stripeWebhookHint': 'Configure Stripe webhook.',
+  'admin.settings.payment.stripeCheckoutEmbedded': 'Built-in payment page',
+  'admin.settings.payment.stripeCheckoutHosted': 'Redirect to Stripe Checkout',
   'admin.settings.payment.stripeWebhookApiVersionHint': 'Use Stripe API version {version}.',
   'admin.settings.payment.airwallexWebhookHint': 'Select payment_intent.succeeded and use the latest stable API version.',
 }
@@ -347,6 +349,56 @@ describe('PaymentProviderDialog payment guide', () => {
 
     expect(wrapper.text()).toContain(messages['admin.settings.payment.airwallexWebhookHint'])
     expect(wrapper.text()).toContain('/api/v1/payment/webhook/airwallex')
+  })
+
+  it('defaults existing Stripe providers to built-in checkout and persists either mode', async () => {
+    const provider = providerFactory({ provider_key: 'stripe', name: 'Stripe', supported_types: ['card'], config: { publishableKey: 'pk_test' } })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (value: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    const selector = wrapper.findAllComponents({ name: 'Select' }).find(component => component.attributes('data-testid') === 'provider-config-checkoutMode')!
+    expect(selector.props('modelValue')).toBe('embedded')
+    expect(selector.props('options')).toEqual([
+      expect.objectContaining({ value: 'embedded', label: 'Built-in payment page' }),
+      expect.objectContaining({ value: 'hosted', label: 'Redirect to Stripe Checkout' }),
+    ])
+    await wrapper.get('#provider-form').trigger('submit')
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ config: { checkoutMode: 'embedded' } })
+    selector.vm.$emit('update:modelValue', 'hosted')
+    await nextTick()
+    await wrapper.get('#provider-form').trigger('submit')
+    expect(wrapper.emitted('save')?.[1]?.[0]).toMatchObject({ config: { checkoutMode: 'hosted' } })
+    wrapper.unmount()
+  })
+
+  it('allows hosted Stripe checkout without a publishable key and reloads the saved mode', async () => {
+    const provider = providerFactory({ provider_key: 'stripe', name: 'Stripe', supported_types: ['card'], config: { checkoutMode: 'hosted' } })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (value: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    const selector = wrapper.findAllComponents({ name: 'Select' }).find(component => component.attributes('data-testid') === 'provider-config-checkoutMode')!
+    expect(selector.props('modelValue')).toBe('hosted')
+    await wrapper.get('#provider-form').trigger('submit')
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ config: { checkoutMode: 'hosted' } })
+    wrapper.unmount()
+  })
+
+  it('groups Link under cards in hosted checkout and retains the card fee', async () => {
+    const provider = providerFactory({ provider_key: 'stripe', name: 'Stripe', supported_types: ['card', 'link'],
+      method_fee_rates: { card: 3, link: 1 }, config: { publishableKey: 'pk_test' } })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (value: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    const selector = wrapper.findAllComponents({ name: 'Select' }).find(component => component.attributes('data-testid') === 'provider-config-checkoutMode')!
+    selector.vm.$emit('update:modelValue', 'hosted')
+    await nextTick()
+    expect(wrapper.findAll('button').some(button => button.text() === 'payment.methods.link')).toBe(false)
+    await wrapper.get('#provider-form').trigger('submit')
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ supported_types: ['card'], method_fee_rates: { card: 3 }, config: { checkoutMode: 'hosted' } })
+    selector.vm.$emit('update:modelValue', 'embedded')
+    await nextTick()
+    expect(wrapper.findAll('button').some(button => button.text() === 'payment.methods.link')).toBe(true)
+    wrapper.unmount()
   })
 
   it('shows Stripe webhook API version guidance with the integrated SDK version', async () => {

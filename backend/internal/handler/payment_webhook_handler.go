@@ -183,6 +183,20 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 		if err == nil {
 			return values.Get("out_trade_no")
 		}
+	case payment.TypeStripe:
+		var payload struct {
+			Data struct {
+				Object struct {
+					Metadata map[string]string `json:"metadata"`
+				} `json:"object"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			// PaymentIntents and Checkout Sessions carry the same order metadata.
+			// This only selects the merchant key; signature verification still
+			// happens before any notification can fulfill an order.
+			return strings.TrimSpace(payload.Data.Object.Metadata["orderId"])
+		}
 	case payment.TypeAirwallex:
 		var payload struct {
 			Data struct {
@@ -195,7 +209,7 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 			return strings.TrimSpace(payload.Data.Object.MerchantOrderID)
 		}
 	}
-	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
+	// For other providers (Alipay direct, WxPay direct), the registry
 	// typically has only one instance, so no instance lookup is needed.
 	return ""
 }

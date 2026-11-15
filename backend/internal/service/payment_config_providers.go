@@ -242,6 +242,9 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
 		return nil, err
 	}
+	if err := validateStripeCheckoutMethods(req.ProviderKey, req.Config, typesStr); err != nil {
+		return nil, err
+	}
 	if err := validateProviderFeeRate(req.FeeRate); err != nil {
 		return nil, err
 	}
@@ -299,6 +302,13 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 		}
 	}
 	// supported_types can be empty (provider accepts no payment types until configured)
+	return nil
+}
+
+func validateStripeCheckoutMethods(providerKey string, config map[string]string, supportedTypes string) error {
+	if providerKey == payment.TypeStripe && strings.TrimSpace(config["checkoutMode"]) == "hosted" && payment.StripeInstanceSupportsSubtype(supportedTypes, "link") {
+		return infraerrors.BadRequest("VALIDATION_ERROR", "Stripe hosted checkout offers Link through the card payment method; select card instead of a separate Link method")
+	}
 	return nil
 }
 
@@ -450,6 +460,9 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		if err != nil {
 			return nil, fmt.Errorf("decrypt existing config: %w", err)
 		}
+	}
+	if err := validateStripeCheckoutMethods(current.ProviderKey, configToValidate, nextSupportedTypes); err != nil {
+		return nil, err
 	}
 	if current.ProviderKey == payment.TypeEasyPay {
 		if err := validateEasyPayCustomMethods(configToValidate, nextSupportedTypes); err != nil {

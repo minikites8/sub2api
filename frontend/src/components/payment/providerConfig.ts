@@ -18,6 +18,7 @@ export interface ConfigFieldDef {
 export interface TypeOption {
   value: string
   label: string
+  labelKey?: string
   [key: string]: unknown
 }
 
@@ -192,6 +193,10 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'publicKeyId', label: '', sensitive: false },
   ],
   stripe: [
+    { key: 'checkoutMode', label: '', sensitive: false, defaultValue: 'embedded', hintKey: 'admin.settings.payment.field_checkoutModeHint', options: [
+      { value: 'embedded', label: '', labelKey: 'admin.settings.payment.stripeCheckoutEmbedded' },
+      { value: 'hosted', label: '', labelKey: 'admin.settings.payment.stripeCheckoutHosted' },
+    ] },
     { key: 'secretKey', label: '', sensitive: true },
     { key: 'publishableKey', label: '', sensitive: false },
     { key: 'webhookSecret', label: '', sensitive: true },
@@ -210,6 +215,9 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
 
 export function getProviderConfigFields(providerKey: string, config: Record<string, string>): ConfigFieldDef[] {
   const fields = PROVIDER_CONFIG_FIELDS[providerKey] || []
+  if (providerKey === 'stripe' && config.checkoutMode === 'hosted') {
+    return fields.map(field => field.key === 'publishableKey' ? { ...field, optional: true } : field)
+  }
   return providerKey === 'bepusdt' && config.mode === 'embedded'
     ? fields.filter(field => !['apiBase', 'apiToken'].includes(field.key))
     : fields

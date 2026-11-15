@@ -27,6 +27,7 @@ export type PaymentLaunchKind =
   | 'redirect_waiting'
   | 'stripe_popup'
   | 'stripe_route'
+  | 'stripe_checkout'
   | 'airwallex_route'
   | 'wechat_oauth'
   | 'wechat_jsapi'
@@ -194,6 +195,10 @@ export function decidePaymentLaunch(
     }
     const paymentState = { ...baseState, payUrl: context.airwallexRouteUrl || '' }
     return { kind: 'airwallex_route', paymentState, recovery: paymentState }
+  }
+
+  if (visibleMethod === 'stripe' && baseState.payUrl && !baseState.clientSecret) {
+    return { kind: 'stripe_checkout', paymentState: baseState, recovery: baseState }
   }
 
   if (baseState.clientSecret) {

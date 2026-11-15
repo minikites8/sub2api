@@ -34,6 +34,14 @@ func NewStripe(instanceID string, config map[string]string) (*Stripe, error) {
 		return nil, fmt.Errorf("stripe config missing required key: secretKey")
 	}
 	cfg := cloneStringMap(config)
+	cfg["checkoutMode"] = strings.TrimSpace(cfg["checkoutMode"])
+	switch cfg["checkoutMode"] {
+	case "", stripeCheckoutEmbedded:
+		cfg["checkoutMode"] = stripeCheckoutEmbedded
+	case stripeCheckoutHosted:
+	default:
+		return nil, fmt.Errorf("stripe config checkoutMode must be embedded or hosted")
+	}
 	currency, err := payment.NormalizePaymentCurrency(cfg["currency"])
 	if err != nil {
 		return nil, fmt.Errorf("stripe config currency: %w", err)
@@ -91,9 +99,12 @@ var stripePaymentMethodTypes = map[string][]string{
 	payment.TypeLink:   {"link"},
 }
 
-// CreatePayment creates a Stripe PaymentIntent.
+// CreatePayment uses the configured checkout UI for new orders only.
 func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	s.ensureInit()
+	if s.config["checkoutMode"] == stripeCheckoutHosted {
+		return s.createCheckoutSession(ctx, req)
+	}
 
 	currency := s.currency()
 	amountInMinorUnit, err := payment.AmountToMinorUnit(req.Amount, currency)
@@ -147,6 +158,9 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 // QueryOrder retrieves a PaymentIntent by ID.
 func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	s.ensureInit()
+	if strings.HasPrefix(tradeNo, "cs_") {
+		return s.queryCheckoutSession(ctx, tradeNo)
+	}
 
 	pi, err := s.sc.V1PaymentIntents.Retrieve(ctx, tradeNo, nil)
 	if err != nil {
@@ -196,6 +210,8 @@ func (s *Stripe) VerifyNotification(_ context.Context, rawBody string, headers m
 		return parseStripePaymentIntent(&event, payment.ProviderStatusSuccess, rawBody)
 	case stripeEventPaymentFailed:
 		return parseStripePaymentIntent(&event, payment.ProviderStatusFailed, rawBody)
+	case stripeEventCheckoutCompleted, stripeEventCheckoutAsyncSuccess, stripeEventCheckoutAsyncFailed:
+		return parseStripeCheckoutSession(&event, rawBody)
 	}
 
 	return nil, nil
@@ -205,6 +221,11 @@ func parseStripePaymentIntent(event *stripe.Event, status string, rawBody string
 	var pi stripe.PaymentIntent
 	if err := json.Unmarshal(event.Data.Raw, &pi); err != nil {
 		return nil, fmt.Errorf("stripe parse payment_intent: %w", err)
+	}
+	// A Checkout Session may retry a failed payment attempt. Its own signed
+	// events and queries are authoritative, rather than intermediate PI events.
+	if pi.Metadata["checkoutMode"] == stripeCheckoutHosted {
+		return nil, nil
 	}
 	currency := stripeIntentCurrency(pi.Currency, payment.DefaultPaymentCurrency)
 	return &payment.PaymentNotification{
@@ -227,9 +248,13 @@ func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 	if err != nil {
 		return nil, fmt.Errorf("stripe refund: %w", err)
 	}
+	intentID, err := s.checkoutPaymentIntentID(ctx, req.TradeNo)
+	if err != nil {
+		return nil, err
+	}
 
 	params := &stripe.RefundCreateParams{
-		PaymentIntent: stripe.String(req.TradeNo),
+		PaymentIntent: stripe.String(intentID),
 		Amount:        stripe.Int64(amountInMinorUnit),
 		Reason:        stripe.String(string(stripe.RefundReasonRequestedByCustomer)),
 	}
@@ -268,6 +293,10 @@ func (s *Stripe) QueryRefund(ctx context.Context, req payment.RefundQueryRequest
 		tradeNo := strings.TrimSpace(req.TradeNo)
 		if tradeNo == "" {
 			return nil, fmt.Errorf("stripe query refund: missing payment intent id")
+		}
+		tradeNo, err = s.checkoutPaymentIntentID(ctx, tradeNo)
+		if err != nil {
+			return nil, err
 		}
 		params := &stripe.RefundListParams{PaymentIntent: stripe.String(tradeNo)}
 		params.Limit = stripe.Int64(1)
@@ -352,6 +381,9 @@ func hasStripeMethod(methods []string, target string) bool {
 // CancelPayment cancels a pending PaymentIntent.
 func (s *Stripe) CancelPayment(ctx context.Context, tradeNo string) error {
 	s.ensureInit()
+	if strings.HasPrefix(tradeNo, "cs_") {
+		return s.cancelCheckoutSession(ctx, tradeNo)
+	}
 
 	_, err := s.sc.V1PaymentIntents.Cancel(ctx, tradeNo, nil)
 	if err != nil {

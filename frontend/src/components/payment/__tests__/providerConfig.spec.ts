@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PAYMENT_CURRENCY_OPTIONS,
   PROVIDER_CONFIG_FIELDS,
+  getProviderConfigFields,
   isBuiltInAlipayMethod,
   isBuiltInWxpayMethod,
   parseEasyPayCustomMethods,
@@ -49,6 +50,13 @@ describe('PROVIDER_CONFIG_FIELDS.airwallex', () => {
 })
 
 describe('PROVIDER_CONFIG_FIELDS.stripe', () => {
+  it('defaults to built-in checkout and offers Stripe-hosted checkout per provider', () => {
+    const mode = findField('stripe', 'checkoutMode')
+    expect(mode?.defaultValue).toBe('embedded')
+    expect(mode?.options?.map(option => option.value)).toEqual(['embedded', 'hosted'])
+    expect(getProviderConfigFields('stripe', { checkoutMode: 'hosted' }).find(field => field.key === 'publishableKey')?.optional).toBe(true)
+    expect(getProviderConfigFields('stripe', { checkoutMode: 'embedded' }).find(field => field.key === 'publishableKey')?.optional).toBeFalsy()
+  })
   it('adds currency config with CNY as the default', () => {
     const currency = findField('stripe', 'currency')
 

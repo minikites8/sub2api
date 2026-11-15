@@ -214,6 +214,7 @@
             <Select
               v-else-if="field.options?.length"
               v-model="config[field.key]"
+              :data-testid="`provider-config-${field.key}`"
               :options="field.options"
               :searchable="field.options.length > 5"
             />
@@ -353,7 +354,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, ref } from 'vue'
+import { reactive, computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
@@ -472,6 +473,13 @@ const feeRateInput = ref<string | number>('0')
 const methodFeeInputs = reactive<Record<string, string | number>>(Object.create(null))
 const feeValidationError = ref('')
 
+watch(() => [form.provider_key, config.checkoutMode], () => {
+  if (form.provider_key === 'stripe' && config.checkoutMode === 'hosted') {
+    // Stripe Checkout offers Link with cards, using the card fee.
+    form.supported_types = [...new Set(form.supported_types.map(type => type === 'link' ? 'card' : type))]
+  }
+})
+
 const feeTypes = computed(() => {
   // Stripe sub-methods have separate fees even though their limits are shared.
   let configuredTypes = form.provider_key === 'airwallex' ? ['airwallex'] : form.supported_types
@@ -543,6 +551,7 @@ const paymentModeOptions = computed(() => {
 
 const availableTypes = computed(() => {
   const base = getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel)
+    .filter(type => !(form.provider_key === 'stripe' && config.checkoutMode === 'hosted' && type.value === 'link'))
   if (form.provider_key === 'easypay') {
     for (const method of normalizedEasyPayCustomMethods()) {
       if (!base.some(opt => opt.value === method.type)) {
@@ -566,6 +575,7 @@ const resolvedFields = computed(() => {
   return fields.map(f => ({
     ...f,
     label: f.label || t(`admin.settings.payment.field_${f.key}`),
+    options: f.options?.map(option => ({ ...option, label: option.labelKey ? t(option.labelKey) : option.label })),
   }))
 })
 

@@ -1300,6 +1300,30 @@ describe('PaymentView provider and method fees', () => {
     expect(wrapper.find('[data-testid="fee-range-hint"]').exists()).toBe(true)
   })
 
+  it('redirects hosted Stripe checkout in the current tab and keeps its recovery state', async () => {
+    const wrapper = await mountRecharge({ stripe: { ...baseMethod, currency: 'USD', sub_methods: { card: { fee_rate: 0, fee_rate_min: 0, fee_rate_max: 0 } } } })
+    const checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_hosted'
+    createOrder.mockResolvedValue({ order_id: 789, amount: 100, pay_amount: 100, fee_rate: 0,
+      pay_url: checkoutUrl, currency: 'USD', expires_at: '2099-01-01T00:10:00.000Z', resume_token: 'signed-hosted' })
+    const originalLocation = window.location
+    const locationState = { href: 'http://localhost/purchase', origin: 'http://localhost' }
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    Object.defineProperty(window, 'location', { configurable: true, value: locationState })
+    try {
+      await wrapper.get('.credits-purchase-button').trigger('click')
+      await flushPromises()
+      expect(locationState.href).toBe(checkoutUrl)
+      expect(open).not.toHaveBeenCalled()
+      expect(JSON.parse(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)!)).toMatchObject({
+        orderId: 789, payUrl: checkoutUrl, clientSecret: '', resumeToken: 'signed-hosted',
+      })
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+      open.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
   it('selects a Stripe subtype before creating an order without changing its provider route', async () => {
     const wrapper = await mountRecharge({ stripe: { ...baseMethod, currency: 'USD', fee_rate: 1, fee_rate_min: 1, fee_rate_max: 3,
       sub_methods: {

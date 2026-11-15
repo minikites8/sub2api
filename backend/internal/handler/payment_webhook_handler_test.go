@@ -155,6 +155,28 @@ func TestExtractOutTradeNo(t *testing.T) {
 		want        string
 	}{
 		{
+			name:        "stripe Checkout selects its original merchant",
+			providerKey: payment.TypeStripe,
+			rawBody:     `{"type":"checkout.session.completed","data":{"object":{"id":"cs_hosted","metadata":{"orderId":"sub2_hosted","checkoutMode":"hosted"}}}}`,
+			want:        "sub2_hosted",
+		},
+		{
+			name:        "stripe PaymentIntent retains original merchant routing",
+			providerKey: payment.TypeStripe,
+			rawBody:     `{"type":"payment_intent.succeeded","data":{"object":{"id":"pi_embedded","metadata":{"orderId":"sub2_embedded"}}}}`,
+			want:        "sub2_embedded",
+		},
+		{
+			name:        "stripe unrelated event has no order",
+			providerKey: payment.TypeStripe,
+			rawBody:     `{"type":"customer.created","data":{"object":{"id":"cus_unrelated"}}}`,
+		},
+		{
+			name:        "stripe malformed payload is not routed to an order",
+			providerKey: payment.TypeStripe,
+			rawBody:     `{"data":{"object":`,
+		},
+		{
 			name:        "easypay query payload",
 			providerKey: "easypay",
 			rawBody:     "out_trade_no=sub2_123&trade_status=TRADE_SUCCESS",

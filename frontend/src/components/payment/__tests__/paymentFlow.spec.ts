@@ -83,6 +83,16 @@ describe('getVisibleMethods', () => {
 })
 
 describe('decidePaymentLaunch', () => {
+  it.each([false, true])('redirects Stripe-hosted orders without mounting Payment Element (mobile=%s)', (isMobile) => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://checkout.stripe.com/c/pay/cs_test',
+      client_secret: '', resume_token: 'resume-hosted',
+    }), { visibleMethod: 'stripe', orderType: 'balance', isMobile, stripeRouteUrl: '/payment/stripe' })
+    expect(decision.kind).toBe('stripe_checkout')
+    expect(decision.paymentState.payUrl).toBe('https://checkout.stripe.com/c/pay/cs_test')
+    expect(decision.recovery.resumeToken).toBe('resume-hosted')
+    expect(decision.recovery.clientSecret).toBe('')
+  })
   it('uses Stripe popup waiting flow for desktop Alipay client secret', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       client_secret: 'cs_test',

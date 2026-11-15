@@ -329,7 +329,8 @@ func pcEnvBoolOverride(key string, fallback bool) bool {
 	return value
 }
 
-// getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
+// Prefer an embedded checkout key. Hosted-only instances may omit it; their
+// optional key remains a fallback for embedded orders created before a switch.
 func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) string {
 	if s.entClient == nil {
 		return ""
@@ -338,15 +339,28 @@ func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) stri
 		Where(
 			paymentproviderinstance.EnabledEQ(true),
 			paymentproviderinstance.ProviderKeyEQ(payment.TypeStripe),
-		).Limit(1).All(ctx)
+		).Order(paymentproviderinstance.BySortOrder(), paymentproviderinstance.ByID()).All(ctx)
 	if err != nil || len(instances) == 0 {
 		return ""
 	}
-	cfg, err := s.decryptConfig(instances[0].Config)
-	if err != nil || cfg == nil {
-		return ""
+	fallback := ""
+	for _, instance := range instances {
+		cfg, err := s.decryptConfig(instance.Config)
+		if err != nil || cfg == nil {
+			continue
+		}
+		key := strings.TrimSpace(cfg[payment.ConfigKeyPublishableKey])
+		if key == "" {
+			continue
+		}
+		if strings.TrimSpace(cfg["checkoutMode"]) != "hosted" {
+			return key
+		}
+		if fallback == "" {
+			fallback = key
+		}
 	}
-	return cfg[payment.ConfigKeyPublishableKey]
+	return fallback
 }
 
 // UpdatePaymentConfig updates the payment configuration settings.
