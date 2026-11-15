@@ -48,7 +48,7 @@ func excelBPSReplayableRejection(account *Account, status int, body []byte) bool
 func excelBPSCanReplayFailure(ctx context.Context, c *gin.Context) bool {
 	return ctx.Err() == nil && !isQualityObservation(ctx) && !isControlledExperiment(ctx) &&
 		c != nil && c.Request != nil && c.Request.Context().Err() == nil &&
-		c.Writer != nil && !c.Writer.Written() && !IsResponseCommitted(c)
+		c.Writer != nil && OpenAICompactKeepaliveAdjustedWrittenSize(c) < 0 && !IsResponseCommitted(c)
 }
 
 func newExcelBPSRequestFailover(status int, headers http.Header, code, message string) *UpstreamFailoverError {

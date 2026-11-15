@@ -3,14 +3,18 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,4 +64,59 @@ func TestBPSSSE429RetriesThenSwitchesToNative(t *testing.T) {
 			}
 		}
 	}
+}
+
+type bpsHeartbeatRecorder struct {
+	*httptest.ResponseRecorder
+	flushed chan struct{}
+	once    sync.Once
+}
+
+func (r *bpsHeartbeatRecorder) Flush() {
+	r.ResponseRecorder.Flush()
+	r.once.Do(func() { close(r.flushed) })
+}
+
+func TestBPSSSE429AfterHeartbeatStillSwitchesAccount(t *testing.T) {
+	// Wait for the real BPS ticker to flush its heartbeat before releasing the
+	// rejection. The response contains no generated content or metered work.
+	rec := &bpsHeartbeatRecorder{ResponseRecorder: httptest.NewRecorder(), flushed: make(chan struct{})}
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer writer.Close()
+		select {
+		case <-rec.flushed:
+			_, _ = io.WriteString(writer, "event: error\ndata: {\"type\":\"error\",\"error\":{\"code\":\"rate_limit_exceeded\",\"headers\":{\"retry-after\":\"1\"}}}\n\n")
+		case <-ctx.Done():
+		}
+	}()
+	upstream := &excelBPSFailoverUpstream{answer: func(call int) *http.Response {
+		if call == 0 {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}
+		}
+		if call == 1 {
+			return excelBPS429("1")
+		}
+		return excelBPSCompleted()
+	}}
+	handler := newExcelBPSFailoverTestHandler(t, upstream, false)
+	c, _ := newExcelBPSFailoverTestContext(ctx, true)
+	ginContext, _ := gin.CreateTestContext(rec)
+	c.Writer = ginContext.Writer
+	handler.Responses(c)
+	cancel()
+	<-done
+	calls := upstream.calls()
+	require.Len(t, calls, 3, rec.Body.String())
+	require.Equal(t, calls[0], calls[1], "a heartbeat must not prevent the existing same-account retry")
+	require.NotEqual(t, calls[0], calls[2], "a repeated rejection must switch accounts")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), ": keepalive\n\n")
+	require.Contains(t, rec.Body.String(), "done")
+	require.NotContains(t, rec.Body.String(), "rate_limit_exceeded")
 }

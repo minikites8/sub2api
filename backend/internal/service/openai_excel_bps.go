@@ -896,7 +896,8 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		defer heartbeat.Stop()
 		keepalive := func() {
 			if stream && ctx.Err() == nil {
-				_, _ = c.Writer.WriteString(": keepalive\n\n")
+				n, _ := c.Writer.WriteString(": keepalive\n\n")
+				recordOpenAIStreamKeepaliveBytes(c, n)
 				c.Writer.Flush()
 			}
 		}
