@@ -8,6 +8,15 @@
       <option value="siwc" :disabled="!loaded || !status?.bound">{{ t('siwc.siwc') }}</option>
     </select>
     <p class="input-hint">{{ t('siwc.protocolHint') }}</p>
+    <div>
+      <label class="flex items-center gap-2 text-sm" :for="`siwc-ignore-encrypted-${accountId}`">
+        <input :id="`siwc-ignore-encrypted-${accountId}`" type="checkbox" :checked="ignoreEncryptedContent"
+          :aria-describedby="`siwc-ignore-encrypted-hint-${accountId}`" data-testid="siwc-ignore-encrypted-content"
+          @change="emit('update:ignoreEncryptedContent', ($event.target as HTMLInputElement).checked)" />
+        {{ t('siwc.ignoreEncryptedContent') }}
+      </label>
+      <p :id="`siwc-ignore-encrypted-hint-${accountId}`" class="input-hint">{{ t('siwc.ignoreEncryptedContentHint') }}</p>
+    </div>
     <p role="status" class="text-sm" data-testid="siwc-status">{{ t(status?.bound ? 'siwc.bound' : 'siwc.unbound') }}</p>
     <div class="flex flex-wrap gap-2">
       <button type="button" class="btn btn-secondary btn-sm" :disabled="busy || activeTask" data-testid="siwc-auto" @click="automatic">{{ t('siwc.automatic') }}</button>
@@ -41,8 +50,8 @@ import { useI18n } from 'vue-i18n'
 import { useClipboard } from '@/composables/useClipboard'
 import { authorizeSIWC, completeSIWC, getSIWCStatus, loginSIWCWithSavedCredentials, type SIWCAuthorization, type SIWCStatus } from '@/api/admin/siwc'
 
-const props = defineProps<{ accountId: number; enabled: boolean; active: boolean }>()
-const emit = defineEmits<{ 'update:enabled': [boolean] }>()
+const props = defineProps<{ accountId: number; enabled: boolean; active: boolean; ignoreEncryptedContent?: boolean }>()
+const emit = defineEmits<{ 'update:enabled': [boolean]; 'update:ignoreEncryptedContent': [boolean] }>()
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
 const status = ref<SIWCStatus | null>(null)

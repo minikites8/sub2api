@@ -16,8 +16,12 @@ import (
 )
 
 func normalizeSIWCBody(body []byte) ([]byte, error) {
+	return normalizeSIWCBodyWithHistoryCompatibility(body, false)
+}
+
+func normalizeSIWCBodyWithHistoryCompatibility(body []byte, ignoreEncryptedContent bool) ([]byte, error) {
 	var payload map[string]any
-	if json.Unmarshal(body, &payload) != nil || payload == nil {
+	if decodeOpenAIJSONUseNumber(body, &payload) != nil || payload == nil {
 		return nil, infraerrors.BadRequest("OPENAI_SIWC_INVALID_REQUEST", "Invalid Responses request")
 	}
 	// This route has no server-side conversation storage or hosted tool_search.
@@ -33,6 +37,11 @@ func normalizeSIWCBody(body []byte) ([]byte, error) {
 		payload["input"] = []any{}
 	}
 	if items, ok := payload["input"].([]any); ok {
+		if ignoreEncryptedContent {
+			if err := prepareSIWCCompatibleHistory(items); err != nil {
+				return nil, err
+			}
+		}
 		kept := make([]any, 0, len(items))
 		for index, raw := range items {
 			if item, ok := raw.(map[string]any); ok {
@@ -186,7 +195,7 @@ func (s *OpenAIGatewayService) forwardSIWC(ctx context.Context, c *gin.Context, 
 	}
 	// Validate before acquiring tokens. Preserve the downstream stream preference;
 	// the shared parser converts the upstream SSE terminal response to JSON.
-	if _, err = normalizeSIWCBody(upstream); err != nil {
+	if upstream, err = normalizeSIWCBodyWithHistoryCompatibility(upstream, account.IsSIWCIgnoreEncryptedContentEnabled()); err != nil {
 		if failover := siwcCapabilityFailover(ctx, c, account, err); failover != nil {
 			return nil, failover
 		}
@@ -196,5 +205,5 @@ func (s *OpenAIGatewayService) forwardSIWC(ctx context.Context, c *gin.Context, 
 		return nil, err
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
-	return s.forwardOpenAIPassthrough(withOpenAITransportMode(ctx, "siwc"), c, account, body, upstream, reqModel, false, extractOpenAIReasoningEffortFromBody(body, reqModel), gjson.GetBytes(body, "stream").Bool(), start)
+	return s.forwardOpenAIPassthrough(withOpenAITransportMode(ctx, "siwc"), c, account, upstream, body, reqModel, false, extractOpenAIReasoningEffortFromBody(body, reqModel), gjson.GetBytes(body, "stream").Bool(), start)
 }

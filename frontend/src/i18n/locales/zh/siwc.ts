@@ -3,6 +3,8 @@ export default {
   "codex": "Codex（保留现有 BPS / Prism 配置）",
   "siwc": "SIWC API（Sign in with ChatGPT）",
   "protocolHint": "授权完成后可随时切换，保存账号后生效。SIWC 使用 ChatGPT 套餐调用官方 Responses API，Codex 凭据独立保留。",
+  "ignoreEncryptedContent": "SIWC：忽略历史中的加密消息内容",
+  "ignoreEncryptedContentHint": "默认关闭，保存账号后对 SIWC 请求生效，包括上方选择的 SIWC 授权连接。开启后，将历史消息和工具结果中的密文替换为省略提示，并把代理消息转为带归属说明的普通上下文，保留明文、图片顺序和工具调用关系。模型看不到被省略的内容；当前新任务若是加密代理消息，仍需使用可读取它的 Codex 连接。推理记录不受影响。",
   "bound": "SIWC 已绑定（凭据存在，不代表实时可用性）",
   "unbound": "SIWC 尚未绑定",
   "automatic": "使用已保存的密码 / 2FA 授权",

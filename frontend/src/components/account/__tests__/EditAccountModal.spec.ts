@@ -392,6 +392,34 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('saves and restores SIWC history compatibility independently of legacy routing and BPS', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { openai_connections_managed: true, openai_siwc: false, openai_excel_bps: true, openai_excel_bps_ignore_encrypted_content: true, unrelated: 'preserve' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const selector = '[data-testid="siwc-ignore-encrypted-content"]'
+    expect(wrapper.get<HTMLInputElement>(selector).element.checked).toBe(false)
+    await wrapper.get(selector).setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(saved.openai_siwc_ignore_encrypted_content).toBe(true)
+    expect(saved.openai_siwc).toBe(false)
+    expect(saved.openai_excel_bps_ignore_encrypted_content).toBe(true)
+    expect(saved.unrelated).toBe('preserve')
+    await wrapper.setProps({ account: { ...account, extra: saved } })
+    expect(wrapper.get<HTMLInputElement>(selector).element.checked).toBe(true)
+    await wrapper.get(selector).setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[1]?.[1]?.extra.openai_siwc_ignore_encrypted_content).toBeUndefined()
+    await wrapper.setProps({ account: { ...account, id: 43 } })
+    expect(wrapper.get<HTMLInputElement>(selector).element.checked).toBe(false)
+    wrapper.unmount()
+  })
+
   it.each(['active', 'error'])('omits unchanged OpenAI OAuth status %s from an unrelated edit', async (status) => {
     const account = { ...buildOpenAIOAuthParentAccount(), status }
     updateAccountMock.mockReset().mockResolvedValue(account)

@@ -37,7 +37,7 @@
         :account-id="account.id" :account-type="account.type" :active="show" />
 
       <SIWCAccountSettings v-if="account.platform === 'openai' && account.type === 'oauth' && !isSparkShadow"
-        v-model:enabled="siwcEnabled" :account-id="account.id" :active="show" />
+        v-model:enabled="siwcEnabled" v-model:ignore-encrypted-content="siwcIgnoreEncryptedContent" :account-id="account.id" :active="show" />
 
       <div v-if="account.platform === 'openai' && account.type === 'oauth' && !isSparkShadow" class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
         <label class="flex items-center gap-2 text-sm"><input v-model="openaiModelAliases" type="checkbox" data-testid="openai-model-aliases" />{{ t('priorityScheduling.modelAliases') }}</label>
@@ -3987,7 +3987,7 @@ import OpenAIAuthConnections from './OpenAIAuthConnections.vue'
 import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
 import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier, readAccountCostMultiplier } from '@/utils/accountCost'
 
-import { ref, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { ref, shallowRef, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ExcelBPSModeSwitches from './ExcelBPSModeSwitches.vue'
 import type { ExcelBPSMode } from '@/utils/excelBPSDefaults'
@@ -4138,6 +4138,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const siwcEnabled = ref(false)
+const siwcIgnoreEncryptedContent = shallowRef(false)
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const globalBpsEnabled = computed(() => appStore.cachedPublicSettings?.excel_bps_enabled !== false)
@@ -5495,6 +5496,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   siwcEnabled.value = false
+  siwcIgnoreEncryptedContent.value = false
   excelBPSEnabled.value = false
   excelBPSMode.value = 'initial'
   excelBPSAllModels.value = false
@@ -5547,6 +5549,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         : []
     }
     siwcEnabled.value = extra?.openai_siwc === true
+    siwcIgnoreEncryptedContent.value = newAccount.type === 'oauth' && extra?.openai_siwc_ignore_encrypted_content === true
     excelBPSEnabled.value = newAccount.type === 'oauth' && extra?.openai_excel_bps === true
     excelBPSMode.value = extra?.openai_excel_bps_config_mode === 'defaults' ? 'defaults' : 'initial'
     excelBPSAllModels.value = excelBPSEnabled.value && !Object.prototype.hasOwnProperty.call(extra ?? {}, 'openai_excel_bps_models')
@@ -7295,6 +7298,11 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       if (props.account.type === 'oauth' && !isSparkShadow.value) newExtra.openai_siwc = siwcEnabled.value
+      if (props.account.type === 'oauth' && !isSparkShadow.value && siwcIgnoreEncryptedContent.value) {
+        newExtra.openai_siwc_ignore_encrypted_content = true
+      } else {
+        delete newExtra.openai_siwc_ignore_encrypted_content
+      }
       newExtra.openai_request_timezone = openAIRequestTimezone.value
       if (props.account.type === 'apikey') {
         newExtra.extra_image_models = parseExtraImageModels(extraImageModels.value)

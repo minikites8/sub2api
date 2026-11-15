@@ -17,6 +17,7 @@ import (
 )
 
 const OpenAISIWCEnabledKey = "openai_siwc"
+const OpenAISIWCIgnoreEncryptedContentKey = "openai_siwc_ignore_encrypted_content"
 
 type OpenAISIWCOAuthRepository interface {
 	SIWCRegistration(context.Context, int64, string) (string, string, error)
@@ -50,6 +51,10 @@ type OpenAISIWCStatus struct {
 
 func (a *Account) IsSIWCEnabled() bool {
 	return a != nil && a.Platform == PlatformOpenAI && a.Type == AccountTypeOAuth && !a.IsShadow() && !a.IsOpenAIPersonalAccessToken() && !a.IsOpenAIAgentIdentity() && a.Extra[OpenAISIWCEnabledKey] == true
+}
+
+func (a *Account) IsSIWCIgnoreEncryptedContentEnabled() bool {
+	return a.IsSIWCEnabled() && a.Extra[OpenAISIWCIgnoreEncryptedContentKey] == true
 }
 
 func (s *OpenAIOAuthReauthService) siwcRepository() (OpenAISIWCOAuthRepository, error) {

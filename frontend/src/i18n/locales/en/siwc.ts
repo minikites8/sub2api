@@ -3,6 +3,8 @@ export default {
   "codex": "Codex (keep existing BPS / Prism settings)",
   "siwc": "SIWC API (Sign in with ChatGPT)",
   "protocolHint": "Switch after authorization and save the account to apply. SIWC uses your ChatGPT plan through the official Responses API. Codex credentials are retained separately.",
+  "ignoreEncryptedContent": "SIWC: ignore encrypted content in history",
+  "ignoreEncryptedContentHint": "Off by default. Save the account to apply to SIWC requests, including a SIWC authorization connection selected above. Replaces historical message and tool-result ciphertext with omission notices and converts agent messages into attributed context, preserving readable text, image order and tool relationships. The model cannot see omitted content. A current encrypted agent assignment still requires a compatible Codex connection. Reasoning items are unchanged.",
   "bound": "SIWC bound (credentials present; availability not verified)",
   "unbound": "SIWC not bound",
   "automatic": "Authorize with saved password / 2FA",

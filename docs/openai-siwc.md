@@ -112,7 +112,7 @@ inference; history and encrypted content are not silently dropped. A Codex
 client can use local tools through supported function/custom calls, but its
 other native capabilities are not automatically available through SIWC.
 
-`agent_message` is one such unsupported history item. Continue that history with
+`agent_message` is unsupported by default. Continue that history with
 a compatible Codex connection, or start a new SIWC session without the unsupported
 capability; encrypted agent messages cannot be converted into ordinary text.
 Before output starts, the gateway automatically selects another available account
@@ -122,6 +122,20 @@ prevent this switch. Capability rejections do not penalize account health. If no
 compatible account remains, the gateway returns the specific SIWC validation
 error once, as HTTP 400 JSON or a terminal `response.failed` event when SSE is
 already committed. Malformed requests still fail validation directly.
+
+The account editor offers **SIWC: ignore encrypted content in history**
+(`extra.openai_siwc_ignore_encrypted_content`, off by default). After saving,
+it applies to both legacy SIWC and managed SIWC authorization connections, even
+when the retained legacy protocol is Codex. It replaces historical ciphertext
+in message content and function/custom tool results with explicit omission
+notices, then converts agent messages to ordinary context carrying their
+original attribution. Readable text, image order, tool call IDs, arguments,
+results, reasoning and compaction items are retained. Agent metadata never
+grants a system/developer role. The model loses omitted context; no ciphertext
+is decrypted. A current encrypted agent assignment still fails before sending,
+including when followed by tool or configuration declarations. The original
+client history remains available for an eligible native-route fallback. Other
+unsupported SIWC capabilities are not enabled by this option.
 
 Administrator connection tests use an internal `/v1/responses` request rather
 than the administrator endpoint for connection capability selection. Managed

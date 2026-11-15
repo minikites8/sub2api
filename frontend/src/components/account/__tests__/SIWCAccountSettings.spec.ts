@@ -49,6 +49,21 @@ beforeEach(() => {
 afterEach(() => { apiClient.defaults.adapter = originalAdapter })
 
 describe('SIWC account protocol and authorization with the HTTP response envelope', () => {
+  it('edits history compatibility independently of the legacy protocol and authorization', async () => {
+    const wrapper = mount(SIWCAccountSettings, { props }); await flushPromises()
+    const selector = '[data-testid="siwc-ignore-encrypted-content"]'
+    expect(wrapper.get<HTMLInputElement>(selector).element.checked).toBe(false)
+    await wrapper.get(selector).setValue(true)
+    expect(wrapper.emitted('update:ignoreEncryptedContent')).toEqual([[true]])
+    expect(wrapper.emitted('update:enabled')).toBeUndefined()
+    await wrapper.setProps({ ignoreEncryptedContent: true })
+    expect(wrapper.get<HTMLInputElement>(selector).element.checked).toBe(true)
+    await wrapper.get(selector).setValue(false)
+    expect(wrapper.emitted('update:ignoreEncryptedContent')).toEqual([[true], [false]])
+    expect(wrapper.text()).toContain('siwc.ignoreEncryptedContentHint')
+    wrapper.unmount()
+  })
+
   it('requires a grant before switching and keeps selection explicit', async () => {
     const wrapper = mount(SIWCAccountSettings, { props })
     await flushPromises()
