@@ -74,6 +74,9 @@ func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL 
 		return resp, err
 	}
 	request = s.stickBoundCodexTicketRequest(request, account)
+	if err := normalizeOpenAIResponsesLiteEgressRequest(request, account); err != nil {
+		return nil, err
+	}
 	boundTicket := s.codexTicketRequestBound(request, account)
 	observationTicket := s.boundCodexTicket(request, account)
 	observationHeaders := request.Header.Clone()

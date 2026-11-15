@@ -211,6 +211,10 @@ func (l *openAIWSConnLease) WriteJSON(value any, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
+	value, err = normalizeOpenAIResponsesLiteWebSocketEgressValue(value, conn.agentRecoveryHeaders)
+	if err != nil {
+		return err
+	}
 	return conn.writeJSONWithTimeout(context.Background(), value, timeout)
 }
 
@@ -219,11 +223,19 @@ func (l *openAIWSConnLease) WriteJSONWithContextTimeout(ctx context.Context, val
 	if err != nil {
 		return err
 	}
+	value, err = normalizeOpenAIResponsesLiteWebSocketEgressValue(value, conn.agentRecoveryHeaders)
+	if err != nil {
+		return err
+	}
 	return captureWSLeaseWrite(ctx, l.accountID, l.HandshakeHeaders(), value, func() error { return conn.writeJSONWithTimeout(ctx, value, timeout) })
 }
 
 func (l *openAIWSConnLease) WriteJSONContext(ctx context.Context, value any) error {
 	conn, err := l.activeConn()
+	if err != nil {
+		return err
+	}
+	value, err = normalizeOpenAIResponsesLiteWebSocketEgressValue(value, conn.agentRecoveryHeaders)
 	if err != nil {
 		return err
 	}

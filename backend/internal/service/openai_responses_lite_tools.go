@@ -257,6 +257,9 @@ func normalizeOpenAIResponsesLiteParallelToolCallsPayload(body []byte) ([]byte, 
 	if err := decodeOpenAIJSONUseNumber(body, &requestBody); err != nil {
 		return body, false, fmt.Errorf("decode responses Lite request body: %w", err)
 	}
+	if requestBody == nil {
+		return body, false, fmt.Errorf("responses Lite request body must be an object")
+	}
 	changed, err := ensureOpenAIResponsesLiteParallelToolCalls(requestBody, false)
 	if err != nil || !changed {
 		return body, false, err

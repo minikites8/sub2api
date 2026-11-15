@@ -994,6 +994,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	defer func() {
 		_ = upstreamConn.Close()
 	}()
+	firstClientMessage, err = normalizeOpenAIResponsesLiteWebSocketEgress(firstClientMessage, headers)
+	if err != nil {
+		_ = upstreamConn.Close()
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, err.Error(), err)
+	}
 	handshakeBinding := s.bindOpenAIWSHandshake(account, gjson.GetBytes(firstClientMessage, "model").String(), headers)
 	logOpenAIWSV2Passthrough(
 		"relay_dial_ok account_id=%d status_code=%d upstream_request_id=%s",
@@ -1138,12 +1143,16 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					}
 				}()
 			}
-			responsesLite := isResponseCreate && isOpenAIResponsesLiteWebSocketPayload(payload)
+			responsesLite := isResponseCreate && (isOpenAIResponsesLiteHeader(getHeaderRaw(headers, responsesLiteHeaderKey)) || isOpenAIResponsesLiteWebSocketPayload(payload))
 			if isResponseCreate {
 				if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBodyWithConfig(s.cfg, payload, account, responsesLite); normalizeErr != nil {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", normalizeErr)
 				} else if compatibilityChanged {
 					payload = normalized
+				}
+				payload, filterErr = normalizeOpenAIResponsesLiteWebSocketEgress(payload, headers)
+				if filterErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, filterErr.Error(), filterErr)
 				}
 			}
 			if account.IsOpenAIOAuthLike() && (isResponseCreate || eventType == "session.update") {
