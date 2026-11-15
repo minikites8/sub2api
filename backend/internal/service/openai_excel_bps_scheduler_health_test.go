@@ -82,7 +82,7 @@ func TestExcelBPSProxyUnavailableReachesSchedulerWithoutPenalty(t *testing.T) {
 			require.ErrorIs(t, err, errExcelBPSProxyUnavailable)
 			require.EqualError(t, err, "excel BPS: basispoints_proxy_unavailable")
 			require.Equal(t, http.StatusServiceUnavailable, rec.Code)
-			require.Contains(t, rec.Body.String(), `"code":"basispoints_proxy_unavailable"`)
+			require.Contains(t, rec.Body.String(), `"code":"service_unavailable"`)
 			require.Nil(t, upstream.lastReq, "local acquisition failure must not send upstream")
 			svc.ReportOpenAIAccountScheduleResult(account, "gpt-6-astra", false, nil, fmt.Errorf("wrapped: %w", err))
 			rate, latency, known := svc.openaiAccountStats.snapshot(account.ID)

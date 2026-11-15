@@ -95,7 +95,8 @@ func TestExcelBPSToolCorrectionPreservesRouteAndUsage(t *testing.T) {
 					}
 				} else {
 					require.Error(t, err)
-					require.Contains(t, rec.Body.String(), "basispoints_protocol_error")
+					require.Contains(t, rec.Body.String(), "502: Bad gateway.")
+					require.NotContains(t, rec.Body.String(), "basispoints_protocol_error")
 					require.NotContains(t, rec.Body.String(), "custom_tool_call")
 				}
 				require.Len(t, upstream.requests, attempts)
@@ -152,7 +153,8 @@ func TestExcelBPSUnknownTargetDoesNotRegenerateVisibleStream(t *testing.T) {
 					require.Len(t, upstream.requests, 1)
 					require.Contains(t, rec.Body.String(), "event: "+kind)
 					require.Contains(t, rec.Body.String(), `"delta":"Checking tools."`)
-					require.Contains(t, rec.Body.String(), "basispoints_protocol_error")
+					require.Contains(t, rec.Body.String(), "502: Bad gateway.")
+					require.NotContains(t, rec.Body.String(), "basispoints_protocol_error")
 					require.Contains(t, rec.Body.String(), "event: response.failed")
 					require.NotContains(t, rec.Body.String(), "event: response.completed")
 					require.NotContains(t, rec.Body.String(), "function_call_arguments")
@@ -192,7 +194,12 @@ func TestExcelBPSToolCorrectionStopsOnHTTPRejection(t *testing.T) {
 			require.True(t, first.closed.Load())
 			require.True(t, rejected.closed.Load())
 			require.Equal(t, 10, result.Usage.InputTokens)
-			require.Contains(t, rec.Body.String(), fmt.Sprintf("HTTP %d", status))
+			require.Contains(t, rec.Body.String(), "502: Bad gateway.")
+			require.NotContains(t, rec.Body.String(), "HTTP ")
+			observed, ok := GetOpsStreamError(c)
+			require.True(t, ok)
+			require.NotNil(t, observed.BridgeFailure)
+			require.Contains(t, observed.BridgeFailure.Message, fmt.Sprintf("HTTP %d", status))
 			require.NotContains(t, rec.Body.String(), "private echoed")
 			require.NotContains(t, rec.Body.String(), "response.output_item.added")
 		})

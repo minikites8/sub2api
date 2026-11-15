@@ -31,7 +31,8 @@ func TestExcelBPSRejectsNewEncryptedAssignmentBeforeAnySubmission(t *testing.T) 
 			require.Error(t, err)
 			require.Equal(t, 400, rec.Code)
 			require.Empty(t, upstream.requests)
-			require.Contains(t, rec.Body.String(), "new encrypted agent assignment")
+			require.Contains(t, rec.Body.String(), "400: Invalid request body.")
+			require.NotContains(t, rec.Body.String(), "basispoints")
 			require.NotContains(t, rec.Body.String(), "SYNTHETIC_PRIVATE")
 		}
 	}

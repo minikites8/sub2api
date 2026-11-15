@@ -328,7 +328,8 @@ func TestExcelBPSTransportAndStreamFailureAreServerErrors(t *testing.T) {
 				require.Len(t, upstream.requests, 1, "unknown transport delivery must not be replayed")
 				require.Contains(t, rec.Body.String(), "server_error")
 				require.Equal(t, 502, rec.Code)
-				require.Contains(t, rec.Body.String(), "basispoints_transport_error")
+				require.Contains(t, rec.Body.String(), "502: Bad gateway.")
+				require.NotContains(t, rec.Body.String(), "basispoints")
 			}
 		})
 	}

@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -152,23 +152,21 @@ func (w *excelBPSChatWriter) writeFrame(frame []byte) error {
 	if event.Type == "" {
 		event.Type = eventType
 	}
-	if event.Type == "error" || event.Type == "response.failed" {
-		code := extractUpstreamErrorCode(payload)
-		message := extractOpenAISSEErrorMessage(payload)
-		if code == "" {
-			code = "upstream_error"
+	if event.Type == "error" || event.Type == "response.failed" || event.Type == "response.cancelled" || event.Type == "response.incomplete" {
+		status := int(gjson.GetBytes(payload, "response.error.status").Int())
+		if status == 0 {
+			status = int(gjson.GetBytes(payload, "error.status").Int())
 		}
-		if message == "" {
-			message = "Upstream response failed"
-		}
+		public := excelBPSPublicError(status)
+		public.retainRetryHints(basispoints.ParseUpstreamFailure(payload))
 		w.done = true
+		raw, _ := json.Marshal(gin.H{"error": public})
 		if w.stream {
-			_, err := w.ResponseWriter.WriteString(buildChatStreamErrorSSE(code, message) + "data: [DONE]\n\n")
+			_, err := w.ResponseWriter.WriteString("data: " + string(raw) + "\n\ndata: [DONE]\n\n")
 			return err
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
-		raw, _ := json.Marshal(gin.H{"error": gin.H{"type": "upstream_error", "code": code, "message": message}})
+		w.WriteHeader(public.Status)
 		_, err := w.ResponseWriter.Write(raw)
 		return err
 	}

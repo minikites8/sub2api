@@ -88,7 +88,8 @@ func TestExcelBPSIgnoreEncryptedContentHTTPFlow(t *testing.T) {
 				// The resent history keeps failing until the account opts in.
 				for _, ignore := range []string{"", "false"} {
 					result := send(ignore, http.StatusBadRequest)
-					require.Contains(t, result, "type=encrypted_content")
+					require.Contains(t, result, "400: Invalid request body.")
+					require.NotContains(t, result, "basispoints")
 					require.NotContains(t, result, "PRIVATE_CIPHERTEXT")
 					require.Empty(t, forwarded)
 				}

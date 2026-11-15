@@ -2263,6 +2263,11 @@ func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, 
 	if failoverErr != nil {
 		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
 	}
+	if public := failoverErr.ExcelBPSPublicError(); public != nil {
+		service.SetOpsUpstreamError(c, failoverErr.StatusCode, service.ExtractUpstreamErrorMessage(failoverErr.ResponseBody), "")
+		h.anthropicStreamingAwareError(c, public.Status, public.Type, public.Message, streamStarted)
+		return
+	}
 	if failoverErr != nil && failoverErr.IsCredentialFailure() {
 		status, message := credentialFailoverClientResponse(failoverErr)
 		h.anthropicStreamingAwareError(c, status, "api_error", message, streamStarted)
@@ -4569,22 +4574,27 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
+	// BPS details stay in Ops even when all account switches are exhausted.
+	// Apply this before passthrough rules, which can expose upstream messages.
+	if public := failoverErr.ExcelBPSPublicError(); public != nil {
+		message := service.ExtractUpstreamErrorMessage(failoverErr.ResponseBody)
+		if message == "" {
+			message = failoverErr.ClientMessage
+		}
+		service.SetOpsUpstreamError(c, failoverErr.StatusCode, message, "")
+		service.MarkResponseCommitted(c)
+		if !c.Writer.Written() {
+			c.Header("Content-Type", "application/json; charset=utf-8")
+		}
+		h.handleStreamingAwareErrorWithCode(c, public.Status, public.Type, public.Code, public.Message, streamStarted, false)
+		return
+	}
 	if failoverErr.IsSIWCLocalCapabilityRejection() {
 		service.MarkResponseCommitted(c)
 		if !c.Writer.Written() {
 			c.Header("Content-Type", "application/json; charset=utf-8")
 		}
 		h.handleStreamingAwareErrorWithCode(c, failoverErr.ClientStatusCode, "invalid_request_error", string(failoverErr.Reason), failoverErr.ClientMessage, streamStarted, false)
-		return
-	}
-	// Local BPS image admission rejection: nothing reached the upstream, so
-	// keep the fixed code and message of the image relay limit.
-	if failoverErr.IsExcelBPSImageAdmissionRejection() {
-		errType := "server_error"
-		if failoverErr.ClientStatusCode == http.StatusRequestEntityTooLarge {
-			errType = "invalid_request_error"
-		}
-		h.handleStreamingAwareErrorWithCode(c, failoverErr.ClientStatusCode, errType, string(failoverErr.Reason), failoverErr.ClientMessage, streamStarted, false)
 		return
 	}
 	if failoverErr.IsOpenAIRequestBodyTooLarge() {
@@ -4641,13 +4651,6 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 			status = http.StatusServiceUnavailable
 		}
 		h.handleStreamingAwareErrorWithCode(c, status, "server_error", service.OpenAIUpstreamCapacityCode, failoverErr.ClientMessage, streamStarted, false)
-		return
-	}
-	// BPS rejections may echo request data: keep the fixed code and message
-	// instead of passthrough rules or the upstream body.
-	if failoverErr.Reason == service.ExcelBPSRateLimitedReason {
-		service.SetOpsUpstreamError(c, failoverErr.StatusCode, failoverErr.ClientMessage, "")
-		h.handleStreamingAwareErrorWithCode(c, failoverErr.ClientStatusCode, "rate_limit_error", string(failoverErr.Reason), failoverErr.ClientMessage, streamStarted, false)
 		return
 	}
 	statusCode := failoverErr.StatusCode

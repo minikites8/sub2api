@@ -11,7 +11,7 @@ import (
 )
 
 // ExcelBPSRateLimitedReason marks a BPS 429 that another account may still
-// serve. It doubles as the client-facing error code once failover is exhausted.
+// serve. It is retained only in internal scheduling and Ops diagnostics.
 const ExcelBPSRateLimitedReason = GatewayFailureReason("basispoints_rate_limited")
 
 const excelBPSRateLimitedClientMessage = "Excel BPS rate limit exceeded, please retry later"

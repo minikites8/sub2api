@@ -127,7 +127,8 @@ func TestExcelBPSImagesHTTPFlow(t *testing.T) {
 					}
 
 					rejected := send(history, http.StatusBadRequest)
-					require.Contains(t, rejected, "enable BPS image support")
+					require.Contains(t, rejected, "400: Invalid request body.")
+					require.NotContains(t, rejected, "BPS")
 					require.NotContains(t, rejected, "openai_excel_bps_ignore_images")
 					require.Empty(t, forwarded)
 					require.Empty(t, uploads)

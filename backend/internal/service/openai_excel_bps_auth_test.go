@@ -199,7 +199,8 @@ func TestExcelBPS401AppliesAuthenticationPolicy(t *testing.T) {
 					require.Equal(t, route != "responses", IsResponseCommitted(c))
 					if route == "attachment" {
 						require.Equal(t, http.StatusUnauthorized, rec.Code)
-						require.Contains(t, rec.Body.String(), "authentication failed")
+						require.Contains(t, rec.Body.String(), "401: Unauthorized.")
+						require.NotContains(t, rec.Body.String(), "BPS")
 					}
 					require.NotContains(t, rec.Body.String(), "scheduling was not changed")
 					require.Equal(t, account.ID, repo.accountID)

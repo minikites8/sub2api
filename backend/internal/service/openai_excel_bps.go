@@ -245,27 +245,22 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		addImagePolicyUsage(&forwardResult.Usage, compactUsage)
 	}()
 	fail := func(status int, code, message string, param ...string) (*OpenAIForwardResult, error) {
-		// A compact keepalive may already have committed SSE headers. Otherwise
-		// finish a single JSON response so the handler cannot append another error.
-		committed := StopOpenAICompactSSEKeepaliveCommitted(c)
-		MarkResponseCommitted(c)
-		if committed {
-			failureParam := ""
-			if len(param) > 0 {
-				failureParam = param[0]
-			}
-			writeOpenAICompactSSEFailureMessageParam(c, status, code, message, failureParam)
-		} else {
-			errorType := "invalid_request_error"
-			if status >= 500 {
-				errorType = "server_error"
-			}
-			errorBody := gin.H{"type": errorType, "code": code, "message": message}
-			if len(param) > 0 && param[0] != "" {
-				errorBody["param"] = param[0]
-			}
-			c.JSON(status, gin.H{"error": errorBody})
+		failureParam := ""
+		if len(param) > 0 {
+			failureParam = param[0]
 		}
+		if c.GetString(OpsUpstreamErrorMessageKey) == "" {
+			setOpsUpstreamError(c, 0, message, "")
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+				Kind: "route_error", Scope: string(excelBPSFailureScope), Reason: code,
+				Message: message, Detail: failureParam,
+			})
+		}
+		if StopOpenAICompactSSEKeepaliveCommitted(c) || c.Writer.Written() {
+			MarkOpsStreamError(c, code, message, status)
+		}
+		writeExcelBPSPublicError(c, status, failureParam)
 		return nil, &excelBPSForwardError{code: code}
 	}
 	originalModel := gjson.GetBytes(body, "model").String()
@@ -1063,6 +1058,13 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 							s.coolDownExcelBPS(ctx, account, failureHeaders.Get("Retry-After"), failureHeaders)
 						}
 					}
+					if kind != "response.completed" {
+						status := http.StatusBadGateway
+						if upstreamFailure != nil {
+							status = upstreamFailure.Status
+						}
+						line = "data: " + string(excelBPSPublicFailureEvent(payload, status))
+					}
 				}
 			}
 			if stream {
@@ -1114,10 +1116,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			s.rateLimitService.observeQualityStatus(ctx, account, http.StatusBadGateway)
 			MarkResponseCommitted(c)
 			if stream {
-				_, _ = c.Writer.WriteString("event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"type\":\"server_error\",\"code\":\"basispoints_stream_incomplete\",\"message\":\"Upstream stream ended before completion\"}}}\n\n")
+				payload := excelBPSPublicFailureEvent([]byte(`{"type":"response.failed","response":{"status":"failed"}}`), http.StatusBadGateway)
+				_, _ = c.Writer.WriteString("event: response.failed\ndata: " + string(payload) + "\n\n")
 				c.Writer.Flush()
 			} else {
-				c.JSON(502, gin.H{"error": gin.H{"type": "server_error", "code": "basispoints_stream_incomplete", "message": "Excel BPS stream ended before completion"}})
+				writeExcelBPSPublicError(c, http.StatusBadGateway, "")
 			}
 			return result, fmt.Errorf("excel BPS stream incomplete")
 		}
@@ -1126,23 +1129,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		if !stream {
 			if upstreamFailure != nil {
-				if StopOpenAICompactSSEKeepaliveCommitted(c) {
-					writeOpenAICompactSSEFailureMessage(c, upstreamFailure.Status, upstreamFailure.Code, upstreamFailure.Message)
-				} else {
-					c.JSON(upstreamFailure.Status, gin.H{"error": upstreamFailure.Details()})
-				}
+				public := excelBPSPublicError(upstreamFailure.Status)
+				public.retainRetryHints(upstreamFailure)
+				writeExcelBPSPublicErrorBody(c, public, "")
 			} else if terminal != "response.completed" {
-				message := "Excel BPS did not complete the response"
-				detail := map[string]any{"code": "basispoints_protocol_error", "message": message}
-				if bridgeFailure != nil {
-					detail = bridgeFailure.Details()
-					message = bridgeFailure.Message
-				}
-				if StopOpenAICompactSSEKeepaliveCommitted(c) {
-					writeOpenAICompactSSEFailureMessage(c, http.StatusBadGateway, "basispoints_protocol_error", message)
-				} else {
-					c.JSON(http.StatusBadGateway, gin.H{"error": detail})
-				}
+				writeExcelBPSPublicError(c, http.StatusBadGateway, "")
 			} else {
 				c.Data(200, "application/json", completed)
 			}

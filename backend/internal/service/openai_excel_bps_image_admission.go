@@ -16,7 +16,7 @@ import (
 const (
 	// ExcelBPSImageRequestBusyReason marks a BPS forward rejected because the
 	// image relay budget is full. Nothing reached the upstream, so another
-	// account may still serve the request; the code is shown to the client once
+	// account may still serve the request; the reason remains internal after
 	// failover is exhausted.
 	ExcelBPSImageRequestBusyReason = GatewayFailureReason("basispoints_image_request_busy")
 	// ExcelBPSImageBodyTooLargeReason marks a body above the image relay
@@ -164,7 +164,7 @@ func newExcelBPSImageAdmissionFailoverError(reason GatewayFailureReason) *Upstre
 }
 
 // IsExcelBPSImageAdmissionRejection reports a local BPS image admission
-// rejection, which must reach the client with its fixed code and message.
+// rejection. Its internal reason must not enter client responses.
 func (e *UpstreamFailoverError) IsExcelBPSImageAdmissionRejection() bool {
 	return e != nil && (e.Reason == ExcelBPSImageRequestBusyReason || e.Reason == ExcelBPSImageBodyTooLargeReason)
 }

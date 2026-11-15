@@ -57,6 +57,8 @@ func TestExcelBPSFailureAfterCompactKeepalive(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, 1, strings.Count(rec.Body.String(), "event: response.failed\n"))
 	require.NotContains(t, rec.Body.String(), "PRIVATE_")
+	require.NotContains(t, strings.ToLower(rec.Body.String()), "basispoints")
+	require.NotContains(t, strings.ToLower(rec.Body.String()), "bps")
 	require.False(t, json.Valid(rec.Body.Bytes()), "already committed keepalive requires an SSE terminal")
 	require.Contains(t, rec.Body.String(), "rate_limit_exceeded")
 	observed, ok := GetOpsStreamError(c)
@@ -136,6 +138,8 @@ func TestExcelBPSFailureClassification(t *testing.T) {
 				var failover *UpstreamFailoverError
 				require.NotErrorAs(t, err, &failover)
 				require.NotContains(t, rec.Body.String(), "PRIVATE_")
+				require.NotContains(t, strings.ToLower(rec.Body.String()), "basispoints")
+				require.NotContains(t, strings.ToLower(rec.Body.String()), "bps")
 				require.NotContains(t, err.Error(), "PRIVATE_")
 				require.NotContains(t, rec.Body.String(), "basispoints_stream_incomplete")
 				require.NotContains(t, rec.Body.String(), "response.completed")
@@ -160,14 +164,14 @@ func TestExcelBPSFailureClassification(t *testing.T) {
 						if tc.event != "error" {
 							path = "response.error"
 						}
-						require.Equal(t, tc.wantCode, gjson.Get(raw, path+".code").String())
+						require.Equal(t, excelBPSPublicError(tc.status).Code, gjson.Get(raw, path+".code").String())
 						require.Equal(t, tc.wantType, gjson.Get(raw, path+".type").String())
 						require.EqualValues(t, tc.status, gjson.Get(raw, path+".status").Int())
 					}
 					require.Equal(t, 1, found)
 				} else {
 					require.Equal(t, tc.status, rec.Code)
-					require.Equal(t, tc.wantCode, gjson.GetBytes(rec.Body.Bytes(), "error.code").String())
+					require.Equal(t, excelBPSPublicError(tc.status).Code, gjson.GetBytes(rec.Body.Bytes(), "error.code").String())
 					require.Equal(t, tc.wantType, gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
 				}
 				observed, ok := GetOpsStreamError(c)

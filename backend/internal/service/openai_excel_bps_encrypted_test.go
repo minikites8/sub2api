@@ -184,8 +184,8 @@ func TestExcelBPSInvalidEncryptedContentRetryIsBounded(t *testing.T) {
 			require.Equal(t, status, rec.Code)
 			require.NotContains(t, rec.Body.String(), "private upstream diagnostic")
 			if status == 400 {
-				require.Equal(t, "invalid_encrypted_content", gjson.Get(rec.Body.String(), "error.code").String())
-				require.Contains(t, rec.Body.String(), "original plaintext history")
+				require.Equal(t, "invalid_request_error", gjson.Get(rec.Body.String(), "error.code").String())
+				require.Equal(t, "400: Invalid request body.", gjson.Get(rec.Body.String(), "error.message").String())
 			}
 		})
 	}
@@ -247,7 +247,8 @@ func TestExcelBPSInvalidEncryptedContentStopsOnDisconnect(t *testing.T) {
 			} else {
 				require.Equal(t, 2, calls)
 				require.Equal(t, 502, rec.Code)
-				require.Contains(t, rec.Body.String(), "basispoints_transport_error")
+				require.Contains(t, rec.Body.String(), "502: Bad gateway.")
+				require.NotContains(t, rec.Body.String(), "basispoints")
 			}
 			require.NotContains(t, rec.Body.String(), "private")
 		})

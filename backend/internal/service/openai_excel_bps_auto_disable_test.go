@@ -83,6 +83,7 @@ func TestExcelBPSAutoDisableOn403(t *testing.T) {
 					wantCode = ""
 				} else {
 					require.EqualError(t, err, "excel BPS: "+wantCode)
+					wantCode = excelBPSPublicError(tc.status).Code
 					require.Equal(t, tc.status, rec.Code)
 				}
 				require.Equal(t, wantCode, gjson.Get(rec.Body.String(), "error.code").String())

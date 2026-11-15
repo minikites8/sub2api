@@ -45,7 +45,8 @@ func TestExcelBPSContinuationUnknownTargetKeepsNativeHistory(t *testing.T) {
 				if stream && visible {
 					require.Error(t, err)
 					require.Len(t, upstream.requests, 1)
-					require.Contains(t, rec.Body.String(), `"repair_skipped_reason":"visible_content"`)
+					require.NotContains(t, rec.Body.String(), "repair_skipped_reason")
+					require.Contains(t, rec.Body.String(), "502: Bad gateway.")
 					require.Equal(t, http.StatusOK, rec.Code)
 					observed, ok := GetOpsStreamError(c)
 					require.True(t, ok)
@@ -105,8 +106,9 @@ func TestExcelBPSLocalProtocolFailureKeepsHTTPAndDiagnostic(t *testing.T) {
 			require.Equal(t, "response.completed", observed.BridgeFailure.UpstreamTerminalEvent)
 			require.Equal(t, "repair_exhausted", observed.BridgeFailure.RepairSkippedReason)
 			require.Equal(t, !stream, observed.NonStream)
-			require.Contains(t, rec.Body.String(), `"failure_stage":"bridge_tool_validation"`)
-			require.Contains(t, rec.Body.String(), `"rejected_tool":"missing"`)
+			require.NotContains(t, rec.Body.String(), "failure_stage")
+			require.Contains(t, rec.Body.String(), "502: Bad gateway.")
+			require.NotContains(t, rec.Body.String(), "rejected_tool")
 			if !stream {
 				require.Equal(t, http.StatusBadGateway, rec.Code)
 			}
