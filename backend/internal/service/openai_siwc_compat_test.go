@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
@@ -109,7 +110,7 @@ func TestSIWCUnsupportedInputHidesMalformedType(t *testing.T) {
 	require.NotContains(t, err.Error(), "SECRET")
 }
 
-func TestSIWCUnsupportedInputNeverSendsOrBecomesGenericGatewayError(t *testing.T) {
+func TestSIWCUnsupportedInputRequestsNativeAccountWithoutSending(t *testing.T) {
 	body := []byte(`{"model":"gpt-6-astra","stream":true,"input":[{"type":"agent_message","encrypted_content":"SECRET_HISTORY"}]}`)
 	upstream := &httpUpstreamRecorder{}
 	gateway := openAIClientToolsTestService(upstream)
@@ -123,8 +124,45 @@ func TestSIWCUnsupportedInputNeverSendsOrBecomesGenericGatewayError(t *testing.T
 
 	require.Error(t, err)
 	require.Empty(t, upstream.requests)
-	require.Equal(t, http.StatusBadRequest, response.Code)
-	require.Equal(t, "OPENAI_SIWC_UNSUPPORTED_INPUT", gjson.Get(response.Body.String(), "error.code").String())
-	require.Contains(t, gjson.Get(response.Body.String(), "error.message").String(), "agent_message")
+	var failover *UpstreamFailoverError
+	require.ErrorAs(t, err, &failover)
+	require.True(t, failover.IsSIWCLocalCapabilityRejection())
+	require.True(t, failover.ShouldRetryNextAccount())
+	require.False(t, failover.ShouldReportAccountScheduleFailure())
+	require.False(t, failover.RetryableOnSameAccount)
+	require.False(t, IsResponseCommitted(ctx))
+	require.False(t, ctx.Writer.Written())
+	require.Empty(t, response.Body.String())
+	require.Equal(t, "OPENAI_SIWC_UNSUPPORTED_INPUT", string(failover.Reason))
+	require.Contains(t, failover.ClientMessage, "agent_message")
+	require.NotContains(t, string(failover.ResponseBody), "SECRET_HISTORY")
+}
+
+func TestSIWCUnsupportedInputAfterKeepaliveCanSelectNativeAccount(t *testing.T) {
+	body := []byte(`{"model":"gpt-6-astra","stream":true,"input":[{"type":"agent_message","encrypted_content":"SECRET_HISTORY"}]}`)
+	upstream := &httpUpstreamRecorder{}
+	gateway := openAIClientToolsTestService(upstream)
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	MarkOpenAICompactClientStream(ctx)
+	stop := StartOpenAICompactSSEKeepalive(ctx, time.Hour)
+	defer stop()
+	keepalive := ctx.MustGet(openAICompactSSEKeepaliveKey).(*openAICompactSSEKeepalive)
+	require.True(t, keepalive.beat())
+	account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true,
+		Credentials: map[string]any{"access_token": "must-not-send"}, Extra: map[string]any{OpenAISIWCEnabledKey: true}}
+
+	_, err := gateway.Forward(context.Background(), ctx, account, body)
+
+	require.Error(t, err)
+	require.Empty(t, upstream.requests)
+	var failover *UpstreamFailoverError
+	require.ErrorAs(t, err, &failover)
+	require.True(t, failover.IsSIWCLocalCapabilityRejection())
+	require.False(t, IsResponseCommitted(ctx))
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(ctx))
+	require.Equal(t, http.StatusOK, response.Code, "the heartbeat already committed HTTP 200")
+	require.Empty(t, stripKeepaliveComments(response.Body.String()))
 	require.NotContains(t, response.Body.String(), "SECRET_HISTORY")
 }

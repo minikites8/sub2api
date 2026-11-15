@@ -25,6 +25,7 @@ OpenAI 上游返回 5xx 且错误为 `Upstream request failed` 时直接换号�
 - 已经向客户端输出内容、请求取消、账号池耗尽或达到上限后停止重试。流式请求仅在尚未输出内容的窗口内换号；已开始的 WebSocket 后续回合仍保留原有账号绑定限制。
 - OpenAI 的 `response.metadata`、`codex.response.metadata` 与生命周期前导事件一样继续缓冲，不作为实际输出或首 token，也不会关闭自动换号窗口。
 - BPS 仅发送 SSE 心跳、尚无实际输出或计费用量时，流内 429 和其他可重试拒绝仍会按既有策略重试并换号；心跳提交 HTTP 200 不会关闭换号窗口。
+- SIWC 本地返回 `OPENAI_SIWC_UNSUPPORTED_INPUT`、`OPENAI_SIWC_UNSUPPORTED_TOOL` 或 `OPENAI_SIWC_UNSUPPORTED_ENDPOINT` 时，尚未输出内容的请求会保留完整历史并换号，后续跳过 SIWC 路由；这类能力拒绝不计为账号健康故障。没有其他可用账号时返回具体的 SIWC 错误，请求本身格式无效时仍直接拒绝。
 - 无论是否开启上述开关，OpenAI 流中的空文本/思考/工具参数增量、空内容结束事件，以及只有 `encrypted_content` 而没有可见思考文本的 reasoning 项都继续缓冲；它们之后出现的可重试 `response.failed`（例如 503 过载）仍可自动换号。缓冲的 reasoning 会随实际输出或成功终态完整下发。非空文字、思考、工具参数、compaction 加密结果，以及未知或格式异常的事件仍会关闭重试窗口。
 - OpenAI Responses、Chat Completions、Messages 兼容入口及现有 Anthropic/Gemini/Antigravity 转发路径复用同一策略。异步任务创建及已经建立的实时通话不新增重放。
 

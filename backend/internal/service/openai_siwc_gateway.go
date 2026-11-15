@@ -165,7 +165,12 @@ func (s *OpenAIGatewayService) buildSIWCRequest(ctx context.Context, c *gin.Cont
 
 func (s *OpenAIGatewayService) forwardSIWC(ctx context.Context, c *gin.Context, account *Account, body []byte, start time.Time) (*OpenAIForwardResult, error) {
 	if suffix := openAIResponsesRequestPathSuffix(c); suffix != "" {
-		return nil, infraerrors.BadRequest("OPENAI_SIWC_UNSUPPORTED_ENDPOINT", "SIWC supports /v1/responses only")
+		err := infraerrors.BadRequest("OPENAI_SIWC_UNSUPPORTED_ENDPOINT", "SIWC supports /v1/responses only")
+		if failover := siwcCapabilityFailover(ctx, c, account, err); failover != nil {
+			return nil, failover
+		}
+		writeSIWCRequestError(c, err)
+		return nil, err
 	}
 	reqModel := gjson.GetBytes(body, "model").String()
 	mapped := normalizeOpenAIModelForUpstream(account, resolveOpenAIForwardModel(account, reqModel, ""))
@@ -182,10 +187,11 @@ func (s *OpenAIGatewayService) forwardSIWC(ctx context.Context, c *gin.Context, 
 	// Validate before acquiring tokens. Preserve the downstream stream preference;
 	// the shared parser converts the upstream SSE terminal response to JSON.
 	if _, err = normalizeSIWCBody(upstream); err != nil {
+		if failover := siwcCapabilityFailover(ctx, c, account, err); failover != nil {
+			return nil, failover
+		}
 		if infraerrors.Code(err) == http.StatusBadRequest {
-			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
-				"type": "invalid_request_error", "code": infraerrors.Reason(err), "message": infraerrors.Message(err),
-			}})
+			writeSIWCRequestError(c, err)
 		}
 		return nil, err
 	}

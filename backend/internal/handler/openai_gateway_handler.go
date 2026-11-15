@@ -1372,6 +1372,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					if failoverErr.IsSIWCLocalCapabilityRejection() && openAIForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {
+						c.Request = c.Request.WithContext(service.WithOpenAISIWCNativeFallback(c.Request.Context()))
+					}
 					if failoverErr.Reason == service.GatewayFailureReason(service.ExcelBPSLocalCapabilityReason) && failoverErr.ShouldRetryNextAccount() &&
 						!c.Writer.Written() && !service.IsResponseCommitted(c) && !failoverClientGone(c) {
 						c.Request = c.Request.WithContext(service.WithOpenAIBPSNativeFallback(c.Request.Context()))
@@ -2075,6 +2078,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					if failoverErr.IsSIWCLocalCapabilityRejection() && openAIForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {
+						c.Request = c.Request.WithContext(service.WithOpenAISIWCNativeFallback(c.Request.Context()))
+					}
 					if failoverErr.Reason == service.GatewayFailureReason(service.ExcelBPSLocalCapabilityReason) && failoverErr.ShouldRetryNextAccount() &&
 						!c.Writer.Written() && !service.IsResponseCommitted(c) && !failoverClientGone(c) {
 						c.Request = c.Request.WithContext(service.WithOpenAIBPSNativeFallback(c.Request.Context()))
@@ -4563,6 +4569,14 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
+	if failoverErr.IsSIWCLocalCapabilityRejection() {
+		service.MarkResponseCommitted(c)
+		if !c.Writer.Written() {
+			c.Header("Content-Type", "application/json; charset=utf-8")
+		}
+		h.handleStreamingAwareErrorWithCode(c, failoverErr.ClientStatusCode, "invalid_request_error", string(failoverErr.Reason), failoverErr.ClientMessage, streamStarted, false)
+		return
+	}
 	// Local BPS image admission rejection: nothing reached the upstream, so
 	// keep the fixed code and message of the image relay limit.
 	if failoverErr.IsExcelBPSImageAdmissionRejection() {

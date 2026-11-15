@@ -112,6 +112,17 @@ inference; history and encrypted content are not silently dropped. A Codex
 client can use local tools through supported function/custom calls, but its
 other native capabilities are not automatically available through SIWC.
 
+`agent_message` is one such unsupported history item. Continue that history with
+a compatible Codex connection, or start a new SIWC session without the unsupported
+capability; encrypted agent messages cannot be converted into ordinary text.
+Before output starts, the gateway automatically selects another available account
+for unsupported SIWC input, tools, or endpoints, preserving the original history
+and excluding SIWC routes for the rest of that request. A heartbeat alone does not
+prevent this switch. Capability rejections do not penalize account health. If no
+compatible account remains, the gateway returns the specific SIWC validation
+error once, as HTTP 400 JSON or a terminal `response.failed` event when SSE is
+already committed. Malformed requests still fail validation directly.
+
 Administrator connection tests use an internal `/v1/responses` request rather
 than the administrator endpoint for connection capability selection. Managed
 text tests use the selected connection even when the retained legacy protocol

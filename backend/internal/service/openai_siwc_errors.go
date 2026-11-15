@@ -6,11 +6,28 @@ import (
 	"net/http"
 	"strings"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 )
 
 const siwcNotEligibleCode = "subscription_sharing_user_not_eligible"
 const siwcNotEligibleMessage = "ChatGPT plan usage is unavailable for the selected user, workspace, or policy. Review SIWC eligibility before trying again."
+
+// Local validation owns its terminal response. Stop any heartbeat before
+// inspecting the writer, and keep an already committed SSE stream valid.
+func writeSIWCRequestError(c *gin.Context, err error) {
+	StopOpenAICompactSSEKeepaliveCommitted(c)
+	MarkResponseCommitted(c)
+	status, code, message := infraerrors.Code(err), infraerrors.Reason(err), infraerrors.Message(err)
+	if c.Writer.Written() {
+		writeOpenAICompactSSEFailureMessage(c, status, code, message)
+		return
+	}
+	writeOpenAIPassthroughErrorHeaders(c.Writer.Header(), nil)
+	c.JSON(status, gin.H{"error": gin.H{
+		"type": "invalid_request_error", "code": code, "message": message,
+	}})
+}
 
 // Only inspect known error objects, never arbitrary nested strings or echoed
 // request data. A 502 wrapper must retain structured evidence of the rejection.
