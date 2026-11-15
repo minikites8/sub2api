@@ -209,7 +209,7 @@
                       :selected="selectedMethod"
                       @select="selectedMethod = $event"
                     />
-                    <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && Object.keys(stripeSubMethods).length" v-model="selectedSubtype" :methods="stripeSubMethods" />
+                    <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && stripeNeedsSubtypeSelection" v-model="selectedSubtype" :methods="stripeSubMethods" />
             </div>
                 </article>
               </section>
@@ -422,7 +422,7 @@
                   :selected="selectedMethod"
                   @select="selectedMethod = $event"
                 />
-                <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && Object.keys(stripeSubMethods).length" v-model="selectedSubtype" :methods="stripeSubMethods" />
+                <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && stripeNeedsSubtypeSelection" v-model="selectedSubtype" :methods="stripeSubMethods" />
               </div>
               <div v-if="hasFee && subPaymentAmount > 0" class="card p-6">
                 <div class="space-y-2 text-sm">
@@ -976,13 +976,17 @@ const planGridClass = computed(() => {
 })
 
 const stripeSubMethods = computed(() => visibleMethods.value.stripe?.sub_methods ?? {})
+const stripeNeedsSubtypeSelection = computed(() => {
+  const { min, max } = paymentFeeRange(visibleMethods.value.stripe, checkout.value.recharge_fee_rate)
+  return min !== max
+})
 watch(stripeSubMethods, (methods) => {
   if (!(selectedSubtype.value in methods)) selectedSubtype.value = Object.keys(methods)[0] ?? ''
 }, { immediate: true })
 
 function methodFeeRange(method: string) {
   const limits = visibleMethods.value[method]
-  const rates = method === 'stripe' && selectedSubtype.value
+  const rates = method === 'stripe' && stripeNeedsSubtypeSelection.value && selectedSubtype.value
     ? limits?.sub_methods?.[selectedSubtype.value] ?? limits
     : limits
   return paymentFeeRange(rates, checkout.value.recharge_fee_rate)
@@ -1256,7 +1260,7 @@ const amountError = computed(() => {
 })
 
 const stripeSubtypeReady = computed(() => selectedMethod.value !== 'stripe'
-  || !selectedLimit.value?.sub_methods
+  || !stripeNeedsSubtypeSelection.value
   || Object.prototype.hasOwnProperty.call(stripeSubMethods.value, selectedSubtype.value))
 
 const canSubmit = computed(() =>
@@ -1400,7 +1404,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
-      paymentSubtype: requestType === 'stripe' ? selectedSubtype.value : undefined,
+      paymentSubtype: requestType === 'stripe' && stripeNeedsSubtypeSelection.value ? selectedSubtype.value : undefined,
       orderType,
       planId,
       quantity: requestQuantity,

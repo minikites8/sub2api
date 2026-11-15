@@ -104,6 +104,40 @@ func TestStripeHostedCheckoutLocksAmountMethodAndReturnURL(t *testing.T) {
 	}
 }
 
+func TestStripeHostedCheckoutOffersAllConfiguredMethodsWithoutSubtype(t *testing.T) {
+	for _, tc := range []struct {
+		configured string
+		want       []string
+	}{
+		{"card,alipay,wxpay", []string{"card", "alipay", "wechat_pay"}},
+		{"card", []string{"card"}},
+		{"alipay,wxpay", []string{"alipay", "wechat_pay"}},
+	} {
+		t.Run(tc.configured, func(t *testing.T) {
+			backend := &stripeCheckoutBackend{call: func(method, path string, raw stripe.ParamsContainer, result stripe.LastResponseSetter) error {
+				require.Equal(t, http.MethodPost, method)
+				require.Equal(t, "/v1/checkout/sessions", path)
+				params := raw.(*stripe.CheckoutSessionCreateParams)
+				var methods []string
+				for _, value := range params.PaymentMethodTypes {
+					methods = append(methods, *value)
+				}
+				require.Equal(t, tc.want, methods)
+				if hasStripeMethod(tc.want, "wechat_pay") {
+					require.Equal(t, "web", *params.PaymentMethodOptions.WeChatPay.Client)
+				}
+				*result.(*stripe.CheckoutSession) = stripe.CheckoutSession{ID: "cs_all_methods", URL: "https://checkout.stripe.com/c/pay/cs_all_methods"}
+				return nil
+			}}
+			_, err := newStripeCheckoutTestProvider(backend, "hosted").CreatePayment(context.Background(), payment.CreatePaymentRequest{
+				OrderID: "order-all-methods", Amount: "12.00", Subject: "Recharge", PaymentType: payment.TypeStripe,
+				InstanceSubMethods: tc.configured, ReturnURL: "https://merchant.example/payment/result",
+			})
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestStripeHostedCheckoutRejectsInvalidInputsBeforeAPI(t *testing.T) {
 	backend := &stripeCheckoutBackend{call: func(string, string, stripe.ParamsContainer, stripe.LastResponseSetter) error {
 		t.Fatal("invalid checkout must not reach Stripe")

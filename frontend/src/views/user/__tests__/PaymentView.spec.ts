@@ -1341,6 +1341,48 @@ describe('PaymentView provider and method fees', () => {
     expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', payment_subtype: 'wxpay', amount: 100 }))
   })
 
+  it.each([0, 2.5])('leaves all configured Stripe methods available when their fee is %s%%', async (rate) => {
+    const rates = { fee_rate: rate, fee_rate_min: rate, fee_rate_max: rate }
+    const wrapper = await mountRecharge({ stripe: { ...baseMethod, ...rates, currency: 'CNY',
+      sub_methods: { alipay: rates, card: rates, wxpay: rates },
+    } })
+    expect(wrapper.findComponent(StripeSubtypeSelector).exists()).toBe(false)
+    expect(wrapper.text()).toContain(formatPaymentAmount(100 * (1 + rate / 100), 'CNY'))
+    await wrapper.get('.credits-purchase-button').trigger('click')
+    await flushPromises()
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', amount: 100 }))
+    expect(createOrder.mock.calls[0]?.[0]).not.toHaveProperty('payment_subtype')
+    wrapper.unmount()
+  })
+
+  it('keeps all equal-fee Stripe methods available for subscription checkout', async () => {
+    const rates = { fee_rate: 0, fee_rate_min: 0, fee_rate_max: 0 }
+    const wrapper = await mountSubscriptionConfirm({ checkout: { methods: { stripe: { ...baseMethod, ...rates,
+      sub_methods: { alipay: rates, card: rates, wxpay: rates },
+    } } }, plan: { price: 100 } })
+    createOrder.mockResolvedValue({})
+    wrapper.findComponent(PaymentMethodSelector).vm.$emit('select', 'stripe')
+    await flushPromises()
+    expect(wrapper.findComponent(StripeSubtypeSelector).exists()).toBe(false)
+    await wrapper.get('[data-test="subscription-submit"]').trigger('click')
+    await flushPromises()
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', order_type: 'subscription' }))
+    expect(createOrder.mock.calls[0]?.[0]).not.toHaveProperty('payment_subtype')
+    wrapper.unmount()
+  })
+
+  it('requires a Stripe subtype when providers quote different fees for the same methods', async () => {
+    const rates = { fee_rate: 1, fee_rate_min: 1, fee_rate_max: 3 }
+    const wrapper = await mountRecharge({ stripe: { ...baseMethod, ...rates,
+      sub_methods: { alipay: rates, card: rates },
+    } })
+    expect(wrapper.findComponent(StripeSubtypeSelector).exists()).toBe(true)
+    await wrapper.get('.credits-purchase-button').trigger('click')
+    await flushPromises()
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', payment_subtype: 'alipay' }))
+    wrapper.unmount()
+  })
+
   it('uses each subscription method fee when checking its payable limit', async () => {
     const wrapper = await mountSubscriptionConfirm({
       checkout: { recharge_fee_rate: 2, methods: {
