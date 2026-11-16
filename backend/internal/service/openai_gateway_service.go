@@ -575,6 +575,7 @@ type OpenAIGatewayService struct {
 	billingCacheService    *BillingCacheService
 	userGroupRateResolver  *userGroupRateResolver
 	httpUpstream           HTTPUpstream
+	tlsFPProfileService    *TLSFingerprintProfileService
 	pluginManager          *PluginManager
 	safetyPromptStore      *SafetyPromptStore
 	deferredService        *DeferredService

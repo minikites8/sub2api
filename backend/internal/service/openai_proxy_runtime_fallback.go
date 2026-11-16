@@ -173,7 +173,14 @@ func (s *OpenAIGatewayService) doOpenAIProxyAttempt(req *http.Request, account *
 			return markOpenAIResponseEgress(resp, req, target.proxyID), err
 		}
 	}
-	resp, err = s.httpUpstream.Do(req, target.url, account.ID, account.Concurrency)
+	if profile := openCodeZenTLSProfile(req, account, nil); profile != nil {
+		if configured := s.tlsFPProfileService.ResolveTLSProfile(account); configured != nil {
+			profile = configured
+		}
+		resp, err = s.httpUpstream.DoWithTLS(req, target.url, account.ID, account.Concurrency, profile)
+	} else {
+		resp, err = s.httpUpstream.Do(req, target.url, account.ID, account.Concurrency)
+	}
 	if options, ok := pelicanTestOptionsFromContext(req.Context()); ok && options.nativeOAuthTransport != nil && !IsAstraSourceAcquisition(req.Context()) {
 		// Fail-open ticket admission may still send natively. Check the final
 		// sent request too: fast admission can install a ticket in the adapter.

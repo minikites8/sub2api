@@ -213,6 +213,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		RateLimit:         rateLimitService,
 		BillingCache:      billingCacheService,
 		Upstream:          httpUpstream,
+		TLSProfiles:       tlsFingerprintProfileService,
 		Deferred:          deferredService,
 		OpenAITokens:      openAITokenProvider,
 		GrokTokens:        grokTokenProvider,

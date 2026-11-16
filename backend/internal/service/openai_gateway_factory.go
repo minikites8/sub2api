@@ -26,6 +26,7 @@ type OpenAIGatewayDependencies struct {
 	RateLimit        *RateLimitService
 	BillingCache     *BillingCacheService
 	Upstream         HTTPUpstream
+	TLSProfiles      *TLSFingerprintProfileService
 	Deferred         *DeferredService
 	OpenAITokens     *OpenAITokenProvider
 	GrokTokens       *GrokTokenProvider
@@ -55,5 +56,6 @@ func ProvideOpenAIGatewayService(d OpenAIGatewayDependencies) *OpenAIGatewayServ
 			s.codexHarvest = d.Harvest
 			s.requestTimezoneProber = d.TimezoneProber
 			s.safetyPromptStore = d.SafetyPromptStore
+			s.tlsFPProfileService = d.TLSProfiles
 		})
 }

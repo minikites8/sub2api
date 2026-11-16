@@ -172,7 +172,7 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 			proxyURL,
 			account.ID,
 			account.Concurrency,
-			s.tlsFPProfileService.ResolveTLSProfile(account),
+			openCodeZenTLSProfile(request, account, s.tlsFPProfileService.ResolveTLSProfile(account)),
 		)
 	}
 	return timedAccountTestUpstream(s.httpUpstream).Do(request, proxyURL, account.ID, account.Concurrency)

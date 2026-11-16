@@ -201,6 +201,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	// passed back to the API"。在共用出站点补空格占位，真实明文不覆盖。
 	body = ensureDeepSeekChatReasoningPlaceholders(account, body)
 	body = stripDisallowedMistralChatMessageExtras(account, body)
+	body = normalizeOpenCodeFreeTierBody(account, targetURL, body)
 	// Mistral answers 400 for efforts outside the model allow-list. Every caller
 	// already normalizes; this keeps any future CC send path safe as well.
 	body = enforceMistralChatReasoningEffort(account, body)
@@ -265,6 +266,23 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+	}
+	if !stream && isOpenCodeZenFreeRequest(account, targetURL, body) && resp.StatusCode == http.StatusOK &&
+		strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		defer resp.Body.Close()
+		streamBody, readErr := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+		if readErr != nil {
+			return nil, readErr
+		}
+		buffered, aggregateErr := aggregateOpenCodeZenChatSSE(streamBody)
+		if aggregateErr != nil {
+			return nil, aggregateErr
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(buffered))
+		resp.Header.Set("Content-Type", "application/json")
+		resp.Header.Del("Content-Length")
+		resp.Header.Del("Content-Encoding")
+		resp.ContentLength = int64(len(buffered))
 	}
 	return resp, nil
 }

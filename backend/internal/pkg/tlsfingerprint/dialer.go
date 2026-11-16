@@ -463,7 +463,11 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 			// An empty GenericExtension causes "error decoding message" from servers that validate ECH format.
 			extensions = append(extensions, &utls.GREASEEncryptedClientHelloExtension{})
 		case 0xff01: // renegotiation_info
-			extensions = append(extensions, &utls.RenegotiationInfoExtension{})
+			renegotiation := &utls.RenegotiationInfoExtension{}
+			if profile != nil && profile.Name == OpenCodeBunProfileName {
+				renegotiation.Renegotiation = utls.RenegotiateOnceAsClient
+			}
+			extensions = append(extensions, renegotiation)
 		default:
 			// Unknown extension — send as GenericExtension (type ID + empty data).
 			// This covers encrypt_then_mac(22) and any future extensions.
@@ -477,13 +481,17 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		extensions = append(extensions, &utls.UtlsGREASEExtension{})
 	}
 
-	return &utls.ClientHelloSpec{
+	spec := &utls.ClientHelloSpec{
 		CipherSuites:       cipherSuites,
 		CompressionMethods: []uint8{0}, // null compression only (standard)
 		Extensions:         extensions,
 		TLSVersMax:         utls.VersionTLS13,
 		TLSVersMin:         utls.VersionTLS10,
 	}
+	if profile != nil && profile.Name == OpenCodeBunProfileName {
+		spec.TLSVersMin = utls.VersionTLS12
+	}
+	return spec
 }
 
 // toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).

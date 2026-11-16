@@ -666,7 +666,11 @@ func (s *httpUpstreamService) getClientEntryWithTLSHeaderTimeout(proxyURL string
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
 	settings, headerTimeoutKey := applyResponseHeaderTimeoutOverride(settings, headerTimeout)
 	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault) + headerTimeoutKey
+	// One account can use Bun for Zen free models and a configured profile for
+	// other traffic. Never reuse a TLS client built for a different fingerprint.
+	profileJSON, _ := json.Marshal(profile)
+	profileHash := sha256.Sum256(profileJSON)
+	cacheKey := fmt.Sprintf("tls:%s:%x%s", buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault), profileHash, headerTimeoutKey)
 	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
 
 	now := time.Now()

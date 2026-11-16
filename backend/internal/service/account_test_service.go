@@ -1249,6 +1249,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 	applyModelTracePayload(ctx, payload)
 	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes = normalizeOpenCodeFreeTierBody(credentialAccount, apiURL, payloadBytes)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
 	// restart this probe after registering a replacement task.
@@ -1301,7 +1302,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	applyOpenAIAPIKeyIdentityHeaders(req.Header, credentialAccount, credentialAccount.GetOpenAIUserAgent())
+	applyOpenCodeUpstreamUserAgent(credentialAccount, apiURL, req.Header)
 	credentialAccount.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, credentialAccount, apiURL, req.Header, payloadBytes)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -2654,6 +2657,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
 	}
+	payloadBytes = normalizeOpenCodeFreeTierBody(account, apiURL, payloadBytes)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过 /v1/chat/completions 测试连接"})
@@ -2681,7 +2685,8 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := timedAccountTestUpstream(s.httpUpstream).DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	profile := openCodeZenTLSProfile(req, account, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := timedAccountTestUpstream(s.httpUpstream).DoWithTLS(req, proxyURL, account.ID, account.Concurrency, profile)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
 	}
