@@ -1200,6 +1200,13 @@ type openaiNonStreamingResultPassthrough struct {
 
 const openAIStreamKeepaliveBytesKey = "openai_stream_keepalive_bytes"
 
+// RecordOpenAIStreamKeepaliveBytes accounts for trusted heartbeats written by
+// handler queues. They must share the forwarder's accounting so queue comments
+// do not suppress safe account failover. Never include model output bytes.
+func RecordOpenAIStreamKeepaliveBytes(c *gin.Context, written int) {
+	recordOpenAIStreamKeepaliveBytes(c, written)
+}
+
 func recordOpenAIStreamKeepaliveBytes(c *gin.Context, written int) {
 	if c == nil || written <= 0 {
 		return

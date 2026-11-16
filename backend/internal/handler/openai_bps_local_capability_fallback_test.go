@@ -90,7 +90,7 @@ func (*bpsLocalCapabilitySettings) GetValue(context.Context, string) (string, er
 func (*bpsLocalCapabilitySettings) GetMultiple(context.Context, []string) (map[string]string, error) {
 	return map[string]string{service.SettingKeyExcelBPSImageMode: service.ExcelBPSImageModeNative}, nil
 }
-func newBPSLocalCapabilityRouter(t *testing.T, upstream service.HTTPUpstream, accounts []service.Account) *gin.Engine {
+func newBPSLocalCapabilityRouter(t *testing.T, upstream service.HTTPUpstream, accounts []service.Account, beforeForward ...gin.HandlerFunc) *gin.Engine {
 	t.Helper()
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	settings := service.NewSettingService(&bpsLocalCapabilitySettings{}, cfg)
@@ -124,6 +124,7 @@ func newBPSLocalCapabilityRouter(t *testing.T, upstream service.HTTPUpstream, ac
 			}
 		}
 	})
+	r.Use(beforeForward...)
 	r.POST("/v1/responses", h.Responses)
 	r.POST("/v1/messages", h.Messages)
 	r.POST("/v1/chat/completions", h.ChatCompletions)

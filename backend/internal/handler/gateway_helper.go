@@ -34,6 +34,7 @@ func recordGatewayStreamHeartbeat(c *gin.Context, written int) {
 	total, _ := c.Get(gatewayStreamHeartbeatBytesKey)
 	bytes, _ := total.(int)
 	c.Set(gatewayStreamHeartbeatBytesKey, bytes+written)
+	service.RecordOpenAIStreamKeepaliveBytes(c, written)
 }
 
 func gatewayStreamHasOnlyHeartbeats(c *gin.Context) bool {
