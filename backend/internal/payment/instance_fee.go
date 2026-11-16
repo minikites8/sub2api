@@ -17,6 +17,9 @@ type InstanceQuote struct {
 	PaymentSubtype string
 	PayAmount      float64
 	PayAmountText  string
+	// StripeMethodChoiceAllowed means every configured method has this quote's
+	// fee. New hosted orders may then leave method selection to Checkout.
+	StripeMethodChoiceAllowed bool
 }
 
 type instanceQuoteContext struct {

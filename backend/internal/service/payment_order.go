@@ -135,7 +135,12 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		if inst.ProviderKey == payment.TypeStripe && subtype == "" && payment.IsStripePaymentSubtype(req.PaymentType) {
 			subtype = req.PaymentType
 		}
-		return &payment.InstanceQuote{FeeRate: rate, FeeSource: source, PaymentSubtype: subtype, PayAmount: amount, PayAmountText: amountText}, nil
+		quote := &payment.InstanceQuote{FeeRate: rate, FeeSource: source, PaymentSubtype: subtype, PayAmount: amount, PayAmountText: amountText}
+		if inst.ProviderKey == payment.TypeStripe && req.PaymentType == payment.TypeStripe {
+			allMethodsRate, _, allMethodsErr := payment.ResolveOrderInstanceFee(inst, payment.TypeStripe, "", cfg.RechargeFeeRate)
+			quote.StripeMethodChoiceAllowed = allMethodsErr == nil && allMethodsRate == rate
+		}
+		return quote, nil
 	})
 	sel, err := s.selectCreateOrderInstance(quoteCtx, req, cfg, payAmount)
 	if err != nil {
@@ -152,6 +157,13 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		feeRate = sel.Quote.FeeRate
 		payAmountStr, payAmount = sel.Quote.PayAmountText, sel.Quote.PayAmount
 		req.PaymentSubtype = sel.Quote.PaymentSubtype
+		// Older open purchase pages still send their default Alipay subtype.
+		// Widen only new hosted Stripe orders with an identical authoritative
+		// fee for every method; stored orders retain their original selection.
+		if req.PaymentType == payment.TypeStripe && sel.ProviderKey == payment.TypeStripe &&
+			strings.TrimSpace(sel.Config["checkoutMode"]) == "hosted" && sel.Quote.StripeMethodChoiceAllowed {
+			req.PaymentSubtype = ""
+		}
 	} else if selectedCurrency != methodCurrency {
 		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
 		if err != nil {
@@ -638,7 +650,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	if err != nil {
 		return nil, fmt.Errorf("update order with payment details: %w", err)
 	}
-	s.writeAuditLog(ctx, order.ID, "ORDER_CREATED", fmt.Sprintf("user:%d", req.UserID), map[string]any{
+	auditDetails := map[string]any{
 		"paymentAmount":  req.Amount,
 		"creditedAmount": order.Amount,
 		"bonusAmount":    order.BonusAmount,
@@ -646,7 +658,14 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		"paymentType":    req.PaymentType,
 		"orderType":      req.OrderType,
 		"paymentSource":  NormalizePaymentSource(req.PaymentSource),
-	})
+	}
+	if sel.ProviderKey == payment.TypeStripe {
+		auditDetails["checkoutMode"] = sel.Config["checkoutMode"]
+		auditDetails["paymentSubtype"] = providerReq.PaymentSubtype
+		auditDetails["supportedPaymentTypes"] = providerReq.InstanceSubMethods
+		auditDetails["providerTradeNo"] = pr.TradeNo
+	}
+	s.writeAuditLog(ctx, order.ID, "ORDER_CREATED", fmt.Sprintf("user:%d", req.UserID), auditDetails)
 	resultType := pr.ResultType
 	if resultType == "" {
 		resultType = payment.CreatePaymentResultOrderCreated
