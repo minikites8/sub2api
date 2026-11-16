@@ -412,7 +412,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						c.Request = c.Request.WithContext(service.WithOpenAISIWCNativeFallback(c.Request.Context()))
 					}
 					if failoverErr.Reason == service.GatewayFailureReason(service.ExcelBPSLocalCapabilityReason) && failoverErr.ShouldRetryNextAccount() &&
-						!c.Writer.Written() && !service.IsResponseCommitted(c) && !failoverClientGone(c) {
+						service.OpenAICompactKeepaliveAdjustedWrittenSize(c) < 0 && !service.IsResponseCommitted(c) && !failoverClientGone(c) {
 						c.Request = c.Request.WithContext(service.WithOpenAIBPSNativeFallback(c.Request.Context()))
 					}
 

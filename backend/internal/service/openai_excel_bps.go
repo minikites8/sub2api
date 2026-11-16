@@ -376,6 +376,17 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		scope = "transient:" + scope
 	}
 	if err = basispoints.ValidateNewAgentMessage(body); err != nil {
+		var contentErr *basispoints.ContentValidationError
+		if errors.As(err, &contentErr) && contentErr.ContentType == "encrypted_content" && excelBPSCanReplayFailure(ctx, c) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+				Kind: "bps_native_bypass", Stage: "route", Scope: string(excelBPSFailureScope), Reason: "encrypted_agent_assignment",
+				Message: "Excel BPS bypassed for native Codex capability", Detail: contentErr.Error(),
+			})
+			failure := newExcelBPSRequestFailover(http.StatusBadRequest, nil, ExcelBPSLocalCapabilityReason, contentErr.Error())
+			failure.Stage = "route"
+			return nil, failure
+		}
 		return fail(400, "basispoints_request_invalid", err.Error())
 	}
 	if account.IsExcelBPSIgnoreEncryptedContentEnabled() {
