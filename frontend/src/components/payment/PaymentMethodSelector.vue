@@ -1,6 +1,6 @@
 <template>
   <div>
-    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+    <label v-if="showLabel" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
       {{ t('payment.paymentMethod') }}
     </label>
     <div
@@ -62,10 +62,11 @@ export interface PaymentMethodOption {
   available: boolean
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   methods: PaymentMethodOption[]
   selected: string
-}>()
+  showLabel?: boolean
+}>(), { showLabel: true })
 
 const emit = defineEmits<{
   select: [type: string]

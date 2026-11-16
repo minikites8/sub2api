@@ -207,6 +207,7 @@
                     <PaymentMethodSelector
                       :methods="methodOptions"
                       :selected="selectedMethod"
+                      :show-label="false"
                       @select="selectedMethod = $event"
                     />
                     <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && stripeNeedsSubtypeSelection" v-model="selectedSubtype" :methods="stripeSubMethods" />
@@ -976,10 +977,7 @@ const planGridClass = computed(() => {
 })
 
 const stripeSubMethods = computed(() => visibleMethods.value.stripe?.sub_methods ?? {})
-const stripeNeedsSubtypeSelection = computed(() => {
-  const { min, max } = paymentFeeRange(visibleMethods.value.stripe, checkout.value.recharge_fee_rate)
-  return min !== max
-})
+const stripeNeedsSubtypeSelection = computed(() => Object.keys(stripeSubMethods.value).length > 0)
 watch(stripeSubMethods, (methods) => {
   if (!(selectedSubtype.value in methods)) selectedSubtype.value = Object.keys(methods)[0] ?? ''
 }, { immediate: true })
@@ -1435,8 +1433,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       }
     }
     const visibleMethod = normalizeVisibleMethod(requestType) || requestType
-    // When user clicks the dedicated Stripe button, leave method blank so the
-    // landing page renders Stripe's full Payment Element (card/link/alipay/wxpay).
+    // Stripe's route renders the Payment Element for this order's permitted
+    // methods; direct wallet routes use their dedicated confirmation flow.
     const stripeMethod = visibleMethod === 'stripe'
       ? ''
       : visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
@@ -2163,10 +2161,6 @@ onMounted(async () => {
   font-weight: 650;
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-.payment-method-panel :deep(label) {
-  display: none;
 }
 
 .payment-method-panel :deep(.grid) {
