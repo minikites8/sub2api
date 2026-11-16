@@ -482,6 +482,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if isExcelBPSClientCancellation(c, err) {
 			return clientCanceled()
 		}
+		// Credential acquisition precedes uploads, compaction and inference. Let
+		// the handler try another account instead of committing a terminal error.
+		if excelBPSCanReplayFailure(ctx, c) && !OpenAIAgentRecoveryNoReplay(ctx) {
+			RecordOpenAIForwardFailure(c, account, string(GatewayFailureStageAccountAuth), "bps_credentials_unavailable", err)
+			failure := newExcelBPSRequestFailover(http.StatusServiceUnavailable, nil, "bps_credentials_unavailable", "Account credentials are unavailable")
+			failure.Stage = GatewayFailureStageAccountAuth
+			return nil, failure
+		}
 		if IsExcelAuthorizationError(err) {
 			code := "basispoints_auth_" + strings.ToLower(strings.TrimPrefix(infraerrors.Reason(err), "OPENAI_EXCEL_AUTH_"))
 			return fail(503, code, infraerrors.Message(err))

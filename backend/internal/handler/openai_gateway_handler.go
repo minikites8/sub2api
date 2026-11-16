@@ -4380,6 +4380,9 @@ func (h *OpenAIGatewayHandler) recoverResponsesPanic(c *gin.Context, streamStart
 	if streamStarted != nil {
 		started = *streamStarted
 	}
+	if c.GetString(service.OpsUpstreamErrorMessageKey) == "" {
+		service.RecordOpenAIForwardFailure(c, nil, "forward", "gateway_panic", fmt.Errorf("gateway panic: %v", recovered))
+	}
 	wroteFallback := h.ensureForwardErrorResponse(c, started)
 	requestLogger(c, "handler.openai_gateway.responses").Error(
 		"openai.responses_panic_recovered",
@@ -4721,6 +4724,9 @@ func (h *OpenAIGatewayHandler) applyOpenAIFailoverPassthroughRule(
 }
 
 func credentialFailoverClientResponse(failoverErr *service.UpstreamFailoverError) (int, string) {
+	if public := failoverErr.ExcelBPSPublicError(); public != nil {
+		return public.Status, public.Message
+	}
 	if failoverErr != nil && failoverErr.Reason == service.OpenAIUpstreamAccessStateReason && strings.TrimSpace(failoverErr.ClientMessage) != "" {
 		status := failoverErr.ClientStatusCode
 		if status <= 0 {
