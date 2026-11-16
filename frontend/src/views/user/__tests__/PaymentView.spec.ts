@@ -1303,17 +1303,23 @@ describe('PaymentView provider and method fees', () => {
   })
 
   it('redirects hosted Stripe checkout in the current tab and keeps its recovery state', async () => {
-    const wrapper = await mountRecharge({ stripe: { ...baseMethod, currency: 'USD', sub_methods: { card: { fee_rate: 0, fee_rate_min: 0, fee_rate_max: 0 } } } })
+    const rates = { fee_rate: 0, fee_rate_min: 0, fee_rate_max: 0 }
+    const wrapper = await mountRecharge({ stripe: { ...baseMethod, ...rates, currency: 'CNY',
+      sub_methods: { alipay: rates, card: rates, wxpay: rates },
+    } })
     const checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_hosted'
     createOrder.mockResolvedValue({ order_id: 789, amount: 100, pay_amount: 100, fee_rate: 0,
-      pay_url: checkoutUrl, currency: 'USD', expires_at: '2099-01-01T00:10:00.000Z', resume_token: 'signed-hosted' })
+      pay_url: checkoutUrl, currency: 'CNY', expires_at: '2099-01-01T00:10:00.000Z', resume_token: 'signed-hosted' })
     const originalLocation = window.location
     const locationState = { href: 'http://localhost/purchase', origin: 'http://localhost' }
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     Object.defineProperty(window, 'location', { configurable: true, value: locationState })
     try {
+      expect(wrapper.findComponent(StripeSubtypeSelector).exists()).toBe(false)
       await wrapper.get('.credits-purchase-button').trigger('click')
       await flushPromises()
+      expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', amount: 100 }))
+      expect(createOrder.mock.calls[0]?.[0]).not.toHaveProperty('payment_subtype')
       expect(locationState.href).toBe(checkoutUrl)
       expect(open).not.toHaveBeenCalled()
       expect(JSON.parse(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)!)).toMatchObject({
@@ -1343,26 +1349,21 @@ describe('PaymentView provider and method fees', () => {
     expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', payment_subtype: 'wxpay', amount: 100 }))
   })
 
-  it.each([0, 2.5].flatMap(rate => ['alipay', 'card', 'wxpay'].map(subtype => ({ rate, subtype }))))(
-    'shows Stripe choices and submits $subtype when all methods charge $rate%', async ({ rate, subtype }) => {
+  it.each([0, 2.5])('lets Stripe display all methods when they share a %s%% fee', async (rate) => {
     const rates = { fee_rate: rate, fee_rate_min: rate, fee_rate_max: rate }
     const wrapper = await mountRecharge({ stripe: { ...baseMethod, ...rates, currency: 'CNY',
       sub_methods: { alipay: rates, card: rates, wxpay: rates },
     } })
-    expect(wrapper.findComponent(StripeSubtypeSelector).exists()).toBe(true)
-    for (const method of ['alipay', 'card', 'wxpay']) {
-      expect(wrapper.get(`[data-testid="stripe-method-${method}"]`).isVisible()).toBe(true)
-    }
-    await wrapper.get(`[data-testid="stripe-method-${subtype}"]`).trigger('click')
-    expect(wrapper.get(`[data-testid="stripe-method-${subtype}"]`).attributes('aria-pressed')).toBe('true')
+    expect(wrapper.findComponent(StripeSubtypeSelector).exists()).toBe(false)
     expect(wrapper.text()).toContain(formatPaymentAmount(100 * (1 + rate / 100), 'CNY'))
     await wrapper.get('.credits-purchase-button').trigger('click')
     await flushPromises()
-    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', payment_subtype: subtype, amount: 100 }))
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', amount: 100 }))
+    expect(createOrder.mock.calls[0]?.[0]).not.toHaveProperty('payment_subtype')
     wrapper.unmount()
   })
 
-  it('offers and submits WeChat Pay for equal-fee Stripe subscription checkout', async () => {
+  it('lets Stripe display all equal-fee methods for subscription checkout', async () => {
     const rates = { fee_rate: 0, fee_rate_min: 0, fee_rate_max: 0 }
     const wrapper = await mountSubscriptionConfirm({ checkout: { methods: { stripe: { ...baseMethod, ...rates,
       sub_methods: { alipay: rates, card: rates, wxpay: rates },
@@ -1370,11 +1371,11 @@ describe('PaymentView provider and method fees', () => {
     createOrder.mockResolvedValue({})
     wrapper.findComponent(PaymentMethodSelector).vm.$emit('select', 'stripe')
     await flushPromises()
-    expect(wrapper.findComponent(StripeSubtypeSelector).exists()).toBe(true)
-    await wrapper.get('[data-testid="stripe-method-wxpay"]').trigger('click')
+    expect(wrapper.findComponent(StripeSubtypeSelector).exists()).toBe(false)
     await wrapper.get('[data-test="subscription-submit"]').trigger('click')
     await flushPromises()
-    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', payment_subtype: 'wxpay', order_type: 'subscription' }))
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ payment_type: 'stripe', order_type: 'subscription' }))
+    expect(createOrder.mock.calls[0]?.[0]).not.toHaveProperty('payment_subtype')
     wrapper.unmount()
   })
 

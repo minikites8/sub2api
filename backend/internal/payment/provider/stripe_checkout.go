@@ -36,7 +36,7 @@ func (s *Stripe) createCheckoutSession(ctx context.Context, req payment.CreatePa
 	// Checkout offers Link alongside cards; a standalone Link selection is not
 	// supported. Keep the card fee locked instead of silently enabling cards
 	// for an order quoted with a separate Link fee.
-	if hasStripeMethod(methods, "link") {
+	if hasStripeMethod(methods, "link") && !hasStripeMethod(methods, "card") {
 		return nil, fmt.Errorf("stripe hosted checkout offers Link through the card payment method; select card instead")
 	}
 	pmTypes := make([]*string, len(methods))

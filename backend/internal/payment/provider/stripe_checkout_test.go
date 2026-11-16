@@ -110,6 +110,8 @@ func TestStripeHostedCheckoutOffersAllConfiguredMethodsWithoutSubtype(t *testing
 		want       []string
 	}{
 		{"card,alipay,wxpay", []string{"card", "alipay", "wechat_pay"}},
+		{"card,link,alipay,wxpay", []string{"card", "link", "alipay", "wechat_pay"}},
+		{"card,link", []string{"card", "link"}},
 		{"card", []string{"card"}},
 		{"alipay,wxpay", []string{"alipay", "wechat_pay"}},
 	} {
@@ -150,7 +152,7 @@ func TestStripeHostedCheckoutRejectsInvalidInputsBeforeAPI(t *testing.T) {
 		{ReturnURL: "https://merchant.example/payment/result", Amount: "bad"},
 		{ReturnURL: "https://merchant.example/payment/result", Amount: "100", PaymentSubtype: "wxpay", InstanceSubMethods: "card"},
 		{ReturnURL: "https://merchant.example/payment/result", Amount: "100", PaymentSubtype: "link", InstanceSubMethods: "card,link"},
-		{ReturnURL: "https://merchant.example/payment/result", Amount: "100", InstanceSubMethods: "card,link"},
+		{ReturnURL: "https://merchant.example/payment/result", Amount: "100", InstanceSubMethods: "link"},
 	} {
 		_, err := provider.CreatePayment(context.Background(), req)
 		require.Error(t, err)

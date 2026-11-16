@@ -977,7 +977,12 @@ const planGridClass = computed(() => {
 })
 
 const stripeSubMethods = computed(() => visibleMethods.value.stripe?.sub_methods ?? {})
-const stripeNeedsSubtypeSelection = computed(() => Object.keys(stripeSubMethods.value).length > 0)
+// With one fee, let Checkout/Payment Element own method selection instead of
+// narrowing the order to the first subtype retained by the watcher below.
+const stripeNeedsSubtypeSelection = computed(() => {
+  const { min, max } = paymentFeeRange(visibleMethods.value.stripe, checkout.value.recharge_fee_rate)
+  return min !== max
+})
 watch(stripeSubMethods, (methods) => {
   if (!(selectedSubtype.value in methods)) selectedSubtype.value = Object.keys(methods)[0] ?? ''
 }, { immediate: true })
