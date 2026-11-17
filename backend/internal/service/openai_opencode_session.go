@@ -20,8 +20,8 @@ const (
 	// 编程库 UA 会被 CF error code 1010 拒绝并返回 403。网关透传白名单放行
 	// user-agent，客户端自报身份原样到达上游会命中 WAF；该 403 再被计入账号
 	// 凭证类 strike，健康账号因此被自动禁用。取值沿用真实 opencode 客户端的
-	// UA 格式（opencode/<version>）。
-	openCodeUpstreamUserAgent = "opencode/1.19.5"
+	// v2 UA 格式（opencode/<channel>/<version>/<client>）。
+	openCodeUpstreamUserAgent = "opencode/latest/2.2.0/cli"
 )
 
 // rememberOpenCodeInboundBody keeps the client request body so protocol

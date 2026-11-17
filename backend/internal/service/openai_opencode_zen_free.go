@@ -60,6 +60,7 @@ func normalizeOpenCodeFreeTierBody(account *Account, targetURL string, body []by
 			return body
 		}
 	}
+	updated = ensureOpenCodeZenEnvironment(updated, parsed.Path == "/zen/v1/responses")
 	if tools := gjson.GetBytes(body, "tools"); tools.Exists() && tools.Type != gjson.Null && (!tools.IsArray() || len(tools.Array()) > 0) {
 		return updated
 	}

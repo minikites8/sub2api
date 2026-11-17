@@ -48,14 +48,19 @@ func TestOpenCodeZenFreeBodyPreservesCallerData(t *testing.T) {
 	account := openCodeMappedTestAccount()
 	for _, target := range []string{zenFreeChatURL, zenFreeResponsesURL} {
 		body := []byte(`{"model":"beam-free","input":"hi","stream":false,"metadata":{"number":9007199254740993}}`)
+		if target == zenFreeChatURL {
+			body = []byte(`{"model":"beam-free","messages":[{"role":"user","content":"hi"}],"stream":false,"metadata":{"number":9007199254740993}}`)
+		}
 		got := normalizeOpenCodeFreeTierBody(account, target, body)
 		require.True(t, gjson.GetBytes(got, "stream").Bool())
 		require.Equal(t, "9007199254740993", gjson.GetBytes(got, "metadata.number").Raw)
 		require.Equal(t, "none", gjson.GetBytes(got, "tool_choice").String())
 		if target == zenFreeResponsesURL {
+			require.Equal(t, openCodeZenGatewayEnvironment, gjson.GetBytes(got, "instructions").String())
 			require.Equal(t, "bash", gjson.GetBytes(got, "tools.0.name").String())
 			require.Equal(t, "read", gjson.GetBytes(got, "tools.1.name").String())
 		} else {
+			require.Equal(t, openCodeZenGatewayEnvironment, gjson.GetBytes(got, "messages.0.content").String())
 			require.Equal(t, "bash", gjson.GetBytes(got, "tools.0.function.name").String())
 			require.Equal(t, "read", gjson.GetBytes(got, "tools.1.function.name").String())
 			require.True(t, gjson.GetBytes(got, "stream_options.include_usage").Bool())
