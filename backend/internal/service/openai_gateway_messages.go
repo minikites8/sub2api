@@ -976,15 +976,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 						acc.ProcessEvent(&event)
 						recordPrior(&event)
 						if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
-							if event.Usage != nil {
-								usage = copyOpenAIUsageFromResponsesUsage(event.Usage, usage)
-								if response.Usage == nil {
-									response.Usage = event.Usage
-								}
-							}
-							if response.Usage != nil {
-								usage = copyOpenAIUsageFromResponsesUsage(response.Usage, usage)
-							}
+							response.Usage, usage = resolveCompatTerminalUsage(response, event.Usage, usage)
 							mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
 							return response, usage, acc, prior, nil
 						}
@@ -1027,15 +1019,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			recordPrior(&event)
 
 			if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
-				if event.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(event.Usage, usage)
-					if response.Usage == nil {
-						response.Usage = event.Usage
-					}
-				}
-				if response.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(response.Usage, usage)
-				}
+				response.Usage, usage = resolveCompatTerminalUsage(response, event.Usage, usage)
 				mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
 				return response, usage, acc, prior, nil
 			}
@@ -1179,12 +1163,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				if id := strings.TrimSpace(event.Response.ID); id != "" {
 					responseID = id
 				}
-				if event.Response.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage, usage)
-				}
 			}
-			if event.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Usage, usage)
+			event.Usage, usage = resolveCompatTerminalUsage(event.Response, event.Usage, usage)
+			if event.Response != nil {
+				event.Response.Usage = event.Usage
 			}
 			mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
 			// cyber_policy 致命不可重试：标记供 handler 事后记录；以 Anthropic SSE error 事件
@@ -1531,6 +1513,38 @@ func buildAnthropicStreamErrorSSE(errType, message string) string {
 		return "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"" + errType + "\",\"message\":\"upstream error\"}}\n\n"
 	}
 	return "event: error\ndata: " + string(payload) + "\n\n"
+}
+
+// resolveCompatTerminalUsage keeps the client response and the usage record on
+// the same snapshot. A nonempty terminal report supersedes earlier counters as
+// a whole; a missing or all-zero placeholder must not erase observed tokens.
+func resolveCompatTerminalUsage(response *apicompat.ResponsesResponse, envelope *apicompat.ResponsesUsage, observed OpenAIUsage) (*apicompat.ResponsesUsage, OpenAIUsage) {
+	var nested *apicompat.ResponsesUsage
+	if response != nil {
+		nested = response.Usage
+	}
+	for _, u := range []*apicompat.ResponsesUsage{nested, envelope} {
+		if u != nil {
+			if billed := copyOpenAIUsageFromResponsesUsage(u, observed); openAIUsageHasTokens(&billed) {
+				return u, billed
+			}
+		}
+	}
+	if openAIUsageHasTokens(&observed) {
+		u := &apicompat.ResponsesUsage{
+			InputTokens: observed.InputTokens, OutputTokens: observed.OutputTokens,
+			TotalTokens:              observed.InputTokens + observed.OutputTokens,
+			CacheCreationInputTokens: observed.CacheCreationInputTokens,
+		}
+		if observed.CacheReadInputTokens > 0 {
+			u.InputTokensDetails = &apicompat.ResponsesInputTokensDetails{CachedTokens: observed.CacheReadInputTokens}
+		}
+		return u, observed
+	}
+	if nested != nil {
+		return nested, observed
+	}
+	return envelope, observed
 }
 
 func copyOpenAIUsageFromResponsesUsage(usage *apicompat.ResponsesUsage, observed ...OpenAIUsage) OpenAIUsage {
