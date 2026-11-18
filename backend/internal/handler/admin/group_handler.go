@@ -256,6 +256,7 @@ type CreateGroupRequest struct {
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
 	ModelAllowlist              service.GroupModelAllowlist               `json:"model_allowlist"`
+	CodexModelsManifestConfig   service.GroupCodexModelsManifestConfig    `json:"codex_models_manifest_config"`
 	OpenAIServiceTierMode       string                                    `json:"openai_service_tier_mode"`
 	OpenAIServiceTier           string                                    `json:"openai_service_tier"`
 	// 分组 RPM 上限（0 = 不限制）
@@ -352,6 +353,7 @@ type UpdateGroupRequest struct {
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
 	ModelAllowlist              *service.GroupModelAllowlist               `json:"model_allowlist"`
+	CodexModelsManifestConfig   *service.GroupCodexModelsManifestConfig    `json:"codex_models_manifest_config"`
 	OpenAIServiceTierMode       *string                                    `json:"openai_service_tier_mode"`
 	OpenAIServiceTier           *string                                    `json:"openai_service_tier"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
@@ -806,6 +808,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
+		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		OpenAIServiceTierMode:           req.OpenAIServiceTierMode,
 		OpenAIServiceTier:               req.OpenAIServiceTier,
 		RPMLimit:                        req.RPMLimit,
@@ -973,6 +976,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
+		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		OpenAIServiceTierMode:           req.OpenAIServiceTierMode,
 		OpenAIServiceTier:               req.OpenAIServiceTier,
 		RPMLimit:                        req.RPMLimit,
