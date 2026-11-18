@@ -269,7 +269,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	}
 	if !stream && isOpenCodeZenFreeRequest(account, targetURL, body) && resp.StatusCode == http.StatusOK &&
 		strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		streamBody, readErr := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 		if readErr != nil {
 			return nil, readErr

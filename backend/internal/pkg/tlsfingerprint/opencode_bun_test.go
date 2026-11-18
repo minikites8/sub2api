@@ -33,8 +33,8 @@ func TestOpenCodeBunClientHello(t *testing.T) {
 	}
 	require.Equal(t, []uint16{0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43}, extensionIDs)
 	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
 	connection := utls.UClient(client, &utls.Config{ServerName: "opencode.ai"}, utls.HelloCustom)
 	require.NoError(t, connection.ApplyPreset(spec))
 	require.NoError(t, connection.BuildHandshakeState())

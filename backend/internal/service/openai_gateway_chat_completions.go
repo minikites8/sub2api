@@ -1000,11 +1000,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent {
 			terminalEventType = strings.TrimSpace(event.Type)
-			if event.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Usage, usage)
-			}
-			if event.Response != nil && event.Response.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage, usage)
+			event.Usage, usage = resolveCompatTerminalUsage(event.Response, event.Usage, usage)
+			if event.Response != nil {
+				event.Response.Usage = event.Usage
 			}
 			mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
 		}

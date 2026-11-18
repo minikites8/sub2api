@@ -28,6 +28,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -1366,8 +1367,11 @@ func (s *AccountTestService) testExcelBPSAccountConnection(c *gin.Context, accou
 	return s.testResponsesGatewayAccountConnection(c, account, modelID, prompt)
 }
 
+const adminAccountProbeKey = "sub2api_admin_account_probe"
+
 func (s *AccountTestService) newResponsesAccountTestContext(c *gin.Context, recorder *httptest.ResponseRecorder) *gin.Context {
 	probeCtx, _ := gin.CreateTestContext(recorder)
+	probeCtx.Set(adminAccountProbeKey, true)
 	probeCtx.Request = c.Request.Clone(s.withBPSTestEvidence(c.Request.Context(), c))
 	// The admin test endpoint is not an inference capability. Present the
 	// internal probe as Responses so managed grants use the same checks as
@@ -1406,6 +1410,10 @@ func (s *AccountTestService) testResponsesGatewayAccountConnection(c *gin.Contex
 	result, err := s.openaiGatewayService.Forward(probeCtx.Request.Context(), probeCtx, account, body)
 	recordPelicanTestSSE(c.Request.Context(), "openai", model, probe.Body.Bytes())
 	if err != nil {
+		if IsExcelAuthorizationError(err) {
+			code := "basispoints_auth_" + strings.ToLower(strings.TrimPrefix(infraerrors.Reason(err), "OPENAI_EXCEL_AUTH_"))
+			return s.sendErrorAndEnd(c, code+": "+infraerrors.Message(err))
+		}
 		// A single-account test has no other account to fail over to.
 		var failover *UpstreamFailoverError
 		if errors.As(err, &failover) && failover.ClientMessage != "" {

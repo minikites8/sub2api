@@ -1304,6 +1304,50 @@ func TestForwardAsChatCompletions_StreamsTopLevelTerminalUsage(t *testing.T) {
 	require.NotContains(t, responseBody, "_sub2api_kiro_credits")
 }
 
+func TestChatStreamingResponsesPreservesProgressiveUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name, terminal string
+		input, output  int
+	}{
+		{"missing", "", 31, 7},
+		{"zero placeholder", `,"usage":{"input_tokens":0,"output_tokens":0}`, 31, 7},
+		{"final counts win", `,"usage":{"input_tokens":23,"output_tokens":5}`, 23, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/chat/completions", nil)
+			body := strings.Join([]string{
+				`data: {"type":"response.created","response":{"id":"resp_1","model":"gpt-6.1-sol"}}`,
+				`data: {"type":"response.in_progress","response":{"usage":{"input_tokens":31,"output_tokens":7}}}`,
+				`data: {"type":"response.output_text.delta","delta":"ok"}`,
+				`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed"` + tc.terminal + `}}`,
+				`data: [DONE]`,
+			}, "\n\n") + "\n\n"
+			resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}
+			result, err := (&OpenAIGatewayService{}).handleChatStreamingResponse(resp, c, &Account{Platform: PlatformOpenAI}, "gpt-6.1-sol", "gpt-6.1-sol", "gpt-6.1-sol", time.Now(), 0)
+			require.NoError(t, err)
+			require.Equal(t, tc.input, result.Usage.InputTokens)
+			require.Equal(t, tc.output, result.Usage.OutputTokens)
+			var reports []apicompat.ChatUsage
+			for _, line := range strings.Split(rec.Body.String(), "\n") {
+				payload, ok := strings.CutPrefix(line, "data: ")
+				if !ok || payload == "[DONE]" {
+					continue
+				}
+				var chunk apicompat.ChatCompletionsChunk
+				require.NoError(t, json.Unmarshal([]byte(payload), &chunk))
+				if chunk.Usage != nil {
+					reports = append(reports, *chunk.Usage)
+				}
+			}
+			require.Len(t, reports, 1)
+			require.Equal(t, tc.input, reports[0].PromptTokens)
+			require.Equal(t, tc.output, reports[0].CompletionTokens)
+		})
+	}
+}
+
 func TestForwardAsChatCompletions_BufferedTopLevelTerminalUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

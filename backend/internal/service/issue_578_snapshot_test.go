@@ -25,7 +25,16 @@ func TestIssue578ThresholdSemantics(t *testing.T) {
 		{"auto pause 1 means 100 percent", 100, 1.0, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			a := issue578Account()
+			// Exercise ordinary OAuth threshold semantics without inheriting
+			// transport-specific quota policies from the shared snapshot fixture.
+			a := &Account{
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Credentials: map[string]any{},
+				Extra: map[string]any{
+					"codex_5h_reset_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+				},
+			}
 			a.Extra["codex_5h_used_percent"] = 100.0
 			a.Extra["codex_usage_updated_at"] = time.Now().UTC().Format(time.RFC3339)
 			a.Credentials["account_scheduling_threshold"] = tc.threshold

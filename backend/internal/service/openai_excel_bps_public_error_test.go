@@ -36,7 +36,9 @@ func TestExcelBPS422ClientErrorDoesNotExposeProtocol(t *testing.T) {
 						MarkOpenAICompactClientStream(c)
 						stop := StartOpenAICompactSSEKeepalive(c, time.Hour)
 						defer stop()
-						require.True(t, c.MustGet(openAICompactSSEKeepaliveKey).(*openAICompactSSEKeepalive).beat())
+						keepalive, ok := c.MustGet(openAICompactSSEKeepaliveKey).(*openAICompactSSEKeepalive)
+						require.True(t, ok)
+						require.True(t, keepalive.beat())
 					}
 					_, err := gateway.Forward(context.Background(), c, excelAccount(), []byte(fmt.Sprintf(`{"model":"gpt-6-astra","input":"test","stream":%t}`, stream)))
 					require.Error(t, err)
@@ -54,7 +56,8 @@ func TestExcelBPS422ClientErrorDoesNotExposeProtocol(t *testing.T) {
 						require.Equal(t, "invalid_request_error", gjson.Get(response, "error.code").String())
 					}
 					if !inBand {
-						events := c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+						events, ok := c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+						require.True(t, ok)
 						require.Equal(t, http.StatusUnprocessableEntity, events[0].UpstreamStatusCode)
 						require.Equal(t, basispoints.ResponsesURL, events[0].UpstreamURL)
 						require.Contains(t, events[0].Detail, "422: Invalid request body.")

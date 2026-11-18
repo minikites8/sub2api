@@ -172,12 +172,12 @@ func isOpenCodeZenID(value, prefix string) bool {
 		return false
 	}
 	for _, char := range value[len(prefix) : len(prefix)+12] {
-		if !(char >= '0' && char <= '9') && !(char >= 'a' && char <= 'f') {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
 			return false
 		}
 	}
 	for _, char := range value[len(prefix)+12:] {
-		if !(char >= '0' && char <= '9') && !(char >= 'a' && char <= 'z') && !(char >= 'A' && char <= 'Z') {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') {
 			return false
 		}
 	}
@@ -267,7 +267,7 @@ func openCodeZenTLSProfile(req *http.Request, account *Account, configured *tlsf
 	if err != nil {
 		return configured
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	var body struct {
 		Model string `json:"model"`
 	}

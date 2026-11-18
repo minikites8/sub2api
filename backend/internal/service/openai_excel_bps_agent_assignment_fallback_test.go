@@ -26,7 +26,9 @@ func TestExcelBPSNewEncryptedAssignmentReturnsNativeFailover(t *testing.T) {
 					if topLevel {
 						assignment["encrypted_content"] = "PRIVATE_ASSIGNMENT"
 					} else {
-						assignment["content"] = append(assignment["content"].([]any), map[string]any{"type": "encrypted_content", "data": "PRIVATE_ASSIGNMENT"})
+						content, ok := assignment["content"].([]any)
+						require.True(t, ok)
+						assignment["content"] = append(content, map[string]any{"type": "encrypted_content", "data": "PRIVATE_ASSIGNMENT"})
 					}
 					input = append(input, assignment, map[string]any{"type": "additional_tools", "tools": []any{}})
 					body, err := json.Marshal(map[string]any{"model": "gpt-6-astra", "stream": true, "input": input})

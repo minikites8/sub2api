@@ -482,6 +482,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if isExcelBPSClientCancellation(c, err) {
 			return clientCanceled()
 		}
+		// A one-account admin probe cannot fail over. Return only the allowlisted
+		// readiness error to its caller; public traffic keeps generic failures.
+		if c.GetBool(adminAccountProbeKey) && IsExcelAuthorizationError(err) {
+			return nil, err
+		}
 		// Credential acquisition precedes uploads, compaction and inference. Let
 		// the handler try another account instead of committing a terminal error.
 		if excelBPSCanReplayFailure(ctx, c) && !OpenAIAgentRecoveryNoReplay(ctx) {
