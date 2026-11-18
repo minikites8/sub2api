@@ -961,11 +961,12 @@ readLoop:
 		if eventType == "error" || eventType == "response.failed" {
 			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)
 			failedMessage := extractOpenAISSEErrorMessage(message)
-			// Explicit overload is a failed request, even when HTTP SSE uses the
-			// WS accelerator. Lifecycle/empty events stay staged so the handler can
-			// retry another account before any response content is committed.
+			// Lifecycle metadata is staged. A restart can still fail over before
+			// output, but not after metered work or for a non-replayable request.
+			retryRestart := openAIStreamWebSocketRestart(message) && !openAIUsageHasTokens(usage) &&
+				OpenAIWSAgentRecoveryCanRetry(ctx) && !OpenAIAgentRecoveryNoReplay(ctx)
 			if !clientDisconnected && !openAIStreamClientOutputStarted(c, wroteDownstream) &&
-				isOpenAIRequestScopedCapacityShed(failedMessage, message) &&
+				(retryRestart || isOpenAIRequestScopedCapacityShed(failedMessage, message)) &&
 				openAIStreamFailedEventShouldFailover(message, failedMessage, c) {
 				lease.MarkBroken()
 				return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, false, lease.HandshakeHeader("x-request-id"), message, failedMessage, mappedModel, lease.HandshakeHeaders())

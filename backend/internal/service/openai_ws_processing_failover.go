@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Existing processing failures and explicitly opted-in upstream errors enter
+// Processing failures, typed upstream restarts and explicitly opted-in errors enter
 // this recovery route. Policy/context-window rejection boundaries still apply.
 func openAIWSProcessingFailure(payload []byte, requestContexts ...*gin.Context) bool {
 	eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
@@ -19,7 +19,8 @@ func openAIWSProcessingFailure(payload []byte, requestContexts ...*gin.Context) 
 	if isOpenAIContextWindowError(message, payload) {
 		return false
 	}
-	if !isOpenAIProcessingFailureError(http.StatusServiceUnavailable, message, payload) &&
+	if !openAIStreamWebSocketRestart(payload) &&
+		!isOpenAIProcessingFailureError(http.StatusServiceUnavailable, message, payload) &&
 		!requestAccountRetryFromContexts(requestContexts, http.StatusBadGateway, message, payload) {
 		return false
 	}

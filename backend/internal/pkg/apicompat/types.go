@@ -399,6 +399,7 @@ type ResponsesResponse struct {
 
 // ResponsesError describes an error in a failed response.
 type ResponsesError struct {
+	Type    string `json:"type,omitempty"` // Preserve the upstream error kind for buffered failover classification.
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }

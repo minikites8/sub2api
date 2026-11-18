@@ -170,6 +170,16 @@ func TestForwardOpenAIWSV2_MarksCyberPolicyForFailureEventShapes(t *testing.T) {
 }
 
 func TestForwardOpenAIWSV2_OverloadBeforeOutputAllowsAccountFailover(t *testing.T) {
+	testWSV2FailureBeforeOutput(t, `{"type":"error","error":{"code":"server_is_overloaded","type":"service_unavailable_error","message":"overloaded","headers":{"x-retry-metadata":"NO_MORE_RETRY"}}}`, http.StatusServiceUnavailable)
+}
+
+func TestForwardOpenAIWSV2_WebSocketRestart1012BeforeOutputAllowsAccountFailover(t *testing.T) {
+	const restart = `{"code":"1012","type":"websocket_close_error","message":"The upstream WebSocket closed before the response completed (code 1012)."}`
+	testWSV2FailureBeforeOutput(t, `{"type":"response.failed","error":`+restart+`,"response":{"error":`+restart+`,"id":"resp_test","status":"failed"}}`, http.StatusBadGateway)
+}
+
+func testWSV2FailureBeforeOutput(t *testing.T, frame string, wantStatus int) {
+	t.Helper()
 	for _, mode := range []string{"stream", "nonstream", "after_output"} {
 		stream := mode != "nonstream"
 		t.Run(mode, func(t *testing.T) {
@@ -181,7 +191,7 @@ func TestForwardOpenAIWSV2_OverloadBeforeOutputAllowsAccountFailover(t *testing.
 			cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
 			conn := &openAIWSCaptureConn{events: [][]byte{
 				[]byte(`{"type":"response.created","response":{"id":"resp_test"}}`),
-				[]byte(`{"type":"error","error":{"code":"server_is_overloaded","type":"service_unavailable_error","message":"overloaded","headers":{"x-retry-metadata":"NO_MORE_RETRY"}}}`),
+				[]byte(frame),
 			}}
 			if mode == "after_output" {
 				conn.events = append(conn.events[:1], append([][]byte{[]byte(`{"type":"response.output_text.delta","delta":"hello"}`)}, conn.events[1:]...)...)
@@ -194,13 +204,17 @@ func TestForwardOpenAIWSV2_OverloadBeforeOutputAllowsAccountFailover(t *testing.
 			_, err := svc.Forward(context.Background(), c, account, []byte(fmt.Sprintf(`{"model":"gpt-6-astra","stream":%t,"input":"hi"}`, stream)))
 			var failover *UpstreamFailoverError
 			if mode == "after_output" {
-				require.Error(t, err)
+				if wantStatus == http.StatusServiceUnavailable {
+					require.Error(t, err)
+				} else {
+					require.Contains(t, rec.Body.String(), "websocket_close_error")
+				}
 				require.False(t, errors.As(err, &failover))
 				require.Contains(t, rec.Body.String(), "hello")
 				return
 			}
 			require.ErrorAs(t, err, &failover)
-			require.Equal(t, http.StatusServiceUnavailable, failover.StatusCode)
+			require.Equal(t, wantStatus, failover.StatusCode)
 			require.False(t, failover.RetryableOnSameAccount)
 			require.True(t, failover.ShouldRetryNextAccount())
 			require.False(t, c.Writer.Written())

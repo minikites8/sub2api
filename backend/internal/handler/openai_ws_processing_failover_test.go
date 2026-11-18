@@ -31,6 +31,18 @@ func TestOpenAIWSProcessingHandlerFailover(t *testing.T) {
 		}
 	}
 }
+func TestOpenAIWSRestart1012HandlerFailover(t *testing.T) {
+	const restart = `{"code":"1012","message":"The upstream WebSocket closed before the response completed (code 1012).","type":"websocket_close_error"}`
+	frame := `{"error":` + restart + `,"response":{"error":` + restart + `,"id":"resp_failed","status":"failed"},"type":"response.failed"}`
+	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeCtxPool} {
+		for _, partial := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/partial=%t", mode, partial), func(t *testing.T) {
+				runWSProcessingFixture(t, mode, frame, true, partial)
+			})
+		}
+	}
+}
+
 func runWSProcessingFixture(t *testing.T, mode, frame string, metadata, partial bool, requestHeaders ...http.Header) {
 	gin.SetMode(gin.TestMode)
 

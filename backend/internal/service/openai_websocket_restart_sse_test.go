@@ -64,6 +64,31 @@ func TestOpenAIWebSocketRestartRequiresTypedSignal(t *testing.T) {
 		`{"type":"error","error":{"code":1008,"type":"websocket_connection_error","message":"WebSocket closed"}}`,
 		`{"type":"error","error":{"message":"The upstream WebSocket closed before the response completed (code 1012)."}}`,
 	} {
+		require.False(t, openAIWSProcessingFailure([]byte(payload)))
 		require.False(t, openAIStreamErrorEventShouldFailover([]byte(payload), extractOpenAISSEErrorMessage([]byte(payload))))
+	}
+}
+
+func TestBufferedCompatWebSocketRestartRetainsType(t *testing.T) {
+	const upstreamError = `{"type":"websocket_close_error","code":"1012","message":"Upstream restarted"}`
+	const frame = `{"type":"response.failed","error":` + upstreamError + `,"response":{"id":"resp_failed","status":"failed","error":` + upstreamError + `}}`
+	svc := &OpenAIGatewayService{}
+	for _, path := range []string{"/v1/chat/completions", "/v1/messages"} {
+		t.Run(path, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, path, nil)
+			resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("data: " + frame + "\n\n"))}
+			account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+			handle := svc.handleChatBufferedStreamingResponse
+			if path == "/v1/messages" {
+				handle = svc.handleAnthropicBufferedStreamingResponse
+			}
+			_, err := handle(resp, c, account, "model", "model", "model", time.Now())
+			var failure *UpstreamFailoverError
+			require.ErrorAs(t, err, &failure)
+			require.Equal(t, http.StatusBadGateway, failure.StatusCode)
+			require.True(t, OpenAIDefaultFailureCanRetry(account, failure))
+			require.False(t, c.Writer.Written())
+		})
 	}
 }
