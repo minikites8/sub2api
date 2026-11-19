@@ -2,6 +2,7 @@ name: Re-login runtime
 on:
   pull_request:
     paths:
+      - 'Dockerfile'
       - 'tools/openai_oauth_reauth_worker.py'
       - 'tools/openai_codex_*'
       - 'tools/test_openai_codex_*'
@@ -86,6 +87,11 @@ jobs:
         with:
           name: reauth-runtime-test-amd64
           path: reauth-input
+      - name: Exercise embedded runtime against an empty local queue
+        working-directory: backend
+        run: |
+          cp ../reauth-input/*.tar.gz internal/reauthruntime/amd64.bundle
+          TEST_REAUTH_RELEASE_BUNDLE=1 go test ./internal/reauthruntime -run '^TestReleaseBundleDrainsEmptyQueue$' -count=1
       - name: Build local API
         working-directory: backend
         run: CGO_ENABLED=0 go build -o "$RUNNER_TEMP/sub2api-staging" ./cmd/server

@@ -112,7 +112,7 @@ jobs:
           retention-days: 1
 
   build-binaries:
-    needs: [prepare, build-frontend]
+    needs: [prepare, build-frontend, build-reauth-runtime]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -137,6 +137,16 @@ jobs:
         with:
           name: frontend-dist
           path: backend/internal/web/dist/
+      - uses: actions/download-artifact@v8
+        if: matrix.goos == 'linux'
+        with:
+          name: reauth-runtime-${{ matrix.goarch }}
+          path: reauth-input
+      - name: Embed matching re-login runtime
+        if: matrix.goos == 'linux' && hashFiles('backend/internal/reauthruntime/bundle_linux_amd64.go') != ''
+        env:
+          ARCH: ${{ matrix.goarch }}
+        run: cp reauth-input/*.tar.gz "backend/internal/reauthruntime/$ARCH.bundle"
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod

@@ -6,7 +6,7 @@ set -euo pipefail
 [[ $ARCH == amd64 || $ARCH == arm64 ]]
 runtime_output=$(mktemp -d)
 trap 'rm -rf "$runtime_output"' EXIT
-docker buildx build --platform "linux/$ARCH" -f tools/reauth-runtime/Dockerfile \
+docker buildx build --platform "linux/$ARCH" --target reauth-artifact \
   --output "type=local,dest=$runtime_output" .
 mkdir -p reauth-output
 tar --dereference -czf "reauth-output/sub2api-reauth_${VERSION}_linux_${ARCH}.tar.gz" -C "$runtime_output" .

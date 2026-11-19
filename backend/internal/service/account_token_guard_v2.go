@@ -263,11 +263,25 @@ func (s *AccountTokenGuardV2Service) Start() {
 			defer close(s.doneCh)
 			ticker := time.NewTicker(time.Minute)
 			defer ticker.Stop()
+			var nextRecoveryCheck time.Time
 			runCycle := func() {
 				ctx, cancel := context.WithTimeout(s.rootCtx, accountTokenGuardV2CycleDuration)
 				defer cancel()
-				if rows, err := s.repo.ListAccounts(ctx); err == nil && len(rows) > 0 {
-					s.reauth.EnsureWorker()
+				if w := s.reauth.worker; w != nil {
+					if !w.Bundled() || time.Now().After(nextRecoveryCheck) {
+						// Refresh the 15-minute recovery-storage capability even when idle.
+						nextRecoveryCheck = time.Now().Add(10 * time.Minute)
+						if rows, err := s.repo.ListAccounts(ctx); err == nil && len(rows) > 0 {
+							w.Ensure()
+						}
+					}
+					if queue, ok := s.reauth.repo.(interface {
+						HasPendingRuntimeTasks(context.Context) (bool, error)
+					}); w.Bundled() && ok {
+						if pending, err := queue.HasPendingRuntimeTasks(ctx); err == nil && pending {
+							w.Ensure()
+						}
+					}
 				}
 				if err := s.reauth.QueueMissingExcelAuthorizations(ctx); err != nil {
 					slog.Warn("openai_excel_authorization_cycle_failed", "error", err)

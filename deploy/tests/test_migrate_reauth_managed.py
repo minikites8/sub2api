@@ -28,21 +28,12 @@ def archive(entries):
 
 
 class MigrationTests(unittest.TestCase):
-    def test_readiness_finds_worker_spawned_by_non_main_go_thread(self):
-        with tempfile.TemporaryDirectory() as directory:
-            proc = Path(directory)
-            (proc / "100/task/100").mkdir(parents=True)
-            (proc / "100/task/101").mkdir(parents=True)
-            (proc / "100/task/100/children").write_text("")
-            (proc / "100/task/101/children").write_text("200 ")
-            (proc / "200").mkdir()
-            (proc / "200/cmdline").write_bytes(b"/synthetic/worker/python\0/synthetic/worker/worker.py\0")
-            with patch.object(migration, "PROC_DIR", proc), \
-                 patch.object(migration, "property_value", side_effect=lambda service, key: "100" if key == "MainPID" else "active"), \
-                 patch.object(migration, "command", return_value='{"path": "/api/v1/internal/openai-reauth/totp-claim", "status_code": 200}'), \
-                 patch.object(migration.time, "sleep") as sleep:
-                migration.wait_ready("synthetic.service", Path("/synthetic/worker"), 1)
-                sleep.assert_not_called()
+    def test_readiness_accepts_authenticated_helper_that_already_exited(self):
+        with patch.object(migration, "process_environment", return_value={}), \
+             patch.object(migration, "property_value", side_effect=lambda service, key: "100" if key == "MainPID" else "active"), \
+             patch.object(migration, "command", return_value='{"path": "/api/v1/internal/openai-reauth/totp-claim", "status_code": 200}') as journal:
+            migration.wait_ready("synthetic.service", 1)
+            self.assertIn("_PID=100", journal.call_args.args)
 
     def test_extract_rejects_escape_link_special_file_and_duplicates_before_writing(self):
         for name, kind in (("../escape", tarfile.REGTYPE), ("/escape", tarfile.REGTYPE),

@@ -47,8 +47,30 @@ jobs:
           path: backend/internal/web/dist/
           retention-days: 1
 
+  build-reauth-runtime:
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - env:
+          VERSION: 0.0.0-snapshot
+          ARCH: ${{ matrix.arch }}
+        run: bash tools/reauth-runtime/build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-runtime-${{ matrix.arch }}
+          path: reauth-output/*.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
   package:
-    needs: [build-frontend]
+    needs: [build-frontend, build-reauth-runtime]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -61,6 +83,16 @@ jobs:
         with:
           name: frontend-dist
           path: backend/internal/web/dist/
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-runtime-*
+          path: reauth-input
+      - name: Embed architecture-specific re-login runtimes
+        run: |
+          for arch in amd64 arm64; do
+            cp "reauth-input/package-runtime-$arch/"*.tar.gz "backend/internal/reauthruntime/$arch.bundle"
+          done
 
       - name: Setup Go
         uses: actions/setup-go@v6

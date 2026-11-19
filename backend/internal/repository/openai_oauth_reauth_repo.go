@@ -21,6 +21,20 @@ func NewOpenAIOAuthReauthRepository(db *sql.DB) service.OpenAIOAuthReauthReposit
 	return &openAIOAuthReauthRepository{db: db}
 }
 
+// Wake a bundled helper after a restart or missed notification. Claiming and
+// stale-task checks remain authoritative in the individual queue transactions.
+func (r *openAIOAuthReauthRepository) HasPendingRuntimeTasks(ctx context.Context) (bool, error) {
+	var pending bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM openai_oauth_reauth_tasks t
+		JOIN openai_oauth_reauth_configs c ON c.account_id=t.account_id
+		WHERE c.credential_mode='password_totp' AND t.status IN ('queued','running','callback_processing')
+		AND NOT EXISTS (SELECT 1 FROM openai_totp_rotations r WHERE r.task_id=t.id)
+	) OR EXISTS (SELECT 1 FROM openai_totp_rotations WHERE state='queued')
+	  OR EXISTS (SELECT 1 FROM openai_session_export_tasks WHERE status IN ('queued','running'))`).Scan(&pending)
+	return pending, err
+}
+
 func (r *openAIOAuthReauthRepository) UpsertConfig(ctx context.Context, config *service.OpenAIOAuthReauthStoredConfig) error {
 	result, err := r.db.ExecContext(ctx, `
 		INSERT INTO openai_oauth_reauth_configs (

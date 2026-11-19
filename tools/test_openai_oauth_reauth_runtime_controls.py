@@ -21,6 +21,24 @@ def drain_probe(config, stop):
 
 
 class RuntimeControlsTest(unittest.TestCase):
+    def test_bundled_slot_drains_then_exits_without_sleeping(self):
+        stop = Mock()
+        stop.is_set.return_value = False
+        with patch.object(worker, 'run_once', side_effect=[True, True, False]) as run:
+            worker._worker_loop(self.config(), stop, drain=True)
+        self.assertEqual(run.call_count, 3)
+        stop.wait.assert_not_called()
+
+    def test_drained_slot_is_not_replaced_after_clean_exit(self):
+        child, stop, context = Mock(), Mock(), Mock()
+        child.is_alive.return_value = stop.is_set.return_value = False
+        child.exitcode = 0
+        children, drained = {1: (child, stop)}, set()
+        worker.reconcile_worker_pool(context, children, self.config(), 1, drained)
+        self.assertFalse(children)
+        self.assertEqual(drained, {1})
+        context.Process.assert_not_called()
+
     def config(self, root='http://127.0.0.1'):
         return worker.WorkerConfig(root, 'synthetic-token', 'probe', None, concurrency=2)
 

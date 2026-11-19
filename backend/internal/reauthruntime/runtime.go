@@ -39,6 +39,9 @@ type Manager struct {
 	cancel                        context.CancelFunc
 	done                          chan struct{}
 	started                       bool
+	again                         bool
+	archive                       []byte
+	archiveDigest                 func() string
 	retryAt                       time.Time
 	client                        *http.Client
 }
@@ -46,12 +49,16 @@ type Manager struct {
 func New(root, version, baseURL, token string) *Manager {
 	root, _ = filepath.Abs(root)
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Manager{root: root, version: strings.TrimPrefix(version, "v"), baseURL: baseURL, token: token,
+	m := &Manager{root: root, version: strings.TrimPrefix(version, "v"), baseURL: baseURL, token: token,
 		ctx: ctx, cancel: cancel, client: &http.Client{Timeout: 5 * time.Minute},
 		status: Status{Mode: "managed", State: "idle"}}
+	m.archive = builtInArchive
+	m.archiveDigest = sync.OnceValue(func() string { return fmt.Sprintf("%x", sha256.Sum256(m.archive)) })
+	return m
 }
 
 func (m *Manager) Status() Status { m.mu.Lock(); defer m.mu.Unlock(); return m.status }
+func (m *Manager) Bundled() bool  { return len(m.archive) != 0 }
 func (m *Manager) set(state, reason string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -67,6 +74,21 @@ func (m *Manager) set(state, reason string) {
 func (m *Manager) Ensure() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.ensureLocked()
+}
+
+// Notify follows a committed enqueue. A helper that just observed an empty
+// queue may already be exiting; coalesce those wakeups into one more drain.
+func (m *Manager) Notify() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.started && len(m.archive) != 0 {
+		m.again = true
+	}
+	m.ensureLocked()
+}
+
+func (m *Manager) ensureLocked() {
 	if m.started || m.ctx.Err() != nil || time.Now().Before(m.retryAt) {
 		return
 	}
@@ -75,7 +97,7 @@ func (m *Manager) Ensure() {
 		m.status.Reason = "unsupported_platform"
 		return
 	}
-	if !regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`).MatchString(m.version) {
+	if len(m.archive) == 0 && !regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`).MatchString(m.version) {
 		m.status.State = "unavailable"
 		m.status.Reason = "release_required"
 		return
@@ -102,8 +124,14 @@ func (m *Manager) run() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		m.started = false
-		m.retryAt = time.Now().Add(time.Minute)
+		if m.status.State == "unavailable" {
+			m.retryAt = time.Now().Add(time.Minute)
+		}
 		close(m.done)
+		if m.again {
+			m.again = false
+			m.ensureLocked()
+		}
 	}()
 	prepareCtx, prepareCancel := context.WithTimeout(m.ctx, 10*time.Minute)
 	dir, err := m.prepare(prepareCtx)
@@ -113,6 +141,9 @@ func (m *Manager) run() {
 		return
 	}
 	cmd := exec.CommandContext(m.ctx, filepath.Join(dir, "python"), filepath.Join(dir, "worker.py"))
+	if len(m.archive) != 0 {
+		cmd.Args = append(cmd.Args, "--drain")
+	}
 	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8", "PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1",
 		"SUB2API_BASE_URL=" + m.baseURL, "OPENAI_REAUTH_WORKER_TOKEN=" + m.token,
 		"OPENAI_TOTP_JOURNAL_DIR=" + filepath.Join(m.root, "totp-recovery"),
@@ -133,9 +164,11 @@ func (m *Manager) run() {
 		return
 	}
 	m.set("running", "")
-	_ = cmd.Wait()
+	err = cmd.Wait()
 	if m.ctx.Err() != nil {
 		m.set("stopped", "")
+	} else if len(m.archive) != 0 && err == nil {
+		m.set("idle", "")
 	} else {
 		m.set("unavailable", "worker_exited")
 	}
@@ -144,6 +177,14 @@ func (m *Manager) run() {
 func randomID() string { return fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano()) }
 
 func (m *Manager) prepare(ctx context.Context) (string, error) {
+	if len(m.archive) != 0 {
+		digest := m.archiveDigest()
+		dir := filepath.Join(m.root, "bundle-"+digest)
+		if ready, err := os.ReadFile(filepath.Join(dir, "ready")); err == nil && string(ready) == digest {
+			return dir, nil
+		}
+		return m.install(ctx, dir, digest, m.archive)
+	}
 	dir := filepath.Join(m.root, m.version+"-linux-"+runtime.GOARCH)
 	if info, err := os.Stat(filepath.Join(dir, "ready")); err == nil && info.Mode().IsRegular() {
 		return dir, nil
@@ -188,6 +229,13 @@ func (m *Manager) prepare(ctx context.Context) (string, error) {
 	if hex.EncodeToString(hash[:]) != digest {
 		return "", errors.New("runtime checksum mismatch")
 	}
+	return m.install(ctx, dir, digest, archive)
+}
+
+func (m *Manager) install(ctx context.Context, dir, digest string, archive []byte) (string, error) {
+	if err := os.MkdirAll(m.root, 0700); err != nil {
+		return "", err
+	}
 	tmp, err := os.MkdirTemp(m.root, ".prepare-")
 	if err != nil {
 		return "", err
@@ -209,7 +257,7 @@ func (m *Manager) prepare(ctx context.Context) (string, error) {
 	}
 	if err := os.Rename(tmp, dir); err != nil {
 		// Another instance sharing the data directory can finish first.
-		if _, otherErr := os.Stat(filepath.Join(dir, "ready")); otherErr != nil {
+		if ready, otherErr := os.ReadFile(filepath.Join(dir, "ready")); otherErr != nil || string(ready) != digest {
 			return "", err
 		}
 	}

@@ -22,7 +22,6 @@ import uuid
 
 SYSTEMD_DIR = Path("/etc/systemd/system")
 BACKUP_DIR = Path("/var/backups/sub2api-worker")
-PROC_DIR = Path("/proc")
 
 
 def command(*args):
@@ -49,17 +48,6 @@ def application_data_dir(pid, environment):
 
 def property_value(service, name):
     return command("systemctl", "show", service, "--property", name, "--value")
-
-
-def process_children(pid):
-    # Go can start the child from any OS thread, not just the main thread.
-    children = set()
-    for path in (PROC_DIR / pid / "task").glob("*/children"):
-        try:
-            children.update(path.read_text().split())
-        except FileNotFoundError:
-            pass
-    return children
 
 
 def download(url, limit):
@@ -114,23 +102,21 @@ def copy_recovery(source, destination):
         path.chmod(0o700 if path.is_dir() else 0o600)
 
 
-def wait_ready(service, root, started):
+def wait_ready(service, started):
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
         pid = property_value(service, "MainPID")
         if pid != "0" and property_value(service, "ActiveState") == "active":
             # A fresh 2FA claim proves the new child opened its recovery journal
             # and authenticated to this API. Never print the raw journal.
-            logs = command("journalctl", "-u", service, "--since", "@" + str(started), "-n", "5000", "-o", "cat", "--no-pager")
+            # Only this API process knows its generated token. Its helper may
+            # already have drained and exited by the time journalctl returns.
+            if process_environment(pid).get(b"OPENAI_REAUTH_WORKER_TOKEN"):
+                raise RuntimeError("API still configured for an external worker")
+            logs = command("journalctl", "-u", service, "_PID=" + pid, "--since", "@" + str(started), "-n", "5000", "-o", "cat", "--no-pager")
             if any('"/api/v1/internal/openai-reauth/totp-claim"' in line and
                    '"status_code": 200' in line for line in logs.splitlines()):
-                for child in process_children(pid):
-                    try:
-                        cmd = (PROC_DIR / child / "cmdline").read_bytes()
-                        if str(root).encode() in cmd and b"worker.py" in cmd:
-                            return
-                    except FileNotFoundError:
-                        pass
+                return
         time.sleep(1)
     raise RuntimeError("managed worker did not report 2FA readiness")
 
@@ -246,7 +232,7 @@ def migrate_locked(args):
             command("systemctl", "disable", sidecar)
             command("systemctl", "daemon-reload")
             command("systemctl", "restart", service)
-            wait_ready(service, root, started)
+            wait_ready(service, started)
         except Exception:
             # Keep both journals and runtime files for recovery; restore only control.
             dropin.unlink(missing_ok=True)

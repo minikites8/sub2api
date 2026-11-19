@@ -1,6 +1,6 @@
 # 登录运行包部署验证
 
-`build.sh` 生成 release 使用的便携 Python / Node / toSub2 运行包。构建验证覆盖 Alpine 和 Ubuntu 24.04；Ubuntu 中经 `current` 符号链接启动 Node → Python → curl_cffi，以及 Python → Node 加密恢复日志，防止仅在构建容器中可用。
+`build.sh` 使用根 Dockerfile 的 `reauth-artifact` 阶段生成便携 Python / Node / toSub2 运行包。Linux 发布流程将其嵌入对应架构的主程序，并保留独立归档供旧部署迁移。构建验证覆盖 Alpine 和 Ubuntu 24.04；Ubuntu 中经 `current` 符号链接启动 Node → Python → curl_cffi，以及 Python → Node 加密恢复日志，防止仅在构建容器中可用。
 
 ```bash
 VERSION=0.0.0-test ARCH=amd64 bash tools/reauth-runtime/build.sh

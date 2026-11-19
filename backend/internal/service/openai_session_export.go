@@ -168,6 +168,7 @@ func (s *OpenAIOAuthReauthService) CreateSessionExportTask(ctx context.Context, 
 		}
 		return nil, infraerrors.InternalServer("OPENAI_SESSION_EXPORT_CREATE_FAILED", "Could not create Session export task")
 	}
+	s.notifyWorker()
 	return safeSessionExportTask(record), nil
 }
 

@@ -164,6 +164,7 @@ func (s *OpenAIOAuthReauthService) createTOTPRotation(ctx context.Context, id in
 		}
 		return nil, infraerrors.InternalServer("TOTP_CREATE_FAILED", "Could not create 2FA task")
 	}
+	s.notifyWorker()
 	return safeRotation(result), nil
 }
 
@@ -319,6 +320,7 @@ func (s *OpenAIOAuthReauthService) RetryTOTPRotation(ctx context.Context, id, ta
 	if err = repo.RetryTOTPRotation(ctx, id, task, action); err != nil {
 		return rotationError()
 	}
+	s.notifyWorker()
 	return nil
 }
 

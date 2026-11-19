@@ -1702,13 +1702,15 @@ def terminate_worker(_signum: int, _frame: Any) -> None:
     raise SystemExit(0)
 
 
-def _worker_loop(config: WorkerConfig, stop: Any = None) -> None:
+def _worker_loop(config: WorkerConfig, stop: Any = None, drain: bool = False) -> None:
     signal.signal(signal.SIGTERM, terminate_worker)
     protocol = load_protocol(config.protocol_root) if config.protocol_root is not None else None
     api = WorkerAPI(config)
     LOGGER.info("worker=%s ready", config.worker_id)
     while stop is None or not stop.is_set():
         if not run_once(api, protocol):
+            if drain:
+                return
             if stop is None:
                 time.sleep(config.poll_seconds)
             else:
@@ -1721,7 +1723,7 @@ def worker_slot_config(config: WorkerConfig, slot: int) -> WorkerConfig:
     return replace(config, worker_id=config.worker_id[:128-len(suffix)] + suffix, concurrency=1)
 
 
-def reconcile_worker_pool(context: Any, children: dict, config: WorkerConfig, target: int) -> None:
+def reconcile_worker_pool(context: Any, children: dict, config: WorkerConfig, target: int, drained: set | None = None) -> None:
     # Retiring processes finish their current task before exiting. They do not
     # claim another task. Never replace a retiring slot until it has exited.
     for slot, (child, stop) in list(children.items()):
@@ -1729,21 +1731,25 @@ def reconcile_worker_pool(context: Any, children: dict, config: WorkerConfig, ta
             child.join()
             del children[slot]
             if not stop.is_set():
-                raise WorkerError("a re-login worker process exited")
+                if drained is None or child.exitcode != 0:
+                    raise WorkerError("a re-login worker process exited")
+                drained.add(slot)
     for slot, (_child, stop) in children.items():
         if slot > target:
             stop.set()
     for slot in range(1, target + 1):
-        if slot not in children:
+        if slot not in children and (drained is None or slot not in drained):
             stop = context.Event()
-            child = context.Process(target=_worker_loop, args=(worker_slot_config(config, slot), stop))
+            args = (worker_slot_config(config, slot), stop)
+            child = context.Process(target=_worker_loop, args=args if drained is None else (*args, True))
             child.start()
             children[slot] = (child, stop)
 
 
-def run_worker_pool(config: WorkerConfig) -> None:
+def run_worker_pool(config: WorkerConfig, drain: bool = False) -> None:
     context = multiprocessing.get_context("fork" if sys.platform.startswith("linux") else "spawn")
     children = {}
+    drained = set() if drain else None
     api = WorkerAPI(config)
     target = config.concurrency
     next_poll = 0.0
@@ -1758,7 +1764,12 @@ def run_worker_pool(config: WorkerConfig) -> None:
                     # working count; they never interrupt active credentials.
                     pass
                 next_poll = now + 5
-            reconcile_worker_pool(context, children, config, target)
+            if drain:
+                reconcile_worker_pool(context, children, config, target, drained)
+                if not children:
+                    return
+            else:
+                reconcile_worker_pool(context, children, config, target)
             time.sleep(0.25)
     finally:
         for child, _stop in children.values():
@@ -1774,6 +1785,7 @@ def run_worker_pool(config: WorkerConfig) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="claim at most one task, then exit")
+    parser.add_argument("--drain", action="store_true", help="process queued work and exit when idle")
     parser.add_argument("--check", action="store_true", help="validate local configuration without claiming a task")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -1795,7 +1807,7 @@ def main() -> int:
     LOGGER.info("worker=%s concurrency=%s ready", config.worker_id, config.concurrency)
     try:
         if not args.once:
-            run_worker_pool(config)
+            run_worker_pool(config, drain=args.drain)
             return 0
         while True:
             worked = run_once(api, protocol)

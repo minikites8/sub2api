@@ -683,6 +683,7 @@ func (s *OpenAIOAuthReauthService) createTaskForProfile(ctx context.Context, acc
 		}
 		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_REAUTH_TASK_CREATE_FAILED", "failed to create re-login task")
 	}
+	s.notifyWorker()
 	return safeReauthTask(record), nil
 }
 

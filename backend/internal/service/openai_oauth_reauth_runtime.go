@@ -92,6 +92,12 @@ func (s *OpenAIOAuthReauthService) EnsureWorker() {
 	}
 }
 
+func (s *OpenAIOAuthReauthService) notifyWorker() {
+	if s.worker != nil {
+		s.worker.Notify()
+	}
+}
+
 // MarkWorkerSeen records an authenticated worker heartbeat. Workers call the
 // runtime-settings endpoint even when the queue is empty, so an idle worker is
 // still considered available for newly-created re-login or Session tasks.
@@ -114,7 +120,10 @@ func (s *OpenAIOAuthReauthService) checkWorkerMode(mode string) error {
 	if mode != OpenAIOAuthReauthModePasswordTOTP {
 		return infraerrors.ServiceUnavailable("OPENAI_REAUTH_MODE_UNAVAILABLE", "Email OTP re-login is unavailable in the built-in runtime")
 	}
-	s.EnsureWorker()
+	// Bundled helpers are normally woken after the insert commits, not before.
+	if !s.worker.Bundled() || s.worker.Status().State == "unavailable" {
+		s.EnsureWorker()
+	}
 	if s.WorkerStatus().State == "unavailable" {
 		return infraerrors.ServiceUnavailable("OPENAI_REAUTH_WORKER_UNAVAILABLE", "Re-login service is unavailable; see Credential Operations status")
 	}

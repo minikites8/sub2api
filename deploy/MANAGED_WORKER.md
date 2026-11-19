@@ -1,6 +1,8 @@
 # 登录 Worker 随主程序自动管理
 
-Linux amd64 / arm64 的内置管理器已经支持自动下载、校验、启动与重试。主程序升级并重启后，按自身版本使用对应的 owner Release 运行包；旧版本目录仍保留，2FA 恢复日志放在版本目录外。服务器不编译应用，也不安装 Python/Node 依赖。
+新版 Linux amd64 / arm64 Release、`main` 快照和源码 Docker 镜像将对应架构的重登运行包嵌入主程序。新部署无需配置 Worker Token、启动单独服务或在首次登录时访问 GitHub。任务入队后，主程序将运行包解压到持久目录并自检，启动本地子进程；队列清空后子进程退出，显示“空闲”是正常状态。已有任务仍由数据库领取；巡检也会唤醒未完成的任务并定期检查 2FA 恢复存储。恢复日志不在解包目录内。
+
+直接 `go build` 使用空运行包占位文件时仍沿用旧的 Release 下载逻辑。自行构建内置版本请用仓库 Dockerfile，或先执行 `VERSION=0.0.0-local ARCH=amd64 bash tools/reauth-runtime/build.sh`，把输出归档放到 `backend/internal/reauthruntime/amd64.bundle` 后再为 Linux amd64 构建（arm64 同理）。不要提交生成的归档。
 
 旧部署若设置了 `OPENAI_REAUTH_WORKER_TOKEN`，会保留外部 Worker 模式。单独升级主程序不会接管这个 systemd 服务，可能出现主程序已有 2FA 功能、外部 Worker 仍是旧版的情况。
 
@@ -30,7 +32,7 @@ Linux amd64 / arm64 的内置管理器已经支持自动下载、校验、启动
 
 停用旧 sidecar 的开机启动，写入 `90-managed-reauth.conf`，使用 systemd 的 `UnsetEnvironment` 在最终进程环境中去掉旧共享 Token，无须编辑或输出已有密钥文件。原有 Worker 并发启动值会保留，页面保存过的并发值继续优先。
 
-**迁移会重启一次主 API。** 持有凭证运营记录的实例启动时会准备 Worker；验收要求主 API 的托管子进程存活，且该 API 收到一次成功鉴权的 `totp-claim`，证明持久恢复存储可用。原配置、旧运行包、原恢复目录和迁移记录均保留；失败自动撤除本次 drop-in、重启原模式并恢复旧 sidecar。后续升级主程序即可由内置管理器自动跟随版本，不再单独更换外部 `current` 链接。
+**迁移会重启一次主 API。** 验收检查新 API 进程未配置外部 Token，且该进程收到一次成功鉴权的 `totp-claim`，证明持久恢复存储可用；不要求空闲子进程常驻。原配置、旧运行包、原恢复目录和迁移记录均保留；失败自动撤除本次 drop-in、重启原模式并恢复旧 sidecar。
 
 迁移不创建 2FA 任务、不重新申请密钥、不撤销会话，也不证明真实 OpenAI MFA 协议成功。重新开始处理任务属于已有凭证运营行为。恢复暂时关闭的巡检/自动重登设置后，按原任务状态继续。
 
