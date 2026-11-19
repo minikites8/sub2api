@@ -391,7 +391,7 @@ type Account struct {
 type AccountProxyBinding struct {
 	ProxyID            int64  `json:"proxy_id"`
 	Concurrency        int    `json:"concurrency"`
-	CurrentConcurrency int    `json:"current_concurrency"`
+	CurrentConcurrency *int   `json:"current_concurrency,omitempty"`
 	Proxy              *Proxy `json:"proxy,omitempty"`
 }
 

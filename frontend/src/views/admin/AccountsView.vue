@@ -423,7 +423,7 @@
                   class="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                 >
                   <span>{{ binding.proxy?.name || `#${binding.proxy_id}` }}</span>
-                  <span class="font-mono">{{ binding.current_concurrency ?? 0 }}/{{ binding.concurrency }}</span>
+                  <span class="font-mono">{{ binding.current_concurrency ?? '-' }}/{{ binding.concurrency }}</span>
                 </span>
               </div>
               <div v-if="row.proxy" class="flex items-center gap-2">
@@ -2684,7 +2684,7 @@ const accountMatchesCurrentFilters = (account: Account) => {
 }
 const mergeRuntimeFields = (oldAccount: Account, updatedAccount: Account): Account => ({
   ...updatedAccount,
-  current_concurrency: updatedAccount.current_concurrency ?? oldAccount.current_concurrency,
+  current_concurrency: updatedAccount.current_concurrency === undefined ? oldAccount.current_concurrency : updatedAccount.current_concurrency,
   current_window_cost: updatedAccount.current_window_cost ?? oldAccount.current_window_cost,
   active_sessions: updatedAccount.active_sessions ?? oldAccount.active_sessions
 })

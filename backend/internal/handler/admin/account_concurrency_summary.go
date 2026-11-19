@@ -22,24 +22,15 @@ func (h *AccountHandler) GetConcurrencySummary(c *gin.Context) {
 		return
 	}
 
-	ids := make([]int64, 0, len(accounts))
-	seen := make(map[int64]struct{}, len(accounts))
-	for _, account := range accounts {
-		if _, exists := seen[account.ID]; exists {
-			continue
-		}
-		seen[account.ID] = struct{}{}
-		ids = append(ids, account.ID)
-	}
-	counts, err := h.concurrencyService.GetAccountConcurrencySnapshot(ctx, ids)
+	counts, err := h.readAccountCapacity(ctx, accounts)
 	if err != nil {
 		response.ErrorFrom(c, infraerrors.ServiceUnavailable("ACCOUNT_CONCURRENCY_UNAVAILABLE", "Current account concurrency is unavailable; retry later").WithCause(err))
 		return
 	}
 
 	var total int64
-	for _, id := range ids {
-		total += int64(counts[id])
+	for _, count := range counts.totals {
+		total += int64(count)
 	}
 	response.Success(c, gin.H{"current_concurrency": total})
 }

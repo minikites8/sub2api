@@ -245,7 +245,7 @@ type CheckMixedChannelRequest struct {
 type AccountWithConcurrency struct {
 	*dto.Account
 	simpleMode               bool                         `json:"-"`
-	CurrentConcurrency       int                          `json:"current_concurrency"`
+	CurrentConcurrency       *int                         `json:"current_concurrency"`
 	SchedulerScore           *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
 	SchedulerScores          []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
 	OnlineTerminalCount      *int                         `json:"online_terminal_count,omitempty"`
@@ -264,7 +264,7 @@ type AccountWithConcurrency struct {
 // so groups/account_groups never appear in the list payload.
 type AccountListItemWithConcurrency struct {
 	*dto.AccountListItem
-	CurrentConcurrency int                          `json:"current_concurrency"`
+	CurrentConcurrency *int                         `json:"current_concurrency"`
 	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
 	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
 	CurrentWindowCost  *float64                     `json:"current_window_cost,omitempty"`
@@ -515,19 +515,16 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	}
 
 	item := AccountWithConcurrency{
-		Account:            dto.AccountForObserver(ctx, h.accountResponseFromService(account)),
-		simpleMode:         h.isSimpleMode(),
-		CurrentConcurrency: 0,
+		Account:    dto.AccountForObserver(ctx, h.accountResponseFromService(account)),
+		simpleMode: h.isSimpleMode(),
 	}
 	if account == nil {
 		return item
 	}
 
 	if h.concurrencyService != nil {
-		if counts, err := h.concurrencyService.GetAccountConcurrencyBatch(ctx, []int64{account.ID}); err == nil {
-			item.CurrentConcurrency = counts[account.ID]
-		}
-		item.CurrentConcurrency = h.enrichAccountProxyPoolConcurrency(ctx, account, item.Account, item.CurrentConcurrency)
+		snapshot := h.displayAccountCapacity(ctx, []service.Account{*account})
+		snapshot.apply(&item)
 	}
 
 	if account.SupportsRPMLimit() {
@@ -574,19 +571,13 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	return item
 }
 
-func (h *AccountHandler) enrichAccountProxyPoolConcurrency(ctx context.Context, account *service.Account, out *dto.Account, current int) int {
-	if h == nil || h.concurrencyService == nil || account == nil || out == nil || len(out.ProxyPool) == 0 {
-		return current
-	}
-	total := 0
-	for i := range out.ProxyPool {
-		slotID := service.AccountProxySlotID(account.ID, out.ProxyPool[i].ProxyID)
-		if count, err := h.concurrencyService.GetAccountConcurrency(ctx, slotID); err == nil {
-			out.ProxyPool[i].CurrentConcurrency = count
-			total += count
-		}
-	}
-	return total
+func (h *AccountHandler) displayAccountCapacity(ctx context.Context, accounts []service.Account) *accountCapacitySnapshot {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	// On ordinary lists capacity is optional. An unavailable snapshot must
+	// not hide the accounts or be reported as a known zero.
+	snapshot, _ := h.readAccountCapacity(ctx, accounts)
+	return snapshot
 }
 
 // scoreOpenAIAccountSchedulerPool 对池内 OpenAI 账号计算调度分数快照。
@@ -864,7 +855,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var accounts []service.Account
 	var total int64
 	var err error
-	var concurrencyCounts map[int64]int
+	var concurrencyCounts *accountCapacitySnapshot
 	if strings.EqualFold(strings.TrimSpace(sortBy), "current_concurrency") {
 		accounts, total, concurrencyCounts, err = h.listAccountsByCurrentConcurrency(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortOrder)
 	} else {
@@ -893,12 +884,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	// Get current concurrency counts for all accounts
-	accountIDs := make([]int64, len(accounts))
-	for i, acc := range accounts {
-		accountIDs[i] = acc.ID
-	}
-
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
@@ -919,10 +904,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
-	if concurrencyCounts == nil && h.concurrencyService != nil {
-		if cc, ccErr := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs); ccErr == nil && cc != nil {
-			concurrencyCounts = cc
-		}
+	if concurrencyCounts == nil {
+		concurrencyCounts = h.displayAccountCapacity(c.Request.Context(), accounts)
 	}
 
 	// 识别需要查询窗口费用、会话数和 RPM 的账号；窗口/会话仅属于 Anthropic，RPM 也支持 OpenAI OAuth
@@ -1010,13 +993,12 @@ func (h *AccountHandler) List(c *gin.Context) {
 			}
 		}
 		item := AccountWithConcurrency{
-			Account:            accountResponse,
-			simpleMode:         h.isSimpleMode(),
-			CurrentConcurrency: concurrencyCounts[acc.ID],
-			SchedulerScore:     schedulerScores[acc.ID],
-			SchedulerScores:    schedulerGroupScores[acc.ID],
+			Account:         accountResponse,
+			simpleMode:      h.isSimpleMode(),
+			SchedulerScore:  schedulerScores[acc.ID],
+			SchedulerScores: schedulerGroupScores[acc.ID],
 		}
-		item.CurrentConcurrency = h.enrichAccountProxyPoolConcurrency(c.Request.Context(), acc, item.Account, item.CurrentConcurrency)
+		concurrencyCounts.apply(&item)
 		if onlineTerminalCounts != nil {
 			if counts, ok := onlineTerminalCounts[acc.ID]; ok {
 				item.OnlineTerminalCount = &counts.Total

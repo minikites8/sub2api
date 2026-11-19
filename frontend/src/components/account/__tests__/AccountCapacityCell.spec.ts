@@ -46,6 +46,14 @@ function accountFixture(overrides: Partial<Account> = {}): Account {
 }
 
 describe('AccountCapacityCell', () => {
+  it('distinguishes unavailable occupancy from a known idle account', async () => {
+    const wrapper = mount(AccountCapacityCell, { props: { account: accountFixture({ concurrency: 8, current_concurrency: null }) } })
+    const aggregate = wrapper.findComponent({ name: 'CapacityBadge' })
+    expect(aggregate.props('current')).toBe('-')
+    await wrapper.setProps({ account: accountFixture({ concurrency: 8, current_concurrency: 0 }) })
+    expect(aggregate.props('current')).toBe(0)
+  })
+
   it('renders aggregate and per-proxy concurrency badges', () => {
     const wrapper = mount(AccountCapacityCell, {
       props: { account: accountFixture() }

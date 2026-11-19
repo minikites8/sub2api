@@ -127,6 +127,40 @@ func TestAccountCurrentConcurrencySortRefreshUsesNewSnapshot(t *testing.T) {
 	require.Equal(t, 10, page.Data.Items[0].CurrentConcurrency)
 }
 
+func TestOAuthCapacityIncludesProxySlots(t *testing.T) {
+	proxyID := int64(17)
+	accounts := []service.Account{
+		{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Concurrency: 8, ProxyID: &proxyID},
+		{ID: 2, ProxyID: &proxyID, ProxyPool: []service.AccountProxyBinding{{ProxyID: proxyID}, {ProxyID: 18}}},
+	}
+	cache := &accountSortConcurrencyCache{counts: map[int64]int{
+		1: 0, service.AccountProxySlotID(1, proxyID): 5,
+		2: 1, service.AccountProxySlotID(2, proxyID): 2, service.AccountProxySlotID(2, 18): 1,
+	}}
+	router, _ := accountConcurrencySortRouter(accounts, cache)
+	for _, query := range []string{"lite=1", "lite=0", "lite=1&sort_by=current_concurrency&sort_order=desc"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/accounts?"+query, nil))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var page accountSortPage
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
+		require.Len(t, page.Data.Items, 2)
+		require.EqualValues(t, 1, page.Data.Items[0].ID)
+		require.Equal(t, 5, page.Data.Items[0].CurrentConcurrency)
+		require.Equal(t, 4, page.Data.Items[1].CurrentConcurrency)
+	}
+	summary, _ := concurrencySummaryRouter(accounts, service.NewConcurrencyService(cache))
+	require.JSONEq(t, `{"code":0,"message":"success","data":{"current_concurrency":9}}`, requestConcurrencySummary(summary).Body.String())
+}
+
+func TestAccountCapacityUnknownDoesNotHideList(t *testing.T) {
+	router, _ := accountConcurrencySortRouter([]service.Account{{ID: 1}}, &accountSortConcurrencyCache{err: errors.New("offline")})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/accounts?lite=1", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"current_concurrency":null`)
+}
+
 func TestAccountCurrentConcurrencySortBillingRefreshPreservesPage(t *testing.T) {
 	cache := &accountSortConcurrencyCache{counts: map[int64]int{1: 2, 2: 9}}
 	router, _ := accountConcurrencySortRouter([]service.Account{{ID: 1}, {ID: 2}}, cache)
