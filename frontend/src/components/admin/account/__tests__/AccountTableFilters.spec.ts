@@ -17,7 +17,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 const defaultFilters = () => ({
-  platform: '', type: '', status: '', privacy_mode: '', group: '',
+  platform: '', type: '', status: '', privacy_mode: '', group: '', quality_tier: '',
   search: 'existing search', lite: '1', sort_by: 'priority', sort_order: 'asc'
 })
 
@@ -39,12 +39,12 @@ afterEach(() => {
 })
 
 describe('AccountTableFilters', () => {
-  it('shows all five filters immediately and preserves selections on external updates', async () => {
-    const filters = { ...defaultFilters(), type: 'bedrock', privacy_mode: '__unset__', group: 'ungrouped' }
+  it('shows all six filters immediately and preserves selections on external updates', async () => {
+    const filters = { ...defaultFilters(), type: 'bedrock', privacy_mode: '__unset__', group: 'ungrouped', quality_tier: 'strong' }
     const wrapper = mountFilters(filters)
     const selects = wrapper.findAllComponents(Select)
 
-    expect(selects).toHaveLength(5)
+    expect(selects).toHaveLength(6)
     expect(selects.every(select => select.isVisible())).toBe(true)
     expect(wrapper.find('button[aria-controls]').exists()).toBe(false)
     expect(wrapper.props('filters')).toEqual(filters)
@@ -59,14 +59,15 @@ describe('AccountTableFilters', () => {
   })
 
   it('preserves every option and emits a merged filter snapshot plus change for every selection', async () => {
-    const filters = { ...defaultFilters(), platform: 'openai', type: 'oauth', status: 'active', privacy_mode: '__unset__', group: '42' }
+    const filters = { ...defaultFilters(), platform: 'openai', type: 'oauth', status: 'active', privacy_mode: '__unset__', group: '42', quality_tier: 'strong' }
     const wrapper = mountFilters(filters)
     const expectedOptions = [
       ['platform', ['', ...CONCRETE_PLATFORM_OPTIONS.map(option => option.value)]],
       ['status', ['', 'active', 'inactive', 'error', 'rate_limited', 'temp_unschedulable', 'unschedulable']],
       ['type', ['', 'oauth', 'setup-token', 'apikey', 'bedrock']],
       ['privacy_mode', ['', '__unset__', 'training_off', 'training_set_cf_blocked', 'training_set_failed']],
-      ['group', ['', 'ungrouped', '42']]
+      ['group', ['', 'ungrouped', '42']],
+      ['quality_tier', ['', 'strong', 'basic', 'unknown']]
     ] as const
     let changes = 0
     for (const [index, [key, values]] of expectedOptions.entries()) {
@@ -145,11 +146,11 @@ describe('AccountTableFilters', () => {
     wrapper.unmount()
   })
 
-  it('uses shrinkable, wrapping controls for all five filters', () => {
+  it('keeps search and all six filters in one horizontally scrollable row', () => {
     const wrapper = mountFilters()
-    expect(wrapper.classes()).toEqual(expect.arrayContaining(['min-w-0', 'grid-cols-2', 'sm:flex-wrap']))
-    for (const select of wrapper.findAllComponents(Select)) {
-      expect(select.classes()).toEqual(expect.arrayContaining(['min-w-0', 'w-full', 'sm:w-36']))
+    expect(wrapper.classes()).toEqual(expect.arrayContaining(['min-w-0', 'flex-nowrap', 'overflow-x-auto']))
+    for (const control of [wrapper.getComponent(SearchInput), ...wrapper.findAllComponents(Select)]) {
+      expect(control.classes()).toEqual(expect.arrayContaining(['min-w-0', 'shrink-0']))
     }
   })
 })

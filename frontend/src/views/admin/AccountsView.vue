@@ -2,9 +2,9 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="flex flex-wrap-reverse items-start justify-between gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
           <AccountTableFilters
-            class="lg:w-auto lg:flex-1"
+            class="basis-[68rem] grow"
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
@@ -12,8 +12,8 @@
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
           />
-          <select v-model="params.quality_tier" class="input w-auto" :aria-label="t('gptQos.qualityTier')" @change="debouncedReload"><option value="">{{ t('gptQos.qualityFilter') }}</option><option value="strong">{{ t('gptQos.strong') }}</option><option value="basic">{{ t('gptQos.basic') }}</option><option value="unknown">{{ t('gptQos.unknown') }}</option></select>
           <AccountTableActions
+            class="ml-auto max-w-full shrink-0 justify-end"
             :loading="loading"
             @refresh="handleManualRefresh"
             @create="showCreate = true"

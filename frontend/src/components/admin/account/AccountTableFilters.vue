@@ -1,17 +1,18 @@
 <template>
-  <div class="grid min-w-0 w-full grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+  <div class="flex min-w-0 w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1">
     <SearchInput
       :model-value="searchQuery"
       :placeholder="t('admin.accounts.searchAccounts')"
-      class="col-span-2 min-w-0 w-full sm:w-56"
+      class="min-w-0 basis-48 shrink-0"
       @update:model-value="$emit('update:searchQuery', $event)"
       @search="$emit('change')"
     />
-    <Select :model-value="filters.platform" :aria-label="t('admin.accounts.allPlatforms')" class="min-w-0 w-full sm:w-36" :options="pOpts" @update:model-value="updatePlatform" @change="$emit('change')" />
-    <Select :model-value="filters.status" :aria-label="t('admin.accounts.allStatus')" class="min-w-0 w-full sm:w-36" :options="sOpts" @update:model-value="updateStatus" @change="$emit('change')" />
-    <Select :model-value="filters.type" :aria-label="t('admin.accounts.allTypes')" class="min-w-0 w-full sm:w-36" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
-    <Select :model-value="filters.privacy_mode" :aria-label="t('admin.accounts.allPrivacyModes')" class="min-w-0 w-full sm:w-36" :options="privacyOpts" @update:model-value="updatePrivacyMode" @change="$emit('change')" />
-    <Select :model-value="filters.group" :aria-label="t('admin.accounts.allGroups')" class="min-w-0 w-full sm:w-36" :options="gOpts" @update:model-value="updateGroup" @change="$emit('change')" />
+    <Select :model-value="filters.platform" :aria-label="t('admin.accounts.allPlatforms')" class="min-w-0 w-32 shrink-0" :options="pOpts" @update:model-value="updatePlatform" @change="$emit('change')" />
+    <Select :model-value="filters.status" :aria-label="t('admin.accounts.allStatus')" class="min-w-0 w-32 shrink-0" :options="sOpts" @update:model-value="updateStatus" @change="$emit('change')" />
+    <Select :model-value="filters.type" :aria-label="t('admin.accounts.allTypes')" class="min-w-0 w-32 shrink-0" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
+    <Select :model-value="filters.privacy_mode" :aria-label="t('admin.accounts.allPrivacyModes')" class="min-w-0 w-44 shrink-0" :options="privacyOpts" @update:model-value="updatePrivacyMode" @change="$emit('change')" />
+    <Select :model-value="filters.group" :aria-label="t('admin.accounts.allGroups')" class="min-w-0 w-32 shrink-0" :options="gOpts" @update:model-value="updateGroup" @change="$emit('change')" />
+    <Select :model-value="filters.quality_tier" :aria-label="t('gptQos.qualityTier')" class="min-w-0 w-40 shrink-0" :options="qualityOpts" @update:model-value="updateQualityTier" @change="$emit('change')" />
   </div>
 </template>
 
@@ -31,6 +32,7 @@ const updateType = (value: string | number | boolean | null) => { emit('update:f
 const updateStatus = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, status: value }) }
 const updatePrivacyMode = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, privacy_mode: value }) }
 const updateGroup = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, group: value }) }
+const updateQualityTier = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, quality_tier: value }) }
 const pOpts = computed(() => [{ value: '', label: t('admin.accounts.allPlatforms') }, ...CONCRETE_PLATFORM_OPTIONS])
 const tOpts = computed(() => [{ value: '', label: t('admin.accounts.allTypes') }, { value: 'oauth', label: t('admin.accounts.oauthType') }, { value: 'setup-token', label: t('admin.accounts.setupToken') }, { value: 'apikey', label: t('admin.accounts.apiKey') }, { value: 'bedrock', label: 'AWS Bedrock' }])
 const sOpts = computed(() => [{ value: '', label: t('admin.accounts.allStatus') }, { value: 'active', label: t('admin.accounts.status.active') }, { value: 'inactive', label: t('admin.accounts.status.inactive') }, { value: 'error', label: t('admin.accounts.status.error') }, { value: 'rate_limited', label: t('admin.accounts.status.rateLimited') }, { value: 'temp_unschedulable', label: t('admin.accounts.status.tempUnschedulable') }, { value: 'unschedulable', label: t('admin.accounts.status.unschedulable') }])
@@ -40,6 +42,12 @@ const privacyOpts = computed(() => [
   { value: 'training_off', label: 'Privacy' },
   { value: 'training_set_cf_blocked', label: 'CF' },
   { value: 'training_set_failed', label: 'Fail' }
+])
+const qualityOpts = computed(() => [
+  { value: '', label: t('gptQos.qualityFilter') },
+  { value: 'strong', label: t('gptQos.strong') },
+  { value: 'basic', label: t('gptQos.basic') },
+  { value: 'unknown', label: t('gptQos.unknown') }
 ])
 const gOpts = computed(() => [
   { value: '', label: t('admin.accounts.allGroups') },
