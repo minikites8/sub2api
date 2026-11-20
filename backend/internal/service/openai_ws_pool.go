@@ -97,6 +97,8 @@ type openAIWSHandshakeCompatibilityKey struct {
 	anchorScope         string
 	betaFeatures        string
 	codexInstallationID string
+	parentThreadID      string
+	conversationID      string
 	sessionIDHyphen     string
 	sessionIDUnderscore string
 	threadID            string
@@ -2459,6 +2461,14 @@ func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Head
 	}
 	mode := activeCodexFingerprintMode(account)
 	if mode == codexFingerprintOff {
+		if codexOffResponses(account) {
+			// The upgraded connection retains its original logical handshake.
+			key.sessionIDHyphen = headers.Get("session-id")
+			key.threadID = headers.Get("thread-id")
+			key.parentThreadID = headers.Get(codexParentThreadIDHeader)
+			key.conversationID = headers.Get("conversation_id")
+			key.codexWindowID = headers.Get("x-codex-window-id")
+		}
 		return key
 	}
 	key.codexInstallationID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-installation-id")

@@ -99,7 +99,13 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		headers.Set("authorization", "Bearer "+token)
 	}
 
-	sessionResolution := resolveOpenAIWSSessionHeaders(c, promptCacheKey)
+	projection := codexResponsesProjection(account, !isOpenAIResponsesCompactPath(c) && !isOpenAICompatMessagesBridgeContext(c))
+	var sessionResolution openAIWSSessionHeaderResolution
+	if projection == offCodexProjection {
+		sessionResolution = explicitOpenAIWSSessionHeaders(c)
+	} else {
+		sessionResolution = resolveOpenAIWSSessionHeaders(c, promptCacheKey)
+	}
 	if c != nil && c.Request != nil {
 		if v := strings.TrimSpace(c.Request.Header.Get("accept-language")); v != "" {
 			headers.Set("accept-language", v)
@@ -131,6 +137,8 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	harvestSession := s.harvestPinnedSessionForModel(ctx, account, routingModel)
 	if harvestSession != "" {
 		headers.Set("session_id", harvestSession)
+	} else if projection == offCodexProjection {
+		copyCodexOffSessionHeaders(headers, c, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 	} else if account != nil && account.UsesOpenAICodexProtocol() {
 		apiKeyID := getAPIKeyIDFromContext(c)
 		if sessionResolution.SessionID != "" {
@@ -157,7 +165,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		headers.Set(openAIWSTurnMetadataHeader, metadata)
 	}
 	if harvestSession == "" {
-		applyCodexAccountIdentityHeaders(headers, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+		projection.applyHeaders(headers, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		applyStagedCodexFingerprintHeaders(c, account, headers)
 	}
 

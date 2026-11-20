@@ -243,7 +243,7 @@ func (s *OpenAIGatewayService) applyCodexAccountIdentityOrHarvestPinRaw(ctx cont
 		}
 		return next, nil
 	}
-	next, _, err := applyCodexAccountIdentityClientMetadataRaw(body, identityAccount, apiKeyID)
+	next, _, err := codexResponsesProjection(account, true).applyRaw(body, identityAccount, apiKeyID)
 	if err != nil {
 		return body, err
 	}

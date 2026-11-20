@@ -200,7 +200,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			}
 			body = pinnedBody
 		} else {
-			accountScopedBody, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+			accountScopedBody, accountScoped, scopeErr := codexResponsesProjection(account, !isOpenAIResponsesCompactPath(c) && !isOpenAICompatMessagesBridgeContext(c)).applyRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 			if scopeErr != nil {
 				return nil, scopeErr
 			}
@@ -751,13 +751,13 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		}
 	}
 
+	projection := codexResponsesProjection(account, !isOpenAIResponsesCompactPath(c) && !isOpenAICompatMessagesBridgeContext(c))
 	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
 	if account.UsesOpenAICodexProtocol() {
 		// Current Codex OAuth HTTP no longer negotiates the legacy Responses
 		// experiment. Passthrough may receive it from an older client, so remove
 		// only that token while preserving any independent beta negotiation.
 		stripOpenAILegacyResponsesBeta(req.Header)
-		promptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 		req.Host = "chatgpt.com"
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, req.Header, account); err != nil {
 			return nil, fmt.Errorf("resolve chatgpt account headers: %w", err)
@@ -781,16 +781,19 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 			req.Header.Set("originator", resolveCodexOutboundIdentity("").originator)
 		}
 		// 用隔离后的 session 标识符覆盖客户端透传值，防止跨用户会话碰撞。
-		if clientSessionID == "" {
-			clientSessionID = promptCacheKey
-		}
-		if clientConversationID == "" {
-			clientConversationID = promptCacheKey
-		}
 		harvestSession := s.harvestPinnedSessionForModel(ctx, account, extractOpenAICodexTicketModel(body))
 		if harvestSession != "" {
 			req.Header.Set("session_id", harvestSession)
+		} else if projection == offCodexProjection {
+			copyCodexOffSessionHeaders(req.Header, c, codexAccountIdentitySource(c, account), apiKeyID)
 		} else {
+			promptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+			if clientSessionID == "" {
+				clientSessionID = promptCacheKey
+			}
+			if clientConversationID == "" {
+				clientConversationID = promptCacheKey
+			}
 			if clientSessionID != "" {
 				req.Header.Set("session_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), clientSessionID))
 			}
@@ -814,7 +817,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		req.Header.Set("user-agent", CodexCanonicalUserAgent())
 	}
 	if s.harvestPinnedSessionForModel(ctx, account, extractOpenAICodexTicketModel(body)) == "" {
-		applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+		projection.applyHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		applyStagedCodexFingerprintHeaders(c, account, req.Header)
 	}
 	// 终态收口：透传路径的 OAuth 与非透传完全一致，同样强制统一出站身份

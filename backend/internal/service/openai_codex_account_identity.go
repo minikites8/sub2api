@@ -109,10 +109,12 @@ func scopeCodexAccountIdentityValue(account *Account, apiKeyID int64, kind, raw 
 	))
 }
 
-var codexAccountIdentityFields = []struct {
+type codexIdentityFields []struct {
 	name string
 	kind string
-}{
+}
+
+var codexAccountIdentityFields = codexIdentityFields{
 	{name: "installation_id", kind: "installation"},
 	{name: "x-codex-installation-id", kind: "installation"},
 	{name: "session_id", kind: "session"},
@@ -126,17 +128,87 @@ var codexAccountIdentityFields = []struct {
 	{name: "x-client-request-id", kind: "request"},
 }
 
-func applyCodexAccountIdentityFields(values map[string]any, account *Account, apiKeyID int64) bool {
-	if values == nil || codexAccountIdentityNamespace(account) == "" {
+// Off preserves client turn IDs. Parent/root references must map in the
+// same domain as the thread they point to, not as independent identifiers.
+var codexOffIdentityFields = func() codexIdentityFields {
+	var fields codexIdentityFields
+	for _, field := range codexAccountIdentityFields {
+		if field.kind != "turn" {
+			fields = append(fields, field)
+		}
+	}
+	return append(fields, codexIdentityFields{{"parent_thread_id", "thread"}, {"root_thread_id", "thread"}, {codexParentThreadIDHeader, "thread"}}...)
+}()
+
+type codexIdentityProjection bool
+
+const (
+	legacyCodexProjection codexIdentityProjection = false
+	offCodexProjection    codexIdentityProjection = true
+)
+
+func codexResponsesProjection(account *Account, native bool) codexIdentityProjection {
+	return codexIdentityProjection(native && codexOffResponses(account))
+}
+func (p codexIdentityProjection) fields() codexIdentityFields {
+	if p == offCodexProjection {
+		return codexOffIdentityFields
+	}
+	return codexAccountIdentityFields
+}
+func (p codexIdentityProjection) enabled(account *Account) bool {
+	return (p == offCodexProjection && account != nil) || codexAccountIdentityNamespace(account) != ""
+}
+func (p codexIdentityProjection) scope(account *Account, key int64, kind, raw string) string {
+	if p == offCodexProjection && codexAccountIdentityNamespace(account) == "" {
+		// No durable credential namespace. Use the same key-local fallback on every carrier.
+		return deriveStableUUIDv4(fmt.Sprintf("sub2api:codex-key-local:v1:%d:%s:%s", key, kind, strings.TrimSpace(raw)))
+	}
+	return scopeCodexAccountIdentityValue(account, key, kind, raw)
+}
+
+func codexOffResponses(account *Account) bool {
+	return account.UsesOpenAICodexProtocol() && account.GetCodexFingerprintMode() == codexFingerprintOff
+}
+
+// Project only explicit logical identifiers. Never use prompt_cache_key to
+// infer a session or conversation. applyHeaders scopes these copied values once.
+func copyCodexOffSessionHeaders(dst http.Header, c *gin.Context, source *Account, apiKeyID int64) {
+	dst.Del("session_id")
+	dst.Del("conversation_id")
+	if c == nil || c.Request == nil {
+		return
+	}
+	in := c.Request.Header
+	if turn := in.Get("x-client-turn-id"); strings.TrimSpace(turn) != "" {
+		dst.Set("x-client-turn-id", turn)
+	}
+	for _, name := range []string{"session-id", "thread-id", codexParentThreadIDHeader} {
+		raw := strings.TrimSpace(in.Get(name))
+		if name == "session-id" {
+			raw = extractClientSessionID(in)
+		}
+		if raw == "" {
+			continue
+		}
+		dst.Set(name, raw)
+	}
+	if raw := strings.TrimSpace(in.Get("conversation_id")); raw != "" {
+		dst.Set("conversation_id", isolateOpenAIUpstreamSessionID(apiKeyID, source, raw))
+	}
+}
+
+func (p codexIdentityProjection) applyFields(values map[string]any, account *Account, apiKeyID int64) bool {
+	if values == nil || !p.enabled(account) {
 		return false
 	}
 	changed := false
-	for _, field := range codexAccountIdentityFields {
+	for _, field := range p.fields() {
 		raw, ok := values[field.name].(string)
 		if !ok || strings.TrimSpace(raw) == "" {
 			continue
 		}
-		next := scopeCodexAccountIdentityValue(account, apiKeyID, field.kind, raw)
+		next := p.scope(account, apiKeyID, field.kind, raw)
 		if next != raw {
 			values[field.name] = next
 			changed = true
@@ -145,7 +217,7 @@ func applyCodexAccountIdentityFields(values map[string]any, account *Account, ap
 	return changed
 }
 
-func applyCodexAccountIdentityEmbeddedMetadata(values map[string]any, account *Account, apiKeyID int64) bool {
+func (p codexIdentityProjection) applyEmbedded(values map[string]any, account *Account, apiKeyID int64) bool {
 	raw, ok := values[openAIWSTurnMetadataHeader].(string)
 	if !ok || strings.TrimSpace(raw) == "" {
 		return false
@@ -154,7 +226,7 @@ func applyCodexAccountIdentityEmbeddedMetadata(values map[string]any, account *A
 	if err := decodeOpenAIJSONUseNumber([]byte(raw), &metadata); err != nil || metadata == nil {
 		return false
 	}
-	if !applyCodexAccountIdentityFields(metadata, account, apiKeyID) {
+	if !p.applyFields(metadata, account, apiKeyID) {
 		return false
 	}
 	rebuilt, err := marshalCodexTurnMetadata(metadata)
@@ -168,20 +240,24 @@ func applyCodexAccountIdentityEmbeddedMetadata(values map[string]any, account *A
 // Apply both accepted Responses metadata locations from their original values.
 // Do not flatten the response envelope or replace unrelated nested fields.
 func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, account *Account, apiKeyID int64) bool {
-	if requestBody == nil || codexAccountIdentityNamespace(account) == "" {
+	return legacyCodexProjection.applyMap(requestBody, account, apiKeyID)
+}
+
+func (p codexIdentityProjection) applyMap(requestBody map[string]any, account *Account, apiKeyID int64) bool {
+	if requestBody == nil || !p.enabled(account) {
 		return false
 	}
-	changed := applyCodexAccountIdentitySectionMap(requestBody, account, apiKeyID)
+	changed := p.applySection(requestBody, account, apiKeyID)
 	if response, ok := requestBody["response"].(map[string]any); ok {
-		if applyCodexAccountIdentitySectionMap(response, account, apiKeyID) {
+		if p.applySection(response, account, apiKeyID) {
 			changed = true
 		}
 	}
 	return changed
 }
 
-func applyCodexAccountIdentitySectionMap(requestBody map[string]any, account *Account, apiKeyID int64) bool {
-	if requestBody == nil || codexAccountIdentityNamespace(account) == "" {
+func (p codexIdentityProjection) applySection(requestBody map[string]any, account *Account, apiKeyID int64) bool {
+	if requestBody == nil || !p.enabled(account) {
 		return false
 	}
 	changed := false
@@ -189,19 +265,19 @@ func applyCodexAccountIdentitySectionMap(requestBody map[string]any, account *Ac
 	originalBodySessionID := ""
 	if clientMetadata != nil {
 		originalBodySessionID, _ = clientMetadata["session_id"].(string)
-		if applyCodexAccountIdentityFields(clientMetadata, account, apiKeyID) {
+		if p.applyFields(clientMetadata, account, apiKeyID) {
 			changed = true
 		}
-		if applyCodexAccountIdentityEmbeddedMetadata(clientMetadata, account, apiKeyID) {
+		if p.applyEmbedded(clientMetadata, account, apiKeyID) {
 			changed = true
 		}
 	}
 	if raw, ok := requestBody["prompt_cache_key"].(string); ok && strings.TrimSpace(raw) != "" {
 		kind := "prompt-cache"
-		if strings.TrimSpace(originalBodySessionID) != "" && raw == originalBodySessionID {
+		if p == legacyCodexProjection && strings.TrimSpace(originalBodySessionID) != "" && raw == originalBodySessionID {
 			kind = "session"
 		}
-		next := scopeCodexAccountIdentityValue(account, apiKeyID, kind, raw)
+		next := p.scope(account, apiKeyID, kind, raw)
 		if next != raw {
 			requestBody["prompt_cache_key"] = next
 			changed = true
@@ -214,7 +290,11 @@ func applyCodexAccountIdentitySectionMap(requestBody map[string]any, account *Ac
 // subobjects with gjson/sjson. The passthrough hot path never unmarshals the
 // potentially multi-megabyte request body.
 func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, apiKeyID int64) ([]byte, bool, error) {
-	if len(body) == 0 || codexAccountIdentityNamespace(account) == "" {
+	return legacyCodexProjection.applyRaw(body, account, apiKeyID)
+}
+
+func (p codexIdentityProjection) applyRaw(body []byte, account *Account, apiKeyID int64) ([]byte, bool, error) {
+	if len(body) == 0 || !p.enabled(account) {
 		return body, false, nil
 	}
 	root := gjson.ParseBytes(body)
@@ -232,8 +312,8 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 				return body, false, fmt.Errorf("decode client_metadata for account identity: %w", err)
 			}
 			originalBodySessionID, _ = clientMetadata["session_id"].(string)
-			metadataChanged := applyCodexAccountIdentityFields(clientMetadata, account, apiKeyID)
-			if applyCodexAccountIdentityEmbeddedMetadata(clientMetadata, account, apiKeyID) {
+			metadataChanged := p.applyFields(clientMetadata, account, apiKeyID)
+			if p.applyEmbedded(clientMetadata, account, apiKeyID) {
 				metadataChanged = true
 			}
 			if metadataChanged {
@@ -252,10 +332,10 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 		if promptCacheKey := root.Get(prefix + "prompt_cache_key"); promptCacheKey.Type == gjson.String && strings.TrimSpace(promptCacheKey.String()) != "" {
 			raw := promptCacheKey.String()
 			kind := "prompt-cache"
-			if strings.TrimSpace(originalBodySessionID) != "" && raw == originalBodySessionID {
+			if p == legacyCodexProjection && strings.TrimSpace(originalBodySessionID) != "" && raw == originalBodySessionID {
 				kind = "session"
 			}
-			scoped := scopeCodexAccountIdentityValue(account, apiKeyID, kind, raw)
+			scoped := p.scope(account, apiKeyID, kind, raw)
 			if scoped != raw {
 				rewritten, err := sjson.SetBytes(next, prefix+"prompt_cache_key", scoped)
 				if err != nil {
@@ -270,10 +350,14 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 }
 
 func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, apiKeyID int64) {
-	if headers == nil || codexAccountIdentityNamespace(account) == "" {
+	legacyCodexProjection.applyHeaders(headers, account, apiKeyID)
+}
+
+func (p codexIdentityProjection) applyHeaders(headers http.Header, account *Account, apiKeyID int64) {
+	if headers == nil || !p.enabled(account) {
 		return
 	}
-	for _, field := range codexAccountIdentityFields {
+	for _, field := range p.fields() {
 		// Underscore session/conversation headers are rebuilt separately from the
 		// prompt cache key by each request builder.
 		if field.name == "session_id" {
@@ -281,12 +365,12 @@ func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, api
 		}
 		raw := strings.TrimSpace(headers.Get(field.name))
 		if raw != "" {
-			headers.Set(field.name, scopeCodexAccountIdentityValue(account, apiKeyID, field.kind, raw))
+			headers.Set(field.name, p.scope(account, apiKeyID, field.kind, raw))
 		}
 	}
 	if raw := strings.TrimSpace(headers.Get(openAIWSTurnMetadataHeader)); raw != "" {
 		metadata := map[string]any{}
-		if err := json.Unmarshal([]byte(raw), &metadata); err == nil && metadata != nil && applyCodexAccountIdentityFields(metadata, account, apiKeyID) {
+		if err := decodeOpenAIJSONUseNumber([]byte(raw), &metadata); err == nil && metadata != nil && p.applyFields(metadata, account, apiKeyID) {
 			if rebuilt, err := marshalCodexTurnMetadata(metadata); err == nil {
 				headers.Set(openAIWSTurnMetadataHeader, string(rebuilt))
 			}

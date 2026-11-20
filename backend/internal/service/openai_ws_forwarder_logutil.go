@@ -62,7 +62,7 @@ type openAIWSSessionHeaderResolution struct {
 	ConversationSource string
 }
 
-func resolveOpenAIWSSessionHeaders(c *gin.Context, promptCacheKey string) openAIWSSessionHeaderResolution {
+func explicitOpenAIWSSessionHeaders(c *gin.Context) openAIWSSessionHeaderResolution {
 	resolution := openAIWSSessionHeaderResolution{
 		SessionSource:      "none",
 		ConversationSource: "none",
@@ -78,13 +78,17 @@ func resolveOpenAIWSSessionHeaders(c *gin.Context, promptCacheKey string) openAI
 		if conversationID := strings.TrimSpace(c.Request.Header.Get("conversation_id")); conversationID != "" {
 			resolution.ConversationID = conversationID
 			resolution.ConversationSource = "header_conversation_id"
-			if resolution.SessionID == "" {
-				resolution.SessionID = conversationID
-				resolution.SessionSource = "header_conversation_id"
-			}
 		}
 	}
 
+	return resolution
+}
+
+func resolveOpenAIWSSessionHeaders(c *gin.Context, promptCacheKey string) openAIWSSessionHeaderResolution {
+	resolution := explicitOpenAIWSSessionHeaders(c)
+	if resolution.SessionID == "" && resolution.ConversationID != "" {
+		resolution.SessionID, resolution.SessionSource = resolution.ConversationID, "header_conversation_id"
+	}
 	cacheKey := strings.TrimSpace(promptCacheKey)
 	if cacheKey != "" {
 		if resolution.SessionID == "" {

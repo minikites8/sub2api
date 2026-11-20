@@ -1163,8 +1163,8 @@ export default {
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexFingerprintMode: 'Codex fingerprint convergence',
-        codexFingerprintModeDesc: 'Off by default. Device only rewrites the device ID. Device + Session isolates sessions and threads by API key and client session header; requests without the header share a fallback within that key and account. Full convergence uses one session and thread per account. Some accounts reported quota shrinkage after enabling convergence, so choose based on your own measurements.',
-        codexFingerprintOff: 'Off (passthrough, default)',
+        codexFingerprintModeDesc: 'Off by default: native Responses keeps client threads distinct, preserves turn IDs and does not derive a session from a cache key. Device only rewrites the device ID. Device + Session isolates sessions and threads by API key and client session header; requests without the header share a fallback within that key and account. Full convergence uses one session and thread per account. Some accounts reported quota shrinkage after enabling convergence, so choose based on your own measurements.',
+        codexFingerprintOff: 'Off (preserve client sessions, default)',
         codexFingerprintDevice: 'Device only',
         codexFingerprintSession: 'Device + Session',
         codexFingerprintFull: 'Full convergence',

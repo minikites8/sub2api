@@ -64,7 +64,7 @@ func applyStagedCodexFingerprintClientMetadata(c *gin.Context, account *Account,
 type codexFingerprintMode string
 
 const (
-	// codexFingerprintOff 不做任何收敛，原样透传客户端标识。
+	// codexFingerprintOff 不合并会话。原生 Responses 单独映射显式会话/线程，保留轮次标识。
 	// 这是默认值：收敛是显式 opt-in 的（见 GetCodexFingerprintMode）。
 	codexFingerprintOff codexFingerprintMode = "off"
 	// codexFingerprintDevice 仅收敛 installation_id 为账号级恒定值。
