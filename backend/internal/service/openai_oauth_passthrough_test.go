@@ -2160,7 +2160,7 @@ func TestOpenAIGatewayService_CodexFingerprintHTTPTransformedHeaderBodyParityAnd
 	seed, ok := codexFingerprintSeed(account.Extra)
 	require.True(t, ok)
 	wantInstall := resolveConvergedInstallationID(account, seed)
-	wantSession := resolveConvergedSessionID(seed)
+	wantSession := resolveClientScopedSessionID(seed, "header-session")
 	wantThread := resolveConvergedThreadID(seed, "header-session")
 
 	require.Equal(t, wantInstall, upstream.lastReq.Header.Get("x-codex-installation-id"))
@@ -2188,6 +2188,8 @@ func TestOpenAIGatewayService_CodexFingerprintHTTPRawPassthroughHeaderBodyParity
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
+	const keyID int64 = 41
+	c.Set("api_key", &APIKey{ID: keyID})
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
 	c.Request.Header.Set("originator", "codex_cli_rs")
@@ -2222,8 +2224,10 @@ func TestOpenAIGatewayService_CodexFingerprintHTTPRawPassthroughHeaderBodyParity
 	seed, ok := codexFingerprintSeed(account.Extra)
 	require.True(t, ok)
 	wantInstall := resolveConvergedInstallationID(account, seed)
-	wantSession := resolveConvergedSessionID(seed)
-	wantThread := resolveConvergedThreadID(seed, "header-session")
+	expected := resolveCodexFingerprintIDsFromRequest(account, c.Request.Header, keyID)
+	require.NotNil(t, expected)
+	wantSession, wantThread := expected.sessionID, expected.threadID
+	require.NotEqual(t, resolveClientScopedSessionID(seed, "header-session"), wantSession)
 
 	require.Equal(t, wantInstall, upstream.lastReq.Header.Get("x-codex-installation-id"))
 	require.Equal(t, wantSession, upstream.lastReq.Header.Get("session-id"))
@@ -2272,7 +2276,7 @@ func TestOpenAIGatewayService_CodexFingerprintCompactDoesNotRewriteBodyCacheKeyO
 	account.Schedulable = true
 	account.Concurrency = 1
 	account.Credentials = map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"}
-	staleIDs := resolveCodexFingerprintIDs(account, "stale-session", codexFingerprintSession)
+	staleIDs := resolveCodexFingerprintIDs(account, "stale-session", codexFingerprintSession, 0)
 	require.NotNil(t, staleIDs)
 	stageCodexFingerprintIDs(c, staleIDs)
 
@@ -2282,7 +2286,7 @@ func TestOpenAIGatewayService_CodexFingerprintCompactDoesNotRewriteBodyCacheKeyO
 
 	seed, ok := codexFingerprintSeed(account.Extra)
 	require.True(t, ok)
-	require.NotEqual(t, resolveConvergedSessionID(seed), gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+	require.NotEqual(t, resolveClientScopedSessionID(seed, "header-session"), gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
 	require.Equal(t, "body-session", gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
 	require.Equal(t, "body-session", gjson.GetBytes(upstream.lastBody, "client_metadata.session_id").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "client_metadata.x-codex-installation-id").Exists())
@@ -2323,7 +2327,7 @@ func TestOpenAIGatewayService_CodexFingerprintMessagesBridgeDoesNotInjectBodyPro
 
 	seed, ok := codexFingerprintSeed(account.Extra)
 	require.True(t, ok)
-	wantSession := resolveConvergedSessionID(seed)
+	wantSession := resolveClientScopedSessionID(seed, "header-session")
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
 	require.Equal(t, wantSession, gjson.GetBytes(upstream.lastBody, "client_metadata.session_id").String())
 	require.Equal(t, wantSession, upstream.lastReq.Header.Get("session_id"))

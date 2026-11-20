@@ -447,7 +447,7 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersDeviceModePreservesNamespacedC
 	c.Request.Header.Set("x-client-request-id", "client-request")
 
 	account := newTestOAuthAccount(1300, map[string]any{codexFingerprintModeExtraKey: "device"})
-	ids := resolveCodexFingerprintIDsFromRequest(account, c.Request.Header)
+	ids := resolveCodexFingerprintIDsFromRequest(account, c.Request.Header, 0)
 	require.NotNil(t, ids)
 	stageCodexFingerprintIDs(c, ids)
 
@@ -1112,6 +1112,8 @@ func TestOpenAIGatewayService_Forward_WSv2_CodexFingerprintHandshakeBodyParityAn
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
+	const keyID int64 = 41
+	c.Set("api_key", &APIKey{ID: keyID})
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
 	c.Request.Header.Set("originator", "codex_cli_rs")
@@ -1166,8 +1168,10 @@ func TestOpenAIGatewayService_Forward_WSv2_CodexFingerprintHandshakeBodyParityAn
 	seed, ok := codexFingerprintSeed(account.Extra)
 	require.True(t, ok)
 	wantInstall := resolveConvergedInstallationID(account, seed)
-	wantSession := resolveConvergedSessionID(seed)
-	wantThread := resolveConvergedThreadID(seed, "header-session")
+	expected := resolveCodexFingerprintIDsFromRequest(account, c.Request.Header, keyID)
+	require.NotNil(t, expected)
+	wantSession, wantThread := expected.sessionID, expected.threadID
+	require.NotEqual(t, resolveClientScopedSessionID(seed, "header-session"), wantSession)
 	payloadJSON := requestToJSONString(captureConn.lastWrite)
 
 	require.Equal(t, wantInstall, captureDialer.lastHeaders.Get("x-codex-installation-id"))

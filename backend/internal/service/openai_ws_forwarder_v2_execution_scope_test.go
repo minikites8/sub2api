@@ -190,7 +190,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ExecutionScopeUsesOriginalIdentity(t 
 	_, boundB := stateStore.GetSessionTurnState(groupID, scopeB)
 	require.True(t, boundB, "会话 B 的 turn state 应落在按原始 session_id 算出的作用域")
 
-	injected := resolveCodexFingerprintIDs(account, "", codexFingerprintFull)
+	injected := resolveCodexFingerprintIDs(account, "", codexFingerprintFull, 0)
 	require.NotNil(t, injected)
 	injectedScope, _ := deriveOpenAISessionHashes(fmt.Sprintf("openai_ws_exec:%d|thread=%s", apiKeyID, injected.threadID))
 	_, boundToInjected := stateStore.GetSessionTurnState(groupID, injectedScope)

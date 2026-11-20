@@ -60,7 +60,7 @@ func applyStagedCodexFingerprintClientMetadata(c *gin.Context, account *Account,
 // codexFingerprintMode 控制 OAuth 账号出站请求的设备指纹收敛强度。
 // 多人共享同一 OAuth 账号时，每个用户的 Codex 客户端会携带各自不同的
 // installation_id / session_id / thread_id，上游据此判定设备数和会话数。
-// 收敛模式将这些标识改写为账号级恒定值，减少上游可见的设备/会话指纹。
+// 设备标识按账号派生；session_id 和 thread_id 的作用域取决于模式。
 type codexFingerprintMode string
 
 const (
@@ -70,9 +70,8 @@ const (
 	// codexFingerprintDevice 仅收敛 installation_id 为账号级恒定值。
 	// 上游看到 1 台设备 + 多会话（每用户各自的 session）。
 	codexFingerprintDevice codexFingerprintMode = "device"
-	// codexFingerprintSession 收敛 installation_id + session_id，
-	// thread_id 按客户端原始 session-id 确定性派生（每个真实 Codex 会话一个独立线程）。
-	// 上游看到 1 台设备 + 1 会话 + N 线程，最接近正常用户 spawn 子代理的模式。
+	// codexFingerprintSession 保持账号级 installation_id，按客户端会话分别派生 session_id 和 thread_id。
+	// 缺少客户端会话头时保留原有的账号级回退。
 	codexFingerprintSession codexFingerprintMode = "session"
 	// codexFingerprintFull 收敛所有标识：installation_id + session_id + thread_id。
 	// 上游看到 1 台设备 + 1 会话 + 1 线程，最激进。
@@ -247,6 +246,14 @@ func resolveConvergedSessionID(seed string) string {
 	return deriveStableUUIDv4("sub2api:codex-session-id:v2:" + seed)
 }
 
+// resolveClientScopedSessionID preserves conversation boundaries without changing the legacy headerless fallback.
+func resolveClientScopedSessionID(seed, clientSessionID string) string {
+	if clientSessionID == "" || seed == "" {
+		return resolveConvergedSessionID(seed)
+	}
+	return deriveStableUUIDv4("sub2api:codex-client-session-id:v1:" + seed + ":" + clientSessionID)
+}
+
 // resolveConvergedThreadID 按客户端原始 session-id 确定性派生 thread_id。
 // 每个真实 Codex 会话（不同客户端启动实例）获得一个独立线程，
 // 模拟正常用户 spawn 子代理或开多窗口的模式。
@@ -276,10 +283,10 @@ type codexFingerprintIDs struct {
 
 // resolveCodexFingerprintIDs 按收敛模式计算出站 ID 集合。
 // clientSessionID 是客户端原始的 session-id 头值（连字符形式），用于 session 模式下
-// 的 thread_id 派生——每个真实 Codex 会话得到一个独立线程。
+// 的 session_id 和 thread_id 派生。
 // 返回 nil 表示 off 模式，不需要改写。
 // 注意：包含随机生成的 turn_id，调用方必须只调用一次并共享结果给头改写和体改写。
-func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode codexFingerprintMode) *codexFingerprintIDs {
+func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode codexFingerprintMode, apiKeyID int64) *codexFingerprintIDs {
 	if account == nil || mode == codexFingerprintOff {
 		return nil
 	}
@@ -304,7 +311,13 @@ func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode c
 		return ids
 
 	case codexFingerprintSession:
-		ids.sessionID = resolveConvergedSessionID(seed)
+		// Session and thread IDs must not collide across authenticated API keys,
+		// even when two callers reuse a session header (or both omit it).
+		// Internal probes have no key and keep their existing namespace.
+		if apiKeyID > 0 {
+			seed = fmt.Sprintf("%s:key:%d", seed, apiKeyID)
+		}
+		ids.sessionID = resolveClientScopedSessionID(seed, clientSessionID)
 		ids.threadID = resolveConvergedThreadID(seed, clientSessionID)
 		if ids.threadID == "" {
 			ids.threadID = ids.sessionID
@@ -337,7 +350,7 @@ func extractClientSessionID(h http.Header) string {
 // resolveCodexFingerprintIDsFromRequest 从客户端原始请求头中提取 session-id，
 // 结合账号配置一次性解析收敛 ID 集合。调用方应将返回的 ids 同时传给
 // applyCodexFingerprintHeaders 和 applyCodexFingerprintClientMetadata。
-func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.Header) *codexFingerprintIDs {
+func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.Header, apiKeyID int64) *codexFingerprintIDs {
 	if account == nil {
 		return nil
 	}
@@ -349,7 +362,7 @@ func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.
 	if clientHeaders != nil {
 		clientSessionID = extractClientSessionID(clientHeaders)
 	}
-	return resolveCodexFingerprintIDs(account, clientSessionID, mode)
+	return resolveCodexFingerprintIDs(account, clientSessionID, mode, apiKeyID)
 }
 
 // applyCodexFingerprintHeaders 按预计算的收敛 ID 改写出站 HTTP 头中的设备指纹。
