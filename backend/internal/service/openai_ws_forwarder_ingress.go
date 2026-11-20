@@ -1240,7 +1240,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if hooks != nil && hooks.TurnStarted != nil {
 			hooks.TurnStarted(nextTurn, turnArrivedAt)
 		}
-		return payload, nil
+		next, _, aliasErr := requestmodel.ExpandOpenAIFast(payload, true)
+		if aliasErr != nil {
+			return nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, aliasErr.Error(), aliasErr)
+		}
+		return next, nil
 	}
 
 	firstPayload, err := parseClientPayload(1, firstClientMessage)

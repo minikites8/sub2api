@@ -98,6 +98,13 @@ func selectAPIKeyRequestGroup(c *gin.Context, keys *service.APIKeyService, subsc
 		}
 		if len(models) == 0 {
 			models = requestmodel.FromBodyCandidates(c.FullPath(), c.GetHeader("Content-Type"), body)
+			// Multi-group selection precedes RequestModelIntegrity. Select the
+			// group using the same base model the generation request will use.
+			if isOpenAIFastGenerationRequest(c) {
+				for i, model := range models {
+					models[i], _ = requestmodel.OpenAIFastBase(model)
+				}
+			}
 		}
 	}
 	if len(models) == 0 && c.Query("model") != "" {

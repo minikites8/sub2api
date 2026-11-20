@@ -87,6 +87,10 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 - **管理后台** - Web 界面进行监控和管理
 - **外部系统集成** - 支持通过 iframe 嵌入外部系统（如工单等），扩展管理后台功能
 
+### 用模型名请求 Fast
+
+在 Responses、Chat Completions 或 Responses WebSocket 的 `response.create` 中，`"model":"gpt-5.5-fast"` 等价于 `"model":"gpt-5.5","service_tier":"priority"`。支持 `gpt-*`、o 系列（例如 `o3-mini`）和 `codex-mini-latest`；不会截断 `grok-4-fast` 等其他厂商的原生模型名。后缀区分大小写；显式 `service_tier` 优先。权限和路由按基础模型判断，Fast 是否放行以及如何计费仍遵循现有策略。这不是 `ultrafast`，也不改变 `reasoning.effort`。
+
 ### OpenAI API Key 的 UltraFast 档位计费
 
 账号新增/编辑页提供默认关闭的 **UltraFast 档位计费** 开关。开启后，按该账号所有有价 token 模型的上游响应 `service_tier` 结算；`ultrafast` 使用标准单价×6，包含缓存读写，再应用有效账号/分组倍率。响应未返回档位时按请求档位回退，该开关不强制上游加速。

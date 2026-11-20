@@ -38,6 +38,32 @@ func RequestModelIntegrity(maxNormalizedBytes int64) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		if isOpenAIFastGenerationRequest(c) {
+			next, changed, err := requestmodel.ExpandOpenAIFast(body, false)
+			if err != nil {
+				groupModelAllowlistErrorWriter(c)(c, http.StatusBadRequest, err.Error())
+				c.Abort()
+				return
+			}
+			if changed {
+				if maxNormalizedBytes > 0 && int64(len(next)) > maxNormalizedBytes {
+					AbortWithError(c, http.StatusRequestEntityTooLarge, "invalid_request_error", "Request body is too large")
+					return
+				}
+				requestmodel.ResetRequestBody(c.Request, next)
+			}
+		}
 		c.Next()
 	}
+}
+
+func isOpenAIFastGenerationRequest(c *gin.Context) bool {
+	if c.Request.Method != http.MethodPost || strings.HasPrefix(strings.ToLower(c.GetHeader("Content-Type")), "multipart/") {
+		return false
+	}
+	switch strings.TrimRight(c.Request.URL.Path, "/") {
+	case "/responses", "/v1/responses", "/backend-api/codex/responses", "/chat/completions", "/v1/chat/completions":
+		return true
+	}
+	return false
 }
