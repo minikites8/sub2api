@@ -12,6 +12,23 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+func TestNormalizeTwoFAReauthorization(t *testing.T) {
+	existing := &service.Account{Credentials: map[string]any{"email": "User@example.com", "chatgpt_account_id": "workspace", "chatgpt_user_id": "user"}}
+	input := map[string]any{"email": "user@example.com", "account_id": "workspace", "user_id": "user", "access_token": "access", "refresh_token": "refresh", "id_token": "id", "password": "discard", "mfa_secret": "discard"}
+	item, err := normalizeTwoFAReauthorization(existing, input)
+	if err != nil || item.Credentials["chatgpt_account_id"] != "workspace" || item.Credentials["chatgpt_user_id"] != "user" || item.Credentials["password"] != nil || item.Credentials["mfa_secret"] != nil {
+		t.Fatal("expected normalized OAuth credentials only", err)
+	}
+	for key, value := range map[string]string{"email": "other@example.com", "account_id": "other-workspace", "user_id": "other-user", "refresh_token": ""} {
+		old := input[key]
+		input[key] = value
+		if _, err := normalizeTwoFAReauthorization(existing, input); err == nil {
+			t.Errorf("expected invalid %s to be rejected", key)
+		}
+		input[key] = old
+	}
+}
+
 func TestParseCodexSessionImportEntriesSupportsRawTokenJSONAndArray(t *testing.T) {
 	token1 := "raw-access-token-1"
 	token2 := buildCodexImportTestJWT(t, time.Now().Add(time.Hour), map[string]any{

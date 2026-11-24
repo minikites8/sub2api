@@ -47,18 +47,31 @@
         </div>
       </div>
 
-      <div v-if="showModeSwitch" class="flex gap-2 border-b border-gray-200 pb-3 dark:border-dark-600">
+      <div v-if="showModeSwitch" class="flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-dark-600">
         <button
           type="button"
+          :disabled="twoFABusy"
           class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-          :class="!credentialImportMode ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'"
+          :class="credentialMode === 'reauth' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'"
           @click="setCredentialMode('reauth')"
         >
           <Icon name="link" size="sm" />
           {{ t('admin.accounts.reAuthorize') }}
         </button>
         <button
+          v-if="supportsTwoFA"
           type="button"
+          data-testid="reauth-two-fa"
+          :disabled="currentLoading || importing || twoFABusy"
+          class="rounded-lg px-3 py-2 text-sm font-medium"
+          :class="{ 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300': credentialMode === 'twoFA' }"
+          @click="setCredentialMode('twoFA')"
+        >
+          {{ t('tokenGuard.twoFA.reauthMethod') }}
+        </button>
+        <button
+          type="button"
+          :disabled="twoFABusy"
           class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
           :class="credentialImportMode ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'"
           @click="setCredentialMode('import')"
@@ -92,7 +105,13 @@
         </div>
       </div>
 
-      <template v-if="!credentialImportMode">
+      <OpenAITwoFAImport
+        v-else-if="supportsTwoFA && credentialMode === 'twoFA'"
+        :key="account.id"
+        :reauth="{ email: String(account.credentials?.email || account.extra?.email || ''), apply: applyTwoFA }"
+        @busy="twoFABusy = $event"
+      />
+      <template v-else>
       <fieldset v-if="isAnthropic" class="border-0 p-0">
         <legend class="input-label">{{ t('admin.accounts.oauth.authMethod') }}</legend>
         <div class="mt-2 flex gap-4">
@@ -419,7 +438,7 @@
 
     <template #footer>
       <div v-if="account" class="flex justify-between gap-3">
-        <button type="button" class="btn btn-secondary" @click="handleClose">
+        <button type="button" class="btn btn-secondary" :disabled="twoFABusy" @click="handleClose">
           {{ t('common.cancel') }}
         </button>
         <button
@@ -441,7 +460,7 @@
           {{ currentLoading ? t('admin.accounts.oauth.verifying') : t('admin.accounts.oauth.kiro.importAndUpdate') }}
         </button>
         <button
-          v-else-if="isManualInputMethod"
+          v-else-if="credentialMode !== 'twoFA' && isManualInputMethod"
           type="button"
           :disabled="!canExchangeCode"
           class="btn btn-primary"
@@ -487,6 +506,7 @@ import { adminAPI } from '@/api/admin'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import OpenAITwoFAImport from '@/components/account/OpenAITwoFAImport.vue'
 import OAuthAuthorizationFlow from '@/components/account/OAuthAuthorizationFlow.vue'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import {
@@ -536,7 +556,9 @@ const kiroOAuth = useKiroOAuth()
 const grokOAuth = useGrokOAuth()
 
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
-const credentialMode = ref<'reauth' | 'import'>('reauth')
+type CredentialMode = 'reauth' | 'twoFA' | 'import'
+const twoFABusy = ref(false)
+const credentialMode = ref<CredentialMode>('reauth')
 const selectedFile = ref<File | null>(null)
 const importing = ref(false)
 const importErrorMessage = ref('')
@@ -569,6 +591,12 @@ const kiroImportTokenPlaceholder = computed(() => {
 const isOpenAI = computed(() => props.account?.platform === 'openai')
 const isExcelOAuth = computed(() => isOpenAI.value &&
   String(props.account?.credentials?.client_id ?? '').trim() === OPENAI_EXCEL_OAUTH_CLIENT_ID)
+const supportsTwoFA = computed(() => {
+  const account = props.account
+  if (!isOpenAI.value || account?.type !== 'oauth' || account.parent_account_id != null || isExcelOAuth.value) return false
+  return ![account.credentials?.auth_mode, account.credentials?.openai_auth_mode].some(mode =>
+    ['agentidentity', 'personalaccesstoken', 'personal_access_token'].includes(String(mode || '').trim().toLowerCase()))
+})
 const isOpenAILike = computed(() => isOpenAI.value)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
@@ -668,8 +696,9 @@ const canExchangeCode = computed(() => {
 })
 
 watch(
-  () => props.show,
-  (newVal) => {
+  () => [props.show, props.account?.id] as const,
+  ([newVal]) => {
+    twoFABusy.value = false
     if (!newVal || !props.account) {
       resetState()
       return
@@ -714,7 +743,8 @@ watch(
   }
 )
 
-const setCredentialMode = (mode: 'reauth' | 'import') => {
+const setCredentialMode = (mode: CredentialMode) => {
+  if (twoFABusy.value) return
   credentialMode.value = mode
   selectedFile.value = null
   importErrorMessage.value = ''
@@ -866,6 +896,7 @@ const kiroProviderClass = (provider: typeof kiroOAuthProvider.value) => [
 ]
 
 const handleClose = () => {
+  if (twoFABusy.value) return
   emit('close')
 }
 
@@ -892,6 +923,17 @@ const updateAccountCredentials = async (payload: {
   appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
   emit('reauthorized', updatedAccount)
   handleClose()
+}
+
+const applyTwoFA = async (credentials: Record<string, unknown>, signal: AbortSignal) => {
+  signal.throwIfAborted()
+  const id = props.account?.id
+  if (!id || !supportsTwoFA.value) throw new Error('invalid_reauth_account')
+  const updated = await adminAPI.accounts.applyOAuthCredentials(id, { type: 'oauth', credentials, openai_two_fa: true })
+  if (!props.show || id !== props.account?.id) return
+  appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+  emit('reauthorized', updated)
+  emit('close')
 }
 
 const handleGenerateUrl = async () => {

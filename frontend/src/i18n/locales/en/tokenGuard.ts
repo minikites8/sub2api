@@ -1,5 +1,12 @@
 export default {
   "twoFA": {
+  "reauthMethod": "Password + 2FA",
+  "reauthHint": "Enter one login for the selected account. The configured login service renews its authorization without creating an account or changing automatic re-login settings.",
+  "reauthInvalid": "Enter one line with the selected account’s email, password and 2FA secret.",
+  "reauthStart": "Log in and reauthorize",
+  "reauthReset": "Enter credentials again",
+  "reauthSaving": "Updating authorization…",
+  "reauthSaveFailed": "Logged in, but authorization was not updated. Check that the identity and workspace match the selected account.",
   "title": "2FA login and import",
   "label": "Initial login with email, password and 2FA",
   "hint": "One email----password----2FA per line (commas also supported), up to 100 entries, processing at most 3 accounts at a time. Initial login uses the configured login service. Imported accounts join Credential Operations by default with encrypted password/2FA storage, inspection and automatic re-login enabled. Subsequent logins use the local Worker. Enable credential encryption on this page; automatic re-login also requires a configured Worker. Stopping aborts page requests and further processing; remote logins or saves already submitted may still complete.",
@@ -14,6 +21,7 @@ export default {
   "ownedJobs": "Some login tasks are unresolved, so this window must stay open. Continue unfinished entries to resume them, or stop this batch to clean them up. If cleanup fails, you can try again.",
   "reset": "Import another batch",
   "states": {
+    "reauthorized": "Reauthorized",
     "pending": "Pending",
     "login": "Logging in…",
     "importing": "Importing and enrolling in Credential Operations…",

@@ -358,6 +358,7 @@ export async function applyOAuthCredentials(
   payload: {
     type: 'oauth' | 'setup-token'
     credentials: Record<string, unknown>
+    openai_two_fa?: boolean
     extra?: Record<string, unknown>
   }
 ): Promise<Account> {

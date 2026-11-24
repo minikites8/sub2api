@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <CredentialEncryptionSetup @ready="encryptionReady = $event" />
-    <p class="input-hint">{{ t('tokenGuard.twoFA.hint') }}</p>
+    <p class="input-hint">{{ t(reauth ? 'tokenGuard.twoFA.reauthHint' : 'tokenGuard.twoFA.hint') }}</p>
     <a href="/admin/token-guard" target="_blank" rel="noopener noreferrer" class="text-primary-600">
       {{ t('tokenGuard.twoFA.settings') }}
     </a>
@@ -18,18 +18,18 @@
     <ul v-if="rows.length" class="space-y-2" aria-live="polite">
       <li v-for="(row, index) in rows" :key="row.entry.email" class="flex justify-between gap-4 text-sm">
         <span>{{ index + 1 }}. {{ row.entry.email }}</span>
-        <span>{{ t(`tokenGuard.twoFA.states.${row.status}`) }}</span>
+        <span>{{ t(statusLabel(row.status)) }}</span>
       </li>
     </ul>
     <div class="flex gap-3">
       <button v-if="!busy && (!rows.length || hasPending)" type="button" class="btn btn-primary" :disabled="!encryptionReady" data-testid="two-fa-start" @click="run">
-        {{ t(rows.length ? 'tokenGuard.twoFA.retry' : 'tokenGuard.twoFA.start') }}
+        {{ t(rows.length ? 'tokenGuard.twoFA.retry' : reauth ? 'tokenGuard.twoFA.reauthStart' : 'tokenGuard.twoFA.start') }}
       </button>
       <button v-if="busy || hasOwnedJobs" type="button" class="btn btn-secondary" :disabled="busy && stopRequested" data-testid="two-fa-stop" @click="stop">
         {{ t('tokenGuard.twoFA.stop') }}
       </button>
       <button v-if="!busy && rows.length" type="button" class="btn btn-secondary" :disabled="hasOwnedJobs" @click="reset">
-        {{ t('tokenGuard.twoFA.reset') }}
+        {{ t(reauth ? 'tokenGuard.twoFA.reauthReset' : 'tokenGuard.twoFA.reset') }}
       </button>
     </div>
   </div>
@@ -42,26 +42,34 @@ import { useI18n } from 'vue-i18n'
 import { deleteTwoFALogin, getTwoFALogin, parseTwoFALoginText, startTwoFALogin } from '@/api/admin/accountTokenGuard'
 import type { TokenGuardReloginAccount } from '@/api/admin/accountTokenGuard'
 
+type Reauth = { email: string; apply: (credential: Record<string, unknown>, signal: AbortSignal) => Promise<void> }
 const props = defineProps<{
+  reauth?: never
   importCredential: (credential: Record<string, unknown>, email: string, login: TokenGuardReloginAccount, signal?: AbortSignal) => Promise<'created' | 'skipped'>
-}>()
+} | { reauth: Reauth; importCredential?: never }>()
 const emit = defineEmits<{ busy: [value: boolean] }>()
 const { t } = useI18n()
 type Row = {
   entry: TokenGuardReloginAccount
-  status: 'pending' | 'login' | 'importing' | 'created' | 'skipped' | 'failed' | 'importFailed'
+  status: 'pending' | 'login' | 'importing' | 'created' | 'skipped' | 'failed' | 'importFailed' | 'reauthorized'
   credential?: Record<string, unknown>
   jobId?: string
   cleanup?: Promise<void>
   retiring?: boolean
 }
+function statusLabel(status: Row['status']) {
+  if (props.reauth && status === 'importing') return 'tokenGuard.twoFA.reauthSaving'
+  if (props.reauth && status === 'importFailed') return 'tokenGuard.twoFA.reauthSaveFailed'
+  return `tokenGuard.twoFA.states.${status}`
+}
+const unfinished = (row: Row) => !['created', 'skipped', 'reauthorized'].includes(row.status)
 const raw = ref('')
 const encryptionReady = ref(false)
 const error = ref('')
 const rows = ref<Row[]>([])
 const busy = ref(false)
 const stopRequested = ref(false)
-const hasPending = computed(() => rows.value.some(row => row.status !== 'created' && row.status !== 'skipped'))
+const hasPending = computed(() => rows.value.some(unfinished))
 const hasOwnedJobs = computed(() => rows.value.some(row => row.jobId || row.cleanup))
 let disposed = false
 let controller: AbortController | undefined
@@ -118,10 +126,18 @@ async function run() {
   error.value = ''
   if (!rows.value.length) {
     try {
-      rows.value = parseTwoFALoginText(raw.value).map(entry => ({ entry, status: 'pending' }))
+      const entries = parseTwoFALoginText(raw.value)
+      if (props.reauth) {
+        const expectedEmail = props.reauth.email.trim().toLowerCase()
+        if (entries.length !== 1 || (expectedEmail && entries[0].email !== expectedEmail)) {
+          error.value = t('tokenGuard.twoFA.reauthInvalid')
+          return
+        }
+      }
+      rows.value = entries.map(entry => ({ entry, status: 'pending' }))
       raw.value = ''
     } catch {
-      error.value = t('tokenGuard.twoFA.invalid')
+      error.value = t(props.reauth ? 'tokenGuard.twoFA.reauthInvalid' : 'tokenGuard.twoFA.invalid')
       return
     }
   }
@@ -133,7 +149,7 @@ async function run() {
   try {
     // Retained jobs already consume capacity. Resume/retire them before
     // admitting fresh rows, including when an earlier attempt lost polling.
-    const pending = batchRows.filter(row => row.status !== 'created' && row.status !== 'skipped')
+    const pending = batchRows.filter(unfinished)
       .sort((a, b) => Number(Boolean(b.jobId)) - Number(Boolean(a.jobId)))
     let next = 0
     const worker = async () => {
@@ -185,7 +201,12 @@ async function runRow(row: Row, signal: AbortSignal) {
     signal.throwIfAborted()
     row.status = 'importing'
     // Retry is explicit and reuses the credential; completed rows stay skipped.
-    row.status = await props.importCredential(row.credential, row.entry.email, { ...row.entry }, signal)
+    if (props.reauth) {
+      await props.reauth.apply(row.credential, signal)
+      row.status = 'reauthorized'
+    } else {
+      row.status = await props.importCredential(row.credential, row.entry.email, { ...row.entry }, signal)
+    }
     row.credential = undefined
     row.entry.password = ''
     row.entry.mfa_secret = ''

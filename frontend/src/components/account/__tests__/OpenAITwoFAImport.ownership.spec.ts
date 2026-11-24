@@ -6,6 +6,8 @@ import { apiClient } from '@/api/client'
 import { deleteTwoFALogin, getTwoFALogin, startTwoFALogin } from '@/api/admin/accountTokenGuard'
 import type { TwoFALoginJob } from '@/api/admin/accountTokenGuard'
 
+// Keep real Axios cancellation, without waiting for browser-only fingerprint probes.
+vi.mock('@/utils/browserFingerprint', () => ({ getBrowserFingerprints: async () => [] }))
 vi.mock('vue-i18n', async original => ({ ...await original<typeof import('vue-i18n')>(), useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/api/admin/credentialEncryption', () => ({
   getCredentialEncryption: vi.fn().mockResolvedValue({ configured: true, source: 'server_config' }),

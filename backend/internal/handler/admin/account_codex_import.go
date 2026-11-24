@@ -703,6 +703,28 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 	return item, nil
 }
 
+// Reuse the add-account token normalization without running import deduplication,
+// creating accounts, or switching the selected account to a different workspace.
+func normalizeTwoFAReauthorization(existing *service.Account, raw map[string]any) (*codexImportAccount, error) {
+	item, err := normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: raw})
+	if err != nil || item.IsAgentIdentity || item.RefreshToken == "" || item.IDToken == "" || item.Email == "" {
+		return nil, errors.New("incomplete or invalid 2FA login result")
+	}
+	email := existing.GetCredential("email")
+	if email == "" {
+		email = existing.GetExtraString("email")
+	}
+	accountID := existing.GetCredential("chatgpt_account_id")
+	userID := existing.GetCredential("chatgpt_user_id")
+	if (email != "" && !strings.EqualFold(strings.TrimSpace(email), item.Email)) ||
+		item.ClientID == openai.ExcelClientID ||
+		(accountID != "" && accountID != item.AccountID) ||
+		(userID != "" && userID != item.UserID) {
+		return nil, errors.New("2FA login identity does not match the selected account")
+	}
+	return item, nil
+}
+
 func enrichCodexImportAccountFromJWT(item *codexImportAccount, token string, validateExpiry bool, now time.Time) error {
 	claims, err := decodeCodexJWTClaims(token)
 	if err != nil {

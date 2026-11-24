@@ -14,6 +14,13 @@ const {
   applyOAuthCredentialsMock: vi.fn(),
 }))
 
+vi.mock('@/api/admin/credentialEncryption', () => ({ getCredentialEncryption: vi.fn().mockResolvedValue({ configured: true }) }))
+vi.mock('@/api/admin/accountTokenGuard', async importOriginal => ({
+  ...await importOriginal<typeof import('@/api/admin/accountTokenGuard')>(),
+  startTwoFALogin: vi.fn(), getTwoFALogin: vi.fn(), deleteTwoFALogin: vi.fn(),
+}))
+import { startTwoFALogin, getTwoFALogin, deleteTwoFALogin } from '@/api/admin/accountTokenGuard'
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
@@ -222,6 +229,7 @@ describe('ReAuthAccountModal platform routing', () => {
     await flushPromises()
 
     const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    expect(wrapper.find('[data-testid="reauth-two-fa"]').exists()).toBe(false)
     expect(flow.props('platform')).toBe('grok')
     expect(wrapper.text()).toContain('admin.accounts.grokAccount')
   })
@@ -259,6 +267,7 @@ describe('ReAuthAccountModal BPS reauthorization', () => {
     account.extra.openai_excel_bps = false
     const wrapper = mountModal(account)
     await wrapper.setProps({ show: true })
+    expect(wrapper.find('[data-testid="reauth-two-fa"]').exists()).toBe(false)
     expect(wrapper.getComponent(OAuthAuthorizationFlowStub).props('excelOauth')).toBe(true)
 
     await wrapper.get('[data-testid="reauth-generate-url"]').trigger('click')
@@ -326,6 +335,33 @@ describe('ReAuthAccountModal BPS reauthorization', () => {
     expect(applyOAuthCredentialsMock).not.toHaveBeenCalled()
     expect(wrapper.emitted('reauthorized')).toBeUndefined()
     expect(wrapper.getComponent(OAuthAuthorizationFlowStub).props('error')).toBe('admin.accounts.oauth.openai.excelSessionMismatch')
+  })
+
+  it('logs in one matching account with 2FA and applies only its returned credential to the selected ID', async () => {
+    const credential = tokens(codexClientID)
+    vi.mocked(startTwoFALogin).mockResolvedValue({ id: 'job', status: 'running' })
+    vi.mocked(getTwoFALogin).mockResolvedValue({ id: 'job', status: 'succeeded', credential })
+    vi.mocked(deleteTwoFALogin).mockResolvedValue()
+    const account = buildOpenAIAccount(codexClientID)
+    const wrapper = mountModal({ ...account, credentials: { ...account.credentials, email: 'BPS@example.com' } })
+    await wrapper.setProps({ show: true })
+    await wrapper.get('[data-testid="reauth-two-fa"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent(OAuthAuthorizationFlowStub).exists()).toBe(false)
+    for (const input of ['other@example.com----pass----seed', 'bps@example.com----pass----seed\nother@example.com----pass----seed']) {
+      await wrapper.get('textarea').setValue(input)
+      await wrapper.get('[data-testid="two-fa-start"]').trigger('click')
+      expect(wrapper.get('[role="alert"]').text()).toContain('reauthInvalid')
+      expect(startTwoFALogin).not.toHaveBeenCalled()
+    }
+    await wrapper.get('textarea').setValue('bps@example.com----pass----seed')
+    await wrapper.get('[data-testid="two-fa-start"]').trigger('click')
+    await flushPromises()
+    expect(deleteTwoFALogin).toHaveBeenCalledWith('job')
+    expect(applyOAuthCredentialsMock).toHaveBeenCalledWith(account.id, { type: 'oauth', credentials: credential, openai_two_fa: true })
+    expect(wrapper.emitted('reauthorized')).toHaveLength(1)
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
   })
 
   it('retains Codex authorization for a Codex account with BPS enabled', async () => {

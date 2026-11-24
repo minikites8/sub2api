@@ -1931,6 +1931,7 @@ func (h *AccountHandler) Refresh(c *gin.Context) {
 
 // ApplyOAuthCredentialsRequest is the payload for persisting re-authorized OAuth credentials.
 type ApplyOAuthCredentialsRequest struct {
+	OpenAITwoFA bool           `json:"openai_two_fa"`
 	Type        string         `json:"type" binding:"required,oneof=oauth setup-token"`
 	Credentials map[string]any `json:"credentials" binding:"required"`
 	Extra       map[string]any `json:"extra"`
@@ -2067,6 +2068,20 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	if req.OpenAITwoFA {
+		if req.Type != service.AccountTypeOAuth || !existing.IsOpenAIOAuth() || existing.IsExcelOAuth() || existing.IsShadow() || existing.IsOpenAIAgentIdentity() || existing.IsOpenAIPersonalAccessToken() {
+			response.BadRequest(c, "2FA reauthorization requires a standard OpenAI OAuth account")
+			return
+		}
+		item, err := normalizeTwoFAReauthorization(existing, req.Credentials)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		req.Credentials = item.Credentials
+		req.Extra = map[string]any{"email": item.Email}
 	}
 
 	// Re-auth only returns authentication fields. Preserve account configuration
